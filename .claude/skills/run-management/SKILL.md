@@ -81,8 +81,8 @@ under Git's `ana-code/`, a frozen install) and leaves the configured checkout al
 usable window and room under `ANA_LOGIN_RUNS` across the fleet, the week that resets soonest first;
 an explicit login at its cap is refused, and so is a launch whose fleet count is missing. On a peer
 it first checks that the environment holds the numbered key and, if not, asks for the login to be
-carried by the operator's procedure, which pipes the one line without printing it. No verb prints or
-carries a credential. Seats billed by another provider need no Claude login.
+carried, by a pipe that never prints it (the operator's `CLAUDE.md` holds the procedure). No verb
+prints or carries a credential. Seats billed by another provider need no Claude login.
 
 **Batches.** Several packs make one ordered plan (`fresh <pack> <pack> ... --logins <list>`), printed
 in full without `--yes`. The planner reserves each entry in its own counts, pins one commit, checks
@@ -121,8 +121,10 @@ in `launch-run-<n>.out` and `.err` beside the receipt `launch-run-<n>.json`. Out
   operator's word that its times will not be compared.
 
 The receipt records flags, commit, dirty state, load and Bun; the log holds code by content, so the
-commit is on record only there. Once the run starts, tag it:
-`git tag run/<name>/<n> <commit> && git push origin run/<name>/<n>`.
+commit is on record only there. Once the run starts, tag the commit by its own first nine
+characters: `git tag -f run/<nine> <commit> && git push origin run/<nine>`. A tag is published and
+a run's name ends in its machine's, so the tag holds no name; any ref that names the commit at the
+remote publishes it (`publishedAt`), and `runs source <name>` says which commit a run ran.
 
 A name is the folder `.ana/d2/<name>/`, chosen once and never reused: letters, digits, `.`, `_`,
 `-`, at most 128 characters, no `..` (`isSafePathSegment`). Every launch appends its machine's name,
@@ -301,7 +303,10 @@ exam's milestones in counts, what a comparison can read as it starts, a promotio
 should wait for its starter comparison", each starter comparison under its report, `ready to pause`
 with its command at the second read, and once, when a campaign reaches it, `⚠ investigation due`
 with the command that names the step: `wri2p2.ts due` while the run lives, which prints its pause
-or the deviation that keeps it, and the investigation's `open` once it has stopped. A closed run's reason and a host that stops answering are said
+or the deviation that keeps it, and the investigation's `open` once it has stopped. A live campaign
+whose first comparison has stood admissible for 75 minutes without beginning says so once
+(`⚠ a first comparison admissible`, `heldOff`, `tools/runs/view.ts`); `runs view` then says the move
+the table names, and the line stops nothing. A closed run's reason and a host that stops answering are said
 when they turn, not at every look.
 
 `bun run runs alerts` is the cron watch: one stdout line per new promotion, starter comparison,

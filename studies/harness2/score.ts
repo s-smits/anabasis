@@ -10,7 +10,12 @@
  *     --api-base <url> [--harness <kept>] [--tasks <profession/taskN,...>] [--judge-log <shim.jsonl>]
  *     [--solve-only] [--rubrics <file>] [--cap <chars>] [--dry-run] --yes
  *   bun studies/harness2/score.ts table --out <dir> [--tasks <profession/taskN,...>]
+ *   bun studies/harness2/score.ts tree --arm <arm> --name <name> --out <dir> --for <linux-x64>
+ *     [--harness <kept>]
  *
+ * `tree` writes a campaign's or the starter's tree and its build's price for another machine and
+ * rolls nothing: a campaign stays on its own host, so its arm is made there for the machine that
+ * rolls it, and `<out>/trees/<name>` with `<name>.build.json` is all that machine's store needs.
  * An arm is `base` (Harness²'s base harness, the pilot's Base), `starter` or a campaign's name
  * (its kept harness written out by `claude-export.ts`, `--harness` as `keptAs` takes it),
  * `pi:starter` or `pi:<campaign>` (the harness as kept, solved inside by `../shared/pi-solve.ts`,
@@ -81,7 +86,7 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runSync } from "#src/meta/subprocess.ts";
 import { LIMITS } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
-import { foreignPrograms, HARNESS_DIR, HERE, placeHarness } from "../shared/bundle.ts";
+import { foreignPrograms, HARNESS_DIR, HERE, placeHarness, placeOf } from "../shared/bundle.ts";
 import { exportForClaudeCode } from "../shared/claude-export.ts";
 import { RESULT_FILE, TRACE_FILE } from "../shared/pi-solve.ts";
 import { inGroup, REFUSED, type Agent, type Claude } from "./h2/claude.ts";
@@ -163,6 +168,7 @@ export interface Values {
   readonly cap?: string;
   readonly "dry-run"?: boolean;
   readonly yes?: boolean;
+  readonly for?: string;
 }
 
 /** How one judgement runs: the transport, the shim's log, the rubrics and any wider cut. */
@@ -187,6 +193,7 @@ const OPTIONS = {
   cap: { type: "string" },
   "dry-run": { type: "boolean" },
   yes: { type: "boolean" },
+  for: { type: "string" },
 } as const;
 
 /** `--cap` as a count of characters: a whole number above judge.py's own cut, or a refusal. */
@@ -349,7 +356,7 @@ function before(task: string): string {
   return `${profession}/task${n - 1}`;
 }
 
-async function armOf(values: Values, out: string, baseHarness: string): Promise<Arm> {
+async function armOf(values: Values, out: string, baseHarness: string, place = HERE): Promise<Arm> {
   const { arm = "", name = "" } = values;
   if (name === "" || name.includes("__") || name.includes("/") || name.startsWith(NAMESPACE)) {
     throw new Error(`--name '${name}' must be a plain label prefix, not '${NAMESPACE}'`);
@@ -416,13 +423,13 @@ async function armOf(values: Values, out: string, baseHarness: string): Promise<
       const part = `${into}.part-${String(runtimeProcess.pid)}`;
       await placeHarness(join(part, HARNESS_DIR), source);
       renameSync(part, into);
-    } else await exportForClaudeCode(into, source);
+    } else await exportForClaudeCode(into, source, place);
   }
   const record = readJson(join(into, "export.json"));
   const digest = pi ? (await openHarness(join(into, HARNESS_DIR))).digest : field(record, "harness");
-  // A rollout runs here, outside a container, on the programs a campaign's host built.
+  // A rollout runs outside a container, on the programs its tree was exported with.
   const toolchain = pi ? join(HARNESS_DIR, TOOL_TREE_DIR) : field(record, "toolchain");
-  if (isString(toolchain)) await foreignPrograms(join(into, toolchain), HERE);
+  if (isString(toolchain)) await foreignPrograms(join(into, toolchain), place);
   // The build is priced once, beside the tree and outside what a solver is given, so a tree copied
   // to another machine rolls there without the campaign's log, which stays on its own host.
   const priced = `${into}.build.json`;
@@ -548,6 +555,7 @@ export async function score(values: Values): Promise<void> {
   if (values.out === undefined || values["api-base"] === undefined || values.jb === undefined) {
     throw new Error("score needs --arm, --name, --out, --jb and --api-base");
   }
+  if (values.for !== undefined) throw new Error("--for is the tree verb's; a rollout runs on this machine");
   // An official record keeps judge.py's own cut, so a wider one reads only a deliverable judged again.
   const cap = capOf(values.cap);
   if (cap !== undefined && !(values.arm ?? "").startsWith("again:")) {
@@ -739,9 +747,12 @@ async function main(args: readonly string[]): Promise<void> {
     await score(values);
   } else if (verb === "table" && values.out !== undefined) {
     table(resolve(values.out), tasksOf(values.tasks, PILOT_TASKS));
+  } else if (verb === "tree" && values.out !== undefined && values.for !== undefined) {
+    const arm = await armOf(values, resolve(values.out), "", placeOf(values.for));
+    console.log(`arm ${arm.name}: ${arm.harness}, for ${values.for}, under ${arm.tree("")}`);
   } else {
     throw new Error(
-      "usage: score.ts score --arm <arm> --name <name> --out <dir> --jb <dir> --api-base <url> --yes | table --out <dir> [--tasks <list>]",
+      "usage: score.ts score --arm <arm> --name <name> --out <dir> --jb <dir> --api-base <url> --yes | table --out <dir> [--tasks <list>] | tree --arm <arm> --name <name> --out <dir> --for <linux-x64>",
     );
   }
 }

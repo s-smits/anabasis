@@ -46,7 +46,8 @@ bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | camp
   often it came within the floor: a large gap can mean a strong candidate or a weak reference. The
   output is exam-side. `--zone` prints the zone counts with the A/A's untied share as one TSV row a
   comparison across several logs. What a reading rests on task by task, with how many of its
-  tallied frontier tasks the largest family holds, is `bun tools/wri/wri.ts reader pairs --log <name>`.
+  tallied frontier tasks the largest family holds and the new side's tally on each writing
+  session's tasks, is `bun tools/wri/wri.ts reader pairs --log <name>`.
 - `draw.ts` predicts the next comparison: the held-out pool by part, the set it would fix, its
   grain and its repeats of the comparison before, its frontier by epoch, admission's floor and
   refusals (`held-short` among them) and the size lines, at

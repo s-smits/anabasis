@@ -143,7 +143,9 @@ difference is put to a permutation test with the campaign as the unit
 runs` where no deal of the same runs could read a difference at that level. The closing line counts
 each pack's tests once, without the pooled block; one test in twenty reads `moved` by chance, and
 tests that share runs do so together. `--back 4 --pack buffer` is the control read of `AGENTS.md`
-section 10.
+section 10. A slow start has two causes, so the hours to a first comparison are read in two parts:
+until admission refuses one nothing, the supply's, and from then until it began (`heldOff`,
+`tools/runs/view.ts`).
 
 **The climb against what holds it.** More promotions an hour is a gain only where they hold, so one
 line a window sets promotions a 100 active hours beside the share the starter confirmed and the

@@ -640,9 +640,11 @@ What stops the campaign climbing now, as one link with its count? Walk the lates
 
 `tools/wri/table-timeline.ts <log>` replays the table at each change beside the moves made: how
 long each named move stood, how much of that passed inside Builder waits, and what admission
-refused. Its `admissible` row marks where a first comparison could first start, and each `compare`
-move names the tasks held out and released as it began, so the Builder's calls between the two
-rows are what it chose instead of comparing. A row without `=` ran under other code, so its replay
+refused. Its `admissible` row marks where a first comparison could first start and gives the hours
+until one began with those inside Builder waits, which `ambition` repeats beside the hours to the
+first comparison, so that time read against earlier runs splits into the Examiner's and the
+Builder's. Each `compare` move names the tasks held out and released as it began, so the Builder's
+calls between the two rows are what it chose instead of comparing. A row without `=` ran under other code, so its replay
 is a counterfactual. `readings.txt`
 prints each comparison's cap, its reserve and the test's price, and whether it was cut. Name the
 link, its count against what it needed, and its owner, and for that link each change new since the
@@ -736,8 +738,9 @@ reaches answers within it that the reference misses; a budget nobody nears leave
 the objective. By comparison and side, read `MISSES AT A LIMIT`, `WALL SHARE` (deadline and turns)
 and effort on tasks both answered, and say whether the budget binds on both, on the reference only
 or on neither (`budget.txt` gives each comparison's sides with their endings, turns and seconds
-against the bound, the solves ended at a limit, the calls that ran to the shell's limit, hours
-queued and load a core). Deadlines count elapsed time, so read load (`HOST LOADED`, `LOAD MOVED`) and waits
+against the bound, the solves ended at a limit, the calls as long as the shell's default limit or
+longer, which counts a call that set a longer timeout and finished inside it, hours queued and load
+a core). Deadlines count elapsed time, so read load (`HOST LOADED`, `LOAD MOVED`) and waits
 (`STARTS OUT OF TURN`, `campaign.waited`) beside them. Since non-results are rerun and fails count,
 say whether each kind is honest and reruns fell evenly (`NON-RESULTS`). Separate solves killed from
 those still open (`bun run runs pulse`), and say whether a crash, a missing tool or another served
@@ -753,8 +756,8 @@ Label: `economy`.
 Importance: 0.35.
 Marks: none.
 
-Starts from `LONG SILENCES (lane 25)`, `SPEND LED BY A ROLE (lane 25)` and
-`BUILDER COMPACTED (lane 25)`.
+Starts from `LONG SILENCES (lane 25)`, `SPEND LED BY A ROLE (lane 25)`,
+`FIRST COMPARISON HELD OFF (lane 25)` and `BUILDER COMPACTED (lane 25)`.
 
 Where did the hours and dollars go, does the bill hold all of them, and what was each long silence?
 First the bill's completeness: a gap of more than a few percent between the backend's totals and
@@ -767,7 +770,11 @@ For `BUILDER COMPACTED`, read each compaction's `tokensBefore`, seconds and `err
 calls repeated a move. Spend comes from `spendOf`, and row A sets hours beside dollars by role.
 `LONG SILENCES` names the five longest gaps by what ended them and the log lines either side;
 confirm each from the events around it (`log.ts events --kind <kind>,<kind>` prints several kinds in
-log order). Estimate the next round's cost, and read the economy factor from the closing report
+log order). `FIRST COMPARISON HELD OFF` fires where a first comparison stood admissible for 75
+minutes or more before one began, with the hours of it inside Builder waits: read
+`table-timeline.txt` between its `admissible` row and the first `compare` for the move the table
+named and what each `wait` result said, and name the host message that kept an idle Builder from
+comparing, or the work a busy one did. Estimate the next round's cost, and read the economy factor from the closing report
 (`tools/d2/close.ts`; `worthOf`, `src/campaign/climb.ts`). The decision: what the next round costs,
 whether the bill can be believed, and whether each role earns its spend. Routes to `operator`,
 `host` and `environment`.
@@ -934,7 +941,10 @@ side read against itself under the same setting (the reference's is that report'
 exactly is the difference of two repeated answers: an effect on that instance, counted outside, of
 which the question is how far it carries (lane 17). A win larger than both sides' differences
 where only the reference repeated is counted outside too, so a step silent here whose sides repeat
-on some tasks is read from `pairs.txt` by lane 17. For
+on some tasks is read from `pairs.txt` by lane 17. A win where the new side repeated itself and lost
+no pairing stays inside, since repeating the better of the reference's two answers wins half its
+difference, and the line names how many: read those as consistency against a reference that
+splits, which only the test across tasks or a fresh repeat (the starter read) can show to hold. For
 each step, read the wins' margins beside the A/A's distribution (`pairs.txt` gives each task's
 margin beside its stored and rebuilt A/A, the A/A's quantiles, the reading on first and on second
 solves alone, the count of wins inside, level with and outside their own task's A/A, and each

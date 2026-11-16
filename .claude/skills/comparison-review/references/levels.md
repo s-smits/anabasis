@@ -30,8 +30,9 @@ budget and what each arm was told; network; host load; the grader's model and co
 ## 3. What was carried
 
 Byte identity first, then whether each part works where it landed: diff guide and toolchain against
-the kept ones, check that links resolve and programs start from the solver's place and `PATH`, what
-the export dropped (`agent/tools.ts`), and whether the solver loaded the guide. **Inside:** the digest proves
+the kept ones (an export made for another platform than the harness's replaces its interpreter and
+compiled distributions at their versions, and `export.json` names them under `rebuilt`), check that
+links resolve and programs start from the solver's place and `PATH`, what the export dropped (`agent/tools.ts`), and whether the solver loaded the guide. **Inside:** the digest proves
 it. **Outside:** `studies/shared/claude-export.ts` and its tree.
 
 ## 4. What was told

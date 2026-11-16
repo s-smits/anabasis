@@ -57,9 +57,9 @@ import { waitsOf } from "./time.ts";
 
 export const HOURS = [2, 4, 6, 8, 12, 16, 24] as const;
 const SILENCE = 30 * 60 * 1000;
-/** Path segments of what a harness installed rather than wrote. */
-const INSTALLED =
-  /(^|\/)(python|site-packages|dist-packages|node_modules|\.?venv|vendor|include|__pycache__)(\/|$)/;
+/** Path segments of what a harness installed rather than wrote. A folder named `python` is none: a
+ *  harness keeps its own modules in `lib/python/`, and an interpreter's home goes by `HOME`. */
+const INSTALLED = /(^|\/)(site-packages|dist-packages|node_modules|\.?venv|vendor|include|__pycache__)(\/|$)/;
 /** A bundled interpreter's home, known by the library folder its build lays out, whatever the home
  *  is named. The tool tree itself is no such home: a harness keeps its own programs there. */
 const HOME = /\/lib\/python\d[\d.]*\//;

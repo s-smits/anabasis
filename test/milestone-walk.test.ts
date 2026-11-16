@@ -147,7 +147,7 @@ describe("requirement 1: six confirmed promotions in one campaign", () => {
       true,
     ]);
     expect(barLines(whole)[0]).toBe(
-      "- Climb: 6 promotions, 6 confirmed against a milestone of 6; 0 read against the starter without a step, 0 not read against it.",
+      "- Climb: 6 promotions, 6 confirmed against a milestone of 6 (on the tasks written after alone, a step 0, a step for the starter 0, no step 0, too few 6); 0 read against the starter without a step, 0 not read against it.",
     );
   });
 

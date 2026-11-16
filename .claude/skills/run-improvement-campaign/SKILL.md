@@ -130,15 +130,17 @@ owed steps only, as a timer takes it.
    (`decide`, "read a step, and was not promoted"). Past a promotion the pause waits until that
    promotion's starter comparison has tallied (`heldBy`), whichever comparison reports first,
    so a run rests with its newest promotion read. While the pause
-   waits the step is `waits`, which `due` does not count. Resolve the run's predictions into
-   `outcomes-<run>.md`, with the log's length.
+   waits the step is `waits`, which `due` does not count; beside a waiting `continue --after`, the
+   run's one waiter, a pause is refused and stays owed in `due`. Resolve the run's predictions
+   into `outcomes-<run>.md`, with the log's length.
 2. **Investigate** with whole-run-investigation, opened by `wri2p2.ts open` with the other triggered
    runs of the same code and pack as equals, once the run has stopped, so the synthesis reads the
    comparison the pause waited for. `open` still reads a run left live on a frozen copy
    (`wri.ts start --snapshot`), a deviation for a run the operator keeps going, and writes
    `iteration.json` (`{ "opened": <ISO>, "runs": [<names>] }`), which the later gates require. Then
    follow `wri2p2.ts next <dir>` through the instructions, `lanes --agents 4` with
-   one subagent a lane, the collection and the synthesis. Before the vetting, `next` waits until each
+   one subagent a lane, the record read across runs while the lanes work (`record.md`,
+   whole-run-investigation, step 4), the collection and the synthesis. Before the vetting, `next` waits until each
    run has its two files, looking only in `*-cycle-*` folders and the investigation's own, and
    refuses where two of them hold the same file.
 3. **Vet, read across domains, plan.** Vet each finding against the logs and the head (a fix may
@@ -178,7 +180,7 @@ owed steps only, as a timer takes it.
    or tunes) with a `first` row for each. A freed slot goes to the first `ready: yes` entry of
    `run-queue.md` that has such a component, and otherwise stays empty.
 
-`next` walks these gates in order: `open`, `instruct`, `lanes`, `reports`, `isolated`, `synthesise`;
+`next` walks these gates in order: `open`, `instruct`, `lanes`, `reports`, `record`, `isolated`, `synthesise`;
 for each run `predictions`, `outcomes`, for a fork `carry` and, for a jobstat run, `outside` (its
 row in `outside-reads.md`, "The outside aim"); then `vet`,
 `across`, `plan`, `implement`, `launch`, `forks` and `done`. A folder without `iteration.json` takes
@@ -203,7 +205,7 @@ each pull request stacks on the one before. Nothing in an iteration is merged; t
    central host holds takes `--host here`. Name a pull request's head by its number in the ledger
    and read it (`gh pr view <n> --json headRefOid`) at the launch itself, also in a script that
    launches once a login frees a slot: a landing beneath replays the pull requests above it onto new
-   heads. Tag `run/<name>/1` at the commit and push it.
+   heads. Tag the commit and push the tag, as run-management writes it.
 3. **Read** with `wri2p2.ts` at every review and milestone, resolving each prediction the hour its
    event lands. A defect seen live goes into the plan; the run is not stopped to fix it. When the
    stack moves while runs are live, each `measures` line of `wri2p2.ts due` counts the files of the
@@ -286,7 +288,9 @@ promotions on the session's judgement, and the other is turned over to the newes
 upgrade. Read it before a pause, a stop, a continue or a fork that the trigger alone does not settle;
 a run kept past its trigger on one of its rows takes the row `| pause:<run> | <reason> |` in an
 investigation's `deviations.md`, and `wri2p2.ts` then prints `kept` for it, which `due` does not
-list, until the row is removed or the run stops.
+list, until the row is removed, the run stops or it reaches a count of promotions the reason does not
+name: a row written at the clock keeps a run past the clock, and one that keeps it past its second
+promotion says "2 promotions".
 
 ## Resume
 
@@ -473,6 +477,19 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    `<store>/trees/<label>` and no record. Where it cannot find the kept harness of a run another
    host holds, fetch the run first (`bun run runs fetch <name>`). Without `--judge-log` no
    judgement's dollars are recorded and the table prints `judge ?`.
+
+   A harness's programs run only on the kind of machine its campaign ran on, so where the read's
+   machine is another kind (a reference built on a Mac, read on Linux) the tree is written on the
+   campaign's host for that machine and carried into the store's `trees/` with its price:
+
+   ```sh
+   bun studies/harness2/score.ts tree --arm <campaign> --harness <kept> --name <label> \
+     --out <dir> --for linux-x64        # then <dir>/trees/<label> and <label>.build.json
+   ```
+
+   The export replaces the harness's interpreter and compiled distributions with the other
+   machine's at the same versions and names them under `rebuilt` in `export.json`, or refuses
+   (`studies/shared/foreign-python.ts`); the dry run there finds the tree and reads no campaign.
 4. **Run, detached, on the operator's standing word**, which covers the moment and the size
    above: the eight tasks, the reference and a Starter beside it at one rollout a task, on a login
    with room chosen as a keeper chooses one; each read's login and bill go into `cycle.md`. A larger
@@ -480,15 +497,15 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    bench is a paid simulation beside the live runs: the same command with `--yes`, from a worktree
    at a published commit, with the shim running, the arms in turn and never two processes on one
    store, since a judgement's dollars are the shim log's rows inside its window. It is started so
-   that it outlives the session and is never waited for. An arm rolls one task at a time and judges it before the next, nothing else runs on the machine beside it, and
-   what an arm left in the machine's temporary folder is cleared before the next arm begins, so that
-   every rollout meets the same machine (operator, 12 November 2026). Every arm
-   keeps the one condition `score.ts` states in its head comment. On the two bills on record a
-   rollout costs 9 to 11 dollars with its judging, most of it the judge (124 dollars for 11 on
-   5 November 2026, about 85 for 9 on 9 November). Where no judge noise is on record,
-   `compare.ts rejudge` and `agree` read it from the existing deliverables for tens of dollars, and
-   come before any new arm (the backlog's item 15); a reading under a wider cut than the judge's
-   (`rejudge --cap`) is judged apart, on the operator's word, and never replaces the official score.
+   that it outlives the session and is never waited for. An arm rolls one task at a time and judges
+   it before the next, with nothing else loading the machine, so that every rollout meets the same
+   machine; the operator's `CLAUDE.md` says which machine and how. Every arm keeps the one
+   condition `score.ts` states in its head comment. On the two bills on record a rollout costs 9 to
+   11 dollars with its judging, most of it the judge (124 dollars for 11 on 5 November 2026, about
+   85 for 9 on 9 November). Where no judge noise is on record, `compare.ts rejudge` and `agree` read
+   it from the existing deliverables for tens of dollars, and come before any new arm (the backlog's
+   item 15); a reading under a wider cut than the judge's (`rejudge --cap`) is judged apart, on the
+   operator's word, and never replaces the official score.
 5. **Read** with one `score.ts table --out <store> --tasks <list>` for each part, since the table
    sums an arm only where it holds every task named and counts every task but a profession's first
    as fair, and report its `fair uncut` block beside the fair one. A session that a login's limit or the provider cut is refused: it stays unjudged, and
@@ -629,8 +646,7 @@ bun .claude/skills/run-improvement-campaign/scripts/until.ts <log | folder | nam
 
 A timer and a wake both need a session that is alive and idle, so a step that must not wait for one
 is written as a hook: code with no model in the loop, tied to the event. The pause at a second
-promotion is the case. The alert says the promotion within minutes, yet until a session armed
-`runs pause <name> --after reported --yes` the run went on, and overnight nobody may be awake.
+promotion is the case: overnight no session may be awake to arm it once the alert says so.
 
 Two places take a hook. The local job that runs `runs alerts` pipes each look's new lines to a
 script, which acts on the line it names; this suits a step on a run, since it needs no session. A
@@ -642,10 +658,10 @@ skill with its scripts instead, which a hook can name in the line it writes.
 A hook takes only the step the protocol already grants at that event, here the pause at a trigger,
 and never a launch, a merge or another decision of `AGENTS.md` section 3. It writes one line to the
 log the alerts job writes, so that a session reads what was done and `wri2p2.ts due` then prints
-`waits` instead of `pause`. It starts a command that waits in a session of its own, since the job
-that fed it must end. And it carries a dry mode that prints the command, a way to leave one named
-run out, and in its head comment the operator's words it rests on. Hooks of the operator's own
-machines are listed in the local skill `operator-machines`.
+`waits` instead of `pause`, and it starts a command that waits in a session of its own, since the
+job that fed it must end. It carries a dry mode that prints the command, a way to leave one named
+run out and, in its head comment, the operator's words it rests on. The operator's `CLAUDE.md`
+lists the hooks of their machines.
 
 ### A firing
 
@@ -663,7 +679,10 @@ judgement.
    link, event, status), ranked by first failed link and then by how many runs show it.
 3. **Chain or rest**: where `due` still lists a step this session can take, set a one-shot ten
    minutes on that carries the same prompt; otherwise wait on the next event with `until.ts`, and
-   set a one-shot only at a deadline no event marks. Delete replaced timers by id.
+   set a one-shot only at a deadline no event marks. A live run's clock is such a deadline: `due`
+   prints the second it turns, and its one-shot goes on the minute after that second, since a
+   timer on the opening's own minute reads the run seconds short of its trigger. Delete replaced
+   timers by id.
 4. **Log** one row where something changed: the time the clock gave, what moved, the rows resolved
    and the timer changes. Speak to the operator only when a milestone landed, a run stalled or
    ended, or a prediction resolved.

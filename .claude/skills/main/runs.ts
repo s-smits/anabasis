@@ -61,6 +61,7 @@ import { recordedSetting } from "#tools/d2/setting.ts";
 import { modelNamed, sweepOptions } from "#tools/m0/stored-sweep.ts";
 import { ranWith, receipts } from "#tools/runs/receipt.ts";
 import { packOf } from "#tools/runs/registry.ts";
+import { heldOff } from "#tools/runs/view.ts";
 import { summed } from "#tools/wri/folds.ts";
 import { overloadOf, waitedMs, waitsOf } from "#tools/wri/time.ts";
 import { campaignLogs, type Found, rehearsed } from "./logs.ts";
@@ -130,6 +131,10 @@ export interface Run {
   /** Hours from the first event to the first comparison started and reported. */
   readonly firstCompared: number | null;
   readonly firstReported: number | null;
+  /** Hours from the first event until admission first refused a first comparison nothing
+   *  (`heldOff`), null where it never did: the supply's part of `firstCompared`, the rest being how
+   *  long that comparison then stood before it began. */
+  readonly firstAdmissible: number | null;
   /** The reported comparisons a promotion could come from: neither the starter's side of a starter
    *  comparison nor a harness against itself. */
   readonly compared: number;
@@ -364,6 +369,7 @@ export function runOf(
     const at = stamps[events.findIndex((event) => event.kind === kind)];
     return at === undefined ? null : hours(at - first);
   };
+  const admissible = stamps[heldOff(events)?.index ?? -1];
   const ended = endingOf(events);
   // `falsePromotion` reads the A/A comparisons of the whole campaign on every epoch.
   const noise = epochs[0]?.falsePromotion;
@@ -383,6 +389,7 @@ export function runOf(
     live: ended === null && moment - last < LIVE_MS,
     firstCompared: firstOf("comparison.started"),
     firstReported: firstOf("comparison.reported"),
+    firstAdmissible: admissible === undefined ? null : hours(admissible - first),
     promotions,
     dollars: billedBetween(events, 0),
     ...repricedOf(events, meterOf),

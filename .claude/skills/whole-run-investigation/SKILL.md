@@ -76,6 +76,15 @@ under `.ana/wri/<date>-<campaign>/` on the central host.
    `subagent_type: "wri-lane"`), handed only its row's `task` line, all in one message. Its hook
    (`tools/wri/lane-guard.ts`) enforces the hard rules in code. Where the Agent tool lists no
    `wri-lane`, open a session in a worktree at the stack's top; never use `general-purpose`.
+   While the sessions work, the primary reads the record across runs, which no lane reads and no
+   model is needed for: the pack's weeks (promotion-tuner's `trend.ts --pack <pack>`), its
+   promotions and what each cost (`table.ts --name <pack> --rows promotions`), whether its
+   promotions held on the tasks written since (comparison-reading's
+   `starter-reads.ts --all --name <pack>`) and the run's promotions under the tree's rule
+   (`replay.ts --name <run> --totals`), each command's lines under its own heading in
+   `<dir>/record.md`. The vetting recounts against that file instead of beginning with those reads,
+   and in an iteration `wri2p2.ts next` names the reads beside the reports it waits for and owes the
+   file before the isolated lanes.
    *Check:* each transcript's model, and that each lane ran as `wri-lane`.
 5. **Collect.** `wri.ts collect --out <dir>` checks each report's shape and writes `<dir>/reports.md`,
    which ends, where the prior state holds a prediction table, with each prediction as the lanes

@@ -21,7 +21,7 @@
  */
 import { epochsOf as epochsRead, ORIGINS, type Origin, starterReads } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
-import { differenceOf, flipP, pointsOf, scoresIn, testOf } from "#src/kernel/compare.ts";
+import { differenceOf, flipP, gainOver, pointsOf, ROOM, scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Call, Seat } from "#src/kernel/trace.ts";
 import { billedBetween } from "#src/kernel/meter.ts";
@@ -494,7 +494,10 @@ function chainTrigger(log: Index): Trigger[] {
  *  11 November a win where the A/A alone tied was told as clear of a zero difference only, and 62 of
  *  the 121 objective-only steps on record fired on that count, in 61 of them on tasks the new side
  *  repeated exactly too. The new side's own difference bounds a win as the reference's does, which
- *  the reference's alone left out. */
+ *  the reference's alone left out. A new side that repeats the better of the reference's two answers
+ *  wins half the reference's own difference, inside by construction; an equal harness that gives
+ *  that answer in half its solves repeats it a quarter of the time, so such wins stay counted and the
+ *  line names them apart. */
 function marginTrigger(log: Index): Trigger[] {
   const lines = log.compared.flatMap((report) => {
     if (report.last.reading !== "step") return [];
@@ -513,12 +516,20 @@ function marginTrigger(log: Index): Trigger[] {
     const inside = wins.filter(
       (pair) =>
         differenceOf(pair) <= Math.max(reference.get(pair.task) ?? -1, candidate.get(pair.task) ?? -1),
+    );
+    if (inside.length * 2 <= wins.length) return [];
+    const steady = inside.filter(
+      ({ task, objective: rule }) =>
+        candidate.get(task) === 0 &&
+        rule?.fresh.every((one) => rule.old.every((other) => gainOver(rule, one, other) > -ROOM)) === true,
     ).length;
-    return inside * 2 > wins.length
-      ? [
-          `${report.session} won ${share(inside, wins.length)} by no more than the wider of the two sides' own differences on the same task where validity tied`,
-        ]
-      : [];
+    const apart =
+      steady === 0
+        ? ""
+        : `, ${String(steady)} of them where the new side repeated itself and lost no pairing`;
+    return [
+      `${report.session} won ${share(inside.length, wins.length)} by no more than the wider of the two sides' own differences on the same task where validity tied${apart}`,
+    ];
   });
   return firedIf(lines.length > 0, "MARGINS INSIDE THE NOISE", lines.join("; "));
 }

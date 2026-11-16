@@ -8,7 +8,8 @@
  *
  * `starterReads` holds, apart from the rows, the split of each starter tally by where its tasks
  * came from, since a whole tally can hide that the tasks written after the promotion went the
- * other way; `runs alerts` and comparison-reading's `starter-reads.ts` print it. It decides no move.
+ * other way; the climb's bar line (`barLines`), `runs alerts` and comparison-reading's
+ * `starter-reads.ts` print it. It decides no move, and no confirmation.
  */
 import {
   differenceOf,
@@ -22,7 +23,7 @@ import {
   testedSet,
   testOf,
 } from "../kernel/compare.ts";
-import { proposalsOf } from "../kernel/history.ts";
+import { OPENING, writersOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
 import { billedBetween } from "../kernel/meter.ts";
@@ -346,6 +347,10 @@ function starterOf({ reference, starter_tally: tally, confirmed }: Epoch, read?:
   return `, against the starter ${tallied(tally)}, ${step}${since}`;
 }
 
+/** How many of `reads` read each way on the tasks written after their promotion alone. */
+export const aloneOf = (reads: readonly Pick<StarterRead, "after">[]) =>
+  `on the tasks written after alone, ${UNSELECTED.map((one) => `${one} ${String(reads.filter(({ after }) => after === one).length)}`).join(", ")}`;
+
 /** The tally from the reference's side of `pairs`, which holds it on the old side. */
 const tallyOf = (pairs: readonly Paired[]): Tally => {
   const { wins, losses, ties } = testOf(pairs.map((pair) => -differenceOf(pair)));
@@ -385,10 +390,7 @@ export function unselectedOf(ahead: readonly number[], level: number): Unselecte
 export function starterReads(events: readonly LogEvent[]): StarterRead[] {
   const reports = lastReports(events);
   const epochs = epochsOf(events);
-  // A task no session proposed came with the opening: a stored pack's or the drafted exam's.
-  const writers = new Map(
-    proposalsOf(events).map(({ version, session }) => [version, session ?? "the opening exam"]),
-  );
+  const writers = writersOf(events);
   return epochs.flatMap((epoch, nth) => {
     const report = reports.find(({ session }) => session === epoch.starter_read);
     const fresh = report?.data.fresh;
@@ -430,7 +432,7 @@ export function starterReads(events: readonly LogEvent[]): StarterRead[] {
         rows: pairs.map((pair) => ({
           task: pair.task,
           origin: originOf(pair),
-          writer: writers.get(pair.task) ?? "the opening exam",
+          writer: writers.get(pair.task) ?? OPENING,
           margin: -differenceOf(pair),
           pair,
         })),
@@ -543,20 +545,27 @@ export function worthLine({ cost }: Worth): string {
  * one epoch's confirmation; `falsePromotion` reads the A/A comparisons of the whole campaign, so
  * nothing said what those after the sixth promotion read; and `worthLine` reads an epoch only once
  * a promotion ended it, so the 2 of 62 open epochs on record that stood over the bar were stated
- * nowhere.
+ * nowhere. Beside the confirmed count it says what the tasks written after each confirmed promotion
+ * read alone, as the backlog's proposed reading of the milestone (`docs/backlog/v1-bar.md`, item 3)
+ * would count them: on 16 November a campaign read 2 of 2 confirmed while those tasks, one writing
+ * session's each, read no step alone (7-4-0 and 6-4-1), and the closing report said only the first.
  */
 export function barLines(events: readonly LogEvent[]): string[] {
   const epochs = epochsOf(events);
   const climbed = epochs.filter(({ nth }) => nth > 1);
   const confirmed = climbed.filter((epoch) => epoch.confirmed === true).length;
   const unread = climbed.filter(({ starter_tally: tally }) => tally === null).length;
+  const reads = new Set(
+    climbed.filter((epoch) => epoch.confirmed === true).map((epoch) => epoch.starter_read),
+  );
+  const held = starterReads(events).filter(({ session }) => reads.has(session));
   const over = climbed.flatMap((epoch) => {
     const cost = costOf(events, epoch);
     const open = epoch.promoted === null ? ", open" : "";
     return cost.met ? [] : [`epoch ${String(epoch.nth)} at ${String(cost.attempts)}${open}`];
   });
   return [
-    `- Climb: ${plural(climbed.length, "promotion")}, ${String(confirmed)} confirmed against a milestone of ${String(MILESTONE.promotions)}; ${String(climbed.length - confirmed - unread)} read against the starter without a step, ${String(unread)} not read against it.`,
+    `- Climb: ${plural(climbed.length, "promotion")}, ${String(confirmed)} confirmed against a milestone of ${String(MILESTONE.promotions)}${held.length === 0 ? "" : ` (${aloneOf(held)})`}; ${String(climbed.length - confirmed - unread)} read against the starter without a step, ${String(unread)} not read against it.`,
     honestyLine(events, epochs[MILESTONE.promotions]?.from),
     `- Economy: ${plural(climbed.length, "epoch")} after set-up against a bar of ${plural(BARS.cost, ATTEMPT)} each, ${String(over.length)} over it${over.length === 0 ? "" : `: ${over.join("; ")}`}. Reported only.`,
     starterNoiseLine(events),

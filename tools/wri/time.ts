@@ -46,6 +46,7 @@ import {
   text,
   type Trigger,
 } from "./folds.ts";
+import { heldOff } from "#tools/runs/view.ts";
 
 /** How long a load sample is taken to stand for: a solve starts every few minutes while one runs,
  *  and a stretch with none, such as a Builder's own turns, is counted as unloaded. */
@@ -452,7 +453,11 @@ export function costTriggers(log: Index): Trigger[] {
   const spend = spendOf(log.events);
   const total = spend.reduce((sum, [, dollars]) => sum + dollars, 0);
   const [[leader, most] = ["", 0]] = spend;
+  const held = heldOff(log.events);
   return [
+    // The hours are the Builder's, not the Examiner's: which host message kept it from comparing
+    // is the timeline's to say (`table-timeline.ts`).
+    ...firedIf(held?.long === true, "FIRST COMPARISON HELD OFF", `admissible ${held?.said ?? ""}`),
     ...firedIf(
       gaps.length > 0,
       "LONG SILENCES",

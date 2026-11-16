@@ -325,6 +325,13 @@ export function triggerOf(row: Progress): string | null {
   return null;
 }
 
+/** The second at which a live run's clock trigger turns, for a run `row.hours` old at `now`: the
+ *  trigger reads raw hours, so a timer set to the minute of the opening reads it seconds early. */
+export const clockTurns = (row: Pick<Progress, "hours">, now: number): string =>
+  new Date(Math.ceil((now + (TRIGGER_AT.hours - row.hours) * HOUR_MS) / 1000) * 1000)
+    .toISOString()
+    .replace(".000Z", "Z");
+
 /** The command that takes the step a trigger leaves owed on the run `name`: a live run pauses after
  *  its next comparison, so that its investigation reads it, and a stopped one opens; `on` is the run
  *  CLI's prefix that reaches the run's host. */

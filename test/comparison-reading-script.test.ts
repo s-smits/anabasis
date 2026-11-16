@@ -8,7 +8,7 @@ import { drawLines, drawOf } from "#skills/comparison-reading/scripts/draw.ts";
 import { sideGap } from "#tools/wri/pairs.ts";
 import { scoresRead, sizeOf } from "#skills/comparison-reading/scripts/size.ts";
 import { rowsOf, zoneRows } from "#skills/comparison-reading/scripts/reading.ts";
-import { epochLine, epochsOf, starterReads } from "../src/campaign/climb.ts";
+import { barLines, epochLine, epochsOf, starterReads } from "../src/campaign/climb.ts";
 import { flipP } from "../src/kernel/compare.ts";
 import { clearing } from "../src/kernel/size.ts";
 import { type EventKind, LOG_FILE, type LogEvent } from "../src/kernel/log.ts";
@@ -294,6 +294,66 @@ describe("a promotion's starter read, split by what its tasks had been through",
     // A caller without the reads prints the pooled tally alone, as every line did before.
     expect(epochsOf(log).map((epoch) => epochLine(epoch))[1]).toContain(
       "1 tied, a step, so its promotion is confirmed;",
+    );
+  });
+
+  it("says on the climb's bar line what the tasks written after each confirmed promotion read alone", () => {
+    const harnesses = [STARTER, ...["c", "d", "e", "f"].map((letter) => letter.repeat(64))];
+    const won = (tasks: readonly string[], outcome = "PP FF") =>
+      Object.fromEntries(tasks.map((task) => [task, outcome]));
+    /** Promotion `nth` (from one) chosen on the seven opening tasks, as `g-1` chose the first. */
+    const promotion = (nth: number): LogEvent[] => {
+      const [from, to] = [harnesses[nth - 1] ?? "", harnesses[nth] ?? ""];
+      return [
+        ...comparison(`p-${String(nth)}`, [from, to], won(chose, "FF PP"), {
+          reading: "step",
+          differences: scores(7, 0),
+        }),
+        { at: AT, kind: "harness.promoted", data: { harness: to, from, rests: [] } },
+      ];
+    };
+    /** Promotion `nth`'s starter read: the chosen tasks won, then `after` as given, its stored tally `differences`. */
+    const starterRead = (
+      nth: number,
+      after: Readonly<Record<string, string>>,
+      differences: readonly number[],
+    ) =>
+      comparison(
+        `s-${String(nth)}`,
+        [harnesses[nth] ?? "", STARTER],
+        { ...won(chose), ...after },
+        { reading: "step", differences },
+      );
+    const twoSessions = ["y-0", "y-1", "y-2", "z-0", "z-1", "z-2"];
+    const events: LogEvent[] = [
+      ...chose.flatMap((task) => gate(task)),
+      // The first promotion's tasks written after are six of one session's, each won: a step alone.
+      ...promotion(1),
+      ...Object.keys(six("PP FF")).flatMap((task) => gate(task, "x-1")),
+      ...starterRead(1, six("PP FF"), scores(0, 13)),
+      // The second's are two sessions' three each, four won and two lost: confirmed pooled, no step alone.
+      ...promotion(2),
+      ...twoSessions.flatMap((task) => gate(task, task.startsWith("y") ? "x-2" : "x-3")),
+      ...starterRead(
+        2,
+        { ...won(twoSessions.slice(0, 4)), ...won(twoSessions.slice(4), "FF PP") },
+        scores(0, 11),
+      ),
+      // The third's read holds no task written after it.
+      ...promotion(3),
+      ...starterRead(3, {}, scores(0, 7)),
+      // The fourth reads no step pooled, so it is no confirmed promotion and goes unlisted.
+      ...promotion(4),
+      ...starterRead(4, {}, scores(4, 3)),
+    ];
+    expect(epochsOf(events).map(({ confirmed }) => confirmed)).toEqual([null, true, true, true, false]);
+    expect(barLines(events)[0]).toBe(
+      "- Climb: 4 promotions, 3 confirmed against a milestone of 6 (on the tasks written after alone, a step 1, a step for the starter 0, no step 1, too few 1); 1 read against the starter without a step, 0 not read against it.",
+    );
+    // Before any confirmation the line says nothing of the tasks written after.
+    const firstRead = events.findIndex(({ data }) => data.session === "s-1");
+    expect(barLines(events.slice(0, firstRead))[0]).toBe(
+      "- Climb: 1 promotion, 0 confirmed against a milestone of 6; 0 read against the starter without a step, 1 not read against it.",
     );
   });
 

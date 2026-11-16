@@ -155,6 +155,16 @@ export const MEASURES = {
   firstReport: middle("supply", "hours to the first report", (run) =>
     run.firstReported === null ? [] : [run.firstReported],
   ),
+  // The two parts of the hours to a first comparison: the supply's, until admission refuses one
+  // nothing, and the wait from then until it begins, which the hours to a first report hide.
+  firstAdmissible: middle("supply", "hours until a first comparison is admissible", (run) =>
+    run.firstAdmissible === null ? [] : [run.firstAdmissible],
+  ),
+  heldOff: middle("supply", "hours from then until it began", (run) =>
+    run.firstAdmissible === null || run.firstCompared === null
+      ? []
+      : [run.firstCompared - run.firstAdmissible],
+  ),
   room: rate(
     "supply",
     "room on validity, of scored tasks",
@@ -246,7 +256,7 @@ const cutShort = (run: Run) => run.live || run.ending === "no ending" || run.end
 /** A block's windows with every run read at its horizon by `at` (`loadRuns`), and the line that says
  *  so. Where no newest run was cut short past `FLOOR`, each run is read whole, and only runs cut
  *  short before the floor are left out. */
-export function atHorizon(windows: readonly Window[], at: (run: Run, hours: number) => Run) {
+function atHorizon(windows: readonly Window[], at: (run: Run, hours: number) => Run) {
   const ages = (windows[0]?.runs ?? []).flatMap((run) =>
     cutShort(run) && run.elapsed >= FLOOR ? [run.elapsed] : [],
   );

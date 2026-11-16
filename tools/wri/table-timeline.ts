@@ -28,18 +28,16 @@
  * start, so a log of 50,000 events takes tens of seconds: this is a tool a lane runs, not a derived
  * reader. It prints ids, codes, digest heads and hours, never a task.
  */
-import { refusals, supplyOf } from "#src/campaign/admission.ts";
-import { askedOf } from "#src/campaign/ground.ts";
 import { type Decided, short } from "#src/campaign/move.ts";
 import { decide } from "#src/campaign/decide.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
-import { type Call, tracesIn } from "#src/kernel/trace.ts";
+import type { Call } from "#src/kernel/trace.ts";
 import { HOUR_MS, MINUTE_MS } from "#src/meta/clock.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { resolve } from "#src/meta/path.ts";
 import { codeOf } from "#tools/d2/campaign.ts";
 import { logEvents } from "#tools/runs/registry.ts";
-import { planOn } from "#tools/runs/view.ts";
+import { builderWaits, heldOff, planOn, poolOn, waitedIn } from "#tools/runs/view.ts";
 import { printRows } from "./folds.ts";
 import { openAt } from "./launches.ts";
 
@@ -138,17 +136,6 @@ function changesOf(events: readonly LogEvent[], tableAt: (upTo: number) => Table
   return changes;
 }
 
-/** Hours of `[from, to)` spent inside the Builder's `wait` calls. */
-function waitedIn(waits: readonly Call[], from: string, to: string): number {
-  const [start, end] = [Date.parse(from), Date.parse(to)];
-  let total = 0;
-  for (const { at, ms } of waits) {
-    const [began, ended] = [Date.parse(at) - (ms ?? 0), Date.parse(at)];
-    total += Math.max(0, Math.min(end, ended) - Math.max(start, began));
-  }
-  return total / HOUR_MS;
-}
-
 /** Each change with how long it stood: until the move it names begins, the table names another, or
  *  the log ends. */
 function stoodOf(events: readonly LogEvent[], tableAt: (upTo: number) => Table, waits: readonly Call[]) {
@@ -207,26 +194,14 @@ export function timelineLines(events: readonly LogEvent[], here: string): string
     if (digest === null) return NOT_RECORDED;
     return `${digest === here ? "=" : ""}${digest.slice(0, 8)}`;
   };
-  const waits = tracesIn(events).filter(
-    (each): each is Call => each.seat === "build" && each.part === "call" && each.tool === "wait",
-  );
+  const waits = builderWaits(events);
   const rows = new Map<number, string[]>();
   const put = (index: number, what: string) => {
     const at = (events[index]?.at ?? "").slice(0, 16);
     const row = `${String(index + 1).padStart(6)}  ${at}Z  ${ranAt(index).padEnd(12)}  ${what}`;
     rows.set(index, [...(rows.get(index) ?? []), row]);
   };
-  // The pool on the first `upTo` events and what comparison admission refuses there.
-  const poolAt = (upTo: number) => {
-    const prefix = events.slice(0, upTo);
-    const supply = supplyOf(prefix);
-    const codes = refusals(supply, askedOf(planOn(prefix))).map(({ code }) => code);
-    const refused = codes.length === 0 ? "nothing" : codes.join(", ");
-    return {
-      open: codes.length === 0,
-      text: `${String(supply.held)} held out, ${String(supply.released)} released · admission refuses ${refused}`,
-    };
-  };
+  const poolAt = (upTo: number) => poolOn(events, upTo);
   for (const change of stoodOf(events, tableAt, waits)) {
     const { upTo, table, hours, waited, until } = change;
     put(
@@ -234,15 +209,11 @@ export function timelineLines(events: readonly LogEvent[], here: string): string
       `table      replayed ${table.key} · ${poolAt(upTo).text} · named ${hours.toFixed(2)} h, ${waited.toFixed(2)} h of it inside Builder waits, until ${until}`,
     );
   }
-  // Where a first comparison became admissible.
-  const first = events.findIndex(({ kind }) => kind === "comparison.started");
-  const admissible = events
-    .slice(0, first === -1 ? events.length : first)
-    .findIndex(({ kind }, index) => (kind.startsWith("task.") || POINTS.has(kind)) && poolAt(index + 1).open);
-  if (admissible !== -1) {
+  const held = heldOff(events);
+  if (held !== null) {
     put(
-      admissible,
-      `admissible a first comparison from ${(events[admissible]?.at ?? "").slice(11, 19)}: ${poolAt(admissible + 1).text}`,
+      held.index,
+      `admissible a first comparison from ${(events[held.index]?.at ?? "").slice(11, 19)}: ${poolAt(held.index + 1).text} · ${held.said}`,
     );
   }
   const moves = events.flatMap((event, index) => (event.kind === MOVED ? [index] : []));

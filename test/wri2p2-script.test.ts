@@ -12,7 +12,7 @@ import {
   openingOf,
   unmeasured,
 } from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
-import { progressOf as rowOf, triggerOf } from "#tools/runs/said.ts";
+import { clockTurns, progressOf as rowOf, triggerOf } from "#tools/runs/said.ts";
 import { forkOf, idsOf, outcomesOf, pullOf } from "#tools/wri/ledger.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import {
@@ -103,9 +103,6 @@ describe("a run's step at its trigger", () => {
   it("waits while a pause of the run is armed, and opens once the run has stopped", () => {
     const armed = pausing(["bun", "tools/runs/cli.ts", "pause", "r1", "--after", "reported", "--yes"]);
     expect(openingOf(row, "2 promotions", armed)[0]).toStartWith("step: waits");
-    // A `continue --after` stops the run too, so it is the pause's waiter as well (`waiters`).
-    const continuing = pausing(["bun", "tools/runs/cli.ts", "continue", "r1", "--after", "compacted"]);
-    expect(openingOf(row, "2 promotions", continuing)[0]).toStartWith("step: waits");
     expect(
       openingOf(row, "2 promotions", pausing(["bun", "tools/runs/cli.ts", "continue", "r1"]))[0],
     ).toStartWith("step: pause");
@@ -116,10 +113,30 @@ describe("a run's step at its trigger", () => {
     expect(openingOf(row, null, [])).toEqual(["step: run"]);
   });
 
+  it("owes the pause of a run a `continue --after` waits on, which starts it again and holds its one waiter", () => {
+    // 16 November 2026: a move armed at a compaction stood when the run promoted a second time, the
+    // pause was refused beside it, and this step read `waits`, which `due` does not count.
+    const moving = pausing(["bun", "tools/runs/cli.ts", "continue", "r1", "--after", "compacted"]);
+    const step = openingOf(row, "2 promotions", moving);
+    expect(step[0]).toStartWith("step: pause · 2 promotions; a continue --after of it waits in process 1");
+    expect(step[1]).toBe("  bun run runs pause r1 --after reported --yes");
+    const standing = { row: rowOf(row, [opening()], OPENED), last: OPENED, dir: null, step };
+    const due = dueLines([standing], () => OPENED, OPENED);
+    expect(due[0]).toContain("1 step(s) owed");
+    expect(due[1]).toContain("a continue --after of it waits in process 1");
+    // An armed pause still reads as waiting, and a row that keeps the run keeps it under such a move.
+    const armed = pausing(["bun", "tools/runs/cli.ts", "pause", "r1", "--after", "reported", "--yes"]);
+    expect(openingOf(row, "2 promotions", armed)[0]).toStartWith("step: waits");
+    expect(openingOf(row, "2 promotions", moving, "past 2 promotions, to three")[0]).toStartWith(
+      "step: kept",
+    );
+  });
+
   it("keeps a live run past its trigger on a `pause:<run>` row with a reason, and owes nothing for it", () => {
     const rows = (...lines: string[]) => ["| step | reason |", "| --- | --- |", ...lines].join("\n");
     const clock = "12.0 h since its opening";
-    const reason = keptIn(["", rows("| isolated | none |", "| pause:r1 | the long run |")], "r1");
+    const kept = rows("| isolated | none |", "| pause:r1 | the long run |");
+    const reason = keptIn(["", kept], "r1", clock);
     expect(reason).toBe("the long run");
     const step = openingOf(row, clock, [], reason);
     expect(step).toEqual([`step: kept · ${clock}`, "deviated: pause:r1 · the long run"]);
@@ -127,8 +144,14 @@ describe("a run's step at its trigger", () => {
     expect(dueLines([standing], () => OPENED, OPENED)[0]).toContain("nothing owed · 1 run(s) live");
     // Another run's row, a row with no reason and prose that names the run keep nothing.
     expect(
-      keptIn([rows("| pause:r2 | the long run |", "| pause:r1 | |", "| the run r1 | kept |")], "r1"),
+      keptIn([rows("| pause:r2 | the long run |", "| pause:r1 | |", "| the run r1 | kept |")], "r1", clock),
     ).toBeNull();
+    // A row written at the clock keeps nothing at the second promotion; one that names the count does,
+    // and no longer at the third.
+    expect(keptIn([kept], "r1", "2 promotions")).toBeNull();
+    const past = [rows("| pause:r1 | past 2 promotions, to three |")];
+    expect(keptIn(past, "r1", "2 promotions")).toBe("past 2 promotions, to three");
+    expect(keptIn(past, "r1", "3 promotions")).toBeNull();
     expect(openingOf(row, clock, [], null)[0]).toStartWith("step: pause");
     // An armed pause and a stopped run are said as they are, whatever the row says.
     const armed = pausing(["bun", "tools/runs/cli.ts", "pause", "r1", "--after", "reported", "--yes"]);
@@ -155,6 +178,7 @@ function folder(name: string, run: string, iteration: boolean) {
   const report = join(dir, "lanes", "01-report.md");
   write("investigation.json", JSON.stringify({ logs: [`/x/.ana/d2/${run}/log.jsonl`] }));
   if (iteration) write("iteration.json", JSON.stringify({ opened: at(0), runs: [run] }));
+  if (iteration) write("record.md", "# The record across runs\n");
   write("shared-instructions.md", "## Orientation\n\nthe question\n\n## Hard rules\n\nkeep\n");
   write(
     "launch.json",
@@ -227,6 +251,27 @@ describe("the next step of an investigation", () => {
     expect(step(["buffer-fresh-opus", "jobstat-fresh-opus-forkedPR602"])).toEqual([
       "step: done · #602 is measured by jobstat-fresh-opus-forkedPR602",
     ]);
+  });
+
+  it("names an iteration's reads of the record beside the reports it waits for, and owes them before the isolated lanes", () => {
+    const { dir, write, step } = folder("record", "r", true);
+    const reads = "read the packs' trend, promotions and starter reads and the runs' replay";
+    rmSync(join(dir, "synthesis.md"));
+    // With the reads made, the wait for a report names none of them.
+    rmSync(join(dir, "lanes", "01-report.md"));
+    expect(step()).toHaveLength(2);
+    rmSync(join(dir, "record.md"));
+    expect(step()[2]).toStartWith(reads);
+    // Every report in leaves the reads owed, by the same line, until their file is there.
+    writeFileSync(join(dir, "lanes", "01-report.md"), "# Lane 1\n");
+    expect(step()[0]).toStartWith(`step: record · ${reads}`);
+    expect(step()[0]).toEndWith(`, into ${join(dir, "record.md")}`);
+    write("record.md", "# The record across runs\n");
+    expect(step()[0]).toStartWith("step: isolated");
+    // An iteration whose synthesis was written before the reads were owed is not sent back for them.
+    rmSync(join(dir, "record.md"));
+    write("synthesis.md", "# Synthesis\n");
+    expect(step()[0]).toStartWith("step: isolated");
   });
 
   it("owes a report from a session that names none, since nothing could show it finished", () => {
@@ -650,6 +695,29 @@ describe("the short view a timer reads", () => {
       now,
     );
     expect(lines).toEqual(["due at 2026-11-08T04:00Z · nothing owed · 1 run(s) live"]);
+  });
+
+  it("says the second a live run's clock trigger turns, which a timer set to the minute would miss", () => {
+    // Opened 46.5 s past the minute: at twelve hours past that minute the trigger has not turned.
+    const opened = [event(46.5 / 3600, "campaign.opened")];
+    const minute = OPENED + 12 * HOUR;
+    const early = rowOf({ name: "r1", host: "here", live: true }, opened, minute);
+    expect(triggerOf(early)).toBeNull();
+    const turns = clockTurns(early, minute);
+    expect(turns).toBe("2026-11-04T12:00:47Z");
+    // Hostile: the trigger stands at the second said and not at the one before it.
+    const read = (when: number) => triggerOf(rowOf({ name: "r1", host: "here", live: true }, opened, when));
+    expect(read(Date.parse(turns))).toBe("12.0 h since its opening");
+    expect(read(Date.parse(turns) - 1000)).toBeNull();
+    const step = openingOf(early, null, [], null, turns);
+    expect(step).toEqual([`step: run · its clock trigger turns at ${turns}`]);
+    const lines = dueLines([{ row: early, last: minute, dir: null, step }], changedAt, minute);
+    expect(lines).toEqual([
+      "due at 2026-11-04T12:00Z · nothing owed · 1 run(s) live",
+      `run · r1 · its clock trigger turns at ${turns}`,
+    ]);
+    // A stopped run has no clock to wait for.
+    expect(openingOf({ ...early, live: false }, null, [], null, turns)).toEqual(["step: run"]);
   });
 
   it("lists a live run's trigger first, then the longest-standing step, one line a folder's step", () => {

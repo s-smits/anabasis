@@ -607,7 +607,7 @@ describe("a campaign against its bars", () => {
       promotedTo("h3", "h2"),
     ]);
     expect(climb).toBe(
-      "- Climb: 3 promotions, 1 confirmed against a milestone of 6; 1 read against the starter without a step, 1 not read against it.",
+      "- Climb: 3 promotions, 1 confirmed against a milestone of 6 (on the tasks written after alone, a step 0, a step for the starter 0, no step 0, too few 1); 1 read against the starter without a step, 1 not read against it.",
     );
     expect(barLines([opened])[0]).toContain("0 promotions, 0 confirmed");
   });

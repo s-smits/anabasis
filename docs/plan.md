@@ -31,23 +31,25 @@ names another reading.
 
 What each row requires, its threshold and the reader that prints it are the system-audit skill's
 table, "The pillars and the v1.0 bar". This table holds each row's value and level only. Read on
-7 November 2026 from `promotion-tuner/scripts/table.ts --rows runs` over the 222 campaigns whose
-last event falls on or after 1 September, `comparison-reading/scripts/starter-reads.ts --all`, and,
-for the fresh jobstat campaign at `9190fbbac` that proves v0.10.0 (live, five promotions), `bun run
-runs view` and `comparison-reading/scripts/reading.ts --zone`. That campaign is the nearest to the climb
-row's measured campaign: it opened from a prompt and every launch names one commit.
+16 November 2026 from `promotion-tuner/scripts/table.ts --rows runs` and `--rows cost` over the 248
+campaigns whose last event falls on or after 1 September, `comparison-reading/scripts/starter-reads.ts
+--all --since 2026-09-01`, a search of every gathered and live log for a hand label, and `bun run
+runs view` and `comparison-reading/scripts/reading.ts --zone` of two campaigns: the candidate, a
+fresh jobstat campaign live at `908d221a0` that opened from a prompt and whose every launch names
+that commit, kept running past its second promotion, and the buffer control at `2a111ae4b`, at rest
+after its second. The counts of 7 November are in `docs/backlog/v1-bar.md`.
 
 | Row | Now | Level | Status |
 | --- | --- | --- | --- |
-| wall | The wall tests passed on macOS and on Linux in CI at `9190fbbac` and in the gate at `220e777c3`; the proof campaign's 240 verdicts to its second promotion had 0 sandbox crashes | Proved without a model; exercised live | Met at the proof commit; read again at the release's top |
-| supply | Proof campaign: 10 comparisons, 8 to 26 untied tasks each, so every one could read a step; the reference was valid in every solve of all 10, 1 task of 179 scored untied on validity, all 5 steps won on the objective alone. Record: 41 of 111 steps won by validity, 13 of 39 in runs after v0.9.0 | Exercised live | Untied tasks met; validity share not met by the proof campaign, threshold unset |
-| climb | Proof campaign: 5 promotions, 1 confirmed (15 won, 6 lost, 3 tied against the starter), 3 read short of a step, 1 unread. Record: 151 promotions, 12 confirmed, at most 1 in any campaign. Of 24 starter reads 12 confirm and 5 are a step without the tasks that chose the harness; on tasks written after a promotion the reference stands 128-104-23 against the starter, and 94-101-23 where validity tied. No second domain | Exercised live | Not met: 1 of 6, first domain only |
-| honesty | Proof campaign: no sixth promotion; of its 10 A/A comparisons 3 could read a step and none did, 7 were too small to read one. Record: 1 A/A step in 141 able (0.7%) | Exercised live | Unmeasured after a sixth; fleet rate within the design rate |
-| verdicts | 0 hand labels in any gathered or live log | Exercised live (draws and packets) | Not met: 0 of 30 |
-| grounding | No drafted exam names an installed engine (F32) | Planned | Not met |
-| economy | Proof campaign: $400 for 5 promotions and 1 confirmed, 0 epochs over 3 attempts. Record, summed from the table's per-run dollars and not repriced on one meter: $16,064 for 151 promotions and 12 confirmed, about $106 and $1,339 each | Exercised live | Attempts met; no dollar target set |
+| wall | At the head of the landing of 16 November the whole gate passed on macOS (its `ana/commit` status). No Linux suite had run there when this row was written: no Linux runner has taken checks since 12 November, the last Actions run on `main` is a dispatched one of 10 November that failed, and v0.11.0's notes record 1 of 2,115 Linux tests failing at the merge with a targeted rerun that passed. The candidate's 763 finished solves and the control's 505 hold 0 sandbox crashes | Proved without a model on macOS; exercised live | Not met at the top: Linux unread |
+| supply | Candidate: 7 comparisons, 7 to 23 untied tasks each, so every one could read a step; the reference was valid in every solve of all 7, 0 of 110 scored tasks left room on validity, and both steps were won on the objective alone. Control: room on validity on 8 of 99 scored tasks, 1 of 2 steps won on validity. Record: 46 of 152 steps won on validity (buffer 30 of 96, jobstat 2 of 37) and room on validity on 578 of 7,648 scored tasks; in the 26 campaigns from v0.10.0 on, 3 of 31 steps and 13 of 1,643 tasks | Exercised live | Untied tasks met; in jobstat validity decides almost no step, threshold proposed |
+| climb | Candidate: 2 promotions, both confirmed, at $614 of a budget of 800. Control: 2 promotions, neither confirmed (15-3-3 and 18-6-3 against the starter). Record: 192 promotions; of 67 starter reads 33 confirm, against 26.1 expected where the tasks written after are drawn by sign and the others stand (jobstat 17 of 38 against 15.5, buffer 16 of 28 against 10.6). On the tasks written after alone 13 reads are a step for the reference, 13 a step for the starter, 33 no step and 8 too few (jobstat 5 and 10, buffer 8 and 3), and the reference stands 364-322-44 there. The most confirmed in one campaign is 5 in buffer (7 promotions, ended on its budget) and 3 in jobstat (3 promotions, ended on its budget at $793); 228 campaigns hold none, 11 one and 7 two | Exercised live | Not met: at most 3 of 6 in jobstat and 5 of 6 in buffer, and the default budget ends a jobstat campaign near its third |
+| honesty | Candidate: no sixth promotion; 0 steps in its 6 A/As able to read one. The two campaigns on record that passed a sixth promotion ran 12 A/As after it, none able to read a step and 7 tying every task, so the reference's own A/A reads no false rate there; the starter against itself in their 16 starter comparisons, all able, read 0 steps. Record: 2 A/A steps in 207 able (1.0%), 1 of 65 from v0.10.0 on | Exercised live | Unmeasured after a sixth by the reference's A/A; fleet rate within the design rate |
+| verdicts | 0 hand labels in any gathered or live log, of which 123 hold a Referee ruling. Control: 13 rejections in 505 finished solves, 9 ruled, all earned. Candidate: no verdict holds a refusing check and no ruling was made in 763 finished solves, so jobstat offers no packet to label | Exercised live (draws and packets) | Not met: 0 of 30 |
+| grounding | No drafted exam names an installed engine (F32): of the candidate's 6 checks and the control's 5, none runs one | Planned | Not met |
+| economy | Candidate: $614 for 2 promotions, both confirmed, 0 epochs over 3 attempts. Repriced on one meter, a confirmed promotion cost 155 to 301 dollars in the five jobstat campaigns from v0.10.0 on that hold two or more, and 59 and 65 in the two such buffer campaigns, so six in jobstat cost about 930 to 1,810 dollars against a default budget of 800. Record, summed from the table's per-run dollars and not repriced: $22,217 for 192 promotions and 33 confirmed, about $116 and $673 each | Exercised live | Attempts met; no dollar target set, and the default budget cannot hold six in jobstat |
 | systems | No reading in any tracked record. One session's account of 28 October, truss, 12 tasks at one solve a task: the cheap solver in an unpromoted built harness valid on 11, the dear solver in the starter on 9 | An agent's account | Unmeasured |
-| outside | JobBench, one built arm (`f04b0aad`) at one rollout a task: 310 of 550 against the Starter's 342 on 8 tasks; on the fair five 166 of 296, level with Harness²'s held-out arm (166) and below the Starter (192). No Starter A/A, no margin on record, and Harness²'s held-out arm is absent on the 12 tasks item 17 adds. WorkBuddy-Bench: no container has run | Exercised in a study, no reading | Unmeasured; the three arms are rolled afresh after the next iteration (`docs/backlog/jobbench-scoring.md`, item 19) |
+| outside | JobBench under its own judge, one task at a time on the Linux host: one Starter rollout of 13 November scored 262 of 518 on eight tasks and 188 of 296 on the fair five; its second rollout, which gives the spread every difference is read against, has not run. Eight promoted jobstat references are owed a read and none is rolled: a harness built on macOS did not run there until its export answered for the platform (#886), under which two are staged. The built arm of 5 November (`f04b0aad`, 166 on the fair five beside Harness²'s held-out arm at 166 and that sitting's Starter at 192) is of another sitting and is read against none of these. WorkBuddy-Bench: no container has run | Exercised in a study, no reading | Unmeasured: 0 of the six scored rows the table asks before one column is read against another (`docs/backlog/jobbench-scoring.md`, items 19 to 21) |
 
 ### Where the dollars went, 29 October
 
@@ -206,14 +208,19 @@ stopped before the claim's condition arose.
 
 ## Decisions for the operator
 
-- **The v1.0 bar's values** (`docs/backlog/v1-bar.md`). Which outside course counts, JobBench
-  parity or WorkBuddy-Bench, and its margin; whether a confirmed promotion's read counts the tasks
-  that chose the harness; the share of steps the supply row asks to be won on validity; whether the
-  systems row is in v1.0 or after it, with its solvers and margin; any dollar target for economy;
-  and the verdicts row's floor of labelled check defects.
+- **The v1.0 bar's values** (`docs/backlog/v1-bar.md`, with a recommendation for each). The budget
+  of the measured jobstat campaign, since the default 800 dollars ends one near its third confirmed
+  promotion; whether the six are also read on the tasks written after alone; whether the starter
+  against itself stands in for a reference's A/A that ties every task; what the supply row asks of
+  validity where the reference is valid in every solve; which rung of the outside order v1.0 asks,
+  and its Starter spread; whether the systems row is in v1.0 or after it, with its solvers and
+  margin; any dollar target for economy; and the verdicts row's floor of labelled check defects.
+- **The Linux wall.** Name a Linux runner for the gate at a release's top, or let Actions run it
+  there; no Linux suite has run at the present top.
 - **Labels.** Label one packet; M3 cannot move otherwise.
 - **The network.** Keep it open, or add the proxy.
 - **The size policy.** Run it in the gate (F34), or leave it by hand.
-- **The second domain.** Which, and when (L2).
+- **The second domain.** Which, and when (L2); buffer is proposed, as the control every jobstat
+  change is already read against.
 - **Redraws of one pair.** Bound them, or keep the table's `unread` row as it is (F63).
 - **esp32's supply.** Install the field's compilers as engines (F32), or accept that its drafted exam leaves this solver no room: 59 of 59 drafts refused at 3 of 3 valid on 30 October.

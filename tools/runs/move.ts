@@ -272,6 +272,12 @@ export async function fetch(args: readonly string[]): Promise<void> {
   const [name, ...rest] = positionals;
   if (rest.length > 0) throw new Misused();
   const from = keyIfDefined("from", values.from);
+  // A reader takes a copy as it stands where no host can be asked (`syncRuns`), so a campaign asked
+  // for by name is refused before the read: until 16 November a fetch from a tree that held no
+  // host list printed the stale copy's path and exited 0.
+  if (name !== undefined && hostsOf().length === 0) {
+    throw new Error(`ANA_HOSTS lists no host, so there is nowhere to fetch ${name} from`);
+  }
   // With no name, the records of every campaign the other hosts hold: the gather a timer runs.
   // `--whole` brings their folders too, as the nightly pass does; a named campaign always comes whole.
   const copies = await syncRuns(name === undefined ? [] : [name], {
@@ -279,11 +285,7 @@ export async function fetch(args: readonly string[]): Promise<void> {
     ...(name === undefined ? { depth: values.whole ? "whole" : "record" } : { match: "exact" }),
   });
   if (copies.length === 0 && name !== undefined) {
-    throw new Error(
-      hostsOf().length === 0
-        ? `ANA_HOSTS lists no host, so there is nowhere to fetch ${name} from`
-        : `no host ANA_HOSTS lists holds a campaign ${name}`,
-    );
+    throw new Error(`no host ANA_HOSTS lists holds a campaign ${name}`);
   }
   for (const log of copies) console.log(log);
   if (name === undefined) {

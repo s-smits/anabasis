@@ -7,7 +7,12 @@ import { conditionId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
+import { pulse } from "../tools/runs/pulse.ts";
+import type { Run } from "../tools/runs/registry.ts";
+import { indexOf } from "../tools/wri/folds.ts";
+import { heldOff } from "../tools/runs/view.ts";
 import { timelineLines } from "../tools/wri/table-timeline.ts";
+import { costTriggers } from "../tools/wri/time.ts";
 import { conditionOf } from "./helpers/logged-round.ts";
 
 const OPENED: JsonObject = {
@@ -97,9 +102,66 @@ describe("table-timeline", () => {
     // first comparison's start is a first position.
     expect(admissible).toHaveLength(1);
     expect(admissible[0]).toContain("from 00:10:00: 8 held out, 0 released · admission refuses nothing");
+    // The comparison began twenty minutes later, with no Builder wait between; a log that never
+    // compared counts to its end, at minute 40, and says so.
+    expect(admissible[0]).toEndWith("· 0.33 h before one began, 0.00 h of it inside Builder waits");
+    const never = log.events.filter(({ kind }) => kind !== "comparison.started");
+    expect(heldOff(never)?.said).toBe(
+      "0.50 h to the log's end, none begun, 0.00 h of it inside Builder waits",
+    );
     expect(rowsOf(lines, "move").at(-1)).toContain("8 held out, 1 released · admission refuses nothing");
     const short = logOf().add(3, "task.proposed", proposed("v-1"));
     expect(rowsOf(timelineLines(short.events, HERE), "admissible")).toHaveLength(0);
+  });
+
+  it("calls a first comparison held off at 75 minutes admissible: a trigger of the time lane, and one line of a live run's look", () => {
+    // Eight tasks held at minute 10, and the log's last event at `end`.
+    const waiting = (end: number, compared = false) => {
+      const log = logOf().add(2, "exam.started", { session: "x-1" });
+      for (const [place, version] of ["a", "b", "c", "d", "e", "f", "g", "h"].entries()) {
+        log
+          .add(3 + place, "task.proposed", {
+            session: "x-1",
+            version,
+            taskId: `t-${version}`,
+            family: version,
+          })
+          .add(3 + place, "task.gate", { version, gate: 1, outcome: "passed" });
+      }
+      if (compared) log.add(end, "comparison.started", { session: "g-1" });
+      return log.add(end, "task.proposed", { session: "x-1", version: "j", taskId: "t-j", family: "j" })
+        .events;
+    };
+    const heldTrigger = (events: readonly LogEvent[]) =>
+      costTriggers(indexOf(events)).find(({ name }) => name === "FIRST COMPARISON HELD OFF")?.detail;
+    const tail = "none begun, 0.00 h of it inside Builder waits";
+    // The hostile case: a minute under the threshold is no finding.
+    expect(heldTrigger(waiting(84))).toBeUndefined();
+    expect(heldTrigger(waiting(85))).toBe(`admissible 1.25 h to the log's end, ${tail}`);
+    expect(heldTrigger(waiting(95, true))).toStartWith("admissible 1.42 h before one began");
+
+    const run: Run = {
+      name: "r1",
+      tree: "/wt",
+      path: "/wt/.ana/d2/r1/log.jsonl",
+      end: "comparison.reported",
+    };
+    const said = (events: readonly LogEvent[], before: Parameters<typeof pulse>[3], writing = true) => {
+      const now = Date.parse(events.at(-1)?.at ?? "") + 60_000;
+      const look = pulse(run, events, { writing, kept: false }, before, { now });
+      return {
+        seen: look.seen,
+        lines: look.said.filter((line) => line.includes("first comparison admissible")),
+      };
+    };
+    const looked = { lines: 0, open: true, quiet: false };
+    expect(said(waiting(84), looked).lines).toEqual([]);
+    const late = said(waiting(85), looked);
+    expect(late.lines).toEqual(["⚠ a first comparison admissible for 1.25 h, none begun"]);
+    // Said once, never of a campaign that began comparing, and never of one no process writes.
+    expect(said(waiting(120), late.seen).lines).toEqual([]);
+    expect(said(waiting(95, true), looked).lines).toEqual([]);
+    expect(said(waiting(85), looked, false).lines).toEqual([]);
   });
 
   it("marks rows that ran under another tree's code, warns once, and counts no agreement", () => {

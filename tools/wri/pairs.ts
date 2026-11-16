@@ -47,7 +47,7 @@ import {
   unsolved,
 } from "#src/kernel/compare.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
-import { proposalsOf } from "#src/kernel/history.ts";
+import { OPENING, proposalsOf } from "#src/kernel/history.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { lastReports, pairsReported, poolOf, type Reported } from "#src/kernel/reports.ts";
 import { ended, passed, type Ran, ranUnder } from "#src/kernel/solves.ts";
@@ -464,7 +464,7 @@ export function pairRows(events: readonly LogEvent[]): string[] {
   const writers = new Map(
     proposalsOf(events).map(({ version, session, family }) => [
       version,
-      { session: session ?? "the opening exam", family: family ?? NONE },
+      { session: session ?? OPENING, family: family ?? NONE },
     ]),
   );
   const { bests } = poolOf(events);

@@ -34,6 +34,7 @@ import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
+import { compareCodeUnits } from "#src/meta/stable-json.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { writeStarter } from "#src/harness/starter.ts";
@@ -53,10 +54,16 @@ const TARGET = "bun-linux-x64-baseline";
 const SOLVER = join(import.meta.dir, "pi-solve.ts");
 
 /** ELF's machine numbers for x86-64 and 64-bit Arm. */
-const [X86_64, AARCH64] = [62, 183];
+const X86_64 = 62;
+export const AARCH64 = 183;
 
 /** Where programs run: macOS or not, its ELF machine, and the interpreter roots (null: any path). */
-type Place = Readonly<{ name: string; mac: boolean; machine: number; roots: readonly string[] | null }>;
+export type Place = Readonly<{
+  name: string;
+  mac: boolean;
+  machine: number;
+  roots: readonly string[] | null;
+}>;
 
 /** A benchmark's container, which holds of a host's paths only the system's. */
 const CONTAINER: Place = {
@@ -67,12 +74,10 @@ const CONTAINER: Place = {
 };
 
 /** The machine this process runs on, where a rollout outside a container finds its programs. */
-export const HERE: Place = {
-  name: `this machine (${runtimeProcess.platform} ${runtimeProcess.arch})`,
-  mac: runtimeProcess.platform === "darwin",
-  machine: runtimeProcess.arch === "arm64" ? AARCH64 : X86_64,
-  roots: null,
-};
+export const HERE = placeOf(
+  `${runtimeProcess.platform}-${runtimeProcess.arch}`,
+  `this machine (${runtimeProcess.platform} ${runtimeProcess.arch})`,
+);
 
 /** Where an arm's harness came from, as its mount records it. */
 interface Origin {
@@ -163,21 +168,36 @@ export async function bundleArm(
   return { digest: opened.digest, origin };
 }
 
+/** A machine outside any container, by its system and processor as Bun names them (`linux-x64`). */
+export function placeOf(named: string, name = named): Place {
+  const [platform = "", arch = ""] = named.split("-");
+  if (!["darwin", "linux"].includes(platform) || !["arm64", "x64"].includes(arch)) {
+    throw new Error(`'${named}' names no machine: darwin or linux, then arm64 or x64, as linux-x64`);
+  }
+  return { name, mac: platform === "darwin", machine: arch === "arm64" ? AARCH64 : X86_64, roots: null };
+}
+
 /** Refuses a tool tree holding a program `place` cannot run (another system's or processor's binary,
  *  or in a container a script on a host interpreter), as an arm would read lower for that alone. */
 export async function foreignPrograms(tree: string, place: Place = CONTAINER): Promise<void> {
-  if (!existsSync(tree)) return;
-  const foreign: string[] = [];
-  for await (const path of new Bun.Glob("**/*").scan({ cwd: tree, onlyFiles: true, dot: true })) {
-    const why = foreignHead(Buffer.from(await Bun.file(join(tree, path)).slice(0, 128).bytes()), place);
-    if (why !== null) foreign.push(`${path} (${why})`);
-  }
+  const foreign = (await foreignFiles(tree, place)).map(({ path, why }) => `${path} (${why})`);
   if (foreign.length > 0) {
-    const shown = foreign.toSorted().slice(0, 5).join(", ");
+    const shown = foreign.slice(0, 5).join(", ");
     throw new Error(
       `the harness's ${TOOL_TREE_DIR} holds ${String(foreign.length)} programs ${place.name} cannot run: ${shown}${foreign.length > 5 ? ", and more" : ""}`,
     );
   }
+}
+
+/** Each file of `tree` that `place` cannot run, relative to the tree in code-unit order, with why. */
+export async function foreignFiles(tree: string, place: Place): Promise<{ path: string; why: string }[]> {
+  if (!existsSync(tree)) return [];
+  const foreign: { path: string; why: string }[] = [];
+  for await (const path of new Bun.Glob("**/*").scan({ cwd: tree, onlyFiles: true, dot: true })) {
+    const why = foreignHead(Buffer.from(await Bun.file(join(tree, path)).slice(0, 128).bytes()), place);
+    if (why !== null) foreign.push({ path, why });
+  }
+  return foreign.toSorted((a, b) => compareCodeUnits(a.path, b.path));
 }
 
 /** Why the opening bytes of a file name a program foreign to `place`, or null. */

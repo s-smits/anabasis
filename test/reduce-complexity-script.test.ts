@@ -121,5 +121,6 @@ describe("the complexity instrument", () => {
     writeFileSync(diff, git("diff", "HEAD~1", "HEAD", "--", "tools/count.py", "tools/count.ts"));
     const said = runTextSyncOrThrow(["python3", join(scripts, "measure.py"), "--diff", diff, "-C", repo]);
     expect(said).toContain("prod nonblank: +10 -10, net +0");
+    expect(said).toContain("new production functions: 0; moved or re-declared: count");
   });
 });

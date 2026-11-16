@@ -156,7 +156,8 @@ IMPORT_STMT = re.compile(r"^\s*(?:import|export)\s+(?:type\s+)?(\{[^}]*\}|[^;\n{
 FUNC_NAME = re.compile(r"^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?function\*?\s+([A-Za-z_$][\w$]*)"
                        r"|^\s*(?:export\s+)?(?:const|let)\s+([A-Za-z_$][\w$]*)\s*(?::[^=\n]+)?=\s*(?:async\s+)?"
                        r"(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*(?::[^=\n]+)?=>"
-                       r"|^\s*([A-Za-z_][\w]*)\s*\(\)\s*\{", re.M)
+                       r"|^\s*([A-Za-z_][\w]*)\s*\(\)\s*\{"
+                       r"|^\s*(?:async\s+)?def\s+([A-Za-z_]\w*)", re.M)
 
 
 def imported_names(text):
@@ -171,7 +172,7 @@ def imported_names(text):
 
 
 def function_names(text):
-    return {a or b or c for a, b, c in FUNC_NAME.findall(text)}
+    return {next(filter(None, names)) for names in FUNC_NAME.findall(text)}
 
 
 def diff_sections(path):

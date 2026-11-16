@@ -3,9 +3,9 @@
  * packages copies an interpreter and installs wheels into its `.toolchain`, so a tree built on a Mac
  * holds a CPython and compiled extension modules for the Mac, and on a Linux machine its programs
  * die at the first exec or import. On 16 November one promoted jobstat reference held a
- * python-build-standalone CPython 3.12.15 (executable, `libpython`, Tcl/Tk and three `lib-dynload`
- * modules) and 196 extension modules of numpy, scipy, pandas, statsmodels and wrapt, beside 5,106
- * Python files that run anywhere.
+ * python-build-standalone CPython 3.12.15 (its executable, seven shared libraries of `libpython` and
+ * Tcl/Tk, and three `lib-dynload` modules) and 200 extension modules of numpy, scipy, pandas,
+ * statsmodels and wrapt, beside 5,106 Python files that run anywhere.
  *
  * Each program `foreignFiles` names (`foreignHead`, the rollout's own test) is put down to its owner:
  * - a file a distribution's `RECORD` lists: that distribution is installed again for this machine,
@@ -17,8 +17,10 @@
  *   left out.
  * Nothing else changes: pure-Python distributions, the harness's own programs and its data keep their
  * bytes, and a tree with no foreign program is not touched. A program no owner accounts for, a
- * version with no CPython for the place, or a distribution with no build for it is refused whole
- * (`PlatformRefusal`), so no tree is written that fails at its first import.
+ * version with no CPython for the place, a distribution with no build for it, and a compiled file
+ * no reinstall puts back (a module no `RECORD` lists among an interpreter's packages, a
+ * distribution's program under `bin` or outside its folder) is refused whole (`PlatformRefusal`),
+ * before anything moves.
  *
  * The place is the machine that will roll the tree, which need not be the one that exports it: a
  * campaign stays on its own host, so a reference built on a Mac is exported there for the Linux
@@ -78,13 +80,14 @@ export async function rebuildForeignPython(
   const foreign = (await foreignFiles(tree, place)).map(({ path }) => path);
   if (foreign.length === 0) return null;
   const owners = await distributionsIn(tree);
-  const distributions = new Map<string, Distribution>();
+  // One for each folder that holds it: `distributionsIn` makes one record a `RECORD`.
+  const distributions = new Set<Distribution>();
   const prefixes = new Map<string, string[]>();
   const unowned: string[] = [];
   for (const path of foreign) {
     const distribution = owners.get(path);
     const prefix = distribution === undefined ? prefixOf(tree, path) : null;
-    if (distribution !== undefined) distributions.set(distribution.requirement, distribution);
+    if (distribution !== undefined) distributions.add(distribution);
     else if (prefix === null) unowned.push(path);
     else prefixes.set(prefix, [...(prefixes.get(prefix) ?? []), path]);
   }
@@ -92,27 +95,37 @@ export async function rebuildForeignPython(
   const refused = [
     ...unowned.map((path) => `${path}, which no Python distribution or interpreter in the tree installed`),
     ...interpreters.flatMap(({ refused: why }) => why),
-    ...[...distributions.values()].flatMap(({ requirement, python: version }) =>
+    // A reinstall writes a distribution's packages into its folder, and nothing beside it or under `bin`.
+    ...foreign.flatMap((path) => {
+      const owner = owners.get(path);
+      if (owner === undefined) return [];
+      return path.startsWith(`${owner.site}/`) && !path.startsWith(`${join(owner.site, "bin")}/`)
+        ? []
+        : [
+            `${path}, a compiled program of ${owner.requirement} outside its package folders, which a reinstall does not put back`,
+          ];
+    }),
+    ...[...distributions].flatMap(({ requirement, python: version }) =>
       version === null ? [`${requirement}, whose Python version neither its folder nor its wheel names`] : [],
     ),
   ];
   if (refused.length > 0) throw refusal(place, refused);
   const stage = mkdtempSync(join(tmpdir(), "ana-foreign-python-"));
   try {
-    const staged = [...distributions.values()].map((one, index) => {
+    const staged = [...distributions].map((one, index) => {
       const into = join(stage, String(index));
-      return { ...one, into, why: python.install(into, one.requirement, one.python ?? "") };
+      return { one, into, why: python.install(into, one.requirement, one.python ?? "") };
     });
-    const missing = staged.flatMap(({ requirement, why }) =>
-      why === null ? [] : [`no build of ${requirement} (${why})`],
+    const missing = staged.flatMap(({ one, why }) =>
+      why === null ? [] : [`no build of ${one.requirement} (${why})`],
     );
     if (missing.length > 0) throw refusal(place, missing);
     for (const one of interpreters) one.apply();
-    for (const { site, into, requirement } of staged) {
-      for (const path of foreign) if (owners.get(path)?.requirement === requirement) rmSync(join(tree, path));
+    for (const { one, into } of staged) {
+      for (const path of foreign) if (owners.get(path) === one) rmSync(join(tree, path));
       // A console script `--target` writes under its own `bin` names the installer's interpreter, and a
       // harness's programs never called one there.
-      cpSync(into, join(tree, site), {
+      cpSync(into, join(tree, one.site), {
         recursive: true,
         verbatimSymlinks: true,
         filter: (from) => from !== join(into, "bin"),
@@ -124,7 +137,7 @@ export async function rebuildForeignPython(
   await foreignPrograms(tree, place);
   return {
     interpreters: interpreters.map(({ named }) => named),
-    distributions: [...distributions.keys()].toSorted(),
+    distributions: [...new Set([...distributions].map(({ requirement }) => requirement))].toSorted(),
   };
 }
 
@@ -186,15 +199,17 @@ function interpreterFor(tree: string, prefix: string, files: readonly string[], 
       apply: () => undefined,
     };
   }
-  // Each foreign file's stand-in is the host's executable of its name, or none, which only a shared
-  // library may lack.
+  // Each foreign file's stand-in is the host's executable of its name, or none, which only the
+  // interpreter's own shared libraries may lack: those beside its `lib` and in `lib-dynload`. One
+  // among its modules is a package, and dropping it would leave an import that fails.
+  const modules = `${join(prefix, "lib", library)}/`;
+  const own = (file: string) =>
+    SHARED_LIBRARY.test(file) && (!file.startsWith(modules) || file.startsWith(`${modules}lib-dynload/`));
   const standIns = files.map((file) => {
     const executable = join(host, "bin", basename(file));
     return { file, from: existsSync(executable) ? executable : null };
   });
-  const lacking = standIns
-    .filter(({ file, from }) => from === null && !SHARED_LIBRARY.test(file))
-    .map(({ file }) => file);
+  const lacking = standIns.filter(({ file, from }) => from === null && !own(file)).map(({ file }) => file);
   const apply = () => {
     for (const { file } of standIns) rmSync(join(tree, file));
     const theirs = join(host, "lib", library, "site-packages");

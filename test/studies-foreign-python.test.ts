@@ -139,6 +139,42 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
     expect(bare.asked).toStrictEqual(["interpreter 3.12.15"]);
   });
 
+  it("refuses a compiled file no reinstall would put back, and refills a distribution in each folder that holds it", async () => {
+    // A module no `RECORD` lists, among the installed packages: dropped as a shared library, it
+    // would be gone at the first import.
+    const stray = macTree("stray-module", { [`${SITE}/fastmath.cpython-312-darwin.so`]: MACH_O });
+    await expect(rebuildForeignPython(stray, LINUX, standIn().python)).rejects.toThrow(
+      /site-packages\/fastmath\.cpython-312-darwin\.so, a program of py\/cp312 \(CPython 3\.12\.15\)/u,
+    );
+    expect(readFileSync(join(stray, "py/cp312/pyexe/python3.12"))).toStrictEqual(MACH_O);
+
+    // A distribution's compiled program under `bin`, which the reinstall leaves out.
+    const program = macTree("bin-program", {
+      [`${SITE}/bin/f2py`]: MACH_O,
+      [`${SITE}/numpy-2.5.4.dist-info/RECORD`]:
+        "numpy/__init__.py,sha256=a,14\nnumpy/_core.cpython-312-darwin.so,sha256=b,8\nbin/f2py,sha256=d,8\n",
+    });
+    await expect(rebuildForeignPython(program, LINUX, standIn().python)).rejects.toThrow(
+      /bin\/f2py, a compiled program of numpy==2\.5\.4 outside its package folders/u,
+    );
+    expect(readFileSync(join(program, `${SITE}/bin/f2py`))).toStrictEqual(MACH_O);
+
+    const other = "vendor/site";
+    const twice = macTree("two-folders", {
+      [`${other}/numpy/_core.cpython-312-darwin.so`]: MACH_O,
+      [`${other}/numpy-2.5.4.dist-info/WHEEL`]: "Tag: cp312-cp312-macosx_14_0_arm64\n",
+      [`${other}/numpy-2.5.4.dist-info/RECORD`]: "numpy/_core.cpython-312-darwin.so,sha256=b,8\n",
+    });
+    const { python, asked } = standIn();
+    expect((await rebuildForeignPython(twice, LINUX, python))?.distributions).toStrictEqual(["numpy==2.5.4"]);
+    expect(
+      [SITE, other].map((site) =>
+        existsSync(join(twice, site, "numpy/_core.cpython-312-x86_64-linux-gnu.so")),
+      ),
+    ).toStrictEqual([true, true]);
+    expect(asked.filter((call) => call.startsWith("install"))).toHaveLength(2);
+  });
+
   it("touches nothing and asks nothing of a tree whose programs already run here", async () => {
     const tree = join(root, "native");
     put(tree, { "bin/tool": elf("native"), [`${SITE}/six.py`]: "# six\n" });

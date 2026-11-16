@@ -389,6 +389,15 @@ describe("splitting a stack above a merged pull request", () => {
     unmoved("one");
   });
 
+  it("answers a flag it lacks with its usage and exit 2, and asks GitHub nothing", () => {
+    const result = run(["1", "--yess"], "MERGED", chain());
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("Unknown option '--yess'");
+    expect(result.stderr).toContain("usage: bun run split");
+    expect(result.stderr).not.toContain("split.ts:");
+    expect(readFileSync(ghLog, "utf8")).toBe("");
+  });
+
   it("says so where nothing stands on the pull request", () => {
     mergeCut();
     const result = run(["1"], "MERGED", []);

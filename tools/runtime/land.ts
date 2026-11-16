@@ -106,7 +106,7 @@
  * only `--merge` posts (`STACK_CONTEXT`). `gh api repos/s-smits/anabasis/rulesets/25824510` reads
  * it. The one gap: a token with admin rights can post that status by hand.
  */
-import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
+import { runtimeProcess } from "../../src/meta/process.ts";
 import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
 import { plural, textOr } from "../../src/meta/text.ts";
 import { CI_WORKFLOW, ciRun, failedFiles, FIXES, fixesFor } from "./ci-runs.ts";
@@ -133,6 +133,7 @@ import {
 } from "./pulls.ts";
 import {
   addedLine,
+  argsOr,
   changesSource,
   failedLine,
   git,
@@ -735,19 +736,17 @@ async function landTo(root: string, target: number, mode: Mode, board: Board): P
 }
 
 async function main(argv: readonly string[]): Promise<number> {
-  const { values, positionals } = parseArgs({
-    args: [...argv],
-    options: {
-      merge: { type: "boolean", default: false },
-      sanitize: { type: "boolean", default: false },
-      auto: { type: "boolean", default: false },
-      once: { type: "boolean", default: false },
-      alone: { type: "boolean", default: false },
-      jobs: { type: "string" },
-      tag: { type: "string" },
-    },
-    allowPositionals: true,
+  const parsed = argsOr(argv, USAGE, {
+    merge: { type: "boolean", default: false },
+    sanitize: { type: "boolean", default: false },
+    auto: { type: "boolean", default: false },
+    once: { type: "boolean", default: false },
+    alone: { type: "boolean", default: false },
+    jobs: { type: "string" },
+    tag: { type: "string" },
   });
+  if (parsed === null) return 2;
+  const { values, positionals } = parsed;
   const latest = positionals[0] === "latest";
   const named = positionals[0] === undefined || latest ? null : Number(positionals[0]);
   const jobs = values.jobs === undefined ? undefined : Number(values.jobs);

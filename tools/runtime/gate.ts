@@ -63,7 +63,7 @@ import { sha256, sha256OfFile } from "../../src/meta/digest.ts";
 import { keyIfDefined, keysIf } from "../../src/meta/optional-key.ts";
 import { availableParallelism, tmpdir } from "../../src/meta/os.ts";
 import { basename, dirname, isAbsolute, join, relative } from "../../src/meta/path.ts";
-import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
+import { parseArgs, type ParseArgsOptionsConfig, runtimeProcess } from "../../src/meta/process.ts";
 import { killProcessGroup, runSync, runTextSyncOrThrow, zeroExitText } from "../../src/meta/subprocess.ts";
 import type { StatusState } from "./pulls.ts";
 
@@ -203,6 +203,24 @@ const verdictOf = (code: number): "passed" | "failed" | "none" =>
 
 export const lines = (text: string): string[] => text.split("\n").filter((line) => line.length > 0);
 export const short = (sha: string): string => sha.slice(0, 9);
+
+/** What `parseArgs` reads of `argv`, positionals allowed, or null once it has said which word the
+ *  command does not take and its `usage`: a misuse, exit 2 at the caller, never a failed landing's 1. */
+export function argsOr<const T extends ParseArgsOptionsConfig>(
+  argv: readonly string[],
+  usage: string,
+  options: T,
+) {
+  try {
+    return parseArgs({ args: [...argv], options, allowPositionals: true });
+  } catch (error) {
+    const misuse =
+      error instanceof Error && "code" in error && String(error.code).startsWith("ERR_PARSE_ARGS");
+    if (!misuse) throw error;
+    console.error(`${error.message}\n${usage}`);
+    return null;
+  }
+}
 
 /** Git's output in `root`, trimmed. A failure throws with Git's own message. */
 export const git = (root: string, args: readonly string[]): string =>

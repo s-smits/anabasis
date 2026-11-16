@@ -519,6 +519,15 @@ describe("bun run land", () => {
     expect(logLines(ghLog).filter((line) => line.includes("/statuses/"))).toEqual([]);
   });
 
+  it("answers a flag it lacks with its usage and exit 2, where a throw read as a failed landing", () => {
+    const result = runLand(["12", "--sanitise"]);
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("Unknown option '--sanitise'");
+    expect(result.stderr).toContain("usage: bun run land");
+    expect(result.stderr).not.toContain("land.ts:");
+    expect(logLines(ghLog)).toEqual([]);
+  });
+
   it("refuses a head that holds none of the heads the pull request beneath it had", () => {
     const result = runLand(["12", "--sanitize"], { ANA_FAKE_PULLS: stack(beside) });
     expect(result.status).toBe(1);

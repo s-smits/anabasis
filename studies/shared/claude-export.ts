@@ -15,7 +15,11 @@
  *   the order a solve's shell searches them (`toolTreeSearchDirs`, `src/wall/isolation.ts`), as
  *   facts: it puts nothing ahead of the machine's own programs, since the 9 November pilot's line
  *   that did so hid the machine's openpyxl, docx and matplotlib behind the harness's Python, and it
- *   says that programs written for the campaign's own files find none of them here;
+ *   says that programs written for the campaign's own files find none of them here; where the tree
+ *   holds Python built for another machine, as a reference built on a Mac does on Linux, its
+ *   interpreter and compiled distributions are installed again for this one at the same versions,
+ *   or the export is refused (`rebuildForeignPython`, `foreign-python.ts`), and `export.json`
+ *   names what was replaced under `rebuilt`;
  * - `agent/tools-spec.json` and `agent/tools.ts` are dropped: Claude Code has its own tools and no
  *   loader for a harness's, so the note names each declared tool as unavailable, and `export.json`
  *   lists both files.
@@ -30,10 +34,11 @@ import { GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE } from "#src/meta/bundle-layout.t
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { join, relative } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { keyIfDefined } from "#src/meta/optional-key.ts";
+import { keyIfDefined, keyIfNotNull } from "#src/meta/optional-key.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
-import { HARNESS_DIR, placeHarness } from "./bundle.ts";
+import { HARNESS_DIR, HERE, type Place, placeHarness } from "./bundle.ts";
+import { type PythonFor, rebuildForeignPython, uvPython } from "./foreign-python.ts";
 
 /** Where the tool tree lands in the exported tree, under the runner's `scripts/` entry. */
 const TOOLCHAIN = "scripts/toolchain";
@@ -41,10 +46,15 @@ const TOOLCHAIN = "scripts/toolchain";
 /** The harness's files Claude Code has no reader for. */
 const DROPPED = [TOOLS_SPEC_FILE, GENERATED_TOOLS_FILE];
 
-/** The tree `into`, written from `source`. Returns what `export.json` records. */
+/** The tree `into`, written from `source` for programs that run on `place`, this machine unless a
+ *  test names another. Returns what `export.json` records. */
 export async function exportForClaudeCode(
   into: string,
   source: "starter" | { readonly campaign: string; readonly harness?: string },
+  { place, python }: { readonly place: Place; readonly python: PythonFor } = {
+    place: HERE,
+    python: uvPython(HERE),
+  },
 ) {
   if (existsSync(into)) throw new Error(`${into} is there already; an export is made once`);
   // Built beside its place and renamed into it whole, as `bundleArm` builds a mount.
@@ -63,6 +73,7 @@ export async function exportForClaudeCode(
   if (harness.toolTree !== null) {
     cpSync(harness.toolTree, join(part, TOOLCHAIN), { recursive: true, verbatimSymlinks: true });
   }
+  const rebuilt = await rebuildForeignPython(join(part, TOOLCHAIN), place, python);
   const note = [
     "# How this harness reaches you",
     "",
@@ -90,6 +101,7 @@ export async function exportForClaudeCode(
     unavailable,
     toolchain: harness.toolTree === null ? null : TOOLCHAIN,
     searched,
+    ...keyIfNotNull("rebuilt", rebuilt === null ? null : { for: place.name, ...rebuilt }),
   };
   writeFileSync(join(part, "export.json"), `${capturedJsonStringify(record, null, 2)}\n`);
   renameSync(part, into);

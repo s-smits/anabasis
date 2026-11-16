@@ -367,6 +367,44 @@ describe("a harness written out for Claude Code", () => {
     );
   });
 
+  it("copies a tool tree whose programs run where it is exported byte for byte, asking no installer, and refuses it where they do not", async () => {
+    // An ELF header for x86-64, whose bytes are all ASCII, so a program written as text holds it.
+    const elf = `\u007FELF${"\0".repeat(14)}>\0`;
+    const programs = { mark: "#!/bin/sh\necho marked\n", native: elf };
+    const made = await campaign("exported-native", () => undefined, { ...tooled(), programs });
+    const asked: string[] = [];
+    const python = {
+      interpreter: (version: string) => {
+        asked.push(version);
+        return null;
+      },
+      install: (_target: string, requirement: string) => {
+        asked.push(requirement);
+        return "no build";
+      },
+    };
+    const linux = { name: "a Linux machine", mac: false, machine: 62, roots: null };
+    const source = { campaign: made.log, harness: made.child };
+    const into = join(root, "claude-native");
+    const record = await exportForClaudeCode(into, source, { place: linux, python });
+    expect(asked).toStrictEqual([]);
+    expect(record).not.toHaveProperty("rebuilt");
+    const kept = join(made.states, made.child, ".toolchain");
+    const exported = join(into, "scripts", "toolchain");
+    const names = readdirSync(kept, { recursive: true, encoding: "utf8" }).toSorted();
+    expect(readdirSync(exported, { recursive: true, encoding: "utf8" }).toSorted()).toStrictEqual(names);
+    for (const name of names.filter((one) => one.includes("/"))) {
+      expect(readFileSync(join(exported, name))).toStrictEqual(readFileSync(join(kept, name)));
+    }
+    const mac = { name: "a Mac", mac: true, machine: 183, roots: null };
+    await expect(
+      exportForClaudeCode(join(root, "claude-native-mac"), source, { place: mac, python }),
+    ).rejects.toThrow(
+      /on a Mac: bin\/native, which no Python distribution or interpreter in the tree installed/u,
+    );
+    expect(existsSync(join(root, "claude-native-mac"))).toBe(false);
+  });
+
   it("writes the starter's guide under the note with no tool or program line, and refuses a tree already made", async () => {
     const into = join(root, "claude-starter");
     const record = await exportForClaudeCode(into, "starter");

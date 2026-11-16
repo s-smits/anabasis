@@ -38,13 +38,13 @@
  *   gates in the iteration's order (`gatesOf`). Every folder passes the shared instructions, the
  *   lanes, the lane reports, the synthesis, the vetting, the plan, the pull request
  *   (`Pull request: #N` in `plan.md`) and the fresh runs at its head (`runs fresh --as forkedPR<N>`),
- *   which are launched without asking. An iteration's folder also passes the isolated lanes'
- *   decision, each run's ledgers (`predictions-<run>.md` resolved id by id in `outcomes-<run>.md`,
- *   and for a fork what it carries from the iteration that made it), the vetting of every
- *   prediction, the read across domains (`cross-domain.md`), a plan that answers both and says under
- *   "Intentionally opposed" what it leaves out on purpose, each fork's ledger, and the plan's own
- *   predictions carried into a fork's (`planOwed`); a jobstat run's also passes its row in
- *   `outside-reads.md` (`outsideGate`).
+ *   which are launched without asking. An iteration's folder also passes the reads across runs
+ *   (`record.md`), the isolated lanes' decision, each run's ledgers (`predictions-<run>.md` resolved
+ *   id by id in `outcomes-<run>.md`, and for a fork what it carries from the iteration that made it),
+ *   the vetting of every prediction, the read across domains (`cross-domain.md`), a plan that answers
+ *   both and says under "Intentionally opposed" what it leaves out on purpose, each fork's ledger, and
+ *   the plan's own predictions carried into a fork's (`planOwed`); a jobstat run's also passes its row
+ *   in `outside-reads.md` (`outsideGate`).
  * - `ledger` prints the views derived from those files and never written by hand: the cycle view,
  *   every prediction of the folder's runs with its outcome; the dropped view, each unreached or
  *   falsified id that no `## Carried` and no plan's `## Intentionally opposed` names; and each run's still-missing
@@ -126,6 +126,10 @@ const ACROSS = "cross-domain.md";
 /** The record `open` writes before the investigation: the folder is an iteration's, so its own gates apply. */
 const MARKER = "iteration.json";
 const PLAN = "plan.md";
+/** The primary's reads across runs, which no lane makes: owed while the lanes work, until a synthesis is there. */
+const RECORD = "record.md";
+const READ =
+  "read the packs' trend, promotions and starter reads and the runs' replay while the lane sessions work (whole-run-investigation, step 4)";
 /** The gates a session passed on purpose, each with its reason. */
 const DEVIATIONS = "deviations.md";
 /** One row a stopped jobstat run, in a cycle's folder: its reference's read on the outside benchmark. */
@@ -387,6 +391,7 @@ function gatesOf(where: Where): Gate[] {
   const forks = [...new Set([...where.campaigns, ...launchForks(deviations)])].filter((name) =>
     madeBy(plan, deviations, name),
   );
+  const record = marked(dir) && !existsSync(at(RECORD)) ? [`${READ}, into ${at(RECORD)}`] : [];
   return [
     gate("instruct", () => {
       const blank = blankSections(read(at(SHARED)));
@@ -406,8 +411,10 @@ function gatesOf(where: Where): Gate[] {
         : [
             `${String(owed.length)} lane session(s) owe a report; hand each its line to a wri-lane agent, all in one message`,
             ...owed.map(({ name, task }) => `  ${name}: ${task}`),
+            ...record,
           ];
     }),
+    gate("record", () => (record.length === 0 || existsSync(at(SYNTHESIS)) ? null : record)),
     ...only([
       gate("isolated", () =>
         // A lane by the report its session owns, at the path `wri.ts lanes` gave it, whatever its

@@ -178,6 +178,7 @@ function folder(name: string, run: string, iteration: boolean) {
   const report = join(dir, "lanes", "01-report.md");
   write("investigation.json", JSON.stringify({ logs: [`/x/.ana/d2/${run}/log.jsonl`] }));
   if (iteration) write("iteration.json", JSON.stringify({ opened: at(0), runs: [run] }));
+  if (iteration) write("record.md", "# The record across runs\n");
   write("shared-instructions.md", "## Orientation\n\nthe question\n\n## Hard rules\n\nkeep\n");
   write(
     "launch.json",
@@ -250,6 +251,27 @@ describe("the next step of an investigation", () => {
     expect(step(["buffer-fresh-opus", "jobstat-fresh-opus-forkedPR602"])).toEqual([
       "step: done · #602 is measured by jobstat-fresh-opus-forkedPR602",
     ]);
+  });
+
+  it("names an iteration's reads of the record beside the reports it waits for, and owes them before the isolated lanes", () => {
+    const { dir, write, step } = folder("record", "r", true);
+    const reads = "read the packs' trend, promotions and starter reads and the runs' replay";
+    rmSync(join(dir, "synthesis.md"));
+    // With the reads made, the wait for a report names none of them.
+    rmSync(join(dir, "lanes", "01-report.md"));
+    expect(step()).toHaveLength(2);
+    rmSync(join(dir, "record.md"));
+    expect(step()[2]).toStartWith(reads);
+    // Every report in leaves the reads owed, by the same line, until their file is there.
+    writeFileSync(join(dir, "lanes", "01-report.md"), "# Lane 1\n");
+    expect(step()[0]).toStartWith(`step: record · ${reads}`);
+    expect(step()[0]).toEndWith(`, into ${join(dir, "record.md")}`);
+    write("record.md", "# The record across runs\n");
+    expect(step()[0]).toStartWith("step: isolated");
+    // An iteration whose synthesis was written before the reads were owed is not sent back for them.
+    rmSync(join(dir, "record.md"));
+    write("synthesis.md", "# Synthesis\n");
+    expect(step()[0]).toStartWith("step: isolated");
   });
 
   it("owes a report from a session that names none, since nothing could show it finished", () => {

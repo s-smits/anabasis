@@ -20,8 +20,8 @@
  * answer is no tool's: a state need declare no artifact-writer, and one that does has it listed
  * and not served (`harnessTools`, `src/tools/answer.ts`).
  */
-import type { TSchema } from "@earendil-works/pi-ai";
-import type { JsonValue } from "@earendil-works/chord";
+import type { JsonValue } from "@earendil-works/chord/json";
+import type { TSchema } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
 import {
   AGENT_DIR,

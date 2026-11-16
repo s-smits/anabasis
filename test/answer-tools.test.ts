@@ -80,7 +80,7 @@ describe("submit", () => {
       [null, /no answer\.json/u],
       ['{"span": 4,', /not JSON/u],
       ['{"span": "wide"}', /answer format/u],
-      ['{"span": "4"}', /coerced/u],
+      ['{"span": "4"}', /answer format/u],
       ['{"span": 4, "depth": 1}', /answer format/u],
       [JSON.stringify({ span: 1, note: "x".repeat(1024 * 1024) }), /larger.*1048576/u],
     ] as const) {

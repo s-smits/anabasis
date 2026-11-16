@@ -12,8 +12,8 @@ import {
   createModels,
   normalizeContext,
   type ThinkingLevel,
-  Type,
 } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import {
   claudeLedger,
   claudeProvider,

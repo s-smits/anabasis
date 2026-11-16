@@ -30,6 +30,12 @@ describe("the three backends", () => {
   const catalog = backends(options);
   it("serve Codex, OpenRouter and Claude Code from pi's catalogs", () => {
     expect(catalog.getModel("openai-codex", "gpt-6.1-sol")?.api).toBe("openai-codex-responses");
+    // pi-ai lists GPT-6.1 Terra from 1.5.0, as the entry served here before it did.
+    expect(catalog.getModel("openai-codex", "gpt-6.1-terra")).toMatchObject({
+      contextWindow: 500_000,
+      maxTokens: 128_000,
+      cost: { input: 1, output: 5, cacheRead: 0.05, cacheWrite: 1.25 },
+    });
     expect(catalog.getModel("openrouter", "anthropic/claude-opus-5")).toBeDefined();
     expect(catalog.getModel("claude", "claude-opus-5")?.api).toBe("claude-agent-sdk");
     // The same backend on an API key is a provider of its own, with the same catalog and prices,

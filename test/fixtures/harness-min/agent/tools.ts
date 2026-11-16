@@ -1,7 +1,8 @@
-// A v1-shaped harness for test/harness-tools.test.ts: it imports the agent bundle, pi-ai's `Type`
-// and a local helper, as a Built Harness's tools.ts does.
-import { type DomainHarnessFactory, defineDraftTool } from "@ana/agent-bundle";
-import { Type } from "@earendil-works/pi-ai";
+// A v1-shaped harness for test/harness-tools.test.ts: it imports the agent bundle, its `Type`
+// and a local helper, as a Built Harness's tools.ts does. pi-ai has exported no `Type` since 1.5.0,
+// so a harness's import of it from pi-ai, which `open.ts` resolves to the same shim, is held by
+// the inline harnesses of that test and of test/studies-harness2.test.ts, which no typecheck reads.
+import { type DomainHarnessFactory, defineDraftTool, Type } from "@ana/agent-bundle";
 import { readFileSync } from "node:fs";
 import { scaled } from "./helper.ts";
 

@@ -204,7 +204,7 @@ each pull request stacks on the one before. Nothing in an iteration is merged; t
    central host holds takes `--host here`. Name a pull request's head by its number in the ledger
    and read it (`gh pr view <n> --json headRefOid`) at the launch itself, also in a script that
    launches once a login frees a slot: a landing beneath replays the pull requests above it onto new
-   heads. Tag `run/<name>/1` at the commit and push it.
+   heads. Tag the commit and push the tag, as run-management writes it.
 3. **Read** with `wri2p2.ts` at every review and milestone, resolving each prediction the hour its
    event lands. A defect seen live goes into the plan; the run is not stopped to fix it. When the
    stack moves while runs are live, each `measures` line of `wri2p2.ts due` counts the files of the

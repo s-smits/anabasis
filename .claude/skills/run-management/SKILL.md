@@ -121,8 +121,10 @@ in `launch-run-<n>.out` and `.err` beside the receipt `launch-run-<n>.json`. Out
   operator's word that its times will not be compared.
 
 The receipt records flags, commit, dirty state, load and Bun; the log holds code by content, so the
-commit is on record only there. Once the run starts, tag it:
-`git tag run/<name>/<n> <commit> && git push origin run/<name>/<n>`.
+commit is on record only there. Once the run starts, tag the commit by its own first nine
+characters: `git tag -f run/<nine> <commit> && git push origin run/<nine>`. A tag is published and
+a run's name ends in its machine's, so the tag holds no name; any ref that names the commit at the
+remote publishes it (`publishedAt`), and `runs source <name>` says which commit a run ran.
 
 A name is the folder `.ana/d2/<name>/`, chosen once and never reused: letters, digits, `.`, `_`,
 `-`, at most 128 characters, no `..` (`isSafePathSegment`). Every launch appends its machine's name,

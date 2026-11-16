@@ -229,7 +229,7 @@ export function sources(log: string, repo: string, fixes: readonly string[]): st
   }
   return launches.flatMap((launch, at) => {
     // The remote branches and the tags that hold the commit: where an outside reader can open it,
-    // and a tag `run/<name>/<n>` (run-management) keeps it after its branch is rewritten. None for a
+    // and the tag of a run's commit (run-management) keeps it after its branch is rewritten. None for a
     // commit never pushed, and for one this repository does not hold.
     const refs = ["--format=%(refname:lstrip=2)", "refs/remotes", "refs/tags"];
     const branches = (gitMaybe(repo, "for-each-ref", "--contains", launch.commit, ...refs) ?? "")

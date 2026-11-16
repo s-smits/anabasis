@@ -5,8 +5,8 @@
  *
  * For the solves each side of each comparison ran, as the folds place them (`Solve.role`,
  * `folds.ts`): how they ended, their turns against the bound their start set and how many used every
- * turn, their seconds and share of the deadline at the median and the most, the calls that ran to
- * the shell's default limit, the time the solve queue held them (`campaign.waited`) and the load at
+ * turn, their seconds and share of the deadline at the median and the most, the calls as long as the
+ * shell's default limit or longer, the time the solve queue held them (`campaign.waited`) and the load at
  * their starts. `WALL SHARE` gives the median share alone, which hides a side whose few long solves
  * met the deadline.
  *
@@ -20,8 +20,9 @@ import { isNumber, isString } from "#src/meta/json-shape.ts";
 import { median } from "#src/meta/tally.ts";
 import { type Index, measured, type Solve } from "./folds.ts";
 
-/** A call within this share of the shell's default limit ran to it. */
-const AT_SHELL_LIMIT = 0.95;
+/** A call that ran this share of the shell's default limit or more is long. It may have set a longer
+ *  timeout and finished inside it, so the count is of long calls and not of calls the shell cut. */
+const LONG_CALL = 0.95;
 const SIDES = new Set(["old", "new", "both"]);
 const HOUR_S = 3600;
 
@@ -38,7 +39,7 @@ function comparisonsOf(index: Index): Map<string, string> {
   return of;
 }
 
-/** The calls of each solve that ran to its shell's default limit. */
+/** The long calls of each solve (`LONG_CALL`). */
 function longCalls(index: Index): Map<string, number> {
   const long = new Map<string, number>();
   const solves = new Map(index.solves.map((solve) => [solve.id, solve]));
@@ -47,7 +48,7 @@ function longCalls(index: Index): Map<string, number> {
     const solve = solves.get(each.id);
     const limit =
       solve === undefined ? undefined : index.conditions.get(solve.condition)?.limits.shellDefaultSeconds;
-    if (isNumber(limit) && each.ms >= limit * 1000 * AT_SHELL_LIMIT) {
+    if (isNumber(limit) && each.ms >= limit * 1000 * LONG_CALL) {
       long.set(each.id, (long.get(each.id) ?? 0) + 1);
     }
   }
@@ -87,7 +88,7 @@ function block(
   const calls = solves.reduce((sum, solve) => sum + (long.get(solve.id) ?? 0), 0);
   return [
     `${name}: ${String(solves.length)} solves, ${String(done.length)} measured; ${[...endings].map(([ending, each]) => `${ending} ${String(each.length)}`).join(", ")}`,
-    `  turns median ${said(median(turns))}, most ${said(most(turns))} of ${[...bound].map((each) => said(each)).join("/")}, ${String(done.filter((solve) => solve.limit === "last turn").length)} at the last turn · seconds median ${said(median(seconds))}, most ${said(most(seconds))} · deadline median ${percent(median(shares))}, most ${percent(most(shares))}, ${String(atLimit)} ended at a limit · calls at the shell's limit ${String(calls)} · queued ${waited.toFixed(1)} h · load per core median ${said(median(loads), 2)}`,
+    `  turns median ${said(median(turns))}, most ${said(most(turns))} of ${[...bound].map((each) => said(each)).join("/")}, ${String(done.filter((solve) => solve.limit === "last turn").length)} at the last turn · seconds median ${said(median(seconds))}, most ${said(most(seconds))} · deadline median ${percent(median(shares))}, most ${percent(most(shares))}, ${String(atLimit)} ended at a limit · calls as long as the shell's default ${String(calls)} · queued ${waited.toFixed(1)} h · load per core median ${said(median(loads), 2)}`,
   ];
 }
 

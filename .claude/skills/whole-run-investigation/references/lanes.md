@@ -738,8 +738,9 @@ reaches answers within it that the reference misses; a budget nobody nears leave
 the objective. By comparison and side, read `MISSES AT A LIMIT`, `WALL SHARE` (deadline and turns)
 and effort on tasks both answered, and say whether the budget binds on both, on the reference only
 or on neither (`budget.txt` gives each comparison's sides with their endings, turns and seconds
-against the bound, the solves ended at a limit, the calls that ran to the shell's limit, hours
-queued and load a core). Deadlines count elapsed time, so read load (`HOST LOADED`, `LOAD MOVED`) and waits
+against the bound, the solves ended at a limit, the calls as long as the shell's default limit or
+longer, which counts a call that set a longer timeout and finished inside it, hours queued and load
+a core). Deadlines count elapsed time, so read load (`HOST LOADED`, `LOAD MOVED`) and waits
 (`STARTS OUT OF TURN`, `campaign.waited`) beside them. Since non-results are rerun and fails count,
 say whether each kind is honest and reruns fell evenly (`NON-RESULTS`). Separate solves killed from
 those still open (`bun run runs pulse`), and say whether a crash, a missing tool or another served

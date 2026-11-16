@@ -22,7 +22,7 @@ function solve(
   harness: string,
   comparison: string,
   end: JsonObject,
-  callMs: readonly number[] = [],
+  calls: readonly (readonly [ms: number, timeout?: number])[] = [],
 ) {
   const condition = conditionOf("t-1", harness);
   const named = conditionId(condition);
@@ -37,8 +37,15 @@ function solve(
       cores: 4,
       limits: { wallSeconds: 1000, modelTurns: 10 },
     }),
-    ...callMs.map((ms) =>
-      event("solve.call", { solve: id, tool: "bash", args: {}, ms, isError: false, text: "" }),
+    ...calls.map(([ms, timeout]) =>
+      event("solve.call", {
+        solve: id,
+        tool: "bash",
+        args: timeout === undefined ? {} : { timeout },
+        ms,
+        isError: false,
+        text: "",
+      }),
     ),
     event("solve.finished", { solve: id, seconds: 100, turns: 3, ...end }),
   ];
@@ -49,13 +56,12 @@ describe("budget", () => {
     const log = [
       event("comparison.started", { session: "g-1", old: "h1", fresh: "h2" }),
       event("comparison.started", { session: "g-2", old: "h2", fresh: "h3" }),
-      ...solve(
-        "s-1",
-        "h1",
-        "g-1",
-        { ending: { outcome: "pass" }, turns: 10, seconds: 950 },
-        [299_000, 10_000],
-      ),
+      ...solve("s-1", "h1", "g-1", { ending: { outcome: "pass" }, turns: 10, seconds: 950 }, [
+        [299_000],
+        [280_000],
+        [10_000],
+        [400_000, 600],
+      ]),
       ...solve("s-2", "h1", "g-1", { ending: { outcome: "fail", kind: "wall-ended" }, seconds: 1000 }),
       // A provider error at the last turn is no result, and counts at no limit.
       ...solve("s-3", "h1", "g-1", { ending: { outcome: "provider" }, turns: 10, seconds: 900 }),
@@ -75,7 +81,9 @@ describe("budget", () => {
     const detail = rows[old + 1] ?? "";
     expect(detail).toContain("1 at the last turn");
     expect(detail).toContain("most 100%, 1 ended at a limit");
-    expect(detail).toContain("calls at the shell's limit 1");
+    // Against a default of 300 s: 299 s is long and 280 s is not, and 400 s under the 600 s timeout
+    // the call set is long though nothing cut it.
+    expect(detail).toContain("calls as long as the shell's default 2");
     expect(detail).toContain("queued 0.5 h");
     expect(detail).toContain("load per core median 2.00");
     expect(rows.some((row) => row.startsWith("g-1 new h2"))).toBe(true);

@@ -149,6 +149,43 @@ function waitedIn(waits: readonly Call[], from: string, to: string): number {
   return total / HOUR_MS;
 }
 
+/** The Builder's `wait` calls. */
+const builderWaits = (events: readonly LogEvent[]) =>
+  tracesIn(events).filter(
+    (each): each is Call => each.seat === "build" && each.part === "call" && each.tool === "wait",
+  );
+
+/** The pool on the first `upTo` events and what comparison admission refuses there. */
+function poolOn(events: readonly LogEvent[], upTo: number) {
+  const prefix = events.slice(0, upTo);
+  const supply = supplyOf(prefix);
+  const codes = refusals(supply, askedOf(planOn(prefix))).map(({ code }) => code);
+  const refused = codes.length === 0 ? "nothing" : codes.join(", ");
+  return {
+    open: codes.length === 0,
+    text: `${String(supply.held)} held out, ${String(supply.released)} released · admission refuses ${refused}`,
+  };
+}
+
+/** The line at which admission first refused a first comparison nothing, and what the campaign then
+ *  took to begin one (to the log's end where none began): the hours, and those of them inside
+ *  Builder waits. Null where none became admissible. On 15 November a campaign held eight tasks at
+ *  3.0 hours and compared at 5.6, and its hours to a first comparison read as the Examiner's. */
+export function heldOff(events: readonly LogEvent[]) {
+  const first = events.findIndex(({ kind }) => kind === "comparison.started");
+  const index = events
+    .slice(0, first === -1 ? events.length : first)
+    .findIndex(
+      ({ kind }, at) => (kind.startsWith("task.") || POINTS.has(kind)) && poolOn(events, at + 1).open,
+    );
+  if (index === -1) return null;
+  const from = events[index]?.at ?? "";
+  const to = events[first === -1 ? events.length - 1 : first]?.at ?? from;
+  const hours = (Date.parse(to) - Date.parse(from)) / HOUR_MS;
+  const said = `${hours.toFixed(2)} h ${first === -1 ? "to the log's end, none begun" : "before one began"}, ${waitedIn(builderWaits(events), from, to).toFixed(2)} h of it inside Builder waits`;
+  return { index, said };
+}
+
 /** Each change with how long it stood: until the move it names begins, the table names another, or
  *  the log ends. */
 function stoodOf(events: readonly LogEvent[], tableAt: (upTo: number) => Table, waits: readonly Call[]) {
@@ -207,26 +244,14 @@ export function timelineLines(events: readonly LogEvent[], here: string): string
     if (digest === null) return NOT_RECORDED;
     return `${digest === here ? "=" : ""}${digest.slice(0, 8)}`;
   };
-  const waits = tracesIn(events).filter(
-    (each): each is Call => each.seat === "build" && each.part === "call" && each.tool === "wait",
-  );
+  const waits = builderWaits(events);
   const rows = new Map<number, string[]>();
   const put = (index: number, what: string) => {
     const at = (events[index]?.at ?? "").slice(0, 16);
     const row = `${String(index + 1).padStart(6)}  ${at}Z  ${ranAt(index).padEnd(12)}  ${what}`;
     rows.set(index, [...(rows.get(index) ?? []), row]);
   };
-  // The pool on the first `upTo` events and what comparison admission refuses there.
-  const poolAt = (upTo: number) => {
-    const prefix = events.slice(0, upTo);
-    const supply = supplyOf(prefix);
-    const codes = refusals(supply, askedOf(planOn(prefix))).map(({ code }) => code);
-    const refused = codes.length === 0 ? "nothing" : codes.join(", ");
-    return {
-      open: codes.length === 0,
-      text: `${String(supply.held)} held out, ${String(supply.released)} released · admission refuses ${refused}`,
-    };
-  };
+  const poolAt = (upTo: number) => poolOn(events, upTo);
   for (const change of stoodOf(events, tableAt, waits)) {
     const { upTo, table, hours, waited, until } = change;
     put(
@@ -234,15 +259,11 @@ export function timelineLines(events: readonly LogEvent[], here: string): string
       `table      replayed ${table.key} · ${poolAt(upTo).text} · named ${hours.toFixed(2)} h, ${waited.toFixed(2)} h of it inside Builder waits, until ${until}`,
     );
   }
-  // Where a first comparison became admissible.
-  const first = events.findIndex(({ kind }) => kind === "comparison.started");
-  const admissible = events
-    .slice(0, first === -1 ? events.length : first)
-    .findIndex(({ kind }, index) => (kind.startsWith("task.") || POINTS.has(kind)) && poolAt(index + 1).open);
-  if (admissible !== -1) {
+  const held = heldOff(events);
+  if (held !== null) {
     put(
-      admissible,
-      `admissible a first comparison from ${(events[admissible]?.at ?? "").slice(11, 19)}: ${poolAt(admissible + 1).text}`,
+      held.index,
+      `admissible a first comparison from ${(events[held.index]?.at ?? "").slice(11, 19)}: ${poolAt(held.index + 1).text} · ${held.said}`,
     );
   }
   const moves = events.flatMap((event, index) => (event.kind === MOVED ? [index] : []));

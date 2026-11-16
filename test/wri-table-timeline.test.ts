@@ -7,7 +7,7 @@ import { conditionId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
-import { timelineLines } from "../tools/wri/table-timeline.ts";
+import { heldOff, timelineLines } from "../tools/wri/table-timeline.ts";
 import { conditionOf } from "./helpers/logged-round.ts";
 
 const OPENED: JsonObject = {
@@ -97,6 +97,13 @@ describe("table-timeline", () => {
     // first comparison's start is a first position.
     expect(admissible).toHaveLength(1);
     expect(admissible[0]).toContain("from 00:10:00: 8 held out, 0 released · admission refuses nothing");
+    // The comparison began twenty minutes later, with no Builder wait between; a log that never
+    // compared counts to its end, at minute 40, and says so.
+    expect(admissible[0]).toEndWith("· 0.33 h before one began, 0.00 h of it inside Builder waits");
+    const never = log.events.filter(({ kind }) => kind !== "comparison.started");
+    expect(heldOff(never)?.said).toBe(
+      "0.50 h to the log's end, none begun, 0.00 h of it inside Builder waits",
+    );
     expect(rowsOf(lines, "move").at(-1)).toContain("8 held out, 1 released · admission refuses nothing");
     const short = logOf().add(3, "task.proposed", proposed("v-1"));
     expect(rowsOf(timelineLines(short.events, HERE), "admissible")).toHaveLength(0);

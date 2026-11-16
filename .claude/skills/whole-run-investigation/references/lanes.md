@@ -640,9 +640,11 @@ What stops the campaign climbing now, as one link with its count? Walk the lates
 
 `tools/wri/table-timeline.ts <log>` replays the table at each change beside the moves made: how
 long each named move stood, how much of that passed inside Builder waits, and what admission
-refused. Its `admissible` row marks where a first comparison could first start, and each `compare`
-move names the tasks held out and released as it began, so the Builder's calls between the two
-rows are what it chose instead of comparing. A row without `=` ran under other code, so its replay
+refused. Its `admissible` row marks where a first comparison could first start and gives the hours
+until one began with those inside Builder waits, which `ambition` repeats beside the hours to the
+first comparison, so that time read against earlier runs splits into the Examiner's and the
+Builder's. Each `compare` move names the tasks held out and released as it began, so the Builder's
+calls between the two rows are what it chose instead of comparing. A row without `=` ran under other code, so its replay
 is a counterfactual. `readings.txt`
 prints each comparison's cap, its reserve and the test's price, and whether it was cut. Name the
 link, its count against what it needed, and its owner, and for that link each change new since the

@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Every coding agent loads this file. It holds the system's invariants and a map; mechanisms live in
-skills, and the adjacent `CLAUDE.md` belongs to the operator. Four skills expand these sections
+skills; a `CLAUDE.md` is the operator's own, outside the tree. Four skills expand these sections
 under the same numbers: `design-and-seats` (1 to 3), `campaign-mechanics` (4 to 6),
 `comparison-reading` (7 and 8) and `repository-practice` (9 to 14). Read the owning skill before you
 change a mechanism or answer a question about one: its `SKILL.md` indexes its references by section,
@@ -24,10 +24,11 @@ counted. An audit, review or plan asked for on its own stays read-only. Backlog 
 `docs/backlog/<subject>.md`: the intended changes, then their history in the operator's words.
 
 **The operator's own machines.** What is true only on the operator's machines (hosts, logins,
-accounts, local jobs, check runners and the caps they set) lives in a local skill,
-`operator-machines`, which Git ignores and nothing publishes. Where present, read it before the
-first command; on those machines it wins over this file. Keep its contents out of every tracked
-file, commit message and pull request, a run's full name included, since it ends in its host.
+accounts, local jobs, check runners, caps), with its workflows (what runs on which host, and when),
+is in the operator's `CLAUDE.md`, which no other user has and nothing publishes. A session that has
+it reads it at its start and again before deciding where or when to run something; there it wins
+over this file. Keep its contents out of every tracked file, commit message and pull request, a
+run's full name included.
 
 ## 1. What Anabasis does
 
@@ -392,10 +393,9 @@ run against its trigger: pause one that has reached it after its next comparison
 put the fix on the stack and fork fresh runs at its head within the grants the cycle's ledger
 records, parking none of it behind a question; a rehearsal settles a doubt at no cost. A stop no
 trigger names, section 3's other decisions and every merge stay the operator's. Wake on events
-instead of the clock: `runs alerts` says each new promotion, starter read, ending and stall, and the
-anti-stall hook, on by default and paused only on the operator's word, runs `bun run runs pulse`
-every 290 seconds and wakes an idle session only on a line worth reading. A timer is for a
-judgement no event announces.
+instead of the clock: `runs alerts` says each new promotion, starter read, ending and stall, and
+`bun run runs pulse` every 290 seconds, from a session's hook where the machine has one, wakes an
+idle session only on a line worth reading. A timer is for a judgement no event announces.
 
 ## 11. Working in the repository
 

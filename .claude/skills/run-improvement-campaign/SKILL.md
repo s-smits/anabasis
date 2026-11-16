@@ -496,15 +496,15 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    bench is a paid simulation beside the live runs: the same command with `--yes`, from a worktree
    at a published commit, with the shim running, the arms in turn and never two processes on one
    store, since a judgement's dollars are the shim log's rows inside its window. It is started so
-   that it outlives the session and is never waited for. An arm rolls one task at a time and judges it before the next, nothing else runs on the machine beside it, and
-   what an arm left in the machine's temporary folder is cleared before the next arm begins, so that
-   every rollout meets the same machine (operator, 12 November 2026). Every arm
-   keeps the one condition `score.ts` states in its head comment. On the two bills on record a
-   rollout costs 9 to 11 dollars with its judging, most of it the judge (124 dollars for 11 on
-   5 November 2026, about 85 for 9 on 9 November). Where no judge noise is on record,
-   `compare.ts rejudge` and `agree` read it from the existing deliverables for tens of dollars, and
-   come before any new arm (the backlog's item 15); a reading under a wider cut than the judge's
-   (`rejudge --cap`) is judged apart, on the operator's word, and never replaces the official score.
+   that it outlives the session and is never waited for. An arm rolls one task at a time and judges
+   it before the next, with nothing else loading the machine, so that every rollout meets the same
+   machine; the operator's `CLAUDE.md` says which machine and how. Every arm keeps the one
+   condition `score.ts` states in its head comment. On the two bills on record a rollout costs 9 to
+   11 dollars with its judging, most of it the judge (124 dollars for 11 on 5 November 2026, about
+   85 for 9 on 9 November). Where no judge noise is on record, `compare.ts rejudge` and `agree` read
+   it from the existing deliverables for tens of dollars, and come before any new arm (the backlog's
+   item 15); a reading under a wider cut than the judge's (`rejudge --cap`) is judged apart, on the
+   operator's word, and never replaces the official score.
 5. **Read** with one `score.ts table --out <store> --tasks <list>` for each part, since the table
    sums an arm only where it holds every task named and counts every task but a profession's first
    as fair, and report its `fair uncut` block beside the fair one. A session that a login's limit or the provider cut is refused: it stays unjudged, and
@@ -645,8 +645,7 @@ bun .claude/skills/run-improvement-campaign/scripts/until.ts <log | folder | nam
 
 A timer and a wake both need a session that is alive and idle, so a step that must not wait for one
 is written as a hook: code with no model in the loop, tied to the event. The pause at a second
-promotion is the case. The alert says the promotion within minutes, yet until a session armed
-`runs pause <name> --after reported --yes` the run went on, and overnight nobody may be awake.
+promotion is the case: overnight no session may be awake to arm it once the alert says so.
 
 Two places take a hook. The local job that runs `runs alerts` pipes each look's new lines to a
 script, which acts on the line it names; this suits a step on a run, since it needs no session. A
@@ -658,10 +657,10 @@ skill with its scripts instead, which a hook can name in the line it writes.
 A hook takes only the step the protocol already grants at that event, here the pause at a trigger,
 and never a launch, a merge or another decision of `AGENTS.md` section 3. It writes one line to the
 log the alerts job writes, so that a session reads what was done and `wri2p2.ts due` then prints
-`waits` instead of `pause`. It starts a command that waits in a session of its own, since the job
-that fed it must end. And it carries a dry mode that prints the command, a way to leave one named
-run out, and in its head comment the operator's words it rests on. Hooks of the operator's own
-machines are listed in the local skill `operator-machines`.
+`waits` instead of `pause`, and it starts a command that waits in a session of its own, since the
+job that fed it must end. It carries a dry mode that prints the command, a way to leave one named
+run out and, in its head comment, the operator's words it rests on. The operator's `CLAUDE.md`
+lists the hooks of their machines.
 
 ### A firing
 

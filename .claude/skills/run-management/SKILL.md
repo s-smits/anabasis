@@ -81,8 +81,8 @@ under Git's `ana-code/`, a frozen install) and leaves the configured checkout al
 usable window and room under `ANA_LOGIN_RUNS` across the fleet, the week that resets soonest first;
 an explicit login at its cap is refused, and so is a launch whose fleet count is missing. On a peer
 it first checks that the environment holds the numbered key and, if not, asks for the login to be
-carried by the operator's procedure, which pipes the one line without printing it. No verb prints or
-carries a credential. Seats billed by another provider need no Claude login.
+carried, by a pipe that never prints it (the operator's `CLAUDE.md` holds the procedure). No verb
+prints or carries a credential. Seats billed by another provider need no Claude login.
 
 **Batches.** Several packs make one ordered plan (`fresh <pack> <pack> ... --logins <list>`), printed
 in full without `--yes`. The planner reserves each entry in its own counts, pins one commit, checks

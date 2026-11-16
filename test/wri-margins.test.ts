@@ -36,6 +36,16 @@ describe("lane 29: what an objective-only step won by", () => {
     expect(triggered(objectiveLog(0.05), "MARGINS INSIDE THE NOISE")).toEqual([`g-1 won 6 of 6 ${SAID}`]);
   });
 
+  it("names apart the wins where the new side repeated the reference's better answer, and not one between its two", () => {
+    // The new side measures 0.93 in every solve, tying the reference's 0.93 and beating its 1: half the
+    // A/A's 21 points, inside by construction, with no pairing lost.
+    expect(triggered(objectiveLog(0.07), "MARGINS INSIDE THE NOISE")).toEqual([
+      `g-1 won 6 of 6 ${SAID}, 6 of them where the new side repeated itself and lost no pairing`,
+    ]);
+    // At 0.95 it loses each pairing with the reference's 0.93, so its wins are not named apart.
+    expect(triggered(objectiveLog(0.05), "MARGINS INSIDE THE NOISE")).toEqual([`g-1 won 6 of 6 ${SAID}`]);
+  });
+
   it("stays silent where the margins exceed the A/A, and where validity split a task", () => {
     expect(triggered(objectiveLog(0.5), "MARGINS INSIDE THE NOISE")).toEqual([]);
     expect(triggered(objectiveLog(0.05, "split"), "MARGINS INSIDE THE NOISE")).toEqual([]);

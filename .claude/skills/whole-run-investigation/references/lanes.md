@@ -940,7 +940,10 @@ side read against itself under the same setting (the reference's is that report'
 exactly is the difference of two repeated answers: an effect on that instance, counted outside, of
 which the question is how far it carries (lane 17). A win larger than both sides' differences
 where only the reference repeated is counted outside too, so a step silent here whose sides repeat
-on some tasks is read from `pairs.txt` by lane 17. For
+on some tasks is read from `pairs.txt` by lane 17. A win where the new side repeated itself and lost
+no pairing stays inside, since repeating the better of the reference's two answers wins half its
+difference, and the line names how many: read those as consistency against a reference that
+splits, which only the test across tasks or a fresh repeat (the starter read) can show to hold. For
 each step, read the wins' margins beside the A/A's distribution (`pairs.txt` gives each task's
 margin beside its stored and rebuilt A/A, the A/A's quantiles, the reading on first and on second
 solves alone, the count of wins inside, level with and outside their own task's A/A, and each

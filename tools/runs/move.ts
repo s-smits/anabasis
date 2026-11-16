@@ -55,7 +55,8 @@
  * host read copies made by hand; until then a copy went to `.ana/fetched/`, which no reader read.
  * With no name it brings the record of every campaign whose log grew, and with `--whole` their
  * folders too, as a named campaign always comes; it then records where another model served a seat
- * than it asked for (`degradations.ts`).
+ * than it asked for (`degradations.ts`) and copies the benchmark score store from the machine
+ * that rolls the benchmark, where `BENCH_STORE` names it (`fetchBench`).
  */
 import { LOG_FILE } from "#src/kernel/log.ts";
 import { cpSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from "#src/meta/filesystem.ts";
@@ -71,7 +72,7 @@ import { quoted, rsync, shellOn, shellPath, sideOf } from "./host-command.ts";
 import { verbOn } from "./hosts.ts";
 import { stillRunning } from "./diagnosis.ts";
 import { CAMPAIGNS, HERE, Misused, processes, readNamed } from "./registry.ts";
-import { syncRuns } from "./snapshots.ts";
+import { fetchBench, syncRuns } from "./snapshots.ts";
 import { recordDegradations } from "./degradations.ts";
 import { continueRun, pause, said } from "./manage.ts";
 import { payerOf } from "./live.ts";
@@ -288,9 +289,11 @@ export async function fetch(args: readonly string[]): Promise<void> {
     throw new Error(`no host ANA_HOSTS lists holds a campaign ${name}`);
   }
   for (const log of copies) console.log(log);
-  if (name === undefined) {
-    for (const line of recordDegradations(copies, runtimeProcess.cwd())) console.log(line);
-  }
+  if (name !== undefined) return;
+  for (const line of recordDegradations(copies, runtimeProcess.cwd())) console.log(line);
+  // The gather keeps the benchmark scores here beside the campaigns whose references they read.
+  const bench = await fetchBench();
+  if (bench !== null) console.log(bench);
 }
 
 /** `bun run runs copy`. */

@@ -18,6 +18,9 @@ import { hashJsonValue } from "../meta/stable-json.ts";
 import type { LogEvent } from "./log.ts";
 import type { Task } from "./verify.ts";
 
+/** A task no session proposed came with the opening: a stored pack's or the drafted exam's. */
+export const OPENING = "the opening exam";
+
 /** A `task.proposed` event. A pack's task is proposed by its id and its family. A task an Examiner
  *  session wrote is logged whole, since no pack holds it. */
 interface Proposal {
@@ -64,6 +67,10 @@ export function proposalsOf(events: readonly LogEvent[]): Proposal[] {
     ];
   });
 }
+
+/** Each task's writer: the session that proposed it, or the opening. */
+export const writersOf = (events: readonly LogEvent[]) =>
+  new Map(proposalsOf(events).map(({ version, session }) => [version, session ?? OPENING]));
 
 /** Accepted answers for one proposed version. They remain on the exam side. */
 export function acceptedAnswers(events: readonly LogEvent[], version: string | undefined): JsonValue[] {

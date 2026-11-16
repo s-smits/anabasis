@@ -28,7 +28,7 @@ import { epochsOf, tasksByEpoch } from "#src/campaign/climb.ts";
 import { REFERENCE_HOME } from "#src/examiner/shell.ts";
 import { gapAgainst, type Paired } from "#src/kernel/compare.ts";
 import { conditionsOf } from "#src/kernel/condition.ts";
-import { proposalsOf } from "#src/kernel/history.ts";
+import { OPENING, proposalsOf, writersOf } from "#src/kernel/history.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { lastReports, pairsReported, type Reported, taskRecords } from "#src/kernel/reports.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
@@ -101,7 +101,6 @@ interface Measured {
   readonly ratios: number[];
 }
 
-const OPENING = "the opening exam";
 const NOT_RECORDED = "not recorded";
 
 /** A harness by its digest's prefix, the starter marked where the reports name one. */
@@ -265,7 +264,7 @@ function tick(row: Measured, pair: Paired, side: "old" | "fresh", best: number |
 
 /** Each side's valid measures against the author's best, by writer and harness. */
 function measuredOf(events: readonly LogEvent[], reported: readonly PairedReport[]): Measured[] {
-  const writers = new Map(proposalsOf(events).map(({ version, session }) => [version, session ?? OPENING]));
+  const writers = writersOf(events);
   const bests = new Map(taskRecords(events).records.map(({ version, best }) => [version, best]));
   const rows = new Map<string, Measured>();
   for (const { report, pairs } of reported) {

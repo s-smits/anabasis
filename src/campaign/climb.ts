@@ -22,7 +22,7 @@ import {
   testedSet,
   testOf,
 } from "../kernel/compare.ts";
-import { proposalsOf } from "../kernel/history.ts";
+import { OPENING, writersOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
 import { billedBetween } from "../kernel/meter.ts";
@@ -385,10 +385,7 @@ export function unselectedOf(ahead: readonly number[], level: number): Unselecte
 export function starterReads(events: readonly LogEvent[]): StarterRead[] {
   const reports = lastReports(events);
   const epochs = epochsOf(events);
-  // A task no session proposed came with the opening: a stored pack's or the drafted exam's.
-  const writers = new Map(
-    proposalsOf(events).map(({ version, session }) => [version, session ?? "the opening exam"]),
-  );
+  const writers = writersOf(events);
   return epochs.flatMap((epoch, nth) => {
     const report = reports.find(({ session }) => session === epoch.starter_read);
     const fresh = report?.data.fresh;
@@ -430,7 +427,7 @@ export function starterReads(events: readonly LogEvent[]): StarterRead[] {
         rows: pairs.map((pair) => ({
           task: pair.task,
           origin: originOf(pair),
-          writer: writers.get(pair.task) ?? "the opening exam",
+          writer: writers.get(pair.task) ?? OPENING,
           margin: -differenceOf(pair),
           pair,
         })),

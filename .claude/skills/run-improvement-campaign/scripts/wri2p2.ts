@@ -86,7 +86,14 @@ import {
   waiters,
   wholeLines,
 } from "#tools/runs/registry.ts";
-import { DRIVER, openingCommand, type Progress, progressOf, triggerOf } from "#tools/runs/said.ts";
+import {
+  clockTurns,
+  DRIVER,
+  openingCommand,
+  type Progress,
+  progressOf,
+  triggerOf,
+} from "#tools/runs/said.ts";
 import { catalogueText, lanesOf } from "#tools/wri/catalogue.ts";
 import { INVESTIGATION, SHARED, SYNTHESIS, VETTING } from "#tools/wri/index.ts";
 import { blankSections, reportPath } from "#tools/wri/investigation.ts";
@@ -571,7 +578,8 @@ export const keptIn = (deviations: readonly string[], name: string, trigger: str
         (!trigger.endsWith(" promotions") || reason.includes(trigger)),
     )?.[1] ?? null;
 
-/** The step of a run no investigation reads yet: `run` before its trigger; at the trigger of a live
+/** The step of a run no investigation reads yet: `run` before its trigger, with the second a live
+ *  run's clock trigger `turns` where the caller read it (`clockTurns`); at the trigger of a live
  *  run, a pause after its next comparison, `waits` once a pause of it is armed here, or `kept` where
  *  a deviation keeps it (`keptIn`); and `open` once it has stopped, so the investigation reads the
  *  comparison the pause waited for. */
@@ -580,8 +588,11 @@ export function openingOf(
   trigger: string | null,
   running: readonly Running[],
   kept: string | null = null,
+  turns: string | null = null,
 ): string[] {
-  if (trigger === null) return ["step: run"];
+  if (trigger === null) {
+    return [row.live && turns !== null ? `step: run · its clock trigger turns at ${turns}` : "step: run"];
+  }
   const command = `  ${openingCommand(row.name, row.live, row.host === HERE ? "" : `on ${row.host} `)}`;
   if (!row.live) return [`step: open · ${trigger}`, command];
   if (waiters(row.name, running).length > 0) {
@@ -611,7 +622,7 @@ function standings(args: CommandArgs, repo: string, known: readonly Run[], parts
     const trigger = triggerOf(row);
     const step =
       folder === undefined
-        ? openingOf(row, trigger, running, keptIn(deviations, row.name, trigger ?? ""))
+        ? openingOf(row, trigger, running, keptIn(deviations, row.name, trigger ?? ""), clockTurns(row, now))
         : nextOf(folder.dir, iteration);
     const commit = lastLaunch(run.path)?.commit ?? null;
     return [{ row, last: Date.parse(events.at(-1)?.at ?? ""), commit, dir: folder?.dir ?? null, step }];
@@ -638,8 +649,9 @@ function rows(args: CommandArgs, repo: string, known: readonly Run[]): number {
 /**
  * The short view a timer reads instead of walking the folders: a head line, then one line for each
  * step that is owed, a live run's unread trigger first and then the longest-standing, with the
- * command that prints the step whole. Runs that share a folder's step share its line. A step is
- * timed from the last write under its folder (`writtenAt`), a closed run's unread trigger from its
+ * command that prints the step whole, and last one line for each live run still before its trigger
+ * with the second its clock turns, after which a one-shot for it reads `due`. Runs that share a
+ * folder's step share its line. A step is timed from the last write under its folder (`writtenAt`), a closed run's unread trigger from its
  * last event, and one that has stood for `days` or more is only counted, since nobody is taking it.
  */
 export function dueLines(
@@ -649,8 +661,10 @@ export function dueLines(
   days = 2,
 ): string[] {
   const owed = new Map<string, { name: string; where: string; hours: number; runs: string[] }>();
+  const turning: string[] = [];
   for (const { row, last, dir, step } of standing) {
     const { name = "", rest = "" } = step.map((line) => STEP.exec(line)?.groups).find(Boolean) ?? {};
+    if (row.live && name === "run" && rest !== "") turning.push(`run · ${row.name} · ${rest}`);
     if (QUIET.has(name)) continue;
     const command = step.find((line) => line.startsWith("  "))?.trim() ?? `bun ${DRIVER} open ${row.name}`;
     // A live run's trigger has stood for no time a clock here reads, so it is new: listed first,
@@ -683,6 +697,7 @@ export function dueLines(
       : [
           `and ${String(left)} of them owed for ${String(days)} day(s) or more: take each or pass it with a row in its deviations.md`,
         ]),
+    ...turning,
   ];
 }
 

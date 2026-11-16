@@ -665,7 +665,10 @@ judgement.
    link, event, status), ranked by first failed link and then by how many runs show it.
 3. **Chain or rest**: where `due` still lists a step this session can take, set a one-shot ten
    minutes on that carries the same prompt; otherwise wait on the next event with `until.ts`, and
-   set a one-shot only at a deadline no event marks. Delete replaced timers by id.
+   set a one-shot only at a deadline no event marks. A live run's clock is such a deadline: `due`
+   prints the second it turns, and its one-shot goes on the minute after that second, since a
+   timer on the opening's own minute reads the run seconds short of its trigger. Delete replaced
+   timers by id.
 4. **Log** one row where something changed: the time the clock gave, what moved, the rows resolved
    and the timer changes. Speak to the operator only when a milestone landed, a run stalled or
    ended, or a prediction resolved.

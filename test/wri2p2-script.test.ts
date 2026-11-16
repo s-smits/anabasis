@@ -12,7 +12,7 @@ import {
   openingOf,
   unmeasured,
 } from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
-import { progressOf as rowOf, triggerOf } from "#tools/runs/said.ts";
+import { clockTurns, progressOf as rowOf, triggerOf } from "#tools/runs/said.ts";
 import { forkOf, idsOf, outcomesOf, pullOf } from "#tools/wri/ledger.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import {
@@ -657,6 +657,29 @@ describe("the short view a timer reads", () => {
       now,
     );
     expect(lines).toEqual(["due at 2026-11-08T04:00Z · nothing owed · 1 run(s) live"]);
+  });
+
+  it("says the second a live run's clock trigger turns, which a timer set to the minute would miss", () => {
+    // Opened 46.5 s past the minute: at twelve hours past that minute the trigger has not turned.
+    const opened = [event(46.5 / 3600, "campaign.opened")];
+    const minute = OPENED + 12 * HOUR;
+    const early = rowOf({ name: "r1", host: "here", live: true }, opened, minute);
+    expect(triggerOf(early)).toBeNull();
+    const turns = clockTurns(early, minute);
+    expect(turns).toBe("2026-11-04T12:00:47Z");
+    // Hostile: the trigger stands at the second said and not at the one before it.
+    const read = (when: number) => triggerOf(rowOf({ name: "r1", host: "here", live: true }, opened, when));
+    expect(read(Date.parse(turns))).toBe("12.0 h since its opening");
+    expect(read(Date.parse(turns) - 1000)).toBeNull();
+    const step = openingOf(early, null, [], null, turns);
+    expect(step).toEqual([`step: run · its clock trigger turns at ${turns}`]);
+    const lines = dueLines([{ row: early, last: minute, dir: null, step }], changedAt, minute);
+    expect(lines).toEqual([
+      "due at 2026-11-04T12:00Z · nothing owed · 1 run(s) live",
+      `run · r1 · its clock trigger turns at ${turns}`,
+    ]);
+    // A stopped run has no clock to wait for.
+    expect(openingOf({ ...early, live: false }, null, [], null, turns)).toEqual(["step: run"]);
   });
 
   it("lists a live run's trigger first, then the longest-standing step, one line a folder's step", () => {

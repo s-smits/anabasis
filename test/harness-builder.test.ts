@@ -89,7 +89,7 @@ describe("the campaign's executing Bun", () => {
     const flags = ["--name", "pinned", ...opening, ...seats, "--moves", "0"];
     const result = runSync([capturedExecPath, join(tree, "tools/d2/harness-builder.ts"), ...flags], {
       cwd: root,
-      env: { PATH: "/usr/bin:/bin", HOME: root, CLAUDE_CODE_OAUTH_TOKEN: "fixture" },
+      env: { PATH: "/usr/bin:/bin", HOME: root, CLAUDE_CODE_OAUTH_TOKEN: "fixture", ANA_TEST_TMPDIR: root },
     });
     expect(result.exitCode).toBe(1);
     expect(decodeOutput(result.stderr)).toContain(`${join(tree, "package.json")}: `);

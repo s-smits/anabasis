@@ -103,9 +103,6 @@ describe("a run's step at its trigger", () => {
   it("waits while a pause of the run is armed, and opens once the run has stopped", () => {
     const armed = pausing(["bun", "tools/runs/cli.ts", "pause", "r1", "--after", "reported", "--yes"]);
     expect(openingOf(row, "2 promotions", armed)[0]).toStartWith("step: waits");
-    // A `continue --after` stops the run too, so it is the pause's waiter as well (`waiters`).
-    const continuing = pausing(["bun", "tools/runs/cli.ts", "continue", "r1", "--after", "compacted"]);
-    expect(openingOf(row, "2 promotions", continuing)[0]).toStartWith("step: waits");
     expect(
       openingOf(row, "2 promotions", pausing(["bun", "tools/runs/cli.ts", "continue", "r1"]))[0],
     ).toStartWith("step: pause");
@@ -114,6 +111,25 @@ describe("a run's step at its trigger", () => {
     );
     expect(openingOf({ ...row, live: false }, "2 promotions", armed)[0]).toBe("step: open · 2 promotions");
     expect(openingOf(row, null, [])).toEqual(["step: run"]);
+  });
+
+  it("owes the pause of a run a `continue --after` waits on, which starts it again and holds its one waiter", () => {
+    // 16 November 2026: a move armed at a compaction stood when the run promoted a second time, the
+    // pause was refused beside it, and this step read `waits`, which `due` does not count.
+    const moving = pausing(["bun", "tools/runs/cli.ts", "continue", "r1", "--after", "compacted"]);
+    const step = openingOf(row, "2 promotions", moving);
+    expect(step[0]).toStartWith("step: pause · 2 promotions; a continue --after of it waits in process 1");
+    expect(step[1]).toBe("  bun run runs pause r1 --after reported --yes");
+    const standing = { row: rowOf(row, [opening()], OPENED), last: OPENED, dir: null, step };
+    const due = dueLines([standing], () => OPENED, OPENED);
+    expect(due[0]).toContain("1 step(s) owed");
+    expect(due[1]).toContain("a continue --after of it waits in process 1");
+    // An armed pause still reads as waiting, and a row that keeps the run keeps it under such a move.
+    const armed = pausing(["bun", "tools/runs/cli.ts", "pause", "r1", "--after", "reported", "--yes"]);
+    expect(openingOf(row, "2 promotions", armed)[0]).toStartWith("step: waits");
+    expect(openingOf(row, "2 promotions", moving, "past 2 promotions, to three")[0]).toStartWith(
+      "step: kept",
+    );
   });
 
   it("keeps a live run past its trigger on a `pause:<run>` row with a reason, and owes nothing for it", () => {

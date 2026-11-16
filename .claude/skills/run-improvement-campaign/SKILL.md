@@ -130,8 +130,9 @@ owed steps only, as a timer takes it.
    (`decide`, "read a step, and was not promoted"). Past a promotion the pause waits until that
    promotion's starter comparison has tallied (`heldBy`), whichever comparison reports first,
    so a run rests with its newest promotion read. While the pause
-   waits the step is `waits`, which `due` does not count. Resolve the run's predictions into
-   `outcomes-<run>.md`, with the log's length.
+   waits the step is `waits`, which `due` does not count; beside a waiting `continue --after`, the
+   run's one waiter, a pause is refused and stays owed in `due`. Resolve the run's predictions
+   into `outcomes-<run>.md`, with the log's length.
 2. **Investigate** with whole-run-investigation, opened by `wri2p2.ts open` with the other triggered
    runs of the same code and pack as equals, once the run has stopped, so the synthesis reads the
    comparison the pause waited for. `open` still reads a run left live on a frozen copy

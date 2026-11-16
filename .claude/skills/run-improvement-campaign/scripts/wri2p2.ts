@@ -582,7 +582,9 @@ export const keptIn = (deviations: readonly string[], name: string, trigger: str
  *  run's clock trigger `turns` where the caller read it (`clockTurns`); at the trigger of a live
  *  run, a pause after its next comparison, `waits` once a pause of it is armed here, or `kept` where
  *  a deviation keeps it (`keptIn`); and `open` once it has stopped, so the investigation reads the
- *  comparison the pause waited for. */
+ *  comparison the pause waited for. A `continue --after` that waits on the run is its one waiter
+ *  (`waiters`) and no pause: it starts the run again and a pause is refused beside it, so the pause
+ *  stays owed and the step names the process that holds it. */
 export function openingOf(
   row: { readonly name: string; readonly host: string; readonly live: boolean },
   trigger: string | null,
@@ -595,14 +597,18 @@ export function openingOf(
   }
   const command = `  ${openingCommand(row.name, row.live, row.host === HERE ? "" : `on ${row.host} `)}`;
   if (!row.live) return [`step: open · ${trigger}`, command];
-  if (waiters(row.name, running).length > 0) {
+  const waiting = waiters(row.name, running);
+  const holders = running.filter(({ pid }) => waiting.includes(pid));
+  if (holders.some(({ args }) => args.includes("pause"))) {
     return [`step: waits · ${trigger}; its pause after the next comparison is armed`];
   }
   if (kept !== null) return [`step: kept · ${trigger}`, `deviated: pause:${row.name} · ${kept}`];
-  return [
-    `step: pause · ${trigger}; the investigation opens once the run stops after its next comparison`,
-    command,
-  ];
+  const [moving] = holders;
+  const owed =
+    moving === undefined
+      ? "the investigation opens once the run stops after its next comparison"
+      : `a continue --after of it waits in process ${String(moving.pid)} and starts it again, so no pause is armed and one is refused while it waits`;
+  return [`step: pause · ${trigger}; ${owed}`, command];
 }
 
 /** Where every campaign that moved in the last `--days` stands, and how many closed comparing nothing. */

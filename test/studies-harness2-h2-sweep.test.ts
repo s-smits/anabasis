@@ -277,7 +277,8 @@ const rubrics = JSON.parse(readFileSync(flag("--rubrics-file"), "utf8")).map((ru
   if (names.length > 0) appendFileSync(${JSON.stringify(join(root, "shim.jsonl"))}, JSON.stringify({ t: Date.now() / 1000, usage: { total_cost_usd: 0.01 } }) + "\\n");
   const passed = report.includes(rubric.needle);
   const overall_reasoning = names.length === 0 ? "No output files found in the model output directory." : report.includes("FLAKY") && index === 1 ? "Opus judge failed after 3 attempts" : passed ? "met" : "unmet";
-  return { index, weight: rubric.weight, result: { passed, score: passed ? rubric.weight : 0, overall_reasoning } };
+  // A rubric that fails is one criterion short of its weight in criteria, as a near miss is.
+  return { index, weight: rubric.weight, result: { passed, score: passed ? rubric.weight : 0, criteria_count: rubric.weight, criteria_passed: rubric.weight - (passed ? 0 : 1), overall_reasoning } };
 });
 const sum = (pick) => rubrics.reduce((all, rubric) => all + pick(rubric), 0);
 writeFileSync(flag("--details-file"), JSON.stringify({ total_score: sum((r) => r.result.score), max_score: sum((r) => r.weight), passed_count: rubrics.filter((r) => r.result.passed).length, total_count: rubrics.length, rubrics }));
@@ -527,10 +528,13 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     for (const [part, pattern] of [
       [
         all,
-        /^ {2}base +score 6\/10 \(60\.0%\) system 0\.50 \(build 0\.00, solve 0\.50\) judge 0\.04 solve hours /u,
+        /^ {2}base +score 6\/10 \(60\.0%\) criteria 8\/10 system 0\.50 \(build 0\.00, solve 0\.50\) judge 0\.04 solve hours /u,
       ],
-      [all, /^ {2}k1 +score 10\/10 \(100\.0%\) system 5\.75 \(build 5\.25, solve 0\.50\) judge 0\.04 /u],
-      [fairLines, /^ {2}heldout +score 5\/5 \(100\.0%\) system [\d.]+ \(build 3\.19, /u],
+      [
+        all,
+        /^ {2}k1 +score 10\/10 \(100\.0%\) criteria 10\/10 system 5\.75 \(build 5\.25, solve 0\.50\) judge 0\.04 /u,
+      ],
+      [fairLines, /^ {2}heldout +score 5\/5 \(100\.0%\) criteria 5\/5 system [\d.]+ \(build 3\.19, /u],
     ] as const) {
       expect(part.filter((line) => pattern.test(line))).toHaveLength(1);
     }

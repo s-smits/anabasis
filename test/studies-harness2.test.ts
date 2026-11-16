@@ -596,3 +596,66 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     expect(readdirSync(join(place, "tmp"))).toStrictEqual([]);
   }, 240_000);
 });
+
+describe("the arms table over a store of judged records", () => {
+  it("prints the judge's criteria beside an arm's points, and an unknown count where its details are gone", () => {
+    const out = join(root, "table");
+    /** One judged record of `arm`, and the judge's details with each rubric's criteria passed and read. */
+    const judged = (
+      arm: string,
+      task: string,
+      points: number,
+      rubrics: (readonly [number, number])[] | null,
+    ) => {
+      const key = task.replace("/", "__");
+      const label = `${arm}__${key}`;
+      mkdirSync(join(out, "judged", arm), { recursive: true });
+      writeFileSync(
+        join(out, "judged", arm, `${key}.json`),
+        capturedJsonStringify({
+          arm,
+          task,
+          label,
+          points,
+          total: 10,
+          solveUsd: 1,
+          judgeUsd: 1,
+          seconds: 60,
+          cut: [],
+        }),
+      );
+      if (rubrics === null) return;
+      const place = join(out, "dataset", task, "eval_result", `eval_${label}`);
+      mkdirSync(place, { recursive: true });
+      writeFileSync(
+        join(place, "claude-opus-5-5_judge.json"),
+        capturedJsonStringify({
+          rubrics: rubrics.map(([passed, count], index) => ({
+            index,
+            result: { criteria_passed: passed, criteria_count: count },
+          })),
+        }),
+      );
+    };
+    // A rubric pays all or nothing: `near` misses one criterion of four and loses six points to `far`.
+    judged("near", "stat/task2", 4, [
+      [3, 3],
+      [3, 4],
+    ]);
+    judged("far", "stat/task2", 10, [
+      [3, 3],
+      [4, 4],
+    ]);
+    judged("blind", "stat/task2", 10, null);
+    for (const arm of ["near", "far", "blind"]) judged(arm, "bio/task2", 10, [[2, 2]]);
+    const score = new URL("../studies/harness2/score.ts", import.meta.url).pathname;
+    const printed = decodeOutput(
+      runSync([capturedExecPath, score, "table", "--out", out, "--tasks", "stat/task2,bio/task2"]).stdout,
+    );
+    const line = (arm: string) =>
+      printed.split("\n").find((each) => each.trimStart().startsWith(`${arm} `)) ?? "";
+    expect(line("near")).toContain("score 14/20 (70.0%) criteria 8/9 ");
+    expect(line("far")).toContain("score 20/20 (100.0%) criteria 9/9 ");
+    expect(line("blind")).toContain("score 20/20 (100.0%) criteria ?/? ");
+  });
+});

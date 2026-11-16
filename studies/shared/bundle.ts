@@ -74,12 +74,10 @@ const CONTAINER: Place = {
 };
 
 /** The machine this process runs on, where a rollout outside a container finds its programs. */
-export const HERE: Place = {
-  name: `this machine (${runtimeProcess.platform} ${runtimeProcess.arch})`,
-  mac: runtimeProcess.platform === "darwin",
-  machine: runtimeProcess.arch === "arm64" ? AARCH64 : X86_64,
-  roots: null,
-};
+export const HERE = placeOf(
+  `${runtimeProcess.platform}-${runtimeProcess.arch}`,
+  `this machine (${runtimeProcess.platform} ${runtimeProcess.arch})`,
+);
 
 /** Where an arm's harness came from, as its mount records it. */
 interface Origin {
@@ -168,6 +166,15 @@ export async function bundleArm(
   writeFileSync(join(part, MOUNT_RECORD), `${capturedJsonStringify(record, null, 2)}\n`);
   renameSync(part, into);
   return { digest: opened.digest, origin };
+}
+
+/** A machine outside any container, by its system and processor as Bun names them (`linux-x64`). */
+export function placeOf(named: string, name = named): Place {
+  const [platform = "", arch = ""] = named.split("-");
+  if (!["darwin", "linux"].includes(platform) || !["arm64", "x64"].includes(arch)) {
+    throw new Error(`'${named}' names no machine: darwin or linux, then arm64 or x64, as linux-x64`);
+  }
+  return { name, mac: platform === "darwin", machine: arch === "arm64" ? AARCH64 : X86_64, roots: null };
 }
 
 /** Refuses a tool tree holding a program `place` cannot run (another system's or processor's binary,

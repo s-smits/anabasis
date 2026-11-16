@@ -134,7 +134,7 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
     const lone = macTree("no-interpreter", { "tools/fast": MACH_O });
     const bare = standIn([], null);
     await expect(rebuildForeignPython(lone, LINUX, bare.python)).rejects.toThrow(
-      /tools\/fast, which no Python distribution or interpreter in the tree installed; py\/cp312 \(CPython 3\.12\.15\), as this machine has no managed CPython 3\.12\.15$/u,
+      /tools\/fast, which no Python distribution or interpreter in the tree installed; py\/cp312 \(CPython 3\.12\.15\), as uv installs no CPython 3\.12\.15 built for it$/u,
     );
     expect(bare.asked).toStrictEqual(["interpreter 3.12.15"]);
   });

@@ -476,6 +476,19 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    `<store>/trees/<label>` and no record. Where it cannot find the kept harness of a run another
    host holds, fetch the run first (`bun run runs fetch <name>`). Without `--judge-log` no
    judgement's dollars are recorded and the table prints `judge ?`.
+
+   A harness's programs run only on the kind of machine its campaign ran on, so where the read's
+   machine is another kind (a reference built on a Mac, read on Linux) the tree is written on the
+   campaign's host for that machine and carried into the store's `trees/` with its price:
+
+   ```sh
+   bun studies/harness2/score.ts tree --arm <campaign> --harness <kept> --name <label> \
+     --out <dir> --for linux-x64        # then <dir>/trees/<label> and <label>.build.json
+   ```
+
+   The export replaces the harness's interpreter and compiled distributions with the other
+   machine's at the same versions and names them under `rebuilt` in `export.json`, or refuses
+   (`studies/shared/foreign-python.ts`); the dry run there finds the tree and reads no campaign.
 4. **Run, detached, on the operator's standing word**, which covers the moment and the size
    above: the eight tasks, the reference and a Starter beside it at one rollout a task, on a login
    with room chosen as a keeper chooses one; each read's login and bill go into `cycle.md`. A larger

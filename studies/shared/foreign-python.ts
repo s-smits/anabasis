@@ -11,36 +11,32 @@
  * - a file a distribution's `RECORD` lists: that distribution is installed again for this machine,
  *   the same name at the same version, without its dependencies, over its foreign files;
  * - otherwise a file inside a CPython prefix (one holding `lib/pythonX.Y/os.py`): that interpreter
- *   is replaced by this machine's managed CPython of the same version, each executable by the one of
- *   its name and each foreign shared library dropped, and what the host's `lib` holds that the tree
+ *   is replaced by the place's CPython of the same version, each executable by the one of its name
+ *   and each foreign shared library dropped, and what that CPython's `lib` holds that the tree
  *   lacks (its own `libpython`, `lib-dynload` and `_sysconfigdata`) is added, its `site-packages`
  *   left out.
  * Nothing else changes: pure-Python distributions, the harness's own programs and its data keep their
  * bytes, and a tree with no foreign program is not touched. A program no owner accounts for, a
- * version this machine has no interpreter for, or a distribution with no build for it is refused
- * whole (`PlatformRefusal`), so no tree is written that fails at its first import.
+ * version with no CPython for the place, or a distribution with no build for it is refused whole
+ * (`PlatformRefusal`), so no tree is written that fails at its first import.
  *
- * `uv` does both jobs (`uvPython`), as it pins a host's own Python (`pinScript`,
- * `tools/runs/sync.ts`); a test stands in for it through `PythonFor`.
+ * The place is the machine that will roll the tree, which need not be the one that exports it: a
+ * campaign stays on its own host, so a reference built on a Mac is exported there for the Linux
+ * machine and the tree carried over. `uv` does both jobs (`uvPython`), as it pins a host's own
+ * Python (`pinScript`, `tools/runs/sync.ts`); a test stands in for it through `PythonFor`.
  */
-import {
-  copyFileSync,
-  cpSync,
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-} from "#src/meta/filesystem.ts";
+import { copyFileSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
 import { hostTool } from "#src/meta/host-tool.ts";
-import { tmpdir } from "#src/meta/os.ts";
+import { homedir, tmpdir } from "#src/meta/os.ts";
 import { basename, dirname, join, normalize } from "#src/meta/path.ts";
-import { decodeOutput, runSync, zeroExitText } from "#src/meta/subprocess.ts";
+import { runtimeProcess } from "#src/meta/process.ts";
+import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
+import { pinnedPythonDir } from "#src/wall/policy.ts";
 import { AARCH64, foreignFiles, foreignPrograms, type Place } from "./bundle.ts";
 
 /** What stands in, on one machine, for Python built for another. */
 export interface PythonFor {
-  /** The prefix of this machine's managed CPython at `version` (`3.12.15`, or `3.12`), or null. */
+  /** The prefix of a CPython at `version` (`3.12.15`, or `3.12`) built for the place, or null. */
   readonly interpreter: (version: string) => string | null;
   /** Installs `requirement` (`name==version`) for Python `python` (`3.12`) into `target`, without
    *  its dependencies. Returns why it could not, or null once installed. */
@@ -186,7 +182,7 @@ function interpreterFor(tree: string, prefix: string, files: readonly string[], 
   if (host === null) {
     return {
       named,
-      refused: [`${named}, as this machine has no managed CPython ${version}`],
+      refused: [`${named}, as uv installs no CPython ${version} built for it`],
       apply: () => undefined,
     };
   }
@@ -229,16 +225,22 @@ function refusal(place: Place, reasons: readonly string[]): PlatformRefusal {
   );
 }
 
-/** `uv` as `place`'s stand-in: its managed CPython, and wheels for the place's platform. */
+/** `uv` as `place`'s stand-in: a CPython and wheels built for the place's platform. */
 export function uvPython(place: Place): PythonFor {
   const uv = hostTool("uv");
-  const platform = `${place.machine === AARCH64 ? "aarch64" : "x86_64"}-${place.mac ? "apple-darwin" : "unknown-linux-gnu"}`;
+  const arch = place.machine === AARCH64 ? "aarch64" : "x86_64";
+  const platform = `${arch}-${place.mac ? "apple-darwin" : "unknown-linux-gnu"}`;
+  // Beside the Python a host is pinned to (`pinScript`), one folder a build. Installed by its key
+  // and taken by its folder, since `uv python find` returns no interpreter this machine cannot run.
+  const store = join(pinnedPythonDir(homedir()), "..", "versions");
   return {
     interpreter: (version) => {
-      const found = zeroExitText(runSync([uv, "--no-config", "python", "find", "--managed-python", version]));
-      if (found === null || found === "") return null;
-      const prefix = dirname(dirname(realpathSync(found)));
-      return libraryOf(prefix) === null ? null : prefix;
+      const key = `cpython-${version}-${place.mac ? "macos" : "linux"}-${arch}-${place.mac ? "none" : "gnu"}`;
+      const { exitCode } = runSync([uv, "--no-config", "python", "install", "--no-bin", key], {
+        env: { ...runtimeProcess.env, UV_PYTHON_INSTALL_DIR: store },
+      });
+      const prefix = join(store, key);
+      return exitCode === 0 && libraryOf(prefix) !== null ? prefix : null;
     },
     install: (target, requirement, version) => {
       const { exitCode, stderr } = runSync([

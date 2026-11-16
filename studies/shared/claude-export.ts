@@ -37,7 +37,7 @@ import { parseArgs } from "#src/meta/process.ts";
 import { keyIfDefined, keyIfNotNull } from "#src/meta/optional-key.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
-import { HARNESS_DIR, HERE, type Place, placeHarness } from "./bundle.ts";
+import { HARNESS_DIR, HERE, type Place, placeHarness, placeOf } from "./bundle.ts";
 import { type PythonFor, rebuildForeignPython, uvPython } from "./foreign-python.ts";
 
 /** Where the tool tree lands in the exported tree, under the runner's `scripts/` entry. */
@@ -46,15 +46,13 @@ const TOOLCHAIN = "scripts/toolchain";
 /** The harness's files Claude Code has no reader for. */
 const DROPPED = [TOOLS_SPEC_FILE, GENERATED_TOOLS_FILE];
 
-/** The tree `into`, written from `source` for programs that run on `place`, this machine unless a
- *  test names another. Returns what `export.json` records. */
+/** The tree `into`, written from `source` for programs that run on `place`, the machine that will
+ *  roll it: this one unless `--for` names another. Returns what `export.json` records. */
 export async function exportForClaudeCode(
   into: string,
   source: "starter" | { readonly campaign: string; readonly harness?: string },
-  { place, python }: { readonly place: Place; readonly python: PythonFor } = {
-    place: HERE,
-    python: uvPython(HERE),
-  },
+  place: Place = HERE,
+  python: PythonFor = uvPython(place),
 ) {
   if (existsSync(into)) throw new Error(`${into} is there already; an export is made once`);
   // Built beside its place and renamed into it whole, as `bundleArm` builds a mount.
@@ -111,7 +109,12 @@ export async function exportForClaudeCode(
 async function main(args: readonly string[]): Promise<void> {
   const { values } = parseArgs({
     args: [...args],
-    options: { from: { type: "string" }, harness: { type: "string" }, into: { type: "string" } },
+    options: {
+      from: { type: "string" },
+      harness: { type: "string" },
+      into: { type: "string" },
+      for: { type: "string" },
+    },
   });
   if (values.from === undefined || values.into === undefined) throw new Error("name --from and --into");
   if (values.from === "starter" && values.harness !== undefined) {
@@ -121,7 +124,8 @@ async function main(args: readonly string[]): Promise<void> {
     values.from === "starter"
       ? "starter"
       : { campaign: values.from, ...keyIfDefined("harness", values.harness) };
-  const record = await exportForClaudeCode(values.into, source);
+  const place = values.for === undefined ? HERE : placeOf(values.for);
+  const record = await exportForClaudeCode(values.into, source, place);
   console.log(`export: ${values.into} is harness ${record.harness}, ${capturedJsonStringify(record)}`);
 }
 

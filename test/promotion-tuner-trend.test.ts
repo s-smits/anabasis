@@ -66,6 +66,7 @@ function run(over: Partial<Run> & { readonly promoted?: number }): Run {
     live: false,
     firstCompared: 1,
     firstReported: 2,
+    firstAdmissible: 0.5,
     compared: promoted,
     promotions: Array.from({ length: promoted }, (_, at) => promotion(at + 1, `digest-${String(at)}`, null)),
     dollars: 100,
@@ -320,6 +321,15 @@ const trendOf = (folder: string, format: "md" | "tsv") =>
     { cwd: ROOT, env: { ...Bun.env, ANA_HOSTS: undefined } },
   );
 const promotedAt = (hours: number, harness: string) => [hours, "harness.promoted", { harness }] as const;
+/** The trend's rows by measure: each window's value, then each difference. */
+const rowsOf = (folder: string) =>
+  new Map(
+    trendOf(folder, "tsv")
+      .trim()
+      .split("\n")
+      .map((row) => row.split("\t"))
+      .map((row) => [row[2], row.slice(3)]),
+  );
 const movedAt = (hours: number) => [hours, "campaign.move", { move: "build" }] as const;
 
 it("reads every run at the hours the youngest newest run has lasted, so a young window gains nothing by youth", () => {
@@ -340,13 +350,7 @@ it("reads every run at the hours the youngest newest run has lasted, so a young 
     ]);
   }
   logAt(join(folder, "pack-now-young"), "2026-11-09T00:00:00.000Z", [movedAt(2)]);
-  const rows = new Map(
-    trendOf(folder, "tsv")
-      .trim()
-      .split("\n")
-      .map((row) => row.split("\t"))
-      .map((row) => [row[2], row.slice(3)]),
-  );
+  const rows = rowsOf(folder);
   // At 8 h each earlier run had promoted once in 8 hours, not ten times in 240.
   expect(rows.get("promotions a 100 active hours")?.slice(0, 2)).toEqual(["3.13 (1/32)", "12.5 (5/40)"]);
   expect(rows.get("runs promoted by the horizon")).toEqual([
@@ -371,4 +375,33 @@ it("repeats a reading with --until when the log has grown since", () => {
     `${JSON.stringify({ at: "2026-11-11T00:00:00.000Z", kind: "harness.promoted", data: { harness: "h2" } })}\n`,
   );
   expect(trendOf(folder, "md")).toBe(before);
+});
+
+it("splits the hours to a first comparison into the supply's part and the wait after it", () => {
+  const folder = join(home, "held-off");
+  // A run that holds its eight tasks from `held` hours and begins its first comparison at 4 h.
+  const comparing = (name: string, opened: string, held: number) =>
+    logAt(join(folder, name), opened, [
+      [0.05, "checker.read", { faults: [] }],
+      [0.1, "exam.started", { session: "x-1" }],
+      ...["a", "b", "c", "d", "e", "f", "g", "h"].flatMap((version): [number, string, JsonObject][] => [
+        [held, "task.proposed", { session: "x-1", version, taskId: `t-${version}`, family: version }],
+        [held, "task.gate", { version, gate: 1, outcome: "passed" }],
+      ]),
+      [4, "comparison.started", { session: "g-1" }],
+      [5, "campaign.ended", { ending: "budget", why: "w" }],
+    ]);
+  comparing("pack-now", "2026-11-08T00:00:00.000Z", 1);
+  comparing("pack-then", "2026-11-01T00:00:00.000Z", 3);
+  // The hostile case: a run that never held enough to compare is in neither row.
+  logAt(join(folder, "pack-now-short"), "2026-11-08T01:00:00.000Z", [
+    [5, "campaign.ended", { ending: "budget", why: "w" }],
+  ]);
+  const rows = rowsOf(folder);
+  // Both began at 4 h, so the hours to a first comparison alone read no difference.
+  expect(rows.get("hours until a first comparison is admissible")?.slice(0, 2)).toEqual([
+    "1.00 (n 1)",
+    "3.00 (n 1)",
+  ]);
+  expect(rows.get("hours from then until it began")?.slice(0, 2)).toEqual(["3.00 (n 1)", "1.00 (n 1)"]);
 });

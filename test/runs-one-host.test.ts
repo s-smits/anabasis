@@ -93,6 +93,25 @@ describe("a clone with no hosts", () => {
     expect(sshAttempts()).toBe(false);
   });
 
+  test("a named fetch that can ask no host refuses, though a copy of that campaign is held", () => {
+    // Hostile: a reader takes a peer's copy as it stands where no host is listed, and until
+    // 16 November a named fetch did too, printing the copy's path and exiting 0 with nothing brought.
+    const copy = join(clone, "data/runs/peer/held");
+    mkdirSync(copy, { recursive: true });
+    const opened = { at: "2026-11-15T00:00:00.000Z", kind: "campaign.opened", data: { project: "held" } };
+    writeFileSync(join(copy, "log.jsonl"), `${JSON.stringify(opened)}\n`);
+    try {
+      const result = runs(["fetch", "held"]);
+      expect([result.code, result.out]).toEqual([1, ""]);
+      expect(result.err).toContain("ANA_HOSTS lists no host");
+      // The gather with no name still reads the copies it cannot refresh.
+      expect(runs(["fetch"]).code).toBe(0);
+    } finally {
+      rmSync(join(clone, "data"), { recursive: true, force: true });
+    }
+    expect(sshAttempts()).toBe(false);
+  });
+
   test("here names this machine on every verb, whether or not the verb has a use for it", () => {
     for (const verb of [
       ["status", "--here"],

@@ -28,13 +28,16 @@ import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
 import { withAbortSignal, withoutAbortSignal } from "@earendil-works/chord/context";
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
-import { isString } from "../meta/json-shape.ts";
 import { asError } from "../meta/runtime-values.ts";
 import { type CommandWall, heldSeconds, runWalled } from "./command.ts";
 
 /** A command handed back to its seat while it runs on: how it ended and its output's tail. */
 const RUNNING = new WeakMap<CommandWall, Promise<string>>();
-const TAIL_CHARS = 50 * 1024;
+// The two limits and OutputBuffer (at the end) are pi-processes' (github.com/aliou/pi-processes, MIT),
+// examples/bash-background.ts lines 22-23 and 47-69 at cce6ad98e, changed only for this repository's
+// lint: 4000 for 4_000, a readonly `chunks`, and the class after the declarations.
+const MAX_CAPTURED_BYTES = 8 * 1024 * 1024;
+const RESULT_TAIL_CHARS = 4000;
 
 /** The order pi lists its coding tools. */
 export const CODING_TOOLS = ["read", "bash", "edit", "write"] as const;
@@ -125,17 +128,17 @@ function bashTool(wall: CommandWall): SeatTool {
       const { asked, seconds, nearEnd } = heldSeconds(args.timeout ?? shellMaxSeconds, wall);
       // Durable refuses a settled call's api and cancels its context, so a handed-back command
       // runs on under its own signal and keeps its output's tail for the seat's next call.
-      let tail = "";
+      const tail = new OutputBuffer();
       let handedBack = false;
       const stop = new AbortController();
       context.abortSignal?.addEventListener("abort", () => handedBack || stop.abort());
       const own: typeof api = {
         ...api,
         output: (chunk, skipped) => {
-          tail = (tail + (isString(chunk) ? chunk : new TextDecoder().decode(chunk))).slice(-TAIL_CHARS);
+          tail.append(Buffer.from(chunk));
           if (!handedBack) api.output(chunk, skipped);
         },
-        retainedOutput: () => (handedBack ? { text: tail, truncated: false } : api.retainedOutput()),
+        retainedOutput: () => (handedBack ? { text: tail.tail(), truncated: false } : api.retainedOutput()),
         diagnostic: (note) => handedBack || api.diagnostic(note),
       };
       // runWalled applies the remaining solve time too; leave that reduction to its one owner.
@@ -168,7 +171,8 @@ function bashTool(wall: CommandWall): SeatTool {
       RUNNING.set(
         wall,
         ending.then(
-          (how) => `The command handed back earlier has ended (${how}). The tail of its output:\n${tail}`,
+          (how) =>
+            `The command handed back earlier has ended (${how}). The tail of its output:\n${tail.tail()}`,
         ),
       );
       throw new Error(
@@ -176,4 +180,28 @@ function bashTool(wall: CommandWall): SeatTool {
       );
     },
   };
+}
+
+class OutputBuffer {
+  private readonly chunks: Buffer[] = [];
+  private byteLength = 0;
+
+  append(data: Buffer): void {
+    this.chunks.push(data);
+    this.byteLength += data.length;
+    while (this.byteLength > MAX_CAPTURED_BYTES && this.chunks.length > 1) {
+      const dropped = this.chunks.shift();
+      if (dropped) this.byteLength -= dropped.length;
+    }
+  }
+
+  bytes(): Buffer {
+    return Buffer.concat(this.chunks);
+  }
+
+  tail(): string {
+    const text = this.bytes().toString("utf8").trim();
+    if (text.length <= RESULT_TAIL_CHARS) return text;
+    return `[...output truncated...]\n${text.slice(-RESULT_TAIL_CHARS)}`;
+  }
 }

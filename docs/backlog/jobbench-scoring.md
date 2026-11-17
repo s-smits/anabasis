@@ -202,6 +202,25 @@ already answers the question; level with it is a strong reading and above it the
     so a comparison rolled as it stands is read under another load than every read before it.
     No reader counts consecutive reads above the Starter either, and none is added: a count of
     reads on the eight tasks would be a second claim on a set that can make none.
+23. **Name a harness's programs to the solver by path, as its own to change.** Present in source
+    from this change. An audit of the export on 17 November found the carrying sound and the
+    telling at fault. Staged as a rollout stages it, every entry of the reference's 17,145 under
+    `scripts/` arrives but the interpreter's caches and two empty folders, each link as the file
+    it pointed at and no file without its execute bit; its five programs find their interpreter
+    from their own place and hold no path of the machine that built them. Yet the guide names
+    each program without a folder, seven names in all and none with a path, and the note said
+    that nothing puts them on the PATH and that those written for the other runner's files find
+    none of them. In the eight rollouts of 16 November each solver looked at the folder once,
+    started its interpreter once or twice within its first three commands, in six rollouts to a
+    failed import of a package that tree does not hold (openpyxl seven times), and never named
+    the folder again. The note now lists each program by its path and says they are the
+    solver's to run, read and change; its first paragraph, the only one a harness without
+    programs gets, is unchanged, so the Starter's export and its rollouts stand. Not done: the
+    harness's interpreter still lacks what the benchmark's deliverables are written with, two of
+    the five programs read the exam's own files, and nothing is put on the PATH (the
+    pilot's line of 9 November that did so hid the machine's packages). Settled by a count that can fall either way: the
+    commands of a fresh rollout that name one of the listed programs, and how many of those
+    exit 0.
 
 ## How it came to be
 
@@ -365,10 +384,11 @@ already answers the question; level with it is a strong reading and above it the
   Starter sittings differ on 12 rubrics and 44 points, so the read names no winner. The
   rollouts used the harness's programs little: of the built arm's 140 shell commands in 8
   rollouts, 17 name its program folder and 8 of those only look at it (`compare.ts levels`,
-  which now prints both counts). Of the other 9, counted once by command kind, 3 start the
-  folder's interpreter, 4 in 3 rollouts start a program whose path they hold in a shell
-  variable, and 2 hold such a path and start nothing from it. The first report of this read
-  said 0 of 140 and its correction 3, both counted too low. What it built answers its own
+  which now prints both counts). Read again on 17 November by what each starts and what came
+  back, the others hold the path of the folder's interpreter and none names a program of the
+  harness: no command of the 140 names one of its five programs or five modules, so the first
+  report's 0 of 140 was right of programs, and the 3 and the 9 after it counted the
+  interpreter (item 23). What it built answers its own
   exam's estimation problems, and the benchmark's tasks ask for documents; the guide reaches
   every rollout as `CLAUDE.md`, so the count says how little the programs were used and not
   that the harness went unread. The table now prints the criteria
@@ -382,4 +402,8 @@ already answers the question; level with it is a strong reading and above it the
   (item 22 holds the two terms left open). The placer now reads one part, and it places the
   reference of 16 November inside the Starter's spread on the fair five (162 points against 136 to
   216 of 296) as on all eight (270 against 210 to 314 of 518), so nothing follows from that read
-  but the next one.
+  but the next one. The same day the operator read that few commands could have run a program:
+  "okay wtf, make way more free??", "Remove all bloat, give agents enough freedom to fix", "or is
+  the porting / extracting mechanism broken? audit everying (yourself)", and "the script to make
+  it a standalone harness right and it should properly run the Program". Item 23 holds the audit
+  and the change to the note.

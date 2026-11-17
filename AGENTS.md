@@ -379,10 +379,10 @@ any regression and repair it.
 **The outside aim.** Each jobstat run's newest promoted reference is also read on JobBench at its
 second promotion, detached and before its audit, or after its audit where a run with one promotion
 stops, under that benchmark's own judge
-(`studies/harness2/`), against three baselines kept apart: the bareSolver (the Starter, exported),
-stock Claude Code with an empty guide (Harness²'s Base) and Harness²'s held-out arm. The
-operator's aims, in order, are a built harness above the bareSolver, level with the held-out arm,
-then above it. Read a deficit as a difference in conditions first (what the export carries and tells
+(`studies/harness2/`), against three baselines kept apart: the Starter, exported (Anabasis's pack
+on the bareSolver, which is Pi Durable's coding agent as released), stock Claude Code with an empty
+guide (Harness²'s Base) and Harness²'s held-out arm. The operator's aims, in order, are a built
+harness above the Starter, level with the held-out arm, then above it. Read a deficit as a difference in conditions first (what the export carries and tells
 the solver, the interpreter and its packages, the day) and as the harness only once those are equal;
 a difference inside the Starter's spread between rollouts is no reading, and each arm is rolled
 afresh after a change to the export or the scoring. run-improvement-campaign ("The outside aim")

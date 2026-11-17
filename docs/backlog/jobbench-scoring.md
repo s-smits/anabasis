@@ -23,8 +23,9 @@ The arms:
 - **Harness² held-out** (`--arm heldout`): task N under the harness Harness²'s sweep built on task
   N-1 of the same profession. Neither harness was built on the task it is scored on, so these are
   the fair tasks, those that are not a profession's first.
-- **bareSolver(Opus 5.5)** (`--arm starter`): the Starter Built Harness, the floor both are read
-  against.
+- **The Starter (Opus 5.5)** (`--arm starter`): the Starter Built Harness, the floor both are read
+  against. Until 17 November this file called it the bareSolver, which is the layer beneath it:
+  Pi Durable's coding agent as released, on which the Starter Pack is Anabasis's version.
 
 One input still differs, and every reading says so. Harness² knows the benchmark's tasks: it built
 its harness on a neighbouring JobBench task, from rollouts that answered that task's real request
@@ -406,4 +407,12 @@ already answers the question; level with it is a strong reading and above it the
   "okay wtf, make way more free??", "Remove all bloat, give agents enough freedom to fix", "or is
   the porting / extracting mechanism broken? audit everying (yourself)", and "the script to make
   it a standalone harness right and it should properly run the Program". Item 23 holds the audit
-  and the change to the note.
+  and the change to the note. On the names: "note that Starter Pack is the Anabasis version of the
+  bareSolver" and "bareSolver = Pi Durable base"; and on whether to fork the Starter Pack afresh
+  from Pi Durable: "maybe if we surgically tune / patch and remove exisitng Starter Pack we're
+  already there", then "ambitiously, remove what's needed and consolidate". A count over the
+  record that day: of 1,252 distinct kept harnesses in 208 campaigns, 1,185 select all four of
+  pi's coding tools, 21 in 9 campaigns declare a tool of their own, and none names the older
+  `shell` preset. The export now moves a harness's tool tree into `scripts/toolchain/` instead of
+  copying it, so a tree holds it once (17,111 of the reference's 34,265 entries were the second
+  copy), and the `pi-agent-core` package, which nothing imported, is no longer a dependency.

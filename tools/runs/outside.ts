@@ -41,8 +41,6 @@
  * plan, before `--yes` or, behind `--eval`, before the first task is judged.
  */
 import { promoted } from "#src/kernel/reports.ts";
-import { capturedJsonParse } from "#src/meta/json-runtime.ts";
-import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -221,14 +219,18 @@ export async function walk(
   }
 }
 
-/** The harness the store on `bench` holds under `label`, or null where it holds none. */
-async function heldIn(bench: Host | undefined, store: string, label: string): Promise<string | null> {
-  const { stdout, exitCode } = await runCaptured(
-    shellOn(bench, `cat ${store}/trees/${quoted(label)}/export.json`),
-  );
-  if (exitCode !== 0) return null;
-  const harness = asRecord(capturedJsonParse(stdout))?.harness;
-  return isString(harness) ? harness : "";
+/** Each label the store on `bench` holds a tree under, with the harness its export names. */
+async function heldIn(bench: Host | undefined, store: string): Promise<Map<string, string>> {
+  const { stdout } = await runCaptured(shellOn(bench, `grep -H '"harness"' ${store}/trees/*/export.json`));
+  const rows = [...stdout.matchAll(/\/trees\/([^/\n]+)\/export\.json:\s*"harness":\s*"([^"]*)"/gu)];
+  return new Map(rows.map(([, label = "", harness = ""]) => [label, harness]));
+}
+
+/** The other labels the store holds `harness` under, where `--as` named none and `label` is the one
+ *  defaulted from its digest: a harness is read once unless `--as` names another read of it. */
+export function readAs(held: ReadonlyMap<string, string>, harness: string, label: string, as?: string) {
+  if (as !== undefined) return [];
+  return [...held].filter(([one, of]) => of === harness && one !== label).map(([one]) => one);
 }
 
 /** The benchmarks `pause --eval` reads `run` on, named as the verb is armed, so that a setting that
@@ -305,7 +307,15 @@ export async function outside(args: readonly string[]): Promise<void> {
   if (place === undefined) {
     throw new Error(`the benchmark's machine is '${named}', which no export is written for`);
   }
-  const held = await heldIn(settings.runner, settings.store, label);
+  const trees = await heldIn(settings.runner, settings.store);
+  const before = readAs(trees, harness, label, values.as);
+  if (before.length > 0) {
+    console.log(
+      `${run}: ${harness.slice(0, 8)} is read already as ${before.join(", ")}; --as reads it again`,
+    );
+    return;
+  }
+  const held = trees.get(label) ?? null;
   if (held !== null && digest && held !== harness) {
     throw new Error(
       `${label}: the store holds that label for ${held.slice(0, 8)}; a label binds one tree, so name another`,

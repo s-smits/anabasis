@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { benchesOf } from "../tools/runs/host-config.ts";
-import { type Plan, readsArmed, settingsOf, stepsOf, walk } from "../tools/runs/outside.ts";
+import { type Plan, readAs, readsArmed, settingsOf, stepsOf, walk } from "../tools/runs/outside.ts";
 
 const HOSTS = JSON.stringify([
   { name: "builder", ssh: "you@builder", tree: "~/src/anabasis", bun: "~/.bun/bin/bun" },
@@ -135,6 +135,18 @@ describe("runs outside", () => {
     const named = text(planOf({ harness: "b".repeat(64) }));
     expect(named.filter((step) => step.includes("b".repeat(64)))).toHaveLength(3);
     expect(named.at(-1)).not.toContain("b".repeat(64));
+  });
+
+  test("a harness the store holds under another label is read once, unless --as names another read", () => {
+    const held = new Map([
+      ["ref-old", "a".repeat(64)],
+      ["starter-old", "s".repeat(64)],
+    ]);
+    expect(readAs(held, "a".repeat(64), "aaaaaaaa")).toStrictEqual(["ref-old"]);
+    expect(readAs(held, "a".repeat(64), "again-1", "again-1")).toStrictEqual([]);
+    // Its own label goes on where an arm stopped, and another harness is no read of this one.
+    expect(readAs(held, "a".repeat(64), "ref-old")).toStrictEqual([]);
+    expect(readAs(held, "b".repeat(64), "bbbbbbbb")).toStrictEqual([]);
   });
 
   test("a read that waits looks again while an arm holds the machine, and one that does not refuses", () => {

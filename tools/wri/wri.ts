@@ -10,6 +10,7 @@
  *   bun tools/wri/wri.ts start --log .ana/d2/truss/log.jsonl[,<log>,<log>] --out .ana/wri/20261008-truss [--snapshot]
  *   bun tools/wri/wri.ts lanes --out .ana/wri/20261008-truss [--lanes 1-4,7] [--agents 3] [--regroup]
  *   bun tools/wri/wri.ts collect --out .ana/wri/20261008-truss
+ *   bun tools/wri/wri.ts record --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts synthesis --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts findings [--root <dir>] [--window 7] [--until <date>]
  *   bun tools/wri/wri.ts grade --log .ana/d2/truss/log.jsonl [--bundle <pack>] --task <taskId> --answer <file> [--set <path>=<json>]...
@@ -48,6 +49,11 @@
  *   which the launcher takes over its `--reasoning-effort`. `lanes` creates `<out>/lanes` where it is missing.
  * - `collect` holds every expected report to its shape and writes `reports.md`. It exits 1 until
  *   every report is there and valid.
+ * - `record` makes the reads the primary owes while the lane sessions work (`readsOf`,
+ *   `tools/wri/record.ts`) and writes each under its command in `<out>/record.md`, with when it ran,
+ *   how many lane reports stood written then and its exit code. A read already made is kept, and it
+ *   exits 1 while one failed. It runs each command with this process's environment, so start it as
+ *   the skill says where the reads span hosts.
  * - `synthesis` renders the synthesis session's prompt over the reports as they stand.
  * - `findings` prints the ledger of every investigation's vetted findings under `--root`
  *   (`findingsLedger`, `tools/wri/findings.ts`): the `--window` days up to `--until` beside the
@@ -82,8 +88,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/fi
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { mainTree } from "#src/meta/git.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
-import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { capturedExecPath, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
+import { runSync } from "#src/meta/subprocess.ts";
 import { plural } from "#src/meta/text.ts";
 import { treeAt } from "../runs/code.ts";
 import { lastHost } from "#src/kernel/condition.ts";
@@ -127,6 +134,7 @@ import {
 import { INVESTIGATION, investigationIndex, REPORTS, SHARED } from "./index.ts";
 import { findingsLedger } from "./findings.ts";
 import { overview } from "./read.ts";
+import { RECORD, RECORD_VERB, recordWith } from "./record.ts";
 import { buildPackets, joinPackets } from "./packets.ts";
 import { gradesIn, HOURS, trajectoryText } from "./trajectory.ts";
 import { grade } from "./grade.ts";
@@ -139,7 +147,7 @@ interface Investigation {
 
 const REPO = resolve(import.meta.dir, "..", "..");
 const USAGE =
-  "usage: bun tools/wri/wri.ts read | climb | trajectory | start | lanes | collect | synthesis | findings | grade | derive | reader | index | packets";
+  "usage: bun tools/wri/wri.ts read | climb | trajectory | start | lanes | collect | record | synthesis | findings | grade | derive | reader | index | packets";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -463,10 +471,11 @@ function lanes(): number {
       `lane ${String(lane.number)} has its trigger and runs alone: read what it waits on, then build it with --lanes ${String(lane.number)}`,
     );
   }
+  // With the sessions, the primary's own work while they are out.
   console.log(
     sessions.length === 0
       ? "nothing to launch"
-      : `${launch}: ${plural(sessions.length, "session")} to launch`,
+      : `${launch}: ${plural(sessions.length, "session")} to launch\nwhile they work: bun ${RECORD_VERB} --out ${out}`,
   );
   return 0;
 }
@@ -496,6 +505,34 @@ function collect(): number {
     `${open === 0 ? "every report is in" : `${plural(open, "report")} missing or invalid`}; ${String(reports.length - omitted)} read, ${String(omitted)} omitted`,
   );
   return open === 0 && reports.length > 0 ? 0 : 1;
+}
+
+/** The reads of the record across runs that the investigation still owes, made and written. */
+function record(): number {
+  const investigation = opened();
+  const path = join(investigation.out, RECORD);
+  const stand = () => {
+    const reports = collected(investigation);
+    const written = reports.filter(({ state }) => state !== "missing").length;
+    return `${new Date().toISOString()}, ${String(written)} of ${String(reports.length)} lane reports written`;
+  };
+  const decoder = new TextDecoder();
+  const { text, failed } = recordWith(
+    existsSync(path) ? readFileSync(path, "utf8") : "",
+    investigation.campaigns.map(({ name }) => name),
+    stand,
+    (words) => {
+      const ran = runSync([capturedExecPath, ...words], { cwd: REPO });
+      return { exitCode: ran.exitCode, text: decoder.decode(ran.stdout) + decoder.decode(ran.stderr) };
+    },
+  );
+  writeFileSync(path, text);
+  console.log(
+    failed.length === 0
+      ? `${path}: every read is made`
+      : `${path}: failed and still owed: ${failed.join("; ")}`,
+  );
+  return failed.length === 0 ? 0 : 1;
 }
 
 function synthesis(): number {
@@ -596,7 +633,7 @@ async function main(): Promise<number> {
     console.log(lines.join("\n"));
     return 0;
   }
-  const steps = { start, lanes, collect, synthesis };
+  const steps = { start, lanes, collect, record, synthesis };
   const step = Object.entries(steps).find(([name]) => name === verb)?.[1];
   if (step === undefined) throw new Error(USAGE);
   return step();

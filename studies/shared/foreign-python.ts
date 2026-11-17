@@ -90,11 +90,11 @@ export async function rebuildForeignPython(
   // A folder that names no minor (a flat `--target`) is read by whichever `python3` comes first,
   // which on the place is its own where the tree carries no CPython of the folder's minor; a
   // distribution compiled for another minor there is installed again for the place's.
-  const carried = new Set(
-    [...new Bun.Glob("**/lib/python[0-9].*/os.py").scanSync({ cwd: tree, dot: true })].map((os) =>
-      basename(dirname(os)).slice("python".length),
-    ),
-  );
+  const scan = (pattern: string) => [...new Bun.Glob(pattern).scanSync({ cwd: tree, dot: true })];
+  const carried = new Set([
+    ...scan("**/lib/python[0-9].*/os.py").map((os) => basename(dirname(os)).slice("python".length)),
+    ...scan("**/pyvenv.cfg").map((cfg) => minorIn(venvOf(join(tree, dirname(cfg))) ?? "")),
+  ]);
   const minorOf = ({ named, python: own }: Distribution) =>
     named || own === null || carried.has(own) ? own : (place.python ?? own);
   const retargeted = [...new Set(owners.values())].filter((one) => minorOf(one) !== one.python);
@@ -224,11 +224,23 @@ async function distributionsIn(tree: string): Promise<Map<string, Distribution>>
 
 /** The nearest folder above `path` in `tree` that is a CPython prefix, relative to the tree, or null. */
 function prefixOf(tree: string, path: string): string | null {
-  for (let dir = dirname(path); dir !== "." && dir !== "/"; dir = dirname(dir)) {
-    if (libraryOf(join(tree, dir)) !== null) return dir;
+  // The tree's own root among them: a Builder's `python -m venv .toolchain` makes it one.
+  for (let dir = dirname(path); ; dir = dirname(dir)) {
+    if (libraryOf(join(tree, dir)) !== null || venvOf(join(tree, dir)) !== null) return dir;
+    if (dir === "." || dir === "/") return null;
   }
-  return null;
 }
+
+/** The Python version a virtual environment at `prefix` was made with (`version_info` as uv writes
+ *  it, `version` as `venv` does), or null where `prefix` is none. */
+function venvOf(prefix: string): string | null {
+  const cfg = join(prefix, "pyvenv.cfg");
+  if (!existsSync(cfg)) return null;
+  return /^version(?:_info)?\s*=\s*(\d+\.\d+[\d.]*)/mu.exec(readFileSync(cfg, "utf8"))?.[1] ?? null;
+}
+
+/** `3.14` of `3.14.10`. */
+const minorIn = (version: string) => version.split(".").slice(0, 2).join(".");
 
 /** The `lib/pythonX.Y` folder name of a CPython prefix, or null where `prefix` is none. */
 function libraryOf(prefix: string): string | null {
@@ -239,14 +251,18 @@ function libraryOf(prefix: string): string | null {
 /** How the foreign interpreter at `prefix` is replaced from this machine's own, or why it cannot be. */
 function interpreterFor(tree: string, prefix: string, files: readonly string[], python: PythonFor) {
   const at = join(tree, prefix);
-  const library = libraryOf(at) ?? "";
+  // A virtual environment (uv's or `venv`'s) links its interpreter to the machine it was made on;
+  // given the place's CPython whole and its `pyvenv.cfg` dropped, it is a prefix of its own, whose
+  // `site-packages` are the environment's.
+  const venv = libraryOf(at) === null ? venvOf(at) : null;
+  const library = libraryOf(at) ?? (venv === null ? "" : `python${minorIn(venv)}`);
   const header = join(at, "include", library, "patchlevel.h");
   const patch = existsSync(header)
     ? /PY_VERSION\s+"([^"]+)"/u.exec(readFileSync(header, "utf8"))?.[1]
     : undefined;
-  const version = patch ?? library.slice("python".length);
+  const version = patch ?? venv ?? library.slice("python".length);
   const named = `${prefix} (CPython ${version})`;
-  const host = python.interpreter(version);
+  const host = python.interpreter(version) ?? (venv === null ? null : python.interpreter(minorIn(venv)));
   if (host === null) {
     return {
       named,
@@ -262,11 +278,14 @@ function interpreterFor(tree: string, prefix: string, files: readonly string[], 
     SHARED_LIBRARY.test(file) && (!file.startsWith(modules) || file.startsWith(`${modules}lib-dynload/`));
   const standIns = files.map((file) => {
     const executable = join(host, "bin", basename(file));
-    return { file, from: existsSync(executable) ? executable : null };
+    if (existsSync(executable)) return { file, from: executable };
+    const any = venv !== null && /^python[\d.]*$/u.test(basename(file));
+    return { file, from: any ? join(host, "bin", library) : null };
   });
   const lacking = standIns.filter(({ file, from }) => from === null && !own(file)).map(({ file }) => file);
   const apply = () => {
     for (const { file } of standIns) rmSync(join(tree, file));
+    if (venv !== null) rmSync(join(at, "pyvenv.cfg"));
     const theirs = join(host, "lib", library, "site-packages");
     // Only what the tree lacks: a file of the same path, the stdlib's own sources, keeps its bytes.
     cpSync(join(host, "lib"), join(at, "lib"), {

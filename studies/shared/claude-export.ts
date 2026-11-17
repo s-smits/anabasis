@@ -53,7 +53,7 @@ import { openHarness } from "#src/harness/open.ts";
 import { installedPrograms } from "#src/harness/programs.ts";
 import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
 import { HARNESS_DIR, HERE, type Place, placeHarness, placeOf } from "./bundle.ts";
-import { type PythonFor, rebuildForeignPython, uvPython } from "./foreign-python.ts";
+import { packageFolders, type PythonFor, rebuildForeignPython, uvPython } from "./foreign-python.ts";
 
 /** Where the tool tree lands in the exported tree, under the runner's `scripts/` entry. */
 export const TOOLCHAIN = "scripts/toolchain";
@@ -105,6 +105,16 @@ export async function exportForClaudeCode(
     searched.length === 0
       ? []
       : installedPrograms(join(part, TOOLCHAIN)).filter((name) => !/^(?:python|pip)[\d.]*$/u.test(name));
+  // A harness that keeps its method in packages reaches them in a campaign through its own
+  // interpreter, first on that PATH. Here that name starts the machine's, which reads no folder of
+  // the tree, so the solver is told where they are and what they were built for, and the rest is its.
+  const packages =
+    harness.toolTree === null
+      ? []
+      : (await packageFolders(join(part, TOOLCHAIN))).map(
+          ({ site, pythons }) =>
+            `\`${join(TOOLCHAIN, site)}\`${pythons.length === 0 ? "" : ` (built for CPython ${pythons.join(" and ")})`}`,
+        );
   const note = [
     "# How this harness reaches you",
     "",
@@ -120,6 +130,12 @@ export async function exportForClaudeCode(
       : [
           "",
           `Its programs run by name, as the guide names them: ${programs.join(", ")}. Their folders (${searched.map((dir) => `\`${dir}\``).join(", ")}) are on your PATH behind this machine's own programs, so a name this machine has too starts this machine's program. Those written for that runner's files (they open \`input.json\` or a \`public/\` folder, or check \`answer.json\`) find none of them here.`,
+        ]),
+    ...(packages.length === 0
+      ? []
+      : [
+          "",
+          `The harness also brings Python packages and modules of its own, in ${packages.join(", ")}. No import path here names ${packages.length === 1 ? "that folder" : "those folders"}, and this machine's \`python3\` may be another version than the one they were built for. The whole of \`${TOOLCHAIN}\` is yours to read, run, change and add to, as is which interpreter you run and what you install.`,
         ]),
     "",
   ];

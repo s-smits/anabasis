@@ -25,6 +25,7 @@
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { practiceRan } from "#src/kernel/solves.ts";
+import { callsOf } from "#src/kernel/trace.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
@@ -112,10 +113,8 @@ function sessionRows(
   taskOf: (version: string) => string,
 ) {
   const solves = practiceOf(log, build);
-  const calls: Asked[] = log.traces.flatMap((each) =>
-    each.seat === "build" && each.part === "call" && each.id === build.session && each.tool === "practice"
-      ? [{ index: each.index, turn: each.turn }]
-      : [],
+  const calls: Asked[] = callsOf(log.traces, "build").filter(
+    ({ id, tool }) => id === build.session && tool === "practice",
   );
   const answered = new Set<number>();
   let previous: { readonly index: number; readonly harness: string } = {

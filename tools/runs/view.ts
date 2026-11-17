@@ -33,7 +33,7 @@ import { type Called, calledBy, namesOf } from "#src/campaign/names.ts";
 import { openingOf, planOf } from "#src/campaign/opening.ts";
 import { type Campaign, campaignOf, type Handover, openSteps } from "#src/campaign/handover.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { type Call, tracesIn } from "#src/kernel/trace.ts";
+import { type Call, callsOf, tracesIn } from "#src/kernel/trace.ts";
 import { HOUR_MS, MINUTE_MS } from "#src/meta/clock.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { gitText } from "#src/meta/git.ts";
@@ -257,9 +257,7 @@ export function waitedIn(waits: readonly Call[], from: string, to: string): numb
 
 /** The Builder's `wait` calls. */
 export const builderWaits = (events: readonly LogEvent[]) =>
-  tracesIn(events).filter(
-    (each): each is Call => each.seat === "build" && each.part === "call" && each.tool === "wait",
-  );
+  callsOf(tracesIn(events), "build").filter(({ tool }) => tool === "wait");
 
 /** The pool on the first `upTo` events and what comparison admission refuses there. */
 export function poolOn(events: readonly LogEvent[], upTo: number) {

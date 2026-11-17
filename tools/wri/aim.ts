@@ -32,7 +32,7 @@ import { OPENING, proposalsOf, writersOf } from "#src/kernel/history.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { lastReports, pairsReported, type Reported, taskRecords } from "#src/kernel/reports.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
-import { type Call, tracesIn } from "#src/kernel/trace.ts";
+import { type Call, callsOf, tracesIn } from "#src/kernel/trace.ts";
 import { asRecord, isBoolean, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { median } from "#src/meta/tally.ts";
 
@@ -119,9 +119,7 @@ function referenceAt(epochs: ReturnType<typeof epochsOf>, index: number): string
 
 function readOnce(events: readonly LogEvent[], reported: readonly PairedReport[]): Gathered {
   const epochs = epochsOf(events);
-  const calls = tracesIn(events).flatMap((each) =>
-    each.seat === "exam" && each.part === "call" ? [each] : [],
-  );
+  const calls = callsOf(tracesIn(events), "exam");
   // An Examiner's tries are no counted solve (`countedSolves`), so they are read with their
   // conditions here rather than through `ranUnder`, which leaves them out.
   const conditions = conditionsOf(events);

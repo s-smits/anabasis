@@ -22,7 +22,7 @@ import { openingOf } from "#src/campaign/opening.ts";
 import { type Draft, draftFaults, draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
-import { tracesIn } from "#src/kernel/trace.ts";
+import { callsOf, tracesIn } from "#src/kernel/trace.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -44,10 +44,8 @@ const words = (text: string) => text.split(/\s+/u).filter((word) => word !== "")
 
 /** Each `draft_exam` call of a session as the host read it: stands, or the faults it named. */
 function putsOf(events: readonly LogEvent[], session: string): string[] {
-  return tracesIn(events).flatMap((call) => {
-    if (call.part !== "call" || call.seat !== "draft" || call.id !== session || call.tool !== "draft_exam") {
-      return [];
-    }
+  return callsOf(tracesIn(events), "draft").flatMap((call) => {
+    if (call.id !== session || call.tool !== "draft_exam") return [];
     const at = `turn ${String(call.turn ?? "?")}`;
     if (call.text.startsWith(STOOD)) return [`  ${at}: stands`];
     if (!call.text.startsWith(FELL)) return [`  ${at}: ${clip(call.text.split("\n")[0] ?? "")}`];
@@ -109,9 +107,7 @@ function checkRow(events: readonly LogEvent[]): string {
 
 /** The drafting calls that failed, each by session, turn and tool, with its first line. */
 function failedRows(events: readonly LogEvent[]): string[] {
-  const calls = tracesIn(events).flatMap((each) =>
-    each.part === "call" && each.seat === "draft" ? [each] : [],
-  );
+  const calls = callsOf(tracesIn(events), "draft");
   const failed = calls.filter(({ isError }) => isError);
   return [
     `drafting calls: ${String(calls.length)}, ${String(failed.length)} failed`,

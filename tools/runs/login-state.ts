@@ -6,13 +6,13 @@
  * Each full `usage` keeps who it found closed and until when in its snapshot, and a picker (`keep`,
  * `fresh`) asks the provider only of the rest, since a reading may cost a one-token request a login
  * and a keeper with nowhere to go reads every ten minutes through a wait that can last days
- * (operator, 5 November 2026). A closed login opens by the clock at its reset, so nothing has to
- * reopen it. Only the last snapshot counts, so the next `usage` overrules what was kept, as after
- * credit added early. An open login is never trusted from a snapshot: a move spends on the login it
- * takes, so a picker reads it afresh. A snapshot with no `closed`, or no snapshot, leaves every
- * login to be read. `--open` and `--closed` narrow what `usage` lists, and what it keeps and
- * forecasts still covers every login.
+ * (operator, 5 November 2026). A cached closure expires at its reset or after an hour, whichever
+ * comes first, so a keeper can find credit restored early without another full `usage`. Only the
+ * last snapshot counts. A move spends on the login it takes, so a picker still reads it afresh.
+ * `--open` and `--closed` narrow what `usage` lists, and what it keeps and forecasts still covers
+ * every login.
  */
+import { HOUR_MS } from "#src/meta/clock.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { mainTree } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -72,11 +72,12 @@ export function stateWords(
   return ` · ${state}${allowed.includes(reading.login) ? "" : " · not in the pool"}`;
 }
 
-/** `wanted`, less each login the last of `kept` found closed whose reset has not come by `now`. */
+/** `wanted`, less each login a recent snapshot found closed whose reset has not come by `now`. */
 export function notClosed(wanted: readonly string[], kept: readonly Snapshot[], now: number): string[] {
   // A stable sort keeps the later of two snapshots taken at one time last, as the record wrote them.
   const last = kept.toSorted((one, other) => one.at - other.at).at(-1);
-  return wanted.filter((login) => (last?.closed?.[login] ?? 0) <= now);
+  if (last === undefined || now - last.at >= HOUR_MS) return [...wanted];
+  return wanted.filter((login) => (last.closed?.[login] ?? 0) <= now);
 }
 
 export const historyFile = (): string => join(mainTree(runtimeProcess.cwd()), ".ana", "logins-history.jsonl");

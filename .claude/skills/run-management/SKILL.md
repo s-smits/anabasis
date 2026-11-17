@@ -30,7 +30,7 @@ campaign; `copy <name> --to <worktree>` brings one back.
 | `move <name> --to <host> [--from <host>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign and continues it on another machine at the same commit | `move.ts` |
 | `stop <name> ... [--yes]` | ends each run's process and keeper and releases what it held | `stop.ts` |
 | `status [--all]` | one row a run, here and on each host `ANA_HOSTS` lists | `pulse.ts` |
-| `usage [N ...] [--json]` | each login's five-hour and weekly use and live runs | `logins.ts` |
+| `usage [N ...] [--json]` | each login's five-hour and weekly use and live runs, with a full report refreshing each configured host's login cache | `logins.ts` |
 | `active` | the runs and seats live on each login, by name | `logins.ts` |
 | `sync [--yes \| --check] [--force]` | aligns tools and Python across hosts | `sync.ts` |
 | `search <pattern> [--regex] [--ignore-case] [--here] [--in logs\|notes\|all] [--max <chars>]` | searches campaign folders, notes and docs on all hosts | `search.ts` |
@@ -196,7 +196,9 @@ login has nowhere to move and gets none.
 The keeper takes its logins from `--logins`, `ANA_LOGINS`, then the environment, and checks once a
 minute (`turnOf`). On a provider wait longer than `--wait-hours`, it stops the run and continues it
 on the login with room whose week resets soonest and whose five hours are forecast to last
-(`fiveHourWith`); a login at 100% or unreadable is not taken. Where the process died without an
+(`fiveHourWith`); a login at 100% or unreadable is not taken.
+Cached closures expire at their reset or after an hour, whichever comes first, and the keeper
+checks the provider again before using the login. Where the process died without an
 ending, or ended `environment`, it continues on the same login if that is ready and under its cap
 (`atCap`), otherwise on one with room. Any other ending is the campaign's own, and the keeper leaves;
 a `budget` ending, even inside a comparison, is one no login can finish, and only a raised total

@@ -8,7 +8,8 @@
  *
  * A login is `CLAUDE_CODE_OAUTH_TOKEN<N>` in this process's environment, which Bun's own
  * `--env-file` loads: the verb opens no file of credentials, and prints no token. With no number it
- * reads every login the environment holds. `--open` and `--closed` are `login-state.ts`'s.
+ * reads every login the environment holds. A full report refreshes the history on each configured
+ * host using that host's own credentials. `--open` and `--closed` are `login-state.ts`'s.
  *
  * Two routes, the first taken from steipete/CodexBar@afeb28146cec
  * (Sources/CodexBarCore/Providers/Claude/ClaudeOAuth/ClaudeOAuthUsageFetcher.swift): GET
@@ -45,7 +46,7 @@
 import { openingOf, SEATS } from "#src/campaign/opening.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
-import { mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { mkdirSync, renameSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { keysIf } from "#src/meta/optional-key.ts";
@@ -422,7 +423,7 @@ export async function readLogins(wanted: readonly string[], env: Env): Promise<R
   );
 }
 
-/** `readLogins`, less each login the last `usage` found closed until its reset (`login-state.ts`). */
+/** `readLogins`, less each login whose recent cached closure has not expired (`login-state.ts`). */
 export const readNotClosed: typeof readLogins = (wanted, env) =>
   readLogins(notClosed(wanted, keptReadings(historyFile()), Date.now()), env);
 
@@ -656,7 +657,7 @@ export async function active(args: readonly string[]): Promise<void> {
 }
 
 /** `bun run runs usage`. */
-export async function logins(args: readonly string[]): Promise<void> {
+export async function logins(args: readonly string[], readUsage = readLogins): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],
     allowPositionals: true,
@@ -670,10 +671,13 @@ export async function logins(args: readonly string[]): Promise<void> {
       `neither ${TOKEN} nor ${TOKEN}<N> is set: run the verb under bun --env-file=<the file that holds them>`,
     );
   }
-  // Every host is asked for its live runs while the logins are read.
+  // A forwarded report refreshes the peer's local history without asking other hosts again.
+  const whole = !values.json && positionals.length === 0;
+  const forwarded = runtimeProcess.env.ANA_HOP === "1";
   const [readings, counted] = await Promise.all([
-    readLogins(positionals.length > 0 ? positionals : held, runtimeProcess.env),
+    readUsage(positionals.length > 0 ? positionals : held, runtimeProcess.env),
     values.json ? null : liveEverywhere(),
+    whole && !forwarded ? asked(["usage"]) : null,
   ]);
   const now = Date.now();
   // A run on the plain login names no login.
@@ -689,14 +693,14 @@ export async function logins(args: readonly string[]): Promise<void> {
   const history = historyFile();
   const kept = keptReadings(history);
   const rate = perRunRate(kept.filter(({ at }) => now - at < RATE_MS));
-  // The pool's lines and the history are the whole view's; a reading of a few logins writes no history.
-  const whole = !values.json && positionals.length === 0 && weeks.length > 0;
-  const read = weeksFor(weeks, whole ? [] : kept, now);
+  // The pool's lines and history require a full reading with at least one usable week.
+  const complete = whole && weeks.length > 0;
+  const read = weeksFor(weeks, complete ? [] : kept, now);
   const snapshot: Snapshot = {
     at: now,
     weeks: read,
     closed: closedResets(readings),
-    ...keysIf(counted?.unasked.length === 0, () => ({
+    ...keysIf(!forwarded && counted?.unasked.length === 0, () => ({
       runs: Object.fromEntries(Object.keys(read).map((login) => [login, onEach(login)])),
     })),
   };
@@ -740,7 +744,10 @@ export async function logins(args: readonly string[]): Promise<void> {
     console.log(activeLines(codex, [CODEX], [], runtimeProcess.env).join("\n"));
   }
   if ((counted?.unasked.length ?? 0) > 0) console.log(uncounted(counted?.unasked ?? []));
-  if (!whole) return;
+  if (forwarded && whole && !complete) {
+    throw new Error("no weekly usage read, so the login cache was not refreshed");
+  }
+  if (!complete) return;
   console.log(poolLine(weeks, held.length - weeks.length, now));
   console.log(
     rate === null
@@ -750,5 +757,7 @@ export async function logins(args: readonly string[]): Promise<void> {
   console.log(forecast?.lines.join("\n"));
   mkdirSync(dirname(history), { recursive: true });
   const lines = recorded.map((one) => capturedJsonStringify(one));
-  writeFileSync(history, `${lines.join("\n")}\n`);
+  const pending = `${history}.${String(runtimeProcess.pid)}.tmp`;
+  writeFileSync(pending, `${lines.join("\n")}\n`);
+  renameSync(pending, history);
 }

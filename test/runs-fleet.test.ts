@@ -16,6 +16,7 @@ import { dirname, join } from "../src/meta/path.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import { held } from "../src/meta/holder.ts";
 import { quoted, treeBun } from "../tools/runs/host-command.ts";
+import { keptReadings } from "../tools/runs/login-state.ts";
 
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
@@ -57,6 +58,33 @@ function campaign() {
 }
 
 describe("host execution", () => {
+  it("refreshes login history on every peer for a full usage read, without forwarding it again", () => {
+    const made = fixture();
+    const peer = fixture();
+    const extra = { CLAUDE_CODE_OAUTH_TOKEN2: "fixture" };
+    const command = (args: string[]) => `
+      import { logins } from "REPOSITORY/tools/runs/logins.ts";
+      await logins(${JSON.stringify(args)}, async () => [{
+        login: "2", plain: false, via: "oauth-usage", fiveHour: null, notes: [],
+        sevenDay: { pct: 100, resetsAt: new Date(Date.now() + 86_400_000).toISOString() },
+      }]);`;
+    const usageCalls = (host: typeof made) =>
+      host.recorded().filter(({ tool, args }) => tool === "ssh" && args.at(-1)?.includes("'usage'") === true);
+    const history = (host: typeof made) => keptReadings(join(host.main, ".ana", "logins-history.jsonl"));
+
+    expect(made.run(command(["--json"]), extra).code).toBe(0);
+    expect(usageCalls(made)).toEqual([]);
+    expect(history(made)).toEqual([]);
+    expect(made.run(command([]), extra).code).toBe(0);
+    expect(usageCalls(made)).toHaveLength(1);
+    expect(history(made).at(-1)?.closed?.["2"]).toBeGreaterThan(Date.now());
+
+    expect(peer.run(command([]), { ...extra, ANA_HOP: "1" }).code).toBe(0);
+    expect(usageCalls(peer)).toEqual([]);
+    expect(history(peer).at(-1)?.closed?.["2"]).toBeGreaterThan(Date.now());
+    expect(history(peer).at(-1)?.runs).toBeUndefined();
+  });
+
   it("keeps a verb that names this machine here while a peer is down, and asks the peers otherwise", () => {
     const made = fixture();
     const routing = (args: string) =>

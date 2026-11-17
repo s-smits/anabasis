@@ -36,6 +36,16 @@ export interface Host {
   readonly prepared?: true;
 }
 
+/** One outside benchmark: the machine that rolls it (undefined for this one), its score store and
+ *  sitting command there, absolute or from its home folder, and the packs whose runs it reads. */
+export interface Bench {
+  readonly name: string;
+  readonly host: Host | undefined;
+  readonly store: string;
+  readonly sitting: string;
+  readonly packs: readonly string[];
+}
+
 /** What every remote verb carries from this machine's environment, and all an entry's `settings` may
  *  name: `ANA_HOSTS` stays here, since a peer holding it would gather every host's records. */
 export const CARRIED: readonly string[] = ["ANA_KEEP", "ANA_LOGINS", "ANA_LOGIN_RUNS", "ANA_LOGIN_SUBS"];
@@ -157,8 +167,32 @@ export function configuredRuntime(host: Host) {
  *  here, and what `move` reads as `here`. */
 export const ownName = (): string => hostname().replace(/\..*$/u, "");
 
-export function hostNamed(name: string | undefined): Host {
-  const known = hostsOf();
+/** The benchmarks `EVAL_RUNNER` lists (`.env.runs.example`), none where unset. Until 17 November
+ *  2026 it, and `ABLATION_HOST` before it, named one machine alone, which is refused as not a list. */
+export function benchesOf(env: Readonly<Record<string, string | undefined>> = runtimeProcess.env): Bench[] {
+  const text = (env.EVAL_RUNNER ?? "").trim();
+  const value = text === "" ? [] : text.startsWith("[") ? capturedJsonParse(text) : null;
+  if (!Array.isArray(value)) {
+    throw new TypeError("EVAL_RUNNER takes a JSON list of benchmarks (.env.runs.example)");
+  }
+  const known = hostsOf(env.ANA_HOSTS ?? "");
+  const names = new Set<string>();
+  return value.map((entry) => {
+    const { name, host = "here", store, sitting, packs } = asRecord(entry) ?? {};
+    const given = (word: unknown): word is string => isString(word) && word !== "";
+    if (!given(name) || !isSafePathSegment(name) || !given(host) || !given(store) || !given(sitting)) {
+      throw new Error("each EVAL_RUNNER entry needs a safe name, a store and a sitting command");
+    }
+    if (names.has(name)) throw new Error(`EVAL_RUNNER repeats ${name}`);
+    names.add(name);
+    if (!Array.isArray(packs) || packs.length === 0 || !packs.every(isString)) {
+      throw new Error(`${name}: packs takes a list of the packs whose runs it reads`);
+    }
+    return { name, host: host === "here" ? undefined : hostNamed(host, known), store, sitting, packs };
+  });
+}
+
+export function hostNamed(name: string | undefined, known = hostsOf()): Host {
   const host = known.find((one) => one.name === name);
   if (host === undefined) {
     throw new Error(

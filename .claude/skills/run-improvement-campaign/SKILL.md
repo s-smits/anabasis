@@ -476,15 +476,15 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    line, and rows that `score.ts table` settles by a count: the reference against the Starter beside
    it on the fair five; against `heldout`'s stored sum, with the Starter's spread as the margin; the
    first task and the outside pair where they are bought; the dollars.
-3. **Prove the path without a model.** A read runs on the machine `ABLATION_HOST` names in
-   `.env.runs`, which `runs retire` keeps clear of retired campaigns, and on this machine where it is
-   unset. A campaign that ran on that machine is exported before its retire archives it (a day
+3. **Prove the path without a model.** A read runs on the machine its benchmark's entry in
+   `EVAL_RUNNER` names (`.env.runs`), which `runs retire` keeps clear of retired campaigns, and on
+   this machine where the entry names none. A campaign that ran on that machine is exported before its retire archives it (a day
    after it goes idle): the copy that replaces it holds no installed package. The store, the JobBench checkout and the
    judge's shim are named in the last read's prediction file and in `cycle.md`; every sitting
-   scores into that one store, so that one table holds every arm. Where `.env.runs` names the
-   store's folder on that machine (`BENCH_STORE`), the gather (`bun run runs fetch`) keeps a copy
-   of every rollout and judgement in `data/bench/<machine>` here, which `score.ts table` and
-   `trend.ts --bench` read as they read the store itself.
+   scores into that one store, so that one table holds every arm. For a benchmark rolled on a
+   peer, the gather (`bun run runs fetch`) keeps a copy of every rollout and judgement in
+   `data/bench/<benchmark>` here, which `score.ts table` and `trend.ts --bench` read as they read
+   the store itself.
 
    ```sh
    bun studies/harness2/score.ts score --arm <campaign> --harness <kept> --name <label> \
@@ -509,18 +509,24 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    machine's at the same versions and names them under `rebuilt` in `export.json`, or refuses
    (`studies/shared/foreign-python.ts`); the dry run there finds the tree and reads no campaign.
 
-   Where `.env.runs` names the machine, its store and its sitting command (`ABLATION_HOST`,
-   `BENCH_STORE`, `BENCH_SITTING`), one command runs this step and the next in order and stops at
-   the first that fails: the export on the host that holds the run, one carry into the store, the
+   Where `EVAL_RUNNER` lists a benchmark that reads the run's pack, one command runs this step
+   and the next in order and stops at the first that fails: the export on the host that holds the run, one carry into the store, the
    exit code of the tree's own `python3` there, a dry run of each arm, then the reference with a
    Starter queued behind it.
 
    ```sh
-   bun run runs outside <campaign> --as <label> [--harness <kept>] [--login N]   # the plan; --yes runs it
+   bun run runs outside <campaign> [--bench <name>] [--as <label>] [--harness <kept>] [--login N] [--wait]   # the plan; --yes runs it
+   bun run runs pause <campaign> --after reported --eval --yes   # the pause, then the same read with --wait on each benchmark
    ```
 
-   Without `--yes` it starts nothing, so the prediction file is written from its plan first. It
-   refuses while an arm holds the machine, and rolls a label the store already holds as it stands.
+   Without `--harness` it reads the harness the run last promoted, under the first eight characters
+   of its digest unless `--as` names a label. Without `--yes` it starts nothing, so the prediction
+   file is written from its plan first; behind `--eval`, which starts the read unattended once the
+   run rests, it is written before the reference's first task is judged, about twenty minutes in.
+   It refuses while an arm holds the machine, or with `--wait` looks again every five minutes, and
+   rolls a label the store already holds as it stands. Where two benchmarks read one pack, `outside`
+   takes `--bench`, and `pause --eval` starts one read on each, every one a process of its own so
+   that the pause ends and no waiter holds the run.
 4. **Run, detached, on the operator's standing word**, which covers the moment and the size
    above: the eight tasks, the reference and a Starter beside it at one rollout a task, on a login
    with room chosen as a keeper chooses one; each read's login and bill go into `cycle.md`. A larger

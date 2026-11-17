@@ -24,7 +24,7 @@ campaign; `copy <name> --to <worktree>` brings one back.
 | `fresh <pack> [<pack> ...] [--logins <list>] [--model opus\|sonnet\|gpt\|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800] [--as <suffix>] [--at <c>] [--host <host>] [--yes] [-- <flags>]` | names a campaign, makes its worktree at a published commit and launches it there | `fresh.ts` |
 | `launch <name> [--login N] [--yes] -- <flags>` | starts the campaign command under a new name in this worktree | `manage.ts` |
 | `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]` | runs a campaign again from its log | `manage.ts` |
-| `pause <name> [--after <event>] [--yes]` | stops a campaign at a clean point | `manage.ts` |
+| `pause <name> [--after <event>] [--eval] [--yes]` | stops a campaign at a clean point; `--eval` then reads its newest promotion outside (`runs outside --wait`) | `manage.ts` |
 | `keep <name> [--logins <list>] [--wait-hours 0.25] [--yes]` | keeps a campaign going across provider waits and deaths | `keep.ts` |
 | `copy <name> --to <worktree> [--yes]` | copies a stopped campaign to another worktree | `move.ts` |
 | `move <name> --to <host> [--from <host>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign and continues it on another machine at the same commit | `move.ts` |
@@ -34,9 +34,9 @@ campaign; `copy <name> --to <worktree>` brings one back.
 | `active` | the runs and seats live on each login, by name | `logins.ts` |
 | `sync [--yes \| --check] [--force]` | aligns tools and Python across hosts | `sync.ts` |
 | `search <pattern> [--regex] [--ignore-case] [--here] [--in logs\|notes\|all] [--max <chars>]` | searches campaign folders, notes and docs on all hosts | `search.ts` |
-| `fetch [<name>] [--from <host>]` | copies a peer's campaign, or every peer's records, into the archive; a copy leaves installed packages and caches on its host, so it is read and never run. With no name it also copies the benchmark score store from the machine `ABLATION_HOST` names into `data/bench/<machine>`, where `BENCH_STORE` names its folder there | `move.ts` |
-| `outside <run> --as <label> [--harness <kept>] [--login N] [--yes]` | a run's outside read in one command: writes the run's reference for the benchmark's machine on the host that holds the run, carries it into the score store, dry-runs both arms and rolls the reference with a Starter queued behind it; without `--yes` it prints the plan (run-improvement-campaign, "The outside aim") | `outside.ts` |
-| `retire [--days 1] [--yes]` | releases the seats' roots and host scratch folders nobody holds, archives idle campaigns, deletes seeds and stale worktrees, refreshes peers' records, and takes over what the host `ABLATION_HOST` names has archived | `retire.ts` |
+| `fetch [<name>] [--from <host>]` | copies a peer's campaign, or every peer's records, into the archive; a copy leaves installed packages and caches on its host, so it is read and never run. With no name it also copies each benchmark's score store from the peer that rolls it (`EVAL_RUNNER`) into `data/bench/<benchmark>` | `move.ts` |
+| `outside <run> [--bench <name>] [--as <label>] [--harness <kept>] [--login N] [--wait] [--yes]` | a run's outside read in one command, on the benchmark that reads its pack: writes the run's reference for the benchmark's machine on the host that holds the run, carries it into the score store, dry-runs both arms and rolls the reference with a Starter queued behind it; without `--yes` it prints the plan (run-improvement-campaign, "The outside aim") | `outside.ts` |
+| `retire [--days 1] [--yes]` | releases the seats' roots and host scratch folders nobody holds, archives idle campaigns, deletes seeds and stale worktrees, refreshes peers' records, and takes over what a benchmark's machine has archived | `retire.ts` |
 | `on <host> <verb ...>`, `hosts [--all] [--health]` | a verb on another host; each host's status or health | `hosts.ts` |
 | `loadwatch [<seconds>] [--once]` | each machine's CPU and load, live; `--once` prints one frame and ends it with the machines in order, least loaded first | `loadwatch.ts` |
 | `pulse [<part> ...] [--every 290] [--state <file>] [--no-readers]` | what each run gained since the last look | `pulse.ts` |

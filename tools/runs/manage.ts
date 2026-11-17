@@ -5,7 +5,7 @@
  *     -- <the campaign command's flags but --name>
  *   bun --env-file=<file> run runs continue <name> [--at <commit>] [--login N] [--budget N]
  *     [--after <word>[|<word>...]] [--yes] [-- <flags>]
- *   bun run runs pause <name> [--after <word>[|<word>...]] [--yes]
+ *   bun run runs pause <name> [--after <word>[|<word>...]] [--eval] [--yes]
  *
  * `launch` starts the campaign command (`tools/d2/harness-builder.ts`) under a name no worktree
  * holds a campaign of, in this worktree. `continue` runs a campaign again from its log in the
@@ -18,8 +18,9 @@
  * waits for the next solve that finishes or tool call any seat records, having left a word that
  * starts no further solve, once every open solve has finished, or past the run's own limit on a
  * solve with whatever is open, since a cut solve is paid for again: `runs stop` is the one that does
- * not wait. Flags after `--` stand for the kept ones. A campaign's folder moves by `runs copy` and
- * `runs move` (`move.ts`).
+ * not wait. `pause --eval` then reads the run's newest promotion outside, from this machine, on
+ * each benchmark that reads its pack, once that benchmark's machine is idle (`readAfterPause`,
+ * `outside.ts`). Flags after `--` stand for the kept ones. A campaign's folder moves by `runs copy` and `runs move` (`move.ts`).
  *
  * A run `launch` or `continue` starts on a numbered login gets a keeper (`keep.ts`) where another login
  * is allowed, so that it goes on elsewhere at a limit with nobody there (operator, 5 November: "bring

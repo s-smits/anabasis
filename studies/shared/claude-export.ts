@@ -46,6 +46,8 @@
 import { existsSync, mkdirSync, renameSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE } from "#src/meta/bundle-layout.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
+import { tmpdir } from "#src/meta/os.ts";
+import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { dirname, join, relative } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { keyIfDefined, keyIfNotNull } from "#src/meta/optional-key.ts";
@@ -64,6 +66,15 @@ const HOOKS = ".claude/hooks.json";
 
 /** The harness's files Claude Code has no reader for. */
 const DROPPED = [TOOLS_SPEC_FILE, GENERATED_TOOLS_FILE];
+
+/** Counts the top-level modules of the folders it is given that import, and names those that do not. */
+const IMPORTS = `import importlib, pkgutil, sys
+names = sorted({m.name for m in pkgutil.iter_modules(sys.argv[1:]) if not m.name.startswith("_")})
+bad = []
+for name in names:
+    try: importlib.import_module(name)
+    except BaseException: bad.append(name)
+print("IMPORTS", sys.version.split()[0], len(names) - len(bad), len(names), *bad[:5])`;
 
 /** The tree `into`, written from `source` for programs that run on `place`, the machine that will
  *  roll it: this one unless `--for` names another. Returns what `export.json` records. */
@@ -155,6 +166,33 @@ export async function exportForClaudeCode(
   writeFileSync(join(part, "export.json"), `${capturedJsonStringify(record, null, 2)}\n`);
   renameSync(part, into);
   return record;
+}
+
+/**
+ * What the exported tree's own `python3` makes of its packages on this machine under `env`, a
+ * rollout's environment with the tree's folders behind it as its hook puts them, or null where the
+ * tree has no `python3`. Refuses one that cannot start: a reference whose launcher execs its
+ * campaign machine's interpreter by path (17 November 2026, a `python3.14` under `/opt`, exit 127
+ * on Linux) rolls without its method, and nothing that reads its files sees it. A module that does
+ * not import is a condition of the read, said and refused nothing.
+ */
+export async function ownPython(tree: string, env: Readonly<Record<string, string>>): Promise<string | null> {
+  const dirs = toolTreeSearchDirs(join(tree, TOOLCHAIN));
+  const python = dirs.map((dir) => join(dir, "python3")).find((path) => existsSync(path));
+  if (python === undefined) return null;
+  const sites = (await packageFolders(join(tree, TOOLCHAIN))).map(({ site }) => join(tree, TOOLCHAIN, site));
+  const ran = runSync([python, "-c", IMPORTS, ...sites], {
+    cwd: tmpdir(),
+    env: { ...env, PATH: [env.PATH ?? "", ...dirs].join(":") },
+    timeout: 300_000,
+  });
+  const counted = /^IMPORTS .*$/mu.exec(decodeOutput(ran.stdout))?.[0].split(" ");
+  if (counted === undefined) {
+    const said = decodeOutput(ran.stderr).trim().split("\n").at(-1) ?? "";
+    throw new Error(`${relative(tree, python)} cannot start here (exit ${String(ran.exitCode)}: ${said})`);
+  }
+  const [, version, ok, of, ...bad] = counted;
+  return `its python3 is ${version} and imports ${ok} of ${of} of its modules${bad.length === 0 ? "" : `, not ${bad.join(", ")}`}`;
 }
 
 async function main(args: readonly string[]): Promise<void> {

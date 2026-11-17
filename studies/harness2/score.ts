@@ -91,7 +91,7 @@ import { runSync } from "#src/meta/subprocess.ts";
 import { LIMITS } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { foreignPrograms, HARNESS_DIR, HERE, placeHarness, placeOf } from "../shared/bundle.ts";
-import { exportForClaudeCode } from "../shared/claude-export.ts";
+import { exportForClaudeCode, ownPython } from "../shared/claude-export.ts";
 import { RESULT_FILE, TRACE_FILE } from "../shared/pi-solve.ts";
 import { inGroup, REFUSED, type Agent, type Claude } from "./h2/claude.ts";
 import { NAMESPACE } from "./h2/recursion.ts";
@@ -593,6 +593,10 @@ export async function score(values: Values): Promise<void> {
     ];
     const missing = needs.find((need) => !existsSync(need));
     if (missing !== undefined) throw new Error(`${task}: ${missing} is missing`);
+  }
+  for (const tree of pi ? [] : new Set(tasks.flatMap((task) => arm.tree(task) ?? []))) {
+    const own = await ownPython(tree, claude.env);
+    if (own !== null) console.log(`  tree ${basename(tree)}: ${own}`);
   }
   const judged = join(out, "judged", arm.name);
   console.log(`arm ${arm.name}: ${arm.harness}, ${tasks.length} tasks into ${judged}`);

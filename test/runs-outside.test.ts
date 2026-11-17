@@ -4,6 +4,9 @@
  * carried again. The commands are read as words here and never run.
  */
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { benchesOf } from "../tools/runs/host-config.ts";
 import { type Plan, readAs, readsArmed, settingsOf, stepsOf, walk } from "../tools/runs/outside.ts";
 
@@ -107,7 +110,7 @@ describe("runs outside", () => {
       "export ref-a1 for linux-x64 on builder",
       "carry ref-a1 into the store on bench",
       "clear the export's stage",
-      "the tree's own python3 on bench",
+      "the tree's own python3 starts on bench",
       "dry run of ref-a1",
       "dry run of starter-ref-a1",
       "start ref-a1 on login 2",
@@ -169,5 +172,27 @@ describe("runs outside", () => {
     await expect(failing).rejects.toThrow("dry run of ref-a1: exit 1; none of the 3 steps after it ran");
     expect(ran).toHaveLength(6);
     expect(ran.some((words) => words.includes("--yes"))).toBe(false);
+  });
+
+  test("a tree whose own python3 cannot start refuses the read, and one without python3 passes", () => {
+    const store = mkdtempSync(join(tmpdir(), "outside-python-"));
+    try {
+      const bin = join(store, "trees", "ref-a1", "tools", "bin");
+      mkdirSync(bin, { recursive: true });
+      writeFileSync(join(store, "trees", "ref-a1", "export.json"), '{ "toolchain": "tools" }');
+      const exitOf = () => {
+        const step = stepsOf(planOf({ runner: undefined, store })).find(({ says }) =>
+          says.includes("python3"),
+        );
+        return Bun.spawnSync([...(step?.command ?? ["false"])]).exitCode;
+      };
+      expect(exitOf()).toBe(0);
+      writeFileSync(join(bin, "python3"), '#!/bin/sh\nexec /nowhere/bin/python3.14 "$@"\n', { mode: 0o755 });
+      expect(exitOf()).toBe(1);
+      writeFileSync(join(bin, "python3"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+      expect(exitOf()).toBe(0);
+    } finally {
+      rmSync(store, { recursive: true, force: true });
+    }
   });
 });

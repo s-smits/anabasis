@@ -180,19 +180,26 @@ export async function ownPython(tree: string, env: Readonly<Record<string, strin
   const dirs = toolTreeSearchDirs(join(tree, TOOLCHAIN));
   const python = dirs.map((dir) => join(dir, "python3")).find((path) => existsSync(path));
   if (python === undefined) return null;
+  const run = (words: readonly string[]) => {
+    const ran = runSync([python, "-c", ...words], {
+      cwd: tmpdir(),
+      env: { ...env, PATH: [env.PATH ?? "", ...dirs].join(":") },
+      timeout: 300_000,
+    });
+    const last = decodeOutput(ran.stderr).trim().split("\n").at(-1) ?? "";
+    return {
+      out: decodeOutput(ran.stdout),
+      why: `exit ${String(ran.exitCode)}: ${last}`,
+      ok: ran.exitCode === 0,
+    };
+  };
+  const started = run(["pass"]);
+  if (!started.ok) throw new Error(`${relative(tree, python)} cannot start here (${started.why})`);
   const sites = (await packageFolders(join(tree, TOOLCHAIN))).map(({ site }) => join(tree, TOOLCHAIN, site));
-  const ran = runSync([python, "-c", IMPORTS, ...sites], {
-    cwd: tmpdir(),
-    env: { ...env, PATH: [env.PATH ?? "", ...dirs].join(":") },
-    timeout: 300_000,
-  });
-  const counted = /^IMPORTS .*$/mu.exec(decodeOutput(ran.stdout))?.[0].split(" ");
-  if (counted === undefined) {
-    const said = decodeOutput(ran.stderr).trim().split("\n").at(-1) ?? "";
-    throw new Error(`${relative(tree, python)} cannot start here (exit ${String(ran.exitCode)}: ${said})`);
-  }
-  const [, version, ok, of, ...bad] = counted;
-  return `its python3 is ${version} and imports ${ok} of ${of} of its modules${bad.length === 0 ? "" : `, not ${bad.join(", ")}`}`;
+  const counted = run([IMPORTS, ...sites]);
+  const [, version, ok, of, ...bad] = /^IMPORTS .*$/mu.exec(counted.out)?.[0].split(" ") ?? [];
+  if (of === undefined) return `its python3 starts, and the count of its modules ended (${counted.why})`;
+  return `its python3 is ${String(version)} and imports ${String(ok)} of ${of} of its modules${bad.length === 0 ? "" : `, not ${bad.join(", ")}`}`;
 }
 
 async function main(args: readonly string[]): Promise<void> {

@@ -514,6 +514,15 @@ describe("a harness written out for Claude Code", () => {
     expect(await ownPython(taken, env)).toMatch(
       /^its python3 is 3\.\d+\.\d+ and imports 1 of 2 of its modules, not broken$/u,
     );
+    // A module whose import ends the interpreter, as a native one built for another minor can: the
+    // count is said to have ended, and the read is not refused.
+    writeFileSync(
+      join(taken, "scripts", "toolchain", "lib", "python3.99", "site-packages", "broken.py"),
+      "import os\nos._exit(3)\n",
+    );
+    expect(await ownPython(taken, env)).toBe(
+      "its python3 starts, and the count of its modules ended (exit 3: )",
+    );
     expect(await ownPython(join(root, "claude-starter-less"), env)).toBeNull();
   });
 

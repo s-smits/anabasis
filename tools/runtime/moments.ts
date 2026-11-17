@@ -118,8 +118,9 @@ const ROUTES: readonly Route[] = [
   },
   {
     id: "untouched",
-    path: /(^|\/)(\.ana|data\/runs|vendor|node_modules|\.accounts)\//u,
-    said: "Protected files (AGENTS.md section 11, rule 2): do not edit `.ana/`, `data/runs/`, packs, check programs, kept harnesses, credentials or installed dependencies. `vendor/` changes only through a documented sed of upstream.",
+    // An investigation's and a cycle's folders under `.ana/wri/` are their sessions' to write.
+    path: /(^|\/)(\.ana\/(?!wri\/)|data\/runs\/|vendor\/|node_modules\/|\.accounts\/)/u,
+    said: "Protected files (AGENTS.md section 11, rule 2): do not edit a campaign's record under `.ana/`, `data/runs/`, packs, check programs, kept harnesses, credentials or installed dependencies. `vendor/` changes only through a documented sed of upstream.",
     skill: null,
   },
   {

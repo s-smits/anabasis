@@ -451,6 +451,8 @@ describe("a harness written out for Claude Code", () => {
     expect(guide).not.toContain("scripts/toolchain");
     expect(guide).toMatch(/limit on turns or time, .* does not hold here/u);
     expect(guide).not.toContain("on your PATH");
+    // The Starter's own host-only section is its last and holds nothing, so its export ends as it did.
+    expect(guide.endsWith("## Domain notes\nNone yet.\n")).toBe(true);
     expect(existsSync(join(into, "scripts"))).toBe(false);
     expect(existsSync(join(into, ".claude"))).toBe(false);
     await expect(exportForClaudeCode(into, "starter")).rejects.toThrow(/there already/u);

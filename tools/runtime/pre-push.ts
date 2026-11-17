@@ -253,7 +253,7 @@ async function checked(
   const misformatted = unformatted(root, line, tips);
   if (misformatted.length > 0) {
     say(
-      `biome would rewrite ${misformatted.join(", ")}; run bun run format -- <paths> and amend, or bun install where biome did not run. Nothing was pushed.`,
+      `biome would rewrite ${misformatted.join(", ")}; run bun fmt <paths> and amend, or bun install where biome did not run. Nothing was pushed.`,
     );
     return false;
   }

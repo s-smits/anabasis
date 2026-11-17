@@ -351,7 +351,11 @@ describe("a harness's programs, checked against the container", () => {
 
 describe("a harness written out for Claude Code", () => {
   it("makes the guide CLAUDE.md, copies the programs under scripts and names the harness's own tools as unavailable", async () => {
-    const programs = { ...tooled().programs, cat: "#!/bin/sh\necho the harness's cat\n" };
+    const programs = {
+      ...tooled().programs,
+      cat: "#!/bin/sh\necho the harness's cat\n",
+      "python3.12": "#!/bin/sh\necho the harness's interpreter\n",
+    };
     const made = await campaign("exported", () => undefined, { ...tooled(), programs });
     const into = join(root, "claude-tooled");
     const record = await exportForClaudeCode(into, { campaign: made.log, harness: made.child });
@@ -362,7 +366,9 @@ describe("a harness written out for Claude Code", () => {
     expect(guide).toContain("doubled. They are not available here");
     expect(guide).toContain("Its programs run by name, as the guide names them: cat, mark. Their folders");
     expect(guide).toContain("(`scripts/toolchain/bin`) are on your PATH behind this machine's own programs");
-    expect(guide).toContain("`python3`, where it has one, is its own");
+    // No interpreter is named, the tool tree's own among its programs neither: a note that named
+    // the harness's sent a solver to it for a look.
+    expect(guide).not.toMatch(/python|interpreter/u);
     expect(guide).not.toContain("scripts/toolchain/bin/mark");
     expect(guide).not.toContain("export PATH");
     expect(readFileSync(join(into, "scripts", "toolchain", "bin", "mark"), "utf8")).toContain("echo marked");

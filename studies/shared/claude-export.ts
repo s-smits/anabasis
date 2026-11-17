@@ -25,8 +25,10 @@
  *   day that listed every file of those directories as a program to run by its path, the
  *   interpreters among them, and left the machine's `python3` out sent a solver to the harness's
  *   interpreter first: a rollout met a module that interpreter lacks in four tasks of four,
- *   against one of four the day before. Where
- *   the tree holds Python built for another machine, as a reference built on a Mac does on Linux,
+ *   against one of four the day before. The note names no interpreter at all, the tool tree's
+ *   own `python3` and `pip` left out of its list of programs: one that said
+ *   the harness's starts by its path was followed by a command on that interpreter, most often a
+ *   rollout's second, in 9 of 16 rollouts, each meeting a module it lacks. Where the tree holds Python built for another machine, as a reference built on a Mac does on Linux,
  *   its interpreter and compiled distributions are installed again for this one at the same
  *   versions, or the export is refused (`rebuildForeignPython`, `foreign-python.ts`), and
  *   `export.json` names what was replaced under `rebuilt`;
@@ -97,6 +99,12 @@ export async function exportForClaudeCode(
     mkdirSync(dirname(join(part, HOOKS)), { recursive: true });
     writeFileSync(join(part, HOOKS), `${capturedJsonStringify(hooks, null, 2)}\n`);
   }
+  // An interpreter or installer of the tool tree's own Python is no program of the harness, and
+  // behind the machine's on the PATH its name starts the machine's.
+  const programs =
+    searched.length === 0
+      ? []
+      : installedPrograms(join(part, TOOLCHAIN)).filter((name) => !/^(?:python|pip)[\d.]*$/u.test(name));
   const note = [
     "# How this harness reaches you",
     "",
@@ -107,11 +115,11 @@ export async function exportForClaudeCode(
           "",
           `The guide may name tools of its own: ${unavailable.join(", ")}. They are not available here; use your own tools.`,
         ]),
-    ...(searched.length === 0
+    ...(programs.length === 0
       ? []
       : [
           "",
-          `Its programs run by name, as the guide names them: ${installedPrograms(join(part, TOOLCHAIN)).join(", ")}. Their folders (${searched.map((dir) => `\`${dir}\``).join(", ")}) are on your PATH behind this machine's own programs, so a name this machine has too starts this machine's program: \`python3\`, where it has one, is its own, and may hold packages the harness's interpreter lacks, or the reverse, and the harness's starts by its path. Those written for that runner's files (they open \`input.json\` or a \`public/\` folder, or check \`answer.json\`) find none of them here.`,
+          `Its programs run by name, as the guide names them: ${programs.join(", ")}. Their folders (${searched.map((dir) => `\`${dir}\``).join(", ")}) are on your PATH behind this machine's own programs, so a name this machine has too starts this machine's program. Those written for that runner's files (they open \`input.json\` or a \`public/\` folder, or check \`answer.json\`) find none of them here.`,
         ]),
     "",
   ];

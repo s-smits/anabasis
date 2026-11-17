@@ -80,6 +80,10 @@ stays in the investigation's lanes and the report names ids and counts.
 Turns, duration and output tokens, with turns sorted by kind (work, recovery, reading, polishing),
 since fewer turns can be a harness's virtue or the other arm repairing its environment; programs and
 tools used or failed; where and how each stopped. On a few tasks an association is description.
+On a benchmark, `compare.ts levels` prints for each arm how many shell commands name the exported
+harness's program folder and how many of those only look at it. The rest bound the use of its
+programs from above, and a harness whose programs no rollout ran still reached the solver as its
+guide.
 **Inside:** `solve.call`, the lanes on solves, `chain`, `tasks`.
 
 ## 10. Noise

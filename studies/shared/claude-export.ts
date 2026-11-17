@@ -41,7 +41,7 @@ import { HARNESS_DIR, HERE, type Place, placeHarness, placeOf } from "./bundle.t
 import { type PythonFor, rebuildForeignPython, uvPython } from "./foreign-python.ts";
 
 /** Where the tool tree lands in the exported tree, under the runner's `scripts/` entry. */
-const TOOLCHAIN = "scripts/toolchain";
+export const TOOLCHAIN = "scripts/toolchain";
 
 /** The harness's files Claude Code has no reader for. */
 const DROPPED = [TOOLS_SPEC_FILE, GENERATED_TOOLS_FILE];

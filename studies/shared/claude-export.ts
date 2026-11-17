@@ -11,11 +11,13 @@
  * - the guide becomes `CLAUDE.md`, under a note that says what of a campaign's solve is not here:
  *   its task and answer files and `submit`, and, for every harness alike, whatever the guide says of
  *   a limit on turns or time, of checking or submitting an answer, or of scoring;
- * - `.toolchain/` is copied to `scripts/toolchain/`, and the note names its program directories in
- *   the order a solve's shell searches them (`toolTreeSearchDirs`, `src/wall/isolation.ts`), as
- *   facts: it puts nothing ahead of the machine's own programs, since the 9 November pilot's line
- *   that did so hid the machine's openpyxl, docx and matplotlib behind the harness's Python, and it
- *   says that programs written for the campaign's own files find none of them here; where the tree
+ * - `.toolchain/` is copied to `scripts/toolchain/`, and the note names every program by its path,
+ *   in the directories a solve's shell searches (`toolTreeSearchDirs`, `src/wall/isolation.ts`),
+ *   since the guide names each without a folder and a campaign's shell found it there. The note
+ *   puts nothing on the PATH: the 9 November pilot's line that did so hid the machine's openpyxl,
+ *   docx and matplotlib behind the harness's Python. It says the programs are the solver's to run,
+ *   read and change, where until 17 November it said only what they would not find: in the read
+ *   of 16 November no rollout of eight named one of a reference's five programs; where the tree
  *   holds Python built for another machine, as a reference built on a Mac does on Linux, its
  *   interpreter and compiled distributions are installed again for this one at the same versions,
  *   or the export is refused (`rebuildForeignPython`, `foreign-python.ts`), and `export.json`
@@ -29,12 +31,20 @@
  * and `submit`), so a score of the export measures the harness after that transfer, and is read so.
  * Until 3 November the JobBench pilot planned a one-off script in a scratch folder for this.
  */
-import { existsSync, cpSync, mkdirSync, renameSync, writeFileSync } from "#src/meta/filesystem.ts";
+import {
+  existsSync,
+  cpSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  writeFileSync,
+} from "#src/meta/filesystem.ts";
 import { GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE } from "#src/meta/bundle-layout.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { join, relative } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { keyIfDefined, keyIfNotNull } from "#src/meta/optional-key.ts";
+import { compareCodeUnits } from "#src/meta/stable-json.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
 import { HARNESS_DIR, HERE, type Place, placeHarness, placeOf } from "./bundle.ts";
@@ -72,6 +82,11 @@ export async function exportForClaudeCode(
     cpSync(harness.toolTree, join(part, TOOLCHAIN), { recursive: true, verbatimSymlinks: true });
   }
   const rebuilt = await rebuildForeignPython(join(part, TOOLCHAIN), place, python);
+  const programs = searched.flatMap((dir) =>
+    readdirSync(join(part, dir))
+      .toSorted(compareCodeUnits)
+      .map((name) => `\`${dir}/${name}\``),
+  );
   const note = [
     "# How this harness reaches you",
     "",
@@ -86,7 +101,7 @@ export async function exportForClaudeCode(
       ? []
       : [
           "",
-          `Its programs are in \`${TOOLCHAIN}/\`, in ${searched.map((dir) => `\`${dir}\``).join(", ")}, and nothing puts them on your PATH. Those written for that runner's files (they open \`input.json\` or a \`public/\` folder, or check \`answer.json\`) find none of them here. This machine's own programs, its \`python3\` among them, are on it as usual, and may hold packages the harness's interpreter lacks, or the reverse.`,
+          `Its programs are ${programs.join(", ")}. The guide names each without its folder and nothing puts them on your PATH, so start one by its path from the folder this file is in. They are yours to run, read and change: one that starts an interpreter of the harness's own finds that interpreter's packages and not those of this machine's \`python3\`, and one written for that runner's files finds none of them until you give it what it reads.`,
         ]),
     "",
   ];

@@ -17,7 +17,8 @@ import {
 } from "../studies/shared/bundle.ts";
 import { exportForClaudeCode } from "../studies/shared/claude-export.ts";
 import { harnessIn, keyless, RESULT_FILE, TRACE_FILE } from "../studies/shared/pi-solve.ts";
-import { type Agent, type Claude, REFUSED, rollout } from "../studies/harness2/h2/claude.ts";
+import { type Agent, type Claude, inGroup, REFUSED, rollout } from "../studies/harness2/h2/claude.ts";
+import { installTree } from "../studies/harness2/h2/tree.ts";
 import { piAgent } from "../studies/harness2/score.ts";
 import { halves, readArms, shortfall, streamOf, type Trial, trialsOf } from "../studies/shared/scores.ts";
 import { append } from "../src/kernel/log.ts";
@@ -358,10 +359,22 @@ describe("a harness written out for Claude Code", () => {
     expect(record.unavailable).toStrictEqual(["doubled"]);
     const guide = readFileSync(join(into, "CLAUDE.md"), "utf8");
     expect(guide).toContain("doubled. They are not available here");
-    expect(guide).toContain("`scripts/toolchain/bin`, and nothing puts them on your PATH");
+    expect(guide).toContain("Its programs are `scripts/toolchain/bin/mark`. The guide names each without");
+    expect(guide).toContain("They are yours to run, read and change");
     expect(guide).not.toContain("export PATH");
-    expect(guide).toMatch(/written for that runner's files .* find none of them here/u);
     expect(readFileSync(join(into, "scripts", "toolchain", "bin", "mark"), "utf8")).toContain("echo marked");
+    // Installed as a rollout installs it, the program starts by the path the note gives.
+    const workspace = join(root, "claude-tooled-workspace");
+    installTree(into, workspace);
+    const out = join(root, "claude-tooled-mark.out");
+    const code = await inGroup(["/bin/sh", "-c", "scripts/toolchain/bin/mark"], {
+      cwd: workspace,
+      env: { PATH: runtimeProcess.env.PATH ?? "" },
+      stdout: out,
+      stderr: `${out}.err`,
+      timeoutS: 30,
+    });
+    expect([code, readFileSync(out, "utf8")]).toStrictEqual([0, "marked\n"]);
     expect(parseJsonAs<{ harness: string }>(readFileSync(join(into, "export.json"), "utf8")).harness).toBe(
       made.child,
     );
@@ -412,7 +425,7 @@ describe("a harness written out for Claude Code", () => {
     expect(guide).not.toContain("not available here");
     expect(guide).not.toContain("scripts/toolchain");
     expect(guide).toMatch(/limit on turns or time, .* does not hold here/u);
-    expect(guide).not.toContain("find none of them here");
+    expect(guide).not.toContain("yours to run");
     expect(existsSync(join(into, "scripts"))).toBe(false);
     await expect(exportForClaudeCode(into, "starter")).rejects.toThrow(/there already/u);
   });

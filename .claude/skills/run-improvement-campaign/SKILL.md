@@ -143,18 +143,23 @@ row reads scored or skipped.
    runs of the same code and pack as equals, once the run has stopped, so the synthesis reads the
    comparison the pause waited for. `open` still reads a run left live on a frozen copy
    (`wri.ts start --snapshot`), a deviation for a run the operator keeps going, and writes
-   `iteration.json` (`{ "opened": <ISO>, "runs": [<names>] }`), which the later gates require. Then
-   follow `wri2p2.ts next <dir>` through the instructions, `lanes --agents 4` with
-   one subagent a lane, the record read across runs while the lanes work (`record.md`,
-   whole-run-investigation, step 4), the collection and the synthesis. Before the vetting, `next` waits until each
-   run has its two files, looking only in `*-cycle-*` folders and the investigation's own, and
-   refuses where two of them hold the same file.
+   `iteration.json` (`{ "opened": <ISO>, "runs": [<names>], "protocol": 2 }`), which the later gates
+   require; a folder opened without the protocol's number keeps the gates of its day. Then follow
+   `wri2p2.ts next <dir>` through the instructions, `lanes --agents 4` with one subagent a lane,
+   `wri.ts record` started in the same turn as the lanes (`record.md`, whole-run-investigation,
+   step 4; `next` owes each read it lacks), the collection and the synthesis. Before the vetting,
+   `next` waits until each run has its two files, looking only in `*-cycle-*` folders and the
+   investigation's own, and refuses where two of them hold the same file.
 3. **Vet, read across domains, plan.** Vet each finding against the logs and the head (a fix may
-   already be on the stack) as confirmed, plausible or refuted (whole-run-investigation, "Vetting"),
-   in `vetting.md` with rows `vet-<n>`. Recount every prediction first, so that `vetting.md` names
-   every prediction id: a falsified row becomes a finding, an unreached one carries to the next
-   ledger. Behaviour `AGENTS.md` documents as intended is an operator decision, asked with evidence
-   and a recommendation. A fix found in one domain lands in all of them, so a read-only subagent
+   already be on the stack) as confirmed, plausible or refuted, in `vetting.md`, whose findings
+   table has the fixed columns of whole-run-investigation's "Vetting": each row `vet-<n>` names the
+   lane findings it rests on and a key of the register of standing findings or `new`, and a
+   confirmed row its importance and its fate, which the `vet` gate holds it to. Recount every
+   prediction first, so that `vetting.md` names every prediction id: a falsified row becomes a
+   finding, an unreached one carries to the next ledger. Behaviour `AGENTS.md` documents as intended
+   is an operator decision, asked with evidence and a recommendation, and a standing key the ledger
+   (`wri.ts findings`) names as held again with no repair is asked once, with the ledger's counts.
+   A fix found in one domain lands in all of them, so a read-only subagent
    then reads the newest 5 to 10 vetted investigations of the other domains, none from before the
    previous minor release, and writes `cross-domain.md`: for each confirmed problem, whether those
    domains show it, what differed where they do not, and whether an earlier fix failed to hold; for

@@ -404,7 +404,7 @@ function gatesOf(where: Where): Gate[] {
         )
           ? null
           : [
-              `lanes ${LONE.join(" and ")} run alone, after the reports they wait on: build each whose trigger fired (\`wri.ts lanes\` named it) with${wri("lanes", " --lanes <n>").slice(1)} and launch it alone, or record why not in ${at(DEVIATIONS)} as "| isolated | <reason> |"`,
+              `lanes ${LONE.join(" and ")} run alone, after the reports they wait on: build each its \`Starts from\` paragraph opens (lane 4 only where lane 3 left a check undecided, lane 15 on a win at a small wall share only where lane 10 or 12 names a shortcut) with${wri("lanes", " --lanes <n>").slice(1)} and launch it alone, or record why not in ${at(DEVIATIONS)} as "| isolated | <reason> |"`,
             ],
       ),
     ]),

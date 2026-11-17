@@ -43,6 +43,18 @@
  * the harness, whichever harness the session forks.
  * It distinguishes the temporary working directory of each custom tool call from the solver's
  * persistent home, and limits the reminder promise to tools that execute.
+ *
+ * From 17 November the outline has a fourth heading, `HOST_ONLY`, for what holds only for this
+ * host's answer: what makes one valid and what the objective rewards. A kept harness is also
+ * written out and run outside a campaign (`studies/shared/claude-export.ts`), where there is no
+ * task file, answer file, check or score of the exam. In one campaign's log the solver started one
+ * of its reference's programs in 225 of 226 solves, and in 12 rollouts of that reference outside in
+ * none. Two of its five programs opened the exam's own files; the three that computed took plain
+ * arguments already and were still not started outside, so the form of a program's input does not
+ * explain the use. Two of the guide's three sections were the exam's validity and its score, which
+ * an outside solver read as instructions. The export carries a guide as far as the heading, and the
+ * account tells the Builder so as a fact, and that a program runs on other data only where it takes
+ * plain data.
  */
 import { AGENT_DIR, GENERATED_TOOLS_FILE, GUIDE_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
@@ -84,6 +96,9 @@ None yet.
   which happened.
 
 ## Domain notes
+None yet.
+
+${HOST_ONLY}
 None yet.
 `,
 };
@@ -158,6 +173,9 @@ A rota that ${CHECKER} passes has still to meet the rules it does not test.
 
 ## Domain notes
 Hours count by the shift's length in the task, not by its clock times.
+
+${HOST_ONLY}
+A rota that leaves a shift of the task unassigned is not valid.
 `,
 };
 
@@ -249,7 +267,10 @@ ${capturedJsonStringify(EXAMPLE.spec, null, 2)}
 Programs for the solver. Every executable in .toolchain/bin, and in a bin, shims or sbin directory
 below it, runs by name in the solver's commands, with .toolchain/bin first on PATH. The tree is
 read-only to the solver. What you install for a program to use, an engine or a package, goes in
-the tree too.
+the tree too. So does a package the solver's own commands import: its python3 is this machine's
+unless the tree holds one, and a package that interpreter lacks costs each solve a command to
+install before its first use. Outside this host only the tree goes with the harness: an
+interpreter or a package the tree names by a path on this machine is not there.
 
 A program of your own keeps to one convention, so that a solver meets the same thing under every
 harness:
@@ -257,6 +278,8 @@ harness:
 - Its name says what it does, verb first, in lower case with hyphens: ${CHECKER}, simulate-mix.
 - It takes its input as files named in its arguments, by paths relative to the solver's working
   directory, and reads the task from public/task.json unless another file is named.
+- One that computes also takes what it computes on in a plain form, a CSV file or JSON of the
+  values alone, so that it runs on any data of that kind, a task's or not.
 - It prints its result to standard output, in lines a solver can read, and what went wrong to
   standard error.
 - It exits 0 when it ran and what it tested holds, 1 when it ran and something does not hold, and
@@ -283,6 +306,12 @@ ${STARTER.guide.trimEnd()}
 \`\`\`
 
 They are yours to revise, replace or remove, the file included.
+
+A kept harness is also written out and run outside this host, on work that comes as a prompt and
+ordinary files: no public/task.json, answer.json or submit is there, and no check or score of this
+exam. The guide goes with it as far as the heading "${HOST_ONLY.slice(3)}", under which belongs what
+holds only here: what makes an answer to these tasks valid, and what the objective rewards. A guide
+without that heading goes whole, under a line that says such things do not hold there.
 
 The host tells the solver its limits and appends how much of them is used to results of tools
 that execute; argument refusals and unavailable tools carry no reminder. Solvers told in their

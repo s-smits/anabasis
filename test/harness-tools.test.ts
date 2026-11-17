@@ -70,16 +70,17 @@ function textOf(result: Awaited<ReturnType<SeatTool["execute"]>>): string {
 }
 
 describe("opening and identifying a harness", () => {
-  it("opens with no artifact-writer, and with no tool at all: the answer is a file and no tool's", async () => {
+  it("opens with no tool at all, and refuses v1's artifact-writer as any unknown kind", async () => {
     const dir = join(scratchRoot, "writer");
     cpSync(FIXTURE, dir, { recursive: true });
     const spec = join(dir, "agent", "tools-spec.json");
     const { tools } = parseJsonAs<{ tools: { kind: string }[] }>(readFileSync(spec, "utf8"));
-    const readers = tools.filter((row) => row.kind !== "artifact-writer");
-    writeFileSync(spec, JSON.stringify({ presets: ["read", "bash"], tools: readers }));
-    const opened = await openHarness(dir);
-    expect([...opened.kinds.values()]).not.toContain("artifact-writer");
-    expect(opened.presets).toEqual(["read", "bash"]);
+    writeFileSync(spec, JSON.stringify({ presets: ["read", "bash"], tools }));
+    expect((await openHarness(dir)).presets).toEqual(["read", "bash"]);
+    // The answer is a file and no tool's, so no harness declares a tool that writes it.
+    const writer = { name: "record_answer", kind: "artifact-writer", description: "Records the answer." };
+    writeFileSync(spec, JSON.stringify({ presets: ["bash"], tools: [...tools, writer] }));
+    await expect(openHarness(dir)).rejects.toThrow("needs a name and a kind");
     writeFileSync(spec, JSON.stringify({ presets: [], tools: [] }));
     expect((await openHarness(dir)).kinds.size).toBe(0);
     // A solver has one tool under each name, and five names are pi's and the host's.
@@ -312,12 +313,9 @@ it.skipIf(!walled)(
     await withWall(async (wall) => {
       writeFileSync(join(wall.dirs.host, "config"), "host-canary");
       const tools = await harnessTools(harness, TASK, launchOn(wall));
-      // The fixture is a harness kept before the answer was a file: its factory lists a writer,
-      // its spec declares it, and no solve is given it.
       expect([...harness.kinds]).toEqual([
         ["scale_base", "reader"],
         ["read_path", "advisor"],
-        ["record_answer", "artifact-writer"],
       ]);
       expect(tools.map((tool) => [tool.name, tool.executionMode])).toEqual([
         ["scale_base", "sequential"],

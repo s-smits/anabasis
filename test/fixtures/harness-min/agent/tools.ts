@@ -38,14 +38,6 @@ export const createDomainHarness: DomainHarnessFactory = (task) => {
           }
         },
       }),
-      defineDraftTool({
-        name: "record_answer",
-        label: "Record answer",
-        description: "Records the answer.",
-        executionMode: "sequential",
-        parameters: Type.Object({ answer: Type.String() }),
-        run: () => ({ text: "recorded", terminate: false }),
-      }),
     ],
   };
 };

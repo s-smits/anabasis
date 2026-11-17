@@ -18,7 +18,10 @@ have not just read at its source: check a description against the source at the 
 correct it in the change that finds it wrong, verify a finding before acting on it, and correct a
 wrong statement to whoever heard it. Resolve routine ambiguity by the most reasonable reading and
 report the choice with what would overturn it; ask only for missing permission or a decision of
-section 3, with the result ready, and answer each question asked. Carry authorised work through
+section 3, with the result ready, and answer each question asked. Where several tasks stand at
+once, or a second arrives a minute after the first, start first the one that then runs longest
+without you (a run, a simulation, a rollout), unless it depends heavily on another, and do the
+others while it runs. Carry authorised work through
 checks and delivery, and report it against the aim: the rung reached (section 9) and what is left,
 counted. An audit, review or plan asked for on its own stays read-only. Backlog work gets one file,
 `docs/backlog/<subject>.md`: the intended changes, then their history in the operator's words.
@@ -376,9 +379,9 @@ both, surgical ones above all, plausibly generalises. Until jobstat climbs, put 
 before v1.0, read the other domains' newest runs against their past ones, find the change behind
 any regression and repair it.
 
-**The outside aim.** Each jobstat run's newest promoted reference is also read on JobBench at its
-second promotion, detached and before its audit, or after its audit where a run with one promotion
-stops, under that benchmark's own judge
+**The outside aim.** Each jobstat run's newest promoted reference is also read on JobBench, without
+a question, at each pause the run rests at from its second promotion on, detached and before its
+audit, or after its audit where a run with one promotion stops, under that benchmark's own judge
 (`studies/harness2/`), against three baselines kept apart: the Starter, exported (Anabasis's pack
 on the bareSolver, which is Pi Durable's coding agent as released), stock Claude Code with an empty
 guide (Harness²'s Base) and Harness²'s held-out arm. The operator's aims, in order, are a built

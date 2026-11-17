@@ -141,6 +141,14 @@ describe.skipIf(!osIsolationSupport().ok)("the coding tools on the OS wall", () 
       await stopped(join(wall.dirs.home, "beat"));
       // A command that ends before the default second returns as before, with nothing carried.
       expect((await call("bash", { command: "echo quick" })).diagnostics).toEqual([]);
+      // What a handed-back command prints is carried up to pi's bash output limit, 50 KB.
+      await expect(
+        call("bash", { command: "sleep 1.2; head -c 60000 /dev/zero | tr '\\0' x" }),
+      ).rejects.toThrow("still running");
+      const carried = (await call("bash", { command: "true" })).diagnostics
+        .map((note) => note.message)
+        .join("");
+      expect(/x+$/u.exec(carried)?.[0].length).toBe(50 * 1024);
       const abort = new AbortController();
       // A marker proves the command began before the abort.
       const running = call("bash", { command: command.replaceAll("beat", "abort-beat") }, abort.signal);

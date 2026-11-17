@@ -35,9 +35,10 @@ import { type CommandWall, heldSeconds, runWalled } from "./command.ts";
 const RUNNING = new WeakMap<CommandWall, Promise<string>>();
 // The two limits and OutputBuffer (at the end) are pi-processes' (github.com/aliou/pi-processes, MIT),
 // examples/bash-background.ts lines 22-23 and 47-69 at cce6ad98e, changed only for this repository's
-// lint: 4000 for 4_000, a readonly `chunks`, and the class after the declarations.
+// lint (a readonly `chunks`, the class after the declarations) and in the tail it keeps: pi's own bash
+// output limit, read from the description pi writes from it, instead of 4,000 characters.
 const MAX_CAPTURED_BYTES = 8 * 1024 * 1024;
-const RESULT_TAIL_CHARS = 4000;
+const RESULT_TAIL_CHARS = 1024 * Number(/ (\d+)KB /u.exec(createBashTool().description)?.[1]);
 
 /** The order pi lists its coding tools. */
 export const CODING_TOOLS = ["read", "bash", "edit", "write"] as const;
@@ -80,8 +81,7 @@ export function wallExec(wall: CommandWall): WallExec {
   };
 }
 
-/** Selected registrations, in pi's order; the seat supplies their walled api.env. Each call first
- *  waits for a command handed back earlier and carries its ending. */
+/** Selected registrations, in pi's order; the seat supplies their walled api.env. */
 export function codingTools(wall: CommandWall, selected: readonly CodingTool[]): SeatTool[] {
   const wanted = new Set<string>(selected);
   const tools: SeatTool[] = [createReadTool({ images }), bashTool(wall), createEditTool(), createWriteTool()];
@@ -127,7 +127,8 @@ function bashTool(wall: CommandWall): SeatTool {
     execute: async (args: BashToolInput, api, context) => {
       const { asked, seconds, nearEnd } = heldSeconds(args.timeout ?? shellMaxSeconds, wall);
       // Durable refuses a settled call's api and cancels its context, so a handed-back command
-      // runs on under its own signal and keeps its output's tail for the seat's next call.
+      // runs on under its own signal and keeps what it prints from then on for the seat's next call;
+      // what it printed before reached the seat with the hand-back.
       const tail = new OutputBuffer();
       let handedBack = false;
       const stop = new AbortController();
@@ -135,8 +136,8 @@ function bashTool(wall: CommandWall): SeatTool {
       const own: typeof api = {
         ...api,
         output: (chunk, skipped) => {
-          tail.append(Buffer.from(chunk));
-          if (!handedBack) api.output(chunk, skipped);
+          if (handedBack) tail.append(Buffer.from(chunk));
+          else api.output(chunk, skipped);
         },
         retainedOutput: () => (handedBack ? { text: tail.tail(), truncated: false } : api.retainedOutput()),
         diagnostic: (note) => handedBack || api.diagnostic(note),
@@ -172,7 +173,7 @@ function bashTool(wall: CommandWall): SeatTool {
         wall,
         ending.then(
           (how) =>
-            `The command handed back earlier has ended (${how}). The tail of its output:\n${tail.tail()}`,
+            `The command handed back earlier has ended (${how}). What it printed since:\n${tail.tail()}`,
         ),
       );
       throw new Error(

@@ -238,8 +238,10 @@ GitHub allows merge commits only, and ruleset 25824510 on `main`
 `land` checks that each base contains the head beneath it down to `main`, so the last merge leaves
 `main` at the top's tree, then proves each commit on the top's first parents: static steps and
 nearby tests, and the whole gate on the top; recorded passes are reused, at a merge as at a
-sanitize (`ANA_GATE_FRESH=1` proves every commit afresh by hand), and `--jobs N` runs N static passes
-at once. **A passing proof is not a release**: a stack merges only once a fresh run at the top's head
+sanitize (`ANA_GATE_FRESH=1` proves every commit afresh by hand). With `RUN_REMOTE` unset the passes
+spread over every host that takes checks, as many at once as its slots, a pass whose host gave no
+verdict proved again on another, and with `RUN_REMOTE` set they stay at that one place; `--jobs N`
+caps how many run at once (local-checks, "On which machine"). **A passing proof is not a release**: a stack merges only once a fresh run at the top's head
 has reached two promotions on unchanged code (run-improvement-campaign, "A run proves the release");
 land the proved top by its number, never a newer top. On failure, fold the fix into the named
 commit, push it and land again with `--sanitize`, which replays what is above (section 8). A

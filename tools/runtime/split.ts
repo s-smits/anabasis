@@ -41,10 +41,10 @@
  * 9 November both read the old native stack, and a run cut short after its unstack left none to read.
  */
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
-import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
+import { runtimeProcess } from "../../src/meta/process.ts";
 import { errorMessage } from "../../src/meta/runtime-values.ts";
 import { runSync, runTextSyncOrThrow } from "../../src/meta/subprocess.ts";
-import { git, gitSays, lines, short } from "./gate.ts";
+import { argsOr, git, gitSays, lines, short } from "./gate.ts";
 import {
   api,
   beneath,
@@ -57,6 +57,8 @@ import {
   trunkOf,
 } from "./pulls.ts";
 import { leasedPush } from "./restack.ts";
+
+const USAGE = "usage: bun run split -- <pull request> [--yes]";
 
 /** The pull request a stack is split above, as `gh pr view --json` gives it. */
 interface Cut {
@@ -174,14 +176,12 @@ function split(root: string, number: number, yes: boolean): void {
 }
 
 function main(argv: readonly string[]): number {
-  const { values, positionals } = parseArgs({
-    args: [...argv],
-    options: { yes: { type: "boolean", default: false } },
-    allowPositionals: true,
-  });
+  const parsed = argsOr(argv, USAGE, { yes: { type: "boolean", default: false } });
+  if (parsed === null) return 2;
+  const { values, positionals } = parsed;
   const number = Number(positionals[0]);
   if (positionals.length !== 1 || !Number.isInteger(number) || number <= 0) {
-    console.error("usage: bun run split -- <pull request> [--yes]");
+    console.error(USAGE);
     return 2;
   }
   try {

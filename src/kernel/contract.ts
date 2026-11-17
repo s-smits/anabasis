@@ -6,11 +6,11 @@
  * Every check cites the rule ids it enforces, and the host confirms those ids exist here. Whether a
  * rule's statement says enough is not the host's to decide: it surfaces as a Referee dispute.
  */
-import { validateToolArguments } from "@earendil-works/pi-ai/utils/validation";
 import type { TSchema } from "typebox";
-import { asRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { Compile } from "typebox/compile";
+import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { hashJsonValue, sameJsonValue } from "../meta/stable-json.ts";
+import { hashJsonValue } from "../meta/stable-json.ts";
 
 export interface Rule {
   readonly id: string;
@@ -57,35 +57,37 @@ export function contractHash(contract: Contract): string {
 /**
  * Why an answer does not follow a contract's answer format, or null when it does. `submit` asks
  * it of a solver's answer file and refuses the file with what this returns, and the runner asks it
- * again of what was submitted (`src/tools/answer.ts`, `src/solver/run.ts`). The validator is pi-ai's
- * own, the one pi runs on a tool's arguments. That validator coerces: it reads `"1"` as `1` where
- * the format wants a number and drops a null the format does not allow. It coerces a clone, never
- * the caller's value, and an answer that follows only once coerced does not follow here, since what
- * a check would read is the answer as given.
+ * again of what was submitted (`src/tools/answer.ts`, `src/solver/run.ts`). The checker is
+ * TypeBox's compiled one, which pi-ai 1.4.0's validator ran. It coerces nothing, so an
+ * answer follows as given or not at all, and which answers follow does not move with pi's
+ * packages. A format that refers to itself without reading a value has no verdict: the checker
+ * runs out of stack and the fault says so, where pi-schema 1.5.2 under Bun never returns (its
+ * check of a reference is a call in tail position, which the engine turns into a jump) and
+ * TypeBox's interpreted `Value.Check` never returns from a name that is its own reference.
  */
 export function answerFormatFault(answerFormat: Contract["answerFormat"], answer: JsonValue): string | null {
-  const tool = { name: "answer", description: "", parameters: answerSchema(answerFormat) };
-  let validated: unknown;
+  const schema = answerSchema(answerFormat);
   try {
-    // SAFETY: the validator reads any JSON value; only its type names the arguments an object.
-    const call = { type: "toolCall", id: "answer", name: "answer", arguments: answer as JsonObject } as const;
-    validated = validateToolArguments(tool, call);
+    const format = Compile(schema);
+    if (format.Check(answer)) return null;
+    return format
+      .Errors(answer)
+      .map((fault) => `${fault.instancePath || "/"}: ${fault.message}`)
+      .join("; ");
   } catch (error) {
-    // The validator ends its message with the whole answer, which the caller already holds.
-    return errorMessage(error).split("\n\nReceived arguments")[0] ?? "";
+    return errorMessage(error);
   }
-  return sameJsonValue(validated, answer) ? null : "the answer follows the format only once coerced";
 }
 
 /**
- * The answer format as the schema pi-ai's validator takes. A format
- * that is not a JSON Schema object is refused: the validator reads one as no constraint at all, so
+ * The answer format as the schema TypeBox's checker takes. A format
+ * that is not a JSON Schema object is refused: the checker reads one as no constraint at all, so
  * the M1 stand-in contract, which carried v1's prose `artifactSchema` rows, passed every answer.
  */
 function answerSchema(answerFormat: Contract["answerFormat"]): TSchema {
   if (!isString(asRecord(answerFormat)?.type)) {
     throw new Error("the contract's answer format is not a JSON Schema with a type");
   }
-  // SAFETY: a JSON Schema, which pi-ai's validator compiles as TypeBox does its own.
+  // SAFETY: a JSON Schema, which TypeBox's checker reads as it does its own.
   return answerFormat as TSchema;
 }

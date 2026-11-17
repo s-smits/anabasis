@@ -13,7 +13,7 @@ import { plural } from "./text.ts";
  * line that does not, and never leaves whitespace at the cut. `text` is what was kept, for a
  * record that carries its own truncation flag; `shown` adds the one omission marker, for anything a
  * person or a model reads.
- * pi-durable 1.4.0 keeps its truncation helpers private, so this owns the contract its readers use.
+ * pi-durable 1.5.2 still keeps its truncation helpers private, so this owns the contract its readers use.
  */
 interface BoundedText {
   /** The kept text: at most `maxBytes` UTF-8 bytes, trimmed at both ends. */

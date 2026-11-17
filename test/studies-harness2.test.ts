@@ -17,7 +17,8 @@ import {
 } from "../studies/shared/bundle.ts";
 import { exportForClaudeCode } from "../studies/shared/claude-export.ts";
 import { harnessIn, keyless, RESULT_FILE, TRACE_FILE } from "../studies/shared/pi-solve.ts";
-import { type Agent, type Claude, REFUSED, rollout } from "../studies/harness2/h2/claude.ts";
+import { type Agent, type Claude, inGroup, REFUSED, rollout } from "../studies/harness2/h2/claude.ts";
+import { installTree } from "../studies/harness2/h2/tree.ts";
 import { piAgent } from "../studies/harness2/score.ts";
 import { halves, readArms, shortfall, streamOf, type Trial, trialsOf } from "../studies/shared/scores.ts";
 import { append } from "../src/kernel/log.ts";
@@ -41,7 +42,7 @@ import { join } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import { openHarness } from "../src/harness/open.ts";
-import { EXAMPLE, writeStarter } from "../src/harness/starter.ts";
+import { EXAMPLE, HOST_ONLY, writeStarter } from "../src/harness/starter.ts";
 import { writeHarness } from "./helpers/write-harness.ts";
 
 // SAFETY: the harness tool below uses only the context's abort signal, no tool API methods.
@@ -350,7 +351,13 @@ describe("a harness's programs, checked against the container", () => {
 
 describe("a harness written out for Claude Code", () => {
   it("makes the guide CLAUDE.md, copies the programs under scripts and names the harness's own tools as unavailable", async () => {
-    const made = await campaign("exported", () => undefined, tooled());
+    const programs = {
+      ...tooled().programs,
+      cat: "#!/bin/sh\necho the harness's cat\n",
+      "python3.12": "#!/bin/sh\necho the harness's interpreter\n",
+    };
+    const own = `# Operating Guide\n\n## Programs and tools\n- mark: prints marked.\n\n## Domain notes\nA mark counts once.\n\n${HOST_ONLY}\nAn answer over three lines is not valid.\n`;
+    const made = await campaign("exported", () => undefined, { ...tooled(), programs, guide: own });
     const into = join(root, "claude-tooled");
     const record = await exportForClaudeCode(into, { campaign: made.log, harness: made.child });
     expect(record.harness).toBe(made.child);
@@ -358,10 +365,41 @@ describe("a harness written out for Claude Code", () => {
     expect(record.unavailable).toStrictEqual(["doubled"]);
     const guide = readFileSync(join(into, "CLAUDE.md"), "utf8");
     expect(guide).toContain("doubled. They are not available here");
-    expect(guide).toContain("`scripts/toolchain/bin`, and nothing puts them on your PATH");
+    expect(guide).toContain("Its programs run by name, as the guide names them: cat, mark. Their folders");
+    expect(guide).toContain("(`scripts/toolchain/bin`) are on your PATH behind this machine's own programs");
+    // No interpreter is named, the tool tree's own among its programs neither: a note that named
+    // the harness's sent a solver to it for a look.
+    expect(guide).not.toMatch(/python|interpreter/u);
+    expect(guide).not.toContain("scripts/toolchain/bin/mark");
     expect(guide).not.toContain("export PATH");
-    expect(guide).toMatch(/written for that runner's files .* find none of them here/u);
+    // What the guide keeps under its last heading, for the exam's own answer, stays behind.
+    expect(guide.endsWith("- mark: prints marked.\n\n## Domain notes\nA mark counts once.\n")).toBe(true);
+    expect(guide).not.toContain("three lines");
     expect(readFileSync(join(into, "scripts", "toolchain", "bin", "mark"), "utf8")).toContain("echo marked");
+    // The tree holds the programs once: the copy of the harness kept for provenance has none.
+    expect(existsSync(join(into, "harness", ".toolchain"))).toBe(false);
+    // Installed as a rollout installs it, the one hook of the settings Claude Code reads writes
+    // what a command runs first: after it the harness's program starts by name, and a name the
+    // machine has too still starts the machine's.
+    const workspace = join(root, "claude-tooled-workspace");
+    installTree(into, workspace);
+    const settings = parseJsonAs<{ hooks: { SessionStart: [{ hooks: [{ command: string }] }] } }>(
+      readFileSync(join(workspace, ".claude", "settings.json"), "utf8"),
+    );
+    const out = join(root, "claude-tooled-mark.out");
+    const env = { PATH: "/usr/bin:/bin", CLAUDE_PROJECT_DIR: workspace, CLAUDE_ENV_FILE: `${out}.env` };
+    const run = async (script: string) =>
+      inGroup(["/bin/sh", "-c", script], {
+        cwd: workspace,
+        env,
+        stdout: out,
+        stderr: `${out}.err`,
+        timeoutS: 30,
+      });
+    expect(await run("mark")).not.toBe(0);
+    expect(await run(settings.hooks.SessionStart[0].hooks[0].command)).toBe(0);
+    expect(await run('. "$CLAUDE_ENV_FILE" && mark && echo cat | cat')).toBe(0);
+    expect(readFileSync(out, "utf8")).toBe("marked\ncat\n");
     expect(parseJsonAs<{ harness: string }>(readFileSync(join(into, "export.json"), "utf8")).harness).toBe(
       made.child,
     );
@@ -412,8 +450,11 @@ describe("a harness written out for Claude Code", () => {
     expect(guide).not.toContain("not available here");
     expect(guide).not.toContain("scripts/toolchain");
     expect(guide).toMatch(/limit on turns or time, .* does not hold here/u);
-    expect(guide).not.toContain("find none of them here");
+    expect(guide).not.toContain("on your PATH");
+    // The Starter's own host-only section is its last and holds nothing, so its export ends as it did.
+    expect(guide.endsWith("## Domain notes\nNone yet.\n")).toBe(true);
     expect(existsSync(join(into, "scripts"))).toBe(false);
+    expect(existsSync(join(into, ".claude"))).toBe(false);
     await expect(exportForClaudeCode(into, "starter")).rejects.toThrow(/there already/u);
   });
 });
@@ -595,4 +636,67 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     expect(existsSync(join(out, "dataset", task, "model_output"))).toBe(false);
     expect(readdirSync(join(place, "tmp"))).toStrictEqual([]);
   }, 240_000);
+});
+
+describe("the arms table over a store of judged records", () => {
+  it("prints the judge's criteria beside an arm's points, and an unknown count where its details are gone", () => {
+    const out = join(root, "table");
+    /** One judged record of `arm`, and the judge's details with each rubric's criteria passed and read. */
+    const judged = (
+      arm: string,
+      task: string,
+      points: number,
+      rubrics: (readonly [number, number])[] | null,
+    ) => {
+      const key = task.replace("/", "__");
+      const label = `${arm}__${key}`;
+      mkdirSync(join(out, "judged", arm), { recursive: true });
+      writeFileSync(
+        join(out, "judged", arm, `${key}.json`),
+        capturedJsonStringify({
+          arm,
+          task,
+          label,
+          points,
+          total: 10,
+          solveUsd: 1,
+          judgeUsd: 1,
+          seconds: 60,
+          cut: [],
+        }),
+      );
+      if (rubrics === null) return;
+      const place = join(out, "dataset", task, "eval_result", `eval_${label}`);
+      mkdirSync(place, { recursive: true });
+      writeFileSync(
+        join(place, "claude-opus-5-5_judge.json"),
+        capturedJsonStringify({
+          rubrics: rubrics.map(([passed, count], index) => ({
+            index,
+            result: { criteria_passed: passed, criteria_count: count },
+          })),
+        }),
+      );
+    };
+    // A rubric pays all or nothing: `near` misses one criterion of four and loses six points to `far`.
+    judged("near", "stat/task2", 4, [
+      [3, 3],
+      [3, 4],
+    ]);
+    judged("far", "stat/task2", 10, [
+      [3, 3],
+      [4, 4],
+    ]);
+    judged("blind", "stat/task2", 10, null);
+    for (const arm of ["near", "far", "blind"]) judged(arm, "bio/task2", 10, [[2, 2]]);
+    const score = new URL("../studies/harness2/score.ts", import.meta.url).pathname;
+    const printed = decodeOutput(
+      runSync([capturedExecPath, score, "table", "--out", out, "--tasks", "stat/task2,bio/task2"]).stdout,
+    );
+    const line = (arm: string) =>
+      printed.split("\n").find((each) => each.trimStart().startsWith(`${arm} `)) ?? "";
+    expect(line("near")).toContain("score 14/20 (70.0%) criteria 8/9 ");
+    expect(line("far")).toContain("score 20/20 (100.0%) criteria 9/9 ");
+    expect(line("blind")).toContain("score 20/20 (100.0%) criteria ?/? ");
+  });
 });

@@ -26,8 +26,9 @@
  * for the same endings, and the cap, the score bills and the reports with it. Priced at the served
  * model, the same endings come within 3 to 7% of Claude Code's totals.
  */
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import type { Api, AssistantMessage, Message, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
+import { isContextOverflow } from "@earendil-works/pi-ai/utils/overflow";
 import { isRetryableAssistantError } from "@earendil-works/pi-ai/utils/retry";
 import {
   CompactionTask,
@@ -48,7 +49,6 @@ import {
   type CommitPublication,
   type UsageState,
 } from "@earendil-works/pi-durable";
-import type { Context } from "@earendil-works/chord";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { CLAUDE_COMPACTED, claudeLedger, claudeSpendNow } from "./backends/claude.ts";
 import { retryPolicy } from "./backends/models.ts";
@@ -58,11 +58,11 @@ import { durableSpend, seatMeter, type Spent } from "../kernel/meter.ts";
 import { type Seat as SeatKind, traceKind, whose } from "../kernel/trace.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { Cancellation } from "../kernel/solve.ts";
-import { rmSync } from "../meta/filesystem.ts";
 import { isString, type JsonObject } from "../meta/json-shape.ts";
 import { keysIf } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hostScratch } from "../wall/policy.ts";
+import { releaseRoot } from "../wall/seat-root.ts";
 
 /** A tool as a seat registers one with pi-durable (`defineTool`): its result's `output` is what the
  *  model reads, and `control.terminate` asks that the run end after the round. */
@@ -128,6 +128,19 @@ export interface Sat {
  *  (50 KB), so the trace holds what the solver read. At 4 KB, as v1 cut its traces, it held the
  *  head of a long result, and whoever read a fail afterwards read less than the solver had. */
 const TRACE_TEXT_BYTES = 64 * 1024;
+
+/** The diagnostic codes of the error results durable writes in place of a tool's own: its
+ *  `afterTool` sees them too, but a call durable never started (an abort's pending calls) gets one
+ *  with no hook at all. */
+const HARNESS_WRITTEN: ReadonlySet<string> = new Set([
+  "tool_unavailable",
+  "invalid_arguments",
+  "blocked",
+  "interrupted",
+  "restart_limit",
+  "aborted",
+  "abandoned",
+]);
 
 /** The trace writer used by durable hooks and by trace-reader fixtures. */
 export function traceSink(log: string, of: SeatKind, id: string | (() => string), turn: () => number) {
@@ -228,14 +241,20 @@ export async function sit(seat: Seat): Promise<Sat> {
           retry: retryPolicy(seat.model.provider),
           compaction: compactionPolicy(seat.model),
         },
-        onReport: (error) => {
+        onReport: ({ error }) => {
           frame.fail(error);
         },
       },
       BACKGROUND_CONTEXT,
     );
-    harness.subscribeCommits(compactions.committed);
-    harness.subscribeCommits(frame.committed);
+    // Detached by the close, which ends every observer.
+    harness.observeCommits({
+      advance: (publication) => {
+        compactions.committed(publication);
+        frame.committed(publication);
+      },
+      end: () => undefined,
+    });
     const open = harness;
     seat.spending?.(async () =>
       meter.spent(
@@ -270,7 +289,15 @@ export async function sit(seat: Seat): Promise<Sat> {
     usage = (await harness?.usage(BACKGROUND_CONTEXT).catch(() => null)) ?? null;
     await harness?.close(BACKGROUND_CONTEXT);
     shutdown.removeEventListener("abort", wakeOnStop);
-    if (seat.home === undefined) rmSync(home, { recursive: true, force: true });
+  }
+  // Claude Code's last result where a query of this process served the seat, else pi-durable's. The
+  // home goes after the read and by its release, which ends a Claude Code still working there: it
+  // outlives its query's close by up to three seconds and wrote its state back into a removed home.
+  let ledger: Awaited<ReturnType<typeof claudeLedger>>;
+  try {
+    ledger = await claudeLedger(seat.id);
+  } finally {
+    if (seat.home === undefined) await releaseRoot(home);
   }
   const cut = stops.some((stop) => stop.aborted);
   const last = seat.turns.at(-1);
@@ -281,11 +308,7 @@ export async function sit(seat: Seat): Promise<Sat> {
       ? null
       : (frame.thrown ??
         (last?.stopReason === "error" ? (last.errorMessage ?? "the provider failed the turn") : null)),
-    // Claude Code's last result where a query of this process served the seat, else pi-durable's.
-    spent: meter.spent(
-      seat.turns,
-      (await claudeLedger(seat.id)) ?? (usage === null ? null : durableSpend(usage)),
-    ),
+    spent: meter.spent(seat.turns, ledger ?? (usage === null ? null : durableSpend(usage))),
   };
 }
 
@@ -346,14 +369,17 @@ function sessionHooks(seat: Seat, halt: () => void, meter: ReturnType<typeof sea
             // An error durable is about to retry is no model turn, as a retry inside the stream was
             // none before this migration: a solver's turns are its budget. The turn that follows
             // carries `retried`; the attempt's spend is in durable's own ledger, which the session's
-            // bill reads (`sit`), and in no turn's.
+            // bill reads (`sit`), and in no turn's. The hook runs before durable classifies the
+            // response and durable 1.5.2 publishes no decision, so this repeats its retry condition
+            // term for term (`generation.js`): an overflow is never retried.
             const attempt =
               (await api.snapshot(LiveDoc, api.conversationId, context))?.generation?.attempt ?? 1;
             if (
               message.stopReason === "error" &&
+              !isContextOverflow(message) &&
+              isRetryableAssistantError(message) &&
               retry.enabled &&
-              attempt <= retry.maxRetries &&
-              isRetryableAssistantError(message)
+              attempt <= retry.maxRetries
             ) {
               retried.push(message.errorMessage ?? "provider failure");
               return;
@@ -391,8 +417,9 @@ function sessionHooks(seat: Seat, halt: () => void, meter: ReturnType<typeof sea
   });
 }
 
-/** Durable bypasses tool hooks for unavailable tools and invalid arguments. Their committed
- * result messages are still calls the model made; record those once, beside executed calls. */
+/** Each call the model made is recorded once: an executed call's result as its tool returned it, from
+ * `afterTool`, and every result durable wrote itself from its committed message, as the model read
+ * it, so that no path traces one kind of refusal in two forms. */
 function toolHooks(seat: Seat, sink: ReturnType<typeof traceSink> | undefined) {
   const recorded = new Set<string>();
   const ended = (call: ToolHookCall, result: ToolExecutionResult) => {
@@ -408,7 +435,10 @@ function toolHooks(seat: Seat, sink: ReturnType<typeof traceSink> | undefined) {
         sink?.beforeTool(call);
         seat.onTool?.("start", call.id, call.name);
       },
-      afterTool: ended,
+      afterTool: (call, result) =>
+        result.diagnostics?.some(({ code }) => code !== undefined && HARNESS_WRITTEN.has(code)) === true
+          ? undefined
+          : ended(call, result),
     }),
     committed: ({ changes }: CommitPublication) => {
       for (const change of changes) {

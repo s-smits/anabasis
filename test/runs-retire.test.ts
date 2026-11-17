@@ -2,8 +2,12 @@
 // whole, and readers find it there; a worktree nothing uses goes once it holds no run log, one with
 // an uncommitted change only after two weeks, and a branch no worktree holds once nothing used it
 // for a week. A commit nothing else keeps reachable keeps a tag. An idle seed is deleted instead,
-// the archive's too.
+// the archive's too. And the seats' roots a run left on the host go: those its log names as the
+// archive takes the run, and those whose claimant is gone.
 import { afterAll, describe, expect, it } from "bun:test";
+import { lastKept, SCRATCHPAD_FILE, seedMemory } from "../src/builder/memory.ts";
+import { sessionDirs } from "../src/builder/session.ts";
+import { append } from "../src/kernel/log.ts";
 import {
   existsSync,
   mkdirSync,
@@ -11,14 +15,17 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
+import { hostname, tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
+import { capturedSpawn } from "../src/meta/process.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
+import { claimRoot, releaseRoot } from "../src/wall/seat-root.ts";
 
-import { archiveIdle, retireUnused, type Sweep } from "../tools/runs/retire.ts";
+import { archiveIdle, releaseScratch, retireUnused, type Sweep } from "../tools/runs/retire.ts";
 import { arrayWith } from "./helpers/matchers.ts";
 
 const DAY = 86_400_000;
@@ -58,8 +65,8 @@ campaign(tree, "young", 0);
 const sweep = (days: number, yes: boolean): Sweep => ({ main, days: 1, now: Date.now() + days * DAY, yes });
 
 describe("retiring", () => {
-  it("archives idle campaigns and retires unused trees only after their grace periods", () => {
-    expect(archiveIdle(sweep(0, false)).size).toBe(2);
+  it("archives idle campaigns and retires unused trees only after their grace periods", async () => {
+    expect((await archiveIdle(sweep(0, false), new Map())).size).toBe(2);
     retireUnused(sweep(3, false), new Set());
     expect([existsSync(join(tree, ".ana", "d2", "old")), existsSync(tree), existsSync(archive)]).toEqual([
       true,
@@ -67,7 +74,7 @@ describe("retiring", () => {
       false,
     ]);
 
-    archiveIdle(sweep(0, true));
+    await archiveIdle(sweep(0, true), new Map());
     expect(existsSync(join(archive, "old", "launch-run-1.json"))).toBe(true);
     expect(existsSync(join(tree, ".ana", "d2", "old"))).toBe(false);
     expect(existsSync(join(tree, ".ana", "d2", "young", "log.jsonl"))).toBe(true);
@@ -75,7 +82,7 @@ describe("retiring", () => {
     retireUnused(sweep(8, true), new Set());
     expect(existsSync(tree)).toBe(true);
 
-    retireUnused(sweep(3, true), archiveIdle(sweep(3, true)));
+    retireUnused(sweep(3, true), await archiveIdle(sweep(3, true), new Map()));
     expect(existsSync(join(archive, "young.wt", "log.jsonl"))).toBe(true);
     expect(existsSync(tree)).toBe(true);
 
@@ -133,7 +140,7 @@ describe("retiring", () => {
     expect(git(main, "tag", "--list", "retired/*").split("\n")).toHaveLength(2);
   });
 
-  it("files two trees' live solve logs of one file name apart, and overwrites neither", () => {
+  it("files two trees' live solve logs of one file name apart, and overwrites neither", async () => {
     const other = join(root, "wt2");
     git(main, "worktree", "add", "-q", "--detach", other, "HEAD");
     for (const at of [main, other]) {
@@ -142,12 +149,12 @@ describe("retiring", () => {
       const then = new Date(Date.now() - 2 * DAY);
       utimesSync(join(at, ".ana", "live", "s.jsonl"), then, then);
     }
-    archiveIdle(sweep(0, true));
+    await archiveIdle(sweep(0, true), new Map());
     expect(readFileSync(join(archive, ".live", "s.jsonl"), "utf8")).toBe(main);
     expect(readFileSync(join(archive, ".live", "s.jsonl.wt2"), "utf8")).toBe(other);
   });
 
-  it("deletes an idle seed, in a worktree or in the archive, and keeps a young one", () => {
+  it("deletes an idle seed, in a worktree or in the archive, and keeps a young one", async () => {
     campaign(main, "sim-old", 2);
     campaign(main, "sim-young", 0);
     campaign(main, "sim-filed", 2, join(archive, "sim-filed"));
@@ -159,7 +166,7 @@ describe("retiring", () => {
       writeFileSync(join(folder, "seed.json"), "{}");
       rmSync(join(folder, "launch-run-1.json"));
     }
-    const gone = archiveIdle(sweep(0, true));
+    const gone = await archiveIdle(sweep(0, true), new Map());
     expect(gone).toContain(join(main, ".ana", "d2", "sim-old", "log.jsonl"));
     expect(
       [
@@ -172,15 +179,79 @@ describe("retiring", () => {
     ).toEqual([false, false, false, true, true]);
   });
 
-  it("archives a seed a launch went on from, since its log holds paid moves of its own", () => {
+  it("archives a seed a launch went on from, since its log holds paid moves of its own", async () => {
     campaign(main, "sim-launched", 2);
     const folder = join(main, ".ana", "d2", "sim-launched");
     writeFileSync(join(folder, "seed.json"), "{}");
     writeFileSync(join(folder, "launch-run-1.json"), JSON.stringify({ at: "2026-11-01T00:00:00Z" }));
-    archiveIdle(sweep(0, true));
+    await archiveIdle(sweep(0, true), new Map());
     expect([existsSync(folder), existsSync(join(archive, "sim-launched", "log.jsonl"))]).toEqual([
       false,
       true,
     ]);
+  });
+
+  // A campaign that was killed, and one continued after a kill, left the roots of what it had open
+  // for good: nothing but a stop released any (111 roots on one host on 16 November).
+  it("releases what an idle run left open, its cut Builder's notes kept first, and nothing of a young run or a live claim", async () => {
+    // Named apart from every other run of this suite: a session's root is named for its campaign.
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const cut = `cut-${suffix}`;
+    const held = `held-${suffix}`;
+    const logOf = (name: string) => join(main, ".ana", "d2", name, "log.jsonl");
+    const dirsOf = (name: string) => sessionDirs(logOf(name), "b-1");
+    for (const name of [cut, held]) {
+      campaign(main, name, 0);
+      append(logOf(name), "build.started", { session: "b-1" });
+    }
+    // The cut session's root as a killed campaign leaves it: no claimant alive, its notes in its home.
+    mkdirSync(dirsOf(cut).home, { recursive: true });
+    mkdirSync(dirsOf(cut).host);
+    writeFileSync(join(dirsOf(cut).home, SCRATCHPAD_FILE), "# Scratchpad\n\nNext: widen the sweep.\n");
+    // A root its run's log names as open and a live process claims: read as unwritten by the
+    // process table, as a writer this sweep cannot name would be, and held by its claim.
+    const releaseHeld = claimRoot(dirsOf(held).root);
+    // A verifier's cell whose claimant is gone, under a parent of this test's own.
+    const parent = join(root, "scratch");
+    mkdirSync(join(parent, "cell-left"), { recursive: true });
+    const gone = capturedSpawn(["true"]);
+    await gone.exited;
+    symlinkSync(
+      `${String(gone.pid)} ${hostname()} Thu Jan  1 00:00:00 1970`,
+      join(parent, "cell-left.owner"),
+    );
+    // The sweep's first two steps: what each run left open is read once and handed to the archive.
+    const sweeping = async (days: number, yes: boolean) =>
+      archiveIdle(sweep(days, yes), await releaseScratch(sweep(days, yes), [parent]));
+    try {
+      await sweeping(2, false);
+      expect([dirsOf(cut).root, join(parent, "cell-left")].map((path) => existsSync(path))).toEqual([
+        true,
+        true,
+      ]);
+      // A run whose log grew within the day keeps what it left, as it keeps its place in its
+      // worktree: on 17 November a seed three hours old lost its roots to the sweep. A dead
+      // claimant's cell waits for no run.
+      await sweeping(0, true);
+      expect([dirsOf(cut).root, join(parent, "cell-left")].map((path) => existsSync(path))).toEqual([
+        true,
+        false,
+      ]);
+      await sweeping(2, true);
+      expect(
+        [dirsOf(cut).root, dirsOf(cut).host, join(parent, "cell-left"), dirsOf(held).root].map((path) =>
+          existsSync(path),
+        ),
+      ).toEqual([false, false, false, true]);
+      // The notes went with the run's folder, kept into it before it moved.
+      const memory = join(archive, cut, "memory");
+      const next = join(root, "b-2-home");
+      mkdirSync(next);
+      seedMemory(next, memory, lastKept(memory, ["b-1"]));
+      expect(readFileSync(join(next, SCRATCHPAD_FILE), "utf8")).toContain("Next: widen the sweep.");
+    } finally {
+      await releaseHeld();
+      await releaseRoot(dirsOf(cut).root);
+    }
   });
 });

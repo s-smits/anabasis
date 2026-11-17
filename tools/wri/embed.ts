@@ -26,7 +26,7 @@ import { homedir } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { dropCutWrites } from "#tools/runs/holder.ts";
+import { dropCutWrites } from "#src/meta/holder.ts";
 import { folderOf, storeOf } from "#tools/runs/pulse-readers.ts";
 
 /** Texts in, one vector out for each: tests inject one, a read loads the pinned model. */

@@ -236,6 +236,10 @@ export function tracesIn(events: readonly LogEvent[]): Traced[] {
   });
 }
 
+/** The tool calls of seat `seat` among `traces`, in their order. */
+export const callsOf = (traces: readonly Traced[], seat: Seat): Call[] =>
+  traces.filter((each): each is Call => each.part === "call" && each.seat === seat);
+
 /** The turns and the calls of seat `seat`'s solve or session `id`, in the order logged. */
 export function traceOf(events: readonly LogEvent[], seat: Seat, id: string) {
   const own = tracesIn(events).filter((each) => each.seat === seat && each.id === id);

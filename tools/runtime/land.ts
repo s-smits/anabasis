@@ -82,7 +82,8 @@
  * request opened, closed or moved (`checkListed`), so a head that moved is landed as it stands, its newer
  * commits with it, before a stale commit is proved, up to `MOVES` times. Until 29 October it was read
  * only as a pull request turned green, so a head pushed while its own commits were gated had its old
- * commits proved first, its old top's whole gate among them. `--jobs N` gates up to N commits at once; the
+ * commits proved first, its old top's whole gate among them. With `RUN_REMOTE` unset they are proved
+ * over the hosts that take checks (`whereToProve`); `--jobs N` gates up to N commits at once; the
  * top's whole CI gate runs alone.
  *
  * What moves behind a landing's back is followed: a moved parent is replayed first (`restack`), a
@@ -105,7 +106,7 @@
  * only `--merge` posts (`STACK_CONTEXT`). `gh api repos/s-smits/anabasis/rulesets/25824510` reads
  * it. The one gap: a token with admin rights can post that status by hand.
  */
-import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
+import { runtimeProcess } from "../../src/meta/process.ts";
 import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
 import { plural, textOr } from "../../src/meta/text.ts";
 import { CI_WORKFLOW, ciRun, failedFiles, FIXES, fixesFor } from "./ci-runs.ts";
@@ -132,15 +133,17 @@ import {
 } from "./pulls.ts";
 import {
   addedLine,
+  argsOr,
   changesSource,
   failedLine,
   git,
   gitSays,
+  type Place,
   type Proof,
   proveCommits,
   short,
 } from "./gate.ts";
-import { claimOf, follow, holdAlone, placesOf, sayingPulls, watching } from "./landing.ts";
+import { claimOf, follow, holdAlone, placesOf, sayingPulls, watching, whereToProve } from "./landing.ts";
 import { movedFrom, movesOf, pushMoves, Unreplayable } from "./restack.ts";
 
 interface Landing {
@@ -161,7 +164,7 @@ interface Mode {
   readonly kind: "proving" | "sanitizing" | "merging";
   readonly auto: boolean;
   readonly alone: boolean;
-  readonly jobs: number;
+  readonly places: readonly Place[];
   /** The release `--merge --tag` cuts at the merge. */
   readonly tag: string | null;
 }
@@ -685,7 +688,7 @@ async function landTo(root: string, target: number, mode: Mode, board: Board): P
   );
   const failed = await proveCommits(root, proofs, {
     who: "land",
-    jobs: mode.jobs,
+    places: mode.places,
     stop: watch.signal,
     say: sayingPulls(proofs, landing.pulls, say),
     mark: (commit, state, description) => {
@@ -733,38 +736,37 @@ async function landTo(root: string, target: number, mode: Mode, board: Board): P
 }
 
 async function main(argv: readonly string[]): Promise<number> {
-  const { values, positionals } = parseArgs({
-    args: [...argv],
-    options: {
-      merge: { type: "boolean", default: false },
-      sanitize: { type: "boolean", default: false },
-      auto: { type: "boolean", default: false },
-      once: { type: "boolean", default: false },
-      alone: { type: "boolean", default: false },
-      jobs: { type: "string", default: "1" },
-      tag: { type: "string" },
-    },
-    allowPositionals: true,
+  const parsed = argsOr(argv, USAGE, {
+    merge: { type: "boolean", default: false },
+    sanitize: { type: "boolean", default: false },
+    auto: { type: "boolean", default: false },
+    once: { type: "boolean", default: false },
+    alone: { type: "boolean", default: false },
+    jobs: { type: "string" },
+    tag: { type: "string" },
   });
+  if (parsed === null) return 2;
+  const { values, positionals } = parsed;
   const latest = positionals[0] === "latest";
   const named = positionals[0] === undefined || latest ? null : Number(positionals[0]);
-  const jobs = Number(values.jobs);
+  const jobs = values.jobs === undefined ? undefined : Number(values.jobs);
   if (
     (named !== null && (!Number.isInteger(named) || named <= 0)) ||
     positionals.length > 1 ||
-    !Number.isInteger(jobs) ||
-    jobs <= 0 ||
+    (jobs !== undefined && (!Number.isInteger(jobs) || jobs <= 0)) ||
     (values.tag !== undefined && (!values.merge || !TAG.test(values.tag)))
   ) {
     console.error(USAGE);
     return 2;
   }
   const root = git(runtimeProcess.cwd(), ["rev-parse", "--show-toplevel"]);
+  const places = whereToProve(root, jobs, say);
+  if (places === null) return 2;
   const mode: Mode = {
     kind: values.merge ? "merging" : values.sanitize ? "sanitizing" : "proving",
     auto: values.auto || named === null,
     alone: values.alone,
-    jobs,
+    places,
     tag: values.tag ?? null,
   };
   // `latest` is resolved once, so a follow keeps to that chain instead of another chain's newer top.

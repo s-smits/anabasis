@@ -11,7 +11,7 @@
  * from a prompt and is led by a Builder's conversation (`AGENTS.md`, sections 4 and 10), and until
  * then no lane read either.
  */
-import { ANSWERED, pendingWords } from "#src/campaign/word.ts";
+import { ANSWERED, PAUSE, pendingWords } from "#src/campaign/word.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
@@ -30,6 +30,9 @@ function moveTriggers(log: Index): Trigger[] {
     kind === "campaign.ended" && index < last ? [`${text(data.ending)} at event ${String(index)}`] : [],
   );
   const words = log.events.filter(({ kind }) => kind === "campaign.word");
+  // A pause names the verb that left it and its point, where its log is new enough to hold them.
+  const said = ({ data }: LogEvent): string =>
+    data.word === PAUSE && isString(data.why) ? `${PAUSE} (${data.why})` : text(data.word);
   // A pause is answered by its time, not by a move (`paused`), so only the other words are owed one.
   const owed = words.filter(({ data }) => ANSWERED.some((each) => each === data.word)).length;
   return [
@@ -37,7 +40,7 @@ function moveTriggers(log: Index): Trigger[] {
     ...firedIf(
       words.length > 0,
       "OPERATOR WORDS",
-      `${tally(countBy(words, ({ data }) => text(data.word)))}; of the words a move answers, ${share(owed - pendingWords(log.events).length, owed)} acted on`,
+      `${tally(countBy(words, said))}; of the words a move answers, ${share(owed - pendingWords(log.events).length, owed)} acted on`,
     ),
   ];
 }

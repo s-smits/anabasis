@@ -1,6 +1,6 @@
 <!--
 The synthesis session's prompt. `wri.ts synthesis --out <dir>` renders it into
-<dir>/synthesis-prompt.md, filling the five slots in braces and dropping comments. This template owns
+<dir>/synthesis-prompt.md, filling the six slots in braces and dropping comments. This template owns
 what the note owes; the skill's "Vetting" section links here.
 -->
 # Whole-run investigation synthesis
@@ -30,6 +30,13 @@ by the event kinds, ids and counts it cites.
 
 {reports}
 
+## The register of standing findings
+
+Findings that investigation after investigation meets and leaves where they were, each by its key.
+No lane was shown this list.
+
+{register}
+
 ## What the note owes, in this order
 
 1. **Whether the reading may be believed.** One row per `comparison.reported` of each campaign, with
@@ -42,13 +49,18 @@ by the event kinds, ids and counts it cites.
    written, believed with a named limit, or not believed.
 2. **The binding constraint.** The one mechanism that most limits the next round, and why it
    outranks the rest.
-3. **One merged findings table:** `finding | lanes | campaigns | owner | evidence | outcome`. Merge
-   repeats under the earliest owner; `lanes` names every lane that raised a row, since independent
-   agreement counts. `campaigns` names those that show it, from `Seen in:` lines checked
-   against the logs; a finding only one campaign shows says what that campaign has that the others
-   lack. `owner` is exactly one owner from the catalogue's table, with the file for `host` and for a
-   prompt. `evidence` is an event kind and a count. `outcome` is exactly one of `patch`, `decision`,
-   `prediction` or `drop`. Rank rows by their consequence for the four links.
+3. **One merged findings table:** `finding | lanes | standing | campaigns | owner | evidence |
+   outcome`. Merge repeats under the earliest owner, so that every finding of every report marked
+   `ok` is in exactly one row. `lanes` names each of them as `<lane>.<n>`, the n-th finding of that
+   lane's report (`12.2, 17.1`), since independent agreement counts and the vetting accounts for
+   each one. `standing` is the key of the register below whose finding the row is, or `new`; a
+   keyed row gives this investigation's count as its evidence and does not argue the finding again.
+   `campaigns` names those that show it, from `Seen in:` lines checked against the logs; a finding
+   only one campaign shows says what that campaign has that the others lack. `owner` is exactly one
+   owner from the catalogue's table, with the file for `host` and for a prompt. `evidence` is an
+   event kind and a count. `outcome` is exactly one of `patch`, `decision`, `prediction` or `drop`.
+   Rank rows by their consequence for the four links, the `new` rows before the keyed ones of equal
+   consequence.
 4. **Conflicts resolved.** Where lanes disagree, the events that settle it, or both readings and the
    observation that would separate them.
 5. **Build plan.** The `patch` rows as clusters with disjoint files, each with owner, mechanism and

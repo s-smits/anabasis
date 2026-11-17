@@ -50,9 +50,10 @@ describe("the endings and words (lane 23)", () => {
       ["campaign.word", { word: "stop", why: "" }],
       ["campaign.ended", { ending: "operator", answers: [1] }],
       ["campaign.word", { word: "tasks", why: "" }],
+      ["campaign.word", { word: "pause", why: "runs continue on login 2 --after next" }],
     );
     expect(fired(words, "OPERATOR WORDS")).toBe(
-      "pause 1, stop 1, tasks 1; of the words a move answers, 1 of 2 acted on",
+      "pause 1, pause (runs continue on login 2 --after next) 1, stop 1, tasks 1; of the words a move answers, 1 of 2 acted on",
     );
     expect(fired(words.slice(0, 1), "OPERATOR WORDS")).toBe(
       "pause 1; of the words a move answers, 0 of 0 acted on",

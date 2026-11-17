@@ -17,11 +17,12 @@
  *
  * Two more departures. `presets` names pi's coding tools, any of `read`, `bash`,
  * `edit` and `write`, where v1's named its own `files` and `shell` (`src/tools/coding.ts`). And the
- * answer is no tool's: a state need declare no artifact-writer, and one that does has it listed
- * and not served (`harnessTools`, `src/tools/answer.ts`).
+ * answer is no tool's (`src/tools/answer.ts`): a tool is a reader or an advisor, and a state that
+ * declares v1's artifact-writer is refused as any unknown kind is, since none of the 1,252 kept
+ * harnesses on record on 17 November 2026 declared one.
  */
-import type { TSchema } from "@earendil-works/pi-ai";
-import type { JsonValue } from "@earendil-works/chord";
+import type { JsonValue } from "@earendil-works/chord/json";
+import type { TSchema } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
 import {
   AGENT_DIR,
@@ -47,7 +48,7 @@ import type { Launch } from "../tools/command.ts";
 import { DRAFT_TOOL } from "./shim.ts";
 import { type PublicTask, publicView } from "../solver/prompt.ts";
 
-type ToolKind = "reader" | "advisor" | "artifact-writer";
+type ToolKind = "reader" | "advisor";
 
 export interface Harness {
   /** `agent/BUILT_AGENTS.md` as written, untrimmed; null when the state has none. */
@@ -82,7 +83,7 @@ interface ToolRow {
   executionMode?: "sequential" | "parallel";
 }
 
-const KINDS: ReadonlySet<string> = new Set(["reader", "advisor", "artifact-writer"]);
+const KINDS: ReadonlySet<string> = new Set(["reader", "advisor"]);
 /** The names a solver's tools already hold, whatever the harness: pi's coding tools and `submit`. */
 const HOST_TOOLS: readonly string[] = [...CODING_TOOLS, "submit"];
 const SHIM = Bun.fileURLToPath(new URL("shim.ts", import.meta.url));
@@ -325,11 +326,10 @@ function besideTree(root: string): string[] {
  * name check is v1's. Each call is a fresh process `launch` starts: on the solve's command wall
  * (`launchOn`), or in a benchmark's container, which is the wall there.
  *
- * An artifact-writer is listed and not served: the answer is a file the host reads at `submit`
- * (`answer.ts`), so no harness carries the answer's path and none can break it. When a harness had
- * to declare a writer bound to the answer format, three of four Builders on 8 October froze a
- * harness without one, and every solve under each ended with no answer. A harness kept with a
- * writer still opens.
+ * No tool writes the answer: it is a file the host reads at `submit` (`answer.ts`), so no harness
+ * carries the answer's path and none can break it. When a harness had to declare a writer bound to
+ * the answer format, three of four Builders on 8 October froze a harness without one, and every
+ * solve under each ended with no answer.
  */
 export async function harnessTools(harness: Harness, task: PublicTask, launch: Launch): Promise<SeatTool[]> {
   const view = publicView(task);
@@ -343,24 +343,22 @@ export async function harnessTools(harness: Harness, task: PublicTask, launch: L
       `domain tool mismatch: generated [${actual.join(", ")}], recorded [${expected.join(", ")}]`,
     );
   }
-  return rows
-    .filter(({ name }) => harness.kinds.get(name) !== "artifact-writer")
-    .map(
-      (row): SeatTool =>
-        tool({
-          name: row.name,
-          description: row.description,
-          parameters: row.parameters,
-          execute: async (params, _api, context) => {
-            const { result } = await call<{ result: Evidence }>(row.name, params, context.abortSignal);
-            return {
-              ...text(result.text),
-              details: result.details ?? null,
-              ...keyIfDefined("control", result.terminate === true ? { terminate: true } : undefined),
-            };
-          },
-        }),
-    );
+  return rows.map(
+    (row): SeatTool =>
+      tool({
+        name: row.name,
+        description: row.description,
+        parameters: row.parameters,
+        execute: async (params, _api, context) => {
+          const { result } = await call<{ result: Evidence }>(row.name, params, context.abortSignal);
+          return {
+            ...text(result.text),
+            details: result.details ?? null,
+            ...keyIfDefined("control", result.terminate === true ? { terminate: true } : undefined),
+          };
+        },
+      }),
+  );
 }
 
 /** One launched run of the caller: the listing when `name` is null, otherwise one tool call. Returns

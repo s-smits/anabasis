@@ -160,7 +160,7 @@ step still open at the log's end on its own line and judge closure by the step's
 **1. Verdict chain: what a pass observes.**
 
 Label: `exam`.
-Importance: 0.6.
+Importance: 0.7.
 Marks: `standing`.
 
 Starts from `INSTRUMENT AUTHORED (lane 1)`, `REFUSALS BY CHECK (lane 1)`,
@@ -277,7 +277,7 @@ decision: whether rulings may count without a person reading each. Routes to `op
 **6. The drafted exam against its prompt.**
 
 Label: `exam`.
-Importance: 0.6.
+Importance: 0.7.
 Marks: none.
 
 Starts from `EXAM DRAFTED (lane 6)`.
@@ -337,7 +337,7 @@ where the tallies disagree with the report.
 **9. Ties and the budget.**
 
 Label: `supply`.
-Importance: 0.55.
+Importance: 0.5.
 Marks: none.
 
 Starts from `TIED TASKS (lane 9)`, `NO VALID ANSWER (lane 9)` and `AWAITING A LABEL (lane 9)`.
@@ -426,7 +426,7 @@ the `harness/` part that moved, `builder-prompt` where the limit was crossed, an
 **13. The guide against its programs and the solves.**
 
 Label: `harness`.
-Importance: 0.3.
+Importance: 0.4.
 Marks: none.
 
 Starts from `NEVER CHECKED (lane 13)`, `TOOLS CALLED (lane 13)` and `TOOL CALLS ERRED (lane 13)`.
@@ -598,7 +598,7 @@ replaced, and whether a promotion counts towards the milestone. Routes to `host`
 **20. Flips and solver variance.**
 
 Label: `comparison`.
-Importance: 0.45.
+Importance: 0.55.
 Marks: none.
 
 Starts from `FLIPS (lane 20)` and `REFERENCE AGAINST ITSELF (lane 20)`.
@@ -699,7 +699,7 @@ there is none) and `environment`.
 **23. The endings and the operator's words.**
 
 Label: `climb`.
-Importance: 0.6.
+Importance: 0.5.
 Marks: none.
 
 Starts from `ENDED AND WENT ON (lane 23)` and `OPERATOR WORDS (lane 23)`.
@@ -712,7 +712,9 @@ allowed only where the table names it (`readAgainst`). `ENDED AND WENT ON` is ri
 `finished`, `environment` or a crash, and a fault after `budget`, `stop` or `no-room` without an
 operator's word between. Recount each ending's count (`idleOf`, `tools/d2/campaign-terms.ts`;
 `roomless`, `src/campaign/decide.ts`). `OPERATOR WORDS` tallies `campaign.word` events and answers
-(`pendingWords`, `src/campaign/word.ts`); no seat may see a word. `launches.txt` puts each launch
+(`pendingWords`, `src/campaign/word.ts`), and names beside a pause the verb that left it and its point
+(`runs pause --after next`, `runs continue on login N --after reported`) where the log holds them; no
+seat may see a word. `launches.txt` puts each launch
 beside its stretch of the log (its last event, the endings, the steps left open, the killed sessions
 and solves, the hours to the next launch) and never says who ended a run; `ending.ts --at` gives the
 ending as it stood at one line or time. The decision: whether moves and
@@ -784,7 +786,7 @@ whether the bill can be believed, and whether each role earns its spend. Routes 
 **26. The run's launches, logins and hosts.**
 
 Label: `runs`.
-Importance: 0.3.
+Importance: 0.2.
 Marks: `standing`.
 
 Starts from `LAUNCHES (lane 26)`, `NO LAUNCH RECEIPT (lane 26)`, `HOST CODE MOVED (lane 26)` and

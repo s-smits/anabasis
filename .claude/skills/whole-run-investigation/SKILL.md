@@ -76,26 +76,30 @@ under `.ana/wri/<date>-<campaign>/` on the central host.
    `subagent_type: "wri-lane"`), handed only its row's `task` line, all in one message. Its hook
    (`tools/wri/lane-guard.ts`) enforces the hard rules in code. Where the Agent tool lists no
    `wri-lane`, open a session in a worktree at the stack's top; never use `general-purpose`.
-   While the sessions work, the primary reads the record across runs, which no lane reads and no
-   model is needed for: the pack's weeks (promotion-tuner's `trend.ts --pack <pack>`), its
-   promotions and what each cost (`table.ts --name <pack> --rows promotions`), whether its
-   promotions held on the tasks written since (comparison-reading's
-   `starter-reads.ts --all --name <pack>`) and the run's promotions under the tree's rule
-   (`replay.ts --name <run> --totals`), each command's lines under its own heading in
-   `<dir>/record.md`. The vetting recounts against that file instead of beginning with those reads,
-   and in an iteration `wri2p2.ts next` names the reads beside the reports it waits for and owes the
-   file before the isolated lanes.
-   *Check:* each transcript's model, and that each lane ran as `wri-lane`.
+   In the same turn the primary starts `wri.ts record --out <dir>`: the reads no lane makes and no
+   model is needed for (`readsOf`, `tools/wri/record.ts`: the pack's weeks against those before, its
+   promotions with their cost and whether they held on the tasks written since, each run's
+   promotions under the tree's rule, the ledger of every investigation's vetted findings), each
+   under its command in `<dir>/record.md` with when it ran, how many lane reports stood written and
+   its exit code. A read made is kept, so a second call makes only what failed; the vetting recounts
+   against the file, and in an iteration `wri2p2.ts next` owes each read before the isolated lanes.
+   *Check:* each transcript's model, that each lane ran as `wri-lane`, and that `record` exits 0
+   with `read at` lines that count fewer reports than the manifest holds.
 5. **Collect.** `wri.ts collect --out <dir>` checks each report's shape and writes `<dir>/reports.md`,
    which ends, where the prior state holds a prediction table, with each prediction as the lanes
    resolved it and the lanes that owed a line and wrote none.
-   Read lane 3, then decide lane 4; read lanes 10 and 12, then decide lane 15. Build an isolated lane
-   with `wri.ts lanes --out <dir> --lanes 4` (or `15`), launch it alone from its own
-   `launch-NN.json`, and collect again. *Check:* `collect` exits 0 (1 while a report is missing or
-   invalid, or none is expected). A valid shape is not a sound finding.
+   Read lane 3, then decide lane 4; read lanes 10 and 12, then decide lane 15. Its trigger opens
+   lane 4 only where lane 3 left a check undecided, and `WIN AT A SMALL WALL SHARE` opens lane 15
+   only where lane 10 or 12 names a shortcut; an iteration records the reason for leaving one out.
+   Build an isolated lane with `wri.ts lanes --out <dir> --lanes 4` (or
+   `15`), launch it alone from its own `launch-NN.json`, and collect again. *Check:* `collect`
+   exits 0 (1 while a report is missing or invalid, or none is expected). A valid shape is not a
+   sound finding.
 6. **Synthesise.** `wri.ts synthesis --out <dir>` renders `<dir>/synthesis-prompt.md`; one session
-   writes `<dir>/synthesis.md`, and the primary vets it. *Check:* every consequential claim is marked
-   as checked against the log or as resting on one report.
+   writes `<dir>/synthesis.md`, whose merged table names each lane finding it merges as
+   `<lane>.<n>` and marks each row with a key of [the register of standing
+   findings](references/standing-findings.md) or `new`, and the primary vets it. *Check:* every
+   consequential claim is marked as checked against the log or as resting on one report.
 
 ### Commands
 
@@ -107,8 +111,10 @@ source.
 | read | `read --log <log>` | nothing: rows, triggers and host line |
 | 1 | `start --log <log>[,<log>...] --out <dir> [--snapshot]` | `overview.md`, `shared-instructions.md`, `investigation.json` |
 | 3 | `lanes --out <dir> [--lanes 1-4,7] [--agents N] [--high K] [--regroup]` | `lanes/NN-prompt.md`, `lanes/shared-<hash>.md`, `launch.json` |
+| 4 | `record --out <dir>` | `record.md`, each read under its command |
 | 5 | `collect --out <dir>` | `reports.md` |
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
+| vetting | `findings [--root <dir>] [--window 7] [--until <date>]` | nothing: every investigation's vetted findings, the newest window beside the one before, by verdict, standing key, importance, fate and lane |
 | lanes 1, 3, 4 | `grade --log <log> [--bundle <pack>] (--task <taskId> --answer <file> \| --solve <id> \| --answers <dir>) [--set <path>=<json>]...` | nothing: one verdict line an answer, the recorded verdict beside a regraded solve, and with `--set` the same answer with one field changed (`--bundle` only for a stored pack) |
 | any | `derive (--log <log>[,<log>...] \| --all) [--verbose] [--force] [--no-embed]` | `data/derived/<campaign>@<path>/` (one folder a log): one file a reader and `manifest.json` |
 | any | `reader <name> --log <log>` | nothing: one reader's text, as `derive` writes it to its file |
@@ -238,14 +244,30 @@ not hold and its plan's "Intentionally opposed" trade-offs, as the still-missing
 [The synthesis template](references/synthesis.template.md) owns what the note contains. The primary
 then treats it as research, in two acts kept apart:
 
-- **Triage** sorts each finding by kind and owner (host defect, pack, operator decision, prediction,
-  already changed at the head) and checks nothing.
+- **Triage** copies each row of the synthesis's table with its lane findings and its standing key,
+  names its owner, and checks nothing. `record.md` ends with the ledger of every investigation's
+  vetted findings (`wri.ts findings`): how many investigations of the newest week hold each key
+  beside the week before, and each key held more than once with no row that repairs it.
 - **Vetting** checks a finding against the logs, the source at the head and, where named, the kept
   harnesses and check program, and rules it **confirmed** (recounted here), **plausible** (resting on
   one report) or **refuted**.
 
-Vet every finding, first those that would change code or a decision, and write `<dir>/vetting.md`,
-one row a finding with its verdict and what was checked. Never report a triaged finding as vetted.
+A keyed row is recounted for this run and not argued again, and a key the ledger names as held
+again with no repair goes to the operator once, as a row of the plan with the ledger's counts, and
+is not asked again while that decision stands. Never report a triaged finding as vetted.
+`<dir>/vetting.md` holds one findings table with these columns, in any order beside any other,
+which an iteration's `vet` gate holds it to (`vettingFaults`, `tools/wri/findings.ts`):
+
+| column | holds |
+| --- | --- |
+| `id` | `vet-<n>` |
+| `finding` | one line, with what was checked |
+| `lanes` | each lane finding the row rests on as `<lane>.<n>`, a lane's number for all of its findings, or `primary` for the primary's own; every finding a lane wrote is named by some row |
+| `standing` | a key of the register, or `new` |
+| `owner` | one owner of the catalogue's table |
+| `importance` | `I0` to `I3` as `AGENTS.md` section 11 defines them for a pull request, owed by a confirmed row |
+| `verdict` | `confirmed`, `plausible` or `refuted` |
+| `fate` | owed by a confirmed row: `repair` (a row of this plan), `carry` (owed to a later plan), `operator` (a decision put to the operator) or `none`, then the reason |
 
 **Backtrack the predictions first.** In a release cycle, `vetting.md` opens with one row for each id
 of every `predictions-<run>.md` (and of a cycle's `Predictions.md` written before 8 November), beside
@@ -266,7 +288,7 @@ unreached by area label.
 Then vet the synthesis's own findings:
 
 - **Start from the operator's decision** (believe this step, run another round, repair the checker,
-  run the Examiner again) and order by it.
+  run the Examiner again) and order by it, a `new` row before a keyed one.
 - **Read the instrument before the tally.** An unruled rejection sets its task aside, and `counted`
   gives the tally were all to stand; only a person's labels (`tools/d2/settle.ts`) settle it.
 - **Read `not-scored` and an empty `no-step` as no test.**
@@ -283,5 +305,7 @@ Then vet the synthesis's own findings:
 | [references/from-v1.md](references/from-v1.md) | where each of v1's rows and lanes went |
 | [references/shared-instructions.template.md](references/shared-instructions.template.md) | the preset every open lane carries |
 | [references/synthesis.template.md](references/synthesis.template.md) | the synthesis session's prompt |
+| [references/standing-findings.md](references/standing-findings.md) | the register of standing findings, by key, and when a row joins or leaves it |
+| `tools/wri/record.ts`, `tools/wri/findings.ts` | the primary's reads while the lanes work; the vetting's columns and the ledger across investigations |
 | `tools/wri/read.ts` | the fold of a log into rows and triggers |
 | `tools/wri/catalogue.ts`, `tools/wri/investigation.ts`, `tools/wri/wri.ts` | the catalogue's parser, the prompts and report check, and the verbs |

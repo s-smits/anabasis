@@ -23,8 +23,9 @@ The arms:
 - **Harness² held-out** (`--arm heldout`): task N under the harness Harness²'s sweep built on task
   N-1 of the same profession. Neither harness was built on the task it is scored on, so these are
   the fair tasks, those that are not a profession's first.
-- **bareSolver(Opus 5.5)** (`--arm starter`): the Starter Built Harness, the floor both are read
-  against.
+- **The Starter (Opus 5.5)** (`--arm starter`): the Starter Built Harness, the floor both are read
+  against. Until 17 November this file called it the bareSolver, which is the layer beneath it:
+  Pi Durable's coding agent as released, on which the Starter Pack is Anabasis's version.
 
 One input still differs, and every reading says so. Harness² knows the benchmark's tasks: it built
 its harness on a neighbouring JobBench task, from rollouts that answered that task's real request
@@ -111,6 +112,12 @@ already answers the question; level with it is a strong reading and above it the
     `task3` only source data an arm copied beside its answer passes it, but for one report workbook.
     A wider cut is read apart, on stored deliverables and for every arm alike, with `compare.ts
     rejudge ... --cap <chars>` and `agree ... --cap <chars>`; the official score keeps judge.py's.
+    The table also prints, beside an arm's points, the criteria the judge passed of those it read
+    (`criteria N/M`, from each rubric's `criteria_passed` and `criteria_count` in the judge's
+    details, `?/?` where a store holds none for a record). A rubric pays its weight only where all
+    its criteria pass, so a difference of 7 criteria of 241 read as 32 points of 550 on 5 November
+    and one of 2 of 225 as 36 of 518 on 16 November; points stay the official score, and the
+    criteria say how near a tie it was.
 17. **Benchmark 20 tasks, 31% of the 65, in the professions closest to the prompt.** The three
     professions the prompt names hold 8 tasks. The other 12 come from the highest ranked professions
     of two tasks or more, whole, with two sides an arm (`studies/harness2/compare.ts plan --tasks ...
@@ -186,6 +193,35 @@ already answers the question; level with it is a strong reading and above it the
     Python package folders and whole interpreters, so the same package versions installed for that
     platform), which changes what a solver is given and is the operator's decision. A `tree:` arm
     is not checked.
+22. **Fix the confirming comparison's set and conditions before a read claims.** The eight tasks
+    of the outside reads have been read to explain results, so they steer and cannot confirm,
+    and the 20 of item 17 are the set that can. Two terms are open and are the operator's.
+    The set: `compare.ts plan` closes the whole profession of a burned task (`fixTerms`), and
+    the eight lie in five professions holding 13 of the 20, so 7 tasks in three professions
+    remain, where a burn by task would leave 12. The conditions: `compare.ts run` rolls three
+    tasks at once (`AT_ONCE`), and an outside read rolls one at a time on a machine kept idle,
+    so a comparison rolled as it stands is read under another load than every read before it.
+    No reader counts consecutive reads above the Starter either, and none is added: a count of
+    reads on the eight tasks would be a second claim on a set that can make none.
+23. **Name a harness's programs to the solver by path, as its own to change.** Present in source
+    from this change. An audit of the export on 17 November found the carrying sound and the
+    telling at fault. Staged as a rollout stages it, every entry of the reference's 17,145 under
+    `scripts/` arrives but the interpreter's caches and two empty folders, each link as the file
+    it pointed at and no file without its execute bit; its five programs find their interpreter
+    from their own place and hold no path of the machine that built them. Yet the guide names
+    each program without a folder, seven names in all and none with a path, and the note said
+    that nothing puts them on the PATH and that those written for the other runner's files find
+    none of them. In the eight rollouts of 16 November each solver looked at the folder once,
+    started its interpreter once or twice within its first three commands, in six rollouts to a
+    failed import of a package that tree does not hold (openpyxl seven times), and never named
+    the folder again. The note now lists each program by its path and says they are the
+    solver's to run, read and change; its first paragraph, the only one a harness without
+    programs gets, is unchanged, so the Starter's export and its rollouts stand. Not done: the
+    harness's interpreter still lacks what the benchmark's deliverables are written with, two of
+    the five programs read the exam's own files, and nothing is put on the PATH (the
+    pilot's line of 9 November that did so hid the machine's packages). Settled by a count that can fall either way: the
+    commands of a fresh rollout that name one of the listed programs, and how many of those
+    exit 0.
 
 ## How it came to be
 
@@ -336,3 +372,47 @@ already answers the question; level with it is a strong reading and above it the
   with (`rolloutLog`, `score.ts`), so one that threw or was killed before its delivery is a
   non-result and is rolled again. The record of that task says nothing about the arm, and the
   sitting starts again under a new name.
+- **16 November.** A jobstat run's second promoted reference (digest `85bb56e6`, written for the
+  Linux machine on the Mac that held its campaign) and the Starter were rolled there in one
+  sitting, one rollout a task on the eight: 270 against 306 points of 518, with the Starter of
+  13 November at 262. The operator: "does the starter reach higher scores than our custom jobstat?
+  yeah there should be bugs for sure then, dive DEEP and fix all". Eight read-only reviews, one
+  lens each, and counts over the store found no defect of the conditions, the export or the
+  scorer. The session was the same in every rollout, and a rollout there runs behind no wall: the
+  agent's own guards refused 1 command of the built arm and 3 and 4 of the Starters. The judge
+  passed 174 against 176 criteria of 225 (165 on 13 November). The two arms differ on 9 rubrics of
+  64, each by one criterion (7 lost, 2 won), and 28 of the 36 points lie on one task; the two
+  Starter sittings differ on 12 rubrics and 44 points, so the read names no winner. The
+  rollouts used the harness's programs little: of the built arm's 140 shell commands in 8
+  rollouts, 17 name its program folder and 8 of those only look at it (`compare.ts levels`,
+  which now prints both counts). Read again on 17 November by what each starts and what came
+  back, the others hold the path of the folder's interpreter and none names a program of the
+  harness: no command of the 140 names one of its five programs or five modules, so the first
+  report's 0 of 140 was right of programs, and the 3 and the 9 after it counted the
+  interpreter (item 23). What it built answers its own
+  exam's estimation problems, and the benchmark's tasks ask for documents; the guide reaches
+  every rollout as `CLAUDE.md`, so the count says how little the programs were used and not
+  that the harness went unread. The table now prints the criteria
+  (item 16). What a campaign's exam asks for is the query's and the Examiner's, and so the
+  operator's.
+- **17 November.** The operator asked for a loop "to automatically keep iterating until >> Starter
+  score". Its first text in run-improvement-campaign settled and reverted a change by a count of
+  the benchmark, placed a read by a rule of its own beside `trend.ts --bench`, and named a
+  confirmation `compare.ts plan` refuses. Two read-only reviews found all three, and the text is
+  now a table of what follows each place of a read, each row owned by a rule that stood before
+  (item 22 holds the two terms left open). The placer now reads one part, and it places the
+  reference of 16 November inside the Starter's spread on the fair five (162 points against 136 to
+  216 of 296) as on all eight (270 against 210 to 314 of 518), so nothing follows from that read
+  but the next one. The same day the operator read that few commands could have run a program:
+  "okay wtf, make way more free??", "Remove all bloat, give agents enough freedom to fix", "or is
+  the porting / extracting mechanism broken? audit everying (yourself)", and "the script to make
+  it a standalone harness right and it should properly run the Program". Item 23 holds the audit
+  and the change to the note. On the names: "note that Starter Pack is the Anabasis version of the
+  bareSolver" and "bareSolver = Pi Durable base"; and on whether to fork the Starter Pack afresh
+  from Pi Durable: "maybe if we surgically tune / patch and remove exisitng Starter Pack we're
+  already there", then "ambitiously, remove what's needed and consolidate". A count over the
+  record that day: of 1,252 distinct kept harnesses in 208 campaigns, 1,185 select all four of
+  pi's coding tools, 21 in 9 campaigns declare a tool of their own, and none names the older
+  `shell` preset. The export now moves a harness's tool tree into `scripts/toolchain/` instead of
+  copying it, so a tree holds it once (17,111 of the reference's 34,265 entries were the second
+  copy), and the `pi-agent-core` package, which nothing imported, is no longer a dependency.

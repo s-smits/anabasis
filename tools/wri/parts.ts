@@ -19,7 +19,7 @@
 import type { LogEvent } from "#src/kernel/log.ts";
 import { read } from "#src/kernel/log.ts";
 import { ranUnder } from "#src/kernel/solves.ts";
-import { type Call, tracesIn } from "#src/kernel/trace.ts";
+import { type Call, callsOf, tracesIn } from "#src/kernel/trace.ts";
 import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -120,10 +120,7 @@ export function solveRows(events: readonly LogEvent[], session: string): SolveRo
       return [id, isString(ending?.kind) ? `${outcome}:${ending.kind}` : outcome] as const;
     }),
   );
-  const calls = Map.groupBy(
-    tracesIn(events).filter((each): each is Call => each.seat === "solve" && each.part === "call"),
-    ({ id }) => id,
-  );
+  const calls = Map.groupBy(callsOf(tracesIn(events), "solve"), ({ id }) => id);
   return found.won.flatMap((pair) =>
     (["fresh", "old"] as const).flatMap((side) =>
       (pair.solves?.[side] ?? []).map((solve, at) => ({

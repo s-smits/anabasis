@@ -288,12 +288,18 @@ describe("the do-nothing answer", () => {
       expect([referred.idle, referred.unformed]).toEqual([{ mass: { cites: [], more: [] } }, null]);
     }
     // A node that requires itself has no finite answer: the reference ends in null, which the
-    // format refuses as a fault of its own instead of a reading that never returns.
+    // format refuses as a fault of its own instead of a reading that never returns. A format that
+    // names itself returns too, where an interpreted check of it does not.
     const looped = await readUnder({
       $defs: { node: { $ref: "#/$defs/node" } },
       ...mass({ $ref: "#/$defs/node" }),
     });
-    expect(looped.idle).toEqual({ mass: null });
+    expect([looped.idle, looped.unformed === null]).toEqual([{ mass: null }, false]);
+    const named = await readUnder({
+      $defs: { node: { $id: "node", $ref: "node" } },
+      ...mass({ $ref: "node" }),
+    });
+    expect(named.unformed === null).toBe(false);
   });
 });
 

@@ -25,7 +25,7 @@ import {
   solveDirs,
   UNREACHED_MS,
 } from "../src/tools/command.ts";
-import { claimRoot } from "../src/wall/seat-root.ts";
+import { claimRoot, releaseRoot } from "../src/wall/seat-root.ts";
 import { toolchainTemp } from "./helpers/toolchain-temp.ts";
 import { solveIsolationPolicy } from "../src/wall/base.ts";
 import { hostScratch } from "../src/wall/policy.ts";
@@ -52,7 +52,6 @@ async function inSeat(
     });
   } finally {
     await release();
-    rmSync(dirs.host, { recursive: true, force: true });
   }
 }
 
@@ -142,7 +141,58 @@ describe("a solve's walled commands", () => {
         );
       } finally {
         rmSync(repoRoot, { recursive: true, force: true });
-        rmSync(reader, { recursive: true, force: true });
+        await releaseRoot(reader);
+      }
+    },
+    60_000,
+  );
+
+  // Two campaigns at once on one host. Each seat's root, the host's folder beside it, the claim that
+  // names its process, and a verifier's cell are one campaign's: every wall closes the two parents
+  // they lie in and opens the running seat's root alone, so no name has to be guessed right.
+  it.skipIf(!osIsolationSupport().ok)(
+    "read, list and write nothing of another campaign's seat running beside them, nor a verifier's cell",
+    async () => {
+      const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-two-")));
+      const cell = hostScratch("cell-");
+      writeFileSync(join(cell, "hidden.json"), "cell-canary");
+      const tries = (theirs: CommandWall["dirs"]) =>
+        [
+          `cat ${JSON.stringify(join(theirs.home, "note"))} 2>/dev/null || echo home-refused`,
+          `cat ${JSON.stringify(join(theirs.host, "config"))} 2>/dev/null || echo host-refused`,
+          // Seatbelt refuses the listing; Bubblewrap lists the parent with this seat's root alone.
+          `ls ${JSON.stringify(dirname(theirs.root))} 2>/dev/null | grep -F ${JSON.stringify(basename(theirs.root))} || echo listing-refused`,
+          `readlink ${JSON.stringify(`${theirs.root}.owner`)} 2>/dev/null || echo claim-refused`,
+          `touch ${JSON.stringify(join(theirs.home, "planted"))} 2>/dev/null || echo write-refused`,
+          `cat ${JSON.stringify(join(cell, "hidden.json"))} 2>/dev/null || echo cell-refused`,
+          'cat "$HOME/note"',
+        ].join("; ");
+      const refused =
+        "home-refused\nhost-refused\nlisting-refused\nclaim-refused\nwrite-refused\ncell-refused\n";
+      try {
+        await inSeat(repoRoot, async (first) => {
+          await inSeat(repoRoot, async (second) => {
+            for (const [wall, canary] of [
+              [first, "first-canary"],
+              [second, "second-canary"],
+            ] as const) {
+              writeFileSync(join(wall.dirs.home, "note"), `${canary}\n`);
+              writeFileSync(join(wall.dirs.host, "config"), canary);
+            }
+            // Both ways, at once, as two campaigns' solves run.
+            const [one, other] = await Promise.all([
+              run(first, tries(second.dirs)),
+              run(second, tries(first.dirs)),
+            ]);
+            expect(one.output).toBe(`${refused}first-canary\n`);
+            expect(other.output).toBe(`${refused}second-canary\n`);
+            expect(existsSync(join(first.dirs.home, "planted"))).toBe(false);
+            expect(existsSync(join(second.dirs.home, "planted"))).toBe(false);
+          });
+        });
+      } finally {
+        await releaseRoot(cell);
+        rmSync(repoRoot, { recursive: true, force: true });
       }
     },
     60_000,

@@ -32,7 +32,7 @@ import { append } from "../kernel/log.ts";
 import { NOTHING_SPENT, priceKey } from "../kernel/meter.ts";
 import { Cancellation, checkCouldNotRun, type Ending, unanswered } from "../kernel/solve.ts";
 import type { Task, Verifier } from "../kernel/verify.ts";
-import { lstatSync, rmSync } from "../meta/filesystem.ts";
+import { lstatSync } from "../meta/filesystem.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { availableParallelism, loadavg } from "../meta/os.ts";
@@ -339,7 +339,6 @@ async function play(
     // Read apart from the loop, before the root goes: a walk that fails voids no solve.
     homeBytes = bytesUnder(dirs.home);
     if (release !== null) released = release();
-    rmSync(dirs.host, { recursive: true, force: true });
   }
   return {
     crash,

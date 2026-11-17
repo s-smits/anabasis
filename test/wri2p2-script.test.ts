@@ -13,7 +13,8 @@ import {
   unmeasured,
 } from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
 import { clockTurns, progressOf as rowOf, triggerOf } from "#tools/runs/said.ts";
-import { forkOf, idsOf, outcomesOf, pullOf } from "#tools/wri/ledger.ts";
+import { forkOf, idsOf, OUTSIDE, outcomesOf, outsideOf, outsideOwed, pullOf } from "#tools/wri/ledger.ts";
+import { recordWith } from "#tools/wri/record.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import {
   mkdirSync,
@@ -32,6 +33,8 @@ const live = { name: "r", host: "here", live: true };
 const SCRIPT = ".claude/skills/run-improvement-campaign/scripts/wri2p2.ts";
 const PLAN_FILE = "plan.md";
 const OUTCOMES_R = "outcomes-r.md";
+const PREDICTIONS_R = "predictions-r.md";
+const VETTING_FILE = "vetting.md";
 const PLAN =
   "# Plan\n\nvet-1 in cross-domain.md, by E1, B2 and S1.\n\nPull request: #602\n\n## Intentionally opposed\n\n- none\n";
 const DEVIATIONS = "| step | reason |\n| --- | --- |\n";
@@ -239,7 +242,7 @@ describe("the next step of an investigation", () => {
     // An unmarked folder keeps the sequence it was started under: no ledger, isolated lane or read across.
     write("synthesis.md", "notes");
     expect(step()[0]).toStartWith("step: vet");
-    write("vetting.md", "rows");
+    write(VETTING_FILE, "rows");
     expect(step()[0]).toStartWith("step: plan");
     write(PLAN_FILE, "# Plan\n\nrows\n");
     expect(step()[0]).toStartWith("step: implement");
@@ -255,23 +258,109 @@ describe("the next step of an investigation", () => {
 
   it("names an iteration's reads of the record beside the reports it waits for, and owes them before the isolated lanes", () => {
     const { dir, write, step } = folder("record", "r", true);
-    const reads = "read the packs' trend, promotions and starter reads and the runs' replay";
+    const reads = (count: number) =>
+      `${String(count)} read(s) of the record across runs are owed, which the primary makes while the lane sessions work: bun tools/wri/wri.ts record --out ${dir}`;
+    const made = recordWith(
+      "",
+      ["r"],
+      () => "t",
+      () => ({ exitCode: 0, text: "rows" }),
+    ).text;
     rmSync(join(dir, "synthesis.md"));
     // With the reads made, the wait for a report names none of them.
     rmSync(join(dir, "lanes", "01-report.md"));
+    write("record.md", made);
     expect(step()).toHaveLength(2);
-    rmSync(join(dir, "record.md"));
-    expect(step()[2]).toStartWith(reads);
-    // Every report in leaves the reads owed, by the same line, until their file is there.
-    writeFileSync(join(dir, "lanes", "01-report.md"), "# Lane 1\n");
-    expect(step()[0]).toStartWith(`step: record · ${reads}`);
-    expect(step()[0]).toEndWith(`, into ${join(dir, "record.md")}`);
+    // A file with a title alone holds none of the five: the pack's three, the run's replay, the ledger.
     write("record.md", "# The record across runs\n");
+    expect(step()[2]).toBe(reads(5));
+    // Every report in leaves the reads owed, by the same line, until each is made.
+    writeFileSync(join(dir, "lanes", "01-report.md"), "# Lane 1\n");
+    expect(step()[0]).toBe(`step: record · ${reads(5)}`);
+    write("record.md", made);
     expect(step()[0]).toStartWith("step: isolated");
-    // An iteration whose synthesis was written before the reads were owed is not sent back for them.
+    // An iteration opened before 17 November whose synthesis is written is not sent back for them.
     rmSync(join(dir, "record.md"));
     write("synthesis.md", "# Synthesis\n");
     expect(step()[0]).toStartWith("step: isolated");
+  });
+
+  it("owes an iteration opened under the second protocol each read of the record, whatever else is written", () => {
+    const { dir, write, step } = folder("record-each", "r", true);
+    write("iteration.json", JSON.stringify({ opened: at(0), runs: ["r"], protocol: 2 }));
+    // A file with a title alone holds no read: the pack's three, the run's replay and the findings ledger.
+    expect(step()[0]).toBe(
+      `step: record · 5 read(s) of the record across runs are owed, which the primary makes while the lane sessions work: bun tools/wri/wri.ts record --out ${dir}`,
+    );
+    // The command's own file passes it: a section a read, each ended with exit 0.
+    const made = recordWith(
+      "",
+      ["r"],
+      () => "2026-11-17T00:00:00.000Z, 0 of 1 lane reports written",
+      () => ({
+        exitCode: 0,
+        text: "rows",
+      }),
+    );
+    write("record.md", made.text);
+    expect(step()[0]).toStartWith("step: isolated");
+    // A read that failed stays owed, and a synthesis does not pass it.
+    write("record.md", made.text.replace("exit 0", "exit 1"));
+    expect(step()[0]).toStartWith("step: record · 1 read(s)");
+  });
+
+  it("owes the second protocol's vetting its fixed columns, and an older iteration's none of them", () => {
+    const older = "| # | finding | verdict |\n| --- | --- | --- |\n| 1 | P1 held | confirmed |\n";
+    const walk = (name: string, protocol: number) => {
+      const { write, ledger, step, lone } = folder(name, "r", true);
+      write("iteration.json", JSON.stringify({ opened: at(0), runs: ["r"], protocol }));
+      write(
+        "record.md",
+        recordWith(
+          "",
+          ["r"],
+          () => "t",
+          () => ({ exitCode: 0, text: "rows" }),
+        ).text,
+      );
+      lone(4, "launch.json");
+      ledger(PREDICTIONS_R, table(["P1"]));
+      ledger(OUTCOMES_R, table(["P1"], "held"));
+      write("reports.md", "- lane 4: ok, finding, 1 finding, at x\n");
+      write(VETTING_FILE, older);
+      return { write, step };
+    };
+    expect(walk("columns-older", 1).step()[0]).toStartWith("step: across");
+    const { write, step } = walk("columns", 2);
+    expect(step()[0]).toStartWith("step: vet · ");
+    expect(step()[0]).toContain("no findings table with the columns id, finding, lanes, standing");
+    const head =
+      "| id | finding | lanes | standing | owner | importance | verdict | fate |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n";
+    write(VETTING_FILE, `${head}| vet-1 | P1 held | primary | new | o | I2 | confirmed | repair |\n`);
+    expect(step()[0]).toContain("no row names the lane findings 4.1");
+    write(VETTING_FILE, `${head}| vet-1 | P1 held | 4.1 | new | o | I2 | confirmed | repair |\n`);
+    expect(step()[0]).toStartWith("step: across");
+  });
+
+  it("owes the plan every confirmed finding, under any first header and in bold, and no prediction's row", () => {
+    // Until 17 November a table not headed `#`, or a verdict in bold, left the plan owing no finding.
+    for (const first of ["#", "id", "vet", "row"]) {
+      const { write, ledger, step, lone } = folder(`answers-${first === "#" ? "hash" : first}`, "r", true);
+      lone(4, "launch.json");
+      ledger(PREDICTIONS_R, table(["P1"]));
+      ledger(OUTCOMES_R, table(["P1"], "held"));
+      write(
+        VETTING_FILE,
+        `| id | outcome | recount |\n| --- | --- | --- |\n| P1 | held | confirmed by 3 of 3 |\n\n| ${first} | finding | verdict |\n| --- | --- | --- |\n| vet-1 | a | **confirmed** |\n| 2 | b | plausible |\n| 3 | c | confirmed |\n`,
+      );
+      write("cross-domain.md", "rows");
+      write(PLAN_FILE, PLAN);
+      expect(step()[0]).toBe(
+        `step: plan · ${join(base, `answers-${first === "#" ? "hash" : first}`, "2026-11-07-investigation", PLAN_FILE)}: name vet-3`,
+      );
+      write(PLAN_FILE, PLAN.replace("vet-1", "vet-1 and vet-3"));
+      expect(step()[0]).toStartWith("step: launch");
+    }
   });
 
   it("owes a report from a session that names none, since nothing could show it finished", () => {
@@ -331,7 +420,7 @@ describe("the next step of an investigation", () => {
   });
 
   it("walks an iteration through its isolated lanes, each run's ledgers, the read across and a fork's carry", () => {
-    const { dir, cycle, write, ledger, step, lone } = folder("iteration", "r", true);
+    const { root, dir, cycle, write, ledger, step, lone } = folder("iteration", "r", true);
     expect(step()[0]).toStartWith("step: isolated");
     // A manifest counts by the lanes its sessions own, never by its name: one named for lane 4 that
     // holds lane 3 passes nothing, and lane 4 in the first manifest passes the gate.
@@ -339,10 +428,10 @@ describe("the next step of an investigation", () => {
     expect(step()[0]).toStartWith("step: isolated");
     lone(4, "launch.json");
     expect(step()[0]).toStartWith("step: predictions · r has no predictions-r.md");
-    ledger("predictions-r.md", "# Predictions\n\nprose, not a table\n");
+    ledger(PREDICTIONS_R, "# Predictions\n\nprose, not a table\n");
     expect(step()[0]).toStartWith("step: predictions · ");
     expect(step()[0]).toContain('no table whose first column is "id"');
-    ledger("predictions-r.md", table(["P1", "P2"]));
+    ledger(PREDICTIONS_R, table(["P1", "P2"]));
     expect(step()[0]).toContain("resolve P1, P2");
     // An outcome outside the four is unsettled, and an id predicted nowhere is named.
     ledger(OUTCOMES_R, `${table(["P1"], "held")}| P2 | maybe |\n| P9 | held |\n`);
@@ -351,10 +440,10 @@ describe("the next step of an investigation", () => {
     ledger(OUTCOMES_R, `${table(["P1"], "held")}| P2 | pending |\n`);
     // What the run still lacks is derived, so no file of it is owed.
     expect(step()[0]).toStartWith("step: vet · recount");
-    write("vetting.md", "| # | finding | verdict |\n| --- | --- | --- |\n| 1 | P1 held | confirmed |\n");
-    expect(step()[0]).toStartWith(`step: vet · ${join(dir, "vetting.md")} has no row for r:P2:`);
+    write(VETTING_FILE, "| # | finding | verdict |\n| --- | --- | --- |\n| 1 | P1 held | confirmed |\n");
+    expect(step()[0]).toStartWith(`step: vet · ${join(dir, VETTING_FILE)} has no row for r:P2:`);
     write(
-      "vetting.md",
+      VETTING_FILE,
       "| # | finding | verdict |\n| --- | --- | --- |\n| 1 | P1 held | confirmed |\n| 2 | P2 pending | plausible |\n",
     );
     expect(step()[0]).toStartWith("step: across");
@@ -397,7 +486,72 @@ describe("the next step of an investigation", () => {
     carried(fork, "r:P1");
     expect(step([fork])[0]).toContain(" names r:P2:");
     carried(fork, "r:P2");
-    expect(step([fork])).toEqual([`step: done · #602 is measured by ${fork}`]);
+    const done = `step: done · #602 is measured by ${fork}`;
+    expect(step([fork])).toEqual([done]);
+    // An outside read its gate let pass as owed is said again once the iteration is done, for its
+    // own runs and forks, and `due` says every owed row of the cycle. A scored or skipped row is
+    // silent in both.
+    const reads = (...rows: string[]) =>
+      ledger(OUTSIDE, `| run | read |\n| --- | --- |\n${rows.join("\n")}\n`);
+    const owed = (name: string) => `outside · ${name} · read still owed`;
+    const said = (lines: readonly string[]) => lines.map((line) => line.split(" in ")[0]);
+    reads(
+      `| ${fork} | **owed** (16 November): a login with room |`,
+      "| q | owed |",
+      "| s | scored, 5 of 8 |",
+    );
+    expect(said(step([fork]))).toEqual([done, owed(fork)]);
+    expect(said(outsideOwed(outsideOf(root)))).toEqual([owed(fork), owed("q")]);
+    reads(`| ${fork} | scored, 5 of 8 |`, "| q | skipped: no promotion |");
+    expect(step([fork])).toEqual([done]);
+    expect(outsideOwed(outsideOf(root))).toEqual([]);
+  });
+
+  it("keeps a prediction of the group outside pending until its run's outside read is scored or skipped, whatever the log does", () => {
+    const run = "jobstat-fresh-opus-forkedPR601";
+    const { root, dir, ledger, step, lone } = folder("outside-row", run, true);
+    lone(4);
+    const rule = "| --- | --- | --- |\n";
+    ledger(
+      `predictions-${run}.md`,
+      `| id | group | claim |\n${rule}| P1 | first | a |\n| \`O1\` | outside | b |\n| P2 | off-run | c |\n`,
+    );
+    const outcomes = (outside: string) =>
+      ledger(
+        `outcomes-${run}.md`,
+        `${table(["P1"], "held")}| O1 | ${outside} |\n| P2 | pending |\n\nLog events at resolution: 10\n`,
+      );
+    const reads = (kind: string) =>
+      ledger(OUTSIDE, `| run | digest | read |\n${rule}| ${run} | abc | ${kind} |\n`);
+    const first = (events: number) => step([], events)[0] ?? "";
+    // While the read is owed the row is pending, and the log's growth reopens the other pending row alone.
+    reads("owed: a login with room");
+    outcomes("pending");
+    expect(first(10)).toStartWith("step: vet");
+    expect(first(11)).toContain("P2 read unreached or pending at 10 events");
+    expect(first(11)).not.toContain("O1");
+    // The views call stale what the step reopens, and no more.
+    const views = ledgerViews(dir, root, () => 11);
+    expect(views).toContain(`| ${run} | P2 | pending, stale |`);
+    expect(views).toContain(`| ${run} | O1 | pending |`);
+    // An outcome written before the read is no outcome of it.
+    outcomes("held");
+    expect(first(10)).toContain(
+      "the run's outside read settles O1, and outside-reads.md does not hold it as scored",
+    );
+    // The read arriving reopens the row where the log stands still, and no other pending row with it.
+    reads("scored (16 November): 5 of 8");
+    outcomes("pending");
+    expect(first(10)).toContain("O1 read pending and the run's row in outside-reads.md is scored");
+    expect(first(10)).not.toContain("P2");
+    outcomes("falsified");
+    expect(first(10)).toStartWith("step: vet");
+    // A skipped read settles it as well: the row is then unreached.
+    reads("skipped: no promotion");
+    outcomes("pending");
+    expect(first(10)).toContain("is skipped: resolve");
+    outcomes("unreached");
+    expect(first(10)).toStartWith("step: vet");
   });
 
   it("owes each row a run carries one outcome of its own, under its carried name, and shows it in the views", () => {
@@ -405,7 +559,7 @@ describe("the next step of an investigation", () => {
     lone(4);
     // The prose of the section, a time and a bare id among it, owes nothing.
     ledger(
-      "predictions-r.md",
+      PREDICTIONS_R,
       `${table(["P1"])}\n## Carried\n\nFrom q at 06:25Z, \`P2\` aside:\n\n- \`q-forkedPR601:P2\`\n- q-forkedPR601:E3\n`,
     );
     ledger(OUTCOMES_R, table(["P1"], "held"));
@@ -425,7 +579,7 @@ describe("the next step of an investigation", () => {
   it("reopens a row left unreached or pending once the log grows past its count, and keeps it while the log stands", () => {
     const { root, ledger, lone, step } = folder("stale", "r", true);
     lone(4);
-    ledger("predictions-r.md", table(["P1", "P2", "P3"]));
+    ledger(PREDICTIONS_R, table(["P1", "P2", "P3"]));
     const resolved = `${table(["P1"], "held")}| P2 | unreached |\n| P3 | pending |\n`;
     const first = (events: number | null) => step([], events)[0] ?? "";
     // A resolution names the count to record beside it.
@@ -456,8 +610,8 @@ describe("the next step of an investigation", () => {
   it("refuses to choose between two copies of one ledger", () => {
     const { ledger, write, step, lone } = folder("twice", "r", true);
     lone(15);
-    ledger("predictions-r.md", table(["P1"]));
-    write("predictions-r.md", table(["P1"]));
+    ledger(PREDICTIONS_R, table(["P1"]));
+    write(PREDICTIONS_R, table(["P1"]));
     expect(step()[0]).toContain("keep one");
     // A deviation passes the conflict at the gate it names, and the run's next gate still names it
     // rather than reading whichever copy a folder lists first.
@@ -478,9 +632,9 @@ describe("the next step of an investigation", () => {
       ledger(`outcomes-${run}.md`, table(["P1", `Q${run}`], "held"));
     }
     // One bare P1 cannot backtrack both runs' P1, while an id only one run holds may stay bare.
-    write("vetting.md", "| # | finding |\n| --- | --- |\n| 1 | P1 held |\n| 2 | Qa, Qb held |\n");
+    write(VETTING_FILE, "| # | finding |\n| --- | --- |\n| 1 | P1 held |\n| 2 | Qa, Qb held |\n");
     expect(step()[0]).toContain("has no row for a:P1, b:P1");
-    write("vetting.md", "| # | finding |\n| --- | --- |\n| 1 | a:P1 and b:P1 held |\n| 2 | Qa, Qb held |\n");
+    write(VETTING_FILE, "| # | finding |\n| --- | --- |\n| 1 | a:P1 and b:P1 held |\n| 2 | Qa, Qb held |\n");
     expect(step()[0]).toStartWith("step: across");
   });
 
@@ -504,7 +658,7 @@ describe("the next step of an investigation", () => {
 
   it("derives the cycle view and each run's still-missing view from its two ledgers and its plan", () => {
     const { root, dir, cycle, write, ledger } = folder("views", "r", true);
-    ledger("predictions-r.md", table(["P1", "P2", "P3"]));
+    ledger(PREDICTIONS_R, table(["P1", "P2", "P3"]));
     ledger(OUTCOMES_R, `Log events at resolution: 50\n\n${table(["P1"], "held")}| P2 | unreached |\n`);
     write(
       PLAN_FILE,
@@ -558,7 +712,7 @@ describe("the next step of an investigation", () => {
 
   it("names each unreached or falsified row that no fork carries and no plan opposes", () => {
     const { root, write, ledger, section } = folder("dropped", "r", true);
-    ledger("predictions-r.md", table(["P1", "P2", "P3", "P20"]));
+    ledger(PREDICTIONS_R, table(["P1", "P2", "P3", "P20"]));
     ledger(OUTCOMES_R, `${table(["P1"], "held")}| P2 | unreached |\n| P3 | falsified |\n| P20 | pending |\n`);
     const dropped = () => section("# Dropped");
     const unread = (running: readonly string[] = []) => section("# Unread", running);
@@ -603,7 +757,7 @@ describe("the next step of an investigation", () => {
     lone(4);
     ledger("predictions-p.md", table(["P1"]));
     ledger("outcomes-p.md", table(["P1"], "falsified"));
-    write("vetting.md", "| # | finding |\n| --- | --- |\n| 1 | P1 |\n");
+    write(VETTING_FILE, "| # | finding |\n| --- | --- |\n| 1 | P1 |\n");
     write("cross-domain.md", "rows");
     write(PLAN_FILE, PLAN);
     // The fork owes its predictions and the parent's falsified row; one reason passes both, said once.
@@ -637,7 +791,7 @@ describe("the next step of an investigation", () => {
     ledger("outcomes-p.md", table(["P1"], "falsified"));
     // A run that kept its opposed trade-offs in a still-missing file before 8 November has said them.
     ledger("still-missing-p.md", "- P1\n\n## Intentionally opposed\n\n- none\n");
-    write("vetting.md", "| # | finding |\n| --- | --- |\n| 1 | P1 |\n");
+    write(VETTING_FILE, "| # | finding |\n| --- | --- |\n| 1 | P1 |\n");
     write("cross-domain.md", "rows");
     write(PLAN_FILE, "cross-domain.md, by E1, B2 and S1.\n\nPull request: #600\n");
     for (const fork of ["p-forkedPR60", "p-forkedPR600"]) ledger(`predictions-${fork}.md`, table(["F1"]));

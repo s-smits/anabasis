@@ -24,7 +24,7 @@ import { asked, answerOf } from "./hosts.ts";
 import { type Host, hostNamed, hostsOf } from "./host-config.ts";
 import { quoted, rsync, sideOf, sshScript } from "./host-command.ts";
 import { runTextOrThrow } from "#src/meta/subprocess.ts";
-import { hold, release } from "./holder.ts";
+import { hold, release } from "#src/meta/holder.ts";
 import {
   ARCHIVE,
   archiveOf,
@@ -345,6 +345,33 @@ export async function syncRuns(
     throw new Error(`${String(failed.length)} of ${String(kept.length)} copies failed: ${failed.join("; ")}`);
   }
   return [...brought.filter((log) => log !== null), ...left.map((run) => run.path)];
+}
+
+/**
+ * Copy the benchmark score store (`score.ts --out`) from the machine that rolls the benchmark into
+ * `data/bench/<machine>` here: every task's rollout and judgement, which `score.ts table` reads
+ * here as it does there. An arm's exported tree stays behind, since it holds an interpreter built
+ * for that machine and `score.ts tree` writes it again from its campaign. A record there is written
+ * once, so the copy only adds, and what that machine later clears stays here. Nothing is copied
+ * unless `ABLATION_HOST` names another machine and `BENCH_STORE` the folder there, absolute or
+ * from its home folder; a machine that does not answer keeps its copy as it was, as a silent host
+ * keeps its campaigns'. It returns the copy's folder where it copied.
+ */
+export async function fetchBench(): Promise<string | null> {
+  const { ABLATION_HOST: name = "", BENCH_STORE: store = "" } = runtimeProcess.env;
+  if (store === "" || name === "" || name === HERE) return null;
+  const host = hostNamed(name);
+  const into = join(dirname(archiveOf(runtimeProcess.cwd())), "bench", host.name);
+  mkdirSync(into, { recursive: true });
+  // rsync reads a relative path from the home folder there, and a quoted `~` as a folder's name.
+  const from = `${sideOf(host, store.replace(/^~\//u, ""))}/`;
+  try {
+    await rsync(from, `${into}/`, ...EXCLUDED, "--exclude=/trees");
+    return into;
+  } catch (error) {
+    warn(`${host.name}: the benchmark score store was not copied: ${errorMessage(error)}`);
+    return null;
+  }
 }
 
 /**

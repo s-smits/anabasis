@@ -479,6 +479,9 @@ function claudeEnv(
     // claude.ai's cloud MCP servers load past strict MCP config and empty setting sources unless this
     // is off, as the sweep set it.
     ENABLE_CLAUDEAI_MCP_SERVERS: "0",
+    // The client keeps no memory of its own: what a seat remembers is the host's to give it, and a
+    // memory folder under the configuration directory would be a second store beside the log.
+    CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
     // `off` is real. In the bundled CLI 0.3.285 the auto-compact condition `Uf` is false when `rht` reads
     // DISABLE_AUTO_COMPACT or DISABLE_COMPACT, and `Uf` permits the threshold compaction (`hAe`), the
     // reactive one after a too-long prompt (`UEr`) and the precomputed summary (`x4n`); a context that

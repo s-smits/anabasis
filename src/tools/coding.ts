@@ -47,17 +47,16 @@ const images: ImageProcessor = {
 const NEAR_END =
   "\n\nThe command was cut because the solve's time is nearly up, so that its result reaches you while you can still act on it.";
 
-/** A harness selects among pi's names; an older kept harness's shell preset means bash. */
+/** A harness selects among pi's names. */
 export function selectedCodingTools(presets: readonly string[]): CodingTool[] {
-  const named = presets.map((preset) => (preset === "shell" ? "bash" : preset));
   const served: readonly string[] = CODING_TOOLS;
-  const other = named.filter((name) => !served.includes(name));
+  const other = presets.filter((name) => !served.includes(name));
   if (other.length > 0) {
     throw new Error(
       `a solve serves pi's coding tools as presets (${CODING_TOOLS.join(", ")}), not ${other.join(", ")}`,
     );
   }
-  return CODING_TOOLS.filter((name) => named.includes(name));
+  return CODING_TOOLS.filter((name) => presets.includes(name));
 }
 
 /** Submit still reads its bounded answer through one walled command. */
@@ -75,10 +74,7 @@ export function codingTools(wall: CommandWall, selected: readonly CodingTool[]):
   const tools: SeatTool[] = [createReadTool({ images }), bashTool(wall), createEditTool(), createWriteTool()];
   return tools
     .filter((each) => wanted.has(each.name))
-    .map((each) => ({
-      ...each,
-      executionMode: "sequential",
-    }));
+    .map((each) => ({ ...each, executionMode: "sequential" }));
 }
 
 /** What the command's own timeout allowed; the solve's earlier end has its own message. */
@@ -100,8 +96,9 @@ function bashTool(wall: CommandWall): SeatTool {
   const pi = createBashTool();
   return {
     ...pi,
+    // The host's own schema: pi's command, and a timeout described by the limits the wall holds.
     parameters: Type.Object({
-      command: pi.parameters.properties.command,
+      command: Type.String({ description: "Bash command to execute" }),
       timeout: Type.Optional(
         Type.Number({
           description: `Timeout in seconds: ${String(wall.limits.shellDefaultSeconds)} when omitted, at most ${String(wall.limits.shellMaxSeconds)}; a value outside that range runs at the nearest end of it`,

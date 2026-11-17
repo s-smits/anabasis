@@ -141,6 +141,21 @@ export async function rebuildForeignPython(
   };
 }
 
+/** Each folder of `tree` that distributions are installed into, relative to the tree, with the
+ *  Python minors they were built for: what an export tells a solver whose own interpreter reads
+ *  none of them. */
+export async function packageFolders(tree: string) {
+  const folders = new Map<string, Set<string>>();
+  for (const { site, python } of new Set((await distributionsIn(tree)).values())) {
+    const minors = folders.get(site) ?? new Set<string>();
+    if (python !== null) minors.add(python);
+    folders.set(site, minors);
+  }
+  return [...folders]
+    .map(([site, minors]) => ({ site, pythons: [...minors].toSorted() }))
+    .toSorted((a, b) => a.site.localeCompare(b.site));
+}
+
 /** Every file a `RECORD` in `tree` lists, relative to the tree, with the distribution that owns it. */
 async function distributionsIn(tree: string): Promise<Map<string, Distribution>> {
   const owners = new Map<string, Distribution>();

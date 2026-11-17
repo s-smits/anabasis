@@ -9,11 +9,12 @@ import {
   readFileSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
-import { held } from "../tools/runs/holder.ts";
+import { held } from "../src/meta/holder.ts";
 import { quoted, treeBun } from "../tools/runs/host-command.ts";
 
 import { fakeHosts } from "./helpers/fake-hosts.ts";
@@ -372,7 +373,7 @@ describe("campaign snapshots", () => {
     const holder = Bun.spawn([
       process.execPath,
       "-e",
-      `import { hold } from ${JSON.stringify(join(import.meta.dir, "..", "tools", "runs", "holder.ts"))}; hold(${JSON.stringify(join(lock, "holder"))}); await Bun.sleep(30000);`,
+      `import { hold } from ${JSON.stringify(join(import.meta.dir, "..", "src", "meta", "holder.ts"))}; hold(${JSON.stringify(join(lock, "holder"))}); await Bun.sleep(30000);`,
     ]);
     const holding = performance.now() + 10_000;
     while (!held(join(lock, "holder")) && performance.now() < holding) await Bun.sleep(20);
@@ -643,11 +644,17 @@ describe("the daily retire's host step", () => {
         ...extra,
       });
     const copy = (name: string, file: string) => join(made.main, "data", "runs", "runner", name, file);
+    // The sweep reads the fixture's scratch and never the machine's: a root nobody claims, unwritten
+    // for a month, goes from there.
+    const left = join(made.root, "ana-built-bash", "solve-left");
+    mkdirSync(left, { recursive: true });
+    utimesSync(left, new Date(Date.now() - 30 * 86_400_000), new Date(Date.now() - 30 * 86_400_000));
     // A host that does not answer leaves nothing copied, and the sweep says so.
     expect(sweep({ FAKE_OFFLINE: "1" }).code).toBe(1);
     expect(existsSync(copy("distant", LOG_FILE))).toBe(false);
     // The next sweep finds it again: the closed campaign's folders come, the open one's record only.
     expect(sweep({}).code).toBe(0);
+    expect(existsSync(left)).toBe(false);
     expect(readFileSync(copy("distant", "memory/note.txt"), "utf8")).toBe("kept");
     expect(existsSync(copy("busy", LOG_FILE))).toBe(true);
     expect(existsSync(copy("busy", "memory/note.txt"))).toBe(false);
@@ -762,6 +769,51 @@ describe("a take-over of a campaign that installed packages", () => {
       "the Builder's",
     ]);
     expect(existsSync(here("here", "over", "tree/lib"))).toBe(false);
+  });
+});
+
+describe("the gather of the benchmark score store", () => {
+  const gather = 'import { fetch } from "REPOSITORY/tools/runs/move.ts"; await fetch([]);';
+  const stored = () => {
+    const made = fixture();
+    const there = (file: string) => join(made.root, "remote", "bench", "store", file);
+    const here = (file: string) => join(made.main, "data", "bench", "runner", file);
+    for (const file of ["judged/arm/task.json", "dataset/task/rollout.json", "trees/arm/bin/python"]) {
+      mkdirSync(join(there(file), ".."), { recursive: true });
+      writeFileSync(there(file), "first");
+    }
+    const named = { FAKE_CATALOGUE: "[]", ABLATION_HOST: "runner", BENCH_STORE: there("") };
+    return { made, there, here, named };
+  };
+
+  it("copies every rollout and judgement and no arm's tree, and keeps what the machine clears afterwards", () => {
+    const { made, there, here, named } = stored();
+    const first = made.run(gather, named);
+    expect([first.code, first.out.includes(here(""))]).toEqual([0, true]);
+    expect(readFileSync(here("judged/arm/task.json"), "utf8")).toBe("first");
+    expect([existsSync(here("dataset/task/rollout.json")), existsSync(here("trees"))]).toEqual([true, false]);
+    // The machine clears one record and writes another: the copy here gains and loses nothing.
+    rmSync(there("judged/arm/task.json"));
+    writeFileSync(there("judged/arm/later.json"), "second");
+    expect(made.run(gather, named).code).toBe(0);
+    expect([existsSync(here("judged/arm/task.json")), existsSync(here("judged/arm/later.json"))]).toEqual([
+      true,
+      true,
+    ]);
+  });
+
+  it("copies nothing where no store is named, and leaves the copy as it was where the machine does not answer", () => {
+    const { made, there, here, named } = stored();
+    const unnamed = made.run(gather, { FAKE_CATALOGUE: "[]", ABLATION_HOST: "runner" });
+    expect([unnamed.code, existsSync(here(""))]).toEqual([0, false]);
+    expect(made.run(gather, named).code).toBe(0);
+    writeFileSync(there("judged/arm/later.json"), "second");
+    const silent = made.run(gather, { ...named, FAKE_TRANSFER_FAIL_FROM: there("") });
+    expect([silent.code, silent.err.includes("the benchmark score store was not copied")]).toEqual([0, true]);
+    expect([existsSync(here("judged/arm/task.json")), existsSync(here("judged/arm/later.json"))]).toEqual([
+      true,
+      false,
+    ]);
   });
 });
 

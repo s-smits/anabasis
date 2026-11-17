@@ -52,15 +52,17 @@ const HEAD = [
 const VERDICTS = ["above", "inside", "below"] as const;
 type Verdict = (typeof VERDICTS)[number];
 
-/** Every judged rollout of a store; a record without points (a judgement that failed) is none. */
-export function scoresOf(store: string): Score[] {
+/** Every judged rollout of a store, or those on the tasks named, since the parts of a read are never
+ *  summed. A record without points (a judgement that failed) is none, and a named task no record is
+ *  on is refused: left out silently, a mistyped name would place the arm on a smaller part. */
+export function scoresOf(store: string, only: readonly string[] | null = null): Score[] {
   const root = join(store, "judged");
   if (!existsSync(root)) throw new Error(`${root} is not there: --bench takes a score store`);
   // Sorted, so that the table's rows come in one order on every filesystem.
   const arms = readdirSync(root, { withFileTypes: true })
     .flatMap((entry) => (entry.isDirectory() ? [entry.name] : []))
     .toSorted();
-  return arms.flatMap((arm) =>
+  const all = arms.flatMap((arm) =>
     readdirSync(join(root, arm))
       .toSorted()
       .flatMap((file) => {
@@ -81,6 +83,10 @@ export function scoresOf(store: string): Score[] {
         ];
       }),
   );
+  if (only === null) return all;
+  const absent = only.filter((task) => all.every((score) => score.task !== task));
+  if (absent.length > 0) throw new Error(`no judged rollout on ${absent.join(", ")}`);
+  return all.filter(({ task }) => only.includes(task));
 }
 
 /** The campaigns the arms of a store were built by, which a caller folds before `outsideLines`. */

@@ -12,6 +12,7 @@ import { read } from "../src/kernel/log.ts";
 import { billOf, freezePrices, ledgerOf } from "../src/kernel/meter.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { isFunction } from "../src/meta/json-shape.ts";
+import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { existsSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -188,7 +189,10 @@ describe("durable session boundaries", () => {
     if (only === undefined) throw new Error("the session took no turn");
     const own = billOf(freezePrices([s.seat.model]), ledgerOf([["openai-codex/faux-seat", only.usage]]));
     expect(only.usage.cost.total).toBeCloseTo(own, 10);
-    expect(sat.spent.tokens.input).toBeGreaterThan(only.usage.input);
+    // pi-ai's faux provider files a session's whole prompt as cache reads and writes from 1.5.0.
+    const prompt = (tokens: { input: number; cacheRead: number; cacheWrite: number }) =>
+      tokens.input + tokens.cacheRead + tokens.cacheWrite;
+    expect(prompt(sat.spent.tokens)).toBeGreaterThan(prompt(only.usage));
     expect(sat.spent.billed).toBeGreaterThan(own);
   });
 
@@ -220,22 +224,46 @@ describe("durable session boundaries", () => {
 });
 
 describe("refused durable tool calls", () => {
-  it("traces unavailable tools and invalid arguments even though durable bypasses their hooks", async () => {
+  // Durable runs `afterTool` on the error results it writes itself from 1.5.0, and still writes an
+  // aborted round's pending calls with no hook; the committed message is what records them, once.
+  // Each refusal is pi-ai's own text, and a malformed call reaches `prepareArguments` as `{}`.
+  it("traces an unavailable tool and invalid arguments once each, in call order, as the model read them", async () => {
     const log = join(scratch, "refused-calls.jsonl");
     const phases: string[] = [];
+    const reached = () => {
+      throw new Error("invalid arguments reached the tool");
+    };
     const required = tool({
       name: "look",
       description: "Look.",
       parameters: Type.Object({ key: Type.String() }),
-      execute: async () => {
-        throw new Error("invalid arguments reached the tool");
-      },
+      execute: reached,
     });
+    // A harness's own tool reaches the seat as a plain JSON Schema, which TypeBox has not marked.
+    const plain = {
+      ...required,
+      name: "note",
+      parameters: structuredClone(Type.Object({ note: Type.String({ minLength: 1 }) })),
+    };
+    const malformed = {
+      ...fauxToolCall("look", {}),
+      argumentsError: 'Unexpected end of JSON input\n\nReceived arguments:\n{"key": ',
+    };
     const s = seated(
-      [fauxAssistantMessage([fauxToolCall("absent", {}), fauxToolCall("look", {})], TOOL_USE)],
+      [
+        fauxAssistantMessage(
+          [
+            fauxToolCall("look", { other: 1 }),
+            fauxToolCall("absent", {}),
+            malformed,
+            fauxToolCall("note", { note: "" }),
+          ],
+          TOOL_USE,
+        ),
+        fauxAssistantMessage("Done."),
+      ],
       {
-        tools: [required],
-        most: 1,
+        tools: [required, plain],
         trace: { log, of: "solve" },
         onTool: (phase, _id, name) => {
           phases.push(`${phase} ${name}`);
@@ -244,12 +272,35 @@ describe("refused durable tool calls", () => {
     );
     expect(await sit(s.seat)).toMatchObject({ crash: null });
     const calls = read(log).filter(({ kind }) => kind === "solve.call");
-    expect(calls.map(({ data }) => [data.tool, data.isError])).toEqual([
-      ["absent", true],
-      ["look", true],
+    expect(calls.map(({ data }) => [data.tool, data.args, data.isError, data.ms])).toEqual([
+      ["look", { other: 1 }, true, null],
+      ["absent", {}, true, null],
+      ["look", {}, true, null],
+      ["note", { note: "" }, true, null],
     ]);
-    expect(phases).toEqual(["start absent", "end absent", "start look", "end look"]);
-    expect(s.faux.state.callCount).toBe(1);
+    expect(phases).toEqual(
+      ["look", "absent", "look", "note"].flatMap((name) => [`start ${name}`, `end ${name}`]),
+    );
+    // The trace holds each result's text as the next request gave it to the model.
+    const [, sent] = s.sent;
+    if (sent === undefined) throw new Error("the session made no second request");
+    const results = parseJsonAs<{ messages: { role: string; content: { text: string }[] }[] }>(sent)
+      .messages.filter(({ role }) => role === "toolResult")
+      .map(({ content }) => content.map((part) => part.text).join("\n"));
+    expect(calls.map(({ data }) => data.text)).toEqual(results);
+    const refused = (message: string) => `<harness>\n[error] ${message}\n</harness>`;
+    expect(results).toEqual([
+      refused(
+        'Validation failed for tool "look":\n  - key: missing\n\nReceived arguments:\n{\n  "other": 1\n}',
+      ),
+      refused("Tool absent is not available"),
+      refused(
+        'Invalid arguments for tool "look": Unexpected end of JSON input\n\nReceived arguments:\n{"key": ',
+      ),
+      refused(
+        'Validation failed for tool "note":\n  - note: expected at least 1 characters\n\nReceived arguments:\n{\n  "note": ""\n}',
+      ),
+    ]);
   });
 });
 

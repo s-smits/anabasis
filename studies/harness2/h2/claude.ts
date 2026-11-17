@@ -417,6 +417,9 @@ export async function rollout(
       const code = await inGroup(agent.argv({ prompt, treeDir, workspace, traj }), {
         cwd: workspace,
         env: {
+          // Claude Code otherwise opens every session's prompt with a memory folder of its own and
+          // how to write to it, which no campaign's solver reads and no rollout of twelve used.
+          CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
           DISABLE_AUTOUPDATER: "1",
           ...Object.fromEntries(Object.entries(claude.env).filter(([key]) => !NESTED.has(key))),

@@ -72,7 +72,7 @@ import type { examineCommand as ExamineCommand } from "#tools/d1b/examine.ts";
 import type { solved as Solved } from "#tools/d2/round.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { ROOM } from "#src/kernel/compare.ts";
-import { type Call, tracesIn } from "#src/kernel/trace.ts";
+import { type Call, callsOf, tracesIn } from "#src/kernel/trace.ts";
 import { billedBetween } from "#src/kernel/meter.ts";
 import { heldAtGate } from "#src/kernel/task.ts";
 import { existsSync, openSync, readFileSync, readdirSync, writeFileSync } from "#src/meta/filesystem.ts";
@@ -207,8 +207,7 @@ function spread(values: readonly number[]): readonly [number, number, number] | 
 }
 
 /** The Examiner's tool calls among `events`, as the trace reader reads them. */
-const examCalls = (events: readonly LogEvent[]) =>
-  tracesIn(events).filter((each): each is Call => each.seat === "exam" && each.part === "call");
+const examCalls = (events: readonly LogEvent[]) => callsOf(tracesIn(events), "exam");
 
 /** What the log holds from event `from` on: the stretch one seat wrote, read by the owners above. */
 export function readingOf(events: readonly LogEvent[], from: number, mentions: readonly string[]): Reading {

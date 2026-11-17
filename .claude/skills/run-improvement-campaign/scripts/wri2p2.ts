@@ -24,9 +24,10 @@
  *   synthesis reads that comparison (operator, 10 November: "pause it after next comparison (ensure
  *   the comparison pause actually includes the synthesis of this)", "not directly after solves").
  * - `due` is the same reading as a timer takes it (`dueLines`): a head line with the count of steps
- *   owed and the oldest's hours, one line a step, and for each live run the count of files of the
- *   code a solve runs (`codeOf`, `tools/d2/campaign.ts`) that differ at the commit the command runs
- *   from, which it does not measure.
+ *   owed and the oldest's hours, one line a step, one line for each outside read a cycle still holds
+ *   as owed (`outsideOwed`; `next` says an iteration's own once it is done), and for each live run
+ *   the count of files of the code a solve runs (`codeOf`, `tools/d2/campaign.ts`) that differ at
+ *   the commit the command runs from, which it does not measure.
  * - `open` starts the investigation of one run, or of several as equals, under `.ana/wri/` of the
  *   main checkout, reading a frozen copy of any one still live (`wri.ts start --snapshot`), and marks
  *   the folder an iteration (`iteration.json`). Opening a live run is a deviation from the `pause`
@@ -34,21 +35,14 @@
  *   yet, so its row `| pause:<run> | <reason> |` stands in any investigation's `deviations.md`
  *   (`keptIn`): its step is then `kept`, which owes nothing, until the row goes, the run stops or
  *   it reaches a count of promotions the row's reason does not name.
- * - `next` reads an investigation's folder and prints the one step left, the first owed of a list of
- *   gates in the iteration's order (`gatesOf`). Every folder passes the shared instructions, the
- *   lanes, the lane reports, the synthesis, the vetting, the plan, the pull request
- *   (`Pull request: #N` in `plan.md`) and the fresh runs at its head (`runs fresh --as forkedPR<N>`),
- *   which are launched without asking. An iteration's folder also passes the reads across runs
- *   (`record.md`), the isolated lanes' decision, each run's ledgers (`predictions-<run>.md` resolved
- *   id by id in `outcomes-<run>.md`, and for a fork what it carries from the iteration that made it),
- *   the vetting of every prediction, the read across domains (`cross-domain.md`), a plan that answers
- *   both and says under "Intentionally opposed" what it leaves out on purpose, each fork's ledger, and
- *   the plan's own predictions carried into a fork's (`planOwed`); a jobstat run's also passes its row
- *   in `outside-reads.md` (`outsideGate`).
+ * - `next` reads an investigation's folder and prints the one step left, the first owed of the
+ *   gates `gatesOf` lists in the iteration's order. Every folder passes the shared instructions, the
+ *   lanes, their reports, the synthesis, the vetting, the plan, the pull request (`Pull request: #N`
+ *   in `plan.md`) and the fresh runs at its head, which are launched without asking; an iteration's
+ *   folder (`iteration.json`) passes the others too, and one opened from 17 November (`fixed`) owes
+ *   each read of the record (`recordOwed`) and its vetting's fixed columns (`vettingFaults`).
  * - `ledger` prints the views derived from those files and never written by hand: the cycle view,
- *   every prediction of the folder's runs with its outcome; the dropped view, each unreached or
- *   falsified id that no `## Carried` and no plan's `## Intentionally opposed` names; and each run's still-missing
- *   view, what it did not hold beside its plan's `## Not done` and `## Intentionally opposed`.
+ *   the dropped view and each run's still-missing view (`tools/wri/ledger.ts`).
  *
  * Every gate is a default, never a wall (operator, 7 November: "to-be-deviated-from each time"): a
  * row `| <step> | <reason> |` in the folder's `deviations.md` passes it, and `next` prints the
@@ -95,13 +89,12 @@ import {
   triggerOf,
 } from "#tools/runs/said.ts";
 import { catalogueText, lanesOf } from "#tools/wri/catalogue.ts";
-import { INVESTIGATION, SHARED, SYNTHESIS, VETTING } from "#tools/wri/index.ts";
+import { confirmedIn, vettingFaults } from "#tools/wri/findings.ts";
+import { INVESTIGATION, REPORTS, SHARED, SYNTHESIS, VETTING } from "#tools/wri/index.ts";
 import { blankSections, reportPath } from "#tools/wri/investigation.ts";
 import {
-  COUNTED_LINE,
   carriedIn,
   carryOf,
-  countedOf,
   cycleViewOf,
   droppedOf,
   idsOf,
@@ -111,29 +104,25 @@ import {
   madeBy,
   names,
   notDoneOf,
-  OUTCOMES,
-  outcomesOf,
-  owedOf,
+  OUTSIDE,
+  outsideOf,
+  outsideOwed,
   pullOf,
   rowsOf,
   sectionOf,
-  staleOf,
   stillMissingOf,
+  unresolvedOf,
 } from "#tools/wri/ledger.ts";
+import { RECORD, recordOwed, recordStep } from "#tools/wri/record.ts";
 
 /** The read across domains that the plan rests on beside the vetting. */
 const ACROSS = "cross-domain.md";
 /** The record `open` writes before the investigation: the folder is an iteration's, so its own gates apply. */
 const MARKER = "iteration.json";
 const PLAN = "plan.md";
-/** The primary's reads across runs, which no lane makes: owed while the lanes work, until a synthesis is there. */
-const RECORD = "record.md";
-const READ =
-  "read the packs' trend, promotions and starter reads and the runs' replay while the lane sessions work (whole-run-investigation, step 4)";
+const PROTOCOL = 2;
 /** The gates a session passed on purpose, each with its reason. */
 const DEVIATIONS = "deviations.md";
-/** One row a stopped jobstat run, in a cycle's folder: its reference's read on the outside benchmark. */
-const OUTSIDE = "outside-reads.md";
 /** The row of `deviations.md` that passes every gate of the forks' ledgers at once. */
 const FORKS = "forks";
 const LEVERS = join(import.meta.dir, "..", "references", "levers.md");
@@ -186,6 +175,9 @@ const read = (path: string) => (existsSync(path) ? readFileSync(path, "utf8") : 
 
 /** Whether the folder `dir` takes an iteration's gates, read from its one record of that. */
 const marked = (dir: string) => existsSync(join(dir, MARKER));
+/** Whether `open` marked `dir` under protocol 2, of 17 November; one opened before keeps its gates. */
+const fixed = (dir: string) =>
+  marked(dir) && (parseJsonAs<{ protocol?: number }>(read(join(dir, MARKER))).protocol ?? 1) >= PROTOCOL;
 
 /** The campaigns the investigation `dir` reads, by name. */
 function runsOf(dir: string): string[] {
@@ -231,31 +223,12 @@ function ledgersOf(root: string, dir: string, name: string) {
   return { name, predictions: read(path ?? ""), outcomes };
 }
 
-/** What the outcomes ledger of `run`, beside its predictions at `path`, has left to resolve: each id
- *  its predictions owe (`owedOf`), its carried rows by their `<run>:<id>` included. */
-function outcomesOwed({ lengthOf }: Where, run: string, path: string): string[] | null {
+/** What the outcomes ledger of `run`, beside its predictions at `path`, has left to resolve
+ *  (`unresolvedOf`), its rows of the group `outside` against the run's row in `outside-reads.md`. */
+function outcomesOwed({ root, dir, lengthOf }: Where, run: string, path: string): string[] | null {
   const beside = path === "" ? "" : join(dirname(path), `outcomes-${run}.md`);
-  const predicted = owedOf(read(path));
-  const text = read(beside);
-  const outcomes = outcomesOf(text);
-  const known: readonly string[] = OUTCOMES;
-  const unsettled = predicted.filter((id) => !known.includes(outcomes.get(id) ?? ""));
-  const stray = [...outcomes.keys()].filter((id) => !predicted.includes(id));
-  const events = lengthOf(run);
-  // A row left unreached or pending reopens once the log of a run that has stopped grows past the
-  // count it was read at, since a run continued after its trigger may yet reach it.
-  const stale = staleOf(text, events);
-  const counted = countedOf(text);
-  const record = events === null ? "" : `, and record "${COUNTED_LINE} ${String(events)}" on its own line`;
-  const parts = [
-    unsettled.length > 0
-      ? `resolve ${unsettled.join(", ")} from the log as ${OUTCOMES.join(", ")} (pending only while its event has not come), each with its count or event and the time${record}`
-      : "",
-    stale.length > 0
-      ? `${stale.join(", ")} read unreached or pending at ${counted === null ? "no recorded count" : `${String(counted)} events`} and the log holds ${String(events)} now: resolve them again${record}`
-      : "",
-    stray.length > 0 ? `${stray.join(", ")} predicted nowhere in ${path}` : "",
-  ].filter((part) => part !== "");
+  const ledgers = { predictions: read(path), outcomes: read(beside), events: lengthOf(run) };
+  const parts = unresolvedOf(ledgers, outsideOf(root, dir).get(run), path);
   return parts.length === 0 ? null : [`${beside}: ${parts.join("; ")}`];
 }
 
@@ -319,10 +292,14 @@ function runGates(where: Where, run: string, group: readonly string[] = []): Gat
  *  aim"): a row that names it in a cycle's `outside-reads.md`, scored, skipped or still owed. */
 function outsideGate({ root, dir }: Where, run: string): Gate[] {
   if (!run.startsWith("jobstat")) return [];
-  const named = () =>
-    ledgerFiles(root, dir, OUTSIDE).some((path) => rowsOf(read(path), "run").some(([name]) => name === run));
   const owed = `${run} has no row in ${OUTSIDE} of its cycle's folder under ${root}: read its newest promoted reference on the eight tasks beside a fresh Starter (run-improvement-campaign, "A reference's read"), then add the row whose first cell is the run's name, with its scores, "skipped" with lane 27's grade or no promotion, or "owed" with what the read waits for`;
-  return [{ step: "outside", keys: [`outside:${run}`, "outside"], owed: () => (named() ? null : [owed]) }];
+  return [
+    {
+      step: "outside",
+      keys: [`outside:${run}`, "outside"],
+      owed: () => (outsideOf(root, dir).has(run) ? null : [owed]),
+    },
+  ];
 }
 
 /** An iteration's vetting has a row for each prediction of its runs. An id two runs share must be
@@ -354,9 +331,7 @@ function unvetted({ root, dir }: Where, runs: readonly string[]): string[] | nul
  */
 function unanswered({ root, dir }: Where, runs: readonly string[]): string[] | null {
   const text = read(join(dir, PLAN));
-  const confirmed = rowsOf(read(join(dir, VETTING)), "#")
-    .filter((cells) => cells.some((cell) => cell.toLowerCase().startsWith("confirmed")))
-    .map(([row = ""]) => `vet-${row}`);
+  const confirmed = confirmedIn(read(join(dir, VETTING)));
   const levers = rowsOf(read(LEVERS), "#").filter(([id = ""]) => names(text, id)).length;
   const absent = [...confirmed, ACROSS].filter((token) => !names(text, token));
   const opposed = (of: string) => (sectionOf(of, "Intentionally opposed") ?? []).length > 0;
@@ -391,7 +366,12 @@ function gatesOf(where: Where): Gate[] {
   const forks = [...new Set([...where.campaigns, ...launchForks(deviations)])].filter((name) =>
     madeBy(plan, deviations, name),
   );
-  const record = marked(dir) && !existsSync(at(RECORD)) ? [`${READ}, into ${at(RECORD)}`] : [];
+  // The primary's own reads, which no lane makes; a folder opened before 17 November owes them
+  // only until its synthesis is there.
+  const owing = marked(dir) && (fixed(dir) || !existsSync(at(SYNTHESIS)));
+  const record = recordStep(owing ? recordOwed(read(at(RECORD)), runs).length : 0, dir);
+  // An outside read its gate let pass as owed is said again once nothing else is.
+  const unread = () => outsideOwed(outsideOf(where.root, dir), [...runs, ...forks]);
   return [
     gate("instruct", () => {
       const blank = blankSections(read(at(SHARED)));
@@ -414,7 +394,7 @@ function gatesOf(where: Where): Gate[] {
             ...record,
           ];
     }),
-    gate("record", () => (record.length === 0 || existsSync(at(SYNTHESIS)) ? null : record)),
+    gate("record", () => (record.length === 0 ? null : record)),
     ...only([
       gate("isolated", () =>
         // A lane by the report its session owns, at the path `wri.ts lanes` gave it, whatever its
@@ -424,7 +404,7 @@ function gatesOf(where: Where): Gate[] {
         )
           ? null
           : [
-              `lanes ${LONE.join(" and ")} run alone, after the reports they wait on: build each whose trigger fired (\`wri.ts lanes\` named it) with${wri("lanes", " --lanes <n>").slice(1)} and launch it alone, or record why not in ${at(DEVIATIONS)} as "| isolated | <reason> |"`,
+              `lanes ${LONE.join(" and ")} run alone, after the reports they wait on: build each its \`Starts from\` paragraph opens (lane 4 only where lane 3 left a check undecided, lane 15 on a win at a small wall share only where lane 10 or 12 names a shortcut) with${wri("lanes", " --lanes <n>").slice(1)} and launch it alone, or record why not in ${at(DEVIATIONS)} as "| isolated | <reason> |"`,
             ],
       ),
     ]),
@@ -442,6 +422,10 @@ function gatesOf(where: Where): Gate[] {
     ),
     ...only([
       gate("vet", () => unvetted(where, runs)),
+      gate("vet", () => {
+        const faults = fixed(dir) ? vettingFaults(read(at(VETTING)), read(at(REPORTS))) : [];
+        return faults.length === 0 ? null : [`${at(VETTING)}: ${faults.join("; ")}`];
+      }),
       present(
         "across",
         ACROSS,
@@ -473,7 +457,7 @@ function gatesOf(where: Where): Gate[] {
     ),
     // The plan's own predictions are carried as its runs' are, and only a reason of their own passes it.
     ...only([{ step: "carry", keys: ["carry:plan"], owed: () => planOwed(where, plan, forks) }]),
-    { step: "done", keys: [], owed: () => [`#${pull} is measured by ${forks.join(", ")}`] },
+    { step: "done", keys: [], owed: () => [`#${pull} is measured by ${forks.join(", ")}`, ...unread()] },
   ];
 }
 
@@ -641,7 +625,7 @@ function standings(args: CommandArgs, repo: string, known: readonly Run[], parts
     return [{ row, last: Date.parse(events.at(-1)?.at ?? ""), commit, dir: folder?.dir ?? null, step }];
   });
   const shown = all.filter(({ row }) => row.live || row.compared > 0);
-  return { shown, silent: all.length - shown.length, moved: all.length, days, now };
+  return { shown, silent: all.length - shown.length, moved: all.length, days, now, root: iteration.root };
 }
 
 /** The view with no verb: one row a run, each with its step. */
@@ -750,9 +734,10 @@ export function unmeasured(repo: string, head: string, { row, commit }: Pick<Sta
 }
 
 function due(args: CommandArgs, repo: string, known: readonly Run[]): number {
-  const { shown, days, now } = standings(args, repo, known, args.positionals.slice(1));
+  const { shown, days, now, root } = standings(args, repo, known, args.positionals.slice(1));
   const head = gitMaybe(repo, "rev-parse", "HEAD") ?? "HEAD";
   for (const line of dueLines(shown, changedAt, now, days)) console.log(line);
+  for (const line of outsideOwed(outsideOf(root))) console.log(line);
   for (const each of shown.filter(({ row }) => row.live)) console.log(unmeasured(repo, head, each));
   return 0;
 }
@@ -767,7 +752,7 @@ function open(args: CommandArgs, repo: string): number {
   mkdirSync(out, { recursive: true });
   writeFileSync(
     join(out, MARKER),
-    `${JSON.stringify({ opened: new Date().toISOString(), runs }, null, 2)}\n`,
+    `${JSON.stringify({ opened: new Date().toISOString(), runs, protocol: PROTOCOL }, null, 2)}\n`,
   );
   const started = runSync(
     [capturedExecPath, WRI, "start", "--log", logs.join(","), "--out", out, "--snapshot"],

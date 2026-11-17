@@ -1,13 +1,16 @@
 /**
  * Durable's compaction policy and its summary spend. The campaign log remains the durable store:
  * observe committed summary usage, including failed attempts, before the next generation starts.
- * There is no summariser hook in durable 1.4.0, so the commit publication is the billing boundary.
+ * Durable's `beforeCompact` may decline a compaction or supply its summary, but a seat leaves both
+ * to durable, whose summariser records each attempt's usage in `pi.usage` in the commit that ends
+ * the attempt; that commit's publication is the billing boundary.
  */
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import {
   CompactionTask,
   hook,
+  UsageDoc,
   type CommitPublication,
   type CompactionPolicy,
   type UsageState,
@@ -58,8 +61,12 @@ export function compactionTrace(record: (event: Compacted) => void) {
     }),
     committed: ({ changes }: CommitPublication) => {
       for (const change of changes) {
-        if (change.type === "document" && change.record.kind === "pi.usage" && change.value !== null) {
-          // SAFETY: pi.usage is durable's own UsageState document, not model output.
+        if (
+          change.type === "document" &&
+          change.kind === "change" &&
+          change.record.kind === UsageDoc.definition.kind
+        ) {
+          // SAFETY: a revision of durable's own UsageDoc, not model output.
           totals = durableSpend(change.value as UsageState).ledger;
         }
       }

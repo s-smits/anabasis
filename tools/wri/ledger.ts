@@ -40,44 +40,75 @@ interface RunLedgers extends Parent {
   readonly events: number | null;
 }
 
+/** A run's two ledgers and its log's length, as the readers of its outcomes take them. */
+type Resolved = Pick<RunLedgers, "predictions" | "outcomes" | "events">;
+
 /** The outcomes a prediction can have; `pending` only while its event has not come. */
 export const OUTCOMES = ["held", "falsified", "unreached", "pending"] as const;
 
 /** The line an outcomes ledger records the run's log length on when its rows were resolved. */
-export const COUNTED_LINE = "Log events at resolution:";
+const COUNTED_LINE = "Log events at resolution:";
 const COUNTED = /^Log events at resolution: (\d+)\.?$/mu;
+
+/** One row a stopped jobstat run, in a cycle's folder: its reference's read on the outside benchmark. */
+export const OUTSIDE = "outside-reads.md";
+/** The group of a prediction that a count of the run's outside read settles, and no event of its log. */
+const OUTSIDE_GROUP = "outside";
 
 /** `text` without HTML comments and fenced code blocks. */
 const stripped = (text: string) =>
   text.replaceAll(/<!--[\s\S]*?-->/gu, "").replaceAll(/^```[\s\S]*?^```/gmu, "");
 
-/** The cells of a Markdown table line, or null for any other line. */
+/** The cells of a Markdown table line, cut at each pipe no backslash escapes, or null for any other line. */
 function cellsOf(line: string): string[] | null {
   const trimmed = line.trim();
   if (!trimmed.startsWith("|")) return null;
   return trimmed
     .replace(/^\|/u, "")
     .replace(/\|$/u, "")
-    .split("|")
-    .map((cell) => cell.trim().replaceAll("`", ""));
+    .split(/(?<!\\)\|/u)
+    .map((cell) => cell.trim());
 }
 
-/** The rows of every table in `text` whose header's first cell is `head`, past each header's rule. */
-export function rowsOf(text: string, head: string): string[][] {
-  const rows: string[][] = [];
-  let inside = false;
-  for (const line of stripped(text).split("\n")) {
-    const cells = cellsOf(line);
+/** Whether a table line is a rule, as under a header: hyphens in every cell, with a colon or a
+ *  second hyphen, so a row of lone hyphens for "none" stays a row. */
+const ruled = (cells: readonly string[] | null | undefined) =>
+  cells?.every((cell) => /^(?=..):?-+:?$/u.test(cell)) === true;
+
+const bare = (cell: string) => cell.replaceAll("`", "");
+
+/**
+ * Every Markdown table of `text` outside its comments and code fences: the header's cells,
+ * lower-cased and without backticks, and the rows, each cell as written. A table is a run of table
+ * lines whose first is its header; a later line that a rule follows opens the next table, so two
+ * tables with no line between them are two; and a rule is never a row. This is the one reader of a
+ * table: `rowsOf` is its view for a reader that knows the header's first cell, and one that does
+ * not reads a table by a column's name.
+ */
+export function tablesOf(text: string): { header: string[]; rows: string[][] }[] {
+  const lines = stripped(text).split("\n").map(cellsOf);
+  const tables: { header: string[]; rows: string[][] }[] = [];
+  let open: string[][] | null = null;
+  for (const [at, cells] of lines.entries()) {
     if (cells === null) {
-      inside = false;
-    } else if (cells[0]?.toLowerCase() === head) {
-      inside = true;
-    } else if (inside && cells[0] !== "" && !cells.every((cell) => /^:?-+:?$/u.test(cell))) {
-      rows.push(cells);
+      open = null;
+    } else if (open === null || ruled(lines[at + 1])) {
+      open = [];
+      if (!ruled(cells)) tables.push({ header: cells.map((cell) => bare(cell).toLowerCase()), rows: open });
+    } else if (!ruled(cells)) {
+      open.push(cells);
     }
   }
-  return rows;
+  return tables;
 }
+
+/** The rows of every table in `text` whose header's first cell is `head`: each cell without
+ *  backticks, and no row whose first cell is empty. */
+export const rowsOf = (text: string, head: string): string[][] =>
+  tablesOf(text)
+    .filter(({ header }) => header[0] === head)
+    .flatMap(({ rows }) => rows.map((cells) => cells.map(bare)))
+    .filter(([first]) => first !== "");
 
 /** The ids of a ledger's `id` tables. */
 export const idsOf = (text: string): string[] => rowsOf(text, "id").map(([id = ""]) => id);
@@ -108,22 +139,68 @@ function unheldOf(ids: readonly string[], outcomes: string): string[] {
 }
 
 /** The log's event count an outcomes ledger was resolved at, or null where it records none. */
-export function countedOf(outcomes: string): number | null {
+function countedOf(outcomes: string): number | null {
   const counted = COUNTED.exec(stripped(outcomes))?.[1];
   return counted === undefined ? null : Number(counted);
 }
+
+/** The ids of a predictions ledger whose `group` cell reads `outside`. */
+const outsideIds = (predictions: string): string[] =>
+  tablesOf(predictions).flatMap(({ header, rows }) => {
+    const group = header.indexOf("group");
+    const marked = rows.filter((row) => row[group]?.toLowerCase() === OUTSIDE_GROUP);
+    return header[0] === "id" ? marked.map(([id = ""]) => bare(id)) : [];
+  });
 
 /**
  * The ids an outcomes ledger left `unreached` or `pending` while the run's log has grown past the
  * count they were resolved at, so each is open again: a run continued after its trigger may yet
  * reach them. A ledger that records no count was resolved at none. With `events` null, where the
- * log cannot be read, nothing is called stale.
+ * log cannot be read, nothing is called stale, and neither is a row of the group `outside`, which
+ * no event of the log settles.
  */
-export function staleOf(outcomes: string, events: number | null): string[] {
+function staleOf({ predictions, outcomes, events }: Resolved): string[] {
   if (events === null || events <= (countedOf(outcomes) ?? 0)) return [];
+  const outside = outsideIds(predictions);
   return [...outcomesOf(outcomes)]
-    .filter(([, outcome]) => outcome === "unreached" || outcome === "pending")
+    .filter(([id, outcome]) => (outcome === "unreached" || outcome === "pending") && !outside.includes(id))
     .map(([id]) => id);
+}
+
+/**
+ * What the outcomes ledger `outcomes` has left to resolve against its `predictions`, as phrases:
+ * each id without one of the four outcomes; each left `unreached` or `pending` at a count the log
+ * has since passed (`staleOf`); each outcome of an id predicted nowhere in `from`; and the rows of
+ * the group `outside`, which the run's log never settles. Such a row stays `pending` while the
+ * run's row in `outside-reads.md` (`read`, its kind) is neither scored nor skipped, and is owed its
+ * outcome once it is, so a benchmark result that arrives reopens it where the log's growth does not.
+ */
+export function unresolvedOf(ledgers: Resolved, read: string | undefined, from: string): string[] {
+  const { predictions, outcomes, events } = ledgers;
+  const predicted = owedOf(predictions);
+  const outcome = outcomesOf(outcomes);
+  const unsettled = predicted.filter((id) => !OUTCOMES.some((word) => word === outcome.get(id)));
+  const outside = outsideIds(predictions).filter((id) => !unsettled.includes(id));
+  const stale = staleOf(ledgers);
+  const stray = [...outcome.keys()].filter((id) => !predicted.includes(id));
+  const arrived = read === "scored" || read === "skipped";
+  const waiting = outside.filter((id) => (outcome.get(id) === "pending") === arrived);
+  const counted = countedOf(outcomes);
+  const record = events === null ? "" : `, and record "${COUNTED_LINE} ${String(events)}" on its own line`;
+  return [
+    unsettled.length > 0
+      ? `resolve ${unsettled.join(", ")} from the log as ${OUTCOMES.join(", ")} (pending only while its event has not come), each with its count or event and the time${record}`
+      : "",
+    stale.length > 0
+      ? `${stale.join(", ")} read unreached or pending at ${counted === null ? "no recorded count" : `${String(counted)} events`} and the log holds ${String(events)} now: resolve them again${record}`
+      : "",
+    waiting.length === 0
+      ? ""
+      : arrived
+        ? `${waiting.join(", ")} read pending and the run's row in ${OUTSIDE} is ${read ?? ""}: resolve each from that read's counts`
+        : `the run's outside read settles ${waiting.join(", ")}, and ${OUTSIDE} does not hold it as scored or skipped: each stays pending until it does`,
+    stray.length > 0 ? `${stray.join(", ")} predicted nowhere in ${from}` : "",
+  ].filter((part) => part !== "");
 }
 
 /** The non-blank lines under every `## Not done` heading of a plan, whatever follows the words. */
@@ -138,7 +215,7 @@ export function notDoneOf(plan: string): string[] {
 function shownOutcome(run: RunLedgers, id: string): string {
   const outcome = outcomesOf(run.outcomes).get(id) ?? "";
   if (!OUTCOMES.some((word) => word === outcome)) return "unresolved";
-  return staleOf(run.outcomes, run.events).includes(id) ? `${outcome}, stale` : outcome;
+  return staleOf(run).includes(id) ? `${outcome}, stale` : outcome;
 }
 
 /** The cycle view: every prediction of every run with its outcome, as one table. */
@@ -302,6 +379,33 @@ export function ledgerOf(root: string, dir: string, file: string): string | null
   const found = ledgerFiles(root, dir, file);
   return found.length === 1 ? (found[0] ?? null) : null;
 }
+
+/**
+ * The kind of each run's row in the `outside-reads.md` of the cycles under `root` (and of `dir`):
+ * the first word of the row's last cell, `scored`, `skipped` or `owed` (run-improvement-campaign,
+ * "The outside aim"). The last row that names a run is its kind.
+ */
+export const outsideOf = (root: string, dir = root): Map<string, string> =>
+  new Map(
+    ledgerFiles(root, dir, OUTSIDE).flatMap((path) =>
+      rowsOf(readFileSync(path, "utf8"), "run").map(
+        (cells) => [cells[0] ?? "", /[a-z]+/u.exec((cells.at(-1) ?? "").toLowerCase())?.[0] ?? ""] as const,
+      ),
+    ),
+  );
+
+/**
+ * One line for each run whose row still reads `owed`, among `runs` where given: the debt an
+ * iteration's `outside` gate lets pass, since an investigation must not wait on a paid read, said
+ * again wherever a step is read until the row is scored or skipped.
+ */
+export const outsideOwed = (outside: ReadonlyMap<string, string>, runs?: readonly string[]): string[] =>
+  [...outside]
+    .filter(([run, kind]) => kind === "owed" && runs?.includes(run) !== false)
+    .map(
+      ([run]) =>
+        `outside · ${run} · read still owed in ${OUTSIDE}: roll it in the first sitting a login has room, then write its row scored or skipped`,
+    );
 
 /** The forks the `launch` row of an iteration's `deviations` names, as one launched at a child of
  *  the plan's pull request carries the child's number. A bare `forkedPR<N>` names no run. */

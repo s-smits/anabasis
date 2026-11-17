@@ -159,7 +159,7 @@ SOFTWARE.
 ## pi-mono
 
 - Source: https://github.com/badlogic/pi-mono, now https://github.com/earendil-works/pi
-- The seats run on pi's own packages, `@earendil-works/pi-ai`, `pi-agent-core` and `pi-durable`,
+- The seats run on pi's own packages, `@earendil-works/pi-ai` and `pi-durable`,
   installed as dependencies; nothing of pi is copied into this repository.
 
 ```text

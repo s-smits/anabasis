@@ -1,6 +1,11 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { foreignPrograms } from "../studies/shared/bundle.ts";
-import { PlatformRefusal, type PythonFor, rebuildForeignPython } from "../studies/shared/foreign-python.ts";
+import {
+  packageFolders,
+  PlatformRefusal,
+  type PythonFor,
+  rebuildForeignPython,
+} from "../studies/shared/foreign-python.ts";
 import {
   existsSync,
   mkdirSync,
@@ -181,5 +186,23 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
     const { python, asked } = standIn();
     expect(await rebuildForeignPython(tree, LINUX, python)).toBeNull();
     expect(asked).toStrictEqual([]);
+  });
+});
+
+describe("the folders a tool tree keeps its packages in", () => {
+  it("names each with the Python its wheels were built for, and none in a tree that installed nothing", async () => {
+    const tree = join(root, "pointed");
+    put(tree, {
+      "bin/python3": "#!/bin/sh\nexec /somewhere/else/python3.14\n",
+      "pylib/own.py": "# the harness's module\n",
+      "pylib/fast-1.0.dist-info/RECORD": "fast/core.so,,\n",
+      "pylib/fast-1.0.dist-info/WHEEL": "Tag: cp314-cp314-macosx_11_0_arm64\n",
+      "pylib/plain-2.0.dist-info/RECORD": "plain.py,,\n",
+      "pylib/plain-2.0.dist-info/WHEEL": "Tag: py3-none-any\n",
+    });
+    expect(await packageFolders(tree)).toStrictEqual([{ site: "pylib", pythons: ["3.14"] }]);
+    const bare = join(root, "no-packages");
+    put(bare, { "bin/tool": "#!/bin/sh\n" });
+    expect(await packageFolders(bare)).toStrictEqual([]);
   });
 });

@@ -1,6 +1,8 @@
 /**
- * The one lock of the run CLI: a link whose target names the process holding it, by pid, host and
- * start time. It is held while that process lives, however long it holds, and taken over once the
+ * The one record of who holds what on this host: a link whose target names the process holding it,
+ * by pid, host and start time. The run CLI's locks are such links, and so is the claim on a seat's
+ * root or a folder of the host's scratch (`src/wall/seat-root.ts`), which says whose it is once its
+ * claimant is gone. It is held while that process lives, however long it holds, and taken over once the
  * process is gone or its pid names a later process. The record is written once, as a link, so a
  * reader at any instant reads it whole or not at all. The pulse's pass and a fetch of one copy each
  * take one (`pulse-readers.ts`, `snapshots.ts`), and a controller's preparation follows the rule in
@@ -31,11 +33,14 @@ import {
   readlinkSync,
   rmSync,
   symlinkSync,
-} from "#src/meta/filesystem.ts";
-import { hostname } from "#src/meta/os.ts";
-import { dirname, join } from "#src/meta/path.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
-import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
+} from "./filesystem.ts";
+import { hostname } from "./os.ts";
+import { dirname, join } from "./path.ts";
+import { runtimeProcess } from "./process.ts";
+import { decodeOutput, runSync } from "./subprocess.ts";
+
+/** This process's own record by its pid, asked of `ps` once (`ownRecord`). */
+const own = new Map<number, string>();
 
 /** The record the process `pid` of this host would hold a lock by, `<pid> <host> <start>`, or ""
  *  where none has that pid. `ps` is named by its full path, since the host fakes put their own first
@@ -43,6 +48,15 @@ import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 function recordOf(pid: number): string {
   const start = decodeOutput(runSync(["/bin/ps", "-o", "lstart=", "-p", String(pid)]).stdout).trim();
   return start === "" ? "" : `${String(pid)} ${hostname()} ${start}`;
+}
+
+/** This process's own record, asked of `ps` once: its start does not change, and a campaign takes a
+ *  claim for every solve and every check, each of which would otherwise start a `ps`. */
+function ownRecord(): string {
+  const { pid } = runtimeProcess;
+  const record = own.get(pid) ?? recordOf(pid);
+  own.set(pid, record);
+  return record;
 }
 
 /** The record `file` holds, or "" where it is no link. */
@@ -75,7 +89,7 @@ export function hold(file: string, note = ""): boolean {
     lockExclusiveSync(guard);
     if (held(file)) return false;
     rmSync(file, { force: true });
-    symlinkSync([recordOf(runtimeProcess.pid), ...(note === "" ? [] : [note])].join(" "), file);
+    symlinkSync([ownRecord(), ...(note === "" ? [] : [note])].join(" "), file);
     return true;
   } finally {
     closeSync(guard);

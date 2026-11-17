@@ -3,6 +3,13 @@
  * write, claimed before the seat's first command and removed after its last, with whatever its
  * commands left running. On both platforms it is a folder of the host's disk.
  *
+ * A root is claimed by a link beside it that names the claiming process (`src/meta/holder.ts`), so
+ * what a killed process left is told from what a live one holds by a fact and never by a name or
+ * an age: `releaseLeft` releases the first and passes the second. Until 16 November nothing said
+ * whose a root was. A stop released the roots its run's log named, and nothing else was ever
+ * removed: on the operator's macOS host 111 seat roots, 19,697 host folders, 49 verifier cells
+ * with their check programs and 419 homes of Claude Code stood that day.
+ *
  * Until 19 October Darwin mounted a sparse APFS image of 2 GiB at the root, as a cap on the disk a
  * seat could fill, and Linux, where an unprivileged host has neither a loop mount nor a quota,
  * capped nothing. The cap almost never bound: of 28,309 finished solves on the operator's macOS
@@ -13,7 +20,16 @@
  * arbitration for the whole host (11 October), and images a stopped run left attached. So both
  * platforms now run as Linux did, a seat bounded by its deadline, its model turn limit and the campaign's dollars.
  */
-import { chmodSync, existsSync, mkdirSync, readdirSync, realpathSync, rm } from "../meta/filesystem.ts";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  realpathSync,
+  rm,
+} from "../meta/filesystem.ts";
+import { held, hold, recordIn } from "../meta/holder.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { processTable } from "../meta/process-table.ts";
@@ -21,9 +37,23 @@ import { processTable } from "../meta/process-table.ts";
 /** Undo `claimRoot`: `releaseRoot` on its root. */
 export type ReleaseRoot = () => Promise<void>;
 
+/** The host's folder of the seat whose root is `root`: beside the root, so out of the seat's reach. */
+export const hostFolder = (root: string): string => `${root}.host`;
+
+/** Where the claim on `root` is written: beside it, as its host folder is. */
+const claimOf = (root: string): string => `${root}.owner`;
+
+/** Write this process's claim on `root`, a folder that exists. */
+export function claim(root: string): void {
+  hold(claimOf(root));
+}
+
+/** Whether a live process claims `root`. */
+export const claimed = (root: string): boolean => held(claimOf(root));
+
 /**
- * Create the seat's root, and return its release, which the caller runs once the solve or session
- * that holds the root has ended.
+ * Create the seat's root with this process's claim on it, and return its release, which the caller
+ * runs once the solve or session that holds the root has ended.
  */
 export function claimRoot(root: string): ReleaseRoot {
   const at = resolve(root);
@@ -32,14 +62,17 @@ export function claimRoot(root: string): ReleaseRoot {
   // Two rounds once ran a Builder session under one id, and the second's cleanup removed the
   // first's command profiles.
   mkdirSync(at, { mode: 0o700 });
+  claim(at);
   return () => releaseRoot(at);
 }
 
 /**
- * End what still works in `root`, and remove it. The solve or session that claimed it does this
- * when it ends; one that was stopped or killed never does, and a stop of its run does it from the
- * root's name in the log (`tools/runs/stop.ts`). A process a seat left behind is ended here, where
- * the root it works in goes: on 9 October one ran on at 80 forks a second after its solve.
+ * End what still works in `root`, and remove it with its host folder and, last, its claim, so
+ * that a release cut part way still says whose the rest was. The solve or session that claimed it
+ * does this when it ends; one that was stopped or killed never does, and a stop of its run does it
+ * from the root's name in the log (`tools/runs/stop.ts`), and the daily sweep from its claim
+ * (`releaseLeft`). A process a seat left behind is ended here, where the root it works in goes: on
+ * 9 October one ran on at 80 forks a second after its solve.
  *
  * The holders end before this returns its promise, and the removal runs off this thread, so a
  * solve reads its verdict beside it (`attemptSolve`): a home of 7,372 entries and 205 MB, as an
@@ -48,7 +81,63 @@ export function claimRoot(root: string): ReleaseRoot {
  */
 export async function releaseRoot(root: string): Promise<void> {
   endHolders(root);
+  // The host's folder too: a seat's Claude Code works in its home there, and lives on for up to
+  // three seconds after its query closes, writing its state back into a folder removed under it.
+  // Until 16 November that left 19,697 host folders behind solves that had ended well.
+  endHolders(hostFolder(root));
   await removeWhole(root);
+  await rm(hostFolder(root), { recursive: true, force: true });
+  await rm(claimOf(root), { force: true });
+}
+
+/** The entries at the top of `folder`, or none where a seat closed it to its owner (`removeWhole`). */
+function inside(folder: string): string[] {
+  try {
+    return readdirSync(folder).map((name) => join(folder, name));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Release every root under `parents` that nobody will release: one whose claimant is gone, at
+ * once, since a claim names a process and a dead process releases nothing; and one with no claim,
+ * which only a tree from before 16 November or a kill between a root's creation and its claim
+ * leaves, once nothing has written it since `unclaimedBefore`. A root a live process claims stands
+ * whatever its age, and so does one in `spared`, which its caller holds for another owner. Returns
+ * the roots it released, or those it would have where `act` is `describe`.
+ *
+ * A root that changes under the sweep, as one its own process is releasing does, is passed: the
+ * next sweep reads it again.
+ */
+export async function releaseLeft(
+  parents: readonly string[],
+  unclaimedBefore: number,
+  act: "release" | "describe",
+  spared: ReadonlySet<string> = new Set(),
+): Promise<string[]> {
+  const left: string[] = [];
+  for (const parent of parents.filter((each) => existsSync(each))) {
+    const roots = new Set(
+      readdirSync(parent).map((name) => join(parent, name.replace(/\.(?:host|owner)$/, ""))),
+    );
+    for (const root of roots) {
+      try {
+        if (spared.has(root)) continue;
+        // Last written when the root or its host folder was, or an entry at the top of either.
+        const tops = [root, hostFolder(root)].filter((top) => existsSync(top));
+        const written = Math.max(
+          ...tops.flatMap((top) => [top, ...inside(top)]).map((path) => lstatSync(path).mtimeMs),
+        );
+        if (recordIn(claimOf(root)) === "" ? written >= unclaimedBefore : claimed(root)) continue;
+        if (act === "release") await releaseRoot(root);
+        left.push(root);
+      } catch {
+        // Changed under the sweep.
+      }
+    }
+  }
+  return left;
 }
 
 /**
@@ -115,12 +204,12 @@ export function endHolders(root: string, group?: number, table: typeof processTa
 function holdersOf(root: string, group: number | undefined, rows: ReturnType<typeof processTable>): number[] {
   const inRoot = (path: string | null) => path !== null && (path === root || path.startsWith(`${root}/`));
   const table = rows.filter(({ pid }) => pid > 1 && pid !== runtimeProcess.pid);
-  const held = new Set(
+  const found = new Set(
     table.filter((row) => row.pgid === group || inRoot(row.cwd) || inRoot(row.program)).map(({ pid }) => pid),
   );
-  for (let size = -1; size !== held.size; ) {
-    size = held.size;
-    for (const { pid, ppid } of table) if (held.has(ppid)) held.add(pid);
+  for (let size = -1; size !== found.size; ) {
+    size = found.size;
+    for (const { pid, ppid } of table) if (found.has(ppid)) found.add(pid);
   }
-  return [...held];
+  return [...found];
 }

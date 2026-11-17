@@ -1,9 +1,10 @@
 /**
  * What a review's reading prints of a rubric-graded benchmark: each grain side by side, every split
- * both ways, and a sealed half that stays out of sight and out of every pool until it is unsealed.
+ * both ways, how far each arm's rollouts used the harness's programs, and a sealed half that stays out
+ * of sight and out of every pool until it is unsealed.
  */
 import { afterAll, describe, expect, it } from "bun:test";
-import { armOf, levelLines, sealOf } from "../studies/harness2/levels.ts";
+import { armOf, levelLines, partOf, sealOf } from "../studies/harness2/levels.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { capturedJsonStringify } from "../src/meta/json-runtime.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -55,6 +56,48 @@ grade("built", "h/task1", [[20, 0, 0, 5]]);
 grade("bare", "h/task1", [[20, 0, 4, 5]]);
 grade("built", "h/task2", [[2, 2, 1, 1]]);
 
+/** One attempt's trajectory: each command as a shell call, after one call that is no command. */
+function attempt(arm: string, task: string, name: string, commands: readonly string[]) {
+  const [group, last] = task.split("/");
+  const folder = join(root, String(group), String(last), "model_traj", `${arm}__${group}__${last}`);
+  mkdirSync(folder, { recursive: true });
+  const calls = [
+    { type: "tool_use", name: "Read", input: { file_path: "scripts/toolchain/bin/estimate" } },
+    ...commands.map((command) => ({ type: "tool_use", name: "Bash", input: { command } })),
+  ];
+  const events = [{ type: "system" }, { type: "assistant", message: { content: calls } }];
+  writeFileSync(
+    join(folder, `${name}.jsonl`),
+    events.map((event) => capturedJsonStringify(event)).join("\n"),
+  );
+}
+
+// The task was rolled twice. The first rolling took two attempts, and the second, whose one attempt
+// left the graded deliverable, is the newest by its stamp and not by its name. It looks at the
+// folder twice, and reaches its programs in each form a shell line gives.
+attempt("built", "g/task1", "roll_built_attempt1_20261116_010000", [
+  "scripts/toolchain/bin/estimate data.csv",
+]);
+attempt("built", "g/task1", "roll_built_attempt2_20261116_010500", [
+  "scripts/toolchain/bin/estimate more.csv",
+]);
+attempt("built", "g/task1", "roll_built_attempt1_20261116_020000", [
+  "ls scripts/toolchain/bin",
+  "cat scripts/toolchain/README.md; echo 'scripts/toolchain is here'",
+  "ls scripts/toolchain/bin && scripts/toolchain/bin/estimate data.csv",
+  "cd work && SEED=1 scripts/toolchain/python/bin/python3 -c 1 | head",
+  "env scripts/toolchain/bin/estimate data.csv",
+  "bash -c 'scripts/toolchain/bin/estimate data.csv'",
+  "python3 scripts/toolchain/estimate.py",
+  "cd scripts/toolchain/bin && ./estimate",
+  "TOOL=scripts/toolchain/bin/estimate; $TOOL data.csv",
+  `python3 work.py # ${SECRET}`,
+]);
+attempt("built", "g/task2", "roll_built_attempt1_20261116_030000", [
+  "cat scripts/toolchain/README.md | head",
+]);
+attempt("bare", "g/task1", "roll_bare_attempt1_20261116_040000", ["python3 work.py", "ls"]);
+
 const a = armOf(root, "built");
 const b = armOf(root, "bare");
 const read = (salt: string | null, unseal = false) => levelLines({ label, a, b, salt, unseal }).join("\n");
@@ -83,6 +126,23 @@ describe("the open reading", () => {
     expect(line).toContain("built above on 1, bare above on 1, tied on 2");
     expect(line).toContain("p built above");
     expect(line).toContain("p bare above");
+  });
+
+  it("counts the commands that name the harness's folder, and those of them that only look", () => {
+    // A look beside a program of the folder is no look, nor is any wrapped, interpreted or assigned
+    // form; a call that is no command is not counted, only the graded attempt is read, and a rollout
+    // without a trajectory is unread instead of none.
+    expect(read(null)).toContain(
+      "shell commands and the harness's program folder: 10 name it, 3 of them only to look, of 11 (2 rollouts unread) v 0 name it, 0 of them only to look, of 2 (3 rollouts unread)",
+    );
+  });
+
+  it("reads one part alone, and refuses a task neither arm was graded on", () => {
+    const part = partOf(a, b, ["g/task1"]);
+    const told = levelLines({ label, ...part, salt: null, unseal: false }).join("\n");
+    expect(told).toContain("graded on both: 1; built 1, bare 1");
+    expect(told).toContain("9 name it, 2 of them only to look, of 10 v");
+    expect(() => partOf(a, b, ["g/task1", "g/task9"])).toThrow("graded for neither arm: g/task9");
   });
 
   it("prints no rubric's text and no grader's reasons", () => {

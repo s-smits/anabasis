@@ -1,12 +1,15 @@
 /** Machine identities and capacities come only from ANA_HOSTS (22 October 2026). */
+import { existsSync } from "#src/meta/filesystem.ts";
+import { mainTree } from "#src/meta/git.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { hostname } from "#src/meta/os.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
-import { isAbsolute } from "#src/meta/path.ts";
+import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
+import { isAbsolute, join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
+import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 
 /** The live campaigns a machine carries where nothing configures its capacity. */
 export const RUN_CAP = 2;
@@ -61,13 +64,14 @@ function listedHosts(text: string): JsonValue {
   }
 }
 
-export function hostsOf(): readonly Host[] {
+/** The hosts `text` lists, by default the environment's `ANA_HOSTS`. */
+export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Host[] {
   // A verb another host sent here reaches no further host (`ANA_HOP`, set by `scriptCommand` in
   // hosts.ts), so two machines that list each other do not ask each other in a loop. Until
   // 28 October the sender emptied `ANA_HOSTS` instead, and a keeper started that way inherited the
   // empty list and counted no other machine's runs against a login's cap.
   if (runtimeProcess.env.ANA_HOP === "1") return [];
-  const value = listedHosts(runtimeProcess.env.ANA_HOSTS ?? "");
+  const value = listedHosts(text);
   if (!Array.isArray(value)) throw new Error("ANA_HOSTS takes a JSON list");
   const names = new Set<string>();
   return value.map((entry) => {
@@ -123,6 +127,21 @@ export function hostsOf(): readonly Host[] {
       ...keyIfDefined("exclude", exclude),
     };
   });
+}
+
+/**
+ * The hosts for a command run in `root` that loaded no env file: the environment's `ANA_HOSTS` where
+ * it holds a list, else the one in the main worktree's `.env.runs`, where the bun router finds it for
+ * a check task (`tools/runtime/router/bun`). Bun's own `--env-file` reads that file, as for every
+ * verb that names it, in a child that hands this one value back through a pipe.
+ */
+export function hostsFor(root: string): readonly Host[] {
+  if ((runtimeProcess.env.ANA_HOSTS ?? "") !== "") return hostsOf();
+  const file = join(mainTree(root), ".env.runs");
+  if (!existsSync(file)) return [];
+  const env = Object.fromEntries(Object.entries(runtimeProcess.env).filter(([name]) => name !== "ANA_HOSTS"));
+  const read = ["-e", "process.stdout.write(process.env.ANA_HOSTS ?? '')"];
+  return hostsOf(runTextSyncOrThrow([capturedExecPath, `--env-file=${file}`, ...read], { cwd: root, env }));
 }
 
 export function configuredRuntime(host: Host) {

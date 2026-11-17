@@ -3,15 +3,22 @@
  * withheld. It starts no solve and calls no model, and it prints ids, weights and counts, never a
  * rubric's text or a grader's reasons, so its output may go into a ledger or a pull request.
  *
- *   bun studies/harness2/compare.ts levels --dataset <dir> --of <arm> --of <arm> [--salt <text> [--unseal]]
+ *   bun studies/harness2/compare.ts levels --dataset <dir> --of <arm> --of <arm> [--tasks <list>]
+ *     [--salt <text> [--unseal]]
  *
  * It reads JobBench's layout: `<dataset>/<group>/<task>/eval_result/eval_<arm>__<group>__<task>/`,
- * one `*judge.json` in it.
+ * one `*judge.json` in it, and the rollout's trajectory beside it under `model_traj/`.
  *
  * Why. On 5 November 2026 a review of the first promoted jobstat harness took ten throwaway scripts to
  * find that 7 criteria of 241 had become 32 points of 550, and nobody could say afterwards how many
  * cuts had been looked at. So one command prints every grain side by side, in the same order whichever
  * side leads, and lists every split rubric both ways, so that reading only the losses takes extra work.
+ * On 16 November 2026 a second review counted by hand that 0 of 140 shell commands in a promoted
+ * harness's eight rollouts ran one of its programs. Each block now prints for both arms the
+ * commands that name the export's program folder and those of them that only look at it; on that
+ * store 17 name it, so the hand count was near and not exact. The count reads a shell line
+ * without a parser, so it bounds use from above and proves none: the guide reaches a rollout
+ * whatever its commands do.
  *
  * The seal is what keeps a pattern from confirming itself. `--salt` orders the tasks by a hash of the
  * salt and the task, opens the first half and withholds the rest: no score of a sealed task is printed
@@ -23,8 +30,10 @@ import { testOf } from "#src/kernel/compare.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
-import { asRecord, isNumber, type JsonObject } from "#src/meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
+import { TOOLCHAIN } from "../shared/claude-export.ts";
+import { parseEvents } from "./h2/claude.ts";
 
 const SUFFIX = "judge.json";
 /** `flipP` reads whole units, so a task's difference goes in hundredths of a point. */
@@ -37,10 +46,41 @@ interface Rubric {
   readonly passed: number;
   readonly criteria: number;
 }
+/** A rollout's shell commands: those that name the exported harness's program folder, and those of
+ *  them that only look at it. The rest may have used a program, so looking is the count kept sure. */
+interface Shell {
+  readonly commands: number;
+  readonly named: number;
+  readonly looks: number;
+}
+/** Programs that read a path and run nothing found at it. `cd` is left out: what follows it may run. */
+const LOOKS = new Set([
+  "ls",
+  "cat",
+  "head",
+  "tail",
+  "find",
+  "tree",
+  "file",
+  "wc",
+  "grep",
+  "rg",
+  "sed",
+  "stat",
+  "du",
+  "which",
+  "echo",
+  "test",
+  "[",
+]);
+/** Where one command of a shell line ends and the next begins; a shell line has no parser here. */
+const NEXT_COMMAND = /&&|\|\||[;|\n]/u;
 export interface Graded {
   readonly points: number;
   readonly most: number;
   readonly rubrics: readonly Rubric[];
+  /** `null` where the dataset holds no trajectory of the rollout: unknown, which is not none. */
+  readonly shell: Shell | null;
 }
 type Arm = ReadonlyMap<string, Graded>;
 interface Asked {
@@ -70,13 +110,54 @@ function rubricOf(entry: unknown): Rubric {
   };
 }
 
-function gradedIn(file: string): Graded {
+/** Whether every command of the line that names the harness's folder is a look, past any `NAME=value`. */
+const onlyLooks = (line: string): boolean =>
+  line
+    .split(NEXT_COMMAND)
+    .filter((part) => part.includes(TOOLCHAIN))
+    .every((part) =>
+      LOOKS.has(
+        part
+          .trim()
+          .split(/\s+/u)
+          .find((word) => !/^\w+=/u.test(word)) ?? "",
+      ),
+    );
+
+/** A trajectory's place in time: its name ends `_attempt<N>_<stamp>.jsonl`, and a task rolled again
+ *  starts at attempt 1, so the name's own order would put an older second attempt last. */
+const stampOf = (name: string): string => name.replace(/^.*_attempt\d+_/u, "");
+
+/** The newest attempt's commands, since that attempt left the deliverable the grading read. A
+ *  program is reached by its path alone: the export puts no harness folder on the solver's path. */
+function shellIn(folder: string): Shell | null {
+  const newest = existsSync(folder)
+    ? readdirSync(folder)
+        .filter((name) => name.endsWith(".jsonl"))
+        .toSorted((one, other) => stampOf(one).localeCompare(stampOf(other)))
+        .at(-1)
+    : undefined;
+  if (newest === undefined) return null;
+  const commands = parseEvents(join(folder, newest)).flatMap((event) => {
+    const content = asRecord(event.message)?.content;
+    if (event.type !== "assistant" || !Array.isArray(content)) return [];
+    return content.flatMap((block) => {
+      const command = asRecord(asRecord(block)?.input)?.command;
+      return asRecord(block)?.type === "tool_use" && isString(command) ? [command] : [];
+    });
+  });
+  const named = commands.filter((command) => command.includes(TOOLCHAIN));
+  return { commands: commands.length, named: named.length, looks: named.filter(onlyLooks).length };
+}
+
+function gradedIn(file: string, trajectories: string): Graded {
   const record = asRecord(capturedJsonParse(readFileSync(file, "utf8"))) ?? {};
   const rubrics = record.rubrics;
   return {
     points: numberAt(record, "total_score"),
     most: numberAt(record, "max_score"),
     rubrics: Array.isArray(rubrics) ? rubrics.map(rubricOf) : [],
+    shell: shellIn(trajectories),
   };
 }
 
@@ -98,10 +179,20 @@ export function armOf(dataset: string, arm: string): Map<string, Graded> {
       const records = readdirSync(folder).filter((name) => name.endsWith(SUFFIX));
       if (records.length > 1) throw new Error(`${group}/${task} holds ${String(records.length)} gradings`);
       const [record] = records;
-      if (record !== undefined) graded.set(`${group}/${task}`, gradedIn(join(folder, record)));
+      const trajectories = join(dataset, group, task, "model_traj", `${arm}__${group}__${task}`);
+      if (record !== undefined) graded.set(`${group}/${task}`, gradedIn(join(folder, record), trajectories));
     }
   }
   return graded;
+}
+
+/** One part of a read: the named tasks of both arms, since no part is summed with another. A task
+ *  neither arm was graded on is refused: a mistyped name would otherwise read as a smaller part. */
+export function partOf(a: Arm, b: Arm, only: readonly string[]): { a: Arm; b: Arm } {
+  const absent = only.filter((task) => !a.has(task) && !b.has(task));
+  if (absent.length > 0) throw new Error(`graded for neither arm: ${absent.join(", ")}`);
+  const kept = (arm: Arm) => new Map([...arm].filter(([task]) => only.includes(task)));
+  return { a: kept(a), b: kept(b) };
 }
 
 /** Each task's half by a hash of the salt and its own name, about half each way. A cut at half the
@@ -121,6 +212,16 @@ const oneShort = (graded: Graded) =>
 /** Rubrics scored neither at nothing nor at their weight: zero where a rubric is all or nothing. */
 const partial = (graded: Graded) =>
   graded.rubrics.filter((rubric) => rubric.score !== 0 && rubric.score !== rubric.weight).length;
+
+/** One arm's shell commands over a block; a rollout whose trajectory the dataset lacks is counted
+ *  apart instead of read as none. */
+function shellOf(sides: readonly Graded[]): string {
+  const read = sides.flatMap(({ shell }) => (shell === null ? [] : [shell]));
+  const sum = (pick: (shell: Shell) => number) => read.reduce((total, shell) => total + pick(shell), 0);
+  const unread = sides.length - read.length;
+  const rest = unread === 0 ? "" : ` (${String(unread)} rollouts unread)`;
+  return `${String(sum(({ named }) => named))} name it, ${String(sum(({ looks }) => looks))} of them only to look, of ${String(sum(({ commands }) => commands))}${rest}`;
+}
 
 /** One measure's differences read both ways, by the comparison's own test. */
 export function bothWays(
@@ -177,6 +278,7 @@ function blockLines(label: { a: string; b: string }, tasks: readonly string[], a
     `criteria: ${String(sum(({ one }) => passedAll(one)))} v ${String(sum(({ other }) => passedAll(other)))} of ${String(sum(({ one }) => criteriaAll(one)))}`,
     `rubrics one criterion short of scoring: ${String(sum(({ one }) => oneShort(one)))} v ${String(sum(({ other }) => oneShort(other)))}`,
     `rubrics scored in part: ${String(sum(({ one }) => partial(one)))} v ${String(sum(({ other }) => partial(other)))}`,
+    `shell commands and the harness's program folder: ${shellOf(pairs.map(({ one }) => one))} v ${shellOf(pairs.map(({ other }) => other))}`,
     bothWays(
       "points",
       label,

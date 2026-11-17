@@ -34,7 +34,9 @@
  * them (`cut`: each file with its length, or null where that reader did not run), since a score on
  * a cut file partly reads how long the file ran. `table` marks such a cell `CUT <n>` and prints a
  * third block, `fair uncut`, over the fair tasks on which no record of any arm in the store holds a
- * cut file; a record written before `cut` existed counts as holding none.
+ * cut file; a record written before `cut` existed counts as holding none. Beside an arm's points
+ * it prints the criteria the judge passed of those it read, from the judge's details in the store:
+ * a rubric pays its weight only where all its criteria pass, so points alone magnify a near tie.
  * `compare.ts` runs a whole comparison through `score`: `--solve-only` leaves a block's judging for
  * afterwards, and `again:<side>` with `--rubrics` judges a deliverable it copied once more,
  * under a wider cut than judge.py's where `--cap` names one, recorded as `cap` with `cut` counted
@@ -58,7 +60,9 @@
  * and held-out arms ran through `score.sh` under `uv run`, whose interpreter has none of them, and
  * their trajectories met "No module named" for one of those six packages (pandas, numpy, openpyxl,
  * docx, pdfplumber, mammoth) 88 and 54 times, where Base's met it 12 times and k=1's never.
- * Here every arm gets the sweep's PATH (`pilotClaude`).
+ * Here every arm gets the sweep's PATH (`pilotClaude`), and that interpreter gets a pip of its own
+ * where it has none (`ownInstaller`), so that an install a solver starts lands where `python3`
+ * imports from.
  */
 import { openHarness } from "#src/harness/open.ts";
 import { billedAll } from "#src/kernel/meter.ts";
@@ -91,7 +95,7 @@ import { exportForClaudeCode } from "../shared/claude-export.ts";
 import { RESULT_FILE, TRACE_FILE } from "../shared/pi-solve.ts";
 import { inGroup, REFUSED, type Agent, type Claude } from "./h2/claude.ts";
 import { NAMESPACE } from "./h2/recursion.ts";
-import { cutOf, envOf, jobBench, MAX_CHARS_PER_FILE, pilotClaude, SCRUB } from "./jobbench.ts";
+import { cutOf, envOf, jobBench, MAX_CHARS_PER_FILE, ownInstaller, pilotClaude, SCRUB } from "./jobbench.ts";
 
 /** The judge as the pilot ran it (`h2l1.sh`, `judge-arm.sh`, `_run_judge`). */
 const JUDGE = { model: "anthropic/claude-opus-5-5", effort: "medium", timeoutS: 1800 } as const;
@@ -223,6 +227,9 @@ const field = (value: JsonValue | undefined, ...keys: string[]): JsonValue | und
   keys.reduce<JsonValue | undefined>((at, key) => (isRecord(at) ? at[key] : undefined), value);
 const readJson = (path: string): JsonValue =>
   existsSync(path) ? capturedJsonParse(readFileSync(path, "utf8")) : null;
+/** Where judge.py's details of one label lie in a store's dataset. */
+const detailsOf = (store: string, task: string, label: string): string =>
+  join(store, task, "eval_result", `eval_${label}`, DETAILS);
 /** A JSON value as text, as a record prints it. */
 const text = (value: JsonValue | undefined): string =>
   isString(value) ? value : value === undefined ? "" : capturedJsonStringify(value);
@@ -494,7 +501,7 @@ async function judge(
   const { apiBase, shimLog, cap } = how;
   const rubrics = how.rubrics ?? join(jb, "dataset", "main", place.task, "RUBRICS.json");
   const output = join(place.store, place.task, "model_output", place.label);
-  const details = join(place.store, place.task, "eval_result", `eval_${place.label}`, DETAILS);
+  const details = detailsOf(place.store, place.task, place.label);
   const judgePy = join(jb, "eval", "judge.py");
   let usd: number | null = null;
   if (!existsSync(details) || statSync(details).size === 0) {
@@ -605,6 +612,8 @@ export async function score(values: Values): Promise<void> {
       "scoring starts paid claude sessions and judgements; --yes is the operator's word for it",
     );
   }
+  const installer = ownInstaller(python);
+  if (installer !== null) console.log(`  installer: ${installer}`);
   const needles = ["RUBRICS.json", "eval_result", join(out, "judged")];
   const scoreOne = async (task: string): Promise<void> => {
     const label = arm.label(task);
@@ -688,6 +697,21 @@ function table(out: string, tasks: readonly string[]): void {
   const uncut = fair(tasks).filter(
     (task) => !records.some((record) => record.task === task && cuts(record) > 0),
   );
+  // A rubric pays its weight only where every criterion passes, so points magnify a near tie: on
+  // 16 November 2026 two arms 36 points of 518 apart stood 2 criteria of 225 apart. The judge's own
+  // count is read from its details, and is unknown where a store holds none for a record.
+  const criteria = (rows: readonly JsonObject[]): string => {
+    const results = rows.flatMap((row) => {
+      const details = readJson(detailsOf(join(out, "dataset"), text(row.task), text(row.label)));
+      const rubrics = field(details, "rubrics");
+      return Array.isArray(rubrics) ? rubrics.map((rubric) => field(rubric, "result")) : [null];
+    });
+    const sum = (key: string): string => {
+      const counts = results.map((result) => field(result, key));
+      return counts.every(isNumber) ? String(counts.reduce((all, count) => all + count, 0)) : "?";
+    };
+    return `${sum("criteria_passed")}/${sum("criteria_count")}`;
+  };
   for (const [title, set] of [
     ["all", tasks],
     ["fair", fair(tasks)],
@@ -725,7 +749,7 @@ function table(out: string, tasks: readonly string[]): void {
       const share =
         points === null || total === null || total === 0 ? "?" : ((100 * points) / total).toFixed(1);
       console.log(
-        `  ${arm.padEnd(width)} score ${String(points)}/${String(total)} (${share}%) system ${money(system)} (build ${money(build)}, solve ${money(solve)}) judge ${money(judgeUsd)} solve hours ${seconds === null ? "?" : (seconds / 3600).toFixed(2)}`,
+        `  ${arm.padEnd(width)} score ${String(points)}/${String(total)} (${share}%) criteria ${criteria(held)} system ${money(system)} (build ${money(build)}, solve ${money(solve)}) judge ${money(judgeUsd)} solve hours ${seconds === null ? "?" : (seconds / 3600).toFixed(2)}`,
       );
     }
   }

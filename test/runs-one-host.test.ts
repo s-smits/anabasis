@@ -8,6 +8,7 @@ import {
   mkdtempSync,
   realpathSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -35,6 +36,9 @@ writeFileSync(join(bin, "ssh"), `#!/bin/sh\necho "$*" >> "${calls}"\nexit 255\n`
 chmodSync(join(bin, "ssh"), 0o755);
 const scrubbed = {
   HOME: home,
+  // A child's own temporary root, as the suite gives each test file: without it a child resolves
+  // the machine's, and a sweep reads the scratch real runs left there.
+  ANA_TEST_TMPDIR: root,
   PATH: `${bin}:${dirname(capturedExecPath)}:/usr/bin:/bin`,
 };
 for (const args of [
@@ -124,6 +128,17 @@ describe("a clone with no hosts", () => {
       expect([verb, result.code, framed(result.err)]).toEqual([verb, 0, false]);
     }
     expect(sshAttempts()).toBe(false);
+  });
+
+  test("a sweep reads the scratch under the test's own temporary root, never the machine's", () => {
+    const left = join(root, "ana-built-bash", "solve-left");
+    mkdirSync(left, { recursive: true });
+    const monthAgo = new Date(Date.now() - 30 * 86_400_000);
+    utimesSync(left, monthAgo, monthAgo);
+    // A dry sweep counts the one root nobody claims there and removes nothing.
+    const dry = runs(["retire"]);
+    expect([dry.code, dry.out.includes("would: 1 seat root(s)")]).toEqual([0, true]);
+    rmSync(left, { recursive: true });
   });
 
   test("ANA_HOSTS set and empty is unset, and one that is no JSON names the variable", () => {

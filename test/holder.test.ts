@@ -16,7 +16,7 @@ import { hostname, tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
-import { dropCutWrites, held, hold, release } from "../tools/runs/holder.ts";
+import { dropCutWrites, held, hold, release } from "../src/meta/holder.ts";
 import { CUT_PART } from "../tools/wri/embed.ts";
 
 const scratches: string[] = [];
@@ -37,7 +37,7 @@ const record = (file: string, pid: number, host = hostname(), start = startOf(pi
 };
 /** Whether `file` is there, as a link that points nowhere is too. */
 const there = (file: string): boolean => lstatSync(file, { throwIfNoEntry: false }) !== undefined;
-const holderPath = JSON.stringify(join(import.meta.dir, "..", "tools", "runs", "holder.ts"));
+const holderPath = JSON.stringify(join(import.meta.dir, "..", "src", "meta", "holder.ts"));
 
 describe("holder", () => {
   it("holds while its process lives, however long past any window", async () => {

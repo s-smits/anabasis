@@ -98,6 +98,10 @@ interface StoredTool {
 }
 
 /** v1's non-result kinds (the sweep's `grade.py`, `solver_kind`), as this host types them. */
+/** A solve's cache lives five minutes: over 110,009 recorded solver turns, 0.9% came more than five
+ *  minutes after the one before, and the hour-long writes a login gets by default billed 13% more
+ *  than five-minute writes would have (20 October). The hand-back of a command follows it (`LIMITS`). */
+export const SOLVER_CACHE_TTL = "5m";
 const NON_RESULTS = new Map<string, Extract<Ending, { outcome: "non-result" }>["kind"]>([
   ["non-result:provider", "provider"],
   ["non-result:provider-stall", "provider"],
@@ -215,17 +219,20 @@ export function storedAnswer(row: Row): JsonValue | undefined {
 }
 
 /** The backends set as the sweep ran its Claude solves, for a model process keeping its state in
- *  `home`; a campaign's `--solver-window` names another window (`tools/d2/setting.ts`). A solve's
- *  cache lives five minutes: over 110,009 recorded solver turns, 0.9% came more than five minutes
- *  after the one before, and the hour-long writes a login gets by default billed 13% more than
- *  five-minute writes would have (20 October). */
+ *  `home`; a campaign's `--solver-window` names another window (`tools/d2/setting.ts`). */
 export function sweepOptions(
   home = homedir(),
   window = SWEEP_COMPACT_WINDOW,
   shutdown?: AbortSignal,
 ): BackendOptions {
   return {
-    claude: { executable: claudeExecutable(), compaction: { window }, home, cacheTtl: "5m", shutdown },
+    claude: {
+      executable: claudeExecutable(),
+      compaction: { window },
+      home,
+      cacheTtl: SOLVER_CACHE_TTL,
+      shutdown,
+    },
   };
 }
 

@@ -219,6 +219,9 @@ const WINDOW_BOUNDS = [100_000, 1_000_000] as const;
 /** The months as a provider spells a dated reset, by their first three letters. */
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
+/** Each prompt-cache lifetime Claude Code takes (`CLAUDE_CODE_PROMPT_CACHE_TTL`), in seconds. */
+export const CACHE_SECONDS = { "5m": 300, "1h": 3600 } as const;
+
 export interface ClaudeOptions {
   /** The Claude Code binary the query runs, as `claudeExecutable()` resolved it on the host. */
   readonly executable: string;
@@ -231,7 +234,7 @@ export interface ClaudeOptions {
   readonly webSearch?: boolean;
   /** How long Claude Code keeps its prompt cache. Left out, it keeps it for an hour on a login and
    *  five minutes on an API key, as the CLI chooses. */
-  readonly cacheTtl?: "5m" | "1h";
+  readonly cacheTtl?: keyof typeof CACHE_SECONDS;
   /** The seat's lifetime, independent of the invocation signal pi passes to each request. */
   readonly shutdown?: AbortSignal | undefined;
   /** How long a turn waits for Claude Code's next message. Left out, `QUIET_MS`. */

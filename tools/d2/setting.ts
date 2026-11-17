@@ -348,10 +348,10 @@ export function keepSetting(log: string, { record }: Pick<AskedSetting, "record"
 }
 
 /**
- * How long one command may run under a deadline: the sweep's two limits, 300 s where a command names
- * no timeout and 900 s at most, each held to a share of the deadline, a quarter and a half. So a
- * command that names nothing can be cut and returned four times in a solve, and the longest one a
- * solver may ask for leaves it half its time. From a deadline of half an hour up both are the sweep's
+ * How long one command may run under a deadline: `LIMITS`, the seconds before a command still
+ * running is handed back (270, from the solver's cache) and 900 s at most, each held to a share of the deadline, a quarter and a half. So a
+ * command can be handed back four times in a solve, and the longest one a solver may ask for leaves
+ * it half its time. From a deadline of half an hour up both are the sweep's
  * own. Each is at least a second.
  */
 export function commandSeconds(wallSeconds: number): Pick<Limits, "shellDefaultSeconds" | "shellMaxSeconds"> {

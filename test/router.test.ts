@@ -304,7 +304,7 @@ describe("the router on the command line", () => {
       [["run", "lint", "--", "--strict"], true, "run lint --strict"],
       [["run", "secrets"], true, "run secrets"],
       [["run", "gate"], true, "run gate"],
-      [["run", "format"], false, "run format"],
+      [["fmt"], false, "fmt"],
       [["tools/runs/discover.ts", "test"], false, "tools/runs/discover.ts test"],
     ];
     for (const [args, queued, said] of cases) {

@@ -81,7 +81,8 @@ export function findingsIn(vetting: string): Finding[] {
     const cell = (row: readonly string[], name: string) => (at(name) === -1 ? "" : plain(row[at(name)]));
     return rows.flatMap((row) => {
       const verdict = VERDICTS.find((word) => firstWord(cell(row, "verdict")) === word);
-      const id = plain(row[0]).replace(/^vet-/iu, "");
+      // The id is the column of that name, or the first one where a table gives it another header.
+      const id = plain(row[Math.max(at("id"), 0)]).replace(/^vet-/iu, "");
       if (verdict === undefined || id === "") return [];
       return [
         {

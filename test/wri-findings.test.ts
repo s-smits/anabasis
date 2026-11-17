@@ -52,6 +52,12 @@ describe("the findings of a vetting", () => {
     }
   });
 
+  it("reads the id from its own column where another column comes first", () => {
+    const vetting =
+      "| verdict | finding | id |\n| --- | --- | --- |\n| confirmed | a | 1 |\n| confirmed | b | vet-2 |\n";
+    expect(findingsIn(vetting).map(({ id }) => id)).toEqual(["vet-1", "vet-2"]);
+  });
+
   it("reads no finding from a prediction's row or from a cell that only mentions a verdict", () => {
     // A ledger of predictions has no verdict column, though a recount says "confirmed".
     expect(findingsIn(PREDICTIONS)).toEqual([]);

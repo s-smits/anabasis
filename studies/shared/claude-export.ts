@@ -11,14 +11,21 @@
  * - the guide becomes `CLAUDE.md`, under a note that says what of a campaign's solve is not here:
  *   its task and answer files and `submit`, and, for every harness alike, whatever the guide says of
  *   a limit on turns or time, of checking or submitting an answer, or of scoring;
- * - `.toolchain/` is copied to `scripts/toolchain/`, and the note names its program directories in
- *   the order a solve's shell searches them (`toolTreeSearchDirs`, `src/wall/isolation.ts`), as
- *   facts: it puts nothing ahead of the machine's own programs, since the 9 November pilot's line
- *   that did so hid the machine's openpyxl, docx and matplotlib behind the harness's Python, and it
- *   says that the machine's own `python3` is there as usual. A note of 17 November that listed
- *   every file of those directories as a program to run, the interpreters among them, and left the
- *   machine's `python3` out sent a solver to the harness's interpreter first: a rollout met a
- *   module that interpreter lacks in four tasks of four, against one of four the day before. Where
+ * - `.toolchain/` is copied to `scripts/toolchain/`, and its programs run by name as in a campaign,
+ *   whose solver is told so and whose guide names each without a folder: `.claude/hooks.json`
+ *   holds one `SessionStart` hook, which a rollout's installer writes into the settings Claude
+ *   Code reads (`installTree`, `studies/harness2/h2/tree.ts`) and which puts the directories a
+ *   solve's shell searches (`toolTreeSearchDirs`, `src/wall/isolation.ts`) on the PATH of every
+ *   command after it. A campaign's shell searches them first; here they come behind the machine's
+ *   own programs, since the 9 November pilot's line that put them ahead hid the machine's
+ *   openpyxl, docx and matplotlib behind the harness's Python. The note lists the names by the
+ *   reader a campaign's prompt uses (`installedPrograms`, `src/harness/programs.ts`) and says
+ *   that a name the machine has too starts the machine's. Until 17 November nothing put them on
+ *   the PATH, and no rollout of twelve named one of a reference's five programs. A note of that
+ *   day that listed every file of those directories as a program to run by its path, the
+ *   interpreters among them, and left the machine's `python3` out sent a solver to the harness's
+ *   interpreter first: a rollout met a module that interpreter lacks in four tasks of four,
+ *   against one of four the day before. Where
  *   the tree holds Python built for another machine, as a reference built on a Mac does on Linux,
  *   its interpreter and compiled distributions are installed again for this one at the same
  *   versions, or the export is refused (`rebuildForeignPython`, `foreign-python.ts`), and
@@ -41,12 +48,16 @@ import { dirname, join, relative } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { keyIfDefined, keyIfNotNull } from "#src/meta/optional-key.ts";
 import { openHarness } from "#src/harness/open.ts";
+import { installedPrograms } from "#src/harness/programs.ts";
 import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
 import { HARNESS_DIR, HERE, type Place, placeHarness, placeOf } from "./bundle.ts";
 import { type PythonFor, rebuildForeignPython, uvPython } from "./foreign-python.ts";
 
 /** Where the tool tree lands in the exported tree, under the runner's `scripts/` entry. */
 export const TOOLCHAIN = "scripts/toolchain";
+
+/** The tree's hooks, which a rollout's installer copies into the settings Claude Code reads. */
+const HOOKS = ".claude/hooks.json";
 
 /** The harness's files Claude Code has no reader for. */
 const DROPPED = [TOOLS_SPEC_FILE, GENERATED_TOOLS_FILE];
@@ -78,6 +89,14 @@ export async function exportForClaudeCode(
     renameSync(harness.toolTree, join(part, TOOLCHAIN));
   }
   const rebuilt = await rebuildForeignPython(join(part, TOOLCHAIN), place, python);
+  if (searched.length > 0) {
+    // Claude Code runs what a `SessionStart` hook appends to `CLAUDE_ENV_FILE` before each command.
+    const behind = searched.map((dir) => `$CLAUDE_PROJECT_DIR/${dir}`).join(":");
+    const command = `echo "export PATH=\\"\\$PATH:${behind}\\"" >> "$CLAUDE_ENV_FILE"`;
+    const hooks = { hooks: { SessionStart: [{ hooks: [{ type: "command", command }] }] } };
+    mkdirSync(dirname(join(part, HOOKS)), { recursive: true });
+    writeFileSync(join(part, HOOKS), `${capturedJsonStringify(hooks, null, 2)}\n`);
+  }
   const note = [
     "# How this harness reaches you",
     "",
@@ -92,7 +111,7 @@ export async function exportForClaudeCode(
       ? []
       : [
           "",
-          `Its programs are in \`${TOOLCHAIN}/\`, in ${searched.map((dir) => `\`${dir}\``).join(", ")}, and nothing puts them on your PATH. Those written for that runner's files (they open \`input.json\` or a \`public/\` folder, or check \`answer.json\`) find none of them here. This machine's own programs, its \`python3\` among them, are on it as usual, and may hold packages the harness's interpreter lacks, or the reverse.`,
+          `Its programs run by name, as the guide names them: ${installedPrograms(join(part, TOOLCHAIN)).join(", ")}. Their folders (${searched.map((dir) => `\`${dir}\``).join(", ")}) are on your PATH behind this machine's own programs, so a name this machine has too starts this machine's program: \`python3\`, where it has one, is its own, and may hold packages the harness's interpreter lacks, or the reverse, and the harness's starts by its path. Those written for that runner's files (they open \`input.json\` or a \`public/\` folder, or check \`answer.json\`) find none of them here.`,
         ]),
     "",
   ];

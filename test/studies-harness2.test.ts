@@ -351,7 +351,8 @@ describe("a harness's programs, checked against the container", () => {
 
 describe("a harness written out for Claude Code", () => {
   it("makes the guide CLAUDE.md, copies the programs under scripts and names the harness's own tools as unavailable", async () => {
-    const made = await campaign("exported", () => undefined, tooled());
+    const programs = { ...tooled().programs, cat: "#!/bin/sh\necho the harness's cat\n" };
+    const made = await campaign("exported", () => undefined, { ...tooled(), programs });
     const into = join(root, "claude-tooled");
     const record = await exportForClaudeCode(into, { campaign: made.log, harness: made.child });
     expect(record.harness).toBe(made.child);
@@ -359,26 +360,36 @@ describe("a harness written out for Claude Code", () => {
     expect(record.unavailable).toStrictEqual(["doubled"]);
     const guide = readFileSync(join(into, "CLAUDE.md"), "utf8");
     expect(guide).toContain("doubled. They are not available here");
-    expect(guide).toContain("`scripts/toolchain/bin`, and nothing puts them on your PATH");
-    // The note names folders and the machine's own interpreter, and no file as a program to run.
-    expect(guide).toContain("This machine's own programs, its `python3` among them, are on it as usual");
+    expect(guide).toContain("Its programs run by name, as the guide names them: cat, mark. Their folders");
+    expect(guide).toContain("(`scripts/toolchain/bin`) are on your PATH behind this machine's own programs");
+    expect(guide).toContain("`python3`, where it has one, is its own");
     expect(guide).not.toContain("scripts/toolchain/bin/mark");
     expect(guide).not.toContain("export PATH");
     expect(readFileSync(join(into, "scripts", "toolchain", "bin", "mark"), "utf8")).toContain("echo marked");
     // The tree holds the programs once: the copy of the harness kept for provenance has none.
     expect(existsSync(join(into, "harness", ".toolchain"))).toBe(false);
-    // Installed as a rollout installs it, the program starts from the folder the note gives.
+    // Installed as a rollout installs it, the one hook of the settings Claude Code reads writes
+    // what a command runs first: after it the harness's program starts by name, and a name the
+    // machine has too still starts the machine's.
     const workspace = join(root, "claude-tooled-workspace");
     installTree(into, workspace);
+    const settings = parseJsonAs<{ hooks: { SessionStart: [{ hooks: [{ command: string }] }] } }>(
+      readFileSync(join(workspace, ".claude", "settings.json"), "utf8"),
+    );
     const out = join(root, "claude-tooled-mark.out");
-    const code = await inGroup(["/bin/sh", "-c", "scripts/toolchain/bin/mark"], {
-      cwd: workspace,
-      env: { PATH: runtimeProcess.env.PATH ?? "" },
-      stdout: out,
-      stderr: `${out}.err`,
-      timeoutS: 30,
-    });
-    expect([code, readFileSync(out, "utf8")]).toStrictEqual([0, "marked\n"]);
+    const env = { PATH: "/usr/bin:/bin", CLAUDE_PROJECT_DIR: workspace, CLAUDE_ENV_FILE: `${out}.env` };
+    const run = async (script: string) =>
+      inGroup(["/bin/sh", "-c", script], {
+        cwd: workspace,
+        env,
+        stdout: out,
+        stderr: `${out}.err`,
+        timeoutS: 30,
+      });
+    expect(await run("mark")).not.toBe(0);
+    expect(await run(settings.hooks.SessionStart[0].hooks[0].command)).toBe(0);
+    expect(await run('. "$CLAUDE_ENV_FILE" && mark && echo cat | cat')).toBe(0);
+    expect(readFileSync(out, "utf8")).toBe("marked\ncat\n");
     expect(parseJsonAs<{ harness: string }>(readFileSync(join(into, "export.json"), "utf8")).harness).toBe(
       made.child,
     );
@@ -431,6 +442,7 @@ describe("a harness written out for Claude Code", () => {
     expect(guide).toMatch(/limit on turns or time, .* does not hold here/u);
     expect(guide).not.toContain("on your PATH");
     expect(existsSync(join(into, "scripts"))).toBe(false);
+    expect(existsSync(join(into, ".claude"))).toBe(false);
     await expect(exportForClaudeCode(into, "starter")).rejects.toThrow(/there already/u);
   });
 });

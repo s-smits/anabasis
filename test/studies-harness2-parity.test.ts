@@ -215,8 +215,10 @@ for (const event of [{ type: "system", subtype: "init", cwd: process.cwd(), mode
         return rest;
       };
       const { HARNESS_RENDER_DIR: render, PATH: pyPath, ...py } = env(0);
-      const { PATH: tsPath, ...ts } = env(1);
+      // The one variable this rollout adds, for an install that names no interpreter.
+      const { PATH: tsPath, VIRTUAL_ENV: venv, ...ts } = env(1);
       expect(render).toBe(tree);
+      expect(venv).toBe(join(jb, ".venv"));
       expect(ts).toEqual(py);
       expect(tsPath).toBe(
         [join(jb, ".venv", "bin"), dirname(capturedExecPath), isString(pyPath) ? pyPath : "?"].join(":"),

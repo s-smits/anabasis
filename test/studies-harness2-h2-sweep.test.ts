@@ -49,7 +49,7 @@ if (args.includes("stream-json")) {
   const attempt = rows().filter((row) => row.label === label).length + 1;
   const guide = existsSync(join(ws, "CLAUDE.md")) ? readFileSync(join(ws, "CLAUDE.md"), "utf8") : "";
   const files = (at) => readdirSync(join(ws, at), { withFileTypes: true }).flatMap((entry) => entry.isDirectory() ? files(join(at, entry.name)) : [join(at, entry.name)]);
-  log({ kind: "rollout", label, attempt, guide, budget: args[args.indexOf("--max-budget-usd") + 1], env: process.env.MAX_BUDGET_USD ?? "", files: files("").sort(), path: process.env.PATH, cwd: process.cwd() });
+  log({ kind: "rollout", label, attempt, guide, budget: args[args.indexOf("--max-budget-usd") + 1], env: process.env.MAX_BUDGET_USD ?? "", files: files("").sort(), path: process.env.PATH, venv: process.env.VIRTUAL_ENV ?? "", cwd: process.cwd() });
   const dead = guide.includes("DEAD");
   const empty = (label.endsWith("alpha__task1__base1") && attempt === 1) || guide.includes("EMPTY") || dead;
   if (!empty) writeFileSync(join(ws, "output", "report.md"), (label.includes("gamma") ? ${JSON.stringify(`${MARKER}\n`)} : "") + "report by " + label + "\\n" + guide);
@@ -263,6 +263,14 @@ const JUDGE_STAND_IN = `import { appendFileSync, existsSync, readFileSync, readd
 import { join } from "node:path";
 const args = process.argv.slice(2);
 const flag = (name) => args[args.indexOf(name) + 1];
+// The scorer's question before its first rollout, python -m pip --version, and its repair, python
+// -m ensurepip: this interpreter has no pip until ensurepip ran once.
+if (args[0] === "-m") {
+  const pip = ${JSON.stringify(join(root, "pip.txt"))};
+  const had = existsSync(pip);
+  appendFileSync(pip, args[1] + "\\n");
+  process.exit(args[1] === "ensurepip" || had ? 0 : 1);
+}
 // judgeExtract's launch, python -c <driver> <judge.py> <dir>: each file's text, as the driver prints it.
 if (args[0] === "-c") {
   const dir = args[3];
@@ -393,6 +401,16 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     expect(calledBefore).toBe(before);
   });
 
+  it("gives the rollouts' interpreter a pip of its own once, where it has none, and asks under the word alone", () => {
+    const asked = readFileSync(join(root, "pip.txt"), "utf8").trim().split("\n");
+    // The refusal and the plans asked nothing; the first scoring found none and added one, and
+    // every later scoring found it there.
+    expect(asked.slice(0, 3)).toEqual(["pip", "ensurepip", "pip"]);
+    expect(asked.filter((what) => what === "ensurepip")).toHaveLength(1);
+    expect(decodeOutput(runs.base.stdout)).toContain("installer: pip added for");
+    expect(decodeOutput(runs.peek.stdout)).not.toContain("installer:");
+  });
+
   it("refuses an arm whose programs this machine cannot run, and plans one whose programs it can", () => {
     expect(foreignArm.exitCode).not.toBe(0);
     expect(decodeOutput(foreignArm.stderr)).toContain("holds 1 programs this machine");
@@ -414,6 +432,8 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
         capturedExecPath.slice(0, capturedExecPath.lastIndexOf("/")),
       ]);
       expect([field(row, "budget"), field(row, "env")]).toEqual(["5", "5"]);
+      // An install that names no interpreter takes the one `python3` starts.
+      expect(field(row, "venv")).toBe(join(jb, ".venv"));
       const files = field(row, "files");
       expect(
         Array.isArray(files) && files.some((name) => /RUBRICS|eval_result|judged/u.test(text(name))),

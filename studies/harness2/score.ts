@@ -60,7 +60,9 @@
  * and held-out arms ran through `score.sh` under `uv run`, whose interpreter has none of them, and
  * their trajectories met "No module named" for one of those six packages (pandas, numpy, openpyxl,
  * docx, pdfplumber, mammoth) 88 and 54 times, where Base's met it 12 times and k=1's never.
- * Here every arm gets the sweep's PATH (`pilotClaude`).
+ * Here every arm gets the sweep's PATH (`pilotClaude`), and that interpreter gets a pip of its own
+ * where it has none (`ownInstaller`), so that an install a solver starts lands where `python3`
+ * imports from.
  */
 import { openHarness } from "#src/harness/open.ts";
 import { billedAll } from "#src/kernel/meter.ts";
@@ -93,7 +95,7 @@ import { exportForClaudeCode } from "../shared/claude-export.ts";
 import { RESULT_FILE, TRACE_FILE } from "../shared/pi-solve.ts";
 import { inGroup, REFUSED, type Agent, type Claude } from "./h2/claude.ts";
 import { NAMESPACE } from "./h2/recursion.ts";
-import { cutOf, envOf, jobBench, MAX_CHARS_PER_FILE, pilotClaude, SCRUB } from "./jobbench.ts";
+import { cutOf, envOf, jobBench, MAX_CHARS_PER_FILE, ownInstaller, pilotClaude, SCRUB } from "./jobbench.ts";
 
 /** The judge as the pilot ran it (`h2l1.sh`, `judge-arm.sh`, `_run_judge`). */
 const JUDGE = { model: "anthropic/claude-opus-5-5", effort: "medium", timeoutS: 1800 } as const;
@@ -610,6 +612,8 @@ export async function score(values: Values): Promise<void> {
       "scoring starts paid claude sessions and judgements; --yes is the operator's word for it",
     );
   }
+  const installer = ownInstaller(python);
+  if (installer !== null) console.log(`  installer: ${installer}`);
   const needles = ["RUBRICS.json", "eval_result", join(out, "judged")];
   const scoreOne = async (task: string): Promise<void> => {
     const label = arm.label(task);

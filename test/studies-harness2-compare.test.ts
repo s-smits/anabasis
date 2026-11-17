@@ -389,6 +389,8 @@ describe("a comparison run through the scorer, on stand-ins", () => {
     `import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 const args = process.argv.slice(2);
 const flag = (name) => args[args.indexOf(name) + 1];
+// The scorer's question before its first rollout, python -m pip --version: this interpreter has one.
+if (args[0] === "-m") process.exit(0);
 // A wider cut's launch is python -c <driver> <judge.py> <cap> <judge.py's flags>; judgeExtract's has no cap.
 const capped = args[0] === "-c" && /^\\d+$/.test(args[3] ?? "");
 if (args[0] === "-c" && !capped) process.exit(1);

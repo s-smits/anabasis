@@ -310,17 +310,32 @@ export function jobBench(
 /**
  * The `claude` every rollout starts with, the sweep's and `score.ts`'s alike: the pilot's settings
  * and this process's environment with `_run_runner`'s PATH, the judge's interpreter first and then
- * Bun's directory.
+ * Bun's directory. `VIRTUAL_ENV` is added to the pilot's environment, so that a `uv pip install`
+ * naming no interpreter takes the one `python3` starts instead of refusing for want of one.
  */
 export function pilotClaude(jb: string): Claude {
+  const venv = join(jb, ".venv");
   return {
     bin: "claude",
     ...PILOT,
     env: {
       ...envOf([]),
-      PATH: [join(jb, ".venv", "bin"), dirname(capturedExecPath), runtimeProcess.env.PATH ?? ""].join(":"),
+      PATH: [join(venv, "bin"), dirname(capturedExecPath), runtimeProcess.env.PATH ?? ""].join(":"),
+      VIRTUAL_ENV: venv,
     },
   };
+}
+
+/**
+ * Gives the rollouts' interpreter an installer of its own where it has none, and says so, or null.
+ * A venv uv made holds no pip: `python3 -m pip` then finds no module, and a `pip` further down the
+ * PATH is another interpreter's, so what it installs `python3` still cannot import. `ensurepip` is
+ * the interpreter's own and reads no network.
+ */
+export function ownInstaller(python: string): string | null {
+  if (runSync([python, "-m", "pip", "--version"]).exitCode === 0) return null;
+  const made = runSync([python, "-m", "ensurepip", "--default-pip"]);
+  return made.exitCode === 0 ? `pip added for ${python}` : `${python} has no pip, and ensurepip gave none`;
 }
 
 /** The streams: each profession's tasks in the stream's order (`sorted`). */

@@ -14,6 +14,7 @@
  */
 import {
   copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -22,7 +23,7 @@ import {
 } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isRecord, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
-import { dirname, join } from "#src/meta/path.ts";
+import { basename, dirname, join, relative } from "#src/meta/path.ts";
 import { runSync, decodeOutput } from "#src/meta/subprocess.ts";
 import { pyDumps, pyLen, pyLstrip, pyRepr, pySlice, pyStr, pyStrip, walkFiles } from "./py.ts";
 
@@ -321,13 +322,18 @@ export function installTree(treeDir: string, dest: string): void {
   mkdirSync(dest, { recursive: true });
   if (existsSync(join(treeDir, ALWAYS_ON))) copyFileSync(join(treeDir, ALWAYS_ON), join(dest, ALWAYS_ON));
   const claudeDir = join(dest, ".claude");
-  for (const top of [".claude", "scripts"]) {
-    for (const inner of walkFiles(join(treeDir, top), SKIP)) {
-      const rel = `${top}/${inner}`;
-      if (rel === HOOKS || GENERATED.some((path) => rel === path || rel.startsWith(`${path}/`))) continue;
-      mkdirSync(dirname(join(dest, rel)), { recursive: true });
-      copyFileSync(join(treeDir, rel), join(dest, rel));
-    }
+  // Links stay links, as the export and the carry keep them: a copy file by file dropped a link to a
+  // folder, such as a virtual environment's `lib64 -> lib`, and wrote a link to a file out as its target.
+  const kept = (path: string) => {
+    const rel = relative(treeDir, path);
+    return (
+      !SKIP.includes(basename(rel)) &&
+      rel !== HOOKS &&
+      !GENERATED.some((one) => rel === one || rel.startsWith(`${one}/`))
+    );
+  };
+  for (const top of [".claude", "scripts"].filter((one) => existsSync(join(treeDir, one)))) {
+    cpSync(join(treeDir, top), join(dest, top), { recursive: true, verbatimSymlinks: true, filter: kept });
   }
   for (const rel of walkFiles(join(treeDir, "sub_agents"))) {
     const [name = "", file] = rel.split("/");

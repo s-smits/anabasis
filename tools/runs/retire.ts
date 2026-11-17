@@ -46,7 +46,7 @@
  * what it installed (`installs`), so the central host holds all a zip of a closed run can hold and
  * the zip fetches nothing. A host that does not answer is skipped with its copies as they were, and
  * the next sweep asks it again, so a Mac asleep for a night or a week catches up when it answers.
- * No original is deleted but on the host `ABLATION_HOST` names, kept clear for ablations
+ * No original is deleted but on a machine that rolls a benchmark (`EVAL_RUNNER`), kept clear for outside evaluations
  * (`takeRetired`). Without --yes it describes the sweep and changes nothing.
  */
 import { DAY_MS } from "#src/meta/clock.ts";
@@ -59,7 +59,7 @@ import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.
 import { SCRATCH_ROOTS, SUITE_SCRATCH_ROOT } from "#src/wall/policy.ts";
 import { claimed, releaseLeft } from "#src/wall/seat-root.ts";
 import { controllersOf } from "./code.ts";
-import { hostNamed, hostsOf } from "./host-config.ts";
+import { benchesOf, hostsOf } from "./host-config.ts";
 import { takeRetired, syncRuns } from "./snapshots.ts";
 import { stillRunning } from "./diagnosis.ts";
 import { unlaunchedSeed } from "./receipt.ts";
@@ -294,10 +294,9 @@ export async function retire(args: readonly string[]): Promise<void> {
   const days = Number(values.days);
   if (!Number.isFinite(days) || days < 0) throw new Misused();
   const sweep: Sweep = { main: mainTree(runtimeProcess.cwd()), days, now: Date.now(), yes: values.yes };
-  // The host kept clear for ablations, none where unset or `here`; read before the sweep, so a name no
-  // entry holds, which would leave that host to fill unseen, refuses before anything moves.
-  const ablation = runtimeProcess.env.ABLATION_HOST ?? "";
-  const cleared = ablation === "" || ablation === HERE ? undefined : hostNamed(ablation).name;
+  // The machines that roll a benchmark, kept clear; read before the sweep, so a name no entry holds,
+  // which would leave that host to fill unseen, refuses before anything moves.
+  const cleared = new Set(benchesOf().flatMap(({ host }) => (host === undefined ? [] : [host.name])));
   console.log(
     `retire at ${new Date(sweep.now).toISOString()}${sweep.yes ? "" : ": nothing is done without --yes"}`,
   );
@@ -313,7 +312,7 @@ export async function retire(args: readonly string[]): Promise<void> {
         await syncRuns([], { from: host.name, depth: "record" });
         await syncRuns([], { from: host.name, depth: "whole", closed: true });
       }
-      if (host.name !== cleared) continue;
+      if (!cleared.has(host.name)) continue;
       say(sweep, `${host.name}: takes what its copy here holds whole; --yes copies first and can take more`);
       await takeRetired(host, sweep.yes ? "take" : "describe");
     } catch (error) {

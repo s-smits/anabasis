@@ -32,7 +32,7 @@ import { loadwatch } from "./loadwatch.ts";
 import { active, logins } from "./logins.ts";
 import { continueRun, launch, pause } from "./manage.ts";
 import { copy, fetch, move } from "./move.ts";
-import { outside } from "./outside.ts";
+import { outside, readAfterPause, readsArmed } from "./outside.ts";
 import { runsStatus, watch } from "./pulse.ts";
 import { source } from "./receipt.ts";
 import { rehearse } from "./rehearse.ts";
@@ -342,12 +342,20 @@ if (HELP.has(verb)) {
   console.log(helpOf(verb, chosen));
 } else {
   try {
-    const { here, away } = await routed(verb, args);
+    // `pause --eval` reads the run outside once it rests, from here, where `.env.runs` lists the
+    // benchmarks: a peer that holds the run only pauses it.
+    const evals = verb === "pause" && args.includes("--eval");
+    const run = args.find((arg) => !arg.startsWith("-"));
+    const reads = evals && run !== undefined ? readsArmed(run) : [];
+    const { here, away } = await routed(verb, evals ? args.filter((arg) => arg !== "--eval") : args);
     for (const [host, words] of away) {
       const code = await (verb === "continue" ? continueOn(host, words) : verbOn(host, words));
       if (code !== 0) runtimeProcess.exitCode = code;
     }
     if (here !== null) await chosen.run(here);
+    if (run !== undefined && reads.length > 0 && (runtimeProcess.exitCode ?? 0) === 0) {
+      await readAfterPause(run, reads, args.includes("--yes") ? "start" : "plan");
+    }
   } catch (error) {
     if (!refusal(error)) throw error;
     // A misuse is answered with the verb's usage, under what was wrong where the verb says it.

@@ -1,11 +1,19 @@
 /**
- * `bun run runs outside <run> --as <label> [--harness <kept>] [--login N] [--yes]`
+ * `bun run runs outside <run> [--bench <name>] [--as <label>] [--harness <kept>] [--login N] [--wait] [--yes]`
  *
  * One command for a run's outside read (run-improvement-campaign, "The outside aim"): the run's
- * reference, or the kept harness `--harness` names by its letter or whole digest, is written for
- * the machine that rolls the benchmark, carried into the score store there, proved by a dry run of
- * each arm, and rolled with a fresh Starter queued behind it. Until 17 November 2026 these were
- * some ten commands on three machines, and a read took most of an hour to start.
+ * newest promoted harness, or the kept harness `--harness` names by its letter or whole digest, is
+ * written for the machine that rolls the benchmark, carried into the score store there, proved by a
+ * dry run of each arm, and rolled with a fresh Starter queued behind it. Until 17 November 2026 these
+ * were some ten commands on three machines, and a read took most of an hour to start.
+ * `runs pause <run> --after <word> --eval` is the pause and then this read with `--wait`, once for
+ * each benchmark that reads the run.
+ *
+ * **The benchmarks** are the list `EVAL_RUNNER` holds (`benchesOf`, `.env.runs.example`): each its
+ * name, the machine that rolls it, its score store and sitting command there, and the packs whose
+ * runs it reads. A run is read on the one whose packs hold its own (`packOf`), or on the one
+ * `--bench` names where several do. So a second benchmark is one more entry, and its store is
+ * gathered into `data/bench/<name>` (`fetchBenches`) and kept clear by `retire`.
  *
  * It owns no step: it runs the commands that do, in order, and stops at the first that fails.
  *
@@ -15,33 +23,37 @@
  * - **The carry** is one compressed stream through this machine, since two peers need not reach
  *   each other. It lands beside the store's trees and is moved in only once the stream ended well:
  *   `score.ts` takes a tree it finds under a label as it is, so half of one would be rolled.
- * - **The sitting** is the command `BENCH_SITTING` names on the machine `ABLATION_HOST` names, the
- *   operator's own, which owns the lock, the login and the judge. It is called as
- *   `<command> run|start <login> <label> <score.ts options>`, and its `status` answers `idle` on its
- *   first line while no arm holds the machine. A read is refused while one does, so that nothing
- *   loads a machine whose rollouts are read against each other.
+ * - **The sitting** is the benchmark's command on its machine, the operator's own, which owns the
+ *   lock, the login and the judge. It is called
+ *   as `<command> run|start <login> <label> <score.ts options>`, and its `status` answers `idle` on
+ *   its first line while no arm holds the machine. A read is refused while one does, so that nothing
+ *   loads a machine whose rollouts are read against each other; with `--wait` it looks again every
+ *   five minutes instead.
  *
  * A label binds one exported tree for good, so a label the store already holds is rolled as it
  * stands, neither exported nor carried again, which is also how a read cut after its carry goes on.
- * `--as <label>` names the reference's arm and `starter-<label>` the Starter's. A run that has not
- * ended, one at rest at a pause included, names its harness with `--harness`, by the letter the
- * view prints or its digest: the export refuses to guess a reference that may still move. Without `--login`
- * the login is the one a keeper would move a run to (`roomFor`). Without `--yes` it prints the plan
- * and starts nothing; the prediction file is written from that plan, before `--yes`.
+ * `--as <label>` names the reference's arm, by default the first eight characters of the harness's
+ * digest, and `starter-<label>` the Starter's. Without `--harness` the harness is the one the run's
+ * log, here or as last gathered, last promoted: a run at rest at a pause has not ended, and the
+ * export refuses to guess a reference that may still move, so it is named by its digest. A letter
+ * takes `--as`. Without `--login` the login is the one a keeper would move a run to (`roomFor`).
+ * Without `--yes` it prints the plan and starts nothing; the prediction file is written from that
+ * plan, before `--yes` or, behind `--eval`, before the first task is judged.
  */
+import { promoted } from "#src/kernel/reports.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
-import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
-import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { join } from "#src/meta/path.ts";
+import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { runCaptured, runTextOrThrow } from "#src/meta/subprocess.ts";
 import { readControllers } from "./code.ts";
 import { quoted, shellOn, shellPath, treeBun } from "./host-command.ts";
-import { type Host, hostNamed } from "./host-config.ts";
+import { type Bench, benchesOf, type Host } from "./host-config.ts";
 import { holders } from "./hosts.ts";
 import { roomFor } from "./keep.ts";
 import { allowedLogins, asGathered, type Env, liveEverywhere } from "./logins.ts";
-import { HERE, Misused, runs } from "./registry.ts";
+import { logEvents, Misused, packOf, readNamed, runs } from "./registry.ts";
 
 /** One command of a read: what it is for, and the words that run it from this machine. */
 export interface Step {
@@ -53,20 +65,24 @@ export interface Step {
 export interface Plan {
   readonly run: string;
   readonly label: string;
-  readonly harness?: string;
+  /** The kept harness, by its letter or digest. */
+  readonly harness: string;
   readonly login: string;
   /** The machine that holds the campaign, and the tree and Bun its export runs from. */
   readonly holder: Host | undefined;
   readonly tree: string;
   readonly bun: string;
-  /** The machine that rolls the benchmark, its store and its sitting command, as shell words there. */
-  readonly bench: Host | undefined;
+  /** The benchmark, the machine that rolls it, and its store and sitting command as shell words there. */
+  readonly bench: string;
+  readonly runner: Host | undefined;
   readonly store: string;
   readonly sitting: string;
   /** The benchmark's machine as `score.ts tree --for` names it. */
   readonly place: string;
   /** The harness the store already holds under the label, where it holds one. */
   readonly held: string | null;
+  /** Whether the read waits for the machine to be idle instead of refusing while an arm holds it. */
+  readonly wait: boolean;
 }
 
 /** `uname -sm` as `placeOf` (`studies/shared/bundle.ts`) names a machine. */
@@ -81,45 +97,61 @@ const PLACES = new Map([
 const homeWord = (path: string) =>
   shellPath(path.startsWith("/") || path.startsWith("~/") ? path : `~/${path}`);
 
-/** What the environment says of the benchmark's machine, or a refusal naming what it lacks. */
-export function settingsOf(env: Env): Pick<Plan, "bench" | "store" | "sitting"> {
-  const { ABLATION_HOST: name = "", BENCH_STORE: store = "", BENCH_SITTING: sitting = "" } = env;
-  const missing = Object.entries({ BENCH_STORE: store, BENCH_SITTING: sitting }).flatMap(([key, value]) =>
-    value === "" ? [key] : [],
-  );
-  if (missing.length > 0) {
-    throw new Error(
-      `${missing.join(" and ")} unset: the store and the sitting command on the benchmark's machine (.env.runs.example)`,
-    );
+/** The benchmarks that read `run` (`EVAL_RUNNER`), or the one `named` names. A pack listed reads
+ *  itself and every pack named from it, as `jobstat` reads `jobstat-v2`. */
+function benchesFor(run: string, env: Env, named?: string): Bench[] {
+  const pack = packOf(run);
+  const reads = ({ name, packs }: Bench) =>
+    named === undefined ? packs.some((one) => pack === one || pack.startsWith(`${one}-`)) : name === named;
+  return benchesOf(env).filter(reads);
+}
+
+/** The one benchmark a read of `run` rolls, as the plan holds it, or a refusal naming the choice. */
+export function settingsOf(
+  run: string,
+  env: Env,
+  named?: string,
+): Pick<Plan, "bench" | "runner" | "store" | "sitting"> {
+  const benches = benchesFor(run, env, named);
+  const [bench] = benches;
+  if (benches.length > 1) {
+    throw new Error(`${run}: ${benches.map(({ name }) => name).join(", ")} read it; name one with --bench`);
+  }
+  if (bench === undefined) {
+    const which = named === undefined ? `reads pack ${packOf(run)}` : `is named ${named}`;
+    throw new Error(`${run}: no benchmark ${which} (EVAL_RUNNER, .env.runs.example)`);
   }
   return {
-    bench: name === "" || name === HERE ? undefined : hostNamed(name),
-    store: homeWord(store),
-    sitting: homeWord(sitting),
+    bench: bench.name,
+    runner: bench.host,
+    store: homeWord(bench.store),
+    sitting: homeWord(bench.sitting),
   };
+}
+
+/** The harness `run` last promoted, by its digest, from its log here or the gathered copy of it. */
+function newestPromoted(run: string): string {
+  const harness = promoted(logEvents(readNamed(run).path));
+  if (harness === null) throw new Error(`${run} has promoted no harness: there is nothing to read outside`);
+  return harness;
 }
 
 /** The commands of `plan`, in order: nothing is spent before both dry runs, and nothing loads the
  *  benchmark's machine before its sitting command says it is idle. */
 export function stepsOf(plan: Plan): Step[] {
-  const { run, label, login, holder, bench, store, sitting } = plan;
+  const { run, label, login, holder, runner, store, sitting } = plan;
   const starter = `starter-${label}`;
-  const same = holder?.name === bench?.name;
+  const same = holder?.name === runner?.name;
   const stage = `"\${TMPDIR:-/tmp}"/${quoted(`ana-outside-read-${label}`)}`;
   const trees = `${store}/trees`;
   const tree = `${trees}/${quoted(label)}`;
   const part = `${trees}/${quoted(`.part-${label}`)}`;
-  const reference = [
-    quoted(label),
-    "--arm",
-    quoted(run),
-    ...(plan.harness === undefined ? [] : ["--harness", quoted(plan.harness)]),
-  ];
+  const reference = [quoted(label), "--arm", quoted(run), "--harness", quoted(plan.harness)];
   const arm = (verb: string, words: readonly string[], last: string) =>
     `${sitting} ${verb} ${quoted(login)} ${words.join(" ")} ${last}`;
   const queued = arm("start", [quoted(starter), "--arm", "starter"], "--yes");
   const piped = (host: Host | undefined, script: string) => shellOn(host, script).map(quoted).join(" ");
-  const on = (says: string, script: string): Step => ({ says, command: shellOn(bench, script) });
+  const on = (says: string, script: string): Step => ({ says, command: shellOn(runner, script) });
   const exported: Step[] =
     plan.held === null
       ? [
@@ -128,34 +160,37 @@ export function stepsOf(plan: Plan): Step[] {
             command: shellOn(
               holder,
               // A stage a cut read left would be taken as the tree, so each export starts without one.
-              `${same ? "" : `rm -rf ${stage} && `}cd ${shellPath(plan.tree)} && ${plan.bun} studies/harness2/score.ts tree --arm ${quoted(run)}${plan.harness === undefined ? "" : ` --harness ${quoted(plan.harness)}`} --name ${quoted(label)} --out ${same ? store : stage} --for ${quoted(plan.place)}`,
+              `${same ? "" : `rm -rf ${stage} && `}cd ${shellPath(plan.tree)} && ${plan.bun} studies/harness2/score.ts tree --arm ${quoted(run)} --harness ${quoted(plan.harness)} --name ${quoted(label)} --out ${same ? store : stage} --for ${quoted(plan.place)}`,
             ),
           },
           ...(same
             ? []
             : [
                 {
-                  says: `carry ${label} into the store on ${bench?.name ?? "this machine"}`,
+                  says: `carry ${label} into the store on ${runner?.name ?? "this machine"}`,
                   command: [
                     "bash",
                     "-c",
-                    `set -o pipefail; ${piped(holder, `COPYFILE_DISABLE=1 tar -czf - -C ${stage}/trees ${quoted(label)} ${quoted(`${label}.build.json`)}`)} | ${piped(bench, `test ! -e ${tree} && mkdir -p ${trees} && rm -rf ${part} && mkdir ${part} && tar -xzf - -C ${part} && mv ${part}/${quoted(label)} ${tree} && mv ${part}/${quoted(`${label}.build.json`)} ${trees}/ && rmdir ${part}`)}`,
+                    `set -o pipefail; ${piped(holder, `COPYFILE_DISABLE=1 tar -czf - -C ${stage}/trees ${quoted(label)} ${quoted(`${label}.build.json`)}`)} | ${piped(runner, `test ! -e ${tree} && mkdir -p ${trees} && rm -rf ${part} && mkdir ${part} && tar -xzf - -C ${part} && mv ${part}/${quoted(label)} ${tree} && mv ${part}/${quoted(`${label}.build.json`)} ${trees}/ && rmdir ${part}`)}`,
                   ],
                 },
                 { says: "clear the export's stage", command: shellOn(holder, `rm -rf ${stage}`) },
               ]),
         ]
       : [];
+  const idle = `${sitting} status | head -n 1 | grep -qx idle`;
   return [
-    on(
-      "the benchmark's machine is idle",
-      `${sitting} status | head -n 1 | grep -qx idle || { echo 'an arm holds the machine: the read waits for it'; exit 1; }`,
-    ),
+    plan.wait
+      ? on("wait until the benchmark's machine is idle", `until ${idle}; do sleep 300; done`)
+      : on(
+          "the benchmark's machine is idle",
+          `${idle} || { echo 'an arm holds the machine: the read waits for it'; exit 1; }`,
+        ),
     ...exported,
     // A reference whose own launcher starts an interpreter the machine lacks rolls without its
     // method (17 November 2026: exit 127), which no dry run sees. It is said, and refuses nothing.
     on(
-      `the tree's own python3 on ${bench?.name ?? "this machine"}`,
+      `the tree's own python3 on ${runner?.name ?? "this machine"}`,
       `p=${tree}/$(sed -n 's/.*"toolchain": *"\\([^"]*\\)".*/\\1/p' ${tree}/export.json)/bin/python3; if test -e "$p" || test -L "$p"; then "$p" -c pass; echo "the tree's own python3 exits $?"; fi`,
     ),
     on(`dry run of ${label}`, arm("run", reference, "--dry-run")),
@@ -196,6 +231,43 @@ async function heldIn(bench: Host | undefined, store: string, label: string): Pr
   return isString(harness) ? harness : "";
 }
 
+/** The benchmarks `pause --eval` reads `run` on, named as the verb is armed, so that a setting that
+ *  refuses does so while the pause-at-two hook still reads the verb's end, not hours later. */
+export function readsArmed(run: string): string[] {
+  const names = benchesFor(run, runtimeProcess.env).map(({ name }) => name);
+  if (names.length === 0) {
+    console.log(`${run}: no benchmark reads pack ${packOf(run)}; the pause goes on alone`);
+  }
+  return names;
+}
+
+/** `pause --eval` once the pause landed: each read with `--wait`, its plan alone without `--yes`.
+ *  Started, each read is a process of its own, since one that waits for an idle machine would
+ *  otherwise keep the pause alive, and a living pause is the run's one waiter (`waiters`), which
+ *  refuses the next `continue`. */
+export async function readAfterPause(
+  run: string,
+  benches: readonly string[],
+  mode: "plan" | "start",
+): Promise<void> {
+  for (const bench of benches) {
+    const words = [run, "--bench", bench, "--wait"];
+    if (mode === "plan") {
+      await outside(words);
+      continue;
+    }
+    const command = [capturedExecPath, join(import.meta.dir, "cli.ts"), "outside", ...words, "--yes"];
+    const child = capturedSpawn(command, {
+      detached: true,
+      stdin: "ignore",
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    child.unref();
+    console.log(`${run}: its read on ${bench} goes on in process ${String(child.pid)}`);
+  }
+}
+
 /** `bun run runs outside`. */
 export async function outside(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -203,17 +275,22 @@ export async function outside(args: readonly string[]): Promise<void> {
     allowPositionals: true,
     options: {
       as: { type: "string" },
+      bench: { type: "string" },
       harness: { type: "string" },
       login: { type: "string" },
+      wait: { type: "boolean", default: false },
       yes: { type: "boolean", default: false },
     },
   });
   const [run, ...rest] = positionals;
-  const label = values.as;
-  if (run === undefined || rest.length > 0 || label === undefined) throw new Misused();
-  if (!isSafePathSegment(run) || !isSafePathSegment(label)) throw new Misused();
+  if (run === undefined || rest.length > 0 || !isSafePathSegment(run)) throw new Misused();
   const env = runtimeProcess.env;
-  const settings = settingsOf(env);
+  const settings = settingsOf(run, env, values.bench);
+  // A letter names a harness only beside the view that prints it, so it takes a label of its own.
+  const harness = values.harness ?? newestPromoted(run);
+  const digest = harness.length === 64;
+  const label = values.as ?? (digest ? harness.slice(0, 8) : undefined);
+  if (label === undefined || !isSafePathSegment(label)) throw new Misused();
   const here = new Set(runs().map(({ name }) => name));
   const holder = here.has(run) ? undefined : (await holders([run], here)).get(run);
   if (holder === undefined && !here.has(run)) {
@@ -223,13 +300,13 @@ export async function outside(args: readonly string[]): Promise<void> {
   if (holder !== undefined && (controller === null || controller === undefined)) {
     throw new Error(`${holder.name}: no controller there to export from`);
   }
-  const named = (await runTextOrThrow(shellOn(settings.bench, "uname -sm"))).trim();
+  const named = (await runTextOrThrow(shellOn(settings.runner, "uname -sm"))).trim();
   const place = PLACES.get(named);
   if (place === undefined) {
     throw new Error(`the benchmark's machine is '${named}', which no export is written for`);
   }
-  const held = await heldIn(settings.bench, settings.store, label);
-  if (held !== null && values.harness?.length === 64 && held !== values.harness) {
+  const held = await heldIn(settings.runner, settings.store, label);
+  if (held !== null && digest && held !== harness) {
     throw new Error(
       `${label}: the store holds that label for ${held.slice(0, 8)}; a label binds one tree, so name another`,
     );
@@ -245,7 +322,7 @@ export async function outside(args: readonly string[]): Promise<void> {
   const plan: Plan = {
     run,
     label,
-    ...keyIfDefined("harness", values.harness),
+    harness,
     login,
     holder,
     tree: controller?.tree ?? runtimeProcess.cwd(),
@@ -253,16 +330,14 @@ export async function outside(args: readonly string[]): Promise<void> {
     ...settings,
     place,
     held,
+    wait: values.wait,
   };
   const steps = stepsOf(plan);
   console.log(
-    `${run} read outside as ${label} and starter-${label}, on login ${login}, for ${place}${held === null ? "" : `; the store already holds ${label} (${held.slice(0, 8)}), rolled as it stands`}`,
+    `${run} read outside on ${plan.bench} as ${label} and starter-${label}, on login ${login}, for ${place}${held === null ? "" : `; the store already holds ${label} (${held.slice(0, 8)}), rolled as it stands`}`,
   );
   if (!values.yes) {
     for (const { says } of steps) console.log(`  ${says}`);
-    if (held === null && values.harness === undefined) {
-      console.log("no --harness: the export takes the run's reference, and refuses a run that has not ended");
-    }
     console.log("nothing started: write the prediction file from this plan, then pass --yes");
     return;
   }

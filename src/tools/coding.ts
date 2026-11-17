@@ -4,9 +4,10 @@
  * timeout, which states the host's default and maximum. pi's "Execute a bash command" holds as
  * written, since every seat command runs in the system's `/bin/bash` under the wall
  * (`src/tools/env.ts`). All calls are sequential because ending a command ends the work still
- * running in the seat's root. A command still running at the wall's default seconds is handed back
- * and runs on to its timeout, the maximum unless it names one; the seat's next call waits for it
- * and carries its ending, as a coding agent hands a long command to the background.
+ * running in the seat's root. A command that names no timeout and is still running at the wall's
+ * default seconds is handed back and runs on to the maximum; the seat's next call waits for it and
+ * carries its ending, as a coding agent hands a long command to the background. A command that
+ * names a timeout chose its wait, and runs to it in one call.
  *
  * The wall keeps two departures from pi's local environment: ~ names the seat's home, and a
  * whole-file read is capped at 16 MiB. Durable asks the environment to spill long shell output;
@@ -120,7 +121,7 @@ function bashTool(wall: CommandWall): SeatTool {
       command: Type.String({ description: "Bash command to execute" }),
       timeout: Type.Optional(
         Type.Number({
-          description: `Timeout in seconds: at most ${String(shellMaxSeconds)}, and that when omitted; a command still running after ${String(back)} s is handed back to you and runs on`,
+          description: `Timeout in seconds: at most ${String(shellMaxSeconds)}, and that when omitted; without one, a command still running after ${String(back)} s is handed back to you and runs on`,
         }),
       ),
     }),
@@ -162,7 +163,8 @@ function bashTool(wall: CommandWall): SeatTool {
       const late = new Promise<undefined>((resolve) => {
         AbortSignal.timeout(back * 1000).addEventListener("abort", () => resolve(undefined));
       });
-      const early = seconds > back ? await Promise.race([run, late]) : await run;
+      const early =
+        args.timeout === undefined && seconds > back ? await Promise.race([run, late]) : await run;
       if (early !== undefined) return early;
       handedBack = true;
       const ending = run.then(

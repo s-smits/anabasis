@@ -171,12 +171,14 @@ const PROGRAMS_OF = "programs-of:";
  *  and guide show as an answer reached within the budget, which an unlimited solver reaches anyway.
  *  A turn is also the same on a loaded host, where a second is not.
  *
- *  A command still running at `shellDefaultSeconds` is handed back to the solver (`bashTool`), and
- *  that follows the solver's prompt cache (`SOLVER_CACHE_TTL`), 30 s short of it, so that the turn
- *  reads the cache before it lapses: in the ten newest gathered logs of 17 November the model took at
- *  most 33 s between a request and its bash command starting in 99 of 100 calls (2,562 calls). The
- *  turn renews the cache, so a command that ends within twice that returns to it warm; in the forty
- *  newest logs 718 of 36,270 solver commands ran 300 to 570 s, each returning to a lapsed cache. */
+ *  A command that names no timeout and is still running at `shellDefaultSeconds` is handed back to
+ *  the solver (`bashTool`), 30 s short of the solver's prompt cache (`SOLVER_CACHE_TTL`), so that the
+ *  request after it reads the cache before it lapses. In the forty newest gathered logs of
+ *  17 November, the request after a turn whose longest command ran 270 to 290 s read less than half
+ *  its input from the cache in 7 of 305 cases, against 50 of 208 after 310 to 400 s; the model took
+ *  at most 33 s before a bash command started in 99 of 100 calls. A command that names a timeout
+ *  runs to it in one call: 1,330 of the 1,618 turns with a command of 270 s or more named one, and a
+ *  hand-back would cost each a model turn, the limit that binds. */
 export const LIMITS = {
   wallSeconds: 1800,
   modelTurns: 20,

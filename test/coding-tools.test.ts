@@ -139,6 +139,8 @@ describe.skipIf(!osIsolationSupport().ok)("the coding tools on the OS wall", () 
       expect(next.diagnostics.map((note) => note.message).join("")).toContain("timed out after 2 seconds");
       expect(Number(next.text)).toBeGreaterThan(beat);
       await stopped(join(wall.dirs.home, "beat"));
+      // A command that names a timeout runs to it in one call, past the default second.
+      expect((await call("bash", { command: "sleep 1.3; echo named", timeout: 2 })).text).toBe("named\n");
       // A command that ends before the default second returns as before, with nothing carried.
       expect((await call("bash", { command: "echo quick" })).diagnostics).toEqual([]);
       // What a handed-back command prints is carried up to pi's bash output limit, 50 KB.

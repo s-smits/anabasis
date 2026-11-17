@@ -30,7 +30,7 @@ to go in one sitting, is the session's judgement. Read the script first and deci
 | a fix is ready | stack-pr's `stack.ts`, repository-practice's `preflight.ts` | step 4, its before-and-after, then step 5 |
 | a run bills while its milestone stays put | `runs pulse <name>`, `wri.ts read --log <log>` | "A stall", then "The walk" |
 | a step has stood for two days, or two sessions hold one step | the hours `due` prints; the rows of `cycle.md` | take it, pass it in `deviations.md`, or name its one holder in `cycle.md` |
-| a jobstat run has promoted twice, or has stopped with a promoted reference no read has scored | the last read's prediction file; `score.ts table` and `compare.ts levels` over the store | "The outside aim": the prediction, the dry run, the rollouts started detached, the run's row in `outside-reads.md`, and the iteration's next step at once |
+| a jobstat run rests at a pause with two or more promotions, or has stopped with one, and no read has scored its newest promoted reference | the last read's prediction file; `score.ts table` and `compare.ts levels` over the store | "The outside aim": the prediction, the dry run, the rollouts started detached, the run's row in `outside-reads.md`, and the iteration's next step at once |
 | a handover is due, or a timer fires with nothing to do | `timers.ts <the session's transcripts>` | "Timers": retire or retime it; then the five points |
 
 ## The release cycle
@@ -379,17 +379,21 @@ rubrics or scores (`AGENTS.md`, section 1, "An outside benchmark against fitting
 rules 2, 3 and 9); the query is the operator's and is bounded against its origin; and a bench score
 promotes nothing and is never a step.
 
-### One jobstat run always, read at its second promotion
+### One jobstat run always, read at each pause from its second promotion
 
 One of the live full runs is always a jobstat run, also where one slot is all there is (operator,
 12 November 2026), so a freed slot goes to jobstat first wherever none is live. A jobstat run's
-newest promoted reference is read on the eight tasks below, confirmed or not, at the first of two
+newest promoted reference is read on the eight tasks below, confirmed or not, at either of two
 moments:
 
-- **Its second promotion**, once the run rests at its pause: the read waits neither for the
+- **Each pause from its second promotion on**, once the run rests there: the read starts without
+  a question (operator, 17 November 2026: "automatic ablation") and waits neither for the
   investigation nor for lane 27's audit, whose grade and weight join the row when the lane reports.
   A reference the audit then grades inferior is still scored, which is how the record shows whether
-  the grade predicts the benchmark.
+  the grade predicts the benchmark. A run read at two and kept on to three or four is read again
+  at the pause it next rests at, on its then newest reference under a new label; its row is
+  rewritten for that digest and keeps the earlier read's sums, since the gate finds a row by the
+  run's name alone.
 - **Its stop at another trigger with one promotion.** The audit comes first: where lane 27 puts the
   reference's soundness at 2 or below (broken, fitted or churn) or reads it as bloat, the read is
   skipped, and otherwise its grade and weight go into the prediction file before any rollout.

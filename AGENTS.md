@@ -411,8 +411,9 @@ load, not yet noise. Report wall-test failures from unavailable user namespaces 
 
 ### What you never touch
 
-`.ana/`, `data/runs/`, a pack, a check program, a kept harness, `.env` and any credential, and
-installed dependencies. `vendor/` changes only by a **sed**: upstream copied verbatim, with its path
+`.ana/` (but for `.ana/wri/`, where an investigation and a cycle keep their own files),
+`data/runs/`, a pack, a check program, a kept harness, `.env` and any credential, and installed
+dependencies. `vendor/` changes only by a **sed**: upstream copied verbatim, with its path
 and commit cited and each local change listed.
 
 ### The stack and pull requests

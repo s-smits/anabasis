@@ -12,7 +12,7 @@ settle it.
 ### The landing and the run CLI
 
 1. **Two processes can take a dead landing's lock**: mended. `holdAlone`
-   (`tools/runtime/landing.ts`) holds its clone through `hold` (`tools/runs/holder.ts`), so of
+   (`tools/runtime/landing.ts`) holds its clone through `hold` (`src/meta/holder.ts`), so of
    eight takers on one dead holder one holds and seven wait, and a live pid with another start
    reads as gone and is sent nothing. Left: the clause that waits for a live landing holding the
    older record (a pid alone, or a pid and a note) goes once no open branch writes it, and the
@@ -97,7 +97,7 @@ here; "reported" means only its reader has seen it.
     `tools/runs/code.ts`): a remote shell that outlives its killed ssh client holds the commit's
     preparation on that host. Settled by whether such a shell survives on each host.
 22. **A lock's holder is named by text the locale and time zone change** (reported,
-    `tools/runs/holder.ts`): `ps -o lstart=` and the host's name, so two processes under different
+    `src/meta/holder.ts`): `ps -o lstart=` and the host's name, so two processes under different
     settings each read the other's lock as free. Settled by the settings of the scheduled jobs.
 23. **A stop can miss a writer its keeper starts meanwhile** (reported, `tools/runs/stop.ts`): the
     process table is read once, before the keeper ends.
@@ -136,7 +136,7 @@ left plausible, and what is confirmed but sits in source a live run is proving.
     `src/campaign/decide.ts`): under `cap-short` the cap is the plan's remaining budget, so the
     fallback for none is never taken, and "no comparison open" is spelled in two ways in one file.
 31. **Two landings can both hold a clone while trees are mixed** (reported,
-    `tools/runtime/landing.ts` with `tools/runs/holder.ts`). An older landing's record is read
+    `tools/runtime/landing.ts` with `src/meta/holder.ts`). An older landing's record is read
     outside the `flock`, and a landing from a tree of 9 November takes none, so it can replace a
     dead holder's record between that read and `hold`, which then reads the older record as
     nobody's. The window is milliseconds and closes once no open branch writes the older record;

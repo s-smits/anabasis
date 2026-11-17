@@ -59,56 +59,56 @@ const OUTSIDE_GROUP = "outside";
 const stripped = (text: string) =>
   text.replaceAll(/<!--[\s\S]*?-->/gu, "").replaceAll(/^```[\s\S]*?^```/gmu, "");
 
-/** The cells of a Markdown table line, or null for any other line. */
+/** The cells of a Markdown table line, cut at each pipe no backslash escapes, or null for any other line. */
 function cellsOf(line: string): string[] | null {
   const trimmed = line.trim();
   if (!trimmed.startsWith("|")) return null;
   return trimmed
     .replace(/^\|/u, "")
     .replace(/\|$/u, "")
-    .split("|")
-    .map((cell) => cell.trim().replaceAll("`", ""));
+    .split(/(?<!\\)\|/u)
+    .map((cell) => cell.trim());
 }
 
-/** Every Markdown table in `text`: its header cells, lower-cased, and its data rows, each cell as
- *  written; a reader that knows no header's first cell reads a table by a column's name. */
+/** Whether a table line is a rule, as under a header: hyphens in every cell, with a colon or a
+ *  second hyphen, so a row of lone hyphens for "none" stays a row. */
+const ruled = (cells: readonly string[] | null | undefined) =>
+  cells?.every((cell) => /^(?=..):?-+:?$/u.test(cell)) === true;
+
+const bare = (cell: string) => cell.replaceAll("`", "");
+
+/**
+ * Every Markdown table of `text` outside its comments and code fences: the header's cells,
+ * lower-cased and without backticks, and the rows, each cell as written. A table is a run of table
+ * lines whose first is its header; a later line that a rule follows opens the next table, so two
+ * tables with no line between them are two; and a rule is never a row. This is the one reader of a
+ * table: `rowsOf` is its view for a reader that knows the header's first cell, and one that does
+ * not reads a table by a column's name.
+ */
 export function tablesOf(text: string): { header: string[]; rows: string[][] }[] {
-  const split = (line: string) =>
-    line
-      .trim()
-      .replace(/^\|/u, "")
-      .replace(/\|$/u, "")
-      .split(/(?<!\\)\|/u)
-      .map((cell) => cell.trim());
-  const lines = text.split("\n");
-  return lines.flatMap((line, at) => {
-    const head = lines[at - 1];
-    if (!/^\|\s*:?-{3,}/u.test(line) || head?.trim().startsWith("|") !== true) return [];
-    const rows = [];
-    for (const each of lines.slice(at + 1)) {
-      if (!each.trim().startsWith("|")) break;
-      rows.push(split(each));
-    }
-    return [{ header: split(head).map((cell) => cell.toLowerCase()), rows }];
-  });
-}
-
-/** The rows of every table in `text` whose header's first cell is `head`, past each header's rule. */
-export function rowsOf(text: string, head: string): string[][] {
-  const rows: string[][] = [];
-  let inside = false;
-  for (const line of stripped(text).split("\n")) {
-    const cells = cellsOf(line);
+  const lines = stripped(text).split("\n").map(cellsOf);
+  const tables: { header: string[]; rows: string[][] }[] = [];
+  let open: string[][] | null = null;
+  for (const [at, cells] of lines.entries()) {
     if (cells === null) {
-      inside = false;
-    } else if (cells[0]?.toLowerCase() === head) {
-      inside = true;
-    } else if (inside && cells[0] !== "" && !cells.every((cell) => /^:?-+:?$/u.test(cell))) {
-      rows.push(cells);
+      open = null;
+    } else if (open === null || ruled(lines[at + 1])) {
+      open = [];
+      if (!ruled(cells)) tables.push({ header: cells.map((cell) => bare(cell).toLowerCase()), rows: open });
+    } else if (!ruled(cells)) {
+      open.push(cells);
     }
   }
-  return rows;
+  return tables;
 }
+
+/** The rows of every table in `text` whose header's first cell is `head`: each cell without
+ *  backticks, and no row whose first cell is empty. */
+export const rowsOf = (text: string, head: string): string[][] =>
+  tablesOf(text)
+    .filter(({ header }) => header[0] === head)
+    .flatMap(({ rows }) => rows.map((cells) => cells.map(bare)))
+    .filter(([first]) => first !== "");
 
 /** The ids of a ledger's `id` tables. */
 export const idsOf = (text: string): string[] => rowsOf(text, "id").map(([id = ""]) => id);
@@ -146,10 +146,10 @@ function countedOf(outcomes: string): number | null {
 
 /** The ids of a predictions ledger whose `group` cell reads `outside`. */
 const outsideIds = (predictions: string): string[] =>
-  tablesOf(stripped(predictions)).flatMap(({ header, rows }) => {
+  tablesOf(predictions).flatMap(({ header, rows }) => {
     const group = header.indexOf("group");
     const marked = rows.filter((row) => row[group]?.toLowerCase() === OUTSIDE_GROUP);
-    return header[0] === "id" ? marked.map(([id = ""]) => id.replaceAll("`", "")) : [];
+    return header[0] === "id" ? marked.map(([id = ""]) => bare(id)) : [];
   });
 
 /**

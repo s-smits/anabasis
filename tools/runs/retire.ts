@@ -37,7 +37,8 @@
  * First of all, the seats' roots and the host's scratch folders that nobody will release go
  * (`releaseScratch`): what a killed campaign's solves, sessions, verifier cells and model homes left
  * in the temporary folder, and the root a killed test suite left (`SUITE_SCRATCH_ROOT`), told from
- * what a live process holds by its claim.
+ * what a live process holds by its claim. What a run's log names as open goes as the archive takes
+ * the run.
  *
  * Only the repository's worktrees are swept, so a separate clone is never read. Every host sweeps
  * its own originals with its own daily job, and this one then refreshes each configured host's
@@ -73,6 +74,9 @@ export interface Sweep {
   readonly yes: boolean;
 }
 
+/** What each run's log names as open (`leftOpen`), by the log's path. */
+type Open = Map<string, ReturnType<typeof leftOpen>>;
+
 /** A worktree or branch nothing uses stays this long, and a tree with a change no commit names twice
  *  as long: past it the system has moved too far for the change to apply (operator, 26 September). */
 const TREE_DAYS = 7;
@@ -82,9 +86,9 @@ const say = (sweep: Sweep, line: string) => console.log(`${sweep.yes ? "" : "wou
 const daysSince = (sweep: Sweep, ms: number) => (sweep.now - ms) / DAY_MS;
 
 /** Every run no process writes or keeps whose log has not grown for `days`, moved to the archive,
- *  and every such seed no launch went on from, the archive's too, deleted. Returns the logs it moved
- *  or deleted, or would. */
-export function archiveIdle(sweep: Sweep): Set<string> {
+ *  and every such seed no launch went on from, the archive's too, deleted, each after the roots it
+ *  left `open` are released as a stop would. Returns the logs it moved or deleted, or would. */
+export async function archiveIdle(sweep: Sweep, open: Open): Promise<Set<string>> {
   const moved = new Set<string>();
   const taken = new Set<string>();
   const own = archiveOf(sweep.main, HERE);
@@ -92,6 +96,10 @@ export function archiveIdle(sweep: Sweep): Set<string> {
     if (daysSince(sweep, lstatSync(run.path).mtimeMs) < sweep.days) continue;
     // Read again for each run: one launched while the sweep ran is live.
     if (stillRunning(run, processes())) continue;
+    // A cut Builder session's notes are kept into the run's own folder, which then moves whole. A
+    // root a live process claims is held whatever the process table is read to say of its run.
+    const left = (open.get(run.path) ?? []).filter(({ root }) => !claimed(root));
+    await release(run, processes(), sweep.yes ? "release" : "describe", left);
     const from = run.end === "solve.finished" ? run.path : dirname(run.path);
     if (unlaunchedSeed(run)) {
       say(sweep, `${from}: a seed, deleted`);
@@ -122,38 +130,35 @@ export function archiveIdle(sweep: Sweep): Set<string> {
 
 /**
  * Every seat root and folder of the host's scratch on this machine that nobody will release
- * (`src/wall/seat-root.ts`). A root a run here still names as open is that run's: once no process
- * writes the run it is released as a stop would, with a cut Builder session's notes kept for the
- * `continue` that reads them, and until then it is spared. The rest go by their claims: a dead
- * claimant's at once, an unclaimed one after `TREE_DAYS` without a write.
+ * (`src/wall/seat-root.ts`), and what each run here left open, for the archive to release as it
+ * takes the run (`archiveIdle`). A root a run here still names as open is that run's and is spared
+ * until then. The rest go by their claims: a dead claimant's at once, an unclaimed one after
+ * `TREE_DAYS` without a write, their count said before they go, as every line of the sweep is.
  *
  * Until 16 November no sweep read these folders, and only a stop released any: a campaign that was
  * killed, or continued after a kill, left its roots for good, and so did every verifier cell and
- * model home a killed process held, with the check programs and hidden values in them.
+ * model home a killed process held, with the check programs and hidden values in them. On
+ * 17 November the first sweep that did took the three roots of a rehearsal's seed three hours after
+ * its last event, since it asked only whether a process wrote the run, and its one line for the
+ * 12,053 folders nobody held was to come only after their release.
  */
-export async function releaseScratch(sweep: Sweep, parents: readonly string[]): Promise<void> {
-  const act = sweep.yes ? "release" : "describe";
-  const spared = new Set<string>();
+export async function releaseScratch(sweep: Sweep, parents: readonly string[]): Promise<Open> {
+  const open: Open = new Map();
   for (const run of runs(sweep.main)) {
     try {
-      const open = leftOpen(run);
-      for (const { root } of open) spared.add(root);
-      // The processes are read again for each run, as `archiveIdle` reads them. A root a live
-      // process claims is held whatever the process table is read to say of its run.
-      await release(
-        run,
-        processes(),
-        act,
-        open.filter(({ root }) => !claimed(root)),
-      );
+      open.set(run.path, leftOpen(run));
     } catch (error) {
       // Unread, its roots cannot be told from those nobody holds, so none goes by its claim today.
       warn(`${run.name}: ${errorMessage(error)}, so no root is released by its claim in this sweep`);
-      return;
+      return open;
     }
   }
-  const left = await releaseLeft(parents, sweep.now - TREE_DAYS * DAY_MS, act, spared);
+  const spared = new Set([...open.values()].flatMap((roots) => roots.map(({ root }) => root)));
+  const before = sweep.now - TREE_DAYS * DAY_MS;
+  const left = await releaseLeft(parents, before, "describe", spared);
   say(sweep, `${String(left.length)} seat root(s) and host folder(s) nobody holds, released`);
+  if (sweep.yes) await releaseLeft(parents, before, "release", spared);
+  return open;
 }
 
 /** Every process's command line and working directory, read at once: a tree any names is in use. */
@@ -296,9 +301,8 @@ export async function retire(args: readonly string[]): Promise<void> {
   console.log(
     `retire at ${new Date(sweep.now).toISOString()}${sweep.yes ? "" : ": nothing is done without --yes"}`,
   );
-  // Before the archive takes a run: its cut notes are kept into its own folder, which then moves whole.
-  await releaseScratch(sweep, [...SCRATCH_ROOTS, SUITE_SCRATCH_ROOT]);
-  retireUnused(sweep, archiveIdle(sweep));
+  const open = await releaseScratch(sweep, [...SCRATCH_ROOTS, SUITE_SCRATCH_ROOT]);
+  retireUnused(sweep, await archiveIdle(sweep, open));
   for (const host of hostsOf()) {
     try {
       say(

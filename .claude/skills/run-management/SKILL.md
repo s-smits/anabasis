@@ -340,8 +340,8 @@ bun run runs stop <name> ... [--yes]
 
 `stop` ends the process writing each log and the processes it started, then releases the roots of
 every solve, session and draft left open; a dead run is cleaned up the same way, and the daily
-`retire` does it for every run nobody stopped, with each verifier cell and model home whose claiming
-process is gone (`releaseScratch`, `tools/runs/retire.ts`). A stop is abrupt and
+`retire` does it for every run nobody stopped as it archives the run, with each verifier cell and
+model home whose claiming process is gone (`archiveIdle`, `releaseScratch`, `tools/runs/retire.ts`). A stop is abrupt and
 writes no ending. `continue` goes on from the log under the same name; the session the stop cut has
 spent its id, and an Examiner session's held-out tasks stay held. Prefer `pause` or a word where a
 clean point can be waited for. Whether to stop is a reading and the operator's word. Afterwards check

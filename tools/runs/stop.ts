@@ -125,8 +125,8 @@ async function end(run: Run, running: readonly Running[], yes: boolean): Promise
 /** Release the roots `run` left (`open`, its `leftOpen`), where no process in `running` writes it any
  *  more, a cut Builder session's notes kept first. A root its release could not remove is named, and
  *  the stop goes on to the next. A root an earlier tree mounted a disk image at, before 19 October,
- *  is one: `hdiutil detach` it first. The daily sweep does the same for every run nobody stopped
- *  (`releaseScratch`, `retire.ts`). */
+ *  is one: `hdiutil detach` it first. The daily sweep does the same for every run nobody stopped,
+ *  as its archive takes the run (`archiveIdle`, `retire.ts`). */
 export async function release(
   run: Run,
   running: readonly Running[],

@@ -75,8 +75,11 @@ never copied.
   fork (`git log --merges <last fork>..<release>`), even one no run reads, and the cycle-wide rows
   on supply, climb and honesty. A row's lanes are its labels' lanes (whole-run-investigation's
   `references/lanes.md`, "Labels"); needing another lane means the label is wrong. Its group is
-  `first` (code no run has run), `again` (run before under another condition) or `off-run` (no seat
-  reads it; settled by a landing, a reader or the launch). `outcomes-<run>.md` gives each of its ids,
+  `first` (code no run has run), `again` (run before under another condition), `off-run` (no seat
+  reads it; settled by a landing, a reader or the launch) or `outside` (settled by a count of the
+  run's outside read and by no event of its log: its outcome is `pending` while the run's row in
+  `outside-reads.md` is owed or missing, and `next` owes its resolution once that row reads scored
+  or skipped, where the log's growth reopens nothing). `outcomes-<run>.md` gives each of its ids,
   and each `<parent run>:<id>` its `## Carried` names as a row under that whole name, and no other,
   one outcome, `held`, `falsified`, `unreached`, or `pending` while a live run's event
   has not come, and records the log's length it was read at on a line of its own,
@@ -118,7 +121,10 @@ It reads the central host's gathered copies of every host's runs, needing no ssh
 only an investigation's files, and stops, launches and merges nothing. With no verb it prints one row
 a run with its step: `run`, `open` with its trigger, or the step its investigation has reached, for
 a session that wants every run's place at once; `due` prints the same reading in a few lines, the
-owed steps only, as a timer takes it.
+owed steps only, as a timer takes it, and then one line for each outside read a cycle's
+`outside-reads.md` still holds as owed, which `next` also prints under an iteration that is done:
+the `outside` gate passes on an owed row, so these lines are where the debt stays in view until the
+row reads scored or skipped.
 
 1. **Trigger.** Whichever comes first: two promotions, twelve hours since the opening, a scored
    comparison that left no task untied, or an ending after a comparison. At a live run's trigger

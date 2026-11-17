@@ -24,9 +24,10 @@
  *   synthesis reads that comparison (operator, 10 November: "pause it after next comparison (ensure
  *   the comparison pause actually includes the synthesis of this)", "not directly after solves").
  * - `due` is the same reading as a timer takes it (`dueLines`): a head line with the count of steps
- *   owed and the oldest's hours, one line a step, and for each live run the count of files of the
- *   code a solve runs (`codeOf`, `tools/d2/campaign.ts`) that differ at the commit the command runs
- *   from, which it does not measure.
+ *   owed and the oldest's hours, one line a step, one line for each outside read a cycle still holds
+ *   as owed (`outsideOwed`; `next` says an iteration's own once it is done), and for each live run
+ *   the count of files of the code a solve runs (`codeOf`, `tools/d2/campaign.ts`) that differ at
+ *   the commit the command runs from, which it does not measure.
  * - `open` starts the investigation of one run, or of several as equals, under `.ana/wri/` of the
  *   main checkout, reading a frozen copy of any one still live (`wri.ts start --snapshot`), and marks
  *   the folder an iteration (`iteration.json`). Opening a live run is a deviation from the `pause`
@@ -92,10 +93,8 @@ import { confirmedIn, vettingFaults } from "#tools/wri/findings.ts";
 import { INVESTIGATION, REPORTS, SHARED, SYNTHESIS, VETTING } from "#tools/wri/index.ts";
 import { blankSections, reportPath } from "#tools/wri/investigation.ts";
 import {
-  COUNTED_LINE,
   carriedIn,
   carryOf,
-  countedOf,
   cycleViewOf,
   droppedOf,
   idsOf,
@@ -105,14 +104,14 @@ import {
   madeBy,
   names,
   notDoneOf,
-  OUTCOMES,
-  outcomesOf,
-  owedOf,
+  OUTSIDE,
+  outsideOf,
+  outsideOwed,
   pullOf,
   rowsOf,
   sectionOf,
-  staleOf,
   stillMissingOf,
+  unresolvedOf,
 } from "#tools/wri/ledger.ts";
 import { RECORD, recordOwed, recordStep } from "#tools/wri/record.ts";
 
@@ -124,8 +123,6 @@ const PLAN = "plan.md";
 const PROTOCOL = 2;
 /** The gates a session passed on purpose, each with its reason. */
 const DEVIATIONS = "deviations.md";
-/** One row a stopped jobstat run, in a cycle's folder: its reference's read on the outside benchmark. */
-const OUTSIDE = "outside-reads.md";
 /** The row of `deviations.md` that passes every gate of the forks' ledgers at once. */
 const FORKS = "forks";
 const LEVERS = join(import.meta.dir, "..", "references", "levers.md");
@@ -226,31 +223,12 @@ function ledgersOf(root: string, dir: string, name: string) {
   return { name, predictions: read(path ?? ""), outcomes };
 }
 
-/** What the outcomes ledger of `run`, beside its predictions at `path`, has left to resolve: each id
- *  its predictions owe (`owedOf`), its carried rows by their `<run>:<id>` included. */
-function outcomesOwed({ lengthOf }: Where, run: string, path: string): string[] | null {
+/** What the outcomes ledger of `run`, beside its predictions at `path`, has left to resolve
+ *  (`unresolvedOf`), its rows of the group `outside` against the run's row in `outside-reads.md`. */
+function outcomesOwed({ root, dir, lengthOf }: Where, run: string, path: string): string[] | null {
   const beside = path === "" ? "" : join(dirname(path), `outcomes-${run}.md`);
-  const predicted = owedOf(read(path));
-  const text = read(beside);
-  const outcomes = outcomesOf(text);
-  const known: readonly string[] = OUTCOMES;
-  const unsettled = predicted.filter((id) => !known.includes(outcomes.get(id) ?? ""));
-  const stray = [...outcomes.keys()].filter((id) => !predicted.includes(id));
-  const events = lengthOf(run);
-  // A row left unreached or pending reopens once the log of a run that has stopped grows past the
-  // count it was read at, since a run continued after its trigger may yet reach it.
-  const stale = staleOf(text, events);
-  const counted = countedOf(text);
-  const record = events === null ? "" : `, and record "${COUNTED_LINE} ${String(events)}" on its own line`;
-  const parts = [
-    unsettled.length > 0
-      ? `resolve ${unsettled.join(", ")} from the log as ${OUTCOMES.join(", ")} (pending only while its event has not come), each with its count or event and the time${record}`
-      : "",
-    stale.length > 0
-      ? `${stale.join(", ")} read unreached or pending at ${counted === null ? "no recorded count" : `${String(counted)} events`} and the log holds ${String(events)} now: resolve them again${record}`
-      : "",
-    stray.length > 0 ? `${stray.join(", ")} predicted nowhere in ${path}` : "",
-  ].filter((part) => part !== "");
+  const ledgers = { predictions: read(path), outcomes: read(beside), events: lengthOf(run) };
+  const parts = unresolvedOf(ledgers, outsideOf(root, dir).get(run), path);
   return parts.length === 0 ? null : [`${beside}: ${parts.join("; ")}`];
 }
 
@@ -314,10 +292,14 @@ function runGates(where: Where, run: string, group: readonly string[] = []): Gat
  *  aim"): a row that names it in a cycle's `outside-reads.md`, scored, skipped or still owed. */
 function outsideGate({ root, dir }: Where, run: string): Gate[] {
   if (!run.startsWith("jobstat")) return [];
-  const named = () =>
-    ledgerFiles(root, dir, OUTSIDE).some((path) => rowsOf(read(path), "run").some(([name]) => name === run));
   const owed = `${run} has no row in ${OUTSIDE} of its cycle's folder under ${root}: read its newest promoted reference on the eight tasks beside a fresh Starter (run-improvement-campaign, "A reference's read"), then add the row whose first cell is the run's name, with its scores, "skipped" with lane 27's grade or no promotion, or "owed" with what the read waits for`;
-  return [{ step: "outside", keys: [`outside:${run}`, "outside"], owed: () => (named() ? null : [owed]) }];
+  return [
+    {
+      step: "outside",
+      keys: [`outside:${run}`, "outside"],
+      owed: () => (outsideOf(root, dir).has(run) ? null : [owed]),
+    },
+  ];
 }
 
 /** An iteration's vetting has a row for each prediction of its runs. An id two runs share must be
@@ -388,6 +370,8 @@ function gatesOf(where: Where): Gate[] {
   // only until its synthesis is there.
   const owing = marked(dir) && (fixed(dir) || !existsSync(at(SYNTHESIS)));
   const record = recordStep(owing ? recordOwed(read(at(RECORD)), runs).length : 0, dir);
+  // An outside read its gate let pass as owed is said again once nothing else is.
+  const unread = () => outsideOwed(outsideOf(where.root, dir), [...runs, ...forks]);
   return [
     gate("instruct", () => {
       const blank = blankSections(read(at(SHARED)));
@@ -473,7 +457,7 @@ function gatesOf(where: Where): Gate[] {
     ),
     // The plan's own predictions are carried as its runs' are, and only a reason of their own passes it.
     ...only([{ step: "carry", keys: ["carry:plan"], owed: () => planOwed(where, plan, forks) }]),
-    { step: "done", keys: [], owed: () => [`#${pull} is measured by ${forks.join(", ")}`] },
+    { step: "done", keys: [], owed: () => [`#${pull} is measured by ${forks.join(", ")}`, ...unread()] },
   ];
 }
 
@@ -641,7 +625,7 @@ function standings(args: CommandArgs, repo: string, known: readonly Run[], parts
     return [{ row, last: Date.parse(events.at(-1)?.at ?? ""), commit, dir: folder?.dir ?? null, step }];
   });
   const shown = all.filter(({ row }) => row.live || row.compared > 0);
-  return { shown, silent: all.length - shown.length, moved: all.length, days, now };
+  return { shown, silent: all.length - shown.length, moved: all.length, days, now, root: iteration.root };
 }
 
 /** The view with no verb: one row a run, each with its step. */
@@ -750,9 +734,10 @@ export function unmeasured(repo: string, head: string, { row, commit }: Pick<Sta
 }
 
 function due(args: CommandArgs, repo: string, known: readonly Run[]): number {
-  const { shown, days, now } = standings(args, repo, known, args.positionals.slice(1));
+  const { shown, days, now, root } = standings(args, repo, known, args.positionals.slice(1));
   const head = gitMaybe(repo, "rev-parse", "HEAD") ?? "HEAD";
   for (const line of dueLines(shown, changedAt, now, days)) console.log(line);
+  for (const line of outsideOwed(outsideOf(root))) console.log(line);
   for (const each of shown.filter(({ row }) => row.live)) console.log(unmeasured(repo, head, each));
   return 0;
 }

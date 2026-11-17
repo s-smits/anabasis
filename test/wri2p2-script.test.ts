@@ -13,7 +13,7 @@ import {
   unmeasured,
 } from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
 import { clockTurns, progressOf as rowOf, triggerOf } from "#tools/runs/said.ts";
-import { forkOf, idsOf, outcomesOf, pullOf } from "#tools/wri/ledger.ts";
+import { forkOf, idsOf, OUTSIDE, outcomesOf, outsideOf, outsideOwed, pullOf } from "#tools/wri/ledger.ts";
 import { recordWith } from "#tools/wri/record.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import {
@@ -420,7 +420,7 @@ describe("the next step of an investigation", () => {
   });
 
   it("walks an iteration through its isolated lanes, each run's ledgers, the read across and a fork's carry", () => {
-    const { dir, cycle, write, ledger, step, lone } = folder("iteration", "r", true);
+    const { root, dir, cycle, write, ledger, step, lone } = folder("iteration", "r", true);
     expect(step()[0]).toStartWith("step: isolated");
     // A manifest counts by the lanes its sessions own, never by its name: one named for lane 4 that
     // holds lane 3 passes nothing, and lane 4 in the first manifest passes the gate.
@@ -486,7 +486,72 @@ describe("the next step of an investigation", () => {
     carried(fork, "r:P1");
     expect(step([fork])[0]).toContain(" names r:P2:");
     carried(fork, "r:P2");
-    expect(step([fork])).toEqual([`step: done · #602 is measured by ${fork}`]);
+    const done = `step: done · #602 is measured by ${fork}`;
+    expect(step([fork])).toEqual([done]);
+    // An outside read its gate let pass as owed is said again once the iteration is done, for its
+    // own runs and forks, and `due` says every owed row of the cycle. A scored or skipped row is
+    // silent in both.
+    const reads = (...rows: string[]) =>
+      ledger(OUTSIDE, `| run | read |\n| --- | --- |\n${rows.join("\n")}\n`);
+    const owed = (name: string) => `outside · ${name} · read still owed`;
+    const said = (lines: readonly string[]) => lines.map((line) => line.split(" in ")[0]);
+    reads(
+      `| ${fork} | **owed** (16 November): a login with room |`,
+      "| q | owed |",
+      "| s | scored, 5 of 8 |",
+    );
+    expect(said(step([fork]))).toEqual([done, owed(fork)]);
+    expect(said(outsideOwed(outsideOf(root)))).toEqual([owed(fork), owed("q")]);
+    reads(`| ${fork} | scored, 5 of 8 |`, "| q | skipped: no promotion |");
+    expect(step([fork])).toEqual([done]);
+    expect(outsideOwed(outsideOf(root))).toEqual([]);
+  });
+
+  it("keeps a prediction of the group outside pending until its run's outside read is scored or skipped, whatever the log does", () => {
+    const run = "jobstat-fresh-opus-forkedPR601";
+    const { root, dir, ledger, step, lone } = folder("outside-row", run, true);
+    lone(4);
+    const rule = "| --- | --- | --- |\n";
+    ledger(
+      `predictions-${run}.md`,
+      `| id | group | claim |\n${rule}| P1 | first | a |\n| \`O1\` | outside | b |\n| P2 | off-run | c |\n`,
+    );
+    const outcomes = (outside: string) =>
+      ledger(
+        `outcomes-${run}.md`,
+        `${table(["P1"], "held")}| O1 | ${outside} |\n| P2 | pending |\n\nLog events at resolution: 10\n`,
+      );
+    const reads = (kind: string) =>
+      ledger(OUTSIDE, `| run | digest | read |\n${rule}| ${run} | abc | ${kind} |\n`);
+    const first = (events: number) => step([], events)[0] ?? "";
+    // While the read is owed the row is pending, and the log's growth reopens the other pending row alone.
+    reads("owed: a login with room");
+    outcomes("pending");
+    expect(first(10)).toStartWith("step: vet");
+    expect(first(11)).toContain("P2 read unreached or pending at 10 events");
+    expect(first(11)).not.toContain("O1");
+    // The views call stale what the step reopens, and no more.
+    const views = ledgerViews(dir, root, () => 11);
+    expect(views).toContain(`| ${run} | P2 | pending, stale |`);
+    expect(views).toContain(`| ${run} | O1 | pending |`);
+    // An outcome written before the read is no outcome of it.
+    outcomes("held");
+    expect(first(10)).toContain(
+      "the run's outside read settles O1, and outside-reads.md does not hold it as scored",
+    );
+    // The read arriving reopens the row where the log stands still, and no other pending row with it.
+    reads("scored (16 November): 5 of 8");
+    outcomes("pending");
+    expect(first(10)).toContain("O1 read pending and the run's row in outside-reads.md is scored");
+    expect(first(10)).not.toContain("P2");
+    outcomes("falsified");
+    expect(first(10)).toStartWith("step: vet");
+    // A skipped read settles it as well: the row is then unreached.
+    reads("skipped: no promotion");
+    outcomes("pending");
+    expect(first(10)).toContain("is skipped: resolve");
+    outcomes("unreached");
+    expect(first(10)).toStartWith("step: vet");
   });
 
   it("owes each row a run carries one outcome of its own, under its carried name, and shows it in the views", () => {

@@ -86,6 +86,26 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## claude-mem
+
+- Source: https://github.com/thedotmack/claude-mem, at commit 82d3602e, Apache-2.0.
+- Copies: `vendor/claude-mem/`: `src/services/context/ContextBudget.ts`,
+  `src/services/context/types.ts` and `src/shared/text-truncation.ts`, each verbatim but for the
+  head comment that names it, beside upstream's `LICENSE` and `NOTICE`, which the folder keeps as
+  they are. The licence's text is that folder's `LICENSE`, the same Apache License 2.0 as under
+  sandbox-runtime below. Upstream's `NOTICE`:
+
+```text
+Claude-Mem
+Copyright 2026 Alex Newman
+
+This product includes software developed for the Claude-Mem project.
+
+Licensed under the Apache License, Version 2.0.
+
+If other attributions are required by dependencies or included code, add them here.
+```
+
 ## foxglove eslint-plugin
 
 - Source: https://github.com/foxglove/eslint-plugin, `rules/no-boolean-parameters.js` at commit

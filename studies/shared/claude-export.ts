@@ -25,23 +25,18 @@
  * - `agent/tools-spec.json` and `agent/tools.ts` are dropped: Claude Code has its own tools and no
  *   loader for a harness's, so the note names each declared tool as unavailable, and `export.json`
  *   lists both files.
- * The harness itself stays under `harness/`, which the runner does not copy, for provenance.
+ * The harness's other files stay under `harness/`, which the runner does not copy, for provenance;
+ * its tool tree is there no longer, since until 17 November a tree held it twice (17,111 of a
+ * reference's 34,265 entries) and every copy to another machine carried both.
  *
  * Claude Code is another runtime than the one the harness was built in (pi's tools, an answer file
  * and `submit`), so a score of the export measures the harness after that transfer, and is read so.
  * Until 3 November the JobBench pilot planned a one-off script in a scratch folder for this.
  */
-import {
-  existsSync,
-  cpSync,
-  mkdirSync,
-  readdirSync,
-  renameSync,
-  writeFileSync,
-} from "#src/meta/filesystem.ts";
+import { existsSync, mkdirSync, readdirSync, renameSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE } from "#src/meta/bundle-layout.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
-import { join, relative } from "#src/meta/path.ts";
+import { dirname, join, relative } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { keyIfDefined, keyIfNotNull } from "#src/meta/optional-key.ts";
 import { compareCodeUnits } from "#src/meta/stable-json.ts";
@@ -77,9 +72,10 @@ export async function exportForClaudeCode(
       : toolTreeSearchDirs(harness.toolTree).map((dir) =>
           join(TOOLCHAIN, relative(harness.toolTree ?? "", dir)),
         );
-  // Relative links stay relative, where `cpSync` alone points each at the tree it copied from.
+  // Moved out of the copy `placeHarness` made, so a tree holds its programs once and every link as it was.
   if (harness.toolTree !== null) {
-    cpSync(harness.toolTree, join(part, TOOLCHAIN), { recursive: true, verbatimSymlinks: true });
+    mkdirSync(dirname(join(part, TOOLCHAIN)), { recursive: true });
+    renameSync(harness.toolTree, join(part, TOOLCHAIN));
   }
   const rebuilt = await rebuildForeignPython(join(part, TOOLCHAIN), place, python);
   const programs = searched.flatMap((dir) =>

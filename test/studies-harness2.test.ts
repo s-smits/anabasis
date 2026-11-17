@@ -363,6 +363,8 @@ describe("a harness written out for Claude Code", () => {
     expect(guide).toContain("They are yours to run, read and change");
     expect(guide).not.toContain("export PATH");
     expect(readFileSync(join(into, "scripts", "toolchain", "bin", "mark"), "utf8")).toContain("echo marked");
+    // The tree holds the programs once: the copy of the harness kept for provenance has none.
+    expect(existsSync(join(into, "harness", ".toolchain"))).toBe(false);
     // Installed as a rollout installs it, the program starts by the path the note gives.
     const workspace = join(root, "claude-tooled-workspace");
     installTree(into, workspace);

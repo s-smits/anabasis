@@ -65,6 +65,12 @@ const laneOf = (reference: string) => reference.split(".")[0] ?? reference;
 const plain = (cell = "") => cell.replaceAll(/[*`]/gu, "").trim();
 const firstWord = (cell: string) => /^[a-z]+/u.exec(cell.toLowerCase())?.[0] ?? "";
 
+/** The ids of the findings `vetting` confirms, which its plan answers one by one. */
+export const confirmedIn = (vetting: string): string[] =>
+  findingsIn(vetting)
+    .filter(({ verdict }) => verdict === "confirmed")
+    .map(({ id }) => id);
+
 /** The findings of `vetting`: each row of each table with a `verdict` column whose verdict begins
  *  with one of `VERDICTS`. A prediction's row, resolved as held or falsified, is no finding. */
 export function findingsIn(vetting: string): Finding[] {

@@ -54,6 +54,15 @@ export function recordOwed(record: string, names: readonly string[]): string[][]
   });
 }
 
+/** What an iteration's step says while `owed` reads of the folder `dir` are owed: who makes them and
+ *  when, and the one command; nothing once none is. */
+export const recordStep = (owed: number, dir: string): string[] =>
+  owed === 0
+    ? []
+    : [
+        `${String(owed)} read(s) of the record across runs are owed, which the primary makes while the lane sessions work: bun ${RECORD_VERB} --out ${dir}`,
+      ];
+
 /**
  * `record` with each read of `names` it still owes run through `run` and written under it: the
  * command as its heading, then when it ran, how many lane reports stood written (`stand`) and its

@@ -11,6 +11,7 @@
  *   bun tools/wri/wri.ts lanes --out .ana/wri/20261008-truss [--lanes 1-4,7] [--agents 3] [--regroup]
  *   bun tools/wri/wri.ts collect --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts synthesis --out .ana/wri/20261008-truss
+ *   bun tools/wri/wri.ts findings [--root <dir>] [--window 7] [--until <date>]
  *   bun tools/wri/wri.ts grade --log .ana/d2/truss/log.jsonl [--bundle <pack>] --task <taskId> --answer <file> [--set <path>=<json>]...
  *   bun tools/wri/wri.ts grade --log <log> [--bundle <pack>] --solve <id> [--set <path>=<json>]...
  *   bun tools/wri/wri.ts grade --log <log> [--bundle <pack>] --answers <dir>
@@ -48,6 +49,9 @@
  * - `collect` holds every expected report to its shape and writes `reports.md`. It exits 1 until
  *   every report is there and valid.
  * - `synthesis` renders the synthesis session's prompt over the reports as they stand.
+ * - `findings` prints the ledger of every investigation's vetted findings under `--root`
+ *   (`findingsLedger`, `tools/wri/findings.ts`): the `--window` days up to `--until` beside the
+ *   window before, by verdict, standing finding, importance, fate and lane, as counts and keys.
  * - `derive` runs every deterministic reader of one log over it (`READERS`, `tools/wri/derive.ts`)
  *   into the main worktree's `data/derived/<campaign>@<path>/`, one folder a log path and one file
  *   a reader, replacing the folder whole where the log or the reading commit moved. It prints one line; `--verbose` prints every
@@ -121,6 +125,7 @@ import {
   weightOf,
 } from "./investigation.ts";
 import { INVESTIGATION, investigationIndex, REPORTS, SHARED } from "./index.ts";
+import { findingsLedger } from "./findings.ts";
 import { overview } from "./read.ts";
 import { buildPackets, joinPackets } from "./packets.ts";
 import { gradesIn, HOURS, trajectoryText } from "./trajectory.ts";
@@ -134,7 +139,7 @@ interface Investigation {
 
 const REPO = resolve(import.meta.dir, "..", "..");
 const USAGE =
-  "usage: bun tools/wri/wri.ts read | climb | trajectory | start | lanes | collect | synthesis | grade | derive | reader | index";
+  "usage: bun tools/wri/wri.ts read | climb | trajectory | start | lanes | collect | synthesis | findings | grade | derive | reader | index | packets";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -161,6 +166,8 @@ const { values, positionals } = parseArgs({
     graders: { type: "string" },
     join: { type: "boolean" },
     hours: { type: "string" },
+    window: { type: "string" },
+    until: { type: "string" },
     help: { type: "boolean" },
   },
 });
@@ -530,6 +537,12 @@ async function main(): Promise<number> {
     return grade({ log: oneLog(), bundle, task, answer, solve, set, answers });
   }
   if (verb === "derive") return deriveStep();
+  if (verb === "findings") {
+    const root = resolve(values.root ?? join(mainTree(REPO), ".ana", "wri"));
+    const until = values.until === undefined ? Date.now() : Date.parse(`${values.until}T00:00:00Z`);
+    console.log(findingsLedger(root, until, Number(values.window ?? "7")).join("\n"));
+    return 0;
+  }
   if (verb === "index") {
     const checkout = mainTree(REPO);
     const root = resolve(values.root ?? join(checkout, ".ana", "wri"));
@@ -583,7 +596,8 @@ async function main(): Promise<number> {
     console.log(lines.join("\n"));
     return 0;
   }
-  const step = Object.entries({ start, lanes, collect, synthesis }).find(([name]) => name === verb)?.[1];
+  const steps = { start, lanes, collect, synthesis };
+  const step = Object.entries(steps).find(([name]) => name === verb)?.[1];
   if (step === undefined) throw new Error(USAGE);
   return step();
 }

@@ -54,7 +54,9 @@ import {
   owedOf,
   pullOf,
   sectionOf as linesUnder,
+  tablesOf,
 } from "./ledger.ts";
+import { VERDICTS } from "./findings.ts";
 
 type Counts = Readonly<Record<string, number>>;
 
@@ -120,7 +122,6 @@ const INDEX = "INDEX.md";
 /** The quoted sentence's length, so a constraint is named and no hidden value is carried whole. */
 const QUOTE = 300;
 const NAMES_SHOWN = 3;
-const VERDICTS = ["confirmed", "plausible", "refuted"] as const;
 const PREDICTIONS = ["held", "falsified", "unreached"] as const;
 const WORDS = new RegExp(`\\b(${[...VERDICTS, ...PREDICTIONS].join("|")})\\b`, "u");
 const PREDICTED = new RegExp(`\\b(${PREDICTIONS.join("|")})\\b`, "u");
@@ -150,29 +151,6 @@ function sectionOf(markdown: string, test: (heading: string) => boolean): string
   const rest = lines.slice(from + 1);
   const end = rest.findIndex((line) => line.startsWith("## "));
   return (end === -1 ? rest : rest.slice(0, end)).join("\n");
-}
-
-const cellsOf = (line: string): string[] =>
-  line
-    .trim()
-    .replace(/^\|/u, "")
-    .replace(/\|$/u, "")
-    .split(/(?<!\\)\|/u)
-    .map((cell) => cell.trim());
-
-/** Every Markdown table in `text`: its header cells, lower-cased, and its data rows. */
-function tablesOf(text: string): { header: string[]; rows: string[][] }[] {
-  const lines = text.split("\n");
-  return lines.flatMap((line, at) => {
-    const head = lines[at - 1];
-    if (!/^\|\s*:?-{3,}/u.test(line) || head?.trim().startsWith("|") !== true) return [];
-    const rows = [];
-    for (const each of lines.slice(at + 1)) {
-      if (!each.trim().startsWith("|")) break;
-      rows.push(cellsOf(each));
-    }
-    return [{ header: cellsOf(head).map((cell) => cell.toLowerCase()), rows }];
-  });
 }
 
 /** The first sentence of the section's first paragraph, on one line and cut at `QUOTE`. */

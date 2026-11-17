@@ -62,6 +62,29 @@ function cellsOf(line: string): string[] | null {
     .map((cell) => cell.trim().replaceAll("`", ""));
 }
 
+/** Every Markdown table in `text`: its header cells, lower-cased, and its data rows, each cell as
+ *  written; a reader that knows no header's first cell reads a table by a column's name. */
+export function tablesOf(text: string): { header: string[]; rows: string[][] }[] {
+  const split = (line: string) =>
+    line
+      .trim()
+      .replace(/^\|/u, "")
+      .replace(/\|$/u, "")
+      .split(/(?<!\\)\|/u)
+      .map((cell) => cell.trim());
+  const lines = text.split("\n");
+  return lines.flatMap((line, at) => {
+    const head = lines[at - 1];
+    if (!/^\|\s*:?-{3,}/u.test(line) || head?.trim().startsWith("|") !== true) return [];
+    const rows = [];
+    for (const each of lines.slice(at + 1)) {
+      if (!each.trim().startsWith("|")) break;
+      rows.push(split(each));
+    }
+    return [{ header: split(head).map((cell) => cell.toLowerCase()), rows }];
+  });
+}
+
 /** The rows of every table in `text` whose header's first cell is `head`, past each header's rule. */
 export function rowsOf(text: string, head: string): string[][] {
   const rows: string[][] = [];

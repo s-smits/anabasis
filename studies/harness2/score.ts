@@ -10,7 +10,7 @@
  *     --api-base <url> [--harness <kept>] [--tasks <profession/taskN,...>] [--judge-log <shim.jsonl>]
  *     [--solve-only] [--rubrics <file>] [--cap <chars>] [--dry-run] --yes
  *   bun studies/harness2/score.ts table --out <dir> [--tasks <profession/taskN,...>]
- *   bun studies/harness2/score.ts tree --arm <arm> --name <name> --out <dir> --for <linux-x64>
+ *   bun studies/harness2/score.ts tree --arm <arm> --name <name> --out <dir> --for <linux-x64> [--python <3.12>]
  *     [--harness <kept>]
  *
  * `tree` writes a campaign's or the starter's tree and its build's price for another machine and
@@ -173,6 +173,7 @@ export interface Values {
   readonly "dry-run"?: boolean;
   readonly yes?: boolean;
   readonly for?: string;
+  readonly python?: string;
 }
 
 /** How one judgement runs: the transport, the shim's log, the rubrics and any wider cut. */
@@ -198,6 +199,7 @@ const OPTIONS = {
   "dry-run": { type: "boolean" },
   yes: { type: "boolean" },
   for: { type: "string" },
+  python: { type: "string" },
 } as const;
 
 /** `--cap` as a count of characters: a whole number above judge.py's own cut, or a refusal. */
@@ -562,7 +564,9 @@ export async function score(values: Values): Promise<void> {
   if (values.out === undefined || values["api-base"] === undefined || values.jb === undefined) {
     throw new Error("score needs --arm, --name, --out, --jb and --api-base");
   }
-  if (values.for !== undefined) throw new Error("--for is the tree verb's; a rollout runs on this machine");
+  if (values.for !== undefined || values.python !== undefined) {
+    throw new Error("--for and --python are the tree verb's; a rollout runs on this machine");
+  }
   // An official record keeps judge.py's own cut, so a wider one reads only a deliverable judged again.
   const cap = capOf(values.cap);
   if (cap !== undefined && !(values.arm ?? "").startsWith("again:")) {
@@ -776,11 +780,15 @@ async function main(args: readonly string[]): Promise<void> {
   } else if (verb === "table" && values.out !== undefined) {
     table(resolve(values.out), tasksOf(values.tasks, PILOT_TASKS));
   } else if (verb === "tree" && values.out !== undefined && values.for !== undefined) {
-    const arm = await armOf(values, resolve(values.out), "", placeOf(values.for));
+    if (values.python !== undefined && !/^3\.\d+$/u.test(values.python)) {
+      throw new Error("--python takes a minor, as 3.12");
+    }
+    const place = { ...placeOf(values.for), ...keyIfDefined("python", values.python) };
+    const arm = await armOf(values, resolve(values.out), "", place);
     console.log(`arm ${arm.name}: ${arm.harness}, for ${values.for}, under ${arm.tree("")}`);
   } else {
     throw new Error(
-      "usage: score.ts score --arm <arm> --name <name> --out <dir> --jb <dir> --api-base <url> --yes | table --out <dir> [--tasks <list>] | tree --arm <arm> --name <name> --out <dir> --for <linux-x64>",
+      "usage: score.ts score --arm <arm> --name <name> --out <dir> --jb <dir> --api-base <url> --yes | table --out <dir> [--tasks <list>] | tree --arm <arm> --name <name> --out <dir> --for <linux-x64> [--python <3.12>]",
     );
   }
 }

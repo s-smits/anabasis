@@ -204,6 +204,87 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
     expect(asked.filter((call) => call.startsWith("install"))).toHaveLength(2);
   });
 
+  it("builds a folder that names no minor for the place's python3, and one that names its minor for that", async () => {
+    // As a reference with no interpreter of its own leaves it: a launcher that takes the machine's
+    // `python3` with a flat `--target` folder of wheels for its campaign's 3.14, and a second folder
+    // laid out for 3.14 by name.
+    const flat = (name: string) => {
+      const tree = join(root, name);
+      put(tree, {
+        "bin/python3": '#!/bin/sh\nPYTHONPATH="$(dirname "$0")/../pylib" exec python3 "$@"\n',
+        "pylib/numpy/_core.cpython-314-darwin.so": MACH_O,
+        "pylib/numpy-2.5.4.dist-info/WHEEL": "Tag: cp314-cp314-macosx_11_0_arm64\n",
+        "pylib/numpy-2.5.4.dist-info/RECORD": "numpy/_core.cpython-314-darwin.so,,\n",
+        "lib/python3.14/site-packages/wrapt/_w.cpython-314-darwin.so": MACH_O,
+        "lib/python3.14/site-packages/wrapt-2.0.dist-info/RECORD": "wrapt/_w.cpython-314-darwin.so,,\n",
+      });
+      return tree;
+    };
+    const runs = { ...LINUX, python: "3.12" };
+    const { python, asked } = standIn();
+    expect(await rebuildForeignPython(flat("flat-for-place"), runs, python)).toStrictEqual({
+      interpreters: [],
+      distributions: ["numpy==2.5.4 for CPython 3.12", "wrapt==2.0"],
+    });
+    expect(asked.toSorted()).toStrictEqual(["install numpy==2.5.4 for 3.12", "install wrapt==2.0 for 3.14"]);
+    // Where the place's minor has no build, the folder is built for its own, as before.
+    const tried: string[] = [];
+    const none: PythonFor = {
+      interpreter: () => null,
+      install: (target, requirement, version) => {
+        tried.push(`${requirement} for ${version}`);
+        if (version === "3.12") return "no wheel for 3.12";
+        put(target, { [`${requirement.split("==")[0] ?? ""}/ok.py`]: "\n" });
+        return null;
+      },
+    };
+    expect((await rebuildForeignPython(flat("flat-own"), runs, none))?.distributions).toStrictEqual([
+      "numpy==2.5.4",
+      "wrapt==2.0",
+    ]);
+    expect(tried.toSorted()).toStrictEqual([
+      "numpy==2.5.4 for 3.12",
+      "numpy==2.5.4 for 3.14",
+      "wrapt==2.0 for 3.14",
+    ]);
+    // Wheels already built for the place's system, but for another minor than its python3, as a
+    // Builder installs with `--python-platform`: installed again for that minor, the old files gone.
+    const native = (name: string) => {
+      const tree = join(root, name);
+      put(tree, {
+        "pylib/numpy/__init__.py": "# numpy 2.5.4\n",
+        "pylib/numpy/_core.cpython-314-x86_64-linux-gnu.so": elf("numpy 314"),
+        "pylib/numpy-2.5.4.dist-info/WHEEL": "Tag: cp314-cp314-manylinux_2_27_x86_64\n",
+        "pylib/numpy-2.5.4.dist-info/RECORD":
+          "numpy/__init__.py,,\nnumpy/_core.cpython-314-x86_64-linux-gnu.so,,\nnumpy-2.5.4.dist-info/RECORD,,\n",
+      });
+      return tree;
+    };
+    const moved = native("native-other-minor");
+    expect(await rebuildForeignPython(moved, runs, standIn().python)).toStrictEqual({
+      interpreters: [],
+      distributions: ["numpy==2.5.4 for CPython 3.12"],
+    });
+    expect(
+      ["_core.cpython-314-x86_64-linux-gnu.so", "_core.cpython-312-x86_64-linux-gnu.so"].map((file) =>
+        existsSync(join(moved, "pylib/numpy", file)),
+      ),
+    ).toStrictEqual([false, true]);
+    expect(await rebuildForeignPython(native("native-unknown-minor"), LINUX, standIn().python)).toBeNull();
+    // A tree that carries its own interpreter of the folder's minor reads it with that one.
+    const own = macTree("flat-with-own", {
+      "pylib/numpy/_core.cpython-312-darwin.so": MACH_O,
+      "pylib/numpy-2.5.4.dist-info/WHEEL": "Tag: cp312-cp312-macosx_11_0_arm64\n",
+      "pylib/numpy-2.5.4.dist-info/RECORD": "numpy/_core.cpython-312-darwin.so,,\n",
+    });
+    const carried = standIn();
+    await rebuildForeignPython(own, { ...LINUX, python: "3.14" }, carried.python);
+    expect(carried.asked.filter((call) => call.startsWith("install"))).toStrictEqual([
+      "install numpy==2.5.4 for 3.12",
+      "install numpy==2.5.4 for 3.12",
+    ]);
+  });
+
   it("touches nothing and asks nothing of a tree whose programs already run here", async () => {
     const tree = join(root, "native");
     put(tree, { "bin/tool": elf("native"), [`${SITE}/six.py`]: "# six\n" });

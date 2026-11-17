@@ -30,7 +30,7 @@ to go in one sitting, is the session's judgement. Read the script first and deci
 | a fix is ready | stack-pr's `stack.ts`, repository-practice's `preflight.ts` | step 4, its before-and-after, then step 5 |
 | a run bills while its milestone stays put | `runs pulse <name>`, `wri.ts read --log <log>` | "A stall", then "The walk" |
 | a step has stood for two days, or two sessions hold one step | the hours `due` prints; the rows of `cycle.md` | take it, pass it in `deviations.md`, or name its one holder in `cycle.md` |
-| a jobstat run has promoted twice, or has stopped with a promoted reference no read has scored | the last read's prediction file; `score.ts table` over the store | "The outside aim": the prediction, the dry run, the rollouts started detached, the run's row in `outside-reads.md`, and the iteration's next step at once |
+| a jobstat run has promoted twice, or has stopped with a promoted reference no read has scored | the last read's prediction file; `score.ts table` and `compare.ts levels` over the store | "The outside aim": the prediction, the dry run, the rollouts started detached, the run's row in `outside-reads.md`, and the iteration's next step at once |
 | a handover is due, or a timer fires with nothing to do | `timers.ts <the session's transcripts>` | "Timers": retire or retime it; then the five points |
 
 ## The release cycle
@@ -511,7 +511,25 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    operator's word, and never replaces the official score.
 5. **Read** with one `score.ts table --out <store> --tasks <list>` for each part, since the table
    sums an arm only where it holds every task named and counts every task but a profession's first
-   as fair, and report its `fair uncut` block beside the fair one. A session that a login's limit or the provider cut is refused: it stays unjudged, and
+   as fair, and report its `fair uncut` block beside the fair one. The table prints the criteria
+   the judge passed beside the points, since a rubric pays its weight only where every criterion
+   passes and points alone magnify a near tie. Then read the two arms at every grain:
+
+   ```sh
+   bun studies/harness2/compare.ts levels --dataset <store>/dataset --of <the reference's label> --of <the Starter's>
+   bun studies/harness2/compare.ts levels --dataset <store>/dataset --of <the Starter's> --of <the previous sitting's Starter>
+   ```
+
+   The first prints each task, every rubric the arms split with the side that won it, and how
+   many of each arm's shell commands name the harness's program folder, with those of them that
+   only look at it; the second gives the Starter's spread at the same grain. `--tasks <list>`
+   reads one part alone, as the table does. The folder count bounds the use of a harness's
+   programs from above and proves none, and the guide reaches a rollout whatever its commands
+   do. Without `--salt` the two commands open every task, so where a review is to follow
+   (step 7), freeze its ledger first and pass the ledger's digest as `--salt`: half the tasks
+   then stay sealed (comparison-review, steps 1 and 2). Both read the gathered copy in
+   `data/bench/<machine>` as they read the store, call no model and print ids, weights and counts
+   only, so their lines go into the report as they are. A session that a login's limit or the provider cut is refused: it stays unjudged, and
    the same command rolls it again (rule 7). A rollout that ended at its own 5 dollars or 3600 s is
    scored on what it delivered, as a solve that ends at a limit is its side's fail. No rollout is
    run again because its score disappoints.
@@ -526,7 +544,9 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
 8. **Resolve and record.** Settle each prediction in the read's file with the table's counts, add
    one row to `cycle.md`, and carry the outside row's new value to `docs/plan.md` in the
    iteration's pull request. promotion-tuner's `trend.ts --bench <store>` then sets every arm on
-   record beside the promotion it names, where a climb the benchmark does not reward shows. A read
+   record beside the promotion it names, where a climb the benchmark does not reward shows, and
+   it alone places an arm above, inside or below the Starter's spread: run it once for each part
+   (`--bench-tasks <list>`), and act on the fair five's place. A read
    moves no campaign, query or promotion however it falls. Below
    the Starter beyond its spread, check the carrying first. Inside the spread, nothing follows but
    the next read. Above Harness²'s held-out arm beyond the spread, ask the operator for the 20-task
@@ -534,6 +554,32 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
 9. **Clear up after every bench**: once an arm's records are in `judged/`, move its rollout
    workspaces (`hevo_ws_cc` under the temporary directory) to the Trash, and keep the store's
    `trees/`, `dataset/` and `judged/`, which the records point to.
+
+### From a read to the next run
+
+The reads repeat, one for each jobstat run's newest promoted reference, until a reference stands
+above the Starter beyond its spread on tasks no read has opened. Nothing in that repetition is a
+new rule: the steps above make each read, `trend.ts --bench` places it, and the owner below takes
+it from there.
+
+| The read's place | What follows | Owner |
+| --- | --- | --- |
+| below the Starter, beyond its spread | the conditions and the carrying are checked first and a defect there is fixed before the next read, each arm then rolled afresh; only then is the read reviewed for the harness | step 8; `AGENTS.md`, section 10 |
+| inside the spread | the next run's read, and nothing else | step 8 |
+| above the Starter, beyond its spread | the next run's read; the eight tasks have been read to explain results, so a reference built since is fitted to them and the place is a direction | step 6 |
+| above Harness²'s held-out arm, beyond the spread | the operator is asked for the 20-task comparison | step 8 |
+
+A review's lead reaches the next run only through comparison-review's backtrack questions and its
+step 11: one prediction in that run's predictions file, settled by a count in the campaign's own
+log. The benchmark's counts (the table, `levels`, the folder line) describe a read and settle the
+read's own predictions; none of them tests, keeps or reverts a change to the system, since a change
+chosen by them is fitted to the eight tasks. The next fork so carries what the stack holds, and the
+outside row moves as a consequence or does not.
+
+The claim is the 20-task comparison's alone (step 6), and its set, its size and its paying login
+are the operator's. Two of its terms are open (`docs/backlog/jobbench-scoring.md`, item 22):
+`compare.ts plan` closes a burned task's whole profession, which leaves 7 of the 20 unread, and
+`compare.ts run` rolls three tasks at once where a read here rolls one.
 
 ## Milestones
 

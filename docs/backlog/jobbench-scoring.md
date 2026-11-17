@@ -192,6 +192,16 @@ already answers the question; level with it is a strong reading and above it the
     Python package folders and whole interpreters, so the same package versions installed for that
     platform), which changes what a solver is given and is the operator's decision. A `tree:` arm
     is not checked.
+22. **Fix the confirming comparison's set and conditions before a read claims.** The eight tasks
+    of the outside reads have been read to explain results, so they steer and cannot confirm,
+    and the 20 of item 17 are the set that can. Two terms are open and are the operator's.
+    The set: `compare.ts plan` closes the whole profession of a burned task (`fixTerms`), and
+    the eight lie in five professions holding 13 of the 20, so 7 tasks in three professions
+    remain, where a burn by task would leave 12. The conditions: `compare.ts run` rolls three
+    tasks at once (`AT_ONCE`), and an outside read rolls one at a time on a machine kept idle,
+    so a comparison rolled as it stands is read under another load than every read before it.
+    No reader counts consecutive reads above the Starter either, and none is added: a count of
+    reads on the eight tasks would be a second claim on a set that can make none.
 
 ## How it came to be
 
@@ -352,9 +362,24 @@ already answers the question; level with it is a strong reading and above it the
   agent's own guards refused 1 command of the built arm and 3 and 4 of the Starters. The judge
   passed 174 against 176 criteria of 225 (165 on 13 November). The two arms differ on 9 rubrics of
   64, each by one criterion (7 lost, 2 won), and 28 of the 36 points lie on one task; the two
-  Starter sittings differ on 12 rubrics and 44 points, so the read names no winner. As on
-  9 November, no program of the harness ran: 0 of the built arm's 140 shell commands, in 8
-  rollouts. What it built answers its own exam's estimation problems, and the benchmark's tasks
-  ask for documents, so the benchmark read the guide alone. The table now prints the criteria
+  Starter sittings differ on 12 rubrics and 44 points, so the read names no winner. The
+  rollouts used the harness's programs little: of the built arm's 140 shell commands in 8
+  rollouts, 17 name its program folder and 8 of those only look at it (`compare.ts levels`,
+  which now prints both counts). Of the other 9, counted once by command kind, 3 start the
+  folder's interpreter, 4 in 3 rollouts start a program whose path they hold in a shell
+  variable, and 2 hold such a path and start nothing from it. The first report of this read
+  said 0 of 140 and its correction 3, both counted too low. What it built answers its own
+  exam's estimation problems, and the benchmark's tasks ask for documents; the guide reaches
+  every rollout as `CLAUDE.md`, so the count says how little the programs were used and not
+  that the harness went unread. The table now prints the criteria
   (item 16). What a campaign's exam asks for is the query's and the Examiner's, and so the
   operator's.
+- **17 November.** The operator asked for a loop "to automatically keep iterating until >> Starter
+  score". Its first text in run-improvement-campaign settled and reverted a change by a count of
+  the benchmark, placed a read by a rule of its own beside `trend.ts --bench`, and named a
+  confirmation `compare.ts plan` refuses. Two read-only reviews found all three, and the text is
+  now a table of what follows each place of a read, each row owned by a rule that stood before
+  (item 22 holds the two terms left open). The placer now reads one part, and it places the
+  reference of 16 November inside the Starter's spread on the fair five (162 points against 136 to
+  216 of 296) as on all eight (270 against 210 to 314 of 518), so nothing follows from that read
+  but the next one.

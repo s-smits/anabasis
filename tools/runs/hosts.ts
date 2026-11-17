@@ -235,7 +235,10 @@ export async function askedScript(
 }
 
 /** The host that holds each of `names`, every host `ANA_HOSTS` lists asked at once. */
-async function holders(names: readonly string[], here: ReadonlySet<string>): Promise<Map<string, Host>> {
+export async function holders(
+  names: readonly string[],
+  here: ReadonlySet<string>,
+): Promise<Map<string, Host>> {
   const held = new Map<string, Host>();
   if (names.length === 0) return held;
   for (const { host, lines } of await asked(["holds", ...names])) {

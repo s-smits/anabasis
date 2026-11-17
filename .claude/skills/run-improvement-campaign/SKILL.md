@@ -508,6 +508,19 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    The export replaces the harness's interpreter and compiled distributions with the other
    machine's at the same versions and names them under `rebuilt` in `export.json`, or refuses
    (`studies/shared/foreign-python.ts`); the dry run there finds the tree and reads no campaign.
+
+   Where `.env.runs` names the machine, its store and its sitting command (`ABLATION_HOST`,
+   `BENCH_STORE`, `BENCH_SITTING`), one command runs this step and the next in order and stops at
+   the first that fails: the export on the host that holds the run, one carry into the store, the
+   exit code of the tree's own `python3` there, a dry run of each arm, then the reference with a
+   Starter queued behind it.
+
+   ```sh
+   bun run runs outside <campaign> --as <label> [--harness <kept>] [--login N]   # the plan; --yes runs it
+   ```
+
+   Without `--yes` it starts nothing, so the prediction file is written from its plan first. It
+   refuses while an arm holds the machine, and rolls a label the store already holds as it stands.
 4. **Run, detached, on the operator's standing word**, which covers the moment and the size
    above: the eight tasks, the reference and a Starter beside it at one rollout a task, on a login
    with room chosen as a keeper chooses one; each read's login and bill go into `cycle.md`. A larger

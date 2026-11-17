@@ -62,6 +62,8 @@ export type Place = Readonly<{
   mac: boolean;
   machine: number;
   roots: readonly string[] | null;
+  /** The minor (`3.12`) of the `python3` a rollout there finds first, where it is known. */
+  python?: string;
 }>;
 
 /** A benchmark's container, which holds of a host's paths only the system's. */

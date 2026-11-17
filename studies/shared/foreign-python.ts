@@ -15,7 +15,11 @@
  *   and each foreign shared library dropped, and what that CPython's `lib` holds that the tree
  *   lacks (its own `libpython`, `lib-dynload` and `_sysconfigdata`) is added, its `site-packages`
  *   left out.
- * Nothing else changes: pure-Python distributions, the harness's own programs and its data keep their
+ * A compiled distribution in a folder that names no minor (a flat `--target`) is read by the place's
+ * own `python3` where the tree carries no CPython of its minor, so where the place's minor is known
+ * (`Place.python`) it is installed again for that minor, built for its own where that has no build:
+ * on 17 November two references of 3.14 wheels imported 8 of 14 and 8 of 10 of their modules under
+ * the Linux benchmark's 3.12. Nothing else changes: pure-Python distributions, the harness's own programs and its data keep their
  * bytes, and a tree with no foreign program is not touched. A program no owner accounts for, a
  * version with no CPython for the place, a distribution with no build for it, and a compiled file
  * no reinstall puts back (a module no `RECORD` lists among an interpreter's packages, a
@@ -59,6 +63,8 @@ interface Distribution {
   readonly requirement: string;
   /** Its Python's minor version, or null where neither its folder nor its wheel tag names one. */
   readonly python: string | null;
+  /** Whether its folder names that minor (`lib/python3.14/site-packages`), not its wheel alone. */
+  readonly named: boolean;
 }
 
 /** A shared library, which no machine loads under another's suffix, so one dropped breaks nothing. */
@@ -77,12 +83,24 @@ export async function rebuildForeignPython(
   place: Place,
   python: PythonFor,
 ): Promise<Rebuilt | null> {
+  if (!existsSync(tree)) return null;
   const found = await foreignFiles(tree, place);
   const foreign = found.map(({ path }) => path);
-  if (foreign.length === 0) return null;
   const owners = await distributionsIn(tree);
+  // A folder that names no minor (a flat `--target`) is read by whichever `python3` comes first,
+  // which on the place is its own where the tree carries no CPython of the folder's minor; a
+  // distribution compiled for another minor there is installed again for the place's.
+  const carried = new Set(
+    [...new Bun.Glob("**/lib/python[0-9].*/os.py").scanSync({ cwd: tree, dot: true })].map((os) =>
+      basename(dirname(os)).slice("python".length),
+    ),
+  );
+  const minorOf = ({ named, python: own }: Distribution) =>
+    named || own === null || carried.has(own) ? own : (place.python ?? own);
+  const retargeted = [...new Set(owners.values())].filter((one) => minorOf(one) !== one.python);
+  if (foreign.length === 0 && retargeted.length === 0) return null;
   // One for each folder that holds it: `distributionsIn` makes one record a `RECORD`.
-  const distributions = new Set<Distribution>();
+  const distributions = new Set<Distribution>(retargeted);
   const prefixes = new Map<string, string[]>();
   const unowned: string[] = [];
   for (const { path, why } of found) {
@@ -113,9 +131,18 @@ export async function rebuildForeignPython(
   if (refused.length > 0) throw refusal(place, refused);
   const stage = mkdtempSync(join(tmpdir(), "ana-foreign-python-"));
   try {
+    // Where the place's minor has no build of a distribution, it is built for its own, as before.
     const staged = [...distributions].map((one, index) => {
       const into = join(stage, String(index));
-      return { one, into, why: python.install(into, one.requirement, one.python ?? "") };
+      const at = minorOf(one) ?? "";
+      const why = python.install(into, one.requirement, at);
+      if (why === null || at === one.python) return { one, into, python: at, why };
+      return {
+        one,
+        into: `${into}-own`,
+        python: one.python,
+        why: python.install(`${into}-own`, one.requirement, one.python ?? ""),
+      };
     });
     const missing = staged.flatMap(({ one, why }) =>
       why === null ? [] : [`no build of ${one.requirement} (${why})`],
@@ -123,7 +150,11 @@ export async function rebuildForeignPython(
     if (missing.length > 0) throw refusal(place, missing);
     for (const one of interpreters) one.apply();
     for (const { one, into } of staged) {
-      for (const path of foreign) if (owners.get(path) === one) rmSync(join(tree, path));
+      // Its files for another machine or minor go; those under `bin` stay, as the copy leaves `bin` out.
+      for (const [path, owner] of owners) {
+        const own = path.startsWith(`${one.site}/`) && !path.startsWith(`${join(one.site, "bin")}/`);
+        if (owner === one && (own || foreign.includes(path))) rmSync(join(tree, path), { force: true });
+      }
       // A console script `--target` writes under its own `bin` names the installer's interpreter, and a
       // harness's programs never called one there.
       cpSync(into, join(tree, one.site), {
@@ -132,14 +163,20 @@ export async function rebuildForeignPython(
         filter: (from) => from !== join(into, "bin"),
       });
     }
+    await foreignPrograms(tree, place);
+    return {
+      interpreters: interpreters.map(({ named }) => named),
+      distributions: [
+        ...new Set(
+          staged.map(
+            ({ one, python: at }) => `${one.requirement}${at === one.python ? "" : ` for CPython ${at}`}`,
+          ),
+        ),
+      ].toSorted(),
+    };
   } finally {
     rmSync(stage, { recursive: true, force: true });
   }
-  await foreignPrograms(tree, place);
-  return {
-    interpreters: interpreters.map(({ named }) => named),
-    distributions: [...new Set([...distributions].map(({ requirement }) => requirement))].toSorted(),
-  };
 }
 
 /** Each folder of `tree` that distributions are installed into, relative to the tree, with the
@@ -168,11 +205,13 @@ async function distributionsIn(tree: string): Promise<Map<string, Distribution>>
     const wheel = existsSync(join(tree, info, "WHEEL"))
       ? readFileSync(join(tree, info, "WHEEL"), "utf8")
       : "";
-    const [, major, minor] = /python(\d)\.(\d+)/u.exec(site) ?? /^Tag: cp(\d)(\d+)-/mu.exec(wheel) ?? [];
+    const named = /python(\d)\.(\d+)/u.exec(site);
+    const [, major, minor] = named ?? /^Tag: cp(\d)(\d+)-/mu.exec(wheel) ?? [];
     const distribution = {
       site,
       requirement: `${folder.slice(0, cut)}==${folder.slice(cut + 1)}`,
       python: major === undefined || minor === undefined ? null : `${major}.${minor}`,
+      named: named !== null,
     };
     for (const row of readFileSync(join(tree, record), "utf8").split("\n")) {
       const [, quoted, plain] = RECORD_PATH.exec(row) ?? [];

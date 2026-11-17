@@ -269,7 +269,7 @@ describe("a rollout's result", () => {
       mkdirSync(tree);
       writeFileSync(
         bin,
-        `#!/bin/sh\nmkdir output/tables\necho report > output/report.md\necho rows > output/tables/a.csv\necho '{"type":"result","subtype":"success","total_cost_usd":0.5}'\n`,
+        `#!/bin/sh\nmkdir output/tables\necho "report $CLAUDE_CODE_DISABLE_AUTO_MEMORY" > output/report.md\necho rows > output/tables/a.csv\necho '{"type":"result","subtype":"success","total_cost_usd":0.5}'\n`,
         { mode: 0o755 },
       );
       const billed = await rollout({ store, task, label }, tree, {
@@ -282,7 +282,8 @@ describe("a rollout's result", () => {
       });
       const delivered = join(store, task, "model_output", label);
       expect(billed).toBe(0.5);
-      expect(readFileSync(join(delivered, "report.md"), "utf8")).toBe("report\n");
+      // The session ran with Claude Code's own memory switched off.
+      expect(readFileSync(join(delivered, "report.md"), "utf8")).toBe("report 1\n");
       expect(readFileSync(join(delivered, "tables", "a.csv"), "utf8")).toBe("rows\n");
     } finally {
       rmSync(store, { recursive: true, force: true });

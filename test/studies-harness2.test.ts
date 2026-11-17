@@ -359,13 +359,15 @@ describe("a harness written out for Claude Code", () => {
     expect(record.unavailable).toStrictEqual(["doubled"]);
     const guide = readFileSync(join(into, "CLAUDE.md"), "utf8");
     expect(guide).toContain("doubled. They are not available here");
-    expect(guide).toContain("Its programs are `scripts/toolchain/bin/mark`. The guide names each without");
-    expect(guide).toContain("They are yours to run, read and change");
+    expect(guide).toContain("`scripts/toolchain/bin`, and nothing puts them on your PATH");
+    // The note names folders and the machine's own interpreter, and no file as a program to run.
+    expect(guide).toContain("This machine's own programs, its `python3` among them, are on it as usual");
+    expect(guide).not.toContain("scripts/toolchain/bin/mark");
     expect(guide).not.toContain("export PATH");
     expect(readFileSync(join(into, "scripts", "toolchain", "bin", "mark"), "utf8")).toContain("echo marked");
     // The tree holds the programs once: the copy of the harness kept for provenance has none.
     expect(existsSync(join(into, "harness", ".toolchain"))).toBe(false);
-    // Installed as a rollout installs it, the program starts by the path the note gives.
+    // Installed as a rollout installs it, the program starts from the folder the note gives.
     const workspace = join(root, "claude-tooled-workspace");
     installTree(into, workspace);
     const out = join(root, "claude-tooled-mark.out");
@@ -427,7 +429,7 @@ describe("a harness written out for Claude Code", () => {
     expect(guide).not.toContain("not available here");
     expect(guide).not.toContain("scripts/toolchain");
     expect(guide).toMatch(/limit on turns or time, .* does not hold here/u);
-    expect(guide).not.toContain("yours to run");
+    expect(guide).not.toContain("on your PATH");
     expect(existsSync(join(into, "scripts"))).toBe(false);
     await expect(exportForClaudeCode(into, "starter")).rejects.toThrow(/there already/u);
   });

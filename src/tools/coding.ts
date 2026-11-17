@@ -4,7 +4,9 @@
  * timeout, which states the host's default and maximum. pi's "Execute a bash command" holds as
  * written, since every seat command runs in the system's `/bin/bash` under the wall
  * (`src/tools/env.ts`). All calls are sequential because ending a command ends the work still
- * running in the seat's root.
+ * running in the seat's root. A command still running at the wall's default seconds is handed back
+ * and runs on to its timeout, the maximum unless it names one; the seat's next call waits for it
+ * and carries its ending, as a coding agent hands a long command to the background.
  *
  * The wall keeps two departures from pi's local environment: ~ names the seat's home, and a
  * whole-file read is capped at 16 MiB. Durable asks the environment to spill long shell output;
@@ -23,10 +25,16 @@ import {
 } from "@earendil-works/pi-durable/tools";
 import type { BashToolInput, ImageProcessor } from "@earendil-works/pi-durable/tools";
 import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
+import { withAbortSignal, withoutAbortSignal } from "@earendil-works/chord/context";
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
+import { isString } from "../meta/json-shape.ts";
 import { asError } from "../meta/runtime-values.ts";
 import { type CommandWall, heldSeconds, runWalled } from "./command.ts";
+
+/** A command handed back to its seat while it runs on: how it ended and its output's tail. */
+const RUNNING = new WeakMap<CommandWall, Promise<string>>();
+const TAIL_CHARS = 50 * 1024;
 
 /** The order pi lists its coding tools. */
 export const CODING_TOOLS = ["read", "bash", "edit", "write"] as const;
@@ -59,32 +67,39 @@ export function selectedCodingTools(presets: readonly string[]): CodingTool[] {
   return CODING_TOOLS.filter((name) => presets.includes(name));
 }
 
-/** Submit still reads its bounded answer through one walled command. */
+/** Submit still reads its bounded answer through one walled command, once a handed-back one ended. */
 export function wallExec(wall: CommandWall): WallExec {
   return async (command, options = {}) => {
+    await RUNNING.get(wall);
     const chunks: Buffer[] = [];
     const { exitCode } = await runWalled(wall, command, { ...options, onData: (data) => chunks.push(data) });
     return { exitCode, output: Buffer.concat(chunks) };
   };
 }
 
-/** Selected registrations, in pi's order; the seat supplies their walled api.env. */
+/** Selected registrations, in pi's order; the seat supplies their walled api.env. Each call first
+ *  waits for a command handed back earlier and carries its ending. */
 export function codingTools(wall: CommandWall, selected: readonly CodingTool[]): SeatTool[] {
   const wanted = new Set<string>(selected);
   const tools: SeatTool[] = [createReadTool({ images }), bashTool(wall), createEditTool(), createWriteTool()];
   return tools
     .filter((each) => wanted.has(each.name))
-    .map((each) => ({ ...each, executionMode: "sequential" }));
+    .map((each) => ({
+      ...each,
+      executionMode: "sequential",
+      execute: async (args, api, context) => {
+        const ran = RUNNING.get(wall);
+        RUNNING.delete(wall);
+        if (ran !== undefined) api.diagnostic({ severity: "info", code: "ran_on", message: await ran });
+        return await each.execute(args, api, context);
+      },
+    }));
 }
 
 /** What the command's own timeout allowed; the solve's earlier end has its own message. */
-function timeoutClause(
-  asked: number,
-  seconds: number,
-  { shellDefaultSeconds, shellMaxSeconds }: CommandWall["limits"],
-): string {
+function timeoutClause(asked: number, seconds: number, { shellMaxSeconds }: CommandWall["limits"]): string {
   if (seconds < shellMaxSeconds) {
-    return `\n\nThe host allows ${String(shellMaxSeconds)} s for one command, and ${String(shellDefaultSeconds)} s when you pass none, so there is more time to ask for.`;
+    return `\n\nThe host allows ${String(shellMaxSeconds)} s for one command, so there is more time to ask for.`;
   }
   if (asked > shellMaxSeconds) {
     return `\n\nYour ${String(asked)} s is above the ${String(shellMaxSeconds)} s the host allows one command, so it ran as ${String(seconds)} s, the most there is.`;
@@ -94,6 +109,7 @@ function timeoutClause(
 
 function bashTool(wall: CommandWall): SeatTool {
   const pi = createBashTool();
+  const { shellDefaultSeconds: back, shellMaxSeconds } = wall.limits;
   return {
     ...pi,
     // The host's own schema: pi's command, and a timeout described by the limits the wall holds.
@@ -101,33 +117,63 @@ function bashTool(wall: CommandWall): SeatTool {
       command: Type.String({ description: "Bash command to execute" }),
       timeout: Type.Optional(
         Type.Number({
-          description: `Timeout in seconds: ${String(wall.limits.shellDefaultSeconds)} when omitted, at most ${String(wall.limits.shellMaxSeconds)}; a value outside that range runs at the nearest end of it`,
+          description: `Timeout in seconds: at most ${String(shellMaxSeconds)}, and that when omitted; a command still running after ${String(back)} s is handed back to you and runs on`,
         }),
       ),
     }),
     execute: async (args: BashToolInput, api, context) => {
-      const { asked, seconds, nearEnd } = heldSeconds(args.timeout, wall);
+      const { asked, seconds, nearEnd } = heldSeconds(args.timeout ?? shellMaxSeconds, wall);
+      // Durable refuses a settled call's api and cancels its context, so a handed-back command
+      // runs on under its own signal and keeps its output's tail for the seat's next call.
+      let tail = "";
+      let handedBack = false;
+      const stop = new AbortController();
+      context.abortSignal?.addEventListener("abort", () => handedBack || stop.abort());
+      const own: typeof api = {
+        ...api,
+        output: (chunk, skipped) => {
+          tail = (tail + (isString(chunk) ? chunk : new TextDecoder().decode(chunk))).slice(-TAIL_CHARS);
+          if (!handedBack) api.output(chunk, skipped);
+        },
+        retainedOutput: () => (handedBack ? { text: tail, truncated: false } : api.retainedOutput()),
+        diagnostic: (note) => handedBack || api.diagnostic(note),
+      };
       // runWalled applies the remaining solve time too; leave that reduction to its one owner.
-      try {
-        return await pi.execute(
-          {
-            ...args,
-            timeout: Math.min(Math.max(asked, wall.limits.shellDefaultSeconds), wall.limits.shellMaxSeconds),
-          },
-          api,
-          context,
-        );
-      } catch (error) {
-        const cause = asError(error);
-        // Durable renders timeout errors from env.exec; command output cannot forge this exception.
-        if (!cause.message.startsWith("Command timed out after ")) throw error;
-        throw new Error(
-          `Command timed out after ${String(seconds)} seconds${
-            nearEnd ? NEAR_END : timeoutClause(asked, seconds, wall.limits)
-          }`,
-          { cause: error },
-        );
-      }
+      const run = pi
+        .execute(
+          { ...args, timeout: Math.min(Math.max(asked, back), shellMaxSeconds) },
+          own,
+          withAbortSignal(stop.signal, withoutAbortSignal(context)),
+        )
+        .catch((error: unknown) => {
+          // Durable renders timeout errors from env.exec; command output cannot forge this exception.
+          if (!asError(error).message.startsWith("Command timed out after ")) throw error;
+          throw new Error(
+            `Command timed out after ${String(seconds)} seconds${
+              nearEnd ? NEAR_END : timeoutClause(asked, seconds, wall.limits)
+            }`,
+            { cause: error },
+          );
+        });
+      const late = new Promise<undefined>((resolve) => {
+        AbortSignal.timeout(back * 1000).addEventListener("abort", () => resolve(undefined));
+      });
+      const early = seconds > back ? await Promise.race([run, late]) : await run;
+      if (early !== undefined) return early;
+      handedBack = true;
+      const ending = run.then(
+        (done) => done.diagnostics?.map((note) => note.message).join("; ") ?? "exit code 0",
+        (error: unknown) => asError(error).message,
+      );
+      RUNNING.set(
+        wall,
+        ending.then(
+          (how) => `The command handed back earlier has ended (${how}). The tail of its output:\n${tail}`,
+        ),
+      );
+      throw new Error(
+        `Command still running after ${String(back)} seconds; it runs on for up to ${String(seconds)} seconds in all. Its later output and ending come with your next tool call, which waits for it to end.`,
+      );
     },
   };
 }

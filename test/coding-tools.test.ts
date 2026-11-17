@@ -132,8 +132,15 @@ describe.skipIf(!osIsolationSupport().ok)("the coding tools on the OS wall", () 
   it("ends commands and their children on timeout and abort", async () => {
     await withSeat(async (wall, call) => {
       const command = 'i=0; while :; do i=$((i+1)); echo $i > "$HOME/beat"; echo ready; sleep 0.01; done';
-      await expect(call("bash", { command })).rejects.toThrow("timed out");
+      // Handed back at the default second, it runs on to the maximum, and the next call carries its end.
+      await expect(call("bash", { command })).rejects.toThrow("still running after 1 seconds");
+      const beat = Number(readFileSync(join(wall.dirs.home, "beat"), "utf8"));
+      const next = await call("bash", { command: "cat beat" });
+      expect(next.diagnostics.map((note) => note.message).join("")).toContain("timed out after 2 seconds");
+      expect(Number(next.text)).toBeGreaterThan(beat);
       await stopped(join(wall.dirs.home, "beat"));
+      // A command that ends before the default second returns as before, with nothing carried.
+      expect((await call("bash", { command: "echo quick" })).diagnostics).toEqual([]);
       const abort = new AbortController();
       // A marker proves the command began before the abort.
       const running = call("bash", { command: command.replaceAll("beat", "abort-beat") }, abort.signal);

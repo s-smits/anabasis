@@ -238,6 +238,20 @@ async function startable(
   return { commit, target };
 }
 
+/** Check a restart while the writer is still alive, including the dry run where the tree is ready. */
+export async function checkStart(
+  run: Run,
+  flags: readonly string[],
+  { login, at }: { login: string | undefined; at?: string | undefined },
+): Promise<void> {
+  const { commit, target } = await startable(run, flags, {
+    login,
+    at,
+    stands: "nothing was stopped or started",
+  });
+  if (target === commit) dryRun(run, flags, loginEnv(runtimeProcess.env, login), commit);
+}
+
 /** Start the campaign command for `run` on `flags` in its worktree, as `login` where named and at
  *  `at` where named, once every refusal of the head comment is passed and its dry run passed, and
  *  say whether it is running three seconds on. */
@@ -445,8 +459,7 @@ export async function continueRun(args: readonly string[]): Promise<void> {
     };
     await pauseAt(run, values.after, `runs continue on ${payer}`, async () => {
       if (left() !== null) return false;
-      const stands = "nothing was stopped or started";
-      if ((await startable(run, flags, { login, at: target, stands })).target === commit) dry();
+      await checkStart(run, flags, { login, at: target });
       return true;
     });
     const why = left();

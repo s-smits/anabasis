@@ -253,6 +253,7 @@ describe("a keeper's looks, scripted", () => {
       live: nobody,
       unasked: none,
       asked: 0,
+      refusal: "",
       acted: [...none],
       said: [...none],
     };
@@ -265,6 +266,7 @@ describe("a keeper's looks, scripted", () => {
         state.asked += wanted.length > 0 ? 1 : 0;
         return Promise.resolve(state.readings.filter((one) => wanted.includes(one.login)));
       },
+      checkStart: () => (state.refusal === "" ? Promise.resolve() : Promise.reject(new Error(state.refusal))),
       stop: () => {
         state.acted.push("stop");
         return Promise.resolve();
@@ -286,6 +288,19 @@ describe("a keeper's looks, scripted", () => {
       expect(await look(NOW)).toBe(false);
       expect(state.acted).toEqual(["stop", "start 3"]);
     }
+  });
+
+  it("keeps the writer alive when the restart is refused and retries once it can start", async () => {
+    const { state, look } = scripted();
+    state.refusal = "the run's commit is on no remote branch or tag";
+    expect(await look(NOW)).toBe(false);
+    expect(state.acted).toEqual([]);
+    expect(state.said[0]).toContain(state.refusal);
+    state.refusal = "";
+    expect(await look(NOW + MINUTE)).toBe(false);
+    expect(state.acted).toEqual([]);
+    expect(await look(NOW + 10 * MINUTE)).toBe(false);
+    expect(state.acted).toEqual(["stop", "start 3"]);
   });
 
   it("moves onto the pool as it stands at the move, not as it stood at the keeper's start", async () => {

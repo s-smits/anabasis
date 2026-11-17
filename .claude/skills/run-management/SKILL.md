@@ -197,6 +197,7 @@ The keeper takes its logins from `--logins`, `ANA_LOGINS`, then the environment,
 minute (`turnOf`). On a provider wait longer than `--wait-hours`, it stops the run and continues it
 on the login with room whose week resets soonest and whose five hours are forecast to last
 (`fiveHourWith`); a login at 100% or unreadable is not taken.
+The keeper checks that the restart can proceed before stopping the writer.
 Cached closures expire at their reset or after an hour, whichever comes first, and the keeper
 checks the provider again before using the login. Where the process died without an
 ending, or ended `environment`, it continues on the same login if that is ready and under its cap

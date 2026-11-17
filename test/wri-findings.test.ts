@@ -2,10 +2,17 @@
 // plan gate, the vet gate and the ledger over every investigation count the same rows. Each shape
 // below is one a vetting of 10 to 16 November held; the hostile ones are the tables beside them.
 import { afterAll, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { join } from "#src/meta/path.ts";
-import { findingsIn, findingsLedger, standingKeys, vettingFaults } from "../tools/wri/findings.ts";
+import { REFERENCES } from "../tools/wri/catalogue.ts";
+import {
+  findingsIn,
+  findingsLedger,
+  standingKeys,
+  standingLines,
+  vettingFaults,
+} from "../tools/wri/findings.ts";
 
 const PREDICTIONS = `| id | outcome | recount |
 | --- | --- | --- |
@@ -74,6 +81,19 @@ describe("the findings of a vetting", () => {
   it("reads the register's keys from the skill's own file", () => {
     expect(standingKeys("| key | finding |\n| --- | --- |\n| a-key | x |\n")).toEqual(["a-key"]);
     expect(standingKeys()).toContain("limits-never-bind");
+  });
+
+  it("gives the synthesis each key of the register beside its finding, and the template a slot for them", () => {
+    expect(standingLines("| key | finding | owner |\n| --- | --- | --- |\n| a-key | x | y |\n")).toBe(
+      "- `a-key`: x",
+    );
+    expect(standingLines().split("\n")).toHaveLength(standingKeys().length);
+    const template = readFileSync(join(REFERENCES, "synthesis.template.md"), "utf8");
+    expect(template).toContain("{register}");
+    // A lane is given none of it: a lane told what to find finds it.
+    expect(readFileSync(join(REFERENCES, "shared-instructions.template.md"), "utf8")).not.toContain(
+      "register",
+    );
   });
 });
 

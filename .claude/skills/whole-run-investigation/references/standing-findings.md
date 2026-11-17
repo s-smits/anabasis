@@ -1,12 +1,13 @@
 # Standing findings
 
 A standing finding is one that investigation after investigation meets, vets again and leaves where
-it was. This register holds each once, so a lane reports it by its key with this run's count in one
-line, the vetting names the key in its `standing` column, and the argument is not written again.
-The register holds no count: `bun tools/wri/wri.ts findings` reads, from the vettings, how many
-investigations of the newest week hold each key beside the week before, and names each key held more
-than once with no row that repairs it. Such a key goes to the operator once, with those counts, as a
-decision of the plan.
+it was. This register holds each once. The synthesis session is given the keys and marks each merged
+row with one or with `new`; the vetting names the key in its `standing` column, recounts this
+run's count and does not argue the finding again. No lane is shown the register, since a lane told
+what to find finds it. The register holds no count: `bun tools/wri/wri.ts findings` reads, from the
+vettings, how many investigations of the newest week hold each key beside the week before, and names
+each key held more than once with no row that repairs it. Such a key goes to the operator once, with
+those counts, as a decision of the plan, and is not asked again while the decision stands.
 
 A finding is standing once a third investigation within fourteen days confirms it and no plan
 between them repaired its owner; the plan of that third investigation adds its row here, in its own

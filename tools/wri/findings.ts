@@ -105,6 +105,13 @@ export function findingsIn(vetting: string): Finding[] {
 export const standingKeys = (register = readFileSync(REGISTER, "utf8")): string[] =>
   rowsOf(register, "key").map(([key = ""]) => key);
 
+/** The register as the synthesis session is given it: each key beside its finding, a line a key. A
+ *  lane is given none of it, since a lane told what to find finds it. */
+export const standingLines = (register = readFileSync(REGISTER, "utf8")): string =>
+  rowsOf(register, "key")
+    .map(([key = "", finding = ""]) => `- \`${key}\`: ${finding}`)
+    .join("\n");
+
 /**
  * What the fixed columns of `vetting` still owe, as one line a fault: a findings table with every
  * column of `COLUMNS`; a verdict in every row; a key of the register or `new` in `standing`; an

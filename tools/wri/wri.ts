@@ -132,7 +132,7 @@ import {
   weightOf,
 } from "./investigation.ts";
 import { INVESTIGATION, investigationIndex, REPORTS, SHARED } from "./index.ts";
-import { findingsLedger } from "./findings.ts";
+import { findingsLedger, standingLines } from "./findings.ts";
 import { overview } from "./read.ts";
 import { RECORD, RECORD_VERB, recordWith } from "./record.ts";
 import { buildPackets, joinPackets } from "./packets.ts";
@@ -549,6 +549,7 @@ function synthesis(): number {
       overview: readFileSync(join(out, "overview.md"), "utf8").trim(),
       reports: reportIndex(reports, (lane) => reportPath(out, lane), investigation.campaigns, shared),
       sharedInstructions: shared.replaceAll(/<!--[\s\S]*?-->\n?/g, "").trim(),
+      register: standingLines(),
     }),
   );
   const gaps = reports.filter(({ state }) => state !== "ok").map(({ lane }) => lane);

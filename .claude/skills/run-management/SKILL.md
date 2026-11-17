@@ -198,9 +198,9 @@ minute (`turnOf`). On a provider wait longer than `--wait-hours`, it stops the r
 on the login with room whose week resets soonest and whose five hours are forecast to last
 (`fiveHourWith`); a login at 100% or unreadable is not taken.
 The keeper checks that the restart can proceed before stopping the writer.
-Cached closures expire at their reset or after an hour, whichever comes first, and the keeper
-checks the provider again before using the login. Where the process died without an
-ending, or ended `environment`, it continues on the same login if that is ready and under its cap
+Cached closures expire at their reset or after 45 minutes, whichever comes first. A keeper waiting
+for room retries every ten minutes and checks the provider before using the login. Where the process
+died without an ending, or ended `environment`, it continues on the same login if that is ready and under its cap
 (`atCap`), otherwise on one with room. Any other ending is the campaign's own, and the keeper leaves;
 a `budget` ending, even inside a comparison, is one no login can finish, and only a raised total
 (`continue --budget N`, the operator's dollar cap) goes on with it.

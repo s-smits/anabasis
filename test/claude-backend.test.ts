@@ -239,6 +239,7 @@ describe("the Claude backend", () => {
     expect(env.CLAUDE_CONFIG_DIR).toBe(join(home, "claude-config"));
     expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe("token");
     expect(env.ENABLE_CLAUDEAI_MCP_SERVERS).toBe("0");
+    expect(env.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe("1");
     expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("300000");
     expect(env.DISABLE_AUTO_COMPACT).toBeUndefined();
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();

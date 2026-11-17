@@ -77,18 +77,19 @@ export async function rebuildForeignPython(
   place: Place,
   python: PythonFor,
 ): Promise<Rebuilt | null> {
-  const foreign = (await foreignFiles(tree, place)).map(({ path }) => path);
+  const found = await foreignFiles(tree, place);
+  const foreign = found.map(({ path }) => path);
   if (foreign.length === 0) return null;
   const owners = await distributionsIn(tree);
   // One for each folder that holds it: `distributionsIn` makes one record a `RECORD`.
   const distributions = new Set<Distribution>();
   const prefixes = new Map<string, string[]>();
   const unowned: string[] = [];
-  for (const path of foreign) {
+  for (const { path, why } of found) {
     const distribution = owners.get(path);
     const prefix = distribution === undefined ? prefixOf(tree, path) : null;
     if (distribution !== undefined) distributions.add(distribution);
-    else if (prefix === null) unowned.push(path);
+    else if (prefix === null) unowned.push(`${path} (${why})`);
     else prefixes.set(prefix, [...(prefixes.get(prefix) ?? []), path]);
   }
   const interpreters = [...prefixes].map(([prefix, files]) => interpreterFor(tree, prefix, files, python));

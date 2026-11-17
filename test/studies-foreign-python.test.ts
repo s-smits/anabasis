@@ -8,12 +8,14 @@ import {
 } from "../studies/shared/foreign-python.ts";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -123,6 +125,19 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
     await foreignPrograms(tree, LINUX);
   });
 
+  it("replaces an interpreter's program that links out of the tree, and leaves what it linked to as it was", async () => {
+    const tree = macTree("prefix-link");
+    const outside = join(root, "a-mac-python3.12");
+    writeFileSync(outside, MACH_O);
+    rmSync(join(tree, "py/cp312/pyexe/python3.12"));
+    symlinkSync(outside, join(tree, "py/cp312/pyexe/python3.12"));
+    await rebuildForeignPython(tree, LINUX, standIn().python);
+    expect(lstatSync(join(tree, "py/cp312/pyexe/python3.12")).isSymbolicLink()).toBe(false);
+    expect(readFileSync(join(tree, "py/cp312/pyexe/python3.12"))).toStrictEqual(elf("host python"));
+    expect(readFileSync(outside)).toStrictEqual(MACH_O);
+    await foreignPrograms(tree, LINUX);
+  });
+
   it("refuses whole, naming each, a distribution with no build here, a version with no interpreter here and a program nothing installed", async () => {
     const tree = macTree("no-build");
     const original = readFileSync(join(tree, `${SITE}/numpy/_core.cpython-312-darwin.so`));
@@ -139,9 +154,18 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
     const lone = macTree("no-interpreter", { "tools/fast": MACH_O });
     const bare = standIn([], null);
     await expect(rebuildForeignPython(lone, LINUX, bare.python)).rejects.toThrow(
-      /tools\/fast, which no Python distribution or interpreter in the tree installed; py\/cp312 \(CPython 3\.12\.15\), as uv installs no CPython 3\.12\.15 built for it$/u,
+      /tools\/fast \(a Mach-O binary\), which no Python distribution or interpreter in the tree installed; py\/cp312 \(CPython 3\.12\.15\), as uv installs no CPython 3\.12\.15 built for it$/u,
     );
     expect(bare.asked).toStrictEqual(["interpreter 3.12.15"]);
+
+    // A virtual environment whose interpreter is a link to the Mac's own: no interpreter in the tree
+    // owns it, so the tree is refused whole, naming the link.
+    const venv = macTree("venv-link");
+    mkdirSync(join(venv, "venv", "bin"), { recursive: true });
+    symlinkSync("/opt/somewhere/bin/python3.14", join(venv, "venv", "bin", "python3.14"));
+    await expect(rebuildForeignPython(venv, LINUX, standIn().python)).rejects.toThrow(
+      /venv\/bin\/python3\.14 \(a link to \/opt\/somewhere\/bin\/python3\.14, outside the tree\), which no Python distribution or interpreter in the tree installed/u,
+    );
   });
 
   it("refuses a compiled file no reinstall would put back, and refills a distribution in each folder that holds it", async () => {

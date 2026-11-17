@@ -138,6 +138,48 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
     await foreignPrograms(tree, LINUX);
   });
 
+  it("makes an environment that links out to its maker's interpreter a prefix of its own", async () => {
+    // uv's `.venv` beside the harness's programs, and `python -m venv` making the tool tree one.
+    const layouts = [
+      { name: "uv-venv", at: ".venv", cfg: "version_info = 3.12.15", interpreter: ".venv (CPython 3.12.15)" },
+      { name: "tree-venv", at: ".", cfg: "version = 3.12.15", interpreter: ". (CPython 3.12.15)" },
+    ];
+    for (const { name, at, cfg, interpreter } of layouts) {
+      const tree = join(root, name);
+      const env = join(tree, at);
+      const site = join(env, "lib/python3.12/site-packages");
+      put(tree, { "lib/py/stats.py": "print('stats')\n" });
+      put(env, { "pyvenv.cfg": `home = /Users/someone/python/bin\n${cfg}\n` });
+      put(site, {
+        "numpy/_core.cpython-312-darwin.so": MACH_O,
+        "numpy-2.5.4.dist-info/RECORD": "numpy/_core.cpython-312-darwin.so,,\n",
+      });
+      const outside = join(root, `${name}-python3.12`);
+      writeFileSync(outside, MACH_O);
+      mkdirSync(join(env, "bin"), { recursive: true });
+      symlinkSync(outside, join(env, "bin/python3.12"));
+      symlinkSync("python3.12", join(env, "bin/python3"));
+      // An installer whose CPython has the minor's build but not the patch the environment names.
+      const { python, asked } = standIn();
+      const minorOnly: PythonFor = {
+        ...python,
+        interpreter: (version) => (version === "3.12.15" ? null : python.interpreter(version)),
+      };
+      expect(await rebuildForeignPython(tree, LINUX, minorOnly)).toStrictEqual({
+        interpreters: [interpreter],
+        distributions: ["numpy==2.5.4"],
+      });
+      expect(asked).toStrictEqual(["interpreter 3.12", "install numpy==2.5.4 for 3.12"]);
+      expect(readFileSync(join(env, "bin/python3"))).toStrictEqual(elf("host python"));
+      expect(existsSync(join(env, "pyvenv.cfg"))).toBe(false);
+      expect(existsSync(join(env, "lib/python3.12/os.py"))).toBe(true);
+      expect(existsSync(join(site, "pip"))).toBe(false);
+      expect(readFileSync(join(tree, "lib/py/stats.py"), "utf8")).toBe("print('stats')\n");
+      expect(readFileSync(outside)).toStrictEqual(MACH_O);
+      await foreignPrograms(tree, LINUX);
+    }
+  });
+
   it("refuses whole, naming each, a distribution with no build here, a version with no interpreter here and a program nothing installed", async () => {
     const tree = macTree("no-build");
     const original = readFileSync(join(tree, `${SITE}/numpy/_core.cpython-312-darwin.so`));

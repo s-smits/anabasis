@@ -21,7 +21,7 @@ import { pooled } from "#src/meta/pool.ts";
 import { runtimeProcess, warn } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { asked, answerOf } from "./hosts.ts";
-import { type Host, hostNamed, hostsOf } from "./host-config.ts";
+import { benchesOf, type Host, hostNamed, hostsOf } from "./host-config.ts";
 import { quoted, rsync, sideOf, sshScript } from "./host-command.ts";
 import { runTextOrThrow } from "#src/meta/subprocess.ts";
 import { hold, release } from "#src/meta/holder.ts";
@@ -348,44 +348,44 @@ export async function syncRuns(
 }
 
 /**
- * Copy the benchmark score store (`score.ts --out`) from the machine that rolls the benchmark into
- * `data/bench/<machine>` here: every task's rollout and judgement, which `score.ts table` reads
+ * Copy each benchmark's score store (`score.ts --out`) from the machine that rolls it into
+ * `data/bench/<benchmark>` here: every task's rollout and judgement, which `score.ts table` reads
  * here as it does there. An arm's exported tree stays behind, since it holds an interpreter built
  * for that machine and `score.ts tree` writes it again from its campaign. A record there is written
- * once, so the copy only adds, and what that machine later clears stays here. Nothing is copied
- * unless `ABLATION_HOST` names another machine and `BENCH_STORE` the folder there, absolute or
- * from its home folder; a machine that does not answer keeps its copy as it was, as a silent host
- * keeps its campaigns'. It returns the copy's folder where it copied.
+ * once, so the copy only adds, and what that machine later clears stays here. A benchmark rolled on
+ * this machine needs no copy; one whose machine does not answer keeps its copy as it was, as a silent
+ * host keeps its campaigns'. It returns the folders it copied into.
  */
-export async function fetchBench(): Promise<string | null> {
-  const { ABLATION_HOST: name = "", BENCH_STORE: store = "" } = runtimeProcess.env;
-  if (store === "" || name === "" || name === HERE) return null;
-  const host = hostNamed(name);
-  const into = join(dirname(archiveOf(runtimeProcess.cwd())), "bench", host.name);
-  mkdirSync(into, { recursive: true });
-  // rsync reads a relative path from the home folder there, and a quoted `~` as a folder's name.
-  const from = `${sideOf(host, store.replace(/^~\//u, ""))}/`;
-  try {
-    await rsync(from, `${into}/`, ...EXCLUDED, "--exclude=/trees");
-    return into;
-  } catch (error) {
-    warn(`${host.name}: the benchmark score store was not copied: ${errorMessage(error)}`);
-    return null;
+export async function fetchBenches(): Promise<string[]> {
+  const copied: string[] = [];
+  for (const { name, host, store } of benchesOf()) {
+    if (host === undefined) continue;
+    const into = join(dirname(archiveOf(runtimeProcess.cwd())), "bench", name);
+    mkdirSync(into, { recursive: true });
+    // rsync reads a relative path from the home folder there, and a quoted `~` as a folder's name.
+    const from = `${sideOf(host, store.replace(/^~\//u, ""))}/`;
+    try {
+      await rsync(from, `${into}/`, ...EXCLUDED, "--exclude=/trees");
+      copied.push(into);
+    } catch (error) {
+      warn(`${name} on ${host.name}: the benchmark score store was not copied: ${errorMessage(error)}`);
+    }
   }
+  return copied;
 }
 
 /**
- * Take over the campaigns `host`, the one `ABLATION_HOST` names, has retired, so that it stays clear
- * for ablations: each its own retire moved into its archive (that retire alone decides when a
- * campaign is finished), which no process writes or keeps there and of which this machine holds
- * every file a copy takes byte for byte, joins this machine's own archive and is deleted there.
- * Nothing else deletes an original, and a campaign still in its worktree there is left alone. The
- * proof is one checksummed dry run of rsync, so a campaign with a path left there for its case
- * (`caseTwins`) stays; credentials and installs are never copied (`EXCLUDED`, `installs`), so a
- * campaign taken over is a record. The copy moves first, so a sweep killed before the deletion is
- * finished by the next; the deletion runs only while the log there is as long as the catalogue
- * said, and one that grew stays, its copy the host's again; one that fails part way leaves the copy
- * this machine's own. Asked to `describe`, it says what it would do.
+ * Take over the campaigns `host`, a machine that rolls a benchmark, has retired, so that it stays
+ * clear for outside evaluations: each its own retire moved into its archive (that retire alone
+ * decides when a campaign is finished), which no process writes or keeps there and of which this
+ * machine holds every file a copy takes byte for byte, joins this machine's own archive and is
+ * deleted there. Nothing else deletes an original, and a campaign still in its worktree there is
+ * left alone. The proof is one checksummed dry run of rsync, so a campaign with a path left there
+ * for its case (`caseTwins`) stays; credentials and installs are never copied (`EXCLUDED`,
+ * `installs`), so a campaign taken over is a record. The copy moves first, so a sweep killed before
+ * the deletion is finished by the next; the deletion runs only while the log there is as long as
+ * the catalogue said, and one that grew stays, its copy the host's again; one that fails part way
+ * leaves the copy this machine's own. Asked to `describe`, it says what it would do.
  */
 export async function takeRetired(host: Host, act: "take" | "describe"): Promise<void> {
   const archive = archiveOf(runtimeProcess.cwd());

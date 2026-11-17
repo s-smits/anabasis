@@ -12,6 +12,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import { held } from "../src/meta/holder.ts";
@@ -690,7 +691,7 @@ describe("the daily retire's host step", () => {
     expect(existsSync(copy("waiting", "memory"))).toBe(false);
   });
 
-  it("takes over what the ablation host has archived once the copy here matches it, and leaves every other campaign there", () => {
+  it("takes over what the eval runner has archived once the copy here matches it, and leaves every other campaign there", () => {
     const { made, there, resting, here, listed } = ablation();
     const ahead = listed("ahead", there);
     const env = {
@@ -711,20 +712,20 @@ describe("the daily retire's host step", () => {
     // has yet to copy, and says that one with --yes can take more.
     const dry = made.run('import { retire } from "REPOSITORY/tools/runs/retire.ts"; await retire([]);', {
       ...env,
-      ABLATION_HOST: "runner",
+      EVAL_RUNNER: benchOn("runner"),
     });
     expect(dry.code).toBe(0);
     expect(dry.out).not.toContain("over: held in");
     expect(dry.out).toContain("can take more");
     expect([existsSync(there("over")), existsSync(here("runner", "over"))]).toEqual([true, false]);
-    // With no ablation host named, a sweep copies every campaign and deletes none, and a name no
-    // host holds is refused.
-    expect(sweep({}).code).toBe(0);
+    // With no benchmark rolled on a peer, a sweep copies every campaign and deletes none, and a
+    // host the list does not hold is refused.
+    expect(sweep({ EVAL_RUNNER: benchOn(undefined) }).code).toBe(0);
     expect([existsSync(there("over")), existsSync(here("runner", "over", LOG_FILE))]).toEqual([true, true]);
-    const unknown = sweep({ ABLATION_HOST: "nowhere" });
+    const unknown = sweep({ EVAL_RUNNER: benchOn("nowhere") });
     expect([unknown.code, unknown.err.includes("no host nowhere")]).toEqual([1, true]);
 
-    const taken = sweep({ ABLATION_HOST: "runner" });
+    const taken = sweep({ EVAL_RUNNER: benchOn("runner") });
     // The archived campaign is this machine's own now, whole, and gone from the host.
     expect(readFileSync(here("here", "over", "memory/note.txt"), "utf8")).toBe("kept");
     expect([existsSync(there("over")), existsSync(here("runner", "over"))]).toEqual([false, false]);
@@ -800,17 +801,29 @@ describe("a take-over of a campaign that installed packages", () => {
   });
 });
 
+/** `EVAL_RUNNER` naming one benchmark, rolled on `host` (this machine where undefined). */
+const benchOn = (host: string | undefined, store = "bench/store") =>
+  JSON.stringify([
+    {
+      name: "outside",
+      store,
+      sitting: "bin/sitting.sh",
+      packs: ["stats"],
+      ...keyIfDefined("host", host),
+    },
+  ]);
+
 describe("the gather of the benchmark score store", () => {
   const gather = 'import { fetch } from "REPOSITORY/tools/runs/move.ts"; await fetch([]);';
   const stored = () => {
     const made = fixture();
     const there = (file: string) => join(made.root, "remote", "bench", "store", file);
-    const here = (file: string) => join(made.main, "data", "bench", "runner", file);
+    const here = (file: string) => join(made.main, "data", "bench", "outside", file);
     for (const file of ["judged/arm/task.json", "dataset/task/rollout.json", "trees/arm/bin/python"]) {
       mkdirSync(join(there(file), ".."), { recursive: true });
       writeFileSync(there(file), "first");
     }
-    const named = { FAKE_CATALOGUE: "[]", ABLATION_HOST: "runner", BENCH_STORE: there("") };
+    const named = { FAKE_CATALOGUE: "[]", EVAL_RUNNER: benchOn("runner", there("")) };
     return { made, there, here, named };
   };
 
@@ -830,9 +843,9 @@ describe("the gather of the benchmark score store", () => {
     ]);
   });
 
-  it("copies nothing where no store is named, and leaves the copy as it was where the machine does not answer", () => {
+  it("copies nothing for a benchmark rolled here, and leaves the copy as it was where the machine does not answer", () => {
     const { made, there, here, named } = stored();
-    const unnamed = made.run(gather, { FAKE_CATALOGUE: "[]", ABLATION_HOST: "runner" });
+    const unnamed = made.run(gather, { FAKE_CATALOGUE: "[]", EVAL_RUNNER: benchOn(undefined, there("")) });
     expect([unnamed.code, existsSync(here(""))]).toEqual([0, false]);
     expect(made.run(gather, named).code).toBe(0);
     writeFileSync(there("judged/arm/later.json"), "second");

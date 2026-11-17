@@ -42,7 +42,7 @@ import { join } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import { openHarness } from "../src/harness/open.ts";
-import { EXAMPLE, writeStarter } from "../src/harness/starter.ts";
+import { EXAMPLE, HOST_ONLY, writeStarter } from "../src/harness/starter.ts";
 import { writeHarness } from "./helpers/write-harness.ts";
 
 // SAFETY: the harness tool below uses only the context's abort signal, no tool API methods.
@@ -356,7 +356,8 @@ describe("a harness written out for Claude Code", () => {
       cat: "#!/bin/sh\necho the harness's cat\n",
       "python3.12": "#!/bin/sh\necho the harness's interpreter\n",
     };
-    const made = await campaign("exported", () => undefined, { ...tooled(), programs });
+    const own = `# Operating Guide\n\n## Programs and tools\n- mark: prints marked.\n\n## Domain notes\nA mark counts once.\n\n${HOST_ONLY}\nAn answer over three lines is not valid.\n`;
+    const made = await campaign("exported", () => undefined, { ...tooled(), programs, guide: own });
     const into = join(root, "claude-tooled");
     const record = await exportForClaudeCode(into, { campaign: made.log, harness: made.child });
     expect(record.harness).toBe(made.child);
@@ -371,6 +372,9 @@ describe("a harness written out for Claude Code", () => {
     expect(guide).not.toMatch(/python|interpreter/u);
     expect(guide).not.toContain("scripts/toolchain/bin/mark");
     expect(guide).not.toContain("export PATH");
+    // What the guide keeps under its last heading, for the exam's own answer, stays behind.
+    expect(guide.endsWith("- mark: prints marked.\n\n## Domain notes\nA mark counts once.\n")).toBe(true);
+    expect(guide).not.toContain("three lines");
     expect(readFileSync(join(into, "scripts", "toolchain", "bin", "mark"), "utf8")).toContain("echo marked");
     // The tree holds the programs once: the copy of the harness kept for provenance has none.
     expect(existsSync(join(into, "harness", ".toolchain"))).toBe(false);

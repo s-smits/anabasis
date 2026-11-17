@@ -51,6 +51,7 @@ import { parseArgs } from "#src/meta/process.ts";
 import { keyIfDefined, keyIfNotNull } from "#src/meta/optional-key.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { installedPrograms } from "#src/harness/programs.ts";
+import { HOST_ONLY } from "#src/harness/starter.ts";
 import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
 import { HARNESS_DIR, HERE, type Place, placeHarness, placeOf } from "./bundle.ts";
 import { type PythonFor, rebuildForeignPython, uvPython } from "./foreign-python.ts";
@@ -123,7 +124,8 @@ export async function exportForClaudeCode(
         ]),
     "",
   ];
-  const guide = harness.guide ?? "This harness has no guide of its own.\n";
+  // What a guide keeps under its last heading, `HOST_ONLY`, holds only for the exam and stays behind.
+  const [guide = ""] = (harness.guide ?? "This harness has no guide of its own.\n").split(`\n${HOST_ONLY}\n`);
   writeFileSync(join(part, "CLAUDE.md"), `${note.join("\n")}\n${guide}`);
   const record = {
     harness: harness.digest,

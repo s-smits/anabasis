@@ -56,6 +56,9 @@ import { CODING_TOOLS } from "../tools/coding.ts";
  * change to the comment leaves the Starter the harness it was. Its guide is the starter
  * instructions, in `EXAMPLE`'s outline with its entries empty.
  */
+/** The guide's last heading, for what holds only for this host's answer; an export stops at it. */
+export const HOST_ONLY = "## Validity and score";
+
 const STARTER = {
   spec: { presets: [...CODING_TOOLS], tools: [] },
   tools: `// Tools of the harness's own, which the solver has beside pi's coding tools. The Starter adds

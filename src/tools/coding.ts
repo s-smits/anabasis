@@ -47,17 +47,16 @@ const images: ImageProcessor = {
 const NEAR_END =
   "\n\nThe command was cut because the solve's time is nearly up, so that its result reaches you while you can still act on it.";
 
-/** A harness selects among pi's names; an older kept harness's shell preset means bash. */
+/** A harness selects among pi's names. */
 export function selectedCodingTools(presets: readonly string[]): CodingTool[] {
-  const named = presets.map((preset) => (preset === "shell" ? "bash" : preset));
   const served: readonly string[] = CODING_TOOLS;
-  const other = named.filter((name) => !served.includes(name));
+  const other = presets.filter((name) => !served.includes(name));
   if (other.length > 0) {
     throw new Error(
       `a solve serves pi's coding tools as presets (${CODING_TOOLS.join(", ")}), not ${other.join(", ")}`,
     );
   }
-  return CODING_TOOLS.filter((name) => named.includes(name));
+  return CODING_TOOLS.filter((name) => presets.includes(name));
 }
 
 /** Submit still reads its bounded answer through one walled command. */

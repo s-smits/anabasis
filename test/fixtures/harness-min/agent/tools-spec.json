@@ -1,5 +1,5 @@
 {
-  "presets": ["shell"],
+  "presets": ["bash"],
   "tools": [
     {
       "name": "scale_base",

@@ -29,17 +29,16 @@ import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
 import { withAbortSignal, withoutAbortSignal } from "@earendil-works/chord/context";
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
+import { boundText } from "../meta/bounded-text.ts";
 import { asError } from "../meta/runtime-values.ts";
 import { type CommandWall, heldSeconds, runWalled } from "./command.ts";
 
 /** A command handed back to its seat while it runs on: how it ended and its output's tail. */
 const RUNNING = new WeakMap<CommandWall, Promise<string>>();
-// The two limits and OutputBuffer (at the end) are pi-processes' (github.com/aliou/pi-processes, MIT),
-// examples/bash-background.ts lines 22-23 and 47-69 at cce6ad98e, changed only for this repository's
-// lint (a readonly `chunks`, the class after the declarations) and in the tail it keeps: pi's own bash
-// output limit, read from the description pi writes from it, instead of 4,000 characters.
-const MAX_CAPTURED_BYTES = 8 * 1024 * 1024;
-const RESULT_TAIL_CHARS = 1024 * Number(/ (\d+)KB /u.exec(createBashTool().description)?.[1]);
+const [, PI_LINES, PI_KB] = /last (\d+) lines or (\d+)KB/u.exec(createBashTool().description) ?? [];
+/** What pi shows of a tool's result, read from the bash description pi writes from its
+ *  `DEFAULT_MAX_LINES` and `DEFAULT_MAX_BYTES`, which no entry of pi-durable exports. */
+export const PI_RESULT = { lines: Number(PI_LINES), bytes: 1024 * Number(PI_KB) };
 
 /** The order pi lists its coding tools. */
 export const CODING_TOOLS = ["read", "bash", "edit", "write"] as const;
@@ -130,17 +129,26 @@ function bashTool(wall: CommandWall): SeatTool {
       // Durable refuses a settled call's api and cancels its context, so a handed-back command
       // runs on under its own signal and keeps what it prints from then on for the seat's next call;
       // what it printed before reached the seat with the hand-back.
-      const tail = new OutputBuffer();
+      // Only the end of what it prints is shown, so twice pi's limit is all that is held.
+      let later = Buffer.alloc(0);
+      let dropped = false;
+      const since = (): string => {
+        const kept = boundText(later.toString("utf8"), PI_RESULT.bytes, "tail", PI_RESULT.lines);
+        return dropped || kept.truncated ? `[...output truncated...]\n${kept.text}` : kept.text;
+      };
       let handedBack = false;
       const stop = new AbortController();
       context.abortSignal?.addEventListener("abort", () => handedBack || stop.abort());
       const own: typeof api = {
         ...api,
         output: (chunk, skipped) => {
-          if (handedBack) tail.append(Buffer.from(chunk));
-          else api.output(chunk, skipped);
+          if (!handedBack) return api.output(chunk, skipped);
+          later = Buffer.concat([later, Buffer.from(chunk)]);
+          if (later.length <= 2 * PI_RESULT.bytes) return;
+          later = later.subarray(-PI_RESULT.bytes - 1024);
+          dropped = true;
         },
-        retainedOutput: () => (handedBack ? { text: tail.tail(), truncated: false } : api.retainedOutput()),
+        retainedOutput: () => (handedBack ? { text: since(), truncated: false } : api.retainedOutput()),
         diagnostic: (note) => handedBack || api.diagnostic(note),
       };
       // runWalled applies the remaining solve time too; leave that reduction to its one owner.
@@ -174,8 +182,7 @@ function bashTool(wall: CommandWall): SeatTool {
       RUNNING.set(
         wall,
         ending.then(
-          (how) =>
-            `The command handed back earlier has ended (${how}). What it printed since:\n${tail.tail()}`,
+          (how) => `The command handed back earlier has ended (${how}). What it printed since:\n${since()}`,
         ),
       );
       throw new Error(
@@ -183,28 +190,4 @@ function bashTool(wall: CommandWall): SeatTool {
       );
     },
   };
-}
-
-class OutputBuffer {
-  private readonly chunks: Buffer[] = [];
-  private byteLength = 0;
-
-  append(data: Buffer): void {
-    this.chunks.push(data);
-    this.byteLength += data.length;
-    while (this.byteLength > MAX_CAPTURED_BYTES && this.chunks.length > 1) {
-      const dropped = this.chunks.shift();
-      if (dropped) this.byteLength -= dropped.length;
-    }
-  }
-
-  bytes(): Buffer {
-    return Buffer.concat(this.chunks);
-  }
-
-  tail(): string {
-    const text = this.bytes().toString("utf8").trim();
-    if (text.length <= RESULT_TAIL_CHARS) return text;
-    return `[...output truncated...]\n${text.slice(-RESULT_TAIL_CHARS)}`;
-  }
 }

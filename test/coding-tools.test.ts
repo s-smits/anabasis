@@ -145,7 +145,7 @@ describe.skipIf(!osIsolationSupport().ok)("the coding tools on the OS wall", () 
       expect((await call("bash", { command: "echo quick" })).diagnostics).toEqual([]);
       // What a handed-back command prints is carried up to pi's bash output limit, 50 KB.
       await expect(
-        call("bash", { command: "sleep 1.2; head -c 60000 /dev/zero | tr '\\0' x" }),
+        call("bash", { command: "sleep 1.2; head -c 200000 /dev/zero | tr '\\0' x" }),
       ).rejects.toThrow("still running");
       const carried = (await call("bash", { command: "true" })).diagnostics
         .map((note) => note.message)

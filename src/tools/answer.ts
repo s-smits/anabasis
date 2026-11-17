@@ -51,7 +51,7 @@ import { canonicalJson, hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { type SeatTool, textsOf } from "../agent/session.ts";
 import { shellQuote } from "../wall/isolation.ts";
-import type { WallExec } from "./coding.ts";
+import { PI_RESULT, type WallExec } from "./coding.ts";
 
 /** One of the domain's public resources, as a file in the solver's home holds it. */
 export interface PublicResource {
@@ -75,9 +75,8 @@ export const ANSWER_FORMAT_FILE = "public/answer-format.json";
 /** The largest answer, in the file's bytes (v1's draft store held an answer to the same). */
 const ANSWER_MAX_BYTES = 1024 * 1024;
 const MISSING = 44;
-/** What pi keeps of a tool's result, `DEFAULT_MAX_BYTES` and `DEFAULT_MAX_LINES` of pi-durable's
- *  `truncate.js`, which 1.5.2 still keeps private; the shown part leaves room for the notice. */
-const RESULT = { bytes: 50 * 1024 - 512, lines: 2000 - 2 };
+/** What pi keeps of a tool's result (`PI_RESULT`); the shown part leaves room for the notice. */
+const RESULT = { bytes: PI_RESULT.bytes - 512, lines: PI_RESULT.lines - 2 };
 /** `submit` takes nothing for an answer, which is the file, and `malformed` in place of one. */
 const SUBMIT_PARAMETERS = Type.Object({
   malformed: Type.Optional(

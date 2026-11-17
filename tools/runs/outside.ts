@@ -186,10 +186,11 @@ export function stepsOf(plan: Plan): Step[] {
         ),
     ...exported,
     // A reference whose own launcher starts an interpreter the machine lacks rolls without its
-    // method (17 November 2026: exit 127), which no dry run sees. It is said, and refuses nothing.
+    // method (17 November 2026: exit 127). The ablation tree's dry run can predate the check that
+    // refuses it (`ownPython`), so the read refuses it here, before anything is spent.
     on(
-      `the tree's own python3 on ${runner?.name ?? "this machine"}`,
-      `p=${tree}/$(sed -n 's/.*"toolchain": *"\\([^"]*\\)".*/\\1/p' ${tree}/export.json)/bin/python3; if test -e "$p" || test -L "$p"; then "$p" -c pass; echo "the tree's own python3 exits $?"; fi`,
+      `the tree's own python3 starts on ${runner?.name ?? "this machine"}`,
+      `p=${tree}/$(sed -n 's/.*"toolchain": *"\\([^"]*\\)".*/\\1/p' ${tree}/export.json)/bin/python3; if test -e "$p" || test -L "$p"; then "$p" -c pass || { echo "the tree's own python3 cannot start there (exit $?)"; exit 1; }; fi`,
     ),
     on(`dry run of ${label}`, arm("run", reference, "--dry-run")),
     on(`dry run of ${starter}`, arm("run", [quoted(starter), "--arm", "starter"], "--dry-run")),

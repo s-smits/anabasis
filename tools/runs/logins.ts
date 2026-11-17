@@ -46,11 +46,9 @@
 import { openingOf, SEATS } from "#src/campaign/opening.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
-import { mkdirSync, renameSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { keysIf } from "#src/meta/optional-key.ts";
-import { dirname } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runSync, zeroExitText } from "#src/meta/subprocess.ts";
@@ -60,6 +58,7 @@ import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
 import { CODEX, countedAgainst, type Live, liveHere, liveOf } from "./live.ts";
+import { remember } from "./pulse-readers.ts";
 import { archived, isCampaign } from "./registry.ts";
 import {
   closedResets,
@@ -677,7 +676,7 @@ export async function logins(args: readonly string[], readUsage = readLogins): P
   const [readings, counted] = await Promise.all([
     readUsage(positionals.length > 0 ? positionals : held, runtimeProcess.env),
     values.json ? null : liveEverywhere(),
-    whole && !forwarded ? asked(["usage"]) : null,
+    whole ? asked(["usage"]) : null,
   ]);
   const now = Date.now();
   // A run on the plain login names no login.
@@ -744,6 +743,7 @@ export async function logins(args: readonly string[], readUsage = readLogins): P
     console.log(activeLines(codex, [CODEX], [], runtimeProcess.env).join("\n"));
   }
   if ((counted?.unasked.length ?? 0) > 0) console.log(uncounted(counted?.unasked ?? []));
+  // A forwarded report that read no week fails, so the asking host says it did not answer.
   if (forwarded && whole && !complete) {
     throw new Error("no weekly usage read, so the login cache was not refreshed");
   }
@@ -755,9 +755,5 @@ export async function logins(args: readonly string[], readUsage = readLogins): P
       : `  a run       ~${rate.toFixed(2)}% of a login's week an hour, active ${String(Math.round(ACTIVE_SHARE * 24))} of 24h: the most each login carries for ${String(RUN_HOURS)}h`,
   );
   console.log(forecast?.lines.join("\n"));
-  mkdirSync(dirname(history), { recursive: true });
-  const lines = recorded.map((one) => capturedJsonStringify(one));
-  const pending = `${history}.${String(runtimeProcess.pid)}.tmp`;
-  writeFileSync(pending, `${lines.join("\n")}\n`);
-  renameSync(pending, history);
+  remember(history, `${recorded.map((one) => capturedJsonStringify(one)).join("\n")}\n`);
 }

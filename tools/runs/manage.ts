@@ -439,9 +439,8 @@ export async function continueRun(args: readonly string[]): Promise<void> {
   if (values.after !== undefined) {
     // What the start would refuse of a running run, and the dry run at its own commit, asked before the
     // wait and again at the point before the stop, since a wait of hours can fill a login.
-    const dry = () => dryRun(run, flags, loginEnv(runtimeProcess.env, login), commit);
     await roomToStart(payerOf(login, flags), "here", run.name);
-    if ((target ?? commit) === commit) dry();
+    if ((target ?? commit) === commit) dryRun(run, flags, loginEnv(runtimeProcess.env, login), commit);
     // Why the run is left as it stands: it ended on its own terms (but the environment) during the
     // wait, or runs as asked by its newest receipt, as where its keeper moved it.
     const armed = logEvents(run.path).length;

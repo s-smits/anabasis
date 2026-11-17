@@ -99,16 +99,18 @@ describe("what usage lists and keeps", () => {
 });
 
 describe("what a picker takes from the last reading kept", () => {
-  const earlyReset = NOW + HOUR / 4;
+  const earlyReset = NOW + HOUR / 6;
   const closed = { at: NOW - HOUR / 2, weeks: {}, closed: { "3": WEEK_RESET, "2": earlyReset } };
 
   it("leaves a login out while its cached closure is fresh and its reset has not passed", () => {
     expect(notClosed(["2", "3", "4"], [closed], NOW)).toEqual(["4"]);
   });
 
-  it("rechecks a login at its reset or when the snapshot turns an hour old, whichever comes first", () => {
+  it("rechecks at the reset or after 45 minutes, leaving time for a keeper retry within the hour", () => {
     expect(notClosed(["2", "3"], [closed], earlyReset)).toEqual(["2"]);
-    expect(notClosed(["2", "3"], [closed], closed.at + HOUR)).toEqual(["2", "3"]);
+    const expiry = closed.at + (3 * HOUR) / 4;
+    expect(notClosed(["3"], [closed], expiry - 1)).toEqual([]);
+    expect(notClosed(["2", "3"], [closed], expiry)).toEqual(["2", "3"]);
   });
 
   it("lets a later reading overrule a closed login, as after credit added early", () => {

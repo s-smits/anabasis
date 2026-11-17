@@ -197,10 +197,10 @@ The keeper takes its logins from `--logins`, `ANA_LOGINS`, then the environment,
 minute (`turnOf`). On a provider wait longer than `--wait-hours`, it stops the run and continues it
 on the login with room whose week resets soonest and whose five hours are forecast to last
 (`fiveHourWith`); a login at 100% or unreadable is not taken.
-The keeper checks that the restart can proceed before stopping the writer.
-Cached closures expire at their reset or after an hour, whichever comes first, and the keeper
-checks the provider again before using the login. Where the process died without an
-ending, or ended `environment`, it continues on the same login if that is ready and under its cap
+The keeper checks that the restart can proceed (`checkStart`) before stopping the writer; a cached
+closure lapses at its reset or after `CLOSED_CACHE_MS`, and a keeper waiting for room retries every
+`ASK_MS`, asking the provider before it takes the login. Where the process
+died without an ending, or ended `environment`, it continues on the same login if that is ready and under its cap
 (`atCap`), otherwise on one with room. Any other ending is the campaign's own, and the keeper leaves;
 a `budget` ending, even inside a comparison, is one no login can finish, and only a raised total
 (`continue --budget N`, the operator's dollar cap) goes on with it.

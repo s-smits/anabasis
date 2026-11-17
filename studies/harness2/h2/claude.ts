@@ -335,19 +335,9 @@ function stamp(at: Date, form: "file" | "clock"): string {
 /** `claude -p` over the tree `installTree` installs, as the pilot's runner started it. */
 function claudeCode(claude: Claude): Agent {
   return {
-    stage: (treeDir, workspace) => {
-      const staged = mkdtempSync(join(tmpdir(), "adapt-cc-root-"));
-      try {
-        installTree(treeDir, staged);
-        for (const part of ["CLAUDE.md", ".claude", "scripts"].filter((each) =>
-          existsSync(join(staged, each)),
-        )) {
-          cpSync(join(staged, part), join(workspace, part), { recursive: true });
-        }
-      } finally {
-        rmSync(staged, { recursive: true, force: true });
-      }
-    },
+    // Straight into the workspace: a copy from a staged folder wrote each kept link as an absolute
+    // path into that folder, which was deleted before the solve began.
+    stage: installTree,
     argv: ({ prompt, workspace }) => [
       claude.bin,
       "-p",

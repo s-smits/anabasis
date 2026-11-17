@@ -52,7 +52,7 @@
  * nothing in a harness names a task, copies its text or holds its answer.
  *
  * A session is a new conversation, so the opening message carries what the plan gives a Builder
- * whose conversation was lost: the notes its earlier sessions left, which are v1's (`memory.ts`),
+ * whose conversation was lost: the notes its earlier sessions left (`memory.ts`),
  * and, from the log, every failed practice solve so far and each comparison's tally (`past.ts`).
  *
  * New here: what the harness is measured on, and how a practice result is to be read. It is
@@ -107,7 +107,8 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
 import type { Limits } from "../kernel/condition.ts";
 import type { NetworkReach } from "../tools/command.ts";
-import { MEMORY_FILE, SCRATCH_DIR, SCRATCH_LIMITS, SCRATCHPAD_FILE } from "./memory.ts";
+import { CONTEXT_OUTPUT_LIMIT } from "../../vendor/claude-mem/ContextBudget.ts";
+import { MEMORY_FILE } from "./memory.ts";
 
 /** A practice task as the opening message lists it. */
 interface Listed {
@@ -129,7 +130,7 @@ export interface Past {
   readonly fails: readonly string[];
   /** Every comparison of the campaign that tallied a task, a line each. */
   readonly comparisons: readonly string[];
-  /** The notes block a session opens on, v1's (`memory.ts`); empty until a session has written any. */
+  /** The notes block a session opens on (`memory.ts`); empty until an earlier session left notes. */
   readonly memory: string;
 }
 
@@ -207,7 +208,7 @@ export const SAID: Readonly<Record<"host" | "builder", Said>> = {
     opening:
       "Read the current public rules, practice tasks, failed practice solves, comparison tallies and session limits, for when this conversation no longer holds them. It changes nothing.",
     finish:
-      "End this conversation and freeze harness/, measuring nothing. Record what changed, what remains unmeasured and what you would try next. Call finish again to acknowledge a notice about the harness. If the notes exceed their limit, shorten them before calling finish again.",
+      "End this conversation and freeze harness/, measuring nothing. Record what changed, what remains unmeasured and what you would try next. Call finish again to acknowledge a notice about the harness.",
     broken: {
       unpractised: "no harness of this session is kept",
       practised: "the harness your last practice solve ran is kept in its place",
@@ -218,13 +219,14 @@ export const SAID: Readonly<Record<"host" | "builder", Said>> = {
 
 /** What the next session receives from this one (v1's `HANDOVER`,
  *  `3f93d06:src/author/builder-session.ts`). Every session opens in a new home, and the Builder's
- *  own notes cross only through these files; `finish` ends the session at the turn that calls it,
- *  so a note meant for after it is never written. */
+ *  own notes cross only through the one file the campaign keeps (`memory.ts`); `finish` ends the
+ *  session at the turn that calls it, so a note meant for after it is never written. */
 const HANDOVER =
-  `The next session opens in a new home, and what you learned reaches it only through ${MEMORY_FILE}, ` +
-  `${SCRATCHPAD_FILE} and ${SCRATCH_DIR}/ in your home directory (${SCRATCH_LIMITS}; a larger file stays behind, a top-level folder that ` +
-  "no longer fits stays behind whole, and a symbolic link never crosses). finish ends this session at " +
-  "that turn, so bring them up to date before you call it.";
+  `The next session opens in a new home, and what you learned reaches it only through ${MEMORY_FILE} in your ` +
+  "home directory, a plain file and never a symbolic link: the host keeps it as this session's notes when the " +
+  "session ends, and each later session of this campaign opens on the notes of the sessions before it, newest " +
+  `first, as many as fit in ${String(CONTEXT_OUTPUT_LIMIT)} characters; notes longer than that are cut to their ` +
+  "head and tail. finish ends this session at that turn, so bring it up to date before you call it.";
 
 /** What a session has used of its limits, as the host counts it. */
 export interface Used {

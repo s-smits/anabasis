@@ -84,7 +84,6 @@ import { type Harness, harnessTools, openHarness, pathsUnder, treeStamp } from "
 import { installedPrograms } from "../harness/programs.ts";
 import { systemPrompt } from "../solver/prompt.ts";
 import { clockText, solverTools } from "../solver/run.ts";
-import { memoryOverCapNotice } from "./memory.ts";
 import { STARTED as COMPARISON_STARTED } from "../campaign/comparison.ts";
 import { budgetLeft } from "../campaign/opening.ts";
 import { type Said, shellWalls } from "./prompt.ts";
@@ -727,8 +726,6 @@ export function finishTool(bench: Bench, unmeasured?: Unmeasured): SeatTool {
     execute: async (args) => {
       // `finish` ends the session at this turn, so a finish notice on the next turn would reach nobody:
       // the call itself carries it, as v1's submit did (`3f93d06:src/gate/submit-tool.ts`).
-      const notes = memoryOverCapNotice(bench.home);
-      if (notes !== null) throw new Error(`Not finished. ${notes} Then call finish again.`);
       const stands = await finishNotice(bench, unmeasured);
       if (stands !== null) throw new Error(`Not finished. ${stands}`);
       bench.note = args.note.trim();

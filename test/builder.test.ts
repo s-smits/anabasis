@@ -403,12 +403,11 @@ describe("a Builder session", () => {
     // What the log holds of the campaign so far: the fail on record, and no notes yet.
     expect(s.sent[0]).toContain(`\\n- s-1, t-1, harness ${s.digest.slice(0, 8)}: fail (rejected); open.`);
     // No session before this one left notes, so the message opens on the rules and holds no notes
-    // block: v1's starters are in the home, and an untouched starter renders nothing.
+    // block, and the home holds no notes file until the Builder writes one.
     expect(s.sent[0]).toContain(String.raw`{"role":"user","content":"Public rules of the domain:`);
     expect(s.sent[0]).not.toContain("Historical notes");
-    expect(readFileSync(join(s.home, "MEMORY.md"), "utf8")).toStartWith("# Builder memory\n");
-    expect(readFileSync(join(s.home, "SCRATCHPAD.md"), "utf8")).toStartWith("# Scratchpad\n");
-    expect(s.sent[0]).toContain("(files up to 256 KB each, 4096 KB in all;");
+    expect(existsSync(join(s.home, "MEMORY.md"))).toBe(false);
+    expect(s.sent[0]).toContain("as many as fit in 10000 characters;");
     expect(s.sent[0]).not.toContain("Comparisons so far");
     expect(readFileSync(join(s.home, "practice", "t-1.json"), "utf8")).toContain('"base": 7');
     // The solver's public resources, in the home as one file, which the opening message names.
@@ -454,20 +453,16 @@ describe("a Builder session", () => {
   });
 
   it("opens on the notes its last session left and each comparison's tally, and leaves notes of its own", async () => {
-    const long = "a lesson written by hand\n".repeat(400);
     const s = await setup([
       call(WRITE_FILE, {
         path: "MEMORY.md",
         content: "# Builder memory\n\nA table of factors did not help.\n",
       }),
       call(WRITE_FILE, { path: "scratch/gen.py", content: "print(6)\n" }),
-      // A notes file over its limit: finish is refused with the notice, as v1's submit was.
-      call(WRITE_FILE, { path: "SCRATCHPAD.md", content: long }),
-      finish,
-      call(WRITE_FILE, { path: "SCRATCHPAD.md", content: "# Scratchpad\n\n- try the base as a string\n" }),
       finish,
     ]);
-    // What an earlier session, b-0, left: kept under the campaign as v1's carry writes it.
+    // What an earlier session, b-0, left: kept under the campaign as the carry before claude-mem's
+    // base wrote it, which a continued campaign still holds.
     const kept = join(s.request.memory, "b-0");
     mkdirSync(kept, { recursive: true });
     writeFileSync(
@@ -490,11 +485,12 @@ describe("a Builder session", () => {
       versions: ["v0", "v3"],
     });
     await session(s.request, s, s.walled);
-    // The notes block comes first in the opening message, ahead of the rules, under v1's header.
+    // The notes block comes first in the opening message, ahead of the rules, each note under the
+    // id of the session that left it.
     expect(s.sent[0]).toContain(
-      String.raw`{"role":"user","content":"Historical notes, model-authored and possibly stale. You wrote these files, in this session or an earlier one,`,
+      String.raw`{"role":"user","content":"Historical notes, model-authored and possibly stale: what earlier sessions of this campaign left in MEMORY.md,`,
     );
-    expect(s.sent[0]).toContain(String.raw`--- MEMORY.md ---\n<!-- carried forward from b-0,`);
+    expect(s.sent[0]).toContain(String.raw`--- b-0 ---\n<!-- carried forward from b-0,`);
     expect(s.sent[0]).toContain("The base is always odd.");
     const opening = s.sent[0] ?? "";
     expect(opening.indexOf("The base is always odd.")).toBeLessThan(
@@ -506,18 +502,16 @@ describe("a Builder session", () => {
     );
     // The held-out task's own fail is on record, and no line of the message is of it.
     expect(s.sent[0]).not.toContain(s.exam);
-    expect(s.sent[4]).toContain("SCRATCHPAD.md is 10000 bytes, over its 2000-byte limit");
     expect(s.of(BUILD_FINISHED).at(-1)).toMatchObject({ session: "b-1", ended: "finished" });
-    // Its own notes and its helper are kept for the next session, each note under v1's marker.
+    // Its own notes are kept for the next session as it wrote them, and nothing else of its home.
     const own = join(s.request.memory, "b-1");
+    expect(readdirSync(own)).toEqual(["MEMORY.md"]);
     expect(readFileSync(join(own, "MEMORY.md"), "utf8")).toBe(
-      "<!-- carried forward from b-1, an earlier session of this campaign. Correct what no longer holds. -->\n<!-- scratch/ holds b-1's 1 helper file: gen.py. -->\n\n# Builder memory\n\nA table of factors did not help.\n",
+      "# Builder memory\n\nA table of factors did not help.\n",
     );
-    expect(readFileSync(join(own, "SCRATCHPAD.md"), "utf8")).toContain("- try the base as a string");
-    expect(readFileSync(join(own, "scratch", "gen.py"), "utf8")).toBe("print(6)\n");
   });
 
-  it("re-serves a first session's own notes without dating them to an earlier session", async () => {
+  it("re-serves a first session's opening without the notes it has written since", async () => {
     // The opening is served again inside one conversation: in six first sessions on record, 13
     // such calls dated notes the session had just written to "earlier sessions".
     const note = "A table of factors did not help.";
@@ -529,8 +523,8 @@ describe("a Builder session", () => {
     // Only a conversation a campaign leads rebuilds its opening when asked again.
     await session({ ...s.request, campaign: () => ({ hook: () => "", tools: [] }) }, s, s.walled);
     const opening = s.of(BUILD_CALL).find(({ tool: name }) => name === "read_opening")?.text;
-    expect(opening).toContain(note);
-    expect(opening).not.toContain("earlier session");
+    expect(opening).toContain("Public rules of the domain:");
+    expect(opening).not.toContain(note);
   });
 
   it("says the re-served practice records stay under the harness it started from once a promotion moves the reference, and nothing before", async () => {

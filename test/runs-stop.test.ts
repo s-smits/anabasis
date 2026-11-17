@@ -2,16 +2,9 @@
 // run's unfinished solves and sessions left on the host.
 import { afterAll, describe, expect, it } from "bun:test";
 import { keepCutNotes, sessionDirs } from "../src/builder/session.ts";
-import { lastKept, SCRATCHPAD_FILE, seedMemory } from "../src/builder/memory.ts";
+import { builderMemoryBlock, MEMORY_FILE } from "../src/builder/memory.ts";
 import { append } from "../src/kernel/log.ts";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "../src/meta/filesystem.ts";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { basename, dirname, join } from "../src/meta/path.ts";
 import { capturedSpawn } from "../src/meta/process.ts";
@@ -85,15 +78,31 @@ describe("a stop", () => {
       append(path, "build.started", { session: "b-1" });
       expect(leftOpen({ path }).map(({ build }) => build)).toEqual(["b-1"]);
       mkdirSync(cut.home, { recursive: true });
-      writeFileSync(join(cut.home, SCRATCHPAD_FILE), "# Scratchpad\n\nNext: widen the sweep.\n");
+      writeFileSync(join(cut.home, MEMORY_FILE), "Next: widen the sweep.\n");
       keepCutNotes(path, "b-1");
       rmSync(cut.root, { recursive: true, force: true });
       keepCutNotes(path, "b-1");
-      const memory = join(dirname(path), "memory");
-      const next = join(root, "b-2-home");
-      mkdirSync(next);
-      seedMemory(next, memory, lastKept(memory, ["b-1"]));
-      expect(readFileSync(join(next, SCRATCHPAD_FILE), "utf8")).toContain("Next: widen the sweep.");
+      expect(builderMemoryBlock(join(dirname(path), "memory"), ["b-1"])).toContain("Next: widen the sweep.");
+    } finally {
+      rmSync(cut.root, { recursive: true, force: true });
+    }
+  });
+
+  // A session begun on the release before the notes moved to one file wrote `SCRATCHPAD.md` alone.
+  it("keeps a cut Builder's scratchpad where its home holds no other notes", () => {
+    const path = join(root, `${basename(root)}-scratchpad`, "log.jsonl");
+    const cut = sessionDirs(path, "b-1");
+    try {
+      mkdirSync(dirname(path));
+      append(path, "build.started", { session: "b-1" });
+      mkdirSync(cut.home, { recursive: true });
+      writeFileSync(join(cut.home, "SCRATCHPAD.md"), "Tried: the narrow sweep.\n");
+      writeFileSync(join(cut.home, "notes.txt"), "not a notes file\n");
+      keepCutNotes(path, "b-1");
+      rmSync(cut.root, { recursive: true, force: true });
+      const block = builderMemoryBlock(join(dirname(path), "memory"), ["b-1"]);
+      expect(block).toContain("Tried: the narrow sweep.");
+      expect(block).not.toContain("not a notes file");
     } finally {
       rmSync(cut.root, { recursive: true, force: true });
     }

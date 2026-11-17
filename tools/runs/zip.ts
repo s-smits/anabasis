@@ -131,7 +131,7 @@ const GROUPS: readonly (readonly [name: string, holds: string, level: Level, pat
     /^(checks|exams\/[^/]+|states\/[0-9a-f]{64}\/correctness-model)\//,
   ],
   ["toolchain", "what a harness installed, less the packages", "medium", /^states\/tree-[^/]+\//],
-  ["memory", "the notes and helper files each Builder session left the next", "light", /^memory\//],
+  ["memory", "the notes each Builder session left the next", "light", /^memory\//],
   ["source", "the tracked src, tools and docs of the worktree at its commit", "verbose", /^source\//],
   ["rest", "anything else in the run's folder", "verbose", /^/],
 ];

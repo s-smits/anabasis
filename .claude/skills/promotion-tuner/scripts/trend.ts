@@ -39,7 +39,8 @@ import { campaignsOf, outsideLines, scoresOf } from "./outside.ts";
 const USAGE = `usage:
   bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/trend.ts
     [--window <days>] [--back <n>] [--until <date>] [--pack <pack>]... [--any-setting]
-    [--has <text>]... [--holds <commit>]... [--bench <store>] [--format md|tsv] [--runs <dir>]
+    [--has <text>]... [--holds <commit>]... [--bench <store> [--bench-tasks <list>]]
+    [--format md|tsv] [--runs <dir>]
 
 --window       the days a window spans, 7 by default; a run is placed by the day it opened
 --back         how many earlier windows the newest is read against, 2 by default
@@ -49,6 +50,7 @@ const USAGE = `usage:
 --any-setting  keep earlier runs under settings the newest window does not hold
 --has, --holds only runs whose every launch ran with code that holds this text or commit (repeatable)
 --bench        a score store, absolute: adds the outside scores of the promoted harnesses in it
+--bench-tasks  the tasks, comma-separated, the outside scores are read on: one part of a read alone
 --format       md (default) or tsv
 --runs         the campaigns under this folder only, read without the hosts' registry or an env file`;
 const OPTIONS = {
@@ -60,6 +62,7 @@ const OPTIONS = {
   has: "list",
   holds: "list",
   bench: "abs",
+  "bench-tasks": "text",
   format: "text",
   runs: "abs",
 } as const;
@@ -454,7 +457,7 @@ async function main(args: CommandArgs): Promise<number> {
   }
   const bench = args.value("bench");
   if (bench !== null) {
-    const scores = scoresOf(bench);
+    const scores = scoresOf(bench, args.value("bench-tasks")?.split(",") ?? null);
     // No name keeps every campaign, so a store whose arms no campaign built folds none.
     const names = campaignsOf(scores);
     const built =

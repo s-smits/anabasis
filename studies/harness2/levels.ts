@@ -3,7 +3,8 @@
  * withheld. It starts no solve and calls no model, and it prints ids, weights and counts, never a
  * rubric's text or a grader's reasons, so its output may go into a ledger or a pull request.
  *
- *   bun studies/harness2/compare.ts levels --dataset <dir> --of <arm> --of <arm> [--salt <text> [--unseal]]
+ *   bun studies/harness2/compare.ts levels --dataset <dir> --of <arm> --of <arm> [--tasks <list>]
+ *     [--salt <text> [--unseal]]
  *
  * It reads JobBench's layout: `<dataset>/<group>/<task>/eval_result/eval_<arm>__<group>__<task>/`,
  * one `*judge.json` in it, and the rollout's trajectory beside it under `model_traj/`.
@@ -183,6 +184,15 @@ export function armOf(dataset: string, arm: string): Map<string, Graded> {
     }
   }
   return graded;
+}
+
+/** One part of a read: the named tasks of both arms, since no part is summed with another. A task
+ *  neither arm was graded on is refused: a mistyped name would otherwise read as a smaller part. */
+export function partOf(a: Arm, b: Arm, only: readonly string[]): { a: Arm; b: Arm } {
+  const absent = only.filter((task) => !a.has(task) && !b.has(task));
+  if (absent.length > 0) throw new Error(`graded for neither arm: ${absent.join(", ")}`);
+  const kept = (arm: Arm) => new Map([...arm].filter(([task]) => only.includes(task)));
+  return { a: kept(a), b: kept(b) };
 }
 
 /** Each task's half by a hash of the salt and its own name, about half each way. A cut at half the

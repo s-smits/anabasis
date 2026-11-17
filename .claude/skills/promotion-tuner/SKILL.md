@@ -127,7 +127,7 @@ is one draw, so groups of runs are set against each other by `trend.ts` alone.
 ```sh
 bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/trend.ts \
   [--window 7] [--back 2] [--until <date>] [--pack <pack>]... [--any-setting] \
-  [--has <text>]... [--holds <commit>]... [--bench <store>] [--format md|tsv]
+  [--has <text>]... [--holds <commit>]... [--bench <store> [--bench-tasks <list>]] [--format md|tsv]
 ```
 
 "Is the system doing better than a week and two weeks ago" is answered here, a pack at a time. A
@@ -157,7 +157,8 @@ or a [whole-run investigation](../whole-run-investigation/SKILL.md), never a fin
 **The outside link.** `--bench <store>` reads a score store's judged records (`scripts/outside.ts`;
 run-improvement-campaign's "The outside aim" fills the store) and joins each arm to the promotion
 that promoted its digest, with its points against the Starter's lowest and highest sum on the same
-tasks. A promotion the starter confirms that stays inside or below that spread is the case to
+tasks; `--bench-tasks <list>` reads one part of a read alone, since its parts are never summed. A
+promotion the starter confirms that stays inside or below that spread is the case to
 investigate, as a difference in conditions first. A bench score promotes nothing and reaches no
 seat (`AGENTS.md`, section 1). Wording a claim from either table is
 [attribution-and-proof](../attribution-and-proof/SKILL.md)'s.

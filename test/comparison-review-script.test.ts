@@ -4,7 +4,7 @@
  * of sight and out of every pool until it is unsealed.
  */
 import { afterAll, describe, expect, it } from "bun:test";
-import { armOf, levelLines, sealOf } from "../studies/harness2/levels.ts";
+import { armOf, levelLines, partOf, sealOf } from "../studies/harness2/levels.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { capturedJsonStringify } from "../src/meta/json-runtime.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -135,6 +135,14 @@ describe("the open reading", () => {
     expect(read(null)).toContain(
       "shell commands and the harness's program folder: 10 name it, 3 of them only to look, of 11 (2 rollouts unread) v 0 name it, 0 of them only to look, of 2 (3 rollouts unread)",
     );
+  });
+
+  it("reads one part alone, and refuses a task neither arm was graded on", () => {
+    const part = partOf(a, b, ["g/task1"]);
+    const told = levelLines({ label, ...part, salt: null, unseal: false }).join("\n");
+    expect(told).toContain("graded on both: 1; built 1, bare 1");
+    expect(told).toContain("9 name it, 2 of them only to look, of 10 v");
+    expect(() => partOf(a, b, ["g/task1", "g/task9"])).toThrow("graded for neither arm: g/task9");
   });
 
   it("prints no rubric's text and no grader's reasons", () => {

@@ -250,6 +250,9 @@ it("reads a store's judged records, and none from a judgement that left no point
     { arm: "arm", harness: "d", task: "t1", points: 30, total: 50, of: null, cut: true },
     { arm: "starter", harness: "s", task: "t1", points: 10, total: 50, of: "starter", cut: false },
   ]);
+  // One part alone keeps its tasks' records, and a task whose only judgement failed is on no record.
+  expect(scoresOf(store, ["t1"])).toHaveLength(2);
+  expect(() => scoresOf(store, ["t1", "t2"])).toThrow("no judged rollout on t2");
   expect(() => scoresOf(join(home, "no store"))).toThrow();
 });
 

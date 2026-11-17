@@ -14,7 +14,8 @@
  *     --salt <text> --yes
  *   bun studies/harness2/compare.ts agree --out <dir> --of <label> --of <label> --times <n> [--cap <chars>]
  *   bun studies/harness2/compare.ts derive --from <tree> --guide <file> --into <dir>
- *   bun studies/harness2/compare.ts levels --dataset <dir> --of <arm> --of <arm> [--salt <text> [--unseal]]
+ *   bun studies/harness2/compare.ts levels --dataset <dir> --of <arm> --of <arm> [--tasks <list>]
+ *     [--salt <text> [--unseal]]
  *
  * An arm is what `score.ts` takes as `--arm`. `levels` reads any two arms of a JobBench dataset at
  * every grain, with a sealed half withheld (`levelLines`, `levels.ts`). `read`, `agree`, `derive` and `levels` start nothing and call no
@@ -70,7 +71,7 @@ import { isNumber, isRecord, isString, type JsonValue } from "#src/meta/json-sha
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { armOf, bothWays, type Graded, levelLines } from "./levels.ts";
+import { armOf, bothWays, type Graded, levelLines, partOf } from "./levels.ts";
 import { capOf, hasOneBefore, keyOf, PILOT_TASKS, score, tasksOf, type Values } from "./score.ts";
 
 const OPTIONS = {
@@ -663,9 +664,9 @@ async function main(args: readonly string[]): Promise<void> {
     const dataset = resolve(named(values, "dataset"));
     const { salt = null, unseal = false } = values;
     if (salt === null && unseal) throw new Error("--unseal reads beside --salt");
-    console.log(
-      levelLines({ label: { a, b }, a: armOf(dataset, a), b: armOf(dataset, b), salt, unseal }).join("\n"),
-    );
+    const graded = { a: armOf(dataset, a), b: armOf(dataset, b) };
+    const part = isString(values.tasks) ? partOf(graded.a, graded.b, tasksOf(values.tasks, [])) : graded;
+    console.log(levelLines({ label: { a, b }, ...part, salt, unseal }).join("\n"));
   } else {
     throw new Error(
       "usage: compare.ts plan | run | read | rejudge | agree | derive | levels; the head of this file has each one's options",

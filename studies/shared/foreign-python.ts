@@ -10,17 +10,18 @@
  * Each program `foreignFiles` names (`foreignHead`, the rollout's own test) is put down to its owner:
  * - a file a distribution's `RECORD` lists: that distribution is installed again for this machine,
  *   the same name at the same version, without its dependencies, over its foreign files;
- * - otherwise a file inside a CPython prefix (one holding `lib/pythonX.Y/os.py`): that interpreter
+ * - otherwise a file inside a CPython prefix (one holding `lib/pythonX.Y/os.py`, or a virtual
+ *   environment's `pyvenv.cfg`, the tree's own root included): that interpreter
  *   is replaced by the place's CPython of the same version, each executable by the one of its name
  *   and each foreign shared library dropped, and what that CPython's `lib` holds that the tree
  *   lacks (its own `libpython`, `lib-dynload` and `_sysconfigdata`) is added, its `site-packages`
  *   left out.
  * A compiled distribution in a folder that names no minor (a flat `--target`) is read by the place's
  * own `python3` where the tree carries no CPython of its minor, so where the place's minor is known
- * (`Place.python`) it is installed again for that minor, built for its own where that has no build:
- * on 17 November two references of 3.14 wheels imported 8 of 14 and 8 of 10 of their modules under
- * the Linux benchmark's 3.12. Nothing else changes: pure-Python distributions, the harness's own programs and its data keep their
- * bytes, and a tree with no foreign program is not touched. A program no owner accounts for, a
+ * (`Place.python`) it is installed again for that minor: on 17 November two references of 3.14
+ * wheels imported 8 of 14 and 8 of 10 of their modules under the Linux benchmark's 3.12. Nothing else
+ * changes: pure-Python distributions, the harness's own programs and its data keep their bytes. A
+ * program no owner accounts for, a
  * version with no CPython for the place, a distribution with no build for it, and a compiled file
  * no reinstall puts back (a module no `RECORD` lists among an interpreter's packages, a
  * distribution's program under `bin` or outside its folder) is refused whole (`PlatformRefusal`),
@@ -34,7 +35,7 @@
 import { copyFileSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
 import { hostTool } from "#src/meta/host-tool.ts";
 import { homedir, tmpdir } from "#src/meta/os.ts";
-import { basename, dirname, join, normalize } from "#src/meta/path.ts";
+import { basename, dirname, join, normalize, relative } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { pinnedPythonDir } from "#src/wall/policy.ts";
@@ -76,8 +77,8 @@ const RECORD_PATH = /^(?:"((?:[^"]|"")*)"|([^,]*))/u;
 /** The refusal of a tree that would not run here, naming what stands in the way. */
 export class PlatformRefusal extends Error {}
 
-/** Makes the tool tree `tree` run on `place`, in place. Returns what it replaced, or null where it
- *  held no foreign program. */
+/** Makes the tool tree `tree` run on `place`, in place. Returns what it replaced, or null where
+ *  nothing needed it. */
 export async function rebuildForeignPython(
   tree: string,
   place: Place,
@@ -87,14 +88,11 @@ export async function rebuildForeignPython(
   const found = await foreignFiles(tree, place);
   const foreign = found.map(({ path }) => path);
   const owners = await distributionsIn(tree);
-  // A folder that names no minor (a flat `--target`) is read by whichever `python3` comes first,
-  // which on the place is its own where the tree carries no CPython of the folder's minor; a
-  // distribution compiled for another minor there is installed again for the place's.
-  const scan = (pattern: string) => [...new Bun.Glob(pattern).scanSync({ cwd: tree, dot: true })];
-  const carried = new Set([
-    ...scan("**/lib/python[0-9].*/os.py").map((os) => basename(dirname(os)).slice("python".length)),
-    ...scan("**/pyvenv.cfg").map((cfg) => minorIn(venvOf(join(tree, dirname(cfg))) ?? "")),
-  ]);
+  const carried = new Set(
+    [...new Bun.Glob("**/lib/python[0-9].*/os.py").scanSync({ cwd: tree, dot: true })].map((os) =>
+      basename(dirname(os)).slice("python".length),
+    ),
+  );
   const minorOf = ({ named, python: own }: Distribution) =>
     named || own === null || carried.has(own) ? own : (place.python ?? own);
   const retargeted = [...new Set(owners.values())].filter((one) => minorOf(one) !== one.python);
@@ -118,7 +116,7 @@ export async function rebuildForeignPython(
     ...foreign.flatMap((path) => {
       const owner = owners.get(path);
       if (owner === undefined) return [];
-      return path.startsWith(`${owner.site}/`) && !path.startsWith(`${join(owner.site, "bin")}/`)
+      return inFolder(path, owner)
         ? []
         : [
             `${path}, a compiled program of ${owner.requirement} outside its package folders, which a reinstall does not put back`,
@@ -131,18 +129,9 @@ export async function rebuildForeignPython(
   if (refused.length > 0) throw refusal(place, refused);
   const stage = mkdtempSync(join(tmpdir(), "ana-foreign-python-"));
   try {
-    // Where the place's minor has no build of a distribution, it is built for its own, as before.
     const staged = [...distributions].map((one, index) => {
       const into = join(stage, String(index));
-      const at = minorOf(one) ?? "";
-      const why = python.install(into, one.requirement, at);
-      if (why === null || at === one.python) return { one, into, python: at, why };
-      return {
-        one,
-        into: `${into}-own`,
-        python: one.python,
-        why: python.install(`${into}-own`, one.requirement, one.python ?? ""),
-      };
+      return { one, into, why: python.install(into, one.requirement, minorOf(one) ?? "") };
     });
     const missing = staged.flatMap(({ one, why }) =>
       why === null ? [] : [`no build of ${one.requirement} (${why})`],
@@ -152,8 +141,7 @@ export async function rebuildForeignPython(
     for (const { one, into } of staged) {
       // Its files for another machine or minor go; those under `bin` stay, as the copy leaves `bin` out.
       for (const [path, owner] of owners) {
-        const own = path.startsWith(`${one.site}/`) && !path.startsWith(`${join(one.site, "bin")}/`);
-        if (owner === one && (own || foreign.includes(path))) rmSync(join(tree, path), { force: true });
+        if (owner === one && inFolder(path, one)) rmSync(join(tree, path), { force: true });
       }
       // A console script `--target` writes under its own `bin` names the installer's interpreter, and a
       // harness's programs never called one there.
@@ -166,17 +154,18 @@ export async function rebuildForeignPython(
     await foreignPrograms(tree, place);
     return {
       interpreters: interpreters.map(({ named }) => named),
-      distributions: [
-        ...new Set(
-          staged.map(
-            ({ one, python: at }) => `${one.requirement}${at === one.python ? "" : ` for CPython ${at}`}`,
-          ),
-        ),
-      ].toSorted(),
+      distributions: [...new Set(staged.map(({ one }) => one.requirement))].toSorted(),
     };
   } finally {
     rmSync(stage, { recursive: true, force: true });
   }
+}
+
+/** Whether `path` lies in the package folders of `site`, which a reinstall writes: inside it, and
+ *  not under its `bin`. `site` is `.` for a folder at the tree's root. */
+function inFolder(path: string, { site }: Distribution) {
+  const inside = relative(site, path);
+  return !inside.startsWith("../") && !inside.startsWith("bin/");
 }
 
 /** Each folder of `tree` that distributions are installed into, relative to the tree, with the
@@ -236,11 +225,8 @@ function prefixOf(tree: string, path: string): string | null {
 function venvOf(prefix: string): string | null {
   const cfg = join(prefix, "pyvenv.cfg");
   if (!existsSync(cfg)) return null;
-  return /^version(?:_info)?\s*=\s*(\d+\.\d+[\d.]*)/mu.exec(readFileSync(cfg, "utf8"))?.[1] ?? null;
+  return /^version(?:_info)?\s*=\s*(\d+(?:\.\d+)+)/mu.exec(readFileSync(cfg, "utf8"))?.[1] ?? null;
 }
-
-/** `3.14` of `3.14.10`. */
-const minorIn = (version: string) => version.split(".").slice(0, 2).join(".");
 
 /** The `lib/pythonX.Y` folder name of a CPython prefix, or null where `prefix` is none. */
 function libraryOf(prefix: string): string | null {
@@ -254,15 +240,16 @@ function interpreterFor(tree: string, prefix: string, files: readonly string[], 
   // A virtual environment (uv's or `venv`'s) links its interpreter to the machine it was made on;
   // given the place's CPython whole and its `pyvenv.cfg` dropped, it is a prefix of its own, whose
   // `site-packages` are the environment's.
-  const venv = libraryOf(at) === null ? venvOf(at) : null;
-  const library = libraryOf(at) ?? (venv === null ? "" : `python${minorIn(venv)}`);
+  const lib = libraryOf(at);
+  const venv = lib === null ? venvOf(at) : null;
+  const library = lib ?? `python${(venv ?? "").split(".").slice(0, 2).join(".")}`;
   const header = join(at, "include", library, "patchlevel.h");
   const patch = existsSync(header)
     ? /PY_VERSION\s+"([^"]+)"/u.exec(readFileSync(header, "utf8"))?.[1]
     : undefined;
   const version = patch ?? venv ?? library.slice("python".length);
   const named = `${prefix} (CPython ${version})`;
-  const host = python.interpreter(version) ?? (venv === null ? null : python.interpreter(minorIn(venv)));
+  const host = python.interpreter(version);
   if (host === null) {
     return {
       named,
@@ -278,9 +265,7 @@ function interpreterFor(tree: string, prefix: string, files: readonly string[], 
     SHARED_LIBRARY.test(file) && (!file.startsWith(modules) || file.startsWith(`${modules}lib-dynload/`));
   const standIns = files.map((file) => {
     const executable = join(host, "bin", basename(file));
-    if (existsSync(executable)) return { file, from: executable };
-    const any = venv !== null && /^python[\d.]*$/u.test(basename(file));
-    return { file, from: any ? join(host, "bin", library) : null };
+    return { file, from: existsSync(executable) ? executable : null };
   });
   const lacking = standIns.filter(({ file, from }) => from === null && !own(file)).map(({ file }) => file);
   const apply = () => {

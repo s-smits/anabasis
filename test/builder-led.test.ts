@@ -1398,7 +1398,6 @@ describe("a campaign tool where the table names more than the action", () => {
       events.findIndex((event, at) => at > index(EXAM_STARTED, session) && event.kind === COMPARED);
     expect(waits?.text).toContain("a compare waits for this session to end");
     expect(nextCompare(waits?.session ?? "")).toBeGreaterThan(index("exam.finished", waits?.session ?? ""));
-    expect(offers?.text).toContain("edit and practise meanwhile, and compare.");
     expect(offers?.text).not.toContain("a compare waits");
     expect(nextCompare(offers?.session ?? "")).toBeLessThan(index("exam.finished", offers?.session ?? ""));
   });

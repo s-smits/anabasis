@@ -361,8 +361,10 @@ const examineAction =
     context.examining = { session, done, released: () => next.promise };
     return {
       // The count is where the session stops, not a size it reaches: the esp32 run of 7 November
-      // asked 12 to 22 in 18 sessions and 0 of 17 ended holding that many.
-      said: `Examiner session ${session} is writing tasks beside this conversation${tasks === undefined ? "" : `, and stops once it holds ${plural(Number(tasks), "task")}`}: edit and practise meanwhile${uncompared(turn.events) ? "; a compare waits for this session to end" : ", and compare"}. As it holds tasks the host releases the practice owed since the last reading.`,
+      // asked 12 to 22 in 18 sessions and 0 of 17 ended holding that many. The result names the
+      // compare that waits for the session and gives no course: until 18 November it said "edit
+      // and practise meanwhile", which one run's three promotion results each repeated.
+      said: `Examiner session ${session} is writing tasks beside this conversation${tasks === undefined ? "" : `, and stops once it holds ${plural(Number(tasks), "task")}`}${uncompared(turn.events) ? "; a compare waits for this session to end" : ""}. As it holds tasks the host releases the practice owed since the last reading.`,
     };
   };
 

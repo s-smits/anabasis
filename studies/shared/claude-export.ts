@@ -76,6 +76,11 @@ for name in names:
     except BaseException: bad.append(name)
 print("IMPORTS", sys.version.split()[0], len(names) - len(bad), len(names), *bad[:5])`;
 
+/** The programs an exported tree's guide may start by name. An interpreter or installer of the tool
+ *  tree's own Python is none of them: behind the machine's on the PATH, its name starts the machine's. */
+export const exportedPrograms = (tree: string): string[] =>
+  installedPrograms(join(tree, TOOLCHAIN)).filter((name) => !/^(?:python|pip)[\d.]*$/u.test(name));
+
 /** The tree `into`, written from `source` for programs that run on `place`, the machine that will
  *  roll it: this one unless `--for` names another. Returns what `export.json` records. */
 export async function exportForClaudeCode(
@@ -111,12 +116,7 @@ export async function exportForClaudeCode(
     mkdirSync(dirname(join(part, HOOKS)), { recursive: true });
     writeFileSync(join(part, HOOKS), `${capturedJsonStringify(hooks, null, 2)}\n`);
   }
-  // An interpreter or installer of the tool tree's own Python is no program of the harness, and
-  // behind the machine's on the PATH its name starts the machine's.
-  const programs =
-    searched.length === 0
-      ? []
-      : installedPrograms(join(part, TOOLCHAIN)).filter((name) => !/^(?:python|pip)[\d.]*$/u.test(name));
+  const programs = exportedPrograms(part);
   // A harness that keeps its method in packages reaches them in a campaign through its own
   // interpreter, first on that PATH. Here that name starts the machine's, which reads no folder of
   // the tree, so the solver is told where they are and what they were built for, and the rest is its.

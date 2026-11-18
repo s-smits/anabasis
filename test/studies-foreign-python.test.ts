@@ -159,17 +159,12 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
       mkdirSync(join(env, "bin"), { recursive: true });
       symlinkSync(outside, join(env, "bin/python3.12"));
       symlinkSync("python3.12", join(env, "bin/python3"));
-      // An installer whose CPython has the minor's build but not the patch the environment names.
       const { python, asked } = standIn();
-      const minorOnly: PythonFor = {
-        ...python,
-        interpreter: (version) => (version === "3.12.15" ? null : python.interpreter(version)),
-      };
-      expect(await rebuildForeignPython(tree, LINUX, minorOnly)).toStrictEqual({
+      expect(await rebuildForeignPython(tree, LINUX, python)).toStrictEqual({
         interpreters: [interpreter],
         distributions: ["numpy==2.5.4"],
       });
-      expect(asked).toStrictEqual(["interpreter 3.12", "install numpy==2.5.4 for 3.12"]);
+      expect(asked).toStrictEqual(["interpreter 3.12.15", "install numpy==2.5.4 for 3.12"]);
       expect(readFileSync(join(env, "bin/python3"))).toStrictEqual(elf("host python"));
       expect(existsSync(join(env, "pyvenv.cfg"))).toBe(false);
       expect(existsSync(join(env, "lib/python3.12/os.py"))).toBe(true);
@@ -266,29 +261,20 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
     const { python, asked } = standIn();
     expect(await rebuildForeignPython(flat("flat-for-place"), runs, python)).toStrictEqual({
       interpreters: [],
-      distributions: ["numpy==2.5.4 for CPython 3.12", "wrapt==2.0"],
+      distributions: ["numpy==2.5.4", "wrapt==2.0"],
     });
     expect(asked.toSorted()).toStrictEqual(["install numpy==2.5.4 for 3.12", "install wrapt==2.0 for 3.14"]);
-    // Where the place's minor has no build, the folder is built for its own, as before.
-    const tried: string[] = [];
+    // Where the place's minor has no build, the export is refused whole and the tree keeps its bytes.
     const none: PythonFor = {
       interpreter: () => null,
-      install: (target, requirement, version) => {
-        tried.push(`${requirement} for ${version}`);
-        if (version === "3.12") return "no wheel for 3.12";
-        put(target, { [`${requirement.split("==")[0] ?? ""}/ok.py`]: "\n" });
-        return null;
-      },
+      install: (_target, _requirement, version) => (version === "3.12" ? "no wheel for 3.12" : null),
     };
-    expect((await rebuildForeignPython(flat("flat-own"), runs, none))?.distributions).toStrictEqual([
-      "numpy==2.5.4",
-      "wrapt==2.0",
-    ]);
-    expect(tried.toSorted()).toStrictEqual([
-      "numpy==2.5.4 for 3.12",
-      "numpy==2.5.4 for 3.14",
-      "wrapt==2.0 for 3.14",
-    ]);
+    const refused = flat("flat-none");
+    const before = readFileSync(join(refused, "pylib/numpy/_core.cpython-314-darwin.so"));
+    await expect(rebuildForeignPython(refused, runs, none)).rejects.toThrow(
+      /no build of numpy==2\.5\.4 \(no wheel for 3\.12\)/u,
+    );
+    expect(readFileSync(join(refused, "pylib/numpy/_core.cpython-314-darwin.so"))).toStrictEqual(before);
     // Wheels already built for the place's system, but for another minor than its python3, as a
     // Builder installs with `--python-platform`: installed again for that minor, the old files gone.
     const native = (name: string) => {
@@ -305,7 +291,7 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
     const moved = native("native-other-minor");
     expect(await rebuildForeignPython(moved, runs, standIn().python)).toStrictEqual({
       interpreters: [],
-      distributions: ["numpy==2.5.4 for CPython 3.12"],
+      distributions: ["numpy==2.5.4"],
     });
     expect(
       ["_core.cpython-314-x86_64-linux-gnu.so", "_core.cpython-312-x86_64-linux-gnu.so"].map((file) =>

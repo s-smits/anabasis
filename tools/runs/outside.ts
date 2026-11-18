@@ -41,7 +41,6 @@
  * plan, before `--yes` or, behind `--eval`, before the first task is judged.
  */
 import { promoted } from "#src/kernel/reports.ts";
-import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -78,8 +77,8 @@ export interface Plan {
   readonly sitting: string;
   /** The benchmark's machine as `score.ts tree --for` names it. */
   readonly place: string;
-  /** The minor of the `python3` a rollout there finds first, where its sitting's `python` says one. */
-  readonly python?: string;
+  /** The minor of the `python3` a rollout there finds first, as its sitting's `python` says it. */
+  readonly python: string;
   /** The harness the store already holds under the label, where it holds one. */
   readonly held: string | null;
   /** Whether the read waits for the machine to be idle instead of refusing while an arm holds it. */
@@ -161,7 +160,7 @@ export function stepsOf(plan: Plan): Step[] {
             command: shellOn(
               holder,
               // A stage a cut read left would be taken as the tree, so each export starts without one.
-              `${same ? "" : `rm -rf ${stage} && `}cd ${shellPath(plan.tree)} && ${plan.bun} studies/harness2/score.ts tree --arm ${quoted(run)} --harness ${quoted(plan.harness)} --name ${quoted(label)} --out ${same ? store : stage} --for ${quoted(plan.place)}${plan.python === undefined ? "" : ` --python ${plan.python}`}`,
+              `${same ? "" : `rm -rf ${stage} && `}cd ${shellPath(plan.tree)} && ${plan.bun} studies/harness2/score.ts tree --arm ${quoted(run)} --harness ${quoted(plan.harness)} --name ${quoted(label)} --out ${same ? store : stage} --for ${quoted(plan.place)} --python ${quoted(plan.python)}`,
             ),
           },
           ...(same
@@ -306,10 +305,7 @@ export async function outside(args: readonly string[]): Promise<void> {
   if (holder !== undefined && (controller === null || controller === undefined)) {
     throw new Error(`${holder.name}: no controller there to export from`);
   }
-  // A sitting older than its `python` verb says none, and the export then keeps each package's minor.
-  const said = await runTextOrThrow(
-    shellOn(settings.runner, `uname -sm; ${settings.sitting} python 2>/dev/null || true`),
-  );
+  const said = await runTextOrThrow(shellOn(settings.runner, `uname -sm; ${settings.sitting} python`));
   const [named = "", python = ""] = said.trim().split("\n");
   const place = PLACES.get(named);
   if (place === undefined) {
@@ -347,13 +343,13 @@ export async function outside(args: readonly string[]): Promise<void> {
     bun: controller === null || controller === undefined ? "bun" : treeBun(controller.bun),
     ...settings,
     place,
-    ...keyIfDefined("python", /^3\.\d+$/u.test(python) ? python : undefined),
+    python,
     held,
     wait: values.wait,
   };
   const steps = stepsOf(plan);
   console.log(
-    `${run} read outside on ${plan.bench} as ${label} and starter-${label}, on login ${login}, for ${place}${plan.python === undefined ? "" : ` (python3 ${plan.python})`}${held === null ? "" : `; the store already holds ${label} (${held.slice(0, 8)}), rolled as it stands`}`,
+    `${run} read outside on ${plan.bench} as ${label} and starter-${label}, on login ${login}, for ${place} (python3 ${plan.python})${held === null ? "" : `; the store already holds ${label} (${held.slice(0, 8)}), rolled as it stands`}`,
   );
   if (!values.yes) {
     for (const { says } of steps) console.log(`  ${says}`);

@@ -42,6 +42,7 @@ function planOf(over: Partial<Plan> = {}): Plan {
       bun: "bun",
       ...settingsOf(RUN, ENV),
       place: "linux-x64",
+      python: "3.12",
       held: null,
       wait: false,
       ...over,
@@ -122,6 +123,7 @@ describe("runs outside", () => {
     // The export runs where the campaign is, and the sitting where the store is.
     expect(steps[1]).toContain("you@builder");
     expect(steps[1]).toContain("score.ts tree --arm");
+    expect(steps[1]).toContain(String.raw`--for '\''linux-x64'\'' --python '\''3.12'\''`);
     expect(steps[7]).toContain("you@bench");
     // The carry moves the tree in only after the stream ended well, and never over one in place.
     expect(steps[2]).toContain("set -o pipefail");

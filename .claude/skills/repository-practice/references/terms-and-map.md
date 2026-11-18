@@ -25,7 +25,7 @@ which defines held-out task, practice task, valid answer, reference harness and 
 | Prompt, model turn, session turn limit | Solver prompts sent; answered model turns; Builder turns |
 | Hand label | A person's verdict on a rejection (`earned`, `check-defect`, `unclear`) or a pass (`sound`, `wrong`, `unclear`) |
 | Built Harness | The directory the Builder edits (a harness); each after the starter is promoted, built or imported (`import.ts`) |
-| System | One solver in one harness: bare with the starter, built with a Builder's harness |
+| System | One solver in one harness: the bareSolver (the Starter) or a builtSolver (a Builder's harness); the Starter Pack is what a campaign begins from (`AGENTS.md`, section 3) |
 | Comparison, standalone comparison | Both harnesses on the same held-out tasks; one without a Builder session |
 | Harness snapshot | A frozen copy of `harness/` (`build.checkpoint`) |
 | Step | Task scores that clear the sign-flip test at the comparison's level |

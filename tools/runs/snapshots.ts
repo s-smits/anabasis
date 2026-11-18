@@ -66,6 +66,10 @@ const DERIVED = new Set([
   ".matplotlib",
   "Library",
 ]);
+/** A shell line that prints, for every pip target under the folder it stands in, the entries its
+ *  packages installed, one a line as `grep` names a match: `./<target>/<package>.dist-info/RECORD:`
+ *  and the first path segment of a row of that `RECORD`. */
+export const PACKAGED = "find . -path '*.dist-info/RECORD' -exec grep -Ho '^[^/,]*' {} + | sort -u";
 // The seed's mark comes too, so a copy of a rehearsal's seed is no paid campaign to a reader: until
 // 29 October the gather left it out, and two compare-systems seeds counted as campaigns in a replay.
 const RECORD = [
@@ -95,11 +99,16 @@ const WAIT_MS = 200;
 /** The text only an opening's line holds. A line that merely quotes it is parsed and passed over. */
 const OPENED = `"kind":"campaign.opened"`;
 
-/** Whether a folder of this name, holding these entries, is installed, cached or built: one named so
- *  (`DERIVED`), or a pip target, known by a `.dist-info` in it. Neither a copy of a campaign nor a zip
- *  holds one, since the log names what was installed and nothing here reads the packages. */
-export const derived = (name: string, entries: readonly string[]): boolean =>
-  DERIVED.has(name) || entries.some((entry) => entry.endsWith(".dist-info"));
+/** Whether a folder of this name is installed, cached or built (`DERIVED`). Neither a copy of a
+ *  campaign nor a zip holds one, since the log names what was installed and nothing here reads it. */
+export const derived = (name: string): boolean => DERIVED.has(name);
+
+/** The entries `PACKAGED` printed, each by its path from the folder: a line less its package's
+ *  `RECORD`. What no `RECORD` names is a seat's own, an entry whose rows are all quoted for a comma
+ *  included: until 18 November a copy and a zip left a pip target whole, and a promoted harness's
+ *  own library beside its packages was in no copy. */
+export const packagedOf = (printed: string): Set<string> =>
+  new Set(printed.split("\n").map((line) => line.slice(2).replace(/[^/]*\.dist-info\/RECORD:/u, "")));
 
 /** One original campaign's identity and project, as a catalogue lists it. Only the openings are
  *  parsed: every refresh asks each host for its catalogue, and parsing every line of every log for
@@ -156,31 +165,36 @@ export function remoteRuns(lines: readonly string[] | null, host: Host): RemoteR
   });
 }
 
-/** The files and links of a remote folder, each by its path from it, in byte order. */
-async function filesOf(host: Host, folder: string): Promise<string[]> {
-  const listed = await runTextOrThrow(sshScript(host, `cd ${quoted(folder)} && find . ! -type d -print0`));
-  return listed
-    .split("\0")
+/** The files and links of a remote folder that a copy takes, each by its path from it, in byte
+ *  order, and what it leaves of the folder on the host (`installs`). */
+async function filesOf(host: Host, folder: string): Promise<{ taken: string[]; left: string[] }> {
+  const listed = (
+    await runTextOrThrow(sshScript(host, `cd ${quoted(folder)} && find . ! -type d -print0 && ${PACKAGED}`))
+  ).split("\0");
+  const owned = packagedOf(listed.pop() ?? "");
+  const paths = listed
     .filter((path) => path.startsWith("./"))
     .map((path) => path.slice(2))
     .toSorted();
+  return installs(paths, owned);
 }
 
-/** The folders among a campaign's `paths` that a copy leaves on its host (`derived`), each the
- *  outermost such folder: the packages a harness or the Examiner installed, and caches. A copy
- *  therefore opens as no harness (`keptAs` refuses a kept state short of its programs): a campaign
- *  runs on from its original. */
-function installs(paths: readonly string[]): string[] {
-  const found = new Set<string>();
-  for (const path of paths) {
+/** What a copy takes of a campaign's `paths` and what it leaves on its host, each by its outermost
+ *  path: the folders named as installed or cached (`derived`), and the entries of a pip target its
+ *  packages own (`owned`), so that a file a seat wrote beside them is copied. A copy therefore
+ *  opens as no harness (`keptAs` refuses a kept state short of its programs): a campaign runs on
+ *  from its original. */
+function installs(paths: readonly string[], owned: ReadonlySet<string>): { taken: string[]; left: string[] } {
+  const outers = paths.map((path) => {
     const parts = path.split("/");
-    const at = parts.findIndex(
-      (part, index) => index + 1 < parts.length && derived(part, parts.slice(index + 1, index + 2)),
-    );
-    if (at !== -1) found.add(parts.slice(0, at + 1).join("/"));
-  }
-  const outer = [...found].toSorted();
-  return outer.filter((folder) => !outer.some((other) => folder.startsWith(`${other}/`)));
+    return parts
+      .map((_, index) => parts.slice(0, index + 1).join("/"))
+      .find((under, index) => owned.has(under) || (index + 1 < parts.length && derived(parts[index] ?? "")));
+  });
+  return {
+    taken: paths.filter((_, index) => outers[index] === undefined),
+    left: [...new Set(outers.filter((outer) => outer !== undefined))].toSorted(),
+  };
 }
 
 /** The files among `paths` that a disk which folds case cannot hold beside another named the same
@@ -219,11 +233,9 @@ async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): 
     rmSync(stage, { recursive: true, force: true });
     mkdirSync(folder, { recursive: true });
     const reused = existsSync(into) ? [`--link-dest=${into}`] : [];
-    const paths = depth === "whole" ? await filesOf(host, dirname(run.path)) : [];
-    const left = installs(paths);
-    const twins = existsSync(dirname(into).toUpperCase())
-      ? caseTwins(paths.filter((path) => !left.some((install) => path.startsWith(`${install}/`))))
-      : [];
+    const { taken, left } =
+      depth === "whole" ? await filesOf(host, dirname(run.path)) : { taken: [], left: [] };
+    const twins = existsSync(dirname(into).toUpperCase()) ? caseTwins(taken) : [];
     if (twins.length > 0) {
       console.log(
         `${run.name}: ${String(twins.length)} paths named as another but for case stay on ${host.name} alone`,
@@ -234,7 +246,7 @@ async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): 
       `${folder}/`,
       ...reused,
       ...EXCLUDED,
-      ...left.map((install) => leaving(`${install}/`)),
+      ...left.map(leaving),
       ...twins.map(leaving),
       ...(depth === "record" ? RECORD : []),
     );
@@ -407,7 +419,7 @@ export async function takeRetired(host: Host, act: "take" | "describe"): Promise
           "-c",
           "--itemize-changes",
           ...EXCLUDED,
-          ...installs(await filesOf(host, from)).map((folder) => leaving(`${folder}/`)),
+          ...(await filesOf(host, from)).left.map(leaving),
         )
       )
         .split("\n")

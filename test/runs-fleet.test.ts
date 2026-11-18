@@ -339,28 +339,65 @@ describe("campaign snapshots", () => {
   it("leaves on its host what a campaign installed and cached, and copies a harness's own files", () => {
     const remote = campaign();
     const { made } = remote;
+    // The pip target `lib` holds a package, a module of one file and the harness's own library,
+    // named as a file inside the package is, which only a row's first segment tells apart; the
+    // folder `kept` is named as a package of another target is, and no package of its own owns it.
+    // One folder holds a comma, so the one `RECORD` row that names it is quoted, names no entry
+    // and the folder is copied. In `tree-b` the target sits one folder under the harness's own
+    // module, and holds its packages alone.
     const files = [
       "examiner-home/.cache/pip/wheel",
       "examiner-home/draft.md",
+      "states/tree-a/kept/numpy/mine.py",
       "states/tree-a/lib/numpy-2.0.dist-info/METADATA",
       "states/tree-a/lib/numpy/__pycache__/core.pyc",
       "states/tree-a/lib/numpy/core.py",
+      "states/tree-a/lib/core.py",
+      "states/tree-a/lib/six.py",
       "states/tree-a/src/tool.py",
+      "states/tree-a/lib/my, pkg/a.py",
+      "states/tree-b/lib/mod.py",
+      "states/tree-b/lib/py/scipy-1.0.dist-info/METADATA",
+      "states/tree-b/lib/py/scipy/x.py",
     ];
     for (const file of files) {
       mkdirSync(dirname(join(made.root, "remote", "distant", file)), { recursive: true });
       writeFileSync(join(made.root, "remote", "distant", file), file);
     }
-    const listing = ["log.jsonl", ...files].map((file) => `./${file}\n`).join("");
-    expect(made.run(sync, { ...remote.env, FAKE_FILES: listing }).code).toBe(0);
+    // The package's own account, as pip writes it: a path, a hash and a size a line, a script above
+    // the target among them.
+    writeFileSync(
+      join(made.root, "remote", "distant", "states/tree-a/lib/numpy-2.0.dist-info/RECORD"),
+      [
+        "numpy/core.py,sha256=a,1",
+        "numpy/__pycache__/core.pyc,,",
+        "numpy-2.0.dist-info/METADATA,sha256=b,2",
+        "numpy-2.0.dist-info/RECORD,,",
+        "six.py,sha256=c,3",
+        "../../bin/f2py,sha256=d,4",
+        '"my, pkg/a.py",sha256=e,5',
+        "",
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(made.root, "remote", "distant", "states/tree-b/lib/py/scipy-1.0.dist-info/RECORD"),
+      "scipy/x.py,sha256=f,6\nscipy-1.0.dist-info/METADATA,,\nscipy-1.0.dist-info/RECORD,,\n",
+    );
+    // The listing is the real one: `find` and `grep` over these files, read by the fetch.
+    expect(made.run(sync, { ...remote.env, FAKE_LISTED: "1" }).code).toBe(0);
     const transfer = made.recorded().find((call) => call.tool === "rsync");
-    // Each install by its outermost folder: the cache inside the pip target is named by it.
+    // Each by its outermost path: the cache inside the package is named by the package.
     expect(transfer?.args.filter((arg) => /^--exclude=\/./u.test(arg))).toEqual([
-      "--exclude=/examiner-home/.cache/",
-      "--exclude=/states/tree-a/lib/",
+      "--exclude=/examiner-home/.cache",
+      "--exclude=/states/tree-a/lib/numpy",
+      "--exclude=/states/tree-a/lib/numpy-2.0.dist-info",
+      "--exclude=/states/tree-a/lib/six.py",
+      "--exclude=/states/tree-b/lib/py/scipy",
+      "--exclude=/states/tree-b/lib/py/scipy-1.0.dist-info",
     ]);
     const copied = (file: string) => existsSync(join(made.main, "data", "runs", "runner", "distant", file));
-    expect(files.map(copied)).toEqual([false, true, false, false, false, true]);
+    const kept = [false, true, true, false, false, false, true, false, true, true, true, false, false];
+    expect(files.map(copied)).toEqual(kept);
   });
 
   it("brings every other copy of a host where one copy fails, names it, and still fails the read", () => {
@@ -770,20 +807,23 @@ describe("a take-over of a campaign that installed packages", () => {
     const { made, there, here, listed } = ablation();
     const env = {
       FAKE_CATALOGUE: JSON.stringify([listed("over", there), listed("apart", there)]),
-      FAKE_FILES: ["log.jsonl", "memory/note.txt", "tree/lib/pkg-1.dist-info/METADATA", "tree/own.py"]
-        .map((file) => `./${file}\n`)
-        .join(""),
+      FAKE_LISTED: "1",
     };
     for (const name of ["over", "apart"]) {
       mkdirSync(there(name, "tree/lib/pkg-1.dist-info"), { recursive: true });
-      writeFileSync(there(name, "tree/lib/pkg-1.dist-info/METADATA"), "installed");
-      writeFileSync(there(name, "tree/own.py"), "the Builder's");
+      mkdirSync(there(name, "tree/lib/pkg"), { recursive: true });
+      writeFileSync(there(name, "tree/lib/pkg/code.py"), "installed");
+      writeFileSync(
+        there(name, "tree/lib/pkg-1.dist-info/RECORD"),
+        "pkg/code.py,,\npkg-1.dist-info/RECORD,,\n",
+      );
+      writeFileSync(there(name, "tree/lib/own.py"), "the Builder's");
     }
     const snapshots = 'import { takeRetired, syncRuns } from "REPOSITORY/tools/runs/snapshots.ts";';
     expect(made.run(`${snapshots} await syncRuns([]);`, env).code).toBe(0);
-    expect(existsSync(here("runner", "over", "tree/lib"))).toBe(false);
-    // The copy of one loses a file of the harness's own, which no rule leaves out.
-    rmSync(here("runner", "apart", "tree/own.py"));
+    expect(existsSync(here("runner", "over", "tree/lib/pkg"))).toBe(false);
+    // The copy of one loses the harness's own file beside its packages, which no rule leaves out.
+    rmSync(here("runner", "apart", "tree/lib/own.py"));
     const taken = made.run(
       `${snapshots} import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; await takeRetired(hostsOf()[0]!, "take");`,
       env,
@@ -793,11 +833,11 @@ describe("a take-over of a campaign that installed packages", () => {
       true,
       false,
     ]);
-    expect([existsSync(there("over")), readFileSync(here("here", "over", "tree/own.py"), "utf8")]).toEqual([
-      false,
-      "the Builder's",
-    ]);
-    expect(existsSync(here("here", "over", "tree/lib"))).toBe(false);
+    expect([
+      existsSync(there("over")),
+      readFileSync(here("here", "over", "tree/lib/own.py"), "utf8"),
+    ]).toEqual([false, "the Builder's"]);
+    expect(existsSync(here("here", "over", "tree/lib/pkg"))).toBe(false);
   });
 });
 

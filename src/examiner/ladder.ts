@@ -56,6 +56,10 @@
  * how hard a task is, which the writing session decides, and no drafting record shows them
  * raising supply (buffer untied 82% of the tasks it drafted before the ladder and 80% after,
  * truss 96% and 95%).
+ *
+ * On 18 November `SOLVER` stopped saying the solver "forgets no case and skips no check": under the
+ * Starter a jobstat run's solver had 47 of 144 answers refused by one bookkeeping check, so it says
+ * what the solver can do instead of what it never fails at.
  */
 
 /** Reach, from 0 to 7: how hard a task is for a strong current model working in the field. */
@@ -111,7 +115,7 @@ export const FIELDS: readonly { readonly field: string; readonly rungs: readonly
 
 /** Who the grades are for, and the three places its ability stops. */
 export const SOLVER =
-  "The grades are for the solver this campaign seats, with a shell and the field's libraries. It forgets no case and skips no check: it scripts every case and checks its answer with an engine it writes from the stated rules. So a closed form, a stated procedure, a search over a few continuous variables or a finite list of cases sits at grade 2 or below for it, however specialist the words. So does a task made hard only by margins, size or new numbers, such as a total held within a hair of its limit, every resource in use at once or one admissible value a part: exact arithmetic and enumeration meet each, and a tolerance punishes approximation only where the engine that decides has no exact form. Its ability stops in three places. The obvious local search from the obvious start lands in the wrong basin, and only the field's own structure finds the right one. The convenient model it would build differs, near the specification, from the engine that decides the answer, and nothing public says where. Or the specification sits within a stated tolerance of a theoretical bound, so an approximate method falls short and a theorem rules out the class of answer a generalist searches. A task climbs a grade only by moving into one of these places.";
+  "The grades are for the solver this campaign seats, with a shell and the field's libraries. It can script every case and check its answer with an engine it writes from the stated rules. So a closed form, a stated procedure, a search over a few continuous variables or a finite list of cases sits at grade 2 or below for it, however specialist the words. So does a task made hard only by margins, size or new numbers, such as a total held within a hair of its limit, every resource in use at once or one admissible value a part: exact arithmetic and enumeration meet each, and a tolerance punishes approximation only where the engine that decides has no exact form. Its ability stops in three places. The obvious local search from the obvious start lands in the wrong basin, and only the field's own structure finds the right one. The convenient model it would build differs, near the specification, from the engine that decides the answer, and nothing public says where. Or the specification sits within a stated tolerance of a theoretical bound, so an approximate method falls short and a theorem rules out the class of answer a generalist searches. A task climbs a grade only by moving into one of these places.";
 
 /** The scale, as both modes read it. */
 const SCALE = `Reach is how hard a task is for a strong current model working in the field:\n${GRADES.map((grade) => `- ${grade}`).join("\n")}`;

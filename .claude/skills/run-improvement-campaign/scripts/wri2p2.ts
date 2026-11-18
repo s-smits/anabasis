@@ -30,7 +30,8 @@
  *   the commit the command runs from, which it does not measure.
  * - `open` starts the investigation of one run, or of several as equals, under `.ana/wri/` of the
  *   main checkout, reading a frozen copy of any one still live (`wri.ts start --snapshot`), and marks
- *   the folder an iteration (`iteration.json`). Opening a live run is a deviation from the `pause`
+ *   the folder an iteration (`iteration.json`). It names each run to `start`, which fetches a
+ *   peer's campaign whole. Opening a live run is a deviation from the `pause`
  *   step, kept for a run the operator leaves running. A live run kept past its trigger has no folder
  *   yet, so its row `| pause:<run> | <reason> |` stands in any investigation's `deviations.md`
  *   (`keptIn`): its step is then `kept`, which owes nothing, until the row goes, the run stops or
@@ -745,7 +746,11 @@ function due(args: CommandArgs, repo: string, known: readonly Run[]): number {
 function open(args: CommandArgs, repo: string): number {
   const runs = (args.positionals[1] ?? "").split(",").filter((name) => name !== "");
   if (runs.length === 0) args.die(USAGE);
-  const logs = runs.map((name) => readNamed(name, repo).path);
+  // Each name is refused here if unknown, then handed to `wri.ts start` by name, not path, so a
+  // peer's campaign is fetched whole, states included (`logAcross`); the ten-minute gather copies
+  // its record alone, and on 18 November a reference so read as not kept.
+  for (const name of runs) readNamed(name, repo);
+  const hosts = join(repo, ".env.runs");
   const day = new Date().toISOString().slice(0, 10);
   const out = resolve(args.value("out") ?? join(wriRoot(repo), `${day}-${runs.join("+")}`));
   // The record first, so a crash before the start reads `step: open`, never a plain investigation.
@@ -755,7 +760,17 @@ function open(args: CommandArgs, repo: string): number {
     `${JSON.stringify({ opened: new Date().toISOString(), runs, protocol: PROTOCOL }, null, 2)}\n`,
   );
   const started = runSync(
-    [capturedExecPath, WRI, "start", "--log", logs.join(","), "--out", out, "--snapshot"],
+    [
+      capturedExecPath,
+      ...(existsSync(hosts) ? [`--env-file=${hosts}`] : []),
+      WRI,
+      "start",
+      "--log",
+      runs.join(","),
+      "--out",
+      out,
+      "--snapshot",
+    ],
     { cwd: repo },
   );
   runtimeProcess.stdout.write(started.stdout);

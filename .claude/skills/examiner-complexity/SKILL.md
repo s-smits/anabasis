@@ -26,7 +26,7 @@ reference always clears in few turns is the ceiling the exam must pass.
 
 ## 2. Diagnose where a solver stops
 
-A solver with a shell scripts every case, so a task gets harder only in one of the ladder's three
+A solver with a shell can script every case, so a task gets harder only in one of the ladder's three
 places: a local search from the obvious start finds the wrong basin; the convenient model departs
 from the deciding engine near the specification; or the specification sits within tolerance of a
 theoretical bound. Read the drafted exam (`draft.finished`) for which place the domain offers.

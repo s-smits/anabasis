@@ -13,8 +13,16 @@ import { join } from "../src/meta/path.ts";
 const SECRET = "a rubric sentence no ledger may hold";
 const label = { a: "built", b: "bare" };
 const TASKS = ["g/task1", "g/task2", "g/task3", "h/task1"];
-const root = mkdtempSync(join(tmpdir(), "ana-comparison-review-"));
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+const store = mkdtempSync(join(tmpdir(), "ana-comparison-review-"));
+const root = join(store, "dataset");
+afterAll(() => rmSync(store, { recursive: true, force: true }));
+// The built arm's tree lists its programs, its own python3 apart; the bare arm has no tree.
+mkdirSync(join(store, "trees", "built", "scripts", "toolchain", "bin"), { recursive: true });
+for (const program of ["estimate", "python3"]) {
+  writeFileSync(join(store, "trees", "built", "scripts", "toolchain", "bin", program), "#!/bin/sh\n", {
+    mode: 0o755,
+  });
+}
 
 /** One grading: each rubric as [weight, score, criteria passed, criteria]. */
 function grade(arm: string, task: string, rubrics: readonly (readonly [number, number, number, number])[]) {
@@ -91,6 +99,8 @@ attempt("built", "g/task1", "roll_built_attempt1_20261116_020000", [
   "python3 scripts/toolchain/estimate.py",
   "cd scripts/toolchain/bin && ./estimate",
   "TOOL=scripts/toolchain/bin/estimate; $TOOL data.csv",
+  "SEED=2 estimate data.csv | head",
+  "ls && wc -l data.csv",
   `python3 work.py # ${SECRET}`,
 ]);
 attempt("built", "g/task2", "roll_built_attempt1_20261116_030000", [
@@ -133,7 +143,7 @@ describe("the open reading", () => {
     // form; a call that is no command is not counted, only the graded attempt is read, and a rollout
     // without a trajectory is unread instead of none.
     expect(read(null)).toContain(
-      "shell commands and the harness's program folder: 10 name it, 3 of them only to look, of 11 (2 rollouts unread) v 0 name it, 0 of them only to look, of 2 (3 rollouts unread)",
+      "shell commands and the harness's programs, by folder or name: 11 name it, 3 of them only to look, of 13 (2 rollouts unread) v 0 name it, 0 of them only to look, of 2 (3 rollouts unread; no tree lists its programs)",
     );
   });
 
@@ -141,7 +151,7 @@ describe("the open reading", () => {
     const part = partOf(a, b, ["g/task1"]);
     const told = levelLines({ label, ...part, salt: null, unseal: false }).join("\n");
     expect(told).toContain("graded on both: 1; built 1, bare 1");
-    expect(told).toContain("9 name it, 2 of them only to look, of 10 v");
+    expect(told).toContain("10 name it, 2 of them only to look, of 12 v");
     expect(() => partOf(a, b, ["g/task1", "g/task9"])).toThrow("graded for neither arm: g/task9");
   });
 

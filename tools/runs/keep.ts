@@ -36,10 +36,9 @@
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
-import { mainTree } from "#src/meta/git.ts";
-import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
+import { envRunsFile } from "./host-config.ts";
 import { GOES_ON, type RunState, runState } from "./state.ts";
 import { payerOf } from "./live.ts";
 import {
@@ -320,10 +319,7 @@ export async function keep(args: readonly string[]): Promise<void> {
     throw new Error("no allowed Claude login: name --logins, set ANA_LOGINS or CLAUDE_CODE_OAUTH_TOKEN");
   }
   if (values.here) {
-    const pool =
-      named === undefined
-        ? poolOf(join(mainTree(run.tree), ".env.runs"), runtimeProcess.env)
-        : async () => named;
+    const pool = named === undefined ? poolOf(envRunsFile(run.tree), runtimeProcess.env) : async () => named;
     return keepGoing(run, pool, Number(values["wait-hours"]) * HOUR_MS);
   }
   if (keepers(name).length > 0) throw new Error(`${name} is kept already`);

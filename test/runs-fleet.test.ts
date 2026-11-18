@@ -885,7 +885,12 @@ describe("the gather of the benchmark score store", () => {
     const made = fixture();
     const there = (file: string) => join(made.root, "remote", "bench", "store", file);
     const here = (file: string) => join(made.main, "data", "bench", "outside", file);
-    for (const file of ["judged/arm/task.json", "dataset/task/rollout.json", "trees/arm/bin/python"]) {
+    const files = [
+      "judged/arm/task.json",
+      "dataset/task/rollout.json",
+      "trees/arm/scripts/toolchain/bin/fit",
+    ];
+    for (const file of [...files, "trees/arm/scripts/toolchain/lib/big"]) {
       mkdirSync(join(there(file), ".."), { recursive: true });
       writeFileSync(there(file), "first");
     }
@@ -893,12 +898,17 @@ describe("the gather of the benchmark score store", () => {
     return { made, there, here, named };
   };
 
-  it("copies every rollout and judgement and no arm's tree, and keeps what the machine clears afterwards", () => {
+  it("copies every rollout and judgement and of an arm's tree its programs alone, and keeps what the machine clears afterwards", () => {
     const { made, there, here, named } = stored();
     const first = made.run(gather, named);
     expect([first.code, first.out.includes(here(""))]).toEqual([0, true]);
     expect(readFileSync(here("judged/arm/task.json"), "utf8")).toBe("first");
-    expect([existsSync(here("dataset/task/rollout.json")), existsSync(here("trees"))]).toEqual([true, false]);
+    const tool = (folder: string) => existsSync(here(`trees/arm/scripts/toolchain/${folder}`));
+    expect([existsSync(here("dataset/task/rollout.json")), tool("bin/fit"), tool("lib")]).toEqual([
+      true,
+      true,
+      false,
+    ]);
     // The machine clears one record and writes another: the copy here gains and loses nothing.
     rmSync(there("judged/arm/task.json"));
     writeFileSync(there("judged/arm/later.json"), "second");

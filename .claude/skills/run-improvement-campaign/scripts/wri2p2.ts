@@ -68,6 +68,7 @@ import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { runSync } from "#src/meta/subprocess.ts";
 import { CODE_TREES } from "#tools/d2/campaign.ts";
 import { stillRunning } from "#tools/runs/diagnosis.ts";
+import { envRunsFile } from "#tools/runs/host-config.ts";
 import { lastLaunch } from "#tools/runs/receipt.ts";
 import {
   HERE,
@@ -750,9 +751,8 @@ function open(args: CommandArgs, repo: string): number {
   // peer's campaign is fetched whole, states included (`logAcross`); the ten-minute gather copies
   // its record alone, and on 18 November a reference so read as not kept.
   for (const name of runs) readNamed(name, repo);
-  // The host list lies in the main checkout, as `.ana/wri` does: a worktree holds neither.
   const root = wriRoot(repo);
-  const hosts = join(mainTree(repo), ".env.runs");
+  const hosts = envRunsFile(repo);
   const day = new Date().toISOString().slice(0, 10);
   const out = resolve(args.value("out") ?? join(root, `${day}-${runs.join("+")}`));
   // The record first, so a crash before the start reads `step: open`, never a plain investigation.

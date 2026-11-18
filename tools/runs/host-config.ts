@@ -141,6 +141,9 @@ export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Hos
   });
 }
 
+/** The machine settings' file, `.env.runs`, which lies in the main worktree and in no other. */
+export const envRunsFile = (root: string): string => join(mainTree(root), ".env.runs");
+
 /**
  * The hosts for a command run in `root` that loaded no env file: the environment's `ANA_HOSTS` where
  * it holds a list, else the one in the main worktree's `.env.runs`, where the bun router finds it for
@@ -149,7 +152,7 @@ export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Hos
  */
 export function hostsFor(root: string): readonly Host[] {
   if ((runtimeProcess.env.ANA_HOSTS ?? "") !== "") return hostsOf();
-  const file = join(mainTree(root), ".env.runs");
+  const file = envRunsFile(root);
   if (!existsSync(file)) return [];
   const env = Object.fromEntries(Object.entries(runtimeProcess.env).filter(([name]) => name !== "ANA_HOSTS"));
   const read = ["-e", "process.stdout.write(process.env.ANA_HOSTS ?? '')"];

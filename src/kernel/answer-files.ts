@@ -5,16 +5,23 @@ import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape
 import { dirname, join } from "../meta/path.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { boundText } from "../meta/bounded-text.ts";
+import { zipTexts } from "../meta/zip.ts";
 
 export interface AnswerFile {
   readonly path: string;
   readonly base64: string;
   readonly text?: string;
+  /** The text members of a zip archive, such as a workbook or a document (`zipTexts`). */
+  readonly entries?: readonly TextFile[];
 }
 
-/** A file given as its text alone, as a draft's control gives one. */
+/** A file given as its text alone. */
 // oxlint-disable-next-line typescript/consistent-type-definitions -- a type alias stays assignable to `JsonObject`, and an interface has no implicit index signature
-export type TextFile = { readonly path: string; readonly text: string };
+type TextFile = { readonly path: string; readonly text: string };
+
+/** A file as a draft's control or a try gives one: its text, or an archive's text members in place
+ *  of its bytes, since a seat writes no archive. */
+export type ControlFile = TextFile | { readonly path: string; readonly entries: readonly TextFile[] };
 
 export interface FileManifest {
   readonly path: string;
@@ -29,15 +36,26 @@ const SHOWN_BYTES = 4096;
 /** 64 work products and 16 MiB allow reports and workbooks while bounding capture and cell input. */
 export const DELIVERABLES = { folder: "deliverables", count: 64, bytes: 16 * 1024 * 1024 };
 
-/** A file as a check receives it: its bytes, and its text where they are UTF-8. */
-function answerFile(path: string, bytes: Buffer): AnswerFile {
-  let text: string | undefined;
-  try {
-    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
-  } catch {
-    /* Binary files have no text field. */
-  }
-  return { path, base64: bytes.toString("base64"), ...keyIfDefined("text", text) };
+/** A reader of one set of files as a check receives each: its bytes, its text where they are
+ *  UTF-8, and an archive's text members, within the inflated bytes the whole set may take. */
+function filing(): (path: string, bytes: Buffer) => AnswerFile {
+  let left = DELIVERABLES.bytes;
+  return (path, bytes) => {
+    let text: string | undefined;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+    } catch {
+      /* Binary files have no text field. */
+    }
+    const { members, used } = zipTexts(bytes, left);
+    left -= used;
+    return {
+      path,
+      base64: bytes.toString("base64"),
+      ...keyIfDefined("text", text),
+      ...keyIfDefined("entries", members.length > 0 ? members : undefined),
+    };
+  };
 }
 
 /** Whether each path is relative, stays inside the folder and names one file once. */
@@ -81,13 +99,14 @@ export function manifestOf(value: JsonValue | undefined): FileManifest[] {
 export function capturedFiles(value: JsonValue | undefined): AnswerFile[] {
   if (!Array.isArray(value)) throw new Error("invalid answer file capture");
   let total = 0;
+  const filed = filing();
   const files = value.map((entry) => {
     const row = asRecord(entry);
     if (!isString(row?.path) || !isString(row.base64)) throw new Error("invalid captured file");
     const bytes = Buffer.from(row.base64, "base64");
     if (bytes.toString("base64") !== row.base64) throw new Error("invalid file base64");
     total += bytes.length;
-    return answerFile(row.path, bytes);
+    return filed(row.path, bytes);
   });
   if (files.length > DELIVERABLES.count || total > DELIVERABLES.bytes) {
     throw new Error("answer files exceed the capture's bounds");
@@ -96,10 +115,15 @@ export function capturedFiles(value: JsonValue | undefined): AnswerFile[] {
   return files;
 }
 
-/** Files given as text, as a control carries them, in the form a check receives. */
-export function textFiles(rows: readonly TextFile[]): AnswerFile[] {
+/** Files as a control carries them, in the form a check receives. */
+export function textFiles(rows: readonly ControlFile[]): AnswerFile[] {
   if (!safePaths(rows.map(({ path }) => path))) throw new Error("invalid answer file path");
-  return rows.map(({ path, text }) => answerFile(path, Buffer.from(text)));
+  const filed = filing();
+  return rows.map((row) =>
+    "text" in row
+      ? filed(row.path, Buffer.from(row.text))
+      : { path: row.path, base64: "", entries: row.entries },
+  );
 }
 
 /** Where a campaign keeps submitted bytes, by digest beside its states. */
@@ -123,6 +147,7 @@ export function keepAnswerFiles(log: string, files: readonly AnswerFile[]): File
 
 /** One byte reader for the verifier, Referee and reports; damaged or missing content never grades. */
 export function readAnswerFiles(log: string, manifest: readonly FileManifest[]): AnswerFile[] {
+  const filed = filing();
   return manifest.map((file) => {
     const at = join(storeOf(log), file.sha256);
     let bytes: Buffer;
@@ -134,7 +159,7 @@ export function readAnswerFiles(log: string, manifest: readonly FileManifest[]):
     if (bytes.length !== file.bytes || sha256(bytes) !== file.sha256) {
       throw new Error(`answer file ${file.path} does not match its manifest`);
     }
-    return answerFile(file.path, bytes);
+    return filed(file.path, bytes);
   });
 }
 

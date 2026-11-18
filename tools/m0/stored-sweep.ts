@@ -16,7 +16,7 @@ import { cpSync, existsSync, readFileSync, renameSync, rmSync } from "#src/meta/
 import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
-import { type TextFile, textFiles } from "#src/kernel/answer-files.ts";
+import { type ControlFile, textFiles } from "#src/kernel/answer-files.ts";
 import { homedir } from "#src/meta/os.ts";
 import { basename, join } from "#src/meta/path.ts";
 import { type PublicResource, publicResource } from "#src/tools/answer.ts";
@@ -73,11 +73,11 @@ interface PackBrief {
 /** v1's `controls.json`: answers the checks must accept, and edits of them that a named check must
  *  refuse. */
 interface PackControls {
-  readonly accept: readonly { taskId: string; artifact: JsonValue; files?: TextFile[] }[];
+  readonly accept: readonly { taskId: string; artifact: JsonValue; files?: ControlFile[] }[];
   readonly reject: readonly {
     taskId: string;
     artifact: JsonValue;
-    files?: TextFile[];
+    files?: ControlFile[];
     expectedCheckId: string;
   }[];
 }

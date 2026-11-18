@@ -64,7 +64,7 @@ describe("the solver's system prompt", () => {
     // The wall: what commands may write, that the network was reached, and their time limits.
     expect(prompt).toContain("$TMPDIR");
     expect(prompt).toContain("Commands have network access");
-    expect(commandLimits(prompt)).toEqual([900, 300, 60]);
+    expect(commandLimits(prompt)).toEqual([300, 900, 60]);
     for (const { name, description } of TOLD.tools) expect(prompt).toContain(`- ${name}: ${description}`);
     expect(prompt).toContain("matched against the original file, not after earlier edits are applied");
     expect(prompt).toContain("as small as possible while still being unique");
@@ -112,13 +112,13 @@ describe("the solver's system prompt", () => {
       limits: { shellDefaultSeconds: 30, shellMaxSeconds: 60 },
       programs: ["pynite-python", "python3", "f2py"],
     });
-    expect(commandLimits(prompt)).toEqual([60, 30, 60]);
+    expect(commandLimits(prompt)).toEqual([30, 60, 60]);
     for (const [wallSeconds, reserve] of [
       [300, 37],
       [480, 60],
       [7200, 60],
     ] as const) {
-      expect(commandLimits(systemPrompt({ ...TOLD, wallSeconds }))).toEqual([900, 300, reserve]);
+      expect(commandLimits(systemPrompt({ ...TOLD, wallSeconds }))).toEqual([300, 900, reserve]);
     }
     for (const program of ["pynite-python", "python3", "f2py"]) expect(prompt).toContain(program);
     const many = Array.from({ length: 23 }, (_, index) => `tool-${String(index + 1).padStart(2, "0")}`);

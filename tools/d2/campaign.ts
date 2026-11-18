@@ -30,7 +30,6 @@
  * the Mac's command wall, the pack and the sweep on disk, and a model login.
  */
 import type { Api, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
-import { CACHE_SECONDS } from "#src/agent/backends/claude.ts";
 import { type BackendOptions, backends, compactionMode } from "#src/agent/backends/models.ts";
 import { type Practised, practised } from "#src/builder/session.ts";
 import { DIGEST, namesOf } from "#src/campaign/names.ts";
@@ -88,7 +87,6 @@ import {
   modelNamed,
   rowModel,
   storedRuntime,
-  SOLVER_CACHE_TTL,
   sweepOptions,
   sweepResources,
   sweepRows,
@@ -155,7 +153,7 @@ const PROGRAMS_OF = "programs-of:";
 /** What every solve is held to, whoever solves: a model turn limit of 20, which binds, and a deadline
  *  of 30 minutes, which stops a solve whose provider stalls. A command names another deadline or
  *  model turn limit (`setting.ts`), and another is another campaign. The prompt limit, `turns`, is every
- *  solve's (v1's cap on nudges); the shell's maximum and four solves at a time are the stored
+ *  solve's (v1's cap on nudges); the shell's timeouts and four solves at a time are the stored
  *  sweep's. Concurrency is part of a condition, so
  *  a campaign's solves and a parity solve (`live-solve.ts`) are not under the same one.
  *
@@ -169,21 +167,12 @@ const PROGRAMS_OF = "programs-of:";
  *  truss drafts; the three
  *  buffer runs at 16 turns held out 74 of 146, and a truss run 4 of its first 4. A harness's programs
  *  and guide show as an answer reached within the budget, which an unlimited solver reaches anyway.
- *  A turn is also the same on a loaded host, where a second is not.
- *
- *  A command that names no timeout and is still running at `shellDefaultSeconds` is handed back to
- *  the solver (`bashTool`), 30 s short of the solver's prompt cache (`SOLVER_CACHE_TTL`), so that the
- *  request after it reads the cache before it lapses. In the forty newest gathered logs of
- *  17 November, the request after a turn whose longest command ran 270 to 290 s read less than half
- *  its input from the cache in 7 of 305 cases, against 50 of 208 after 310 to 400 s; the model took
- *  at most 33 s before a bash command started in 99 of 100 calls. A command that names a timeout
- *  runs to it in one call: 1,330 of the 1,618 turns with a command of 270 s or more named one, and a
- *  hand-back would cost each a model turn, the limit that binds. */
+ *  A turn is also the same on a loaded host, where a second is not. */
 export const LIMITS = {
   wallSeconds: 1800,
   modelTurns: 20,
   turns: 24,
-  shellDefaultSeconds: CACHE_SECONDS[SOLVER_CACHE_TTL] - 30,
+  shellDefaultSeconds: 300,
   shellMaxSeconds: 900,
   concurrency: 4,
 } as const satisfies Limits;

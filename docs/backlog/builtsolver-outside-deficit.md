@@ -1,0 +1,93 @@
+# Why no builtSolver has scored above the Starter outside
+
+Status (18 November 2026): six decisions wait for the operator, each below with its counts and a
+recommendation. Nothing here is in source. The pull request that adds this file repairs three
+defects the same investigation found (a copy that left out a harness's own library, a launch
+trigger that did not name the solver's Python, a course in a Builder result); none of the three
+raises an outside score, and none stands in for a decision below. The counts are those of the
+investigation of the jobstat fork at #921's head, vetted on 18 November, and of the record's
+starter reads since 4 November.
+
+## The question
+
+A jobstat campaign promotes harnesses that beat their parent on its own exam, and on JobBench no
+promoted reference has yet scored above the Starter. The export and the solver's Python were
+repaired first (#919, #936), since a deficit is read as a difference in conditions before it is read
+as the harness. The question here is what remains once those are equal: does the campaign select
+for what the benchmark reads, and do its promotions hold on tasks that did not choose them?
+
+## Intended changes
+
+Each is the operator's (`AGENTS.md`, section 3): what a solver or a Builder is given or told, the
+level and the size, and what an exam may ask for.
+
+1. **What a valid answer must show.** A solver's answer is one JSON value (`answerFormat`,
+   `src/examiner/draft.ts`), so a file, a sheet or a report cannot be an answer or a check's input.
+   The fork's exam drafted five checks, all on the answer's structure, and named the content of a
+   section as not measured; validity differed between the two sides on 0 tasks in 7 of 7
+   comparisons, so every step was read on the interval objective alone. Recommendation, in two
+   halves. First the query: its validity sentence asks for agreement (counts that match a recount,
+   a finding its cited value supports, a recommendation that follows from a stated rule) instead of
+   existence, each clause decidable from the JSON answer, the public input and the hidden values.
+   This half is written as the query's seventh version and waits for one fresh run with its
+   predictions. Then, only where that run's exam still names the content as not measured, the host:
+   let a check read files the solver wrote, scoped to the pack. Missing: the drafted exam of a run
+   on the seventh query.
+2. **Confirming a promotion on tasks that did not choose it.** None of the fork's three promotions
+   was confirmed. Its starter reads stored 4-15-0, 8-11-0 and 10-4-0; on the tasks read at each
+   promotion they were 4-2-0, 6-1-0 and 7-0-0, and on the tasks written after it 0-13-0, 2-10-0 and
+   3-4-0. Over the record on jobstat the tasks a promotion was chosen on read 343-75-11 for the
+   reference and those written after 171-220-16. Split by the Examiner session that wrote a task,
+   tasks of sessions the Builder practised from read 795-251-69 and tasks of sessions it did not
+   179-157-13. Holding out whole families does not part the reads (practised and unpractised
+   families read alike), so the unit is the writing session. 78 of 86 steps hold no task of an
+   unpractised session, so no replay over the record can show a decision another rule would have
+   changed. Recommendation: print the starter read's split by writing session as a report that
+   decides nothing; then one pair of fresh runs, one of which draws part of each comparison from a
+   session with no released practice. Missing: that pair.
+3. **What a Builder hears of a practice solve under an objective.** One lane reports that the
+   Builder built two calibration harnesses and worked practice measures back towards each released
+   task's generating values (`measuredText`, `src/builder/tools.ts`, gives the verifier's measure
+   of a valid answer and of the author's best on record, which section 1 allows across the wall).
+   This is plausible and not confirmed: the lane's reversal test was not run, and common values
+   match by chance (16 of 76 elsewhere). Recommendation: run that test on the fork's log before any
+   change, and change nothing a Builder reads on one lane's account.
+4. **The level and the size.** The fork's first promotion read 7-1-0 at p 0.020, and the A/A beside
+   it read a step the other way. Recommendation: keep 2 solves a side at 0.02 until a
+   `promotion-tuner` replay over the record shows which promotions a third solve would have
+   withheld. Missing: that replay.
+5. **The outside read's size.** The fork's third reference scored 282 of 518 beside the Starter's
+   296, and 184 beside 198 on the five tasks that read counts as fair, inside the Starter's spread
+   of 20 between rollouts, so it is no reading. Recommendation: two rollouts of the Starter at each
+   sitting, so that each sitting measures its own spread, at about half as much again as the
+   standing sitting. That the benchmark's rubrics are all-or-nothing and that its judge reads a cut
+   text were reported from outside and not recounted here.
+6. **The runtime of the outside baseline.** A campaign's solver runs under pi and the outside read
+   under an export to another runtime (`known-bench.md` names this handicap). Recommendation: none
+   yet. An arm that rolls the Starter under the campaign's own runtime outside would part the
+   export from the harness, and it waits on item 5's spread.
+
+## What is left out on purpose
+
+- The query names no task or profession of the benchmark, and no rubric line. Each clause the
+  seventh version adds traces to a sentence of the query's origin; the map is in that run's
+  prediction file.
+- The gap floor (`ROOM`) and the objective sentence are unchanged, so the seventh query's run
+  differs from the sixth's in the validity sentence alone.
+- No confirmation rule decides anything until the pair of item 2 has been read.
+
+## How it came to be
+
+- 9 November 2026, on a query that named the benchmark's professions: "okay this is a bit
+  cheating", "we want to let it free". The lever since is what validity checks, not which tasks the
+  query names.
+- 17 November, on the export: "it does not have to be perfect, the agent itself should be able to
+  handle environment link failures", and "remove stuff that's helpful to help outdated harness to
+  propagate".
+- 18 November, after the fork's outside read (0 of 8 rollouts reached the reference's library; no
+  reading): the operator pasted an outside account in four causes (the exam selects a scalar on a
+  JSON answer; promoted harnesses fit the Examiner's draws; the built reference does not reach its
+  programs outside; the benchmark's instrument is noisy) and wrote "Fable, aggressively fix based
+  on the findings, you can do it", then "tune the prompt as well to v7 prompt based on FINDINGS.md"
+  and "(fundamental mismatch)". The first two causes are items 1 and 2; the third is held by #936
+  and measured by the live fork's outside rows; the fourth is item 5.

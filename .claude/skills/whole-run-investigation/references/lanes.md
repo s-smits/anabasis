@@ -798,7 +798,7 @@ Starts from `LAUNCHES (lane 26)`, `NO LAUNCH RECEIPT (lane 26)`, `HOST CODE MOVE
 Is the run the run its readings claim: fresh from a prompt, at one commit, from a clean tree, and
 continued only after a pause or a change of login (`AGENTS.md` section 10, item 9)? Each launch
 writes `launch-run-<n>.json` (`tools/runs/receipt.ts`). `LAUNCHES` counts launches, commits, dirty
-trees, logins (never named) and Bun versions; `NO LAUNCH RECEIPT` means nothing says which commit
+trees, logins (never named), Bun versions and the solver's recorded Pythons, by version and packages; `NO LAUNCH RECEIPT` means nothing says which commit
 ran. `source.txt` gives the first launch's flags, then for each later launch whether the login is the
 same or changed and which flags were added, dropped or changed, and `launches.txt` each launch's
 stretch of the log. A continuation at another commit is no fresh run; one after a credit limit is rule 15's

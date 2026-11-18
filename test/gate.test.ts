@@ -266,11 +266,12 @@ describe("proveCommits", () => {
     });
     expect(spread.status).toBe(0);
     // beta has the more room, so it takes the first; then each has one free and alpha is listed first.
-    expect(wherePassesRan(log)).toEqual([`${second} beta`, `${source} alpha`]);
+    // The two begin together, so the log holds them in either order: the place each took is the fact.
+    expect(wherePassesRan(log).toSorted()).toEqual([`${second} beta`, `${source} alpha`].toSorted());
     forgetPasses();
     rmSync(log, { force: true });
     expect(prove(landing, { DRIVER_PLACES: "alpha:1,beta:2" }).status).toBe(0);
-    expect(wherePassesRan(log)).toEqual([`${source} beta`, `${second} alpha`]);
+    expect(wherePassesRan(log).toSorted()).toEqual([`${source} beta`, `${second} alpha`].toSorted());
   });
 
   it("proves a pass again elsewhere where its place gave no verdict, and sends that place no more", () => {

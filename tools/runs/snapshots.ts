@@ -69,7 +69,7 @@ const DERIVED = new Set([
 /** A shell line that prints, for every pip target under the folder it stands in, the entries its
  *  packages installed, one a line as `grep` names a match: `./<target>/<package>.dist-info/RECORD:`
  *  and the first path segment of a row of that `RECORD`. */
-export const PACKAGED = "find . -path '*.dist-info/RECORD' -exec grep -Ho '^[^/,]*' {} + | sort -u";
+export const PACKAGED = "find . -path '*.dist-info/RECORD' -type f -exec grep -Ho '^[^/,]*' {} + | sort -u";
 // The seed's mark comes too, so a copy of a rehearsal's seed is no paid campaign to a reader: until
 // 29 October the gather left it out, and two compare-systems seeds counted as campaigns in a replay.
 const RECORD = [

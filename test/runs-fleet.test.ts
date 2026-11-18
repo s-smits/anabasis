@@ -383,6 +383,14 @@ describe("campaign snapshots", () => {
       join(made.root, "remote", "distant", "states/tree-b/lib/py/scipy-1.0.dist-info/RECORD"),
       "scipy/x.py,sha256=f,6\nscipy-1.0.dist-info/METADATA,,\nscipy-1.0.dist-info/RECORD,,\n",
     );
+    // A `RECORD` that is a link names no package: read through, the harness's own file it points
+    // at would claim its first segment, here the harness's `src`.
+    mkdirSync(join(made.root, "remote", "distant", "states/tree-a/link-1.0.dist-info"), { recursive: true });
+    writeFileSync(join(made.root, "remote", "distant", "states/tree-a/notes.txt"), "src/tool.py\n");
+    symlinkSync(
+      "../notes.txt",
+      join(made.root, "remote", "distant", "states/tree-a/link-1.0.dist-info/RECORD"),
+    );
     // The listing is the real one: `find` and `grep` over these files, read by the fetch.
     expect(made.run(sync, { ...remote.env, FAKE_LISTED: "1" }).code).toBe(0);
     const transfer = made.recorded().find((call) => call.tool === "rsync");

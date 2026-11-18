@@ -55,7 +55,7 @@ interface RemoteRun {
 type Depth = "record" | "whole";
 const EXCLUDED = ["--exclude=.env", "--exclude=.env.*", "--exclude=*.env", "--exclude=auth.json"];
 /** Folders of installed packages, caches and built bundles, by name. */
-const DERIVED = new Set([
+export const DERIVED: ReadonlySet<string> = new Set([
   "node_modules",
   ".bundle-snapshots",
   "__pycache__",
@@ -69,7 +69,7 @@ const DERIVED = new Set([
 /** A shell line that prints, for every pip target under the folder it stands in, the entries its
  *  packages installed, one a line as `grep` names a match: `./<target>/<package>.dist-info/RECORD:`
  *  and the first path segment of a row of that `RECORD`. */
-export const PACKAGED = "find . -path '*.dist-info/RECORD' -exec grep -Ho '^[^/,]*' {} + | sort -u";
+export const PACKAGED = "find . -path '*.dist-info/RECORD' -type f -exec grep -Ho '^[^/,]*' {} + | sort -u";
 // The seed's mark comes too, so a copy of a rehearsal's seed is no paid campaign to a reader: until
 // 29 October the gather left it out, and two compare-systems seeds counted as campaigns in a replay.
 const RECORD = [
@@ -98,10 +98,6 @@ const WAIT_MS = 200;
 
 /** The text only an opening's line holds. A line that merely quotes it is parsed and passed over. */
 const OPENED = `"kind":"campaign.opened"`;
-
-/** Whether a folder of this name is installed, cached or built (`DERIVED`). Neither a copy of a
- *  campaign nor a zip holds one, since the log names what was installed and nothing here reads it. */
-export const derived = (name: string): boolean => DERIVED.has(name);
 
 /** The entries `PACKAGED` printed, each by its path from the folder: a line less its package's
  *  `RECORD`. What no `RECORD` names is a seat's own, an entry whose rows are all quoted for a comma
@@ -180,7 +176,7 @@ async function filesOf(host: Host, folder: string): Promise<{ taken: string[]; l
 }
 
 /** What a copy takes of a campaign's `paths` and what it leaves on its host, each by its outermost
- *  path: the folders named as installed or cached (`derived`), and the entries of a pip target its
+ *  path: the folders named as installed or cached (`DERIVED`), and the entries of a pip target its
  *  packages own (`owned`), so that a file a seat wrote beside them is copied. A copy therefore
  *  opens as no harness (`keptAs` refuses a kept state short of its programs): a campaign runs on
  *  from its original. */
@@ -189,7 +185,9 @@ function installs(paths: readonly string[], owned: ReadonlySet<string>): { taken
     const parts = path.split("/");
     return parts
       .map((_, index) => parts.slice(0, index + 1).join("/"))
-      .find((under, index) => owned.has(under) || (index + 1 < parts.length && derived(parts[index] ?? "")));
+      .find(
+        (under, index) => owned.has(under) || (index + 1 < parts.length && DERIVED.has(parts[index] ?? "")),
+      );
   });
   return {
     taken: paths.filter((_, index) => outers[index] === undefined),

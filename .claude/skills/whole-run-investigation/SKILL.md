@@ -86,8 +86,10 @@ under `.ana/wri/<date>-<campaign>/` on the central host.
    *Check:* each transcript's model, that each lane ran as `wri-lane`, and that `record` exits 0
    with `read at` lines that count fewer reports than the manifest holds.
 5. **Collect.** `wri.ts collect --out <dir>` checks each report's shape and writes `<dir>/reports.md`,
-   which ends, where the prior state holds a prediction table, with each prediction as the lanes
-   resolved it and the lanes that owed a line and wrote none.
+   one line a lane and under it one a finding: its id `<lane>.<n>`, the lane's own mark
+   (`confirmed`, `plausible`, or `unmarked` where it wrote none) on the observation and on the
+   cause, the owner and the title. The file ends, where the prior state holds a prediction table,
+   with each prediction as the lanes resolved it and the lanes that owed a line and wrote none.
    Read lane 3, then decide lane 4; read lanes 10 and 12, then decide lane 15. Its trigger opens
    lane 4 only where lane 3 left a check undecided, and `WIN AT A SMALL WALL SHARE` opens lane 15
    only where lane 10 or 12 names a shortcut; an iteration records the reason for leaving one out.
@@ -181,7 +183,8 @@ trigger, except an isolated one.
 `Verdict: pending` it opened with is unfinished), and checks the lane heading, a
 `Prediction <id>: held | falsified | unreached` line for each row of the prior state's table that
 names the lane, equal counts of `Observation:`, `Cause:`, `Owner:`, `Reverses if:` and `Decision:` lines,
-findings only under `finding`, and a catalogue owner. It checks no evidence, so read the `## Checked`
+findings only under `finding`, and a catalogue owner. It reads each finding's marks for
+`reports.md` and refuses no report that lacks one. It checks no evidence, so read the `## Checked`
 section behind each `no finding`. An open lane may follow a problem past its question or mark itself
 `omitted` with a reason; an isolated lane never does.
 

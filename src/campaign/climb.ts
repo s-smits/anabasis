@@ -340,11 +340,11 @@ function starterOf({ reference, starter_tally: tally, confirmed }: Epoch, read?:
   const writers = new Set(
     read?.rows.filter(({ origin }) => origin === ORIGINS[2]).map(({ writer }) => writer),
   ).size;
-  const since =
-    read === undefined || writers === 0
-      ? ""
-      : `, of which ${tallied(read.origins[ORIGINS[2]].whole)} on the tasks ${plural(writers, "Examiner session")} wrote after it, alone ${read.after}`;
-  return `, against the starter ${tallied(tally)}, ${step}${since}`;
+  const pooled = `, against the starter ${tallied(tally)}, ${step}`;
+  if (read === undefined || writers === 0) return pooled;
+  // The validity-differed and validity-tied parts can each carry the tally apart (18 November).
+  const { whole, validity, rest } = read.origins[ORIGINS[2]];
+  return `${pooled}, of which ${tallied(whole)} (validity differed ${tallied(validity)}; validity tied ${tallied(rest)}) on the tasks ${plural(writers, "Examiner session")} wrote after it, alone ${read.after}`;
 }
 
 /** How many of `reads` read each way on the tasks written after their promotion alone. */

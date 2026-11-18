@@ -164,15 +164,36 @@ export function readAnswerFiles(log: string, manifest: readonly FileManifest[]):
 }
 
 /** What a ruling or a label is shown of the files: each one's path, size and digest, with its text
- *  bounded where it is UTF-8, never its bytes. A reader that has read the files passes them. */
+ *  bounded where it is UTF-8, never its bytes, then archive members, each bounded alike, while the
+ *  set stays within what 64 text files take; the rest are counted. A reader that has read the files
+ *  passes them. */
 export function shownFiles(
   log: string,
   manifest: readonly FileManifest[],
   files: readonly AnswerFile[] = readAnswerFiles(log, manifest),
 ): JsonValue[] {
-  return files.map(({ path, text }, at) => ({
-    ...manifest[at],
-    path,
-    ...keyIfDefined("text", text === undefined ? undefined : boundText(text, SHOWN_BYTES).shown),
-  }));
+  let left = DELIVERABLES.count * SHOWN_BYTES;
+  const shown = (text: string) => {
+    const cut = boundText(text, SHOWN_BYTES).shown;
+    left -= cut.length;
+    return cut;
+  };
+  const texts = files.map(({ text }) => (text === undefined ? undefined : shown(text)));
+  return files.map(({ path, entries = [] }, at) => {
+    const listed = entries.flatMap((member) => {
+      if (left <= 0) return [];
+      left -= member.path.length;
+      return [{ path: member.path, text: shown(member.text) }];
+    });
+    return {
+      ...manifest[at],
+      path,
+      ...keyIfDefined("text", texts[at]),
+      ...keyIfDefined("entries", listed.length > 0 ? listed : undefined),
+      ...keyIfDefined(
+        "unlisted",
+        entries.length > listed.length ? entries.length - listed.length : undefined,
+      ),
+    };
+  });
 }

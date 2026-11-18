@@ -65,9 +65,11 @@ export function conclusive(row: ProbeRow): boolean {
 }
 
 /** A check receives declared paths alone. A change reaches one when it names the field, a child
- *  or its parent, or a file the check is given; malformed paths authorise nothing. */
+ *  or its parent, or a file the check is given or a member of it; malformed paths authorise nothing. */
 export function reaches(path: string, declared: readonly string[]): boolean {
-  if (path.startsWith(FILE)) return declared.some((field) => field === path || field === `${FILE}$`);
+  if (path.startsWith(FILE)) {
+    return declared.some((field) => field === path || path.startsWith(`${field}/`) || field === `${FILE}$`);
+  }
   const probed = jsonPathTokens(path);
   return (
     probed !== null &&
@@ -219,12 +221,20 @@ function probeAnswer(
 }
 
 /** The submitted files with one text file's passage rewritten, or its whole text replaced by a JSON
- *  string, under the bound a field's change takes. */
+ *  string, under the bound a field's change takes. An archive's member is named after its file,
+ *  `file:book.xlsx/xl/sharedStrings.xml`; the archive's bytes stay as submitted, so only a check that
+ *  reads the members can move. */
 function changedFile(files: readonly AnswerFile[], change: ProbeRow["changes"][number]): AnswerFile[] {
-  const at = files.findIndex(({ path }) => `${FILE}${path}` === change.path);
-  const was = files[at]?.text;
-  if (was === undefined) throw new Error(`${change.path} is not a text file the solve submitted`);
+  const at = files.findIndex(({ path }) => reaches(change.path, [`${FILE}${path}`]));
   const { edit } = change;
+  const file = files[at];
+  const inside = change.path.slice(`${FILE}${file?.path ?? ""}/`.length);
+  const members = file?.entries ?? [];
+  const chosen = members.find(({ path }) => path === inside);
+  const was = change.path === `${FILE}${file?.path ?? ""}` ? file?.text : chosen?.text;
+  if (file === undefined || was === undefined) {
+    throw new Error(`${change.path} is neither a text file the solve submitted nor a member of its archive`);
+  }
   if ((change.value === null) === (edit === null)) {
     throw new Error("send either `value`, or `find` with `replace`");
   }
@@ -241,11 +251,15 @@ function changedFile(files: readonly AnswerFile[], change: ProbeRow["changes"][n
       `${change.path} takes a JSON string \`value\` for its whole text, or a passage \`find\` names once with its \`replace\`, that changes it, each at most ${String(VALUE_MAX_CHARS)} characters or the file's length`,
     );
   }
-  return files.with(at, {
-    path: files[at]?.path ?? "",
-    base64: Buffer.from(now).toString("base64"),
-    text: now,
-  });
+  return files.with(
+    at,
+    chosen === undefined
+      ? { path: file.path, base64: Buffer.from(now).toString("base64"), text: now }
+      : {
+          ...file,
+          entries: members.map((each) => (each === chosen ? { path: each.path, text: now } : each)),
+        },
+  );
 }
 
 /** The answer probe tool over one answer; `rows` collects every answer probe that ran, in order. Probes run one at
@@ -274,7 +288,7 @@ export function probeTool(
         Type.Object({
           path: Type.String({
             description:
-              "An existing field or its parent; `$` only where the answer is a scalar, since only a scalar root can be replaced. Array positions are bracketed; a key holding a dot or slash is quoted: `$.files['src/main.cpp']`. A submitted text file is `file:` and its path, `file:report.md`, changed by `find` and `replace` or by a JSON string `value` for its whole text.",
+              "An existing field or its parent; `$` only where the answer is a scalar, since only a scalar root can be replaced. Array positions are bracketed; a key holding a dot or slash is quoted: `$.files['src/main.cpp']`. A submitted text file is `file:` and its path, `file:report.md`, changed by `find` and `replace` or by a JSON string `value` for its whole text; a member of a workbook or document is its file's path and its own, `file:model.xlsx/xl/sharedStrings.xml`, changed the same ways.",
           }),
           value: Type.Optional(
             Type.String({

@@ -19,10 +19,11 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { agreement, clears } from "../src/referee/agreement.ts";
 import { type ProbeRow, probeTool } from "../src/referee/probe.ts";
-import { keepAnswerFiles, type AnswerFile } from "../src/kernel/answer-files.ts";
+import { keepAnswerFiles, shownFiles, type AnswerFile } from "../src/kernel/answer-files.ts";
 import type { Reader } from "../src/referee/reader.ts";
 import { referee } from "../src/referee/referee.ts";
 import { containing, copies, objectWith } from "./helpers/matchers.ts";
+import { zipOf } from "./helpers/zip.ts";
 
 // SAFETY: the probe uses only the context's abort signal, no tool API methods.
 const UNUSED_API = undefined as never;
@@ -36,6 +37,7 @@ const CONTRACT: Contract = {
 };
 const ANSWER = { span: 12, members: [{ area: 3 }] };
 const SPAN = "$.span";
+const BOOK = "file:book.xlsx";
 const FINDING: EventKind = "referee.finding";
 const PROBE = "probe_check";
 const scratch = mkdtempSync(join(tmpdir(), "ana-review-"));
@@ -113,6 +115,29 @@ function setup(
     record("verdict", { solve: "s-1", task: TASK.taskId, answer: ANSWER, kind: "fail", blocking: ["span"] });
   }
   return { checks, log, reader, sent, record, calls: () => sent.length };
+}
+
+/** A check program whose one check, `span`, is given every submitted file. */
+function readingFiles(): string {
+  const checks = join(scratch, "checks-files");
+  mkdirSync(checks, { recursive: true });
+  writeFileSync(join(checks, "evaluator.ts"), "// the file is good\n");
+  const execution = {
+    families: "all",
+    artifactPaths: [],
+    filePaths: ["$"],
+    publicInputPaths: [],
+    hidden: "none",
+    evidence: { kind: "authored" },
+  };
+  writeFileSync(
+    join(checks, "brief.json"),
+    JSON.stringify({
+      correctnessContract: "check-program/v1",
+      truthChecks: [{ id: "span", citedDecisionIds: ["R1"], execution }],
+    }),
+  );
+  return checks;
 }
 
 function invoke(tool: SeatTool, args: JsonObject) {
@@ -359,29 +384,7 @@ describe("check-defect rulings", () => {
       ),
       ruling({ ruling: "earned", rule: "R1", field: "file:report.txt", reason: "The report.", probes: [2] }),
     ]);
-    const checks = join(scratch, "checks-files");
-    mkdirSync(checks, { recursive: true });
-    writeFileSync(join(checks, "evaluator.ts"), "// the report is good\n");
-    writeFileSync(
-      join(checks, "brief.json"),
-      JSON.stringify({
-        correctnessContract: "check-program/v1",
-        truthChecks: [
-          {
-            id: "span",
-            citedDecisionIds: ["R1"],
-            execution: {
-              families: "all",
-              artifactPaths: [],
-              filePaths: ["$"],
-              publicInputPaths: [],
-              hidden: "none",
-              evidence: { kind: "authored" },
-            },
-          },
-        ],
-      }),
-    );
+    const checks = readingFiles();
     const files = [{ path: "report.txt", base64: "YmFk", text: "bad" }];
     s.record("verdict", {
       solve: "s-1",
@@ -401,6 +404,65 @@ describe("check-defect rulings", () => {
     expect(finding).toMatchObject({ ruling: "earned", field: "file:report.txt", probes: [2] });
     expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(1);
     expect(s.sent[0]).toContain("reads file:$");
+  });
+  it("shows a workbook's members and probes the member a path names, the archive's bytes kept", async () => {
+    const s = setup([
+      fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: BOOK, value: '"good"' }] }), toolUse),
+      fauxAssistantMessage(
+        fauxToolCall(PROBE, { changes: [{ path: `${BOOK}/xl/none.xml`, find: "bad", replace: "good" }] }),
+        toolUse,
+      ),
+      fauxAssistantMessage(
+        fauxToolCall(PROBE, {
+          changes: [{ path: `${BOOK}/xl/sharedStrings.xml`, find: "bad", replace: "good" }],
+        }),
+        toolUse,
+      ),
+      ruling({ ruling: "earned", rule: "R1", field: BOOK, reason: "The label.", probes: [1] }),
+    ]);
+    const checks = readingFiles();
+    const book = zipOf([
+      ["xl/sharedStrings.xml", "<t>bad</t>", true],
+      ["xl/worksheets/sheet1.xml", "<v>bad</v>", false],
+    ]).toString("base64");
+    s.record("verdict", {
+      solve: "s-1",
+      task: TASK.taskId,
+      answer: ANSWER,
+      files: keepAnswerFiles(s.log, [{ path: "book.xlsx", base64: book }]).map((file) => ({ ...file })),
+      kind: "fail",
+      blocking: ["span"],
+    });
+    const given: (readonly AnswerFile[] | undefined)[] = [];
+    const finding = await referee(s.reader, {
+      ...fail(s),
+      checks,
+      verify: async (_task, _answer, _signal, files) => {
+        given.push(files);
+        return files?.[0]?.entries?.[0]?.text === "<t>good</t>"
+          ? { kind: "pass" }
+          : { kind: "fail", blocking: ["span"] };
+      },
+    });
+    // The archive named whole and a member it lacks are refused before any check runs, so the
+    // replay and the one probe's changed side are the only verifications.
+    expect(finding).toMatchObject({ ruling: "earned", field: BOOK, probes: [1] });
+    expect(given).toHaveLength(2);
+    const changed = given.at(-1)?.[0];
+    expect(changed?.base64).toBe(book);
+    expect(changed?.entries?.[1]).toEqual({ path: "xl/worksheets/sheet1.xml", text: "<v>bad</v>" });
+    expect(s.sent[0]).toContain("xl/sharedStrings.xml");
+    expect(s.sent[0]).toContain("<t>bad</t>");
+    expect(s.sent[0]).not.toContain(book);
+  });
+  it("shows archive members within what 64 text files take, and counts the rest", () => {
+    const text = "x".repeat(8192);
+    const entries = Array.from({ length: 70 }, (_, at) => ({ path: `s${String(at)}.xml`, text }));
+    const manifest = [{ path: "deck.pptx", bytes: 0, sha256: "0".repeat(64) }];
+    const [deck] = shownFiles("unread.jsonl", manifest, [{ path: "deck.pptx", base64: "", entries }]);
+    const listed = asRecord(deck)?.entries;
+    expect(Array.isArray(listed) ? listed.length : null).toBe(64);
+    expect(asRecord(deck)?.unlisted).toBe(6);
   });
   it("the Referee rules a check-defect that names a refusing check, on the probes it cites", async () => {
     const s = setup([

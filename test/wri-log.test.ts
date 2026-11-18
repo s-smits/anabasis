@@ -64,6 +64,7 @@ describe("log.ts events", () => {
   ];
   const query: Parameters<typeof eventRows>[1] = {
     kind: "verdict",
+    lines: undefined,
     fields: [],
     where: [],
     countBy: undefined,
@@ -82,6 +83,27 @@ describe("log.ts events", () => {
     expect(rows[0]?.split("\t").slice(3)).toStrictEqual(["-", "-"]);
     const [, ...full] = eventRows(events, { ...query, fields: ["note"], full: true });
     expect(full[1]).toContain(long);
+  });
+
+  it("reads a range of lines, of every kind where none is named, and no line outside it", () => {
+    const all = { ...query, kind: undefined, fields: ["solve"] };
+    const [head, ...rows] = eventRows(events, { ...all, lines: "2-3" });
+    expect(head).toContain("2 of every kind on lines 2-3");
+    expect(rows.map((row) => row.split("\t").filter((_, at) => at !== 1))).toStrictEqual([
+      ["2", "verdict", "s-2"],
+      ["3", "verdict", "s-3"],
+    ]);
+    // One line is a range of one, and a kind named beside a range is held to it.
+    expect(eventRows(events, { ...query, lines: "2" }).slice(1)).toHaveLength(1);
+    expect(eventRows(events, { ...query, kind: "exam.call", lines: "1-3" })).toHaveLength(1);
+    // A range that runs backwards, starts before line 1 or is no range is refused, and so is every
+    // kind of the whole log, named or left empty.
+    for (const lines of ["3-2", "0-2", "2-", "two"]) {
+      expect(() => eventRows(events, { ...all, lines })).toThrow("--lines takes");
+    }
+    for (const kind of [undefined, ""]) {
+      expect(() => eventRows(events, { ...query, kind })).toThrow("name one --kind");
+    }
   });
 
   it("reads several kinds in the log's order with each one's kind, and no kind it does not name", () => {

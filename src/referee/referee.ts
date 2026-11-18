@@ -238,19 +238,17 @@ function hostRuling(verdict: LoggedVerdict, replay: Verdict | null): RefereeFind
       );
 }
 
-/** The files a check is given, as a probe and a ruling name them. */
-function filesOf(check: { readonly execution: { readonly filePaths?: readonly string[] } }): string[] {
-  return (check.execution.filePaths ?? []).map((path) => `${FILE}${path}`);
-}
-
-function packet(fail: RefereeCase, verdict: LoggedVerdict, accepted: JsonValue | undefined): string {
+function packet(
+  fail: RefereeCase,
+  verdict: LoggedVerdict,
+  accepted: JsonValue | undefined,
+  refusing: ReadonlyMap<string, Refusing>,
+): string {
   const statements = new Map(fail.contract.rules.map((rule) => [rule.id, rule.statement]));
-  const refusing = applicableTruthChecks(readBrief(fail.checks), fail.task)
-    .filter((check) => verdict.blocking.includes(check.id))
-    .map(
-      (check) =>
-        `- ${check.id}, citing ${check.citedDecisionIds.map((id) => `${id} ("${statements.get(id) ?? "not in the contract"}")`).join("; ") || "no rule"}; reads ${[...check.execution.artifactPaths, ...filesOf(check)].join(", ") || "no field of the answer"}`,
-    );
+  const lines = [...refusing].map(
+    ([id, { fields, rules }]) =>
+      `- ${id}, citing ${rules.map((rule) => `${rule} ("${statements.get(rule) ?? "not in the contract"}")`).join("; ") || "no rule"}; reads ${fields.join(", ") || "no field of the answer"}`,
+  );
   const { hidden, ...task } = fail.task;
   return [
     `Public contract: ${capturedJsonStringify(fail.contract)}`,
@@ -261,7 +259,7 @@ function packet(fail: RefereeCase, verdict: LoggedVerdict, accepted: JsonValue |
     accepted === undefined
       ? "No answer the checks accepted for this task is recorded."
       : `An answer the checks accepted for this task, one valid answer and not the only one: ${capturedJsonStringify(accepted)}`,
-    `Refusing checks:\n${refusing.join("\n") || "(none named)"}`,
+    `Refusing checks:\n${lines.join("\n") || "(none named)"}`,
   ].join("\n\n");
 }
 
@@ -401,15 +399,16 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
   const accepted = acceptedAnswers(events, version).at(-1);
   const refusing = new Map(
     applicableTruthChecks(readBrief(fail.checks), fail.task)
-      .filter((check) => verdict.blocking.includes(check.id))
-      .map((check) => [
-        check.id,
-        { fields: [...check.execution.artifactPaths, ...filesOf(check)], rules: check.citedDecisionIds },
+      .filter(({ id }) => verdict.blocking.includes(id))
+      // The fields a check reads, its files named as a probe and a ruling name them.
+      .map(({ id, execution: { artifactPaths, filePaths = [] }, citedDecisionIds: rules }) => [
+        id,
+        { fields: [...artifactPaths, ...filePaths.map((path) => `${FILE}${path}`)], rules },
       ]),
   );
   let meter: JsonObject | null = null;
   if (host === null) {
-    const opening = packet(fail, verdict, accepted);
+    const opening = packet(fail, verdict, accepted, refusing);
     const tools = [
       readProgramTool(fail.checks),
       probeTool(

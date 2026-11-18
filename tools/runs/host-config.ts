@@ -63,15 +63,18 @@ function settingsOf(name: string, value: unknown): Readonly<Record<string, strin
   return Object.fromEntries(entries.flatMap(([key, one]) => (isString(one) ? [[key, one] as const] : [])));
 }
 
-/** What `ANA_HOSTS` says. Set and empty, as a copied `.env.runs.example` leaves it, is unset: no host,
- *  and this machine alone. */
-function listedHosts(text: string): JsonValue {
+/** What the list setting `name` lists (`.env.runs.example`), refused as a plain error, which the CLI
+ *  reads as a refusal. Set and empty, as a copied example leaves it, is unset: nothing listed, and
+ *  for `ANA_HOSTS` this machine alone. */
+function listed(text: string, name = "ANA_HOSTS"): readonly JsonValue[] {
   if (text.trim() === "") return [];
   try {
-    return capturedJsonParse(text);
+    const value = capturedJsonParse(text);
+    if (Array.isArray(value)) return value;
   } catch (error) {
-    throw new Error(`ANA_HOSTS is not JSON: ${errorMessage(error)}`, { cause: error });
+    throw new Error(`${name} is not JSON (.env.runs.example): ${errorMessage(error)}`, { cause: error });
   }
+  throw new Error(`${name} takes a JSON list (.env.runs.example)`);
 }
 
 /** The hosts `text` lists, by default the environment's `ANA_HOSTS`. */
@@ -81,8 +84,7 @@ export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Hos
   // 28 October the sender emptied `ANA_HOSTS` instead, and a keeper started that way inherited the
   // empty list and counted no other machine's runs against a login's cap.
   if (runtimeProcess.env.ANA_HOP === "1") return [];
-  const value = listedHosts(text);
-  if (!Array.isArray(value)) throw new Error("ANA_HOSTS takes a JSON list");
+  const value = listed(text);
   const names = new Set<string>();
   return value.map((entry) => {
     const host = asRecord(entry);
@@ -168,13 +170,9 @@ export function configuredRuntime(host: Host) {
 export const ownName = (): string => hostname().replace(/\..*$/u, "");
 
 /** The benchmarks `EVAL_RUNNER` lists (`.env.runs.example`), none where unset. Until 17 November
- *  2026 it, and `ABLATION_HOST` before it, named one machine alone, which is refused as not a list. */
+ *  2026 it, and `ABLATION_HOST` before it, named one machine alone, which is refused as not JSON. */
 export function benchesOf(env: Readonly<Record<string, string | undefined>> = runtimeProcess.env): Bench[] {
-  const text = (env.EVAL_RUNNER ?? "").trim();
-  const value = text === "" ? [] : text.startsWith("[") ? capturedJsonParse(text) : null;
-  if (!Array.isArray(value)) {
-    throw new TypeError("EVAL_RUNNER takes a JSON list of benchmarks (.env.runs.example)");
-  }
+  const value = listed(env.EVAL_RUNNER ?? "", "EVAL_RUNNER");
   const known = hostsOf(env.ANA_HOSTS ?? "");
   const names = new Set<string>();
   return value.map((entry) => {

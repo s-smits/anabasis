@@ -147,7 +147,8 @@ export function stepsOf(plan: Plan): Step[] {
   const reference = [quoted(label), "--arm", quoted(run), "--harness", quoted(plan.harness)];
   const arm = (verb: string, words: readonly string[], last: string) =>
     `${sitting} ${verb} ${quoted(login)} ${words.join(" ")} ${last}`;
-  const queued = arm("start", [quoted(starter), "--arm", "starter"], "--yes");
+  const bare = [quoted(starter), "--arm", "starter"];
+  const queued = arm("start", bare, "--yes");
   const piped = (host: Host | undefined, script: string) => shellOn(host, script).map(quoted).join(" ");
   const on = (says: string, script: string): Step => ({ says, command: shellOn(runner, script) });
   const exported: Step[] =
@@ -192,13 +193,13 @@ export function stepsOf(plan: Plan): Step[] {
       `p=${tree}/$(sed -n 's/.*"toolchain": *"\\([^"]*\\)".*/\\1/p' ${tree}/export.json)/bin/python3; if test -e "$p" || test -L "$p"; then "$p" -c pass; echo "the tree's own python3 exits $?"; fi`,
     ),
     on(`dry run of ${label}`, arm("run", reference, "--dry-run")),
-    on(`dry run of ${starter}`, arm("run", [quoted(starter), "--arm", "starter"], "--dry-run")),
+    on(`dry run of ${starter}`, arm("run", bare, "--dry-run")),
     on(`start ${label} on login ${login}`, arm("start", reference, "--yes")),
     // A waiter has no place behind an arm that does not hold the machine yet, so the Starter is
     // started once the reference does; where it never does, the reference may be rolling alone.
     on(
       `queue ${starter} behind it`,
-      `n=0; while ${sitting} status | head -n 1 | grep -qx idle; do n=$((n + 1)); test "$n" -lt 30 || { echo ${quoted(`the reference did not take the machine in a minute; the Starter is queued by: ${queued}`)}; exit 1; }; sleep 2; done; ${queued}`,
+      `n=0; while ${idle}; do n=$((n + 1)); test "$n" -lt 30 || { echo ${quoted(`the reference did not take the machine in a minute; the Starter is queued by: ${queued}`)}; exit 1; }; sleep 2; done; ${queued}`,
     ),
   ];
 }
@@ -235,8 +236,8 @@ export function readAs(held: ReadonlyMap<string, string>, harness: string, label
 
 /** The benchmarks `pause --eval` reads `run` on, named as the verb is armed, so that a setting that
  *  refuses does so while the pause-at-two hook still reads the verb's end, not hours later. */
-export function readsArmed(run: string): string[] {
-  const names = benchesFor(run, runtimeProcess.env).map(({ name }) => name);
+export function readsArmed(run: string, env = runtimeProcess.env): string[] {
+  const names = benchesFor(run, env).map(({ name }) => name);
   if (names.length === 0) {
     console.log(`${run}: no benchmark reads pack ${packOf(run)}; the pause goes on alone`);
   }

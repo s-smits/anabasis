@@ -3,6 +3,7 @@
  * runs, a step that fails ends the read, and a label the store holds is neither exported nor
  * carried again. The commands are read as words here and never run.
  */
+import { namedIn } from "../tools/runs/hosts.ts";
 import { describe, expect, test } from "bun:test";
 import { benchesOf } from "../tools/runs/host-config.ts";
 import { type Plan, readAs, readsArmed, settingsOf, stepsOf, walk } from "../tools/runs/outside.ts";
@@ -25,29 +26,20 @@ const benches = (...list: readonly Partial<typeof STATS>[]) => ({
 });
 const ENV = benches(STATS);
 
-function planOf(over: Partial<Plan> = {}): Plan {
-  const saved = Bun.env.ANA_HOSTS;
-  Bun.env.ANA_HOSTS = HOSTS;
-  try {
-    return {
-      run: RUN,
-      label: "ref-a1",
-      harness: "a".repeat(64),
-      login: "2",
-      holder: { name: "builder", ssh: "you@builder", tree: "~/src/anabasis", bun: "~/.bun/bin/bun" },
-      tree: "/home/you/control",
-      bun: "bun",
-      ...settingsOf(RUN, ENV),
-      place: "linux-x64",
-      held: null,
-      wait: false,
-      ...over,
-    };
-  } finally {
-    if (saved === undefined) delete Bun.env.ANA_HOSTS;
-    else Bun.env.ANA_HOSTS = saved;
-  }
-}
+const planOf = (over: Partial<Plan> = {}): Plan => ({
+  run: RUN,
+  label: "ref-a1",
+  harness: "a".repeat(64),
+  login: "2",
+  holder: { name: "builder", ssh: "you@builder", tree: "~/src/anabasis", bun: "~/.bun/bin/bun" },
+  tree: "/home/you/control",
+  bun: "bun",
+  ...settingsOf(RUN, ENV),
+  place: "linux-x64",
+  held: null,
+  wait: false,
+  ...over,
+});
 
 const said = (plan: Plan) => stepsOf(plan).map(({ says }) => says);
 const text = (plan: Plan) => stepsOf(plan).map(({ command }) => command.join(" "));
@@ -80,24 +72,30 @@ describe("runs outside", () => {
   });
 
   test("pause --eval names its benchmarks as it is armed: none goes on as a pause alone, a faulty list refuses before the pause", () => {
-    const saved = { hosts: Bun.env.ANA_HOSTS, benches: Bun.env.EVAL_RUNNER };
-    const set = (name: "ANA_HOSTS" | "EVAL_RUNNER", value: string | undefined) => {
-      if (value === undefined) delete Bun.env[name];
-      else Bun.env[name] = value;
-    };
-    try {
-      Object.assign(Bun.env, benches(STATS, { ...STATS, name: "second" }));
-      expect(readsArmed(RUN)).toEqual(["statbench", "second"]);
-      expect(readsArmed("other-fresh-opus-builder")).toEqual([]);
-      // A machine named alone, as the setting read until 17 November, is no list.
-      for (const old of ["{}", "bench"]) {
-        Bun.env.EVAL_RUNNER = old;
-        expect(() => readsArmed(RUN)).toThrow(/EVAL_RUNNER takes a JSON list of benchmarks/u);
-      }
-    } finally {
-      set("ANA_HOSTS", saved.hosts);
-      set("EVAL_RUNNER", saved.benches);
+    const two = benches(STATS, { ...STATS, name: "second" });
+    expect(readsArmed(RUN, two)).toEqual(["statbench", "second"]);
+    expect(readsArmed("other-fresh-opus-builder", two)).toEqual([]);
+    // A machine named alone, as the setting read until 17 November, is no list, and is refused as
+    // a plain error, which the CLI prints as a refusal and not as a defect with its stack.
+    for (const [old, says] of [
+      ["{}", /EVAL_RUNNER takes a JSON list/u],
+      ["bench", /EVAL_RUNNER is not JSON/u],
+    ] as const) {
+      const refusal = (() => {
+        try {
+          return readsArmed(RUN, { ANA_HOSTS: HOSTS, EVAL_RUNNER: old });
+        } catch (error) {
+          return error;
+        }
+      })();
+      const read = refusal instanceof Error ? [refusal.constructor, refusal.message] : refusal;
+      expect(read).toEqual([Error, expect.stringMatching(says)]);
     }
+  });
+
+  test("pause --eval reads the run the router names, past an option's value", () => {
+    expect(namedIn("pause", ["--after", "reported", RUN, "--yes"])).toEqual([RUN]);
+    expect(namedIn("pause", [RUN, "--after", "reported", "--yes"])).toEqual([RUN]);
   });
 
   test("the machine is asked first, and nothing is spent before both dry runs", () => {

@@ -519,14 +519,11 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    bun run runs pause <campaign> --after reported --eval --yes   # the pause, then the same read with --wait on each benchmark
    ```
 
-   Without `--harness` it reads the harness the run last promoted, under the first eight characters
-   of its digest unless `--as` names a label. Without `--yes` it starts nothing, so the prediction
-   file is written from its plan first; behind `--eval`, which starts the read unattended once the
-   run rests, it is written before the reference's first task is judged, about twenty minutes in.
-   It refuses while an arm holds the machine, or with `--wait` looks again every five minutes, and
-   rolls a label the store already holds as it stands. Where two benchmarks read one pack, `outside`
-   takes `--bench`, and `pause --eval` starts one read on each, every one a process of its own so
-   that the pause ends and no waiter holds the run.
+   Without `--yes` it starts nothing, so the prediction file is written from its plan first; behind
+   `--eval`, which starts the read unattended once the run rests, it is written before the
+   reference's first task is judged, about twenty minutes in. The head of `tools/runs/outside.ts`
+   says which harness and label it takes by default, how it waits for the machine, and what it does
+   with a label the store holds or a pack two benchmarks read.
 4. **Run, detached, on the operator's standing word**, which covers the moment and the size
    above: the eight tasks, the reference and a Starter beside it at one rollout a task, on a login
    with room chosen as a keeper chooses one; each read's login and bill go into `cycle.md`. A larger

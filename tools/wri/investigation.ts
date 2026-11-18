@@ -26,6 +26,7 @@
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { type Lane, section } from "./catalogue.ts";
+import { firstWord, plain, VERDICTS as VETTED } from "./findings.ts";
 import { TRIGGERS, type Trigger } from "./folds.ts";
 import type { Overview } from "./read.ts";
 
@@ -51,6 +52,8 @@ export interface Report {
   readonly faults: readonly string[];
   readonly verdict: string | null;
   readonly findings: number;
+  /** Each finding as its lane wrote it, in the report's order: the n-th is `<lane>.<n>`. */
+  readonly written: readonly Written[];
   /** How the report resolves each prediction it names, by id. */
   readonly resolved: Readonly<Record<string, Resolution>>;
 }
@@ -100,7 +103,27 @@ const PREDICTION = "Prediction";
  *  characters each lane's prompt shared on 10 November. */
 const DETAIL = 300;
 const FIELDS = ["Observation:", "Cause:", "Owner:", "Reverses if:", "Decision:"] as const;
+const [OBSERVATION, CAUSE, OWNER] = FIELDS;
 const SEEN = "Seen in:";
+/** What opens a finding's heading in a report. */
+const TITLE = "### ";
+/**
+ * What a lane says of its own observation and cause, the first two of the vetting's verdicts:
+ * recounted by the command its line names, or read from a sample and still to settle. Of the 121
+ * rows the syntheses of 12 to 16 November merged, vetting ruled 35 plausible and 85 confirmed, 15 of
+ * those in their counts alone, since no report said which of its statements a command reprints.
+ * A line that opens with neither is listed as unmarked and refused nowhere, so a report written to
+ * the older form still collects.
+ */
+const [CONFIRMED, PLAUSIBLE] = VETTED;
+
+/** One finding as its lane wrote it, each mark `confirmed`, `plausible` or `unmarked`. */
+interface Written {
+  readonly title: string;
+  readonly owner: string;
+  readonly observation: string;
+  readonly cause: string;
+}
 /**
  * The derived file (`READERS`, `tools/wri/derive.ts`) that holds the rows a trigger counted, where one
  * does. A trigger prints a count and at most a few ids, and the sessions of 3 to 10 November went
@@ -347,11 +370,11 @@ function form(
       "## Findings",
       "",
       "### <one line naming the finding>",
-      "Observation: what the log or the bytes show, cited by event kind, solve id, the first eight characters of a version or digest, check id and count",
-      "Cause: what you infer from it, apart from the observation",
+      `Observation: <${CONFIRMED} | ${PLAUSIBLE}>, then what the log or the bytes show, cited by event kind, solve id, the first eight characters of a version or digest, check id and count, and last the command, or the file and line, that prints it again; plausible where you read a sample and nothing recounts it`,
+      `Cause: <${CONFIRMED} | ${PLAUSIBLE}>, then what you infer, apart from the observation: why the owner let it through, at its file and line in the tree that ran where the owner is code or a prompt, and the count that parts it from the nearest other cause; plausible until that count is read, with what would settle it`,
       "Owner: exactly one owner",
       "Reverses if: the observation that would reverse the finding",
-      "Decision: what it changes for the operator",
+      "Decision: what it changes for the operator; a remedy only beside the count on record that it would have moved",
       ...(several
         ? [`${SEEN} ${names.map((name) => `${name} <shows | absent | cannot show>`).join(", ")}`]
         : []),
@@ -374,7 +397,7 @@ function form(
       ? [
           // The operator, 3 November 2026: a session should follow a problem where it leads and
           // write only the lanes that matter for these runs (`docs/backlog/wri-free-lanes.md`).
-          "Where a lane's evidence leads past its question, follow it, and write what you find in that lane's report with the same fields. Where a lane matters less for these campaigns, at the point their logs have reached, than the other lanes your session was given, you may leave it unread: write only the heading and `Verdict: omitted`, then one sentence why (its question does not arise here, the primary's section already settles it, or another of your lanes covers it).",
+          "Where a lane's evidence leads past its question, follow it to the code or the text that let it through, and write what you find in that lane's report with the same fields. Where a lane matters less for these campaigns, at the point their logs have reached, than the other lanes your session was given, you may leave it unread: write only the heading and `Verdict: omitted`, then one sentence why (its question does not arise here, the primary's section already settles it, or another of your lanes covers it).",
         ]
       : []),
     `Each of the ${several ? "six" : "five"} fields starts a line of its own, as above: the collector counts them by the line's first word, and a finding written as one paragraph is refused (abl175-new's lane 11, 13 October).`,
@@ -606,9 +629,18 @@ export function reportOf(
   shared = "",
 ): Report {
   if (text === null) {
-    return { lane: lane.number, state: "missing", faults: [], verdict: null, findings: 0, resolved: {} };
+    return {
+      lane: lane.number,
+      state: "missing",
+      faults: [],
+      verdict: null,
+      findings: 0,
+      written: [],
+      resolved: {},
+    };
   }
   const lines = text.split("\n");
+  const written = writtenIn(lines);
   const said =
     lines
       .find((line) => line.startsWith("Verdict:"))
@@ -631,7 +663,7 @@ export function reportOf(
   const fields = names.length > 1 ? [...FIELDS, SEEN] : FIELDS;
   const counts = fields.map((field) => lines.filter((line) => line.startsWith(field)).length);
   const [findings = 0] = counts;
-  const named = lines.flatMap((line) => (line.startsWith("Owner:") ? [line.slice("Owner:".length)] : []));
+  const named = lines.flatMap((line) => (line.startsWith(OWNER) ? [line.slice(OWNER.length)] : []));
   const unowned = named.filter((line) => !owners.some((owner) => line.includes(owner))).length;
   // Each entry is a campaign's whole name and its triage: a name that holds another as a prefix
   // must not pass for it (review of 21 October). Entries part at a comma or a semicolon: on 22
@@ -679,7 +711,35 @@ export function reportOf(
     ...(unseen.length > 0 && names.length > 1 ? [`a ${SEEN} line leaves out ${unseen.join(", ")}`] : []),
   ];
   const state = faults.length === 0 ? "ok" : "invalid";
-  return { lane: lane.number, state, faults, verdict, findings, resolved };
+  return { lane: lane.number, state, faults, verdict, findings, written, resolved };
+}
+
+/**
+ * The findings a report writes, one an `Observation:` line. Each runs from its heading, where one
+ * stands since the finding before, to the next finding's, so a field written above its observation
+ * stays with its own finding.
+ */
+function writtenIn(lines: readonly string[]): Written[] {
+  const markOf = (said: string) => {
+    const word = firstWord(plain(said));
+    return word === CONFIRMED || word === PLAUSIBLE ? word : "unmarked";
+  };
+  const starts = lines.flatMap((line, at) => (line.startsWith(OBSERVATION) ? [at] : []));
+  const heads = starts.map((at, index) => {
+    const after = (starts[index - 1] ?? -1) + 1;
+    const head = lines.slice(after, at).findLastIndex((line) => line.startsWith(TITLE));
+    return head === -1 ? at : after + head;
+  });
+  return heads.map((head, index) => {
+    const own = lines.slice(head, heads[index + 1]);
+    const said = (field: string) => own.find((line) => line.startsWith(field))?.slice(field.length) ?? "";
+    return {
+      title: said(TITLE).trim(),
+      owner: said(OWNER).trim(),
+      observation: markOf(said(OBSERVATION)),
+      cause: markOf(said(CAUSE)),
+    };
+  });
 }
 
 /**
@@ -696,11 +756,17 @@ export function reportIndex(
   shared = "",
 ): string {
   const fired = new Set(campaigns.flatMap(({ overview }) => overview.triggers.map(({ lane }) => lane)));
-  const lanes = reports.map(({ lane, state, verdict, findings, faults }) => {
+  const lanes = reports.flatMap(({ lane, state, verdict, findings, faults, written }) => {
     const trigger = fired.has(lane) ? " although its trigger fired" : "";
     const read = verdict === "omitted" ? `omitted${trigger}` : verdict;
     const tail = state === "ok" ? `${read ?? ""}, ${plural(findings, "finding")}` : faults.join("; ");
-    return `- lane ${String(lane)}: ${state}${tail === "" ? "" : `, ${tail}`}, at \`${pathOf(lane)}\``;
+    return [
+      `- lane ${String(lane)}: ${state}${tail === "" ? "" : `, ${tail}`}, at \`${pathOf(lane)}\``,
+      ...written.map(
+        ({ title, owner, observation, cause }, index) =>
+          `  - ${String(lane)}.${String(index + 1)}, observation ${observation}, cause ${cause}, owner ${owner}: ${title}`,
+      ),
+    ];
   });
   const predictions = predictionsOf(shared).map(({ id, lanes: named }) => {
     const said = RESOLUTIONS.flatMap((how) => {

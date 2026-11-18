@@ -25,8 +25,10 @@ edit no source.
 Read each report marked `ok`, including the `## Checked` section behind each `no finding`; an empty
 one leaves its lane unsubstantiated, since the collector checks shape only. List each `omitted` lane
 with its reason, those whose trigger fired first. Name each `missing` or `invalid` report as a gap and
-never fill it from memory. A report is a lead: carry only findings you have checked against the log
-by the event kinds, ids and counts it cites.
+never fill it from memory. Under each lane the list gives every finding its id and the lane's own
+mark on its observation and its cause. A report is a lead: run the command a confirmed observation
+ends in before you carry its count, and carry a cause the lane left plausible or unmarked as
+plausible, with what would settle it, unless you read the owner's line yourself.
 
 {reports}
 
@@ -51,16 +53,16 @@ No lane was shown this list.
    outranks the rest.
 3. **One merged findings table:** `finding | lanes | standing | campaigns | owner | evidence |
    outcome`. Merge repeats under the earliest owner, so that every finding of every report marked
-   `ok` is in exactly one row. `lanes` names each of them as `<lane>.<n>`, the n-th finding of that
-   lane's report (`12.2, 17.1`), since independent agreement counts and the vetting accounts for
-   each one. `standing` is the key of the register below whose finding the row is, or `new`; a
-   keyed row gives this investigation's count as its evidence and does not argue the finding again.
-   `campaigns` names those that show it, from `Seen in:` lines checked against the logs; a finding
-   only one campaign shows says what that campaign has that the others lack. `owner` is exactly one
-   owner from the catalogue's table, with the file for `host` and for a prompt. `evidence` is an
-   event kind and a count. `outcome` is exactly one of `patch`, `decision`, `prediction` or `drop`.
-   Rank rows by their consequence for the four links, the `new` rows before the keyed ones of equal
-   consequence.
+   `ok` is in exactly one row. `lanes` names each of them by its id in the list above (`12.2,
+   17.1`), since independent agreement counts and the vetting accounts for each one. `standing` is
+   the key of the register below whose finding the row is, or `new`; a keyed row gives this
+   investigation's count as its evidence and does not argue the finding again. `campaigns` names
+   those that show it, from `Seen in:` lines checked against the logs; a finding only one campaign
+   shows says what that campaign has that the others lack. `owner` is exactly one owner from the
+   catalogue's table, with the file for `host` and for a prompt. `evidence` is an event kind and a
+   count, and says where the cause is still plausible. `outcome` is exactly one of `patch`,
+   `decision`, `prediction` or `drop`. Rank rows by their consequence for the four links, the `new`
+   rows before the keyed ones of equal consequence.
 4. **Conflicts resolved.** Where lanes disagree, the events that settle it, or both readings and the
    observation that would separate them.
 5. **Build plan.** The `patch` rows as clusters with disjoint files, each with owner, mechanism and

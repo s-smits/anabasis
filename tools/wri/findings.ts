@@ -62,8 +62,8 @@ interface Vetted {
 
 /** The lane of a reference to it or to one of its findings: `12` of `12.3`. */
 const laneOf = (reference: string) => reference.split(".")[0] ?? reference;
-const plain = (cell = "") => cell.replaceAll(/[*`]/gu, "").trim();
-const firstWord = (cell: string) => /^[a-z]+/u.exec(cell.toLowerCase())?.[0] ?? "";
+export const plain = (cell = "") => cell.replaceAll(/[*`]/gu, "").trim();
+export const firstWord = (cell: string) => /^[a-z]+/u.exec(cell.toLowerCase())?.[0] ?? "";
 
 /** The ids of the findings `vetting` confirms, which its plan answers one by one. */
 export const confirmedIn = (vetting: string): string[] =>

@@ -3,6 +3,7 @@
  * runs, a step that fails ends the read, and a label the store holds is neither exported nor
  * carried again. The commands are read as words here and never run.
  */
+import { namedIn } from "../tools/runs/hosts.ts";
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -102,6 +103,11 @@ describe("runs outside", () => {
       set("ANA_HOSTS", saved.hosts);
       set("EVAL_RUNNER", saved.benches);
     }
+  });
+
+  test("pause --eval reads the run the router names, past an option's value", () => {
+    expect(namedIn("pause", ["--after", "reported", RUN, "--yes"])).toEqual([RUN]);
+    expect(namedIn("pause", [RUN, "--after", "reported", "--yes"])).toEqual([RUN]);
   });
 
   test("the machine is asked first, and nothing is spent before both dry runs", () => {

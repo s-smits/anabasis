@@ -158,6 +158,11 @@ function namedAt(verb: string, args: readonly string[]): number[] {
   return verb === "stop" ? words : words.slice(0, NAMING.has(verb) ? 1 : 0);
 }
 
+/** The runs `verb args` names, by `namedAt`. */
+export function namedIn(verb: string, args: readonly string[]): string[] {
+  return namedAt(verb, args).map((at) => args[at] ?? "");
+}
+
 /** The routes of `verb args`, given the hosts that claim names among those no worktree here holds.
  *  A name nobody claims stays here, where the verb refuses it in its own words. */
 function routesOf(verb: string, args: readonly string[], held: ReadonlyMap<string, Host>): Routes {
@@ -264,7 +269,7 @@ export async function routed(verb: string, args: readonly string[]): Promise<Rou
   const here = new Set(runs().map(({ name }) => name));
   // `--here` names this machine, as the keeper `keep` starts does: until 29 October it asked every peer
   // first, and one peer that did not answer ended the keeper at its start.
-  const names = args.includes("--here") ? [] : namedAt(verb, args).map((at) => args[at] ?? "");
+  const names = args.includes("--here") ? [] : namedIn(verb, args);
   const held = await holders(names, here);
   const duplicate = names.find((name) => here.has(name) && held.has(name));
   if (duplicate !== undefined) throw new Error(`${duplicate}: more than one original campaign`);

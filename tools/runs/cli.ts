@@ -24,7 +24,7 @@ import { join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { alerts } from "./alerts.ts";
 import { fresh } from "./fresh.ts";
-import { holds, NAMING, on, routed, verbOn } from "./hosts.ts";
+import { holds, namedIn, NAMING, on, routed, verbOn } from "./hosts.ts";
 import { hostsHealth } from "./health.ts";
 import { keep } from "./keep.ts";
 import { HERE, KEEPING, Misused, ownArgs } from "./registry.ts";
@@ -345,9 +345,11 @@ if (HELP.has(verb)) {
     // `pause --eval` reads the run outside once it rests, from here, where `.env.runs` lists the
     // benchmarks: a peer that holds the run only pauses it.
     const evals = verb === "pause" && args.includes("--eval");
-    const run = args.find((arg) => !arg.startsWith("-"));
-    const reads = evals && run !== undefined ? readsArmed(run) : [];
-    const { here, away } = await routed(verb, evals ? args.filter((arg) => arg !== "--eval") : args);
+    const passed = evals ? args.filter((arg) => arg !== "--eval") : args;
+    // The run as the router names it, past an option's value: `pause --after reported r --eval`.
+    const run = evals ? namedIn(verb, passed)[0] : undefined;
+    const reads = run === undefined ? [] : readsArmed(run);
+    const { here, away } = await routed(verb, passed);
     for (const [host, words] of away) {
       const code = await (verb === "continue" ? continueOn(host, words) : verbOn(host, words));
       if (code !== 0) runtimeProcess.exitCode = code;

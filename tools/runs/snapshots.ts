@@ -54,6 +54,15 @@ interface RemoteRun {
 }
 
 type Depth = "record" | "whole";
+/** Of a benchmark's trees, the folder the export puts on the solver's path (`TOOLCHAIN`, its `bin`). */
+const PROGRAMS_ONLY = [
+  "--include=/trees/",
+  "--include=/trees/*/",
+  "--include=/trees/*/scripts/",
+  "--include=/trees/*/scripts/toolchain/",
+  "--include=/trees/*/scripts/toolchain/bin/***",
+  "--exclude=/trees/**",
+];
 const EXCLUDED = ["--exclude=.env", "--exclude=.env.*", "--exclude=*.env", "--exclude=auth.json"];
 /** Folders of installed packages, caches and built bundles, by name. */
 const DERIVED = new Set([
@@ -375,8 +384,9 @@ export async function syncRuns(
 /**
  * Copy each benchmark's score store (`score.ts --out`) from the machine that rolls it into
  * `data/bench/<benchmark>` here: every task's rollout and judgement, which `score.ts table` reads
- * here as it does there. An arm's exported tree stays behind, since it holds an interpreter built
- * for that machine and `score.ts tree` writes it again from its campaign. A record there is written
+ * here as it does there. Of an arm's exported tree only its programs' folder comes, which `levels`
+ * reads for the programs a rollout starts by name; the rest, an interpreter built for that machine
+ * among it, stays behind, and `score.ts tree` writes it again from its campaign. A record there is written
  * once, so the copy only adds, and what that machine later clears stays here. A benchmark rolled on
  * this machine needs no copy; one whose machine does not answer keeps its copy as it was, as a silent
  * host keeps its campaigns'. It returns the folders it copied into.
@@ -390,7 +400,7 @@ export async function fetchBenches(): Promise<string[]> {
     // rsync reads a relative path from the home folder there, and a quoted `~` as a folder's name.
     const from = `${sideOf(host, store.replace(/^~\//u, ""))}/`;
     try {
-      await rsync(from, `${into}/`, ...EXCLUDED, "--exclude=/trees");
+      await rsync(from, `${into}/`, ...EXCLUDED, ...PROGRAMS_ONLY);
       copied.push(into);
     } catch (error) {
       warn(`${name} on ${host.name}: the benchmark score store was not copied: ${errorMessage(error)}`);

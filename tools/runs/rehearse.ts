@@ -469,7 +469,7 @@ export function scriptedExaminer(
         : async (examined: Examined) => {
             const ask = await rest(examined);
             if (ask !== null) {
-              queue.splice(0, queue.length, ...callsFor(ask.request.wanted));
+              queue.splice(0, queue.length, ...callsFor(ask.wanted));
               turns.push(...queue.map(() => pull));
             }
             return ask;

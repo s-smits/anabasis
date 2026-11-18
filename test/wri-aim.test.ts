@@ -158,11 +158,11 @@ describe("aim", () => {
     expect(second?.promotedWithin).toEqual(["h2"]);
   });
 
-  it("reads a log without the home field or any Examiner call as not recorded, not as none", () => {
+  it("reads a log without any Examiner call as not recorded, not as none, and one without the home field as no copy", () => {
     const rows = aimRows([event("exam.started", { session: "x-1" }), finished("x-1")]);
     expect(rows).toContain("not recorded: a field or call this log's code did not write");
     expect(rowOf(rows, "  reference copy")).toContain(
-      "reference copy in its home: not recorded; try_reference calls: not recorded; tries solved: none; shell calls naming reference-harness/: not recorded",
+      "reference copy in its home: false; try_reference calls: not recorded; tries solved: none; shell calls naming reference-harness/: not recorded",
     );
   });
 

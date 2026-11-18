@@ -711,8 +711,10 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
   // SAFETY: as above.
   const { solved } = (await import(join(tree, ROUND))) as { solved: typeof Solved };
   runtimeProcess.chdir(tree);
-  const composed: Parameters<typeof ExamineCommand>[1] = (request, wall) => {
-    const mode = writing(request, undefined, wall?.reference === undefined ? "unseen" : "in-home");
+  const composed: Parameters<typeof ExamineCommand>[1] = (request) => {
+    // A tree from before 18 November takes a third argument, whether its home holds the
+    // reference's copy, which every campaign of it did; it is printed without the copy here.
+    const mode = writing(request, undefined);
     console.log(`=== SYSTEM\n${mode.system}\n\n=== OPENING\n${mode.opening}`);
     for (const tool of mode.tools) console.log(`\n=== TOOL ${tool.name}\n${tool.description}`);
     console.log(`\n=== NUDGE ${mode.nudge}\n=== FINISH ${mode.finish}\n=== DECLINED ${mode.declined}`);

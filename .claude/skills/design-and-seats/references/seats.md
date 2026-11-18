@@ -5,7 +5,7 @@ list in `AGENTS.md` section 3.
 
 | Seat | Reads | Never reads | Source |
 | --- | --- | --- | --- |
-| Examiner | The view below | A target, a harness's name, the other harness's measures | `src/examiner/` |
+| Examiner | The view below | A target, a harness's name, the other harness's measures, the reference harness's guide and programs | `src/examiner/` |
 | Builder | Section 1's closed list, its notes, the other kept harnesses (`kept/`) | Anything else of the exam side | `src/builder/` |
 | Solver | The task's public part, the rules, the harness, its limits | Checks and hidden values | `src/solver/`, `src/harness/`, `src/tools/` |
 | Verifier | The answer, the task, the check program, the engines | n/a | `src/kernel/verify.ts`, `src/wall/` |
@@ -24,7 +24,8 @@ The view is built in `src/examiner/record.ts`, whose head comment lists every fi
   (`stoodLines`), and the checks a `check-defect` ruling faulted, by id (`faultedOf`);
 - at each later ask, only what reported since it was last told (`heard` with `after`,
   `wakeMessage`);
-- its walled home with the reference harness, carried between sessions.
+- its walled home, carried between sessions; the reference harness it tries as a black box
+  (`try_reference`) and never reads.
 
 A drafting session instead receives the prompt, the host's reading of each draft and an empty home.
 

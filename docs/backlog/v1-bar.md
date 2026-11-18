@@ -152,7 +152,12 @@ the candidate and the buffer control. Counts only; the values per row are in the
   promotion (6-3-3 and 4-6-3), none on those chosen on (8-0-0, 11-0-0). Every writing session
   there held a copy of the reference harness, and those after a promotion ran commands naming it
   (20 of 76, 6 of 38 and 7 of 36 shell calls). One campaign; whether a writing session should hold
-  that copy changes what a seat is given, and is the operator's.
+  that copy changes what a seat is given, and is the operator's. On 18 November the copy was
+  removed in a draft pull request, with `try_reference` kept, under the operator's standing word of
+  12 November ("from now on autonomous choices, no questions for me") and their word of 18 November
+  to overhaul where a review's findings hold. It reverses their word of 19 October, so its merge and
+  the jobstat fork that would read it (the written-after tally and supply, against the two forks
+  that lay the copy) both wait on them.
 - **Honesty after a sixth cannot be read as worded.** 12 A/As after a sixth promotion in two
   campaigns, 0 able to read a step, 7 tying every task. The starter against itself in the same
   campaigns: 16 splits, all able, 0 steps. Fleet: 2 steps in 207 able.

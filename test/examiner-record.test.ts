@@ -417,10 +417,7 @@ describe("a wake", () => {
         log.add("harness.promoted", { harness: "h2", from: "h1", rests: [{ comparison: "b-2" }] });
         onRecord();
       },
-      rest: async () => {
-        const request = asks.shift();
-        return request === undefined ? null : { request };
-      },
+      rest: async () => asks.shift() ?? null,
     });
     const wakes = s
       .of("exam.call")

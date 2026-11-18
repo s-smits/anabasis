@@ -22,7 +22,6 @@ import type { Verifier } from "../src/kernel/verify.ts";
 import { sha256OfFile } from "../src/meta/digest.ts";
 import {
   existsSync,
-  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -271,33 +270,17 @@ describe("a session of any mode", () => {
 });
 
 describe("the home a wall keeps for a campaign's writing sessions", () => {
-  it("lays the reference's programs as files, leaves every other link in it a link, and keeps nothing of a home whose session crashed with a command running", async () => {
+  it("keeps nothing of a writing session's home where it crashed with a command running", async () => {
     const s = seat("write", []);
-    const states = join(dirname(s.log), "states");
-    const reference = join(states, "kept-reference");
-    mkdirSync(join(reference, "agent"), { recursive: true });
-    mkdirSync(join(states, "tree-1", "bin"), { recursive: true });
-    writeFileSync(join(states, "tree-1", "bin", "engine"), "#!/bin/sh\necho engine\n");
-    symlinkSync(join("..", "tree-1"), join(reference, ".toolchain"));
-    // A link a Builder left in its harness, to a file the host reads and no seat may: followed by
-    // the host's copy, its bytes would be laid in the Examiner's home.
-    const outside = join(dirname(s.log), "host-only.txt");
-    writeFileSync(outside, "host-only\n");
-    symlinkSync(outside, join(reference, "agent", "notes"));
     const keep = join(dirname(s.log), "examiner-home");
     mkdirSync(keep);
     writeFileSync(join(keep, "kept.txt"), "kept\n");
-    const laid = await inExaminerWall(s.request, { ...WALL, keep, reference }, async ({ shell }) => {
-      const copy = join(shell.dirs.home, "reference-harness");
+    const opened = await inExaminerWall(s.request, { ...WALL, keep }, async ({ shell }) => {
       writeFileSync(join(shell.dirs.home, "wrote.txt"), "wrote\n");
       append(s.log, EXAM_FINISHED, { session: s.request.id, ended: "crashed", running: 1 });
-      return {
-        engine: readFileSync(join(copy, ".toolchain", "bin", "engine"), "utf8"),
-        tree: lstatSync(join(copy, ".toolchain")).isSymbolicLink(),
-        notes: lstatSync(join(copy, "agent", "notes")).isSymbolicLink(),
-      };
+      return readdirSync(shell.dirs.home).toSorted();
     });
-    expect(laid).toEqual({ engine: "#!/bin/sh\necho engine\n", tree: false, notes: true });
+    expect(opened).toEqual(["kept.txt", "wrote.txt"]);
     expect(readdirSync(keep)).toEqual(["kept.txt"]);
   });
 
@@ -333,7 +316,7 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     ]);
   });
 
-  it("carries a session's home into the next, whole, a drafting session's too, and lays no harness in a drafting session's", async () => {
+  it("carries a session's home into the next, whole, a drafting session's too", async () => {
     const s = seat("write", [
       bash("rm kept.txt; echo half > half.txt"),
       finish,
@@ -345,21 +328,14 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     const keep = join(dirname(s.log), "examiner-home");
     mkdirSync(keep);
     writeFileSync(join(keep, "kept.txt"), "kept\n");
-    const reference = join(dirname(s.log), "kept-reference");
-    mkdirSync(join(reference, "agent"), { recursive: true });
-    await examine(s.request, { ...WALL, keep, reference });
-    expect(s.of("exam.started")).toMatchObject([{ referenceHome: true }]);
-    expect(s.sent[0]).toContain("A copy of the reference harness is in your home under reference-harness/");
-    // Off, the next session opens on what the last one wrote and on no reference.
+    await examine(s.request, { ...WALL, keep });
+    // The next session opens on what the last one wrote.
     await examine({ ...s.request, id: "x-2" }, { ...WALL, keep });
-    expect(s.sent.at(-1)).toContain(
-      "You never see the solver's tools or guide. You never see a solver's answers, traces or mistakes.",
-    );
     expect(s.of(CALLED).filter(({ tool }) => tool === "bash")[1]?.text).toBe("half.txt");
     expect(readdirSync(keep)).toEqual(["half.txt"]);
 
     const drafted = seat("draft", [bash("ls; echo gen > generate.py"), PUT.draft, finish]);
-    await examine(drafted.request, { ...WALL, keep, reference });
+    await examine(drafted.request, { ...WALL, keep });
     expect(drafted.of("draft.call")[0]?.text).toBe("half.txt");
     expect(readdirSync(keep).toSorted()).toEqual(["generate.py", "half.txt"]);
   });
@@ -440,7 +416,7 @@ describe("a session that writes tasks", () => {
     const results: JsonObject[][] = [];
     for (const byReference of [false, true]) {
       const s = seat("write", []);
-      const mode = writing({ ...s.request, verify }, undefined, "unseen");
+      const mode = writing({ ...s.request, verify }, undefined);
       const checked = await invoke(toolOf(mode, "try_answer"), "check", {
         ...instance(7),
         hidden: JSON.stringify({ seed: 1 }),
@@ -469,7 +445,7 @@ describe("a session that writes tasks", () => {
       // A reference and its full content are one duplicate once held.
       await invoke(put, "duplicate", { tasks: [instance(7), { reference: String(reference) }] });
       expect(mode.result().puts).toBe(1);
-      const next = writing({ ...s.request, id: "x-2", verify }, undefined, "unseen");
+      const next = writing({ ...s.request, id: "x-2", verify }, undefined);
       const expired = await invoke(toolOf(next), "expired", {
         tasks: [{ reference: String(reference) }],
       });
@@ -484,7 +460,7 @@ describe("a session that writes tasks", () => {
         ? { kind: "pass" }
         : { kind: "fail", blocking: ["check-product"] };
     const s = seat("write", []);
-    const mode = writing({ ...s.request, verify: reads }, undefined, "unseen");
+    const mode = writing({ ...s.request, verify: reads }, undefined);
     const tool = toolOf(mode, "try_answer");
     const bare = await invoke(tool, "bare", { ...instance(7), answer: GOOD });
     expect(JSON.stringify(bare.output)).toContain("check-product");
@@ -723,7 +699,7 @@ describe("a session that writes tasks", () => {
   it("serves a draft of this session by its id once the gate has read it", async () => {
     const s = seat("write", []);
     append(s.log, "exam.started", { session: s.request.id });
-    const mode = writing(s.request, undefined, "unseen");
+    const mode = writing(s.request, undefined);
     await invoke(toolOf(mode), "put", { tasks: [instance(2)] });
     const [draft] = writtenTasks(read(s.log));
     if (draft === undefined) throw new Error("the draft was not written");
@@ -748,7 +724,7 @@ describe("a session that writes tasks", () => {
     expect(solvesIn(read(s.log))).toEqual([]);
     expect(s.of(EXAM_FINISHED)[0]).not.toHaveProperty("hostSeconds");
     // Its tools put a task to the gate and wait on nothing, and its prompt names no solve at the gate.
-    const mode = writing({ ...s.request, id: "x-2", verify }, undefined, "unseen");
+    const mode = writing({ ...s.request, id: "x-2", verify }, undefined);
     expect(mode.tools.map(({ name }) => name)).toEqual([PROPOSE, "read_example", "try_answer"]);
     expect(mode.system).toContain("No solver is put to it there.");
     for (const unsaid of [
@@ -777,14 +753,14 @@ describe("a session that writes tasks", () => {
       reference: { valid: 2, solves: 2, ran: 3, billed: 0 },
     });
     append(s.log, TASK_STATE, { version, state: "refused", session: "x-1" });
-    const next = writing({ ...s.request, id: "x-2", tasks: [] }, undefined, "unseen");
+    const next = writing({ ...s.request, id: "x-2", tasks: [] }, undefined);
     await invoke(toolOf(next), "again", { tasks: [instance(7)] });
     expect(next.result().puts).toBe(0);
     expect(next.opening).not.toContain("gate not measured");
   });
 
   it("is told where no objective leaves room, asked for no account of a draft, quotes no archive count, and finishes with a sentence for the log", () => {
-    const mode = writing(seat("write", []).request, undefined, "unseen");
+    const mode = writing(seat("write", []).request, undefined);
     for (const said of [
       "Where the domain declares no objective, two valid answers tie whatever they contain",
       "says how often its own two solves differed",
@@ -852,7 +828,7 @@ describe("a session that writes tasks", () => {
 describe("one Examiner conversation across the host's asks", () => {
   it("wakes the same conversation at the next ask, told only the readings since, and ends at the host's close", async () => {
     const s = seat("write", [propose(2), propose(3), finish, finish]);
-    const asks: Ask["request"][] = [{ ...s.request, id: "x-2", wanted: 17 }];
+    const asks: Ask[] = [{ ...s.request, id: "x-2", wanted: 17 }];
     const rested: string[] = [];
     const examined = await examine({
       ...s.request,
@@ -861,8 +837,7 @@ describe("one Examiner conversation across the host's asks", () => {
         rested.push(ask.ended);
         // A promotion while the conversation rests is a reading the wake tells.
         append(s.log, "harness.promoted", { harness: "h2", from: "h1", rests: [{ comparison: "c-1" }] });
-        const request = asks.shift();
-        return request === undefined ? null : { request };
+        return asks.shift() ?? null;
       },
     });
     expect(rested).toEqual(["supplied", "finished"]);
@@ -901,16 +876,13 @@ describe("one Examiner conversation across the host's asks", () => {
   it("serves at `read_opening` what the current ask was told: its record and its limits, whose wake a compaction would drop", async () => {
     const reread = call("read_opening", {});
     const s = seat("write", [reread, propose(2), reread, finish, finish]);
-    const asks: Ask["request"][] = [
-      { ...s.request, id: "x-2", wanted: 1, limits: { ...s.request.limits, turns: 7 } },
-    ];
+    const asks: Ask[] = [{ ...s.request, id: "x-2", wanted: 1, limits: { ...s.request.limits, turns: 7 } }];
     await examine({
       ...s.request,
       wanted: 1,
       rest: async () => {
         append(s.log, "harness.promoted", { harness: "h2", from: "h1", rests: [{ comparison: "c-1" }] });
-        const request = asks.shift();
-        return request === undefined ? null : { request };
+        return asks.shift() ?? null;
       },
     });
     const served = s.of(CALLED).flatMap(({ tool, text }) => (tool === "read_opening" ? [text] : []));
@@ -927,14 +899,11 @@ describe("one Examiner conversation across the host's asks", () => {
 
   it("tells a conversation opening afresh the drafts the gate refused, where a wake tells none", async () => {
     const s = seat("write", [propose(null), propose(2), finish, finish]);
-    const asks: Ask["request"][] = [{ ...s.request, id: "x-2", wanted: 1 }];
+    const asks: Ask[] = [{ ...s.request, id: "x-2", wanted: 1 }];
     await examine({
       ...s.request,
       wanted: 1,
-      rest: async () => {
-        const request = asks.shift();
-        return request === undefined ? null : { request };
-      },
+      rest: async () => asks.shift() ?? null,
     });
     const refusal = "The drafts the gate refused";
     expect(s.of(TASK_ADMISSION).map(({ outcome }) => outcome)).toContain("refused");
@@ -953,7 +922,7 @@ describe("one Examiner conversation across the host's asks", () => {
     const examined = await examine({
       ...s.request,
       wanted: 1,
-      rest: async () => ({ request: { ...s.request, id: "x-2", wanted: 1 } }),
+      rest: async () => ({ ...s.request, id: "x-2", wanted: 1 }),
     });
     expect(examined).toMatchObject({ ended: "crashed" });
     expect(s.of("exam.finished").map(({ session, ended }) => [session, ended])).toEqual([

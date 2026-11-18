@@ -59,7 +59,12 @@ describe("the runs zip", () => {
       put(`states/${DIGEST}/node_modules/dep/index.js`, "module.exports = 1;\n");
       put(`states/${DIGEST}/auth.json`, "{}");
       put("states/tree-abc/bin/solver", "#!/bin/sh\n");
-      put("states/tree-abc/pylibs/numpy-2.0.dist-info/METADATA", "Name: numpy\n");
+      put(
+        "states/tree-abc/pylibs/numpy-2.0.dist-info/RECORD",
+        "numpy/core.py,,\nnumpy-2.0.dist-info/RECORD,,\n",
+      );
+      put("states/tree-abc/pylibs/numpy/core.py", "installed\n");
+      put("states/tree-abc/pylibs/own.py", "the harness's own\n");
       put("notes.txt", "kept by hand\n");
       symlinkSync("../tree-abc", join(folder, "states", DIGEST, ".toolchain"));
       symlinkSync(join(folder, "states", "tree-abc"), join(folder, "states", DIGEST, "absolute"));
@@ -87,7 +92,8 @@ describe("the runs zip", () => {
         { path: `states/${DIGEST}/auth.json`, why: "a secret's name" },
         { path: `states/${DIGEST}/node_modules`, why: "installed, cached or built" },
         { path: `states/${DIGEST}/outside`, why: "a link out of its folder" },
-        { path: "states/tree-abc/pylibs", why: "installed, cached or built" },
+        { path: "states/tree-abc/pylibs/numpy", why: "installed, cached or built" },
+        { path: "states/tree-abc/pylibs/numpy-2.0.dist-info", why: "installed, cached or built" },
       ]);
       const light = [
         "brief tree/r1/checks/brief.json",
@@ -102,6 +108,7 @@ describe("the runs zip", () => {
         `checker tree/r1/exams/${DIGEST}/checks/evaluator.ts`,
         `checker tree/r1/states/${DIGEST}/correctness-model/controls.json`,
         "toolchain tree/r1/states/tree-abc/bin/solver",
+        "toolchain tree/r1/states/tree-abc/pylibs/own.py",
         `toolchain tree/r1/states/${DIGEST}/.toolchain`,
       ];
       const verbose = [

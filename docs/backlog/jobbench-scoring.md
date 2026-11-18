@@ -23,9 +23,9 @@ The arms:
 - **Harness² held-out** (`--arm heldout`): task N under the harness Harness²'s sweep built on task
   N-1 of the same profession. Neither harness was built on the task it is scored on, so these are
   the fair tasks, those that are not a profession's first.
-- **The Starter (Opus 5.5)** (`--arm starter`): the Starter Built Harness, the floor both are read
-  against. Until 17 November this file called it the bareSolver, which is the layer beneath it:
-  Pi Durable's coding agent as released, on which the Starter Pack is Anabasis's version.
+- **The Starter, the bareSolver (Opus 5.5)** (`--arm starter`): the solver under the Starter Built
+  Harness, the floor both are read against. The Starter Pack is what a campaign begins from, that
+  harness with the Builder's account of a harness's files (`AGENTS.md`, section 3).
 
 One input still differs, and every reading says so. Harness² knows the benchmark's tasks: it built
 its harness on a neighbouring JobBench task, from rollouts that answered that task's real request
@@ -416,3 +416,6 @@ already answers the question; level with it is a strong reading and above it the
   `shell` preset. The export now moves a harness's tool tree into `scripts/toolchain/` instead of
   copying it, so a tree holds it once (17,111 of the reference's 34,265 entries were the second
   copy), and the `pi-agent-core` package, which nothing imported, is no longer a dependency.
+- **18 November.** The operator settled the names: "set in agents.md three differences,
+  Starter==bareSolver, Starter Pack and builtSolver". `AGENTS.md` section 3 defines the three, and
+  the Starter arm is the bareSolver again, as before 17 November.

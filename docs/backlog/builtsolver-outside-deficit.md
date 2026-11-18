@@ -1,10 +1,7 @@
 # Why no builtSolver has scored above the Starter outside
 
 Status (18 November 2026): six decisions wait for the operator, each below with its counts and a
-recommendation. Nothing here is in source. The pull request that adds this file repairs three
-defects the same investigation found (a copy that left out a harness's own library, a launch
-trigger that did not name the solver's Python, a course in a Builder result); none of the three
-raises an outside score, and none stands in for a decision below. The counts are those of the
+recommendation. Nothing here is in source. The counts are those of the
 investigation of the jobstat fork at #921's head, vetted on 18 November, and of the record's
 jobstat starter reads since 1 November, recounted on 18 November after two reviews of the first
 draft.
@@ -27,31 +24,31 @@ level and the size, and what an exam may ask for.
    The fork's exam drafted five checks, all on the answer's structure, and named the content of a
    section as not measured; validity differed between the two sides on 0 tasks in 7 of 7
    comparisons, so every step was read on the interval objective alone. Recommendation, in two
-   halves. First the query: its validity sentence asks for agreement (counts that match a recount, a
-   correction for each defect that moves a named quantity, a recommendation that follows from a
-   stated rule) instead of existence, each clause decidable from the JSON answer, the public input
-   and the hidden values. This half is written as the query's seventh version and waits for one
-   fresh run with its predictions. Then, only where that run's exam still names the content as not
-   measured, the host: let a check read files the solver wrote, scoped to the pack. Missing: the
-   drafted exam of a run on the seventh query.
+   halves. First the query: its validity sentence asks for agreement (counts that match a recount,
+   each imputation or exclusion documented with the records it touched, a recommendation that
+   follows from a stated rule) instead of existence, each clause decidable from the JSON answer, the
+   public input and the hidden values. This half is written as the query's seventh version and waits
+   for one fresh run with its predictions. Then the host: let a check read files the solver wrote
+   under one folder, by its declared projection. This half was first to wait for that run's exam; on
+   the operator's word of 18 November to improve the system before the next jobstat run it is built
+   beside the query, so that run drafts its exam with both, and reads whether an exam then measures
+   a file's content. Missing: the drafted exam of a run on both.
 2. **Confirming a promotion on tasks that did not choose it.** None of the fork's three promotions
    was confirmed. Its starter reads stored 4-15-0, 8-11-0 and 10-4-0; on the tasks read at each
    promotion they were 4-2-0, 6-1-0 and 7-0-0, and on the tasks written after it 0-13-0, 2-10-0 and
    3-4-0. Over the record on jobstat (41 starter reads in 14 campaigns, the same since 1 or 4
    November) the tasks a promotion was chosen on read 350-75-11 for the reference and those written
-   after 174-224-16. Split instead by whether practice of a task's family was released before the
-   reference was promoted, the same 41 reads stand at 412-217-7 on such families and 156-92-20 on
-   the rest, 65% and 63% of untied tasks, and the sixth query alike (171-82-1 against 134-62-17);
-   only the fifth parts them (232-135-6 against 19-24-0, on 43 unpractised tasks). The 42 steps lean
-   harder on practised families (376-61-134 against 91-38-28), and 8 of them hold no task of an
-   unpractised family. A first draft of this item keyed practice to the start of the starter
-   comparison, which counts a release after the promotion as the reference's practice, and named the
-   writing session as the unit on that count; both are withdrawn. So the loss on tasks written after
-   a promotion is not explained by the Builder having practised their family, and what remains is
-   that those tasks are newer, written by an Examiner that has read the reference's outcomes
-   (`AGENTS.md`, section 1, "A promotion against the starter"). Recommendation: print the split
-   beside the starter read as a report that decides nothing, and one pair of fresh runs, one of
-   which draws part of each comparison from families with no practice. Missing: that pair.
+   after 174-224-16. Crossed with whether practice of a task's family was released before the
+   reference was promoted, the tasks written after read 98-162-5 on such families (38% of untied)
+   and 76-62-11 on the rest (55%), while the tasks chosen on read 284-47-2 and 66-28-9: the
+   reference loses most on new tasks of the families it practised on. Pooled over origins the two
+   groups read alike (412-217-7 against 156-92-20), because the chosen-on tasks, which it wins, sit
+   mostly in practised families. Whether the cause is fitting to the family's practice
+   tasks or an Examiner that aims new tasks of a family at the reference's weaknesses there (it
+   reads the reference's outcomes by family and task, `src/examiner/record.ts`) this count does not
+   part. Recommendation: print the split beside the starter read as a report that decides nothing,
+   and one pair of fresh runs, one of which draws part of each comparison from families with no
+   practice. Missing: that pair.
 3. **What a Builder hears of a practice solve under an objective.** One lane reports that the
    Builder built two calibration harnesses and worked practice measures back towards each released
    task's generating values (`measuredText` and `recordText`, `src/builder/tools.ts`, give the

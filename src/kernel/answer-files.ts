@@ -6,6 +6,7 @@ import { dirname, join } from "../meta/path.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { zipTexts } from "../meta/zip.ts";
+import { capturedJsonStringify } from "../meta/json-runtime.ts";
 
 export interface AnswerFile {
   readonly path: string;
@@ -164,26 +165,24 @@ export function readAnswerFiles(log: string, manifest: readonly FileManifest[]):
 }
 
 /** What a ruling or a label is shown of the files: each one's path, size and digest, with its text
- *  bounded where it is UTF-8, never its bytes, then archive members, each bounded alike, while the
- *  set stays within what 64 text files take; the rest are counted. A reader that has read the files
- *  passes them. */
+ *  bounded where it is UTF-8, never its bytes, then archive members, each bounded alike and charged
+ *  its whole listing in bytes, while the set stays within what 64 text files take; the rest are
+ *  counted. A reader that has read the files passes them. */
 export function shownFiles(
   log: string,
   manifest: readonly FileManifest[],
   files: readonly AnswerFile[] = readAnswerFiles(log, manifest),
 ): JsonValue[] {
   let left = DELIVERABLES.count * SHOWN_BYTES;
-  const shown = (text: string) => {
-    const cut = boundText(text, SHOWN_BYTES).shown;
-    left -= cut.length;
-    return cut;
-  };
+  const shown = (text: string) => boundText(text, SHOWN_BYTES).shown;
   const texts = files.map(({ text }) => (text === undefined ? undefined : shown(text)));
+  for (const text of texts) left -= Buffer.byteLength(text ?? "");
   return files.map(({ path, entries = [] }, at) => {
     const listed = entries.flatMap((member) => {
-      if (left <= 0) return [];
-      left -= member.path.length;
-      return [{ path: member.path, text: shown(member.text) }];
+      if (left < 0) return [];
+      const item = { path: member.path, text: shown(member.text) };
+      left -= Buffer.byteLength(capturedJsonStringify(item)) + 1;
+      return left < 0 ? [] : [item];
     });
     return {
       ...manifest[at],

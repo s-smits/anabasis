@@ -38,6 +38,7 @@ const CONTRACT: Contract = {
 const ANSWER = { span: 12, members: [{ area: 3 }] };
 const SPAN = "$.span";
 const BOOK = "file:book.xlsx";
+const MEMBER = `${BOOK}/xl/sharedStrings.xml`;
 const FINDING: EventKind = "referee.finding";
 const PROBE = "probe_check";
 const scratch = mkdtempSync(join(tmpdir(), "ana-review-"));
@@ -405,64 +406,81 @@ describe("check-defect rulings", () => {
     expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(1);
     expect(s.sent[0]).toContain("reads file:$");
   });
-  it("shows a workbook's members and probes the member a path names, the archive's bytes kept", async () => {
-    const s = setup([
-      fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: BOOK, value: '"good"' }] }), toolUse),
-      fauxAssistantMessage(
-        fauxToolCall(PROBE, { changes: [{ path: `${BOOK}/xl/none.xml`, find: "bad", replace: "good" }] }),
-        toolUse,
-      ),
-      fauxAssistantMessage(
-        fauxToolCall(PROBE, {
-          changes: [{ path: `${BOOK}/xl/sharedStrings.xml`, find: "bad", replace: "good" }],
+  it.each([BOOK, MEMBER])(
+    "shows a workbook's members, probes the member a path names and holds a ruling on %s",
+    async (field) => {
+      const s = setup([
+        fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: BOOK, value: '"good"' }] }), toolUse),
+        fauxAssistantMessage(
+          fauxToolCall(PROBE, { changes: [{ path: `${BOOK}/xl/none.xml`, find: "bad", replace: "good" }] }),
+          toolUse,
+        ),
+        fauxAssistantMessage(
+          fauxToolCall(PROBE, { changes: [{ path: MEMBER, find: "bad", replace: "good" }] }),
+          toolUse,
+        ),
+        ruling({
+          ruling: "earned",
+          rule: "R1",
+          field: `${BOOK}/xl/none.xml`,
+          reason: "The label.",
+          probes: [1],
         }),
-        toolUse,
-      ),
-      ruling({ ruling: "earned", rule: "R1", field: BOOK, reason: "The label.", probes: [1] }),
-    ]);
-    const checks = readingFiles();
-    const book = zipOf([
-      ["xl/sharedStrings.xml", "<t>bad</t>", true],
-      ["xl/worksheets/sheet1.xml", "<v>bad</v>", false],
-    ]).toString("base64");
-    s.record("verdict", {
-      solve: "s-1",
-      task: TASK.taskId,
-      answer: ANSWER,
-      files: keepAnswerFiles(s.log, [{ path: "book.xlsx", base64: book }]).map((file) => ({ ...file })),
-      kind: "fail",
-      blocking: ["span"],
-    });
-    const given: (readonly AnswerFile[] | undefined)[] = [];
-    const finding = await referee(s.reader, {
-      ...fail(s),
-      checks,
-      verify: async (_task, _answer, _signal, files) => {
-        given.push(files);
-        return files?.[0]?.entries?.[0]?.text === "<t>good</t>"
-          ? { kind: "pass" }
-          : { kind: "fail", blocking: ["span"] };
-      },
-    });
-    // The archive named whole and a member it lacks are refused before any check runs, so the
-    // replay and the one probe's changed side are the only verifications.
-    expect(finding).toMatchObject({ ruling: "earned", field: BOOK, probes: [1] });
-    expect(given).toHaveLength(2);
-    const changed = given.at(-1)?.[0];
-    expect(changed?.base64).toBe(book);
-    expect(changed?.entries?.[1]).toEqual({ path: "xl/worksheets/sheet1.xml", text: "<v>bad</v>" });
-    expect(s.sent[0]).toContain("xl/sharedStrings.xml");
-    expect(s.sent[0]).toContain("<t>bad</t>");
-    expect(s.sent[0]).not.toContain(book);
-  });
-  it("shows archive members within what 64 text files take, and counts the rest", () => {
-    const text = "x".repeat(8192);
-    const entries = Array.from({ length: 70 }, (_, at) => ({ path: `s${String(at)}.xml`, text }));
+        ruling({ ruling: "earned", rule: "R1", field, reason: "The label.", probes: [1] }),
+      ]);
+      const checks = readingFiles();
+      const book = zipOf([
+        ["xl/sharedStrings.xml", "<t>bad</t>", true],
+        ["xl/worksheets/sheet1.xml", "<v>bad</v>", false],
+      ]).toString("base64");
+      s.record("verdict", {
+        solve: "s-1",
+        task: TASK.taskId,
+        answer: ANSWER,
+        files: keepAnswerFiles(s.log, [{ path: "book.xlsx", base64: book }]).map((file) => ({ ...file })),
+        kind: "fail",
+        blocking: ["span"],
+      });
+      const given: (readonly AnswerFile[] | undefined)[] = [];
+      const finding = await referee(s.reader, {
+        ...fail(s),
+        checks,
+        verify: async (_task, _answer, _signal, files) => {
+          given.push(files);
+          return files?.[0]?.entries?.[0]?.text === "<t>good</t>"
+            ? { kind: "pass" }
+            : { kind: "fail", blocking: ["span"] };
+        },
+      });
+      // The archive named whole and a member it lacks are refused before any check runs, so the
+      // replay and the one probe's changed side are the only verifications.
+      // A ruling on a member the archive lacks is refused; one on the archive or the member probed holds.
+      expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(1);
+      expect(finding).toMatchObject({ ruling: "earned", field, probes: [1] });
+      expect(given).toHaveLength(2);
+      const changed = given.at(-1)?.[0];
+      expect(changed?.base64).toBe(book);
+      expect(changed?.entries?.[1]).toEqual({ path: "xl/worksheets/sheet1.xml", text: "<v>bad</v>" });
+      expect(s.sent[0]).toContain("xl/sharedStrings.xml");
+      expect(s.sent[0]).toContain("<t>bad</t>");
+      expect(s.sent[0]).not.toContain(book);
+    },
+  );
+  // Each member is charged its listing's bytes, escapes and separators included, so neither large
+  // members, many quoted ones nor multi-byte text take more than 64 text files would.
+  it.each([
+    ["70 members of 8 KB", 70, "x".repeat(8192), 63],
+    ["20,000 members of one quote", 20_000, '"', null],
+    ["400 members of multi-byte text", 400, "語".repeat(3000), null],
+  ])("shows %s within what 64 text files take, and counts the rest", (_, count, text, shown) => {
+    const entries = Array.from({ length: count }, (_none, at) => ({ path: String(at), text }));
     const manifest = [{ path: "deck.pptx", bytes: 0, sha256: "0".repeat(64) }];
     const [deck] = shownFiles("unread.jsonl", manifest, [{ path: "deck.pptx", base64: "", entries }]);
     const listed = asRecord(deck)?.entries;
-    expect(Array.isArray(listed) ? listed.length : null).toBe(64);
-    expect(asRecord(deck)?.unlisted).toBe(6);
+    const length = Array.isArray(listed) ? listed.length : 0;
+    expect(Buffer.byteLength(JSON.stringify(listed))).toBeLessThanOrEqual(64 * 4096);
+    expect(asRecord(deck)?.unlisted).toBe(count - length);
+    if (shown !== null) expect(length).toBe(shown);
   });
   it("the Referee rules a check-defect that names a refusing check, on the probes it cites", async () => {
     const s = setup([

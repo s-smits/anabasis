@@ -175,7 +175,7 @@ const RULING_PARAMETERS = Type.Object({
   field: Type.Optional(
     Type.String({
       description:
-        "For earned: the field of the answer where the rule is broken, or a parent of it up to `$`, the whole answer, spelt as the checks spell paths: `$.items[0].value`; or a submitted file, `file:report.md`. A cited probe changes this field or one inside it.",
+        "For earned: the field of the answer where the rule is broken, or a parent of it up to `$`, the whole answer, spelt as the checks spell paths: `$.items[0].value`; or a submitted file, `file:report.md`, or a member of one as a probe names it. A cited probe changes this field or one inside it.",
     }),
   ),
   reason: Type.String({ minLength: 1 }),
@@ -318,7 +318,7 @@ function refusal(
   }
   const field = args.field ?? "";
   if (!held(field)) {
-    return "an earned ruling names where the answer breaks the rule: `field`, a path that exists in the answer or a file the solve submitted";
+    return "an earned ruling names where the answer breaks the rule: `field`, a path that exists in the answer, a file the solve submitted or a member of one";
   }
   if (!citing.some(([, { fields }]) => reaches(field, fields))) {
     return `no refusing check that cites ${String(args.rule)} reads ${field}; name the field the rule is broken at, or rule unclear`;
@@ -429,7 +429,7 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
         refusing,
         (field) =>
           field.startsWith(FILE)
-            ? verdict.files.some(({ path }) => `${FILE}${path}` === field)
+            ? verdict.files.some(({ path }) => reaches(field, [`${FILE}${path}`]))
             : resolveJsonPath(verdict.answer, field).found,
         rows,
         found,

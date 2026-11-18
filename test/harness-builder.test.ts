@@ -183,21 +183,20 @@ describe("a campaign run by its log", () => {
     expect(opened(log, flags, "scripted")).not.toHaveProperty("led");
     expect(read(log)).toHaveLength(2);
   });
-  it("waits out a provider limit that names its reset, on record, makes the move again, and lays the reference harness in the Examiner's home unless the campaign names the term off", async () => {
+  it("waits out a provider limit that names its reset, on record, and makes the move again", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-limit`;
     // A level whose floor (16) is above the 13 tasks held, so the first comparison waits for tasks.
     const terms = ["--patience", "1", "--target", "20", "--level", "0.0001", "--practice", "3"];
     const flags = [...seeded(name), ...terms];
-    // The first Examiner session is refused on a limit the provider says lifts in a minute. Each
-    // session asked records the reference harness its home's wall names.
+    // The first Examiner session is refused on a limit the provider says lifts in a minute.
     const reset = Math.floor(Date.now() / 1000) + 60;
-    const homes: (string | undefined)[] = [];
+    let asked = 0;
     const seats: Seats = {
       seated: answering(),
       examine: (request, wall) => {
-        homes.push(wall?.reference);
-        if (homes.length === 1) throw new Error(`Claude Code: usage limit (limit reached|${String(reset)})`);
+        asked += 1;
+        if (asked === 1) throw new Error(`Claude Code: usage limit (limit reached|${String(reset)})`);
         return idle(request, wall);
       },
     };
@@ -228,9 +227,7 @@ describe("a campaign run by its log", () => {
       ["build", "b-2", "led"],
       ["examine", "x-2", "tasks"],
     ]);
-    // The supply ablation of 19 October held 4 of 8 drafts with the copy and 1 of 8 blind.
-    expect(homes).toHaveLength(2);
-    expect(homes.every((home) => home !== undefined && existsSync(join(home, "agent")))).toBe(true);
+    expect(asked).toBe(2);
   });
   it("ends on its environment where a move it began changed nothing, so the run is never left without an ending", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);

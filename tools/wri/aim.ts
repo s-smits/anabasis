@@ -15,8 +15,9 @@
  *
  * A session's block gives its span against each promotion: the reference at its start and at its
  * end, since a continued conversation can span one, the last comparison reported before it, the
- * conversation it continues, whether the reference's copy lay in its home, its `try_reference`
- * calls and the harness each try was solved under, its shell calls that name the copy's folder,
+ * conversation it continues, whether the reference's copy lay in its home and its shell calls
+ * that name the copy's folder (both read logs up to 18 November, when the copy went), its
+ * `try_reference` calls and the harness each try was solved under,
  * the tasks the gate admitted, and the comparisons that later tallied them, starter reads named
  * apart. The table gives, per writer and harness, the valid solves, how many reached the author's
  * best within the floor (`gapAgainst`, `ROOM`), and the median of measure over best where both are
@@ -25,7 +26,6 @@
  * not write reads `not recorded`.
  */
 import { epochsOf, tasksByEpoch } from "#src/campaign/climb.ts";
-import { REFERENCE_HOME } from "#src/examiner/shell.ts";
 import { gapAgainst, type Paired } from "#src/kernel/compare.ts";
 import { conditionsOf } from "#src/kernel/condition.ts";
 import { OPENING, proposalsOf, writersOf } from "#src/kernel/history.ts";
@@ -33,8 +33,11 @@ import type { LogEvent } from "#src/kernel/log.ts";
 import { lastReports, pairsReported, type Reported, taskRecords } from "#src/kernel/reports.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { type Call, callsOf, tracesIn } from "#src/kernel/trace.ts";
-import { asRecord, isBoolean, isString, type JsonObject } from "#src/meta/json-shape.ts";
+import { asRecord, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { median } from "#src/meta/tally.ts";
+
+/** Where a writing session's home held the reference harness, from 19 October to 18 November. */
+const REFERENCE_HOME = "reference-harness";
 
 /** A comparison's last report with the pairs it tallied. */
 interface PairedReport {
@@ -57,8 +60,9 @@ interface ExamSession {
   readonly promotedWithin: readonly string[];
   /** The last comparison reported before its start. */
   readonly lastReport: string | null;
-  /** Null where the log does not record it. */
-  readonly referenceHome: boolean | null;
+  /** Whether its home held the reference's copy, which `exam.started` recorded from 19 October to
+   *  18 November; a log without the field was written by code that laid none. */
+  readonly referenceHome: boolean;
   readonly tryCalls: number | null;
   /** The solves it asked for, by the harness each ran under. */
   readonly tries: ReadonlyMap<string, number>;
@@ -176,7 +180,7 @@ function sessionAt(events: readonly LogEvent[], index: number, session: string, 
         : [],
     ),
     lastReport: isString(lastReport) ? lastReport : null,
-    referenceHome: isBoolean(data.referenceHome) ? data.referenceHome : null,
+    referenceHome: data.referenceHome === true,
     tryCalls: log.anyTry ? own.filter(({ tool }) => tool === "try_reference").length : null,
     tries,
     referenceShell:
@@ -238,7 +242,7 @@ function sessionLines(each: ExamSession, starter: string | null): string[] {
   const span = each.finished === null ? "open" : `${String(each.finished)} (${each.ended ?? NOT_RECORDED})`;
   return [
     `${each.session}: ${each.conversation === null ? "opens a conversation" : `continues ${each.conversation}`}; lines ${String(each.started)} to ${span}; reference ${label(reference.start)} at its start, ${finish}; ${promoted}; last report before it: ${each.lastReport ?? "none"}`,
-    `  reference copy in its home: ${String(each.referenceHome ?? NOT_RECORDED)}; try_reference calls: ${tryCalls === null ? NOT_RECORDED : String(tryCalls)}; tries solved: ${tries}; shell calls naming ${REFERENCE_HOME}/: ${shell}`,
+    `  reference copy in its home: ${String(each.referenceHome)}; try_reference calls: ${tryCalls === null ? NOT_RECORDED : String(tryCalls)}; tries solved: ${tries}; shell calls naming ${REFERENCE_HOME}/: ${shell}`,
     `  admitted ${String(each.admitted.length)} of ${String(each.proposed.length)} proposed; tallied later in: ${scored}`,
   ];
 }
@@ -315,8 +319,7 @@ export function aimRows(events: readonly LogEvent[]): string[] {
   if (sessions.length === 0) return ["aim: the log holds no Examiner writing session"];
   const starter = reported.map(({ report }) => report.data.starter).find(isString) ?? null;
   const unrecorded = sessions.some(
-    ({ referenceHome, tryCalls, referenceShell }) =>
-      referenceHome === null || tryCalls === null || referenceShell === null,
+    ({ tryCalls, referenceShell }) => tryCalls === null || referenceShell === null,
   );
   return [
     "aim: each Examiner writing session as the log records it, then each side's measures on the tasks each session wrote, against the author's best on record; counts and digest prefixes only",

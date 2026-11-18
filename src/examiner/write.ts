@@ -524,17 +524,14 @@ function admittedDrafts(events: readonly LogEvent[]): Task[] {
 }
 
 /**
- * The mode that writes tasks: the exam's own tools, `try_answer` where the host verifies, and the
- * system prompt that says whether a copy of the reference harness is in its home (`reference`),
- * which the wall lays there and leaves out of the home it keeps (`inExaminerWall`). Blind to it, esp32-fresh-opus's Examiner held 0 of 49
- * drafts under its first promoted reference; in the supply ablation of 19 October on the buffer
- * domain, 1 of 8 drafts held blind and 4 of 8 with the copy. The campaign command always lays it.
+ * The mode that writes tasks: the exam's own tools, `try_answer` where the host verifies, and
+ * `try_reference` where the host gives a probe. The copy of the reference harness its home held
+ * from 19 October to 18 November is told in `tools/d1b/examine.ts`.
  */
 export function writing(
   request: Terms,
   // The engines installed in its shell.
   walls: Pick<Walls, "pinned"> | undefined,
-  reference: "unseen" | "in-home",
   {
     stop = new AbortController().signal,
     within = async (action) => action(),
@@ -573,7 +570,7 @@ export function writing(
   };
   return {
     kind: "exam" as const,
-    system: systemPrompt(reference, probe === null ? "none" : "given"),
+    system: systemPrompt(probe === null ? "none" : "given"),
     get opening() {
       return told;
     },
@@ -591,7 +588,6 @@ export function writing(
         checks: asked.checks.map(({ id }) => id),
         examples: asked.tasks.map(({ taskId }) => taskId),
         engines: (walls?.pinned ?? []).map(({ name, sha256 }) => ({ name, sha256 })),
-        referenceHome: reference === "in-home",
       };
     },
     tools: [

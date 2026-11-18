@@ -58,7 +58,7 @@ function seated(dollars: number, tries: number, endings: readonly Ending[]) {
   append(s.log, "campaign.opened", { budget: { dollars, reserve: 1 } });
   append(s.log, "exam.started", { session: "x-1" });
   const made = probe(s.log, tries, endings);
-  return { ...s, ...made, mode: writing({ ...s.request, probe: made.probe }, undefined, "unseen") };
+  return { ...s, ...made, mode: writing({ ...s.request, probe: made.probe }, undefined) };
 }
 
 const said = async (made: ReturnType<typeof seated>, args: JsonObject) => {
@@ -146,7 +146,7 @@ describe("trying the reference at writing", () => {
       seen.push(paused);
       return await made.probe.solve(task);
     };
-    const mode = writing({ ...made.request, probe: { tries: 2, solve } }, undefined, "unseen", { within });
+    const mode = writing({ ...made.request, probe: { tries: 2, solve } }, undefined, { within });
     await invoke(toolOf(mode, TRY), "try", { solves: 2, task: spelled(7) });
     const tried = stood;
     await invoke(toolOf(mode), "put", { tasks: [instance(7)] });
@@ -162,7 +162,7 @@ describe("trying the reference at writing", () => {
     expect(made.mode.system).toContain("## Trying the reference");
     expect(made.mode.opening).toContain("4 solves of the reference harness");
     expect(made.mode.started).toMatchObject({ limits: { tries: 4 } });
-    const bare = writing({ ...made.request, id: "x-2" }, undefined, "unseen");
+    const bare = writing({ ...made.request, id: "x-2" }, undefined);
     expect(bare.tools.map(({ name }) => name)).not.toContain(TRY);
     expect(bare.system).not.toContain(TRY);
     expect(bare.opening).not.toContain("of the reference harness to ask for");

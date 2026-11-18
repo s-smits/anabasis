@@ -31,11 +31,19 @@ level and the size, and what an exam may ask for.
    each imputation or exclusion documented with the records it touched, a recommendation that
    follows from a stated rule) instead of existence, each clause decidable from the JSON answer, the
    public input and the hidden values. This half is written as the query's seventh version and waits
-   for one fresh run with its predictions. Then the host: let a check read files the solver wrote
-   under one folder, by its declared projection. This half was first to wait for that run's exam; on
-   the operator's word of 18 November to improve the system before the next jobstat run it is built
-   beside the query, so that run drafts its exam with both, and reads whether an exam then measures
-   a file's content. Missing: the drafted exam of a run on both.
+   for one fresh run with its predictions. Then the host: submit captures the regular files a
+   solver leaves under `deliverables/` (at most 64 and 16 MiB in all), keeps them by digest under
+   the campaign's `states/` with only their manifest in the verdict, and gives them to each check
+   whose execution declares them; every check of a drafted exam declares all of them, and the
+   objective reads the JSON value alone. The Referee is shown each file's text, bounded, and probes
+   and rules on a file by `file:<path>`; a drafted control and an Examiner's `try_answer` carry text
+   files, so a check that reads them can be proved feasible. The submit tool's description names the
+   folder, which changes what a solver is told (`AGENTS.md`, section 3). Not done: a known valid
+   answer (`task.feasible`) keeps no files, and the Linux wall's capture is unproved by a live
+   solve. This half was first to wait for that run's exam; on the operator's
+   word of 18 November to improve the system before the next jobstat run it is built beside the
+   query, so that run drafts its exam with both, and reads whether an exam then measures a file's
+   content. Missing: the drafted exam of a run on both.
 2. **Confirming a promotion on tasks that did not choose it.** None of the fork's three promotions
    was confirmed. Its starter reads stored 4-15-0, 8-11-0 and 10-4-0; on the tasks read at each
    promotion they were 4-2-0, 6-1-0 and 7-0-0, and on the tasks written after it 0-13-0, 2-10-0 and

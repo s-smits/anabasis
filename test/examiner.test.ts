@@ -478,6 +478,22 @@ describe("a session that writes tasks", () => {
     expect(results[0]).toEqual(results[1]);
   });
 
+  it("proves a task whose check reads files through a try that carries them, and rechecks it with them", async () => {
+    const reads: Verifier = async (_task, answer, _signal, files) =>
+      asRecord(answer)?.answer === "42" && files?.[0]?.text === "ok"
+        ? { kind: "pass" }
+        : { kind: "fail", blocking: ["check-product"] };
+    const s = seat("write", []);
+    const mode = writing({ ...s.request, verify: reads }, undefined, "unseen");
+    const tool = toolOf(mode, "try_answer");
+    const bare = await invoke(tool, "bare", { ...instance(7), answer: GOOD });
+    expect(JSON.stringify(bare.output)).toContain("check-product");
+    await invoke(tool, "files", { ...instance(7), answer: GOOD, files: [{ path: "report.md", text: "ok" }] });
+    await invoke(toolOf(mode, PROPOSE), "propose", { tasks: [instance(7)] });
+    expect(mode.result().held).toHaveLength(1);
+    expect(s.of("task.feasible")).toMatchObject([{ answer: GOOD }]);
+  });
+
   it("is given the contract, the checks and the campaign's tasks, and nothing of a solver", async () => {
     const s = seat("write", [
       call("read_example", { task: "e-1" }),

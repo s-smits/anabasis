@@ -49,6 +49,7 @@
 import type { SeatTool } from "../agent/session.ts";
 import { Type } from "typebox";
 import { affords, openingOf } from "../campaign/opening.ts";
+import { type AnswerFile, textFiles } from "../kernel/answer-files.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, contentOf, proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { poolOf } from "../kernel/reports.ts";
@@ -59,10 +60,12 @@ import { packageGate as checkPackage, type TaskPackage, taskSets, taskVersion } 
 import { objectiveOf, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { ending, text, tool } from "../tools/answer.ts";
+import { TEXT_FILES } from "./draft.ts";
 import { type CheckRow, firstMessage, type SolveBudget, systemPrompt, wakeMessage } from "./prompt.ts";
 import { heard, measured } from "./record.ts";
 import type { Walls } from "./shell.ts";
@@ -122,7 +125,7 @@ interface Desk {
   readonly seen: Map<string, "now" | "earlier">;
   /** The last author answer that passed on each instance, kept only in session memory and
    *  rechecked on the final task before recording a known valid answer. */
-  readonly answered: Map<string, JsonValue>;
+  readonly answered: Map<string, { readonly answer: JsonValue; readonly files?: readonly AnswerFile[] }>;
   /** Checked content, kept once so a proposal can name it without sending its input again. */
   readonly checked: Map<string, Task>;
   /** Every answer that passed, by hash: a task that carries one whole is refused, since a planted
@@ -258,7 +261,7 @@ async function admitDraft(desk: Desk, instance: Task): Promise<string> {
     task: { taskId, family, publicInput, hidden },
   });
   const reason = refusalOf(request.contract, task, desk.planted);
-  const answer = desk.answered.get(contentOf(instance));
+  const { answer, files } = desk.answered.get(contentOf(instance)) ?? {};
   const outcome = reason === null ? { outcome: "passed" } : { outcome: "refused", reason };
   append(log, TASK_ADMISSION, { version, gate: 1, ...outcome });
   if (reason !== null) {
@@ -270,7 +273,7 @@ async function admitDraft(desk: Desk, instance: Task): Promise<string> {
   request.held?.();
   const held = `${taskId}: held out.`;
   if (verify === null || answer === undefined) return held;
-  const verdict = await Promise.try(() => verify(instance, answer)).catch(
+  const verdict = await Promise.try(() => verify(instance, answer, undefined, files)).catch(
     (error: unknown): Verdict => ({ kind: "non-result", reason: errorMessage(error) }),
   );
   if (verdict.kind !== "pass") {
@@ -404,6 +407,7 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
     parameters: Type.Object({
       ...SPELLED,
       answer: Type.Unknown({ description: "An answer in the domain's answer format." }),
+      files: TEXT_FILES,
     }),
     execute: async (args, _api, context) => {
       const candidate = instanceOf("try", args);
@@ -422,10 +426,11 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
           `${admission}This answer does not follow the answer format, so a solver's answer like it is refused before any check reads it, and no check was run: ${unformed}`,
         );
       }
-      const verdict = await verify(instance, answer);
+      const files = args.files === undefined ? undefined : textFiles(args.files);
+      const verdict = await verify(instance, answer, undefined, files);
       desk.checked.set(content, instance);
       if (verdict.kind === "pass") {
-        desk.answered.set(content, answer);
+        desk.answered.set(content, { answer, ...keyIfDefined("files", files) });
         desk.planted.add(hashJsonValue(answer));
         recordValidAnswer(events, taskVersion(desk.request.pack(instance)), verdict, answer);
       }

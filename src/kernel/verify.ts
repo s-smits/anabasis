@@ -47,6 +47,8 @@ import { type SolveIsolationPolicy, solveIsolationPolicy } from "../wall/base.ts
 import { hostScratch } from "../wall/policy.ts";
 import type { CheckChildInput, CheckChildResult } from "./check-child.ts";
 import type { Objective } from "./contract.ts";
+import type { AnswerFile } from "./answer-files.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 
 // Copied from v1 (github.com/s-smits/anabasis, 3f93d06b), verbatim: CHECK_PROGRAM_CONTRACT,
 // requiredToolsOf, applicableTruthChecks, projectPaths, projectJsonPaths and checkPublicInputs from
@@ -63,6 +65,8 @@ interface CheckExecution {
   families: "all" | string[];
   artifactPaths: string[];
   publicInputPaths: string[];
+  /** Relative deliverable paths, or `$` for all files. Omitted grants no files. */
+  filePaths?: string[];
   /** `whole`: the task's hidden values as their author wrote them, the form a drafted exam's
    *  checks are told they read (`src/examiner/draft.ts`). Until 31 October a drafted exam with hidden
    *  values declared `required`, whose rows by check id no draft writes, so all 6 such drafts on
@@ -97,6 +101,7 @@ export interface EvaluationRequest {
   publicTask: PublicTask<JsonValue>;
   artifact: JsonValue;
   hidden: JsonValue;
+  files?: readonly AnswerFile[];
 }
 
 export const CHECK_PROGRAM_CONTRACT = "check-program/v1";
@@ -136,7 +141,12 @@ export type Verdict =
   | { readonly kind: "non-result"; readonly reason: string };
 
 /** Whether an answer passes a task's checks. No answer is a fail. */
-export type Verifier = (task: Task, answer: JsonValue | undefined, signal?: AbortSignal) => Promise<Verdict>;
+export type Verifier = (
+  task: Task,
+  answer: JsonValue | undefined,
+  signal?: AbortSignal,
+  files?: readonly AnswerFile[],
+) => Promise<Verdict>;
 
 interface Wall {
   readonly tree: VerifierTree;
@@ -304,9 +314,17 @@ function projectJsonPaths(value: JsonValue, paths: readonly string[]): JsonValue
  *  already allowed to read, and a wider tool operand cannot be reached around the projection. */
 function checkPublicInputs(
   check: BriefTruthCheck,
-  request: Pick<EvaluationRequest, "artifact" | "publicTask">,
-): Pick<EvaluationRequest, "artifact" | "publicTask"> {
+  request: Pick<EvaluationRequest, "artifact" | "publicTask" | "files">,
+): Pick<EvaluationRequest, "artifact" | "publicTask" | "files"> {
   return {
+    ...keyIfDefined(
+      "files",
+      check.execution.filePaths === undefined
+        ? undefined
+        : (request.files ?? []).filter(
+            (file) => check.execution.filePaths?.some((path) => path === "$" || path === file.path) === true,
+          ),
+    ),
     artifact: projectJsonPaths(request.artifact, check.execution.artifactPaths),
     publicTask: {
       taskId: request.publicTask.taskId,
@@ -401,11 +419,16 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
       network: false,
     }),
   };
-  return async (task, answer, signal) => {
+  return async (task, answer, signal, files) => {
     if (answer === undefined) return { kind: "fail", blocking: [] };
     if (signal?.aborted === true) return { kind: "non-result", reason: "the verifier was cancelled" };
     const blocking: string[] = [];
-    const request = { publicTask: task, artifact: answer, hidden: task.hidden };
+    const request = {
+      publicTask: task,
+      artifact: answer,
+      hidden: task.hidden,
+      ...keyIfDefined("files", files),
+    };
     // Every check runs, and the first that cannot decide or is faulty, in the brief's order,
     // decides the verdict, as it did when they ran one at a time.
     const ran = await pooled(applicableTruthChecks(brief, task), CELLS, async (check) => ({
@@ -440,8 +463,13 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
  * the verifier, never the task, and a non-result is never counted, so a run on a broken verifier, one
  * that returns one for every check, would count nothing and look clean.
  */
-export async function decided(verify: Verifier, task: Task, answer: JsonValue | undefined) {
-  const verdict = await verify(task, answer);
+export async function decided(
+  verify: Verifier,
+  task: Task,
+  answer: JsonValue | undefined,
+  files?: readonly AnswerFile[],
+) {
+  const verdict = await verify(task, answer, undefined, files);
   if (verdict.kind === "non-result") {
     throw new Error(`the verifier could not decide ${task.taskId}, so the run stops: ${verdict.reason}`);
   }

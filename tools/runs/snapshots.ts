@@ -11,6 +11,7 @@
  */
 import { Type } from "typebox";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
+import { DELIVERABLES } from "#src/kernel/answer-files.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import { existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -70,10 +71,15 @@ const DERIVED = new Set([
  *  packages installed, one a line as `grep` names a match: `./<target>/<package>.dist-info/RECORD:`
  *  and the first path segment of a row of that `RECORD`. */
 export const PACKAGED = "find . -path '*.dist-info/RECORD' -type f -exec grep -Ho '^[^/,]*' {} + | sort -u";
+/** The submitted files, the one part of `states/` a record holds, since readers of a verdict need them. */
+const DELIVERED = join("states", DELIVERABLES.folder);
 // The seed's mark comes too, so a copy of a rehearsal's seed is no paid campaign to a reader: until
 // 29 October the gather left it out, and two compare-systems seeds counted as campaigns in a replay.
 const RECORD = [
   "--include=/log.jsonl",
+  "--include=/states/",
+  `--include=/${DELIVERED}/***`,
+  "--exclude=/states/*",
   "--include=/launch-*.json",
   `--include=/${SEED_FILE}`,
   "--exclude=/*",
@@ -261,7 +267,14 @@ async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): 
     // the copy, a file at a time, the log last. Copying the folder to keep them took 4.7 s of a
     // 5.8 s refresh of one live run on 30 October: 6,372 files, most of them its Examiner's home.
     if (depth === "record" && existsSync(into)) {
-      const record = readdirSync(folder).toSorted((a, b) => Number(a === LOG_FILE) - Number(b === LOG_FILE));
+      // The stored files are named by digest, so a refresh adds each beside those already kept,
+      // before the log that names them.
+      const delivered = existsSync(join(folder, DELIVERED)) ? readdirSync(join(folder, DELIVERED)) : [];
+      if (delivered.length > 0) mkdirSync(join(into, DELIVERED), { recursive: true });
+      for (const kept of delivered) renameSync(join(folder, DELIVERED, kept), join(into, DELIVERED, kept));
+      const record = readdirSync(folder)
+        .filter((name) => name !== "states")
+        .toSorted((a, b) => Number(a === LOG_FILE) - Number(b === LOG_FILE));
       for (const file of record) renameSync(join(folder, file), join(into, file));
       published = true;
       return held;

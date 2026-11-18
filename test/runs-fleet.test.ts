@@ -310,6 +310,24 @@ describe("campaign snapshots", () => {
     expect(readFileSync(copied, "utf8")).toBe(whole);
   });
 
+  it("carries the submitted files alone of states/ into a record, adding each at a refresh", () => {
+    const remote = campaign();
+    const { made } = remote;
+    const store = join(made.root, "remote", "distant", "states", "deliverables");
+    mkdirSync(join(made.root, "remote", "distant", "states", "tree-a"), { recursive: true });
+    writeFileSync(join(made.root, "remote", "distant", "states", "tree-a", "x.py"), "");
+    mkdirSync(store);
+    writeFileSync(join(store, "a".repeat(64)), "first");
+    const record = sync.replace('{match:"exact"}', '{match:"exact", depth:"record"}');
+    expect(made.run(record, remote.env).code).toBe(0);
+    writeFileSync(join(store, "b".repeat(64)), "second");
+    append(remote.log, "campaign.ended", { ending: "finished", why: "again" });
+    expect(made.run(record, remote.env).code).toBe(0);
+    const copied = join(made.main, "data", "runs", "runner", "distant", "states");
+    expect(readdirSync(copied)).toEqual(["deliverables"]);
+    expect(readdirSync(join(copied, "deliverables")).toSorted()).toEqual(["a".repeat(64), "b".repeat(64)]);
+  });
+
   it("leaves out of a whole copy what a disk that folds case cannot hold apart, and says so", () => {
     const remote = campaign();
     const { made } = remote;

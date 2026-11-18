@@ -19,6 +19,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { agreement, clears } from "../src/referee/agreement.ts";
 import { type ProbeRow, probeTool } from "../src/referee/probe.ts";
+import { keepAnswerFiles, type AnswerFile } from "../src/kernel/answer-files.ts";
 import type { Reader } from "../src/referee/reader.ts";
 import { referee } from "../src/referee/referee.ts";
 import { containing, copies, objectWith } from "./helpers/matchers.ts";
@@ -320,6 +321,87 @@ describe("coupled and check-defect evidence", () => {
 });
 
 describe("check-defect rulings", () => {
+  it("gives the Referee, rejection replay and JSON probes the same captured files", async () => {
+    const s = setup([
+      fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "10" }] }), toolUse),
+      ruling({ ruling: "unclear", reason: "The file rule needs further evidence.", probes: [1] }),
+    ]);
+    const files = [{ path: "report.txt", base64: "YmFk", text: "bad" }];
+    const manifest = keepAnswerFiles(s.log, files);
+    s.record("verdict", {
+      solve: "s-1",
+      task: TASK.taskId,
+      answer: ANSWER,
+      files: manifest.map((file) => ({ ...file })),
+      kind: "fail",
+      blocking: ["span"],
+    });
+    const seen: (readonly AnswerFile[] | undefined)[] = [];
+    await referee(s.reader, {
+      ...fail(s),
+      verify: async (_task, _answer, _signal, received) => {
+        seen.push(received);
+        return { kind: "fail", blocking: ["span"] };
+      },
+    });
+    expect(seen).toEqual([files, files]);
+    expect(s.sent[0]).toContain("report.txt");
+    expect(s.sent[0]).toContain(String.raw`\"text\":\"bad\"`);
+    expect(s.sent[0]).not.toContain("YmFk");
+  });
+  it("rules a rejection a submitted file caused earned, on a probe that edited the file and moved its check", async () => {
+    const s = setup([
+      fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "10" }] }), toolUse),
+      ruling({ ruling: "earned", rule: "R1", field: "$.span", reason: "The span.", probes: [1] }),
+      fauxAssistantMessage(
+        fauxToolCall(PROBE, { changes: [{ path: "file:report.txt", find: "bad", replace: "good" }] }),
+        toolUse,
+      ),
+      ruling({ ruling: "earned", rule: "R1", field: "file:report.txt", reason: "The report.", probes: [2] }),
+    ]);
+    const checks = join(scratch, "checks-files");
+    mkdirSync(checks, { recursive: true });
+    writeFileSync(join(checks, "evaluator.ts"), "// the report is good\n");
+    writeFileSync(
+      join(checks, "brief.json"),
+      JSON.stringify({
+        correctnessContract: "check-program/v1",
+        truthChecks: [
+          {
+            id: "span",
+            citedDecisionIds: ["R1"],
+            execution: {
+              families: "all",
+              artifactPaths: [],
+              filePaths: ["$"],
+              publicInputPaths: [],
+              hidden: "none",
+              evidence: { kind: "authored" },
+            },
+          },
+        ],
+      }),
+    );
+    const files = [{ path: "report.txt", base64: "YmFk", text: "bad" }];
+    s.record("verdict", {
+      solve: "s-1",
+      task: TASK.taskId,
+      answer: ANSWER,
+      files: keepAnswerFiles(s.log, files).map((file) => ({ ...file })),
+      kind: "fail",
+      blocking: ["span"],
+    });
+    const finding = await referee(s.reader, {
+      ...fail(s),
+      checks,
+      verify: async (_task, _answer, _signal, given) =>
+        given?.[0]?.text === "good" ? { kind: "pass" } : { kind: "fail", blocking: ["span"] },
+    });
+    // The span is no field this check reads, so the first ruling is refused; the file's stands.
+    expect(finding).toMatchObject({ ruling: "earned", field: "file:report.txt", probes: [2] });
+    expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(1);
+    expect(s.sent[0]).toContain("reads file:$");
+  });
   it("the Referee rules a check-defect that names a refusing check, on the probes it cites", async () => {
     const s = setup([
       fauxAssistantMessage(fauxToolCall("read_check_program", { path: "evaluator.ts" }), toolUse),

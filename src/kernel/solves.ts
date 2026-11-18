@@ -23,6 +23,7 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { type Condition, conditionsOf, type Limits, limitsIn } from "./condition.ts";
 import type { LogEvent } from "./log.ts";
 import type { Verdict } from "./verify.ts";
+import { type FileManifest, manifestOf } from "./answer-files.ts";
 
 /** One solve attempt as its own events tell it. */
 export interface Solve {
@@ -58,6 +59,7 @@ export interface Judged {
   readonly task: string | null;
   /** The answer that was judged. */
   readonly answer: JsonValue | undefined;
+  readonly files?: readonly FileManifest[];
   /** The verdict's kind as logged: pass, fail, faulty or non-result. */
   readonly kind: string;
   /** The host's refusal of the answer's format, when no check ran. */
@@ -243,6 +245,7 @@ export function verdictsOf(events: readonly LogEvent[]): Map<string, Judged> {
         solve: data.solve,
         task: isString(data.task) ? data.task : null,
         answer: data.answer,
+        ...keyIfDefined("files", data.files === undefined ? undefined : manifestOf(data.files)),
         kind: isString(data.kind) ? data.kind : "",
         fault: isString(data.fault) ? data.fault : null,
         checker: checkerVerdict(data),

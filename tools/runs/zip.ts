@@ -118,6 +118,7 @@ const GROUPS: readonly (readonly [name: string, holds: string, level: Level, pat
     /^([^/]+\.jsonl|launch-[^/]+)$/,
   ],
   ["brief", "the brief the tasks answer", "light", /^(exams\/[^/]+\/)?checks\/brief\.json$/],
+  ["deliverables", "the files each answer was submitted with, by digest", "light", /^states\/deliverables\//],
   [
     "harness",
     "each harness a session kept: guide, tools, tool spec, memory",

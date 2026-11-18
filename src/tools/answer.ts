@@ -39,11 +39,12 @@ import {
 } from "@earendil-works/pi-durable";
 import { type TSchema, Type } from "typebox";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
+import { type AnswerFile, capturedFiles, DELIVERABLES } from "../kernel/answer-files.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { sha256 } from "../meta/digest.ts";
-import { rmSync, writeFileSync } from "../meta/filesystem.ts";
+import { readFileSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonParse } from "../meta/json-runtime.ts";
-import type { JsonObject, JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
 import { isSafePathSegment } from "../meta/path-segment.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -51,6 +52,7 @@ import { canonicalJson, hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { type SeatTool, textsOf } from "../agent/session.ts";
 import { shellQuote } from "../wall/isolation.ts";
+import { toolchainPathDirs } from "../wall/policy.ts";
 import type { WallExec } from "./coding.ts";
 
 /** One of the domain's public resources, as a file in the solver's home holds it. */
@@ -64,6 +66,8 @@ export interface PublicResource {
 export interface Desk {
   /** The answer submit accepted; once set, the solve has answered. */
   submitted: JsonValue | undefined;
+  /** The files submit captured beside the answer, which `judge` keeps by digest. */
+  files?: readonly AnswerFile[];
   /** Why the solver judged the task malformed, where it said so in place of an answer. */
   flagged: string | undefined;
 }
@@ -111,6 +115,11 @@ function answerIn(bytes: Buffer, contract: Contract): { answer: JsonValue } | { 
   return fault === null ? { answer } : { fault: `does not follow the answer format: ${fault}` };
 }
 
+/** The capture, passed to the host's own Python as its program, so nothing is staged: the harness's
+ *  tool tree is first on a command's PATH, and its interpreter would read one side's submits alone. */
+const CAPTURE = readFileSync(join(import.meta.dir, "capture-answer.py"), "utf8");
+const CAPTURER = Bun.which("python3", { PATH: toolchainPathDirs().join(":") });
+
 /**
  * `submit`: the answer file under `home`, read by one walled command, checked and kept. An answer
  * once sent stays the answer, whatever the file holds afterwards. Or, with `malformed`, the
@@ -119,18 +128,20 @@ function answerIn(bytes: Buffer, contract: Contract): { answer: JsonValue } | { 
  * nothing of the task.
  */
 export function submitTool(desk: Desk, contract: Contract, home: string, exec: WallExec): SeatTool {
-  const file = shellQuote(join(home, ANSWER_FILE));
   return tool({
     name: "submit",
-    description: `Send ${ANSWER_FILE} from your working directory as your answer. It holds the answer as JSON, in the format ${ANSWER_FORMAT_FILE} gives. A file that does not is refused with the reason, and you may submit again. An accepted submit ends the task and returns no verdict. If you judge the task malformed, so that no answer could meet it as posed, give malformed instead, saying why: that ends the task with no answer read.`,
+    description: `Send ${ANSWER_FILE} from your working directory as your answer. It holds the answer as JSON, in the format ${ANSWER_FORMAT_FILE} gives. A file that does not is refused with the reason, and you may submit again. Submit also captures regular files under ${DELIVERABLES.folder}/, at most ${String(DELIVERABLES.count)} files and ${String(DELIVERABLES.bytes)} bytes in total, refusing symlinks, special files and excess files or bytes with a reason; an absent folder supplies no files. An accepted submit ends the task and returns no verdict. If you judge the task malformed, so that no answer could meet it as posed, give malformed instead, saying why: that ends the task with no answer read.`,
     parameters: SUBMIT_PARAMETERS,
     execute: async ({ malformed }, _api, context) => {
       if (desk.submitted !== undefined) return ending(text("Submitted."));
       const why = malformed?.trim() ?? "";
       desk.flagged ??= why === "" ? undefined : why;
       if (desk.flagged !== undefined) return ending(text("Flagged."));
+      if (CAPTURER === null) {
+        throw new Error("submit finds no python3 on the host's own tool path to capture with");
+      }
       const { exitCode, output } = await exec(
-        `[ -f ${file} ] || exit ${String(MISSING)}; head -c ${String(ANSWER_MAX_BYTES + 1)} ${file}`,
+        `${shellQuote(CAPTURER)} -I -c ${shellQuote(CAPTURE)} ${shellQuote(home)} ${ANSWER_FILE} ${String(ANSWER_MAX_BYTES + 1)} ${DELIVERABLES.folder} ${String(DELIVERABLES.count)} ${String(DELIVERABLES.bytes)}`,
         { signal: context.abortSignal },
       );
       if (exitCode === MISSING) {
@@ -139,10 +150,14 @@ export function submitTool(desk: Desk, contract: Contract, home: string, exec: W
         );
       }
       if (exitCode !== 0) {
-        return text(`Submit blocked: ${ANSWER_FILE} could not be read: ${output.toString("utf8").trim()}`);
+        return text(`Submit blocked: submission could not be read: ${output.toString("utf8").trim()}`);
       }
-      const read = answerIn(output, contract);
+      const capture = asRecord(capturedJsonParse(output.toString("utf8")));
+      if (!isString(capture?.answer)) throw new Error("invalid answer capture");
+      const read = answerIn(Buffer.from(capture.answer, "base64"), contract);
       if ("fault" in read) return text(`Submit blocked: ${ANSWER_FILE} ${read.fault}`);
+      const files = capturedFiles(capture.files);
+      if (files.length > 0) desk.files = files;
       desk.submitted = read.answer;
       return ending(text("Submitted.", { answerDigest: hashJsonValue(read.answer) }));
     },

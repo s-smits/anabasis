@@ -28,6 +28,7 @@ import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earen
 import { resetOf } from "../agent/backends/claude.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
+import { type AnswerFile, keepAnswerFiles } from "../kernel/answer-files.ts";
 import { append } from "../kernel/log.ts";
 import { NOTHING_SPENT, priceKey } from "../kernel/meter.ts";
 import { Cancellation, checkCouldNotRun, type Ending, unanswered } from "../kernel/solve.ts";
@@ -131,6 +132,7 @@ export interface Played {
    *  take many. */
   readonly prompts: number;
   readonly submitted: JsonValue | undefined;
+  readonly files?: readonly AnswerFile[];
   readonly flagged: string | undefined;
   readonly wallEnded: boolean;
   /** How long the model had been silent, with no tool of its running, when the deadline expired
@@ -348,6 +350,7 @@ async function play(
     prompts,
     spent: spentOn ?? NOTHING_SPENT,
     submitted: desk.submitted,
+    ...keyIfDefined("files", desk.files),
     flagged: desk.flagged,
     wallEnded: deadline?.signal.aborted ?? false,
     silentSeconds: deadline?.silentSeconds ?? 0,
@@ -485,11 +488,18 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
   }
   if (played.submitted !== undefined) {
     const fault = answerFormatFault(request.contract.answerFormat, played.submitted);
-    const verdict = fault === null ? await request.verify(request.task, played.submitted) : null;
+    const verdict =
+      fault === null ? await request.verify(request.task, played.submitted, undefined, played.files) : null;
     append(request.log, "verdict", {
       solve: id,
       task: request.task.taskId,
       answer: played.submitted,
+      ...keyIfDefined(
+        "files",
+        played.files === undefined
+          ? undefined
+          : keepAnswerFiles(request.log, played.files).map((file) => ({ ...file })),
+      ),
       ...(verdict ?? { kind: "fail", fault }),
     });
     if (verdict?.kind === "non-result") {

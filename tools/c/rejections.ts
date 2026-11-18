@@ -30,6 +30,8 @@
  * a model login.
  */
 import { contractHash } from "#src/kernel/contract.ts";
+import { shownFiles } from "#src/kernel/answer-files.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { verdictsOf } from "#src/kernel/solves.ts";
 import { blockingOf, decided, spelled, type Task } from "#src/kernel/verify.ts";
@@ -175,6 +177,7 @@ async function main(): Promise<void> {
         // The whole public contract: a label read on the rules alone misses a convention or the format.
         contract,
         answer: verdict?.answer ?? null,
+        ...keyIfDefined("files", verdict?.files && shownFiles(log, verdict.files)),
         refusedBy: blockingOf(verdict?.checker),
       };
       writeFileSync(join(dir, "label", `${solve}.json`), `${capturedJsonStringify(packet, null, 2)}\n`);

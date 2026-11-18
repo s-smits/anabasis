@@ -37,6 +37,7 @@
  * lane 1 was given `<campaign>/checks` for a drafted exam and stopped on ENOENT.
  */
 import { draftOf } from "#src/examiner/draft.ts";
+import { type AnswerFile, readAnswerFiles } from "#src/kernel/answer-files.ts";
 import { answerFormatFault } from "#src/kernel/contract.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { read } from "#src/kernel/log.ts";
@@ -66,6 +67,7 @@ interface GradeOptions {
 interface Graded {
   readonly task: string;
   readonly answer: JsonValue;
+  readonly files?: readonly AnswerFile[];
   /** The file and its digest, for an answer of a folder. */
   readonly label: string | null;
   /** The verdict the log holds of it, for an answer read from a solve. */
@@ -167,6 +169,7 @@ function answersOf(options: GradeOptions, events: ReturnType<typeof read>): Grad
       {
         task: verdict.task,
         answer: verdict.answer,
+        files: readAnswerFiles(options.log, verdict.files ?? []),
         label: null,
         recorded: held,
         repeat: [...base, ...bundle, "--solve", verdict.solve, ...sets],
@@ -220,13 +223,13 @@ export async function grade(options: GradeOptions): Promise<number> {
     );
   }
   const verify = openVerifier({ checks, tools: join(bundle, ".toolchain"), packRoots: [bundle] });
-  const judged = async (task: Task, answer: JsonValue) => {
+  const judged = async (task: Task, answer: JsonValue, files?: readonly AnswerFile[]) => {
     const fault = answerFormat === undefined ? null : answerFormatFault(answerFormat, answer);
-    return fault === null ? spelled(await verify(task, answer)) : `fail format: ${fault}`;
+    return fault === null ? spelled(await verify(task, answer, undefined, files)) : `fail format: ${fault}`;
   };
   const graded = answersOf(options, events);
   const many = options.answers !== undefined;
-  for (const { task: taskId, answer, label, recorded } of graded) {
+  for (const { task: taskId, answer, files, label, recorded } of graded) {
     const task = tasks.get(taskId);
     if (task === undefined) {
       if (!many) throw new Error(`neither the log nor the pack holds task ${taskId}`);
@@ -234,18 +237,18 @@ export async function grade(options: GradeOptions): Promise<number> {
       continue;
     }
     if (many) {
-      console.log(`${label ?? ""}  ${taskId}  ${await judged(task, answer)}`);
+      console.log(`${label ?? ""}  ${taskId}  ${await judged(task, answer, files)}`);
       continue;
     }
     const { answer: changed, said } = withSet(answer, options.set);
     for (const line of said) console.log(line);
-    const now = await judged(task, answer);
+    const now = await judged(task, answer, files);
     // A plain grade prints its verdict alone; a regrade beside the recorded one; a change after both.
     const plain = recorded === null && said.length === 0 ? [now] : [];
     const lines = [
       ...plain,
       ...(recorded === null ? [] : [`recorded: ${recorded}`, `regraded: ${now}`]),
-      ...(said.length === 0 ? [] : [`with the change: ${await judged(task, changed)}`]),
+      ...(said.length === 0 ? [] : [`with the change: ${await judged(task, changed, files)}`]),
     ];
     console.log(lines.join("\n"));
   }

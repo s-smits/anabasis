@@ -63,6 +63,8 @@ import { settleReading } from "#src/campaign/round.ts";
 import { draw } from "#src/kernel/compare.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
+import { shownFiles } from "#src/kernel/answer-files.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { lastReports } from "#src/kernel/reports.ts";
 import { stopRule } from "#src/campaign/admission.ts";
 import { verdictsOf } from "#src/kernel/solves.ts";
@@ -117,6 +119,7 @@ function drawPacket(campaign: Campaign, events: readonly LogEvent[], session: st
       // The whole public contract (14 October): a label read on the rules alone misses a convention.
       contract: campaign.contract,
       answer: verdict?.answer ?? null,
+      ...keyIfDefined("files", verdict?.files && shownFiles(campaign.log, verdict.files)),
       // None where the answer passed.
       refusedBy: blockingOf(verdict?.checker),
     };

@@ -175,8 +175,18 @@ Each seat has one job and a closed view:
 
 A **harness** is a directory (`agent/tools-spec.json`, `.toolchain/`, the guide
 `agent/BUILT_AGENTS.md`, `agent/tools.ts`) whose digest is its identity. The **Starter Built
-Harness** (`src/harness/starter.ts`) is the first reference and the fixed baseline. Every solve runs
-inside a harness, so never write "with or without a harness".
+Harness** (`src/harness/starter.ts`) is the first reference and the fixed baseline: pi's coding
+agent as released, its four coding tools and the starter instructions as its guide. Three names
+keep its uses apart, each in one meaning:
+
+- the **Starter**, also the **bareSolver**: the solver under the Starter Built Harness, the
+  baseline a reading is set against, in a campaign and on an outside benchmark (`--arm starter`);
+- the **Starter Pack**: what a campaign begins from, the Starter Built Harness with the account of a
+  harness's files (`HARNESS.md`) that the Builder is handed beside it;
+- the **builtSolver**: the solver under a harness a Builder built, such as a campaign's promoted
+  reference.
+
+Every solve runs inside a harness, so never write "with or without a harness".
 
 ### What waits for the operator
 
@@ -382,10 +392,10 @@ any regression and repair it.
 **The outside aim.** Each jobstat run's newest promoted reference is also read on JobBench, without
 a question, at each pause the run rests at from its second promotion on, detached and before its
 audit, or after its audit where a run with one promotion stops, under that benchmark's own judge
-(`studies/harness2/`), against three baselines kept apart: the Starter, exported (Anabasis's pack
-on the bareSolver, which is Pi Durable's coding agent as released), stock Claude Code with an empty
-guide (Harness²'s Base) and Harness²'s held-out arm. The operator's aims, in order, are a built
-harness above the Starter, level with the held-out arm, then above it. Read a deficit as a difference in conditions first (what the export carries and tells
+(`studies/harness2/`), against three baselines kept apart: the Starter (the bareSolver, section
+3), exported, stock Claude Code with an empty guide (Harness²'s Base) and Harness²'s held-out arm.
+The operator's aims, in order, are a builtSolver above the bareSolver, level with the held-out arm,
+then above it. Read a deficit as a difference in conditions first (what the export carries and tells
 the solver, the interpreter and its packages, the day) and as the harness only once those are equal;
 a difference inside the Starter's spread between rollouts is no reading, and each arm is rolled
 afresh after a change to the export or the scoring. run-improvement-campaign ("The outside aim")

@@ -17,8 +17,10 @@
  * harness's eight rollouts ran one of its programs. Each block now prints for both arms the
  * commands that name the export's program folder and those of them that only look at it; on that
  * store 17 name it, so the hand count was near and not exact. The count reads a shell line
- * without a parser, so it bounds use from above and proves none: the guide reaches a rollout
- * whatever its commands do.
+ * without a parser and proves no use: the guide reaches a rollout whatever its commands do. Since
+ * the export put the programs on the solver's path (17 November 2026) it bounds nothing either, as
+ * a program started by its name alone names no folder: it read 0 for a reference whose rollouts
+ * started one twice, and the gathered store holds no tree from which to list the names.
  *
  * The seal is what keeps a pattern from confirming itself. `--salt` orders the tasks by a hash of the
  * salt and the task, opens the first half and withholds the rest: no score of a sealed task is printed
@@ -128,8 +130,8 @@ const onlyLooks = (line: string): boolean =>
  *  starts at attempt 1, so the name's own order would put an older second attempt last. */
 const stampOf = (name: string): string => name.replace(/^.*_attempt\d+_/u, "");
 
-/** The newest attempt's commands, since that attempt left the deliverable the grading read. A
- *  program is reached by its path alone: the export puts no harness folder on the solver's path. */
+/** The newest attempt's commands, since that attempt left the deliverable the grading read, and
+ *  those that name the program folder (a program started by its name alone is not seen). */
 function shellIn(folder: string): Shell | null {
   const newest = existsSync(folder)
     ? readdirSync(folder)

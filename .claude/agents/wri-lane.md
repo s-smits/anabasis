@@ -30,7 +30,12 @@ What this agent type adds:
   `PYTHONDONTWRITEBYTECODE=1` on the line: copy what you want to run into a temporary directory
   first, and pipe a log in rather than naming it to a script. A refused call is no failure of
   yours: say in the report what it would have settled, and go on.
-- Your report is research for the primary, who vets every finding against the logs before acting.
-  Write what you counted and where, so a recount is one command.
+- Your report is research for the primary, who vets every finding against the logs before acting,
+  and what vetting most often sends back is a counted observation under a cause nobody read. So work
+  in this order: take the count from the file or the tool that prints it, then ask why twice, why
+  the events came out so and why the owner's code or text let them, as the form's `Cause:` line
+  asks.
+- State nothing from memory, an earlier report or a trigger's wording: a trigger says where to look.
+  One trace or one state read whole often settles what a tenth table would not.
 - When every report your task names is written with its verdict, end with one line naming each
   report's path and verdict. Do not summarise the findings in your reply: the reports are the record.

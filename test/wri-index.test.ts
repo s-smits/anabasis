@@ -54,6 +54,8 @@ const REPORTS = [
   "# Reports",
   "",
   "- lane 1: ok, finding, 2 findings, at `lanes/01-report.md`",
+  // A finding's own line under its lane is no lane.
+  "  - 1.1, observation confirmed, cause plausible, owner host: lane 9: ok, finding, 4 findings,",
   "- lane 2: ok, no finding, 0 findings, at `lanes/02-report.md`",
   "- lane 3: missing, at `lanes/03-report.md`",
   // A lane left unread, which until 9 November the index counted as one read with no finding.

@@ -558,10 +558,9 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    The first prints each task, every rubric the arms split with the side that won it, and how
    many of each arm's shell commands name the harness's program folder, with those of them that
    only look at it; the second gives the Starter's spread at the same grain. `--tasks <list>`
-   reads one part alone, as the table does. The folder count bounds the use of a harness's
-   programs from above and proves none, and the guide reaches a rollout whatever its commands
-   do. Without `--salt` the two commands open every task, so where a review is to follow
-   (step 7), freeze its ledger first and pass the ledger's digest as `--salt`: half the tasks
+   reads one part alone, as the table does. The folder count reads references to the folder,
+   not use (comparison-review's `references/levels.md`, "Behaviour"). Without `--salt` the two
+   commands open every task, so where a review is to follow (step 7), freeze its ledger first and pass the ledger's digest as `--salt`: half the tasks
    then stay sealed (comparison-review, steps 1 and 2). Both read the gathered copy in
    `data/bench/<machine>` as they read the store, call no model and print ids, weights and counts
    only, so their lines go into the report as they are. A session that a login's limit or the provider cut is refused: it stays unjudged, and

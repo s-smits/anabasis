@@ -750,33 +750,24 @@ function open(args: CommandArgs, repo: string): number {
   // peer's campaign is fetched whole, states included (`logAcross`); the ten-minute gather copies
   // its record alone, and on 18 November a reference so read as not kept.
   for (const name of runs) readNamed(name, repo);
-  const hosts = join(repo, ".env.runs");
+  // The host list lies in the main checkout, as `.ana/wri` does: a worktree holds neither.
+  const root = wriRoot(repo);
+  const hosts = join(mainTree(repo), ".env.runs");
   const day = new Date().toISOString().slice(0, 10);
-  const out = resolve(args.value("out") ?? join(wriRoot(repo), `${day}-${runs.join("+")}`));
+  const out = resolve(args.value("out") ?? join(root, `${day}-${runs.join("+")}`));
   // The record first, so a crash before the start reads `step: open`, never a plain investigation.
   mkdirSync(out, { recursive: true });
   writeFileSync(
     join(out, MARKER),
     `${JSON.stringify({ opened: new Date().toISOString(), runs, protocol: PROTOCOL }, null, 2)}\n`,
   );
-  const started = runSync(
-    [
-      capturedExecPath,
-      ...(existsSync(hosts) ? [`--env-file=${hosts}`] : []),
-      WRI,
-      "start",
-      "--log",
-      runs.join(","),
-      "--out",
-      out,
-      "--snapshot",
-    ],
-    { cwd: repo },
-  );
+  const start = [WRI, "start", "--log", runs.join(","), "--out", out, "--snapshot"];
+  const env = existsSync(hosts) ? [`--env-file=${hosts}`] : [];
+  const started = runSync([capturedExecPath, ...env, ...start], { cwd: repo });
   runtimeProcess.stdout.write(started.stdout);
   runtimeProcess.stderr.write(started.stderr);
   if (started.exitCode !== 0) return started.exitCode ?? 1;
-  for (const line of nextOf(out, { root: wriRoot(repo) })) console.log(line);
+  for (const line of nextOf(out, { root })) console.log(line);
   return 0;
 }
 

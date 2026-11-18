@@ -94,7 +94,7 @@
  */
 import { type Static, Type } from "typebox";
 import { answerFormatFault, type Objective } from "../kernel/contract.ts";
-import { DELIVERABLES, type TextFile } from "../kernel/answer-files.ts";
+import { type ControlFile, DELIVERABLES } from "../kernel/answer-files.ts";
 import { ROOM } from "../kernel/compare.ts";
 import { CHECK_WALL_MS } from "../kernel/verify.ts";
 import { REACH } from "./ladder.ts";
@@ -117,7 +117,7 @@ interface DraftedRule {
 interface DraftControl {
   readonly task: number;
   readonly answer: JsonValue;
-  readonly files?: readonly TextFile[];
+  readonly files?: readonly ControlFile[];
 }
 
 /** An exam as an Examiner drafts it and `exam.drafted` holds it. */
@@ -180,11 +180,18 @@ const OUTSIDE = [
   [/\bfetch\s*\(/, "the network"],
   [/\bMath\s*\.\s*random\b|\bDate\s*\.\s*now\b/, "a random number or the clock"],
 ] as const;
-/** Text files beside an answer, as a control or a try gives them. */
+const TEXT_FILE = Type.Object({ path: Type.String({ minLength: 1 }), text: Type.String() });
+/** Files beside an answer, as a control or a try gives them (`ControlFile`). */
 export const TEXT_FILES = Type.Optional(
-  Type.Array(Type.Object({ path: Type.String({ minLength: 1 }), text: Type.String() }), {
-    description: `Text files beside the answer, by their path under ${DELIVERABLES.folder}/, as a solver leaves them.`,
-  }),
+  Type.Array(
+    Type.Union([
+      TEXT_FILE,
+      Type.Object({ path: Type.String({ minLength: 1 }), entries: Type.Array(TEXT_FILE) }),
+    ]),
+    {
+      description: `Files beside the answer, by their path under ${DELIVERABLES.folder}/, as a solver leaves them: each with its text, or for an archive such as a workbook its text members as entries, which a check then receives with an empty base64.`,
+    },
+  ),
 );
 const CONTROL = {
   task: Type.Integer({
@@ -276,7 +283,7 @@ const FLOOR = `${String(ROOM * 100)}%`;
 const SYSTEM = [
   "You are the Examiner. An operator has named a technical domain in a prompt, and you draft the exam on which a solving model will be measured in that domain: its public rules, scope and conventions, its answer format, its checks, its objective, example tasks and controls. You draft once, at the opening of a campaign. Later sessions write further tasks under what you draft here, and can change none of it.",
   `${TASK} The solver's first message holds the public input; its home holds the same task as public/task.json and the public rules, scope and conventions under public/resources/. It answers with one JSON value that follows the answer format, and an answer every check passes is valid. ${FAIR}`,
-  `Beside that value a solver may leave files under ${DELIVERABLES.folder}/ in its working directory. Submit captures the regular files there, at most ${String(DELIVERABLES.count)} and ${String(DELIVERABLES.bytes)} bytes in all, and each check receives them as request.files, a list of { path, base64, text } with text where the file is UTF-8, empty where the folder is absent; the objective reads the JSON value alone. So a work product the prompt asks for, such as a report or a workbook, is one a check can read, and a control or a try carries the files a check needs.`,
+  `Beside that value a solver may leave files under ${DELIVERABLES.folder}/ in its working directory. Submit captures the regular files there, at most ${String(DELIVERABLES.count)} and ${String(DELIVERABLES.bytes)} bytes in all, and each check receives them as request.files, a list of { path, base64, text, entries } with text where the file is UTF-8 and entries, a list of { path, text } for each UTF-8 member, where it is a zip archive such as a workbook or a document whose members inflate within ${String(DELIVERABLES.bytes)} bytes across the files, empty where the folder is absent; the objective reads the JSON value alone. So a work product the prompt asks for, such as a report or a workbook, is one a check can read, and a control or a try carries the files a check needs.`,
   `Two harnesses for the solver are compared on tasks neither was built on, each task solved afresh under each harness. A task tells them apart in two ways only. On validity: some of its solves are valid and some are not, and a valid answer beats one that is not. On the objective, where the exam declares one: two answers are both valid and one is better by it than the other by at least ${FLOOR} of the larger measure. Any other task is a tie, and a tie leaves the test, so an exam on which every solve is valid and nothing chooses between valid answers tells no harness from another, however many tasks it holds.`,
   `Who solves, and how hard a task can be for it:\n\n${REACH}`,
   "Which of the two ways the exam's tasks can use is decided here, and nothing written later adds the other. Validity tells harnesses apart only on tasks in one of the three places above, so it needs rules and a scope that leave the solver a method to find. The objective tells them apart on a task with more than one valid answer where the field's standard method, applied to the input, falls short of the best measure; where it reaches it, every careful solve submits that answer and the task ties. So ask of the domain what makes one valid answer better than another to a practitioner: what they pay for, save, minimise or maximise while meeting the requirements, such as a cost, a mass, a length, a count, a time, an error or a margin to a limit. Whether valid answers differ on it is decided here too, by what the answer format and the scope leave to the answer: where a task fixes everything the quantity depends on, every valid answer measures the same and none is better, and where the answer chooses some of it, such as the parts, the sizes, the amounts or the estimates, they differ. Where the domain has such a quantity, leave the answer what it depends on and declare it as the objective. Declare none only where no task of the domain could leave an answer that choice, and say why under the objective's `none`; the exam then measures by validity alone.",

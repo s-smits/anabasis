@@ -141,8 +141,9 @@ row reads scored or skipped.
    into `outcomes-<run>.md`, with the log's length.
 2. **Investigate** with whole-run-investigation, opened by `wri2p2.ts open` with the other triggered
    runs of the same code and pack as equals, once the run has stopped, so the synthesis reads the
-   comparison the pause waited for. `open` still reads a run left live on a frozen copy
-   (`wri.ts start --snapshot`), a deviation for a run the operator keeps going, and writes
+   comparison the pause waited for. `open` names each run to `wri.ts start`, which fetches a peer's
+   campaign whole, so the readers find every kept state. It still reads a run left live on a
+   frozen copy (`wri.ts start --snapshot`), a deviation for a run the operator keeps going, and writes
    `iteration.json` (`{ "opened": <ISO>, "runs": [<names>], "protocol": 2 }`), which the later gates
    require; a folder opened without the protocol's number keeps the gates of its day. Then follow
    `wri2p2.ts next <dir>` through the instructions, `lanes --agents 4` with one subagent a lane,

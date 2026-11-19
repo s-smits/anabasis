@@ -54,7 +54,7 @@ afterAll(() => {
 });
 
 /** A home, the commands run against it, and its submit. */
-function solving(desk: Desk = openDesk(), pathFirst?: string) {
+function solving(desk: Desk = openDesk(), pathFirst?: string, warned = "") {
   const home = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-answer-")));
   homes.push(home);
   const commands: string[] = [];
@@ -68,7 +68,13 @@ function solving(desk: Desk = openDesk(), pathFirst?: string) {
       new Response(child.stdout).arrayBuffer(),
       new Response(child.stderr).arrayBuffer(),
     ]);
-    return { exitCode: await child.exited, output: Buffer.concat([Buffer.from(out), Buffer.from(err)]) };
+    const output = Buffer.concat([
+      Buffer.from(warned),
+      Buffer.from(out),
+      Buffer.from(err),
+      Buffer.from(warned),
+    ]);
+    return { exitCode: await child.exited, output };
   };
   const log = join(home, "log.jsonl");
   const tool = submitTool(desk, CONTRACT, home, exec);
@@ -260,6 +266,13 @@ describe("submit", () => {
     expect(verdict?.answer).toEqual({ span: 4 });
     expect(verdict?.files).toBeUndefined();
     expect(readAnswerFiles(s.log, verdict?.files ?? [])).toEqual([]);
+  });
+
+  it("reads the capture beside what its interpreter warned of in the same stream", async () => {
+    const { answer, desk, submit } = solving(openDesk(), undefined, "warning: the locale could not be set\n");
+    answer('{"span":4}');
+    expect((await submit()).text).toBe("Submitted.");
+    expect(desk.submitted).toEqual({ span: 4 });
   });
 
   it("keeps the accepted answer's digest in durable details and ends the round", async () => {

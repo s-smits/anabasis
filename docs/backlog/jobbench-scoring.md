@@ -100,8 +100,9 @@ already answers the question; level with it is a strong reading and above it the
     tasks").
 16. **Read the judge's view beside every score.** Present in source from this change: each
     `score.ts` record names the files the judge's reader cut (`cut`), and `score.ts table` marks
-    such a cell `CUT <n>` and adds a `fair uncut` block over the fair tasks with no cut file in any
-    arm's record. `eval/judge.py` cuts each file at 200,000
+    such a cell `CUT <n>` and adds a `fair uncut` block over the fair tasks with no cut file in the
+    record of any arm it shows (`--name <a,b>` shows a pair alone). `eval/judge.py` cuts each file at
+    200,000
     characters, counts embedded figures against that, and reads only `text` notebook outputs. Read it
     apart and report it beside the official score (`comparison-review`, level 6). Counted on the
     store's deliverables through the judge's own converter on 11 November 2026: the workbook of

@@ -458,8 +458,7 @@ that (15 of 15, its two data sheets ahead of its summary sheets), and that task 
 the Starter's 36; the memo of `statisticians/task1` passes it in 6 of 13 deliverables. A score on
 either task therefore partly reads how long a file ran, which `score.ts table` shows: it marks a
 cell whose deliverable the judge's reader cut `CUT <n>`, and its `fair uncut` block sums each arm
-over the fair tasks on which no arm's record holds a cut file. So a
-Starter is rolled
+over the fair tasks on which no record of an arm it shows holds a cut file. So a Starter is rolled
 beside the reference in the same sitting, and the fair five at two rollouts a side (20 rollouts)
 reads more than the eight at one (16), since it gives the Starter's spread on the tasks compared.
 
@@ -543,7 +542,8 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    operator's word, and never replaces the official score.
 5. **Read** with one `score.ts table --out <store> --tasks <list>` for each part, since the table
    sums an arm only where it holds every task named and counts every task but a profession's first
-   as fair, and report its `fair uncut` block beside the fair one. The table prints the criteria
+   as fair, and report its `fair uncut` block beside the fair one, for a pair from the table of
+   those two arms (`--name <reference>,<its Starter>`). The table prints the criteria
    the judge passed beside the points, since a rubric pays its weight only where every criterion
    passes and points alone magnify a near tie. Then read the two arms at every grain:
 

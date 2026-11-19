@@ -9,7 +9,7 @@
  *   bun studies/harness2/score.ts score --arm <arm> --name <name> --out <dir> --jb <checkout>
  *     --api-base <url> [--harness <kept>] [--tasks <profession/taskN,...>] [--judge-log <shim.jsonl>]
  *     [--solve-only] [--rubrics <file>] [--cap <chars>] [--dry-run] --yes
- *   bun studies/harness2/score.ts table --out <dir> [--tasks <profession/taskN,...>]
+ *   bun studies/harness2/score.ts table --out <dir> [--tasks <profession/taskN,...>] [--name <name,...>]
  *   bun studies/harness2/score.ts tree --arm <arm> --name <name> --out <dir> --for <linux-x64> [--python <3.12>]
  *     [--harness <kept>]
  *
@@ -33,10 +33,14 @@
  * A record also names the files judge.py's reader cut at 200,000 characters before the judge read
  * them (`cut`: each file with its length, or null where that reader did not run), since a score on
  * a cut file partly reads how long the file ran. `table` marks such a cell `CUT <n>` and prints a
- * third block, `fair uncut`, over the fair tasks on which no record of any arm in the store holds a
- * cut file; a record written before `cut` existed counts as holding none. Beside an arm's points
- * it prints the criteria the judge passed of those it read, from the judge's details in the store:
- * a rubric pays its weight only where all its criteria pass, so points alone magnify a near tie.
+ * third block, `fair uncut`, over the fair tasks on which no record of any arm it shows holds a
+ * cut file or a cut nobody counted; a record written before `cut` existed counts as holding none.
+ * It shows every arm in the store, or those `--name` lists by the label `score` gave each: a store
+ * gathers arms over weeks, and one old arm's cut file takes its task out of the block for a pair
+ * neither side of which cut it (18 November 2026: a reference read 8 points under its Starter on
+ * five such tasks and level with it on the pair's own six). Beside an arm's points it prints the
+ * criteria the judge passed of those it read, from the judge's details in the store: a rubric pays
+ * its weight only where all its criteria pass, so points alone magnify a near tie.
  * `compare.ts` runs a whole comparison through `score`: `--solve-only` leaves a block's judging for
  * afterwards, and `again:<side>` with `--rubrics` judges a deliverable it copied once more,
  * under a wider cut than judge.py's where `--cap` names one, recorded as `cap` with `cut` counted
@@ -689,9 +693,10 @@ export async function score(values: Values): Promise<void> {
 }
 
 /** The pilot's arms table (`final.py`) from the records under `<out>/judged/`. */
-function table(out: string, tasks: readonly string[]): void {
+function table(out: string, tasks: readonly string[], shown: readonly string[] | undefined): void {
   const root = join(out, "judged");
-  const records = (existsSync(root) ? readdirSync(root) : []).flatMap((arm) =>
+  // A name with no folder throws on its path, as the sister readers refuse one.
+  const records = (shown ?? (existsSync(root) ? readdirSync(root) : [])).flatMap((arm) =>
     readdirSync(join(root, arm)).flatMap((name) => {
       const record = readJson(join(root, arm, name));
       return isRecord(record) ? [record] : [];
@@ -702,8 +707,9 @@ function table(out: string, tasks: readonly string[]): void {
   const width = Math.max(10, ...arms.map((arm) => arm.length));
   const cuts = (record: JsonObject | undefined): number =>
     Array.isArray(record?.cut) ? record.cut.length : 0;
+  // A cut nobody could count (`cut: null`) is not read as none, so its task leaves the block too.
   const uncut = fair(tasks).filter(
-    (task) => !records.some((record) => record.task === task && cuts(record) > 0),
+    (task) => !records.some((record) => record.task === task && (record.cut === null || cuts(record) > 0)),
   );
   // A rubric pays its weight only where every criterion passes, so points magnify a near tie: on
   // 16 November 2026 two arms 36 points of 518 apart stood 2 criteria of 225 apart. The judge's own
@@ -778,7 +784,8 @@ async function main(args: readonly string[]): Promise<void> {
   if (verb === "score") {
     await score(values);
   } else if (verb === "table" && values.out !== undefined) {
-    table(resolve(values.out), tasksOf(values.tasks, PILOT_TASKS));
+    const shown = values.name?.split(",").map((name) => name.trim());
+    table(resolve(values.out), tasksOf(values.tasks, PILOT_TASKS), shown);
   } else if (verb === "tree" && values.out !== undefined && values.for !== undefined) {
     if (values.python !== undefined && !/^3\.\d+$/u.test(values.python)) {
       throw new Error("--python takes a minor, as 3.12");
@@ -788,7 +795,7 @@ async function main(args: readonly string[]): Promise<void> {
     console.log(`arm ${arm.name}: ${arm.harness}, for ${values.for}, under ${arm.tree("")}`);
   } else {
     throw new Error(
-      "usage: score.ts score --arm <arm> --name <name> --out <dir> --jb <dir> --api-base <url> --yes | table --out <dir> [--tasks <list>] | tree --arm <arm> --name <name> --out <dir> --for <linux-x64> [--python <3.12>]",
+      "usage: score.ts score --arm <arm> --name <name> --out <dir> --jb <dir> --api-base <url> --yes | table --out <dir> [--tasks <list>] [--name <name,...>] | tree --arm <arm> --name <name> --out <dir> --for <linux-x64> [--python <3.12>]",
     );
   }
 }

@@ -23,6 +23,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
+import { gitMaybe } from "../src/meta/git.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "../src/meta/process.ts";
@@ -304,7 +305,7 @@ describe("the router on the command line", () => {
       [["run", "lint", "--", "--strict"], true, "run lint --strict"],
       [["run", "secrets"], true, "run secrets"],
       [["run", "gate"], true, "run gate"],
-      [["run", "format"], false, "run format"],
+      [["fmt"], false, "fmt"],
       [["tools/runs/discover.ts", "test"], false, "tools/runs/discover.ts test"],
     ];
     for (const [args, queued, said] of cases) {
@@ -335,6 +336,14 @@ describe("the router on the command line", () => {
     expect(after.filter((name) => name.startsWith("bun.before-router-"))).toHaveLength(1);
     expect(install().status).toBe(0);
     expect(files()).toEqual(after);
+    // A receipt from an older commit over the same bytes names this one after an install, or
+    // `runs sync` would read a lag on every pass that no install clears.
+    const receipt = join(installed, "INSTALLED");
+    writeFileSync(receipt, '{"commit":"oldcommit"}');
+    expect(install().status).toBe(0);
+    expect(files()).toEqual(after);
+    const named = /"commit":\s*"([^"]*)"/u.exec(readFileSync(receipt, "utf8"))?.[1] ?? "";
+    expect(named.startsWith(gitMaybe(ROUTER, "rev-parse", "HEAD") ?? "no head")).toBe(true);
   });
 });
 

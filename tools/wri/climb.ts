@@ -78,11 +78,13 @@ function rowOf({ name, events }: Campaign): string[] {
     log.compared.map(({ last }) => {
       const points = asRecord(last.points);
       return {
+        fresh: text(last.fresh),
         reading: text(last.reading),
         valid: { old: items(asRecord(last.valid)?.old).map(count) },
         points: isNumber(points?.validity) ? { validity: points.validity } : null,
       };
     }),
+    events,
   );
   const rests =
     epoch === undefined

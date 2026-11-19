@@ -17,8 +17,10 @@
  * harness's eight rollouts ran one of its programs. Each block now prints for both arms the
  * commands that name the export's program folder and those of them that only look at it; on that
  * store 17 name it, so the hand count was near and not exact. The count reads a shell line
- * without a parser, so it bounds use from above and proves none: the guide reaches a rollout
- * whatever its commands do.
+ * without a parser and proves no use: the guide reaches a rollout whatever its commands do. Since
+ * the export put the programs on the solver's path (17 November 2026), a program started by its
+ * name alone names no folder, so a command that starts one counts too, by the names the arm's tree
+ * in the store (`<store>/trees/<arm>`) lists; a copy of the store without its trees says so.
  *
  * The seal is what keeps a pattern from confirming itself. `--salt` orders the tasks by a hash of the
  * salt and the task, opens the first half and withholds the rest: no score of a sealed task is printed
@@ -31,8 +33,8 @@ import { sha256 } from "#src/meta/digest.ts";
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
-import { join } from "#src/meta/path.ts";
-import { TOOLCHAIN } from "../shared/claude-export.ts";
+import { basename, dirname, join } from "#src/meta/path.ts";
+import { exportedPrograms, TOOLCHAIN } from "../shared/claude-export.ts";
 import { parseEvents } from "./h2/claude.ts";
 
 const SUFFIX = "judge.json";
@@ -46,12 +48,14 @@ interface Rubric {
   readonly passed: number;
   readonly criteria: number;
 }
-/** A rollout's shell commands: those that name the exported harness's program folder, and those of
- *  them that only look at it. The rest may have used a program, so looking is the count kept sure. */
+/** A rollout's shell commands: those that name the exported harness's program folder or start one of
+ *  its programs by name, and those of them that only look at it. The rest may have used a program,
+ *  so looking is the count kept sure. `listed` is false where no tree listed the programs. */
 interface Shell {
   readonly commands: number;
   readonly named: number;
   readonly looks: number;
+  readonly listed: boolean;
 }
 /** Programs that read a path and run nothing found at it. `cd` is left out: what follows it may run. */
 const LOOKS = new Set([
@@ -110,27 +114,20 @@ function rubricOf(entry: unknown): Rubric {
   };
 }
 
-/** Whether every command of the line that names the harness's folder is a look, past any `NAME=value`. */
-const onlyLooks = (line: string): boolean =>
-  line
-    .split(NEXT_COMMAND)
-    .filter((part) => part.includes(TOOLCHAIN))
-    .every((part) =>
-      LOOKS.has(
-        part
-          .trim()
-          .split(/\s+/u)
-          .find((word) => !/^\w+=/u.test(word)) ?? "",
-      ),
-    );
+/** The program one command of a line starts, past any `NAME=value`. */
+const headOf = (part: string): string =>
+  part
+    .trim()
+    .split(/\s+/u)
+    .find((word) => !/^\w+=/u.test(word)) ?? "";
 
 /** A trajectory's place in time: its name ends `_attempt<N>_<stamp>.jsonl`, and a task rolled again
  *  starts at attempt 1, so the name's own order would put an older second attempt last. */
 const stampOf = (name: string): string => name.replace(/^.*_attempt\d+_/u, "");
 
-/** The newest attempt's commands, since that attempt left the deliverable the grading read. A
- *  program is reached by its path alone: the export puts no harness folder on the solver's path. */
-function shellIn(folder: string): Shell | null {
+/** The newest attempt's commands, since that attempt left the deliverable the grading read, and
+ *  those that name the harness's folder or start one of its programs by name. */
+function shellIn(folder: string, programs: ReadonlySet<string> | null): Shell | null {
   const newest = existsSync(folder)
     ? readdirSync(folder)
         .filter((name) => name.endsWith(".jsonl"))
@@ -146,18 +143,28 @@ function shellIn(folder: string): Shell | null {
       return asRecord(block)?.type === "tool_use" && isString(command) ? [command] : [];
     });
   });
-  const named = commands.filter((command) => command.includes(TOOLCHAIN));
-  return { commands: commands.length, named: named.length, looks: named.filter(onlyLooks).length };
+  const parts = commands.map((command) =>
+    command
+      .split(NEXT_COMMAND)
+      .filter((part) => part.includes(TOOLCHAIN) || programs?.has(basename(headOf(part))) === true),
+  );
+  const named = parts.filter((reached) => reached.length > 0);
+  return {
+    commands: commands.length,
+    named: named.length,
+    looks: named.filter((reached) => reached.every((part) => LOOKS.has(headOf(part)))).length,
+    listed: programs !== null,
+  };
 }
 
-function gradedIn(file: string, trajectories: string): Graded {
+function gradedIn(file: string, trajectories: string, programs: ReadonlySet<string> | null): Graded {
   const record = asRecord(capturedJsonParse(readFileSync(file, "utf8"))) ?? {};
   const rubrics = record.rubrics;
   return {
     points: numberAt(record, "total_score"),
     most: numberAt(record, "max_score"),
     rubrics: Array.isArray(rubrics) ? rubrics.map(rubricOf) : [],
-    shell: shellIn(trajectories),
+    shell: shellIn(trajectories, programs),
   };
 }
 
@@ -172,6 +179,8 @@ function foldersIn(folder: string): string[] {
  *  of the two counts is a choice no reader should make silently. */
 export function armOf(dataset: string, arm: string): Map<string, Graded> {
   const graded = new Map<string, Graded>();
+  const tree = join(dirname(dataset), "trees", arm);
+  const programs = existsSync(tree) ? new Set(exportedPrograms(tree).map(({ name }) => name)) : null;
   for (const group of foldersIn(dataset)) {
     for (const task of foldersIn(join(dataset, group))) {
       const folder = join(dataset, group, task, "eval_result", `eval_${arm}__${group}__${task}`);
@@ -180,7 +189,8 @@ export function armOf(dataset: string, arm: string): Map<string, Graded> {
       if (records.length > 1) throw new Error(`${group}/${task} holds ${String(records.length)} gradings`);
       const [record] = records;
       const trajectories = join(dataset, group, task, "model_traj", `${arm}__${group}__${task}`);
-      if (record !== undefined) graded.set(`${group}/${task}`, gradedIn(join(folder, record), trajectories));
+      if (record === undefined) continue;
+      graded.set(`${group}/${task}`, gradedIn(join(folder, record), trajectories, programs));
     }
   }
   return graded;
@@ -219,7 +229,11 @@ function shellOf(sides: readonly Graded[]): string {
   const read = sides.flatMap(({ shell }) => (shell === null ? [] : [shell]));
   const sum = (pick: (shell: Shell) => number) => read.reduce((total, shell) => total + pick(shell), 0);
   const unread = sides.length - read.length;
-  const rest = unread === 0 ? "" : ` (${String(unread)} rollouts unread)`;
+  const notes = [
+    ...(unread === 0 ? [] : [`${String(unread)} rollouts unread`]),
+    ...(read.every(({ listed }) => listed) ? [] : ["no tree lists its programs"]),
+  ];
+  const rest = notes.length === 0 ? "" : ` (${notes.join("; ")})`;
   return `${String(sum(({ named }) => named))} name it, ${String(sum(({ looks }) => looks))} of them only to look, of ${String(sum(({ commands }) => commands))}${rest}`;
 }
 
@@ -278,7 +292,7 @@ function blockLines(label: { a: string; b: string }, tasks: readonly string[], a
     `criteria: ${String(sum(({ one }) => passedAll(one)))} v ${String(sum(({ other }) => passedAll(other)))} of ${String(sum(({ one }) => criteriaAll(one)))}`,
     `rubrics one criterion short of scoring: ${String(sum(({ one }) => oneShort(one)))} v ${String(sum(({ other }) => oneShort(other)))}`,
     `rubrics scored in part: ${String(sum(({ one }) => partial(one)))} v ${String(sum(({ other }) => partial(other)))}`,
-    `shell commands and the harness's program folder: ${shellOf(pairs.map(({ one }) => one))} v ${shellOf(pairs.map(({ other }) => other))}`,
+    `shell commands and the harness's programs, by folder or name: ${shellOf(pairs.map(({ one }) => one))} v ${shellOf(pairs.map(({ other }) => other))}`,
     bothWays(
       "points",
       label,

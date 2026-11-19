@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { type Task, openVerifier } from "../src/kernel/verify.ts";
+import { checkEvaluationRequest, type Task, openVerifier } from "../src/kernel/verify.ts";
 import {
   chmodSync,
   cpSync,
@@ -217,6 +217,52 @@ beforeAll(() => {
 });
 
 describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
+  it("projects only declared files and gives the objective none", async () => {
+    const checks = join(root, "file-checks");
+    mkdirSync(checks);
+    const truth = {
+      id: "file",
+      citedDecisionIds: [],
+      execution: {
+        families: ["plain"],
+        artifactPaths: ["$"],
+        publicInputPaths: [],
+        evidence: { kind: "authored" as const },
+        hidden: "none" as const,
+        filePaths: ["report.txt"],
+      },
+    };
+    const brief = {
+      correctnessContract: "check-program/v1",
+      truthChecks: [truth],
+      objective: { quantity: "value", direction: "min" },
+    };
+    writeFileSync(join(checks, "brief.json"), JSON.stringify(brief));
+    writeFileSync(
+      join(checks, "evaluator.ts"),
+      `export const checks = { file: req => req.artifact.value === 1 && req.files.length === 1 && req.files[0].path === "report.txt" && req.files[0].text === "good" }; export const objective = req => "files" in req ? req.files.length : 42;`,
+    );
+    const files = [
+      { path: "report.txt", base64: "Z29vZA==", text: "good" },
+      { path: "secret.txt", base64: "eA==", text: "x" },
+    ];
+    const tree = { checks, tools: join(root, "tools") };
+    expect(await openVerifier(tree)(task("plain"), { value: 1 }, undefined, files)).toEqual({
+      kind: "pass",
+      objective: 42,
+    });
+    const request = { artifact: { value: 1 }, publicTask: task("plain"), hidden: null, files };
+    expect(
+      checkEvaluationRequest(
+        { ...truth, execution: { ...truth.execution, hidden: "none", filePaths: ["missing.txt"] } },
+        request,
+      ).files,
+    ).toEqual([]);
+    const { filePaths: _filePaths, ...old } = truth.execution;
+    expect(
+      checkEvaluationRequest({ ...truth, execution: { ...old, hidden: "none" } }, request),
+    ).not.toHaveProperty("files");
+  });
   it("runs the imported check and tree tool, passing only the matching answer", async () => {
     for (const [value, verdict] of [
       [21, { kind: "pass" }],

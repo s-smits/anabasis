@@ -109,7 +109,21 @@ describe("the launches (lane 26)", () => {
     const detail = fired(opened, "LAUNCHES", [receipt("aaaaaaaa11"), receipt("bbbbbbbb22")]);
     expect(detail).toContain("2 launches at 2 commits (aaaaaaaa, bbbbbbbb)");
     expect(detail).toContain("0 from a dirty tree");
-    expect(detail).toContain("under 1 login and 1 Bun version");
+    expect(detail).toContain("under 1 login, 1 Bun version and 0 recorded Pythons for the solver");
+    // One commit, one login and one Bun, and a Python whose packages moved between the launches.
+    const python = (packages: string[]) => ({
+      ...receipt("aaaaaaaa11"),
+      python: { version: "3.14.9", packages },
+    });
+    expect(fired(opened, "LAUNCHES", [python(["numpy==2.5.5"]), python([])])).toContain(
+      "2 launches at 1 commit (aaaaaaaa), 0 from a dirty tree, under 1 login, 1 Bun version and 2 recorded Pythons for the solver",
+    );
+    // The same Python twice is one; a receipt from before a launch recorded one adds none, and
+    // neither does one whose probe found no Python.
+    const unanswered = { ...receipt("aaaaaaaa11"), python: null };
+    expect(fired(opened, "LAUNCHES", [python([]), python([]), receipt("aaaaaaaa11"), unanswered])).toContain(
+      "1 Bun version and 1 recorded Python for the solver",
+    );
     expect(fired(opened, "LAUNCHES", [receipt("aaaaaaaa11", true)])).toContain("1 from a dirty tree");
     expect(fired(opened, "LAUNCHES", [receipt("aaaaaaaa11")])).toBeUndefined();
   });

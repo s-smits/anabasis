@@ -12,10 +12,12 @@ import {
   utimesSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import { held } from "../src/meta/holder.ts";
 import { quoted, treeBun } from "../tools/runs/host-command.ts";
+import { keptReadings } from "../tools/runs/login-state.ts";
 
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
@@ -57,6 +59,33 @@ function campaign() {
 }
 
 describe("host execution", () => {
+  it("refreshes login history on every peer for a full usage read, without forwarding it again", () => {
+    const made = fixture();
+    const peer = fixture();
+    const extra = { CLAUDE_CODE_OAUTH_TOKEN2: "fixture" };
+    const command = (args: string[]) => `
+      import { logins } from "REPOSITORY/tools/runs/logins.ts";
+      await logins(${JSON.stringify(args)}, async () => [{
+        login: "2", plain: false, via: "oauth-usage", fiveHour: null, notes: [],
+        sevenDay: { pct: 100, resetsAt: new Date(Date.now() + 86_400_000).toISOString() },
+      }]);`;
+    const usageCalls = (host: typeof made) =>
+      host.recorded().filter(({ tool, args }) => tool === "ssh" && args.at(-1)?.includes("'usage'") === true);
+    const history = (host: typeof made) => keptReadings(join(host.main, ".ana", "logins-history.jsonl"));
+
+    expect(made.run(command(["--json"]), extra).code).toBe(0);
+    expect(usageCalls(made)).toEqual([]);
+    expect(history(made)).toEqual([]);
+    expect(made.run(command([]), extra).code).toBe(0);
+    expect(usageCalls(made)).toHaveLength(1);
+    expect(history(made).at(-1)?.closed?.["2"]).toBeGreaterThan(Date.now());
+
+    expect(peer.run(command([]), { ...extra, ANA_HOP: "1" }).code).toBe(0);
+    expect(usageCalls(peer)).toEqual([]);
+    expect(history(peer).at(-1)?.closed?.["2"]).toBeGreaterThan(Date.now());
+    expect(history(peer).at(-1)?.runs).toBeUndefined();
+  });
+
   it("keeps a verb that names this machine here while a peer is down, and asks the peers otherwise", () => {
     const made = fixture();
     const routing = (args: string) =>
@@ -281,6 +310,24 @@ describe("campaign snapshots", () => {
     expect(readFileSync(copied, "utf8")).toBe(whole);
   });
 
+  it("carries the submitted files alone of states/ into a record, adding each at a refresh", () => {
+    const remote = campaign();
+    const { made } = remote;
+    const store = join(made.root, "remote", "distant", "states", "deliverables");
+    mkdirSync(join(made.root, "remote", "distant", "states", "tree-a"), { recursive: true });
+    writeFileSync(join(made.root, "remote", "distant", "states", "tree-a", "x.py"), "");
+    mkdirSync(store);
+    writeFileSync(join(store, "a".repeat(64)), "first");
+    const record = sync.replace('{match:"exact"}', '{match:"exact", depth:"record"}');
+    expect(made.run(record, remote.env).code).toBe(0);
+    writeFileSync(join(store, "b".repeat(64)), "second");
+    append(remote.log, "campaign.ended", { ending: "finished", why: "again" });
+    expect(made.run(record, remote.env).code).toBe(0);
+    const copied = join(made.main, "data", "runs", "runner", "distant", "states");
+    expect(readdirSync(copied)).toEqual(["deliverables"]);
+    expect(readdirSync(join(copied, "deliverables")).toSorted()).toEqual(["a".repeat(64), "b".repeat(64)]);
+  });
+
   it("leaves out of a whole copy what a disk that folds case cannot hold apart, and says so", () => {
     const remote = campaign();
     const { made } = remote;
@@ -310,28 +357,73 @@ describe("campaign snapshots", () => {
   it("leaves on its host what a campaign installed and cached, and copies a harness's own files", () => {
     const remote = campaign();
     const { made } = remote;
+    // The pip target `lib` holds a package, a module of one file and the harness's own library,
+    // named as a file inside the package is, which only a row's first segment tells apart; the
+    // folder `kept` is named as a package of another target is, and no package of its own owns it.
+    // One folder holds a comma, so the one `RECORD` row that names it is quoted, names no entry
+    // and the folder is copied. In `tree-b` the target sits one folder under the harness's own
+    // module, and holds its packages alone.
     const files = [
       "examiner-home/.cache/pip/wheel",
       "examiner-home/draft.md",
+      "states/tree-a/kept/numpy/mine.py",
       "states/tree-a/lib/numpy-2.0.dist-info/METADATA",
       "states/tree-a/lib/numpy/__pycache__/core.pyc",
       "states/tree-a/lib/numpy/core.py",
+      "states/tree-a/lib/core.py",
+      "states/tree-a/lib/six.py",
       "states/tree-a/src/tool.py",
+      "states/tree-a/lib/my, pkg/a.py",
+      "states/tree-b/lib/mod.py",
+      "states/tree-b/lib/py/scipy-1.0.dist-info/METADATA",
+      "states/tree-b/lib/py/scipy/x.py",
     ];
     for (const file of files) {
       mkdirSync(dirname(join(made.root, "remote", "distant", file)), { recursive: true });
       writeFileSync(join(made.root, "remote", "distant", file), file);
     }
-    const listing = ["log.jsonl", ...files].map((file) => `./${file}\n`).join("");
-    expect(made.run(sync, { ...remote.env, FAKE_FILES: listing }).code).toBe(0);
+    // The package's own account, as pip writes it: a path, a hash and a size a line, a script above
+    // the target among them.
+    writeFileSync(
+      join(made.root, "remote", "distant", "states/tree-a/lib/numpy-2.0.dist-info/RECORD"),
+      [
+        "numpy/core.py,sha256=a,1",
+        "numpy/__pycache__/core.pyc,,",
+        "numpy-2.0.dist-info/METADATA,sha256=b,2",
+        "numpy-2.0.dist-info/RECORD,,",
+        "six.py,sha256=c,3",
+        "../../bin/f2py,sha256=d,4",
+        '"my, pkg/a.py",sha256=e,5',
+        "",
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(made.root, "remote", "distant", "states/tree-b/lib/py/scipy-1.0.dist-info/RECORD"),
+      "scipy/x.py,sha256=f,6\nscipy-1.0.dist-info/METADATA,,\nscipy-1.0.dist-info/RECORD,,\n",
+    );
+    // A `RECORD` that is a link names no package: read through, the harness's own file it points
+    // at would claim its first segment, here the harness's `src`.
+    mkdirSync(join(made.root, "remote", "distant", "states/tree-a/link-1.0.dist-info"), { recursive: true });
+    writeFileSync(join(made.root, "remote", "distant", "states/tree-a/notes.txt"), "src/tool.py\n");
+    symlinkSync(
+      "../notes.txt",
+      join(made.root, "remote", "distant", "states/tree-a/link-1.0.dist-info/RECORD"),
+    );
+    // The listing is the real one: `find` and `grep` over these files, read by the fetch.
+    expect(made.run(sync, { ...remote.env, FAKE_LISTED: "1" }).code).toBe(0);
     const transfer = made.recorded().find((call) => call.tool === "rsync");
-    // Each install by its outermost folder: the cache inside the pip target is named by it.
+    // Each by its outermost path: the cache inside the package is named by the package.
     expect(transfer?.args.filter((arg) => /^--exclude=\/./u.test(arg))).toEqual([
-      "--exclude=/examiner-home/.cache/",
-      "--exclude=/states/tree-a/lib/",
+      "--exclude=/examiner-home/.cache",
+      "--exclude=/states/tree-a/lib/numpy",
+      "--exclude=/states/tree-a/lib/numpy-2.0.dist-info",
+      "--exclude=/states/tree-a/lib/six.py",
+      "--exclude=/states/tree-b/lib/py/scipy",
+      "--exclude=/states/tree-b/lib/py/scipy-1.0.dist-info",
     ]);
     const copied = (file: string) => existsSync(join(made.main, "data", "runs", "runner", "distant", file));
-    expect(files.map(copied)).toEqual([false, true, false, false, false, true]);
+    const kept = [false, true, true, false, false, false, true, false, true, true, true, false, false];
+    expect(files.map(copied)).toEqual(kept);
   });
 
   it("brings every other copy of a host where one copy fails, names it, and still fails the read", () => {
@@ -662,7 +754,7 @@ describe("the daily retire's host step", () => {
     expect(existsSync(copy("waiting", "memory"))).toBe(false);
   });
 
-  it("takes over what the ablation host has archived once the copy here matches it, and leaves every other campaign there", () => {
+  it("takes over what the eval runner has archived once the copy here matches it, and leaves every other campaign there", () => {
     const { made, there, resting, here, listed } = ablation();
     const ahead = listed("ahead", there);
     const env = {
@@ -683,20 +775,20 @@ describe("the daily retire's host step", () => {
     // has yet to copy, and says that one with --yes can take more.
     const dry = made.run('import { retire } from "REPOSITORY/tools/runs/retire.ts"; await retire([]);', {
       ...env,
-      ABLATION_HOST: "runner",
+      EVAL_RUNNER: benchOn("runner"),
     });
     expect(dry.code).toBe(0);
     expect(dry.out).not.toContain("over: held in");
     expect(dry.out).toContain("can take more");
     expect([existsSync(there("over")), existsSync(here("runner", "over"))]).toEqual([true, false]);
-    // With no ablation host named, a sweep copies every campaign and deletes none, and a name no
-    // host holds is refused.
-    expect(sweep({}).code).toBe(0);
+    // With no benchmark rolled on a peer, a sweep copies every campaign and deletes none, and a
+    // host the list does not hold is refused.
+    expect(sweep({ EVAL_RUNNER: benchOn(undefined) }).code).toBe(0);
     expect([existsSync(there("over")), existsSync(here("runner", "over", LOG_FILE))]).toEqual([true, true]);
-    const unknown = sweep({ ABLATION_HOST: "nowhere" });
+    const unknown = sweep({ EVAL_RUNNER: benchOn("nowhere") });
     expect([unknown.code, unknown.err.includes("no host nowhere")]).toEqual([1, true]);
 
-    const taken = sweep({ ABLATION_HOST: "runner" });
+    const taken = sweep({ EVAL_RUNNER: benchOn("runner") });
     // The archived campaign is this machine's own now, whole, and gone from the host.
     expect(readFileSync(here("here", "over", "memory/note.txt"), "utf8")).toBe("kept");
     expect([existsSync(there("over")), existsSync(here("runner", "over"))]).toEqual([false, false]);
@@ -741,20 +833,23 @@ describe("a take-over of a campaign that installed packages", () => {
     const { made, there, here, listed } = ablation();
     const env = {
       FAKE_CATALOGUE: JSON.stringify([listed("over", there), listed("apart", there)]),
-      FAKE_FILES: ["log.jsonl", "memory/note.txt", "tree/lib/pkg-1.dist-info/METADATA", "tree/own.py"]
-        .map((file) => `./${file}\n`)
-        .join(""),
+      FAKE_LISTED: "1",
     };
     for (const name of ["over", "apart"]) {
       mkdirSync(there(name, "tree/lib/pkg-1.dist-info"), { recursive: true });
-      writeFileSync(there(name, "tree/lib/pkg-1.dist-info/METADATA"), "installed");
-      writeFileSync(there(name, "tree/own.py"), "the Builder's");
+      mkdirSync(there(name, "tree/lib/pkg"), { recursive: true });
+      writeFileSync(there(name, "tree/lib/pkg/code.py"), "installed");
+      writeFileSync(
+        there(name, "tree/lib/pkg-1.dist-info/RECORD"),
+        "pkg/code.py,,\npkg-1.dist-info/RECORD,,\n",
+      );
+      writeFileSync(there(name, "tree/lib/own.py"), "the Builder's");
     }
     const snapshots = 'import { takeRetired, syncRuns } from "REPOSITORY/tools/runs/snapshots.ts";';
     expect(made.run(`${snapshots} await syncRuns([]);`, env).code).toBe(0);
-    expect(existsSync(here("runner", "over", "tree/lib"))).toBe(false);
-    // The copy of one loses a file of the harness's own, which no rule leaves out.
-    rmSync(here("runner", "apart", "tree/own.py"));
+    expect(existsSync(here("runner", "over", "tree/lib/pkg"))).toBe(false);
+    // The copy of one loses the harness's own file beside its packages, which no rule leaves out.
+    rmSync(here("runner", "apart", "tree/lib/own.py"));
     const taken = made.run(
       `${snapshots} import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; await takeRetired(hostsOf()[0]!, "take");`,
       env,
@@ -764,34 +859,56 @@ describe("a take-over of a campaign that installed packages", () => {
       true,
       false,
     ]);
-    expect([existsSync(there("over")), readFileSync(here("here", "over", "tree/own.py"), "utf8")]).toEqual([
-      false,
-      "the Builder's",
-    ]);
-    expect(existsSync(here("here", "over", "tree/lib"))).toBe(false);
+    expect([
+      existsSync(there("over")),
+      readFileSync(here("here", "over", "tree/lib/own.py"), "utf8"),
+    ]).toEqual([false, "the Builder's"]);
+    expect(existsSync(here("here", "over", "tree/lib/pkg"))).toBe(false);
   });
 });
+
+/** `EVAL_RUNNER` naming one benchmark, rolled on `host` (this machine where undefined). */
+const benchOn = (host: string | undefined, store = "bench/store") =>
+  JSON.stringify([
+    {
+      name: "outside",
+      store,
+      sitting: "bin/sitting.sh",
+      packs: ["stats"],
+      ...keyIfDefined("host", host),
+    },
+  ]);
 
 describe("the gather of the benchmark score store", () => {
   const gather = 'import { fetch } from "REPOSITORY/tools/runs/move.ts"; await fetch([]);';
   const stored = () => {
     const made = fixture();
     const there = (file: string) => join(made.root, "remote", "bench", "store", file);
-    const here = (file: string) => join(made.main, "data", "bench", "runner", file);
-    for (const file of ["judged/arm/task.json", "dataset/task/rollout.json", "trees/arm/bin/python"]) {
+    const here = (file: string) => join(made.main, "data", "bench", "outside", file);
+    const files = [
+      "judged/arm/task.json",
+      "dataset/task/rollout.json",
+      "trees/arm/scripts/toolchain/bin/fit",
+    ];
+    for (const file of [...files, "trees/arm/scripts/toolchain/lib/big"]) {
       mkdirSync(join(there(file), ".."), { recursive: true });
       writeFileSync(there(file), "first");
     }
-    const named = { FAKE_CATALOGUE: "[]", ABLATION_HOST: "runner", BENCH_STORE: there("") };
+    const named = { FAKE_CATALOGUE: "[]", EVAL_RUNNER: benchOn("runner", there("")) };
     return { made, there, here, named };
   };
 
-  it("copies every rollout and judgement and no arm's tree, and keeps what the machine clears afterwards", () => {
+  it("copies every rollout and judgement and of an arm's tree its programs alone, and keeps what the machine clears afterwards", () => {
     const { made, there, here, named } = stored();
     const first = made.run(gather, named);
     expect([first.code, first.out.includes(here(""))]).toEqual([0, true]);
     expect(readFileSync(here("judged/arm/task.json"), "utf8")).toBe("first");
-    expect([existsSync(here("dataset/task/rollout.json")), existsSync(here("trees"))]).toEqual([true, false]);
+    const tool = (folder: string) => existsSync(here(`trees/arm/scripts/toolchain/${folder}`));
+    expect([existsSync(here("dataset/task/rollout.json")), tool("bin/fit"), tool("lib")]).toEqual([
+      true,
+      true,
+      false,
+    ]);
     // The machine clears one record and writes another: the copy here gains and loses nothing.
     rmSync(there("judged/arm/task.json"));
     writeFileSync(there("judged/arm/later.json"), "second");
@@ -802,9 +919,9 @@ describe("the gather of the benchmark score store", () => {
     ]);
   });
 
-  it("copies nothing where no store is named, and leaves the copy as it was where the machine does not answer", () => {
+  it("copies nothing for a benchmark rolled here, and leaves the copy as it was where the machine does not answer", () => {
     const { made, there, here, named } = stored();
-    const unnamed = made.run(gather, { FAKE_CATALOGUE: "[]", ABLATION_HOST: "runner" });
+    const unnamed = made.run(gather, { FAKE_CATALOGUE: "[]", EVAL_RUNNER: benchOn(undefined, there("")) });
     expect([unnamed.code, existsSync(here(""))]).toEqual([0, false]);
     expect(made.run(gather, named).code).toBe(0);
     writeFileSync(there("judged/arm/later.json"), "second");

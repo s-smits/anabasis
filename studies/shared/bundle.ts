@@ -32,11 +32,10 @@ import { existsSync, mkdirSync, renameSync, writeFileSync } from "#src/meta/file
 import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { basename, dirname, join } from "#src/meta/path.ts";
+import { basename, dirname, isAbsolute, join, normalize } from "#src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
-import { compareCodeUnits } from "#src/meta/stable-json.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { openHarness } from "#src/harness/open.ts";
+import { openHarness, treeContent } from "#src/harness/open.ts";
 import { writeStarter } from "#src/harness/starter.ts";
 import { keptAs, PROMOTED } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
@@ -63,6 +62,8 @@ export type Place = Readonly<{
   mac: boolean;
   machine: number;
   roots: readonly string[] | null;
+  /** The minor (`3.12`) of the `python3` a rollout there finds first, where it is known. */
+  python?: string;
 }>;
 
 /** A benchmark's container, which holds of a host's paths only the system's. */
@@ -189,15 +190,26 @@ export async function foreignPrograms(tree: string, place: Place = CONTAINER): P
   }
 }
 
-/** Each file of `tree` that `place` cannot run, relative to the tree in code-unit order, with why. */
+/** Each entry of `tree` that `place` cannot run, relative to the tree in code-unit order, with why: a
+ *  program foreign to it, or a link out of the tree, as a Builder's virtual environment links its
+ *  `python3.14` to the machine it was built on, which the harness does not carry. */
 export async function foreignFiles(tree: string, place: Place): Promise<{ path: string; why: string }[]> {
   if (!existsSync(tree)) return [];
   const foreign: { path: string; why: string }[] = [];
-  for await (const path of new Bun.Glob("**/*").scan({ cwd: tree, onlyFiles: true, dot: true })) {
+  // A folder's content is null, a file's its digest and a link's its target.
+  for (const { path, mode, content } of treeContent(tree)) {
+    if (content === null) continue;
+    if ((mode & 0o170000) === 0o120000) {
+      const to = normalize(join(dirname(path), content));
+      if (isAbsolute(content) || to === ".." || to.startsWith("../")) {
+        foreign.push({ path, why: `a link to ${content}, outside the tree` });
+      }
+      continue;
+    }
     const why = foreignHead(Buffer.from(await Bun.file(join(tree, path)).slice(0, 128).bytes()), place);
     if (why !== null) foreign.push({ path, why });
   }
-  return foreign.toSorted((a, b) => compareCodeUnits(a.path, b.path));
+  return foreign;
 }
 
 /** Why the opening bytes of a file name a program foreign to `place`, or null. */

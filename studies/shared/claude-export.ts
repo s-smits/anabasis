@@ -46,11 +46,13 @@
 import { existsSync, mkdirSync, renameSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE } from "#src/meta/bundle-layout.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
+import { tmpdir } from "#src/meta/os.ts";
+import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { dirname, join, relative } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { keyIfDefined, keyIfNotNull } from "#src/meta/optional-key.ts";
 import { openHarness } from "#src/harness/open.ts";
-import { installedPrograms } from "#src/harness/programs.ts";
+import { type Program, programsOf } from "#src/harness/programs.ts";
 import { HOST_ONLY } from "#src/harness/starter.ts";
 import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
 import { HARNESS_DIR, HERE, type Place, placeHarness, placeOf } from "./bundle.ts";
@@ -64,6 +66,21 @@ const HOOKS = ".claude/hooks.json";
 
 /** The harness's files Claude Code has no reader for. */
 const DROPPED = [TOOLS_SPEC_FILE, GENERATED_TOOLS_FILE];
+
+/** Counts the top-level modules of the folders it is given that import, and names those that do not. */
+const IMPORTS = `import importlib, pkgutil, sys
+names = sorted({m.name for m in pkgutil.iter_modules(sys.argv[1:]) if not m.name.startswith("_")})
+bad = []
+for name in names:
+    try: importlib.import_module(name)
+    except BaseException: bad.append(name)
+print("IMPORTS", sys.version.split()[0], len(names) - len(bad), len(names), *bad[:5])`;
+
+/** The programs an exported tree's guide may start by name, each with the account it gives of itself
+ *  (`programsOf`). An interpreter or installer of the tool tree's own Python is none of them: behind
+ *  the machine's on the PATH, its name starts the machine's. */
+export const exportedPrograms = (tree: string): Program[] =>
+  programsOf(join(tree, TOOLCHAIN)).filter(({ name }) => !/^(?:python|pip)[\d.]*$/u.test(name));
 
 /** The tree `into`, written from `source` for programs that run on `place`, the machine that will
  *  roll it: this one unless `--for` names another. Returns what `export.json` records. */
@@ -100,12 +117,9 @@ export async function exportForClaudeCode(
     mkdirSync(dirname(join(part, HOOKS)), { recursive: true });
     writeFileSync(join(part, HOOKS), `${capturedJsonStringify(hooks, null, 2)}\n`);
   }
-  // An interpreter or installer of the tool tree's own Python is no program of the harness, and
-  // behind the machine's on the PATH its name starts the machine's.
-  const programs =
-    searched.length === 0
-      ? []
-      : installedPrograms(join(part, TOOLCHAIN)).filter((name) => !/^(?:python|pip)[\d.]*$/u.test(name));
+  // Each program is listed with the first line of its own account, which is where a program says what
+  // it opens; whether one written for the other runner's files is of use here is the solver's to judge.
+  const programs = exportedPrograms(part);
   // A harness that keeps its method in packages reaches them in a campaign through its own
   // interpreter, first on that PATH. Here that name starts the machine's, which reads no folder of
   // the tree, so the solver is told where they are and what they were built for, and the rest is its.
@@ -130,7 +144,11 @@ export async function exportForClaudeCode(
       ? []
       : [
           "",
-          `Its programs run by name, as the guide names them: ${programs.join(", ")}. Their folders (${searched.map((dir) => `\`${dir}\``).join(", ")}) are on your PATH behind this machine's own programs, so a name this machine has too starts this machine's program. Those written for that runner's files (they open \`input.json\` or a \`public/\` folder, or check \`answer.json\`) find none of them here.`,
+          `Its programs run by name, as the guide names them; each is listed below with the first line it gives of itself. Their folders (${searched.map((dir) => `\`${dir}\``).join(", ")}) are on your PATH behind this machine's own programs, so a name this machine has too starts this machine's program. This runner has no \`input.json\`, \`public/\` folder or \`answer.json\`, so a program that opens one finds nothing.`,
+          "",
+          ...programs.map(
+            ({ name, account }) => `- ${name}${account === null ? "" : `: ${account.split("\n")[0]}`}`,
+          ),
         ]),
     ...(packages.length === 0
       ? []
@@ -155,6 +173,40 @@ export async function exportForClaudeCode(
   writeFileSync(join(part, "export.json"), `${capturedJsonStringify(record, null, 2)}\n`);
   renameSync(part, into);
   return record;
+}
+
+/**
+ * What the exported tree's own `python3` makes of its packages on this machine under `env`, a
+ * rollout's environment with the tree's folders behind it as its hook puts them, or null where the
+ * tree has no `python3`. Refuses one that cannot start: a reference whose launcher execs its
+ * campaign machine's interpreter by path (17 November 2026, a `python3.14` under `/opt`, exit 127
+ * on Linux) rolls without its method, and nothing that reads its files sees it. A module that does
+ * not import is a condition of the read, said and refused nothing.
+ */
+export async function ownPython(tree: string, env: Readonly<Record<string, string>>): Promise<string | null> {
+  const dirs = toolTreeSearchDirs(join(tree, TOOLCHAIN));
+  const python = dirs.map((dir) => join(dir, "python3")).find((path) => existsSync(path));
+  if (python === undefined) return null;
+  const run = (words: readonly string[]) => {
+    const ran = runSync([python, "-c", ...words], {
+      cwd: tmpdir(),
+      env: { ...env, PATH: [env.PATH ?? "", ...dirs].join(":") },
+      timeout: 300_000,
+    });
+    const last = decodeOutput(ran.stderr).trim().split("\n").at(-1) ?? "";
+    return {
+      out: decodeOutput(ran.stdout),
+      why: `exit ${String(ran.exitCode)}: ${last}`,
+      ok: ran.exitCode === 0,
+    };
+  };
+  const started = run(["pass"]);
+  if (!started.ok) throw new Error(`${relative(tree, python)} cannot start here (${started.why})`);
+  const sites = (await packageFolders(join(tree, TOOLCHAIN))).map(({ site }) => join(tree, TOOLCHAIN, site));
+  const counted = run([IMPORTS, ...sites]);
+  const [, version, ok, of, ...bad] = /^IMPORTS .*$/mu.exec(counted.out)?.[0].split(" ") ?? [];
+  if (of === undefined) return `its python3 starts, and the count of its modules ended (${counted.why})`;
+  return `its python3 is ${String(version)} and imports ${String(ok)} of ${of} of its modules${bad.length === 0 ? "" : `, not ${bad.join(", ")}`}`;
 }
 
 async function main(args: readonly string[]): Promise<void> {

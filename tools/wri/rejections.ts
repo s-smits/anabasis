@@ -172,9 +172,14 @@ export function probeLines(events: readonly LogEvent[], wanted: string): string[
             ? `    ${text(path)} = ${said(value, "null")}`
             : `    ${text(path)} edited: ${String(text(how.find).length)} characters rewritten as ${String(text(how.replace).length)}`;
         });
+        const sizes = items(probe.texts).map((size) => {
+          const { path, was, now } = asRecord(size) ?? {};
+          return `    ${text(path)}: was ${shown(was)}, now ${shown(now)}`;
+        });
         return [
           `  probe ${shown(probe.id)}${isNumber(probe.id) && cited.has(probe.id) ? " (cited)" : ""}: original ${verdictText(probe.original)}; changed ${verdictText(probe.changed)}; moved ${strings(probe.moved).join(",") || "none"}`,
           ...changes,
+          ...sizes,
         ];
       })
     : [`  probe rows ${NOT_RECORDED}: the finding predates them`];

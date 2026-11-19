@@ -1,9 +1,8 @@
-// A login reads open or closed from one reading; a closed one opens by the clock at its reset, the
-// next full `usage` overrules what was kept, and a picker asks the provider only of the rest.
+// A login reads open or closed from one reading. A picker rechecks once the reset or cache expiry
+// arrives, and the next full `usage` overrules what was kept.
 import { describe, expect, it } from "bun:test";
 import { closedOf, closedResets, listedBy, notClosed, stateWords } from "../tools/runs/login-state.ts";
 import type { Reading } from "../tools/runs/logins.ts";
-import { room } from "../tools/runs/logins.ts";
 import { roomFor } from "../tools/runs/keep.ts";
 
 const NOW = Date.parse("2026-11-05T21:00:00Z");
@@ -100,15 +99,18 @@ describe("what usage lists and keeps", () => {
 });
 
 describe("what a picker takes from the last reading kept", () => {
-  const closed = { at: NOW - HOUR, weeks: {}, closed: { "3": WEEK_RESET, "2": FIVE_RESET } };
+  const earlyReset = NOW + HOUR / 6;
+  const closed = { at: NOW - HOUR / 2, weeks: {}, closed: { "3": WEEK_RESET, "2": earlyReset } };
 
-  it("leaves a login out until its reset", () => {
+  it("leaves a login out while its cached closure is fresh and its reset has not passed", () => {
     expect(notClosed(["2", "3", "4"], [closed], NOW)).toEqual(["4"]);
   });
 
-  it("opens a login once its reset has passed, with nothing written", () => {
-    expect(notClosed(["2", "3"], [closed], FIVE_RESET)).toEqual(["2"]);
-    expect(notClosed(["2", "3"], [closed], WEEK_RESET + 1)).toEqual(["2", "3"]);
+  it("rechecks at the reset or after 45 minutes, leaving time for a keeper retry within the hour", () => {
+    expect(notClosed(["2", "3"], [closed], earlyReset)).toEqual(["2"]);
+    const expiry = closed.at + (3 * HOUR) / 4;
+    expect(notClosed(["3"], [closed], expiry - 1)).toEqual([]);
+    expect(notClosed(["2", "3"], [closed], expiry)).toEqual(["2", "3"]);
   });
 
   it("lets a later reading overrule a closed login, as after credit added early", () => {
@@ -124,7 +126,7 @@ describe("what a picker takes from the last reading kept", () => {
 describe("a keeper with a login kept closed", () => {
   it("moves to the open one without asking the provider of the closed one", async () => {
     const asked: string[] = [];
-    const kept = [{ at: NOW - HOUR, weeks: {}, closed: { "3": WEEK_RESET } }];
+    const kept = [{ at: NOW - HOUR / 2, weeks: {}, closed: { "3": WEEK_RESET } }];
     const found = await roomFor(
       ["3", "4"],
       new Set(),
@@ -140,7 +142,21 @@ describe("a keeper with a login kept closed", () => {
     expect(found.logins).toEqual(["4"]);
   });
 
-  it("still refuses a login a fresh reading finds used up, whatever was kept", () => {
-    expect(room([reading("4", { pct: 100 }), reading("2")], ["2", "4"], new Set())).toEqual(["2"]);
+  it("can move to a login restored early without trusting another login that still reads closed", async () => {
+    const kept = [{ at: NOW - 24 * HOUR, weeks: {}, closed: { "2": WEEK_RESET, "4": WEEK_RESET } }];
+    const found = await roomFor(
+      ["2", "4"],
+      new Set(),
+      { live: [], unasked: [] },
+      (wanted) =>
+        Promise.resolve(
+          notClosed(wanted, kept, NOW).map((login) => ({
+            ...reading(login, { pct: 10 }, { pct: login === "2" ? 0 : 100 }),
+            fiveHour: null,
+          })),
+        ),
+      { env: {}, now: NOW },
+    );
+    expect(found.logins).toEqual(["2"]);
   });
 });

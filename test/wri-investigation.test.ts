@@ -245,7 +245,11 @@ describe("an investigation's lanes", () => {
     ] as const) {
       const text = seen === null ? finding : `${finding}\nSeen in: ${seen}`;
       const report = reportOf(lane(3), text, owners, ["buffer-a", "buffer-b"]);
-      expect(report).toMatchObject({ state, findings: 1, verdict: "finding" });
+      expect(report).toMatchObject({ state, verdict: "finding" });
+      // A report from before the form asked for marks still collects, and is listed as unmarked.
+      expect(report.written).toEqual([
+        { title: "The tolerance", owner: "pack/evaluator", observation: "unmarked", cause: "unmarked" },
+      ]);
       expect(report.faults).toHaveLength(state === "ok" ? 0 : 1);
       if (missing !== null) expect(report.faults[0]).toContain(missing);
       if (seen === null) {
@@ -256,13 +260,36 @@ describe("an investigation's lanes", () => {
     }
   });
 
+  it("asks each observation and cause for a mark, and lists every finding by its id with the marks its lane wrote", () => {
+    for (const prompt of [sharedPrompt(parts), lanePrompt({ ...parts, lane: lane(4), report: "/r/04.md" })]) {
+      expect(prompt).toContain("Observation: <confirmed | plausible>");
+    }
+    const finding = (title: string, observation: string, cause: string) =>
+      `### ${title}\nObservation: ${observation}\nCause: ${cause}\nOwner: host\nReverses if: c\nDecision: d\n`;
+    const text = [
+      "# Lane 3: False rejection among fails\nVerdict: finding, two.\n## Findings",
+      finding("The first", "confirmed, 4 of 9, by `log.ts solves`", "plausible, the wait is unread"),
+      // A mark is the line's first word, whatever emphasis it wears: a line that only mentions one,
+      // or opens with a longer word, carries none.
+      finding("The second", "4 of 9 look confirmed", "plausibly the wait"),
+      "### The third\nObservation: `plausible`, a sample\nCause: **Confirmed**, at `a.ts:3`\nOwner: pack/tasks\nReverses if: c\nDecision: d\n",
+    ].join("\n");
+    const report = reportOf(lane(3), text, owners, ["buffer-a"]);
+    expect(report).toMatchObject({ state: "ok" });
+    const index = reportIndex([report], (number) => `/r/${String(number)}.md`, one);
+    expect(index).toContain("- lane 3: ok, finding, 3 findings, at `/r/3.md`");
+    expect(index).toContain("  - 3.1, observation confirmed, cause plausible, owner host: The first");
+    expect(index).toContain("  - 3.2, observation unmarked, cause unmarked, owner host: The second");
+    expect(index).toContain("  - 3.3, observation plausible, cause confirmed, owner pack/tasks: The third");
+  });
+
   it("lets a session leave an open lane omitted with its reason, never an isolated one, and names one whose trigger fired", () => {
     expect(sharedPrompt(parts)).toContain("Verdict: omitted");
     expect(lanePrompt({ ...parts, lane: lane(4), report: "/r/04.md" })).not.toContain("Verdict: omitted");
     const omitted =
       "# Lane 3: False rejection among fails\nVerdict: omitted, lane 7 of this session covers it.\n";
     const ok = reportOf(lane(3), omitted, owners, ["buffer-a"]);
-    expect(ok).toMatchObject({ state: "ok", verdict: "omitted", findings: 0 });
+    expect(ok).toMatchObject({ state: "ok", verdict: "omitted", written: [] });
     const written = `${omitted}## Findings\n### x\nObservation: a\nCause: b\nOwner: pack/evaluator\nReverses if: c\nDecision: d\n`;
     expect(reportOf(lane(3), written, owners, ["buffer-a"]).faults).toEqual([
       "the verdict is omitted and the report writes 1 finding",

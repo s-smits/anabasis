@@ -2,7 +2,7 @@
  * The one query tool a lane runs over a campaign's log, in four verbs with fixed flags:
  *
  *   bun tools/wri/log.ts kinds --log <log> [--kind <kind>[,<kind>...]]
- *   bun tools/wri/log.ts events --log <log> --kind <kind>[,<kind>...] [--fields a,b.c] [--where f=v|f!=v|f~prefix|f>n|f>=n|f<n|f<=n]... [--count-by f[,g]] [--full]
+ *   bun tools/wri/log.ts events --log <log> (--kind <kind>[,<kind>...] | --lines <from>[-<to>]) [--fields a,b.c] [--where f=v|f!=v|f~prefix|f>n|f>=n|f<n|f<=n]... [--count-by f[,g]] [--full]
  *   bun tools/wri/log.ts solves --log <log> [--comparison <id>] [--role old|new|both|try|practice] [--where column<op>value]... [--count-by column[,column]]
  *   bun tools/wri/log.ts trace --log <log> <solve or session id>
  *
@@ -21,10 +21,13 @@
  * A timeline of several kinds at once was written by hand in 68 of those sessions, 7 of lane 25's 13.
  * A numeric bound on a field (`ms > 400000`) was written by hand in 24, 3 of lane 24's 7, and 11 of
  * lane 10's 26 grouped the passes under a tenth of the deadline by harness with `awk` over `solves`.
+ * Of 40 `jq` commands sampled from the 35 lane sessions of 12 to 17 November, 5 cut a range of lines
+ * out of the log to see what stood around one event, so `--lines` reads a range, of every kind where
+ * no `--kind` is named.
  * `events` prints what the log holds, hidden values among them, which is the exam side's to read
  * and never a seat's. It is no query language: a question these flags cannot ask is `jq`'s.
  */
-import { proposalsOf } from "#src/kernel/history.ts";
+import { familiesOf } from "#src/kernel/history.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { type Seat, tracesIn } from "#src/kernel/trace.ts";
 import { existsSync, statSync } from "#src/meta/filesystem.ts";
@@ -99,7 +102,10 @@ interface SolveQuery {
 }
 
 interface EventQuery {
-  readonly kind: string;
+  /** The kinds asked for, comma separated; none is every kind, which only a range of lines allows. */
+  readonly kind: string | undefined;
+  /** The log lines read, as `<from>-<to>` or one line's number; every line where none is named. */
+  readonly lines: string | undefined;
   readonly fields: readonly string[];
   readonly where: readonly string[];
   readonly countBy: string | undefined;
@@ -210,13 +216,29 @@ function filtered<T>(items: readonly T[], dataOf: (item: T) => JsonValue, where:
 
 /** One kind's events a row each, or several kinds' with the kind named, or one field's counts. */
 export function eventRows(events: readonly LogEvent[], query: EventQuery): string[] {
-  const kinds = new Set(query.kind.split(","));
-  const several = kinds.size > 1;
-  const { chosen, filters } = filtered(
-    events.flatMap((event, index) => (kinds.has(event.kind) ? [{ line: lineOf(index), event }] : [])),
+  const range = /^(\d+)(?:-(\d+))?$/u.exec(query.lines ?? "");
+  const from = Number(range?.[1] ?? 1);
+  const to = Number(range?.[2] ?? range?.[1] ?? events.length);
+  if (query.lines !== undefined && (range === null || from < 1 || to < from)) {
+    throw new Error(`--lines takes <from>-<to> or one line, counted from 1, as 120-140: ${query.lines}`);
+  }
+  const every = (query.kind ?? "") === "";
+  if (every && query.lines === undefined) {
+    throw new Error("name one --kind (log.ts kinds lists them) or a range of --lines");
+  }
+  const kinds = new Set((query.kind ?? "").split(","));
+  const several = every || kinds.size > 1;
+  const { chosen, filters: met } = filtered(
+    events.flatMap((event, index) =>
+      (every || kinds.has(event.kind)) && lineOf(index) >= from && lineOf(index) <= to
+        ? [{ line: lineOf(index), event }]
+        : [],
+    ),
     ({ event }) => event.data,
     query.where,
   );
+  const asked = every ? "of every kind" : (query.kind ?? "");
+  const filters = `${query.lines === undefined ? "" : ` on lines ${String(from)}-${String(to)}`}${met}`;
   if (query.countBy !== undefined) {
     const by = query.countBy;
     const counts = countBy(chosen, ({ event }) =>
@@ -226,7 +248,7 @@ export function eventRows(events: readonly LogEvent[], query: EventQuery): strin
         .join(" "),
     );
     return [
-      `events: ${String(chosen.length)} ${query.kind}${filters}, counted by ${by}`,
+      `events: ${String(chosen.length)} ${asked}${filters}, counted by ${by}`,
       ...Object.entries(counts)
         .toSorted(([, one], [, other]) => other - one)
         .map(([value, number]) => `${String(number)} ${value}`),
@@ -236,7 +258,7 @@ export function eventRows(events: readonly LogEvent[], query: EventQuery): strin
     ? ""
     : `, strings cut at ${String(CUT)} characters and digests at 8 (--full lifts both)`;
   return [
-    `events: ${String(chosen.length)} ${query.kind}${filters}, a row each: log line, time, ${several ? "kind, " : ""}then ${query.fields.length === 0 ? "every data field" : query.fields.join(", ")}${cut}`,
+    `events: ${String(chosen.length)} ${asked}${filters}, a row each: log line, time, ${several ? "kind, " : ""}then ${query.fields.length === 0 ? "every data field" : query.fields.join(", ")}${cut}`,
     ...chosen.map(({ line, event }) => {
       const named = query.fields.length === 0 ? Object.keys(event.data) : query.fields;
       const cells = named.map((path) =>
@@ -253,7 +275,7 @@ export function eventRows(events: readonly LogEvent[], query: EventQuery): strin
  * One solve's columns as values: a number stays a number for `--where`, a field the log does not
  * record is null (`n/r`), and the seconds and share of the deadline of a solve with no end are absent.
  */
-function solveRecord(solve: Solve, ruled: string | null | undefined, family: string | undefined): JsonObject {
+function solveRecord(solve: Solve, ruled: string | null | undefined, family: string | null): JsonObject {
   const ended = solve.outcome !== null;
   const share = ended && solve.wallSeconds > 0 ? Math.round((solve.seconds / solve.wallSeconds) * 100) : null;
   return {
@@ -262,7 +284,7 @@ function solveRecord(solve: Solve, ruled: string | null | undefined, family: str
     role: solve.role,
     harness: solve.harness.slice(0, 8),
     task: solve.task === "" ? null : solve.task,
-    family: family ?? null,
+    family,
     outcome: solve.outcome ?? "open",
     kind: solve.kind ?? "-",
     ruled: ruled ?? "-",
@@ -287,14 +309,14 @@ function solveCell(record: JsonObject, column: string): string {
 /** Every solve a row as the folds read it, or one column's counts among them, then by role and outcome. */
 export function solveRows(events: readonly LogEvent[], only: SolveQuery): string[] {
   const index = indexOf(events);
-  const families = new Map(proposalsOf(events).map(({ version, family }) => [version, family ?? undefined]));
+  const families = familiesOf(events);
   const records = index.solves
     .filter(
       (solve) =>
         (only.comparison === undefined || solve.comparison === only.comparison) &&
         (only.role === undefined || solve.role === only.role),
     )
-    .map((solve) => solveRecord(solve, index.stands.get(solve.id), families.get(solve.version)));
+    .map((solve) => solveRecord(solve, index.stands.get(solve.id), families.get(solve.version) ?? null));
   const { chosen, filters } = filtered(records, (record) => record, only.where ?? []);
   const by = only.countBy;
   if (by !== undefined) {
@@ -359,6 +381,7 @@ function main(argv: readonly string[]): string[] {
     options: {
       log: { type: "string" },
       kind: { type: "string" },
+      lines: { type: "string" },
       fields: { type: "string" },
       where: { type: "string", multiple: true },
       "count-by": { type: "string" },
@@ -389,9 +412,9 @@ function main(argv: readonly string[]): string[] {
     if (named === undefined) throw new Error("name a solve or session: log.ts trace --log <log> <id>");
     return traceRows(events, named, log);
   }
-  if (values.kind === undefined) throw new Error("name one --kind: log.ts kinds lists them");
   return eventRows(events, {
     kind: values.kind,
+    lines: values.lines,
     fields: values.fields?.split(",").filter((field) => field !== "") ?? [],
     where: values.where ?? [],
     countBy: values["count-by"],

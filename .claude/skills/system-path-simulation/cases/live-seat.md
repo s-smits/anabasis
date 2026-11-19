@@ -10,7 +10,7 @@ solves alone.
 ```text
 bun --env-file=<file> .claude/skills/system-path-simulation/scripts/live-seat.ts start \
   --tree <worktree> --name sim-<what> --out <scratch>/arm-a --cap 30 --minutes 90 \
-  --mention reference-harness -- tools/d1b/examine.ts --session x-9 --examiner <model> ...
+  -- tools/d1b/examine.ts --session x-9 --examiner <model> ...
 bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scratch>/arm-a
 ```
 

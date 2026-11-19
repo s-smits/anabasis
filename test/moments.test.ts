@@ -51,6 +51,21 @@ describe("the areas a call enters", () => {
     expect(ids("not a call")).toEqual([]);
   });
 
+  it("names the protected files for a campaign's record, and not for an investigation's own report", () => {
+    expect(ids({ file_path: "/w/anabasis/.ana/d2/run-a/log.jsonl" })).toEqual(["untouched"]);
+    expect(ids({ file_path: "/w/anabasis/data/runs/here/run-a/log.jsonl" })).toEqual(["untouched"]);
+    expect(
+      ids({ command: "*** Begin Patch\n*** Add File: .ana/moved/run-a/notes.md\n@@ x\n*** End Patch" }),
+    ).toEqual(["untouched"]);
+    expect(ids({ file_path: "/w/anabasis/.ana/wri/2026-01-01-run-a/lanes/01-report.md" })).toEqual([]);
+    expect(
+      ids({
+        command:
+          "*** Begin Patch\n*** Add File: .ana/wri/2026-01-01-run-a/lanes/02-report.md\n@@ x\n*** End Patch",
+      }),
+    ).toEqual([]);
+  });
+
   it("supplies credential guidance for commands and edits involving env files", () => {
     expect(ids({ command: "cat .env" })).toEqual(["credentials"]);
     expect(ids({ file_path: "/w/anabasis/.env.runs" })).toEqual(["credentials"]);

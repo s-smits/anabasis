@@ -30,7 +30,8 @@
  *   the commit the command runs from, which it does not measure.
  * - `open` starts the investigation of one run, or of several as equals, under `.ana/wri/` of the
  *   main checkout, reading a frozen copy of any one still live (`wri.ts start --snapshot`), and marks
- *   the folder an iteration (`iteration.json`). Opening a live run is a deviation from the `pause`
+ *   the folder an iteration (`iteration.json`). It names each run to `start`, which fetches a
+ *   peer's campaign whole. Opening a live run is a deviation from the `pause`
  *   step, kept for a run the operator leaves running. A live run kept past its trigger has no folder
  *   yet, so its row `| pause:<run> | <reason> |` stands in any investigation's `deviations.md`
  *   (`keptIn`): its step is then `kept`, which owes nothing, until the row goes, the run stops or
@@ -67,6 +68,7 @@ import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { runSync } from "#src/meta/subprocess.ts";
 import { CODE_TREES } from "#tools/d2/campaign.ts";
 import { stillRunning } from "#tools/runs/diagnosis.ts";
+import { envRunsFile } from "#tools/runs/host-config.ts";
 import { lastLaunch } from "#tools/runs/receipt.ts";
 import {
   HERE,
@@ -745,23 +747,27 @@ function due(args: CommandArgs, repo: string, known: readonly Run[]): number {
 function open(args: CommandArgs, repo: string): number {
   const runs = (args.positionals[1] ?? "").split(",").filter((name) => name !== "");
   if (runs.length === 0) args.die(USAGE);
-  const logs = runs.map((name) => readNamed(name, repo).path);
+  // Each name is refused here if unknown, then handed to `wri.ts start` by name, not path, so a
+  // peer's campaign is fetched whole, states included (`logAcross`); the ten-minute gather copies
+  // its record alone, and on 18 November a reference so read as not kept.
+  for (const name of runs) readNamed(name, repo);
+  const root = wriRoot(repo);
+  const hosts = envRunsFile(repo);
   const day = new Date().toISOString().slice(0, 10);
-  const out = resolve(args.value("out") ?? join(wriRoot(repo), `${day}-${runs.join("+")}`));
+  const out = resolve(args.value("out") ?? join(root, `${day}-${runs.join("+")}`));
   // The record first, so a crash before the start reads `step: open`, never a plain investigation.
   mkdirSync(out, { recursive: true });
   writeFileSync(
     join(out, MARKER),
     `${JSON.stringify({ opened: new Date().toISOString(), runs, protocol: PROTOCOL }, null, 2)}\n`,
   );
-  const started = runSync(
-    [capturedExecPath, WRI, "start", "--log", logs.join(","), "--out", out, "--snapshot"],
-    { cwd: repo },
-  );
+  const start = [WRI, "start", "--log", runs.join(","), "--out", out, "--snapshot"];
+  const env = existsSync(hosts) ? [`--env-file=${hosts}`] : [];
+  const started = runSync([capturedExecPath, ...env, ...start], { cwd: repo });
   runtimeProcess.stdout.write(started.stdout);
   runtimeProcess.stderr.write(started.stderr);
   if (started.exitCode !== 0) return started.exitCode ?? 1;
-  for (const line of nextOf(out, { root: wriRoot(repo) })) console.log(line);
+  for (const line of nextOf(out, { root })) console.log(line);
   return 0;
 }
 

@@ -5,7 +5,7 @@
  *     -- <the campaign command's flags but --name>
  *   bun --env-file=<file> run runs continue <name> [--at <commit>] [--login N] [--budget N]
  *     [--after <word>[|<word>...]] [--yes] [-- <flags>]
- *   bun run runs pause <name> [--after <word>[|<word>...]] [--yes]
+ *   bun run runs pause <name> [--after <word>[|<word>...]] [--eval] [--yes]
  *
  * `launch` starts the campaign command (`tools/d2/harness-builder.ts`) under a name no worktree
  * holds a campaign of, in this worktree. `continue` runs a campaign again from its log in the
@@ -18,8 +18,9 @@
  * waits for the next solve that finishes or tool call any seat records, having left a word that
  * starts no further solve, once every open solve has finished, or past the run's own limit on a
  * solve with whatever is open, since a cut solve is paid for again: `runs stop` is the one that does
- * not wait. Flags after `--` stand for the kept ones. A campaign's folder moves by `runs copy` and
- * `runs move` (`move.ts`).
+ * not wait. `pause --eval` then reads the run's newest promotion outside, from this machine, on
+ * each benchmark that reads its pack, once that benchmark's machine is idle (`evalOf`, `readEach`,
+ * `outside.ts`). Flags after `--` stand for the kept ones. A campaign's folder moves by `runs copy` and `runs move` (`move.ts`).
  *
  * A run `launch` or `continue` starts on a numbered login gets a keeper (`keep.ts`) where another login
  * is allowed, so that it goes on elsewhere at a limit with nobody there (operator, 5 November: "bring
@@ -238,6 +239,20 @@ async function startable(
   return { commit, target };
 }
 
+/** Check a restart while the writer is still alive, including the dry run where the tree is ready. */
+export async function checkStart(
+  run: Run,
+  flags: readonly string[],
+  { login, at }: { login: string | undefined; at?: string | undefined },
+): Promise<void> {
+  const { commit, target } = await startable(run, flags, {
+    login,
+    at,
+    stands: "nothing was stopped or started",
+  });
+  if (target === commit) dryRun(run, flags, loginEnv(runtimeProcess.env, login), commit);
+}
+
 /** Start the campaign command for `run` on `flags` in its worktree, as `login` where named and at
  *  `at` where named, once every refusal of the head comment is passed and its dry run passed, and
  *  say whether it is running three seconds on. */
@@ -425,9 +440,8 @@ export async function continueRun(args: readonly string[]): Promise<void> {
   if (values.after !== undefined) {
     // What the start would refuse of a running run, and the dry run at its own commit, asked before the
     // wait and again at the point before the stop, since a wait of hours can fill a login.
-    const dry = () => dryRun(run, flags, loginEnv(runtimeProcess.env, login), commit);
     await roomToStart(payerOf(login, flags), "here", run.name);
-    if ((target ?? commit) === commit) dry();
+    if ((target ?? commit) === commit) dryRun(run, flags, loginEnv(runtimeProcess.env, login), commit);
     // Why the run is left as it stands: it ended on its own terms (but the environment) during the
     // wait, or runs as asked by its newest receipt, as where its keeper moved it.
     const armed = logEvents(run.path).length;
@@ -445,8 +459,7 @@ export async function continueRun(args: readonly string[]): Promise<void> {
     };
     await pauseAt(run, values.after, `runs continue on ${payer}`, async () => {
       if (left() !== null) return false;
-      const stands = "nothing was stopped or started";
-      if ((await startable(run, flags, { login, at: target, stands })).target === commit) dry();
+      await checkStart(run, flags, { login, at: target });
       return true;
     });
     const why = left();

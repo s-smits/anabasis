@@ -17,7 +17,8 @@ first line, and the round trip through the linter mostly disappears.
   relative path. Elsewhere an import that climbs three or more directories uses the aliases of
   `package.json` (`#src/…`, `#tools/…`, `#skills/…`), and one or two levels stay relative.
 - Biome formats: two spaces, width 110, double quotes. Do not align or wrap by hand; run
-  `bun run format`, or `bun run format -- <paths>` for only those files.
+  `bun fmt`, or `bun fmt <paths>` for only those files. The `fmt` script is what keeps Bun's
+  own formatter, which wraps at 80 and rewrites `vendor/`, from running in its place.
 - `bun run typecheck` (`bun check`) covers the paths in `tsconfig.json`: `src`, `tools`,
   `vendor`, `test`, `studies` and `.claude`. Skill scripts receive typechecking, lint and their
   owning tests, including `test/skill-scripts.test.ts` and `test/meta-cli.test.ts`.
@@ -146,7 +147,7 @@ And in words:
   (`AGENTS.md`, section 5).
 - **Sizes**: a file at most 800 nonblank lines, a function at most 115.
 
-Before a commit: `bun run format && bun run typecheck && bun run lint -- --strict`, the nearby
+Before a commit: `bun fmt && bun run typecheck && bun run lint -- --strict`, the nearby
 tests, then `bun run commit:check`. Before handing back: `bun run simplify`.
 
 ## 12.4 The `ana` rules

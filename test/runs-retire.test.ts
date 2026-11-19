@@ -5,7 +5,7 @@
 // the archive's too. And the seats' roots a run left on the host go: those its log names as the
 // archive takes the run, and those whose claimant is gone.
 import { afterAll, describe, expect, it } from "bun:test";
-import { lastKept, SCRATCHPAD_FILE, seedMemory } from "../src/builder/memory.ts";
+import { builderMemoryBlock, MEMORY_FILE } from "../src/builder/memory.ts";
 import { sessionDirs } from "../src/builder/session.ts";
 import { append } from "../src/kernel/log.ts";
 import {
@@ -207,7 +207,7 @@ describe("retiring", () => {
     // The cut session's root as a killed campaign leaves it: no claimant alive, its notes in its home.
     mkdirSync(dirsOf(cut).home, { recursive: true });
     mkdirSync(dirsOf(cut).host);
-    writeFileSync(join(dirsOf(cut).home, SCRATCHPAD_FILE), "# Scratchpad\n\nNext: widen the sweep.\n");
+    writeFileSync(join(dirsOf(cut).home, MEMORY_FILE), "Next: widen the sweep.\n");
     // A root its run's log names as open and a live process claims: read as unwritten by the
     // process table, as a writer this sweep cannot name would be, and held by its claim.
     const releaseHeld = claimRoot(dirsOf(held).root);
@@ -244,11 +244,7 @@ describe("retiring", () => {
         ),
       ).toEqual([false, false, false, true]);
       // The notes went with the run's folder, kept into it before it moved.
-      const memory = join(archive, cut, "memory");
-      const next = join(root, "b-2-home");
-      mkdirSync(next);
-      seedMemory(next, memory, lastKept(memory, ["b-1"]));
-      expect(readFileSync(join(next, SCRATCHPAD_FILE), "utf8")).toContain("Next: widen the sweep.");
+      expect(builderMemoryBlock(join(archive, cut, "memory"), ["b-1"])).toContain("Next: widen the sweep.");
     } finally {
       await releaseHeld();
       await releaseRoot(dirsOf(cut).root);

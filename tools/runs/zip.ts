@@ -9,7 +9,8 @@
  *   light    the log and each launch's receipt and output, each harness a session kept
  *            (`states/<digest>/`) and the brief
  *   medium   and the checker (`checks/`, and the copy a harness holds when its Builder was given
- *            one) and the toolchain's own files (`states/tree-*`)
+ *            one), the toolchain's own files (`states/tree-*`) and the files each answer was
+ *            submitted with (`states/deliverables/`)
  *   verbose  and whatever else the run's folder holds, and the source each worktree ran at its commit
  *
  * With no names, every run log in the repository's worktrees, as the pulse finds them. In the zip a
@@ -78,7 +79,7 @@ import {
   standing,
   wholeLines,
 } from "./registry.ts";
-import { derived, readableAcross, syncRuns } from "./snapshots.ts";
+import { DERIVED, PACKAGED, packagedOf, readableAcross, syncRuns } from "./snapshots.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
 const PROMOTED = "harness.promoted";
@@ -119,6 +120,12 @@ const GROUPS: readonly (readonly [name: string, holds: string, level: Level, pat
   ],
   ["brief", "the brief the tasks answer", "light", /^(exams\/[^/]+\/)?checks\/brief\.json$/],
   [
+    "deliverables",
+    "the files each answer was submitted with, by digest",
+    "medium",
+    /^states\/deliverables\//,
+  ],
+  [
     "harness",
     "each harness a session kept: guide, tools, tool spec, memory",
     "light",
@@ -131,11 +138,12 @@ const GROUPS: readonly (readonly [name: string, holds: string, level: Level, pat
     /^(checks|exams\/[^/]+|states\/[0-9a-f]{64}\/correctness-model)\//,
   ],
   ["toolchain", "what a harness installed, less the packages", "medium", /^states\/tree-[^/]+\//],
-  ["memory", "the notes and helper files each Builder session left the next", "light", /^memory\//],
+  ["memory", "the notes each Builder session left the next", "light", /^memory\//],
   ["source", "the tracked src, tools and docs of the worktree at its commit", "verbose", /^source\//],
   ["rest", "anything else in the run's folder", "verbose", /^/],
 ];
 
+const INSTALLED = "installed, cached or built";
 const SECRET = /^(auth\.json|.*\.env|\.DS_Store)$/;
 const LIGHT_MAX = 2 * 1024 * 1024;
 const SOURCE = ["src", "tools", "docs", "package.json"];
@@ -163,8 +171,7 @@ function unfit(root: string, path: string): string | null {
   const stat = lstatSync(path);
   if (stat.isSymbolicLink()) return linkedIn(root, path) === null ? "a link out of its folder" : null;
   if (SECRET.test(basename(path))) return "a secret's name";
-  const installed = stat.isDirectory() && derived(basename(path), readdirSync(path));
-  return installed ? "installed, cached or built" : null;
+  return stat.isDirectory() && DERIVED.has(basename(path)) ? INSTALLED : null;
 }
 
 /** Every file a zip may hold of `names` in `root`, or of all of it, by its path from there, and
@@ -172,9 +179,11 @@ function unfit(root: string, path: string): string | null {
 export function fit(root: string, names: readonly string[] = readdirSync(root).toSorted()) {
   const held: Held[] = [];
   const left: Left[] = [];
+  // An entry a package of its folder owns stays with the packages; a seat's file beside them is held.
+  const owned = packagedOf(runTextSyncOrThrow(["sh", "-c", PACKAGED], { cwd: root }));
   const visit = (path: string): void => {
     const full = join(root, path);
-    const why = unfit(root, full);
+    const why = owned.has(path) ? INSTALLED : unfit(root, full);
     if (why !== null) {
       left.push({ path, why });
     } else if (lstatSync(full).isDirectory()) {

@@ -17,6 +17,14 @@
     "types": ["bun"],
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "test/**/*.tsx", "serve.ts", "build.ts"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "test/**/*.ts",
+    "test/**/*.tsx",
+    "serve.ts",
+    "build.ts",
+    "../../src/**/*.d.ts"
+  ],
   "exclude": ["dist", "node_modules"]
 }

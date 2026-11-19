@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { normalizeContext } from "@earendil-works/pi-ai";
 import { conversing } from "../src/examiner/session.ts";
 import { examinerDirs } from "../src/examiner/shell.ts";
+import { keepAnswerFiles } from "../src/kernel/answer-files.ts";
 import { LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import type { TaskPackage } from "../src/kernel/task.ts";
 import type { Ending } from "../src/kernel/solve.ts";
@@ -206,12 +207,18 @@ describe("a replay", () => {
 });
 
 describe("a rehearsal's script", () => {
-  it("takes each task's first answer of each ending: a graded pass before the pack's accept control, and what the log's solves answered", () => {
+  it("takes each task's first answer of each ending, with the files it delivered: a graded pass before the pack's accept control, and what the log's solves answered", () => {
     const event = (kind: LogEvent["kind"], data: LogEvent["data"]): LogEvent => ({ at: AT, kind, data });
     const written = { taskId: "x-1-001", family: "fixture", publicInput: { base: 4 }, hidden: null };
+    const log = join(root, "answered", LOG_FILE);
+    mkdirSync(dirname(log), { recursive: true });
+    // Until 19 November the script wrote the answer alone, and every jobstat task, whose first check
+    // reads the delivered files, rejected each scripted pass.
+    const report = { path: "report.md", base64: Buffer.from("# Report\n").toString("base64") };
+    const files = keepAnswerFiles(log, [report]).map((file) => ({ ...file }));
     const events = [
       event("task.proposed", { version: "v9", taskId: "x-1-001", session: "x-1", task: written }),
-      event("verdict", { solve: "s-9", task: "x-1-001", answer: { answer: "24" }, kind: "pass" }),
+      event("verdict", { solve: "s-9", task: "x-1-001", answer: { answer: "24" }, files, kind: "pass" }),
       event("verdict", {
         solve: "s-10",
         task: "x-1-001",
@@ -228,10 +235,18 @@ describe("a rehearsal's script", () => {
       { taskId: "t-1", answer: { answer: "wrong too" }, refusedBy: "check-sum" },
       { taskId: "t-2", answer: { answer: "only a pass" }, refusedBy: null },
     ];
-    const answers = answersOf(graded, events);
-    expect(answers.get("t-1")).toEqual({ pass: { answer: "graded" }, fail: { answer: "wrong" } });
-    expect(answers.get("t-2")).toEqual({ pass: { answer: "only a pass" } });
-    expect(answers.get("x-1-001")).toEqual({ pass: { answer: "24" }, fail: { answer: "0" } });
+    writeFileSync(log, `${events.map((each) => JSON.stringify(each)).join("\n")}\n`);
+    const answers = answersOf(graded, log);
+    const ends = (taskId: string) =>
+      Object.fromEntries(
+        Object.entries(answers.get(taskId) ?? {}).map(([end, control]) => [end, control.answer]),
+      );
+    expect(ends("t-1")).toEqual({ pass: { answer: "graded" }, fail: { answer: "wrong" } });
+    expect(ends("t-2")).toEqual({ pass: { answer: "only a pass" } });
+    expect(ends("x-1-001")).toEqual({ pass: { answer: "24" }, fail: { answer: "0" } });
+    expect(answers.get("x-1-001")?.pass?.files?.map(({ path, text }) => ({ path, text }))).toEqual([
+      { path: "report.md", text: "# Report\n" },
+    ]);
   });
 });
 

@@ -11,6 +11,7 @@
  */
 import { Type } from "typebox";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
+import { DELIVERABLES } from "#src/kernel/answer-files.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import { existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -21,7 +22,7 @@ import { pooled } from "#src/meta/pool.ts";
 import { runtimeProcess, warn } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { asked, answerOf } from "./hosts.ts";
-import { type Host, hostNamed, hostsOf } from "./host-config.ts";
+import { benchesOf, type Host, hostNamed, hostsOf } from "./host-config.ts";
 import { quoted, rsync, sideOf, sshScript } from "./host-command.ts";
 import { runTextOrThrow } from "#src/meta/subprocess.ts";
 import { hold, release } from "#src/meta/holder.ts";
@@ -53,9 +54,19 @@ interface RemoteRun {
 }
 
 type Depth = "record" | "whole";
+/** Of a benchmark's trees, the folder of programs (`TOOLCHAIN`'s `bin`): the export also searches a
+ *  `py/bin`, which on every tree on record holds only the interpreters `exportedPrograms` drops. */
+const PROGRAMS_ONLY = [
+  "--include=/trees/",
+  "--include=/trees/*/",
+  "--include=/trees/*/scripts/",
+  "--include=/trees/*/scripts/toolchain/",
+  "--include=/trees/*/scripts/toolchain/bin/***",
+  "--exclude=/trees/**",
+];
 const EXCLUDED = ["--exclude=.env", "--exclude=.env.*", "--exclude=*.env", "--exclude=auth.json"];
 /** Folders of installed packages, caches and built bundles, by name. */
-const DERIVED = new Set([
+export const DERIVED: ReadonlySet<string> = new Set([
   "node_modules",
   ".bundle-snapshots",
   "__pycache__",
@@ -66,10 +77,19 @@ const DERIVED = new Set([
   ".matplotlib",
   "Library",
 ]);
+/** A shell line that prints, for every pip target under the folder it stands in, the entries its
+ *  packages installed, one a line as `grep` names a match: `./<target>/<package>.dist-info/RECORD:`
+ *  and the first path segment of a row of that `RECORD`. */
+export const PACKAGED = "find . -path '*.dist-info/RECORD' -type f -exec grep -Ho '^[^/,]*' {} + | sort -u";
+/** The submitted files, the one part of `states/` a record holds, since readers of a verdict need them. */
+const DELIVERED = join("states", DELIVERABLES.folder);
 // The seed's mark comes too, so a copy of a rehearsal's seed is no paid campaign to a reader: until
 // 29 October the gather left it out, and two compare-systems seeds counted as campaigns in a replay.
 const RECORD = [
   "--include=/log.jsonl",
+  "--include=/states/",
+  `--include=/${DELIVERED}/***`,
+  "--exclude=/states/*",
   "--include=/launch-*.json",
   `--include=/${SEED_FILE}`,
   "--exclude=/*",
@@ -95,11 +115,12 @@ const WAIT_MS = 200;
 /** The text only an opening's line holds. A line that merely quotes it is parsed and passed over. */
 const OPENED = `"kind":"campaign.opened"`;
 
-/** Whether a folder of this name, holding these entries, is installed, cached or built: one named so
- *  (`DERIVED`), or a pip target, known by a `.dist-info` in it. Neither a copy of a campaign nor a zip
- *  holds one, since the log names what was installed and nothing here reads the packages. */
-export const derived = (name: string, entries: readonly string[]): boolean =>
-  DERIVED.has(name) || entries.some((entry) => entry.endsWith(".dist-info"));
+/** The entries `PACKAGED` printed, each by its path from the folder: a line less its package's
+ *  `RECORD`. What no `RECORD` names is a seat's own, an entry whose rows are all quoted for a comma
+ *  included: until 18 November a copy and a zip left a pip target whole, and a promoted harness's
+ *  own library beside its packages was in no copy. */
+export const packagedOf = (printed: string): Set<string> =>
+  new Set(printed.split("\n").map((line) => line.slice(2).replace(/[^/]*\.dist-info\/RECORD:/u, "")));
 
 /** One original campaign's identity and project, as a catalogue lists it. Only the openings are
  *  parsed: every refresh asks each host for its catalogue, and parsing every line of every log for
@@ -156,31 +177,38 @@ export function remoteRuns(lines: readonly string[] | null, host: Host): RemoteR
   });
 }
 
-/** The files and links of a remote folder, each by its path from it, in byte order. */
-async function filesOf(host: Host, folder: string): Promise<string[]> {
-  const listed = await runTextOrThrow(sshScript(host, `cd ${quoted(folder)} && find . ! -type d -print0`));
-  return listed
-    .split("\0")
+/** The files and links of a remote folder that a copy takes, each by its path from it, in byte
+ *  order, and what it leaves of the folder on the host (`installs`). */
+async function filesOf(host: Host, folder: string): Promise<{ taken: string[]; left: string[] }> {
+  const listed = (
+    await runTextOrThrow(sshScript(host, `cd ${quoted(folder)} && find . ! -type d -print0 && ${PACKAGED}`))
+  ).split("\0");
+  const owned = packagedOf(listed.pop() ?? "");
+  const paths = listed
     .filter((path) => path.startsWith("./"))
     .map((path) => path.slice(2))
     .toSorted();
+  return installs(paths, owned);
 }
 
-/** The folders among a campaign's `paths` that a copy leaves on its host (`derived`), each the
- *  outermost such folder: the packages a harness or the Examiner installed, and caches. A copy
- *  therefore opens as no harness (`keptAs` refuses a kept state short of its programs): a campaign
- *  runs on from its original. */
-function installs(paths: readonly string[]): string[] {
-  const found = new Set<string>();
-  for (const path of paths) {
+/** What a copy takes of a campaign's `paths` and what it leaves on its host, each by its outermost
+ *  path: the folders named as installed or cached (`DERIVED`), and the entries of a pip target its
+ *  packages own (`owned`), so that a file a seat wrote beside them is copied. A copy therefore
+ *  opens as no harness (`keptAs` refuses a kept state short of its programs): a campaign runs on
+ *  from its original. */
+function installs(paths: readonly string[], owned: ReadonlySet<string>): { taken: string[]; left: string[] } {
+  const outers = paths.map((path) => {
     const parts = path.split("/");
-    const at = parts.findIndex(
-      (part, index) => index + 1 < parts.length && derived(part, parts.slice(index + 1, index + 2)),
-    );
-    if (at !== -1) found.add(parts.slice(0, at + 1).join("/"));
-  }
-  const outer = [...found].toSorted();
-  return outer.filter((folder) => !outer.some((other) => folder.startsWith(`${other}/`)));
+    return parts
+      .map((_, index) => parts.slice(0, index + 1).join("/"))
+      .find(
+        (under, index) => owned.has(under) || (index + 1 < parts.length && DERIVED.has(parts[index] ?? "")),
+      );
+  });
+  return {
+    taken: paths.filter((_, index) => outers[index] === undefined),
+    left: [...new Set(outers.filter((outer) => outer !== undefined))].toSorted(),
+  };
 }
 
 /** The files among `paths` that a disk which folds case cannot hold beside another named the same
@@ -219,11 +247,9 @@ async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): 
     rmSync(stage, { recursive: true, force: true });
     mkdirSync(folder, { recursive: true });
     const reused = existsSync(into) ? [`--link-dest=${into}`] : [];
-    const paths = depth === "whole" ? await filesOf(host, dirname(run.path)) : [];
-    const left = installs(paths);
-    const twins = existsSync(dirname(into).toUpperCase())
-      ? caseTwins(paths.filter((path) => !left.some((install) => path.startsWith(`${install}/`))))
-      : [];
+    const { taken, left } =
+      depth === "whole" ? await filesOf(host, dirname(run.path)) : { taken: [], left: [] };
+    const twins = existsSync(dirname(into).toUpperCase()) ? caseTwins(taken) : [];
     if (twins.length > 0) {
       console.log(
         `${run.name}: ${String(twins.length)} paths named as another but for case stay on ${host.name} alone`,
@@ -234,7 +260,7 @@ async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): 
       `${folder}/`,
       ...reused,
       ...EXCLUDED,
-      ...left.map((install) => leaving(`${install}/`)),
+      ...left.map(leaving),
       ...twins.map(leaving),
       ...(depth === "record" ? RECORD : []),
     );
@@ -249,7 +275,14 @@ async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): 
     // the copy, a file at a time, the log last. Copying the folder to keep them took 4.7 s of a
     // 5.8 s refresh of one live run on 30 October: 6,372 files, most of them its Examiner's home.
     if (depth === "record" && existsSync(into)) {
-      const record = readdirSync(folder).toSorted((a, b) => Number(a === LOG_FILE) - Number(b === LOG_FILE));
+      // The stored files are named by digest, so a refresh adds each beside those already kept,
+      // before the log that names them.
+      const delivered = existsSync(join(folder, DELIVERED)) ? readdirSync(join(folder, DELIVERED)) : [];
+      if (delivered.length > 0) mkdirSync(join(into, DELIVERED), { recursive: true });
+      for (const kept of delivered) renameSync(join(folder, DELIVERED, kept), join(into, DELIVERED, kept));
+      const record = readdirSync(folder)
+        .filter((name) => name !== "states")
+        .toSorted((a, b) => Number(a === LOG_FILE) - Number(b === LOG_FILE));
       for (const file of record) renameSync(join(folder, file), join(into, file));
       published = true;
       return held;
@@ -348,44 +381,45 @@ export async function syncRuns(
 }
 
 /**
- * Copy the benchmark score store (`score.ts --out`) from the machine that rolls the benchmark into
- * `data/bench/<machine>` here: every task's rollout and judgement, which `score.ts table` reads
- * here as it does there. An arm's exported tree stays behind, since it holds an interpreter built
- * for that machine and `score.ts tree` writes it again from its campaign. A record there is written
- * once, so the copy only adds, and what that machine later clears stays here. Nothing is copied
- * unless `ABLATION_HOST` names another machine and `BENCH_STORE` the folder there, absolute or
- * from its home folder; a machine that does not answer keeps its copy as it was, as a silent host
- * keeps its campaigns'. It returns the copy's folder where it copied.
+ * Copy each benchmark's score store (`score.ts --out`) from the machine that rolls it into
+ * `data/bench/<benchmark>` here: every task's rollout and judgement, which `score.ts table` reads
+ * here as it does there. Of an arm's exported tree only its programs' folder comes, which `levels`
+ * reads for the programs a rollout starts by name; the rest, an interpreter built for that machine
+ * among it, stays behind, and `score.ts tree` writes it again from its campaign. A record there is written
+ * once, so the copy only adds, and what that machine later clears stays here. A benchmark rolled on
+ * this machine needs no copy; one whose machine does not answer keeps its copy as it was, as a silent
+ * host keeps its campaigns'. It returns the folders it copied into.
  */
-export async function fetchBench(): Promise<string | null> {
-  const { ABLATION_HOST: name = "", BENCH_STORE: store = "" } = runtimeProcess.env;
-  if (store === "" || name === "" || name === HERE) return null;
-  const host = hostNamed(name);
-  const into = join(dirname(archiveOf(runtimeProcess.cwd())), "bench", host.name);
-  mkdirSync(into, { recursive: true });
-  // rsync reads a relative path from the home folder there, and a quoted `~` as a folder's name.
-  const from = `${sideOf(host, store.replace(/^~\//u, ""))}/`;
-  try {
-    await rsync(from, `${into}/`, ...EXCLUDED, "--exclude=/trees");
-    return into;
-  } catch (error) {
-    warn(`${host.name}: the benchmark score store was not copied: ${errorMessage(error)}`);
-    return null;
+export async function fetchBenches(): Promise<string[]> {
+  const copied: string[] = [];
+  for (const { name, host, store } of benchesOf()) {
+    if (host === undefined) continue;
+    const into = join(dirname(archiveOf(runtimeProcess.cwd())), "bench", name);
+    mkdirSync(into, { recursive: true });
+    // rsync reads a relative path from the home folder there, and a quoted `~` as a folder's name.
+    const from = `${sideOf(host, store.replace(/^~\//u, ""))}/`;
+    try {
+      await rsync(from, `${into}/`, ...EXCLUDED, ...PROGRAMS_ONLY);
+      copied.push(into);
+    } catch (error) {
+      warn(`${name} on ${host.name}: the benchmark score store was not copied: ${errorMessage(error)}`);
+    }
   }
+  return copied;
 }
 
 /**
- * Take over the campaigns `host`, the one `ABLATION_HOST` names, has retired, so that it stays clear
- * for ablations: each its own retire moved into its archive (that retire alone decides when a
- * campaign is finished), which no process writes or keeps there and of which this machine holds
- * every file a copy takes byte for byte, joins this machine's own archive and is deleted there.
- * Nothing else deletes an original, and a campaign still in its worktree there is left alone. The
- * proof is one checksummed dry run of rsync, so a campaign with a path left there for its case
- * (`caseTwins`) stays; credentials and installs are never copied (`EXCLUDED`, `installs`), so a
- * campaign taken over is a record. The copy moves first, so a sweep killed before the deletion is
- * finished by the next; the deletion runs only while the log there is as long as the catalogue
- * said, and one that grew stays, its copy the host's again; one that fails part way leaves the copy
- * this machine's own. Asked to `describe`, it says what it would do.
+ * Take over the campaigns `host`, a machine that rolls a benchmark, has retired, so that it stays
+ * clear for outside evaluations: each its own retire moved into its archive (that retire alone
+ * decides when a campaign is finished), which no process writes or keeps there and of which this
+ * machine holds every file a copy takes byte for byte, joins this machine's own archive and is
+ * deleted there. Nothing else deletes an original, and a campaign still in its worktree there is
+ * left alone. The proof is one checksummed dry run of rsync, so a campaign with a path left there
+ * for its case (`caseTwins`) stays; credentials and installs are never copied (`EXCLUDED`,
+ * `installs`), so a campaign taken over is a record. The copy moves first, so a sweep killed before
+ * the deletion is finished by the next; the deletion runs only while the log there is as long as
+ * the catalogue said, and one that grew stays, its copy the host's again; one that fails part way
+ * leaves the copy this machine's own. Asked to `describe`, it says what it would do.
  */
 export async function takeRetired(host: Host, act: "take" | "describe"): Promise<void> {
   const archive = archiveOf(runtimeProcess.cwd());
@@ -407,7 +441,7 @@ export async function takeRetired(host: Host, act: "take" | "describe"): Promise
           "-c",
           "--itemize-changes",
           ...EXCLUDED,
-          ...installs(await filesOf(host, from)).map((folder) => leaving(`${folder}/`)),
+          ...(await filesOf(host, from)).left.map(leaving),
         )
       )
         .split("\n")

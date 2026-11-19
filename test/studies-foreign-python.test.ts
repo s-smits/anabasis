@@ -8,12 +8,14 @@ import {
 } from "../studies/shared/foreign-python.ts";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -123,6 +125,56 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
     await foreignPrograms(tree, LINUX);
   });
 
+  it("replaces an interpreter's program that links out of the tree, and leaves what it linked to as it was", async () => {
+    const tree = macTree("prefix-link");
+    const outside = join(root, "a-mac-python3.12");
+    writeFileSync(outside, MACH_O);
+    rmSync(join(tree, "py/cp312/pyexe/python3.12"));
+    symlinkSync(outside, join(tree, "py/cp312/pyexe/python3.12"));
+    await rebuildForeignPython(tree, LINUX, standIn().python);
+    expect(lstatSync(join(tree, "py/cp312/pyexe/python3.12")).isSymbolicLink()).toBe(false);
+    expect(readFileSync(join(tree, "py/cp312/pyexe/python3.12"))).toStrictEqual(elf("host python"));
+    expect(readFileSync(outside)).toStrictEqual(MACH_O);
+    await foreignPrograms(tree, LINUX);
+  });
+
+  it("makes an environment that links out to its maker's interpreter a prefix of its own", async () => {
+    // uv's `.venv` beside the harness's programs, and `python -m venv` making the tool tree one.
+    const layouts = [
+      { name: "uv-venv", at: ".venv", cfg: "version_info = 3.12.15", interpreter: ".venv (CPython 3.12.15)" },
+      { name: "tree-venv", at: ".", cfg: "version = 3.12.15", interpreter: ". (CPython 3.12.15)" },
+    ];
+    for (const { name, at, cfg, interpreter } of layouts) {
+      const tree = join(root, name);
+      const env = join(tree, at);
+      const site = join(env, "lib/python3.12/site-packages");
+      put(tree, { "lib/py/stats.py": "print('stats')\n" });
+      put(env, { "pyvenv.cfg": `home = /Users/someone/python/bin\n${cfg}\n` });
+      put(site, {
+        "numpy/_core.cpython-312-darwin.so": MACH_O,
+        "numpy-2.5.4.dist-info/RECORD": "numpy/_core.cpython-312-darwin.so,,\n",
+      });
+      const outside = join(root, `${name}-python3.12`);
+      writeFileSync(outside, MACH_O);
+      mkdirSync(join(env, "bin"), { recursive: true });
+      symlinkSync(outside, join(env, "bin/python3.12"));
+      symlinkSync("python3.12", join(env, "bin/python3"));
+      const { python, asked } = standIn();
+      expect(await rebuildForeignPython(tree, LINUX, python)).toStrictEqual({
+        interpreters: [interpreter],
+        distributions: ["numpy==2.5.4"],
+      });
+      expect(asked).toStrictEqual(["interpreter 3.12.15", "install numpy==2.5.4 for 3.12"]);
+      expect(readFileSync(join(env, "bin/python3"))).toStrictEqual(elf("host python"));
+      expect(existsSync(join(env, "pyvenv.cfg"))).toBe(false);
+      expect(existsSync(join(env, "lib/python3.12/os.py"))).toBe(true);
+      expect(existsSync(join(site, "pip"))).toBe(false);
+      expect(readFileSync(join(tree, "lib/py/stats.py"), "utf8")).toBe("print('stats')\n");
+      expect(readFileSync(outside)).toStrictEqual(MACH_O);
+      await foreignPrograms(tree, LINUX);
+    }
+  });
+
   it("refuses whole, naming each, a distribution with no build here, a version with no interpreter here and a program nothing installed", async () => {
     const tree = macTree("no-build");
     const original = readFileSync(join(tree, `${SITE}/numpy/_core.cpython-312-darwin.so`));
@@ -139,9 +191,18 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
     const lone = macTree("no-interpreter", { "tools/fast": MACH_O });
     const bare = standIn([], null);
     await expect(rebuildForeignPython(lone, LINUX, bare.python)).rejects.toThrow(
-      /tools\/fast, which no Python distribution or interpreter in the tree installed; py\/cp312 \(CPython 3\.12\.15\), as uv installs no CPython 3\.12\.15 built for it$/u,
+      /tools\/fast \(a Mach-O binary\), which no Python distribution or interpreter in the tree installed; py\/cp312 \(CPython 3\.12\.15\), as uv installs no CPython 3\.12\.15 built for it$/u,
     );
     expect(bare.asked).toStrictEqual(["interpreter 3.12.15"]);
+
+    // A virtual environment whose interpreter is a link to the Mac's own: no interpreter in the tree
+    // owns it, so the tree is refused whole, naming the link.
+    const venv = macTree("venv-link");
+    mkdirSync(join(venv, "venv", "bin"), { recursive: true });
+    symlinkSync("/opt/somewhere/bin/python3.14", join(venv, "venv", "bin", "python3.14"));
+    await expect(rebuildForeignPython(venv, LINUX, standIn().python)).rejects.toThrow(
+      /venv\/bin\/python3\.14 \(a link to \/opt\/somewhere\/bin\/python3\.14, outside the tree\), which no Python distribution or interpreter in the tree installed/u,
+    );
   });
 
   it("refuses a compiled file no reinstall would put back, and refills a distribution in each folder that holds it", async () => {
@@ -178,6 +239,78 @@ describe("a tool tree built on a Mac, made to run on Linux", () => {
       ),
     ).toStrictEqual([true, true]);
     expect(asked.filter((call) => call.startsWith("install"))).toHaveLength(2);
+  });
+
+  it("builds a folder that names no minor for the place's python3, and one that names its minor for that", async () => {
+    // As a reference with no interpreter of its own leaves it: a launcher that takes the machine's
+    // `python3` with a flat `--target` folder of wheels for its campaign's 3.14, and a second folder
+    // laid out for 3.14 by name.
+    const flat = (name: string) => {
+      const tree = join(root, name);
+      put(tree, {
+        "bin/python3": '#!/bin/sh\nPYTHONPATH="$(dirname "$0")/../pylib" exec python3 "$@"\n',
+        "pylib/numpy/_core.cpython-314-darwin.so": MACH_O,
+        "pylib/numpy-2.5.4.dist-info/WHEEL": "Tag: cp314-cp314-macosx_11_0_arm64\n",
+        "pylib/numpy-2.5.4.dist-info/RECORD": "numpy/_core.cpython-314-darwin.so,,\n",
+        "lib/python3.14/site-packages/wrapt/_w.cpython-314-darwin.so": MACH_O,
+        "lib/python3.14/site-packages/wrapt-2.0.dist-info/RECORD": "wrapt/_w.cpython-314-darwin.so,,\n",
+      });
+      return tree;
+    };
+    const runs = { ...LINUX, python: "3.12" };
+    const { python, asked } = standIn();
+    expect(await rebuildForeignPython(flat("flat-for-place"), runs, python)).toStrictEqual({
+      interpreters: [],
+      distributions: ["numpy==2.5.4", "wrapt==2.0"],
+    });
+    expect(asked.toSorted()).toStrictEqual(["install numpy==2.5.4 for 3.12", "install wrapt==2.0 for 3.14"]);
+    // Where the place's minor has no build, the export is refused whole and the tree keeps its bytes.
+    const none: PythonFor = {
+      interpreter: () => null,
+      install: (_target, _requirement, version) => (version === "3.12" ? "no wheel for 3.12" : null),
+    };
+    const refused = flat("flat-none");
+    const before = readFileSync(join(refused, "pylib/numpy/_core.cpython-314-darwin.so"));
+    await expect(rebuildForeignPython(refused, runs, none)).rejects.toThrow(
+      /no build of numpy==2\.5\.4 \(no wheel for 3\.12\)/u,
+    );
+    expect(readFileSync(join(refused, "pylib/numpy/_core.cpython-314-darwin.so"))).toStrictEqual(before);
+    // Wheels already built for the place's system, but for another minor than its python3, as a
+    // Builder installs with `--python-platform`: installed again for that minor, the old files gone.
+    const native = (name: string) => {
+      const tree = join(root, name);
+      put(tree, {
+        "pylib/numpy/__init__.py": "# numpy 2.5.4\n",
+        "pylib/numpy/_core.cpython-314-x86_64-linux-gnu.so": elf("numpy 314"),
+        "pylib/numpy-2.5.4.dist-info/WHEEL": "Tag: cp314-cp314-manylinux_2_27_x86_64\n",
+        "pylib/numpy-2.5.4.dist-info/RECORD":
+          "numpy/__init__.py,,\nnumpy/_core.cpython-314-x86_64-linux-gnu.so,,\nnumpy-2.5.4.dist-info/RECORD,,\n",
+      });
+      return tree;
+    };
+    const moved = native("native-other-minor");
+    expect(await rebuildForeignPython(moved, runs, standIn().python)).toStrictEqual({
+      interpreters: [],
+      distributions: ["numpy==2.5.4"],
+    });
+    expect(
+      ["_core.cpython-314-x86_64-linux-gnu.so", "_core.cpython-312-x86_64-linux-gnu.so"].map((file) =>
+        existsSync(join(moved, "pylib/numpy", file)),
+      ),
+    ).toStrictEqual([false, true]);
+    expect(await rebuildForeignPython(native("native-unknown-minor"), LINUX, standIn().python)).toBeNull();
+    // A tree that carries its own interpreter of the folder's minor reads it with that one.
+    const own = macTree("flat-with-own", {
+      "pylib/numpy/_core.cpython-312-darwin.so": MACH_O,
+      "pylib/numpy-2.5.4.dist-info/WHEEL": "Tag: cp312-cp312-macosx_11_0_arm64\n",
+      "pylib/numpy-2.5.4.dist-info/RECORD": "numpy/_core.cpython-312-darwin.so,,\n",
+    });
+    const carried = standIn();
+    await rebuildForeignPython(own, { ...LINUX, python: "3.14" }, carried.python);
+    expect(carried.asked.filter((call) => call.startsWith("install"))).toStrictEqual([
+      "install numpy==2.5.4 for 3.12",
+      "install numpy==2.5.4 for 3.12",
+    ]);
   });
 
   it("touches nothing and asks nothing of a tree whose programs already run here", async () => {

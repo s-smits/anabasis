@@ -33,6 +33,7 @@ import { Pointer } from "typebox/value";
 import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { pooled } from "../meta/pool.ts";
+import type { AnswerFile } from "./answer-files.ts";
 import { answerFormatFault, type Contract } from "./contract.ts";
 import type { LogEvent } from "./log.ts";
 import {
@@ -59,6 +60,8 @@ export interface Control {
   readonly answer: JsonValue;
   /** The check that must refuse it; null for an answer that must pass. */
   readonly refusedBy: string | null;
+  /** The files beside the answer, as a solver leaves them under its deliverables folder. */
+  readonly files?: readonly AnswerFile[];
 }
 
 /** A control answer with the checks run on it twice. */
@@ -135,8 +138,8 @@ function runControls(
     if (task === undefined) {
       throw new Error(`a control names ${control.taskId}, which the pack holds no task for`);
     }
-    const first = await decided(verify, task, control.answer);
-    return { ...control, verdicts: [first, await decided(verify, task, control.answer)] };
+    const first = await decided(verify, task, control.answer, control.files);
+    return { ...control, verdicts: [first, await decided(verify, task, control.answer, control.files)] };
   });
 }
 

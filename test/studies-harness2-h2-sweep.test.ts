@@ -387,10 +387,49 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     [capturedExecPath, SCORE, "table", "--out", out, "--tasks", `alpha/task2,${LONG}`],
     { env },
   );
+  const tabledPair = runSync(
+    [
+      capturedExecPath,
+      SCORE,
+      "table",
+      "--out",
+      out,
+      "--tasks",
+      `alpha/task2,${LONG}`,
+      "--name",
+      "heldout, k1",
+    ],
+    { env },
+  );
   const rolls = rowsOf(calls).slice(before);
   const judges = rowsOf(join(root, "judge.jsonl"));
   const record = (name: string, task: string): JsonValue =>
     readJson(join(out, "judged", name, `${task.replace("/", "__")}.json`));
+  // An arm whose reader of cut files did not run, written after every other table is printed.
+  const heldout = record("heldout", "alpha/task2");
+  if (!isRecord(heldout)) throw new Error("the fixture holds no record of heldout on alpha/task2");
+  mkdirSync(join(out, "judged", "uncounted"));
+  writeFileSync(
+    join(out, "judged", "uncounted", "alpha__task2.json"),
+    JSON.stringify({ ...heldout, arm: "uncounted", cut: null }),
+  );
+  const tabledUncounted = runSync(
+    [
+      capturedExecPath,
+      SCORE,
+      "table",
+      "--out",
+      out,
+      "--tasks",
+      `alpha/task2,${LONG}`,
+      "--name",
+      "heldout,uncounted",
+    ],
+    { env },
+  );
+  const tabledAbsent = runSync([capturedExecPath, SCORE, "table", "--out", out, "--name", "absent"], {
+    env,
+  });
   const rollsOf = (name: string) => rolls.filter((row) => text(field(row, "label")).startsWith(`${name}__`));
 
   it("starts nothing without --yes, and plans without a call under --dry-run", () => {
@@ -579,5 +618,13 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     const uncut = lines.slice(uncutAt);
     expect(uncut.filter((line) => /^ {2}heldout +score 5\/5 /u.test(line))).toHaveLength(1);
     expect(uncut.filter((line) => /^ {2}long +0 of 1 tasks scored$/u.test(line))).toHaveLength(1);
+    // Between two arms that cut nothing, the third arm's cut file takes no task out.
+    const pair = decodeOutput(tabledPair.stdout).split("\n");
+    expect(pair).toContain("fair uncut 2");
+    expect(pair.filter((line) => /^ {2}long /u.test(line))).toEqual([]);
+    // A cut nobody could count is not read as none, and a label with no records is refused.
+    expect(decodeOutput(tabledUncounted.stdout).split("\n")).toContain("fair uncut 1");
+    expect(tabledAbsent.exitCode).not.toBe(0);
+    expect(decodeOutput(tabledAbsent.stderr)).toContain(join("judged", "absent"));
   });
 });

@@ -36,10 +36,9 @@
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
-import { mainTree } from "#src/meta/git.ts";
-import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
+import { envRunsFile } from "./host-config.ts";
 import { GOES_ON, type RunState, runState } from "./state.ts";
 import { payerOf } from "./live.ts";
 import {
@@ -57,7 +56,7 @@ import {
   startRefusal,
 } from "./logins.ts";
 import type { Live } from "./live.ts";
-import { lastRun, leaveKeeper, rerun, said, start, WAIT_HOURS } from "./manage.ts";
+import { checkStart, lastRun, leaveKeeper, rerun, said, start, WAIT_HOURS } from "./manage.ts";
 import { keepers, logEvents, Misused, processes, type Run, runNamed } from "./registry.ts";
 import { stop } from "./stop.ts";
 
@@ -70,6 +69,7 @@ interface Hands {
   readonly last: () => { readonly login?: string | undefined; readonly flags: readonly string[] };
   readonly fleet: () => Promise<{ live: Live[]; unasked: string[] }>;
   readonly read: typeof readLogins;
+  readonly checkStart: (login: string | undefined, flags: readonly string[]) => Promise<void>;
   readonly stop: () => Promise<void>;
   readonly start: (login: string | undefined) => Promise<boolean>;
   readonly say: (line: string) => void;
@@ -213,10 +213,17 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
       },
       async (login) => startRefusal(hands.env, payerOf(login, flags), "here", await counted(), name) !== null,
     );
-    const full =
+    let refusal =
       target === null ? null : startRefusal(hands.env, payerOf(target, flags), "here", await counted(), name);
-    if (target === null || full !== null) {
-      const reason = full ?? (why === "" ? "no login to go on with" : why);
+    if (turn === "move" && target !== null && refusal === null) {
+      try {
+        await hands.checkStart(target, flags);
+      } catch (error) {
+        refusal = errorMessage(error);
+      }
+    }
+    if (target === null || refusal !== null) {
+      const reason = refusal ?? (why === "" ? "no login to go on with" : why);
       if (reason !== waitedOn) act(now, `${reason}; left waiting`);
       waitedOn = reason;
       askAt = now + ASK_MS;
@@ -275,6 +282,7 @@ async function keepGoing(run: Run, pool: () => Promise<readonly string[]>, waitM
     last: () => lastRun(run),
     fleet: async () => asGathered(await liveEverywhere("configured")),
     read: readNotClosed,
+    checkStart: (login, flags) => checkStart(run, rerun(flags, undefined), { login }),
     stop: () => stop([run.name, "--yes"]),
     start: (login) => start(run, rerun(lastRun(run).flags, undefined), login, undefined),
     say: (line) => console.log(line),
@@ -311,10 +319,7 @@ export async function keep(args: readonly string[]): Promise<void> {
     throw new Error("no allowed Claude login: name --logins, set ANA_LOGINS or CLAUDE_CODE_OAUTH_TOKEN");
   }
   if (values.here) {
-    const pool =
-      named === undefined
-        ? poolOf(join(mainTree(run.tree), ".env.runs"), runtimeProcess.env)
-        : async () => named;
+    const pool = named === undefined ? poolOf(envRunsFile(run.tree), runtimeProcess.env) : async () => named;
     return keepGoing(run, pool, Number(values["wait-hours"]) * HOUR_MS);
   }
   if (keepers(name).length > 0) throw new Error(`${name} is kept already`);

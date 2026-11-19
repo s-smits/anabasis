@@ -36,6 +36,16 @@ export interface Host {
   readonly prepared?: true;
 }
 
+/** One outside benchmark: the machine that rolls it (undefined for this one), its score store and
+ *  sitting command there, absolute or from its home folder, and the packs whose runs it reads. */
+export interface Bench {
+  readonly name: string;
+  readonly host: Host | undefined;
+  readonly store: string;
+  readonly sitting: string;
+  readonly packs: readonly string[];
+}
+
 /** What every remote verb carries from this machine's environment, and all an entry's `settings` may
  *  name: `ANA_HOSTS` stays here, since a peer holding it would gather every host's records. */
 export const CARRIED: readonly string[] = ["ANA_KEEP", "ANA_LOGINS", "ANA_LOGIN_RUNS", "ANA_LOGIN_SUBS"];
@@ -53,15 +63,18 @@ function settingsOf(name: string, value: unknown): Readonly<Record<string, strin
   return Object.fromEntries(entries.flatMap(([key, one]) => (isString(one) ? [[key, one] as const] : [])));
 }
 
-/** What `ANA_HOSTS` says. Set and empty, as a copied `.env.runs.example` leaves it, is unset: no host,
- *  and this machine alone. */
-function listedHosts(text: string): JsonValue {
+/** What the list setting `name` lists (`.env.runs.example`), refused as a plain error, which the CLI
+ *  reads as a refusal. Set and empty, as a copied example leaves it, is unset: nothing listed, and
+ *  for `ANA_HOSTS` this machine alone. */
+function listed(text: string, name = "ANA_HOSTS"): readonly JsonValue[] {
   if (text.trim() === "") return [];
   try {
-    return capturedJsonParse(text);
+    const value = capturedJsonParse(text);
+    if (Array.isArray(value)) return value;
   } catch (error) {
-    throw new Error(`ANA_HOSTS is not JSON: ${errorMessage(error)}`, { cause: error });
+    throw new Error(`${name} is not JSON (.env.runs.example): ${errorMessage(error)}`, { cause: error });
   }
+  throw new Error(`${name} takes a JSON list (.env.runs.example)`);
 }
 
 /** The hosts `text` lists, by default the environment's `ANA_HOSTS`. */
@@ -71,8 +84,7 @@ export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Hos
   // 28 October the sender emptied `ANA_HOSTS` instead, and a keeper started that way inherited the
   // empty list and counted no other machine's runs against a login's cap.
   if (runtimeProcess.env.ANA_HOP === "1") return [];
-  const value = listedHosts(text);
-  if (!Array.isArray(value)) throw new Error("ANA_HOSTS takes a JSON list");
+  const value = listed(text);
   const names = new Set<string>();
   return value.map((entry) => {
     const host = asRecord(entry);
@@ -129,6 +141,9 @@ export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Hos
   });
 }
 
+/** The machine settings' file, `.env.runs`, which lies in the main worktree and in no other. */
+export const envRunsFile = (root: string): string => join(mainTree(root), ".env.runs");
+
 /**
  * The hosts for a command run in `root` that loaded no env file: the environment's `ANA_HOSTS` where
  * it holds a list, else the one in the main worktree's `.env.runs`, where the bun router finds it for
@@ -137,7 +152,7 @@ export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Hos
  */
 export function hostsFor(root: string): readonly Host[] {
   if ((runtimeProcess.env.ANA_HOSTS ?? "") !== "") return hostsOf();
-  const file = join(mainTree(root), ".env.runs");
+  const file = envRunsFile(root);
   if (!existsSync(file)) return [];
   const env = Object.fromEntries(Object.entries(runtimeProcess.env).filter(([name]) => name !== "ANA_HOSTS"));
   const read = ["-e", "process.stdout.write(process.env.ANA_HOSTS ?? '')"];
@@ -157,8 +172,31 @@ export function configuredRuntime(host: Host) {
  *  here, and what `move` reads as `here`. */
 export const ownName = (): string => hostname().replace(/\..*$/u, "");
 
-export function hostNamed(name: string | undefined): Host {
-  const known = hostsOf();
+/** The benchmarks `EVAL_RUNNER` lists (`.env.runs.example`), none where unset. Until 17 November
+ *  2026 it, and `ABLATION_HOST` before it, named one machine alone, which is refused as not JSON.
+ *  A verb kept to this machine (`ANA_HOP`, `hostsOf`) reads the benchmarks rolled here alone: until
+ *  19 November 2026 it found no host for one rolled elsewhere and refused the whole verb. */
+export function benchesOf(env: Readonly<Record<string, string | undefined>> = runtimeProcess.env): Bench[] {
+  const value = listed(env.EVAL_RUNNER ?? "", "EVAL_RUNNER");
+  const known = hostsOf(env.ANA_HOSTS ?? "");
+  const names = new Set<string>();
+  return value.flatMap((entry): Bench[] => {
+    const { name, host = "here", store, sitting, packs } = asRecord(entry) ?? {};
+    const given = (word: unknown): word is string => isString(word) && word !== "";
+    if (!given(name) || !isSafePathSegment(name) || !given(host) || !given(store) || !given(sitting)) {
+      throw new Error("each EVAL_RUNNER entry needs a safe name, a store and a sitting command");
+    }
+    if (names.has(name)) throw new Error(`EVAL_RUNNER repeats ${name}`);
+    names.add(name);
+    if (!Array.isArray(packs) || packs.length === 0 || !packs.every(isString)) {
+      throw new Error(`${name}: packs takes a list of the packs whose runs it reads`);
+    }
+    if (host !== "here" && env.ANA_HOP === "1") return [];
+    return [{ name, host: host === "here" ? undefined : hostNamed(host, known), store, sitting, packs }];
+  });
+}
+
+export function hostNamed(name: string | undefined, known = hostsOf()): Host {
   const host = known.find((one) => one.name === name);
   if (host === undefined) {
     throw new Error(

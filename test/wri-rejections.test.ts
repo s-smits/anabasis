@@ -40,6 +40,9 @@ describe("rejectionRows", () => {
     const s1 = probeLines(verdictCampaign(), "s-1").join("\n");
     expect(s1).toContain("probe 1 (cited)");
     expect(s1).toContain("$.x = 2");
+    // What a changed file held on each side, and a file the changed side adds (none before).
+    expect(s1).toMatch(/file:out\.csv: was .*900.*, now .*31/u);
+    expect(s1).toMatch(/file:notes\.md: was null, now /u);
     expect(probeLines(verdictCampaign(), "s-2").join("\n")).toContain("probe rows not recorded");
   });
 

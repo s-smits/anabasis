@@ -17,9 +17,11 @@ import { type SeatTool, sit } from "../src/agent/session.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { read } from "../src/kernel/log.ts";
 import { Cancellation, type Ending, SILENT_SECONDS } from "../src/kernel/solve.ts";
-import type { Verdict } from "../src/kernel/verify.ts";
+import { openVerifier, type Verdict } from "../src/kernel/verify.ts";
+import { manifestOf, readAnswerFiles } from "../src/kernel/answer-files.ts";
 import {
   cpSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -423,6 +425,56 @@ describe("a solve's ending precedence", () => {
 
 // Independent solves run side by side under the real wall, Seatbelt or Bubblewrap.
 describe.skipIf(!walled)("a solve under the real wall", () => {
+  it("rejects a captured file's broken rule even when its JSON answer alone passes", async () => {
+    const s = setup([
+      written,
+      fauxAssistantMessage(
+        fauxToolCall("bash", { command: "mkdir deliverables; printf bad > deliverables/report.txt" }),
+        toolUse,
+      ),
+      fauxAssistantMessage(fauxToolCall("submit", {}), toolUse),
+    ]);
+    const checks = join(s.scratch, "checks");
+    mkdirSync(checks);
+    mkdirSync(join(s.scratch, "tools"));
+    writeFileSync(
+      join(checks, "brief.json"),
+      JSON.stringify({
+        correctnessContract: "check-program/v1",
+        truthChecks: [
+          {
+            id: "report",
+            execution: {
+              families: "all",
+              artifactPaths: ["$"],
+              publicInputPaths: [],
+              filePaths: ["report.txt"],
+              hidden: "none",
+              evidence: { kind: "authored" },
+            },
+          },
+        ],
+      }),
+    );
+    writeFileSync(
+      join(checks, "evaluator.ts"),
+      `export const checks = { report: req => req.artifact.answer === "42" && (req.files.length === 0 || req.files[0].text === "good") };`,
+    );
+    const verify = openVerifier({ checks, tools: join(s.scratch, "tools") });
+    expect(await verify(s.request.task, { answer: "42" })).toEqual({ kind: "pass" });
+    expect(await solve({ ...s.request, verify })).toEqual({ outcome: "fail", kind: "rejected" });
+    const verdict = s.events().find(({ kind }) => kind === "verdict")?.data;
+    const manifest = manifestOf(verdict?.files);
+    expect(manifest).toHaveLength(1);
+    expect(verdict?.blocking).toEqual(["report"]);
+    const files = readAnswerFiles(s.request.log, manifest);
+    expect(files[0]?.text).toBe("bad");
+    expect(await verify(s.request.task, verdict?.answer, undefined, files)).toEqual({
+      kind: "fail",
+      blocking: ["report"],
+    });
+    expect(readFileSync(s.request.log, "utf8")).not.toContain('"base64"');
+  });
   it.concurrent("passes on a written, submitted answer, its trace and meter read back from the log", async () => {
     const { sent, request, events, finished } = setup([searchHome, ...answer]);
     expect(await solve(request, noWait)).toEqual({ outcome: "pass" });

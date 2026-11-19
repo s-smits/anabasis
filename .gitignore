@@ -22,7 +22,7 @@ __pycache__/
 # Every deterministic reader's output over each campaign's log, one folder a campaign, replaced whole
 # when its log moves (`derivedOf`, `tools/wri/derive.ts`). The readers print hidden values: exam side.
 /data/derived/
-# The benchmark score store, copied from the machine that rolls the benchmark (`fetchBench`,
+# The benchmark score store, copied from the machine that rolls the benchmark (`fetchBenches`,
 # `tools/runs/snapshots.ts`): each task's rollout and judgement under the benchmark's own tasks.
 /data/bench/
 # The suite's recorded file timings: each checkout learns its own order from its first run

@@ -651,6 +651,19 @@ describe("bun run land", () => {
     expect(runLand(["12"], { ANA_FAKE_PULLS: ranked }).status).toBe(0);
   });
 
+  it("refuses to merge a landing that holds a draft, and proves one without marking it ready", () => {
+    const held = JSON.stringify([pull(11, "a", "main", lowerDocs), pull(12, "b", "a", upper, true)]);
+    const result = runLand(["12", "--merge"], { ANA_FAKE_PULLS: held });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("land: #12: no merge takes a draft");
+    expect(gatesRun(gateLog)).toEqual([]);
+    expect(writes()).toEqual([]);
+    rmSync(ghLog, { force: true });
+    expect(runLand(["12", "--sanitize"], { ANA_FAKE_PULLS: held }).status).toBe(0);
+    expect(statuses("mergeable")).toContain(`success ${upper}`);
+    expect(logLines(ghLog).filter((call) => call.startsWith("pr ready"))).toEqual([]);
+  });
+
   it("refuses to merge a pull request beside another open chain on main, before gating anything", () => {
     const result = runLand(["13", "--merge"], { ANA_FAKE_STACK: "", ANA_FAKE_STACK_SHA: beside });
     expect(result.status).toBe(1);

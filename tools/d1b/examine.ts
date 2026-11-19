@@ -13,8 +13,8 @@
  * what the reference's valid answers measured, whether a valid answer to it is on record, and any
  * check a ruling found at fault on an answer to it (`src/examiner/record.ts`). The home the last
  * session computed in is carried into this one, and its shell runs the engines the pack's checks run
- * (12 October). In a campaign the next ask wakes the same conversation instead (`conversing`,
- * `tools/d2/campaign-actions.ts`).
+ * (12 October). In a campaign the next ask wakes the same conversation instead, until a promotion
+ * (`conversing`, `tools/d2/campaign-actions.ts`).
  *
  * The gate solves nothing. From 12 October to 1 November it also put each draft to up to three
  * room solves by the reference harness, through the launcher a comparison uses and with each
@@ -35,15 +35,17 @@
  * a scored set's size until 12 October (`SIZE.tasks` is 24 since). Asking for many at once is what v1 found dilutes them, a probe grown to
  * 25 tasks in 10 of 13 cases (`7f0add79:docs/plan.md`).
  *
- * A copy of the reference harness is laid in the home afresh each session.
- * After a promotion the Examiner wrote drafts the reference's programs answered
- * every time, 0 of 49 held in esp32-fresh-opus, and never saw those programs. The term was off
- * unless named until 19 October, when a supply ablation on the buffer domain after its second
- * promotion, one Examiner session an arm, held 1 of 8 drafts blind for $9.22 and 4 of 8 with the
- * copy for $14.41: $9.22 a held draft against $3.60. On esp32, with no room left, both arms held
- * none (20 drafts blind, 6 with the copy). One session an arm and three room solves a draft; the
- * operator turned it on on that word. Its switch, and the one that hid who won each task, were
- * removed on 28 October: no campaign on record had set either off.
+ * The home holds no copy of the reference harness; the session tries the reference as a black box
+ * (`try_reference`). From 19 October to 18 November a copy was laid in it afresh each session.
+ * After a promotion the Examiner had written drafts the reference's programs answered every time,
+ * 0 of 49 held in esp32-fresh-opus, and never saw those programs. A supply ablation on the buffer
+ * domain after its second promotion, one Examiner session an arm, held 1 of 8 drafts blind for
+ * $9.22 and 4 of 8 with the copy for $14.41: $9.22 a held draft against $3.60. On esp32, with no
+ * room left, both arms held none (20 drafts blind, 6 with the copy). The operator turned it on on
+ * that word, and its switch went on 28 October. Both readings predate `try_reference`
+ * (4 November). The copy went on 18 November because the starter comparisons after a promotion
+ * read tasks aimed at one harness's programs, which the Starter, holding none, can win; a blind
+ * session with tries had not been read.
  *
  * Not run here: see `campaign.ts`.
  */
@@ -195,8 +197,6 @@ export async function examineCommand(
       engines: { checks: campaign.checks, tools: join(campaign.bundle, ".toolchain") },
       // The home the last session left, carried whole into this one, beside the log.
       keep: join(dirname(campaign.log), "examiner-home"),
-      // The reference harness, laid in the home to read and run.
-      reference: (await keptAs(campaign, "--reference", PROMOTED)).dir,
     },
   );
   const sets = taskSets(read(campaign.log));

@@ -73,7 +73,7 @@ import { type Sat, type SeatTool, sessionClock, sit } from "../agent/session.ts"
 import { claimRoot } from "../wall/seat-root.ts";
 import { campaignOf } from "../campaign/handover.ts";
 import { copyHarness, seedKept } from "./kept.ts";
-import { builderMemoryBlock, keepMemory, lastKept, memoryOverCapNotice, seedMemory } from "./memory.ts";
+import { builderMemoryBlock, keepMemory } from "./memory.ts";
 import { comparisonsTold, failsTold, startTold } from "./past.ts";
 import {
   continuation,
@@ -319,11 +319,6 @@ export async function session(
   writeFileSync(join(dirs.home, "resources.json"), `${capturedJsonStringify(request.resources, null, 2)}\n`);
   // The account of a harness's files is this host's, whichever harness the session forks.
   writeFileSync(join(dirs.home, "HARNESS.md"), HARNESS_ACCOUNT);
-  // The Builder's own notes: what the last session to leave any left, and v1's starters otherwise.
-  const earlier = before.flatMap(({ kind, data }) =>
-    kind === BUILD_STARTED && isString(data.session) ? [data.session] : [],
-  );
-  seedMemory(dirs.home, request.memory, lastKept(request.memory, earlier));
   seedKept(dirs.home, request.states, before, parent.digest);
   append(log, BUILD_STARTED, {
     session: request.id,
@@ -393,7 +388,15 @@ function openingFor(bench: Bench): string {
         new Map(bench.tasks.map(({ version, task }) => [version, task.taskId])),
       ),
       comparisons: comparisonsTold(campaign.steps),
-      memory: builderMemoryBlock(bench.home),
+      // The notes of the sessions this campaign started before this one, from its own store.
+      memory: builderMemoryBlock(
+        request.memory,
+        recorded
+          .slice(0, began)
+          .flatMap(({ kind, data }) =>
+            kind === BUILD_STARTED && isString(data.session) ? [data.session] : [],
+          ),
+      ),
     },
   );
 }
@@ -476,16 +479,11 @@ async function converse(
     most: limits.turns,
     // A finish or a host fault ends after the round, even beside another call in that round.
     over: () => bench.note !== null || bench.fatal !== null,
-    // v1's continuation carried the same notice: a file over its limit is cut on the next read.
     next: async () => {
       if (bench.note !== null) return null;
       const harness = await harnessNow(bench);
       const practice = isString(harness) && hasPractice(bench, read(log), harness) ? "counted" : "uncounted";
-      return [
-        continuation(used(), limits, harness, bench.said, practice),
-        memoryOverCapNotice(bench.home) ?? "",
-        campaign?.hook() ?? "",
-      ]
+      return [continuation(used(), limits, harness, bench.said, practice), campaign?.hook() ?? ""]
         .filter((part) => part !== "")
         .join("\n\n");
     },

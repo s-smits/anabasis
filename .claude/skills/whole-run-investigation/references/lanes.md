@@ -69,7 +69,7 @@ tools its own text names.
 | question | command |
 | --- | --- |
 | Which event kinds does a log hold, with which fields and on which lines? | `tools/wri/log.ts kinds --log <log> [--kind <kind>[,<kind>...]]` |
-| Which events of one or several kinds, in log order, filtered or counted by a field? | `tools/wri/log.ts events --log <log> --kind <kind>[,<kind>...] [--fields a,b.c] [--where f=v\|f!=v\|f~prefix\|f>n\|f>=n\|f<n\|f<=n]... [--count-by f[,g]] [--full]` (a row whose bounded field is absent or no number is left out and counted in the header) |
+| Which events of one or several kinds, or of every kind on a range of lines, in log order, filtered or counted by a field? | `tools/wri/log.ts events --log <log> (--kind <kind>[,<kind>...] \| --lines <from>[-<to>]) [--fields a,b.c] [--where f=v\|f!=v\|f~prefix\|f>n\|f>=n\|f<n\|f<=n]... [--count-by f[,g]] [--full]` (a row whose bounded field is absent or no number is left out and counted in the header) |
 | Every solve with its comparison, side, harness, task family, ending, turns, seconds, share of its deadline, load and bill, filtered or counted by a column? | `tools/wri/log.ts solves --log <log> [--comparison <id>] [--role old\|new\|both\|try\|practice] [--where column<op>value]... [--count-by column[,column]]` |
 | What did one seat say and call, turn by turn? | `.claude/skills/oracle-handover/scripts/slice.ts <log> 'Solver:<id>'` (also `'Builder:b-2{1-3}'`, `'Builder:b-1[compare,wait,practice]'` for those tools' turns only, `'Examiner:...'`, an event kind; `--count '<phrase>'` counts a phrase in each served result, `--whole` lifts the cut) |
 | One rejected solve: its refusing checks, the ruling, each probe and any label? | `tools/wri/rejections.ts <log> --solve <id>` |
@@ -83,6 +83,9 @@ tools its own text names.
 | Which archived campaigns were drafted from the same prompt? | `tools/wri/drafted.ts <log> --siblings` |
 | The release table from an archive of runs, with no env file? | `.claude/skills/promotion-tuner/scripts/table.ts --runs <dir>` |
 | Would the host's verifier pass this answer, or a recorded one with one field changed? | `tools/wri/wri.ts grade --log <log> (--task <taskId> --answer <file> \| --solve <id>) [--set <path>=<json>]...` (a path as `cohort.x` or `$.cohort.x`), only where a lane names it |
+
+Try `log.ts`, `slice.ts` and `calls.ts` before a `jq` of your own over a log: what they print is
+the host's own reading, and a report's line can end in the command.
 
 A script of the lane's own lives in its temporary directory and never in a campaign's folder. The
 lane guard passes `jq` over a log, a Bun script given the log's path (`bun <tmp>/x.ts <log>`) and a
@@ -795,7 +798,7 @@ Starts from `LAUNCHES (lane 26)`, `NO LAUNCH RECEIPT (lane 26)`, `HOST CODE MOVE
 Is the run the run its readings claim: fresh from a prompt, at one commit, from a clean tree, and
 continued only after a pause or a change of login (`AGENTS.md` section 10, item 9)? Each launch
 writes `launch-run-<n>.json` (`tools/runs/receipt.ts`). `LAUNCHES` counts launches, commits, dirty
-trees, logins (never named) and Bun versions; `NO LAUNCH RECEIPT` means nothing says which commit
+trees, logins (never named), Bun versions and the solver's recorded Pythons, by version and packages; `NO LAUNCH RECEIPT` means nothing says which commit
 ran. `source.txt` gives the first launch's flags, then for each later launch whether the login is the
 same or changed and which flags were added, dropped or changed, and `launches.txt` each launch's
 stretch of the log. A continuation at another commit is no fresh run; one after a credit limit is rule 15's

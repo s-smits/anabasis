@@ -38,7 +38,7 @@ import {
   testOf,
   wholePoints,
 } from "#src/kernel/compare.ts";
-import { proposalsOf } from "#src/kernel/history.ts";
+import { familiesOf } from "#src/kernel/history.ts";
 import { lastReports, pairsReported, type Reported } from "#src/kernel/reports.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { taskSets } from "#src/kernel/task.ts";
@@ -132,7 +132,7 @@ function practisedLines(
   const began = events.findLastIndex(
     ({ kind, data }, at) => at < index && kind === STARTED && data.session === session,
   );
-  const family = new Map(proposalsOf(events).map((each) => [each.version, each.family]));
+  const family = familiesOf(events);
   const practised = new Set(
     taskSets(events.slice(0, began === -1 ? index : began)).released.map((version) => family.get(version)),
   );

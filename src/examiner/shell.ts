@@ -30,7 +30,6 @@
  * and its answers are ruled on by `try_answer` alone.
  */
 import type { SeatTool } from "../agent/session.ts";
-import { copyHarness } from "../builder/kept.ts";
 import { type Engine, pinnedEngines, type VerifierTree } from "../kernel/verify.ts";
 import { read } from "../kernel/log.ts";
 import { chmodSync, cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
@@ -59,9 +58,6 @@ export interface Wall extends Walled {
    *  the folder the last session's home was copied to whole, and the next one's is seeded from.
    *  Absent, nothing is carried, as a test may want. */
   readonly keep?: string | undefined;
-  /** The reference harness's kept directory, laid in a task-writing session's home as
-   *  `reference-harness/`, and never kept. */
-  readonly reference?: string | undefined;
 }
 
 /** A wall as its session is handed it: the shell, the engines installed in it, and when
@@ -74,9 +70,6 @@ export interface Walls {
    *  conversation rests loses no ask's files. */
   readonly keep: () => void;
 }
-
-/** Where the reference harness lies in a task-writing session's home. */
-export const REFERENCE_HOME = "reference-harness";
 
 /** Where an Examiner session's shell runs: a root of its own, as a Builder's. A drafting
  *  session's id (`d-N`) and a task-writing one's (`x-N`) never meet. */
@@ -99,12 +92,6 @@ export async function examinerShell(shell: CommandWall | undefined, enters: stri
   );
 }
 
-/** The reference harness laid in an Examiner's home, in place of any copy there. */
-export function layReference(reference: string, home: string): void {
-  rmSync(join(home, REFERENCE_HOME), { recursive: true, force: true });
-  copyHarness(reference, join(home, REFERENCE_HOME));
-}
-
 /** `run` with an Examiner's shell under the solver's command wall, and the engines installed in
  *  it: claim its root, install the engines the wall names, seed the home, run, keep the home, tear
  *  down.
@@ -121,7 +108,7 @@ export async function inExaminerWall<T>(
 ): Promise<T> {
   const began = performance.now();
   const dirs = examinerDirs(log, id);
-  const { engines, keep, reference } = wall;
+  const { engines, keep } = wall;
   const pinned = engines === undefined ? [] : pinnedEngines(engines);
   const reopened = engines === undefined || pinned.length === 0 ? [] : [engines.tools];
   const tree = join(dirs.kept, "engines");
@@ -143,17 +130,10 @@ export async function inExaminerWall<T>(
     const { home } = dirs;
     const carry = { recursive: true, verbatimSymlinks: true } as const;
     if (keep !== undefined && existsSync(keep)) cpSync(keep, home, carry);
-    // A kept state names its programs by a link to the campaign's store, which the wall closes, so
-    // they are laid as files, as in a Builder's `kept/`; every other link stays a link. Until
-    // 26 October every link was followed by the host, so one a Builder left in a harness that was
-    // promoted laid what it named in the Examiner's home, whatever the walls closed.
-    if (reference !== undefined) layReference(reference, home);
     const kept = () => {
       if (keep === undefined) return;
       rmSync(keep, { recursive: true, force: true });
       cpSync(home, keep, carry);
-      // The copy is the session's own, so a session with the term off never opens on one.
-      rmSync(join(keep, REFERENCE_HOME), { recursive: true, force: true });
     };
     const result = await run({ shell, pinned, began, keep: kept });
     // The campaign's copy of a session's home, made whole when the session ends and replacing the

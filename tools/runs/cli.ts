@@ -32,6 +32,7 @@ import { loadwatch } from "./loadwatch.ts";
 import { active, logins } from "./logins.ts";
 import { continueRun, launch, pause } from "./manage.ts";
 import { copy, fetch, move } from "./move.ts";
+import { evalOf, outside, readEach } from "./outside.ts";
 import { runsStatus, watch } from "./pulse.ts";
 import { source } from "./receipt.ts";
 import { rehearse } from "./rehearse.ts";
@@ -201,6 +202,11 @@ const GROUPS = {
       file: "rehearse.ts",
       says: "run a round over a seed with a script in each model seat",
     },
+    outside: {
+      run: outside,
+      file: "outside.ts",
+      says: "export a run's reference, carry it to the benchmark's machine and roll it beside a Starter",
+    },
   },
 } satisfies Record<string, Record<string, Verb>>;
 const VERBS: Record<string, Verb> = Object.fromEntries(
@@ -336,12 +342,16 @@ if (HELP.has(verb)) {
   console.log(helpOf(verb, chosen));
 } else {
   try {
-    const { here, away } = await routed(verb, args);
+    // `pause --eval` reads the run outside once it rests, from here, where `.env.runs` lists the
+    // benchmarks: a peer that holds the run only pauses it.
+    const { passed, reads } = verb === "pause" ? evalOf(args) : { passed: args, reads: [] };
+    const { here, away } = await routed(verb, passed);
     for (const [host, words] of away) {
       const code = await (verb === "continue" ? continueOn(host, words) : verbOn(host, words));
       if (code !== 0) runtimeProcess.exitCode = code;
     }
     if (here !== null) await chosen.run(here);
+    if ((runtimeProcess.exitCode ?? 0) === 0) await readEach(reads);
   } catch (error) {
     if (!refusal(error)) throw error;
     // A misuse is answered with the verb's usage, under what was wrong where the verb says it.

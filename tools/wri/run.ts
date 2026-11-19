@@ -79,7 +79,9 @@ function draftTriggers(log: Index): Trigger[] {
 }
 
 /** Lane 26: the launches beside the log, where there is more than one, more than one commit, a
- *  dirty tree, or a campaign command that left no receipt. */
+ *  dirty tree, or a campaign command that left no receipt. It counts the solver's Python by version
+ *  and packages, among the receipts that hold one: on 17 November a host's pin moved both between
+ *  two launches at one commit, on one login and one Bun, and the line said nothing of it. */
 function launchTriggers(log: Index, launches: readonly Receipt[]): Trigger[] {
   if (launches.length === 0) {
     return firedIf(
@@ -92,10 +94,13 @@ function launchTriggers(log: Index, launches: readonly Receipt[]): Trigger[] {
   const dirty = launches.filter((launch) => launch.dirty).length;
   const logins = new Set(launches.map((launch) => launch.login ?? "unnamed"));
   const buns = new Set(launches.map((launch) => launch.bun ?? "unrecorded"));
+  const pythons = new Set(
+    launches.flatMap(({ python }) => python ?? []).map((python) => JSON.stringify(python)),
+  );
   return firedIf(
     launches.length > 1 || dirty > 0,
     "LAUNCHES",
-    `${String(launches.length)} launch${launches.length === 1 ? "" : "es"} at ${plural(commits.size, "commit")} (${[...commits].join(", ")}), ${String(dirty)} from a dirty tree, under ${plural(logins.size, "login")} and ${plural(buns.size, "Bun version")}`,
+    `${String(launches.length)} launch${launches.length === 1 ? "" : "es"} at ${plural(commits.size, "commit")} (${[...commits].join(", ")}), ${String(dirty)} from a dirty tree, under ${plural(logins.size, "login")}, ${plural(buns.size, "Bun version")} and ${plural(pythons.size, "recorded Python")} for the solver`,
   );
 }
 

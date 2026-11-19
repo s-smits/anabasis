@@ -11,8 +11,9 @@
  * session proposes many tasks. The id, the root and the home are the wall's (`inExaminerWall`,
  * `shell.ts`), which seeds a writing session's home and carries it on.
  *
- * A writing session receives a copy of the reference harness in its home (`shell.ts`). Neither
- * mode receives a solver's trace or answer. Its shell is a walled home, closed to the repository.
+ * Neither mode receives the reference harness's guide or programs, nor a solver's trace or answer:
+ * a writing session tries the reference as a black box (`try_reference`). Until 18 November its
+ * home also held a copy of the reference harness (`tools/d1b/examine.ts`). Its shell is a walled home, closed to the repository.
  *
  * The session clock charges setup and every turn and tool call except a drafting session's wait for
  * the host's reading of a draft, which is the verifier's time (`drafting`), and kill
@@ -38,7 +39,7 @@ import { plural } from "../meta/text.ts";
 import { ending, text, tool } from "../tools/answer.ts";
 import { walledEnv } from "../tools/env.ts";
 import { drafting } from "./draft.ts";
-import { examinerShell, inExaminerWall, layReference, type Wall, type Walls } from "./shell.ts";
+import { examinerShell, inExaminerWall, type Wall, type Walls } from "./shell.ts";
 import { writing } from "./write.ts";
 
 type Clock = ReturnType<typeof sessionClock>;
@@ -69,11 +70,9 @@ interface Sitting {
   readonly rest?: ((examined: Examined) => Promise<Ask | null>) | undefined;
 }
 
-/** The next ask of a resting conversation, as the examine command built it. */
-export interface Ask {
-  readonly request: Extract<ExamRequest, { readonly mode: "write" }>;
-  readonly wall?: Wall | undefined;
-}
+/** The next ask of a resting conversation, as the examine command built it. Its wall is the
+ *  conversation's, which closes only when the conversation does. */
+export type Ask = Extract<ExamRequest, { readonly mode: "write" }>;
 
 /** An ask's end at its rest: what the next ask is told, or null where the conversation ends. */
 type Rest = (ended: "finished" | "supplied") => Promise<string | null>;
@@ -130,7 +129,7 @@ interface Mode {
   readonly counted: () => JsonObject;
   readonly result: () => Omit<Examined, "ended">;
   /** Takes in the next ask and says what it is told. */
-  readonly ask?: (next: Ask["request"]) => string;
+  readonly ask?: (next: Ask) => string;
 }
 
 /** What `finish` leaves the loop: the note, and what the mode had counted at the last declined one. */
@@ -282,15 +281,12 @@ async function examining(
         rested = result;
         return null;
       }
-      // A promotion while the conversation rested changed the reference its home holds.
-      const laid = next.wall?.reference;
-      if (laid !== undefined && walls !== undefined) layReference(laid, walls.shell.dirs.home);
-      [current, from, began] = [next.request, turns.length, performance.now()];
+      [current, from, began] = [next, turns.length, performance.now()];
       Object.assign(said, { note: null, declined: null });
       clock = clocked();
-      const woken = asking(next.request);
+      const woken = asking(next);
       start();
-      next.request.opened?.();
+      next.opened?.();
       return woken;
     };
     // The ask's clock in force, whichever ask a call runs in.
@@ -376,8 +372,8 @@ async function examining(
 /**
  * One Examiner session in the mode its request names. With a `wall` it has a shell under the
  * solver's command wall (`shell.ts`), and its time is counted from before its root is claimed;
- * without one it has no shell and computes nothing. A drafting session is given no engines and no
- * reference harness, since nothing is drafted yet that names one, and its home is kept for the first
+ * without one it has no shell and computes nothing. A drafting session is given no engines, since
+ * nothing is drafted yet that names one, and its home is kept for the first
  * writing session (5 November). A run killed before the
  * session began, and an id a session of the log already took, claim nothing and start nothing.
  */
@@ -386,24 +382,24 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
   if (examinerSessions(read(request.log)).has(request.id)) {
     throw new Error(`session ${request.id} is in the log already; a session's id names one session`);
   }
-  const reference = wall?.reference === undefined ? "unseen" : "in-home";
   const seated = async (walls?: Walls) =>
     examining(
       request,
       (stop, within, resting) =>
         request.mode === "draft"
           ? drafting(request, within)
-          : writing(request, walls, reference, { stop, within, rest: resting }),
+          : writing(request, walls, { stop, within, rest: resting }),
       walls,
     );
   if (wall === undefined) return await seated();
-  const walled = request.mode === "draft" ? { ...wall, engines: undefined, reference: undefined } : wall;
+  const walled = request.mode === "draft" ? { ...wall, engines: undefined } : wall;
   return await inExaminerWall(request, walled, seated);
 }
 
 /** The Examiner's asks as one conversation (5 November): each later ask wakes it where it rests,
  *  and where it crashed or met a limit the next opens afresh from the log (`record.ts`). An ask is
- *  answered at its own end or at the conversation's; `close` ends a resting one. */
+ *  answered at its own end or at the conversation's; `close` ends a resting one, as the host does
+ *  at the first ask after a promotion (`examineAction`). */
 export function conversing(sitting: Session<"write">) {
   let live: {
     settle: (examined: Examined) => void;
@@ -415,7 +411,7 @@ export function conversing(sitting: Session<"write">) {
     if (live?.wake != null) {
       const { wake } = live;
       [live.settle, live.wake] = [answered.resolve, null];
-      wake({ request, wall });
+      wake(request);
       return await Promise.race([answered.promise, live.conversed]);
     }
     const rest = async (examined: Examined) => {

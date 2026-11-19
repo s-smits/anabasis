@@ -15,7 +15,7 @@ import {
   MODULE_FILE,
   placeHarness,
 } from "../studies/shared/bundle.ts";
-import { exportForClaudeCode } from "../studies/shared/claude-export.ts";
+import { exportForClaudeCode, ownPython } from "../studies/shared/claude-export.ts";
 import { harnessIn, keyless, RESULT_FILE, TRACE_FILE } from "../studies/shared/pi-solve.ts";
 import { type Agent, type Claude, inGroup, REFUSED, rollout } from "../studies/harness2/h2/claude.ts";
 import { installTree } from "../studies/harness2/h2/tree.ts";
@@ -32,6 +32,7 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
@@ -41,7 +42,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
-import { openHarness } from "../src/harness/open.ts";
+import { openHarness, treeContent } from "../src/harness/open.ts";
 import { EXAMPLE, HOST_ONLY, writeStarter } from "../src/harness/starter.ts";
 import { writeHarness } from "./helpers/write-harness.ts";
 
@@ -162,6 +163,15 @@ describe("the harness's own tools, served in the container", () => {
       harnessIn({ harness: broken, module: failing, instruction: "Fix it." }, env, clock()),
     ).rejects.toThrow("no engine here");
   });
+
+  it("loads as one compiled file, where no file of the tree is beside it", () => {
+    // Until 19 November the answer tool read its capture program from beside itself as it loaded,
+    // which a compiled solver does not hold, so the solver ended before it read a flag.
+    const solver = join(root, "pi-solve-here");
+    const source = join(import.meta.dir, "..", "studies", "shared", "pi-solve.ts");
+    runSync([capturedExecPath, "build", "--compile", source, "--outfile", solver]);
+    expect(decodeOutput(runSync([solver], { cwd: root }).stderr)).toContain("pi-solve needs --harness");
+  }, 120_000);
 
   const native = runtimeProcess.platform === "linux" && runtimeProcess.arch === "x64";
   it.skipIf(!native)(
@@ -333,10 +343,22 @@ describe("a harness's programs, checked against the container", () => {
     mkdirSync(join(tree, "venv", "bin"), { recursive: true });
     writeFileSync(join(tree, "fine"), "#!/bin/sh\necho ok\n");
     writeFileSync(join(tree, "linux"), elf(62));
+    // A link that stays in the tree is carried with what it names, to a file or to a folder.
+    symlinkSync("fine", join(tree, "venv", "bin", "sh"));
+    symlinkSync("bin", join(tree, "venv", "lib64"));
     await foreignPrograms(tree);
     writeFileSync(join(tree, "venv", "bin", "tool"), "#!/private/tmp/venv/bin/python\n");
     writeFileSync(join(tree, "mac"), head(0xcf, 0xfa, 0xed, 0xfe));
     await expect(foreignPrograms(tree)).rejects.toThrow(/mac \(a Mach-O binary\), venv\/bin\/tool/u);
+    // A link out of the tree leads nowhere on another machine, by an absolute path or one above it.
+    const links = join(root, "links");
+    mkdirSync(join(links, "bin"), { recursive: true });
+    symlinkSync("/opt/somewhere/python3.14", join(links, "bin", "python3.14"));
+    symlinkSync("../../outside", join(links, "bin", "up"));
+    symlinkSync("..", join(links, "parent"));
+    await expect(foreignPrograms(links, HERE)).rejects.toThrow(
+      /bin\/python3\.14 \(a link to \/opt\/somewhere\/python3\.14, outside the tree\), bin\/up \(a link to \.\.\/\.\.\/outside, outside the tree\), parent \(a link to \.\., outside the tree\)/u,
+    );
   });
 
   it("leaves no mount behind when a bundle fails, so the next attempt is not refused as made", async () => {
@@ -350,10 +372,47 @@ describe("a harness's programs, checked against the container", () => {
 });
 
 describe("a harness written out for Claude Code", () => {
+  it("installs a tree into a task's workspace with its links as links, its modes and nothing it generates", () => {
+    const tree = join(root, "linked-tree");
+    const toolchain = join(tree, "scripts", "toolchain");
+    mkdirSync(join(toolchain, "bin"), { recursive: true });
+    mkdirSync(join(toolchain, "lib", "pkg", "__pycache__"), { recursive: true });
+    mkdirSync(join(tree, ".claude"), { recursive: true });
+    writeFileSync(join(tree, "CLAUDE.md"), "# Guide\n");
+    writeFileSync(join(toolchain, "bin", "python3"), "#!/bin/sh\necho own\n", { mode: 0o755 });
+    writeFileSync(join(toolchain, "lib", "pkg", "mod.py"), "X = 1\n");
+    writeFileSync(join(toolchain, "lib", "pkg", "__pycache__", "mod.pyc"), "compiled");
+    writeFileSync(join(tree, ".claude", "settings.json"), '{"hooks": "of the tree"}\n');
+    // A link to a file, a link to a folder, as a virtual environment's `lib64 -> lib`, and one that
+    // leads nowhere: the copy file by file wrote the first out as its target and dropped the others.
+    symlinkSync("python3", join(toolchain, "bin", "python"));
+    symlinkSync("lib", join(toolchain, "lib64"));
+    symlinkSync("/nowhere/python3.14", join(toolchain, "bin", "python3.14"));
+    // The workspace already holds the task, as a rollout's does when it stages the tree.
+    const workspace = join(root, "linked-workspace");
+    mkdirSync(join(workspace, "task"), { recursive: true });
+    writeFileSync(join(workspace, "task", "prompt.md"), "the task\n");
+    installTree(tree, workspace);
+    const content = (dir: string) => treeContent(dir).filter(({ path }) => !path.includes("__pycache__"));
+    expect(content(join(workspace, "scripts"))).toStrictEqual(content(join(tree, "scripts")));
+    expect(treeContent(join(workspace, "scripts")).some(({ path }) => path.includes("__pycache__"))).toBe(
+      false,
+    );
+    expect(readFileSync(join(workspace, "scripts", "toolchain", "lib64", "pkg", "mod.py"), "utf8")).toBe(
+      "X = 1\n",
+    );
+    expect(readFileSync(join(workspace, "task", "prompt.md"), "utf8")).toBe("the task\n");
+    // The settings Claude Code reads are the installer's, never the tree's own.
+    expect(readFileSync(join(workspace, ".claude", "settings.json"), "utf8")).toBe("{}\n");
+    expect(readFileSync(join(workspace, "CLAUDE.md"), "utf8")).toBe("# Guide\n");
+  });
+
   it("makes the guide CLAUDE.md, copies the programs under scripts and names the harness's own tools as unavailable", async () => {
     const programs = {
       ...tooled().programs,
       cat: "#!/bin/sh\necho the harness's cat\n",
+      stage:
+        "#!/bin/sh\n# stage [public/task.json] [--out DIR]\n#\n# Writes each input file of the task to DIR.\ncat public/task.json\n",
       "python3.12": "#!/bin/sh\necho the harness's interpreter\n",
     };
     const own = `# Operating Guide\n\n## Programs and tools\n- mark: prints marked.\n\n## Domain notes\nA mark counts once.\n\n${HOST_ONLY}\nAn answer over three lines is not valid.\n`;
@@ -365,7 +424,12 @@ describe("a harness written out for Claude Code", () => {
     expect(record.unavailable).toStrictEqual(["doubled"]);
     const guide = readFileSync(join(into, "CLAUDE.md"), "utf8");
     expect(guide).toContain("doubled. They are not available here");
-    expect(guide).toContain("Its programs run by name, as the guide names them: cat, mark. Their folders");
+    expect(guide).toContain("Its programs run by name, as the guide names them; each is listed below");
+    expect(guide).toContain("This runner has no `input.json`, `public/` folder or `answer.json`");
+    // Each program in PATH order with the first line of its own account, and one that gives none by
+    // its name alone: what a program opens is said by the program, and no reading of its text decides it.
+    expect(guide).toContain("\n- cat\n- mark\n- stage: stage [public/task.json] [--out DIR]\n");
+    expect(guide).not.toContain("Writes each input file");
     expect(guide).toContain("(`scripts/toolchain/bin`) are on your PATH behind this machine's own programs");
     // No interpreter is named, the tool tree's own among its programs neither: a note that named
     // the harness's sent a solver to it for a look.
@@ -383,6 +447,7 @@ describe("a harness written out for Claude Code", () => {
     // machine has too still starts the machine's.
     const workspace = join(root, "claude-tooled-workspace");
     installTree(into, workspace);
+    expect(existsSync(join(workspace, ".claude", "hooks.json"))).toBe(false);
     const settings = parseJsonAs<{ hooks: { SessionStart: [{ hooks: [{ command: string }] }] } }>(
       readFileSync(join(workspace, ".claude", "settings.json"), "utf8"),
     );
@@ -436,9 +501,45 @@ describe("a harness written out for Claude Code", () => {
     }
     const mac = { name: "a Mac", mac: true, machine: 183, roots: null };
     await expect(exportForClaudeCode(join(root, "claude-native-mac"), source, mac, python)).rejects.toThrow(
-      /on a Mac: bin\/native, which no Python distribution or interpreter in the tree installed/u,
+      /on a Mac: bin\/native \(an ELF binary for machine 62\), which no Python distribution or interpreter in the tree installed/u,
     );
     expect(existsSync(join(root, "claude-native-mac"))).toBe(false);
+  });
+
+  it("refuses a tree whose own python3 cannot start here, and counts what one that starts imports", async () => {
+    const tree = (name: string, launcher: string) => {
+      const dir = join(root, name);
+      const site = join(dir, "scripts", "toolchain", "lib", "python3.99", "site-packages");
+      mkdirSync(join(dir, "scripts", "toolchain", "bin"), { recursive: true });
+      mkdirSync(join(site, "fine-1.0.dist-info"), { recursive: true });
+      writeFileSync(join(dir, "scripts", "toolchain", "bin", "python3"), launcher, { mode: 0o755 });
+      writeFileSync(join(site, "fine.py"), "X = 1\n");
+      writeFileSync(join(site, "broken.py"), "import a_module_no_machine_has\n");
+      writeFileSync(join(site, "fine-1.0.dist-info", "RECORD"), "fine.py,,\nbroken.py,,\n");
+      return dir;
+    };
+    const env = { PATH: runtimeProcess.env.PATH ?? "" };
+    // The launcher a Mac-built reference carried: its campaign machine's interpreter, by path.
+    const named = tree("own-python-named", '#!/bin/sh\nexec /nowhere/bin/python3.14 "$@"\n');
+    await expect(ownPython(named, env)).rejects.toThrow(
+      /bin\/python3 cannot start here \(exit 12[67]: .*\/nowhere\/bin\/python3\.14/u,
+    );
+    // The launcher that takes the machine's interpreter with the tree's packages on its path.
+    const site = '$(dirname "$0")/../lib/python3.99/site-packages';
+    const taken = tree("own-python-taken", `#!/bin/sh\nPYTHONPATH="${site}" exec python3 "$@"\n`);
+    expect(await ownPython(taken, env)).toMatch(
+      /^its python3 is 3\.\d+\.\d+ and imports 1 of 2 of its modules, not broken$/u,
+    );
+    // A module whose import ends the interpreter, as a native one built for another minor can: the
+    // count is said to have ended, and the read is not refused.
+    writeFileSync(
+      join(taken, "scripts", "toolchain", "lib", "python3.99", "site-packages", "broken.py"),
+      "import os\nos._exit(3)\n",
+    );
+    expect(await ownPython(taken, env)).toBe(
+      "its python3 starts, and the count of its modules ended (exit 3: )",
+    );
+    expect(await ownPython(join(root, "claude-starter-less"), env)).toBeNull();
   });
 
   it("writes the starter's guide under the note with no tool or program line, and refuses a tree already made", async () => {

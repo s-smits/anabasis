@@ -11,7 +11,7 @@
 import { epochsOf } from "#src/campaign/climb.ts";
 import { startOf } from "#src/campaign/comparison.ts";
 import { objectiveRuleIn, pairsOf, type Paired } from "#src/kernel/compare.ts";
-import { failWrongPasses, proposalsOf, wrongPasses } from "#src/kernel/history.ts";
+import { failWrongPasses, familiesOf, wrongPasses } from "#src/kernel/history.ts";
 import { type EventKind, type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports, pairsReported, type Reported } from "#src/kernel/reports.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
@@ -160,7 +160,7 @@ export function comparisonsIn(name: string, events: readonly LogEvent[]): Compar
   const finished = new Map(solvesIn(events).map(({ id, end }) => [id, end]));
   const opened = Date.parse(events[0]?.at ?? "");
   const reports = lastReports(events);
-  const families = new Map(proposalsOf(events).map(({ version, family }) => [version, family]));
+  const families = familiesOf(events);
   const epochs = epochsOf(events);
   const promotions = events.flatMap(({ kind, data }, index) =>
     kind === "harness.promoted" && isString(data.harness) ? [{ index, harness: data.harness }] : [],

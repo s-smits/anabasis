@@ -18,7 +18,10 @@ have not just read at its source: check a description against the source at the 
 correct it in the change that finds it wrong, verify a finding before acting on it, and correct a
 wrong statement to whoever heard it. Resolve routine ambiguity by the most reasonable reading and
 report the choice with what would overturn it; ask only for missing permission or a decision of
-section 3, with the result ready, and answer each question asked. Carry authorised work through
+section 3, with the result ready, and answer each question asked. Where several tasks stand at
+once, or a second arrives a minute after the first, start first the one that then runs longest
+without you (a run, a simulation, a rollout), unless it depends heavily on another, and do the
+others while it runs. Carry authorised work through
 checks and delivery, and report it against the aim: the rung reached (section 9) and what is left,
 counted. An audit, review or plan asked for on its own stays read-only. Backlog work gets one file,
 `docs/backlog/<subject>.md`: the intended changes, then their history in the operator's words.
@@ -172,8 +175,18 @@ Each seat has one job and a closed view:
 
 A **harness** is a directory (`agent/tools-spec.json`, `.toolchain/`, the guide
 `agent/BUILT_AGENTS.md`, `agent/tools.ts`) whose digest is its identity. The **Starter Built
-Harness** (`src/harness/starter.ts`) is the first reference and the fixed baseline. Every solve runs
-inside a harness, so never write "with or without a harness".
+Harness** (`src/harness/starter.ts`) is the first reference and the fixed baseline: pi's coding
+agent as released, its four coding tools and the starter instructions as its guide. Three names
+keep its uses apart, each in one meaning:
+
+- the **Starter**, also the **bareSolver**: the solver under the Starter Built Harness, the
+  baseline a reading is set against, in a campaign and on an outside benchmark (`--arm starter`);
+- the **Starter Pack**: what a campaign begins from, the Starter Built Harness with the account of a
+  harness's files (`HARNESS.md`) that the Builder is handed beside it;
+- the **builtSolver**: the solver under a harness a Builder built, such as a campaign's promoted
+  reference.
+
+Every solve runs inside a harness, so never write "with or without a harness".
 
 ### What waits for the operator
 
@@ -199,8 +212,8 @@ back; a launch on a numbered login lets the run's keeper pick the paying account
 ## 4. The Harness Builder
 
 One Builder conversation leads the campaign (`tools/d2/harness-builder.ts`) with `examine`,
-`compare`, `campaign_status` and `wait`, beside one Examiner conversation. Code enforces endings,
-releases practice and promotes what a step names. Three invariants:
+`compare`, `campaign_status` and `wait`, beside one Examiner conversation an epoch. Code enforces
+endings, releases practice and promotes what a step names. Three invariants:
 
 - a comparison reads the harness it froze, and a step promotes that one;
 - an unchanged harness is compared again only where the move table names it, since a second draw is
@@ -224,8 +237,8 @@ their conditions differ in the one thing compared.
 
 The log holds hidden values, so it stays out of prompts, PRs and pastes. `bun run runs retire`
 moves a campaign idle for a day into `data/runs/`, deletes an idle seed that no paid launch went on
-from, and takes a campaign archived on the host `ABLATION_HOST` names into the central archive,
-deleting it there once the copy matches byte for byte; nothing else deletes a log. A copy of a
+from, and takes a campaign archived on a host that rolls a benchmark (`EVAL_RUNNER`) into the
+central archive, deleting it there once the copy matches byte for byte; nothing else deletes a log. A copy of a
 campaign on another host holds its record and each kept harness's own files, never the packages a
 seat installed (`installs`, `tools/runs/snapshots.ts`), so it is read and never run.
 
@@ -376,13 +389,13 @@ both, surgical ones above all, plausibly generalises. Until jobstat climbs, put 
 before v1.0, read the other domains' newest runs against their past ones, find the change behind
 any regression and repair it.
 
-**The outside aim.** Each jobstat run's newest promoted reference is also read on JobBench at its
-second promotion, detached and before its audit, or after its audit where a run with one promotion
-stops, under that benchmark's own judge
-(`studies/harness2/`), against three baselines kept apart: the Starter, exported (Anabasis's pack
-on the bareSolver, which is Pi Durable's coding agent as released), stock Claude Code with an empty
-guide (Harness²'s Base) and Harness²'s held-out arm. The operator's aims, in order, are a built
-harness above the Starter, level with the held-out arm, then above it. Read a deficit as a difference in conditions first (what the export carries and tells
+**The outside aim.** Each jobstat run's newest promoted reference is also read on JobBench, without
+a question, at each pause the run rests at from its second promotion on, detached and before its
+audit, or after its audit where a run with one promotion stops, under that benchmark's own judge
+(`studies/harness2/`), against three baselines kept apart: the Starter (the bareSolver, section
+3), exported, stock Claude Code with an empty guide (Harness²'s Base) and Harness²'s held-out arm.
+The operator's aims, in order, are a builtSolver above the bareSolver, level with the held-out arm,
+then above it. Read a deficit as a difference in conditions first (what the export carries and tells
 the solver, the interpreter and its packages, the day) and as the harness only once those are equal;
 a difference inside the Starter's spread between rollouts is no reading, and each arm is rolled
 afresh after a change to the export or the scoring. run-improvement-campaign ("The outside aim")
@@ -408,8 +421,9 @@ load, not yet noise. Report wall-test failures from unavailable user namespaces 
 
 ### What you never touch
 
-`.ana/`, `data/runs/`, a pack, a check program, a kept harness, `.env` and any credential, and
-installed dependencies. `vendor/` changes only by a **sed**: upstream copied verbatim, with its path
+`.ana/` (but for `.ana/wri/`, where an investigation and a cycle keep their own files),
+`data/runs/`, a pack, a check program, a kept harness, `.env` and any credential, and installed
+dependencies. `vendor/` changes only by a **sed**: upstream copied verbatim, with its path
 and commit cited and each local change listed.
 
 ### The stack and pull requests

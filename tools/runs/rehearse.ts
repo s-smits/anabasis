@@ -64,14 +64,15 @@ import {
   type FauxResponseFactory,
 } from "@earendil-works/pi-ai";
 import type { Control } from "#src/kernel/acceptance.ts";
-import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
+import { DELIVERABLES, readAnswerFiles } from "#src/kernel/answer-files.ts";
+import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
 import { examinerSessions, verdictsOf } from "#src/kernel/solves.ts";
 import type { Task } from "#src/kernel/verify.ts";
 import { type Examined, examine, type Session } from "#src/examiner/session.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
-import { asRecord, isFunction, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
+import { asRecord, isFunction, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -179,19 +180,28 @@ function endOf(word: string): End | undefined {
  * check rejected. `graded` are the pack's, the accepted ones first: a stored solve the sweep graded
  * a pass comes before the pack's own accept control answer, which can be stale. On the truss pack every
  * accept control answer of four tasks was rejected by four to seven checks (2026-10-08). The log answers
- * for the tasks no pack holds: every answer a verdict of it accepted or rejected, so a task a
- * session wrote can be scripted once some solve has answered it.
+ * for the tasks no pack holds: every answer a verdict of it accepted or rejected, with the files it
+ * delivered from the campaign's store, so a task a session wrote can be scripted once some solve
+ * has answered it.
  */
-export function answersOf(graded: readonly Control[], events: readonly LogEvent[]) {
-  const solved = [...verdictsOf(events).values()].flatMap(({ task, answer, checker }) =>
-    task === null || answer === undefined || checker === null || checker.kind === "faulty"
+export function answersOf(graded: readonly Control[], log: string | null) {
+  const verdicts = log === null ? [] : [...verdictsOf(read(log)).values()];
+  const solved = verdicts.flatMap(({ task, answer, files, checker }) =>
+    log === null || task === null || answer === undefined || checker === null || checker.kind === "faulty"
       ? []
-      : [{ taskId: task, answer, refusedBy: checker.kind === "pass" ? null : "a check" }],
+      : [
+          {
+            taskId: task,
+            answer,
+            files: readAnswerFiles(log, files ?? []),
+            refusedBy: checker.kind === "pass" ? null : "a check",
+          },
+        ],
   );
-  const known = new Map<string, Partial<Record<"pass" | "fail", JsonValue>>>();
-  for (const { taskId, answer, refusedBy } of [...graded, ...solved]) {
-    const end = refusedBy === null ? "pass" : "fail";
-    known.set(taskId, { [end]: answer, ...known.get(taskId) });
+  const known = new Map<string, Partial<Record<"pass" | "fail", Control>>>();
+  for (const control of [...graded, ...solved]) {
+    const end = control.refusedBy === null ? "pass" : "fail";
+    known.set(control.taskId, { [end]: control, ...known.get(control.taskId) });
   }
   return known;
 }
@@ -268,7 +278,7 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
         `${folder} is no seed: a rehearsal writes scripted solves, which a campaign's next round would count. Copy it first with bun run runs seed`,
       );
     }
-    const answers = answersOf(graded, read(campaign.log));
+    const answers = answersOf(graded, campaign.log);
     const least = starter(campaign);
     /** How a script puts a file in the solver's home under each harness, by the harness's folder:
      *  through its shell where the harness selects one, so that each rehearsed solve runs a command
@@ -307,19 +317,32 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
           ...answers.get(task.taskId),
           ...answers.get(contentOf(task)),
         };
-        const answer = wanted === "none" ? null : asRecord(known[wanted]);
+        const control = wanted === "none" ? undefined : known[wanted];
+        const answer = asRecord(control?.answer);
         const missing = wanted !== "none" && answer === null;
         if (missing) {
           strayed.push(
             `${task.taskId} has no answer on record that the checks ${wanted === "pass" ? "accepted" : "rejected"}, so the script gave none`,
           );
         }
-        const content = JSON.stringify(answer);
-        const written: readonly [string, JsonObject] = (await selectedOf(harness.dir)).includes("bash")
-          ? ["bash", { command: `printf %s ${shellQuote(content)} > ${ANSWER_FILE}` }]
-          : ["write", { path: ANSWER_FILE, content }];
+        const shell = (await selectedOf(harness.dir)).includes("bash");
+        const put = (path: string, content: string): readonly [string, JsonObject] => {
+          if (!shell) return ["write", { path, content }];
+          // The answer file sits in the working directory; a delivered file needs its folder made.
+          const made = path === ANSWER_FILE ? "" : `mkdir -p "$(dirname ${shellQuote(path)})" && `;
+          const into = path === ANSWER_FILE ? path : shellQuote(path);
+          return ["bash", { command: `${made}printf %s ${shellQuote(content)} > ${into}` }];
+        };
+        // The files the answer delivered go under the folder submit captures, the text ones alone:
+        // a check that reads a binary one names the solve as strayed.
+        const delivered = (control?.files ?? []).flatMap(({ path, text }) =>
+          text === undefined ? [] : [put(`${DELIVERABLES.folder}/${path}`, text)],
+        );
         const by = scripted(
-          [...(answer === null ? [] : [written]), ["submit", {}]],
+          [
+            ...(answer === null ? [] : [...delivered, put(ANSWER_FILE, JSON.stringify(answer))]),
+            ["submit", {}],
+          ],
           campaign.limits.turns + 1,
         );
         const done = await campaign.solveOnce(task, harness, { ...campaign.test, ...by }, kill, comparison);
@@ -369,14 +392,15 @@ function draftedSource(name: string): DraftedSource {
     );
   }
   const seed = asRecord(capturedJsonParse(readFileSync(join(dirname(log), SEED_FILE), "utf8")));
-  const source = isString(seed?.from) ? read(join(seed.from, LOG_FILE)) : [];
+  const sourceLog = isString(seed?.from) ? join(seed.from, LOG_FILE) : null;
+  const source = sourceLog === null ? [] : read(sourceLog);
   const asked = new Map(
     proposalsOf(source).flatMap(({ task }) => (task === null ? [] : [[task.taskId, contentOf(task)]])),
   );
-  const passes = [...verdictsOf(source).values()].flatMap(({ task, answer, checker }) => {
+  const passes = [...verdictsOf(source).values()].flatMap(({ task, answer, files, checker }) => {
     const content = task === null ? undefined : asked.get(task);
-    return content !== undefined && answer !== undefined && checker?.kind === "pass"
-      ? [{ taskId: content, answer, refusedBy: null }]
+    return content !== undefined && answer !== undefined && checker?.kind === "pass" && sourceLog !== null
+      ? [{ taskId: content, answer, files: readAnswerFiles(sourceLog, files ?? []), refusedBy: null }]
       : [];
   });
   // The tasks the source's Examiner sessions wrote after the cut, for the scripted Examiner to
@@ -399,7 +423,7 @@ function draftedSource(name: string): DraftedSource {
  * finishes with none, which the campaign reads as a session that held out no task.
  *
  * It sits as a real one does: in its wall, with its root claimed, resting after each ask with that
- * root standing until the next ask wakes it or the Builder's conversation closes it (`conversing`,
+ * root standing until the next ask wakes it, or a promotion or the Builder's conversation closes it (`conversing`,
  * `src/examiner/session.ts`). Until 7 November each ask was a session of its own with no shell, so
  * no rehearsal claimed an Examiner's root, rested or woke, and a stop at a rest, which once kept
  * 517 MB of a closed run's root, was out of every rehearsal's reach.
@@ -410,7 +434,7 @@ export function scriptedExaminer(
   supply: number,
   graded: readonly Control[],
 ): Session<"write"> {
-  const answers = answersOf(graded, []);
+  const answers = answersOf(graded, null);
   let copies = 0;
   /** One ask's calls: try each task it has an answer for, put them all, and finish. */
   const callsFor = (wanted: number): (readonly [string, JsonObject])[] => {
@@ -438,7 +462,7 @@ export function scriptedExaminer(
         const instance = batch[index];
         return instance === undefined || answer === undefined
           ? []
-          : [["try_answer", { ...instance, answer }]];
+          : [["try_answer", { ...instance, answer: answer.answer }]];
       }),
       ...(batch.length === 0 ? [] : [["propose_tasks", { tasks: batch }] as const]),
       // Twice: a first finish while the host has not the tasks it needs is declined once.
@@ -469,7 +493,7 @@ export function scriptedExaminer(
         : async (examined: Examined) => {
             const ask = await rest(examined);
             if (ask !== null) {
-              queue.splice(0, queue.length, ...callsFor(ask.request.wanted));
+              queue.splice(0, queue.length, ...callsFor(ask.wanted));
               turns.push(...queue.map(() => pull));
             }
             return ask;

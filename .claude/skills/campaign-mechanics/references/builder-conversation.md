@@ -18,8 +18,9 @@ comparisons and promotions blocked, Builders spent 39 to 86% of their conversati
 `tools/d2/campaign-actions.ts`). Once the ask has supplied its tasks or its `finish` is accepted, it
 records `exam.finished` and waits, off every clock, for the next ask, which wakes it with what
 reported since (`wakeMessage`, `src/examiner/prompt.ts`), never a count or a target. Each ask has
-full limits. The conversation ends with the Builder's (`closing`), at a halt, or where an ask
-crashed or met a limit; the next ask then opens afresh from the log (`heard`) with the carried home.
+full limits. The conversation ends with the Builder's (`closing`), at a halt, where an ask crashed
+or met a limit, or at the first ask after a promotion (`examineAction`); the next ask then opens
+afresh from the log (`heard`) with the carried home.
 Rehearsals open every ask afresh.
 
 **The table chooses conditions instead of the model.** Where the table needs another action than the

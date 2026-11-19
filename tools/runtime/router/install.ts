@@ -7,9 +7,9 @@
  * `run.ts`, bundled) and `task.sh` in `~/.local/share/ana-runner/`: it runs the Bun a tree pins and
  * runs the tree's check tasks here or on a host `ANA_HOSTS` lists (`run.ts` says how). One installed
  * runner serves every tree, whatever its commit. The folder is renamed over the old one, since a
- * running task still reads its own, and nothing changes when every installed byte already matches. The first install
+ * running task still reads its own, and only the receipt changes when every installed byte already matches. The first install
  * over something it did not write moves that aside as `<path>.before-router-<time>`. `INSTALLED` keeps
- * the commit it came from, which `bun run runs sync` reads. It edits no shell startup file, since
+ * the commit it came from, dirty only where `RUNNER_SOURCE` is, which `bun run runs sync` reads. It edits no shell startup file, since
  * where PATH is set is the operator's, and says so where a login shell's `bun` is not the router.
  */
 import { runtimeProcess } from "#src/meta/process.ts";
@@ -28,6 +28,13 @@ import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 
 const RECEIPT = "INSTALLED";
 const TREE = join(import.meta.dir, "..", "..", "..");
+/** What the installed runner is made of: this folder, and what `run.ts` bundles from beyond it. */
+export const RUNNER_SOURCE = [
+  "tools/runtime/router",
+  "tools/runs/host-config.ts",
+  "tools/runs/host-command.ts",
+  "src/meta",
+];
 
 const say = (line: string): void => console.log(`router: ${line}`);
 
@@ -75,16 +82,21 @@ async function main(): Promise<void> {
   const router = readFileSync(join(import.meta.dir, "bun"), "utf8");
   const ours = present(join(dir, RECEIPT));
   const commit = gitMaybe(TREE, "rev-parse", "HEAD") ?? "an unknown commit";
-  const dirty =
-    (gitMaybe(TREE, "status", "--porcelain", "--untracked-files=no") ?? "") === "" ? "" : ", dirty";
+  const changed = gitMaybe(TREE, "status", "--porcelain", "--untracked-files=no", "--", ...RUNNER_SOURCE);
+  const dirty = (changed ?? "") === "" ? "" : ", dirty";
+  const stamp = new Date().toISOString().replaceAll(/[-:]/gu, "").replace(/\..*$/u, "");
+  const receipt = `${capturedJsonStringify({ commit: `${commit}${dirty}`, tree: TREE, installed: stamp }, null, 2)}\n`;
   if (
     ours &&
     textAt(shim) === router &&
     [...files].every(([name, text]) => textAt(join(dir, name)) === text)
   ) {
-    say(`${shim} and ${dir} already match ${commit}${dirty}; nothing changed`);
+    // The bytes match, so the receipt names this commit: else `runs sync` reads a lag no install clears.
+    const next = join(dir, `${RECEIPT}.new-${String(runtimeProcess.pid)}`);
+    writeFileSync(next, receipt);
+    renameSync(next, join(dir, RECEIPT));
+    say(`${shim} and ${dir} already match ${commit}${dirty}; the receipt names it`);
   } else {
-    const stamp = new Date().toISOString().replaceAll(/[-:]/gu, "").replace(/\..*$/u, "");
     for (const from of ours ? [] : [shim, dir].filter(present)) {
       const to = `${from}.before-router-${stamp}`;
       renameSync(from, to);
@@ -93,8 +105,7 @@ async function main(): Promise<void> {
     const staging = `${dir}.new-${String(runtimeProcess.pid)}`;
     mkdirSync(staging, { recursive: true });
     for (const [name, text] of files) writeFileSync(join(staging, name), text);
-    const receipt = { commit: `${commit}${dirty}`, tree: TREE, installed: stamp };
-    writeFileSync(join(staging, RECEIPT), `${capturedJsonStringify(receipt, null, 2)}\n`);
+    writeFileSync(join(staging, RECEIPT), receipt);
     if (present(dir)) {
       const old = `${dir}.old-${String(runtimeProcess.pid)}`;
       renameSync(dir, old);
@@ -112,4 +123,4 @@ async function main(): Promise<void> {
   warnOfPath(shim);
 }
 
-await main();
+if (import.meta.main) await main();

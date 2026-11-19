@@ -30,7 +30,7 @@ to go in one sitting, is the session's judgement. Read the script first and deci
 | a fix is ready | stack-pr's `stack.ts`, repository-practice's `preflight.ts` | step 4, its before-and-after, then step 5 |
 | a run bills while its milestone stays put | `runs pulse <name>`, `wri.ts read --log <log>` | "A stall", then "The walk" |
 | a step has stood for two days, or two sessions hold one step | the hours `due` prints; the rows of `cycle.md` | take it, pass it in `deviations.md`, or name its one holder in `cycle.md` |
-| a jobstat run has promoted twice, or has stopped with a promoted reference no read has scored | the last read's prediction file; `score.ts table` and `compare.ts levels` over the store | "The outside aim": the prediction, the dry run, the rollouts started detached, the run's row in `outside-reads.md`, and the iteration's next step at once |
+| a jobstat run rests at a pause with two or more promotions, or has stopped with one, and no read has scored its newest promoted reference | the last read's prediction file; `score.ts table` and `compare.ts levels` over the store | "The outside aim": the prediction, the dry run, the rollouts started detached, the run's row in `outside-reads.md`, and the iteration's next step at once |
 | a handover is due, or a timer fires with nothing to do | `timers.ts <the session's transcripts>` | "Timers": retire or retime it; then the five points |
 
 ## The release cycle
@@ -141,8 +141,9 @@ row reads scored or skipped.
    into `outcomes-<run>.md`, with the log's length.
 2. **Investigate** with whole-run-investigation, opened by `wri2p2.ts open` with the other triggered
    runs of the same code and pack as equals, once the run has stopped, so the synthesis reads the
-   comparison the pause waited for. `open` still reads a run left live on a frozen copy
-   (`wri.ts start --snapshot`), a deviation for a run the operator keeps going, and writes
+   comparison the pause waited for. `open` names each run to `wri.ts start`, which fetches a peer's
+   campaign whole, so the readers find every kept state. It still reads a run left live on a
+   frozen copy (`wri.ts start --snapshot`), a deviation for a run the operator keeps going, and writes
    `iteration.json` (`{ "opened": <ISO>, "runs": [<names>], "protocol": 2 }`), which the later gates
    require; a folder opened without the protocol's number keeps the gates of its day. Then follow
    `wri2p2.ts next <dir>` through the instructions, `lanes --agents 4` with one subagent a lane,
@@ -379,17 +380,21 @@ rubrics or scores (`AGENTS.md`, section 1, "An outside benchmark against fitting
 rules 2, 3 and 9); the query is the operator's and is bounded against its origin; and a bench score
 promotes nothing and is never a step.
 
-### One jobstat run always, read at its second promotion
+### One jobstat run always, read at each pause from its second promotion
 
 One of the live full runs is always a jobstat run, also where one slot is all there is (operator,
 12 November 2026), so a freed slot goes to jobstat first wherever none is live. A jobstat run's
-newest promoted reference is read on the eight tasks below, confirmed or not, at the first of two
+newest promoted reference is read on the eight tasks below, confirmed or not, at either of two
 moments:
 
-- **Its second promotion**, once the run rests at its pause: the read waits neither for the
+- **Each pause from its second promotion on**, once the run rests there: the read starts without
+  a question (operator, 17 November 2026: "automatic ablation") and waits neither for the
   investigation nor for lane 27's audit, whose grade and weight join the row when the lane reports.
   A reference the audit then grades inferior is still scored, which is how the record shows whether
-  the grade predicts the benchmark.
+  the grade predicts the benchmark. A run read at two and kept on to three or four is read again
+  at the pause it next rests at, on its then newest reference under a new label; its row is
+  rewritten for that digest and keeps the earlier read's sums, since the gate finds a row by the
+  run's name alone.
 - **Its stop at another trigger with one promotion.** The audit comes first: where lane 27 puts the
   reference's soundness at 2 or below (broken, fitted or churn) or reads it as bloat, the read is
   skipped, and otherwise its grade and weight go into the prediction file before any rollout.
@@ -453,8 +458,7 @@ that (15 of 15, its two data sheets ahead of its summary sheets), and that task 
 the Starter's 36; the memo of `statisticians/task1` passes it in 6 of 13 deliverables. A score on
 either task therefore partly reads how long a file ran, which `score.ts table` shows: it marks a
 cell whose deliverable the judge's reader cut `CUT <n>`, and its `fair uncut` block sums each arm
-over the fair tasks on which no arm's record holds a cut file. So a
-Starter is rolled
+over the fair tasks on which no record of an arm it shows holds a cut file. So a Starter is rolled
 beside the reference in the same sitting, and the fair five at two rollouts a side (20 rollouts)
 reads more than the eight at one (16), since it gives the Starter's spread on the tasks compared.
 
@@ -472,15 +476,15 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    line, and rows that `score.ts table` settles by a count: the reference against the Starter beside
    it on the fair five; against `heldout`'s stored sum, with the Starter's spread as the margin; the
    first task and the outside pair where they are bought; the dollars.
-3. **Prove the path without a model.** A read runs on the machine `ABLATION_HOST` names in
-   `.env.runs`, which `runs retire` keeps clear of retired campaigns, and on this machine where it is
-   unset. A campaign that ran on that machine is exported before its retire archives it (a day
+3. **Prove the path without a model.** A read runs on the machine its benchmark's entry in
+   `EVAL_RUNNER` names (`.env.runs`), which `runs retire` keeps clear of retired campaigns, and on
+   this machine where the entry names none. A campaign that ran on that machine is exported before its retire archives it (a day
    after it goes idle): the copy that replaces it holds no installed package. The store, the JobBench checkout and the
    judge's shim are named in the last read's prediction file and in `cycle.md`; every sitting
-   scores into that one store, so that one table holds every arm. Where `.env.runs` names the
-   store's folder on that machine (`BENCH_STORE`), the gather (`bun run runs fetch`) keeps a copy
-   of every rollout and judgement in `data/bench/<machine>` here, which `score.ts table` and
-   `trend.ts --bench` read as they read the store itself.
+   scores into that one store, so that one table holds every arm. For a benchmark rolled on a
+   peer, the gather (`bun run runs fetch`) keeps a copy of every rollout and judgement in
+   `data/bench/<benchmark>` here, which `score.ts table` and `trend.ts --bench` read as they read
+   the store itself.
 
    ```sh
    bun studies/harness2/score.ts score --arm <campaign> --harness <kept> --name <label> \
@@ -504,6 +508,22 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    The export replaces the harness's interpreter and compiled distributions with the other
    machine's at the same versions and names them under `rebuilt` in `export.json`, or refuses
    (`studies/shared/foreign-python.ts`); the dry run there finds the tree and reads no campaign.
+
+   Where `EVAL_RUNNER` lists a benchmark that reads the run's pack, one command runs this step
+   and the next in order and stops at the first that fails: the export on the host that holds the run, one carry into the store, the
+   exit code of the tree's own `python3` there, a dry run of each arm, then the reference with a
+   Starter queued behind it.
+
+   ```sh
+   bun run runs outside <campaign> [--bench <name>] [--as <label>] [--harness <kept>] [--login N] [--wait]   # the plan; --yes runs it
+   bun run runs pause <campaign> --after reported --eval --yes   # the pause, then the same read with --wait on each benchmark
+   ```
+
+   Without `--yes` it starts nothing, so the prediction file is written from its plan first; behind
+   `--eval`, which starts the read unattended once the run rests, it is written before the
+   reference's first task is judged, about twenty minutes in. The head of `tools/runs/outside.ts`
+   says which harness and label it takes by default, how it waits for the machine, and what it does
+   with a label the store holds or a pack two benchmarks read.
 4. **Run, detached, on the operator's standing word**, which covers the moment and the size
    above: the eight tasks, the reference and a Starter beside it at one rollout a task, on a login
    with room chosen as a keeper chooses one; each read's login and bill go into `cycle.md`. A larger
@@ -522,7 +542,8 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    operator's word, and never replaces the official score.
 5. **Read** with one `score.ts table --out <store> --tasks <list>` for each part, since the table
    sums an arm only where it holds every task named and counts every task but a profession's first
-   as fair, and report its `fair uncut` block beside the fair one. The table prints the criteria
+   as fair, and report its `fair uncut` block beside the fair one, for a pair from the table of
+   those two arms (`--name <reference>,<its Starter>`). The table prints the criteria
    the judge passed beside the points, since a rubric pays its weight only where every criterion
    passes and points alone magnify a near tie. Then read the two arms at every grain:
 
@@ -532,12 +553,11 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    ```
 
    The first prints each task, every rubric the arms split with the side that won it, and how
-   many of each arm's shell commands name the harness's program folder, with those of them that
-   only look at it; the second gives the Starter's spread at the same grain. `--tasks <list>`
-   reads one part alone, as the table does. The folder count bounds the use of a harness's
-   programs from above and proves none, and the guide reaches a rollout whatever its commands
-   do. Without `--salt` the two commands open every task, so where a review is to follow
-   (step 7), freeze its ledger first and pass the ledger's digest as `--salt`: half the tasks
+   many of each arm's shell commands name the harness's program folder or one of its programs,
+   with those of them that only look at it; the second gives the Starter's spread at the same grain. `--tasks <list>`
+   reads one part alone, as the table does. The count reads references,
+   not use (comparison-review's `references/levels.md`, "Behaviour"). Without `--salt` the two
+   commands open every task, so where a review is to follow (step 7), freeze its ledger first and pass the ledger's digest as `--salt`: half the tasks
    then stay sealed (comparison-review, steps 1 and 2). Both read the gathered copy in
    `data/bench/<machine>` as they read the store, call no model and print ids, weights and counts
    only, so their lines go into the report as they are. A session that a login's limit or the provider cut is refused: it stays unjudged, and

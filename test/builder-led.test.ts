@@ -329,6 +329,47 @@ describe("a campaign run by its live Builder", () => {
     expect(woken.map(({ session }) => session)).toEqual(["x-1", "x-2"]);
   });
 
+  it("opens another Examiner conversation at the first ask after a promotion, where the one before it rests", async () => {
+    layOutPack(root, bundle, MANY, FIXTURE);
+    const name = `${STEM}-conversing-promoted`;
+    let conversations = 0;
+    const seats: Seats = {
+      seated: builderScript(winning(GRADED_MANY), [
+        ["examine", {}],
+        ["wait", {}],
+        ["examine", {}],
+        ["wait", {}],
+        CHANGE_GUIDE,
+        // The step promotes, and the host starts the session the table names for the new reference.
+        ["compare", {}],
+        ["wait", {}],
+        ["finish", { note: "One harness is promoted." }],
+        ["finish", { note: "One harness is promoted." }],
+      ]),
+      // The first conversation holds two asks' calls and rests after each; the one opened after the
+      // promotion holds one.
+      examine: (request, wall) => {
+        conversations += 1;
+        const calls = conversations === 1 ? [proposing(12), proposing(12, 12)] : [proposing(12, 24)];
+        return examine({ ...request, ...scripted(calls), rest: request.rest }, wall);
+      },
+    };
+    // Eight moves reach the session the host starts on the promotion: accept, prepare, the Builder's
+    // session, two asks, the comparison, the promotion and that session.
+    const terms = ["--practice", "2", "--target", "5", "--level", "0.125", "--moves", "8"];
+    await harnessBuilder([...seeded(name), ...terms], seats);
+    expect(of(name, "harness.promoted")).toHaveLength(1);
+    // Until 19 November x-3 woke x-1's conversation, which went on in the family it knew.
+    expect(
+      of(name, EXAM_STARTED).map(({ session, conversation }) => [session, conversation ?? null]),
+    ).toEqual([
+      ["x-1", null],
+      ["x-2", "x-1"],
+      ["x-3", null],
+    ]);
+    expect(conversations).toBe(2);
+  });
+
   it("makes no second draw of a pair whose reading had room, even on tasks written since", async () => {
     layOutPack(root, bundle, MANY, FIXTURE);
     const name = `${STEM}-tabled`;
@@ -1398,7 +1439,6 @@ describe("a campaign tool where the table names more than the action", () => {
       events.findIndex((event, at) => at > index(EXAM_STARTED, session) && event.kind === COMPARED);
     expect(waits?.text).toContain("a compare waits for this session to end");
     expect(nextCompare(waits?.session ?? "")).toBeGreaterThan(index("exam.finished", waits?.session ?? ""));
-    expect(offers?.text).toContain("edit and practise meanwhile, and compare.");
     expect(offers?.text).not.toContain("a compare waits");
     expect(nextCompare(offers?.session ?? "")).toBeLessThan(index("exam.finished", offers?.session ?? ""));
   });

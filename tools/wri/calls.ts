@@ -28,6 +28,7 @@
  * It decides nothing: a count of calls says what ran, not whether it helped.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { familiesOf } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import type { Call } from "#src/kernel/trace.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -36,7 +37,6 @@ import { median } from "#src/meta/tally.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { type Index, indexOf, type Solve, TEST } from "./folds.ts";
 import { type CallPrograms, programsOf } from "./programs.ts";
-import { proposedTasks } from "./tasks.ts";
 
 const USAGE = `usage:
   bun tools/wri/calls.ts --log <log> [--harness <prefix>] [--program <name>] [--command <re>] [--output <re>]
@@ -234,7 +234,7 @@ function sequenceOf(calls: readonly { readonly ran: CallPrograms }[]): string {
  *  programs, the commonest one's share and their median seconds. */
 export function sequenceRows(events: readonly LogEvent[], filters: Filters): string[] {
   const index = indexOf(events);
-  const families = new Map(proposedTasks(events).map(({ version, family }) => [version, family ?? "none"]));
+  const families = familiesOf(events);
   const sideOf = sidesOf(events);
   const { solves, kept } = callsBySolve(index, filters);
   const passes = [...solves.values()].filter(
@@ -243,7 +243,8 @@ export function sequenceRows(events: readonly LogEvent[], filters: Filters): str
   );
   const groups = Map.groupBy(
     passes,
-    (solve) => `${families.get(solve.version) ?? "not recorded"}\t${solve.harness.slice(0, 8)}`,
+    (solve) =>
+      `${families.has(solve.version) ? (families.get(solve.version) ?? "none") : "not recorded"}\t${solve.harness.slice(0, 8)}`,
   );
   const rows = [...groups].map(([key, group]) => {
     const sequences = Map.groupBy(group, (solve) => sequenceOf(kept.get(solve.id) ?? []));

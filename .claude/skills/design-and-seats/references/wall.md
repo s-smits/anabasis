@@ -6,7 +6,8 @@ one wall" in `AGENTS.md` section 1; `scripts/seat-view.ts` names the wall tests 
 ### Two sides and one wall
 
 The wall is what makes a step mean generalisation. Practice tasks are the Builder's training set,
-read whole, measures that depend on hidden values included; held-out tasks are its test set. A
+read whole but for a measure, which may depend on hidden values and is told rounded
+(`MEASURE_DIGITS`, `src/builder/tools.ts`); held-out tasks are its test set. A
 Builder that learned anything of a held-out task, even which one its harness won, could fit the test
 set, and a step would then measure that fit.
 

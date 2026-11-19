@@ -53,7 +53,7 @@ import {
   verdictsOf,
 } from "../kernel/solves.ts";
 import { objectiveOf } from "../kernel/verify.ts";
-import { poolOf } from "../kernel/reports.ts";
+import { poolOf, referenceOf } from "../kernel/reports.ts";
 import { taskStates } from "../kernel/task.ts";
 import {
   cpSync,
@@ -146,8 +146,10 @@ const SOLVE_HOME = "(the solve's own home directory)";
 /** The harness's tool tree, as a path in the Builder's home. */
 export const HOME_TOOL_TREE = `harness/${TOOL_TREE_DIR}`;
 
-/** What a practice line says of the harness a solve ran under, by the tool's `under`. */
-const UNDER = { harness: "", reference: " under the reference harness" } as const;
+/** A measure as the Builder is told it, with the zeros or the exponent that show the rounding: it
+ *  may depend on a practice task's hidden values. The log keeps every digit. */
+const MEASURE_DIGITS = 4;
+const rounded = (measure: number): string => measure.toPrecision(MEASURE_DIGITS);
 
 /** An ending as the Builder is shown it: the outcome and its kind. A non-result's reason can name a
  *  check, so only a broken harness's reason, which is the harness's own, is shown. */
@@ -165,7 +167,7 @@ function endingText(ending: Ending): string {
 function measuredText(events: readonly LogEvent[], solve: string, contract: Contract, name: () => string) {
   const measure = objectiveOf(verdictsOf(events).get(solve)?.checker);
   return contract.objective !== undefined && measure !== null
-    ? ` Measured ${name()}: ${String(measure)} (${contract.objective.direction} is better).`
+    ? ` Measured ${name()}: ${rounded(measure)} (${contract.objective.direction} is better).`
     : "";
 }
 
@@ -437,7 +439,8 @@ export function practiceLeft({ request, spent }: Bench, events: readonly LogEven
  *  nothing of its record; until 3 November it counted passes alone, and 283 of 285 buffer record
  *  clauses from v0.9.1 read "passed N of N" (lane 17); until 4 November it named no author's answer
  *  (`task.feasible`), and buffer592's Builder read a task 18% dearer than its author's as nothing to
- *  gain. Only released tasks are practised, so no held-out measure is read here. */
+ *  gain; until 19 November a solve under harness/ named no record under the reference, which a
+ *  promotion moves off the parent. Only practice solves of released tasks are read (`record`). */
 function recordText(
   events: readonly LogEvent[],
   version: string,
@@ -455,21 +458,20 @@ function recordText(
     .map(([digest, [role, ...also]], index) => {
       const kept = record(events, version, digest);
       const which = `${role ?? ""}${also.length > 0 ? `, which is also ${also.join(" and ")}` : ""}`;
-      const measures = kept.solves.flatMap((solve) => objectiveOf(verdicts.get(solve)?.checker) ?? []);
+      const measures = kept.solves.flatMap((id) => objectiveOf(verdicts.get(id)?.checker) ?? []).map(rounded);
       const measured =
         contract.objective === undefined || measures.length === 0 ? "" : `, ${name()} ${measures.join(", ")}`;
       return `${index === 0 ? "Record under" : "Under"} ${which}: ${index === 0 ? "passed " : ""}${String(kept.passed)} of ${String(kept.solves.length)}${measured}.`;
     })
     .join(" ")
-    .concat(best === undefined ? "" : ` An answer on record that no harness gave measures ${String(best)}.`);
+    .concat(best === undefined ? "" : ` An answer on record that no harness gave measures ${rounded(best)}.`);
 }
 
 export function practiceTool(bench: Bench): SeatTool {
   const { request } = bench;
   return tool({
     name: "practice",
-    description:
-      "Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits: a practice solve takes as long as any solve. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, what the solve used of its limits and the tokens it read and wrote, the task's record under each harness the result names, the solve's id for read_trace and, for a rejection the Referee set aside, that it was set aside; never which check refused an answer. A harness that does not open spends no solve. `under: \"reference\"` costs the same solves and shows what your change is measured against.",
+    description: `Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits: a practice solve takes as long as any solve. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, what the solve used of its limits and the tokens it read and wrote, the task's record of practice solves under each harness the result names, the reference harness among them, the solve's id for read_trace and, for a rejection the Referee set aside, that it was set aside; never which check refused an answer. Under an objective a valid answer's measure is given to ${String(MEASURE_DIGITS)} significant digits. A harness that does not open spends no solve. \`under: "reference"\` costs the same solves and shows what your change is measured against.`,
     parameters: Type.Object({
       tasks: Type.Array(Type.String(), {
         minItems: 1,
@@ -507,11 +509,10 @@ export function practiceTool(bench: Bench): SeatTool {
       // session ends through `over`. Aborting the seat here loses durable's unfinished call.
       const failed = new AbortController();
       const kill = AbortSignal.any([context.abortSignal ?? bench.halt.signal, failed.signal]);
-      // Under the reference the solve runs the harness the session's is compared with, and
-      // harness/ as it stands need not open: the fact "what does the reference do on this task" is
-      // the Builder's to buy with its own solve, and the host hands it no table of it (the plan's
-      // climb section, C5). `under: "parent"` went on 27 October: 4 of 852 practice calls on
-      // record named it.
+      // Under the reference the solve runs the harness the session's is compared with, and harness/
+      // as it stands need not open. What the reference does on a task is the Builder's to buy with
+      // its own solve, and each result's record names what such solves found. `under: "parent"`
+      // went on 27 October: 4 of 852 practice calls on record named it.
       const ran: HarnessSnapshot =
         args.under === "reference"
           ? { dir: bench.reference, harness: await openHarness(bench.reference), listed: null }
@@ -545,8 +546,10 @@ export function practiceTool(bench: Bench): SeatTool {
       }
       const events = read(request.log);
       const under = args.under ?? "harness";
+      const reference = under === "reference" ? ran.harness.digest : referenceOf(events);
       const roles = [
-        [ran.harness.digest, under === "reference" ? "the reference harness" : "this harness"],
+        [under === "reference" ? null : ran.harness.digest, "this harness"],
+        [reference, "the reference harness"],
         [under === "reference" ? (bench.opened?.harness.digest ?? null) : null, "harness/ as last practised"],
         [bench.parent, "the harness you started from"],
       ] as const;
@@ -557,7 +560,7 @@ export function practiceTool(bench: Bench): SeatTool {
           ? "rejection set aside"
           : endingText(ending);
         return [
-          `${task.task.taskId}${UNDER[under]}: ${shown}. Solve ${solve}.${usedText(events, solve)}${measuredText(events, solve, request.contract, name)}`,
+          `${task.task.taskId}${under === "reference" ? " under the reference harness" : ""}: ${shown}. Solve ${solve}.${usedText(events, solve)}${measuredText(events, solve, request.contract, name)}`,
           recordText(events, task.version, roles, request.contract, name),
           ...lines,
         ].join("\n");

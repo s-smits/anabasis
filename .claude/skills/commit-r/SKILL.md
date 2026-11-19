@@ -67,7 +67,8 @@ A test edited once production starts needs its reason in the commit.
    it onto the old code; a kept boundary failing is a test written wrongly; a case meant to fail
    that passes needs sharpening. Commit with the sorting.
 5. **Find the simpler path**: which module should own the behaviour, and what served only the old
-   shape (`git grep -w` each export). Drop a case only when its producer or contract is gone.
+   shape (`git grep -w` each export), asking simplify's shapes and ladder of each concept. Drop a
+   case only when its producer or contract is gone.
 6. **`R: <production paths>`**: `git rm` what the rewrite replaces; commit.
 7. **Write production** with the smallest owner the tests allow, rewriting whole any neighbour the
    old shape bent. Run `bun run typecheck` (the commit hook does not), `bun run lint -- --strict`,
@@ -88,6 +89,8 @@ A test edited once production starts needs its reason in the commit.
    against the base; `git branch commit-r/<compartment> HEAD`, `git reset --soft <base>`,
    `bun run commit:check`, one commit whose body gives hypothesis, budget met or missed, intended
    failures, oracle findings and neighbours rewritten. The saved branch stays until the merge.
+   The pass is itself the simplification, so no `/simplify` pass follows it: the squashed commit
+   goes to its pull request once its checks pass.
 
 ## What a pass must not do
 

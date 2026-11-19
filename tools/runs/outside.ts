@@ -77,6 +77,8 @@ export interface Plan {
   readonly sitting: string;
   /** The benchmark's machine as `score.ts tree --for` names it. */
   readonly place: string;
+  /** The minor of the `python3` a rollout there finds first, as its sitting's `python` says it. */
+  readonly python: string;
   /** The harness the store already holds under the label, where it holds one. */
   readonly held: string | null;
   /** Whether the read waits for the machine to be idle instead of refusing while an arm holds it. */
@@ -159,7 +161,7 @@ export function stepsOf(plan: Plan): Step[] {
             command: shellOn(
               holder,
               // A stage a cut read left would be taken as the tree, so each export starts without one.
-              `${same ? "" : `rm -rf ${stage} && `}cd ${shellPath(plan.tree)} && ${plan.bun} studies/harness2/score.ts tree --arm ${quoted(run)} --harness ${quoted(plan.harness)} --name ${quoted(label)} --out ${same ? store : stage} --for ${quoted(plan.place)}`,
+              `${same ? "" : `rm -rf ${stage} && `}cd ${shellPath(plan.tree)} && ${plan.bun} studies/harness2/score.ts tree --arm ${quoted(run)} --harness ${quoted(plan.harness)} --name ${quoted(label)} --out ${same ? store : stage} --for ${quoted(plan.place)} --python ${quoted(plan.python)}`,
             ),
           },
           ...(same
@@ -187,10 +189,11 @@ export function stepsOf(plan: Plan): Step[] {
         ),
     ...exported,
     // A reference whose own launcher starts an interpreter the machine lacks rolls without its
-    // method (17 November 2026: exit 127), which no dry run sees. It is said, and refuses nothing.
+    // method (17 November 2026: exit 127). The ablation tree's dry run can predate the check that
+    // refuses it (`ownPython`), so the read refuses it here, before anything is spent.
     on(
-      `the tree's own python3 on ${runner?.name ?? "this machine"}`,
-      `p=${tree}/$(sed -n 's/.*"toolchain": *"\\([^"]*\\)".*/\\1/p' ${tree}/export.json)/bin/python3; if test -e "$p" || test -L "$p"; then "$p" -c pass; echo "the tree's own python3 exits $?"; fi`,
+      `the tree's own python3 starts on ${runner?.name ?? "this machine"}`,
+      `p=${tree}/$(sed -n 's/.*"toolchain": *"\\([^"]*\\)".*/\\1/p' ${tree}/export.json)/bin/python3; if test -e "$p" || test -L "$p"; then "$p" -c pass || { echo "the tree's own python3 cannot start there (exit $?)"; exit 1; }; fi`,
     ),
     on(`dry run of ${label}`, arm("run", reference, "--dry-run")),
     on(`dry run of ${starter}`, arm("run", bare, "--dry-run")),
@@ -303,7 +306,8 @@ export async function outside(args: readonly string[]): Promise<void> {
   if (holder !== undefined && (controller === null || controller === undefined)) {
     throw new Error(`${holder.name}: no controller there to export from`);
   }
-  const named = (await runTextOrThrow(shellOn(settings.runner, "uname -sm"))).trim();
+  const said = await runTextOrThrow(shellOn(settings.runner, `uname -sm; ${settings.sitting} python`));
+  const [named = "", python = ""] = said.trim().split("\n");
   const place = PLACES.get(named);
   if (place === undefined) {
     throw new Error(`the benchmark's machine is '${named}', which no export is written for`);
@@ -340,12 +344,13 @@ export async function outside(args: readonly string[]): Promise<void> {
     bun: controller === null || controller === undefined ? "bun" : treeBun(controller.bun),
     ...settings,
     place,
+    python,
     held,
     wait: values.wait,
   };
   const steps = stepsOf(plan);
   console.log(
-    `${run} read outside on ${plan.bench} as ${label} and starter-${label}, on login ${login}, for ${place}${held === null ? "" : `; the store already holds ${label} (${held.slice(0, 8)}), rolled as it stands`}`,
+    `${run} read outside on ${plan.bench} as ${label} and starter-${label}, on login ${login}, for ${place} (python3 ${plan.python})${held === null ? "" : `; the store already holds ${label} (${held.slice(0, 8)}), rolled as it stands`}`,
   );
   if (!values.yes) {
     for (const { says } of steps) console.log(`  ${says}`);

@@ -15,7 +15,7 @@ import {
   MODULE_FILE,
   placeHarness,
 } from "../studies/shared/bundle.ts";
-import { exportForClaudeCode } from "../studies/shared/claude-export.ts";
+import { exportForClaudeCode, ownPython } from "../studies/shared/claude-export.ts";
 import { harnessIn, keyless, RESULT_FILE, TRACE_FILE } from "../studies/shared/pi-solve.ts";
 import { type Agent, type Claude, inGroup, REFUSED, rollout } from "../studies/harness2/h2/claude.ts";
 import { installTree } from "../studies/harness2/h2/tree.ts";
@@ -488,6 +488,42 @@ describe("a harness written out for Claude Code", () => {
       /on a Mac: bin\/native \(an ELF binary for machine 62\), which no Python distribution or interpreter in the tree installed/u,
     );
     expect(existsSync(join(root, "claude-native-mac"))).toBe(false);
+  });
+
+  it("refuses a tree whose own python3 cannot start here, and counts what one that starts imports", async () => {
+    const tree = (name: string, launcher: string) => {
+      const dir = join(root, name);
+      const site = join(dir, "scripts", "toolchain", "lib", "python3.99", "site-packages");
+      mkdirSync(join(dir, "scripts", "toolchain", "bin"), { recursive: true });
+      mkdirSync(join(site, "fine-1.0.dist-info"), { recursive: true });
+      writeFileSync(join(dir, "scripts", "toolchain", "bin", "python3"), launcher, { mode: 0o755 });
+      writeFileSync(join(site, "fine.py"), "X = 1\n");
+      writeFileSync(join(site, "broken.py"), "import a_module_no_machine_has\n");
+      writeFileSync(join(site, "fine-1.0.dist-info", "RECORD"), "fine.py,,\nbroken.py,,\n");
+      return dir;
+    };
+    const env = { PATH: runtimeProcess.env.PATH ?? "" };
+    // The launcher a Mac-built reference carried: its campaign machine's interpreter, by path.
+    const named = tree("own-python-named", '#!/bin/sh\nexec /nowhere/bin/python3.14 "$@"\n');
+    await expect(ownPython(named, env)).rejects.toThrow(
+      /bin\/python3 cannot start here \(exit 12[67]: .*\/nowhere\/bin\/python3\.14/u,
+    );
+    // The launcher that takes the machine's interpreter with the tree's packages on its path.
+    const site = '$(dirname "$0")/../lib/python3.99/site-packages';
+    const taken = tree("own-python-taken", `#!/bin/sh\nPYTHONPATH="${site}" exec python3 "$@"\n`);
+    expect(await ownPython(taken, env)).toMatch(
+      /^its python3 is 3\.\d+\.\d+ and imports 1 of 2 of its modules, not broken$/u,
+    );
+    // A module whose import ends the interpreter, as a native one built for another minor can: the
+    // count is said to have ended, and the read is not refused.
+    writeFileSync(
+      join(taken, "scripts", "toolchain", "lib", "python3.99", "site-packages", "broken.py"),
+      "import os\nos._exit(3)\n",
+    );
+    expect(await ownPython(taken, env)).toBe(
+      "its python3 starts, and the count of its modules ended (exit 3: )",
+    );
+    expect(await ownPython(join(root, "claude-starter-less"), env)).toBeNull();
   });
 
   it("writes the starter's guide under the note with no tool or program line, and refuses a tree already made", async () => {

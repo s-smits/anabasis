@@ -173,12 +173,14 @@ export function configuredRuntime(host: Host) {
 export const ownName = (): string => hostname().replace(/\..*$/u, "");
 
 /** The benchmarks `EVAL_RUNNER` lists (`.env.runs.example`), none where unset. Until 17 November
- *  2026 it, and `ABLATION_HOST` before it, named one machine alone, which is refused as not JSON. */
+ *  2026 it, and `ABLATION_HOST` before it, named one machine alone, which is refused as not JSON.
+ *  A verb kept to this machine (`ANA_HOP`, `hostsOf`) reads the benchmarks rolled here alone: until
+ *  19 November 2026 it found no host for one rolled elsewhere and refused the whole verb. */
 export function benchesOf(env: Readonly<Record<string, string | undefined>> = runtimeProcess.env): Bench[] {
   const value = listed(env.EVAL_RUNNER ?? "", "EVAL_RUNNER");
   const known = hostsOf(env.ANA_HOSTS ?? "");
   const names = new Set<string>();
-  return value.map((entry) => {
+  return value.flatMap((entry): Bench[] => {
     const { name, host = "here", store, sitting, packs } = asRecord(entry) ?? {};
     const given = (word: unknown): word is string => isString(word) && word !== "";
     if (!given(name) || !isSafePathSegment(name) || !given(host) || !given(store) || !given(sitting)) {
@@ -189,7 +191,8 @@ export function benchesOf(env: Readonly<Record<string, string | undefined>> = ru
     if (!Array.isArray(packs) || packs.length === 0 || !packs.every(isString)) {
       throw new Error(`${name}: packs takes a list of the packs whose runs it reads`);
     }
-    return { name, host: host === "here" ? undefined : hostNamed(host, known), store, sitting, packs };
+    if (host !== "here" && env.ANA_HOP === "1") return [];
+    return [{ name, host: host === "here" ? undefined : hostNamed(host, known), store, sitting, packs }];
   });
 }
 

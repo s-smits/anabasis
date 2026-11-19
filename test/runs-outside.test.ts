@@ -73,6 +73,10 @@ describe("runs outside", () => {
     expect(() => benchesOf(benches(STATS, STATS))).toThrow(/repeats statbench/u);
     expect(() => benchesOf(benches({ ...STATS, host: "nowhere" }))).toThrow(/no host nowhere/u);
     expect(benchesOf({})).toEqual([]);
+    // A verb kept to this machine reads the benchmark rolled here and none rolled elsewhere.
+    const { host: _host, ...local } = { ...STATS, name: "local" };
+    const kept = benchesOf({ ...benches(STATS, local), ANA_HOP: "1" });
+    expect(kept.map(({ name, host }) => [name, host])).toEqual([["local", undefined]]);
   });
 
   test("pause --eval names its benchmarks as it is armed: none goes on as a pause alone, a faulty list refuses before the pause", () => {

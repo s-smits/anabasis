@@ -72,6 +72,15 @@ export function proposalsOf(events: readonly LogEvent[]): Proposal[] {
 export const writersOf = (events: readonly LogEvent[]) =>
   new Map(proposalsOf(events).map(({ version, session }) => [version, session ?? OPENING]));
 
+/** The family sizes of `tasks` (versions), largest first, and how many name no family: how far a set
+ *  of tasks is independent evidence. It names no family. */
+export function familySizes(events: readonly LogEvent[], tasks: readonly string[]) {
+  const named = new Map(proposalsOf(events).map(({ version, family }) => [version, family]));
+  const kin = Map.groupBy(tasks, (task) => named.get(task) ?? null);
+  const sizes = [...kin].flatMap(([family, some]) => (family === null ? [] : [some.length]));
+  return { sizes: sizes.toSorted((one, other) => other - one), unnamed: kin.get(null)?.length ?? 0 };
+}
+
 /** Accepted answers for one proposed version. They remain on the exam side. */
 export function acceptedAnswers(events: readonly LogEvent[], version: string | undefined): JsonValue[] {
   if (version === undefined) return [];

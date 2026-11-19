@@ -3,8 +3,9 @@
  * since (`after`): a view of the log, with no store of its own (`heard`), in four parts.
  *
  * - `stood`: the comparisons the reference harness stood in that the session has not heard of, each
- *   from its side: the tasks it scored, how many each harness won, the reference's every, some and
- *   none, the tasks set aside, and how often its own two solves differed in that comparison's A/A. An
+ *   from its side: the tasks it scored and how many its largest family held, how many each harness
+ *   won, the reference's every, some and none, the tasks set aside, and how often its own two solves
+ *   differed in that comparison's A/A. From 26 October to 19 November 2026 nothing counted families. An
  *   opening tells the last one, and a wake each since it was last told. On 2 November the archive's
  *   objective domains showed the reference's own solves differing on the objective alone on 314 of
  *   1,373 tasks, which the prompt then named as a count; the session's own comparison now says it.
@@ -13,13 +14,15 @@
  *   the turns each of the reference's valid answers took and, under an objective, what each measured,
  *   who won and on which measure (`carriedBy`), whether a valid answer is on record where none of the
  *   reference's was valid, and the checks a ruling found at fault on an answer to it (`faultedOf`).
- * - `promoted`: that the reference was promoted, and how many tasks were held out before then.
+ * - `promoted`: at an opening alone, that the reference was promoted, and how many tasks were held
+ *   out before then.
  * - `refused`: at an opening alone, the drafts the gate refused since that promotion, by its reason.
  *
  * Until 5 November each session was a new conversation, and its opening also told each task's last
  * three comparisons; a conversation now hears each reading at the wake after it. A live conversation
- * hears each refusal from the gate, so a wake repeats none, but one that crashed or met a limit opens
- * afresh from the log (`AGENTS.md`, section 4) and has that record of them alone.
+ * hears each refusal from the gate, so a wake repeats none, but one that crashed, met a limit or
+ * rested through a promotion (`examineAction`, `tools/d2/campaign-actions.ts`) opens afresh from
+ * the log (`AGENTS.md`, section 4) and has that record of them alone.
  *
  * Until 4 November the opening carried a legend for every clause, the outcome on every line, the
  * gate's room solves, which no gate has run since 1 November, and the last session's note. An
@@ -40,7 +43,7 @@
  * operator's decision of 11 October).
  */
 import { scoresIn } from "../kernel/compare.ts";
-import { proposalsOf } from "../kernel/history.ts";
+import { familySizes, proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import {
   lastReports,
@@ -139,7 +142,9 @@ export function heard(
   return {
     stood: stoodLines(events, after),
     groups,
-    promoted: since < (after ?? 0) ? null : promotedLine(events, since, listed),
+    // An opening's alone: the host ends a resting conversation at the first ask after a promotion
+    // (`examineAction`, `tools/d2/campaign-actions.ts`), so no wake follows one.
+    promoted: after === undefined ? promotedLine(events, since, listed) : null,
     refused: after === undefined ? refusedLines(events, since) : [],
   };
 }
@@ -234,11 +239,12 @@ function stoodLines(events: readonly LogEvent[], after: number | undefined): str
   return told.map((report) => stoodLine(events, report, reference, named(report))).join("\n\n");
 }
 
-/** One comparison the reference harness stood in, from its side: the tasks scored, the wins each
- *  way (from the per-task winners the lines already tell), its every, some and none, the tasks set
- *  aside, and how many of them its own two solves differed on. The A/A pairs the old side's solves
- *  with each other, so it measures the reference only there. No count of the other harness's valid
- *  solves is told. */
+/** One comparison the reference harness stood in, from its side: the tasks scored and how many of
+ *  them its largest family held (`familySizes`, which leaves out a task that names none), the wins
+ *  each way (from the per-task winners the lines already tell), its every, some and none, the tasks
+ *  set aside, and how many of them its own two solves differed on. The A/A pairs the old side's
+ *  solves with each other, so it measures the reference only there. No count of the other harness's
+ *  valid solves is told. */
 function stoodLine(
   events: readonly LogEvent[],
   report: Reported,
@@ -246,7 +252,13 @@ function stoodLine(
   named: string,
 ): string {
   const side = report.data.fresh === reference ? "fresh" : "old";
-  const spreads = pairsReported(events, report).map((pair) => spreadOf(pair[side]));
+  const pairs = pairsReported(events, report);
+  const spreads = pairs.map((pair) => spreadOf(pair[side]));
+  const largest =
+    familySizes(
+      events,
+      pairs.map(({ task }) => task),
+    ).sizes[0] ?? 0;
   const count = (spread: string) => String(spreads.filter((each) => each === spread).length);
   const scores = scoresIn(report.data.scored).map((score) => (side === "fresh" ? score : -score));
   const won = (sign: number) => String(scores.filter((score) => Math.sign(score) === sign).length);
@@ -254,6 +266,7 @@ function stoodLine(
   const own = side === "old" ? scoresIn(report.data.noise) : [];
   return [
     `${named}, scored ${plural(spreads.length, "task")}: the reference harness won ${won(1)}, the harness it was compared with won ${won(-1)}, and ${won(0)} tied.`,
+    `The largest family among them held ${String(largest)}.`,
     `The reference harness was valid in every solve on ${count("every")} of them, in some on ${count("some")} and in none on ${count("none")}; ${String(aside)} more ${aside === 1 ? "was" : "were"} set aside.`,
     ...(own.length === 0
       ? []

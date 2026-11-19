@@ -835,7 +835,8 @@ describe("one Examiner conversation across the host's asks", () => {
       wanted: 1,
       rest: async (ask) => {
         rested.push(ask.ended);
-        // A promotion while the conversation rests is a reading the wake tells.
+        // A promotion while the conversation rests is an opening's to tell: the host ends a resting
+        // conversation at the first ask after one (`examineAction`), so a wake says nothing of it.
         append(s.log, "harness.promoted", { harness: "h2", from: "h1", rests: [{ comparison: "c-1" }] });
         return asks.shift() ?? null;
       },
@@ -867,8 +868,8 @@ describe("one Examiner conversation across the host's asks", () => {
     expect(woken).toContain(JSON.stringify(told.split("\n\n").at(-1)).slice(1, -1));
     expect(opening).toContain("Public rules of the domain");
     expect(woken).toContain("Public rules of the domain");
-    // Only readings: the promotion and that no comparison reported; no count wanted, no target.
-    expect(told).toContain("The reference harness was promoted on the step of comparison c-1");
+    // Only readings: that no comparison reported; no promotion, no count wanted, no target.
+    expect(told).not.toContain("promoted");
     expect(told).toContain("No comparison has reported since the host last told you.");
     for (const unsaid of ["17", "harder", "wanted"]) expect(told).not.toContain(unsaid);
   });

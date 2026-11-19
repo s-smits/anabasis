@@ -399,7 +399,7 @@ function draftedSource(name: string): DraftedSource {
  * finishes with none, which the campaign reads as a session that held out no task.
  *
  * It sits as a real one does: in its wall, with its root claimed, resting after each ask with that
- * root standing until the next ask wakes it or the Builder's conversation closes it (`conversing`,
+ * root standing until the next ask wakes it, or a promotion or the Builder's conversation closes it (`conversing`,
  * `src/examiner/session.ts`). Until 7 November each ask was a session of its own with no shell, so
  * no rehearsal claimed an Examiner's root, rested or woke, and a stop at a rest, which once kept
  * 517 MB of a closed run's root, was out of every rehearsal's reach.

@@ -18,7 +18,7 @@
  * comparison's to read.
  *
  * Since 5 November one conversation takes the host's asks in turn (`ask`; `examining`,
- * `session.ts`); one opened afresh after a crash is told the past from the log (`record.ts`), its
+ * `session.ts`); one opened afresh, after a crash or a promotion, is told the past from the log (`record.ts`), its
  * home is carried (`Wall.keep`, `shell.ts`), and an instance held or refused is not taken again.
  * An instance is logged whole with its proposal, hidden values too, so a later solve needs the log
  * alone. An author's accepted answer is kept for the Referee (`task.feasible`). Only admitted

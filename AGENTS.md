@@ -212,8 +212,8 @@ back; a launch on a numbered login lets the run's keeper pick the paying account
 ## 4. The Harness Builder
 
 One Builder conversation leads the campaign (`tools/d2/harness-builder.ts`) with `examine`,
-`compare`, `campaign_status` and `wait`, beside one Examiner conversation. Code enforces endings,
-releases practice and promotes what a step names. Three invariants:
+`compare`, `campaign_status` and `wait`, beside one Examiner conversation an epoch. Code enforces
+endings, releases practice and promotes what a step names. Three invariants:
 
 - a comparison reads the harness it froze, and a step promotes that one;
 - an unchanged harness is compared again only where the move table names it, since a second draw is

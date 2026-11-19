@@ -398,7 +398,8 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
 
 /** The Examiner's asks as one conversation (5 November): each later ask wakes it where it rests,
  *  and where it crashed or met a limit the next opens afresh from the log (`record.ts`). An ask is
- *  answered at its own end or at the conversation's; `close` ends a resting one. */
+ *  answered at its own end or at the conversation's; `close` ends a resting one, as the host does
+ *  at the first ask after a promotion (`examineAction`). */
 export function conversing(sitting: Session<"write">) {
   let live: {
     settle: (examined: Examined) => void;

@@ -8,7 +8,7 @@
  * line gives what it spent to its first comparison and promotion. One block a log, naming no task.
  */
 import { campaignOf, type Handover } from "#src/campaign/handover.ts";
-import { proposalsOf } from "#src/kernel/history.ts";
+import { familySizes, proposalsOf } from "#src/kernel/history.ts";
 import { promoted } from "#src/kernel/reports.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { billedAll } from "#src/kernel/meter.ts";
@@ -16,7 +16,6 @@ import { HOUR_MS } from "#src/meta/clock.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { basename, dirname } from "#src/meta/path.ts";
 import { runCommand } from "#skills/main/cli.ts";
-import { familySizes } from "#skills/main/families.ts";
 import { ownedBy } from "#src/kernel/trace.ts";
 import { validityOf } from "#tools/d2/close.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";

@@ -19,7 +19,7 @@ import { askedOf } from "#src/campaign/ground.ts";
 import { tasksByEpoch } from "#src/campaign/climb.ts";
 import { scoredSet } from "#src/campaign/round.ts";
 import { frozenChecker } from "#src/kernel/acceptance.ts";
-import { familySizes } from "#skills/main/families.ts";
+import { familySizes } from "#src/kernel/history.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { keyIfNotNull } from "#src/meta/optional-key.ts";
 import { lastReports, poolOf } from "#src/kernel/reports.ts";

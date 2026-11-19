@@ -200,10 +200,11 @@ function actionTool(context: CampaignContext, bench: Bench, move: ActionMove, ru
   });
 }
 
-/** Whether a promotion is on record with no comparison started since. */
-const uncompared = (events: readonly LogEvent[]) =>
+/** Whether a promotion is on record with no event of kind `started` since: a comparison's start, or
+ *  an Examiner session's. */
+const promotedSince = (events: readonly LogEvent[], started: "comparison.started" | "exam.started") =>
   events.findLastIndex(({ kind }) => kind === "harness.promoted") >
-  events.findLastIndex(({ kind }) => kind === "comparison.started");
+  events.findLastIndex(({ kind }) => kind === started);
 
 /** The same admission for a model's call and the Examiner session the host starts for it. */
 async function runAction(
@@ -236,7 +237,7 @@ async function runAction(
   // reference's tasks, and a step there would have promoted twice on one epoch's tasks. The
   // session's end can release practice, a move of its own, so the limit is read again after the
   // wait, as `promoteOwed` reads it after its own.
-  if (move === "compare" && writing != null && uncompared(read(context.log))) {
+  if (move === "compare" && writing != null && promotedSince(read(context.log), "comparison.started")) {
     await bench.within(() => writing.done);
     if (context.used >= context.maxMoves) return halt(spent);
   }
@@ -312,6 +313,12 @@ const examineAction =
     });
     // The action returns once the session is on record: a throw before that is the action's.
     const { promise: onRecord, resolve } = Promise.withResolvers<void>();
+    // A conversation woken across a promotion keeps to the family it knows. In the 15 jobstat
+    // campaigns on record to 19 November 2026, of the asks that proposed four tasks or more, 14 of
+    // the 19 that woke a conversation across a promotion put at least 85% of them in one family,
+    // against 6 of 12 woken inside an epoch and 2 of 6 that opened after a promotion. So the first
+    // ask after a promotion ends the resting conversation, and this one opens from the log.
+    if (promotedSince(turn.events, "exam.started")) await context.examiner?.close();
     context.examiner ??= conversing(seats.examine ?? examine);
     const sitting = context.examiner.session;
     // As the gate holds out each task the host releases what is owed since the last reading, one release at a time,
@@ -364,7 +371,7 @@ const examineAction =
       // asked 12 to 22 in 18 sessions and 0 of 17 ended holding that many. The result names the
       // compare that waits for the session and gives no course: until 18 November it said "edit
       // and practise meanwhile", which one run's three promotion results each repeated.
-      said: `Examiner session ${session} is writing tasks beside this conversation${tasks === undefined ? "" : `, and stops once it holds ${plural(Number(tasks), "task")}`}${uncompared(turn.events) ? "; a compare waits for this session to end" : ""}. As it holds tasks the host releases any practice owed since the last reading.`,
+      said: `Examiner session ${session} is writing tasks beside this conversation${tasks === undefined ? "" : `, and stops once it holds ${plural(Number(tasks), "task")}`}${promotedSince(turn.events, "comparison.started") ? "; a compare waits for this session to end" : ""}. As it holds tasks the host releases any practice owed since the last reading.`,
     };
   };
 

@@ -35,9 +35,9 @@ function logged() {
     events,
     add,
     /** Each task proposed whole and held out. */
-    hold: (ids: readonly string[]) => {
+    hold: (ids: readonly string[], family = "fixture") => {
       for (const taskId of ids) {
-        const task = { taskId, family: "fixture", publicInput: {}, hidden: null };
+        const task = { taskId, family, publicInput: {}, hidden: null };
         add(PROPOSED, { version: `v-${taskId}`, taskId, task });
         add(TASK_ADMISSION, { version: `v-${taskId}`, gate: 1, outcome: "passed" });
       }
@@ -367,11 +367,10 @@ describe("after a promotion", () => {
       ["old", "new"].map(fixture),
     );
     expect(unpromoted.promoted).toBeNull();
-    // At a wake the promotion is told where it came after the conversation was last told.
+    // No wake tells it: the host opens afresh at the first ask after a promotion.
     const at = log.events.findIndex(({ kind }) => kind === "harness.promoted");
     const woken = heard(log.events, ["old", "new"].map(fixture), at);
-    expect(woken.promoted).toContain("g-9");
-    expect(heard(log.events, ["old", "new"].map(fixture), at + 1).promoted).toBeNull();
+    expect(woken.promoted).toBeNull();
     // A conversation still open heard each refusal from the gate.
     expect(woken.refused).toEqual([]);
   });
@@ -426,8 +425,8 @@ describe("a wake", () => {
     const [first, second] = wakes;
     expect(first).toContain("b-2");
     expect(first).toContain("run (fixture)");
-    const since = read(s.log).findIndex(({ kind }) => kind === "exam.started");
-    expect(first).toContain(heard(read(s.log), [fixture("run")], since).promoted ?? "no promotion line");
+    // The promotion beside the first ask is an opening's to tell, as the host opens one after it.
+    expect(first).not.toContain(heard(read(s.log), [fixture("run")]).promoted ?? "no promotion line");
     // What the opening told stays out of the wake, and the next wake repeats nothing.
     expect(first).not.toContain("mixed (fixture)");
     expect(second).not.toContain("b-2");
@@ -480,11 +479,33 @@ describe("a wake", () => {
     expect(lines).toEqual(heard(log.events, [fixture("run")]).groups.flatMap((group) => group.lines));
     expect(lines[0]).toEndWith("; ruled at fault on an answer to it: check-unit");
     // Nothing reported since: no reading, no task.
-    expect(heard(log.events, tasks, log.events.length)).toEqual({
-      stood: null,
-      groups: [],
-      promoted: null,
-      refused: [],
-    });
+    const quiet = heard(log.events, tasks, log.events.length);
+    expect(quiet).toEqual({ stood: null, groups: [], promoted: null, refused: [] });
+  });
+});
+
+describe("the largest family of a comparison the reference stood in", () => {
+  it("is counted over the tasks that comparison scored, whatever else the exam holds", () => {
+    const log = logged();
+    log.hold(["a", "b", "c", "unscored"], "wide");
+    log.hold(["d"], "narrow");
+    for (const task of ["a", "b", "c", "d"]) {
+      log.solved("c-1", task, "h1", [true, true]);
+      log.solved("c-1", task, "h2", [true, true]);
+    }
+    log.reported("c-1", ["h1", "h2"], ["a", "b", "c", "d"]);
+    const told = heard(log.events, []).stood;
+    expect(told).toContain("scored 4 tasks");
+    expect(told).toContain("The largest family among them held 3.");
+    // The exam holds four of that family and then five: a count over the exam would say so.
+    log.hold(["later"], "wide");
+    expect(heard(log.events, []).stood).toBe(told);
+  });
+
+  it("is 0 where the comparison scored no task", () => {
+    const log = logged();
+    log.hold(["a"]);
+    log.reported("c-1", ["h1", "h2"], ["a"]);
+    expect(heard(log.events, []).stood).toContain("The largest family among them held 0.");
   });
 });

@@ -13,8 +13,8 @@
  * what the reference's valid answers measured, whether a valid answer to it is on record, and any
  * check a ruling found at fault on an answer to it (`src/examiner/record.ts`). The home the last
  * session computed in is carried into this one, and its shell runs the engines the pack's checks run
- * (12 October). In a campaign the next ask wakes the same conversation instead (`conversing`,
- * `tools/d2/campaign-actions.ts`).
+ * (12 October). In a campaign the next ask wakes the same conversation instead, until a promotion
+ * (`conversing`, `tools/d2/campaign-actions.ts`).
  *
  * The gate solves nothing. From 12 October to 1 November it also put each draft to up to three
  * room solves by the reference harness, through the launcher a comparison uses and with each

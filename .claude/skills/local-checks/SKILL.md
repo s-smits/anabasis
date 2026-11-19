@@ -27,7 +27,10 @@ as a commit status, one API call instead of a runner.
 `bun run test|typecheck|lint|secrets|gate` and `bun test` go through the bun router
 (`tools/runtime/router/`, installed with `bun tools/runtime/router/install.ts`). They run on this
 machine unless `RUN_REMOTE` names a host that `ANA_HOSTS` lists with `checks`; the operator's
-`CLAUDE.md` names theirs. A landing alone reads an unset `RUN_REMOTE` otherwise (`whereToProve`,
+`CLAUDE.md` names theirs. `RUN_REMOTE=auto` reads the one-minute load a core of this machine and of
+each such host (`tools/runs/load.ts`, the sample `runs loadwatch` draws), about a second, and runs
+the task in the first free slot, least loaded first, so checks started together spread over the
+slots; a machine that does not answer within `ANA_RUNNER_PICK_WAIT` (5 s) is left out. A landing alone reads an unset `RUN_REMOTE` otherwise (`whereToProve`,
 `tools/runtime/landing.ts`): it spreads its commits' passes over every such host, each taking as many
 at once as its `checks`, sends the whole gate on the top to the first listed, and proves again on
 another host a pass whose host gave no verdict; with no such host, or with `RUN_REMOTE` set, as in

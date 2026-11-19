@@ -13,37 +13,16 @@
  * load before placing a run. It ports the operator's own `ana-loadwatch` (30 October), whose host
  * list was written into the script, to the host list every other verb reads.
  *
- * Each machine runs one sampling loop for the whole watch, so a refresh costs no connection. A host's
- * loop goes through `sshScript`, whose control socket (`sshOptions`) the other verbs and the check
- * runner share, so a reconnect after a drop reuses the connection that is already open. The loop
- * picks its source by what the machine has: `/proc/stat` deltas on
- * Linux, and on macOS a streaming `iostat`, whose tick deltas see short-lived processes that
- * `ps %cpu`, a decaying average, misses. A stream silent for longer than its interval and
- * `SILENT_MS` reads as unreachable and is opened again. A screen update is one write of the lines
- * that changed, inside synchronised output (DEC 2026), so the terminal paints it at once.
+ * Each machine runs one sampling loop for the whole watch (`load.ts`), so a refresh costs no
+ * connection, and a loop that closes or falls silent is opened again. A screen update is one write
+ * of the lines that changed, inside synchronised output (DEC 2026), so the terminal paints it at once.
  */
-import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { killProcessGroup } from "#src/meta/subprocess.ts";
-import { hostsOf, ownName } from "./host-config.ts";
-import { shellOn } from "./host-command.ts";
+import { hostsOf } from "./host-config.ts";
+import { byLoad, firstSamples, stream, watchedOf, WINDOWS, type Watched, type Window } from "./load.ts";
 import { Misused } from "./registry.ts";
 
-interface Sample {
-  readonly cores: number;
-  /** The one-, five- and fifteen-minute load averages. */
-  readonly loads: readonly [number, number, number];
-  /** The share of the CPU busy over the last interval, in percent. */
-  readonly busy: number;
-}
-type State = Sample | "connecting" | "unreachable";
-interface Watched {
-  readonly label: string;
-  readonly argv: readonly string[];
-  state: State;
-  child: Bun.Subprocess | null;
-}
-
-const SILENT_MS = 20_000;
 const RETRY_MS = 3000;
 const TICK_MS = 200;
 const BAR = 40;
@@ -51,71 +30,6 @@ const ESC = "\u001B";
 const [RESET, DIM, BOLD] = [`${ESC}[0m`, `${ESC}[2m`, `${ESC}[1m`];
 const [GREEN, YELLOW, RED] = [`${ESC}[32m`, `${ESC}[33m`, `${ESC}[31m`];
 const ROWS = ["cpu now ", "load 1m ", "load 5m ", "load 15m"] as const;
-/** Each window `-w` names, and its place among a sample's load averages. */
-const WINDOWS = { "1m": 0, "5m": 1, "15m": 2 } as const;
-type Window = (typeof WINDOWS)[keyof typeof WINDOWS];
-// Each sample is "<cores>\n<1m> <5m> <15m>\n<idle percent>\n---\n". @I@ is the interval in seconds.
-const LOOP = String.raw`
-if [ -r /proc/stat ]; then
-  n=$(nproc)
-  snap() { read -r _ u ni s id io irq sirq st _ < /proc/stat; T=$((u+ni+s+id+io+irq+sirq+st)); I=$((id+io)); }
-  snap; pT=$T; pI=$I; sleep 0.3
-  while :; do
-    snap; dt=$((T-pT)); di=$((I-pI)); pT=$T; pI=$I; [ "$dt" -gt 0 ] || dt=1
-    read -r a b c _ < /proc/loadavg
-    printf '%s\n%s %s %s\n%s\n---\n' "$n" "$a" "$b" "$c" "$((100*di/dt))"
-    sleep @I@
-  done
-else
-  n=$(sysctl -n hw.ncpu)
-  emit='$1 ~ /^[0-9]+$/ && ++k > 1 { print n; print $4 " " $5 " " $6; print $3; print "---"; fflush() }'
-  iostat -n0 -w 1 -c 2 | awk -v n="$n" "$emit"
-  iostat -n0 -w @W@ | awk -v n="$n" "$emit"
-fi
-`;
-
-/** One sample from the loop's block, or null for a block that is not one. */
-function sampleOf(block: string): Sample | null {
-  const [cores, loads, idle] = block.trim().split("\n");
-  const [one, five, fifteen] = (loads ?? "").trim().split(/\s+/u).map(Number);
-  const numbers = [Number(cores), one, five, fifteen, Number(idle)];
-  if (!numbers.every((value) => value !== undefined && Number.isFinite(value))) return null;
-  if (one === undefined || five === undefined || fifteen === undefined) return null;
-  return { cores: Number(cores), loads: [one, five, fifteen], busy: Math.max(0, 100 - Number(idle)) };
-}
-
-/** Read one connection until it closes or falls silent, or until its first sample. */
-async function stream(watched: Watched, intervalMs: number, until: "first" | "closed"): Promise<void> {
-  const child = capturedSpawn([...watched.argv], {
-    stdin: "ignore",
-    stdout: "pipe",
-    stderr: "ignore",
-    detached: true,
-  });
-  watched.child = child;
-  const reader = child.stdout.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let silentMs = SILENT_MS;
-  try {
-    for (;;) {
-      const read = await Promise.race([reader.read(), Bun.sleep(silentMs).then(() => null)]);
-      if (read === null || read.done) break;
-      buffer += decoder.decode(read.value, { stream: true });
-      const blocks = buffer.split("---\n");
-      buffer = blocks.pop() ?? "";
-      const sample = blocks.flatMap((block) => sampleOf(block) ?? []).at(-1);
-      if (sample === undefined) continue;
-      watched.state = sample;
-      silentMs = intervalMs + SILENT_MS;
-      if (until === "first") return;
-    }
-    watched.state = "unreachable";
-  } finally {
-    killProcessGroup(child, "SIGKILL");
-    watched.child = null;
-  }
-}
 
 function bar(value: number, most: number): string {
   // A load above the core count shows as processes waiting beside the bar, never above 100%.
@@ -159,17 +73,6 @@ function frame(watched: readonly Watched[], seconds: string): string[] {
   ];
 }
 
-/** The machines that answered, least loaded first, by one load average a core (`at` is its place
- *  in `WINDOWS`). A machine that did not answer is left out, never read as idle. */
-function byLoad(watched: readonly Watched[], at: Window): { label: string; load: number; cores: number }[] {
-  const read = watched.flatMap(({ label, state }) =>
-    state === "connecting" || state === "unreachable"
-      ? []
-      : [{ label, load: state.loads[at], cores: state.cores }],
-  );
-  return read.toSorted((a, b) => a.load / a.cores - b.load / b.cores);
-}
-
 /** `-s`: the window named first, then each machine's load a core over it out of 100, least loaded
  *  first, the queue beyond its cores as the frame says it, and a machine that did not answer last. */
 function short(watched: readonly Watched[], window: string, at: Window): string {
@@ -210,21 +113,10 @@ export async function loadwatch(args: readonly string[]): Promise<void> {
   if (extra !== undefined || !Number.isFinite(seconds) || seconds <= 0 || at === undefined) {
     throw new Misused();
   }
-  const script = LOOP.replaceAll("@I@", String(Math.max(seconds, 0.5))).replaceAll(
-    "@W@",
-    String(Math.max(1, Math.round(seconds))),
-  );
-  const watched = [undefined, ...hostsOf()].map(
-    (host): Watched => ({
-      label: host?.name ?? ownName(),
-      argv: shellOn(host, script),
-      state: "connecting",
-      child: null,
-    }),
-  );
+  const watched = watchedOf([undefined, ...hostsOf()], seconds);
   const intervalMs = seconds * 1000;
   if (values.once || values.short) {
-    await Promise.all(watched.map((each) => stream(each, intervalMs, "first")));
+    await firstSamples(watched, intervalMs);
     if (values.short) {
       console.log(short(watched, values.window, at));
       return;

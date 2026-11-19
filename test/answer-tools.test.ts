@@ -16,7 +16,13 @@ import {
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { capturedFiles, keepAnswerFiles, manifestOf, readAnswerFiles } from "../src/kernel/answer-files.ts";
+import {
+  capturedFiles,
+  keepAnswerFiles,
+  manifestOf,
+  readAnswerFiles,
+  textFiles,
+} from "../src/kernel/answer-files.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { verdictsOf } from "../src/kernel/solves.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -24,6 +30,11 @@ import { join } from "../src/meta/path.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { type Desk, openDesk, submitTool } from "../src/tools/answer.ts";
 import type { WallExec } from "../src/tools/coding.ts";
+import { zipOf } from "./helpers/zip.ts";
+
+/** A workbook's sheet, an empty member and a folder, as Python's `zipfile` streams them. */
+const PYTHON_ZIP =
+  "UEsDBBQACAAIAKyMcl0AAAAAAAAAAAAAAAAYAAAAeGwvd29ya3NoZWV0cy9zaGVldDEueG1ssynOSE0tcUksSbSzKcovVyiyVTJSsrNJBjGcQKw0u+BQXw1HQytHS00b/TQ7mzI7QyM9Uxv9Mjsb/WQgBuoCkghjAFBLBwgiyBpNQwAAAFIAAABQSwMEFAAIAAgArIxyXQAAAAAAAAAAAAAAAAwAAAB4bC9lbXB0eS54bWwDAFBLBwgAAAAAAgAAAAAAAABQSwMEFAAIAAAAAAAhAAAAAAAAAAAAAAAAAAkAAAB4bC9tZWRpYS9QSwcIAAAAAAAAAAAAAAAAUEsBAhQDFAAIAAgArIxyXSLIGk1DAAAAUgAAABgAAAAAAAAAAAAAAIABAAAAAHhsL3dvcmtzaGVldHMvc2hlZXQxLnhtbFBLAQIUAxQACAAIAKyMcl0AAAAAAgAAAAAAAAAMAAAAAAAAAAAAAACAAYkAAAB4bC9lbXB0eS54bWxQSwECFAMUAAgAAAAAACEAAAAAAAAAAAAAAAAACQAAAAAAAAAAAAAAgAHFAAAAeGwvbWVkaWEvUEsFBgAAAAADAAMAtwAAAPwAAAAAAA==";
 
 const CONTRACT: Contract = {
   answerFormat: {
@@ -159,6 +170,59 @@ describe("submit", () => {
       expect(() => capturedFiles([{ path, base64: "eA==" }])).toThrow();
       expect(() => manifestOf([{ path, bytes: 1, sha256: "a".repeat(64) }])).toThrow();
     }
+  });
+
+  it("gives a check the text members of an archive, within the inflated bound, and nothing of a damaged one", () => {
+    const sheet = '<worksheet><c r="A1"><v>42</v></c></worksheet>';
+    const book = zipOf([
+      ["xl/worksheets/sheet1.xml", sheet, true],
+      ["[Content_Types].xml", "<Types/>", false],
+      ["xl/media/image1.png", "\u0089PNG\r\n", false],
+    ]);
+    const [file] = capturedFiles([{ path: "report.xlsx", base64: book.toString("base64") }]);
+    expect(file?.text).toBeUndefined();
+    expect(file?.entries).toEqual([
+      { path: "xl/worksheets/sheet1.xml", text: sheet },
+      { path: "[Content_Types].xml", text: "<Types/>" },
+    ]);
+    const cut = book.subarray(0, -30).toString("base64");
+    expect(capturedFiles([{ path: "cut.xlsx", base64: cut }])[0]?.entries).toBeUndefined();
+    const csv = Buffer.from("a,b").toString("base64");
+    expect(capturedFiles([{ path: "a.csv", base64: csv }])[0]?.entries).toBeUndefined();
+    // Python's own writer, streamed, so each member's sizes follow it in a data descriptor.
+    const streamed = capturedFiles([{ path: "book.xlsx", base64: PYTHON_ZIP }])[0]?.entries;
+    expect(streamed?.map(({ path }) => path)).toEqual(["xl/worksheets/sheet1.xml", "xl/empty.xml"]);
+    expect(streamed?.[0]?.text).toContain("<f>SUM(A1:A9)</f><v>12.5</v>");
+  });
+
+  it("bounds what a set of archives inflates to, and gives a file past it none of its members", () => {
+    const half = zipOf([["a.xml", "\0".repeat(9 * 1024 * 1024), true]]).toString("base64");
+    const [first, second] = capturedFiles([
+      { path: "one.xlsx", base64: half },
+      { path: "two.xlsx", base64: half },
+    ]);
+    expect(first?.entries).toHaveLength(1);
+    expect(second?.entries).toBeUndefined();
+    const bomb = zipOf([
+      ["small.xml", "<a/>", true],
+      ["bomb.xml", "\0".repeat(16 * 1024 * 1024 + 1), true],
+    ]);
+    expect(
+      capturedFiles([{ path: "bomb.xlsx", base64: bomb.toString("base64") }])[0]?.entries,
+    ).toBeUndefined();
+  });
+
+  it("gives a control's archive members to a check as a solver's would be", () => {
+    const sheet = { path: "xl/worksheets/sheet1.xml", text: "<v>1</v>" };
+    expect(
+      textFiles([
+        { path: "a.xlsx", entries: [sheet] },
+        { path: "b.md", text: "# B" },
+      ]),
+    ).toEqual([
+      { path: "a.xlsx", base64: "", entries: [sheet] },
+      { path: "b.md", base64: Buffer.from("# B").toString("base64"), text: "# B" },
+    ]);
   });
 
   it.each(["file", "total"])("refuses bytes over the %s bound", async (kind) => {

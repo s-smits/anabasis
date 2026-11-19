@@ -19,14 +19,26 @@ it("removes a pass labelled wrong from accepted answers and keeps a sound pass",
     event("verdict", { solve: "s2", task: "t2", kind: "pass", answer: { other: true } }),
     event("comparison.reported", { session: "g1", settled: "unsettled" }),
   ];
-  const accepted = [{ author: true }, { solver: true }];
+  const accepted = [
+    { answer: { author: true }, files: [] },
+    { answer: { solver: true }, files: [] },
+  ];
   expect(acceptedAnswers(log, "v1")).toEqual(accepted);
   for (const label of ["wrong", "sound"]) {
     const settled = [
       ...log,
       event("comparison.reported", { session: "g1", settled: { passes: { s1: label } } }),
     ];
-    expect(acceptedAnswers(settled, "v1")).toEqual(label === "wrong" ? [{ author: true }] : accepted);
+    expect(acceptedAnswers(settled, "v1")).toEqual(label === "wrong" ? accepted.slice(0, 1) : accepted);
   }
   expect(acceptedAnswers(log, undefined)).toEqual([]);
+});
+
+it("carries the files an author's valid answer delivered, so the Referee reads it whole", () => {
+  const files = [{ path: "report.md", bytes: 3, sha256: "a".repeat(64) }];
+  const log = [
+    event("task.proposed", { version: "v1", taskId: "t1" }),
+    event("task.feasible", { version: "v1", answer: { author: true }, files }),
+  ];
+  expect(acceptedAnswers(log, "v1")).toEqual([{ answer: { author: true }, files }]);
 });

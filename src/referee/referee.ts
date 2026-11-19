@@ -260,7 +260,7 @@ function hostRuling(verdict: LoggedVerdict, replay: Verdict | null): RefereeFind
 function packet(
   fail: RefereeCase,
   verdict: LoggedVerdict,
-  accepted: JsonValue | undefined,
+  accepted: ReturnType<typeof acceptedAnswers>[number] | undefined,
   refusing: ReadonlyMap<string, Refusing>,
 ): string {
   const statements = new Map(fail.contract.rules.map((rule) => [rule.id, rule.statement]));
@@ -283,7 +283,7 @@ function packet(
     ...(verdict.shown.length > 0 || readsFiles ? [`Files under review: ${submitted}`] : []),
     accepted === undefined
       ? "No answer the checks accepted for this task is recorded."
-      : `An answer the checks accepted for this task, one valid answer and not the only one: ${capturedJsonStringify(accepted)}`,
+      : `An answer the checks accepted for this task, one valid answer and not the only one: ${capturedJsonStringify(accepted.answer)}${accepted.files.length > 0 ? `\n\nIts files: ${capturedJsonStringify(shownFiles(fail.log, accepted.files))}` : ""}`,
     `Refusing checks:\n${lines.join("\n") || "(none named)"}`,
   ].join("\n\n");
 }
@@ -488,7 +488,7 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
         rows,
         {
           readTogether: [...refusing.values()].map(({ fields }) => fields),
-          accepted,
+          accepted: accepted?.answer,
           files: verdict.files,
         },
       ),

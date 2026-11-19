@@ -11,6 +11,7 @@
  */
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
+import type { AnswerFile } from "../kernel/answer-files.ts";
 import { blockingOf, decides, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
 import { jsonPathTokens, resolveJsonPath } from "../meta/json-evidence.ts";
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -18,6 +19,10 @@ import { isRecord, isString, type JsonObject, type JsonValue } from "../meta/jso
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { text, tool } from "../tools/answer.ts";
+
+/** How a probe and a ruling name a submitted file, and a check's declared files (`file:$` for all):
+ *  a JSON path starts at `$`, so the two never meet. */
+export const FILE = "file:";
 
 /** review-probe.ts:57: each answer probe runs every applicable check, so eight keep a review from becoming
  *  a second exam. */
@@ -60,8 +65,9 @@ export function conclusive(row: ProbeRow): boolean {
 }
 
 /** A check receives declared paths alone. A change reaches one when it names the field, a child
- *  or its parent; malformed paths authorise nothing. */
+ *  or its parent, or a file the check is given; malformed paths authorise nothing. */
 export function reaches(path: string, declared: readonly string[]): boolean {
+  if (path.startsWith(FILE)) return declared.some((field) => field === path || field === `${FILE}$`);
   const probed = jsonPathTokens(path);
   return (
     probed !== null &&
@@ -108,8 +114,7 @@ export function withReplacedField(answer: JsonValue, path: string, value: JsonVa
  * two passages and editing either would be a guess. The text is sliced, not passed through
  * `String.replace`, which reads `$&` in a replacement as a pattern, and code is full of dollar signs.
  */
-function editedPassage(answer: JsonValue, path: string, edit: ProbeEdit): string | null {
-  const field = resolveJsonPath(answer, path).value;
+function editedPassage(field: JsonValue | undefined, edit: ProbeEdit): string | null {
   if (!isString(field)) return null;
   const at = field.indexOf(edit.find);
   return edit.find === "" || at === -1 || at !== field.lastIndexOf(edit.find)
@@ -187,7 +192,7 @@ function changedAnswer(
       throw new Error("value must be JSON text; quote a string value");
     }
   } else {
-    const edited = editedPassage(answer, change.path, edit);
+    const edited = editedPassage(resolveJsonPath(answer, change.path).value, edit);
     if (edited === null) {
       throw new Error(`${change.path} is not a text field holding \`find\` exactly once`);
     }
@@ -206,12 +211,41 @@ function probeAnswer(
   changes: ProbeRow["changes"],
   accepted: JsonValue | undefined,
 ): JsonValue {
-  if (changes.length > 3) throw new Error("a probe changes at most 3 paths");
   const changed = changes.reduce((at, change) => changedAnswer(at, change, accepted), answer);
   if (hashJsonValue(changed) === hashJsonValue(answer)) {
     throw new Error("the changes leave the answer unchanged");
   }
   return changed;
+}
+
+/** The submitted files with one text file's passage rewritten, or its whole text replaced by a JSON
+ *  string, under the bound a field's change takes. */
+function changedFile(files: readonly AnswerFile[], change: ProbeRow["changes"][number]): AnswerFile[] {
+  const at = files.findIndex(({ path }) => `${FILE}${path}` === change.path);
+  const was = files[at]?.text;
+  if (was === undefined) throw new Error(`${change.path} is not a text file the solve submitted`);
+  const { edit } = change;
+  if ((change.value === null) === (edit === null)) {
+    throw new Error("send either `value`, or `find` with `replace`");
+  }
+  let now: JsonValue | null = null;
+  try {
+    now = edit === null ? capturedJsonParse(change.value ?? "") : editedPassage(was, edit);
+  } catch {
+    /* Not JSON: refused below with the form a file's change takes. */
+  }
+  const most = Math.max(VALUE_MAX_CHARS, was.length);
+  const parts = [edit === null ? now : null, edit?.find, edit?.replace];
+  if (!isString(now) || now === was || parts.some((part) => isString(part) && part.length > most)) {
+    throw new Error(
+      `${change.path} takes a JSON string \`value\` for its whole text, or a passage \`find\` names once with its \`replace\`, that changes it, each at most ${String(VALUE_MAX_CHARS)} characters or the file's length`,
+    );
+  }
+  return files.with(at, {
+    path: files[at]?.path ?? "",
+    base64: Buffer.from(now).toString("base64"),
+    text: now,
+  });
 }
 
 /** The answer probe tool over one answer; `rows` collects every answer probe that ran, in order. Probes run one at
@@ -226,9 +260,11 @@ export function probeTool(
     readonly readTogether?: readonly (readonly string[])[];
     /** The accepted answer the Referee's first message offers, whose values a probe may carry. */
     readonly accepted?: JsonValue | undefined;
+    /** The files the solve submitted, which every probe gives the checks, changed where it names one. */
+    readonly files?: readonly AnswerFile[];
   } = {},
 ): SeatTool {
-  const { readTogether = [], accepted } = around;
+  const { readTogether = [], accepted, files = [] } = around;
   let original: Promise<Verdict> | null = null;
   return tool({
     name: "probe_check",
@@ -238,7 +274,7 @@ export function probeTool(
         Type.Object({
           path: Type.String({
             description:
-              "An existing field or its parent; `$` only where the answer is a scalar, since only a scalar root can be replaced. Array positions are bracketed; a key holding a dot or slash is quoted: `$.files['src/main.cpp']`.",
+              "An existing field or its parent; `$` only where the answer is a scalar, since only a scalar root can be replaced. Array positions are bracketed; a key holding a dot or slash is quoted: `$.files['src/main.cpp']`. A submitted text file is `file:` and its path, `file:report.md`, changed by `find` and `replace` or by a JSON string `value` for its whole text.",
           }),
           value: Type.Optional(
             Type.String({
@@ -268,15 +304,22 @@ export function probeTool(
         value: value ?? null,
         edit: find === undefined || replace === undefined ? null : { find, replace },
       }));
-      const changed = probeAnswer(answer, changes, accepted);
+      if (changes.length > 3) throw new Error("a probe changes at most 3 paths");
+      const onFiles = changes.filter(({ path }) => path.startsWith(FILE));
+      const onAnswer = changes.filter((change) => !onFiles.includes(change));
+      // A probe of files alone leaves the answer as it is; an empty one is refused as unchanged.
+      const changed =
+        onFiles.length > 0 && onAnswer.length === 0 ? answer : probeAnswer(answer, onAnswer, accepted);
+      const changedFiles = onFiles.reduce((at, change) => changedFile(at, change), files);
       if (
         changes.length > 1 &&
         !readTogether.some((fields) => changes.every(({ path }) => reaches(path, fields)))
       ) {
         throw new Error("coupled changes name paths one refusing check reads together, or their parents");
       }
-      original ??= verify(task, answer, context.abortSignal);
-      const [before, after] = [await original, await verify(task, changed, context.abortSignal)];
+      original ??= verify(task, answer, context.abortSignal, files);
+      const before = await original;
+      const after = await verify(task, changed, context.abortSignal, changedFiles);
       const row = {
         id: rows.length + 1,
         changes,

@@ -231,6 +231,21 @@ describe("a draft read without a model", () => {
     expect((await draftReading(join(root, "read"), hidden, 2)).faults).toEqual([]);
   });
 
+  it("reads an accept control's files under a check that reads request.files", async () => {
+    const report = {
+      ...SOUND,
+      evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) && req.files.some((file) => file.path === "report.md" && file.text === "six times"),\n};\n`,
+      accept: SOUND.accept.map((control) => ({
+        ...control,
+        files: [{ path: "report.md", text: "six times" }],
+      })),
+    };
+    expect((await draftReading(join(root, "read"), report, 2)).faults).toEqual([]);
+    // Without the files the same controls fail the check that reads them.
+    const bare = { ...report, accept: SOUND.accept };
+    expect((await draftReading(join(root, "read"), bare, 2)).faults.join("\n")).toContain("accept control");
+  });
+
   it("tells a check program that does not load as a fault", async () => {
     const broken = {
       ...SOUND,

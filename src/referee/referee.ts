@@ -88,6 +88,8 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { type Static, Type } from "typebox";
 import { sit } from "../agent/session.ts";
 import type { Contract } from "../kernel/contract.ts";
+import { type AnswerFile, readAnswerFiles, shownFiles } from "../kernel/answer-files.ts";
+import { verdictsOf } from "../kernel/solves.ts";
 import { acceptedAnswers, proposalsOf } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { priceKey } from "../kernel/meter.ts";
@@ -109,7 +111,7 @@ import { isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts
 import { keyIfDefined, keyIfNotNull, keysIf } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import { ending, text, tool } from "../tools/answer.ts";
-import { conclusive, type ProbeRow, probeTool, reaches } from "./probe.ts";
+import { conclusive, FILE, type ProbeRow, probeTool, reaches } from "./probe.ts";
 import type { Reader } from "./reader.ts";
 
 export type Ruling = "earned" | "check-defect" | "unclear";
@@ -173,7 +175,7 @@ const RULING_PARAMETERS = Type.Object({
   field: Type.Optional(
     Type.String({
       description:
-        "For earned: the field of the answer where the rule is broken, or a parent of it up to `$`, the whole answer, spelt as the checks spell paths: `$.items[0].value`. A cited probe changes this field or one inside it.",
+        "For earned: the field of the answer where the rule is broken, or a parent of it up to `$`, the whole answer, spelt as the checks spell paths: `$.items[0].value`; or a submitted file, `file:report.md`. A cited probe changes this field or one inside it.",
     }),
   ),
   reason: Type.String({ minLength: 1 }),
@@ -184,17 +186,26 @@ const RULING_PARAMETERS = Type.Object({
 
 interface LoggedVerdict {
   readonly answer: JsonValue;
+  readonly files: readonly AnswerFile[];
+  readonly shown: readonly JsonValue[];
   readonly blocking: readonly string[];
   /** The host's refusal of the answer's format, when no check ran. */
   readonly fault: string | null;
 }
 
 /** The verdict the log holds for `solve`; null when no answer reached a check. */
-function loggedVerdict(events: readonly LogEvent[], solve: string): LoggedVerdict | null {
-  const data = events.findLast((event) => event.kind === "verdict" && event.data.solve === solve)?.data;
-  if (data?.answer === undefined) return null;
-  const blocking = Array.isArray(data.blocking) ? data.blocking.filter(isString) : [];
-  return { answer: data.answer, blocking, fault: isString(data.fault) ? data.fault : null };
+function loggedVerdict(events: readonly LogEvent[], solve: string, log: string): LoggedVerdict | null {
+  const judged = verdictsOf(events).get(solve);
+  if (judged?.answer === undefined) return null;
+  const manifest = judged.files ?? [];
+  const files = readAnswerFiles(log, manifest);
+  return {
+    answer: judged.answer,
+    files,
+    shown: shownFiles(log, manifest, files),
+    blocking: blockingOf(judged.checker),
+    fault: judged.fault,
+  };
 }
 
 /** The host's own ruling, or null when the fail needs a reading. An answer outside the contract's
@@ -227,24 +238,28 @@ function hostRuling(verdict: LoggedVerdict, replay: Verdict | null): RefereeFind
       );
 }
 
-function packet(fail: RefereeCase, verdict: LoggedVerdict, accepted: JsonValue | undefined): string {
+function packet(
+  fail: RefereeCase,
+  verdict: LoggedVerdict,
+  accepted: JsonValue | undefined,
+  refusing: ReadonlyMap<string, Refusing>,
+): string {
   const statements = new Map(fail.contract.rules.map((rule) => [rule.id, rule.statement]));
-  const refusing = applicableTruthChecks(readBrief(fail.checks), fail.task)
-    .filter((check) => verdict.blocking.includes(check.id))
-    .map(
-      (check) =>
-        `- ${check.id}, citing ${check.citedDecisionIds.map((id) => `${id} ("${statements.get(id) ?? "not in the contract"}")`).join("; ") || "no rule"}; reads ${check.execution.artifactPaths.join(", ") || "no field of the answer"}`,
-    );
+  const lines = [...refusing].map(
+    ([id, { fields, rules }]) =>
+      `- ${id}, citing ${rules.map((rule) => `${rule} ("${statements.get(rule) ?? "not in the contract"}")`).join("; ") || "no rule"}; reads ${fields.join(", ") || "no field of the answer"}`,
+  );
   const { hidden, ...task } = fail.task;
   return [
     `Public contract: ${capturedJsonStringify(fail.contract)}`,
     `Public task: ${capturedJsonStringify(task)}`,
     `Hidden values the checks may receive: ${capturedJsonStringify(hidden)}`,
     `Answer under review: ${capturedJsonStringify(verdict.answer)}`,
+    ...(verdict.shown.length === 0 ? [] : [`Files under review: ${capturedJsonStringify(verdict.shown)}`]),
     accepted === undefined
       ? "No answer the checks accepted for this task is recorded."
       : `An answer the checks accepted for this task, one valid answer and not the only one: ${capturedJsonStringify(accepted)}`,
-    `Refusing checks:\n${refusing.join("\n") || "(none named)"}`,
+    `Refusing checks:\n${lines.join("\n") || "(none named)"}`,
   ].join("\n\n");
 }
 
@@ -279,7 +294,7 @@ function readProgramTool(checks: string) {
 /** Why the host refuses a ruling for want of its evidence, or null where it stands. */
 function refusal(
   refusing: ReadonlyMap<string, Refusing>,
-  answer: JsonValue,
+  held: (field: string) => boolean,
   rows: readonly ProbeRow[],
   args: Static<typeof RULING_PARAMETERS>,
 ): string | null {
@@ -302,8 +317,8 @@ function refusal(
     return `an earned ruling names the public rule the answer breaks, one a refusing check cites: ${[...new Set([...refusing.values()].flatMap(({ rules }) => rules))].join(", ") || "none cited"}; name one of these, the rule whose check refused the answer`;
   }
   const field = args.field ?? "";
-  if (!resolveJsonPath(answer, field).found) {
-    return "an earned ruling names where the answer breaks the rule: `field`, a path that exists in the answer";
+  if (!held(field)) {
+    return "an earned ruling names where the answer breaks the rule: `field`, a path that exists in the answer or a file the solve submitted";
   }
   if (!citing.some(([, { fields }]) => reaches(field, fields))) {
     return `no refusing check that cites ${String(args.rule)} reads ${field}; name the field the rule is broken at, or rule unclear`;
@@ -327,7 +342,7 @@ function refusal(
  *  the model asked for and not only the one that stood. */
 function rulingTool(
   refusing: ReadonlyMap<string, Refusing>,
-  answer: JsonValue,
+  held: (field: string) => boolean,
   rows: readonly ProbeRow[],
   found: RefereeFinding[],
   refused: (asked: Static<typeof RULING_PARAMETERS>, why: string) => void,
@@ -338,7 +353,7 @@ function rulingTool(
       "Record whether this fail counts, with the probes it rests on. The system prompt states the evidence each ruling needs.",
     parameters: RULING_PARAMETERS,
     execute: async (args) => {
-      const why = refusal(refusing, answer, rows, args);
+      const why = refusal(refusing, held, rows, args);
       if (why !== null) {
         refused(args, why);
         throw new Error(why);
@@ -371,11 +386,12 @@ function rulingTool(
  *  fail. */
 export async function referee(reader: Reader, fail: RefereeCase): Promise<RefereeFinding> {
   const events = read(fail.log);
-  const verdict = loggedVerdict(events, fail.solve);
+  const verdict = loggedVerdict(events, fail.solve, fail.log);
   if (verdict === null) {
     throw new Error(`solve ${fail.solve} has no answer on record: the Referee rules a rejected answer alone`);
   }
-  const replay = verdict.fault === null ? await fail.verify(fail.task, verdict.answer, reader.kill) : null;
+  const replay =
+    verdict.fault === null ? await fail.verify(fail.task, verdict.answer, reader.kill, verdict.files) : null;
   const host = hostRuling(verdict, replay);
   const rows: ProbeRow[] = [];
   const found: RefereeFinding[] = [];
@@ -383,36 +399,54 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
   const accepted = acceptedAnswers(events, version).at(-1);
   const refusing = new Map(
     applicableTruthChecks(readBrief(fail.checks), fail.task)
-      .filter((check) => verdict.blocking.includes(check.id))
-      .map((check) => [check.id, { fields: check.execution.artifactPaths, rules: check.citedDecisionIds }]),
+      .filter(({ id }) => verdict.blocking.includes(id))
+      // The fields a check reads, its files named as a probe and a ruling name them.
+      .map(({ id, execution: { artifactPaths, filePaths = [] }, citedDecisionIds: rules }) => [
+        id,
+        { fields: [...artifactPaths, ...filePaths.map((path) => `${FILE}${path}`)], rules },
+      ]),
   );
   let meter: JsonObject | null = null;
   if (host === null) {
-    const opening = packet(fail, verdict, accepted);
+    const opening = packet(fail, verdict, accepted, refusing);
     const tools = [
       readProgramTool(fail.checks),
       probeTool(
-        async (task, answer, signal) =>
-          replay !== null && answer === verdict.answer ? replay : fail.verify(task, answer, signal),
+        async (task, answer, signal, files) =>
+          replay !== null && answer === verdict.answer && files === verdict.files
+            ? replay
+            : fail.verify(task, answer, signal, files),
         fail.task,
         verdict.answer,
         rows,
-        { readTogether: [...refusing.values()].map(({ fields }) => fields), accepted },
+        {
+          readTogether: [...refusing.values()].map(({ fields }) => fields),
+          accepted,
+          files: verdict.files,
+        },
       ),
-      rulingTool(refusing, verdict.answer, rows, found, (asked, why) =>
-        append(fail.log, "referee.refused", {
-          solve: fail.solve,
-          task: fail.task.taskId,
-          asked: {
-            ruling: asked.ruling,
-            ...keyIfDefined("check", asked.check),
-            ...keyIfDefined("rule", asked.rule),
-            ...keyIfDefined("field", asked.field),
-            reason: asked.reason,
-            probes: asked.probes,
-          },
-          why,
-        }),
+      rulingTool(
+        refusing,
+        (field) =>
+          field.startsWith(FILE)
+            ? verdict.files.some(({ path }) => `${FILE}${path}` === field)
+            : resolveJsonPath(verdict.answer, field).found,
+        rows,
+        found,
+        (asked, why) =>
+          append(fail.log, "referee.refused", {
+            solve: fail.solve,
+            task: fail.task.taskId,
+            asked: {
+              ruling: asked.ruling,
+              ...keyIfDefined("check", asked.check),
+              ...keyIfDefined("rule", asked.rule),
+              ...keyIfDefined("field", asked.field),
+              reason: asked.reason,
+              probes: asked.probes,
+            },
+            why,
+          }),
       ),
     ];
     const deadline = AbortSignal.timeout((reader.wallSeconds ?? DEADLINE_SECONDS) * 1000);

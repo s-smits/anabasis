@@ -94,6 +94,7 @@
  */
 import { type Static, Type } from "typebox";
 import { answerFormatFault, type Objective } from "../kernel/contract.ts";
+import { DELIVERABLES, type TextFile } from "../kernel/answer-files.ts";
 import { ROOM } from "../kernel/compare.ts";
 import { CHECK_WALL_MS } from "../kernel/verify.ts";
 import { REACH } from "./ladder.ts";
@@ -110,6 +111,13 @@ interface DraftedRule {
   readonly id: string;
   readonly statement: string;
   readonly source: string;
+}
+
+/** One control answer of a draft, by the example it answers. */
+interface DraftControl {
+  readonly task: number;
+  readonly answer: JsonValue;
+  readonly files?: readonly TextFile[];
 }
 
 /** An exam as an Examiner drafts it and `exam.drafted` holds it. */
@@ -141,9 +149,9 @@ export interface Draft {
     readonly hidden: JsonValue;
   }[];
   /** Control answers, by the example each answers: answers every check passes, and answers the named
-   *  check refuses. */
-  readonly accept: readonly { readonly task: number; readonly answer: JsonValue }[];
-  readonly reject: readonly { readonly task: number; readonly answer: JsonValue; readonly check: string }[];
+   *  check refuses, each with the files beside it. */
+  readonly accept: readonly DraftControl[];
+  readonly reject: readonly (DraftControl & { readonly check: string })[];
 }
 
 interface DraftingTerms {
@@ -172,12 +180,19 @@ const OUTSIDE = [
   [/\bfetch\s*\(/, "the network"],
   [/\bMath\s*\.\s*random\b|\bDate\s*\.\s*now\b/, "a random number or the clock"],
 ] as const;
+/** Text files beside an answer, as a control or a try gives them. */
+export const TEXT_FILES = Type.Optional(
+  Type.Array(Type.Object({ path: Type.String({ minLength: 1 }), text: Type.String() }), {
+    description: `Text files beside the answer, by their path under ${DELIVERABLES.folder}/, as a solver leaves them.`,
+  }),
+);
 const CONTROL = {
   task: Type.Integer({
     minimum: 0,
     description: "The example it answers, by its place in `tasks`, from 0.",
   }),
   answer: Type.Unknown(),
+  files: TEXT_FILES,
 };
 /** What `draft_exam` takes: a whole draft, in the words the Examiner is told. */
 const DRAFT_PARAMETERS = Type.Object({
@@ -261,13 +276,14 @@ const FLOOR = `${String(ROOM * 100)}%`;
 const SYSTEM = [
   "You are the Examiner. An operator has named a technical domain in a prompt, and you draft the exam on which a solving model will be measured in that domain: its public rules, scope and conventions, its answer format, its checks, its objective, example tasks and controls. You draft once, at the opening of a campaign. Later sessions write further tasks under what you draft here, and can change none of it.",
   `${TASK} The solver's first message holds the public input; its home holds the same task as public/task.json and the public rules, scope and conventions under public/resources/. It answers with one JSON value that follows the answer format, and an answer every check passes is valid. ${FAIR}`,
+  `Beside that value a solver may leave files under ${DELIVERABLES.folder}/ in its working directory. Submit captures the regular files there, at most ${String(DELIVERABLES.count)} and ${String(DELIVERABLES.bytes)} bytes in all, and each check receives them as request.files, a list of { path, base64, text } with text where the file is UTF-8, empty where the folder is absent; the objective reads the JSON value alone. So a work product the prompt asks for, such as a report or a workbook, is one a check can read, and a control or a try carries the files a check needs.`,
   `Two harnesses for the solver are compared on tasks neither was built on, each task solved afresh under each harness. A task tells them apart in two ways only. On validity: some of its solves are valid and some are not, and a valid answer beats one that is not. On the objective, where the exam declares one: two answers are both valid and one is better by it than the other by at least ${FLOOR} of the larger measure. Any other task is a tie, and a tie leaves the test, so an exam on which every solve is valid and nothing chooses between valid answers tells no harness from another, however many tasks it holds.`,
   `Who solves, and how hard a task can be for it:\n\n${REACH}`,
   "Which of the two ways the exam's tasks can use is decided here, and nothing written later adds the other. Validity tells harnesses apart only on tasks in one of the three places above, so it needs rules and a scope that leave the solver a method to find. The objective tells them apart on a task with more than one valid answer where the field's standard method, applied to the input, falls short of the best measure; where it reaches it, every careful solve submits that answer and the task ties. So ask of the domain what makes one valid answer better than another to a practitioner: what they pay for, save, minimise or maximise while meeting the requirements, such as a cost, a mass, a length, a count, a time, an error or a margin to a limit. Whether valid answers differ on it is decided here too, by what the answer format and the scope leave to the answer: where a task fixes everything the quantity depends on, every valid answer measures the same and none is better, and where the answer chooses some of it, such as the parts, the sizes, the amounts or the estimates, they differ. Where the domain has such a quantity, leave the answer what it depends on and declare it as the objective. Declare none only where no task of the domain could leave an answer that choice, and say why under the objective's `none`; the exam then measures by validity alone.",
   "The check program computes the objective in an `objective` export: a function that takes the same `request` as a check and returns the quantity of a valid answer as a finite number. It is your own computation, as each check is, and it may read the hidden values and measure the answer against what you built the task from. A share of the answer's values that agree with a recomputation from the public input is a measure the standard method reaches, so careful solves tie on it; a measure against the parameters a task's data were generated from, or another value you built the task from, is one a method that misses a defect in the data falls short of. One so measured cannot be gamed where it is the task's mean of a non-negative proper loss over its quantities, any tolerance folded into the value: absolute error for a point estimate, the interval score at a stated level for an interval. Coverage alone rewards a wider interval, and a value that changes sign or sits near zero makes trivial differences large.",
   `A rule states a property every valid answer has, which a check decides from its argument: a bound that holds, a quantity that is conserved, a state the field's own engine reaches, a test the answer passes. Give each rule its source: the standard, specification, reference manual or textbook that defines the property, named precisely enough to look up, and one that states the limit as your rule does; a nominal or typical value is no limit. ${UNHELD} Name the standard rather than restating its tables, equations or working, which the solver can look up, and leave the way to the property to the solver. A rule, a convention or a task's input that states the procedure, its steps or the numbers it needs hands the solver the whole method, and every task becomes running it once; so does a rule met by matching a shape the scope spells out or by writing one exact text.`,
   "The scope bounds every task written later: a size it fixes is the ceiling on how hard a task can be made, and an effect it leaves out is one no task can turn on. Draft a scope under which tasks can be written at every grade this field reaches, with the effects that decide answers near its limits.",
-  "The operator's prompt outranks your choice of rules. Every requirement it names, such as a limit, a quantity to meet or an analysis an answer has to pass, stays in the exam at the strength the prompt states, as a rule with its check, and a quantity it asks to minimise or maximise is the objective. Where no check can decide such a requirement from its argument alone, such as a work product or a step of the work, name it in the scope as not measured, and do not check a weaker property under its name. The same holds for the objective: a quantity declared because the prompt's own cannot be computed is a stand-in, so the scope names the prompt's quantity as not measured and the stand-in as what is measured in its place, and a step won on it measures the stand-in alone.",
+  "The operator's prompt outranks your choice of rules. Every requirement it names, such as a limit, a quantity to meet or an analysis an answer has to pass, stays in the exam at the strength the prompt states, as a rule with its check, and a quantity it asks to minimise or maximise is the objective. Where no check can decide such a requirement from its argument alone, such as a step of the work, name it in the scope as not measured, and do not check a weaker property under its name. The same holds for the objective: a quantity declared because the prompt's own cannot be computed is a stand-in, so the scope names the prompt's quantity as not measured and the stand-in as what is measured in its place, and a step won on it measures the stand-in alone.",
   `Write one check for each rule, and no other. The check program is one TypeScript module that exports \`checks\`, an object with a function under each check id. A function takes one argument, \`request\`, and returns a boolean, or a promise of one: \`request.publicTask\` is \`{ taskId, family, publicInput }\`, \`request.artifact\` is the answer, and \`request.hidden\` is the task's hidden values. It runs offline in a closed cell and imports nothing, so it computes from its argument alone, and the same answer always gets the same verdict. A check that runs longer than ${String(CHECK_WALL_MS / 60_000)} minutes, its tools included, reaches no verdict. It returns true where the answer keeps its rule and false only where it breaks it: an answer that breaks another rule is that rule's check's to refuse, and where its own computation cannot reach a verdict on an answer the format allows, such as a solver that does not converge, it throws, which drops the task as the check's defect instead of refusing the answer. It holds its rule exactly, allowing no tolerance the rule does not state, so a check of a quantity a rule calls zero or absent refuses any trace of it. It verifies the property its rule states, must be right on a task nobody has answered, and never compares the answer with an answer you worked out. A check that recomputes the one value its rule allows leaves each task one valid answer.`,
   `Give at least ${plural(EXAMPLES, "example task")}, different in what they ask and not only in their numbers. Either every task carries hidden values or none does. For each example give one accept control: an answer that keeps every rule. You choose the task, so you can start from an answer and derive the task from it. For each check give at least one reject control: an answer to an example that follows the answer format, breaks that check's rule, and names the check. The smallest answer the format allows, such as empty strings and empty lists, has to be rejected on every task: where it would pass, the format or the rules ask too little.`,
   "draft_exam puts a whole draft to the host, which reads it without a model: its shape, then every control through the checks, twice, and the smallest answer on every example. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam and is not changed afterwards, and the session ends there.",
@@ -432,11 +448,16 @@ function draftedFrom(args: Static<typeof DRAFT_PARAMETERS>): Draft {
       hidden: decodedJsonText((hidden ?? null) as JsonValue),
     })),
     // SAFETY: as above.
-    accept: args.accept_controls.map(({ task, answer }) => ({ task, answer: answer as JsonValue })),
-    // SAFETY: as above.
-    reject: args.reject_controls.map(({ task, answer, check }) => ({
+    accept: args.accept_controls.map(({ task, answer, files }) => ({
       task,
       answer: answer as JsonValue,
+      ...keyIfDefined("files", files),
+    })),
+    // SAFETY: as above.
+    reject: args.reject_controls.map(({ task, answer, files, check }) => ({
+      task,
+      answer: answer as JsonValue,
+      ...keyIfDefined("files", files),
       check,
     })),
   };

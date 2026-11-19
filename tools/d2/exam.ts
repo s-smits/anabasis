@@ -92,6 +92,7 @@ export function stageExam(dir: string, draft: Draft): Staged {
       execution: {
         families: "all",
         artifactPaths: ["$"],
+        filePaths: ["$"],
         publicInputPaths: ["$"],
         hidden,
         evidence: { kind: "authored" },
@@ -102,10 +103,15 @@ export function stageExam(dir: string, draft: Draft): Staged {
     designRuleConstants: [],
   };
   const controls = {
-    accept: draft.accept.map(({ task, answer }) => ({ taskId: exampleId(task), artifact: answer })),
-    reject: draft.reject.map(({ task, answer, check }) => ({
+    accept: draft.accept.map(({ task, answer, files }) => ({
       taskId: exampleId(task),
       artifact: answer,
+      ...keyIfDefined("files", files),
+    })),
+    reject: draft.reject.map(({ task, answer, files, check }) => ({
+      taskId: exampleId(task),
+      artifact: answer,
+      ...keyIfDefined("files", files),
       expectedCheckId: check,
     })),
   };

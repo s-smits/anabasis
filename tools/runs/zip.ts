@@ -9,7 +9,8 @@
  *   light    the log and each launch's receipt and output, each harness a session kept
  *            (`states/<digest>/`) and the brief
  *   medium   and the checker (`checks/`, and the copy a harness holds when its Builder was given
- *            one) and the toolchain's own files (`states/tree-*`)
+ *            one), the toolchain's own files (`states/tree-*`) and the files each answer was
+ *            submitted with (`states/deliverables/`)
  *   verbose  and whatever else the run's folder holds, and the source each worktree ran at its commit
  *
  * With no names, every run log in the repository's worktrees, as the pulse finds them. In the zip a
@@ -118,7 +119,12 @@ const GROUPS: readonly (readonly [name: string, holds: string, level: Level, pat
     /^([^/]+\.jsonl|launch-[^/]+)$/,
   ],
   ["brief", "the brief the tasks answer", "light", /^(exams\/[^/]+\/)?checks\/brief\.json$/],
-  ["deliverables", "the files each answer was submitted with, by digest", "light", /^states\/deliverables\//],
+  [
+    "deliverables",
+    "the files each answer was submitted with, by digest",
+    "medium",
+    /^states\/deliverables\//,
+  ],
   [
     "harness",
     "each harness a session kept: guide, tools, tool spec, memory",

@@ -56,6 +56,7 @@ describe("the runs zip", () => {
       put(`exams/${DIGEST}/checks/evaluator.ts`, "export const check = 1;\n");
       put(`states/${DIGEST}/agent/tools-spec.json`, "{}");
       put(`states/${DIGEST}/correctness-model/controls.json`, "[]");
+      put("states/deliverables/abc", "a report a solver left\n");
       put(`states/${DIGEST}/node_modules/dep/index.js`, "module.exports = 1;\n");
       put(`states/${DIGEST}/auth.json`, "{}");
       put("states/tree-abc/bin/solver", "#!/bin/sh\n");
@@ -107,6 +108,7 @@ describe("the runs zip", () => {
         "checker tree/r1/checks/evaluator.ts",
         `checker tree/r1/exams/${DIGEST}/checks/evaluator.ts`,
         `checker tree/r1/states/${DIGEST}/correctness-model/controls.json`,
+        "deliverables tree/r1/states/deliverables/abc",
         "toolchain tree/r1/states/tree-abc/bin/solver",
         "toolchain tree/r1/states/tree-abc/pylibs/own.py",
         `toolchain tree/r1/states/${DIGEST}/.toolchain`,

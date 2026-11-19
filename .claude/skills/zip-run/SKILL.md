@@ -35,8 +35,8 @@ the scratchpad and deliver its path; `bun run runs move` is for continuing a cam
 
 Levels are cumulative, and each holds every run's whole `log.jsonl`, traces included. **Light** adds
 receipts, output, kept harnesses (`states/<digest>/`), the brief and `memory/`, capped at 2 MiB per
-run. **Medium** adds the checker (`checks/` or `exams/<digest>/`) and toolchain trees
-(`states/tree-*`). **Verbose** adds the rest of the folder and the tracked `src`, `tools`, `docs`
+run. **Medium** adds the checker (`checks/` or `exams/<digest>/`), toolchain trees
+(`states/tree-*`) and the files answers were submitted with (`states/deliverables/`). **Verbose** adds the rest of the folder and the tracked `src`, `tools`, `docs`
 and `package.json` at each worktree's current `HEAD`, which may differ from the run's commit.
 
 `--max-mb` replaces the cap; when it refuses, take fewer runs or a lighter level rather than

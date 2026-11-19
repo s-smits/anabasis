@@ -325,8 +325,11 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
             `${task.taskId} has no answer on record that the checks ${wanted === "pass" ? "accepted" : "rejected"}, so the script gave none`,
           );
         }
-        const shell = (await selectedOf(harness.dir)).includes("bash");
+        const selected = await selectedOf(harness.dir);
         const put = (path: string, content: string): readonly [string, JsonObject] => {
+          // A delivered file goes by `write` where the harness selects it: a command is one argument
+          // of its shell, which holds 128 KiB on Linux, and a delivered file may be far larger.
+          const shell = selected.includes("bash") && (path === ANSWER_FILE || !selected.includes("write"));
           if (!shell) return ["write", { path, content }];
           // The answer file sits in the working directory; a delivered file needs its folder made.
           const made = path === ANSWER_FILE ? "" : `mkdir -p "$(dirname ${shellQuote(path)})" && `;

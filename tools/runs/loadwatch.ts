@@ -1,9 +1,11 @@
 /**
- * `bun run runs loadwatch [<seconds>] [--once | -s|--short]`: the CPU and the load of this machine
- * and of every host `ANA_HOSTS` lists, live in the terminal, refreshed every `<seconds>` (5 by
- * default); `--once` prints one frame and ends it with the machines in order of load, the least
- * loaded first, which is the line a session reads before it places a run; `-s` (`--short`) prints
- * only one line, each machine's five-minute load a core out of 100, least loaded first.
+ * `bun run runs loadwatch [<seconds>] [--once | -s|--short [-w|--window 1m|5m|15m]]`: the CPU and
+ * the load of this machine and of every host `ANA_HOSTS` lists, live in the terminal, refreshed
+ * every `<seconds>` (5 by default); `--once` prints one frame and ends it with the machines in
+ * order of load, the least loaded first, which is the line a session reads before it places a run;
+ * `-s` (`--short`) prints only one line, `last 5m:` and then each machine's load a core over that
+ * window out of 100, least loaded first, and `-w` (`--window`) names the one- or fifteen-minute
+ * window instead.
  *
  * A deadline counts elapsed time, so a solve on a loaded host has less of the machine than one on a
  * quiet host under the same setting (`AGENTS.md`, section 10, item 4), and the solve queue only
@@ -49,6 +51,9 @@ const ESC = "\u001B";
 const [RESET, DIM, BOLD] = [`${ESC}[0m`, `${ESC}[2m`, `${ESC}[1m`];
 const [GREEN, YELLOW, RED] = [`${ESC}[32m`, `${ESC}[33m`, `${ESC}[31m`];
 const ROWS = ["cpu now ", "load 1m ", "load 5m ", "load 15m"] as const;
+/** Each window `-w` names, and its place among a sample's load averages. */
+const WINDOWS = { "1m": 0, "5m": 1, "15m": 2 } as const;
+type Window = (typeof WINDOWS)[keyof typeof WINDOWS];
 // Each sample is "<cores>\n<1m> <5m> <15m>\n<idle percent>\n---\n". @I@ is the interval in seconds.
 const LOOP = String.raw`
 if [ -r /proc/stat ]; then
@@ -154,9 +159,9 @@ function frame(watched: readonly Watched[], seconds: string): string[] {
   ];
 }
 
-/** The machines that answered, least loaded first, by one load average a core (`at`: 0 for one
- *  minute, 1 for five). A machine that did not answer is left out, never read as idle. */
-function byLoad(watched: readonly Watched[], at: 0 | 1): { label: string; load: number; cores: number }[] {
+/** The machines that answered, least loaded first, by one load average a core (`at` is its place
+ *  in `WINDOWS`). A machine that did not answer is left out, never read as idle. */
+function byLoad(watched: readonly Watched[], at: Window): { label: string; load: number; cores: number }[] {
   const read = watched.flatMap(({ label, state }) =>
     state === "connecting" || state === "unreachable"
       ? []
@@ -165,17 +170,17 @@ function byLoad(watched: readonly Watched[], at: 0 | 1): { label: string; load: 
   return read.toSorted((a, b) => a.load / a.cores - b.load / b.cores);
 }
 
-/** `-s`: each machine's five-minute load a core out of 100, least loaded first, the queue beyond its
- *  cores as the frame says it, and a machine that did not answer named last. */
-function short(watched: readonly Watched[]): string {
-  const read = byLoad(watched, 1).map(({ label, load, cores }) => {
+/** `-s`: the window named first, then each machine's load a core over it out of 100, least loaded
+ *  first, the queue beyond its cores as the frame says it, and a machine that did not answer last. */
+function short(watched: readonly Watched[], window: string, at: Window): string {
+  const read = byLoad(watched, at).map(({ label, load, cores }) => {
     const percent = Math.min(100, Math.round((100 * load) / cores));
     return `${label} ${String(percent)}/100${queuedOf(load, cores)}`;
   });
   const lost = watched.flatMap(({ label, state }) =>
     state === "unreachable" ? [`${label} unreachable`] : [],
   );
-  return [...read, ...lost].join("  ");
+  return [`last ${window}:`, ...read, ...lost].join("  ");
 }
 
 /** Repaint the lines that changed since `before`, all of them after a resize, in one write. */
@@ -196,11 +201,15 @@ export async function loadwatch(args: readonly string[]): Promise<void> {
     options: {
       once: { type: "boolean", default: false },
       short: { type: "boolean", short: "s", default: false },
+      window: { type: "string", short: "w", default: "5m" },
     },
   });
   const [given = "5", extra] = positionals;
   const seconds = Number(given);
-  if (extra !== undefined || !Number.isFinite(seconds) || seconds <= 0) throw new Misused();
+  const at = Object.entries(WINDOWS).find(([name]) => name === values.window)?.[1];
+  if (extra !== undefined || !Number.isFinite(seconds) || seconds <= 0 || at === undefined) {
+    throw new Misused();
+  }
   const script = LOOP.replaceAll("@I@", String(Math.max(seconds, 0.5))).replaceAll(
     "@W@",
     String(Math.max(1, Math.round(seconds))),
@@ -217,7 +226,7 @@ export async function loadwatch(args: readonly string[]): Promise<void> {
   if (values.once || values.short) {
     await Promise.all(watched.map((each) => stream(each, intervalMs, "first")));
     if (values.short) {
-      console.log(short(watched));
+      console.log(short(watched, values.window, at));
       return;
     }
     // The one-minute ranking: the queue a solve started now would join.

@@ -43,7 +43,7 @@
  * and `submit`), so a score of the export measures the harness after that transfer, and is read so.
  * Until 3 November the JobBench pilot planned a one-off script in a scratch folder for this.
  */
-import { existsSync, mkdirSync, renameSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, lstatSync, mkdirSync, renameSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE } from "#src/meta/bundle-layout.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { tmpdir } from "#src/meta/os.ts";
@@ -180,12 +180,16 @@ export async function exportForClaudeCode(
  * rollout's environment with the tree's folders behind it as its hook puts them, or null where the
  * tree has no `python3`. Refuses one that cannot start: a reference whose launcher execs its
  * campaign machine's interpreter by path (17 November 2026, a `python3.14` under `/opt`, exit 127
- * on Linux) rolls without its method, and nothing that reads its files sees it. A module that does
- * not import is a condition of the read, said and refused nothing.
+ * on Linux) rolls without its method, and nothing that reads its files sees it. A link to that
+ * interpreter is found as the link it is, since one that leads nowhere here is the same defect and
+ * no file to `existsSync`. A module that does not import is a condition of the read, said and
+ * refused nothing.
  */
 export async function ownPython(tree: string, env: Readonly<Record<string, string>>): Promise<string | null> {
   const dirs = toolTreeSearchDirs(join(tree, TOOLCHAIN));
-  const python = dirs.map((dir) => join(dir, "python3")).find((path) => existsSync(path));
+  const python = dirs
+    .map((dir) => join(dir, "python3"))
+    .find((path) => lstatSync(path, { throwIfNoEntry: false }) !== undefined);
   if (python === undefined) return null;
   const run = (words: readonly string[]) => {
     const ran = runSync([python, "-c", ...words], {

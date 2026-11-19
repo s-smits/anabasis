@@ -540,6 +540,12 @@ describe("a harness written out for Claude Code", () => {
       "its python3 starts, and the count of its modules ended (exit 3: )",
     );
     expect(await ownPython(join(root, "claude-starter-less"), env)).toBeNull();
+    // A link to the campaign machine's interpreter leads nowhere here: the same defect, and no file
+    // to a reader that follows links.
+    const linked = tree("own-python-linked", "");
+    rmSync(join(linked, "scripts", "toolchain", "bin", "python3"));
+    symlinkSync("/nowhere/bin/python3.14", join(linked, "scripts", "toolchain", "bin", "python3"));
+    await expect(ownPython(linked, env)).rejects.toThrow(/bin\/python3 cannot start here/u);
   });
 
   it("writes the starter's guide under the note with no tool or program line, and refuses a tree already made", async () => {

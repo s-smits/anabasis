@@ -117,7 +117,7 @@ function reachedBy(events: readonly LogEvent[], kind: string, from: string | und
 export function campaignLine(events: readonly LogEvent[]): string {
   const opened = events.find((event) => event.kind === "campaign.opened")?.at;
   const count = (kind: string) => events.filter((event) => event.kind === kind).length;
-  const { scored, room, onValidity, stepped } = validityOf(campaignOf(events).steps);
+  const { scored, room, onValidity, stepped } = validityOf(campaignOf(events).steps, events);
   // The hours to a first comparison hold the Examiner's and, once one is admissible, the Builder's.
   const held = heldOff(events);
   return `first comparison ${reachedBy(events, "comparison.started", opened)}${held === null ? "" : ` (admissible ${held.said})`}, first promotion ${reachedBy(events, "harness.promoted", opened)}; ${String(count("comparison.started"))} compared, ${String(count("harness.promoted"))} promoted; reference valid every solve on ${String(scored - room)} of ${String(scored)} scored tasks, ${String(onValidity)} of ${String(stepped)} steps won by validity`;

@@ -150,7 +150,8 @@ export interface Run {
    *  answer validly in every solve: the room a harness can win on validity alone. */
   readonly scored: number;
   readonly room: number;
-  /** The comparisons that read a step, and those whose step won points by validity (`validityOf`). */
+  /** A candidate's comparisons that read a step, and those whose step won points by validity
+   *  (`validityOf`, which leaves out the Starter's steps over the reference). */
   readonly stepped: number;
   readonly onValidity: number;
   /** The promotions a starter comparison has read, those it confirmed, and the reference's tally
@@ -393,7 +394,7 @@ export function runOf(
     promotions,
     dollars: billedBetween(events, 0),
     ...repricedOf(events, meterOf),
-    ...validityOf(campaignOf(events).steps),
+    ...validityOf(campaignOf(events).steps, events),
     ...heldOf(events),
     confirmed: epochs.filter((epoch) => epoch.confirmed === true).length,
     controls: noise?.controls ?? 0,

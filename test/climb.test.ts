@@ -35,6 +35,7 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { ANSWER_FILE } from "../src/tools/answer.ts";
 import type { Seats } from "../tools/d2/campaign-terms.ts";
+import { validityOf } from "../tools/d2/close.ts";
 import { harnessBuilder } from "../tools/d2/harness-builder.ts";
 import { fixtureTasks, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";
 import { present } from "./helpers/matchers.ts";
@@ -476,6 +477,17 @@ describe("the starter comparison in an epoch's row", () => {
     // One that tallied nothing tested nothing, so the comparison after it is the first reading.
     const empty = starterRead({ differences: [], unbilled: [] }, { reading: "not-scored" });
     expect(epochsOf([opened, promoted, empty, again])[1]?.confirmed).toBe(true);
+  });
+
+  it("counts no step of the Starter's over the reference among the steps won by validity", () => {
+    const points = { validity: 4 };
+    const steps = [
+      { reading: "step", fresh: "h2", points },
+      { reading: "step", fresh: "S", points },
+    ];
+    expect(validityOf(steps, [opened])).toMatchObject({ stepped: 1, onValidity: 1 });
+    // A log whose terms name no Starter leaves every step counted, as before.
+    expect(validityOf(steps, [promoted])).toMatchObject({ stepped: 2, onValidity: 2 });
   });
 
   it("says unread before a starter comparison reports, and nothing in the first epoch", () => {

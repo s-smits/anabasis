@@ -189,7 +189,7 @@ export const TEXT_FILES = Type.Optional(
       Type.Object({ path: Type.String({ minLength: 1 }), entries: Type.Array(TEXT_FILE) }),
     ]),
     {
-      description: `Files beside the answer, by their path under ${DELIVERABLES.folder}/, as a solver leaves them: each with its text, or for an archive such as a workbook its text members as entries, which a check then receives with an empty base64.`,
+      description: `Files beside the answer, by their path under ${DELIVERABLES.folder}/, as a solver leaves them: each with its text, or for an archive such as a workbook its text members as entries, which a check then receives in an archive that stores them.`,
     },
   ),
 );

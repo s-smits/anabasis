@@ -249,7 +249,7 @@ describe("a draft read without a model", () => {
   it("reads an accept control's archive members under a check that reads a file's entries", async () => {
     const book = {
       ...SOUND,
-      evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) && req.files.some((file) => file.path === "book.xlsx" && file.base64 === "" && (file.entries ?? []).some((entry) => entry.text === "<v>6</v>")),\n};\n`,
+      evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) && req.files.some((file) => file.path === "book.xlsx" && file.base64 !== "" && (file.entries ?? []).some((entry) => entry.text === "<v>6</v>")),\n};\n`,
       accept: SOUND.accept.map((control) => ({
         ...control,
         files: [{ path: "book.xlsx", entries: [{ path: "xl/worksheets/sheet1.xml", text: "<v>6</v>" }] }],

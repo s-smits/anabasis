@@ -14,6 +14,10 @@ import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 /** The live campaigns a machine carries where nothing configures its capacity. */
 export const RUN_CAP = 2;
 
+/** Where in a host's home the check runner keeps its slots, one clone with its packages a sending
+ *  machine and slot (`onHost`, tools/runtime/router/run.ts), which `runs retire` clears once idle. */
+export const RUNNER_SLOTS = ".cache/ana-runner";
+
 export interface Host {
   readonly name: string;
   readonly ssh: string;

@@ -47,7 +47,7 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { sshOptions } from "#src/meta/ssh.ts";
 import { killProcessGroup, runCaptured, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { quoted, shellPath, sshCommand } from "../../runs/host-command.ts";
-import { hostsOf, ownName, type Host } from "../../runs/host-config.ts";
+import { hostsOf, ownName, RUNNER_SLOTS, type Host } from "../../runs/host-config.ts";
 import { byLoad, firstSamples, watchedOf } from "../../runs/load.ts";
 
 const TASKS = ["test", "typecheck", "lint", "secrets", "gate"];
@@ -311,7 +311,7 @@ function carried(root: string): string[] {
 async function onHost(host: Host, slot: number, job: Job, release: () => void): Promise<number> {
   const { root, pin } = job;
   if (pin === "") throw new Refusal(`${root} pins no Bun in package.json's packageManager`, EXIT.usage);
-  const dir = `.cache/ana-runner/${ownName()}-slot-${String(slot)}`;
+  const dir = `${RUNNER_SLOTS}/${ownName()}-slot-${String(slot)}`;
   const ssh = (...words: string[]): string[] => ["ssh", ...sshOptions(host.ssh), ...words];
   const free = await retried("the slot's set-up", () => answer(ssh(host.ssh, setUp(host, dir))));
   if (free === null) throw new Refusal(`${host.ssh} does not answer; no task started`, EXIT.unavailable);

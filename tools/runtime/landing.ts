@@ -162,8 +162,9 @@ export function watching(Interrupted: new (message: string) => Error, moved: () 
 }
 
 /**
- * Where a landing in `root` proves its commits. `RUN_REMOTE` set, `here` among its values, names one
- * place, as for any check; unset, the passes spread over every host `ANA_HOSTS` lists with `checks`,
+ * Where a landing in `root` proves its commits. `RUN_REMOTE` set, `here` among its values, is one
+ * place to the landing, which hands each pass to the runner, so under `auto` each pass picks its own
+ * least loaded slot; unset, the passes spread over every host `ANA_HOSTS` lists with `checks`,
  * each taking as many at once as its `checks` says, and with no such host they stay on this machine.
  * `--jobs N` is the most at once: N on one place, or N dealt in turn over the hosts' slots. A list
  * that cannot be read is refused, null, before anything is proved or posted.

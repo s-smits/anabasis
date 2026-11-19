@@ -25,7 +25,14 @@ import { capturedSpawn } from "../src/meta/process.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
 import { claimRoot, releaseRoot } from "../src/wall/seat-root.ts";
 
-import { archiveIdle, releaseScratch, retireUnused, type Sweep } from "../tools/runs/retire.ts";
+import { RUNNER_SLOTS } from "../tools/runs/host-config.ts";
+import {
+  archiveIdle,
+  releaseScratch,
+  retireUnused,
+  trashIdleSlots,
+  type Sweep,
+} from "../tools/runs/retire.ts";
 import { arrayWith } from "./helpers/matchers.ts";
 
 const DAY = 86_400_000;
@@ -248,6 +255,34 @@ describe("retiring", () => {
     } finally {
       await releaseHeld();
       await releaseRoot(dirsOf(cut).root);
+    }
+  });
+});
+
+describe("the check runner's slots", () => {
+  it("sends to the Trash, with the files beside it, a slot no check used for a week, and keeps a younger one and one a process works in", async () => {
+    const slots = join(root, "home", RUNNER_SLOTS);
+    for (const slot of ["pro-slot-1", "pro-slot-10", "air-slot-2"]) {
+      mkdirSync(join(slots, slot, ".git"), { recursive: true });
+      writeFileSync(join(slots, `${slot}.status`), "0\n");
+    }
+    writeFileSync(join(slots, "pro-slot-1.run.sh"), "");
+    // pro-slot-10 ran a check three days before the sweep's clock, eight days on.
+    const recent = new Date(Date.now() + 5 * DAY);
+    utimesSync(join(slots, "pro-slot-10.status"), recent, recent);
+    const holder = capturedSpawn(["sleep", "30"], { cwd: join(slots, "air-slot-2") });
+    try {
+      const doomed = trashIdleSlots(sweep(8, false), join(root, "home"));
+      expect(doomed.toSorted()).toEqual(
+        ["pro-slot-1", "pro-slot-1.run.sh", "pro-slot-1.status"].map((entry) => join(slots, entry)),
+      );
+      expect(existsSync(join(slots, "pro-slot-1"))).toBe(true);
+      // A week on, the young slot goes too; a slot that ran a check a day ago never.
+      expect(trashIdleSlots(sweep(13, false), join(root, "home"))).toContain(join(slots, "pro-slot-10"));
+      expect(trashIdleSlots(sweep(1, false), join(root, "home"))).toEqual([]);
+    } finally {
+      holder.kill();
+      await holder.exited;
     }
   });
 });

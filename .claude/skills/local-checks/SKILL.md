@@ -34,11 +34,13 @@ slots; a machine that does not answer within `ANA_RUNNER_PICK_WAIT` (5 s) is lef
 `tools/runtime/landing.ts`): it spreads its commits' passes over every such host, each taking as many
 at once as its `checks`, sends the whole gate on the top to the first listed, and proves again on
 another host a pass whose host gave no verdict; with no such host, or with `RUN_REMOTE` set, as in
-`RUN_REMOTE=here bun run land -- <top> --sanitize`, it proves at that one place. Git
+`RUN_REMOTE=here bun run land -- <top> --sanitize`, it proves as at one place, each pass where the
+runner sends it, so under `auto` each picks the least loaded slot for itself. Git
 carries the working tree there, uncommitted bytes included, as one commit in `HEAD`'s place, so only
 what the host lacks travels and a static gate reads the same change. The dependencies never travel:
 a slot installs them from the lockfiles it was sent, and again only once a lockfile or the pinned
-Bun moves. Exits 255, 75 and 69 say nothing about the tree (`NO_VERDICT`, `tools/runtime/gate.ts`).
+Bun moves. A slot no check has used for a week goes to the Trash at the host's own daily
+`runs retire` (`trashIdleSlots`), so a machine that stops taking checks keeps no clones. Exits 255, 75 and 69 say nothing about the tree (`NO_VERDICT`, `tools/runtime/gate.ts`).
 
 ## Placing a new check
 

@@ -239,7 +239,8 @@ export function readAs(held: ReadonlyMap<string, string>, harness: string, label
 
 /** The benchmarks `pause --eval` reads `run` on, named as the verb is armed, so that a setting that
  *  refuses does so while the pause-at-two hook still reads the verb's end, not hours later. */
-export function readsArmed(run: string, env = runtimeProcess.env): string[] {
+export function readsArmed(run: string | undefined, env = runtimeProcess.env): string[] {
+  if (run === undefined) throw new Misused("pause --eval names no run before a `--`, so it would read none");
   const names = benchesFor(run, env).map(({ name }) => name);
   if (names.length === 0) {
     console.log(`${run}: no benchmark reads pack ${packOf(run)}; the pause goes on alone`);

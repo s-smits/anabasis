@@ -34,7 +34,7 @@ import {
   wholePoints,
 } from "../kernel/compare.ts";
 import { conditionsOf, settingId } from "../kernel/condition.ts";
-import { failWrongPasses, proposalsOf, wrongPasses } from "../kernel/history.ts";
+import { failWrongPasses, familiesOf, wrongPasses } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { poolOf } from "../kernel/reports.ts";
 import { passed, ranUnder, rejected, rulingsOf, solvesIn } from "../kernel/solves.ts";
@@ -359,7 +359,7 @@ function setsOf(
   aside: readonly string[],
 ) {
   const kept = new Set(fixed.retained);
-  const named = new Map(proposalsOf(events).map(({ version, family }) => [version, family ?? "unnamed"]));
+  const named = familiesOf(events);
   const familyOf = (task: string) => named.get(task) ?? "unnamed";
   const part = (set: "frontier" | "retained") =>
     pairs.filter(({ task }) => kept.has(task) === (set === "retained"));

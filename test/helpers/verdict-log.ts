@@ -88,7 +88,15 @@ export function verdictCampaign(): LogEvent[] {
       probes: [1],
       probeRows: [
         { id: 1, changes: [{ path: "$.x", value: "2" }], moved: ["c-b"] },
-        { id: 2, changes: [], moved: [] },
+        {
+          id: 2,
+          changes: [],
+          moved: [],
+          texts: [
+            { path: "file:out.csv", was: { lines: 40, bytes: 900 }, now: { lines: 2, bytes: 31 } },
+            { path: "file:notes.md", was: null, now: { lines: 1, bytes: 5 } },
+          ],
+        },
       ],
     }),
     event("referee.finding", { solve: "s-2", ruling: "check-defect", probes: [1], turns: 2 }),

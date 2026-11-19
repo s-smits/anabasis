@@ -348,7 +348,7 @@ if (HELP.has(verb)) {
     const passed = evals ? args.filter((arg) => arg !== "--eval") : args;
     // The run as the router names it, past an option's value: `pause --after reported r --eval`.
     const run = evals ? namedIn(verb, passed)[0] : undefined;
-    const reads = run === undefined ? [] : readsArmed(run);
+    const reads = evals ? readsArmed(run) : [];
     const { here, away } = await routed(verb, passed);
     for (const [host, words] of away) {
       const code = await (verb === "continue" ? continueOn(host, words) : verbOn(host, words));

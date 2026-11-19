@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { benchesOf } from "../tools/runs/host-config.ts";
 import { type Plan, readAs, readsArmed, settingsOf, stepsOf, walk } from "../tools/runs/outside.ts";
+import { Misused } from "../tools/runs/registry.ts";
 
 const HOSTS = JSON.stringify([
   { name: "builder", ssh: "you@builder", tree: "~/src/anabasis", bun: "~/.bun/bin/bun" },
@@ -104,6 +105,8 @@ describe("runs outside", () => {
   test("pause --eval reads the run the router names, past an option's value", () => {
     expect(namedIn("pause", ["--after", "reported", RUN, "--yes"])).toEqual([RUN]);
     expect(namedIn("pause", [RUN, "--after", "reported", "--yes"])).toEqual([RUN]);
+    // A run named past a `--` is paused and would be read nowhere, so the flag is refused there.
+    expect(() => readsArmed(namedIn("pause", ["--", RUN])[0], ENV)).toThrow(Misused);
   });
 
   test("the machine is asked first, and nothing is spent before both dry runs", () => {

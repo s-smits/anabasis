@@ -27,7 +27,7 @@
  * `events` prints what the log holds, hidden values among them, which is the exam side's to read
  * and never a seat's. It is no query language: a question these flags cannot ask is `jq`'s.
  */
-import { proposalsOf } from "#src/kernel/history.ts";
+import { familiesOf } from "#src/kernel/history.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { type Seat, tracesIn } from "#src/kernel/trace.ts";
 import { existsSync, statSync } from "#src/meta/filesystem.ts";
@@ -275,7 +275,7 @@ export function eventRows(events: readonly LogEvent[], query: EventQuery): strin
  * One solve's columns as values: a number stays a number for `--where`, a field the log does not
  * record is null (`n/r`), and the seconds and share of the deadline of a solve with no end are absent.
  */
-function solveRecord(solve: Solve, ruled: string | null | undefined, family: string | undefined): JsonObject {
+function solveRecord(solve: Solve, ruled: string | null | undefined, family: string | null): JsonObject {
   const ended = solve.outcome !== null;
   const share = ended && solve.wallSeconds > 0 ? Math.round((solve.seconds / solve.wallSeconds) * 100) : null;
   return {
@@ -284,7 +284,7 @@ function solveRecord(solve: Solve, ruled: string | null | undefined, family: str
     role: solve.role,
     harness: solve.harness.slice(0, 8),
     task: solve.task === "" ? null : solve.task,
-    family: family ?? null,
+    family,
     outcome: solve.outcome ?? "open",
     kind: solve.kind ?? "-",
     ruled: ruled ?? "-",
@@ -309,14 +309,14 @@ function solveCell(record: JsonObject, column: string): string {
 /** Every solve a row as the folds read it, or one column's counts among them, then by role and outcome. */
 export function solveRows(events: readonly LogEvent[], only: SolveQuery): string[] {
   const index = indexOf(events);
-  const families = new Map(proposalsOf(events).map(({ version, family }) => [version, family ?? undefined]));
+  const families = familiesOf(events);
   const records = index.solves
     .filter(
       (solve) =>
         (only.comparison === undefined || solve.comparison === only.comparison) &&
         (only.role === undefined || solve.role === only.role),
     )
-    .map((solve) => solveRecord(solve, index.stands.get(solve.id), families.get(solve.version)));
+    .map((solve) => solveRecord(solve, index.stands.get(solve.id), families.get(solve.version) ?? null));
   const { chosen, filters } = filtered(records, (record) => record, only.where ?? []);
   const by = only.countBy;
   if (by !== undefined) {

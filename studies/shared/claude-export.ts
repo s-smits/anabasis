@@ -52,7 +52,7 @@ import { dirname, join, relative } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { keyIfDefined, keyIfNotNull } from "#src/meta/optional-key.ts";
 import { openHarness } from "#src/harness/open.ts";
-import { installedPrograms } from "#src/harness/programs.ts";
+import { type Program, programsOf } from "#src/harness/programs.ts";
 import { HOST_ONLY } from "#src/harness/starter.ts";
 import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
 import { HARNESS_DIR, HERE, type Place, placeHarness, placeOf } from "./bundle.ts";
@@ -76,10 +76,11 @@ for name in names:
     except BaseException: bad.append(name)
 print("IMPORTS", sys.version.split()[0], len(names) - len(bad), len(names), *bad[:5])`;
 
-/** The programs an exported tree's guide may start by name. An interpreter or installer of the tool
- *  tree's own Python is none of them: behind the machine's on the PATH, its name starts the machine's. */
-export const exportedPrograms = (tree: string): string[] =>
-  installedPrograms(join(tree, TOOLCHAIN)).filter((name) => !/^(?:python|pip)[\d.]*$/u.test(name));
+/** The programs an exported tree's guide may start by name, each with the account it gives of itself
+ *  (`programsOf`). An interpreter or installer of the tool tree's own Python is none of them: behind
+ *  the machine's on the PATH, its name starts the machine's. */
+export const exportedPrograms = (tree: string): Program[] =>
+  programsOf(join(tree, TOOLCHAIN)).filter(({ name }) => !/^(?:python|pip)[\d.]*$/u.test(name));
 
 /** The tree `into`, written from `source` for programs that run on `place`, the machine that will
  *  roll it: this one unless `--for` names another. Returns what `export.json` records. */
@@ -116,6 +117,8 @@ export async function exportForClaudeCode(
     mkdirSync(dirname(join(part, HOOKS)), { recursive: true });
     writeFileSync(join(part, HOOKS), `${capturedJsonStringify(hooks, null, 2)}\n`);
   }
+  // Each program is listed with the first line of its own account, which is where a program says what
+  // it opens; whether one written for the other runner's files is of use here is the solver's to judge.
   const programs = exportedPrograms(part);
   // A harness that keeps its method in packages reaches them in a campaign through its own
   // interpreter, first on that PATH. Here that name starts the machine's, which reads no folder of
@@ -141,7 +144,11 @@ export async function exportForClaudeCode(
       ? []
       : [
           "",
-          `Its programs run by name, as the guide names them: ${programs.join(", ")}. Their folders (${searched.map((dir) => `\`${dir}\``).join(", ")}) are on your PATH behind this machine's own programs, so a name this machine has too starts this machine's program. Those written for that runner's files (they open \`input.json\` or a \`public/\` folder, or check \`answer.json\`) find none of them here.`,
+          `Its programs run by name, as the guide names them; each is listed below with the first line it gives of itself. Their folders (${searched.map((dir) => `\`${dir}\``).join(", ")}) are on your PATH behind this machine's own programs, so a name this machine has too starts this machine's program. This runner has no \`input.json\`, \`public/\` folder or \`answer.json\`, so a program that opens one finds nothing.`,
+          "",
+          ...programs.map(
+            ({ name, account }) => `- ${name}${account === null ? "" : `: ${account.split("\n")[0]}`}`,
+          ),
         ]),
     ...(packages.length === 0
       ? []

@@ -402,6 +402,8 @@ describe("a harness written out for Claude Code", () => {
     const programs = {
       ...tooled().programs,
       cat: "#!/bin/sh\necho the harness's cat\n",
+      stage:
+        "#!/bin/sh\n# stage [public/task.json] [--out DIR]\n#\n# Writes each input file of the task to DIR.\ncat public/task.json\n",
       "python3.12": "#!/bin/sh\necho the harness's interpreter\n",
     };
     const own = `# Operating Guide\n\n## Programs and tools\n- mark: prints marked.\n\n## Domain notes\nA mark counts once.\n\n${HOST_ONLY}\nAn answer over three lines is not valid.\n`;
@@ -413,7 +415,12 @@ describe("a harness written out for Claude Code", () => {
     expect(record.unavailable).toStrictEqual(["doubled"]);
     const guide = readFileSync(join(into, "CLAUDE.md"), "utf8");
     expect(guide).toContain("doubled. They are not available here");
-    expect(guide).toContain("Its programs run by name, as the guide names them: cat, mark. Their folders");
+    expect(guide).toContain("Its programs run by name, as the guide names them; each is listed below");
+    expect(guide).toContain("This runner has no `input.json`, `public/` folder or `answer.json`");
+    // Each program in PATH order with the first line of its own account, and one that gives none by
+    // its name alone: what a program opens is said by the program, and no reading of its text decides it.
+    expect(guide).toContain("\n- cat\n- mark\n- stage: stage [public/task.json] [--out DIR]\n");
+    expect(guide).not.toContain("Writes each input file");
     expect(guide).toContain("(`scripts/toolchain/bin`) are on your PATH behind this machine's own programs");
     // No interpreter is named, the tool tree's own among its programs neither: a note that named
     // the harness's sent a solver to it for a look.

@@ -9,7 +9,7 @@ list in `AGENTS.md` section 3.
 | Builder | Section 1's closed list, its notes, the other kept harnesses (`kept/`) | Anything else of the exam side | `src/builder/` |
 | Solver | The task's public part, the rules, the harness, its limits | Checks and hidden values | `src/solver/`, `src/harness/`, `src/tools/` |
 | Verifier | The answer, the task, the check program, the engines | n/a | `src/kernel/verify.ts`, `src/wall/` |
-| Referee | Task with hidden values, rules, answer, refusing checks, check program | The harness, the trace, the Builder | `src/referee/referee.ts` |
+| Referee | Task with hidden values, rules, answer and its files whole, refusing checks, check program | The harness, the trace, the Builder | `src/referee/referee.ts` |
 | Host | The log | n/a | `src/kernel/`, `tools/` |
 
 ### What the Examiner reads
@@ -43,6 +43,6 @@ A drafting session instead receives the prompt, the host's reading of each draft
   `preview_harness` and `finish`, plus section 4's campaign tools in the campaign command.
 - **Solver**: section 3's five tools; the answer is `answer.json`, and `submit` with `malformed`
   flags the task instead.
-- **Referee**: `probe_check`, `read_check_program`, `record_ruling`.
+- **Referee**: `probe_check`, `read_answer_file`, `read_check_program`, `record_ruling`.
 
 An older log may hold `diagnosis.*` events from a removed Diagnoser seat.

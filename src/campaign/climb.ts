@@ -164,6 +164,11 @@ export interface StarterRead {
   readonly authors: readonly { readonly session: string; readonly tally: Tally }[];
   /** What the tasks written after the promotion read alone, under this tree's rule (`Unselected`). */
   readonly after: Unselected;
+  /** The tally and reading on the tasks no step before the promotion chose, this one's or an
+   *  ancestor's. "Written before, not chosen on" holds an ancestor's chosen tasks, which won a step
+   *  for a harness the reference descends from, so a confirmation that rests on them is a margin
+   *  chosen for its sign. It reports, and `confirmed` still decides. */
+  readonly unchosen: { readonly tally: Tally; readonly read: Unselected };
   /** Whether the report recorded the level the read is taken at; `level` reads 0 where not. */
   readonly levelled: boolean;
   /** Each scored task, in the report's order. */
@@ -341,10 +346,12 @@ function starterOf({ reference, starter_tally: tally, confirmed }: Epoch, read?:
     read?.rows.filter(({ origin }) => origin === ORIGINS[2]).map(({ writer }) => writer),
   ).size;
   const pooled = `, against the starter ${tallied(tally)}, ${step}`;
-  if (read === undefined || writers === 0) return pooled;
+  if (read === undefined) return pooled;
+  const free = `, on the tasks no step chose ${tallied(read.unchosen.tally)}, alone ${read.unchosen.read}`;
+  if (writers === 0) return `${pooled}${free}`;
   // The validity-differed and validity-tied parts can each carry the tally apart (18 November).
   const { whole, validity, rest } = read.origins[ORIGINS[2]];
-  return `${pooled}, of which ${tallied(whole)} (validity differed ${tallied(validity)}; validity tied ${tallied(rest)}) on the tasks ${plural(writers, "Examiner session")} wrote after it, alone ${read.after}`;
+  return `${pooled}, of which ${tallied(whole)} (validity differed ${tallied(validity)}; validity tied ${tallied(rest)}) on the tasks ${plural(writers, "Examiner session")} wrote after it, alone ${read.after}${free}`;
 }
 
 /** How many of `reads` read each way on the tasks written after their promotion alone. */
@@ -357,15 +364,17 @@ const tallyOf = (pairs: readonly Paired[]): Tally => {
   return { wins, losses, ties };
 };
 
-/** The tasks the comparisons that promoted `reference` read, before the promotion at `from`. */
+/** The tasks the comparisons that stepped before `from` read: those that stepped for `reference`,
+ *  or, with none named, every step's. */
 function chosenOn(
   events: readonly LogEvent[],
   reports: readonly Reported[],
-  reference: string,
+  reference: string | null,
   from: number,
 ) {
   const chose = reports.filter(
-    ({ index, data }) => index < from && data.fresh === reference && data.reading === "step",
+    ({ index, data }) =>
+      index < from && (reference === null || data.fresh === reference) && data.reading === "step",
   );
   return new Set(chose.flatMap((report) => pairsReported(events, report).map(({ task }) => task)));
 }
@@ -410,6 +419,8 @@ export function starterReads(events: readonly LogEvent[]): StarterRead[] {
       };
     };
     const at = isNumber(level) ? level : 0;
+    const anyChosen = chosenOn(events, reports, null, epoch.from);
+    const free = pairs.filter(({ task }) => !anyChosen.has(task));
     return [
       {
         session: report.session,
@@ -428,6 +439,13 @@ export function starterReads(events: readonly LogEvent[]): StarterRead[] {
           pairs.filter((pair) => originOf(pair) === ORIGINS[2]).map((pair) => -differenceOf(pair)),
           at,
         ),
+        unchosen: {
+          tally: tallyOf(free),
+          read: unselectedOf(
+            free.map((pair) => -differenceOf(pair)),
+            at,
+          ),
+        },
         levelled: isNumber(level),
         rows: pairs.map((pair) => ({
           task: pair.task,

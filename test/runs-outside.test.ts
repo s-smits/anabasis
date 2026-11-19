@@ -23,6 +23,7 @@ import {
   evalOf,
   heldAs,
   opened,
+  probed,
   type Plan,
   sealed,
   settingsOf,
@@ -232,8 +233,9 @@ describe("runs outside", () => {
       writeFileSync(join(from, "ref-a1", ".DS_Store"), "finder");
       writeFileSync(join(from, "ref-a1.build.json"), "{}");
       const stream = () => Bun.spawnSync(["/bin/sh", "-c", sealed(from, "ref-a1")]).stdout;
-      const open = (bytes: Uint8Array) =>
-        Bun.spawnSync(["/bin/sh", "-c", opened(trees, "ref-a1")], { stdin: bytes }).exitCode;
+      const open = (bytes: Uint8Array, env?: Record<string, string>) =>
+        Bun.spawnSync(["/bin/sh", "-c", opened(trees, "ref-a1")], { stdin: bytes, ...(env && { env }) })
+          .exitCode;
       // A stream cut short, and one with a byte changed, which bsdtar alone would extract, move nothing in.
       expect(open(stream().subarray(0, 60))).not.toBe(0);
       const changed = stream();
@@ -246,13 +248,32 @@ describe("runs outside", () => {
       expect(open(stream())).not.toBe(0);
       expect(existsSync(join(trees, "ref-a1"))).toBe(false);
       rmSync(join(from, "ref-a1", "tools", "python3"));
-      expect(open(stream())).toBe(0);
+      // Sums one machine wrote are checked by what the other has: this path holds no `sha256sum` on a Mac.
+      expect(open(stream(), { PATH: "/usr/bin:/bin" })).toBe(0);
       expect(readdirSync(trees).toSorted()).toEqual(["ref-a1", "ref-a1.build.json"]);
       expect(readdirSync(join(trees, "ref-a1"))).toEqual(["tools"]);
       // A tree in place is never written over.
       expect(open(stream())).not.toBe(0);
     }),
   );
+
+  test("a sitting that does not answer ends the probe, and the rolled arms' output is kept beside the store", () => {
+    const store = mkdtempSync(join(tmpdir(), "ana-probe-"));
+    try {
+      const probe = (sitting: string) => Bun.spawnSync(["/bin/sh", "-c", probed({ sitting, store })]);
+      // A sitting with no interpreter to name: its exit is the probe's, and no line stands in for the minor.
+      expect(probe("false").exitCode).toBe(1);
+      // A store with no tree yet is no fault: the machine and the minor are said.
+      const answered = probe("echo 3.12 #");
+      expect(answered.exitCode).toBe(0);
+      expect(answered.stdout.toString().split("\n")[1]).toBe("3.12");
+      const rolling = text(planOf()).at(-1) ?? "";
+      expect(rolling).toContain("/rolled-ref-a1.log 2>&1 < /dev/null &");
+      expect(rolling).not.toContain("> /dev/null 2>&1");
+    } finally {
+      rmSync(store, { recursive: true, force: true });
+    }
+  });
 
   test("a label the store holds is rolled as it stands, with no export, carry or machine that holds the run", () => {
     const held = planOf({ held: DIGEST, holder: undefined });

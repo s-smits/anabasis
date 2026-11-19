@@ -87,6 +87,10 @@ const PLACES = new Map([
   ["Darwin x86_64", "darwin-x64"],
 ]);
 
+/** The program that writes and checks SHA-256 sums, in one format: coreutils' where a machine has
+ *  it, as a Linux one without Perl has no other, and Perl's elsewhere. */
+const SUMS = "$(command -v sha256sum || echo shasum -a 256)";
+
 /** A configured folder or command as one shell word, from the home folder where it is relative. */
 const homeWord = (path: string) =>
   shellPath(path.startsWith("/") || path.startsWith("~/") ? path : `~/${path}`);
@@ -127,7 +131,7 @@ export function settingsOf(
  *  its build record and the sums as one stream, without a Mac's extended attributes or Finder files.
  *  The sums are the check, since bsdtar extracts a gzip stream without reading its CRC. */
 export const sealed = (from: string, label: string) =>
-  `cd ${from} && find ${quoted(label)} ${quoted(`${label}.build.json`)} -type f ! -name .DS_Store -exec shasum -a 256 {} + > ${quoted(`${label}.sha256`)} && COPYFILE_DISABLE=1 tar -czf - --no-xattrs --exclude .DS_Store ${quoted(label)} ${quoted(`${label}.build.json`)} ${quoted(`${label}.sha256`)}`;
+  `cd ${from} && find ${quoted(label)} ${quoted(`${label}.build.json`)} -type f ! -name .DS_Store -exec ${SUMS} {} + > ${quoted(`${label}.sha256`)} && COPYFILE_DISABLE=1 tar -czf - --no-xattrs --exclude .DS_Store ${quoted(label)} ${quoted(`${label}.build.json`)} ${quoted(`${label}.sha256`)}`;
 
 /** The benchmark machine's half: the stream lands beside the store's trees and is moved in only once
  *  every file matches its sum and no link points at an absolute path, which on another machine
@@ -136,7 +140,7 @@ export const sealed = (from: string, label: string) =>
 export function opened(trees: string, label: string): string {
   const tree = `${trees}/${quoted(label)}`;
   const part = `${trees}/${quoted(`.part-${label}`)}`;
-  return `test ! -e ${tree} && mkdir -p ${trees} && rm -rf ${part} && mkdir ${part} && tar -xzf - -C ${part} && (cd ${part} && shasum -a 256 -c --quiet ${quoted(`${label}.sha256`)}) && links=$(find ${part} -type l -lname '/*') && { test -z "$links" || { echo "links to absolute paths: $links" >&2; false; }; } && rm ${part}/${quoted(`${label}.sha256`)} && mv ${part}/${quoted(label)} ${tree} && mv ${part}/${quoted(`${label}.build.json`)} ${trees}/ && rmdir ${part}`;
+  return `test ! -e ${tree} && mkdir -p ${trees} && rm -rf ${part} && mkdir ${part} && tar -xzf - -C ${part} && (cd ${part} && ${SUMS} -c --quiet ${quoted(`${label}.sha256`)}) && links=$(find ${part} -type l -lname '/*') && { test -z "$links" || { echo "links to absolute paths: $links" >&2; false; }; } && rm ${part}/${quoted(`${label}.sha256`)} && mv ${part}/${quoted(label)} ${tree} && mv ${part}/${quoted(`${label}.build.json`)} ${trees}/ && rmdir ${part}`;
 }
 
 /** The commands of `plan`, in order: nothing is spent before both dry runs, and nothing loads the
@@ -150,6 +154,7 @@ export function stepsOf(plan: Plan): Step[] {
   const reference = `${sitting} run ${quoted(login)} ${quoted(label)} --arm ${quoted(run)} --harness ${quoted(plan.harness)}`;
   const bare = `${sitting} run ${quoted(login)} ${quoted(starter)} --arm starter`;
   const idle = `${sitting} status | head -n 1 | grep -qx idle`;
+  const rolled = `${plan.store}/rolled-${label}.log`;
   const exported: Step[] = [
     {
       says: `export ${label} for ${plan.place} on ${holder?.name ?? "this machine"}`,
@@ -180,13 +185,21 @@ export function stepsOf(plan: Plan): Step[] {
     on(`dry run of ${label}`, `${reference} --dry-run`),
     on(`dry run of ${starter}`, `${bare} --dry-run`),
     // One process of their own rolls the arms in turn, so the Starter waits behind the reference on
-    // the sitting's lock and the read waits for neither.
+    // the sitting's lock and the read waits for neither. What they print is kept beside the store's
+    // records: until 19 November 2026 it went nowhere, and an arm that never started said nothing.
     on(
       `roll ${label}, then ${starter}, on login ${login}`,
-      `nohup sh -c ${quoted(`${reference} --yes; ${bare} --yes`)} > /dev/null 2>&1 < /dev/null & echo "rolling in process $!; the sitting's status names the arm"`,
+      `nohup sh -c ${quoted(`${reference} --yes; ${bare} --yes`)} >> ${rolled} 2>&1 < /dev/null & echo "rolling in process $!, which writes ${rolled}; the sitting's status names the arm"`,
     ),
   ];
 }
+
+/** What the benchmark's machine says of itself before a plan: its platform, the minor of the
+ *  sitting's interpreter, then each tree's harness. A machine or a sitting that does not answer ends
+ *  the probe with its own exit: until 19 November 2026 a closing `true` passed that silence on, and
+ *  the next line stood in for the minor an export builds for. A store with no tree yet is no fault. */
+export const probed = ({ sitting, store }: Pick<Plan, "sitting" | "store">): string =>
+  `uname -sm && ${sitting} python || exit; grep -H '"harness"' ${store}/trees/*/export.json; true`;
 
 /** Run `steps` in order with `spawn`, saying each, and refuse at the first that does not exit 0. */
 export async function walk(
@@ -290,12 +303,7 @@ async function planOf(
   // A letter names a harness only beside the view that prints it, so it takes a label of its own.
   const label = values.as ?? (harness.length === 64 ? harness.slice(0, 8) : "");
   if (!isSafePathSegment(label)) throw new Misused();
-  const said = await runTextOrThrow(
-    shellOn(
-      settings.runner,
-      `uname -sm; ${settings.sitting} python; grep -H '"harness"' ${settings.store}/trees/*/export.json; true`,
-    ),
-  );
+  const said = await runTextOrThrow(shellOn(settings.runner, probed(settings)));
   const [named = "", python = ""] = said.split("\n");
   const place = PLACES.get(named);
   if (place === undefined) {

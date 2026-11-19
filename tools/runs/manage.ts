@@ -19,7 +19,7 @@
  * starts no further solve, once every open solve has finished, or past the run's own limit on a
  * solve with whatever is open, since a cut solve is paid for again: `runs stop` is the one that does
  * not wait. `pause --eval` then reads the run's newest promotion outside, from this machine, on
- * each benchmark that reads its pack, once that benchmark's machine is idle (`readAfterPause`,
+ * each benchmark that reads its pack, once that benchmark's machine is idle (`evalOf`, `readEach`,
  * `outside.ts`). Flags after `--` stand for the kept ones. A campaign's folder moves by `runs copy` and `runs move` (`move.ts`).
  *
  * A run `launch` or `continue` starts on a numbered login gets a keeper (`keep.ts`) where another login

@@ -24,7 +24,7 @@ import { join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { alerts } from "./alerts.ts";
 import { fresh } from "./fresh.ts";
-import { holds, namedIn, NAMING, on, routed, verbOn } from "./hosts.ts";
+import { holds, NAMING, on, routed, verbOn } from "./hosts.ts";
 import { hostsHealth } from "./health.ts";
 import { keep } from "./keep.ts";
 import { HERE, KEEPING, Misused, ownArgs } from "./registry.ts";
@@ -32,7 +32,7 @@ import { loadwatch } from "./loadwatch.ts";
 import { active, logins } from "./logins.ts";
 import { continueRun, launch, pause } from "./manage.ts";
 import { copy, fetch, move } from "./move.ts";
-import { outside, readAfterPause, readsArmed } from "./outside.ts";
+import { evalOf, outside, readEach } from "./outside.ts";
 import { runsStatus, watch } from "./pulse.ts";
 import { source } from "./receipt.ts";
 import { rehearse } from "./rehearse.ts";
@@ -344,20 +344,14 @@ if (HELP.has(verb)) {
   try {
     // `pause --eval` reads the run outside once it rests, from here, where `.env.runs` lists the
     // benchmarks: a peer that holds the run only pauses it.
-    const evals = verb === "pause" && args.includes("--eval");
-    const passed = evals ? args.filter((arg) => arg !== "--eval") : args;
-    // The run as the router names it, past an option's value: `pause --after reported r --eval`.
-    const run = evals ? namedIn(verb, passed)[0] : undefined;
-    const reads = evals ? readsArmed(run) : [];
+    const { passed, reads } = verb === "pause" ? evalOf(args) : { passed: args, reads: [] };
     const { here, away } = await routed(verb, passed);
     for (const [host, words] of away) {
       const code = await (verb === "continue" ? continueOn(host, words) : verbOn(host, words));
       if (code !== 0) runtimeProcess.exitCode = code;
     }
     if (here !== null) await chosen.run(here);
-    if (run !== undefined && (runtimeProcess.exitCode ?? 0) === 0) {
-      await readAfterPause(run, reads, args.includes("--yes") ? "start" : "plan");
-    }
+    if ((runtimeProcess.exitCode ?? 0) === 0) await readEach(reads);
   } catch (error) {
     if (!refusal(error)) throw error;
     // A misuse is answered with the verb's usage, under what was wrong where the verb says it.

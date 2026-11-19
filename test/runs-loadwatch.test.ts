@@ -48,10 +48,32 @@ test("one frame reads this machine and a reachable host, names an unreachable on
   expect(order.at(-1)).toBe("loaded 100.00");
 });
 
+test("-s prints one line of five-minute load a core out of 100, least loaded first, the lost host last", () => {
+  const hosts = [
+    { name: "loaded", ssh: "busy", tree: "/unused", bun: "bun" },
+    { name: "lost", ssh: "gone", tree: "/unused", bun: "bun" },
+  ];
+  const result = runSync([capturedExecPath, resolve("tools/runs/cli.ts"), "loadwatch", "1", "-s"], {
+    env: {
+      ...Bun.env,
+      PATH: `${bin}:${Bun.env.PATH ?? ""}`,
+      SHELL: "/bin/sh",
+      ANA_HOSTS: JSON.stringify(hosts),
+    },
+  });
+  expect(result.exitCode).toBe(0);
+  const lines = result.stdout.toString().trimEnd().split("\n");
+  expect(lines).toHaveLength(1);
+  // A load of 400 on 4 cores shows as 100, with the 396 beyond the cores waiting.
+  expect(lines[0]).toMatch(
+    /^\S+ \d+\/100( \+\d+ waiting)? {2}loaded 100\/100 \+396 waiting {2}lost unreachable$/u,
+  );
+});
+
 test("a malformed interval is refused with the usage line", () => {
   const result = runSync([capturedExecPath, resolve("tools/runs/cli.ts"), "loadwatch", "soon"], {
     env: { ...Bun.env, ANA_HOSTS: "[]" },
   });
   expect(result.exitCode).not.toBe(0);
-  expect(result.stderr.toString()).toBe("usage: bun run runs loadwatch [<seconds>] [--once]\n");
+  expect(result.stderr.toString()).toBe("usage: bun run runs loadwatch [<seconds>] [--once | -s|--short]\n");
 });

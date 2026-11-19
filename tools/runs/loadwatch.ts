@@ -1,8 +1,9 @@
 /**
- * `bun run runs loadwatch [<seconds>] [--once]`: the CPU and the load of this machine and of every
- * host `ANA_HOSTS` lists, live in the terminal, refreshed every `<seconds>` (5 by default); `--once`
- * prints one frame and ends it with the machines in order of load, the least loaded first, which
- * is the line a session reads before it places a run.
+ * `bun run runs loadwatch [<seconds>] [--once | -s|--short]`: the CPU and the load of this machine
+ * and of every host `ANA_HOSTS` lists, live in the terminal, refreshed every `<seconds>` (5 by
+ * default); `--once` prints one frame and ends it with the machines in order of load, the least
+ * loaded first, which is the line a session reads before it places a run; `-s` (`--short`) prints
+ * only one line, each machine's five-minute load a core out of 100, least loaded first.
  *
  * A deadline counts elapsed time, so a solve on a loaded host has less of the machine than one on a
  * quiet host under the same setting (`AGENTS.md`, section 10, item 4), and the solve queue only
@@ -131,12 +132,16 @@ function linesOf({ label, state }: Watched): string[] {
   return [
     `${head} ${DIM}${String(cores)} cores${RESET}`,
     `  ${DIM}${ROWS[0]}${RESET} ${bar(busy, 100)}`,
-    // Past the core count, how many runnable processes wait for a core on average.
-    ...loads.map((load, at) => {
-      const queued = load - cores < 0.5 ? "" : ` ${RED}+${(load - cores).toFixed(0)} waiting${RESET}`;
-      return `  ${DIM}${ROWS[at + 1] ?? ""}${RESET} ${bar(load, cores)}  ${DIM}(${load.toFixed(2)})${RESET}${queued}`;
-    }),
+    ...loads.map(
+      (load, at) =>
+        `  ${DIM}${ROWS[at + 1] ?? ""}${RESET} ${bar(load, cores)}  ${DIM}(${load.toFixed(2)})${RESET}${RED}${queuedOf(load, cores)}${RESET}`,
+    ),
   ];
+}
+
+/** Past the core count, how many runnable processes wait for a core on average. */
+function queuedOf(load: number, cores: number): string {
+  return load - cores < 0.5 ? "" : ` +${(load - cores).toFixed(0)} waiting`;
 }
 
 function frame(watched: readonly Watched[], seconds: string): string[] {
@@ -149,14 +154,28 @@ function frame(watched: readonly Watched[], seconds: string): string[] {
   ];
 }
 
-/** The machines that answered, least loaded first, by the one-minute load a core: the queue a
- *  solve started now would join. A machine that did not answer is left out, never read as idle. */
-function ranking(watched: readonly Watched[]): string {
+/** The machines that answered, least loaded first, by one load average a core (`at`: 0 for one
+ *  minute, 1 for five). A machine that did not answer is left out, never read as idle. */
+function byLoad(watched: readonly Watched[], at: 0 | 1): { label: string; load: number; cores: number }[] {
   const read = watched.flatMap(({ label, state }) =>
-    state === "connecting" || state === "unreachable" ? [] : [{ label, share: state.loads[0] / state.cores }],
+    state === "connecting" || state === "unreachable"
+      ? []
+      : [{ label, load: state.loads[at], cores: state.cores }],
   );
-  const order = read.toSorted((a, b) => a.share - b.share);
-  return `least loaded first, 1m load a core: ${order.map(({ label, share }) => `${label} ${share.toFixed(2)}`).join(", ")}`;
+  return read.toSorted((a, b) => a.load / a.cores - b.load / b.cores);
+}
+
+/** `-s`: each machine's five-minute load a core out of 100, least loaded first, the queue beyond its
+ *  cores as the frame says it, and a machine that did not answer named last. */
+function short(watched: readonly Watched[]): string {
+  const read = byLoad(watched, 1).map(({ label, load, cores }) => {
+    const percent = Math.min(100, Math.round((100 * load) / cores));
+    return `${label} ${String(percent)}/100${queuedOf(load, cores)}`;
+  });
+  const lost = watched.flatMap(({ label, state }) =>
+    state === "unreachable" ? [`${label} unreachable`] : [],
+  );
+  return [...read, ...lost].join("  ");
 }
 
 /** Repaint the lines that changed since `before`, all of them after a resize, in one write. */
@@ -174,7 +193,10 @@ export async function loadwatch(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],
     allowPositionals: true,
-    options: { once: { type: "boolean", default: false } },
+    options: {
+      once: { type: "boolean", default: false },
+      short: { type: "boolean", short: "s", default: false },
+    },
   });
   const [given = "5", extra] = positionals;
   const seconds = Number(given);
@@ -192,9 +214,17 @@ export async function loadwatch(args: readonly string[]): Promise<void> {
     }),
   );
   const intervalMs = seconds * 1000;
-  if (values.once) {
+  if (values.once || values.short) {
     await Promise.all(watched.map((each) => stream(each, intervalMs, "first")));
-    console.log([...frame(watched, given), ranking(watched)].join("\n"));
+    if (values.short) {
+      console.log(short(watched));
+      return;
+    }
+    // The one-minute ranking: the queue a solve started now would join.
+    const order = byLoad(watched, 0).map(({ label, load, cores }) => `${label} ${(load / cores).toFixed(2)}`);
+    console.log(
+      [...frame(watched, given), `least loaded first, 1m load a core: ${order.join(", ")}`].join("\n"),
+    );
     return;
   }
   for (const each of watched) {

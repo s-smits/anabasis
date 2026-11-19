@@ -42,10 +42,9 @@ import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { type AnswerFile, capturedFiles, DELIVERABLES } from "../kernel/answer-files.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { sha256 } from "../meta/digest.ts";
-import { readFileSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
+import { rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonParse } from "../meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
-import { join } from "../meta/path.ts";
 import { isSafePathSegment } from "../meta/path-segment.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { canonicalJson, hashJsonValue } from "../meta/stable-json.ts";
@@ -53,6 +52,7 @@ import { plural } from "../meta/text.ts";
 import { type SeatTool, textsOf } from "../agent/session.ts";
 import { shellQuote } from "../wall/isolation.ts";
 import { toolchainPathDirs } from "../wall/policy.ts";
+import CAPTURE from "./capture-answer.py" with { type: "text" };
 import type { WallExec } from "./coding.ts";
 
 /** One of the domain's public resources, as a file in the solver's home holds it. */
@@ -115,9 +115,9 @@ function answerIn(bytes: Buffer, contract: Contract): { answer: JsonValue } | { 
   return fault === null ? { answer } : { fault: `does not follow the answer format: ${fault}` };
 }
 
-/** The capture, passed to the host's own Python as its program, so nothing is staged: the harness's
+/** The capture (`capture-answer.py`, imported as its text, so that a solver compiled to one file
+ *  holds it) is passed to the host's own Python as its program, so nothing is staged: the harness's
  *  tool tree is first on a command's PATH, and its interpreter would read one side's submits alone. */
-const CAPTURE = readFileSync(join(import.meta.dir, "capture-answer.py"), "utf8");
 const CAPTURER = Bun.which("python3", { PATH: toolchainPathDirs().join(":") });
 
 /**

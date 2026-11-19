@@ -146,8 +146,9 @@ const SOLVE_HOME = "(the solve's own home directory)";
 /** The harness's tool tree, as a path in the Builder's home. */
 export const HOME_TOOL_TREE = `harness/${TOOL_TREE_DIR}`;
 
-/** A measure as the Builder is told it, with the zeros or the exponent that show the rounding: it
- *  may depend on a practice task's hidden values. The log keeps every digit. */
+/** A measure as the Builder is told it, with the zeros or the exponent that show the rounding. Four
+ *  digits hide differences finer than the 1% tie floor (`ROOM`), which no reading rewards; they
+ *  bound no leak, since four digits can still determine a hidden value. The log keeps every digit. */
 const MEASURE_DIGITS = 4;
 const rounded = (measure: number): string => measure.toPrecision(MEASURE_DIGITS);
 

@@ -28,7 +28,7 @@ import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
 import { billedBetween } from "../kernel/meter.ts";
 import { heldAtGate } from "../kernel/task.ts";
-import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
 import { short } from "./move.ts";
 import type { Called } from "./names.ts";
@@ -364,17 +364,16 @@ const tallyOf = (pairs: readonly Paired[]): Tally => {
   return { wins, losses, ties };
 };
 
-/** The tasks the comparisons that stepped before `from` read: those that stepped for `reference`,
- *  or, with none named, every step's. */
+/** The tasks the comparisons that stepped before `from` for a new side `stepped` names read. A step
+ *  the starter won, as the new side of a starter comparison, chose nothing the reference descends from. */
 function chosenOn(
   events: readonly LogEvent[],
   reports: readonly Reported[],
-  reference: string | null,
+  stepped: (fresh: JsonValue | undefined) => boolean,
   from: number,
 ) {
   const chose = reports.filter(
-    ({ index, data }) =>
-      index < from && (reference === null || data.fresh === reference) && data.reading === "step",
+    ({ index, data }) => index < from && stepped(data.fresh) && data.reading === "step",
   );
   return new Set(chose.flatMap((report) => pairsReported(events, report).map(({ task }) => task)));
 }
@@ -405,7 +404,7 @@ export function starterReads(events: readonly LogEvent[]): StarterRead[] {
     const fresh = report?.data.fresh;
     if (report === undefined || epoch.starter_tally === null || !isString(fresh)) return [];
     const { level } = report.data;
-    const chosen = chosenOn(events, reports, epoch.reference, epoch.from);
+    const chosen = chosenOn(events, reports, (side) => side === epoch.reference, epoch.from);
     const earlier = new Set(epochs.slice(0, nth).flatMap(({ tasks }) => tasks));
     const pairs = pairsReported(events, report);
     const originOf = ({ task }: Paired): Origin =>
@@ -419,7 +418,7 @@ export function starterReads(events: readonly LogEvent[]): StarterRead[] {
       };
     };
     const at = isNumber(level) ? level : 0;
-    const anyChosen = chosenOn(events, reports, null, epoch.from);
+    const anyChosen = chosenOn(events, reports, (side) => side !== fresh, epoch.from);
     const free = pairs.filter(({ task }) => !anyChosen.has(task));
     return [
       {

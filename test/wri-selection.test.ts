@@ -183,6 +183,27 @@ describe("a starter read on the tasks no step chose", () => {
     expect(read?.unchosen).toEqual({ tally: { wins: 2, losses: 0, ties: 0 }, read: "too few" });
   });
 
+  it("keeps the tasks of a step the starter won, which chose nothing the reference descends from", () => {
+    const lost = ["lost-0", "lost-1"];
+    const read = starterReads([
+      ...promotion,
+      ...lost.flatMap((task) => gate(task, "x-2")),
+      ...comparison("g-1s", [NEW, STARTER], Object.fromEntries(lost.map((task) => [task, "FF PP"])), "step"),
+      ...second.flatMap((task) => gate(task, "x-2")),
+      ...comparison("g-2", [NEW, THIRD], Object.fromEntries(second.map((task) => [task, "FF PP"])), "step"),
+      { at: AT, kind: "harness.promoted", data: { harness: THIRD, from: NEW, rests: [] } },
+      ...after.flatMap((task) => gate(task, "x-3")),
+      ...comparison(
+        "g-3",
+        [THIRD, STARTER],
+        Object.fromEntries([...all, ...lost].map((task) => [task, "PP FF"])),
+        "step",
+      ),
+    ]).at(-1);
+    expect(read?.session).toBe("g-3");
+    expect(read?.unchosen.tally.wins).toBe(after.length + lost.length);
+  });
+
   it("is counted beside the confirmations in what starter-reads prints", () => {
     expect(printed(log)).toContain(
       "on the tasks no step chose, a step 0, a step for the starter 0, no step 0, too few 1",

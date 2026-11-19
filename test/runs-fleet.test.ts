@@ -79,6 +79,10 @@ describe("host execution", () => {
     expect(made.run(command([]), extra).code).toBe(0);
     expect(usageCalls(made)).toHaveLength(1);
     expect(history(made).at(-1)?.closed?.["2"]).toBeGreaterThan(Date.now());
+    // A peer that does not answer keeps its cache as it was, and the report names it.
+    const silent = made.run(command([]), { ...extra, FAKE_OFFLINE: "1" });
+    expect(silent.code).toBe(0);
+    expect(silent.out).toMatch(/^login cache not refreshed on \S+: no answer to `usage`$/mu);
 
     expect(peer.run(command([]), { ...extra, ANA_HOP: "1" }).code).toBe(0);
     expect(usageCalls(peer)).toEqual([]);

@@ -294,7 +294,13 @@ function eventsMarkdown(events: readonly LogEvent[], selector: Selector, shown: 
       (event, at) =>
         `| ${String(at + 1)} | ${event.at} | ${capturedJsonStringify(event.data).slice(0, 100)} |`,
     );
-    return ["| item | at | data begins |", "| --- | --- | --- |", ...rows].join("\n");
+    return [
+      `An index of each event's first 100 characters; \`${String(selector.kind)}{1-${String(own.length)}}\` gives each whole.`,
+      "",
+      "| item | at | data begins |",
+      "| --- | --- | --- |",
+      ...rows,
+    ].join("\n");
   }
   const chosen = pick(selector.items, own.length);
   if (chosen.length === 0) {

@@ -5,7 +5,7 @@ import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape
 import { dirname, join } from "../meta/path.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { boundText } from "../meta/bounded-text.ts";
-import { zipTexts } from "../meta/zip.ts";
+import { storedZip, zipTexts } from "../meta/zip.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 
 export interface AnswerFile {
@@ -21,7 +21,7 @@ export interface AnswerFile {
 type TextFile = { readonly path: string; readonly text: string };
 
 /** A file as a draft's control or a try gives one: its text, or an archive's text members in place
- *  of its bytes, since a seat writes no archive. */
+ *  of its bytes, since a seat writes no archive (`storedZip` then gives it bytes). */
 export type ControlFile = TextFile | { readonly path: string; readonly entries: readonly TextFile[] };
 
 export interface FileManifest {
@@ -116,15 +116,15 @@ export function capturedFiles(value: JsonValue | undefined): AnswerFile[] {
   return files;
 }
 
-/** Files as a control carries them, in the form a check receives. */
+/** Files as a control carries them, in the form a check receives: an archive as the stored bytes of
+ *  its members, so that it is kept and read back whole as a solver's is. */
 export function textFiles(rows: readonly ControlFile[]): AnswerFile[] {
-  if (!safePaths(rows.map(({ path }) => path))) throw new Error("invalid answer file path");
+  const archived = rows.flatMap((row) => ("text" in row ? [] : [row.entries.map(({ path }) => path)]));
+  if (![rows.map(({ path }) => path), ...archived].every(safePaths)) {
+    throw new Error("invalid answer file path");
+  }
   const filed = filing();
-  return rows.map((row) =>
-    "text" in row
-      ? filed(row.path, Buffer.from(row.text))
-      : { path: row.path, base64: "", entries: row.entries },
-  );
+  return rows.map((row) => filed(row.path, "text" in row ? Buffer.from(row.text) : storedZip(row.entries)));
 }
 
 /** Where a campaign keeps submitted bytes, by digest beside its states. */

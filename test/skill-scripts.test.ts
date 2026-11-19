@@ -1,10 +1,11 @@
 // The scripts the operator's skills share: the stack as its edges, the move to its top and the
 // republishing of a consolidated stack, the source a campaign's launches ran, the closing of an Oracle
-// bundle, and the reading of a live seat.
+// bundle and its folder of open pull requests, and the reading of a live seat.
 import { afterAll, describe, expect, it } from "bun:test";
 import { gitText } from "#src/meta/git.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
 import { declarationLines, sanitised, sectionLines } from "#skills/oracle-handover/scripts/document.ts";
+import { pasted, pullsInto } from "#skills/oracle-handover/scripts/open-pulls.ts";
 import { groupsOf, parseSelector, pick, slice } from "#skills/oracle-handover/scripts/slice.ts";
 import { itself, pairLines } from "#skills/compare-systems/scripts/systems.ts";
 import { censusOf, newsOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
@@ -521,6 +522,120 @@ describe("an Oracle bundle", () => {
     const big = made("oracle-d", { "REVIEW.md": "# Review\n" });
     expect(() => bundle(big, 10)).toThrow("over its");
     expect(existsSync(`${big}.zip`)).toBe(false);
+  });
+});
+
+describe("an Oracle folder of the open pull requests", () => {
+  const up = join(root, "pulls-up");
+  const co = join(root, "pulls-co");
+  const write = (file: string, text: string) => {
+    mkdirSync(join(co, file, ".."), { recursive: true });
+    writeFileSync(join(co, file), text);
+  };
+  const commit = (message: string) => {
+    git(co, "add", "-A");
+    git(co, "commit", "-q", "-m", message);
+    return gitText(co, "rev-parse", "HEAD");
+  };
+  git(root, "init", "-q", "--bare", "-b", "main", up);
+  git(root, "clone", "-q", up, co);
+  // main: a.ts imports b.ts, a test imports a.ts, another names only the fixture, one names only the
+  // README, which the gate's rule reads as documentation, and one is far.
+  write("README.md", "# r\n");
+  write("test/doc.test.ts", 'export const t = "README.md";\n');
+  write("src/a.ts", 'import { b } from "./b.ts";\nexport const a = b;\n');
+  write("src/b.ts", "export const b = 1;\n");
+  write("src/far.ts", "export const far = 2;\n");
+  write("src/gone.ts", "export const gone = 3;\n");
+  write("fixtures/data.json", "{}\n");
+  write("test/a.test.ts", 'import { a } from "../src/a.ts";\nexport const t = a;\n');
+  write("test/data.test.ts", 'export const t = "fixtures/data.json";\n');
+  write("test/far.test.ts", 'import { far } from "../src/far.ts";\nexport const t = far;\n');
+  commit("base");
+  git(co, "push", "-q", "origin", "HEAD:refs/heads/main");
+  // #1 changes a.ts, the fixture and the README; #2 on it removes gone.ts.
+  write("README.md", "# r, read\n");
+  write("src/a.ts", 'import { b } from "./b.ts";\nexport const a = b + 1;\n');
+  write("fixtures/data.json", '{"x":1}\n');
+  const one = commit("one");
+  rmSync(join(co, "src/gone.ts"));
+  const two = commit("two");
+  git(co, "push", "-q", "origin", `${one}:refs/heads/one`, `${two}:refs/heads/two`);
+  git(co, "fetch", "-q", "origin");
+  const open: Pull[] = [
+    { ...pull(2, "claude/two", "one"), headRefOid: two },
+    { ...pull(1, "one", "main", ["importance:I2"]), headRefOid: one },
+  ];
+  const how = {
+    web: "https://github.example/o/r",
+    at: "now",
+    told: (n: string) => `Title ${n}\n\nbody\n`,
+    code: true,
+  };
+
+  it("writes each pull request's text and its diff against the one beneath, and the code one import away", () => {
+    const into = join(root, "pulls-out", "pulls");
+    const written = pullsInto(co, into, open, how);
+    expect(written.slice(0, 5)).toStrictEqual([
+      "README.md",
+      "1-one.md",
+      "1-one.diff",
+      "2-two.md",
+      "2-two.diff",
+    ]);
+    const text = pasted(into, written);
+    const headings = text.split("\n").filter((line) => /^#+ /u.test(line));
+    expect(headings.slice(0, 11)).toStrictEqual([
+      "# The open pull requests of https://github.example/o/r",
+      "## On `main`: #1 to #2",
+      "## Pull request 1: Title 1",
+      "### The diff of pull request 1",
+      "#### `README.md`",
+      "#### `fixtures/data.json`",
+      "#### `src/a.ts`",
+      "## Pull request 2: Title 2",
+      "### The diff of pull request 2",
+      "#### `src/gone.ts`",
+      "# The code at #2's head",
+    ]);
+    expect(headings).toContain("## `src/a.ts`");
+    // A markdown file in the code is fenced whole, so its own heading stays inside the fence.
+    expect(text).toContain("## `README.md`\n\n```markdown\n# r, read\n```");
+    expect(text).toContain("+export const a = b + 1;");
+    const diff = (name: string) => readFileSync(join(into, name), "utf8");
+    expect(diff("1-one.diff")).toContain("+export const a = b + 1;");
+    expect(diff("1-one.diff")).not.toContain("gone.ts");
+    expect(diff("2-two.diff")).toContain("deleted file mode");
+    expect(diff("2-two.diff")).not.toContain("src/a.ts");
+    expect(readFileSync(join(into, "2-two.md"), "utf8")).toBe("# Pull request 2: Title 2\n\nbody\n\n");
+    const code = (file: string) => existsSync(join(into, "code", "2", file));
+    expect(
+      ["src/a.ts", "fixtures/data.json", "README.md", "src/b.ts", "test/a.test.ts", "test/data.test.ts"].map(
+        code,
+      ),
+    ).toStrictEqual([true, true, true, true, true, true]);
+    expect(["src/gone.ts", "src/far.ts", "test/far.test.ts", "test/doc.test.ts"].map(code)).toStrictEqual([
+      false,
+      false,
+      false,
+      false,
+    ]);
+    const readme = readFileSync(join(into, "README.md"), "utf8");
+    expect(readme).toContain("## On `main`: #1 to #2");
+    expect(readme.indexOf("[#1]")).toBeLessThan(readme.indexOf("[#2]"));
+    expect(readme).toContain(
+      "the 3 files the chain changed that it still has, the 1 other one of them imports, and the 2 other test files near them",
+    );
+    expect(gitText(co, "worktree", "list").split("\n")).toHaveLength(1);
+  });
+
+  it("refuses where no pull request is open, and leaves the code out for diffs alone", () => {
+    expect(() => pullsInto(co, join(root, "pulls-none"), [], how)).toThrow("no pull request is open");
+    expect(existsSync(join(root, "pulls-none"))).toBe(false);
+    const into = join(root, "pulls-diffs");
+    pullsInto(co, into, open, { ...how, code: false });
+    expect(existsSync(join(into, "code"))).toBe(false);
+    expect(existsSync(join(into, "2-two.diff"))).toBe(true);
   });
 });
 

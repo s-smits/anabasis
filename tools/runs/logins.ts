@@ -673,7 +673,7 @@ export async function logins(args: readonly string[], readUsage = readLogins): P
   // A forwarded report refreshes the peer's local history without asking other hosts again.
   const whole = !values.json && positionals.length === 0;
   const forwarded = runtimeProcess.env.ANA_HOP === "1";
-  const [readings, counted] = await Promise.all([
+  const [readings, counted, refreshed] = await Promise.all([
     readUsage(positionals.length > 0 ? positionals : held, runtimeProcess.env),
     values.json ? null : liveEverywhere(),
     whole ? asked(["usage"]) : null,
@@ -743,6 +743,11 @@ export async function logins(args: readonly string[], readUsage = readLogins): P
     console.log(activeLines(codex, [CODEX], [], runtimeProcess.env).join("\n"));
   }
   if ((counted?.unasked.length ?? 0) > 0) console.log(uncounted(counted?.unasked ?? []));
+  // A peer whose own report failed keeps the login cache its keepers read as it was, which is said.
+  const stale = (refreshed ?? []).flatMap(({ host, lines }) => (lines === null ? [host.name] : []));
+  if (stale.length > 0) {
+    console.log(`login cache not refreshed on ${stale.join(", ")}: no answer to \`usage\``);
+  }
   // A forwarded report that read no week fails, so the asking host says it did not answer.
   if (forwarded && whole && !complete) {
     throw new Error("no weekly usage read, so the login cache was not refreshed");

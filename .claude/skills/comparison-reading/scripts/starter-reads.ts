@@ -234,7 +234,7 @@ function totalLines(reads: readonly StarterRead[], campaigns?: number): string[]
   const alone = (reading: string) => slices.filter((slice) => slice.alone === reading).length;
   const over = campaigns === undefined ? "" : ` in ${plural(campaigns, "campaign")}`;
   return [
-    `${plural(reads.length, "starter read")}${over}, ${String(reads.filter(({ confirmed }) => confirmed).length)} confirmed; ${aloneOf(reads)}`,
+    `${plural(reads.length, "starter read")}${over}, ${String(reads.filter(({ confirmed }) => confirmed).length)} confirmed; ${aloneOf(reads)}; on the tasks no step chose, ${UNSELECTED.map((one) => `${one} ${String(reads.filter(({ unchosen }) => unchosen.read === one).length)}`).join(", ")}`,
     ...ORIGINS.map((origin) =>
       originLine(origin, {
         whole: of(origin, "whole"),

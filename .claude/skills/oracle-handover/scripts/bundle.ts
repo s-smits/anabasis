@@ -8,7 +8,8 @@
  * itself a zip is put to the repository's secret rules (`tools/secrets/rules.ts`), and a hit
  * refuses the bundle: a note or a patch copied in by hand is where a credential would ride. The
  * runs zip inside was made by `bun run runs zip`, which leaves out a file named like a secret. The
- * zip lands beside the folder under its name, with no resource-fork sidecar.
+ * zip lands beside the folder under its name, with no resource-fork sidecar. `open-pulls.ts` closes
+ * its folder the same way (`zipped`), before any task document is in it.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { existsSync, lstatSync, readdirSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
@@ -29,12 +30,9 @@ function filesUnder(dir: string): string[] {
   });
 }
 
-/** Zip bundle folder `dir` beside itself and return what was made. Refuses a folder with no task
- *  document, one that holds a credential-shaped line, and a zip over `maxBytes`. */
-export function bundle(dir: string, maxBytes: number) {
-  if (!existsSync(join(dir, "REVIEW.md"))) {
-    throw new CommandFailure(`${dir} holds no REVIEW.md: the task document goes at the root`);
-  }
+/** Zip folder `dir` beside itself, test the zip and return what was made. Refuses a folder that
+ *  holds a credential-shaped line, and a zip over `maxBytes`. */
+export function zipped(dir: string, maxBytes: number) {
   const files = filesUnder(dir);
   const hits = files
     .filter((file) => !file.endsWith(".zip"))
@@ -58,6 +56,21 @@ export function bundle(dir: string, maxBytes: number) {
   return { out, bytes, files: files.length };
 }
 
+/** `zipped`, for a bundle: it also refuses a folder with no task document. */
+export function bundle(dir: string, maxBytes: number) {
+  if (!existsSync(join(dir, "REVIEW.md"))) {
+    throw new CommandFailure(`${dir} holds no REVIEW.md: the task document goes at the root`);
+  }
+  return zipped(dir, maxBytes);
+}
+
+/** The cap `--max-mb` names, or the default, in bytes. */
+export const maxBytesOf = (args: CommandArgs): number => (args.int("max-mb") ?? DEFAULT_MAX_MB) * MB;
+
+/** The one line a command says of the zip it made. */
+export const madeLine = (made: ReturnType<typeof zipped>): string =>
+  `${made.out}  ${(made.bytes / MB).toFixed(1)} MB  ${String(made.files)} files`;
+
 if (import.meta.main) {
   await runCommand(
     {
@@ -67,8 +80,7 @@ if (import.meta.main) {
       positionals: 1,
     },
     (args: CommandArgs) => {
-      const made = bundle(resolve(args.positionals[0] ?? ""), (args.int("max-mb") ?? DEFAULT_MAX_MB) * MB);
-      console.log(`${made.out}  ${(made.bytes / MB).toFixed(1)} MB  ${String(made.files)} files`);
+      console.log(madeLine(bundle(resolve(args.positionals[0] ?? ""), maxBytesOf(args))));
     },
   );
 }

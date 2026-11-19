@@ -15,6 +15,7 @@
  */
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
+import { type FileManifest, manifestOf } from "./answer-files.ts";
 import type { LogEvent } from "./log.ts";
 import type { Task } from "./verify.ts";
 
@@ -85,8 +86,12 @@ export function familySizes(events: readonly LogEvent[], tasks: readonly string[
   return { sizes: sizes.toSorted((one, other) => other - one), unnamed: kin.get(null)?.length ?? 0 };
 }
 
-/** Accepted answers for one proposed version. They remain on the exam side. */
-export function acceptedAnswers(events: readonly LogEvent[], version: string | undefined): JsonValue[] {
+/** Accepted answers for one proposed version, each with the files it delivered. They remain on the
+ *  exam side. */
+export function acceptedAnswers(
+  events: readonly LogEvent[],
+  version: string | undefined,
+): { readonly answer: JsonValue; readonly files: FileManifest[] }[] {
   if (version === undefined) return [];
   const taskId = proposalsOf(events).findLast((proposal) => proposal.version === version)?.taskId ?? null;
   const wrong = wrongPassesIn(events);
@@ -98,7 +103,7 @@ export function acceptedAnswers(events: readonly LogEvent[], version: string | u
         data.task === taskId &&
         data.kind === "pass" &&
         !(isString(data.solve) && wrong.has(data.solve))))
-      ? [data.answer]
+      ? [{ answer: data.answer, files: manifestOf(data.files) }]
       : [],
   );
 }

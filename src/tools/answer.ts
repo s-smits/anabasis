@@ -79,6 +79,8 @@ export const ANSWER_FORMAT_FILE = "public/answer-format.json";
 /** The largest answer, in the file's bytes (v1's draft store held an answer to the same). */
 const ANSWER_MAX_BYTES = 1024 * 1024;
 const MISSING = 44;
+/** What opens the line the capture program prints its result on. */
+const CAPTURED = "ana-capture:";
 /** What pi keeps of a tool's result, `DEFAULT_MAX_BYTES` and `DEFAULT_MAX_LINES` of pi-durable's
  *  `truncate.js`, which 1.5.2 still keeps private; the shown part leaves room for the notice. */
 export const RESULT = { bytes: 50 * 1024 - 512, lines: 2000 - 2 };
@@ -152,7 +154,12 @@ export function submitTool(desk: Desk, contract: Contract, home: string, exec: W
       if (exitCode !== 0) {
         return text(`Submit blocked: submission could not be read: ${output.toString("utf8").trim()}`);
       }
-      const capture = asRecord(capturedJsonParse(output.toString("utf8")));
+      // The wall gives one stream, so a warning the interpreter wrote stands beside the capture's line.
+      const said = output
+        .toString("utf8")
+        .split("\n")
+        .findLast((line) => line.startsWith(CAPTURED));
+      const capture = asRecord(capturedJsonParse(said?.slice(CAPTURED.length) ?? "null"));
       if (!isString(capture?.answer)) throw new Error("invalid answer capture");
       const read = answerIn(Buffer.from(capture.answer, "base64"), contract);
       if ("fault" in read) return text(`Submit blocked: ${ANSWER_FILE} ${read.fault}`);

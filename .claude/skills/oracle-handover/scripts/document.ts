@@ -52,7 +52,7 @@ const PR_TEMPLATE = [
   "{{.title}}\n\n`{{.headRefName}}` @ {{.headRefOid}} on `{{.baseRefName}}`, {{.state}}.\n\n{{.body}}\n",
   "| file | added | deleted |\n| --- | --- | --- |\n{{range .files}}| `{{.path}}` | +{{.additions}} | -{{.deletions}} |\n{{end}}",
 ].join("\n");
-const tokensOf = (text: string) => Math.round(new TextEncoder().encode(text).length / 3.17);
+export const tokensOf = (text: string): number => Math.round(new TextEncoder().encode(text).length / 3.17);
 
 /** The 1-based lines of top-level declaration `name` in TypeScript `text`, from the head comment
  *  of its first statement to the end of its last, so that overloads and merged interfaces come whole. */
@@ -109,6 +109,23 @@ export function sectionLines(lines: readonly string[], keys: readonly string[]):
   });
 }
 
+/** Where GitHub shows the repository checkout `repo` names as `origin`. */
+export const webOf = (repo: string): string =>
+  `https://github.com/${gitText(repo, "remote", "get-url", "origin").replaceAll(/^.*github\.com[:/]|\.git$/gu, "")}`;
+
+/** Pull request `number` as GitHub shows it now: its title on the first line, then its head, base
+ *  and state, its body and its files. */
+export const pullTold = (repo: string, number: string): string =>
+  ghOrThrow(repo, [
+    "pr",
+    "view",
+    number,
+    "--json",
+    "title,headRefName,headRefOid,baseRefName,state,body,files",
+    "--template",
+    PR_TEMPLATE,
+  ]);
+
 function srcPart(at: At, spec: string): Part {
   const [, path = spec, from, to = from, name] = /^([^:#]+)(?::(\d+)(?:-(\d+))?|#(.+))?$/u.exec(spec) ?? [];
   if (Number(from) > Number(to)) throw new CommandFailure(`${spec}: a range runs from its lower line`);
@@ -141,15 +158,7 @@ const PARTS = {
   pr: (at, [number = ""]) => ({
     title: `PR #${number}`,
     link: `${at.web}/pull/${number}/files`,
-    body: ghOrThrow(at.repo, [
-      "pr",
-      "view",
-      number,
-      "--json",
-      "title,headRefName,headRefOid,baseRefName,state,body,files",
-      "--template",
-      PR_TEMPLATE,
-    ]),
+    body: pullTold(at.repo, number),
   }),
   log: async (_, words) => {
     const [run = "", ...selectors] = words.filter((word) => word !== "--whole");
@@ -198,13 +207,7 @@ export function sanitised(text: string, machines: readonly (readonly string[])[]
 
 /** The document the parts file `partsFile` names, read at commit `commit` of checkout `repo`. */
 async function documentOf(partsFile: string, repo: string, commit: string) {
-  const origin = gitText(repo, "remote", "get-url", "origin");
-  const at: At = {
-    repo,
-    sha: publishedAt(repo, commit),
-    web: `https://github.com/${origin.replaceAll(/^.*github\.com[:/]|\.git$/gu, "")}`,
-    base: dirname(partsFile),
-  };
+  const at: At = { repo, sha: publishedAt(repo, commit), web: webOf(repo), base: dirname(partsFile) };
   const head: string[] = [];
   const parts: Part[] = [];
   for (const line of readFileSync(partsFile, "utf8")

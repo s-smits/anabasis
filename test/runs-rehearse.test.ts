@@ -382,6 +382,35 @@ describe("scripted solves", () => {
     expect(strayed).toEqual([]);
   });
 
+  it("deliver a file by write where the harness selects it, since a shell command is one argument", async () => {
+    const folder = campaignAt("delivered", []);
+    writeFileSync(join(folder, SEED_FILE), "{}\n");
+    const { campaign, calls } = campaignOver(folder, { outcome: "pass" });
+    const report = "r".repeat(200_000);
+    const answers = [
+      {
+        taskId: held.taskId,
+        answer: { answer: "with a report" },
+        files: [{ path: "out/report.md", base64: "", text: report }],
+        refusedBy: null,
+      },
+    ];
+    const both = { dir: join(root, "fresh-both"), digest: "b" };
+    cpSync(FIXTURE, both.dir, { recursive: true });
+    writeFileSync(join(both.dir, "agent/tools-spec.json"), '{ "presets": ["bash", "write"], "tools": [] }\n');
+    const seats = scriptedSeats(SCRIPT, answers, [])(campaign, { builder: undefined, reference: FIXTURE });
+    // A harness with a shell alone has no other way to place it.
+    const shell = { dir: join(root, "fresh-shell"), digest: "s" };
+    cpSync(FIXTURE, shell.dir, { recursive: true });
+    await seats.solve(held, both, undefined);
+    await seats.solve(held, shell, undefined);
+    // Each solve's first call, which places the delivered file.
+    expect(calls).toMatchObject([
+      { name: "write", arguments: { path: "deliverables/out/report.md", content: report } },
+      { name: "bash" },
+    ]);
+  });
+
   it("are refused on a campaign that is no seed, whose next round would count their solves", () => {
     const { campaign } = campaignOver(campaignAt("real", []), { outcome: "pass" });
     expect(() =>

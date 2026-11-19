@@ -1,6 +1,6 @@
 ---
 name: oracle-handover
-description: "Hand a question about Anabasis to an outside Oracle model: as one self-contained markdown document (`document.ts`: sources at a published commit, PR summaries, log slices such as `Builder{4-7}`), or as a task document and a zip of logs and kept harnesses (`bun run runs zip`, `bundle.ts`). `slice.ts` prints any seat's turns or event kind from a run. Use when the operator asks to prepare an Oracle question, a report request, a problem statement or a second opinion on a run, a reading or a design, an Oracle md file of some size, or to send the latest runs to an outside model. Produces local files; uploading is the operator's."
+description: "Hand a question about Anabasis to an outside Oracle model: as one self-contained markdown document (`document.ts`: sources at a published commit, PR summaries, log slices such as `Builder{4-7}`), or as a task document and a zip of logs and kept harnesses (`bun run runs zip`, `bundle.ts`). `slice.ts` prints any seat's turns or event kind from a run; `open-pulls.ts` zips every open pull request's title, body and diff with the code one import away, and writes the same as one `.md` to paste (`--diffs` for a paste: the code makes it millions of tokens). Use when the operator asks to prepare an Oracle question, a report request, a problem statement or a second opinion on a run, a reading or a design, an Oracle md file of some size, to send the latest runs or the open pull requests to an outside model, or to give the open pull requests as a zip or in md format. Produces local files; uploading is the operator's."
 ---
 
 # Oracle handover
@@ -92,6 +92,30 @@ bun .claude/skills/oracle-handover/scripts/bundle.ts <dir> [--max-mb 20]
 It scans every file other than a zip against the secret rules, refuses on a hit or over the cap,
 then zips and tests. Read older receipts for private paths (current ones write `envFile: null`,
 `keepReceipt` in `tools/d2/harness-builder.ts`), and never copy an env file.
+
+## The open pull requests
+
+A review of the stack, or a question a stack's change turns on, takes every open pull request
+whole:
+
+```sh
+bun .claude/skills/oracle-handover/scripts/open-pulls.ts <scratchpad>/oracle-<yyyymmdd>-<topic> [--diffs] [--max-mb 20]
+```
+
+It writes `pulls/` into that folder and zips the folder beside itself as `bundle.ts` does. `README.md`
+lists each chain bottom first; each pull request has a `.md` (title, head, base, state, body and
+files, as a `pr` part holds them) and a `.diff` against the head beneath it, so a chain's diffs in
+order amount to its top against `main`. `code/<top>/` holds, at each chain's top, the files it
+changed, the files those import and the tests near them, by the gate's rule (one import, three for
+a UI test). That is code the changed lines call and tests that hold them, never their callers:
+name a caller in the document as a `src` part. `--diffs` leaves the code out. Beside the zip,
+`<folder>.md` holds the same files as one text to paste: the index, each pull request under its
+title with a heading for each file its diff changes, then each file of the code under its path. For
+the stack of 19 November (26 pull requests, 164 files changed), it gave a zip of 2.3 MB in 17 s and
+a `.md` of about 2.2M tokens, and with `--diffs` a `.md` of about 312k, the one the operator pastes:
+so "the open PRs in md format" is `--diffs` and its `.md`, whose path and size are the answer. GitHub is read at that
+moment, so make it after the last push the question concerns and name the top's commit in the
+document. Add `REVIEW.md` and any runs to the same folder and close it again with `bundle.ts`.
 
 ## Write the document as the task
 

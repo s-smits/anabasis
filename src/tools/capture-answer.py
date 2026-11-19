@@ -67,7 +67,8 @@ def capture():
 
 
 try:
-    print(json.dumps(capture()))
+    # One line under a mark: the wall hands back what the interpreter said beside it in the same bytes.
+    print("ana-capture:" + json.dumps(capture()))
 except (OSError, ValueError, RecursionError) as error:
     print(str(error), file=sys.stderr)
     sys.exit(1)

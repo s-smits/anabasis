@@ -56,7 +56,11 @@ bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | camp
   tasks that selected the harness and those that did not (written before but undrawn, or after),
   and says what the tasks written after read alone (a step, a step for the starter, no step, or too
   few untied tasks to read one), the one origin no step selected: generalisation rather than
-  selection bias. `--all`
+  selection bias. Beside it, the read on every task no step before the promotion chose (the
+  reference's own or an ancestor's): "written before, not chosen on" holds an ancestor's chosen
+  tasks, so a confirmation that rests on them is partly a margin selected for its sign. Over the
+  record of 19 November, jobstat's 45 reads confirmed 20 and read a step on those tasks 8 times;
+  buffer's 31 confirmed 17 and read 9. It reports and decides nothing. `--all`
   sums the record, `--name` filters by a text such as a pack. The fold is `starterReads`
   (`src/campaign/climb.ts`). Across weeks of runs the same fold is read by promotion-tuner's
   [trend.ts](../promotion-tuner/SKILL.md), which sets it beside how fast the promotions came.

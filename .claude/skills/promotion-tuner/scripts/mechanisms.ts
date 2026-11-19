@@ -27,7 +27,8 @@
  *   of the recorded one. `untied`: the fewest untied tasks a step may rest on.
  * - `retained`: `out` leaves the retained tasks out of the score.
  * - `unit`: what the test counts once: each `task` as production, or each family (siblings repeat one
- *   effect), by its mean score or its `first` task's; a task of no family stands alone.
+ *   effect), by its mean score or its `first` task's, or each family's first two or three tasks
+ *   (`cap2`, `cap3`); a task of no family stands alone.
  */
 import { flipP, ROOM, WEIGHTS, wholePoints } from "#src/kernel/compare.ts";
 import type { Solve, Task } from "./record.ts";
@@ -56,7 +57,7 @@ const CHOICES = {
   lead: ["any", "answers"],
   test: ["flip", "sign", "rank"],
   retained: ["in", "out"],
-  unit: ["task", "family", "first"],
+  unit: ["task", "family", "first", "cap2", "cap3"],
 } as const;
 type Choice = keyof typeof CHOICES;
 
@@ -124,6 +125,8 @@ export const STANDARD = [
   "retained=out",
   "unit=family",
   "unit=first",
+  "unit=cap2",
+  "unit=cap3",
 ] as const;
 
 const POINTS = 1000;
@@ -240,6 +243,9 @@ function withinCeilings(tasks: readonly Task[], knobs: Knobs): boolean {
 function unitsOf(scores: readonly number[], tasks: readonly Task[], unit: Knobs["unit"]): number[] {
   if (unit === "task") return [...scores];
   const kin = Map.groupBy(scores, (_, at) => tasks[at]?.family ?? `task ${String(at)}`);
+  if (unit === "cap2" || unit === "cap3") {
+    return [...kin.values()].flatMap((each) => each.slice(0, unit === "cap2" ? 2 : 3));
+  }
   return [...kin.values()].map((each) =>
     unit === "first" ? (each[0] ?? 0) : wholePoints(each.reduce((all, one) => all + one, 0) / each.length),
   );

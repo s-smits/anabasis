@@ -54,7 +54,7 @@ afterAll(() => {
 });
 
 /** A home, the commands run against it, and its submit. */
-function solving(desk: Desk = openDesk(), pathFirst?: string) {
+function solving(desk: Desk = openDesk(), pathFirst?: string, warned = "") {
   const home = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-answer-")));
   homes.push(home);
   const commands: string[] = [];
@@ -68,7 +68,13 @@ function solving(desk: Desk = openDesk(), pathFirst?: string) {
       new Response(child.stdout).arrayBuffer(),
       new Response(child.stderr).arrayBuffer(),
     ]);
-    return { exitCode: await child.exited, output: Buffer.concat([Buffer.from(out), Buffer.from(err)]) };
+    const output = Buffer.concat([
+      Buffer.from(warned),
+      Buffer.from(out),
+      Buffer.from(err),
+      Buffer.from(warned),
+    ]);
+    return { exitCode: await child.exited, output };
   };
   const log = join(home, "log.jsonl");
   const tool = submitTool(desk, CONTRACT, home, exec);
@@ -203,6 +209,11 @@ describe("submit", () => {
     ]);
     expect(first?.entries).toHaveLength(1);
     expect(second?.entries).toBeUndefined();
+    const twice = zipOf([
+      ["a.xml", "1", false],
+      ["a.xml", "2", false],
+    ]).toString("base64");
+    expect(capturedFiles([{ path: "twice.xlsx", base64: twice }])[0]?.entries).toBeUndefined();
     const bomb = zipOf([
       ["small.xml", "<a/>", true],
       ["bomb.xml", "\0".repeat(16 * 1024 * 1024 + 1), true],
@@ -219,10 +230,41 @@ describe("submit", () => {
         { path: "a.xlsx", entries: [sheet] },
         { path: "b.md", text: "# B" },
       ]),
-    ).toEqual([
-      { path: "a.xlsx", base64: "", entries: [sheet] },
+    ).toMatchObject([
+      { path: "a.xlsx", entries: [sheet] },
       { path: "b.md", base64: Buffer.from("# B").toString("base64"), text: "# B" },
     ]);
+    // A member that leaves its folder, or is named twice, is no archive a control may carry.
+    for (const path of ["../a.xml", "a.xml"]) {
+      expect(() =>
+        textFiles([{ path: "a.xlsx", entries: [sheet, { path, text: "" }, { path: "a.xml", text: "" }] }]),
+      ).toThrow("invalid answer file path");
+    }
+  });
+
+  it("keeps a control's archive as bytes any zip reader opens, and reads its members back", () => {
+    const s = solving();
+    const members = [
+      { path: "xl/worksheets/sheet1.xml", text: "<v>1</v>" },
+      { path: "docProps/caf\u00E9.xml", text: "" },
+      { path: "xl/sharedStrings.xml", text: "<t>caf\u00E9</t>" },
+    ];
+    const files = textFiles([{ path: "a.xlsx", entries: members }]);
+    // Until 19 November 2026 the archive was kept as no bytes, and read back with no member.
+    expect(readAnswerFiles(s.log, keepAnswerFiles(s.log, files))[0]?.entries).toEqual(members);
+    const book = join(s.home, "a.xlsx");
+    writeFileSync(book, Buffer.from(files[0]?.base64 ?? "", "base64"));
+    const opened = Bun.spawnSync([
+      "python3",
+      "-I",
+      "-c",
+      "import sys, zipfile\nz = zipfile.ZipFile(sys.argv[1])\nprint(z.testzip(), [(n.encode(), z.read(n)) for n in z.namelist()][1:])",
+      book,
+    ]);
+    // Every member under its checksum; the last two by name and text, each as UTF-8.
+    expect(opened.stdout.toString().trim()).toBe(
+      String.raw`None [(b'docProps/caf\xc3\xa9.xml', b''), (b'xl/sharedStrings.xml', b'<t>caf\xc3\xa9</t>')]`,
+    );
   });
 
   it.each(["file", "total"])("refuses bytes over the %s bound", async (kind) => {
@@ -260,6 +302,13 @@ describe("submit", () => {
     expect(verdict?.answer).toEqual({ span: 4 });
     expect(verdict?.files).toBeUndefined();
     expect(readAnswerFiles(s.log, verdict?.files ?? [])).toEqual([]);
+  });
+
+  it("reads the capture beside what its interpreter warned of in the same stream", async () => {
+    const { answer, desk, submit } = solving(openDesk(), undefined, "warning: the locale could not be set\n");
+    answer('{"span":4}');
+    expect((await submit()).text).toBe("Submitted.");
+    expect(desk.submitted).toEqual({ span: 4 });
   });
 
   it("keeps the accepted answer's digest in durable details and ends the round", async () => {

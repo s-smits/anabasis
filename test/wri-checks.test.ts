@@ -3,7 +3,7 @@
 // and a verdict under an earlier program counted under the frozen one.
 import { describe, expect, it } from "bun:test";
 import { checkRows } from "../tools/wri/checks.ts";
-import { indexOf, refusalsByCheck } from "../tools/wri/folds.ts";
+import { indexOf, instrumentTriggers, refusalsByCheck } from "../tools/wri/folds.ts";
 import { refusalOf } from "../tools/wri/lane-guard.ts";
 import { verdictCampaign } from "./helpers/verdict-log.ts";
 
@@ -36,6 +36,14 @@ describe("checkRows", () => {
     expect(row("c-b").at(-1)).toBe("3/1");
     expect(row("c-a").at(-1)).toBe("not recorded");
     expect(lines).toContain("controls read: 4; the do-nothing answer: refused on 1 of 2 tasks");
+  });
+
+  it("counts a scored refusal with no ruling as unread, and an Examiner's try never", () => {
+    // Refused: e-0 and e-1 are tries, s-1 and s-2 are ruled, s-3 and the practice solve p-1 are not.
+    const unread = instrumentTriggers(indexOf(verdictCampaign())).find(
+      ({ name }) => name === "REFUSED UNREAD",
+    );
+    expect(unread?.detail).toBe("2 of 6 refused answers no reviewer ruled on");
   });
 
   it("passes the lane guard as a lane runs it", () => {

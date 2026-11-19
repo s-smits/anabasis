@@ -49,7 +49,7 @@
 import type { SeatTool } from "../agent/session.ts";
 import { Type } from "typebox";
 import { affords, openingOf } from "../campaign/opening.ts";
-import { type AnswerFile, textFiles } from "../kernel/answer-files.ts";
+import { type AnswerFile, keepAnswerFiles, textFiles } from "../kernel/answer-files.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, contentOf, proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { poolOf } from "../kernel/reports.ts";
@@ -226,6 +226,11 @@ function measureOf(contract: Contract, verdict: Verdict): JsonObject {
   return { objective: { quantity, direction, measure } };
 }
 
+/** The files of the author's valid answer, kept by digest as a solve's are, so that the Referee
+ *  reads a known valid answer whole. */
+const keptFiles = (log: string, files: readonly AnswerFile[] = []): JsonObject =>
+  files.length === 0 ? {} : { files: keepAnswerFiles(log, files).map((file) => ({ ...file })) };
+
 /** A verdict as the Examiner reads it. */
 function tried(verdict: Verdict): string {
   if (verdict.kind === "pass") {
@@ -279,7 +284,13 @@ async function admitDraft(desk: Desk, instance: Task): Promise<string> {
   if (verdict.kind !== "pass") {
     return `${held} Author proof was not retained under this task id: ${tried(verdict)}`;
   }
-  append(log, "task.feasible", { version, session, answer, ...measureOf(request.contract, verdict) });
+  append(log, "task.feasible", {
+    version,
+    session,
+    answer,
+    ...keptFiles(log, files),
+    ...measureOf(request.contract, verdict),
+  });
   return held;
 }
 
@@ -384,6 +395,7 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
     version: string,
     verdict: Verdict,
     answer: JsonValue,
+    files: readonly AnswerFile[] | undefined,
   ) => {
     const sets = taskSets(events);
     const inExam =
@@ -397,7 +409,13 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
         acceptedAnswers(events, version).length === 0 ||
         "objective" in measure)
     ) {
-      append(log, "task.feasible", { version, session: desk.request.id, answer, ...measure });
+      append(log, "task.feasible", {
+        version,
+        session: desk.request.id,
+        answer,
+        ...keptFiles(log, files),
+        ...measure,
+      });
     }
   };
   return tool({
@@ -432,7 +450,7 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
       if (verdict.kind === "pass") {
         desk.answered.set(content, { answer, ...keyIfDefined("files", files) });
         desk.planted.add(hashJsonValue(answer));
-        recordValidAnswer(events, taskVersion(desk.request.pack(instance)), verdict, answer);
+        recordValidAnswer(events, taskVersion(desk.request.pack(instance)), verdict, answer, files);
       }
       // The verifier's measure, kept with a held task's answer for the comparisons (`measureOf`).
       const { objective } = measureOf(contract, verdict);

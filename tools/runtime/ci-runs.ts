@@ -172,23 +172,27 @@ export function fixesFor(root: string, top: Pull, say: (line: string) => void): 
   };
 }
 
-/** The test files near `changed` in `sha`'s tree, and a changed file the wall reaches, read from a
- *  scratch checkout of it. Its real path, since imports resolve to real paths and macOS's temporary
- *  folder is a link: from the link every import read as outside the tree. */
-function nearOn(
-  root: string,
-  sha: string,
-  changed: ReadonlySet<string>,
-): { near: string[]; wall: string | undefined } {
-  const tree = realpathSync(mkdtempSync(join(tmpdir(), "ana-ci-fixes-")));
+/** What `read` makes of a scratch checkout of `sha`, which is removed after it. Its real path, since
+ *  imports resolve to real paths and macOS's temporary folder is a link: from the link every import
+ *  read as outside the tree. */
+export function onCheckout<T>(root: string, sha: string, read: (tree: string) => T): T {
+  const tree = realpathSync(mkdtempSync(join(tmpdir(), "ana-checkout-")));
   rmSync(tree, { recursive: true, force: true });
   git(root, ["worktree", "add", "-q", "--detach", tree, sha]);
   try {
-    return {
-      near: [...testsNear(tree, changed), ...uiTestsNear(tree, changed, "all")],
-      wall: reachingWall(tree, changed),
-    };
+    return read(tree);
   } finally {
     git(root, ["worktree", "remove", "--force", tree]);
   }
 }
+
+/** The test files near `changed` in `sha`'s tree, and a changed file the wall reaches. */
+const nearOn = (
+  root: string,
+  sha: string,
+  changed: ReadonlySet<string>,
+): { near: string[]; wall: string | undefined } =>
+  onCheckout(root, sha, (tree) => ({
+    near: [...testsNear(tree, changed), ...uiTestsNear(tree, changed, "all")],
+    wall: reachingWall(tree, changed),
+  }));

@@ -135,7 +135,11 @@ Passes are remembered by tree, gate and Bun version, so a restack that keeps tre
 gh pr create --draft --base <parent branch> --head <branch> --title "<title>" --body-file <file> --label importance:I<n> --label <category>
 ```
 
-A pull request opens as a draft; `--sanitize` marks it ready once its head posts `mergeable`. It
+A pull request opens as a draft and stays one until its author or the operator marks it ready
+(`gh pr ready <number>`): the `mergeable` check alone says its head is proved, and `--merge` refuses
+a landing that holds a draft, so a change that waits on a decision of the operator's waits as one. A merge that follows
+the top (`--auto`, or no number) meets a draft stacked above the ready ones the same way: name the
+highest ready pull request without `--auto` to land what is ready. It
 carries exactly one importance label (`importance:I0` to `I3`, defined in `AGENTS.md` section 11)
 and at least one category, or `land` refuses the stack before any check
 (`gh pr edit <number> --add-label <label>`). Categories (`CATEGORIES`, `tools/runtime/land.ts`;

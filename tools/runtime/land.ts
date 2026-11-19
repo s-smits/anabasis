@@ -36,8 +36,10 @@
  * ends, so a red an earlier landing left clears once its fix is being proved. A check belongs to its
  * commit, so a push leaves the new head without it and the pull request reads unproved again (the
  * pre-push hook marks the heads above it pending); a label would outlive the head it was earned on
- * (the operator, 27 October). A pull request opens as a draft, and the same success moves a draft
- * to Ready for review, so a draft is one no landing has proved yet. `--merge` posts the same, and
+ * (the operator, 27 October). A pull request stays a draft until its author or the operator marks
+ * it ready (`gh pr ready <number>`): the check alone says a head is proved, and `--merge` refuses a
+ * draft, so a change that waits on the operator (`AGENTS.md`, section 3) waits as one, where until
+ * 19 November 2026 a proof marked it ready. `--merge` posts the same, and
  * also wants `ci.yml` passed on the top's head, since only it proves the Linux isolation on a clean
  * runner. No pull request push starts that run (since 19 October, `ci.yml`); when none exists and
  * `ci.yml` takes `workflow_dispatch`, `--merge` dispatches one before gating, so it runs meanwhile,
@@ -625,6 +627,10 @@ async function landTo(root: string, target: number, mode: Mode, board: Board): P
   // The refusals no replay can change come before it, so a refused landing force-pushes nothing.
   const read = readLanding(root, target, openPulls(root));
   checkLabels(read);
+  const drafts = read.pulls.filter((pull) => pull.isDraft);
+  if (mode.kind === "merging" && drafts.length > 0) {
+    throw new Refusal(`${numbers(drafts)}: no merge takes a draft (gh pr ready, or a ready top).`);
+  }
   const [chain] = read.beside;
   if (mode.kind === "merging" && !mode.alone && chain !== undefined) {
     throw new Refusal(
@@ -671,11 +677,6 @@ async function landTo(root: string, target: number, mode: Mode, board: Board): P
       if (!settled) checkListed(root, target, landing);
       settled = true;
       mergeable(pull, "success", "every commit up to this head passed bun run land");
-      if (pull.isDraft && !gh(root, ["pr", "ready", String(pull.number)]).ok) {
-        say(
-          `#${String(pull.number)} passed, and stays a draft: gh pr ready ${String(pull.number)} was refused.`,
-        );
-      }
       green += 1;
     }
   };

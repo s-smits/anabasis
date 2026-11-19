@@ -562,7 +562,9 @@ export function instrumentTriggers(log: Index): Trigger[] {
   const checks = rows.filter((row) => row.id !== OBJECTIVE.id);
   const uncaught = checks.filter((row) => count(row.named) === 0 || count(row.caught) < count(row.named));
   const refused = refusals(log);
-  const rulingOf = (solve: Solve) => log.stands.get(solve.id) ?? "unread";
+  // No reviewer is asked to rule on an Examiner's try, so it is never unread: on 19 November the
+  // #941 fork's only two refusals were one try's, and the row sent its lane to read nothing.
+  const rulingOf = (solve: Solve) => log.stands.get(solve.id) ?? (solve.role === "try" ? "try" : "unread");
   const ruled = countBy(refused, rulingOf);
   const defects = refused.filter((solve) => rulingOf(solve) === DEFECT);
   const defectChecks = countBy(defects, (solve) => text(log.rulings.get(solve.id)?.check));

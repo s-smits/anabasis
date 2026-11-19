@@ -449,6 +449,9 @@ describe("runner", () => {
     expect(runnerLags(repo, first)).toBe(true);
     expect(runnerLags(repo, `${moved}, dirty`)).toBe(true);
     expect(runnerLags(repo, "an unknown commit")).toBe(true);
+    // `run.js` bundles the `src/meta` modules it imports, so a change there is the runner's too.
+    commit("src/meta/subprocess.ts", "bundled\n");
+    expect(runnerLags(repo, moved)).toBe(true);
   });
 });
 

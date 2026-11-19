@@ -36,6 +36,7 @@ import { join } from "#src/meta/path.ts";
 import { capturedExecPath, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, runCaptured, runSync } from "#src/meta/subprocess.ts";
 import { pinnedPythonDir, TOOLCHAIN_HOME_ROOTS } from "#src/wall/policy.ts";
+import { RUNNER_SOURCE } from "../runtime/router/install.ts";
 import { scanText } from "../secrets/rules.ts";
 import { quoted, shellOn } from "./host-command.ts";
 import { type Host, hostsOf, ownName } from "./host-config.ts";
@@ -114,13 +115,6 @@ const READ_MS = 60_000;
 const APPLY_MS = 900_000;
 const INSTALL = "tools/runtime/router/install.ts";
 const TREE = join(import.meta.dir, "..", "..");
-/** What the installed runner is made of, `run.js` bundling the last three among them. */
-const RUNNER_SOURCE = [
-  "tools/runtime/router",
-  "tools/runs/host-config.ts",
-  "tools/runs/host-command.ts",
-  "src/meta/ssh.ts",
-];
 /** How many package names a line shows before it counts the rest. */
 const SHOWN = 6;
 

@@ -26,8 +26,9 @@ restating them.
 Read, changing nothing:
 
 - `uname -s` and `bun --version`, against `packageManager` in `package.json`.
-- On Linux, `bwrap --version`, and on Ubuntu 24.04 or later
-  `sysctl kernel.apparmor_restrict_unprivileged_userns` (the wall needs it at 0).
+- On Linux, `bwrap --version` and `sysctl -n kernel.apparmor_restrict_unprivileged_userns`. The
+  wall needs it at 0; Ubuntu 24.04 and later set it to 1, and a missing key means AppArmor does
+  not restrict user namespaces.
 - `test -d node_modules`, and `git config core.hooksPath` (the hooks are on when it says
   `.githooks`).
 - `test -e .env` and `test -e .env.runs`, which say whether each exists and nothing of what it
@@ -35,7 +36,10 @@ Read, changing nothing:
 - `command -v claude` and `claude --version`; `command -v codex`. Presence only: never read
   `~/.claude`, `~/.codex`, the keychain or a login's status.
 - `command -v rg` (`bun run runs search` needs it) and `python3 --version`.
-- `git worktree list`: a campaign runs from a worktree of its own, never the main checkout.
+
+Installers put `bun`, `claude` and `codex` in folders such as `~/.local/bin` or `~/.bun/bin`
+through a shell profile, which a non-interactive shell does not read. Before you report one
+missing, ask again in a login shell (`zsh -lc 'command -v claude'`, or `bash -lc` on Linux).
 
 ## 2. Present and ask
 
@@ -45,8 +49,11 @@ exploration settled.
 
 **A. This machine.** Recommended: whatever is missing of Bun 1.4.4 (the README's `curl` line,
 printed for the user), on Linux `bubblewrap` and the AppArmor setting (printed, since both take
-`sudo`), then `bun install --frozen-lockfile` and `bun run hooks:install`, which you run. Done
-when `bun --version` prints the pinned version and the wall test passes on this machine:
+`sudo`), then `bun install --frozen-lockfile` and `bun run hooks:install`, which you run. Bun's
+installer adds `~/.bun/bin` to the shell profile, so the session that ran it finds the new Bun
+only in a new shell or at `~/.bun/bin/bun`. `bun install` may report blocked lifecycle scripts;
+leave them blocked, since nothing this setup proves needs them. Done when `bun --version` prints
+the pinned version and the wall test passes on this machine:
 `RUN_REMOTE=here bun run test -- test/walled-env.test.ts`. A failure there from unavailable user
 namespaces is a failure to report, not to skip.
 
@@ -59,7 +66,9 @@ namespaces is a failure to report, not to skip.
   lands in the transcript; then to paste it into `.env` as `CLAUDE_CODE_OAUTH_TOKEN` with their
   own editor. Create `.env` first with `cp -n .env.example .env` where it is missing. Done when
   `bun run runs usage` prints that login's five-hour and weekly use, which loads the token without
-  printing it and calls no model.
+  printing it and calls no model. Its exit 1 with "neither CLAUDE_CODE_OAUTH_TOKEN nor
+  CLAUDE_CODE_OAUTH_TOKEN<N> is set" means the token line in `.env` is still empty: `bun run runs`
+  has already loaded `.env`, so the message's advice to pass another env file does not apply.
 - *No `claude` command*: offer `ANTHROPIC_API_KEY` for `claude-api/<model>` or
   `OPENROUTER_API_KEY` for `openrouter/<model>`, written into `.env` by the user. No command here
   proves these without a model call, so say that the first seat's turn is their proof.
@@ -67,6 +76,9 @@ namespaces is a failure to report, not to skip.
   reads the ChatGPT login the Codex CLI already holds under `CODEX_HOME` (`~/.codex` by default).
   Only if a seat then reports that the folder "holds no ChatGPT login" does the user run
   `codex login` themselves.
+
+Where the user has no credential to give yet, create `.env` from its example all the same and
+leave the seat for section 4 to mark.
 
 **C. Other machines and logins.** Skip unless the user says they run on more than one machine or
 more than one login; with neither, Anabasis stays on this machine and needs no `.env.runs`. Where
@@ -89,5 +101,7 @@ them.
 
 End with one line a step, each marked yes or no with its proof: Bun, the wall test, dependencies,
 hooks, each seat's credential, and each host where section C ran. For a no, give the command that
-would fix it. Then point at the README's "Run it" for the first campaign, and at its `--dry-run`,
-which prints the next move and makes none, as the step before the first paid launch.
+would fix it. A seat with no free proof (Codex, an API key, OpenRouter) is marked "not proved",
+with that reason, never yes. Then point at the README's "Run it" for the first campaign, which
+runs from a worktree of its own with its own `bun install`, and at its `--dry-run`, which prints
+the next move and makes none, as the step before the first paid launch.

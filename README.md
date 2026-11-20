@@ -60,7 +60,7 @@ This example uses Claude for all four model seats.
 ```sh
 git clone https://github.com/s-smits/anabasis.git
 cd anabasis
-cp .env.example .env   # set CLAUDE_CODE_OAUTH_TOKEN in it; `claude setup-token` prints one
+cp -n .env.example .env   # set CLAUDE_CODE_OAUTH_TOKEN in it; `claude setup-token` prints one
 
 # A run executes its tree's source, so it starts from a worktree of its own.
 git worktree add --detach ../anabasis-trusses

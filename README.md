@@ -124,7 +124,7 @@ bun tools/d2/close.ts --name your-campaign --to data/harnesses/your-campaign --s
 format and lint on the staged files and scans them for secrets, and the push hook checks what the push adds
 with `git diff --check`, the formatter and the secret scan. `ANA_PUSH_VERIFY=1 git push` adds
 `bun run gate -- --static` on each pushed head: every step, with the tests near the head's own change in place of the suite.
-`bun run land -- <top> --sanitize` proves each commit with its nearby tests and the top with the whole `bun run gate`.
+`bun run land -- <top> --sanitize` proves each commit, the top's too, with its nearby tests; `--merge`, or `--whole`, gives the top the whole `bun run gate`.
 The lint plugins beside oxlint's own rules (`anti-slop`, copied from dmmulroy/anti-slop, `ana` and the two `implicit-state` tiers)
 are optional: their findings fail only `bun run lint -- --strict`, which the gate runs, or a run with `ANA_LINT_STRICT=1`.
 

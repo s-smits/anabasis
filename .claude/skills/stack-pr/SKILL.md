@@ -241,7 +241,7 @@ GitHub allows merge commits only, and ruleset 25824510 on `main`
 
 `land` checks that each base contains the head beneath it down to `main`, so the last merge leaves
 `main` at the top's tree, then proves each commit on the top's first parents: static steps and
-nearby tests, and the whole gate on the top; recorded passes are reused, at a merge as at a
+nearby tests, the top's too, and at `--merge` or on `--whole` the whole gate on the top; recorded passes are reused, at a merge as at a
 sanitize (`ANA_GATE_FRESH=1` proves every commit afresh by hand). With `RUN_REMOTE` unset the passes
 spread over every host that takes checks, as many at once as its slots, a pass whose host gave no
 verdict proved again on another, and with `RUN_REMOTE` set the landing runs them as at one place, each pass where the runner sends it

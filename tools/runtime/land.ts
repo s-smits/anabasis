@@ -2,7 +2,7 @@
  * Lands a pull request, with every open one beneath it, on main, after proving each commit the
  * landing would publish where it sits.
  *
- *   bun run land -- [<pull request> | latest] [--auto] [--watch] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]
+ *   bun run land -- [<pull request> | latest] [--auto] [--watch] [--whole] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]
  *
  * `--auto` follows the top: it lands the top of the longest chain above the pull request named, and
  * after the proof, and again after `ci.yml` before a merge, it reads the chain again and lands its
@@ -16,15 +16,15 @@
  *
  * A plain push runs no step of the CI gate, and one with `ANA_PUSH_VERIFY=1` only the static steps
  * and nearby tests over the pushed head (`tools/runtime/pre-push.ts`), so a pushed commit is unproved
- * until it lands here. This is where
- * each landing head's first-parent line above main is proved over its own checkout: the static
- * steps and its nearby tests, and the whole CI gate, the full suite among it, on the top's head
- * (`tools/runtime/gate.ts`), each pass already recorded skipped. `--sanitize` runs that proof when
- * its author judges the stack ready, without merging. The stack is read
- * from GitHub as v2's stack-pr reads it, each pull request's base the head of the one beneath it, and
- * the bottom must be based on main. Each head must contain the one beneath it and the bottom main's
- * head, so the last merge leaves main at exactly the top's tree, which is the tree the whole CI gate
- * read.
+ * until it lands here. Here each landing head's first-parent line above main is proved over its own
+ * checkout: the static steps and nearby tests, the top's too, and at a merge or on `--whole` the
+ * whole CI gate on the top's head (`tools/runtime/gate.ts`), each pass already recorded skipped.
+ * Until 20 November a sanitize also ran the full suite on its top, which moves with each pull
+ * request stacked on it (operator). `--sanitize` runs that proof when its author judges the stack
+ * ready, without merging. The stack is read from GitHub as v2's stack-pr reads it, each pull
+ * request's base the head of the one beneath it, and the bottom must be based on main. Each head
+ * must contain the one beneath it and the bottom main's head, so the last merge leaves main at
+ * exactly the top's tree, which the whole CI gate read.
  *
  * Without a flag nothing is written to GitHub. `--sanitize` posts each commit's verdict as the
  * status `ana/commit` and stops, posting no status GitHub already shows (`statusBoard`). It also
@@ -81,12 +81,9 @@
  * what the replay moved. A commit whose runner gave no verdict is marked with an error instead, and
  * the landing asks only to be run again. The chain is read again as each commit's proof starts and
  * before each pull request turns green where a commit was proved since, in full only where a pull
- * request opened, closed or moved (`checkListed`), so a head that moved is landed as it stands, its newer
- * commits with it, before a stale commit is proved, up to `MOVES` times. Until 29 October it was read
- * only as a pull request turned green, so a head pushed while its own commits were gated had its old
- * commits proved first, its old top's whole gate among them. With `RUN_REMOTE` unset they are proved
- * over the hosts that take checks (`whereToProve`); `--jobs N` gates up to N commits at once; the
- * top's whole CI gate runs alone.
+ * request opened, closed or moved (`checkListed`), so a moved head is landed as it stands before a
+ * stale commit is proved, up to `MOVES` times. `RUN_REMOTE` unset spreads them over the check hosts
+ * (`whereToProve`); `--jobs N` gates up to N commits at once; the top's whole CI gate runs alone.
  *
  * What moves behind a landing's back is followed: a moved parent is replayed first (`restack`), a
  * move under a commit being proved stops the proofs (`watching`), and a newer landing ends a covered
@@ -166,6 +163,7 @@ interface Mode {
   readonly kind: "proving" | "sanitizing" | "merging";
   readonly auto: boolean;
   readonly alone: boolean;
+  readonly topPass: "whole" | "static"; // the whole CI gate at a merge or on `--whole`
   readonly places: readonly Place[];
   /** The release `--merge --tag` cuts at the merge. */
   readonly tag: string | null;
@@ -209,7 +207,7 @@ export const CATEGORIES = new Set([
   "docs",
 ]);
 const USAGE =
-  "usage: bun run land -- [<pull request> | latest] [--auto] [--watch] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]";
+  "usage: bun run land -- [<pull request> | latest] [--auto] [--watch] [--whole] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]";
 const TAG = /^v\d+\.\d+\.\d+$/u;
 
 class Refusal extends Error {}
@@ -646,10 +644,11 @@ async function landTo(root: string, target: number, mode: Mode, board: Board): P
   if (mode.kind === "merging") startCi(root, top);
   // Each landing head's own line, including a lower head reached through a merge's other parent.
   const heads = landing.pulls.map((pull) => pull.headRefOid);
+  const whole = mode.topPass === "whole" ? top.headRefOid : null;
   const proofs = addedLine(root, heads, [landing.trunkSha], say).map(
     (commit): Proof => ({
       commit,
-      pass: commit === top.headRefOid ? "whole" : changesSource(root, commit) ? "static" : null,
+      pass: commit === whole ? "whole" : changesSource(root, commit) ? "static" : null,
     }),
   );
   say(
@@ -742,6 +741,7 @@ async function main(argv: readonly string[]): Promise<number> {
     sanitize: { type: "boolean", default: false },
     auto: { type: "boolean", default: false },
     watch: { type: "boolean", default: false },
+    whole: { type: "boolean", default: false },
     alone: { type: "boolean", default: false },
     jobs: { type: "string" },
     tag: { type: "string" },
@@ -767,6 +767,7 @@ async function main(argv: readonly string[]): Promise<number> {
     kind: values.merge ? "merging" : values.sanitize ? "sanitizing" : "proving",
     auto: values.auto || named === null,
     alone: values.alone,
+    topPass: values.whole || values.merge ? "whole" : "static",
     places,
     tag: values.tag ?? null,
   };

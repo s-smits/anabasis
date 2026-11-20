@@ -34,7 +34,7 @@ that does not answer within `ANA_RUNNER_PICK_WAIT` (5 s) is left out. Where no h
 the list cannot be read, an unset one runs the task here without a sample. `RUN_REMOTE=here` keeps a
 task on this machine and a host's name sends it there. A landing alone reads an unset `RUN_REMOTE` otherwise (`whereToProve`,
 `tools/runtime/landing.ts`): it spreads its commits' passes over every such host, each taking as many
-at once as its `checks`, sends the whole gate on the top to the first listed, and proves again on
+at once as its `checks`, sends the top's whole gate, where it runs one, to the first listed, and proves again on
 another host a pass whose host gave no verdict; with no such host, or with `RUN_REMOTE` set, as in
 `RUN_REMOTE=here bun run land -- <top> --sanitize`, it proves as at one place, each pass where the
 runner sends it, so under `auto` each picks the least loaded slot for itself. Git

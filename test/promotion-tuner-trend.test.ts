@@ -180,9 +180,21 @@ const score = (arm: string, harness: string, task: string, points: number, of: s
   cut: false,
 });
 
+/** The outside block's rows by arm, each a list of its cells. */
+const outsideRows = (scores: readonly Score[], runs: readonly Run[]) =>
+  new Map(
+    outsideLines(scores, runs, "tsv")
+      .join("\n")
+      .split("\n")
+      .slice(1)
+      .map((row) => row.split("\t"))
+      .map((cells) => [cells[0], cells] as const),
+  );
+
 it("joins an arm to its promotion by digest and reads it against the Starter's spread", () => {
+  // One arm a Starter rollout, as a store holds them: one record a task and arm.
   const starter = [10, 20].flatMap((points) =>
-    ["t1", "t2"].map((task) => score("starter", "s", task, points, "starter")),
+    ["t1", "t2"].map((task) => score(`starter-${String(points)}`, "s", task, points, "starter")),
   );
   const arm = (name: string, harness: string, points: number, of: string | null) =>
     ["t1", "t2"].map((task) => score(name, harness, task, points, of));
@@ -190,7 +202,7 @@ it("joins an arm to its promotion by digest and reads it against the Starter's s
     name: "campaign",
     promotions: [promotion(1, "first", true), promotion(2, "second", false)],
   });
-  const rows = outsideLines(
+  const read = outsideRows(
     [
       ...starter,
       ...arm("above", "first", 25, "campaign"),
@@ -202,13 +214,7 @@ it("joins an arm to its promotion by digest and reads it against the Starter's s
       score("above", "first", "t3", 50, "campaign"),
     ],
     [climbed],
-    "tsv",
-  )
-    .join("\n")
-    .split("\n")
-    .slice(1)
-    .map((row) => row.split("\t"));
-  const read = new Map(rows.map((row) => [row[0], row]));
+  );
   expect(read.get("above")?.slice(2, 9)).toEqual([
     "1 of 2",
     "6-0-0 p 0.0156",
@@ -225,7 +231,43 @@ it("joins an arm to its promotion by digest and reads it against the Starter's s
   expect(read.get("elsewhere")?.[1]).toBe("-");
   expect(read.get("elsewhere")?.[4]).toBe("-");
   // A Starter arm is the baseline and takes no row.
-  expect(read.get("starter")).toBeUndefined();
+  expect(read.get("starter-10")).toBeUndefined();
+});
+
+it("bounds an arm by the sums of whole Starter rollouts, never by the Starter's worst and best of each task", () => {
+  // Two Starter rollouts trade places on two tasks: each sums to 50, where the lower of each task
+  // sums to 20 and the higher to 80, a spread no rollout had and one that every added rollout widens.
+  const starter = [
+    score("starter-a", "s", "t1", 10, "starter"),
+    score("starter-a", "s", "t2", 40, "starter"),
+    score("starter-b", "s", "t1", 40, "starter"),
+    score("starter-b", "s", "t2", 10, "starter"),
+    // A Starter arm that holds one of the two tasks has no sum over both, so its nought bounds neither.
+    score("starter-void", "s", "t1", 0, "starter"),
+    score("starter-other", "s", "t3", 30, "starter"),
+  ];
+  const arm = (name: string, tasks: readonly string[], points: number) =>
+    tasks.map((task) => score(name, "d", task, points, null));
+  const read = outsideRows(
+    [
+      ...starter,
+      ...arm("under", ["t1", "t2"], 15),
+      ...arm("over", ["t1", "t2"], 35),
+      ...arm("level", ["t1", "t2"], 25),
+      // On one task the arm that holds it alone counts beside the two that hold both.
+      ...arm("single", ["t1"], 5),
+      ...arm("lone", ["t3"], 30),
+      // No Starter arm holds these two tasks together, so nothing bounds their sum.
+      ...arm("apart", ["t1", "t3"], 15),
+    ],
+    [],
+  );
+  expect(read.get("under")?.slice(6, 9)).toEqual(["30/100", "50 to 50", "below"]);
+  expect(read.get("over")?.slice(7, 9)).toEqual(["50 to 50", "above"]);
+  expect(read.get("level")?.[8]).toBe("inside");
+  expect(read.get("single")?.slice(6, 9)).toEqual(["5/50", "0 to 40", "inside"]);
+  expect(read.get("lone")?.slice(7, 9)).toEqual(["30 to 30", "inside, one Starter rollout"]);
+  expect(read.get("apart")?.slice(5, 9)).toEqual(["2", "30/100", "-", "-"]);
 });
 
 it("reads a store's judged records, and none from a judgement that left no points", () => {

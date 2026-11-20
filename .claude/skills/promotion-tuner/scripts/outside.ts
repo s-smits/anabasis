@@ -10,8 +10,8 @@
  *
  * An arm is joined to the promotion that promoted the digest its records name, among the campaigns
  * a caller folded; two arms can name one promotion, so the counts are of arms. Its points are
- * summed over the tasks a Starter rollout also holds and read against the Starter's lowest and
- * highest sum over its rollouts of them: inside that spread is no reading (rule 6).
+ * summed over the tasks a Starter rollout also holds and read against the lowest and highest sum
+ * among the Starter arms that hold them all: inside that spread is no reading (rule 6).
  *
  * It prints counts, arm labels and task counts, never a rubric or a deliverable. Nothing here
  * reaches a seat, a prompt, a check or a query, and a bench score promotes nothing (`AGENTS.md`,
@@ -94,20 +94,18 @@ export const campaignsOf = (scores: readonly Score[]): string[] => [
   ...new Set(scores.flatMap(({ of }) => (of === null || of === STARTER ? [] : [of]))),
 ];
 
-/** An arm's sum against the Starter's sums on the same tasks. */
+const summed = (scores: readonly Score[]) => scores.reduce((sum, { points }) => sum + points, 0);
+
+/** An arm's sum against the Starter's sums on the same tasks, one sum a Starter arm that holds them
+ *  all. The Starter's lowest rollout of each task, summed, is a rollout nobody ran, and it falls
+ *  with every Starter arm added, until every arm beside it reads inside. */
 function againstStarter(own: readonly Score[], starter: readonly Score[]) {
   const shared = own.filter(({ task }) => starter.some((score) => score.task === task));
-  const bound = (pick: (points: readonly number[]) => number) =>
-    shared.reduce(
-      (sum, { task }) =>
-        sum + pick(starter.filter((score) => score.task === task).map(({ points }) => points)),
-      0,
-    );
-  const [points, low, high] = [
-    shared.reduce((sum, score) => sum + score.points, 0),
-    bound((all) => Math.min(...all)),
-    bound((all) => Math.max(...all)),
-  ];
+  const sums = [...Map.groupBy(starter, ({ arm }) => arm).values()].flatMap((rollout) => {
+    const held = rollout.filter(({ task }) => shared.some((score) => score.task === task));
+    return held.length === shared.length ? [summed(held)] : [];
+  });
+  const [points, low, high] = [summed(shared), Math.min(...sums), Math.max(...sums)];
   const placed: Verdict = points > high ? "above" : points < low ? "below" : "inside";
   return {
     tasks: shared.length,
@@ -115,7 +113,8 @@ function againstStarter(own: readonly Score[], starter: readonly Score[]) {
     total: shared.reduce((sum, score) => sum + score.total, 0),
     low,
     high,
-    verdict: shared.length === 0 ? null : placed,
+    rollouts: sums.length,
+    verdict: sums.length === 0 ? null : placed,
     cut: shared.filter((score) => score.cut).length,
   };
 }
@@ -139,7 +138,7 @@ export function outsideLines(scores: readonly Score[], runs: readonly Run[], for
     if (promotion !== undefined && read.verdict !== null) {
       joined.push({ confirmed: promotion.confirmed, verdict: read.verdict });
     }
-    const spread = read.low === read.high ? ", one Starter rollout" : "";
+    const spread = read.rollouts === 1 ? ", one Starter rollout" : "";
     return [
       arm,
       run?.pack ?? MISSING,
@@ -150,7 +149,7 @@ export function outsideLines(scores: readonly Score[], runs: readonly Run[], for
       promotion === undefined ? MISSING : confirmedWord(promotion.confirmed),
       `${String(read.tasks)}${read.cut > 0 ? ` (${String(read.cut)} cut)` : ""}`,
       `${String(read.points)}/${String(read.total)}`,
-      `${String(read.low)} to ${String(read.high)}`,
+      read.verdict === null ? MISSING : `${String(read.low)} to ${String(read.high)}`,
       read.verdict === null ? MISSING : `${read.verdict}${spread}`,
     ];
   });
@@ -172,7 +171,7 @@ export function outsideLines(scores: readonly Score[], runs: readonly Run[], for
     "",
     `Arms that name a promotion ${String(joined.length)}, by what the starter read of it: ${[true, false, null].map(counted).join("; ")}.`,
     `The two readings agree on ${String(agree)} of ${String(joined.length)}: a promotion the starter confirmed that scores above the Starter's spread, or one it did not that does not.`,
-    "An arm is read on the tasks a Starter rollout also holds, against the Starter's lowest and highest sum over its rollouts of them; inside that spread is no reading, and one rollout a task reads a direction only. A deficit is a difference in conditions first (what the export carries and tells the solver, the interpreter, the day) and the harness only once those are equal.",
+    "An arm is read on the tasks a Starter rollout also holds, against the lowest and highest sum among the Starter arms that hold them all; inside that spread is no reading, and one rollout a task reads a direction only. A deficit is a difference in conditions first (what the export carries and tells the solver, the interpreter, the day) and the harness only once those are equal.",
     "A campaign climbs on its own comparisons alone: promotions that come faster while these rows stay inside or below the Starter's spread are fitted to those comparisons. A bench score promotes nothing, and no seat, prompt, check or query reads this table.",
   ];
 }

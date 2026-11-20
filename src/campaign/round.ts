@@ -32,18 +32,10 @@
  * (`src/harness/starter.ts`). Once another reference is promoted, the starter is read in a starter
  * comparison after a promotion (`decide.ts`), and no side of a comparison between two others.
  *
- * How each harness did by itself is in the report beside the test (`valid`): on how many tasks it
- * gave a valid answer in every solve, in some and in none. For the starter this is what the
- * plan's starter measurement reads: where it is valid on nearly every solve, the tasks leave a harness
- * nothing to add (`7f0add79:docs/plan.md`, G0).
- *
  * The reference is read against itself as the test is (the plan's A/A): its solves of a task
  * split into two halves mirrored in time, read as two harnesses are, with how often two of them
  * disagree (`flips`, `comparison.ts`). The test's own solves hold it: at two solves a side, the
  * first of each task against the second. It should read no step, and decides nothing here.
- *
- * A comparison is read at the one budget its solves were told: a reading of the same solves at a
- * shorter budget would read a solver told the longer one.
  *
  * `cap` is the comparison's dollar cap. Before each solve the dollars the log holds as billed for
  * the comparison are summed (`billedFor`): its own solves and their rulings, and in a round the
@@ -78,8 +70,7 @@
  * nothing: topping up a set a dispute thinned, after the tallies could be seen, would be a second
  * look at the data. It also stops, to go on the same way, when the provider has stopped answering:
  * `SILENT` tasks in a row whose solve ended, after its reruns, with nothing written for it. A login
- * at its session limit does that to every solve in seconds. Named resets wait inside `solve`:
- * on 21 October they had refused 43 of 1,396 admission drafts across 30 campaigns.
+ * at its session limit does that to every solve in seconds; named resets wait inside `solve`.
  *
  * A round's session starts from the harness the caller names, which need not be the reference
  * harness: a Builder goes on from its latest harness, and the comparison is against the reference
@@ -91,18 +82,13 @@
  *
  * A held-out task's trace is never shown: it would carry the task to the Builder.
  *
- * Nothing here decides what happens next. `reading` (`compared`, `comparison.ts`) says how the
- * plan's rules read the tallies; the stop rule reads the reports (`src/kernel/reports.ts`), and
- * the campaign controller promotes and opens the next session automatically. Under `--hitl`,
- * promotion waits for the operator's word.
- *
- * What the log holds of a comparison, and how it is read back, is `comparison.ts`: its start, its
- * counted solves, its rejections, its tallies and its report. This file keeps what runs one and
- * what it writes.
+ * Nothing here decides what happens next (`decide.ts`). What the log holds of a comparison, and how
+ * it is read back, is `comparison.ts`; this file keeps what runs one and what it writes.
  * Stopped reports retain completion facts and can be labelled. Settlement preserves their absent
  * test: the completed prefix never becomes a tally, and the comparison starts no further solves.
  */
 import { draw, type ObjectiveRule } from "../kernel/compare.ts";
+import { familiesOf } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { type Cap, capHolds, poolOf } from "../kernel/reports.ts";
 import { billedFor } from "../kernel/meter.ts";
@@ -223,6 +209,8 @@ interface Job {
  *  run again. Tasks and not solves: one task its provider refuses at the first turn is that task's
  *  fault, and is reported short. */
 const SILENT = 3;
+/** The most of a scored set one family takes where the frontier holds three or more (`scoredSet`). */
+const FAMILY_SHARE = 0.4;
 const TASK_STATE = "task.state";
 /** The states a comparison's finding may dispute a task from. */
 const DISPUTABLE: ReadonlySet<string> = new Set(["held", "released"]);
@@ -230,33 +218,22 @@ const DISPUTABLE: ReadonlySet<string> = new Set(["held", "released"]);
 const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]);
 
 /**
- * The tasks a comparison scores, and the retained ones among them: `target` of the scorable tasks
- * a log holds (`poolOf`, `reports.ts`), or all of them where it holds fewer, taken from the newest
- * epoch down and within an epoch drawn by the contract's hash and nothing else (`draw`). The tasks
- * written since the last promotion are the exam the reference harness has not answered, so they
- * come first; what room is left is filled from the epoch before, by the same hash, and so on down.
- * The retained set, read in the step's one test and reported apart, since 20 November holds every task held
- * before the latest promotion (`poolOf`), as each chose the reference (until then those it stood in were
- * frontier; until 16 October a quarter of the set was, and tied after each promotion; C2). The epoch chooses
- * the set and no result does: the hash is fixed before any task
- * exists, and which epoch a task is in is where its task admission held it out (`tasksByEpoch`). A draw over
- * every epoch at once, in a simulated climb after two promotions, drew for a target of 8 over 19
- * held tasks two or three the reference failed, so three comparisons read one win short and the
- * campaign stopped (`7f0add79:docs/plan.md`, B14). A task that waits for a person's label is left out, and
- * an exhausted one, which can only tie again, is retained (`poolOf`). Of the retained, one for
- * each three frontier tasks is scored beside the target, and the step's one test reads them with the
- * frontier (`stepOf`, `compare.ts`). Until 16 October it was what the frontier left of the target: 16 of 94
- * starts on record drew fewer than one for each three, 12 of them where the frontier filled it.
+ * The tasks a comparison scores, and the retained ones among them: `target` of the frontier
+ * (`poolOf`, `reports.ts`), or all of it where it holds fewer, then one retained task for each
+ * three, which the step's one test reads with the frontier (`stepOf`, `compare.ts`). The newest
+ * epoch comes first, and within each epoch the tasks held out since the last comparison began; the
+ * epoch chooses the set and no result does, since the hash (`draw`) is fixed before any task exists.
+ * A draw over every epoch at once drew for a target of 8 over 19 held tasks two or three the
+ * reference failed, so three comparisons read one win short (`7f0add79:docs/plan.md`, B14); a draw
+ * by the hash alone scored 4 of the 7 tasks written for a comparison. Within a tier the families
+ * take turns, and where the frontier holds three or more one takes at most `FAMILY_SHARE` of the
+ * set unless the others cannot fill it. Of 550 starts on record to 20 November, one family held
+ * more of a set than that in 154, but in 133 the whole frontier was scored, which no draw changes.
  *
- * Within each epoch the tasks held out since the last comparison began come first, by the hash:
- * a draw by the hash alone took a task written after a comparison that left no room no earlier
- * than one it had scored, and one campaign's next comparison scored 4 of the 7 written for it.
- *
- * The starter comparison after a promotion draws alike. From 30 October to 2 November it scored
- * the tasks held out since alone, which the Examiner writes above the new reference's grade, so
- * the promotion's confirmation (`confirmed`, `climb.ts`) read the reference only where it was
- * weakest: in the six on record it lost those tasks to the starter 24 to 33 and won the older
- * ones 62 to 17, as scored on 6 November.
+ * The starter comparison after a promotion draws alike. Every task held before the promotion is
+ * retained (`poolOf`), so its frontier is the tasks written since, which the Examiner writes above
+ * the new reference's grade: in the six read from 30 October to 2 November on those tasks alone the
+ * reference lost them to the starter 24 to 33 and won the older ones 62 to 17.
  */
 export function scoredSet(events: readonly LogEvent[], target: number, contract: string) {
   const pool = poolOf(events);
@@ -276,8 +253,31 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
       const own = epoch.filter((version) => held.has(version));
       return [own.filter((version) => since.has(version)), own.filter((version) => !since.has(version))];
     });
+  // Within a tier one task a family a pass, the families in the order of their first task by the
+  // hash; a task its author put in no family is a family of its own.
+  const families = familiesOf(events);
+  const familyOf = (version: string) => families.get(version) ?? version;
+  const cap = new Set(pool.frontier.map(familyOf)).size >= 3 ? Math.ceil(count * FAMILY_SHARE) : count;
+  const order = tiers.flatMap((tier) => {
+    const byFamily = Map.groupBy(draw(tier, tier.length, contract), familyOf);
+    const most = Math.max(0, ...[...byFamily.values()].map((group) => group.length));
+    return Array.from({ length: most }, (_, pass) =>
+      [...byFamily.values()].flatMap((group) => group.slice(pass, pass + 1)),
+    ).flat();
+  });
   const tasks: string[] = [];
-  for (const tier of tiers) tasks.push(...draw(tier, Math.min(count - tasks.length, tier.length), contract));
+  const taken = new Map<string, number>();
+  // The cap gives way only where the held tasks of other families cannot fill the set.
+  for (const capped of [true, false]) {
+    for (const version of order) {
+      const family = familyOf(version);
+      const had = taken.get(family) ?? 0;
+      if (tasks.length < count && !tasks.includes(version) && (!capped || had < cap)) {
+        tasks.push(version);
+        taken.set(family, had + 1);
+      }
+    }
+  }
   return { tasks: [...tasks, ...picked], retained: picked };
 }
 

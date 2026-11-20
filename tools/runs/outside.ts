@@ -91,10 +91,6 @@ const PLACES = new Map([
  *  it, as a Linux one without Perl has no other, and Perl's elsewhere. */
 const SUMS = "$(command -v sha256sum || echo shasum -a 256)";
 
-/** A configured folder or command as one shell word, from the home folder where it is relative. */
-const homeWord = (path: string) =>
-  shellPath(path.startsWith("/") || path.startsWith("~/") ? path : `~/${path}`);
-
 /** The benchmarks that read `run` (`EVAL_RUNNER`), or the one `named` names. A pack listed reads
  *  itself and every pack named from it, as `jobstat` reads `jobstat-v2`. */
 function benchesFor(run: string, env: Env, named?: string): Bench[] {
@@ -122,8 +118,8 @@ export function settingsOf(
   return {
     bench: bench.name,
     runner: bench.host,
-    store: homeWord(bench.store),
-    sitting: homeWord(bench.sitting),
+    store: shellPath(bench.store),
+    sitting: shellPath(bench.sitting),
   };
 }
 

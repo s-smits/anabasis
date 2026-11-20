@@ -49,7 +49,7 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { sshOptions } from "#src/meta/ssh.ts";
 import { killProcessGroup, runCaptured, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { quoted, shellPath, sshCommand } from "../../runs/host-command.ts";
-import { hostsOf, ownName, RUNNER_SLOTS, type Host } from "../../runs/host-config.ts";
+import { type Bench, benchesOf, hostsOf, ownName, RUNNER_SLOTS, type Host } from "../../runs/host-config.ts";
 import { minuteLoads } from "../../runs/load.ts";
 
 const TASKS = ["test", "typecheck", "lint", "secrets", "gate"];
@@ -97,19 +97,37 @@ function setting(name: string, fallback: number): number {
   return Number(text);
 }
 
-/** `ANA_HOSTS` for the `RUN_REMOTE` value `choice`, refused in the runner's own words where it
- *  cannot be read and the value asked for a host. */
-function listedHosts(choice: string): readonly Host[] {
+/** `ANA_HOSTS`, and the benchmarks `EVAL_RUNNER` rolls on them, for the `RUN_REMOTE` value `choice`,
+ *  refused in the runner's own words where either cannot be read and the value asked for a host. */
+function listed(choice: string): { hosts: readonly Host[]; benches: readonly Bench[] } {
   try {
-    return hostsOf();
+    return { hosts: hostsOf(), benches: benchesOf() };
   } catch (error) {
     // Unset asked for no host, so a list it cannot read leaves the task here instead of refusing it.
     if (choice === "") {
       say(`${errorMessage(error)}; runs here`);
-      return [];
+      return { hosts: [], benches: [] };
     }
     throw new Refusal(`${errorMessage(error)}; RUN_REMOTE=here runs the task here`, EXIT.usage);
   }
+}
+
+/**
+ * Whether a benchmark's arm holds `host`: an arm's rollouts are read against each other at equal
+ * load, so a check beside them moves what they score. On 20 November 2026 a gate sent to such a
+ * machine during a sitting loaded it until it stopped answering, and the arm was rolled again. A
+ * sitting whose `status` does not answer `idle` on its first line (`outside.ts`) holds it, a silent
+ * one too.
+ */
+async function armHolds({ name, ssh }: Host, benches: readonly Bench[]): Promise<boolean> {
+  const asked = benches
+    .filter((bench) => bench.host?.name === name)
+    .map(({ sitting }) => runCaptured(["ssh", ...sshOptions(ssh), ssh, `${shellPath(sitting)} status`]));
+  const holds = (await Promise.all(asked)).some(
+    ({ exitCode, stdout }) => exitCode !== 0 || stdout.split("\n")[0] !== "idle",
+  );
+  if (holds) say(`a benchmark's arm holds ${name}: no check goes there now`);
+  return holds;
 }
 
 /**
@@ -117,18 +135,21 @@ function listedHosts(choice: string): readonly Host[] {
  * it: this machine alone, the one host it names, or for `auto` this machine and every host with
  * `checks` by one-minute load a core, least loaded first (`minuteLoads`, as `runs loadwatch` orders
  * them). A machine that has not answered within `ANA_RUNNER_PICK_WAIT` is left out, never read as
- * idle, and where none answers the task runs here.
+ * idle, and where none answers the task runs here. A host a benchmark's arm holds (`armHolds`) is
+ * left out of `auto` and refused by name.
  */
 async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean }> {
   const choice = runtimeProcess.env.RUN_REMOTE ?? "";
   const here = { places: [undefined], picked: false };
   if (["here", "0"].includes(choice)) return here;
-  const taking = listedHosts(choice).filter((each) => each.checks !== undefined);
+  const { hosts, benches } = listed(choice);
+  const taking = hosts.filter((each) => each.checks !== undefined);
   if (choice === "" && taking.length === 0) return here;
   if (choice === "" || choice === "auto") {
     const started = performance.now();
+    const holds = await Promise.all(taking.map((host) => armHolds(host, benches)));
     const { order, silent } = await minuteLoads(
-      [undefined, ...taking],
+      [undefined, ...taking.filter((_, index) => holds[index] !== true)],
       setting("ANA_RUNNER_PICK_WAIT", 5) * 1000,
     );
     const read = order.map(({ label, share }) => `${label} ${share.toFixed(2)}`);
@@ -141,7 +162,12 @@ async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean 
     return { places: order.length === 0 ? [undefined] : order.map(({ host }) => host), picked: true };
   }
   const host = taking.find((each) => each.name === choice || each.ssh === choice);
-  if (host !== undefined) return { places: [host], picked: false };
+  if (host !== undefined) {
+    if (await armHolds(host, benches)) {
+      throw new Refusal(`no task started on ${host.name}; RUN_REMOTE=here runs it here`, EXIT.unavailable);
+    }
+    return { places: [host], picked: false };
+  }
   const names = taking.map((each) => each.name).join(", ");
   throw new Refusal(
     `RUN_REMOTE=${choice} names no host that takes checks; write here, auto or one of: ${

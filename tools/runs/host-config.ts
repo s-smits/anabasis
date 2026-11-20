@@ -41,7 +41,8 @@ export interface Host {
 }
 
 /** One outside benchmark: the machine that rolls it (undefined for this one), its score store and
- *  sitting command there, absolute or from its home folder, and the packs whose runs it reads. */
+ *  sitting command there, absolute or under `~/` where it was given relative, and the packs whose
+ *  runs it reads. */
 export interface Bench {
   readonly name: string;
   readonly host: Host | undefined;
@@ -200,7 +201,10 @@ export function benchesOf(env: Readonly<Record<string, string | undefined>> = ru
       throw new Error(`${name}: packs takes a list of the packs whose runs it reads`);
     }
     if (host !== "here" && keptHere(env)) return [];
-    return [{ name, host: host === "here" ? undefined : hostNamed(host, known), store, sitting, packs }];
+    // A relative store or sitting is read from the home folder of its machine.
+    const home = (path: string) => (isAbsolute(path) || path.startsWith("~/") ? path : `~/${path}`);
+    const on = host === "here" ? undefined : hostNamed(host, known);
+    return [{ name, host: on, store: home(store), sitting: home(sitting), packs }];
   });
 }
 

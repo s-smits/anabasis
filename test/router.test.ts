@@ -399,13 +399,13 @@ describe("which host runs a task", () => {
     }
   });
 
-  it("runs a task here when RUN_REMOTE is unset, empty, here or 0, asking no host and reading no host list", () => {
-    for (const choice of [undefined, "", "here", "0"]) {
+  it("runs a task here when RUN_REMOTE is here or 0, asking no host and reading no host list", () => {
+    for (const choice of ["here", "0"]) {
       fresh();
       // A list that cannot be read refuses a task that reads it, as the last lines show.
       const local = run(["test"], { RUN_REMOTE: choice, ANA_HOSTS: "not a list" });
-      expect(local.status, `${String(choice)}: ${local.stderr}`).toBe(0);
-      expect(lastCall(home), String(choice)).toMatchObject({ args: "run test", bun: pinned, active: "1" });
+      expect(local.status, `${choice}: ${local.stderr}`).toBe(0);
+      expect(lastCall(home), choice).toMatchObject({ args: "run test", bun: pinned, active: "1" });
       expect(connections()).toEqual([]);
     }
     fresh();
@@ -433,6 +433,25 @@ describe("which host runs a task", () => {
       expect(connections().map(({ host }) => host)).not.toContain("fake-peer");
     } finally {
       unlinkSync(join(source, ".env.runs"));
+    }
+  });
+
+  it("reads an unset or empty RUN_REMOTE as auto where a host takes checks, and runs here unsampled where none does or the list cannot be read", () => {
+    for (const choice of [undefined, ""]) {
+      fresh();
+      spreadLoads();
+      const sent = run(["test"], { RUN_REMOTE: choice });
+      expect(sent.status, `${String(choice)}: ${sent.stderr}`).toBe(0);
+      expect(["fake-mac", "fake-linux", "fake-peer"].filter(ran), String(choice)).toEqual(["fake-mac"]);
+      expect(sent.stderr).toContain("runner: auto: runs on m1");
+    }
+    for (const hosts of [JSON.stringify([PEER]), "not a list"]) {
+      fresh();
+      const local = run(["test"], { RUN_REMOTE: undefined, ANA_HOSTS: hosts });
+      expect(local.status, `${hosts}: ${local.stderr}`).toBe(0);
+      expect(lastCall(home), hosts).toMatchObject({ args: "run test", bun: pinned, active: "1" });
+      expect(local.stderr, hosts).not.toContain("auto:");
+      expect(connections()).toEqual([]);
     }
   });
 

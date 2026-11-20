@@ -1,11 +1,13 @@
 /**
  * The check runner: `run.js <tree> <bun pin> <test|typecheck|lint|secrets|gate> [arguments...]`,
  * which the bun router (`bun` in this folder) calls for a tree's check tasks. `RUN_REMOTE` says
- * where the task runs: unset, empty, `here` or the older `0` on this machine, without reading the
- * host list; a host's name or ssh destination on that one of the hosts `ANA_HOSTS` lists with
- * `checks`; `auto` on the first with a free slot of this machine and those hosts, least loaded first
- * by one-minute load a core (`placesFor`), which costs about a second's sample before each task.
- * Any other value is refused with the names to write. Wherever it runs, the task is
+ * where the task runs: `auto` on the first with a free slot of this machine and the hosts
+ * `ANA_HOSTS` lists with `checks`, least loaded first by one-minute load a core (`placesFor`), which
+ * costs about a second's sample before each task; unset or empty as `auto` where some host takes
+ * checks, and otherwise here without a sample, as where the host list cannot be read; `here` or the
+ * older `0` on this machine, without reading the host list; a host's name or ssh destination on
+ * that host. Any other value is refused with the names to write. Until 20 November 2026 unset meant
+ * `here`, so no check left this machine unless a session asked. Wherever it runs, the task is
  * `task.sh` over the working tree as it stands, uncommitted bytes included, and its exit status is
  * this command's.
  *
@@ -95,27 +97,35 @@ function setting(name: string, fallback: number): number {
   return Number(text);
 }
 
-/** `ANA_HOSTS`, refused in the runner's own words where it cannot be read. */
-function listedHosts(): readonly Host[] {
+/** `ANA_HOSTS` for the `RUN_REMOTE` value `choice`, refused in the runner's own words where it
+ *  cannot be read and the value asked for a host. */
+function listedHosts(choice: string): readonly Host[] {
   try {
     return hostsOf();
   } catch (error) {
+    // Unset asked for no host, so a list it cannot read leaves the task here instead of refusing it.
+    if (choice === "") {
+      say(`${errorMessage(error)}; runs here`);
+      return [];
+    }
     throw new Refusal(`${errorMessage(error)}; RUN_REMOTE=here runs the task here`, EXIT.usage);
   }
 }
 
 /**
- * Where `RUN_REMOTE` lets the task run, in the order its slots are tried: this machine alone, the
- * one host it names, or for `auto` this machine and every host with `checks` by one-minute load a
- * core, least loaded first (`byLoad`, as `runs loadwatch` orders them). A machine that has not
- * answered within `ANA_RUNNER_PICK_WAIT` is left out, never read as idle, and where none answers the
- * task runs here.
+ * Where `RUN_REMOTE` lets the task run, in the order its slots are tried, and whether loads chose
+ * it: this machine alone, the one host it names, or for `auto` this machine and every host with
+ * `checks` by one-minute load a core, least loaded first (`minuteLoads`, as `runs loadwatch` orders
+ * them). A machine that has not answered within `ANA_RUNNER_PICK_WAIT` is left out, never read as
+ * idle, and where none answers the task runs here.
  */
-async function placesFor(): Promise<readonly Place[]> {
+async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean }> {
   const choice = runtimeProcess.env.RUN_REMOTE ?? "";
-  if (["", "here", "0"].includes(choice)) return [undefined];
-  const taking = listedHosts().filter((each) => each.checks !== undefined);
-  if (choice === "auto") {
+  const here = { places: [undefined], picked: false };
+  if (["here", "0"].includes(choice)) return here;
+  const taking = listedHosts(choice).filter((each) => each.checks !== undefined);
+  if (choice === "" && taking.length === 0) return here;
+  if (choice === "" || choice === "auto") {
     const started = performance.now();
     const { order, silent } = await minuteLoads(
       [undefined, ...taking],
@@ -128,10 +138,10 @@ async function placesFor(): Promise<readonly Place[]> {
         silent.length === 0 ? "" : `; no answer from ${silent.join(", ")}`
       } (read in ${took}s)`,
     );
-    return order.length === 0 ? [undefined] : order.map(({ host }) => host);
+    return { places: order.length === 0 ? [undefined] : order.map(({ host }) => host), picked: true };
   }
   const host = taking.find((each) => each.name === choice || each.ssh === choice);
-  if (host !== undefined) return [host];
+  if (host !== undefined) return { places: [host], picked: false };
   const names = taking.map((each) => each.name).join(", ");
   throw new Refusal(
     `RUN_REMOTE=${choice} names no host that takes checks; write here, auto or one of: ${
@@ -366,9 +376,9 @@ async function main(argv: readonly string[]): Promise<number> {
     throw new Refusal(`usage: run.js <tree> <bun pin> {${TASKS.join("|")}} [arguments...]`, EXIT.usage);
   }
   const job: Job = { root, pin, task, wall: setting("ANA_RUNNER_WALL", 3600) || 3600 };
-  const places = await placesFor();
+  const { places, picked } = await placesFor();
   const { place: host, slot } = await slotAmong(places);
-  if (runtimeProcess.env.RUN_REMOTE === "auto") {
+  if (picked) {
     say(`auto: runs on ${host?.name ?? `${ownName()}, this machine`}`);
   }
   const release = (): void => rmSync(slot.path, { recursive: true, force: true });

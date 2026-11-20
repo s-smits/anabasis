@@ -415,8 +415,8 @@ idle session only on a line worth reading. A timer is for a judgement no event a
 
 Use Bun 1.4.4 and no Node, npm or npx. Run owning tests with `bun run test -- <paths>` while editing
 and `bun run gate`, the CI gate, once at the change's final top, at most one full suite per host,
-away from a live comparison where another host is free; `RUN_REMOTE=auto` sends each check to the
-free slot with the lowest one-minute load a core (`local-checks`). Keep hooks enabled. GitHub
+away from a live comparison where another host is free; where hosts take checks, each check goes to
+the free slot with the lowest one-minute load a core (`local-checks`). Keep hooks enabled. GitHub
 Actions runs only `ci.yml`, so prefer local checks. A check counts once it ran over the whole change
 and its exit code was read, which a pipe hides; a failure that passes alone is a lead to rerun under
 load, not yet noise. Report wall-test failures from unavailable user namespaces as failures.

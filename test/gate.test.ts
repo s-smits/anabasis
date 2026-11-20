@@ -70,8 +70,9 @@ const failed = await proveCommits(process.cwd(), proofs, {
         return { remote, slots: Number(slots) };
       })
     : [{ slots: Number(process.env.DRIVER_JOBS ?? "1") }],
-  // As land stops its proofs once a head moved under one, or on a signal.
-  stop: process.env.DRIVER_STOP_MS ? AbortSignal.timeout(Number(process.env.DRIVER_STOP_MS)) : undefined,
+  // As land stops its proofs once a head moved under one, or on a signal: here once the fake's log
+  // holds DRIVER_STOP_AT, so the stop lands at a step and not at a time a loaded host may miss.
+  stop: process.env.DRIVER_STOP_AT ? stopAt(process.env.DRIVER_STOP_AT) : undefined,
   say: (line) => console.error("prove: " + line),
   // As land's mark throws Moved once a head moved under the proof.
   mark: (commit, state) => {
@@ -83,6 +84,16 @@ const failed = await proveCommits(process.cwd(), proofs, {
 });
 if (failed !== null) console.error("FAILS " + failed.step + " Log: " + failed.log);
 process.exit(failed === null ? 0 : 1);
+
+function stopAt(text) {
+  const stop = new AbortController();
+  const look = setInterval(async () => {
+    const log = Bun.file(process.env.ANA_FAKE_LOG ?? "");
+    if ((await log.exists()) && (await log.text()).includes(text)) stop.abort();
+  }, 20);
+  look.unref();
+  return stop.signal;
+}
 `,
   );
   return path;
@@ -331,8 +342,10 @@ describe("proveCommits", () => {
   });
 
   it("ends a pass under way when stopped, records nothing of it and starts no other", () => {
-    // The test step takes two seconds, so the stop lands while the static pass of `source` runs.
-    const result = prove(landing, { ANA_FAKE_SUITE: "(pass) one", DRIVER_STOP_MS: "1200" });
+    // The test step takes two seconds, so a stop once it starts lands while the static pass of
+    // `source` runs. Until 20 November 2026 the stop came at 1.2 s, which a host at a load of 19
+    // reached before that pass had begun, so no gate ran and the case failed.
+    const result = prove(landing, { ANA_FAKE_SUITE: "(pass) one", DRIVER_STOP_AT: `workers\t${source}` });
     expect(result.status).toBe(0);
     expect(result.stderr).toContain(`${short(source)}: stopped.`);
     expect(gatesRun(log).map((gate) => gate.split(" ")[0])).toEqual([source]);

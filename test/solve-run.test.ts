@@ -676,19 +676,20 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
   }, 120_000);
 
   it.concurrent("cuts a command before the solve's end, so the solver can still answer", async () => {
-    // A 24-second solve reserves three seconds for an answer after its command is cut.
+    // A 48-second solve reserves six seconds for an answer after its command is cut. At 24 and
+    // three, a gate at a load of 19 on 20 November 2026 ended it wall-ended before its answer.
     const long = fauxAssistantMessage(
       fauxToolCall("bash", { command: "echo began; sleep 50", timeout: 60 }),
       toolUse,
     );
     const submit = fauxAssistantMessage(fauxToolCall("submit", {}), toolUse);
-    const { request, events } = setup([long, written, submit], { limits: { ...LIMITS, wallSeconds: 24 } });
+    const { request, events } = setup([long, written, submit], { limits: { ...LIMITS, wallSeconds: 48 } });
     expect(await solve(request, noWait)).toEqual({ outcome: "pass" });
     const [cut] = events().flatMap(({ kind, data }) => (kind === "solve.call" ? [data] : []));
     expect(cut).toMatchObject({ tool: "bash", isError: true });
     expect(cut?.text).toContain("began");
-    expect(cut?.text).toMatch(/\b2[01] seconds\b/);
-    expect(cut?.text).toMatch(/0:2\d of 0:24/);
+    expect(cut?.text).toMatch(/\b4[12] seconds\b/);
+    expect(cut?.text).toMatch(/0:4\d of 0:48/);
   }, 120_000);
 
   it.concurrent("reruns a failed provider turn three times, then reports it as the provider's non-result", async () => {

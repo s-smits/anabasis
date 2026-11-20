@@ -25,8 +25,8 @@ import type { Limits } from "../kernel/condition.ts";
 import { GUIDE_FILE } from "../meta/bundle-layout.ts";
 import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import type { JsonValue } from "../meta/json-shape.ts";
-import { join } from "../meta/path.ts";
+import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
+import { dirname, join } from "../meta/path.ts";
 import { plural } from "../meta/text.ts";
 import type { NetworkReach } from "../tools/command.ts";
 import { ANSWER_FILE, ANSWER_FORMAT_FILE, type PublicResource } from "../tools/answer.ts";
@@ -51,11 +51,19 @@ export interface Told {
   readonly limits: Pick<Limits, "shellDefaultSeconds" | "shellMaxSeconds" | "modelTurns">;
   /** How many public resource files the home was seeded with. */
   readonly resources: number;
+  /** How many of the task's own files the home was seeded with (`taskFiles`). */
+  readonly files: number;
   /** The programs the harness installed, by the names that run them (`installedPrograms`, `programs.ts`). */
   readonly programs: readonly string[];
   /** Whether a package index was reached from inside the wall (`networkReach`, `command.ts`). */
   readonly network: NetworkReach;
 }
+
+/** Where a task's own files land in the home, beside `task.json`. */
+const TASK_FILES = "public/files";
+
+/** The longest path a task's file may have, in bytes: one name's limit on the hosts' filesystems. */
+const NAME_BYTES = 255;
 
 /** The prompt a turn that ended without a submit is followed by, as v1 worded it. */
 export const NUDGE = "Finish the task with the available tools, then submit your answer.";
@@ -78,7 +86,7 @@ const TOOL_RULES = new Map<string, readonly string[]>(
 );
 
 /** What the solver must deliver and under what deadline, with where the requirements are. */
-function duty({ wallSeconds, limits, resources, guide }: Told): string {
+function duty({ wallSeconds, limits, resources, files, guide }: Told): string {
   const minutes = `${String(Math.round(wallSeconds / 60))} minutes of solve time`;
   const given =
     limits.modelTurns === undefined
@@ -92,6 +100,11 @@ function duty({ wallSeconds, limits, resources, guide }: Told): string {
     "Complete the task with the available tools and submit one answer that meets every published requirement; the method is yours to choose.",
     "For source code or files, write complete working files, not fragments or descriptions.",
     `The published requirements are the public input, which public/task.json holds${rules}.`,
+    ...(files === 0
+      ? []
+      : [
+          `What the public input lists under files is in ${TASK_FILES}/ too, ${plural(files, "file")}, each at its path.`,
+        ]),
     `Your answer is the file ${ANSWER_FILE} in the working directory, as JSON in the format ${ANSWER_FORMAT_FILE} gives; submit sends it, and no other file is read as your answer.`,
     given,
     ...(guide === null
@@ -162,17 +175,53 @@ export function firstTurn(task: PublicTask): string {
 }
 
 /**
- * The task as `public/task.json`, the contract's answer format as `public/answer-format.json`, and
- * each public resource as `public/resources/<name>.json`, which the prompt says the home holds
- * (the task and the resources as v1 seeded them). Returns how
- * many resource files it wrote.
+ * The files a task's public input lists under `files`, as rows of `{ path, text }`, by path: what a
+ * practitioner is handed as a file, which the home then holds as one, so that a harness's program
+ * reads it from a path as it would outside a campaign. While a task was JSON alone, 51 of the 62
+ * jobstat harnesses kept by the forks from #936 to #960 carried a program of their own that wrote
+ * such rows out, which has no use where work comes as files. A row of another shape, or one whose
+ * path names a root or a parent, or cannot stand beside an earlier row's, is no file here and stays
+ * in the JSON alone: nothing is refused, since the gate never read the key.
+ */
+function taskFiles(publicInput: JsonValue): Map<string, string> {
+  const rows = asRecord(publicInput)?.files;
+  const files = new Map<string, string>();
+  for (const each of Array.isArray(rows) ? rows : []) {
+    const { path, text } = asRecord(each) ?? {};
+    if (!isString(path) || !isString(text)) continue;
+    const named =
+      Buffer.byteLength(path) <= NAME_BYTES &&
+      !path.includes("\0") &&
+      path.split("/").every((part) => part !== "" && part !== "." && part !== "..");
+    // A path that is another's folder, or lies under another's file, cannot be written beside it.
+    const apart = [...files.keys()].every(
+      (other) => other !== path && !other.startsWith(`${path}/`) && !path.startsWith(`${other}/`),
+    );
+    if (named && apart) files.set(path, text);
+  }
+  return files;
+}
+
+/** How many resource files and how many of the task's own files a seeded home holds, as the prompt states them. */
+export function homeHolds(
+  task: PublicTask,
+  resources: readonly PublicResource[],
+): Pick<Told, "resources" | "files"> {
+  return { resources: resources.length, files: taskFiles(task.publicInput).size };
+}
+
+/**
+ * The task as `public/task.json`, the contract's answer format as `public/answer-format.json`,
+ * each public resource as `public/resources/<name>.json` and each of the task's own files under
+ * `public/files/` (`taskFiles`), which the prompt says the home holds (the task and the resources as
+ * v1 seeded them). Returns what it then holds (`homeHolds`).
  */
 export function seedHome(
   home: string,
   task: PublicTask,
   resources: readonly PublicResource[],
   answerFormat: JsonValue,
-): number {
+): Pick<Told, "resources" | "files"> {
   const root = join(home, "public");
   mkdirSync(join(root, "resources"), { recursive: true });
   writeFileSync(join(root, "task.json"), `${capturedJsonStringify(publicView(task), null, 2)}\n`, "utf8");
@@ -191,5 +240,9 @@ export function seedHome(
       "utf8",
     );
   }
-  return resources.length;
+  for (const [path, text] of taskFiles(task.publicInput)) {
+    mkdirSync(dirname(join(home, TASK_FILES, path)), { recursive: true });
+    writeFileSync(join(home, TASK_FILES, path), text, "utf8");
+  }
+  return homeHolds(task, resources);
 }

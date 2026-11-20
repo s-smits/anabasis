@@ -82,7 +82,7 @@ import { CODING_TOOLS, codingTools, selectedCodingTools } from "../tools/coding.
 import { type CommandWall, launchOn, type NetworkReach, networkReach } from "../tools/command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder, treeStamp } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
-import { systemPrompt } from "../solver/prompt.ts";
+import { homeHolds, systemPrompt } from "../solver/prompt.ts";
 import { clockText, solverTools } from "../solver/run.ts";
 import { STARTED as COMPARISON_STARTED } from "../campaign/comparison.ts";
 import { budgetLeft } from "../campaign/opening.ts";
@@ -799,7 +799,7 @@ function previewTool(bench: Bench, wall: CommandWall): SeatTool {
           guide: harness.guide,
           wallSeconds: request.solve.wallSeconds,
           limits: request.solve,
-          resources: request.resources.length,
+          ...homeHolds(sample.task, request.resources),
           programs: installedPrograms(harness.toolTree),
           network: await networkReach({ ...wall, toolTree: harness.toolTree }),
         });

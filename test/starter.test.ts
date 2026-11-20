@@ -109,6 +109,7 @@ describe("the Starter and its worked harnesses", () => {
           ["public/task.json", TASK],
           ["rota.json", WITHIN],
           ["over.json", OVER],
+          ["limits.json", TASK.publicInput],
         ] as const) {
           writeFileSync(join(dirs.home, file), JSON.stringify(value));
         }
@@ -147,15 +148,18 @@ describe("the Starter and its worked harnesses", () => {
           const result = await shell.execute({ command }, api as ToolExecutionApi, BACKGROUND_CONTEXT);
           return { ...result, output: result.output ?? [{ type: "text" as const, text: chunks.join("") }] };
         };
-        expect(said(await run("check-rota rota.json"))).toContain(
-          "ann: 8 of 12 hours, ok\nbo: 6 of 8 hours, ok\n",
-        );
+        const within = "ann: 8 of 12 hours, ok\nbo: 6 of 8 hours, ok\n";
+        expect(said(await run("check-rota rota.json public/task.json"))).toContain(within);
+        // The same limits as a plain file of the values alone, as work outside a campaign holds them.
+        expect(said(await run("check-rota rota.json limits.json"))).toContain(within);
+        // It opens no file it was not named: without the limits it does not run.
+        expect(said(await run("check-rota rota.json"))).toEndWith("Command exited with code 2");
         // What it printed and its exit both reach the solver, as the shell reports any command.
-        const over = await run("check-rota over.json");
+        const over = await run("check-rota over.json public/task.json");
         expect(said(over)).toContain("ann: 14 of 12 hours, over by 2\nbo: 6 of 8 hours, ok");
         expect(over.isError).toBe(true);
         expect(said(over)).toEndWith("Command exited with code 1");
-        expect(said(await run("check-rota absent.json"))).toEndWith("Command exited with code 2");
+        expect(said(await run("check-rota absent.json limits.json"))).toEndWith("Command exited with code 2");
         // The harness without the shell: its tool lists and computes behind the same wall.
         const tools = await harnessTools(shellless, TASK, launchOn({ ...wall, toolTree: null }));
         expect(tools.map(({ name }) => name)).toEqual(["count_hours"]);

@@ -279,7 +279,7 @@ async function play(
       { repoRoot: request.repoRoot, otherTrees: request.otherTrees, packRoots: request.packRoots },
       "a solve",
     );
-    const resources = seedHome(dirs.home, request.task, request.resources, request.contract.answerFormat);
+    const seeded = seedHome(dirs.home, request.task, request.resources, request.contract.answerFormat);
     const harness = await openHarness(request.harness).catch(brokenHarness);
     digest = harness.digest;
     const clock: SolveClock = { started: null, seconds: limits.wallSeconds };
@@ -291,7 +291,7 @@ async function play(
       guide: harness.guide,
       wallSeconds: limits.wallSeconds,
       limits,
-      resources,
+      ...seeded,
       programs: installedPrograms(harness.toolTree),
       network: await networkReach(commandWall),
     });

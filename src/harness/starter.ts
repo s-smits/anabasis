@@ -263,8 +263,7 @@ holds only here: what makes an answer to these tasks valid, and what the objecti
 without that heading goes whole, under a line that says such things do not hold there.
 
 The host tells the solver its limits and appends how much of them is used to results of tools
-that execute; argument refusals and unavailable tools carry no reminder. Solvers told in their
-guide that time was short have submitted answers their own check refused, with most of their time
+that execute. Solvers told in their guide that time was short have submitted answers their own check refused, with most of their time
 left. An example guide, with one entry for a program:
 
 \`\`\`markdown

@@ -407,7 +407,7 @@ describe("a Builder session", () => {
     expect(s.sent[0]).toContain(String.raw`{"role":"user","content":"Public rules of the domain:`);
     expect(s.sent[0]).not.toContain("Historical notes");
     expect(existsSync(join(s.home, "MEMORY.md"))).toBe(false);
-    expect(s.sent[0]).toContain("as many as fit in 10000 characters;");
+    expect(s.sent[0]).toContain("up to 10000 characters");
     expect(s.sent[0]).not.toContain("Comparisons so far");
     expect(readFileSync(join(s.home, "practice", "t-1.json"), "utf8")).toContain('"base": 7');
     // The solver's public resources, in the home as one file, which the opening message names.

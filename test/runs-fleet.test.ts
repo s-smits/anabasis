@@ -362,11 +362,7 @@ describe("campaign snapshots", () => {
     const remote = campaign();
     const { made } = remote;
     // The pip target `lib` holds a package, a module of one file and the harness's own library,
-    // named as a file inside the package is, which only a row's first segment tells apart; the
-    // folder `kept` is named as a package of another target is, and no package of its own owns it.
-    // One folder holds a comma, so the one `RECORD` row that names it is quoted, names no entry
-    // and the folder is copied. In `tree-b` the target sits one folder under the harness's own
-    // module, and holds its packages alone.
+    // including a module beside the package's own code. Another target holds only installed files.
     const files = [
       "examiner-home/.cache/pip/wheel",
       "examiner-home/draft.md",
@@ -381,6 +377,8 @@ describe("campaign snapshots", () => {
       "states/tree-b/lib/mod.py",
       "states/tree-b/lib/py/scipy-1.0.dist-info/METADATA",
       "states/tree-b/lib/py/scipy/x.py",
+      "states/tree-a/lib/numpy/own.py",
+      "states/tree-a/bin/f2py",
     ];
     for (const file of files) {
       mkdirSync(dirname(join(made.root, "remote", "distant", file)), { recursive: true });
@@ -396,7 +394,7 @@ describe("campaign snapshots", () => {
         "numpy-2.0.dist-info/METADATA,sha256=b,2",
         "numpy-2.0.dist-info/RECORD,,",
         "six.py,sha256=c,3",
-        "../../bin/f2py,sha256=d,4",
+        "../bin/f2py,sha256=d,4",
         '"my, pkg/a.py",sha256=e,5',
         "",
       ].join("\n"),
@@ -413,20 +411,38 @@ describe("campaign snapshots", () => {
       "../notes.txt",
       join(made.root, "remote", "distant", "states/tree-a/link-1.0.dist-info/RECORD"),
     );
-    // The listing is the real one: `find` and `grep` over these files, read by the fetch.
+    // Read the real file listing and package metadata through the fetch.
     expect(made.run(sync, { ...remote.env, FAKE_LISTED: "1" }).code).toBe(0);
     const transfer = made.recorded().find((call) => call.tool === "rsync");
-    // Each by its outermost path: the cache inside the package is named by the package.
     expect(transfer?.args.filter((arg) => /^--exclude=\/./u.test(arg))).toEqual([
       "--exclude=/examiner-home/.cache",
-      "--exclude=/states/tree-a/lib/numpy",
+      "--exclude=/states/tree-a/bin/f2py",
+      "--exclude=/states/tree-a/lib/my, pkg",
       "--exclude=/states/tree-a/lib/numpy-2.0.dist-info",
+      "--exclude=/states/tree-a/lib/numpy/__pycache__",
+      "--exclude=/states/tree-a/lib/numpy/core.py",
       "--exclude=/states/tree-a/lib/six.py",
       "--exclude=/states/tree-b/lib/py/scipy",
       "--exclude=/states/tree-b/lib/py/scipy-1.0.dist-info",
     ]);
     const copied = (file: string) => existsSync(join(made.main, "data", "runs", "runner", "distant", file));
-    const kept = [false, true, true, false, false, false, true, false, true, true, true, false, false];
+    const kept = [
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+    ];
     expect(files.map(copied)).toEqual(kept);
   });
 
@@ -849,11 +865,12 @@ describe("a take-over of a campaign that installed packages", () => {
       );
       writeFileSync(there(name, "tree/lib/own.py"), "the Builder's");
     }
+    writeFileSync(there("apart", "tree/lib/pkg/extra.py"), "the Builder's");
     const snapshots = 'import { takeRetired, syncRuns } from "REPOSITORY/tools/runs/snapshots.ts";';
     expect(made.run(`${snapshots} await syncRuns([]);`, env).code).toBe(0);
     expect(existsSync(here("runner", "over", "tree/lib/pkg"))).toBe(false);
-    // The copy of one loses the harness's own file beside its packages, which no rule leaves out.
-    rmSync(here("runner", "apart", "tree/lib/own.py"));
+    // Removing one unlisted file inside the installed package must keep the original on its host.
+    rmSync(here("runner", "apart", "tree/lib/pkg/extra.py"));
     const taken = made.run(
       `${snapshots} import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; await takeRetired(hostsOf()[0]!, "take");`,
       env,

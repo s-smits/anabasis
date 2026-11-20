@@ -95,8 +95,8 @@ export function inFlight(log: string): number {
 /** What is left of the campaign's total once every billed dollar in `events` is subtracted, with
  *  its reserve, or null where the opening names no budget. The one reading of it for the plan, a
  *  solve's admission, the Builder's practice, the Examiner's next request and the page's runway. */
-export function budgetLeft(events: readonly LogEvent[]): Cap | null {
-  const budget = openingOf(events)?.budget;
+export function budgetLeft(events: readonly LogEvent[], opening = openingOf(events)): Cap | null {
+  const budget = opening?.budget;
   return budget == null ? null : { dollars: budget.dollars - billedAll(events), reserve: budget.reserve };
 }
 
@@ -177,7 +177,7 @@ export function planOf(
       level: beside.level,
       solves: isNumber(recorded?.solves) ? recorded.solves : SIZE.solves,
     },
-    left: budgetLeft(events),
+    left: budgetLeft(events, opening),
     prompted: opening?.prompt != null,
     pastStop: beside.pastStop ?? null,
     // A launch without `--hitl` is the operator's word for every check its author decides

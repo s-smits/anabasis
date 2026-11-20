@@ -545,7 +545,7 @@ export async function harnessBuilder(
     // A total the operator left as a word rules from this move on: the newest stands, and the record
     // answers every one (until 11 October the newest alone, and an older one applied at the next move).
     const totals = pendingWords(read(log)).filter(({ word }) => word === "budget");
-    if (totals.length > 0 && !values["dry-run"]) opening = opened(log, values, paid, totals);
+    if (totals.length > 0) opening = opened(log, values, paid, totals);
     const events = existsSync(log) ? read(log) : [];
     campaign ??= draftOf(events) === null ? null : await openCampaign(packNamed(values));
     const turn = turnOf({ log, values, opening, seats, held, campaign });

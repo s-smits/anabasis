@@ -51,6 +51,7 @@ import {
   mkdtempSync,
   readdirSync,
   readlinkSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "#src/meta/filesystem.ts";
@@ -79,7 +80,7 @@ import {
   standing,
   wholeLines,
 } from "./registry.ts";
-import { DERIVED, PACKAGED, packagedOf, readableAcross, syncRuns } from "./snapshots.ts";
+import { DERIVED, PACKAGED, packagedOf, PRIVATE_NAMES, readableAcross, syncRuns } from "./snapshots.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
 const PROMOTED = "harness.promoted";
@@ -144,7 +145,7 @@ const GROUPS: readonly (readonly [name: string, holds: string, level: Level, pat
 ];
 
 const INSTALLED = "installed, cached or built";
-const SECRET = /^(auth\.json|.*\.env|\.DS_Store)$/;
+const SECRET = [...PRIVATE_NAMES, ".DS_Store"].map((pattern) => new Bun.Glob(pattern));
 const LIGHT_MAX = 2 * 1024 * 1024;
 const SOURCE = ["src", "tools", "docs", "package.json"];
 
@@ -168,9 +169,9 @@ function linkedIn(root: string, path: string): string | null {
 
 /** Why a zip never holds `path` in `root`, or null when it may. */
 function unfit(root: string, path: string): string | null {
+  if (SECRET.some((glob) => glob.match(basename(path)))) return "a secret's name";
   const stat = lstatSync(path);
   if (stat.isSymbolicLink()) return linkedIn(root, path) === null ? "a link out of its folder" : null;
-  if (SECRET.test(basename(path))) return "a secret's name";
   return stat.isDirectory() && DERIVED.has(basename(path)) ? INSTALLED : null;
 }
 
@@ -247,7 +248,10 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
     for (const { path, bytes, group } of found.held.filter((file) => holds(level, file.group))) {
       cpSync(join(from, path), join(stage, under, path), { verbatimSymlinks: true });
       // A live run's log may end in the line it is writing, which every reader would refuse.
-      const whole = path.endsWith(".jsonl") ? wholeLines(join(from, path)) : null;
+      const whole =
+        group === "log" && path.endsWith(".jsonl") && lstatSync(join(from, path)).isFile()
+          ? wholeLines(join(from, path))
+          : null;
       if (whole !== null) writeFileSync(join(stage, under, path), whole);
       files.push({
         path: join(under, path),
@@ -300,28 +304,32 @@ export function zip(
   to: { readonly out: string; readonly maxBytes: number | null; readonly note: string | null },
 ) {
   if (chosen.length === 0) throw new Error("no run to zip");
+  const name = basename(to.out, ".zip");
+  if (name === "" || name === "." || name === "..") throw new Error("--out needs an archive name");
+  if (to.maxBytes !== null && !(Number.isFinite(to.maxBytes) && to.maxBytes > 0)) {
+    throw new Error("--max-mb must be a finite positive size");
+  }
   const stage = mkdtempSync(join(tmpdir(), "ana-runs-zip-"));
+  const archive = join(dirname(resolve(to.out)), `.ana-zip-${crypto.randomUUID()}.zip`);
   try {
-    const name = basename(to.out, ".zip");
     const manifest = gather(chosen, level, join(stage, name));
     cpSync(join(import.meta.dir, "zip-guide.md"), join(stage, name, "GUIDE.md"));
     if (to.note !== null) cpSync(to.note, join(stage, name, "NOTES.md"));
     writeFileSync(join(stage, name, "README.md"), readme(manifest));
     writeFileSync(join(stage, name, "MANIFEST.json"), `${capturedJsonStringify(manifest, null, 2)}\n`);
-    // `zip` adds to an archive that is already there.
-    rmSync(to.out, { force: true });
-    // `-y` stores a link as the link, which `fit` holds only where it stays in the run's folder.
-    runTextSyncOrThrow(["zip", "-qry", "-X", resolve(to.out), name], { cwd: stage });
-    const bytes = lstatSync(to.out).size;
+    // Publish on the output filesystem only after the new archive passes its size check.
+    runTextSyncOrThrow(["zip", "-qry", "-X", archive, `./${name}`], { cwd: stage });
+    const bytes = lstatSync(archive).size;
     const max = to.maxBytes ?? (level === "light" ? LIGHT_MAX * chosen.length : null);
     if (max !== null && bytes > max) {
-      rmSync(to.out);
       throw new Error(
         `${to.out} would be ${kilobytes(bytes)}, over its ${kilobytes(max)}: name fewer runs or raise --max-mb`,
       );
     }
+    renameSync(archive, to.out);
     return { ...manifest, out: to.out, bytes };
   } finally {
+    rmSync(archive, { force: true });
     rmSync(stage, { recursive: true, force: true });
   }
 }

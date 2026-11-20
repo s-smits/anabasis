@@ -896,6 +896,12 @@ describe("a campaign run by its log", () => {
     expect(of(name, OPENED).at(-1)).toMatchObject({ budget: { dollars: 100 } });
     // A total under what one solve is held at ends the campaign on its budget at the next move.
     wordCommand(["--name", name, "--budget", "1"]);
+    const before = read(join(REPO, ".ana", "d2", name, LOG_FILE));
+    expect(await harnessBuilder([...flags, "--dry-run"], seats)).toMatchObject({
+      move: "end",
+      ending: "budget",
+    });
+    expect(read(join(REPO, ".ana", "d2", name, LOG_FILE))).toEqual(before);
     expect(await harnessBuilder([...flags, "--moves", "0"], seats)).toMatchObject({
       move: "end",
       ending: "budget",

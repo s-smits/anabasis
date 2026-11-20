@@ -373,8 +373,9 @@ handover (`zip-run`, `oracle-handover`). `bun run runs` lists the run CLI's verb
    main worktree or one holding `ana-followed` (`treeFault`).
 2. **Prove the path first without a model** (`--dry-run`, `runs replay`, `runs rehearse`).
 3. **Record one prediction, settled by a count that can fall either way, before the first solve.**
-4. **One or two rounds at a time on one host**, since load shifts deadlines; before placing a run,
-   read `bun run runs loadwatch --once`, whose last line orders the machines least loaded first.
+4. **One or two rounds at a time on one host**, since load shifts deadlines: `runs fresh` without
+   `--host` places a run where the login runs least, then on the lowest one-minute load a core,
+   halved on a machine with no live run (`leastOccupied`); `runs loadwatch -s` shows the loads.
 5. **Never open, print or copy the file passed as `--env-file`.**
 6. **Do not stop a run to fix it**; the fix goes on the stack and reaches the next fresh runs.
 7. **Read the log's events and the report before any agent's prose**, your own earlier account too.
@@ -414,8 +415,9 @@ idle session only on a line worth reading. A timer is for a judgement no event a
 
 Use Bun 1.4.4 and no Node, npm or npx. Run owning tests with `bun run test -- <paths>` while editing
 and `bun run gate`, the CI gate, once at the change's final top, at most one full suite per host,
-away from a live comparison where another host is free. Keep hooks enabled. GitHub Actions runs only
-`ci.yml`, so prefer local checks (`local-checks`). A check counts once it ran over the whole change
+away from a live comparison where another host is free; `RUN_REMOTE=auto` sends each check to the
+free slot with the lowest one-minute load a core (`local-checks`). Keep hooks enabled. GitHub
+Actions runs only `ci.yml`, so prefer local checks. A check counts once it ran over the whole change
 and its exit code was read, which a pipe hides; a failure that passes alone is a lead to rerun under
 load, not yet noise. Report wall-test failures from unavailable user namespaces as failures.
 

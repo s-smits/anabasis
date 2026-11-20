@@ -59,7 +59,15 @@
  * that rolls it (`fetchBenches`).
  */
 import { LOG_FILE } from "#src/kernel/log.ts";
-import { cpSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from "#src/meta/filesystem.ts";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  statSync,
+} from "#src/meta/filesystem.ts";
 import { worktrees } from "#src/meta/git.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
@@ -194,7 +202,10 @@ export async function move(args: readonly string[]): Promise<void> {
   const commit = at(from, `git -C ${quoted(source)} rev-parse HEAD`);
   // A move cut between its worktree and setting the source aside left the destination at the same
   // commit holding no more of the log than the source: the next one goes on from there.
-  const resumed = taken === commit && size(to, tree) <= size(from, source);
+  const resumed =
+    taken === commit &&
+    at(to, `git -C ${quoted(tree)} status --porcelain`) === "" &&
+    size(to, tree) <= size(from, source);
   if (taken !== "" && !resumed) {
     throw new Error(
       `${tree} is there already on ${to.name}: the source remains at ${folder(source)} on ${from.name}; preserve ${folder(tree)} outside ${tree}, remove the destination with git -C ${quoted(to.repo)} worktree remove ${quoted(tree)} on ${to.name}, then retry; nothing was stopped or moved`,
@@ -231,9 +242,8 @@ export async function move(args: readonly string[]): Promise<void> {
   else if ((await verbOn(from.host, paused)) !== 0) throw new Error(`${name} did not pause at ${from.name}`);
   const worktree = `git -C ${quoted(to.repo)} worktree add -q --detach ${quoted(tree)} ${quoted(commit)} && `;
   at(to, `${resumed ? "" : worktree}mkdir -p ${quoted(folder(tree))}`);
-  // rsync takes one remote side, so a move between two hosts stages the folder here, under one name
-  // a campaign so that a stage a killed move left is taken up and removed by the next.
-  const stage = from.host && to.host ? join(tmpdir(), `ana-move-${name}`) : undefined;
+  // Each relay owns its stage. A retry must copy only files still at the source.
+  const stage = from.host && to.host ? mkdtempSync(join(tmpdir(), "ana-move-")) : undefined;
   try {
     if (stage !== undefined) await rsync(`${sideOf(from.host, folder(source))}/`, `${stage}/`);
     await rsync(`${stage ?? sideOf(from.host, folder(source))}/`, `${sideOf(to.host, folder(tree))}/`);

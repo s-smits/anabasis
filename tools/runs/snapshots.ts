@@ -41,6 +41,7 @@ import {
   type Run,
 } from "./registry.ts";
 import { keepObservation, stderrTail } from "./diagnosis.ts";
+import PACKAGE_PATHS from "./package-paths.py" with { type: "text" };
 
 interface RemoteRun {
   readonly name: string;
@@ -64,7 +65,8 @@ const PROGRAMS_ONLY = [
   "--include=/trees/*/scripts/toolchain/bin/***",
   "--exclude=/trees/**",
 ];
-const EXCLUDED = ["--exclude=.env", "--exclude=.env.*", "--exclude=*.env", "--exclude=auth.json"];
+export const PRIVATE_NAMES = [".env", ".env.*", "*.env", "auth.json"];
+const EXCLUDED = PRIVATE_NAMES.map((name) => `--exclude=${name}`);
 /** Folders of installed packages, caches and built bundles, by name. */
 export const DERIVED: ReadonlySet<string> = new Set([
   "node_modules",
@@ -77,10 +79,8 @@ export const DERIVED: ReadonlySet<string> = new Set([
   ".matplotlib",
   "Library",
 ]);
-/** A shell line that prints, for every pip target under the folder it stands in, the entries its
- *  packages installed, one a line as `grep` names a match: `./<target>/<package>.dist-info/RECORD:`
- *  and the first path segment of a row of that `RECORD`. */
-export const PACKAGED = "find . -path '*.dist-info/RECORD' -type f -exec grep -Ho '^[^/,]*' {} + | sort -u";
+/** Run the same wheel RECORD reader at the source of a zip or remote copy. */
+export const PACKAGED = `python3 -I -c ${quoted(PACKAGE_PATHS)}`;
 /** The submitted files, the one part of `states/` a record holds, since readers of a verdict need them. */
 const DELIVERED = join("states", DELIVERABLES.folder);
 // The seed's mark comes too, so a copy of a rehearsal's seed is no paid campaign to a reader: until
@@ -115,12 +115,9 @@ const WAIT_MS = 200;
 /** The text only an opening's line holds. A line that merely quotes it is parsed and passed over. */
 const OPENED = `"kind":"campaign.opened"`;
 
-/** The entries `PACKAGED` printed, each by its path from the folder: a line less its package's
- *  `RECORD`. What no `RECORD` names is a seat's own, an entry whose rows are all quoted for a comma
- *  included: until 18 November a copy and a zip left a pip target whole, and a promoted harness's
- *  own library beside its packages was in no copy. */
+/** Files and complete directories a package owns, relative to the archive root. */
 export const packagedOf = (printed: string): Set<string> =>
-  new Set(printed.split("\n").map((line) => line.slice(2).replace(/[^/]*\.dist-info\/RECORD:/u, "")));
+  new Set(printed === "" ? [] : parseJsonAs<string[]>(printed));
 
 /** One original campaign's identity and project, as a catalogue lists it. Only the openings are
  *  parsed: every refresh asks each host for its catalogue, and parsing every line of every log for

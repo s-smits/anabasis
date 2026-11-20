@@ -3,7 +3,6 @@
  * keeps its evidence; the latest harness snapshot alone cannot establish that it was practised.
  * What a Builder reads before its first call: the system prompt, the opening message, and its
  * shell's description.
- * Custom tools start in temporary directories and persist files through absolute home paths.
  * The solver's limit reminders cover tools that execute, including errors, but not argument
  * refusals or unavailable tools; diagnostics may follow the reminder.
  *
@@ -15,12 +14,11 @@
  * in full, with a worked example, are `HARNESS.md` in the session's home (`src/harness/starter.ts`).
  *
  * Each part of a harness is given one purpose, here as there: the presets select pi's tools, the
- * programs and the tools of the harness's own compute, and the guide is words about them. v1's
- * sentence, "useful computation belongs in the solver's tools", was written for a solver whose
- * only way to a computation was a tool. A v2 solver has a shell, so `HARNESS.md` states what a tool
- * and a program each cost a solve, `practice` reports each solve's tokens, and the Builder
- * chooses. Telling it to leave `tools.ts` empty while the solver had the shell was a second limit
- * in a prompt (`AGENTS.md`, section 2), under which no harness of ten campaigns declared a tool.
+ * programs compute, and the guide is words about them. v1's sentence, "useful computation belongs
+ * in the solver's tools", was written for a solver whose only way to a computation was a tool. A
+ * v2 solver has a shell, so a computation is a program. Until 20 November 2026 a harness could
+ * also declare tools of its own, and the prompt left the choice between the two to the Builder
+ * (`src/harness/open.ts`).
  *
  * Until 20 October the ceiling was one rule: no harness tool returns a finished answer for a task
  * (`7f0add79:docs/plan.md`, principle 6). v1's sentence had two routes, a verdict on a candidate and the answer to a case the
@@ -96,9 +94,9 @@
  * On 4 November the Builder's texts were consolidated so that each fact is stated once, where the
  * Builder reads it (a draft for paired live seats before adoption). A tool's own behaviour is in its
  * description, so this prompt no longer describes `check_harness`, `preview_harness`, `practice`,
- * `read_trace`, `read_opening` or `finish`; the shape of each harness part (the custom tools'
- * working directory and `HOME`, their imports, the guide's place in the solver's prompt) is in
- * `HARNESS.md`. This prompt keeps a map of the four parts and the two facts no section there holds:
+ * `read_trace`, `read_opening` or `finish`; the shape of each harness part (the programs'
+ * convention, the guide's place in the solver's prompt) is in `HARNESS.md`. This prompt keeps a map
+ * of the three parts and the two facts no section there holds:
  * `agent/config.yaml` is not read, and a harness whose scripts or links name the home is not frozen.
  */
 import { ROOM, WEIGHTS } from "../kernel/compare.ts";
@@ -255,10 +253,10 @@ export const shellWalls = (network: NetworkReach): string =>
 
 export function systemPrompt(said: Said): string {
   return [
-    "You are the Builder. You improve a Built Harness: the programs, the tools and the guide with which a separate solving model answers each task of one domain. The host's verifier owns correctness, and the host owns acceptance and scores.",
+    "You are the Builder. You improve a Built Harness: the programs and the guide with which a separate solving model answers each task of one domain. The host's verifier owns correctness, and the host owns acceptance and scores.",
     `${GOAL} No measured task is a practice task, and a measured task can be of a kind that no practice task shows: over 170 comparisons on record about half of them were, by their author's own grouping. The one limit on the harness is that nothing in it names a task, copies its text or holds its answer, and such a line moves nothing that is measured.`,
-    "The harness is harness/ in your home directory. The solver is pi's coding agent, and each of the harness's four parts has one purpose. agent/tools-spec.json selects which of pi's coding tools the solver has: read, bash, edit, write. .toolchain holds the programs, which run by name in the solver's shell and in yours. agent/tools.ts holds the harness's own tools, which the solver has beside pi's. agent/BUILT_AGENTS.md is the guide: it says what each program and tool is for, how they combine and how a result informs the next decision. HARNESS.md beside harness/ gives each part's shape, with a worked example, prints the starter instructions, and says what a program and a tool each cost a solve in the tokens it reads and writes; whether a computation is a program, a tool or both is yours to choose. Any part may be rewritten whole rather than amended, from harness/, a kept harness or the starter's instructions: only what harness/ holds when it is frozen is measured. agent/config.yaml is not read: the host sets every limit a solve runs under. The harness is run from another place than your home, so an installed launcher finds its files from its own path, as \"$(dirname \"$0\")\" does, and a link names its target relatively: a harness in which a script or a link names your home is not frozen.",
-    "Answers are judged by checks that neither you nor the solver is shown; what they enforce is the public rules. A program or a tool may run the field's own compiler or simulator, search for candidates, test them against the public rules and report which meet them: a search costs the turns and the time it takes, under the limits both harnesses share. The solver decides what it writes to answer.json, which the host reads when the solver submits: nothing of yours takes the answer.",
+    "The harness is harness/ in your home directory. The solver is pi's coding agent, and each of the harness's three parts has one purpose. agent/tools-spec.json selects which of pi's coding tools the solver has: read, bash, edit, write. .toolchain holds the programs, which run by name in the solver's shell and in yours. agent/BUILT_AGENTS.md is the guide: it says what each program is for, how they combine and how a result informs the next decision. HARNESS.md beside harness/ gives each part's shape, with a worked example, and prints the starter instructions. Any part may be rewritten whole rather than amended, from harness/, a kept harness or the starter's instructions: only what harness/ holds when it is frozen is measured. agent/config.yaml is not read: the host sets every limit a solve runs under. The harness is run from another place than your home, so an installed launcher finds its files from its own path, as \"$(dirname \"$0\")\" does, and a link names its target relatively: a harness in which a script or a link names your home is not frozen.",
+    "Answers are judged by checks that neither you nor the solver is shown; what they enforce is the public rules. A program may run the field's own compiler or simulator, search for candidates, test them against the public rules and report which meet them: a search costs the turns and the time it takes, under the limits both harnesses share. The solver decides what it writes to answer.json, which the host reads when the solver submits: nothing of yours takes the answer.",
     `One practice solve is weak evidence: the same harness can fail a task and pass it the next time. Read the record, not the last result: a change shows in practice only on the tasks it moves. What you change after your last practice solve is measured untried. A harness wins or loses each task by its score over every pairing of its solves with the reference's, two measures weighed ${String(WEIGHTS.validity * 100)} and ${String(WEIGHTS.objective * 100)}: validity, a valid answer beating one that is not; and between two valid answers the objective, where the exam names one, an answer better by at least ${String(ROOM * 100)}% of the larger measure gaining that share of the weight. Where the campaign holds retained tasks, ones the reference answered on every solve of its last two comparisons or held out before it became the reference, a comparison also scores up to one of them for every three others, rounded up, so a change that breaks an easy task can lose it. A comparison reads a step where its test clears the level on these scores. After a promotion the starting harness of the campaign is compared with the new reference, the tasks written since first; that comparison promotes and stops nothing, and reads whether the new tasks leave the reference room. Over 30 such comparisons on record, on the tasks written after each promotion, the promoted harness won 35 and lost 6 of those where one side's answer was valid and the other's not, and won 116 and lost 136 of those where both answers were valid and only the objective differed, a sum of campaigns that went strongly one way or the other: gains on validity carried to the new tasks, and where both answers were valid the starter won more often than the promoted harness. An answer that is not valid is never better. What a solve billed and the turns it took are reported and weigh nothing in the score, but a solve fails that submits no answer by its turn or time limit or the end of its context window, or that calls the task malformed. A fail ruled a check defect does not count and is not yours to build around.`,
     "You work in your home directory with read, bash, edit and write. The three file tools take a path relative to it, such as harness/agent/BUILT_AGENTS.md, and the shell is there for everything else: searching, listing, running and installing. Every reply of yours is one turn, with or without a tool call.",
     [

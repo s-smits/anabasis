@@ -1,6 +1,5 @@
 // The Harness² study's halves that need no container: an arm's harness taken from a campaign by
-// the owners the campaign's own handover uses, its own tools served as the container solver serves
-// them, and two arms read as a campaign reads a comparison. The campaign is written here with the
+// the owners the campaign's own handover uses, and two arms read as a campaign reads a comparison. The campaign is written here with the
 // log's own `append`, and its kept states under the digests they open as, as a session's freeze
 // keeps them. The compiled solver is run where the container's platform is the host's, and the
 // solver from source, as the outside scorer's `pi:` arm starts it, on every platform.
@@ -12,12 +11,11 @@ import {
   foreignHead,
   foreignPrograms,
   HERE,
-  MODULE_FILE,
   placeHarness,
   sourceNamed,
 } from "../studies/shared/bundle.ts";
 import { exportForClaudeCode, ownPython } from "../studies/shared/claude-export.ts";
-import { harnessIn, keyless, RESULT_FILE, TRACE_FILE } from "../studies/shared/pi-solve.ts";
+import { keyless, RESULT_FILE, TRACE_FILE } from "../studies/shared/pi-solve.ts";
 import { type Agent, type Claude, inGroup, REFUSED, rollout } from "../studies/harness2/h2/claude.ts";
 import { installTree } from "../studies/harness2/h2/tree.ts";
 import { piAgent } from "../studies/harness2/score.ts";
@@ -47,27 +45,13 @@ import { openHarness, treeContent } from "../src/harness/open.ts";
 import { EXAMPLE, HOST_ONLY, writeStarter } from "../src/harness/starter.ts";
 import { writeHarness } from "./helpers/write-harness.ts";
 
-// SAFETY: the harness tool below uses only the context's abort signal, no tool API methods.
-const UNUSED_API = undefined as never;
+/** A harness of the shell and one program, `mark`. */
+const MARKED = {
+  spec: { presets: ["bash"], tools: [] },
+  programs: { mark: "#!/bin/sh\necho marked\n" },
+};
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-study-harness2-test-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
-
-/** A harness with one tool of its own, `doubled`, whose call reads the task's public input and runs
- *  one of the harness's programs; `load` is the line its module runs first. */
-const tooled = (load = "") => ({
-  spec: { presets: ["bash"], tools: [{ name: "doubled", kind: "reader" }] },
-  tools: `import { defineDraftTool } from "@ana/agent-bundle";
-import { Type } from "@earendil-works/pi-ai";
-import { execFileSync } from "node:child_process";
-${load}
-export const createDomainHarness = (task) => ({ tools: [defineDraftTool({
-  name: "doubled", label: "Doubled", description: "Doubles n.",
-  parameters: Type.Object({ n: Type.Number() }),
-  run: ({ n }) => ({ text: \`\${task.publicInput.instruction} \${String(n * 2)} \${execFileSync("mark", { encoding: "utf8" }).trim()}\` }),
-})] });`,
-  programs: { mark: "#!/bin/sh\necho marked\n" },
-});
-const clock = () => ({ started: null, seconds: 600 });
 
 /** A campaign folder `name` with the starter and one child kept, and `events` in its log. */
 async function campaign(
@@ -153,25 +137,7 @@ describe("an arm's harness, taken from a campaign", () => {
   });
 });
 
-describe("the harness's own tools, served in the container", () => {
-  it("lists and calls a harness's tool through the loader a campaign uses, and names a tool that fails to load", async () => {
-    const dir = join(root, "tooled");
-    writeHarness(dir, tooled());
-    const { module } = await openHarness(dir);
-    const env = new NodeExecutionEnv({ cwd: root });
-    const { domain } = await harnessIn({ harness: dir, module, instruction: "Fix it." }, env, clock());
-    expect(domain.map(({ name }) => name)).toStrictEqual(["doubled"]);
-    const [doubled] = domain;
-    const result = await doubled?.execute({ n: 4 }, UNUSED_API, BACKGROUND_CONTEXT);
-    expect(result?.output).toStrictEqual([{ type: "text", text: "Fix it. 8 marked" }]);
-    const broken = join(root, "tooled-broken");
-    writeHarness(broken, tooled('throw new Error("no engine here");'));
-    const failing = (await openHarness(broken)).module;
-    await expect(
-      harnessIn({ harness: broken, module: failing, instruction: "Fix it." }, env, clock()),
-    ).rejects.toThrow("no engine here");
-  });
-
+describe("the container solver", () => {
   it("loads as one compiled file, where no file of the tree is beside it", () => {
     // Until 19 November the answer tool read its capture program from beside itself as it loaded,
     // which a compiled solver does not hold, so the solver ended before it read a flag.
@@ -183,18 +149,18 @@ describe("the harness's own tools, served in the container", () => {
 
   const native = runtimeProcess.platform === "linux" && runtimeProcess.arch === "x64";
   it.skipIf(!native)(
-    "bundles a harness with tools, and the compiled solver lists them or ends a broken one as its own fail",
+    "bundles a harness, and the compiled solver lists its tools or ends one that does not open as its own fail",
     async () => {
-      const dry = async (name: string, load?: string) => {
-        const made = await campaign(name, () => undefined, tooled(load));
+      const dry = async (name: string, spec?: string) => {
+        const made = await campaign(name, () => undefined, MARKED);
         const mount = join(root, `mount-${name}`);
         await bundleArm(mount, { campaign: made.log, harness: made.child });
+        if (spec !== undefined) writeFileSync(join(mount, "harness", "agent", "tools-spec.json"), spec);
         const logs = join(root, `logs-${name}`);
         mkdirSync(logs);
         writeFileSync(join(logs, "instruction.md"), "Fix it.");
         const flags = [
           ["--harness", join(mount, "harness")],
-          ["--module", join(mount, MODULE_FILE)],
           ["--instruction", join(logs, "instruction.md")],
           ["--model", "google/gemini-3.5-flash"],
           ["--base-url", "http://127.0.0.1:9/v1"],
@@ -210,10 +176,11 @@ describe("the harness's own tools, served in the container", () => {
           readFileSync(join(logs, RESULT_FILE), "utf8"),
         );
       };
-      expect(await dry("served")).toMatchObject({ ending: "dry-run", tools: ["bash", "doubled", "submit"] });
-      const unloaded = await dry("unloaded", 'throw new Error("no engine here");');
-      expect(unloaded.ending).toBe("broken-harness");
-      expect(unloaded.reason).toContain("no engine here");
+      expect(await dry("served")).toMatchObject({ ending: "dry-run", tools: ["bash", "submit"] });
+      const declaring = '{ "presets": ["bash"], "tools": [{ "name": "doubled", "kind": "reader" }] }';
+      const unopened = await dry("unopened", declaring);
+      expect(unopened.ending).toBe("broken-harness");
+      expect(unopened.reason).toContain("declares 1 tool (doubled)");
     },
     240_000,
   );
@@ -415,23 +382,21 @@ describe("a harness written out for Claude Code", () => {
     expect(readFileSync(join(workspace, "CLAUDE.md"), "utf8")).toBe("# Guide\n");
   });
 
-  it("makes the guide CLAUDE.md, copies the programs under scripts and names the harness's own tools as unavailable", async () => {
+  it("makes the guide CLAUDE.md and copies the programs under scripts", async () => {
     const programs = {
-      ...tooled().programs,
+      ...MARKED.programs,
       cat: "#!/bin/sh\necho the harness's cat\n",
       stage:
         "#!/bin/sh\n# stage [public/task.json] [--out DIR]\n#\n# Writes each input file of the task to DIR.\ncat public/task.json\n",
       "python3.12": "#!/bin/sh\necho the harness's interpreter\n",
     };
     const own = `# Operating Guide\n\n## Programs and tools\n- mark: prints marked.\n\n## Domain notes\nA mark counts once.\n\n${HOST_ONLY}\nAn answer over three lines is not valid.\n`;
-    const made = await campaign("exported", () => undefined, { ...tooled(), programs, guide: own });
+    const made = await campaign("exported", () => undefined, { ...MARKED, programs, guide: own });
     const into = join(root, "claude-tooled");
     const record = await exportForClaudeCode(into, { campaign: made.log, harness: made.child });
     expect(record.harness).toBe(made.child);
     expect(record.dropped).toStrictEqual(["agent/tools-spec.json", "agent/tools.ts"]);
-    expect(record.unavailable).toStrictEqual(["doubled"]);
     const guide = readFileSync(join(into, "CLAUDE.md"), "utf8");
-    expect(guide).toContain("doubled. They are not available here");
     expect(guide).toContain("Its programs run by name, as the guide names them; each is listed below");
     expect(guide).toContain("This runner has no `input.json`, `public/` folder or `answer.json`");
     // Each program in PATH order with the first line of its own account, and one that gives none by
@@ -482,7 +447,7 @@ describe("a harness written out for Claude Code", () => {
     // An ELF header for x86-64, whose bytes are all ASCII, so a program written as text holds it.
     const elf = `\u007FELF${"\0".repeat(14)}>\0`;
     const programs = { mark: "#!/bin/sh\necho marked\n", native: elf };
-    const made = await campaign("exported-native", () => undefined, { ...tooled(), programs });
+    const made = await campaign("exported-native", () => undefined, { ...MARKED, programs });
     const asked: string[] = [];
     const python = {
       interpreter: (version: string) => {
@@ -559,7 +524,7 @@ describe("a harness written out for Claude Code", () => {
   it("writes the starter's guide under the note with no tool or program line, and refuses a tree already made", async () => {
     const into = join(root, "claude-starter");
     const record = await exportForClaudeCode(into, "starter");
-    expect(record).toMatchObject({ campaign: null, unavailable: [], toolchain: null, searched: [] });
+    expect(record).toMatchObject({ campaign: null, toolchain: null, searched: [] });
     const guide = readFileSync(join(into, "CLAUDE.md"), "utf8");
     expect(guide.startsWith("# How this harness reaches you")).toBe(true);
     expect(guide).not.toContain("not available here");
@@ -693,9 +658,9 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     expect((await rolled("spent", "true", ["error_max_budget_usd"])).attempts).toBe(1);
   });
 
-  it("lists a campaign harness's own tool and finds its program before any rollout, and starts none without the word", async () => {
+  it("lists a campaign harness's tools and finds its program before any rollout, and starts none without the word", async () => {
     const SCORE = new URL("../studies/harness2/score.ts", import.meta.url).pathname;
-    const made = await campaign("on-pi", () => undefined, tooled());
+    const made = await campaign("on-pi", () => undefined, MARKED);
     const place = join(root, "pi-whole");
     const [jb, out, task] = [join(place, "jb"), join(place, "out"), "alpha/task1"];
     mkdirSync(join(jb, "dataset", "main", task, "task_folder"), { recursive: true });
@@ -720,8 +685,8 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     expect(decodeOutput(dry.stderr)).toBe("");
     expect(dry.exitCode).toBe(0);
     expect(told).toContain("on pi-durable, inside the harness itself");
-    // The export of this same harness names `doubled` unavailable and leaves `mark` off the path.
-    expect(told).toMatch(/pi-solve: tools \[.*"doubled".*"submit"\]; 1 installed programs: \S+\/bin\/mark/u);
+    // Here `mark` leads the path; the export of this same harness puts it behind the machine's own.
+    expect(told).toMatch(/pi-solve: tools \["bash","submit"\]; 1 installed programs: \S+\/bin\/mark/u);
     const tree = join(out, "trees", "pi-tooled");
     expect((await openHarness(join(tree, "harness"))).digest).toBe(made.child);
     expect(existsSync(join(tree, "CLAUDE.md"))).toBe(false);

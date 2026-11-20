@@ -1224,27 +1224,20 @@ describe("a Builder session", () => {
     },
   );
 
-  it("freezes no harness whose tools do not list, and shows the Builder no path of the host's", async () => {
+  it("freezes no harness that declares a tool of its own, and shows the Builder no path of the host's", async () => {
+    const declaring = '{ "presets": ["bash"], "tools": [{ "name": "scale_base", "kind": "reader" }] }\n';
     const s = await setup([
-      call("practice", { tasks: ["t-1"] }),
-      call(WRITE_FILE, { path: "harness/agent/tools.ts", content: 'import "./missing.ts";\n' }),
+      call(WRITE_FILE, { path: "harness/agent/tools-spec.json", content: declaring }),
       call("practice", { tasks: ["t-1"] }),
       finish,
     ]);
-    // A wall's listing, stood in for: this harness's tools never list.
-    const walled = (bench: Bench) => {
-      bench.lists = async () => {
-        throw new Error("domain tool mismatch: generated [a], recorded [b]");
-      };
-      return s.walled(bench);
-    };
-    const built = await session(s.request, s, walled);
-    expect(JSON.stringify(s.of(BUILD_CALL)[0])).toContain("the harness does not open: domain tool mismatch");
+    const built = await session(s.request, s, s.walled);
+    expect(JSON.stringify(s.of(BUILD_CALL)[1])).toContain(
+      "the harness does not open: agent/tools-spec.json declares 1 tool (scale_base)",
+    );
     expect(built).toMatchObject({ harness: null, changed: false });
     expect(s.ran).toEqual([]);
-    // A bundle that fails names the file by where the harness keeps it, never by where the host froze it.
-    const unresolved = JSON.stringify(s.of(BUILD_CALL)[2]);
-    expect(unresolved).toContain("the harness does not open");
+    // The refusal names the file by where the harness keeps it, never by where the host froze it.
     expect(JSON.stringify(s.of(BUILD_CALL))).not.toContain(s.request.states);
     expect(JSON.stringify(s.of(BUILD_CALL))).not.toContain(s.scratch);
   });
@@ -1670,12 +1663,10 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
     expect(calls[5]).toContain("hello-from-the-tool-tree");
     expect(calls[5]).toContain("installed-greeting");
     expect(calls[6]).toContain("harness/.toolchain/bin/named name your home");
-    // A line for each part of the harness, and no note on tools beside the shell: the choice is the
-    // Builder's, and the account states what each costs.
+    // A line for each part of the harness.
     expect(calls[8]).toContain(
-      String.raw`The harness opens.\npi's tools: bash.\nPrograms: greet, hello, real.\nGuide: 28 characters.\nTools of its own: scale_base, read_path.`,
+      String.raw`The harness opens.\npi's tools: bash.\nPrograms: greet, hello, real.\nGuide: 28 characters.`,
     );
-    expect(calls[8]).not.toContain("same thing twice");
     expect(calls[9]).toContain(String.raw`/home\n# The Built Harness`);
     expect(calls[10]).toContain("Successfully replaced 1 block(s)");
     expect(calls[11]).toContain("Always multiply before you record.");

@@ -9,14 +9,8 @@
  * - durable's coding tools as the harness's presets select them (`selectedCodingTools`), on its local
  *   operations in the container's working directory, with the harness's `.toolchain` first on PATH
  *   in the order a solve's shell has it (`toolTreeSearchDirs`);
- * - the harness's own tools, listed and called by the loader a campaign's solve uses (`harnessTools`,
- *   `src/harness/open.ts`), each call a fresh process in a folder of its own with the same PATH. A
- *   campaign launches that process behind the host's wall; here the container is the wall, and this
- *   executable, acting as Bun, runs it. The module is the one the host bundled when it made the
- *   mount (`bundleArm`), since a compiled solver holds no source to bundle over. The factory is given
- *   the instruction as the task's public input, since a benchmark task has no id or family a campaign
- *   would name. A harness whose tools cannot be opened or listed ends the solve as `broken-harness`,
- *   its side's own fail, as a campaign reads it (`brokenHarness`, `src/solver/run.ts`);
+ * - a harness that does not open ends the solve as `broken-harness`, its side's own fail, as a
+ *   campaign reads it (`brokenHarness`, `src/solver/run.ts`);
  * - the study's system prompt, with the harness's guide as project context under the
  *   sentence a campaign's solver reads, and a duty that names the benchmark's deliverable;
  * - the solve wall and the model-turn cap, told on every tool result by `timed`, the nudge after a
@@ -43,7 +37,6 @@
  * wrote any could not be scored.
  */
 import { type AssistantMessage, createModels, type ThinkingLevel } from "@earendil-works/pi-ai";
-import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import {
   createBashTool,
@@ -56,25 +49,24 @@ import { openrouter } from "#src/agent/backends/models.ts";
 import { read } from "#src/kernel/log.ts";
 import { unanswered } from "#src/kernel/solve.ts";
 import { GUIDE_FILE } from "#src/meta/bundle-layout.ts";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { tmpdir } from "#src/meta/os.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { selectedCodingTools } from "#src/tools/coding.ts";
 import { ending, text, tool } from "#src/tools/answer.ts";
-import { heldSeconds, type Launch, type SolveClock } from "#src/tools/command.ts";
-import { harnessTools, openHarness } from "#src/harness/open.ts";
+import type { SolveClock } from "#src/tools/command.ts";
+import { openHarness } from "#src/harness/open.ts";
 import { installedPrograms } from "#src/harness/programs.ts";
 import { NUDGE } from "#src/solver/prompt.ts";
 import { raiseWall, timed, type Wall } from "#src/solver/run.ts";
 import { type Seat, type SeatTool, sit } from "#src/agent/session.ts";
 import { trajectoryOf } from "./atif.ts";
 import { shellQuote, toolTreeSearchDirs } from "#src/wall/isolation.ts";
-import { LIMITS, seatBackends } from "#tools/d2/campaign.ts";
+import { seatBackends } from "#tools/d2/campaign.ts";
 import { modelNamed, sweepOptions } from "#tools/m0/stored-sweep.ts";
 
 /** The file names the Harbor agent reads back from the trial's log folder (`harbor/pi_agent.py`). */
@@ -85,7 +77,6 @@ const CREDENTIAL = /TOKEN|API_KEY|SECRET|PASSWORD/u;
 
 const OPTIONS = {
   harness: { type: "string" },
-  module: { type: "string" },
   instruction: { type: "string" },
   model: { type: "string" },
   "base-url": { type: "string" },
@@ -111,8 +102,6 @@ type Served = Pick<Seat, "model" | "models">;
 
 interface Asked {
   readonly harness: string;
-  /** The harness's tools module as the host bundled it (`bundleArm`), or none from source. */
-  readonly module: string | undefined;
   readonly instruction: string;
   readonly route: Route;
   readonly effort: ThinkingLevel;
@@ -140,7 +129,6 @@ function asked(args: readonly string[]): Asked {
   if (values["budget-usd"] !== undefined && !(budget > 0)) throw new Error("--budget-usd is dollars above 0");
   return {
     harness: need("harness"),
-    module: values.module === undefined ? undefined : readFileSync(values.module, "utf8"),
     instruction: readFileSync(need("instruction"), "utf8"),
     route:
       values.solver === undefined
@@ -190,53 +178,6 @@ function submitTool(said: { submitted: boolean }): SeatTool {
   });
 }
 
-/**
- * One harness tool call's launch (`Launch`) in the container, which is its wall as it is the
- * shell's: in a fresh folder holding what the call brings, with the harness's programs first on
- * PATH, held as a campaign holds a command (`heldSeconds`, at `LIMITS`), and this executable acting
- * as Bun (`BUN_BE_BUN`), since the call runs it by its own path.
- */
-function launchIn(env: NodeExecutionEnv, prefix: string | undefined, clock: SolveClock): Launch {
-  return async (command, { onData, signal, stage, timeout }) => {
-    const into = mkdtempSync(join(tmpdir(), "harness-call-"));
-    try {
-      stage?.(into);
-      const result = await env.exec(
-        prefix === undefined ? command : `${prefix}\n${command}`,
-        {
-          cwd: into,
-          env: { BUN_BE_BUN: "1" },
-          onOutput: (chunk) => onData(Buffer.from(chunk)),
-          timeout: heldSeconds(timeout, { limits: LIMITS, clock }).seconds,
-        },
-        signal === undefined ? BACKGROUND_CONTEXT : withAbortSignal(signal, BACKGROUND_CONTEXT),
-      );
-      if (!result.ok) throw result.error;
-      return { exitCode: result.value.exitCode };
-    } finally {
-      rmSync(into, { recursive: true, force: true });
-    }
-  };
-}
-
-/** The harness opened over its bundled module, its shell's PATH, and its own tools as listed. */
-export async function harnessIn(
-  ask: Pick<Asked, "harness" | "module" | "instruction">,
-  env: NodeExecutionEnv,
-  clock: SolveClock,
-) {
-  const harness = await openHarness(ask.harness, ask.module);
-  const path = harness.toolTree === null ? [] : toolTreeSearchDirs(harness.toolTree);
-  const prefix = path.length === 0 ? undefined : `export PATH=${shellQuote(path.join(":"))}:"$PATH"`;
-  const task = {
-    taskId: "benchmark-task",
-    family: "benchmark",
-    publicInput: { instruction: ask.instruction },
-  };
-  const domain = await harnessTools(harness, task, launchIn(env, prefix, clock));
-  return { harness, prefix, domain };
-}
-
 /** OpenRouter's entry for the model, served through the benchmark's proxy on its token. */
 function throughProxy(route: Extract<Route, { model: string }>): Served {
   const provider = openrouter();
@@ -264,9 +205,11 @@ async function solve(ask: Asked) {
   const shellEnv = "solver" in ask.route ? keyless(Object.keys(runtimeProcess.env)) : {};
   const env = new NodeExecutionEnv({ cwd, shellEnv });
   const clock: SolveClock = { started: null, seconds: ask.wallSeconds };
-  const opened = await harnessIn(ask, env, clock).catch((error: unknown) => errorMessage(error));
-  if (isString(opened)) return { ending: "broken-harness", reason: opened };
-  const { harness, prefix, domain } = opened;
+  const harness = await openHarness(ask.harness).catch((error: unknown) => errorMessage(error));
+  if (isString(harness)) return { ending: "broken-harness", reason: harness };
+  // The harness's programs first on PATH, in the order a solve's shell has them.
+  const path = harness.toolTree === null ? [] : toolTreeSearchDirs(harness.toolTree);
+  const prefix = path.length === 0 ? undefined : `export PATH=${shellQuote(path.join(":"))}:"$PATH"`;
   const coding = {
     read: createReadTool(),
     bash: createBashTool(prefix === undefined ? {} : { commandPrefix: prefix }),
@@ -277,7 +220,6 @@ async function solve(ask: Asked) {
   // In the order a campaign's solver is given them (`solverTools`, `src/solver/run.ts`).
   const defined = [
     ...selectedCodingTools(harness.presets).flatMap((name) => coding[name] ?? []),
-    ...domain,
     submitTool(said),
   ];
   const programs = installedPrograms(harness.toolTree);

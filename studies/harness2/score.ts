@@ -20,7 +20,7 @@
  * An arm is `base` (Harness²'s base harness, the pilot's Base), `starter` or a campaign's name
  * (its kept harness written out by `claude-export.ts`, `--harness` as `keptAs` takes it),
  * `pi:starter` or `pi:<campaign>` (the harness as kept, solved inside by `../shared/pi-solve.ts`,
- * where its own tools exist and its programs lead the path, which the export loses),
+ * where its programs lead the path, which the export loses),
  * `tree:<dir>` (any Claude Code tree), `heldout` (task N under the sweep's final harness of task
  * N-1) or `sweep:base1` and `sweep:agg1` (the sweep's own rollouts in `--out`, judged and rolled
  * by nothing else). Scoring into the sweep's `--out` keeps every arm in one store, as the pilot's

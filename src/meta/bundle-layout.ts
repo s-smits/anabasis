@@ -42,10 +42,11 @@ export const TASKS_FILE = "correctness-model/tasks.json";
 /** The task-bound accept and reject artifacts that calibrate the checks. */
 export const CONTROLS_FILE = "correctness-model/controls.json";
 
-/** The declared tool contract the solver's roster is derived from. */
+/** The harness's selection of pi's coding tools, with a tools list that stays empty. */
 export const TOOLS_SPEC_FILE = "agent/tools-spec.json";
 
-/** The generated tool implementations the Built Harness calls. */
+/** The module of tools of its own that a harness held until 20 November 2026 (`src/harness/open.ts`).
+ *  No opener reads it; a harness kept before then still holds the file, which its readers list. */
 export const GENERATED_TOOLS_FILE = "agent/tools.ts";
 
 /** A harness's installed programs, at its root: the tree the solver's shell finds them in. */

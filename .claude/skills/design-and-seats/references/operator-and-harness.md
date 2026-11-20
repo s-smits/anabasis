@@ -14,10 +14,9 @@ going past the stop rule, take the operator's word each time (`--despite`, `--pa
 
 ### The harness
 
-The four parts are listed in section 3; `HARNESS.md`, given to a Builder, shows each with a worked
-example. Programs in `.toolchain/` run by name from the solver's shell, while tools in
-`agent/tools.ts` sit beside pi's, each call alone under the wall; the Builder chooses between them,
-told what each costs a solve. The digest leaves out `__pycache__` and bytecode
+The three parts are listed in section 3; `HARNESS.md`, given to a Builder, shows each with a worked
+example. Programs in `.toolchain/` run by name from the solver's shell, and a harness whose spec
+declares a tool of its own does not open (`openHarness`). The digest leaves out `__pycache__` and bytecode
 (`src/meta/bundle-layout.ts`), so any other change makes a new harness, and solves under the old one
 do not count for it. The starter (`src/harness/starter.ts`) is pi's coding agent as released with a
 few revisable guide lines and no domain program.

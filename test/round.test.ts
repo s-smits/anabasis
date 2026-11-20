@@ -47,7 +47,7 @@ import { stopRule } from "../src/campaign/admission.ts";
 import { latestBuilt, poolOf } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { passed, ranUnder } from "../src/kernel/solves.ts";
-import { taskStates } from "../src/kernel/task.ts";
+import { taskSets, taskStates } from "../src/kernel/task.ts";
 import {
   cpSync,
   mkdirSync,
@@ -1045,19 +1045,19 @@ describe("a round", () => {
       // Were the rejections of s1 to stand, the new harness would have won that as well.
       counted: { wins: 3, losses: 0, p: 0.125 },
       versions: ["s3", "s4"],
-      disputed: ["s2"],
+      disputed: [],
+      short: ["s2"],
       aside: ["s1"],
       reading: NO_STEP,
     });
-    // Only the task whose check could not run is disputed for good. A ruling sets a task aside for
-    // this comparison, and a person decides what becomes of it.
-    const states = taskStates(read(s.log));
-    expect([states.get("s1"), states.get("s2"), states.get("s3")]).toEqual(["held", "disputed", "held"]);
-    expect(s.of(TASK_STATE).filter(({ state }) => state === "disputed")).toMatchObject([
-      { version: "s2", reason: "its own check could not run on an answer" },
-    ]);
-    // A disputed task is solved no further: the new harness's solve of s2 whose check could not run
-    // is its last, and its only one, whichever harness the slot put first.
+    // Neither moves the held-out set, which a Builder's count and the table's advice read: the
+    // check failed on the new harness's answer, and a ruling sets a task aside for this comparison
+    // alone. Until 20 November such a check disputed its task for good, so what a candidate
+    // answered on a held-out task moved a count its Builder reads (rule 3).
+    expect(taskSets(read(s.log)).held).toEqual([...HELD, "s5"]);
+    expect(s.of(TASK_STATE).filter(({ state }) => state === "disputed")).toEqual([]);
+    // The task is solved no further in this comparison: the new harness's solve of s2 whose check
+    // could not run is its last, and its only one, whichever harness the slot put first.
     const disputed = s.asked.filter(({ version }) => version === "s2");
     expect(disputed.at(-1)).toEqual({ version: "s2", side: "fresh" });
     expect(disputed.filter(({ side }) => side === "fresh")).toHaveLength(1);
@@ -1073,6 +1073,24 @@ describe("a round", () => {
     ]);
     expect(refereed.filter((version) => version === "s2")).toHaveLength(disputed.length - 1);
     expect(s.of(COMPARISON_REPORTED)[0]?.reviewFaults).toHaveLength(2);
+  });
+
+  it("disputes a task for good where its own check could not run on the reference's answer", async () => {
+    const s = await setup([], (version, side, nth, digest) =>
+      version === "s2" && side === "old"
+        ? { outcome: "non-result", kind: "check", reason: "check-9: threw" }
+        : rejecting(version, side, nth, digest),
+    );
+    const report = await checkpoint(s.paired("g0", { referee: referee(s.log, {}) }));
+    // What the reference answers is the exam side's to act on, so the task leaves the held-out set
+    // and no later comparison draws it.
+    expect(report).toMatchObject({ disputed: ["s2"], short: [] });
+    expect(taskSets(read(s.log)).held).toEqual(["s1", "s3", "s4", "s5"]);
+    expect(s.of(TASK_STATE).filter(({ state }) => state === "disputed")).toMatchObject([
+      { version: "s2", reason: "its own check could not run on an answer" },
+    ]);
+    // The reference's solve whose check could not run is its only one of the task.
+    expect(s.asked.filter(({ version, side }) => version === "s2" && side === "old")).toHaveLength(1);
   });
 
   it("puts a rejection the Referee gave no answer on to it again, and stops before the report while one has none", async () => {

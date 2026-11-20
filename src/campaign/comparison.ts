@@ -135,8 +135,8 @@ export interface Report {
   readonly counted: Tested | null;
   /** The task versions tallied. */
   readonly versions: readonly string[];
-  /** Task versions left out as disputed for good: a check could not run, or a person labelled a
-   *  rejection a check defect. */
+  /** Task versions left out as disputed for good: a check could not run on the reference's answer,
+   *  or a person labelled a rejection a check defect. */
   readonly disputed: readonly string[];
   /** Task versions set aside on a rejection that is not ruled a true fail. */
   readonly aside: readonly string[];

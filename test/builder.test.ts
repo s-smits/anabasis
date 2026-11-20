@@ -15,7 +15,7 @@ import { Type } from "typebox";
 import { crashedRun } from "../src/campaign/ground.ts";
 import { type BuildRequest, build, type PracticeTask, session } from "../src/builder/session.ts";
 import { type Bench, HOME_TOOL_TREE, practiceLeft, record, snapshot } from "../src/builder/tools.ts";
-import { type Condition, recordCondition } from "../src/kernel/condition.ts";
+import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
 import { latestBuilt } from "../src/kernel/reports.ts";
@@ -1466,6 +1466,9 @@ describe("what crosses to the Builder", () => {
       scored: { wins: 1, losses: 0, ties: 1, p: 0.5, unsolved: 0 },
       versions: kept.won === "h1" ? ["h1", "h2"] : ["h2", "h1"],
       aside: [],
+      // Its pairs can be read again, so the line also counts the tasks validity differed on.
+      setting: settingId(s.condition("h1", s.digest)),
+      solves: 1,
     });
     // The practice tasks carry hidden values too, which differ between the two campaigns: what a
     // Builder is shown of a released task is its public part alone.
@@ -1524,7 +1527,9 @@ describe("what crosses to the Builder", () => {
     expect(one).toContain("Solve s-3.");
     expect(one).toContain("- s-1, t-1, harness");
     expect(one).toContain("result: margin of s-3");
-    expect(one).toContain("1 won, 0 lost, 1 tied, which reads no step.");
+    expect(one).toContain(
+      "1 won, 0 lost, 1 tied, which reads no step. Validity differed on 1 of the 2 tasks.",
+    );
     expect(one).toContain("You have not called finish");
     expect(one).toContain("practice/t-1.json");
     for (const kept of [ONE, OTHER]) {

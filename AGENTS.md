@@ -166,7 +166,7 @@ Each seat has one job and a closed view:
 - **Builder** (model, `src/builder/`): edits `harness/`, chooses moves and freezes a harness,
   reading only section 1's list, its notes and the kept harnesses.
 - **Solver** (model, `src/solver/`): answers one task with `read`, `bash`, `edit`, `write`,
-  `submit` and the harness's tools.
+  `submit` and the harness's programs.
 - **Verifier** (code, `src/kernel/verify.ts`): runs each check in a fresh walled cell, offline.
 - **Referee** (model, `src/referee/referee.ts`): rules each rejection the host's replay of the
   checks repeats (never a pass, a cut solve or a crash) `earned`, `check-defect` or `unclear`,
@@ -174,9 +174,9 @@ Each seat has one job and a closed view:
 - **Host** (code): everything section 2 gives to code.
 
 A **harness** is a directory (`agent/tools-spec.json`, `.toolchain/`, the guide
-`agent/BUILT_AGENTS.md`, `agent/tools.ts`) whose digest is its identity. The **Starter Built
-Harness** (`src/harness/starter.ts`) is the first reference and the fixed baseline: pi's coding
-agent as released, its four coding tools and the starter instructions as its guide. Three names
+`agent/BUILT_AGENTS.md`) whose digest is its identity. The **Starter Built Harness**
+(`src/harness/starter.ts`) is the first reference and the fixed baseline: pi's coding agent as
+released, its four coding tools and the starter instructions as its guide. Three names
 keep its uses apart, each in one meaning:
 
 - the **Starter**, also the **bareSolver**: the solver under the Starter Built Harness, the

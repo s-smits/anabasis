@@ -3,8 +3,8 @@
  * is handed beside it.
  *
  * The Starter Built Harness is pi's coding agent as pi releases it, with pi's four coding tools
- * selected, no domain program or tool, and the starter instructions as its guide. Its three files
- * are there as the places a Builder extends. Everything else a solver is given under it is the
+ * selected, no program, and the starter instructions as its guide. Its two files are there as the
+ * places a Builder extends, beside the tool tree it adds. Everything else a solver is given under it is the
  * host's, the same under every harness: the command wall behind the tools, the answer file and
  * `submit`, and the prompt's addendum and environment (`run.ts`, `answer.ts`, `prompt.ts`).
  *
@@ -33,7 +33,7 @@
  * the archived campaigns carried all three of its headings. It is now shown as an example.
  *
  * It is written out in v1's on-disk format like any other harness state, and is named by its digest
- * like any other: the three files below are the whole of it, so a change to any is another harness,
+ * like any other: the two files below are the whole of it, so a change to either is another harness,
  * and solves under the old one are not counted for the new.
  *
  * The account, `HARNESS.md`, stands where v1's starter pack carried `contract.md`. A Builder without
@@ -41,8 +41,7 @@
  * names (9 October). The account is the host's and not the harness's: a session is
  * handed it afresh in its home (`src/builder/session.ts`), so it describes the host that will open
  * the harness, whichever harness the session forks.
- * It distinguishes the temporary working directory of each custom tool call from the solver's
- * persistent home, and limits the reminder promise to tools that execute.
+ * It limits the reminder promise to tools that execute.
  *
  * From 17 November the outline has a fourth heading, `HOST_ONLY`, for what holds only for this
  * host's answer: what makes one valid and what the objective rewards. A kept harness is also
@@ -55,33 +54,28 @@
  * an outside solver read as instructions. The export carries a guide as far as the heading, and the
  * account tells the Builder so as a fact, and that a program runs on other data only where it takes
  * plain data.
+ *
+ * Until 20 November 2026 a harness had a fourth part, `agent/tools.ts`, a module of tools of its
+ * own, and the account closed on a section that gave its shape, a worked harness without a shell
+ * and what a tool and a program each cost a solve. 21 of the 1,340 harnesses kept by then declared
+ * a tool, none after 31 October, and the part went on the operator's word (`open.ts`).
  */
-import { AGENT_DIR, GENERATED_TOOLS_FILE, GUIDE_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
+import { AGENT_DIR, GUIDE_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { join } from "../meta/path.ts";
 import { CODING_TOOLS } from "../tools/coding.ts";
 
-/**
- * The Starter's three files. Its tools file is the place a harness adds tools of its own, and says
- * so; under the Starter it adds none. A comment is not in the bundle a harness is named by, so a
- * change to the comment leaves the Starter the harness it was. Its guide is the starter
- * instructions, in `EXAMPLE`'s outline with its entries empty.
- */
 /** The guide's last heading, for what holds only for this host's answer; an export stops at it. */
 export const HOST_ONLY = "## Validity and score";
 
+/**
+ * The Starter's two files: a spec that selects pi's four coding tools, and the starter instructions
+ * as its guide, in `EXAMPLE`'s outline with its entries empty. Neither has changed since a harness
+ * lost its tool module, so the Starter is the harness it was (`test/starter.test.ts`).
+ */
 const STARTER = {
   spec: { presets: [...CODING_TOOLS], tools: [] },
-  tools: `// Tools of the harness's own, which the solver has beside pi's coding tools. The Starter adds
-// none. A harness adds one with defineDraftTool, and HARNESS.md, beside harness/, gives the shape
-// and what a tool costs a solve against a program under .toolchain/bin.
-import type { DomainHarnessFactory } from "@ana/agent-bundle";
-
-export const createDomainHarness: DomainHarnessFactory = () => ({
-  tools: [],
-});
-`,
   guide: `# Operating Guide
 
 These are the starter instructions, the same in every domain.
@@ -104,10 +98,6 @@ None yet.
 };
 
 const CHECKER = "check-rota";
-const ADVISOR = {
-  name: "count_hours",
-  description: "Returns the hours each person works under the assignments passed in.",
-};
 
 /**
  * The account's worked harness, which a test opens and runs as a solve would: an example that does
@@ -117,7 +107,6 @@ const ADVISOR = {
  */
 export const EXAMPLE = {
   spec: STARTER.spec,
-  tools: STARTER.tools,
   programs: {
     [CHECKER]: `#!/usr/bin/env bun
 // ${CHECKER} <rota.json> <limits.json>
@@ -168,7 +157,6 @@ process.exit(failed === 0 ? 0 : 1);
 - ${CHECKER} <rota.json> <limits.json>: tests a rota file against each person's hour limit and prints
   one line a person; public/task.json serves as the second file. Exit 0 when every limit is met, 1
   when one is not, 2 when it could not run. It tests the hour limits and no other rule.
-- ${ADVISOR.name} (a tool, where the harness declares one): ${ADVISOR.description}
 
 ## Working with them
 A rota that ${CHECKER} passes has still to meet the rules it does not test.
@@ -182,46 +170,6 @@ A rota that leaves a shift of the task unassigned is not valid.
 };
 
 /**
- * The account's second example: a harness with one tool of its own, shown without the shell so that
- * the tool is the solver's one way to the computation. A test opens it and calls its tool under
- * the wall.
- */
-export const WITHOUT_SHELL = {
-  spec: {
-    presets: CODING_TOOLS.filter((name) => name !== "bash"),
-    tools: [{ ...ADVISOR, kind: "advisor" }],
-  },
-  tools: `import { type DomainHarnessFactory, defineDraftTool } from "@ana/agent-bundle";
-import { Type } from "@earendil-works/pi-ai";
-
-type Shift = { id: string; hours: number };
-
-export const createDomainHarness: DomainHarnessFactory = (task) => {
-  const input = task.publicInput as { shifts: Shift[] };
-  return {
-    tools: [
-      defineDraftTool({
-        name: ${capturedJsonStringify(ADVISOR.name)},
-        label: "Count hours",
-        description: ${capturedJsonStringify(ADVISOR.description)},
-        parameters: Type.Object({
-          assignments: Type.Array(Type.Object({ staff: Type.String(), shift: Type.String() })),
-        }),
-        run: ({ assignments }) => {
-          const hours: Record<string, number> = {};
-          for (const { staff, shift } of assignments) {
-            hours[staff] = (hours[staff] ?? 0) + (input.shifts.find(({ id }) => id === shift)?.hours ?? 0);
-          }
-          return { text: JSON.stringify(hours) };
-        },
-      }),
-    ],
-  };
-};
-`,
-};
-
-/**
  * What a Builder reads of the harness's files, as `HARNESS.md` in its home.
  *
  * Each part of a harness has one purpose, which the Builder's system prompt states
@@ -229,19 +177,16 @@ export const createDomainHarness: DomainHarnessFactory = (task) => {
  * a table of the purposes, and said again what the prompt and the tools' descriptions say of
  * choosing a route, of the answer and of `check_harness` and `preview_harness`. On 9 October one Builder shipped its checker three
  * times over: a command-line program, a tool that wrapped it, and a guide that described both;
- * another kept its optimiser as a snippet in the guide, which each solver pasted and ran. The
- * account states what each route costs a solve and leaves the choice to the Builder: a rule that a
- * computation is a program was a second limit on the Builder in a prompt (`AGENTS.md`, section 2),
- * and in the ten campaigns run under it no harness declared a tool. The guide stays words, since
+ * another kept its optimiser as a snippet in the guide, which each solver pasted and ran. A
+ * computation is now a program, the one route the host serves, and the guide stays words, since
  * pasted code shows in a trace under no name.
  */
 export const HARNESS_ACCOUNT = `# The Built Harness
 
 A solver is pi's coding agent behind a command wall. A harness is what you add to it. The host
-reads four things under harness/ and nothing else there, and a section below gives the shape of
-each. Code in the guide for the solver to paste is neither a program nor a tool: a trace then
-shows the pasted code and no name. What a program and a tool each cost a solve ends the section
-on agent/tools.ts.
+reads three things under harness/ and nothing else there, and a section below gives the shape of
+each. Code in the guide for the solver to paste is no program: a trace then shows the pasted
+code and no name.
 
 ## What every solver has, whatever the harness
 
@@ -263,7 +208,8 @@ ${capturedJsonStringify(EXAMPLE.spec, null, 2)}
 \`\`\`
 
 - presets selects pi's coding tools: any of ${CODING_TOOLS.join(", ")}. A solver does not have one you leave out.
-- tools lists the tools agent/tools.ts returns, and is empty while that file's list is.
+- tools is an empty list. The host refuses a harness that lists a tool there: what a harness
+  computes is a program.
 
 ## .toolchain/
 
@@ -319,58 +265,16 @@ without that heading goes whole, under a line that says such things do not hold 
 The host tells the solver its limits and appends how much of them is used to results of tools
 that execute; argument refusals and unavailable tools carry no reminder. Solvers told in their
 guide that time was short have submitted answers their own check refused, with most of their time
-left. An example guide, with one entry a program or a tool:
+left. An example guide, with one entry for a program:
 
 \`\`\`markdown
 ${EXAMPLE.guide.trimEnd()}
 \`\`\`
-
-## agent/tools.ts
-
-Tools of the harness's own stand beside pi's tools in the solver's list, each under its own name
-with the description and the parameter schema you declare, and the solver calls one as it calls
-read or bash. A harness may also leave bash out of its presets, and the solver then computes
-through these tools alone. A harness with one tool, shown without the shell; its tools-spec.json
-and tools.ts:
-
-\`\`\`json
-${capturedJsonStringify(WITHOUT_SHELL.spec, null, 2)}
-\`\`\`
-
-\`\`\`ts
-${WITHOUT_SHELL.tools.trimEnd()}
-\`\`\`
-
-- tools-spec.json has one row for each tool tools.ts returns, under the same name; the order may
-  differ. kind is reader or advisor: a reader returns what the task publishes, an advisor computes
-  on what the solver passes it.
-- createDomainHarness receives the task's public part, { taskId, family, publicInput }, and returns
-  { tools }, each built with defineDraftTool.
-- It may import defineDraftTool and the DomainHarnessFactory type from "@ana/agent-bundle", Type
-  from "@earendil-works/pi-ai", files under harness/ and packages installed under harness/. An
-  import of anything else is refused.
-- run(params) returns { text, details? }. text is all the solver reads, at most 64 KB. details
-  reaches the trace only. The solver's arguments are checked against parameters before run is called.
-- Every call runs alone: a fresh process behind the solver's own command wall, held to a command's
-  default time limit, with .toolchain/bin first on PATH. Its working directory is a temporary
-  directory, not the solver's home. Nothing is kept between calls, neither module state nor a file
-  beside the module, and run's second argument is not available. What must last is passed as
-  arguments or kept as files using the absolute path to the solver's home, available as HOME.
-- A name holds at most 128 characters, a label 256 and a description 4,000. No tool takes the name
-  of one of the host's: ${CODING_TOOLS.join(", ")} or submit.
-
-What each route costs a solve, in the tokens the solver reads and writes. A tool's name,
-description and schema are in the solver's context on every turn, and a call to it is the
-arguments the schema names; what comes back is its text. A program is its name in the prompt and
-the guide's line on it, and a call to it is the command the solver types; what comes back is the
-command's output, whole unless the command cuts it. A trace names a tool by its name and a program
-by its command.
 `;
 
 /** Write the Starter Built Harness into `dir`, which is made if it is not there. */
 export function writeStarter(dir: string): void {
   mkdirSync(join(dir, AGENT_DIR), { recursive: true });
   writeFileSync(join(dir, TOOLS_SPEC_FILE), `${capturedJsonStringify(STARTER.spec, null, 2)}\n`);
-  writeFileSync(join(dir, GENERATED_TOOLS_FILE), STARTER.tools);
   writeFileSync(join(dir, AGENT_DIR, GUIDE_FILE), STARTER.guide);
 }

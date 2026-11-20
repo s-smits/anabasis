@@ -1,16 +1,15 @@
-// The Starter Pack: the Starter Built Harness, which has no program or tool of its own and the
-// starter instructions as its guide, and the account of a harness's files a Builder is handed. The
-// account gives each part one purpose, and its two worked harnesses open and run as they are
-// printed: one whose computation is a program the solver runs from its shell, and one without the
-// shell, whose computation is a tool.
+// The Starter Pack: the Starter Built Harness, which has no program of its own and the starter
+// instructions as its guide, and the account of a harness's files a Builder is handed. The account
+// gives each part one purpose, and its worked harness opens and runs as it is printed: its
+// computation is a program the solver runs from its shell.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ToolExecutionApi } from "@earendil-works/pi-durable";
 import type { SeatTool } from "../src/agent/session.ts";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -19,10 +18,10 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../src/tools/coding.ts";
-import { type CommandWall, launchOn, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
+import { type CommandWall, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
 import { walledEnv } from "../src/tools/env.ts";
-import { harnessTools, openHarness } from "../src/harness/open.ts";
-import { EXAMPLE, HARNESS_ACCOUNT, WITHOUT_SHELL, writeStarter } from "../src/harness/starter.ts";
+import { openHarness } from "../src/harness/open.ts";
+import { EXAMPLE, HARNESS_ACCOUNT, writeStarter } from "../src/harness/starter.ts";
 import { solveIsolationPolicy } from "../src/wall/base.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 import { writeHarness } from "./helpers/write-harness.ts";
@@ -51,53 +50,35 @@ const OVER = { assignments: [...WITHIN.assignments, { staff: "ann", shift: "late
 
 const root = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-starter-test-")));
 const dir = join(root, "starter");
-const bare = join(root, "without-shell");
 let starter: Awaited<ReturnType<typeof openHarness>>;
-let shellless: Awaited<ReturnType<typeof openHarness>>;
 beforeAll(async () => {
   writeStarter(dir);
-  writeHarness(bare, WITHOUT_SHELL);
   starter = await openHarness(dir);
-  shellless = await openHarness(bare);
 });
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
-describe("the Starter and its worked harnesses", () => {
-  it("has pi's coding tools selected, the starter instructions as its guide, and no tool or program", async () => {
+describe("the Starter and its worked harness", () => {
+  it("has pi's coding tools selected, the starter instructions as its guide, and no program", async () => {
     expect(starter.presets).toEqual([...CODING_TOOLS]);
     expect(selectedCodingTools(starter.presets)).toEqual(["read", "bash", "edit", "write"]);
-    expect(starter.kinds.size).toBe(0);
     expect(starter.toolTree).toBeNull();
     // Its guide keeps the outline the account asks of every guide, and the account prints it whole
     // as the starter instructions, so a Builder reads what it starts from.
     const headings = (guide: string | null) => guide?.split("\n").filter((line) => line.startsWith("#"));
     expect(headings(starter.guide)).toEqual(headings(EXAMPLE.guide));
     expect(HARNESS_ACCOUNT).toContain(`\`\`\`markdown\n${starter.guide?.trimEnd()}\n\`\`\``);
-    // Its three files are the whole of it, so it is one harness wherever it is written.
+    // Its two files are the whole of it, so it is one harness wherever it is written.
     const again = join(dir, "again");
     writeStarter(again);
     expect((await openHarness(again)).digest).toBe(starter.digest);
-    // Its tools file is a comment: the Starter is the harness it was without it.
-    const file = readFileSync(join(dir, "agent", "tools.ts"), "utf8");
-    const uncommented = join(root, "uncommented");
-    writeHarness(uncommented, {
-      spec: { presets: [...CODING_TOOLS], tools: [] },
-      tools: file.replaceAll(/^\/\/.*\n/gm, ""),
-      guide: readFileSync(join(dir, "agent", "BUILT_AGENTS.md"), "utf8"),
-    });
-    expect((await openHarness(uncommented)).digest).toBe(starter.digest);
-  });
-
-  it("prints a harness without the shell, whose computation is a tool, and it opens as printed", async () => {
-    expect(selectedCodingTools(shellless.presets)).toEqual(["read", "edit", "write"]);
-    expect([...shellless.kinds]).toEqual([["count_hours", "advisor"]]);
-    for (const file of ["agent/tools-spec.json", "agent/tools.ts"]) {
-      expect(HARNESS_ACCOUNT).toContain(readFileSync(join(bare, file), "utf8").trimEnd());
-    }
+    // It is the harness it was while a harness held a tool module, which the Starter's only
+    // commented on: the baseline of every campaign on record keeps its name.
+    expect(starter.digest).toBe("26cefa2d376237cb521a8a312989495ed972ebc1fba098bc906a8a13ff14fc7f");
+    expect(existsSync(join(dir, "agent", "tools.ts"))).toBe(false);
   });
 
   it.skipIf(!osIsolationSupport().ok)(
-    "prints a program the solver's shell runs by name, and a tool that runs, under the command wall",
+    "prints a program the solver's shell runs by name, under the command wall",
     async () => {
       const example = join(root, "example");
       const dirs = solveDirs(`starter-${String(runtimeProcess.pid)}-${String(Date.now())}`);
@@ -160,12 +141,6 @@ describe("the Starter and its worked harnesses", () => {
         expect(over.isError).toBe(true);
         expect(said(over)).toEndWith("Command exited with code 1");
         expect(said(await run("check-rota absent.json limits.json"))).toEndWith("Command exited with code 2");
-        // The harness without the shell: its tool lists and computes behind the same wall.
-        const tools = await harnessTools(shellless, TASK, launchOn({ ...wall, toolTree: null }));
-        expect(tools.map(({ name }) => name)).toEqual(["count_hours"]);
-        // SAFETY: a harness tool uses no durable API methods, only the context's abort signal.
-        const counted = await tools[0]?.execute(OVER, undefined as never, BACKGROUND_CONTEXT);
-        expect(counted === undefined ? "" : said(counted)).toBe('{"ann":14,"bo":6}');
       } finally {
         rmSync(dirs.root, { recursive: true, force: true });
         rmSync(dirs.host, { recursive: true, force: true });

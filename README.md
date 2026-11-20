@@ -14,7 +14,7 @@ The solver model stays the same throughout, so a difference between two harnesse
 
 | Component | What does it contain? |
 | --- | --- |
-| **Built Harness** | A directory on pi's coding agent, named by its digest: an operating guide, tools of its own and installed programs, which a separate solver uses to solve and submit tasks in the domain |
+| **Built Harness** | A directory on pi's coding agent, named by its digest: an operating guide and installed programs, which a separate solver uses to solve and submit tasks in the domain |
 | **Exam** | A public contract (rules with their sources, the answer format and, where the field has one, an objective), a hidden check for each rule and tasks with hidden values, all written by a separate Examiner |
 | **Run evidence** | One append-only log: every solve with its trace, verdicts, Referee rulings, each comparison's terms and reading, promotions and the bill |
 | **Handover** | The reference Harness as a directory that stands by itself, with the public rules and a closing report |

@@ -374,7 +374,6 @@ describe("a campaign", () => {
     expect(least).toEqual({ dir: join(campaign.states, opened.digest), digest: opened.digest });
     expect(opened.guide).toContain("# Operating Guide");
     expect(opened.presets).toEqual(["read", "bash", "edit", "write"]);
-    expect(opened.kinds.size).toBe(0);
     expect(opened.toolTree).toBeNull();
     expect(await starter(campaign)).toEqual(least);
     expect(readdirSync(campaign.states)).toEqual([least.digest]);

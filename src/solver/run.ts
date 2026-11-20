@@ -1,6 +1,6 @@
 /**
  * One solve, start to ending: a home seeded with the public task, pi's coding tools on the
- * command wall with the harness's tools and `submit` beside them, pi-durable under the host's
+ * command wall and `submit` beside them, pi-durable under the host's
  * deadline and prompt limit, then the ending typed and logged with the trace and the meter. A non-result from the solve's side is run
  * again, up to three times with backoff; named provider resets are waited out here without using a
  * rerun. On 21 October, 128 room solves refused 43 of 1,396 drafts in 30 campaigns at such resets.
@@ -12,8 +12,8 @@
  *
  * The loop runs in this process and so does the model's own process: under the Claude backend,
  * Claude Code runs on the host with a home of its own outside the command wall. v1 confined the
- * model process too; here only the commands are walled: the solver's bash, its file tools and every
- * harness tool call alike (`command.ts`).
+ * model process too; here only the commands are walled: the solver's bash and its file tools alike
+ * (`command.ts`).
  *
  * The loop is v1's: tools run one at a time, a
  * model that stops without submitting is nudged, and the prompt limit counts the opening prompt
@@ -46,16 +46,15 @@ import { codingTools, selectedCodingTools, wallExec } from "../tools/coding.ts";
 import { walledEnv } from "../tools/env.ts";
 import {
   type CommandWall,
-  launchOn,
   networkReach,
   type SolveClock,
   solveDirs,
   usedSeconds,
   walledBase,
 } from "../tools/command.ts";
-import { type Harness, harnessTools, openHarness, pathsUnder, treeStamp } from "../harness/open.ts";
+import { type Harness, openHarness, pathsUnder, treeStamp } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
-import { firstTurn, NUDGE, type PublicTask, seedHome, systemPrompt } from "./prompt.ts";
+import { firstTurn, NUDGE, seedHome, systemPrompt } from "./prompt.ts";
 
 export interface SolveRequest {
   /** Names the solve in the log; each attempt is `<id>-<attempt>`. */
@@ -122,7 +121,7 @@ export interface Used {
 /** What one attempt left behind for its ending to be read from. */
 export interface Played {
   readonly crash: string | null;
-  /** Why the harness's tools could not be bundled or listed; null when they were. */
+  /** Why the harness did not open or selects a tool no solve serves; null when it did. */
   readonly broken: string | null;
   /** The harness's digest, null when it did not open. */
   readonly harness: string | null;
@@ -246,14 +245,14 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
   return ending;
 }
 
-/** A harness whose tools could not be bundled or listed. */
+/** A harness that does not open, or selects a coding tool no solve serves. */
 class BrokenHarness extends Error {}
 const brokenHarness = (error: unknown): never => {
   throw new BrokenHarness(errorMessage(error));
 };
 
 /** Mount, seed, run the loop, tear down. Anything that throws on the way is the sandbox's crash,
- *  except the harness's opening and listing, which are its own. */
+ *  except the harness's opening and its selection of tools, which are its own. */
 async function play(
   request: SolveRequest,
   id: string,
@@ -284,7 +283,9 @@ async function play(
     digest = harness.digest;
     const clock: SolveClock = { started: null, seconds: limits.wallSeconds };
     const commandWall: CommandWall = { base, dirs, toolTree: harness.toolTree, limits, clock };
-    const defined = await solverTools(request, harness, commandWall, desk).catch(brokenHarness);
+    const defined = await Promise.resolve()
+      .then(() => solverTools(request, harness, commandWall, desk))
+      .catch(brokenHarness);
     const prompt = systemPrompt({
       tools: defined,
       home: dirs.home,
@@ -446,21 +447,18 @@ export function timed(tool: SeatTool, { clock, turns, modelTurns }: Used): SeatT
   };
 }
 
-/**
- * What a solver is given, in the order pi gives a coding agent its tools: pi's own coding tools, as
- * many as the harness's presets select; then the harness's domain tools, which are to pi what an
- * extension's custom tools are; then `submit`. Every description is the tool's own, and none is led
- * by the tool's kind, as v1's prompt led it: a solver is told what a tool does and by which name.
- */
-export async function solverTools(
-  request: { readonly task: PublicTask; readonly contract: Contract },
+/** What a solver is given: pi's own coding tools, as many as the harness's presets select, then
+ *  `submit`. What a harness adds is its programs, which run by name in the solver's shell. */
+export function solverTools(
+  request: { readonly contract: Contract },
   harness: Harness,
   wall: CommandWall,
   desk: Desk,
-): Promise<SeatTool[]> {
-  const coding = codingTools(wall, selectedCodingTools(harness.presets));
-  const domain = await harnessTools(harness, request.task, launchOn(wall));
-  return [...coding, ...domain, submitTool(desk, request.contract, wall.dirs.home, wallExec(wall))];
+): SeatTool[] {
+  return [
+    ...codingTools(wall, selectedCodingTools(harness.presets)),
+    submitTool(desk, request.contract, wall.dirs.home, wallExec(wall)),
+  ];
 }
 
 /** The ending of what was played. A kill or a harness that moved voids it; otherwise an answer the

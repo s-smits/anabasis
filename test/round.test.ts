@@ -1959,6 +1959,36 @@ describe("the scored set", () => {
     );
   });
 
+  it("takes the families in turn, one at most two in five of the set where three or more are held, unless the others cannot fill it", () => {
+    const family = (name: string, count: number) =>
+      heldOut(
+        Array.from({ length: count }, (_, n) => `${name}${String(n)}`),
+        name,
+      );
+    const familyOf = (version: string) => version.replace(/\d+$/u, "");
+    const share = (events: readonly LogEvent[], target: number) =>
+      Map.groupBy(drawn(events, target), familyOf);
+    // Six of one family and two each of two others: at a target of five, two of the large one.
+    const many = [...family("a", 6), ...family("b", 2), ...family("c", 2)];
+    const five = share(many, 5);
+    expect(five.get("a")).toHaveLength(2);
+    expect([...five.values()].flat()).toHaveLength(5);
+    // Where the large family alone was held out since the last comparison began, it comes first and
+    // would take the whole set: the cap leaves it two.
+    const began = { at, kind: "comparison.started", data: { session: "g-1" } } as const;
+    const newest = share([...family("b", 2), ...family("c", 2), began, ...family("a", 6)], 5);
+    expect(newest.get("a")).toHaveLength(2);
+    expect([...newest.values()].flat()).toHaveLength(5);
+    // The others hold four, so a set of eight takes the rest of the large family to fill it.
+    expect(share(many, 8).get("a")).toHaveLength(4);
+    // With two families the cap does not hold, and the turns alone share the set.
+    expect(share([...family("a", 6), ...family("b", 2)], 5).get("a")).toHaveLength(3);
+    // The draw stays fixed by the contract: written in another order, the same set.
+    expect(drawn([...family("c", 2), ...family("b", 2), ...family("a", 6)], 5).toSorted()).toEqual(
+      drawn(many, 5).toSorted(),
+    );
+  });
+
   it("draws the tasks held out since first and fills the rest from older epochs, whichever sides it compares", () => {
     // From 30 October to 2 November a starter comparison scored the tasks held out since alone.
     // Those were written above the new reference's grade, and in the six starter comparisons on

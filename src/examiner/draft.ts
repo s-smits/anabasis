@@ -496,38 +496,39 @@ export function drafting(
   const kind = "draft";
   const desk = { tries: 0, stands: false };
   const none = `This session can put no further ${kind}. Call finish.`;
-  const put = tool({
-    name: "draft_exam",
-    description: `Put a whole draft of the exam to the host's reading, as the system prompt says.${home === undefined ? "" : ` ${FROM_FILE}`}`,
-    parameters: DRAFT_PARAMETERS,
-    execute: async (spelled) => {
-      if (desk.tries >= limits.puts) throw new Error(none);
-      // A file that cannot be read refuses the call before it counts as a put.
-      const draft = draftedFrom(fromHome(home, spelled));
-      desk.tries += 1;
-      const seen = capturedJsonStringify(draft);
-      const unformed = draftFaults(draft);
-      const faults = unformed.length > 0 ? unformed : await within(async () => await terms.reading(draft));
-      if (faults.length === 0) {
-        append(terms.log, "exam.drafted", {
-          session: terms.id,
-          draft: parseJsonAs<JsonObject>(seen),
-        });
-        desk.stands = true;
-        return ending(text("The draft stands: it is the campaign's exam. The session ends here."));
-      }
-      const left = limits.puts - desk.tries;
-      return text(
-        [
-          `The ${kind} does not stand. ${plural(faults.length, "fault")}:`,
-          ...faults.map((fault) => `- ${fault}`),
-          left > 0
-            ? `Mend them and put the whole ${kind} again. This session can put ${plural(left, `more ${kind}`)}.`
-            : none,
-        ].join("\n"),
-      );
-    },
-  });
+  const put = tool(
+    fromHome(home, {
+      name: "draft_exam",
+      description: `Put a whole draft of the exam to the host's reading, as the system prompt says.${home === undefined ? "" : ` ${FROM_FILE}`}`,
+      parameters: DRAFT_PARAMETERS,
+      execute: async (args) => {
+        if (desk.tries >= limits.puts) throw new Error(none);
+        const draft = draftedFrom(args);
+        desk.tries += 1;
+        const seen = capturedJsonStringify(draft);
+        const unformed = draftFaults(draft);
+        const faults = unformed.length > 0 ? unformed : await within(async () => await terms.reading(draft));
+        if (faults.length === 0) {
+          append(terms.log, "exam.drafted", {
+            session: terms.id,
+            draft: parseJsonAs<JsonObject>(seen),
+          });
+          desk.stands = true;
+          return ending(text("The draft stands: it is the campaign's exam. The session ends here."));
+        }
+        const left = limits.puts - desk.tries;
+        return text(
+          [
+            `The ${kind} does not stand. ${plural(faults.length, "fault")}:`,
+            ...faults.map((fault) => `- ${fault}`),
+            left > 0
+              ? `Mend them and put the whole ${kind} again. This session can put ${plural(left, `more ${kind}`)}.`
+              : none,
+          ].join("\n"),
+        );
+      },
+    }),
+  );
   return {
     kind,
     system: SYSTEM,

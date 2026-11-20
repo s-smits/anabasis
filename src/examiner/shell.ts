@@ -29,6 +29,9 @@
  * the path and not out of reach. Its tasks still enter through the gate alone (`propose_tasks`),
  * and its answers are ruled on by `try_answer` alone.
  */
+import { validateToolArguments } from "@earendil-works/pi-ai/utils/validation";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
+import type { TSchema } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
 import { type Engine, pinnedEngines, type VerifierTree } from "../kernel/verify.ts";
 import { read } from "../kernel/log.ts";
@@ -42,7 +45,7 @@ import {
   statSync,
 } from "../meta/filesystem.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
-import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
+import { isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -177,12 +180,20 @@ export async function inExaminerWall<T>(
 }
 
 /**
- * A tool's arguments with every `{ from_file: <path> }` replaced by the JSON the file holds, read
- * from the session's home and nowhere else, so a large value need not be printed into context and
- * pasted back, where a printout cut short or a slip in the copy changes it; the gate and the log see
- * the same bytes as for the value written inline. A file's own content is not expanded for `from_file` again.
+ * `definition` with every `{ from_file: <path> }` in a call's arguments replaced by the JSON the
+ * file holds, read from the session's home and nowhere else, so a large value need not be printed
+ * into context and pasted back, where a printout cut short or a slip in the copy changes it; the gate
+ * sees the same bytes as for the value written inline, and the log the call as written. A file's own
+ * content is not expanded for `from_file` again. The files are read before pi checks the arguments
+ * against the tool's schema (`prepareArguments`), so a file may stand for any value, a whole list or
+ * object included: until 20 November the check came first and refused a file in place of one (6 of
+ * the 33 calls that gave a file in a pair of runs that day). A refusal names its faults and not the
+ * arguments the files filled.
  */
-export function fromHome<T>(home: string | undefined, args: T): T {
+export function fromHome<Parameters extends TSchema>(
+  home: string | undefined,
+  definition: ToolRegistration<Parameters>,
+): ToolRegistration<Parameters> {
   const expand = (value: JsonValue): JsonValue => {
     if (Array.isArray(value)) return value.map(expand);
     if (!isRecord(value)) return value;
@@ -192,9 +203,26 @@ export function fromHome<T>(home: string | undefined, args: T): T {
     }
     return Object.fromEntries(entries.map(([key, inner]) => [key, expand(inner)]));
   };
-  // SAFETY: a tool's arguments are JSON the provider parsed; only a value the tool's schema leaves
-  // open is spelled `{ from_file }`, and a file holds JSON, which such a value is.
-  return expand(args as JsonValue) as T;
+  return {
+    ...definition,
+    prepareArguments: (spelled) => {
+      // SAFETY: a call's arguments are the JSON object the provider parsed, and a file holds JSON.
+      const args = expand(spelled as JsonValue) as JsonObject;
+      try {
+        validateToolArguments(definition, {
+          type: "toolCall",
+          id: "",
+          name: definition.name,
+          arguments: args,
+        });
+      } catch (error) {
+        const [faults = ""] = errorMessage(error).split("\n\nReceived arguments:");
+        throw new Error(faults, { cause: error });
+      }
+      // SAFETY: just checked against the tool's schema, which pi checks and coerces it by again.
+      return args as ReturnType<NonNullable<ToolRegistration<Parameters>["prepareArguments"]>>;
+    },
+  };
 }
 
 /** The JSON a file in `home` holds, by its path under it, or a refusal. */

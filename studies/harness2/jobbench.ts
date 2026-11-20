@@ -269,10 +269,10 @@ export function jobBench(
       rmSync(traj, { recursive: true, force: true });
       cache.delete(resolve(out));
       seed(task);
+      // `jb_claude_runner.py`'s settings but its task, label and store, which it read for itself and
+      // which reached the solver's commands through its environment: the arm's name and the folder
+      // holding every arm's deliverables.
       const runner = {
-        TASK_IDS: task,
-        LABEL: label,
-        TASKS_BASE_DIR: store,
         MODEL_ID: claude.model,
         EFFORT: claude.effort,
         MAX_BUDGET_USD: claude.budgetUsd,

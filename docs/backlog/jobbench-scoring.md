@@ -69,10 +69,28 @@ already answers the question; level with it is a strong reading and above it the
    budget stays the arm's fail.
 9. **Name each arm's tree in its record.** A held-out record stores `heldout` rather than the
    harness of the task before, so the record alone does not say which tree solved it.
-10. **Close the store to the solver, or widen the check.** The workspace has no wall, the store
-    holds other arms' deliverables for the same task, and the trajectory check looks only for
-    `RUBRICS.json`, `eval_result` and `judged`. Add the store root, `model_output` and the JobBench
-    checkout to it, and give the workspace a neutral label rather than the arm's name.
+10. **Close the store to the solver, and widen the check.** Partly present. Since 17 November the
+    Linux runner's sitting runs each rollout's `claude` in namespaces that show it the store, the
+    checkouts (the JobBench checkout's rubrics among them, its interpreter excepted), the logins
+    and keys and the Docker socket empty; `score.ts` itself walls nothing, so a rollout elsewhere
+    sees them all. Present in source from this change: the trajectory check also flags the store,
+    `model_output`, `model_traj`, the checkout's `dataset` and `eval`, `huggingface.co`, `hf.co/`,
+    `google-research/harness2` and `workbuddy`, read without case; the workspace names the task alone; and the
+    sweep's runner no longer passes `LABEL`, `TASK_IDS` and `TASKS_BASE_DIR` into the solver's
+    environment, which named the arm and the store to every command. A search of the 101
+    trajectories on record on 20 November found none of these names but the interpreter's path in
+    tracebacks, and every fetch went to a public data source; 25 of them, of 13 and 16 November,
+    ran before the mask. Still open: the network reaches `hf.co` (the resolver block in
+    `studies/harness2/README.md` is applied nowhere), and `claude`'s login token is readable to its
+    commands, through the environment they inherit and through `/proc/<pid>/environ` of `claude`
+    inside the namespaces, shown on 20 November with a stand-in token; keeping it out takes a proxy
+    that holds the token outside the namespaces, as `pi-solve.ts` keeps a provider's key on the host.
+    A `pi:` arm is open too: `pi-solve.ts` runs its shell and file tools on durable's own host
+    environment, written for a benchmark's container, and the sitting masks `claude` alone, so a
+    `pi:` arm on a bare host sees the store; none has been rolled there (0 `pi-durable` records on
+    20 November). Walling it takes the campaign's seat folders and command wall (`runWalled`,
+    `src/tools/command.ts`) behind both kinds of tool, not a switch, so it waits for the first such
+    arm.
 11. **Price every build on one meter.** Harness²'s build is read from Claude Code's
     `total_cost_usd` and a campaign's from `billedAll` at list price.
 12. **Say which programs cannot run on JobBench.** Present in source from this change, as a class:

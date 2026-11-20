@@ -2,6 +2,7 @@
  * Where a run stands, one fold that pulse, alerts, the keeper and view share: a process writing its
  * log outranks the log, and with none a keeper outranks the environment's ending and no other.
  */
+import { pauseSince } from "#src/campaign/word.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { endingOf } from "#src/kernel/reports.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
@@ -22,8 +23,11 @@ interface Wait {
  * the run again, and an ending of the campaign's own outranks a keeper, which leaves it. Until 10
  * November a keeper outranked every ending, so two keepers of one run each read the other's and
  * went on past `budget` or `stop`.
- * A run written on is waiting, quiet or live; one nothing writes is kept, ended or stopped (paused,
- * killed or dead, which the log does not tell apart). A kept run names the environment's ending where
+ * A run written on is waiting, quiet or live; one nothing writes is kept, ended or stopped: by a
+ * pause where this launch was left one (`pauseSince`), which every reader then says instead of a lost
+ * process, and otherwise killed or dead, which the log does not tell apart. Until 20 November only
+ * `alerts` read the pause, so pulse warned that a run another session paused on purpose had lost its
+ * process before its comparison reported. A kept run names the environment's ending where
  * its log ends on one, so that `alerts` says it once.
  */
 export type RunState =
@@ -32,7 +36,7 @@ export type RunState =
   | { readonly kind: "quiet"; readonly kept: boolean; readonly since: number }
   | { readonly kind: "kept"; readonly ending?: typeof GOES_ON }
   | { readonly kind: "ended"; readonly ending: string }
-  | { readonly kind: "stopped" };
+  | { readonly kind: "stopped"; readonly pause?: { readonly at: string; readonly why: string } };
 
 /** The one ending a keeper goes on past: the environment's, which a provider's failure or a cut
  *  conversation writes (rule 15). Every other ending is the campaign's own. */
@@ -68,7 +72,14 @@ export function stateOf(events: readonly LogEvent[], life: Life, now: number, la
     const ending = endingOf(events);
     if (life.kept && ending === GOES_ON) return { kind: "kept", ending };
     if (life.kept && ending === null) return { kind: "kept" };
-    return ending === null ? { kind: "stopped" } : { kind: "ended", ending };
+    if (ending !== null) return { kind: "ended", ending };
+    const pause = pauseSince(events, launched);
+    return pause === undefined
+      ? { kind: "stopped" }
+      : {
+          kind: "stopped",
+          pause: { at: pause.at, why: isString(pause.data.why) ? pause.data.why : "a pause" },
+        };
   }
   const ends = events.slice(launched).flatMap((event) => waitOf(event)?.until ?? []);
   const at = events.findLastIndex(
@@ -106,6 +117,9 @@ export async function runReason(run: Run, state: RunState): Promise<string[]> {
     return [`waiting for ${state.wait.for} until ${new Date(state.wait.until).toISOString()}`];
   }
   if (state.kind === "live" || state.kind === "ended") return [];
+  if (state.kind === "stopped" && state.pause !== undefined) {
+    return [`stopped by a pause left at ${state.pause.at} (${state.pause.why})`];
+  }
   const said =
     state.kind === "quiet"
       ? `quiet since ${new Date(state.since).toISOString()}`

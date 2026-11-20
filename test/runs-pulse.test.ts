@@ -112,6 +112,14 @@ describe("the runs pulse", () => {
     const seen = lookedAt(examined.length);
     const gone = pulse(round, examined, "closed", seen, START + 3 * MINUTE).said;
     expect(gone).toEqual(["⚠ the process is gone before campaign.ended"]);
+    // A pause left in this launch stopped it on purpose, which the look says without a warning.
+    const paused = [
+      ...examined,
+      event(3, "campaign.word", { word: "pause", why: "runs pause --after next" }),
+    ];
+    expect(pulse(round, paused, "closed", seen, START + 4 * MINUTE).said).toEqual([
+      `· stopped by a pause left at ${paused[3]?.at ?? ""} (runs pause --after next) before campaign.ended`,
+    ]);
     const ended = [...examined, event(3, "campaign.ended", { ending: "budget", why: "spent" })];
     expect(pulse(round, ended, "closed", seen, START + 4 * MINUTE).said).toEqual([
       "◆ the campaign ended budget: spent",

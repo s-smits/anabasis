@@ -419,7 +419,7 @@ function folded(events: ReturnType<typeof eventsSaid>, lines: readonly string[])
 }
 
 /** What changed of where the run stands since the last look: a quiet that began or ended, and a
- *  process gone before the work it started ended. */
+ *  process gone before the work it started ended, said as the pause it was where a pause stopped it. */
 function standsSaid(
   before: Seen | undefined,
   state: RunState,
@@ -433,7 +433,11 @@ function standsSaid(
   }
   if (state.kind !== "quiet" && before?.quiet === true) lines.push("· not quiet any more");
   if (before?.open === true && !open && !stand.ended) {
-    lines.push(`⚠ the process is gone before ${stand.end}`);
+    lines.push(
+      state.kind === "stopped" && state.pause !== undefined
+        ? `· stopped by a pause left at ${state.pause.at} (${state.pause.why}) before ${stand.end}`
+        : `⚠ the process is gone before ${stand.end}`,
+    );
   }
   return lines;
 }

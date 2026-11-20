@@ -2,7 +2,7 @@
  * Lands a pull request, with every open one beneath it, on main, after proving each commit the
  * landing would publish where it sits.
  *
- *   bun run land -- [<pull request> | latest] [--auto] [--once] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]
+ *   bun run land -- [<pull request> | latest] [--auto] [--watch] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]
  *
  * `--auto` follows the top: it lands the top of the longest chain above the pull request named, and
  * after the proof, and again after `ci.yml` before a merge, it reads the chain again and lands its
@@ -90,8 +90,8 @@
  *
  * What moves behind a landing's back is followed: a moved parent is replayed first (`restack`), a
  * move under a commit being proved stops the proofs (`watching`), and a newer landing ends a covered
- * one (`claimOf`). Once it ends, it lands again each time the stack moves (`follow`), unless
- * `--once` is named or it merges.
+ * one (`claimOf`). It lands once and ends, and with `--watch` lands again each time the stack moves
+ * (`follow`) until the pull request closes; a merge lands once.
  *
  * `ci.yml` is waited for in the open: the top's head carries a status of that name, pending while
  * the run goes and linked to it, since a dispatched run shows on no pull request, and on 28 October
@@ -209,7 +209,7 @@ export const CATEGORIES = new Set([
   "docs",
 ]);
 const USAGE =
-  "usage: bun run land -- [<pull request> | latest] [--auto] [--once] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]";
+  "usage: bun run land -- [<pull request> | latest] [--auto] [--watch] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]";
 const TAG = /^v\d+\.\d+\.\d+$/u;
 
 class Refusal extends Error {}
@@ -741,7 +741,7 @@ async function main(argv: readonly string[]): Promise<number> {
     merge: { type: "boolean", default: false },
     sanitize: { type: "boolean", default: false },
     auto: { type: "boolean", default: false },
-    once: { type: "boolean", default: false },
+    watch: { type: "boolean", default: false },
     alone: { type: "boolean", default: false },
     jobs: { type: "string" },
     tag: { type: "string" },
@@ -777,7 +777,7 @@ async function main(argv: readonly string[]): Promise<number> {
     return 1;
   }
   const round = (): Promise<number> => landOnce(root, () => top ?? oldestStack(root), mode);
-  return values.once || mode.kind === "merging" ? round() : follow(root, top, say, round);
+  return values.watch && mode.kind !== "merging" ? follow(root, top, say, round) : round();
 }
 
 /** One landing of the pull request `first` names, or of a new top above it, to its end; its exit status. */

@@ -196,6 +196,11 @@ export function fromHome<Parameters extends TSchema>(
 ): ToolRegistration<Parameters> {
   const expand = (value: JsonValue): JsonValue => {
     if (Array.isArray(value)) return value.map(expand);
+    // A text field given a file as the text of `{ "from_file": ... }`, as the first draft of each of 4
+    // runs on 20 November gave the check program, which the gate then loaded as the program.
+    if (isString(value) && /^\s*\{\s*"from_file"\s*:\s*"[^"\\]+"\s*\}\s*$/u.test(value)) {
+      return expand(parseJsonAs<JsonValue>(value));
+    }
     if (!isRecord(value)) return value;
     const entries = Object.entries(value);
     if (entries.length === 1 && entries[0]?.[0] === "from_file" && isString(entries[0][1])) {

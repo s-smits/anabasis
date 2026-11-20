@@ -362,6 +362,14 @@ describe("a draft put to the host", () => {
       };
       await invoke(toolOf(mode), "put", args);
       expect(draftOf(read(s.log))).toEqual(SOUND);
+      // The check program is a text field, which each draft of 20 November first gave as the text
+      // of a `from_file` object: the gate then loaded that text as the program and refused it.
+      const spelt = drafting({ ...s.request, reading: async () => [] }, async (act) => await act(), home);
+      const filled = toolOf(spelt).prepareArguments?.({
+        ...args,
+        evaluator: JSON.stringify({ from_file: "evaluator.json" }),
+      });
+      expect(filled).toMatchObject({ evaluator: SOUND.evaluator });
       const homeless = drafting(s.request, async (act) => await act());
       expect(toolOf(homeless).description).not.toContain("from_file");
     } finally {

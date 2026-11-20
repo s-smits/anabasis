@@ -431,7 +431,7 @@ describe("runner", () => {
     expect(quiet.run(["--check"], { host: { checks: 2 } }).code).toBe(0);
   });
 
-  test("a commit whose runner source is the same reads as the same runner, and any other as lagging", () => {
+  test("a commit whose runner source is the same reads as the same runner, a newer one as no lag, and any other as lagging", () => {
     const repo = realpathSync(mkdtempSync(join(tmpdir(), "ana-sync-runner-")));
     fixtures.push({ root: repo });
     const commit = (path: string, text: string) => {
@@ -450,8 +450,11 @@ describe("runner", () => {
     expect(runnerLags(repo, `${moved}, dirty`)).toBe(true);
     expect(runnerLags(repo, "an unknown commit")).toBe(true);
     // `run.js` bundles the `src/meta` modules it imports, so a change there is the runner's too.
-    commit("src/meta/subprocess.ts", "bundled\n");
+    const bundled = commit("src/meta/subprocess.ts", "bundled\n");
     expect(runnerLags(repo, moved)).toBe(true);
+    // A checkout behind the install keeps it: its older runner is never put back over a newer one.
+    gitText(repo, "checkout", "-q", "--detach", first);
+    expect(runnerLags(repo, bundled)).toBe(false);
   });
 });
 

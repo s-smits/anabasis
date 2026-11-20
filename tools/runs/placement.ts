@@ -14,6 +14,13 @@
  * because only a session's memory held the rule. A machine that lists packs takes no other pack, and
  * a pack some machine lists goes to no machine that does not, whether chosen here or named by `--host`.
  *
+ * Among those, the least busy machine comes next (20 November 2026; operator: "smart mix between
+ * load and how many active runs, no run discounts load with 50%"): its one-minute load a core, read
+ * by the sampler `runs loadwatch` and the check runner use (`minuteLoads`), halved where it carries
+ * no live run. Until then the count of live runs alone decided, so a machine busy with its own work
+ * could take a run beside an idle one. Where a machine with room gives no load in time, load decides
+ * nothing for that placement.
+ *
  * A GPT run is paid by the Codex CLI's login of its machine (`CODEX`, `live.ts`), at most one a
  * machine unless `ANA_LOGIN_RUNS` names `codex:N` (29 October 2026). A machine that carries as many
  * takes no other GPT run, chosen here or named by `--host` (`fullOn`): until then the operator's
@@ -34,6 +41,7 @@ import {
   readNotClosed,
   room,
 } from "./logins.ts";
+import { minuteLoads } from "./load.ts";
 import { localCatalogue, remoteRuns } from "./snapshots.ts";
 
 interface Occupancy {
@@ -43,13 +51,24 @@ interface Occupancy {
   readonly familiar?: boolean;
   /** Live runs on this host that the new run's login pays for. */
   readonly sameLogin?: number;
+  /** Its one-minute load a core when placement read it (`minuteLoads`); undefined where it did not
+   *  answer in time. */
+  readonly load?: number | undefined;
 }
 
 interface FreshHost {
   readonly host: Host | undefined;
   readonly capacity: number;
   readonly projects: readonly (string | null)[];
+  readonly load?: number | undefined;
 }
+
+/** How long placement waits for each machine's load, in milliseconds. */
+const LOAD_WAIT_MS = 5000;
+
+/** A host's load for placement: its one-minute load a core, halved where it carries no live run,
+ *  since a run already there will take more of it than its load shows yet (operator, 20 November). */
+const busyness = ({ load = 0, live }: Occupancy): number => (live === 0 ? load / 2 : load);
 
 /** A batch may narrow the configured pool, but cannot silently add another payer. */
 export function loginPool(wanted: string | undefined): string[] {
@@ -71,17 +90,19 @@ const capacityOf = (value: string | undefined): number => {
   return capacity;
 };
 
-/** A host with capacity where the login runs least, then a familiar one, then the least occupied;
- *  configured order breaks a tie. */
+/** A host with capacity where the login runs least, then the least busy (`busyness`) where every
+ *  such host gave its load, then a familiar one, then the least occupied; configured order breaks a
+ *  tie. A load that did not come is never read as idle, so then load decides nothing. */
 export function leastOccupied(rows: readonly Occupancy[]): Host | undefined {
-  const chosen = rows
-    .filter((row) => row.live < row.capacity)
-    .toSorted(
-      (a, b) =>
-        (a.sameLogin ?? 0) - (b.sameLogin ?? 0) ||
-        Number(b.familiar ?? false) - Number(a.familiar ?? false) ||
-        a.live - b.live,
-    )[0];
+  const open = rows.filter((row) => row.live < row.capacity);
+  const loaded = open.every((row) => row.load !== undefined);
+  const chosen = open.toSorted(
+    (a, b) =>
+      (a.sameLogin ?? 0) - (b.sameLogin ?? 0) ||
+      (loaded ? busyness(a) - busyness(b) : 0) ||
+      Number(b.familiar ?? false) - Number(a.familiar ?? false) ||
+      a.live - b.live,
+  )[0];
   if (chosen === undefined) throw new Error("no host has room for a fresh campaign");
   return chosen.host;
 }
@@ -94,18 +115,24 @@ export function takes(host: Host | undefined, pack: string, known = hostsOf()): 
 /** Read every machine before making an automatic choice; silence is never spare capacity. */
 export async function freshHosts(): Promise<FreshHost[]> {
   const known = hostsOf();
-  const answers = await asked(["catalogue"]);
+  const [answers, { order }] = await Promise.all([
+    asked(["catalogue"]),
+    minuteLoads([undefined, ...known], LOAD_WAIT_MS),
+  ]);
   if (answers.length !== known.length) throw new Error("the host list changed during placement");
+  const loadOf = (host: Host | undefined) => order.find((each) => each.host === host)?.share;
   return [
     {
       host: undefined,
       capacity: capacityOf(runtimeProcess.env.ANA_RUN_CAP),
       projects: localCatalogue().map((run) => run.project),
+      load: loadOf(undefined),
     },
     ...answers.map(({ host, lines }) => ({
       host,
       capacity: host.capacity ?? RUN_CAP,
       projects: remoteRuns(lines, host).map((run) => run.project),
+      load: loadOf(known.find((each) => each.name === host.name)),
     })),
   ];
 }
@@ -130,6 +157,7 @@ export async function placeFresh(
         live: there.length,
         familiar: choice.projects.includes(`${pack}-fresh`),
         sameLogin: login === undefined ? 0 : there.filter((run) => run.login === login).length,
+        load: choice.load,
       };
     }),
   );

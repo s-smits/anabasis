@@ -155,3 +155,21 @@ export function byLoad(
   );
   return read.toSorted((a, b) => a.load / a.cores - b.load / b.cores);
 }
+
+/** One reading of each machine's one-minute load a core, at most `waitMs` long: those that answered,
+ *  least loaded first, and the labels of those that did not, which are never read as idle. The
+ *  check runner's `auto` and a fresh campaign's placement both choose by it. */
+export async function minuteLoads(
+  hosts: readonly (Host | undefined)[],
+  waitMs: number,
+): Promise<{ order: { label: string; host: Host | undefined; share: number }[]; silent: string[] }> {
+  const watched = watchedOf(hosts, 1);
+  await firstSamples(watched, 1000, waitMs);
+  const order = byLoad(watched, WINDOWS["1m"]).map(({ label, host, load, cores }) => ({
+    label,
+    host,
+    share: load / cores,
+  }));
+  const silent = watched.flatMap(({ label }) => (order.some((each) => each.label === label) ? [] : [label]));
+  return { order, silent };
+}

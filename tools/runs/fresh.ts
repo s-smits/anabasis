@@ -13,8 +13,9 @@
  * and the project `<pack>-fresh`. `--effort` is four letters of `lmhx`, for the Builder, the Examiner,
  * the Referee and the solver. The worktree is `anabasis-<name>` beside the checkout, at `--at`, by
  * default this checkout's commit. Without `--host`, placement takes a machine below its configured
- * cap that carries the fewest live runs on the chosen login, then a pack's prior machine, then the
- * fewest live campaigns and simulation seats (`leastOccupied`, `placement.ts`). An explicit
+ * cap that carries the fewest live runs on the chosen login, then the least one-minute load a core,
+ * halved where a machine carries no live run, then a pack's prior machine, then the fewest live
+ * campaigns and simulation seats (`leastOccupied`, `placement.ts`). An explicit
  * `--host here` or peer overrides placement. Remote source is prepared by `code.ts` before launch,
  * and the peer's own `fresh` is told `--placed`, the caller's word that it placed the run there and
  * named it with the peer's `ANA_HOSTS` name: without it the peer placed the run again over itself

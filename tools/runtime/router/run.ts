@@ -48,7 +48,7 @@ import { sshOptions } from "#src/meta/ssh.ts";
 import { killProcessGroup, runCaptured, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { quoted, shellPath, sshCommand } from "../../runs/host-command.ts";
 import { hostsOf, ownName, RUNNER_SLOTS, type Host } from "../../runs/host-config.ts";
-import { byLoad, firstSamples, watchedOf } from "../../runs/load.ts";
+import { minuteLoads } from "../../runs/load.ts";
 
 const TASKS = ["test", "typecheck", "lint", "secrets", "gate"];
 /** What a check reads from its caller, sent by name since ssh carries no environment. */
@@ -117,15 +117,15 @@ async function placesFor(): Promise<readonly Place[]> {
   const taking = listedHosts().filter((each) => each.checks !== undefined);
   if (choice === "auto") {
     const started = performance.now();
-    const watched = watchedOf([undefined, ...taking], 1);
-    await firstSamples(watched, 1000, setting("ANA_RUNNER_PICK_WAIT", 5) * 1000);
-    const order = byLoad(watched, 0);
-    const read = order.map(({ label, load, cores }) => `${label} ${(load / cores).toFixed(2)}`);
-    const silent = watched.filter((each) => !order.some(({ label }) => label === each.label));
+    const { order, silent } = await minuteLoads(
+      [undefined, ...taking],
+      setting("ANA_RUNNER_PICK_WAIT", 5) * 1000,
+    );
+    const read = order.map(({ label, share }) => `${label} ${share.toFixed(2)}`);
     const took = ((performance.now() - started) / 1000).toFixed(1);
     say(
       `auto: 1m load a core ${read.join(", ") || "from none"}${
-        silent.length === 0 ? "" : `; no answer from ${silent.map(({ label }) => label).join(", ")}`
+        silent.length === 0 ? "" : `; no answer from ${silent.join(", ")}`
       } (read in ${took}s)`,
     );
     return order.length === 0 ? [undefined] : order.map(({ host }) => host);

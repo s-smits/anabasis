@@ -1,5 +1,7 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { rmSync } from "../src/meta/filesystem.ts";
+import type { Host } from "../tools/runs/host-config.ts";
+import { leastOccupied } from "../tools/runs/placement.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const fixtures: string[] = [];
@@ -154,5 +156,36 @@ console.log(String(await freshLogin(undefined, [], read)));`;
     expect(made.run(code, { ANA_HOSTS: JSON.stringify([{ ...made.host, packs: ["../x"] }]) }).err).toContain(
       "packs takes a list of pack names",
     );
+  });
+});
+
+describe("the least busy machine", () => {
+  const host = (name: string): Host => ({ name, ssh: name, tree: "~/t", bun: "~/b" });
+  const [a, b, c] = [host("a"), host("b"), host("c")];
+
+  it("takes the least one-minute load a core, halved where a machine carries no run", () => {
+    const rows = [
+      { host: a, live: 1, capacity: 2, load: 0.5, familiar: true },
+      { host: b, live: 0, capacity: 2, load: 0.9 },
+      { host: c, live: 1, capacity: 2, load: 0.6 },
+    ];
+    // b's 0.9 counts as 0.45 with no run there, below a's 0.5 and the familiar pack there.
+    expect(leastOccupied(rows)).toBe(b);
+    expect(leastOccupied(rows.map((row) => (row.host === b ? { ...row, live: 1 } : row)))).toBe(a);
+    // A full machine is never chosen, however idle.
+    expect(leastOccupied(rows.map((row) => (row.host === b ? { ...row, capacity: 0 } : row)))).toBe(a);
+  });
+
+  it("spreads a login's runs first, and lets load decide nothing where a machine with room gave none", () => {
+    const rows = [
+      { host: a, live: 1, capacity: 2, load: 0.1, sameLogin: 1 },
+      { host: b, live: 1, capacity: 2, load: 0.9, sameLogin: 0 },
+    ];
+    expect(leastOccupied(rows)).toBe(b);
+    const silent = [
+      { host: a, live: 1, capacity: 2, load: 0.1 },
+      { host: b, live: 0, capacity: 2, familiar: true },
+    ];
+    expect(leastOccupied(silent)).toBe(b);
   });
 });

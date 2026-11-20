@@ -172,6 +172,7 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
     stored,
     found: toolOnPath(bundle),
     width: Number(values.jobs),
+    probes: false,
   });
   const despite = values.despite?.trim() ?? "";
   const { faults, frozen } = keepReading(log, checker, reading, {

@@ -6,13 +6,20 @@
 
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { decide } from "../src/campaign/decide.ts";
-import { type Draft, draftFaults, draftOf } from "../src/examiner/draft.ts";
+import { type Draft, draftFaults, drafting, draftOf } from "../src/examiner/draft.ts";
 import { examine, type Session } from "../src/examiner/session.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { examinerSessions, solvesIn } from "../src/kernel/solves.ts";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
-import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
+import { asRecord, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
@@ -20,7 +27,18 @@ import { draftCommand } from "../tools/d1b/draft.ts";
 import { campaignLog, openCampaign, packNamed } from "../tools/d2/campaign.ts";
 import { draftReading, stageExam } from "../tools/d2/exam.ts";
 import { packControls, readPack, sweepResources } from "../tools/m0/stored-sweep.ts";
-import { call, draftArgs, drafted, finish, NOTE, SOUND, seat, sweep } from "./helpers/examiner-seat.ts";
+import {
+  call,
+  draftArgs,
+  drafted,
+  finish,
+  invoke,
+  NOTE,
+  SOUND,
+  seat,
+  sweep,
+  toolOf,
+} from "./helpers/examiner-seat.ts";
 import { scriptedModel } from "./helpers/fixture-pack.ts";
 
 const FORMAT = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
@@ -212,11 +230,13 @@ describe("a draft read without a model", () => {
     expect((await draftReading(join(root, "read"), SOUND, 2)).faults).toEqual([]);
     const lax = { ...SOUND, evaluator: `export const checks = { "check-product": () => true };\n` };
     const faults = (await draftReading(join(root, "read"), lax, 2)).faults;
-    expect(faults).toHaveLength(5);
+    expect(faults).toHaveLength(8);
     for (const [index, facts] of [
       ["ex-001", "check-product", "reject control", "pass"],
       ["check-product", "refused nothing"],
       ...["ex-001", "ex-002", "ex-003"].map((id) => [id, "do-nothing", "pass"]),
+      // Each accept control passes every other example too, so the checks read no task.
+      ...["ex-001", "ex-002", "ex-003"].map((id) => [id, "passed every other example"]),
     ].entries()) {
       for (const fact of facts) expect(faults[index]).toContain(fact);
     }
@@ -292,9 +312,63 @@ describe("a draft read without a model", () => {
     expect(undefinedCheck.length).toBeGreaterThan(0);
     expect(undefinedCheck.some((fault) => fault.includes("check-product"))).toBe(true);
   });
+
+  it("refuses checks an accept control passes on every other example, and passes ones bound to the task", async () => {
+    // A check of the answer's form alone: each accept control is a valid answer to any task.
+    const formOnly = {
+      ...SOUND,
+      evaluator: `export const checks = { "check-product": (req) => /^[0-9]+$/u.test(req.artifact.answer) };\n`,
+      reject: [{ task: 0, answer: { answer: "x" }, check: "check-product" }],
+    };
+    const faults = (await draftReading(join(root, "read"), formOnly, 2)).faults;
+    expect(faults).toHaveLength(SOUND.tasks.length);
+    for (const fault of faults) expect(fault).toContain("passed every other example");
+    // The sound draft's check reads the base, so another example's control fails it.
+    expect((await draftReading(join(root, "read"), SOUND, 2)).faults).toEqual([]);
+  });
+
+  it("refuses hidden values no check or measure reads, and passes ones that decide a check", async () => {
+    const seeded = SOUND.tasks.map((task, seed) => ({ ...task, hidden: { seed } }));
+    const unread = (await draftReading(join(root, "read"), { ...SOUND, tasks: seeded }, 2)).faults;
+    expect(unread).toEqual([expect.stringContaining("hidden values had no effect on any accept control")]);
+    // Each task's own factor decides its product, so another example's factor fails its answer.
+    const factors = [5, 6, 7] as const;
+    const decided = {
+      ...SOUND,
+      evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * req.hidden.factor),\n};\n`,
+      tasks: SOUND.tasks.map((task, index) => ({ ...task, hidden: { factor: factors[index] ?? 0 } })),
+      accept: SOUND.tasks.map((task, index) => ({
+        task: index,
+        answer: { answer: String(Number(asRecord(task.publicInput)?.base) * Number(factors[index])) },
+      })),
+    };
+    expect((await draftReading(join(root, "read"), decided, 2)).faults).toEqual([]);
+  });
 });
 
 describe("a draft put to the host", () => {
+  it("reads a draft's values from files in the session's home as the same values written inline", async () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), "ana-draft-home-")));
+    try {
+      writeFileSync(join(home, "evaluator.json"), JSON.stringify(SOUND.evaluator));
+      writeFileSync(join(home, "format.json"), JSON.stringify(SOUND.answerFormat));
+      const s = seat("draft", []);
+      const mode = drafting({ ...s.request, reading: async () => [] }, async (act) => await act(), home);
+      expect(toolOf(mode).description).toContain("from_file");
+      const args = {
+        ...draftArgs(SOUND),
+        evaluator: { from_file: "evaluator.json" },
+        answer_format: { from_file: "format.json" },
+      };
+      await invoke(toolOf(mode), "put", args);
+      expect(draftOf(read(s.log))).toEqual(SOUND);
+      const homeless = drafting(s.request, async (act) => await act());
+      expect(toolOf(homeless).description).not.toContain("from_file");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it("stands at its first put once it has no fault, with no solve of its examples", async () => {
     const s = seat("draft", [drafted(SOUND), finish]);
     expect(await examine(s.request)).toMatchObject({ ended: "stands", puts: 1 });

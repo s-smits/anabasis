@@ -356,7 +356,8 @@ its venv (`trials.py`), and the spend from the solver's own trace by the kernel'
 in two, the A/A, as "Metric and statistics" says.
 
 A first pilot on JobBench's statistics tasks, every arm scored under `claude -p`, has its own
-protocol in `jobbench-pilot.md`. Harness²'s own k=1 path on JobBench, Claude Code as executor and
+protocol in `jobbench-pilot.md`; Harness²'s own JobBench text, from which the pilot's shared
+domain text was tuned, is kept verbatim in `jobbench-prompt-original.md`. Harness²'s own k=1 path on JobBench, Claude Code as executor and
 improver, is ported to TypeScript in `h2/`, run by `bun studies/harness2/jobbench.ts sweep`, so a
 sweep of ours can be set beside the pilot's Python one; its head comment lists what differs.
 `bun studies/harness2/score.ts score` scores any arm the pilot scored, an Anabasis kept harness

@@ -418,8 +418,15 @@ export function shortOf(events: readonly LogEvent[], plan: Plan): number {
   return count === 0 ? 0 : Math.max(count, sweepOf(plan.wanted.level) + (plan.practice ?? 0));
 }
 
-function shortBy({ plan, supply, all }: Ground): number {
-  const practice = Math.max(0, (plan.practice ?? 0) - supply.released);
+function shortBy({ plan, supply, all, events }: Ground): number {
+  // Each reference is owed practice of its own (`practiceDue`), written on top of its frontier,
+  // since every task held before its promotion is retained. Until 20 November the whole campaign's
+  // releases counted, and a new reference's practice ate its comparison floor.
+  const promoted = events.findLastIndex(({ kind }) => kind === PROMOTED);
+  const released = events.filter(
+    ({ kind, data }, at) => at > promoted && kind === "task.state" && data.state === "released",
+  ).length;
+  const practice = Math.max(0, (plan.practice ?? 0) - (promoted === -1 ? supply.released : released));
   const target = all.length === 0 ? 0 : plan.wanted.target;
   return Math.max(0, practice + Math.max(target, comparisonFloor(plan.wanted.level)) - supply.held);
 }

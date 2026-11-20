@@ -18,6 +18,8 @@ type Valid = readonly [number, number, number];
 
 const at = "2026-10-09T00:00:00.000Z";
 const HELD = ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12"];
+/** Eight tasks held out after a promotion: the reference's new frontier, since every task held before it is retained. */
+const SINCE = ["n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8"];
 const HALF: Valid = [4, 4, 4];
 const ALL: Valid = [0, 0, 12];
 const NONE: Valid = [12, 0, 0];
@@ -471,7 +473,8 @@ describe("comparison readings", () => {
     });
     const readLater = decide([...stepped, ...later, promotion("h1"), ...examined("x-2")], PLAN);
     expect(readLater).toMatchObject({ move: "build" });
-    expect(readLater.why.match(/\b(?:b|h)-?\d+\b/g)).toEqual(["b-2", "h2"]);
+    // Every task held before the promotion is retained, so with none held since there is no frontier.
+    expect(readLater.why).toContain("for want of tasks");
   });
 });
 
@@ -522,7 +525,7 @@ describe("room for the reference", () => {
       expect(move([...promotedHalf, ...examined("x-1", [], cut)])).toMatchObject({ move: "examine" });
       expect(move([...promotedHalf, ...examined("x-1", ["v13"], cut)])).toMatchObject({ move: "examine" });
       // The session after it that ends on its own is the one written for the reference.
-      const whole = [...promotedHalf, ...examined("x-1", ["v13"], cut), ...examined("x-2", ["v14"])];
+      const whole = [...promotedHalf, ...examined("x-1", ["v13"], cut), ...examined("x-2", SINCE)];
       expect(move(whole)).toMatchObject({ move: "compare" });
     }
     const stepped = [
@@ -573,7 +576,7 @@ describe("unread harnesses and tasks", () => {
     for (const events of [
       FIRST,
       [...FIRST, ...compared("g-1", "h1", "no-step"), built("b-2", "h2")],
-      [...PROMOTED, ...examined("x-1"), built("b-2", "h2"), built("b-3", "h3"), built("b-4", "h4")],
+      [...FIRST, ...compared("g-1", "h1", "no-step"), built("b-2", "h2"), built("b-3", "h3")],
     ]) {
       const chosen = decide(events, PLAN);
       expect(chosen).toMatchObject({ move: "build" });

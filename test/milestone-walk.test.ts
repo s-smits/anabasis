@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { barLines, epochsOf } from "../src/campaign/climb.ts";
+import { comparisonFloor } from "../src/campaign/admission.ts";
 import { decide } from "../src/campaign/decide.ts";
 import type { Plan } from "../src/campaign/ground.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
@@ -30,8 +31,9 @@ const STARTER = "start";
 const CLEAR = [8, 0, 4] as const;
 /** Half the tasks answered, which leaves the reference room. */
 const HALF = [4, 4, 4];
-/** A sweep at 0.02: as many tasks as could clear the level alone. */
-const SWEEP = 6;
+/** What an Examiner session writes after a promotion: the comparison floor, since the new
+ *  reference's frontier is the tasks written since it (`poolOf`). */
+const SWEEP = comparisonFloor(PLAN.wanted.level);
 const HELD_AT_OPENING = 32;
 /** An A/A of the reference's first solves against its second, tied on most and even on the rest. */
 const QUIET = [1, -1, 1, -1, 1, -1, 0, 0];
@@ -188,8 +190,11 @@ describe("requirement 1: six confirmed promotions in one campaign", () => {
     expect(epochsOf(next).map(({ confirmed }) => confirmed)).toEqual([null, false, true]);
   });
 
-  it("owes the starter comparison on one task held out, once the last reading left the reference room", () => {
-    const held = [...walked(1), ...examined("x-1", 1)];
+  it("reads the starter comparison once the tasks written since the promotion reach the floor", () => {
+    // Every task held before the promotion is retained, so one written since is no frontier to read.
+    const one = [...walked(1), ...examined("x-1", 1)];
+    expect(decide(one, PLAN)).toMatchObject({ move: "build" });
+    const held = [...one, ...examined("x-2", SWEEP - 1)];
     expect(decide(held, PLAN)).toMatchObject({ move: "compare", fresh: "starter" });
   });
 });

@@ -1862,7 +1862,7 @@ describe("the scored set", () => {
     expect(scoredSet([], 12, "contract-a")).toEqual({ tasks: [], retained: [] });
   });
 
-  it("takes the newest epoch's tasks first, and reads the epochs before the reference never stood in as retained", () => {
+  it("takes the newest epoch's tasks first, and reads every task held before the promotion as retained", () => {
     // The simulated climb of 10 October: after two promotions a draw over every epoch at once
     // took two or three tasks the reference failed out of 19, and three comparisons read one win
     // short. The tasks written since the last promotion are the exam, so they come first, whole.
@@ -1891,7 +1891,7 @@ describe("the scored set", () => {
     expect(full.tasks.slice(0, 2).toSorted()).toEqual(["v7", "v8"]);
     expect(full.retained).toHaveLength(1);
     expect(full.tasks).toHaveLength(3);
-    // A task of the epoch before that the reference stood in and left open is frontier still.
+    // A task of the epoch before that the reference stood in is retained too: it chose the reference.
     const stood: LogEvent[] = [
       ...climbed,
       {
@@ -1906,7 +1906,7 @@ describe("the scored set", () => {
         },
       } as const,
     ];
-    expect(poolOf(stood).frontier.toSorted()).toEqual(["v1", "v7", "v8"]);
+    expect(poolOf(stood).frontier.toSorted()).toEqual(["v7", "v8"]);
     // A task released in the newest epoch leaves room for no older one: the frontier is v7 alone.
     const released: LogEvent[] = [
       ...climbed,
@@ -1984,14 +1984,14 @@ describe("the scored set", () => {
       await checkpoint(s.paired("g-1"));
       await checkpoint(s.paired("g-2"));
       expect(poolOf(read(s.log)).awaiting).toEqual([]);
-      expect(scoredSet(read(s.log), 12, "c").tasks).toContain("s1");
+      expect(poolOf(read(s.log)).scorable).toContain("s1");
     }
     const s = await setup([], (version) => (version === "s1" ? UNANSWERED : PASS));
     // The fixture compares a kept harness with a different starter: make the kept one the reference.
     append(s.log, "harness.promoted", { harness: s.old, from: s.starter.digest, rests: [] });
     await checkpoint(s.paired("g-1"));
     expect(poolOf(read(s.log)).awaiting).toEqual([]);
-    expect(scoredSet(read(s.log), 12, "c").tasks).toContain("s1");
+    expect(poolOf(read(s.log)).scorable).toContain("s1");
     await checkpoint(s.paired("g-2"));
     // s2 to s4 were answered by both harnesses in every solve of both comparisons: exhausted, and
     // retained as a check on regression. Until 16 October two thirds of them left the draw.
@@ -2012,6 +2012,6 @@ describe("the scored set", () => {
       state: "held",
       reason: "a person read the task as feasible",
     });
-    expect(scoredSet(read(s.log), 12, "c").tasks).toContain("s1");
+    expect(poolOf(read(s.log)).scorable).toContain("s1");
   });
 });

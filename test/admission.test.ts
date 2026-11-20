@@ -127,7 +127,7 @@ beforeAll(() => {
 });
 
 describe("what a log holds for the next comparison", () => {
-  it("counts the frontier: the reference's closed tasks and, after a promotion, those it never stood in are read apart", () => {
+  it("counts the frontier: the reference's closed tasks are retained, and after a promotion every task held before it", () => {
     // After a step read 7-0-4 the harness that won was valid in every solve on 8 of the 11 tasks,
     // so a round made against it had 3 to win where the tally said 7 (2026-10-09). The frontier
     // leaves out what the reference closed, which the untied share read a second time until
@@ -141,9 +141,10 @@ describe("what a log holds for the next comparison", () => {
     // The reference's one closed task is retained, and the six it answered in no solve of two
     // comparisons wait for a person whatever h1 answered (rule 3), so the frontier is one.
     expect(supplyOf(stepped)).toMatchObject({ held: 1, awaiting: 6 });
-    // Once h1 is promoted its own solves closed six of them, and it is left two.
+    // Once h1 is promoted every task held before it chose it, so all are retained and the frontier is
+    // empty until tasks are held out for it. Until 20 November the two h1 left open stayed frontier.
     const promotion = event("harness.promoted", { harness: "h1", from: "h0", rests: [] });
-    expect(supplyOf([...stepped, promotion])).toMatchObject({ held: 2 });
+    expect(supplyOf([...stepped, promotion])).toMatchObject({ held: 0 });
   });
 
   it("counts the tasks that may still be scored, once the reference's closed ones retire", () => {

@@ -39,7 +39,9 @@ import { containing } from "./helpers/matchers.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = join(REPO, "test", "fixtures", "harness-min");
-const STEM = `test-hb-${String(runtimeProcess.pid)}`;
+// Not `harness-builder.test.ts`'s stem: the suite's workers run files without isolation, so both
+// files can share a process id, and both open a campaign named `-limit`.
+const STEM = `test-bl-${String(runtimeProcess.pid)}`;
 const OPENED = "campaign.opened";
 const PROJECT = "fixture-products";
 const MOVED = "campaign.move";

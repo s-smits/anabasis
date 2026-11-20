@@ -200,13 +200,21 @@ export function text(value: string, details: JsonObject | null = null): ToolExec
   return { output: [{ type: "text", text: value }], details: copyJson(details) };
 }
 
-/** The head of `value` that pi keeps, and a notice of its full size and of the file that holds it. */
+/**
+ * The head and tail of `value` within what pi keeps, three quarters and one quarter, and a notice of
+ * its full size and of the file that holds it. A failing program puts its error and summary last,
+ * so a head alone cost a `read` of the file to learn why it failed.
+ */
 async function capped(value: string, name: string, api: ToolExecutionApi, context: Context): Promise<string> {
-  const head = boundText(value, RESULT.bytes, "head", RESULT.lines).text;
+  // The notice between them takes two lines more than one after a head did.
+  const lines = RESULT.lines - 2;
+  const head = boundText(value, Math.floor((RESULT.bytes * 3) / 4), "head", Math.floor((lines * 3) / 4)).text;
+  const tail = boundText(value, Math.floor(RESULT.bytes / 4), "tail", Math.floor(lines / 4)).text;
   const file = await spill(value, name, api, context);
   const where = file === undefined ? "" : ` The full file is at ${file}.`;
   const size = plural(Buffer.byteLength(value), "byte");
-  return `${head}\n\nShown: the first ${String(Buffer.byteLength(head))} of ${size}.${where}`;
+  const [first, last] = [head, tail].map((part) => String(Buffer.byteLength(part)));
+  return `${head}\n\n[Left out here: all but the first ${first} and the last ${last} of ${size}.${where}]\n\n${tail}`;
 }
 
 /**

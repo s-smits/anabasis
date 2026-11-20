@@ -169,9 +169,29 @@ export function publicView({ taskId, family, publicInput }: PublicTask): PublicT
   return { taskId, family, publicInput };
 }
 
-/** The opening message, as v1 worded it. */
+/** The opening message, as v1 worded it, with each file the home holds named instead of repeated. */
 export function firstTurn(task: PublicTask): string {
-  return `Task ${task.taskId} (family ${task.family}).\n\nPublic input:\n${capturedJsonStringify(task.publicInput, null, 2)}`;
+  return `Task ${task.taskId} (family ${task.family}).\n\nPublic input:\n${capturedJsonStringify(opened(task.publicInput), null, 2)}`;
+}
+
+/**
+ * The public input as the first message shows it: each `files` row that `seedHome` writes into the
+ * home keeps its other keys, and its `text` gives way to where the file stands and its size, so a
+ * file of some kilobytes is not read twice, once as escaped JSON. Every other row, and the whole
+ * input in `public/task.json`, stays as written.
+ */
+function opened(publicInput: JsonValue): JsonValue {
+  const record = asRecord(publicInput);
+  if (record === null || !Array.isArray(record.files)) return publicInput;
+  // Each written file is named once, at the first row of its path, which is the row `taskFiles` kept.
+  const written = taskFiles(publicInput);
+  const files = record.files.map((row) => {
+    const { path, text, ...rest } = asRecord(row) ?? {};
+    if (!isString(path) || !isString(text) || written.get(path) !== text) return row;
+    written.delete(path);
+    return { path, ...rest, file: `${TASK_FILES}/${path}`, bytes: Buffer.byteLength(text) };
+  });
+  return { ...record, files };
 }
 
 /**

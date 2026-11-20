@@ -434,8 +434,9 @@ the part of it the table cannot test.
 The benchmark set is 20 of JobBench's 65 tasks, in the professions nearest the query (the
 backlog's item 17). A read uses eight of them: three were taken from the pilot's eight on
 9 November 2026 with their stored scores in view, and five were added on 10 November by rule, with
-no score read. `score.ts` calls another set "the pilot's eight" and takes it where `--tasks` is
-missing, so every command names its tasks.
+no score read. `score.ts score` calls another set "the pilot's eight" and rolls it where `--tasks`
+is missing, so every rolling command names its tasks; `score.ts table` without `--tasks` reads the
+tasks its arms' records hold.
 
 | Part | Tasks | What it can read |
 | --- | --- | --- |

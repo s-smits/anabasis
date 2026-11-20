@@ -123,12 +123,14 @@ export const outcomesOf = (text: string): Map<string, string> =>
   );
 
 /** The ids a predictions ledger owes one outcome each in its outcomes ledger: those of its `id`
- *  tables, and each `<run>:<id>` its `## Carried` section names, resolved under that whole name. */
+ *  tables, and each `<run>:<id>` its `## Carried` section names, resolved under that whole name,
+ *  a hyphened id such as `TR-1` whole. */
 export const owedOf = (predictions: string): string[] => [
   ...new Set([
     ...idsOf(predictions),
-    ...((sectionOf(predictions, "Carried") ?? []).join("\n").match(/(?<![\w.-])[a-z][\w.-]*:[A-Z]\w*/gu) ??
-      []),
+    ...((sectionOf(predictions, "Carried") ?? [])
+      .join("\n")
+      .match(/(?<![\w.-])[a-z][\w.-]*:[A-Z]\w*(?:-\w+)*/gu) ?? []),
   ]),
 ];
 

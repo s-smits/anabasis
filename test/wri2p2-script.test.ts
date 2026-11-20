@@ -574,6 +574,9 @@ describe("the next step of an investigation", () => {
     expect(section("# Dropped")).toEqual(["- r: q-forkedPR601:E3 (falsified)"]);
     ledger("predictions-s.md", `${table(["S1"])}\n## Carried\n\n- q-forkedPR601:E3\n`);
     expect(section("# Dropped")).toEqual(["- none"]);
+    // An id with a hyphen is carried whole, each its own row, and a hyphen after one ends it.
+    ledger(PREDICTIONS_R, `${table(["P1"])}\n## Carried\n\n- q-forkedPR601:TR-1, q-forkedPR601:TR-2-, too\n`);
+    expect(step()[0]).toContain("resolve q-forkedPR601:TR-1, q-forkedPR601:TR-2 from the log");
   });
 
   it("reopens a row left unreached or pending once the log grows past its count, and keeps it while the log stands", () => {

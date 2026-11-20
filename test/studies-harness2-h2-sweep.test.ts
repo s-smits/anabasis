@@ -427,6 +427,10 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     ],
     { env },
   );
+  // No --tasks: the tasks the named arms' own records hold, never a second list.
+  const tabledOwn = runSync([capturedExecPath, SCORE, "table", "--out", out, "--name", "heldout,k1"], {
+    env,
+  });
   const tabledAbsent = runSync([capturedExecPath, SCORE, "table", "--out", out, "--name", "absent"], {
     env,
   });
@@ -624,6 +628,9 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     expect(pair.filter((line) => /^ {2}long /u.test(line))).toEqual([]);
     // A cut nobody could count is not read as none, and a label with no records is refused.
     expect(decodeOutput(tabledUncounted.stdout).split("\n")).toContain("fair uncut 1");
+    const own = decodeOutput(tabledOwn.stdout).split("\n");
+    expect(own).toContain("all 2");
+    expect(own).toContain("  heldout    1 of 2 tasks scored");
     expect(tabledAbsent.exitCode).not.toBe(0);
     expect(decodeOutput(tabledAbsent.stderr)).toContain(join("judged", "absent"));
   });

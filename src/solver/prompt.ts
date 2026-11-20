@@ -90,8 +90,8 @@ function duty({ wallSeconds, limits, resources, files, guide }: Told): string {
   const minutes = `${String(Math.round(wallSeconds / 60))} minutes of solve time`;
   const given =
     limits.modelTurns === undefined
-      ? `The case has ${minutes}. The host appends how much of it is used to results of tools that execute; argument refusals and unavailable tools carry no reminder. An answer you have not submitted when it runs out is lost.`
-      : `The case has ${minutes} and ${plural(limits.modelTurns, "turn")} of yours, a turn being one reply of yours with the tool calls in it. The host appends how much of both is used to results of tools that execute; argument refusals and unavailable tools carry no reminder. An answer you have not submitted when either runs out is lost.`;
+      ? `The case has ${minutes}. The host appends how much of it is used to results of tools that execute. An answer you have not submitted when it runs out is lost.`
+      : `The case has ${minutes} and ${plural(limits.modelTurns, "turn")} of yours, a turn being one reply of yours with the tool calls in it. The host appends how much of both is used to results of tools that execute. An answer you have not submitted when either runs out is lost.`;
   const rules =
     resources === 0
       ? ""

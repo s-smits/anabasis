@@ -379,8 +379,8 @@ describe("a draft put to the host", () => {
     expect(solvesIn(read(s.log))).toEqual([]);
     expect(s.of("draft.finished")).toMatchObject([{ ended: "stands", stands: true, tries: 1 }]);
     expect(s.of("draft.finished")[0]).not.toHaveProperty("measurement");
-    // Its system prompt says what the host reads of a draft, and of no solve of it.
-    expect(s.sent[0]).toContain("draft_exam puts a whole draft to the host");
+    // Its system prompt says what the host does with a draft, and names no solve of it.
+    expect(s.sent[0]).toContain("draft_exam validates the whole draft and returns any faults");
     expect(s.sent[0]).not.toMatch(/starter harness|is then solved/u);
     // Its opening says the budget the exam's solves will be held to, as a writing session's does.
     expect(s.sent.join("\n")).toMatch(

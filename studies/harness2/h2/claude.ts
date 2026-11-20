@@ -28,7 +28,7 @@ import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { join } from "#src/meta/path.ts";
-import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
+import { capturedSpawn } from "#src/meta/process.ts";
 import { killProcessGroupId, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { pyDumps, pyLen, pySlice, pyStr, pyStrip, splitLines, truthy, walkFiles } from "./py.ts";
@@ -385,11 +385,13 @@ export async function rollout(
   mkdirSync(join(place.store, ".harness2-logs"), { recursive: true });
   const log = (line: string): void => appendFileSync(logFile, `${line}\n`);
   mkdirSync(trajDir, { recursive: true });
-  const workspace = join(tmpdir(), "hevo_ws_cc", `${name}_${place.label}_${runtimeProcess.pid}`);
+  // The prompt and every command's working directory spell this path, so it names the task alone: the
+  // pilot's runner put the arm's label in it, which told each solver which arm it was rolling.
+  mkdirSync(join(tmpdir(), "hevo_ws_cc"), { recursive: true });
+  const workspace = mkdtempSync(join(tmpdir(), "hevo_ws_cc", `${name}_`));
   const output = join(workspace, "output");
   let billed = 0;
   try {
-    rmSync(workspace, { recursive: true, force: true });
     for (let attempt = 1; attempt <= ROLLOUT_ATTEMPTS; attempt += 1) {
       rmSync(join(workspace, TASK_FOLDER), { recursive: true, force: true });
       rmSync(output, { recursive: true, force: true });

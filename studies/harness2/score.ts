@@ -58,8 +58,12 @@
  * an exported harness; the judge's environment is the adapter's scrubbed one without Vertex's
  * region; and a record is one JSON file a task. Kept the benchmark's way: Claude Code's own
  * `total_cost_usd` is the solve's dollars (the pilot's tables read it, not `src/kernel/meter.ts`),
- * the workspace has no wall (a trajectory that names a rubric or a judged result is flagged in its
- * record instead), and the judge's transport is the operator's shim, named by `--api-base`.
+ * this script puts no wall around the workspace, and the judge's transport is the operator's shim,
+ * named by `--api-base`. Where the Linux runner rolls an arm, the sitting runs `claude` in
+ * namespaces that show it the store, the checkouts, the logins and the Docker socket empty; it still
+ * reaches the network, and `claude`'s login token stays readable to its commands. Elsewhere nothing
+ * hides them. Either way a trajectory that names the store, the benchmark's tasks or judge, a judged
+ * record or the benchmark's hosts is flagged in its record (`peeked`).
  *
  * One difference from the pilot is deliberate. Its Base and Harness² k=1 rollouts ran under the
  * sweep's PATH, the judge's interpreter first, with pandas, openpyxl and python-docx; its Anabasis
@@ -140,6 +144,8 @@ export const PILOT_TASKS = [
 ];
 const STAGES = ["base1", "inv1", "dom1", "agg1"];
 const PI = "pi:";
+/** The store's folder of each task's deliverables, one folder an arm. */
+const OUTPUT = "model_output";
 const PI_SOLVE = join(import.meta.dir, "..", "shared", "pi-solve.ts");
 /** A `pi-solve.ts` ending as Claude Code's log names it: a spent budget gets no second attempt, and
  *  a session that threw or the provider failed is a non-result, rolled again (rule 7). */
@@ -507,7 +513,7 @@ async function judge(
 ): Promise<{ details: JsonObject; usd: number | null } | string> {
   const { apiBase, shimLog, cap } = how;
   const rubrics = how.rubrics ?? join(jb, "dataset", "main", place.task, "RUBRICS.json");
-  const output = join(place.store, place.task, "model_output", place.label);
+  const output = join(place.store, place.task, OUTPUT, place.label);
   const details = detailsOf(place.store, place.task, place.label);
   const judgePy = join(jb, "eval", "judge.py");
   let usd: number | null = null;
@@ -596,9 +602,7 @@ export async function score(values: Values): Promise<void> {
     const needs = [
       join(jb, "dataset", "main", task, "task_folder", "TASK_INSTRUCTIONS.txt"),
       join(jb, "dataset", "main", task, "RUBRICS.json"),
-      tree === null
-        ? join(store, task, "model_output", arm.label(task))
-        : join(tree, pi ? HARNESS_DIR : "CLAUDE.md"),
+      tree === null ? join(store, task, OUTPUT, arm.label(task)) : join(tree, pi ? HARNESS_DIR : "CLAUDE.md"),
     ];
     const missing = needs.find((need) => !existsSync(need));
     if (missing !== undefined) throw new Error(`${task}: ${missing} is missing`);
@@ -627,11 +631,27 @@ export async function score(values: Values): Promise<void> {
   }
   const installer = ownInstaller(python);
   if (installer !== null) console.log(`  installer: ${installer}`);
-  const needles = ["RUBRICS.json", "eval_result", join(out, "judged")];
+  // What a trajectory names only where its solver looked past its workspace: the store and its
+  // folders, the benchmark's tasks and judge (its interpreter, `<jb>/.venv`, fills every traceback),
+  // the judged records, and the benchmark's and Harness²'s hosts and names. Read without case.
+  const needles = [
+    store,
+    OUTPUT,
+    "model_traj",
+    "eval_result",
+    "RUBRICS.json",
+    join(jb, "dataset"),
+    join(jb, "eval"),
+    join(out, "judged"),
+    "huggingface.co",
+    "hf.co/",
+    "google-research/harness2",
+    "workbuddy",
+  ];
   const scoreOne = async (task: string): Promise<void> => {
     const label = arm.label(task);
     const place = { store, task, label };
-    const output = join(store, task, "model_output", label);
+    const output = join(store, task, OUTPUT, label);
     const got = await judge(jb, place, {
       apiBase: values["api-base"] ?? "",
       shimLog: values["judge-log"],
@@ -645,7 +665,7 @@ export async function score(values: Values): Promise<void> {
     }
     const traj = join(store, task, "model_traj", label);
     const traces = existsSync(traj)
-      ? readdirSync(traj).map((name) => readFileSync(join(traj, name), "utf8"))
+      ? readdirSync(traj).map((name) => readFileSync(join(traj, name), "utf8").toLowerCase())
       : [];
     const log = rolloutLog(store, task, label);
     const record = {
@@ -663,7 +683,7 @@ export async function score(values: Values): Promise<void> {
       seconds: log.seconds,
       attempts: log.attempts,
       build: arm.build(task),
-      peeked: needles.filter((needle) => traces.some((trace) => trace.includes(needle))),
+      peeked: needles.filter((needle) => traces.some((trace) => trace.includes(needle.toLowerCase()))),
       cut: cutOf(jb, output, cap),
       ...keyIfDefined("cap", cap),
       ...keysIf(pi, () => ({ runtime: "pi-durable" })),

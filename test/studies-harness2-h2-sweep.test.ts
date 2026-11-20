@@ -20,7 +20,7 @@ import {
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import { isRecord, isString, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { basename, join } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 
@@ -37,26 +37,35 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 const [jb, out, calls] = [join(root, "jb"), join(root, "out"), join(root, "calls.jsonl")];
 
 /** The stand-in `claude`: a rollout when asked for stream-json, an improver session otherwise. */
-const STAND_IN = `import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+const STAND_IN = `import { appendFileSync, existsSync, fstatSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 const LOG = ${JSON.stringify(calls)};
 const args = process.argv.slice(2);
 const rows = () => existsSync(LOG) ? readFileSync(LOG, "utf8").split("\\n").filter(Boolean).map((line) => JSON.parse(line)) : [];
 const log = (row) => appendFileSync(LOG, JSON.stringify(row) + "\\n");
 if (args.includes("stream-json")) {
   const ws = args[args.indexOf("--add-dir") + 1];
-  const label = basename(ws).replace(/_\\d+$/, "").replace(/^[a-z]+_task\\d_/, "");
+  // Neither the workspace nor the environment names the rollout, so its label is read from the
+  // trajectory its stdout writes: <store>/<group>/<task>/model_traj/<label>/<file>.
+  const ino = fstatSync(1).ino;
+  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => entry.isDirectory() ? (entry.name === ".venv" ? [] : walk(join(dir, entry.name))) : entry.name.endsWith(".jsonl") && statSync(join(dir, entry.name)).ino === ino ? [join(dir, entry.name)] : []);
+  const traj = walk(${JSON.stringify(root)})[0];
+  const label = basename(dirname(traj));
+  const taskDir = dirname(dirname(dirname(traj)));
   const attempt = rows().filter((row) => row.label === label).length + 1;
   const guide = existsSync(join(ws, "CLAUDE.md")) ? readFileSync(join(ws, "CLAUDE.md"), "utf8") : "";
   const files = (at) => readdirSync(join(ws, at), { withFileTypes: true }).flatMap((entry) => entry.isDirectory() ? files(join(at, entry.name)) : [join(at, entry.name)]);
-  log({ kind: "rollout", label, attempt, guide, budget: args[args.indexOf("--max-budget-usd") + 1], env: process.env.MAX_BUDGET_USD ?? "", files: files("").sort(), path: process.env.PATH, venv: process.env.VIRTUAL_ENV ?? "", cwd: process.cwd() });
+  log({ kind: "rollout", label, attempt, guide, budget: args[args.indexOf("--max-budget-usd") + 1], env: process.env.MAX_BUDGET_USD ?? "", files: files("").sort(), path: process.env.PATH, venv: process.env.VIRTUAL_ENV ?? "", cwd: process.cwd(), named: ["LABEL", "TASK_IDS", "TASKS_BASE_DIR"].filter((key) => key in process.env) });
   const dead = guide.includes("DEAD");
   const empty = (label.endsWith("alpha__task1__base1") && attempt === 1) || guide.includes("EMPTY") || dead;
   if (!empty) writeFileSync(join(ws, "output", "report.md"), (label.includes("gamma") ? ${JSON.stringify(`${MARKER}\n`)} : "") + "report by " + label + "\\n" + guide);
   if (guide.includes("LONG")) for (const [name, size] of [["long.csv", 200001], ["exact.csv", 200000], ["data.db", 200001]]) writeFileSync(join(ws, "output", name), "x".repeat(size));
   // CUT leaves a file where its deliverable folder belongs, so that the rollout throws at its delivery.
-  if (guide.includes("CUT")) writeFileSync(join(process.env.TASKS_BASE_DIR, "beta", "task1", "model_output", label), "in the way");
-  const said = guide.includes("PEEK") ? { type: "tool_use", name: "Bash", input: { command: "cat ../RUBRICS.json" } } : { type: "text", text: "working" };
+  if (guide.includes("CUT")) writeFileSync(join(taskDir, "model_output", label), "in the way");
+  // PEEK reads a rubric, STORE lists other arms' deliverables, and VENV only meets a traceback through
+  // the benchmark's interpreter, which every rollout imports from.
+  const command = guide.includes("PEEK") ? "cat ../RUBRICS.json" : guide.includes("STORE") ? "ls " + join(taskDir, "model_output") : guide.includes("VENV") ? "python3 -c 'import pandas' # " + join(process.env.VIRTUAL_ENV, "lib", "site-packages", "pandas", "__init__.py") : null;
+  const said = command === null ? { type: "text", text: "working" } : { type: "tool_use", name: "Bash", input: { command } };
   const events = [{ type: "system", subtype: "init" }, { type: "assistant", message: { content: [said] } }, { type: "result", subtype: "success", num_turns: 1, total_cost_usd: empty ? 0.125 : 0.25 }];
   for (const event of dead ? events.slice(0, 1) : events) console.log(JSON.stringify(event));
 } else {
@@ -318,7 +327,7 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     join(jb, "dataset", "main", LONG, "RUBRICS.json"),
     readFileSync(join(jb, "dataset", "main", FIRST, "RUBRICS.json")),
   );
-  for (const word of ["PEEK", "DEAD", "EMPTY", "FLAKY", "LONG", "CUT"]) {
+  for (const word of ["PEEK", "STORE", "VENV", "DEAD", "EMPTY", "FLAKY", "LONG", "CUT"]) {
     mkdirSync(join(root, "trees", word), { recursive: true });
     writeFileSync(join(root, "trees", word, "CLAUDE.md"), `# ${word}\n`);
   }
@@ -373,6 +382,8 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     heldout: scored("heldout", "heldout", "alpha/task2", "--yes"),
     k1: scored("sweep:agg1", "k1", alpha, "--yes"),
     peek: treeArm("PEEK"),
+    store: treeArm("STORE"),
+    venv: treeArm("VENV"),
     dead: treeArm("DEAD"),
     empty: treeArm("EMPTY"),
     flaky: treeArm("FLAKY"),
@@ -481,6 +492,10 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
       expect(
         Array.isArray(files) && files.some((name) => /RUBRICS|eval_result|judged/u.test(text(name))),
       ).toBe(false);
+      // Neither the workspace the prompt spells nor the environment names the arm or the store.
+      const task = text(field(row, "label")).split("__").slice(1).join("_");
+      expect(basename(text(field(row, "cwd")))).toMatch(new RegExp(`^${task}_[A-Za-z0-9]{6}$`, "u"));
+      expect(field(row, "named")).toEqual([]);
     }
     const baseGuide = readFileSync(new URL("../studies/harness2/h2/base/CLAUDE.md", import.meta.url), "utf8");
     expect(field(rollsOf("base")[0], "guide")).toBe(baseGuide);
@@ -552,6 +567,9 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     expect(field(record("k1", FIRST), "solveUsd")).toBe(0.25);
     expect(field(record("starter", FIRST), "harness")).toMatch(/^[0-9a-f]{16,}$/u);
     expect(field(record("peek", BETA), "peeked")).toEqual(["RUBRICS.json"]);
+    // The suite's folder is named for the study, as a checkout's path can be, and flags nothing.
+    expect(field(record("store", BETA), "peeked")).toEqual([join(out, "dataset"), "model_output"]);
+    expect(field(record("venv", BETA), "peeked")).toEqual([]);
   });
 
   it("judges an empty delivery as zero, and records neither a dead agent nor an unanswered rubric", () => {

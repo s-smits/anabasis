@@ -1,7 +1,7 @@
 /**
  * The deterministic read of one campaign's log for a whole-run investigation: six rows of
- * identities the primary reviewer settles, and the triggers that say which of the thirty-one lanes of
- * `.claude/skills/whole-run-investigation/references/lanes.md` have something to read.
+ * identities the primary reviewer settles, and the triggers that say which of the twenty-three
+ * lanes of `.claude/skills/whole-run-investigation/references/lanes.md` have something to read.
  *
  * v1's readers walked a campaign folder of some forty record kinds: claims, promotions, epochs,
  * task sets, case records, Builder executions, reviews. v2 keeps one append-only log, and everything
@@ -12,7 +12,7 @@
  * something to read and never what the answer is: a lane that contradicts its trigger from the
  * bytes has done its job. A trigger that did not fire says this arithmetic found nothing, and not
  * that the property is absent. No trigger carries an answer, a task's text or a hidden value.
- * Lane 18 reads the recorded tally and power at its margins. Reversing one win establishes
+ * Lane 8 reads the recorded tally and power at its margins. Reversing one win establishes
  * neither a small sample nor dependence on winning every task, so it starts no trigger.
  *
  * The folds of the log, the catalogue of triggers and the lanes of the exam side (1 to 4 and 7 to
@@ -113,7 +113,7 @@ interface PractisedSession {
   };
 }
 
-/** Lanes 14 and 15: one session's practice, and what its comparison then showed of it. */
+/** Lanes 13 and 16: one session's practice, and what its comparison then showed of it. */
 function practiceTriggers(log: Index, { build, changed, read, round }: PractisedSession): Trigger[] {
   const { session, finished } = build;
   // A practice solve's condition names the state it ran under, so the log says by digest whether
@@ -164,7 +164,7 @@ function practiceTriggers(log: Index, { build, changed, read, round }: Practised
   // A task won in one comparison is no win of another's: recode's b-1 was measured twice. A win
   // on the objective or the bill counts as one on validity does: buffer-fresh-gpt-v071's one step,
   // g-1 on 26 October, won six tasks where all 48 solves were valid, and a reference fail was
-  // asked for until then, so lane 19 could not open on the promotion that most needed it.
+  // asked for until then, so lane 17 could not open on the promotion that most needed it.
   const wonTasks = new Set(
     wonOf(log).flatMap((each) => each.won.map((pair) => `${each.session} ${pair.task}`)),
   );
@@ -204,8 +204,8 @@ function practiceTriggers(log: Index, { build, changed, read, round }: Practised
 /**
  * Lane 16's wins, by solve: each comparison's tasks the new harness won, read as the comparison
  * paired them, with every counted solve of the task on each side: since 31 October most wins
- * are on the objective between two valid answers (1 November). Lanes 16 and 15 open those solves'
- * turns and calls, and until this reader lane 15 rebuilt the pairing
+ * are on the objective between two valid answers (1 November). Lane 16 open those solves'
+ * turns and calls, and until this reader lane 16 rebuilt the pairing
  * by hand from a log of thousands of events: the #107 buffer campaign won 11 tasks over 3
  * comparisons in 5,531 (2026-10-10). A task the report's test names is read by the difference it
  * recorded (`testedOf`), and only another by this tree's score: on 22 October the score of weighted
@@ -239,7 +239,7 @@ function winTriggers(log: Index): Trigger[] {
 }
 
 /**
- * Lane 15's reading of whether a harness answered for its solver, which `src/builder/prompt.ts`
+ * Lane 16's reading of whether a harness answered for its solver, which `src/builder/prompt.ts`
  * permits since 20 October so long as nothing in the harness names a task, copies its text or holds
  * its answer, so the lead is whether the program computes from public input or reaches a check, its
  * instrument or a verdict: a solve whose one shell call was followed by its submit, with no write of
@@ -284,7 +284,7 @@ function programTriggers(log: Index): Trigger[] {
   );
 }
 
-/** Lanes 12 to 15: the harness, which is the Builder's. */
+/** Lanes 13, 15 and 16: the harness, which is the Builder's. */
 function harnessTriggers(log: Index): Trigger[] {
   const comparisons = comparisonsOf(log.events);
   return log.builds.flatMap((build) => {
@@ -410,7 +410,7 @@ function practiceCandidates(
   return read;
 }
 
-/** Lane 18, from a comparison's last report alone: whether it scored a task, what its cap
+/** Lane 8, from a comparison's last report alone: whether it scored a task, what its cap
  *  cut, and what it is short of. */
 function testTriggers(session: string, last: JsonObject): Trigger[] {
   const scored = asRecord(last.scored);
@@ -434,7 +434,7 @@ function testTriggers(session: string, last: JsonObject): Trigger[] {
   ];
 }
 
-/** Lanes 17 to 21: the comparison, which is the host's. */
+/** Lanes 8 to 10, 13 and 17: the comparison, which is the host's. */
 function comparisonTriggers(log: Index): Trigger[] {
   const hosts = new Set([...log.conditions.values()].map((condition) => condition.host)).size;
   const perComparison = log.compared.flatMap(({ session, own, began: start, last, scoring }) => {
@@ -512,11 +512,11 @@ function unendedSolves(log: Index) {
   return { cut, open: unended.length - cut };
 }
 
-/** A lane 24 trigger's detail: what the campaign went past, then what is open at the log's end. */
+/** A lane 22 trigger's detail: what the campaign went past, then what is open at the log's end. */
 const apart = (cut: string, open: string) =>
   [cut, open === "" ? "" : `${open} open at the log's end`].filter((part) => part !== "").join("; ");
 
-/** Lanes 24 and 25: the solve, how it ended and the cost, of which `time.ts` reads both. */
+/** Lanes 22 and 23: the solve, how it ended and the cost, of which `time.ts` reads both. */
 function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
   const done = log.solves.filter((solve) => solve.outcome !== null);
   const missed = done.filter((solve) => solve.outcome === "fail");
@@ -641,7 +641,7 @@ function reviewTriggers(log: Index): Trigger[] {
 }
 
 /**
- * The campaign command's own record, for lane 21's "what runs next": its moves, how it ended, and
+ * The campaign command's own record, for lane 13's "what runs next": its moves, how it ended, and
  * its calculated dollars against the budget it opened with, beside the backend's own totals. Lane
  * 25 read the stop rule from the command's output, which the log outlives. An ending before the
  * last event is one the campaign went on from: both #107 campaigns ended `exam` at their fourth event and ran on under the same opening.

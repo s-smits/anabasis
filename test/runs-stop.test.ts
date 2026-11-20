@@ -69,7 +69,7 @@ describe("a stop", () => {
   });
 
   // A stop releases a cut Builder's root, and its home with it. PR377's b-2 opened on the
-  // starter's notes after its b-1 was stopped (lane 33 of the investigation of 27 October).
+  // starter's notes after its b-1 was stopped (lane 22 of the investigation of 27 October).
   it("keeps a cut Builder's notes for the next session before its home goes", () => {
     const path = join(root, basename(root), "log.jsonl");
     const cut = sessionDirs(path, "b-1");

@@ -18,8 +18,8 @@
  * code: a continued conversation's wake through `wakeOn` (`src/examiner/write.ts`), compared with the
  * wake on record, which the resting call's result carries; an opening's task lines, counted against
  * a `read_opening` result the session received. The contract, the checks and the budget come from the
- * campaign's terms and are not rebuilt. Between 3 and 10 November 18 of 18 lane-2 sessions and 14 of
- * 18 lane-11 sessions rebuilt these by hand, cutting the log before each `exam.started`.
+ * campaign's terms and are not rebuilt. Between 3 and 10 November 18 of 18 lane-4 sessions and 14
+ * of 18 lane-20 sessions rebuilt these by hand, cutting the log before each `exam.started`.
  *
  * logAcross resolves names across configured hosts and refreshes their records. logEvents reads
  * through the last complete line, allowing live logs.

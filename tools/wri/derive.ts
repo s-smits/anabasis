@@ -695,8 +695,8 @@ function linesOf(file: string): string {
 /**
  * What each derived file answers, and how many lines it holds for each campaign, as a table for a
  * lane's prompt; "" where no folder of `folders` stands. Between 3 and 10 November the prompt named
- * the folders and no file in them: no lane 20 or lane 29 session opened `answers.txt`, which holds
- * the repeat spread both lanes rebuilt, and no lane 17 session opened `nearness.txt`. A length
+ * the folders and no file in them: no lane 10 or lane 11 session opened `answers.txt`, which holds
+ * the repeat spread both lanes rebuilt, and no lane 9 session opened `nearness.txt`. A length
  * beside each name lets a session open a short file whole and search a long one.
  */
 export function derivedMap(

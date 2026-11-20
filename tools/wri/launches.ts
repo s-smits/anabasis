@@ -7,9 +7,9 @@
  *
  *   bun tools/wri/wri.ts reader launches --log <log>
  *
- * For lanes 23 and 26, and 22 where a run stopped after a promotion. A stop by hand writes no
+ * For lanes 13, 18 and 22 where a run stopped after a promotion. A stop by hand writes no
  * `campaign.ended` and no `campaign.word`, only `killed` endings, so between 3 and 10 November 4 of
- * 6 lane-23 sessions searched session transcripts and 5 read the receipts and their output by hand
+ * 6 lane-13 sessions searched session transcripts and 5 read the receipts and their output by hand
  * to see how each launch ended. This prints what the stretch holds and does not say who ended it.
  *
  * A stretch runs from the receipt's time to the next receipt's, so two launches a minute apart

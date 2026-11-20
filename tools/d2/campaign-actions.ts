@@ -451,7 +451,8 @@ async function comparedOf(
   }
   // The table's starter comparison goes first, whatever harness/ holds: it is what confirms a
   // promotion, and until 1 November a changed harness/ took its move, so 0 of 5 promotions in the
-  // gate ablation and none of 19 so displaced since 26 October were confirmed (WRI lanes 24, 28).
+  // gate ablation and none of 19 so displaced since 26 October were confirmed (WRI lanes 17 and
+  // 22).
   if (decided.move === "compare" && decided.fresh === "starter") {
     return {
       move: decided,

@@ -1,13 +1,13 @@
 /**
- * One count over a starter read that lane 30 made by hand, read by the comparison's own test: of
+ * One count over a starter read that lane 12 made by hand, read by the comparison's own test: of
  * every way the signs of the tasks written after the promotion could fall, with every other task as
- * scored, how many read a step (`stepCount`). All 4 lane 30 sessions between 3 and 10 November
+ * scored, how many read a step (`stepCount`). All 4 lane 12 sessions between 3 and 10 November
  * counted it by hand, three of them with the test written again in Python. It is a fact about a read
  * and decides nothing.
  *
- * No test of whether the slices the writing sessions left differ stands beside it. 4 of 5 lane 31
+ * No test of whether the slices the writing sessions left differ stands beside it. 4 of 5 lane 19
  * sessions ran one in scratch, as a chi-square or Fisher test, but the slices are batches of one
- * continuing Examiner conversation, and whether they are independent draws is lane 31's own
+ * continuing Examiner conversation, and whether they are independent draws is lane 19's own
  * question: a p printed here would assume the answer. `starter-reads.ts` prints each slice's tally.
  */
 import { readsStep } from "#src/kernel/compare.ts";

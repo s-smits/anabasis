@@ -1,4 +1,4 @@
-// Lane 7's count of released tasks a later comparison scored (`SCORED AFTER RELEASE`, `folds.ts`).
+// Lane 21's count of released tasks a later comparison scored (`SCORED AFTER RELEASE`, `folds.ts`).
 // Invented logs only.
 import { describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";

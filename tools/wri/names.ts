@@ -8,7 +8,7 @@
  *
  * The Builder's one limit is that no part of a harness names a task, copies its text or holds its
  * answer (`src/builder/prompt.ts`), and no production check reads it. Between 3 and 10 November 9 of
- * 18 lane 12 sessions scanned own programs for it by hand, and two such scans were refused for
+ * 18 lane 15 sessions scanned own programs for it by hand, and two such scans were refused for
  * walking the checkout or giving an interpreter a campaign's path. The files read are what the
  * harness wrote (`writtenIn`, `tools/wri/trajectory.ts`: the guide and its own programs, nothing it
  * installed). A word matches whole: `x-1-3` is not found inside `x-1-31`.
@@ -28,7 +28,7 @@
  * A practice task's name in a harness is one the Builder was shown; a held-out task's is not, and
  * neither is called a breach here.
  *
- * It names which tasks were held out, so lane 27 reads it only after it has graded.
+ * It names which tasks were held out, so lane 14 reads it only after it has graded.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { DIGEST } from "#src/campaign/names.ts";

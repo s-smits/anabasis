@@ -20,12 +20,13 @@
  *   bun tools/wri/wri.ts reader <name> --log <log>
  *   bun tools/wri/wri.ts index [--root <dir>] [--out <file>]
  *
- * - `climb` prints lane 22's columns for every log `--log` names, one row each, and the paths
+ * - `climb` prints lane 18's columns for every log `--log` names, one row each, and the paths
  *   under the host's `/tmp` one campaign named before another's solve ran them. It reads the logs as they stand, so it can be run on campaigns still running.
  * - `trajectory` prints how far each campaign had got at each work hour, on the rulers its runs
- *   share (`tools/wri/trajectory.ts`), with lane 27's blind grades where `--grades` names them.
- * - `packets` writes lane 27's blind packets for several graders across campaigns, and with `--join`
- *   reads their reports into `grades.tsv` for `trajectory --grades` (`tools/wri/packets.ts`).
+ *   share (`tools/wri/trajectory.ts`), with lane 14's blind grades where `--grades` names them.
+ * - `packets` writes lane 14's blind packets for several graders across campaigns, and with
+ *   `--join` reads their reports into `grades.tsv` for `trajectory --grades`
+ *   (`tools/wri/packets.ts`).
  * - `read` prints the six rows and every trigger with the lane it starts (`tools/wri/read.ts`), and
  *   the host hash of the last condition beside this checkout's, and beside the campaign's own
  *   tree's when this checkout's differs.
@@ -358,7 +359,7 @@ function opened(): Investigation {
   return { out, shared, campaigns };
 }
 
-/** The campaigns of `logs` side by side in lane 22's columns (`tools/wri/climb.ts`). */
+/** The campaigns of `logs` side by side in lane 18's columns (`tools/wri/climb.ts`). */
 const climbOf = (logs: readonly string[]) =>
   climbText(logs.map((log) => ({ name: nameOf(log), events: read(log) })));
 
@@ -447,8 +448,8 @@ function lanes(): number {
   // leaves the machine (`AGENTS.md`, section 5). Every other Codex launch searches by default.
   // Every build after the first has a manifest of its own beside the first's, named by its lanes, so
   // no session a manifest launched loses the manifest that owes its report: on 4 November building
-  // lane 19 alone wrote over buffer583's five grouped sessions, and until 9 November a later build of
-  // open lanes still wrote over `launch.json`.
+  // lane 17 alone wrote over buffer583's five grouped sessions, and until 9 November a later build
+  // of open lanes still wrote over `launch.json`.
   const first = join(out, "launch.json");
   const launch = existsSync(first)
     ? join(out, `launch-${launched.map((lane) => stem(lane.number)).join("-")}.json`)

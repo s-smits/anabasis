@@ -113,7 +113,7 @@ describe("the harnesses a campaign keeps", () => {
 describe("a campaign its Builder leads", () => {
   it("reads each checkpoint's parent as the session's checkpoint before it, or what it began from, and an open session by its last checkpoint", async () => {
     // A led conversation freezes with `build.checkpoint` alone: buffer-fresh-opus-v072's compared
-    // harnesses all read "no record of its making" (the sweep of 27 October, lane 13).
+    // harnesses all read "no record of its making" (the sweep of 27 October, lane 15).
     const led = join(root, "led");
     const ledStates = join(led, "states");
     mkdirSync(ledStates, { recursive: true });
@@ -129,7 +129,7 @@ describe("a campaign its Builder leads", () => {
     append(ledLog, "build.checkpoint", { session: "b-1", harness: child });
     append(ledLog, "build.checkpoint", { session: "b-1", harness: later });
     // A state the session practised and never froze, and one only a comparison solved: until
-    // 2 November both read "no record of its making" (lane 15, 28 states in seven campaigns).
+    // 2 November both read "no record of its making" (lane 16: 28 states in seven campaigns).
     const practised = await keep(
       (dir) => writeHarness(dir, { ...EXAMPLE, guide: `${EXAMPLE.guide}\nPractised.` }),
       ledStates,

@@ -1,4 +1,4 @@
-// Lane 24's budget reader and lane 25's compactions: each comparison's sides by how their solves
+// Lane 22's budget reader and lane 23's compactions: each comparison's sides by how their solves
 // spent their bound, and each compaction with what it was billed.
 import { describe, expect, it } from "bun:test";
 import { conditionId } from "../src/kernel/condition.ts";

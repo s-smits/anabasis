@@ -35,8 +35,8 @@ cost.
    section already settles it, or another lane of the session covers it. `reportOf`
    (`tools/wri/investigation.ts`, `VERDICTS`) accepts the verdict, `collect` counts omitted lanes
    apart from read ones, and the synthesis lists them, so a reader can see what was not read.
-4. **What stays as it is.** Lanes 4 and 15 (5 and 19 before the 7 November renumbering) stay isolated: each freezes its result before reading
-   anything that could lead it, so neither is given the primary's section or another lane's
+4. **What stays as it is.** Lane 6 stays isolated: it freezes its result before reading
+   anything that could lead it, so it is given neither the primary's section nor another lane's
    findings. A standing lane may be omitted only with its reason, and the synthesis says which
    standing lanes went unread.
 

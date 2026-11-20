@@ -23,18 +23,18 @@
  * its promotion held one writer's 1-5-0, which stood nearer the 0-6-0 on the tasks written after it
  * than the rest of its own group. So each read also gives one line a writer.
  *
- * Each read also gives what lanes 30 and 31 counted by hand between 3 and 10 November (all 4 lane 30
- * sessions and all 5 of lane 31's): the summed margin of each origin and its share of the read's;
- * how many of the sign draws of the untied tasks written after, every other task as scored, read a
- * step (`stepCount`, `selection.ts`); and the tasks written after, slice by writing
- * session, each by majority and alone, with no test across the slices. The sums over reads
- * give the confirmations those draws expect beside those read, and where the slices went. `--tasks`
- * gives one row a task of each read (lanes 28, 19 and 22): its origin, writer, each solve's ending on
- * both sides, the reference's score against the starter and each side's ratio to the author's best.
- * A row's task is the 8-character prefix `tools/wri/pairs.ts` prints, and its writer the proposal's
- * session (`proposalsOf`), as `tools/wri/aim.ts` names it. Use this for a task's origin and ratios to
- * best, and `pairs.ts` for its A/A, flips, repeats, tie kind and the tasks set aside: there `diff` is
- * the starter's score over the reference's, the opposite sign of the margin here.
+ * Each read also gives what lanes 12 and 19 counted by hand between 3 and 10 November (all 4 lane
+ * 12 sessions and all 5 of lane 19's): the summed margin of each origin and its share of the
+ * read's; how many of the sign draws of the untied tasks written after, every other task as scored,
+ * read a step (`stepCount`, `selection.ts`); and the tasks written after, slice by writing session,
+ * each by majority and alone, with no test across the slices. The sums over reads give the
+ * confirmations those draws expect beside those read, and where the slices went. `--tasks` gives
+ * one row a task of each read (lanes 17 and 18): its origin, writer, each solve's ending on both
+ * sides, the reference's score against the starter and each side's ratio to the author's best. A
+ * row's task is the 8-character prefix `tools/wri/pairs.ts` prints, and its writer the proposal's
+ * session (`proposalsOf`), as `tools/wri/aim.ts` names it. Use this for a task's origin and ratios
+ * to best, and `pairs.ts` for its A/A, flips, repeats, tie kind and the tasks set aside: there
+ * `diff` is the starter's score over the reference's, the opposite sign of the margin here.
  *
  * The tally `epochsOf` stored and read is printed as it is. The split is scored under this tree's
  * rule (`differenceOf`), so on an older log the two can differ. `--all` counts copies of one
@@ -150,7 +150,7 @@ function drawLine(each: StarterRead, { draws }: Composition): string {
 }
 
 /** The read's after-slices, each by majority and alone. No test across them: whether the slices are
- *  independent draws is lane 31's question (`selection.ts`). */
+ *  independent draws is lane 19's question (`selection.ts`). */
 function sliceLines({ slices }: Composition): string[] {
   return slices.map(
     ({ writer, tally, alone }) =>

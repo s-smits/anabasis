@@ -5,7 +5,7 @@
  *   bun .claude/skills/campaign-mechanics/scripts/ending.ts <name | path/to/log.jsonl> [--at <line | ISO time>]
  *
  * `--at` reads the log up to that line, or up to the last event at or before that time, as the table
- * would have read it then under this tree's code: one lane-21 session of 9 November copied ten
+ * would have read it then under this tree's code: one lane-13 session of 9 November copied ten
  * prefixes of a log by hand to ask this. `tools/wri/table-timeline.ts` asks it at every change point.
  *
  * The existing run view lists the climb and next move, but omits ending history and counts against

@@ -1,5 +1,5 @@
 // A seat's calls kept by tool, and a phrase counted in each result (`oracle-handover/scripts/slice.ts`),
-// as lane 2 reads served text. Invented data only.
+// as lane 4 reads served text. Invented data only.
 import { describe, expect, it } from "bun:test";
 import { parseSelector, slice } from "#skills/oracle-handover/scripts/slice.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";

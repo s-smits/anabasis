@@ -1,5 +1,6 @@
 /**
- * Every compaction of a seat's context, one line each, then each compacted session's total (lane 25):
+ * Every compaction of a seat's context, one line each, then each compacted session's total (lane
+ * 23):
  *
  *   bun tools/wri/wri.ts reader compactions --log <log>
  *
@@ -10,9 +11,9 @@
  * (`CLAUDE_COMPACTED`, `src/agent/session.ts`), so it reads 0 here. A session's line sets those dollars beside what its end records as `billed`, which
  * holds them, or says that it has no end, where `unfinished` (`trace.ts`) meters them instead.
  *
- * Ten of the 13 lane 25 sessions between 3 and 10 November built the compaction table by hand, and 12
- * read `src/agent/session.ts` or `src/kernel/meter.ts` (37 commands) to learn whether a compaction is
- * billed. It counts and decides nothing.
+ * Ten of the 13 lane 23 sessions between 3 and 10 November built the compaction table by hand, and
+ * 12 read `src/agent/session.ts` or `src/kernel/meter.ts` (37 commands) to learn whether a
+ * compaction is billed. It counts and decides nothing.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { type Traced, tracesIn } from "#src/kernel/trace.ts";

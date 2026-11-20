@@ -56,7 +56,7 @@ The grader's view is not the deliverable. Reproduce it with the grader's own con
 call: caps and what falls past them by arm, embedded images that consume the cap, lost figures or
 notebook outputs, order inside a file, and which file counts. A "not found" past the cap is an
 artefact; absent, it is a miss. Report the reproduction beside the official score. **Inside:** the
-verifier reads the whole answer and the Referee rules with evidence (lanes 1 to 6).
+verifier reads the whole answer and the Referee rules with evidence (lanes 1, 2 and 4 to 6).
 
 ## 7. How the score is formed
 

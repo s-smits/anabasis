@@ -265,7 +265,7 @@ describe("the runs pulse", () => {
     const second = [...first, limit, crashed(2, "x-2")];
     const moved = pulse(round, second, "open", baseline.seen, START + 3 * MINUTE);
     expect(moved.said.filter((line) => line.includes("SESSION CRASHED"))).toEqual([
-      "⚠ economy: SESSION CRASHED (lane 24): x-1, x-2",
+      "⚠ economy: SESSION CRASHED (lane 22): x-1, x-2",
     ]);
     const solved = [...second, event(3, "solve.started", { solve: "s-1", task: "t-1" })];
     const again = pulse(round, solved, "open", moved.seen, START + 4 * MINUTE);
@@ -469,26 +469,26 @@ describe("the runs pulse", () => {
       pulse(round, log, "open", { ...lookedAt(log.length - 1), triggers: {} }, START + 7 * MINUTE).said;
     expect(
       said(chainLog("lost")).filter((line) =>
-        line.startsWith("◆ climb: CHAIN AGAINST THE STARTER (lane 28)"),
+        line.startsWith("◆ climb: CHAIN AGAINST THE STARTER (lane 17)"),
       ),
     ).toHaveLength(1);
     expect(said(chainLog("won")).some((line) => line.includes("CHAIN AGAINST THE STARTER"))).toBe(false);
     expect(
       said(objectiveLog(0.05)).filter((line) =>
-        line.startsWith("◆ honesty: MARGINS INSIDE THE NOISE (lane 29)"),
+        line.startsWith("◆ honesty: MARGINS INSIDE THE NOISE (lane 11)"),
       ),
     ).toHaveLength(1);
     // A promotion the objective carried is how this score promotes, so it is a reading, not an alarm
     // that wakes a session; a crashed session read in the same look is still a warning.
     const alarms = [
-      { name: "SAFEGUARD-9 PROMOTION BEYOND VALIDITY", lane: 8, detail: "0123abcd 7-0 p 0.008 joined" },
-      { name: "SESSION CRASHED", lane: 24, detail: "x-1" },
+      { name: "SAFEGUARD-9 PROMOTION BEYOND VALIDITY", lane: 3, detail: "0123abcd 7-0 p 0.008 joined" },
+      { name: "SESSION CRASHED", lane: 22, detail: "x-1" },
     ];
     const looked = { ...lookedAt(built.length), triggers: {} };
     const graded = pulseOf(round, built, OPEN, looked, { now: START + MINUTE, alarms }).said;
     expect(graded).toEqual([
-      "◆ honesty: SAFEGUARD-9 PROMOTION BEYOND VALIDITY (lane 8): 0123abcd 7-0 p 0.008 joined",
-      "⚠ economy: SESSION CRASHED (lane 24): x-1",
+      "◆ honesty: SAFEGUARD-9 PROMOTION BEYOND VALIDITY (lane 3): 0123abcd 7-0 p 0.008 joined",
+      "⚠ economy: SESSION CRASHED (lane 22): x-1",
     ]);
   });
 

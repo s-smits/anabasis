@@ -5,8 +5,8 @@
  *
  *   bun tools/wri/rejections.ts <log | campaign folder | name> [--solve <id>]
  *
- * Lanes 3 and 5 read it, and lane 2 and comparison-review read the same table. Between 3 and 10
- * November all 8 lane 3 sessions and all 6 lane 5 sessions joined `condition.recorded`,
+ * Lane 5 reads it, and lane 4 and comparison-review read the same table. Between 3 and 10
+ * November all 14 lane 5 sessions joined `condition.recorded`,
  * `solve.started`, `verdict` and `referee.finding` by hand to build it, three of them in pipelines the
  * lane guard refused, and 6 of the 8 looked for a `labels.json` where the labels are in the log.
  *

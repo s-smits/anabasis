@@ -1,4 +1,4 @@
-// Lanes 28 and 29 fire on a chain that loses to the starter on tasks written after its promotions,
+// Lanes 11 and 17 fire on a chain that loses to the starter on tasks written after its promotions,
 // and on an objective-only step won inside its own A/A, and stay silent on the nearest case of each.
 import { describe, expect, it } from "bun:test";
 import type { LogEvent } from "../src/kernel/log.ts";
@@ -11,7 +11,7 @@ const triggered = (log: readonly LogEvent[], name: keyof typeof TRIGGERS) =>
     .triggers.filter((trigger) => trigger.name === name)
     .map(({ detail }) => detail);
 
-describe("lane 28: whether the chain adds up against the starter", () => {
+describe("lane 17: the chain against the starter", () => {
   it("names each read's tally on tasks written after its promotion, the sums and what those tasks read alone", () => {
     expect(triggered(chainLog("lost"), "CHAIN AGAINST THE STARTER")).toEqual([
       "the reference's wins, losses and ties against the starter on tasks written after its promotion, oldest read first: g-2 0-3-0, g-4 0-3-0; summed 0-6-0, on tasks written before and not chosen on 0-0-0, on the tasks that chose the harness 14-0-0; on the tasks written after alone, 0 of 2 reads a step and 0 a step for the starter",
@@ -26,7 +26,7 @@ describe("lane 28: whether the chain adds up against the starter", () => {
   });
 });
 
-describe("lane 29: what an objective-only step won by", () => {
+describe("lane 11: what an objective-only step won by", () => {
   const SAID =
     "by no more than the wider of the two sides' own differences on the same task where validity tied";
   const same = [1, 1] as const;

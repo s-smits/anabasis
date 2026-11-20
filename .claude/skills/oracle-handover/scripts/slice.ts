@@ -19,7 +19,8 @@
  * and refuses a tool the chosen calls never used, naming those they did. `--count <phrase>` prints,
  * in place of text, how often the phrase stands in each chosen call's result (an event kind: in each
  * event's data), which settles a count of a phrase in served text without a jq filter: 27 such counts
- * were written by hand in 14 of 18 lane-2 sessions between 3 and 10 November, none through this script.
+ * were written by hand in 14 of 18 lane-4 sessions between 3 and 10 November, none through this
+ * script.
  *
  * Seats are Builder (or HarnessBuilder, build), Examiner (exam), Drafter (draft), Referee,
  * Solver (solve) and Repair. A model turn and the calls it asked for are one group, so `{4}` is

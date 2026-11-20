@@ -90,7 +90,7 @@ fresh side of its comparison.
 - **Turns against the limit of 20.** v5's comparison solves: median 6, 90th percentile 10, most 15,
   0 of 414 at the limit. Control's: median 4, 90th percentile 17, most 20, 8 of 264 at 20. Neither
   campaign has a `turns-ended` solve.
-- **Blind grades.** A lane 34 grading of 16 buffer campaigns on the same day, not yet vetted, gave
+- **Blind grades.** A lane 14 grading of 16 buffer campaigns on the same day, not yet vetted, gave
   the Starter 19 valid of 49 solves on tasks graded 6 in the campaigns of about 3 November, and 4 of
   4 in the control. One grader held each campaign, and a grade 6 task is rare in the control.
 

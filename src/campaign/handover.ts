@@ -349,9 +349,9 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
       const end = events[closed]?.data;
       const within = ({ started }: { readonly started: number }) => started > index && started < until;
       // A session cut before its end left what it last froze: until 2 November a Builder resumed
-      // after one was told that harness came from no session (esp32-fresh-opus-forkedPR569, lane 2).
-      // A killed session's ending names no harness, so until 4 November it hid the checkpoint the
-      // same way (the buffer campaign of #595 and a truss one, lanes 2 and 24).
+      // after one was told that harness came from no session (esp32-fresh-opus-forkedPR569, lane
+      // 4). A killed session's ending names no harness, so until 4 November it hid the checkpoint
+      // the same way (the buffer campaign of #595 and a truss one, lanes 4 and 22).
       const frozen = window.findLast(
         (event) => event.kind === "build.checkpoint" && event.data.session === id,
       );

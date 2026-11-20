@@ -54,7 +54,7 @@ went unread because no prompt said what each file holds.
 
 ## What stays as it is
 
-Lanes 4 and 15 stay isolated and lane 27 blind: none is given the list of derived files, and the
+Lane 6 stays isolated and lane 14 blind: neither is given the list of derived files, and the
 helpers written for them print nothing they are kept from, which a test holds for each. No helper
 gives a verdict: which kind a win is, whether a confirmation is selection, whether a check is
 defective stay the lane's question.
@@ -139,7 +139,7 @@ and 21 of the 23 lane prompts are 2,400 to 6,800, the other two 14,000 and 23,00
   drops out of the list while it runs. Three printed lines read it (`runs view`, `wri.ts read`, the
   UI's reading page); no decision does. The least change treats a comparison as open while it has
   no report, as `openComparisons` does.
-- **A file the answer and its task's public input are joined in** (lanes 1 and 4: 12 of 18 and 5 of
+- **A file the answer and its task's public input are joined in** (lanes 1 and 6: 12 of 18 and 5 of
   the recent sessions did the join by hand) was proposed as `wri.ts export` and not built: it would
   write hidden answers to a new file outside the log. `log.ts events --kind verdict --full` and
   `tasks.ts --task` give the two halves.

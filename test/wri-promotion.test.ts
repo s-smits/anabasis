@@ -1,4 +1,4 @@
-// Lane 22 preserves reported profiles, tested tasks and promotion safeguards.
+// Lane 18 preserves reported profiles, tested tasks and promotion safeguards.
 // Missing profiles stay unmeasured even where raw solves passed.
 import { describe, expect, it } from "bun:test";
 import { conditionId } from "../src/kernel/condition.ts";
@@ -133,7 +133,7 @@ function leaning({
   return events;
 }
 
-describe("lane 22: a promotion and the climb after it", () => {
+describe("lane 18: a promotion and the climb after it", () => {
   it.each([
     [null, "unmeasured"],
     [{}, "unmeasured"],
@@ -345,8 +345,8 @@ describe("lane 22: a promotion and the climb after it", () => {
   });
 });
 
-describe("lane 22 across campaigns", () => {
-  it("sets each campaign in lane 22's columns, promoted or not", () => {
+describe("lane 18 across campaigns", () => {
+  it("sets each campaign in lane 18's columns, promoted or not", () => {
     const { log, put, compare } = campaign();
     put("campaign.opened", { budget: 300, terms: { level: "0.1", trigger: "0.25" } });
     // g-1 won on the objective alone and g-2 on validity; the reference was valid in every solve of
@@ -390,7 +390,7 @@ describe("lane 22 across campaigns", () => {
         { count: 6, fails: false },
         [
           {
-            lane: 8,
+            lane: 3,
             name: "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
             detail:
               "hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 6-0 p 0.016 by the current score",
@@ -401,7 +401,7 @@ describe("lane 22 across campaigns", () => {
         { count: 6, fails: false, by: "bill" },
         [
           {
-            lane: 8,
+            lane: 3,
             name: "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
             detail:
               "hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 0-0 p 1.000 by the current score",

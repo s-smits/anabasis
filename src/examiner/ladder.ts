@@ -4,7 +4,7 @@
  *
  * Until 31 October the writing prompt said "Harder is yours to judge" and gave no scale, and the
  * drafting prompt none either. The investigation of that day graded every scored task of
- * kernel-cyber2-fresh-DeepSeek-V4.1-Flash-1017 at reach 3 or below on lane 34's scale (12 of 37 at
+ * kernel-cyber2-fresh-DeepSeek-V4.1-Flash-1017 at reach 3 or below on lane 14's scale (12 of 37 at
  * 3, none above), because the drafted exam defined each weakness by its exact syntax and each fix
  * as one canonical edit. Of esp32-fresh-opus's 81 drafts, the reference harness answered
  * all 3 solves of 76, so task admission refused them. And the reference's room came from chance on easy
@@ -12,7 +12,7 @@
  * promotions bought no reach the starter lacked. The operator asked the same day for a ladder from
  * easy to very hard, from fields outside the system, that "REALLY get very hard".
  *
- * The grades are lane 27's reach scale word for word (`whole-run-investigation`, `lanes.md`), so
+ * The grades are lane 14's reach scale word for word (`whole-run-investigation`, `lanes.md`), so
  * the Examiner and the investigation grade on one scale. `test/examiner-ladder.test.ts` holds the
  * two together. The examples are from orbital transfers, power-distribution load flow and
  * feedback-loop tuning: fields each with an engine that decides an answer (a two-body propagator,

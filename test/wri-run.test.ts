@@ -1,6 +1,6 @@
-// The triggers of lanes 5, 6, 23, 25 and 26 read how a run was conducted: the endings and the operator's words,
-// the Builder's compactions, the drafted exam, the launches and the log's order. Each case sets a
-// log that should fire beside the nearest one that should not.
+// The triggers of lanes 2, 5, 13, 22 and 23 read how a run was conducted: the endings a run went on
+// from, the operator's words, the Builder's compactions, the drafted exam, the launches and the
+// log's order. Each case sets a log that should fire beside the nearest one that should not.
 import { describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
@@ -34,7 +34,7 @@ const timed = (rows: readonly (readonly [number, EventKind, JsonObject])[]): Log
   rows.map(([minute, kind, data]) => event(kind, data, minute));
 const hoursOf = (events: readonly LogEvent[]) =>
   overview(events).rows[0]?.lines.find((line) => line.startsWith("hours:")) ?? "";
-describe("the endings and words (lane 23)", () => {
+describe("the endings and words (lane 13)", () => {
   it("counts no move a Builder made, the old `asked` code included", () => {
     const why = "the Builder asked for it, where the table named a comparison of the starter harness";
     const moves = logged(
@@ -71,7 +71,7 @@ describe("the endings and words (lane 23)", () => {
   });
 });
 
-describe("the Builder's conversation (lane 25)", () => {
+describe("the Builder's conversation (lane 23)", () => {
   it("gives a session's compactions beside its turns and its read_opening calls", () => {
     const compacted = logged(
       ["build.started", { session: "b-1", parent: "starter" }],
@@ -85,7 +85,7 @@ describe("the Builder's conversation (lane 25)", () => {
   });
 });
 
-describe("the drafted exam (lane 6)", () => {
+describe("the drafted exam (lane 2)", () => {
   it("gives the drafts and how each drafting session ended, and nothing for a stored pack", () => {
     const drafted = logged(
       ["exam.drafted", { session: "d-1", draft: {} }],
@@ -102,7 +102,7 @@ describe("the drafted exam (lane 6)", () => {
   });
 });
 
-describe("the launches (lane 26)", () => {
+describe("the launches (lane 22)", () => {
   const opened = logged(["campaign.opened", { project: "p" }]);
 
   it("fires on a second commit or a dirty tree, and stays quiet on one clean launch", () => {
@@ -129,7 +129,7 @@ describe("the launches (lane 26)", () => {
   });
 });
 
-describe("the log's order (lane 26)", () => {
+describe("the log's order (lane 22)", () => {
   it("names a clock that runs backwards, a finish with no start and a comparison started twice", () => {
     const disordered = [
       event("solve.finished", { solve: "s1" }, 5),
@@ -274,7 +274,7 @@ describe("the reader of campaign spend", () => {
     expect(dollars).toContain("examiner 5.00");
     expect(dollars).toContain("referee 1.00");
     expect(triggers.filter((trigger) => trigger.name === "SPEND LED BY A ROLE")).toEqual([
-      { lane: 25, name: "SPEND LED BY A ROLE", detail: "examiner: 83.3% of billed dollars" },
+      { lane: 23, name: "SPEND LED BY A ROLE", detail: "examiner: 83.3% of billed dollars" },
     ]);
   });
 

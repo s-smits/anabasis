@@ -160,7 +160,7 @@ export function usedSeconds(clock: SolveClock | undefined, now = performance.now
  * nothing sent. So a command returns while there is time to act on it. One started inside
  * the reserve is left to its own limits: the solver is told the time used with every result, and
  * what it starts then is its own to judge. Until 15 October one started under five seconds before
- * the reserve kept its own limits too, while the solver is told such a command is cut (lane 14 of
+ * the reserve kept its own limits too, while the solver is told such a command is cut (lane 13 of
  * main0_5_1's investigation).
  */
 export function heldSeconds(

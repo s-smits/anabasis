@@ -189,7 +189,7 @@ describe("the packets", () => {
       sessions: { name: string; ownedPaths: string[] }[];
     };
     expect(manifest.sessions.map(({ name }) => name)).toEqual(["grader_a", "grader_b"]);
-    expect(manifest.sessions[0]?.ownedPaths[0]).toEndWith("/lanes/34a-report.md");
+    expect(manifest.sessions[0]?.ownedPaths[0]).toEndWith("/lanes/14a-report.md");
   });
 });
 
@@ -203,9 +203,9 @@ describe("the join", () => {
   const oldest = `${labelOf("oldest-run")}\tex-0`;
   const owner = key.campaigns[labelOf("oldest-run")]?.grader ?? "";
   const other = owner === "a" ? "b" : "a";
-  writeFileSync(join(out, "lanes", `34${owner}-report.md`), rowsFor(owner, () => 5).join("\n"));
+  writeFileSync(join(out, "lanes", `14${owner}-report.md`), rowsFor(owner, () => 5).join("\n"));
   writeFileSync(
-    join(out, "lanes", `34${other}-report.md`),
+    join(out, "lanes", `14${other}-report.md`),
     ["not a row", "task\tr9\tex-9\tnone", ...rowsFor(other, () => 3)].join("\n"),
   );
   const lines = joinPackets(out, read);
@@ -238,7 +238,7 @@ describe("the join", () => {
   });
 
   test("a regrade replaces the grade, and is not owed again", () => {
-    const path = join(out, "lanes", `34${owner}-report.md`);
+    const path = join(out, "lanes", `14${owner}-report.md`);
     writeFileSync(path, `${readFileSync(path, "utf8")}\nregrade\t${oldest}\t2`);
     const again = joinPackets(out, read);
     expect(grades()).toContain("task\toldest-run\tex-0\t2");

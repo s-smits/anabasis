@@ -1,5 +1,5 @@
 /**
- * Lane 22's triggers: a campaign that promoted a harness, read for what the promotion rested on,
+ * Lane 18's triggers: a campaign that promoted a harness, read for what the promotion rested on,
  * what it measured, what touched both sides of it, and what the campaign did after it.
  * Validity percentages require a profile with a task and solve denominator; missing measurements
  * read unmeasured, while a nonempty profile of failed solves reads zero.
@@ -169,13 +169,13 @@ function ruleOf(log: Index): string {
 }
 
 /** Of a tally, the tasks that did not tie without the bill (`tallyOf`), of all it tallied: `10 of
- *  12`, or "-" where none was made, which until 25 October lane 27 read as "0 of 0". */
+ *  12`, or "-" where none was made, which until 25 October lane 14 read as "0 of 0". */
 export function untied(tested: JsonValue | undefined): string {
   const step = tallyOf(tested);
   return step === null ? "-" : share(step.wins + step.losses, step.wins + step.losses + step.ties);
 }
 
-/** One rest comparison as lane 22 reads it: the tally against its own A/A noise, the tally at each
+/** One rest comparison as lane 18 reads it: the tally against its own A/A noise, the tally at each
  *  budget, and the host's load while its solves started. */
 function restSaid(log: Index, { session, last }: Compared): string {
   const noise =
@@ -189,8 +189,8 @@ function restSaid(log: Index, { session, last }: Compared): string {
       ? []
       : [`${unit} ${String(count(record[unit]))} ${testSaid(record)}`];
   });
-  // Over the solves it measured, as lane 24 reads them: buffer's g-1 read 15.3 over its 70 starts on 12
-  // October and 37.9 over the 48 that were not non-results.
+  // Over the solves it measured, as lane 22 reads them: buffer's g-1 read 15.3 over its 70 starts
+  // on 12 October and 37.9 over the 48 that were not non-results.
   const solves = log.solves.filter((solve) => solve.comparison === session && measured(solve));
   const loads = solves.flatMap(({ load }) => (load === null ? [] : [load]));
   const cores = solves.find((solve) => solve.cores !== null)?.cores ?? null;
@@ -394,8 +394,9 @@ function sharedTmpTrigger(log: Index): Trigger[] {
   return firedIf(lines.length > 0, "SHARED TEMPORARY FOLDER", lines.join("; "));
 }
 
-/** Lane 22: every promotion the log holds, and the host's temporary folder wherever it is named;
- *  beside them lane 19's confirmation, lane 17's carriers and lanes 28 and 29 (`chainTrigger`, `marginTrigger`). */
+/** Lane 18: every promotion the log holds, and the host's temporary folder wherever it is named;
+ *  beside them lane 17's confirmation, lane 9's carriers and lanes 11 and 17 (`chainTrigger`,
+ *  `marginTrigger`). */
 export function promotionTriggers(log: Index): Trigger[] {
   const starter = log.compared.map(({ last }) => last.starter).find(isString) ?? "";
   const epochs = epochsOf(log.events);
@@ -409,7 +410,7 @@ export function promotionTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** `STEP CARRIERS` (lane 17): each step's untied tasks on the scores it is read on (`scoresIn`), and how many of its largest
+/** `STEP CARRIERS` (lane 9): each step's untied tasks on the scores it is read on (`scoresIn`), and how many of its largest
  *  wins it could lose to a tie and still clear its level (`spareOf`, `clearance.ts`), with its retained tasks' tally where
  *  it lost more of them than it won, and a clause where it tallied tasks of several families and won in one only: of the
  *  49 starter reads on record on 11 November, 0 of the 6 after such a step confirmed its promotion, and 21 of the 33
@@ -435,11 +436,11 @@ function carrierTrigger(log: Index): Trigger[] {
   return firedIf(lines.length > 0, "STEP CARRIERS", lines.join("; "));
 }
 
-/** `PROMOTION UNCONFIRMED` (lane 19): each promotion whose epoch has no starter comparison, or whose
+/** `PROMOTION UNCONFIRMED` (lane 17): each promotion whose epoch has no starter comparison, or whose
  *  first one that tallied a task does not read the reference above the starter (`confirmed`,
  *  `src/campaign/climb.ts`; the last one until 2 November).
  *  On 1 November none of the gate ablation's five promotions and the validity arm's one was
- *  confirmed, and lanes 24 and 28 found it by reading the moves. */
+ *  confirmed, and lanes 17 and 22 found it by reading the moves. */
 function unconfirmedTrigger(log: Index): Trigger[] {
   const epochs = epochsRead(log.events);
   const lines = epochs.flatMap(({ nth, reference, to, starter_tally: against, confirmed }) => {
@@ -457,7 +458,7 @@ function unconfirmedTrigger(log: Index): Trigger[] {
   );
 }
 
-/** `CHAIN AGAINST THE STARTER` (lane 28): two or more starter reads whose tasks written after their
+/** `CHAIN AGAINST THE STARTER` (lane 17): two or more starter reads whose tasks written after their
  *  promotions the reference lost more often than it won, summed over the reads. Each promotion is
  *  read against its parent, so a chain of them can each win and still fail to beat the starter on
  *  tasks that chose none of them. A starter read mixes three kinds of task (`starterReads`), and only
@@ -481,7 +482,7 @@ function chainTrigger(log: Index): Trigger[] {
   ];
 }
 
-/** `MARGINS INSIDE THE NOISE` (lane 29): a step whose untied tasks all tie on validity is carried by the
+/** `MARGINS INSIDE THE NOISE` (lane 11): a step whose untied tasks all tie on validity is carried by the
  *  objective alone, each win a margin between two valid answers. Each side read against itself under
  *  the same setting, rebuilt from its solves (`pairsReported`), gives on a task whose halves tied on
  *  validity the margin two solves of one harness reach by chance; a task a side's halves split on

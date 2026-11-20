@@ -11,7 +11,8 @@
  * holding both a step and another reading, the gap (new less reference) stood higher at the steps in 23,
  * lower in 4 and level in 1, which a domain cannot carry since each log is its own control. It is a
  * lead and decides nothing: a repeat can be a harness that closed a task's search or one that no longer searches, and
- * the objective reads the same either way (`ANSWER FROM A PROGRAM`, lane 15, says how it was reached).
+ * the objective reads the same either way (`ANSWER FROM A PROGRAM`, lane 16, says how it was
+ * reached).
  *
  * New on 5 November: no script of v1 or before compared answers. The nearest, `harness-task-facts.mjs`
  * of the fourth repository, compared public inputs. An answer may hold what a task hides, so this

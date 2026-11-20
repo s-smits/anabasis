@@ -557,7 +557,7 @@ describe("the bar a promotion is read against, beside an old ladder's readings",
   });
 
   it("counts a led session in each epoch it acted in, and a finished one in its own epoch alone", () => {
-    // WRI lane 31, 2 November: a led session finishes in no epoch, so 11 of 11 steps in seven
+    // WRI lane 19, 2 November: a led session finishes in no epoch, so 11 of 11 steps in seven
     // campaigns read "over 0 Builder sessions".
     const led = [
       event("campaign.opened", { terms: { cost: "2" } }),

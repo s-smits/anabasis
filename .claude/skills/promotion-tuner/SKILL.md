@@ -101,7 +101,7 @@ An A/A pairs the reference's mirrored halves of its solves (`pairsOf`, `halves: 
 `readsStepEitherWay` reads a step either way on unbilled scores; an A/A step is false by
 construction. `rightful` means the recorded solves support the promotion under this score; it cannot
 detect a lucky draw, which the A/A and a later fresh reading address. Whether promotions bought
-ability is whole-run-investigation's lane 27.
+ability is whole-run-investigation's lane 14.
 
 ## Every run side by side
 

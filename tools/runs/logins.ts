@@ -56,7 +56,7 @@ import { hasText, textOr } from "#src/meta/text.ts";
 import { looseFlagsOf } from "../d2/campaign-terms.ts";
 import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
-import { hostsOf } from "./host-config.ts";
+import { hostsOf, keptHere } from "./host-config.ts";
 import { CODEX, countedAgainst, type Live, liveHere, liveOf } from "./live.ts";
 import { remember } from "./pulse-readers.ts";
 import { archived, isCampaign } from "./registry.ts";
@@ -672,7 +672,7 @@ export async function logins(args: readonly string[], readUsage = readLogins): P
   }
   // A forwarded report refreshes the peer's local history without asking other hosts again.
   const whole = !values.json && positionals.length === 0;
-  const forwarded = runtimeProcess.env.ANA_HOP === "1";
+  const forwarded = keptHere();
   const [readings, counted, refreshed] = await Promise.all([
     readUsage(positionals.length > 0 ? positionals : held, runtimeProcess.env),
     values.json ? null : liveEverywhere(),

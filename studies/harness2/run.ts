@@ -54,9 +54,8 @@ import { join, relative, resolve } from "#src/meta/path.ts";
 import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import type { JsonObject } from "#src/meta/json-shape.ts";
-import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { LIMITS } from "#tools/d2/campaign.ts";
-import { bundleArm, MOUNT_RECORD } from "../shared/bundle.ts";
+import { bundleArm, MOUNT_RECORD, sourceNamed } from "../shared/bundle.ts";
 import { halves, readArms, shortfall, streamOf, trialsOf } from "../shared/scores.ts";
 
 const STUDY = import.meta.dir;
@@ -365,13 +364,7 @@ async function main(args: readonly string[]): Promise<void> {
       throw new Error("bundle needs --arm and --from");
     }
     if (values.arm === OPENCODE) throw new Error(`${OPENCODE} is Harness²'s base and takes no bundle`);
-    if (values.from === "starter" && values.harness !== undefined) {
-      throw new Error("--harness names a campaign's kept harness; the starter is one harness");
-    }
-    const source =
-      values.from === "starter"
-        ? "starter"
-        : { campaign: values.from, ...keyIfDefined("harness", values.harness) };
+    const source = sourceNamed(values.from, values.harness);
     const { digest, origin } = await bundleArm(armDir(values.arm), source);
     console.log(`bundle: ${values.arm} is harness ${digest}, ${capturedJsonStringify(origin)}`);
     return;

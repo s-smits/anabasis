@@ -199,9 +199,9 @@ const landEnv = (env: Record<string, string | undefined>): Record<string, string
   ...env,
 });
 
-/** One landing, as a session runs it with `--once`; following its stack is proved on its own. */
+/** One landing, as `land` runs by default; following its stack (`--watch`) is proved on its own. */
 function runLand(args: readonly string[], env: Record<string, string | undefined> = {}) {
-  return spawnTextSync(capturedExecPath, [land, ...args, "--once"], { cwd: work, env: landEnv(env) });
+  return spawnTextSync(capturedExecPath, [land, ...args], { cwd: work, env: landEnv(env) });
 }
 
 const statuses = (context: string): string[] =>
@@ -1007,11 +1007,11 @@ describe("bun run land", () => {
     expect(leftPending(COMMIT)).toEqual([]);
   });
 
-  it("follows its stack once a landing ends, lands again when a head moves, and ends when the pull request closes", async () => {
+  it("with --watch, follows its stack once a landing ends, lands again when a head moves, and ends when the pull request closes", async () => {
     const later = join(fixture, "followed-pulls");
     rmSync(`${later}.read`, { force: true });
     writeFileSync(later, JSON.stringify([pull(11, "a", "main", lowerDocs), pull(12, "b", "a", stacked)]));
-    const child = Bun.spawn([capturedExecPath, land, "12"], {
+    const child = Bun.spawn([capturedExecPath, land, "12", "--watch"], {
       cwd: work,
       env: landEnv({ ANA_FAKE_PULLS_LATER: later, ANA_LAND_WATCH_MS: "100" }),
       stdout: "pipe",

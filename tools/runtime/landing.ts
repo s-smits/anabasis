@@ -220,10 +220,12 @@ function openOrNull(root: string): Pull[] | null {
 
 /**
  * Lands with `round`, then again each time an open pull request moves, opens or closes, read every
- * `WATCH_MS`, until `target` is no longer open or SIGINT or SIGTERM ends it: `bun run land` follows
- * its stack unless `--once` is named, and a `--merge` lands once (operator, 9 November: "make this a
- * flag but set it"). A round costs only what moved, since every pass is remembered by tree; a round
- * under way ends through `watching`, a wait at once.
+ * `WATCH_MS`, until `target` is no longer open or SIGINT or SIGTERM ends it, where `--watch` is
+ * named. A landing lands once by default (operator, 20 November: "standard just let it run and not
+ * iterate", since a loop left running re-proves every move during heavy sessions and held the main
+ * checkout from following the stack for a day), and a `--merge` lands once. A round costs only
+ * what moved, since every pass is remembered by tree; a round under way ends through `watching`,
+ * a wait at once.
  */
 export async function follow(
   root: string,
@@ -243,7 +245,7 @@ export async function follow(
     const before = placesOf(openOrNull(root) ?? []);
     const code = await round();
     if (ended) return code;
-    say("following: landing again once a pull request moves; --once lands once, Ctrl-C ends.");
+    say("following: landing again once a pull request moves; Ctrl-C ends.");
     waiting = true;
     let open: Pull[] | null = null;
     while (open === null || placesOf(open) === before) {

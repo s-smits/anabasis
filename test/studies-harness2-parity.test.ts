@@ -33,7 +33,9 @@ const FORK = runtimeProcess.env.HARNESS2_FORK ?? "";
 const TASK = "statisticians/task2";
 const LABEL = "jb-anabasis1__statisticians__task2";
 const SCORE = new URL("../studies/harness2/score.ts", import.meta.url).pathname;
-const WORKSPACE = /\/hevo_ws_cc\/statisticians_task2_jb-anabasis1__statisticians__task2_\d+$/u;
+// The pilot named the workspace for the arm; the TypeScript rollout names it for the task alone.
+const PILOT_WORKSPACE = /\/hevo_ws_cc\/statisticians_task2_jb-anabasis1__statisticians__task2_\d+$/u;
+const WORKSPACE = /\/hevo_ws_cc\/statisticians_task2_[A-Za-z0-9]{6}$/u;
 
 const field = (value: JsonValue | undefined, ...keys: string[]): JsonValue | undefined =>
   keys.reduce<JsonValue | undefined>((at, key) => (isRecord(at) ? at[key] : undefined), value);
@@ -176,14 +178,15 @@ for (const event of [{ type: "system", subtype: "init", cwd: process.cwd(), mode
       return JSON.stringify(field(value, "args") ?? null).replaceAll(isString(ws) ? ws : "\0", "<workspace>");
     };
 
-    it("starts claude once from each runner, in a workspace named as the pilot's was", () => {
+    it("starts claude once from each runner, the TypeScript one in a workspace that names no arm", () => {
       expect(exits).toEqual([0, 0]);
       expect(rowsOf(calls)).toHaveLength(2);
-      for (const side of [0, 1]) expect(field(call(side), "cwd")).toMatch(WORKSPACE);
+      expect(field(call(0), "cwd")).toMatch(PILOT_WORKSPACE);
+      expect(field(call(1), "cwd")).toMatch(WORKSPACE);
       const traj = join(FORK, "runs", "jb", "dataset", TASK, "model_traj", LABEL);
       const recorded = readdirSync(traj).find((name) => name.includes("attempt1"));
       const init = rowsOf(join(traj, recorded ?? "")).find((event) => field(event, "type") === "system");
-      expect(field(init, "cwd")).toMatch(WORKSPACE);
+      expect(field(init, "cwd")).toMatch(PILOT_WORKSPACE);
       expect(field(init, "model")).toBe("claude-opus-5-5");
     });
 
@@ -200,7 +203,7 @@ for (const event of [{ type: "system", subtype: "init", cwd: process.cwd(), mode
       ]);
     });
 
-    it("gives claude the same environment but HARNESS_RENDER_DIR, the store and the sweep's PATH", () => {
+    it("gives claude the same environment but HARNESS_RENDER_DIR, the runner's task, label and store, and the sweep's PATH", () => {
       const env = (side: number): Record<string, JsonValue> => {
         const got = field(call(side), "env");
         // Inert outside the runners: CoreFoundation writes the first into a macOS Python process, and
@@ -208,6 +211,8 @@ for (const event of [{ type: "system", subtype: "init", cwd: process.cwd(), mode
         const {
           PWD: _pwd,
           TASKS_BASE_DIR: _store,
+          TASK_IDS: _task,
+          LABEL: _label,
           __CF_USER_TEXT_ENCODING: _cf,
           NoDefaultCurrentDirectoryInExePath: _windows,
           ...rest
@@ -223,7 +228,10 @@ for (const event of [{ type: "system", subtype: "init", cwd: process.cwd(), mode
       expect(tsPath).toBe(
         [join(jb, ".venv", "bin"), dirname(capturedExecPath), isString(pyPath) ? pyPath : "?"].join(":"),
       );
-      expect(field(call(1), "env", "TASKS_BASE_DIR")).toBe(join(root, "ts", "dataset"));
+      expect(field(call(0), "env", "LABEL")).toBe(LABEL);
+      for (const key of ["TASKS_BASE_DIR", "TASK_IDS", "LABEL"]) {
+        expect(field(call(1), "env", key)).toBeUndefined();
+      }
     });
 
     it("stages the same workspace, with the empty settings an installed tree carries", () => {

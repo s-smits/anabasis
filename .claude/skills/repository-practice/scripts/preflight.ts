@@ -205,7 +205,7 @@ export function labelsOf(files: readonly string[]): Pick<Owed, "category" | "imp
     validity.length > 0
       ? {
           label: "importance:I1",
-          why: `it touches ${validity.join(", ")}: I1 if it protects comparison validity, else I2`,
+          why: `it touches ${validity.join(", ")}: I0 if it corrects a result already wrong or a wall breach, I1 if it protects comparison validity, else I2`,
         }
       : subjects.length === 0
         ? { label: "importance:I3", why: "documentation, skills or wording only" }

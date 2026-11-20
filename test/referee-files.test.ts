@@ -201,7 +201,7 @@ describe("the Referee's read of an answer's files", () => {
     const windows = ids.slice(0, 3);
     expect(windows.map((window) => NOTE.exec(window)?.[2])).toEqual(["3993", "7985", undefined]);
     expect(windows.map((window) => window.replace(NOTE, "")).join("")).toBe(IDS);
-    for (const window of windows) expect(window).not.toContain("Shown: the first");
+    for (const window of windows) expect(window).not.toContain("Left out here");
     expect(ids[3]).toContain("file:other.csv is not among the texts of the answer's files");
   });
 

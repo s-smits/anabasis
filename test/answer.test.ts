@@ -68,7 +68,7 @@ function shown(result: ToolExecutionResult): string {
 }
 
 describe("a seat tool's automatic result cap", () => {
-  it("shows an 80 KB result's head and notice, keeps its whole file in the seat, and separates calls", async () => {
+  it("shows an 80 KB result's head, notice and tail, keeps its whole file in the seat, and separates calls", async () => {
     const dir = seatHome();
     const env = new SeatEnv(dir);
     const large = tool({
@@ -87,7 +87,7 @@ describe("a seat tool's automatic result cap", () => {
       expect(file).toEndWith(".log");
       expect(readFileSync(file, "utf8")).toBe(LONG);
       expect(value).toStartWith("first part\n");
-      expect(value).not.toContain("last part");
+      expect(value).toEndWith("last part");
       expect(value).toContain(String(Buffer.byteLength(LONG)));
       expect(value).toContain(file);
       expect(Buffer.byteLength(value)).toBeGreaterThan(48 * 1024);

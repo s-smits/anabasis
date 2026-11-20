@@ -333,7 +333,7 @@ function proposeTool(desk: Desk): SeatTool {
   return tool(
     fromHome(desk.home, {
       name: "propose_tasks",
-      description: `Put task instances to the host's gate, as the system prompt's section on the gate says.${filed(desk)}`,
+      description: `Put task instances to the host's gate. The gate reads the shape of each package: its family, its inputs, and that the checks have what they need to run on it. No solver is put to it there. Of each it says held out, or refused with its reason. A task held out is in the exam from then on, and a comparison scores no other.${filed(desk)}`,
       parameters: Type.Object({
         tasks: Type.Array(GIVEN, { minItems: 1 }),
       }),

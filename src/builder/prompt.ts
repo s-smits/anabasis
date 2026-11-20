@@ -60,26 +60,18 @@
  * the reviewers' readings, and is told that one solve is weak evidence, because in v1's record a
  * fail repeated on the same bytes 5 times in 21.
  *
- * It is also told how promoted harnesses fared against the starter on tasks written after each
- * promotion, by the measure that separated them (`starterReads`, `src/campaign/climb.ts`, over every
- * log with `starter-reads.ts --all`): a gain on validity carried to new tasks, while a gain on the
- * objective between two valid answers carried in some campaigns and reversed in others, and lost on
- * balance. With it the Builder is told that any part may be
- * rewritten whole, since a harness that only amends its parent carries every margin its chain was
- * chosen on, and nothing measures how harness/ came to hold what it holds. Both are facts, not a
- * course: which part to keep, amend or rewrite stays the Builder's.
+ * It is told that any part may be rewritten whole, since a harness that only amends its parent
+ * carries every margin its chain was chosen on, and nothing measures how harness/ came to hold what
+ * it holds. That is a fact, not a course: which part to keep, amend or rewrite stays the Builder's.
  *
- * Before that it was told where promoted harnesses lost to the starter, as a count. Over the 8 starter
- * comparisons on record (2 November), a promoted harness lost 44 of the 86 tasks written in its own
- * epoch and 20 of the 111 older ones, every loss on the objective between two valid answers. On
- * 4 November buffer583's g-2 lost 3 tasks to the starter on validity, so "every loss on the
- * objective" no longer held: over the 12 starter comparisons then readable on every host, 74 of 274
- * tasks were lost, 71 on the objective and 3 on validity (`carriedBy`). The Builder reads its own
- * campaign's tallies and no other's, so the record is stated once here.
- *
- * The goal's share of unpractised kinds: over the 170 comparisons of a candidate in 60 campaigns
- * opened since 29 October, 742 of the 1,432 tasks scored came from a family of which no task had
- * been released as practice when that comparison began.
+ * It hears no count from other campaigns, since a number fixed in a prompt goes stale while the
+ * Builder reads its own campaign's tallies in its opening. On 20 November two were taken out: how
+ * promoted harnesses fared against the starter on the tasks written after each promotion
+ * (`starter-reads.ts --all`), with the account of the starter comparison it came with, and the
+ * share of scored tasks from a family never released as practice (742 of 1,432 over 170
+ * comparisons opened from 29 October). The same day the operator rewrote the system prompt, the
+ * handover and the shell's wall in fewer words, the prompt as paragraphs with the harness's three
+ * parts as a list.
  *
  * On 2 November the texts were read for a model that follows a prompt literally (Opus 5.5), and
  * each place a sentence read as a course or a second limit was put as a fact: "leaves the solving
@@ -96,8 +88,9 @@
  * description, so this prompt no longer describes `check_harness`, `preview_harness`, `practice`,
  * `read_trace`, `read_opening` or `finish`; the shape of each harness part (the programs'
  * convention, the guide's place in the solver's prompt) is in `HARNESS.md`. This prompt keeps a map
- * of the three parts and the two facts no section there holds:
- * `agent/config.yaml` is not read, and a harness whose scripts or links name the home is not frozen.
+ * of the three parts and the one fact no section there holds: a harness whose scripts or links name
+ * the home is not frozen. That `agent/config.yaml` is not read was taken out on 20 November: the
+ * host tells the solver its limits (`HARNESS.md`), and no seat ever named the file.
  */
 import { ROOM, WEIGHTS } from "../kernel/compare.ts";
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
@@ -220,11 +213,9 @@ export const SAID: Readonly<Record<"host" | "builder", Said>> = {
  *  own notes cross only through the one file the campaign keeps (`memory.ts`); `finish` ends the
  *  session at the turn that calls it, so a note meant for after it is never written. */
 const HANDOVER =
-  `The next session opens in a new home, and what you learned reaches it only through ${MEMORY_FILE} in your ` +
-  "home directory, a plain file and never a symbolic link: the host keeps it as this session's notes when the " +
-  "session ends, and each later session of this campaign opens on the notes of the sessions before it, newest " +
-  `first, as many as fit in ${String(CONTEXT_OUTPUT_LIMIT)} characters; notes longer than that are cut to their ` +
-  "head and tail. finish ends this session at that turn, so bring it up to date before you call it.";
+  `The next session opens in a fresh home and receives only ${MEMORY_FILE} (plain file, no symlink), ` +
+  `shown newest-first up to ${String(CONTEXT_OUTPUT_LIMIT)} characters (longer notes are cut to head and tail). ` +
+  "Update it before calling finish, which ends the session on that turn.";
 
 /** What a session has used of its limits, as the host counts it. */
 export interface Used {
@@ -249,23 +240,34 @@ function tried(harness: string | Error, practice: "counted" | "uncounted"): stri
  *  (`src/solver/prompt.ts`, `environment`), the network as the reach test found it
  *  (`networkReach`): the shell is the solver's `bash`, started in the home. */
 export const shellWalls = (network: NetworkReach): string =>
-  ` The command runs in your home directory, where harness/, practice/, resources.json, HARNESS.md and your notes are, and kept/, which holds a copy of every other harness this campaign has kept, each under the head of its digest; only harness/ is frozen. ${network === "reached" ? "It has network access, a package index having been reached from inside the wall when this process started, so a program the solver runs, and what that program needs, can be installed under harness/.toolchain." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be fetched, and a program the solver runs is one written here or already on the host."} It can write your home directory and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. Nothing a command starts runs on after it returns: wait for a background job in the command that started it.`;
+  ` Runs in your home directory (holding harness/, practice/, resources.json, HARNESS.md, notes, and kept/ copies of earlier harnesses; only harness/ is frozen). ${
+    network === "reached"
+      ? "Network is reachable, so packages and programs can be installed under harness/.toolchain."
+      : "No network access, so a program the solver runs is one written here or already on the host."
+  } Writable: your home and $TMPDIR, which persists for the session; a write under /tmp is refused or does not outlive the command. Readable: host toolchains and public runtime roots, never the repository or private data. Background jobs are killed when a command returns, so one is waited for in the command that started it.`;
 
 export function systemPrompt(said: Said): string {
   return [
-    "You are the Builder. You improve a Built Harness: the programs and the guide with which a separate solving model answers each task of one domain. The host's verifier owns correctness, and the host owns acceptance and scores.",
-    `${GOAL} No measured task is a practice task, and a measured task can be of a kind that no practice task shows: over 170 comparisons on record about half of them were, by their author's own grouping. The one limit on the harness is that nothing in it names a task, copies its text or holds its answer, and such a line moves nothing that is measured.`,
-    "The harness is harness/ in your home directory. The solver is pi's coding agent, and each of the harness's three parts has one purpose. agent/tools-spec.json selects which of pi's coding tools the solver has: read, bash, edit, write. .toolchain holds the programs, which run by name in the solver's shell and in yours. agent/BUILT_AGENTS.md is the guide: it says what each program is for, how they combine and how a result informs the next decision. HARNESS.md beside harness/ gives each part's shape, with a worked example, and prints the starter instructions. Any part may be rewritten whole rather than amended, from harness/, a kept harness or the starter's instructions: only what harness/ holds when it is frozen is measured. agent/config.yaml is not read: the host sets every limit a solve runs under. The harness is run from another place than your home, so an installed launcher finds its files from its own path, as \"$(dirname \"$0\")\" does, and a link names its target relatively: a harness in which a script or a link names your home is not frozen.",
-    "Answers are judged by checks that neither you nor the solver is shown; what they enforce is the public rules. A program may run the field's own compiler or simulator, search for candidates, test them against the public rules and report which meet them: a search costs the turns and the time it takes, under the limits both harnesses share. The solver decides what it writes to answer.json, which the host reads when the solver submits: nothing of yours takes the answer.",
-    `One practice solve is weak evidence: the same harness can fail a task and pass it the next time. Read the record, not the last result: a change shows in practice only on the tasks it moves. What you change after your last practice solve is measured untried. A harness wins or loses each task by its score over every pairing of its solves with the reference's, two measures weighed ${String(WEIGHTS.validity * 100)} and ${String(WEIGHTS.objective * 100)}: validity, a valid answer beating one that is not; and between two valid answers the objective, where the exam names one, an answer better by at least ${String(ROOM * 100)}% of the larger measure gaining that share of the weight. Where the campaign holds retained tasks, ones the reference answered on every solve of its last two comparisons or held out before it became the reference, a comparison also scores up to one of them for every three others, rounded up, so a change that breaks an easy task can lose it. A comparison reads a step where its test clears the level on these scores. After a promotion the starting harness of the campaign is compared with the new reference, the tasks written since first; that comparison promotes and stops nothing, and reads whether the new tasks leave the reference room. Over 30 such comparisons on record, on the tasks written after each promotion, the promoted harness won 35 and lost 6 of those where one side's answer was valid and the other's not, and won 116 and lost 136 of those where both answers were valid and only the objective differed, a sum of campaigns that went strongly one way or the other: gains on validity carried to the new tasks, and where both answers were valid the starter won more often than the promoted harness. An answer that is not valid is never better. What a solve billed and the turns it took are reported and weigh nothing in the score, but a solve fails that submits no answer by its turn or time limit or the end of its context window, or that calls the task malformed. A fail ruled a check defect does not count and is not yours to build around.`,
-    "You work in your home directory with read, bash, edit and write. The three file tools take a path relative to it, such as harness/agent/BUILT_AGENTS.md, and the shell is there for everything else: searching, listing, running and installing. Every reply of yours is one turn, with or without a tool call.",
+    "You are the Builder. You improve a Built Harness (programs and guide) for a separate solving model in one domain. The host owns verification, acceptance, and scoring.",
+    `${GOAL} Measured tasks are never practice tasks and may come from families not seen in practice. The one limit: nothing in the harness may name a task, copy its text, or hold its answer, and such a line moves nothing that is measured.`,
+    [
+      "The solver is pi's coding agent. The harness lives in harness/ (see HARNESS.md for shapes, a worked example, and the starter guide). It has three parts:",
+      "- agent/tools-spec.json: selects pi coding tools for the solver (read, bash, edit, write).",
+      "- .toolchain/: programs runnable by name in both your shell and the solver's.",
+      "- agent/BUILT_AGENTS.md: the guide: what each program is for, how they combine, and how a result informs the next decision.",
+      'You may rewrite any part from scratch, from kept/, or from the starter; only harness/ at freeze is measured. The harness runs from another place than your home, so launchers resolve paths relative to themselves (as "$(dirname "$0")" does) and links name their targets relatively: a script or link naming your home is refused at freeze.',
+    ].join("\n"),
+    "Hidden checks enforce the public rules. Programs may run domain compilers or simulators, search for candidates, test them against the public rules and report which meet them, spending the solve's shared turn and time budget. The solver decides what it writes to answer.json, which the host reads when it submits: nothing of yours takes the answer.",
+    "One practice solve is noisy: the same harness can fail and then pass. Read the full record, not just the last run: a change shows in practice only on the tasks it moves, and anything changed after your last practice solve is measured untried.",
+    `Tasks are scored over all candidate-vs-reference solve pairings using validity (weight ${String(WEIGHTS.validity * 100)}) and, between two valid answers when an objective exists, objective gain of at least ${String(ROOM * 100)}% of the larger magnitude (weight ${String(WEIGHTS.objective * 100)}). An invalid answer never beats a valid one. Retained tasks are those the reference answered on every solve of its last two comparisons or that were held out before it became the reference; up to one of them is scored per three others, rounded up, so a change that breaks an easy task can lose it. A comparison reads a step when its test clears the level. Cost and turns are reported but unscored; hitting a turn, time, or context limit without submitting, or flagging a task malformed, counts as a fail. A fail ruled a check defect does not count and is not yours to build around.`,
+    "Use read, edit, and write with paths relative to your home (such as harness/agent/BUILT_AGENTS.md), and bash for everything else: searching, listing, running and installing. Each reply counts as one turn, with or without a tool call.",
     [
       said.closing,
-      `The session ends when you call finish or at its limits, and what harness/ holds then is ${said.frozen}.`,
+      `The session ends when you call finish or hit its limits, and harness/ is then ${said.frozen}.`,
     ]
       .filter((sentence) => sentence !== "")
       .join(" "),
-  ].join("\n");
+  ].join("\n\n");
 }
 
 /**

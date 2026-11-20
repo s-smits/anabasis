@@ -435,9 +435,20 @@ on the top. Read `stack-pr` and the stack (`bun .claude/skills/stack-pr/scripts/
 you branch and again before you push, since other sessions move it. Moving your own PR onto the top
 is yours; another session's PR, worktree or run changes only on the operator's word. Use one
 worktree per PR, never `git stash` by hand, and make every commit pass alone. Each PR carries one
-importance label (`I0` blocks a release; `I1` protects evaluation validity, prevents serious run
-failures or broadly simplifies the tree; `I2` is a bounded improvement; `I3` covers reporting,
-wording and convenience) and a category (`CATEGORIES`, `tools/runtime/land.ts`). Push only your
+importance label, the highest whose test it meets, and a category (`CATEGORIES`,
+`tools/runtime/land.ts`):
+
+- `I0` corrects a defect that already makes results wrong or unsafe: a reading, score or
+  promotion computed wrong, hidden content crossing the wall or a seat escaping it, answers lost or
+  never checked, a credential exposed or spend past its cap, or `main` failing its gate. Its test
+  is whether live runs should be paused and the release held until it lands; about one PR in 50
+  meets it.
+- `I1` protects evaluation validity before a result goes wrong, prevents a serious run failure (a
+  crash, stall or lost session), or removes a whole mechanism.
+- `I2` is a bounded improvement to a mechanism, a seat's prompt or the run tooling.
+- `I3` covers reporting, wording, documentation, tests alone and convenience.
+
+Push only your
 authorised branch, with `--force-with-lease` when rewriting, and read back at the remote what you
 published (the heads, and the counts and commits a body cites) before reporting it. Merging and
 restacking others' branches are the operator's; before `bun run land -- <top> --merge`, three

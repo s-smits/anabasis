@@ -12,9 +12,9 @@ import { plural } from "../../../../src/meta/text.ts";
 import { useHeld } from "./held.ts";
 
 /** A harness's parts as `HARNESS.md` names them, each by its paths; a file of none is `Other`. A
- *  Builder gives the solver its tools as programs under `.toolchain/` or as tools in
- *  `agent/tools.ts`; on 19 October 0 of 193 kept harnesses declared one in `tools.ts`, so a flat
- *  list of paths read as a guide and an empty tool file. The lineage strip's file list and the
+ *  Builder gives the solver its tools as programs under `.toolchain/`. A harness kept before 20
+ *  November 2026 may also hold `agent/tools.ts`, the module of tools of its own that no solve
+ *  serves any more, which is listed beside the spec. The lineage strip's file list and the
  *  inspector's list and diff all read a harness in this order, the guide first. */
 const PARTS: readonly (readonly [string, (path: string) => boolean])[] = [
   ["Guide", (path) => path === `${AGENT_DIR}${GUIDE_FILE}`],

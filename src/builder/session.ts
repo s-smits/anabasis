@@ -345,7 +345,6 @@ export async function session(
     spent: 0,
     faulty: new Set(),
     faults: [],
-    lists: null,
     halt: new AbortController(),
     fatal: null,
     note: null,

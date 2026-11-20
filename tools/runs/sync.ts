@@ -273,8 +273,11 @@ function pythonFinding(machine: Machine, facts: Facts, pin: Pin | null): Finding
 }
 
 /** Whether the runner a receipt's `commit` installed differs from `tree`'s; a commit git cannot
- *  read, a dirty one among them, does. */
+ *  read, a dirty one among them, does. One installed from a descendant of `tree`'s head does not: on
+ *  20 November the main checkout could not follow the stack for a day, and its hourly sync would
+ *  have put its older runner back over one installed from the top. */
 export function runnerLags(tree: string, commit: string): boolean {
+  if (gitMaybe(tree, "merge-base", "--is-ancestor", "HEAD", commit) !== null) return false;
   const same = ["diff", "--quiet", "--end-of-options", commit, "HEAD", "--", ...RUNNER_SOURCE];
   return gitMaybe(tree, ...same) === null;
 }

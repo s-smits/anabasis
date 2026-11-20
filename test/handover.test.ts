@@ -257,6 +257,24 @@ describe("a led Builder's lifetime and bill", () => {
     expect(steps(c, "builder")).toMatchObject([{ ...live, cut: true }]);
   });
 
+  // A reading's turns name its reader alone, and only its finding names the solve: until 20 November
+  // an open Builder was billed the readings of every comparison that ran inside its window.
+  it("bills an open led Builder the readings of its own practice, and a comparison's to the comparison", () => {
+    const c = campaign();
+    c.record("campaign.opened", { led: true });
+    c.began("b-1");
+    const reading = (reader: string, solve: string, billed: number) => {
+      c.record("referee.turn", { reader, turn: 1, usage: { cost: { total: billed } } });
+      c.record("referee.finding", { solve, reader, ruling: "earned", billed });
+    };
+    reading("reader-1", c.solved("p1", HA, "fail"), 0.5);
+    // The practice solve and its reading, once: the reading's turn is summed in its finding.
+    expect(steps(c, "builder")).toMatchObject([{ id: "b-1", ended: null, billed: 2 }]);
+    c.record("comparison.started", { session: "g-1" });
+    reading("reader-2", c.solved("s1", HA, "fail", "g-1"), 0.75);
+    expect(steps(c, "builder")).toMatchObject([{ id: "b-1", ended: null, billed: 2 }]);
+  });
+
   // Until 19 October an ended session was billed everything in its span: buffer-fresh-opus's view
   // put $123.34 on b-4, whose own end billed $1.61, and its steps summed to $362.92 of $199.48.
   it("bills an ended led Builder its own turns and practice alone, and each dollar of the log to one step", () => {

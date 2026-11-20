@@ -393,6 +393,8 @@ function cutCounts(events: readonly LogEvent[], of: "build" | "exam" | "draft", 
  * names (`asked`), or else the Builder session open where it started, since a practice solve names
  * nothing and only a Builder makes one. In a campaign its Builder leads, an Examiner session runs
  * beside the Builder's practice, and until 19 October an open one was billed that practice too.
+ * A Referee's reading is its solve's owner's, under its reader's id: its turns and calls name the
+ * reader alone, and only its finding names the solve.
  */
 export function ownersOf(events: readonly LogEvent[]): Map<string, Owner> {
   const owners = new Map<string, Owner>();
@@ -403,6 +405,9 @@ export function ownersOf(events: readonly LogEvent[]): Map<string, Owner> {
     else if (kind === "solve.started" && isString(data.solve)) {
       const asked = isString(data.comparison);
       owners.set(data.solve, { by: isString(data.comparison) ? data.comparison : open, asked });
+    } else if (kind === "referee.finding" && isString(data.reader) && isString(data.solve)) {
+      const owner = owners.get(data.solve);
+      if (owner !== undefined) owners.set(data.reader, owner);
     }
   }
   return owners;
@@ -413,11 +418,15 @@ export function ownersOf(events: readonly LogEvent[]): Map<string, Owner> {
  * another's (`ownersOf`). A Builder session's own are its turns, its practice solves and their
  * reviewers; an Examiner session's include the solves it asked for to try a draft task, which name
  * it. In a campaign its Builder leads, the comparisons and the Examiner's sessions run inside the
- * Builder's span, and are theirs.
+ * Builder's span, and are theirs, with the Referee's readings of a comparison's solves: until
+ * 20 November a reading's turns named no solve and so were every open session's, and a campaign's
+ * view billed an open Builder for them in 5 of 14 sessions of five logs, by up to $4.75. A reading
+ * with no finding yet names no solve anywhere, and stays the open session's until it has one.
  */
 export function ownedBy(events: readonly LogEvent[], id: string, owners = ownersOf(events)) {
   return ({ data }: LogEvent) => {
-    const solve = isString(data.solve) ? owners.get(data.solve) : undefined;
+    const of = isString(data.solve) ? data.solve : data.reader;
+    const solve = isString(of) ? owners.get(of) : undefined;
     return !(isString(data.session) && data.session !== id) && (solve === undefined || solve.by === id);
   };
 }

@@ -192,6 +192,27 @@ describe("moving a campaign to another machine", () => {
     expect(existsSync(made.into)).toBe(false);
     expect(made.recorded().some(({ tool }) => tool === "rsync")).toBe(false);
   });
+
+  it("refuses a destination of another system whose kept harness holds a program it cannot run", () => {
+    const made = seedMove();
+    const tree = join(made.folder, "states", "a".repeat(64), ".toolchain");
+    mkdirSync(tree, { recursive: true });
+    // A Mach-O header, as a toolchain a Builder built on a Mac holds.
+    writeFileSync(join(tree, "tool"), Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 0, 0, 0, 0]));
+    writeFileSync(join(made.root, "bin", "uname"), `#!/bin/sh\necho "\${FAKE_UNAME:-Darwin arm64}"\n`, {
+      mode: 0o755,
+    });
+    const fleet = { [made.host.ssh]: { env: { FAKE_UNAME: "Linux x86_64" } } };
+    const refused = made.move(["--hold"], { FAKE_FLEET: JSON.stringify(fleet) });
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("cannot run");
+    expect(refused.err).toContain("tool (a Mach-O binary)");
+    expect(existsSync(made.folder)).toBe(true);
+    expect(existsSync(made.into)).toBe(false);
+    // The same harness moves to a machine of its own system.
+    const same = { [made.host.ssh]: { env: { FAKE_UNAME: "Darwin arm64" } } };
+    expect(made.move(["--hold"], { FAKE_FLEET: JSON.stringify(same) }).err).not.toContain("cannot run");
+  });
 });
 
 describe("recovering interrupted moves", () => {

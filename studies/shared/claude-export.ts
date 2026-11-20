@@ -54,7 +54,8 @@ import { openHarness } from "#src/harness/open.ts";
 import { type Program, programsOf } from "#src/harness/programs.ts";
 import { HOST_ONLY } from "#src/harness/starter.ts";
 import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
-import { HARNESS_DIR, HERE, type Place, placeHarness, placeOf, sourceNamed } from "./bundle.ts";
+import { type Place, placeOf } from "#src/harness/place.ts";
+import { HARNESS_DIR, HERE, placeHarness, sourceNamed } from "./bundle.ts";
 import { packageFolders, type PythonFor, rebuildForeignPython, uvPython } from "./foreign-python.ts";
 
 /** Where the tool tree lands in the exported tree, under the runner's `scripts/` entry. */

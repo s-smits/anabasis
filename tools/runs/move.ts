@@ -32,10 +32,15 @@
  * that ended in their draft, for $0.72, where its own log could have gone on. A change of login on
  * one machine needs no move: `runs continue --after <event> --login N`.
  *
- * The run's states link their programs by relative paths, which hold in the new folder. What an
- * Examiner's or a Builder's shell left in its home links where that machine's tools are, and the
- * next session there builds its own again. A `runs keep` that keeps the campaign at its source
- * ends with the pause (`pauseAt`), whether or not a process still wrote the log.
+ * The run's states link their programs by relative paths, which hold in the new folder. A kept
+ * harness is its digest and is never rebuilt, so a move to another system or processor is refused
+ * where a state's tool tree holds a program the destination cannot run, by the test the outside read
+ * exports with (`foreignFiles`, `src/harness/place.ts`); and the destination's Python and tools are
+ * brought level with the table as `runs sync --yes` would (`outOfStep`), the move refused where a
+ * seat would still find one out of step, both before the pause. What an Examiner's or a Builder's
+ * shell left in its home links where that machine's tools are, and the next session there builds
+ * its own again. A `runs keep` that keeps the campaign at its source ends with the pause
+ * (`pauseAt`), whether or not a process still wrote the log.
  *
  *   bun run runs copy <name> --to <worktree> [--yes]
  *
@@ -58,11 +63,14 @@
  * than it asked for (`degradations.ts`) and copies each benchmark's score store from the machine
  * that rolls it (`fetchBenches`).
  */
+import { foreignFiles, placeOf, UNAME_PLACES } from "#src/harness/place.ts";
 import { LOG_FILE } from "#src/kernel/log.ts";
+import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import {
   cpSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   mkdtempSync,
   renameSync,
   rmSync,
@@ -85,6 +93,7 @@ import { recordDegradations } from "./degradations.ts";
 import { continueRun, pause, said } from "./manage.ts";
 import { payerOf } from "./live.ts";
 import { roomToStart } from "./logins.ts";
+import { outOfStep } from "./sync.ts";
 import { loginPresent } from "./placement.ts";
 import { preparedHost, publishedAt } from "./code.ts";
 import { lastLaunch } from "./receipt.ts";
@@ -138,22 +147,60 @@ function treeOf(end: End, name: string): string | undefined {
   return only;
 }
 
-/** The last launch's receipt, read through the local receipt owner before anything is paused or copied. */
-async function launchAt(end: End, source: string, name: string) {
-  const log = join(source, CAMPAIGNS, name, LOG_FILE);
-  if (end.host === undefined) return lastLaunch(log);
-  const stage = join(tmpdir(), `ana-move-receipts-${crypto.randomUUID()}`);
-  mkdirSync(stage);
+/** What `read` makes of the files `filters` take from the campaign folder `dir` at `end`, copied here
+ *  first where `end` is another host. */
+async function readAt<T>(
+  end: End,
+  dir: string,
+  filters: readonly string[],
+  read: (here: string) => T | Promise<T>,
+) {
+  if (end.host === undefined) return await read(dir);
+  const stage = mkdtempSync(join(tmpdir(), "ana-move-read-"));
   try {
-    await rsync(
-      `${sideOf(end.host, dirname(log))}/`,
-      `${stage}/`,
-      "--include=/launch-*.json",
-      "--exclude=/*",
-    );
-    return lastLaunch(join(stage, LOG_FILE));
+    await rsync(`${sideOf(end.host, dir)}/`, `${stage}/`, ...filters);
+    return await read(stage);
   } finally {
     rmSync(stage, { recursive: true, force: true });
+  }
+}
+
+/** The last launch's receipt, read through the local receipt owner before anything is paused or copied. */
+const launchAt = async (end: End, dir: string) =>
+  await readAt(end, dir, ["--include=/launch-*.json", "--exclude=/*"], (here) =>
+    lastLaunch(join(here, LOG_FILE)),
+  );
+
+/** The table's Python and tools at `to`, brought in step as `runs sync --yes` would before the pause
+ *  where `mode` applies, and refused where a seat would still find one out of step. */
+async function inStepAt(to: End, mode: "read" | "apply"): Promise<void> {
+  const behind = await outOfStep(to.name, to.host, mode);
+  if (behind.length === 0) return;
+  const why = `${to.name} is out of step where a seat would find it: ${behind.join("; ")}`;
+  if (mode === "apply") throw new Error(`${why}; nothing was stopped or moved`);
+  console.log(`${why}; --yes brings it in step first`);
+}
+
+/** Refuses a move to another system or processor where a kept harness's tool tree holds a program the
+ *  destination cannot run, by the outside read's own test (`foreignFiles`): a kept harness is its
+ *  digest, so it is never rebuilt there, as the outside read rebuilds its copy. */
+async function runnableAt(from: End, to: End, dir: string): Promise<void> {
+  const [source, destination] = [from, to].map((end) => UNAME_PLACES.get(at(end, "uname -sm")));
+  if (source === destination) return;
+  if (destination === undefined) throw new Error(`${to.name} is no machine a harness is read for`);
+  const trees = ["--include=/states/", "--include=/states/*/", `--include=/states/*/${TOOL_TREE_DIR}/***`];
+  const found = await readAt(from, dir, [...trees, "--exclude=*"], async (here) => {
+    const states = existsSync(join(here, "states")) ? readdirSync(join(here, "states")) : [];
+    const each = states.map(async (state) => {
+      const foreign = await foreignFiles(join(here, "states", state, TOOL_TREE_DIR), placeOf(destination));
+      return foreign.slice(0, 3).map(({ path, why }) => `${state.slice(0, 12)} ${path} (${why})`);
+    });
+    return (await Promise.all(each)).flat();
+  });
+  if (found.length > 0) {
+    throw new Error(
+      `kept harnesses hold programs ${to.name} cannot run, and a kept harness is never rebuilt: ${found.slice(0, 6).join(", ")}; move it to a machine of its own system and processor: nothing was stopped or moved`,
+    );
   }
 }
 
@@ -211,7 +258,8 @@ export async function move(args: readonly string[]): Promise<void> {
       `${tree} is there already on ${to.name}: the source remains at ${folder(source)} on ${from.name}; preserve ${folder(tree)} outside ${tree}, remove the destination with git -C ${quoted(to.repo)} worktree remove ${quoted(tree)} on ${to.name}, then retry; nothing was stopped or moved`,
     );
   }
-  const launch = await launchAt(from, source, name);
+  const launch = await launchAt(from, folder(source));
+  await runnableAt(from, to, folder(source));
   const kept = given.length > 0 ? given : (launch?.flags ?? null);
   if (kept === null && !values.hold) {
     throw new Error(
@@ -222,6 +270,7 @@ export async function move(args: readonly string[]): Promise<void> {
   console.log(
     `${name}: from ${source} (${from.name}) at ${commit.slice(0, 9)} to ${tree} (${to.name})${resumed ? ", going on with the copy an earlier move left" : ""}, after its next ${values.after}`,
   );
+  await inStepAt(to, values.yes ? "apply" : "read");
   if (!values.yes) {
     console.log("nothing is done without --yes");
     return;

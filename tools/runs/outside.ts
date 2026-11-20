@@ -34,6 +34,7 @@
  * the one a keeper would move a run to (`roomFor`). Without `--yes` it prints the plan and starts
  * nothing; the prediction file is written from that plan.
  */
+import { UNAME_PLACES } from "#src/harness/place.ts";
 import { promoted } from "#src/kernel/reports.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { join } from "#src/meta/path.ts";
@@ -78,14 +79,6 @@ export interface Plan {
   /** Whether the read waits for the machine to be idle instead of refusing while an arm holds it. */
   readonly wait: boolean;
 }
-
-/** `uname -sm` as `placeOf` (`studies/shared/bundle.ts`) names a machine. */
-const PLACES = new Map([
-  ["Linux x86_64", "linux-x64"],
-  ["Linux aarch64", "linux-arm64"],
-  ["Darwin arm64", "darwin-arm64"],
-  ["Darwin x86_64", "darwin-x64"],
-]);
 
 /** The program that writes and checks SHA-256 sums, in one format: coreutils' where a machine has
  *  it, as a Linux one without Perl has no other, and Perl's elsewhere. */
@@ -301,7 +294,7 @@ async function planOf(
   if (!isSafePathSegment(label)) throw new Misused();
   const said = await runTextOrThrow(shellOn(settings.runner, probed(settings)));
   const [named = "", python = ""] = said.split("\n");
-  const place = PLACES.get(named);
+  const place = UNAME_PLACES.get(named);
   if (place === undefined) {
     throw new Error(`the benchmark's machine is '${named}', which no export is written for`);
   }

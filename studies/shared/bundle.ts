@@ -30,10 +30,11 @@ import { existsSync, mkdirSync, renameSync, writeFileSync } from "#src/meta/file
 import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { basename, dirname, isAbsolute, join, normalize } from "#src/meta/path.ts";
+import { basename, dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { openHarness, treeContent } from "#src/harness/open.ts";
+import { openHarness } from "#src/harness/open.ts";
+import { foreignPrograms, placeOf } from "#src/harness/place.ts";
 import { writeStarter } from "#src/harness/starter.ts";
 import { keptAs, PROMOTED } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
@@ -48,28 +49,6 @@ export const MOUNT_RECORD = "mount.json";
 const TARGET = "bun-linux-x64-baseline";
 
 const SOLVER = join(import.meta.dir, "pi-solve.ts");
-
-/** ELF's machine numbers for x86-64 and 64-bit Arm. */
-const X86_64 = 62;
-export const AARCH64 = 183;
-
-/** Where programs run: macOS or not, its ELF machine, and the interpreter roots (null: any path). */
-export type Place = Readonly<{
-  name: string;
-  mac: boolean;
-  machine: number;
-  roots: readonly string[] | null;
-  /** The minor (`3.12`) of the `python3` a rollout there finds first, where it is known. */
-  python?: string;
-}>;
-
-/** A benchmark's container, which holds of a host's paths only the system's. */
-const CONTAINER: Place = {
-  name: "a Linux x86-64 container",
-  mac: false,
-  machine: X86_64,
-  roots: ["/usr/", "/bin/"],
-};
 
 /** The machine this process runs on, where a rollout outside a container finds its programs. */
 export const HERE = placeOf(
@@ -170,65 +149,4 @@ export async function bundleArm(
   writeFileSync(join(part, MOUNT_RECORD), `${capturedJsonStringify(record, null, 2)}\n`);
   renameSync(part, into);
   return { digest: opened.digest, origin };
-}
-
-/** A machine outside any container, by its system and processor as Bun names them (`linux-x64`). */
-export function placeOf(named: string, name = named): Place {
-  const [platform = "", arch = ""] = named.split("-");
-  if (!["darwin", "linux"].includes(platform) || !["arm64", "x64"].includes(arch)) {
-    throw new Error(`'${named}' names no machine: darwin or linux, then arm64 or x64, as linux-x64`);
-  }
-  return { name, mac: platform === "darwin", machine: arch === "arm64" ? AARCH64 : X86_64, roots: null };
-}
-
-/** Refuses a tool tree holding a program `place` cannot run (another system's or processor's binary,
- *  or in a container a script on a host interpreter), as an arm would read lower for that alone. */
-export async function foreignPrograms(tree: string, place: Place = CONTAINER): Promise<void> {
-  const foreign = (await foreignFiles(tree, place)).map(({ path, why }) => `${path} (${why})`);
-  if (foreign.length > 0) {
-    const shown = foreign.slice(0, 5).join(", ");
-    throw new Error(
-      `the harness's ${TOOL_TREE_DIR} holds ${String(foreign.length)} programs ${place.name} cannot run: ${shown}${foreign.length > 5 ? ", and more" : ""}`,
-    );
-  }
-}
-
-/** Each entry of `tree` that `place` cannot run, relative to the tree in code-unit order, with why: a
- *  program foreign to it, or a link out of the tree, as a Builder's virtual environment links its
- *  `python3.14` to the machine it was built on, which the harness does not carry. */
-export async function foreignFiles(tree: string, place: Place): Promise<{ path: string; why: string }[]> {
-  if (!existsSync(tree)) return [];
-  const foreign: { path: string; why: string }[] = [];
-  // A folder's content is null, a file's its digest and a link's its target.
-  for (const { path, mode, content } of treeContent(tree)) {
-    if (content === null) continue;
-    if ((mode & 0o170000) === 0o120000) {
-      const to = normalize(join(dirname(path), content));
-      if (isAbsolute(content) || to === ".." || to.startsWith("../")) {
-        foreign.push({ path, why: `a link to ${content}, outside the tree` });
-      }
-      continue;
-    }
-    const why = foreignHead(Buffer.from(await Bun.file(join(tree, path)).slice(0, 128).bytes()), place);
-    if (why !== null) foreign.push({ path, why });
-  }
-  return foreign;
-}
-
-/** Why the opening bytes of a file name a program foreign to `place`, or null. */
-export function foreignHead(head: Buffer, place: Place = CONTAINER): string | null {
-  const magic = head.length >= 4 ? head.readUInt32BE(0) : 0;
-  if ([0xfe_ed_fa_ce, 0xfe_ed_fa_cf, 0xce_fa_ed_fe, 0xcf_fa_ed_fe, 0xca_fe_ba_be].includes(magic)) {
-    return place.mac ? null : "a Mach-O binary";
-  }
-  if (magic === 0x7f_45_4c_46 && head.length >= 20) {
-    const machine = head.readUInt16LE(18);
-    return place.mac || machine !== place.machine ? `an ELF binary for machine ${String(machine)}` : null;
-  }
-  const text = head.toString("latin1");
-  if (place.roots === null || !text.startsWith("#!")) return null;
-  const interpreter = text.slice(2).trimStart().split(/\s/u, 1)[0] ?? "";
-  return place.roots.some((root) => interpreter.startsWith(root))
-    ? null
-    : `its interpreter ${interpreter} is a host path`;
 }

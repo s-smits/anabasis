@@ -6,14 +6,8 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
-import {
-  bundleArm,
-  foreignHead,
-  foreignPrograms,
-  HERE,
-  placeHarness,
-  sourceNamed,
-} from "../studies/shared/bundle.ts";
+import { bundleArm, HERE, placeHarness, sourceNamed } from "../studies/shared/bundle.ts";
+import { foreignHead, foreignPrograms } from "../src/harness/place.ts";
 import { exportForClaudeCode, ownPython } from "../studies/shared/claude-export.ts";
 import { keyless, RESULT_FILE, TRACE_FILE } from "../studies/shared/pi-solve.ts";
 import { type Agent, type Claude, inGroup, REFUSED, rollout } from "../studies/harness2/h2/claude.ts";

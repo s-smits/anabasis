@@ -39,7 +39,7 @@ import { basename, dirname, join, normalize, relative } from "#src/meta/path.ts"
 import { runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { pinnedPythonDir } from "#src/wall/policy.ts";
-import { AARCH64, foreignFiles, foreignPrograms, type Place } from "./bundle.ts";
+import { AARCH64, foreignFiles, foreignPrograms, type Place } from "#src/harness/place.ts";
 
 /** What stands in, on one machine, for Python built for another. */
 export interface PythonFor {

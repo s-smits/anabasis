@@ -416,6 +416,40 @@ describe("which host runs a task", () => {
     expect(calls(home)).toEqual([]);
   });
 
+  it("sends no check to a host a benchmark's arm holds: refused by name with nothing started there, left out of auto though it is the least loaded, and taken again once its sitting says idle", () => {
+    const EVAL_RUNNER = JSON.stringify([
+      { name: "bench", host: "zbook", store: "store", sitting: "sitting.sh", packs: ["pack"] },
+    ]);
+    const sitting = join(hostHome("fake-linux"), "sitting.sh");
+    const says = (first: string) => script(sitting, `#!/bin/sh\necho '${first}'\necho 'the last rows'\n`);
+    try {
+      fresh();
+      says("an arm holds the lock: pid 1");
+      const refused = run(["test"], { RUN_REMOTE: "zbook", EVAL_RUNNER });
+      expect(refused.status, refused.stderr).toBe(69);
+      expect(refused.stderr).toContain("runner: a benchmark's arm holds zbook");
+      expect(calls(hostHome("fake-linux"))).toEqual([]);
+      // The held host idles and the other is loaded, so loads alone would send the task to it.
+      loaded("fake-linux", 4, 0);
+      loaded("fake-mac", 2, 400);
+      const spread = run(["test"], { RUN_REMOTE: "auto", EVAL_RUNNER });
+      expect(spread.status, spread.stderr).toBe(0);
+      expect(spread.stderr).toContain("runner: a benchmark's arm holds zbook");
+      expect(spread.stderr).not.toMatch(/1m load a core[^\n]*zbook/u);
+      expect(calls(hostHome("fake-linux"))).toEqual([]);
+      // A sitting that cannot be asked is no idle one, and an idle one takes the task as before.
+      rmSync(sitting);
+      expect(run(["test"], { RUN_REMOTE: "zbook", EVAL_RUNNER }).status).toBe(69);
+      says("idle");
+      expect(run(["test"], { RUN_REMOTE: "zbook", EVAL_RUNNER }).status).toBe(0);
+      expect(ran("fake-linux")).toBe(true);
+      // A benchmark list that cannot be read refuses the task that would have gone to a host.
+      expect(run(["test"], { RUN_REMOTE: "zbook", EVAL_RUNNER: "not a list" }).status).toBe(2);
+    } finally {
+      rmSync(sitting, { force: true });
+    }
+  });
+
   it("runs RUN_REMOTE=auto on the least loaded place by 1m load a core, never on a host without checks, reading the hosts from .env.runs", () => {
     fresh();
     spreadLoads();

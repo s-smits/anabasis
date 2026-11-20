@@ -45,6 +45,14 @@ export function sshScript(host: Host, script: string): string[] {
   return ["ssh", ...sshOptions(host.ssh), host.ssh, `exec "$SHELL" -lc ${quoted(script)}`];
 }
 
+/** A configured folder or command as one shell word, from the home folder where it is relative. */
+export const homeWord = (path: string): string =>
+  shellPath(path.startsWith("/") || path.startsWith("~/") ? path : `~/${path}`);
+
+/** The shell text that succeeds while no arm holds the machine of the benchmark whose sitting command
+ *  is the shell word `sitting`: its `status` answers `idle` on its first line then (outside.ts). */
+export const sittingIdle = (sitting: string): string => `${sitting} status | head -n 1 | grep -qx idle`;
+
 /** The command that runs the shell text `script` on this machine where `host` is undefined, else on
  *  `host` (`sshScript`). */
 export const shellOn = (host: Host | undefined, script: string): string[] =>

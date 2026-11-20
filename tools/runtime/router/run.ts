@@ -48,8 +48,8 @@ import { capturedSpawn, processAnswers, runtimeProcess } from "#src/meta/process
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { sshOptions } from "#src/meta/ssh.ts";
 import { killProcessGroup, runCaptured, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { quoted, shellPath, sshCommand } from "../../runs/host-command.ts";
-import { hostsOf, ownName, RUNNER_SLOTS, type Host } from "../../runs/host-config.ts";
+import { homeWord, quoted, shellPath, sittingIdle, sshCommand } from "../../runs/host-command.ts";
+import { type Bench, benchesOf, hostsOf, ownName, RUNNER_SLOTS, type Host } from "../../runs/host-config.ts";
 import { minuteLoads } from "../../runs/load.ts";
 
 const TASKS = ["test", "typecheck", "lint", "secrets", "gate"];
@@ -113,11 +113,40 @@ function listedHosts(choice: string): readonly Host[] {
 }
 
 /**
+ * The names of those of `hosts` a benchmark's arm holds (`EVAL_RUNNER`): an arm's rollouts are read
+ * against each other at equal load, so a check beside them moves what they score. On 20 November
+ * 2026 a gate sent to such a machine during a sitting loaded it until it stopped answering, and the
+ * arm was rolled again. A sitting that does not answer `idle` is read as held, a silent one too.
+ */
+async function heldAmong(hosts: readonly Host[]): Promise<ReadonlySet<string>> {
+  let benches: readonly Bench[];
+  try {
+    benches = benchesOf();
+  } catch (error) {
+    throw new Refusal(`${errorMessage(error)}; RUN_REMOTE=here runs the task here`, EXIT.usage);
+  }
+  const answers = await Promise.all(
+    hosts.flatMap(({ name, ssh }) =>
+      benches
+        .filter((bench) => bench.host?.name === name)
+        .map(async ({ sitting }) => {
+          const idle = ["ssh", ...sshOptions(ssh), ssh, sittingIdle(homeWord(sitting))];
+          return (await runCaptured(idle)).exitCode === 0 ? [] : [name];
+        }),
+    ),
+  );
+  const held = new Set(answers.flat());
+  if (held.size > 0) say(`a benchmark's arm holds ${[...held].join(", ")}: no check goes there now`);
+  return held;
+}
+
+/**
  * Where `RUN_REMOTE` lets the task run, in the order its slots are tried, and whether loads chose
  * it: this machine alone, the one host it names, or for `auto` this machine and every host with
  * `checks` by one-minute load a core, least loaded first (`minuteLoads`, as `runs loadwatch` orders
  * them). A machine that has not answered within `ANA_RUNNER_PICK_WAIT` is left out, never read as
- * idle, and where none answers the task runs here.
+ * idle, and where none answers the task runs here. A host a benchmark's arm holds (`heldAmong`) is
+ * left out of `auto` and refused by name.
  */
 async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean }> {
   const choice = runtimeProcess.env.RUN_REMOTE ?? "";
@@ -127,8 +156,9 @@ async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean 
   if (choice === "" && taking.length === 0) return here;
   if (choice === "" || choice === "auto") {
     const started = performance.now();
+    const held = await heldAmong(taking);
     const { order, silent } = await minuteLoads(
-      [undefined, ...taking],
+      [undefined, ...taking.filter(({ name }) => !held.has(name))],
       setting("ANA_RUNNER_PICK_WAIT", 5) * 1000,
     );
     const read = order.map(({ label, share }) => `${label} ${share.toFixed(2)}`);
@@ -141,7 +171,12 @@ async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean 
     return { places: order.length === 0 ? [undefined] : order.map(({ host }) => host), picked: true };
   }
   const host = taking.find((each) => each.name === choice || each.ssh === choice);
-  if (host !== undefined) return { places: [host], picked: false };
+  if (host !== undefined) {
+    if ((await heldAmong([host])).size > 0) {
+      throw new Refusal(`no task started on ${host.name}; RUN_REMOTE=here runs it here`, EXIT.unavailable);
+    }
+    return { places: [host], picked: false };
+  }
   const names = taking.map((each) => each.name).join(", ");
   throw new Refusal(
     `RUN_REMOTE=${choice} names no host that takes checks; write here, auto or one of: ${

@@ -40,7 +40,7 @@ import { join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { runTextOrThrow } from "#src/meta/subprocess.ts";
 import { readControllers } from "./code.ts";
-import { quoted, shellOn, shellPath, treeBun } from "./host-command.ts";
+import { homeWord, quoted, shellOn, shellPath, sittingIdle, treeBun } from "./host-command.ts";
 import { type Bench, benchesOf, type Host } from "./host-config.ts";
 import { holders, namedIn } from "./hosts.ts";
 import { roomFor } from "./keep.ts";
@@ -90,10 +90,6 @@ const PLACES = new Map([
 /** The program that writes and checks SHA-256 sums, in one format: coreutils' where a machine has
  *  it, as a Linux one without Perl has no other, and Perl's elsewhere. */
 const SUMS = "$(command -v sha256sum || echo shasum -a 256)";
-
-/** A configured folder or command as one shell word, from the home folder where it is relative. */
-const homeWord = (path: string) =>
-  shellPath(path.startsWith("/") || path.startsWith("~/") ? path : `~/${path}`);
 
 /** The benchmarks that read `run` (`EVAL_RUNNER`), or the one `named` names. A pack listed reads
  *  itself and every pack named from it, as `jobstat` reads `jobstat-v2`. */
@@ -153,7 +149,7 @@ export function stepsOf(plan: Plan): Step[] {
   const piped = (host: Host | undefined, script: string) => shellOn(host, script).map(quoted).join(" ");
   const reference = `${sitting} run ${quoted(login)} ${quoted(label)} --arm ${quoted(run)} --harness ${quoted(plan.harness)}`;
   const bare = `${sitting} run ${quoted(login)} ${quoted(starter)} --arm starter`;
-  const idle = `${sitting} status | head -n 1 | grep -qx idle`;
+  const idle = sittingIdle(sitting);
   const rolled = `${plan.store}/rolled-${label}.log`;
   const exported: Step[] = [
     {

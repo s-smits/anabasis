@@ -4,7 +4,7 @@
 // the campaign's budget pays for them. Then the cap on an ask's solves, the line on room above the
 // author's checked answer, and a value given by `from_file` from the session's home.
 import { afterAll, describe, expect, it } from "bun:test";
-import { fromHome } from "../src/examiner/shell.ts";
+import { validateToolArguments } from "@earendil-works/pi-ai/utils/validation";
 import { TRIES, writing } from "../src/examiner/write.ts";
 import { budgetLeft } from "../src/campaign/opening.ts";
 import { contentOf } from "../src/kernel/history.ts";
@@ -242,10 +242,49 @@ describe("a value given from a file in the Examiner's home", () => {
   writeFileSync(join(outside, "task.json"), JSON.stringify(large));
   symlinkSync(join(outside, "task.json"), join(home, "linked.json"));
 
+  /** The Examiner's `try_answer` in a session with home `at`. */
+  const trying = (at: string | null = home) => {
+    const s = seat("write", []);
+    const request = { ...s.request, verify: async () => ({ kind: "pass" as const }) };
+    return toolOf(writing(request, undefined, { home: at ?? undefined }), "try_answer");
+  };
+  /** The arguments that tool runs with, as given `args`. */
+  const prepared = (args: JsonObject, at: string | null = home) => trying(at).prepareArguments?.(args);
+
   it("reads a value of 50 KB as the same JSON written inline", () => {
     expect(JSON.stringify(large).length).toBeGreaterThan(50_000);
-    const args: JsonObject = { tasks: [{ from_file: "task.json" }] };
-    expect(fromHome(home, args)).toEqual({ tasks: [large] });
+    const filed = prepared({ ...large, public_input: { from_file: "input.json" }, answer: ANSWER });
+    expect(filed).toEqual({ ...large, answer: ANSWER });
+  });
+
+  it("reads a whole list from a file before the schema is checked, and refuses one of the wrong shape without echoing it", () => {
+    const files = [{ path: "out/report.md", text: "x".repeat(60_000) }];
+    writeFileSync(join(home, "files.json"), JSON.stringify(files));
+    writeFileSync(
+      join(home, "misshapen.json"),
+      JSON.stringify([{ name: "out/report.md", body: "y".repeat(60_000) }]),
+    );
+    // pi checks a call's arguments against the tool's schema once they are prepared: until 20
+    // November the file was read after that check, which refused it in place of the list.
+    const byFile = { ...large, answer: ANSWER, files: { from_file: "files.json" } };
+    const tool = trying();
+    const check = (args: JsonObject) => {
+      validateToolArguments(tool, { type: "toolCall", id: "", name: tool.name, arguments: args });
+    };
+    expect(() => check(byFile)).toThrow("files");
+    const filled = prepared(byFile);
+    expect(filled).toMatchObject({ files });
+    // SAFETY: the prepared arguments of a call whose arguments are a JSON object.
+    expect(() => check(filled as JsonObject)).not.toThrow();
+    let refusal = "";
+    try {
+      prepared({ ...large, answer: ANSWER, files: { from_file: "misshapen.json" } });
+    } catch (error) {
+      refusal = String(error);
+    }
+    expect(refusal).toContain("files.0.path");
+    expect(refusal).not.toContain("yyyy");
+    expect(refusal.length).toBeLessThan(2000);
   });
 
   it("admits an instance given by file as it admits the same instance given inline", async () => {
@@ -287,8 +326,8 @@ describe("a value given from a file in the Examiner's home", () => {
       ["large.json", "over the 1000000-byte limit"],
       ["broken.json", "not valid JSON"],
     ] as const) {
-      expect(() => fromHome(home, { task: { from_file: path } })).toThrow(refusal);
+      expect(() => prepared({ ...large, answer: { from_file: path } })).toThrow(refusal);
     }
-    expect(() => fromHome(undefined, { task: { from_file: "task.json" } })).toThrow("no home");
+    expect(() => prepared({ ...large, answer: { from_file: "task.json" } }, null)).toThrow("no home");
   });
 });

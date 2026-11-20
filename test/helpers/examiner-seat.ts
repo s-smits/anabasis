@@ -152,8 +152,10 @@ export function toolOf(opened: { readonly tools: readonly SeatTool[] }, named?: 
   );
 }
 
-/** Call only the Examiner's host tools: no Harness operations, and a gate may outlive this call. */
-export function invoke(tool: SeatTool, callId: string, args: JsonObject) {
+/** Call only the Examiner's host tools: no Harness operations, and a gate may outlive this call.
+ *  The arguments are prepared first, as pi prepares them before it runs the tool (`fromHome`). */
+export function invoke(tool: SeatTool, callId: string, spelled: JsonObject) {
+  const args = tool.prepareArguments?.(spelled) ?? spelled;
   // SAFETY: these host tools use no API operations. Refuse any accidental access beyond callId.
   const api = new Proxy(
     { callId },

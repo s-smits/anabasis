@@ -806,4 +806,42 @@ describe("the arms table over a store of judged records", () => {
     expect(line("far")).toContain("score 20/20 (100.0%) criteria 9/9 ");
     expect(line("blind")).toContain("score 20/20 (100.0%) criteria ?/? ");
   });
+
+  it("reads one arm's rollouts as a spread over the fair uncut tasks every one scored, the worst task first", () => {
+    const out = join(root, "spread");
+    const judged = (arm: string, task: string, points: number, cut: readonly string[] = []) => {
+      mkdirSync(join(out, "judged", arm), { recursive: true });
+      writeFileSync(
+        join(out, "judged", arm, `${task.replace("/", "__")}.json`),
+        capturedJsonStringify({ arm, task, label: arm, points, total: 10, cut }),
+      );
+    };
+    judged("a", "stat/task2", 8);
+    judged("b", "stat/task2", 6);
+    judged("a", "bio/task2", 2);
+    judged("b", "bio/task2", 4);
+    // Nearest hostile cases: a task one rollout lacks, a first task, which is not fair, and a task
+    // another arm's record cut, which leaves the block for every arm as it does in `table`.
+    judged("a", "chem/task2", 10);
+    judged("a", "stat/task1", 10);
+    judged("b", "stat/task1", 10);
+    judged("a", "soc/task2", 10);
+    judged("b", "soc/task2", 10);
+    judged("other", "soc/task2", 10, ["big.csv"]);
+    const score = new URL("../studies/harness2/score.ts", import.meta.url).pathname;
+    const printed = decodeOutput(
+      runSync([capturedExecPath, score, "spread", "--out", out, "--name", "a,b"]).stdout,
+    );
+    expect(printed.split("\n").filter((line) => line !== "")).toEqual([
+      "2 rollouts over the 2 fair uncut tasks each scored",
+      "  a 10/20",
+      "  b 10/20",
+      "  range 10 to 10 (0 points)",
+      "bio/task2: 2 to 4 of 10, mean 30.0%",
+      "stat/task2: 6 to 8 of 10, mean 70.0%",
+    ]);
+    const misspelt = runSync([capturedExecPath, score, "spread", "--out", out, "--name", "a,c"]);
+    expect(misspelt.exitCode).not.toBe(0);
+    expect(decodeOutput(misspelt.stdout)).toBe("");
+  });
 });

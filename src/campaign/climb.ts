@@ -563,7 +563,7 @@ export function worthLine({ cost }: Worth): string {
  * nothing said what those after the sixth promotion read; and `worthLine` reads an epoch only once
  * a promotion ended it, so the 2 of 62 open epochs on record that stood over the bar were stated
  * nowhere. Beside the confirmed count it says what the tasks written after each confirmed promotion
- * read alone, as the backlog's proposed reading of the milestone (`docs/backlog/v1-bar.md`, item 3)
+ * read alone, as the backlog's proposed reading of the milestone (`docs/backlog/v1-bar.md`, item 4)
  * would count them: on 16 November a campaign read 2 of 2 confirmed while those tasks, one writing
  * session's each, read no step alone (7-4-0 and 6-4-1), and the closing report said only the first.
  */

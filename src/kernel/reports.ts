@@ -536,10 +536,12 @@ function tallyReports(
  * harness could lose. The Examiner hears such a task's outcome as any other's (`outcomes`); in the
  * counts by family it stands where its last comparison's tally puts it (`standings`).
  *
- * **Retained** are the exhausted tasks, and since 16 October every held task admitted before the last
- * promotion that the promoted harness has stood in no comparison of: those tasks were written for
- * the harness it replaced, and it was promoted on their like: drawn as frontier they padded each
- * epoch's first comparisons with ties (buffer-159-opus, 16 October). Reported apart they show a
+ * **Retained** are the exhausted tasks, and every held task admitted before the last promotion:
+ * those tasks were written for the harness it replaced, and drawn as frontier they padded each
+ * epoch's first comparisons with ties (buffer-159-opus, 16 October). Until 20 November 2026 those
+ * the promoted harness had stood in stayed frontier, so the tasks that chose it, the comparison it
+ * was promoted on, were drawn again as the frontier its starter comparison confirmed it on: a
+ * reading of its own draw, not of tasks written since. Reported apart they show a
  * regression, which is what the epochs before the newest were kept in the draw for. **Frontier** is the rest of the scorable
  * tasks, which the step reads with the retained ones, and what the supply counts (`supplyOf`,
  * `admission.ts`).
@@ -605,17 +607,9 @@ export function poolOf(events: readonly LogEvent[]) {
   const out = new Set([...awaiting, ...doubted]);
   const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
   const before = new Set(taskSets(events.slice(0, Math.max(0, promotedAt))).held);
-  const reference = referenceOf(events);
-  const stood = new Set(
-    lastReports(events, "all").flatMap(({ data }) =>
-      (data.old === reference || data.fresh === reference) && Array.isArray(data.versions)
-        ? data.versions.filter(isString)
-        : [],
-    ),
-  );
   const exhausted = spent.filter((task) => !out.has(task));
-  const unstood = held.filter((task) => before.has(task) && !out.has(task) && !stood.has(task));
-  const retained = [...new Set([...exhausted, ...unstood])];
+  const inherited = held.filter((task) => before.has(task) && !out.has(task));
+  const retained = [...new Set([...exhausted, ...inherited])];
   const scorable = held.filter((task) => !out.has(task));
   // Practice's allowance also leaves out a task with no independent valid answer that the reference
   // answered in none of two comparisons: unlike `awaiting`, only the reference's own cut solves pass
@@ -638,9 +632,7 @@ export function poolOf(events: readonly LogEvent[]) {
   return {
     scorable,
     frontier: scorable.filter((task) => !retained.includes(task)),
-    practiceFrontier: held.filter(
-      (task) => !(before.has(task) && !stood.has(task)) && !practiceOut.has(task),
-    ),
+    practiceFrontier: held.filter((task) => !before.has(task) && !practiceOut.has(task)),
     // What a practice release draws from: a rejection the reference's own solve left in doubt reads
     // the reference alone, so which task another harness won moves nothing here (rule 3).
     practicePool: held.filter((task) => !doubted.includes(task)),

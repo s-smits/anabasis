@@ -13,7 +13,14 @@ import { poolOf } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { countedSolves, practiceRan, solvesIn } from "../src/kernel/solves.ts";
 import type { Task } from "../src/kernel/verify.ts";
-import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -267,13 +274,17 @@ describe("a value given from a file in the Examiner's home", () => {
     expect(inline.logged.map(({ kind }) => kind)).toContain("task.proposed");
   });
 
-  it("refuses a path outside the home, a link out of it, a missing file and text that is not JSON", () => {
+  it("refuses a path outside the home, a link out of it, a missing file, a folder, a file too large and text that is not JSON", () => {
     writeFileSync(join(home, "broken.json"), "{ not json");
+    mkdirSync(join(home, "folder.json"));
+    writeFileSync(join(home, "large.json"), `"${"x".repeat(1_000_000)}"`);
     for (const [path, refusal] of [
       ["../outside.json", "outside your home"],
       [join(outside, "task.json"), "outside your home"],
       ["linked.json", "links outside your home"],
       ["absent.json", "no such file"],
+      ["folder.json", "not a regular file"],
+      ["large.json", "over the 1000000-byte limit"],
       ["broken.json", "not valid JSON"],
     ] as const) {
       expect(() => fromHome(home, { task: { from_file: path } })).toThrow(refusal);

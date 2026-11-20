@@ -270,12 +270,10 @@ which runs may be compared: the patch moves where runs measure what the last rel
 minor where the release changes what a run measures (a weight, the level, the step test, task
 admission, the setting, what a seat is told; never compare runs across minors).
 
-The major moves to 1 at the release whose runs meet the v1.0 bar's measured rows (`docs/plan.md`,
-"The v1.0 bar, now"): the climb milestone, six confirmed promotions in one fresh campaign at one
-commit of the release line and then in a second domain; honesty, no A/A step in the ten comparisons
-after the sixth; verdicts, the Referee's agreement on 30 blind labels; and the wall on both
-operating systems. A row whose threshold the operator has not set (the validity share, a dollar
-target, systems, outside) is reported in the notes and holds nothing back. After 1.0 the major
+The major moves to 1 at the release at whose top every row of the v1.0 bar reads met (system-audit,
+"The pillars and the v1.0 bar", which owns the rule; the values are `docs/plan.md`'s). A row whose
+threshold is unset reads unmeasured and holds 1.0 back, so the operator's thresholds come before
+the runs that graduate it. After 1.0 the major
 moves only where a reading stops meaning what it meant: the question of `AGENTS.md` section 1, what
 crosses the wall, or a factor's bar (operator, 8 November 2026: "decide upon what counts as a major
 version").
@@ -347,7 +345,7 @@ The v1.0 bar's outside row (system-audit, "The pillars and the v1.0 bar"; its va
 `docs/plan.md`) asks whether a harness built blind to a benchmark stands against Harness² on unseen
 tasks under that benchmark's own grader. The operator's aim (11 November 2026) is JobBench: parity
 with Harness²'s held-out arm, then above it (`docs/backlog/jobbench-scoring.md`;
-`docs/backlog/v1-bar.md`, item 2); the bar's threshold for the row stays unset. That is why jobstat
+`docs/backlog/v1-bar.md`, item 13); the bar's threshold for the row stays unset. That is why jobstat
 takes the effort first and buffer is its control. Harness² knows the benchmark's tasks and
 Anabasis does not: every rollout Harness² builds on answers a real JobBench request with its
 files, though no session of it is shown a rubric or a grade, and it writes no task of its own; its
@@ -422,7 +420,10 @@ for each. Each pass's report counts the rows still owed.
 `score.ts table --out <store> --tasks <the eight>` over the whole store is the full comparison
 table: every arm on record, task by task, with its sums over the fair five. It is printed into the
 iteration's report after every sitting, the arms of earlier sittings marked with their date, since
-arms scored on different days are confounded with the day.
+arms scored on different days are confounded with the day. Beside it,
+`score.ts spread --out <store> --name <rollout,...>` reads one arm's rollouts together: each
+rollout's points over the fair uncut tasks every one scored, their range, which is the Starter's
+spread where the names are its rollouts, and each task's range, the worst first.
 
 The table is the ablation of the loop's own readings against the benchmark: whether a step, a
 confirmation or the audit's grade tells in advance what the benchmark rewards. No column is read

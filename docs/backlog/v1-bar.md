@@ -1,9 +1,11 @@
 # The v1.0 bar, against the goals the operator has set
 
-Status: planned. The table is in the system-audit skill ("The pillars and the v1.0 bar") and each
-row's value on 16 November 2026 is in `docs/plan.md` ("The v1.0 bar, now"). Every threshold below
-is a proposal until the operator sets it; the wording around them is not. Items 1 to 11 are the
-triage of 7 November, amended where the record of 16 November moved them; items 12 to 15 are new.
+Status: planned. The table is in the system-audit skill ("The pillars and the v1.0 bar"), each
+row's value is in `docs/plan.md` ("The v1.0 bar, now"), and this file holds the reasons and the
+record behind every threshold still proposed. Every threshold is a proposal until the operator sets
+it; the wording around them is not. Rewritten on 20 November 2026 from the triages of 7 and 16
+November and two outside reviews of that day, each claim checked against the tree and the record.
+The dated records and the history below are kept as they were written.
 
 ## The question
 
@@ -11,85 +13,196 @@ Are the rows a v1.0 release must meet still the ones the operator's long-term go
 thresholds set where the record says they can tell anything, and does anything print them, so that
 the release cycle stays aimed at them?
 
-## Intended changes
+## Decisions and proposals, by row
 
-1. **Adopt the upgraded table.** Each row now names its requirement, its threshold, the reader that
-   prints its status and the decision it serves. The skill owns those; the plan owns the values
-   (rule 12). Two rows are added (systems, and the outside row's course made explicit) and five
-   are reworded on the counts under "What the record shows".
-2. **The outside row's course (the operator's).** Recommended: JobBench parity against Harness²'s
-   held-out arm on the 20 tasks of `jobbench-scoring.md` item 17 as v1.0's outside row, and
-   WorkBuddy-Bench Code after v1.0. The JobBench path has scored three arms; no WorkBuddy container
-   has run and its licence is open. Parity needs two things first: the Starter's A/A at two rollouts
-   a side on all 20 tasks (about $440 by the cycle's estimate), from which the margin is fixed
-   before any built rollout, and a Harness² sweep on the 12 added tasks, since its held-out arm
-   exists on none of them (not yet costed).
-   From 16 November the row states the operator's order (`AGENTS.md`, section 10): above the
-   Starter, level with Harness²'s held-out arm, then above it. Recommended for v1.0: the first
-   rung, the measured campaign's confirmed references above a Starter of the same sitting by more
-   than the Starter's spread between two rollouts, over six scored references, with the second
-   rung reported beside it. It waits on two things nobody has paid for yet: the Starter's second
-   rollout, and each reference rolled where its programs run (`jobbench-scoring.md`, item 21).
-3. **What a confirmed promotion counts (the operator's).** Recommended: keep `confirmed` as the bar
-   and ask beside it that, of the six, more read a step for the reference on the tasks written
-   after alone than read one for the starter (`starter-reads.ts` prints both). Of 67 reads on
-   record 33 confirm, where sign draws over the tasks written after expect 26.1 with the selection
-   tasks standing as they fell, so about four in five confirmations are what selection alone
-   gives. Changing `confirmed` itself to the tasks written after would count 13 of 67. The
-   proposed threshold is weak on purpose: the tasks written after are written by an Examiner that
-   reads the reference's outcomes, so they lean against the reference and their read is a lower
-   bound on it.
-4. **Honesty counts only the A/A comparisons able to read a step.** Wording, since an A/A too small
-   to read one cannot fail: in the proof campaign 7 of 10 were too small. The fleet rate beside it
-   uses the table's existing column. From 16 November, proposed (the operator's): where the
-   reference ties its own A/A on every task, the starter against itself in the same campaign's
-   starter comparisons counts towards the ten, which `barLines` already prints and counts towards
-   no bar. The two campaigns that passed a sixth promotion ran 12 A/As after it and none could
-   read a step, so as worded the row could never be read in a campaign that reached it.
-5. **Supply asks for at least 6 untied tasks a comparison.** Wording, since the test fixes it: an
-   exact one-sided sign-flip test over 5 tasks clears at best 1 in 32, above 0.02. The plan's old
-   "4 informative tasks" could never read a step. The share of steps won on validity is the
-   operator's to set. From 16 November, proposed in place of a share: at least one of the measured
-   campaign's steps is won on validity, and otherwise the release says its climb was read on the
-   objective alone. A share cannot be asked of jobstat as it stands, where the reference is valid
-   in almost every scored solve (room on validity on 13 of 2,200 scored tasks).
-6. **Verdicts asks for enough labelled check defects to read the catch rate.** Proposed 8 of the 30
-   (the operator's): with 4, one miss already fails three in four. A reader that pools packets
-   across campaigns is the one piece of code the bar lacks; build it once the first packet is
-   labelled, since until then it would read nothing (rule 13).
-7. **Systems: in v1.0 or after it (the operator's).** The row reads `compare-systems` on a measured
-   campaign's held-out tasks, with its pair of solvers and margin fixed first.
-8. **Economy reads dollars per confirmed promotion on one meter.** `table.ts --rows cost` prices it; any dollar
-   target is the operator's, and none has been set.
-9. **The release notes carry the bar.** Each release's "Validation and limits" gives one line a
-   row, read from its reader, and the plan copies them. This needs one sentence in `stack-pr`
-   section 9 pointing at the skill's table, in a change of its own. No new reader: every row's
-   reader exists except the pooled verdicts reader of item 6.
-10. **`AGENTS.md` section 1 restates the honesty, verdicts and economy bars and the milestone.**
-    Once the values are set, its sentences state the same numbers or point at the table (rule 12).
-11. **The climb row needs a campaign let go on at one commit across releases.** The release cycle
-    forks fresh runs at each new top, and a run continued at another commit does not count
-    (`AGENTS.md`, section 10, item 9). So the measured campaign is a proof run left to climb after
-    its release lands. The jobstat proof campaign at `9190fbbac` was that candidate on 7 November;
-    on 16 November it is the fresh jobstat campaign at `908d221a0`, kept running past its second
-    promotion on the operator's word of 15 November. A pause stays the operator's word.
-12. **The measured campaign's budget must be able to hold six (the operator's).** A budget is fixed
-    at the launch and a campaign that ends on it is not topped up. Repriced on one meter, a
-    confirmed promotion cost 155 to 301 dollars in the five jobstat campaigns from v0.10.0 on that
-    hold two or more, and the one that ran to the default 800 ended there with three. Recommended:
-    2,000 dollars for the one fresh jobstat campaign named as the measured one, and 500 for
-    buffer's, where a confirmed promotion cost 59 and 65. The row's wording, "whose budget can
-    hold six", states the condition and no number.
-13. **The second domain (the operator's).** Proposed: buffer. It is the control every jobstat
-    change is read against, it holds the campaign nearest six (5 confirmed of 7 promotions), and
-    its steps are won on validity as well as on the objective (30 of 96), which jobstat's are not.
-14. **The wall's Linux half needs a runner at the release's top.** The row asks every wall test on
-    both systems at the top, and on 16 November nothing reads Linux there: no Linux runner takes
-    checks, and Actions last ran on `main` on 10 November. Which runner, or Actions at the top
-    alone, is the operator's.
-15. **Verdicts are fed from the domains that reject.** The candidate's 763 finished solves hold no
-    rejection, so jobstat offers no packet; the 30 labels come from buffer and the other domains,
-    and a domain without rejections reports that count instead. Labelling stays the operator's.
+1. **One rule for when v1.0 is met** (in the tree with this rewrite). The skill said every row must
+   read met, while run-improvement-campaign said a row without a threshold (the validity share, a
+   dollar target, systems, outside) held nothing back, so a release could reach 1.0 with no outside
+   reading at all. The skill now owns the rule and the other points at it: a row whose threshold
+   is unset reads unmeasured and holds 1.0 back, so every threshold is set, and the table
+   committed, before the runs that graduate v1.0 start. The operator's word overturns it.
+2. **Wall: a Linux runner at the release's top (the operator's).** On 16 November nothing read
+   Linux at the top: no Linux runner takes checks, and Actions last ran on `main` on 10 November.
+   Which runner, or Actions at the top alone.
+3. **Supply.** At least 6 untied tasks a comparison is wording, since the test fixes it: an exact
+   one-sided sign-flip test over 5 tasks clears at best 1 in 32. In place of a share of steps won
+   on validity, proposed: at least one of the measured campaign's steps is won on validity, and
+   otherwise the release says its climb was read on the objective alone. A share cannot be asked of
+   jobstat as it stands: 2 of its 37 steps were won on validity against buffer's 30 of 96, so the
+   quarter a review proposed would fail every jobstat campaign on record. New, proposed: once a
+   domain, the dear and the cheap solver in the Starter on the opening tasks, read by
+   `compare-systems`, with the dear one ahead beyond the A/A's spread, so that an exam that cannot
+   tell solvers apart is caught before a campaign climbs on it.
+4. **Climb: what a confirmed promotion counts (the operator's).** Of 67 starter reads on record 33
+   confirm, where sign draws over the tasks written after expect 26.1 with the selection tasks
+   standing as they fell, so about four in five confirmations are what selection alone gives.
+   Counting the tasks written after alone would confirm 13 of 67. Recommended: keep `confirmed` as
+   the count and ask beside it that more of the six read a step for the reference on the tasks
+   written after alone than for the starter (`starter-reads.ts` prints both). The threshold is weak
+   on purpose: those tasks are written by an Examiner that reads the reference's outcomes, so they
+   lean against it and their read is a lower bound. A review proposed three promotions confirmed on
+   the tasks written after alone in place of six; item 17's transfer reading is the evidence that
+   would choose between the two counts, in place of choosing one now.
+5. **Climb: a budget that can hold the count (the operator's).** A budget is fixed at the launch.
+   Repriced on one meter, a confirmed promotion cost 155 to 301 dollars in the five jobstat
+   campaigns from v0.10.0 on that hold two or more, and 59 and 65 in the two such buffer campaigns;
+   the jobstat campaign that ran to the default 800 ended there with three. Recommended: 2,000
+   dollars for the measured jobstat campaign and 500 for buffer's. Under item 4's alternative, three
+   confirmed on the tasks written after alone would cost more than three confirmed now, since
+   fewer reads confirm that way.
+6. **Climb: one campaign let go on at one commit.** The release cycle forks fresh runs at each new
+   top, and a run continued at another commit does not count (`AGENTS.md`, section 10, item 9), so
+   the measured campaign is a proof run left to climb after its release lands. A pause stays the
+   operator's word.
+7. **Climb: the second domain is a cold one (the operator's).** Recommended, in place of buffer: a
+   domain no change was tuned on, opened from its prompt unedited, with buffer kept as the control
+   every change is read against. Jobstat and buffer are the two domains every release cycle runs
+   (`AGENTS.md`, section 10), and the changes since October were read on them, so a climb in either
+   says little of a domain the system has not met. Which domain is the operator's; it needs no
+   code.
+8. **Honesty: a rate that can be read.** The ten A/As after a sixth promotion cannot be read as
+   worded: the two campaigns that passed a sixth ran 12 A/As after it, none able to read a step and
+   7 tying every task. Proposed in their place: A/A steps at most the design rate, 1.1% at 0.02,
+   over at least 50 able A/As in the release's measured campaigns, read apart on comparisons that
+   validity decided and those the objective alone did, with the starter against itself counting
+   where a reference ties its own A/A. The ten after a sixth stay reported. The fleet reads 2
+   steps in 207 able. No reader splits the slices; `carriedBy` (`src/kernel/compare.ts`) names which
+   measure carried each task, so the split is a column of `table.ts --rows runs`.
+9. **Verdicts on both sides.** With 4 labelled check defects one miss fails three in four, so
+   proposed at least 8 of the 30 rejections. Jobstat's candidate held no rejection in 763 finished
+   solves, so the rejections come from buffer and the other domains, and a domain without them
+   reports that count. New, proposed: the pass side. The row calibrated only rejections, so it
+   catches a check that refuses right answers and misses one that passes wrong ones, which is how a
+   gamed or vacuous check shows. The mechanism is in source: each packet draws three passes beside
+   its rejections (`tools/d2/settle.ts`), a person labels each `sound`, `wrong` or `unclear`
+   (`PASS_LABELS`), and a settled pass labelled wrong is its side's fail; no bar counts those labels
+   and `agreement` reads none. Proposed: at least 20 labelled passes from the measured campaigns'
+   references, at most 1 in 10 wrong, the same rate as the earned side until labels give one of
+   their own. Jobstat, which offers no rejection, offers passes. Labelling stays the operator's.
+10. **Grounding.** F32 stands: no drafted exam names an installed engine, since nothing installs one
+    for a campaign. A review proposed an engine in every engine-capable domain; one domain is the
+    row until one exists at all.
+11. **Economy: what a gain costs to make and to use.** Dollars per confirmed promotion on one meter
+    (`table.ts --rows cost`), and beside it what a harness costs to use, since a bloated guide
+    raises dollars a solve without changing turns: cost to serve N tasks, build plus N times
+    dollars a solve (`studies/harness2/README.md`, "Economy, apart from quality"), against the
+    Starter's. Proposed: a reference's dollars a solve at most the Starter's beyond the spread of
+    the Starter's own rollouts. Any dollar target is the operator's; a break-even cap on building
+    needs the systems row's savings a task first.
+12. **Systems: in v1.0 (the operator's).** Recommended now, where 16 November left it open: the
+    wider aim of `AGENTS.md` section 1 is a cheap solver in a built harness matching a dear one in
+    the Starter, and the operator named it "the whole point" on 27 October. Beside it, the built
+    harness against `programs-of:<digest>`, which `AGENTS.md` section 9 already requires for a
+    claim about which part of a harness did it. Solvers, margin and solves are the operator's.
+13. **Outside: the course and the rung (the operator's).** JobBench, in the operator's order of
+    `AGENTS.md` section 10: above the Starter, level with Harness²'s held-out arm, then above it;
+    WorkBuddy-Bench Code after v1.0, since no container has run and its licence is open.
+    Recommended for v1.0: the first rung, the measured campaign's confirmed references above a
+    Starter of the same sitting by more than the Starter's spread, over six scored references, with
+    the second rung reported beside it.
+14. **Outside: a claim reads a set nothing has steered.** The eight tasks of the outside reads have
+    been read to explain results, so they steer and cannot confirm (`jobbench-scoring.md`, item 22,
+    with its two open terms). The row now says so.
+15. **Outside: a one-pass author beside the Starter (the operator's).** A reference above the
+    Starter shows that a built harness helps, not that the loop does: one authoring pass from the
+    same query might do as well. Proposed: one session of the Builder's model writes a harness from
+    the query and the Starter Pack, with no exam, practice or comparison, exported as references are
+    and rolled beside the Starter, and the measured reference stands above both. It uses the
+    campaign's own model and is told no answer, so rules 2 and 9 hold. It adds a baseline to
+    `AGENTS.md` section 10 and is a paid seat, so both wait on the operator's word.
+16. **Outside: the conditions of a read.** Three things a deficit or a gain must be read against
+    before it is the harness's (`AGENTS.md`, section 10). Consistency: each arm's spread between its
+    rollouts and its worst task, against the Starter's, since a harness can win on the mean with a
+    wider spread. The runtime: a campaign solves under pi and the read runs an export
+    (`builtsolver-outside-deficit.md`, item 6, which waited on the Starter's spread that five
+    rollouts now give), so the Starter rolled once under the campaign's runtime beside its export
+    gives the gap as a constant. The scope: tasks from professions outside the domain, on which a
+    reference may not fall below the Starter beyond its spread. No read sets them apart yet: the
+    eight mix statistics with neighbouring professions, and nothing names which lie outside the
+    domain's scope.
+17. **Outside: transfer along the chain.** The exam is the Examiner's own, so a campaign can climb
+    on it in a direction the outside grader does not reward. Proposed: score the measured
+    campaign's chain, the Starter and at least three promoted references, outside, and ask that the
+    outside score not fall as the inside order rises, each difference read against the Starter's
+    spread. Where it peaks early, that reading is the evidence on which the operator revisits the
+    count of item 4.
+18. **How a threshold is set.** Proposed, under the skill's table: the wall's tests, the A/A design
+    rate and the verdict bars are invariants; every other threshold is set from a measured
+    distribution or a replay over the record, and backtested so that it passes the record's best
+    runs and refuses its known treadmills (`promotion-tuner`, `replay.ts`).
+19. **The release notes carry the bar, and `AGENTS.md` points at it.** Each release's "Validation
+    and limits" gives one line a row, read from its reader, and the plan copies them; `stack-pr`
+    section 9 needs one sentence pointing at the table. `AGENTS.md` section 1 restates the
+    honesty, verdicts and economy bars and the milestone; once the operator sets the values, its sentences state the
+    same numbers or point at the table (rule 12). Until then it keeps the bars in force.
+
+## Measurements owed before the thresholds freeze
+
+Each anchors a proposed threshold above on a measured distribution; prices are from the gathered
+JobBench store, where one Starter rollout of the fair uncut five cost 11.75 to 13.39 dollars of
+solves and 34 to 46 of judging.
+
+| Measurement | Anchors | Cost | Waits on |
+| --- | --- | --- | --- |
+| Label 30 rejections and 20 passes from recent packets | item 9 | the operator's time, no dollars | the operator |
+| A one-pass author harness, rolled on the fair five | item 15 | one Builder session and 45 to 60 dollars a rollout | the operator's word for a paid seat |
+| The Starter rolled under the campaign's runtime outside | item 16 | 45 to 60 dollars a rollout | an outside sitting |
+| The dear and the cheap solver in the Starter on one buffer and one jobstat opening | item 3 | not costed | the operator's word for the solvers |
+| A cheap solver in the best jobstat reference against the dear one in the Starter | items 11 and 12 | not costed | the operator's solvers and margin |
+| One measured campaign's chain of three references scored outside | item 17 | 45 to 60 dollars a reference a rollout | a campaign with three promotions |
+
+## Readers the bar lacks
+
+Each is built when the record holds something for it to read (rule 13); until then the row reads
+unmeasured.
+
+- **Pooled verdicts, both sides**: `agreement` over packets of several campaigns, with pass labels.
+  At the first labelled packet.
+- **Honesty's two slices**: a column of `table.ts --rows runs` split by `carriedBy`. Now: the
+  record holds 207 able A/As.
+- **An arm's spread and worst task outside**: present in source since 20 November as
+  `score.ts spread --out <store> --name <rollout,...>`, which reads the rollouts named as one arm
+  over the store's fair uncut tasks that each scored; the Starter's five give 30 points of 268.
+- **One chain inside and outside**: the measured campaign's references in promotion order, each
+  with its outside score. When one campaign has three references scored.
+
+## What the record shows (20 November)
+
+Read from the gathered JobBench store (`studies/harness2/score.ts table`), the tree at the stack's
+top and one investigation's lane report.
+
+- **Outside.** At 01:05 UTC, on the five tasks the store then read as fair and uncut, the
+  Starter's five whole rollouts scored 162 to 192 of 268 and four promoted jobstat references 146
+  to 174, against the Starter of their own sitting -8, -4, -6 and -46. Every reference so far lies
+  inside or below the Starter's spread. A read earlier that day gave 178 to 208 of 296 on another
+  five, since the set moves as records reach the store; a frozen task list for the bar would
+  remove that drift (item 14).
+- **Cost to use.** The same references spent 9.97 to 12.20 dollars a rollout on solves, the
+  Starter 11.75 to 13.39, after builds of 201 to 608 dollars.
+- **Pass side.** One investigation of 19 November counted 494 passes in a jobstat campaign read by
+  nobody, and found a check that passes an answer listing no correction (plausible; no constructed
+  answer was graded).
+- **The release rule.** Two skills disagreed on whether an unset row holds 1.0 back (item 1).
+
+## What the reviews proposed that is not taken
+
+- **Their numbers.** A 15-point model gap, 60%, 4 points and 250 dollars came from the reviewer's
+  own graduation bar of 19 November and were never in this table. The thresholds it proposed in
+  their place (a 3-point export loss, 1.25 times the Starter's cost, 5% wrong passes, 25% of steps
+  won on validity, a largest family at most 40%, 300 dollars and 12 hours a harness, within 2
+  points of the dear solver at a third of its cost, programs carrying half the gain, half the
+  tasks running the harness's programs) are as hand-picked as those it criticised; each threshold
+  above is anchored on a measured spread or an existing rate instead, or left to the operator.
+- **Harness²'s JobBench gain.** The review cites 4.5 points; no record here holds that figure, and
+  Harness²'s scores on record are those of `jobbench-scoring.md`.
+- **Stage A and B gates on a drafted exam.** Examiner mechanisms, not bar rows; they belong to
+  `examiner-complexity`. Item 3's solver read is the bar's part of the idea.
+- **A canary suite of archived check defects in every release's checks.** It needs the Referee, a
+  model, in each release's checks, which is paid; it waits on the first labels of item 9.
+- **A cross-exam matrix of harnesses on each other's exams, and a family cap on draws.** The first
+  has no reader and no run; the second is another session's open change, read by its own replay.
+- **Pulling F24, F34, F63 and X2 into v1.0.** They are plan rows, not bar rows; each moves by its
+  own row's evidence.
 
 ## What the record shows (7 November)
 
@@ -218,3 +331,9 @@ the candidate and the buffer control. Counts only; the values per row are in the
 - **16 November.** The operator: "re-read v1 requirements as well, maybe upgrade these with all the
   info you have". The rows were read again from their readers; the supply, climb, honesty,
   verdicts and outside rows were reworded, and items 12 to 15 added. No threshold was set.
+- **20 November.** The operator: "set up v1 requirements and adjacent files related to it in one
+  md", handed it to an outside model, and pasted its review (seven missing requirements and four
+  rules for setting thresholds) with the word "upgrade"; then a second review (five holes, a
+  replacement table, decisions for every open item) with "rewrite some compartments / md files /
+  helpers fully". Each claim was checked against the tree and the record, and this file, the
+  skill's table and the release rule were rewritten. No threshold was set.

@@ -10,6 +10,7 @@
  *     --api-base <url> [--harness <kept>] [--tasks <profession/taskN,...>] [--judge-log <shim.jsonl>]
  *     [--solve-only] [--rubrics <file>] [--cap <chars>] [--dry-run] --yes
  *   bun studies/harness2/score.ts table --out <dir> [--tasks <profession/taskN,...>] [--name <name,...>]
+ *   bun studies/harness2/score.ts spread --out <dir> --name <rollout,...>
  *   bun studies/harness2/score.ts tree --arm <arm> --name <name> --out <dir> --for <linux-x64> [--python <3.12>]
  *     [--harness <kept>]
  *
@@ -693,28 +694,81 @@ export async function score(values: Values): Promise<void> {
   }
 }
 
-/** The pilot's arms table (`final.py`) from the records under `<out>/judged/`. */
-function table(out: string, named: string | undefined, shown: readonly string[] | undefined): void {
+/** The judged records under `<out>/judged/` of the labels `shown`, or of every label. */
+function recordsOf(out: string, shown: readonly string[] | undefined): JsonObject[] {
   const root = join(out, "judged");
   // A name with no folder throws on its path, as the sister readers refuse one.
-  const records = (shown ?? (existsSync(root) ? readdirSync(root) : [])).flatMap((arm) =>
+  return (shown ?? (existsSync(root) ? readdirSync(root) : [])).flatMap((arm) =>
     readdirSync(join(root, arm)).flatMap((name) => {
       const record = readJson(join(root, arm, name));
       return isRecord(record) ? [record] : [];
     }),
   );
+}
+
+/** How many files a judged record says were cut from its deliverable, and 0 where it holds none. */
+const cuts = (record: JsonObject | undefined): number => (Array.isArray(record?.cut) ? record.cut.length : 0);
+
+/** The fair tasks of `tasks` on which no record of `records` had a file cut, or one nobody counted. */
+const uncutOf = (tasks: readonly string[], records: readonly JsonObject[]): string[] =>
+  // A cut nobody could count (`cut: null`) is not read as none, so its task leaves the block too.
+  fair(tasks).filter(
+    (task) => !records.some((record) => record.task === task && (record.cut === null || cuts(record) > 0)),
+  );
+
+/**
+ * The rollouts `shown` names read as one arm, over the store's fair uncut tasks (`table`'s last
+ * block) that every one of them scored: each rollout's points, their range, and each task's range,
+ * the lowest mean share first. The outside row reads every difference against the Starter's spread
+ * between rollouts, and asks that an arm's spread and worst task stand within what the Starter's
+ * show (system-audit, "The pillars and the v1.0 bar"); until 20 November 2026 both were worked out
+ * by hand from `table`.
+ */
+function spread(out: string, shown: readonly string[]): void {
+  const store = recordsOf(out, undefined);
+  const rowOf = (label: string, task: string) =>
+    store.find((record) => record.arm === label && record.task === task);
+  const held = [...new Set(store.map((record) => text(record.task)))].toSorted();
+  const tasks = uncutOf(held, store).filter((task) =>
+    shown.every((label) => isNumber(rowOf(label, task)?.points)),
+  );
+  // A misspelt rollout scores nothing, so it empties the set instead of reading as a zero.
+  if (tasks.length === 0) throw new Error(`no fair uncut task that each of ${shown.join(", ")} scored`);
+  const pointsOf = (label: string, task: string) => Number(rowOf(label, task)?.points);
+  const totalOf = (task: string) => Number(rowOf(shown[0] ?? "", task)?.total);
+  const whole = tasks.reduce((all, task) => all + totalOf(task), 0);
+  const sums = shown.map((label) => tasks.reduce((all, task) => all + pointsOf(label, task), 0));
+  const [low, high] = [Math.min(...sums), Math.max(...sums)];
+  console.log(
+    `${String(shown.length)} rollouts over the ${String(tasks.length)} fair uncut tasks each scored`,
+  );
+  for (const [index, label] of shown.entries()) {
+    console.log(`  ${label} ${String(sums[index])}/${String(whole)}`);
+  }
+  console.log(`  range ${String(low)} to ${String(high)} (${String(high - low)} points)`);
+  const rows = tasks.map((task) => {
+    const points = shown.map((label) => pointsOf(label, task));
+    const mean = points.reduce((all, each) => all + each, 0) / points.length / totalOf(task);
+    return { task, low: Math.min(...points), high: Math.max(...points), mean };
+  });
+  for (const row of rows.toSorted((a, b) => a.mean - b.mean)) {
+    const share = (100 * row.mean).toFixed(1);
+    console.log(
+      `${row.task}: ${String(row.low)} to ${String(row.high)} of ${String(totalOf(row.task))}, mean ${share}%`,
+    );
+  }
+}
+
+/** The pilot's arms table (`final.py`) from the records under `<out>/judged/`. */
+function table(out: string, named: string | undefined, shown: readonly string[] | undefined): void {
+  const records = recordsOf(out, shown);
   const arms = [...new Set(records.map((record) => text(record.arm)))].toSorted();
   // Unnamed, the tasks are those the records hold: until 20 November 2026 the pilot's eight, of
   // which every sitting rolls six, so each arm read "6 of 8" over a fair five no sitting chose.
   const tasks = tasksOf(named, [...new Set(records.map((record) => text(record.task)))].toSorted());
   const money = (value: number | null): string => (value === null ? "?" : value.toFixed(2));
   const width = Math.max(10, ...arms.map((arm) => arm.length));
-  const cuts = (record: JsonObject | undefined): number =>
-    Array.isArray(record?.cut) ? record.cut.length : 0;
-  // A cut nobody could count (`cut: null`) is not read as none, so its task leaves the block too.
-  const uncut = fair(tasks).filter(
-    (task) => !records.some((record) => record.task === task && (record.cut === null || cuts(record) > 0)),
-  );
+  const uncut = uncutOf(tasks, records);
   // A rubric pays its weight only where every criterion passes, so points magnify a near tie: on
   // 16 November 2026 two arms 36 points of 518 apart stood 2 criteria of 225 apart. The judge's own
   // count is read from its details, and is unknown where a store holds none for a record.
@@ -785,11 +839,13 @@ function table(out: string, named: string | undefined, shown: readonly string[] 
 async function main(args: readonly string[]): Promise<void> {
   const [verb, ...rest] = args;
   const { values } = parseArgs({ args: [...rest], options: OPTIONS, strict: true });
+  const shown = values.name?.split(",").map((name) => name.trim());
   if (verb === "score") {
     await score(values);
   } else if (verb === "table" && values.out !== undefined) {
-    const shown = values.name?.split(",").map((name) => name.trim());
     table(resolve(values.out), values.tasks, shown);
+  } else if (verb === "spread" && values.out !== undefined && shown !== undefined) {
+    spread(resolve(values.out), shown);
   } else if (verb === "tree" && values.out !== undefined && values.for !== undefined) {
     if (values.python !== undefined && !/^3\.\d+$/u.test(values.python)) {
       throw new Error("--python takes a minor, as 3.12");
@@ -799,7 +855,7 @@ async function main(args: readonly string[]): Promise<void> {
     console.log(`arm ${arm.name}: ${arm.harness}, for ${values.for}, under ${arm.tree("")}`);
   } else {
     throw new Error(
-      "usage: score.ts score --arm <arm> --name <name> --out <dir> --jb <dir> --api-base <url> --yes | table --out <dir> [--tasks <list>] [--name <name,...>] | tree --arm <arm> --name <name> --out <dir> --for <linux-x64> [--python <3.12>]",
+      "usage: score.ts score --arm <arm> --name <name> --out <dir> --jb <dir> --api-base <url> --yes | table --out <dir> [--tasks <list>] [--name <name,...>] | spread --out <dir> --name <rollout,...> | tree --arm <arm> --name <name> --out <dir> --for <linux-x64> [--python <3.12>]",
     );
   }
 }

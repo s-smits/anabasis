@@ -39,14 +39,16 @@ import {
   scored,
 } from "#src/kernel/compare.ts";
 import { contractHash } from "#src/kernel/contract.ts";
-import { LOG_FILE, read } from "#src/kernel/log.ts";
-import { ended, passed, ranUnder, rejectionAside, rulingsOf, verdictsOf } from "#src/kernel/solves.ts";
+import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
+import { ended, passed, ranUnder, rejectionAside, verdictsOf } from "#src/kernel/solves.ts";
 import { taskSets } from "#src/kernel/task.ts";
-import { billedAll } from "#src/kernel/meter.ts";
+import { billedAll, priceKey } from "#src/kernel/meter.ts";
 import { existsSync, mkdirSync } from "#src/meta/filesystem.ts";
+import { hold, release } from "#src/meta/holder.ts";
 import { isNumber } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
+import { pooled } from "#src/meta/pool.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { mean } from "#src/meta/tally.ts";
 import { type Kept, keptAs, openCampaign, packNamed } from "#tools/d2/campaign.ts";
@@ -63,6 +65,7 @@ import { recordedSetting, settingNamed } from "#tools/d2/setting.ts";
 import { loginEnv } from "#tools/runs/manage.ts";
 import { dollars } from "#tools/runs/said.ts";
 import { SEED_FILE } from "#tools/runs/registry.ts";
+import { checkTrial, trialTerms, unruledIn } from "./trial.ts";
 
 const USAGE = `compare-systems: solve a campaign's held-out tasks under two or more systems, and read them
 
@@ -104,6 +107,7 @@ interface Opened {
   readonly harness: Kept;
   readonly seat: Seats;
   readonly reviewers: Reviewers | null;
+  readonly trial: () => LogEvent[];
 }
 
 /** What the solves are drawn from: the seed, its drawn tasks, the solves a task and the dollar cap. */
@@ -134,8 +138,7 @@ function systemOf(flag: string, die: CommandArgs["die"]): System {
 }
 
 /** Every task's counted solves in one system's log. A non-result is no measurement and is left out. */
-function solvedIn(log: string): Map<string, Solved> {
-  const events = existsSync(log) ? read(log) : [];
+function solvedIn(events: readonly LogEvent[]): Map<string, Solved> {
   const verdicts = verdictsOf(events);
   const out = new Map<string, Solved>();
   for (const solve of ended(ranUnder(events)).toSorted((a, b) => a.started - b.started)) {
@@ -165,17 +168,19 @@ function solvedIn(log: string): Map<string, Solved> {
  *  bill over those solves, the Referee's rulings included, so it runs a little over the solves' own;
  *  the time is a solve's wall, which a harness's own programs can fill (`improve-truss` searched to
  *  a deadline in all 12 solves of the truss reading of 28 October). */
-function tableLines(rows: readonly { system: System; own: Map<string, Solved>; billed: number }[]): string[] {
+function tableLines(
+  rows: readonly { system: System; own: Map<string, Solved>; billed: number; count: number }[],
+): string[] {
   const minutes = (seconds: number | null) => (seconds === null ? "n/a" : `${(seconds / 60).toFixed(1)} min`);
   return [
-    "| system | valid solves | average cost a solve | average time a solve | slowest solve | average model turns |",
+    "| system | valid solves | average cost a solve (whole trial) | average time a solve | slowest solve | average model turns |",
     "| --- | --- | --- | --- | --- | --- |",
-    ...rows.map(({ system, own, billed }) => {
+    ...rows.map(({ system, own, billed, count }) => {
       const solves = [...own.values()];
       const valid = solves.flatMap((row) => row.valid);
       const seconds = solves.flatMap((row) => row.seconds).filter(isNumber);
       const turns = mean(solves.flatMap((row) => row.turns).filter(isNumber));
-      return `| ${system.name} | ${String(valid.filter(Boolean).length)} of ${String(valid.length)} | ${valid.length === 0 ? "n/a" : dollars(billed / valid.length)} | ${minutes(mean(seconds))} | ${minutes(seconds.length === 0 ? null : Math.max(...seconds))} | ${turns === null ? "n/a" : turns.toFixed(1)} |`;
+      return `| ${system.name} | ${String(valid.filter(Boolean).length)} of ${String(valid.length)} | ${count === 0 ? "n/a" : dollars(billed / count)} | ${minutes(mean(seconds))} | ${minutes(seconds.length === 0 ? null : Math.max(...seconds))} | ${turns === null ? "n/a" : turns.toFixed(1)} |`;
     }),
   ];
 }
@@ -227,12 +232,15 @@ export function pairLines(
       ),
     }),
   );
+  const [x, y] = [candidate.name, baseline.name];
+  const heading = `${x} against ${y}, on the ${String(pairs.length)} tasks both solved ${String(at.solves)} times:`;
+  const aside = `  ${String(solvedBoth.length - both.length)} more tasks both solved are set aside on a rejection the Referee did not rule earned`;
+  if (pairs.length === 0) return [heading, "  not scored: no eligible pair of results", aside];
   const { wins, losses, ties, p, differences } = scored(pairs);
   // Exchanging the sides negates every score, so the other way is the same scores negated.
   const other = differences.map((one) => -one);
   const carried = pairs.map((pair) => carriedBy(pointsOf(pair)));
   const by = (measure: string) => carried.filter((one) => one === measure).length;
-  const [x, y] = [candidate.name, baseline.name];
   const shift = detectable(differences, at.level);
   const reading = readsStep(differences, at.level)
     ? `${x} is better: a step at the level ${String(at.level)}`
@@ -240,10 +248,10 @@ export function pairLines(
       ? `${y} is better: a step at the level ${String(at.level)}`
       : `no step either way at the level ${String(at.level)}. That is no proof they are equal: ${shift === null ? "too few tasks are untied for any difference to show" : `this size shows four times in five a side that wins ${String(Math.round(shift * 100))}% of the untied tasks`}`;
   return [
-    `${x} against ${y}, on the ${String(pairs.length)} tasks both solved ${String(at.solves)} times:`,
+    heading,
     `  ${x} won ${String(wins)}, lost ${String(losses)}, tied ${String(ties)}; untied tasks carried by validity ${String(by("validity"))}, by the objective ${String(by("objective"))}`,
-    `  p ${p.toFixed(3)} that ${x} is better, ${flipP(other).toFixed(3)} that ${y} is; ${reading}`,
-    `  ${String(solvedBoth.length - both.length)} more tasks both solved are set aside on a rejection the Referee did not rule earned`,
+    `  one-sided sign-flip p for ${x} over ${y} is ${p.toFixed(3)}, and for ${y} over ${x} is ${flipP(other).toFixed(3)}; ${reading}`,
+    aside,
   ];
 }
 
@@ -290,7 +298,7 @@ export function itself(
  * interleaved by solve, task and system, so every system meets the host's load alike.
  */
 async function solveAll(opened: readonly Opened[], { source, seed, tasks, solves, cap }: Solving) {
-  const counted = opened.map(({ log }) => solvedIn(log));
+  const counted = opened.map(({ trial }) => solvedIn(trial()));
   const jobs = Array.from({ length: solves }, (_, at) => at).flatMap((at) =>
     tasks.flatMap((task) =>
       opened.flatMap((system, index) =>
@@ -298,41 +306,33 @@ async function solveAll(opened: readonly Opened[], { source, seed, tasks, solves
       ),
     ),
   );
-  const spent = () =>
-    opened.reduce((total, { log }) => total + (existsSync(log) ? billedAll(read(log)) : 0), 0);
+  const spent = () => opened.reduce((total, { log }) => total + billedAll(read(log)), 0);
   console.log(`${String(jobs.length)} solves to make, ${dollars(spent())} billed so far of ${dollars(cap)}`);
   const packages = source.packages();
-  const work = async () => {
-    for (let job = jobs.shift(); job !== undefined && spent() < cap; job = jobs.shift()) {
-      const pack = packages.get(job.task);
-      if (pack === undefined) throw new Error(`task ${job.task} has no package in ${seed}`);
-      // A non-result is no measurement, and is solved again once, as a comparison's slot is.
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        const { ending } = await job.system.seat.solve(pack, job.system.harness, undefined, undefined);
-        console.log(
-          `${job.system.system.name} ${job.task.slice(0, 8)}: ${ending.outcome}${"kind" in ending ? ` (${ending.kind})` : ""}`,
-        );
-        if (ending.outcome !== "non-result") break;
-      }
+  let capped = false;
+  const exhausted = () => (capped ||= spent() >= cap);
+  await pooled(jobs, source.limits.concurrency, async (job) => {
+    const pack = packages.get(job.task);
+    if (pack === undefined) throw new Error(`task ${job.task} has no package in ${seed}`);
+    // A non-result is no measurement, and is solved again once, as a comparison's slot is.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (exhausted()) return;
+      const { ending } = await job.system.seat.solve(pack, job.system.harness, undefined, undefined);
+      console.log(
+        `${job.system.system.name} ${job.task.slice(0, 8)}: ${ending.outcome}${"kind" in ending ? ` (${ending.kind})` : ""}`,
+      );
+      if (ending.outcome !== "non-result") break;
     }
-  };
-  await Promise.all(Array.from({ length: source.limits.concurrency }, work));
-  const unruled = opened.flatMap(({ system, log, reviewers }) => {
-    const own = existsSync(log) ? read(log) : [];
-    const found = rulingsOf(own);
-    return ended(ranUnder(own)).flatMap((solve) =>
-      solve.ending?.kind === "rejected" && !found.has(solve.id) ? [{ system, reviewers, solve }] : [],
-    );
   });
-  const rule = async () => {
-    for (let one = unruled.shift(); one !== undefined; one = unruled.shift()) {
-      const pack = packages.get(one.solve.under.task);
-      if (pack === undefined || one.reviewers === null) continue;
-      const { ruling } = await one.reviewers.referee(one.solve.id, pack, new AbortController().signal);
-      console.log(`${one.system.name} ${one.solve.under.task.slice(0, 8)}: the Referee ruled ${ruling}`);
-    }
-  };
-  await Promise.all(Array.from({ length: source.limits.concurrency }, rule));
+  const unruled = opened.flatMap(({ system, trial, reviewers }) =>
+    unruledIn(trial()).map((solve) => ({ system, reviewers, solve })),
+  );
+  await pooled(unruled, source.limits.concurrency, async (one) => {
+    const pack = packages.get(one.solve.under.task);
+    if (pack === undefined || one.reviewers === null || exhausted()) return;
+    const { ruling } = await one.reviewers.referee(one.solve.id, pack, new AbortController().signal);
+    console.log(`${one.system.name} ${one.solve.under.task.slice(0, 8)}: the Referee ruled ${ruling}`);
+  });
 }
 
 async function main(args: CommandArgs): Promise<number> {
@@ -342,17 +342,12 @@ async function main(args: CommandArgs): Promise<number> {
   if (systems.length < 2 || new Set(systems.map(({ name }) => name)).size < systems.length) {
     return args.die("name a --baseline and at least one --candidate, each under its own name");
   }
-  const [solves, count, level, cap] = [
-    args.int("solves") ?? 1,
-    args.int("tasks") ?? Number.POSITIVE_INFINITY,
-    Number(args.value("level") ?? "0.02"),
-    Number(args.value("cap") ?? Number.NaN),
-  ];
+  const { solves, count, level, cap } = trialTerms(args);
   const reviewer = {
     reviewer: args.value("reviewer") ?? undefined,
     "reviewer-effort": args.value("reviewer-effort") ?? "high",
   };
-  if (!args.flag("read") && (!(cap > 0) || reviewer.reviewer === undefined)) {
+  if (!args.flag("read") && (!(cap > 0) || !Number.isFinite(cap) || reviewer.reviewer === undefined)) {
     return args.die(
       "name --cap, the dollars every system's solves may bill together, and --reviewer, the Referee",
     );
@@ -376,7 +371,8 @@ async function main(args: CommandArgs): Promise<number> {
   const recorded = recordedSetting(events);
   if (recorded === null) return args.die(`${seed} records no setting yet: no comparison or session has run`);
   const { held } = taskSets(events);
-  const tasks = draw(held, Math.min(count, held.length), contractHash(source.contract));
+  const contract = contractHash(source.contract);
+  const tasks = draw(held, Math.min(count ?? held.length, held.length), contract);
   const out = join(source.repo, ".ana", "compare", seed);
   const opened: Opened[] = await Promise.all(
     systems.map(async (system) => {
@@ -395,37 +391,53 @@ async function main(args: CommandArgs): Promise<number> {
         builder: undefined,
         reference: harness.dir,
       });
-      return { system, log, harness, seat, reviewers: reviewersNamed(campaign, reviewer) };
+      const measured = { ...system, model: priceKey(campaign.test.model), effort: campaign.test.effort };
+      const trial = () => {
+        const logged = read(log);
+        checkTrial(
+          logged,
+          { ...measured, harness: harness.digest, limits, contract },
+          args.flag("read") ? undefined : seat.setting,
+        );
+        return logged;
+      };
+      return { system: measured, log, harness, seat, reviewers: reviewersNamed(campaign, reviewer), trial };
     }),
   );
-  if (!args.flag("read")) await solveAll(opened, { source, seed, tasks, solves, cap });
+  if (!args.flag("read")) {
+    const lock = join(out, ".solving");
+    if (!hold(lock)) throw new Error(`another comparison is solving under ${seed}`);
+    try {
+      await solveAll(opened, { source, seed, tasks, solves, cap });
+    } finally {
+      release(lock);
+    }
+  }
   const drawn = new Set(tasks);
-  const solvedBy = opened.map(({ log }) => new Map([...solvedIn(log)].filter(([task]) => drawn.has(task))));
-  const direction = objectiveNamed(source)?.direction;
+  const trials = opened.map(({ system, harness, trial }) => {
+    const log = trial();
+    const all = solvedIn(log);
+    const made = [...all.values()].reduce((sum, row) => sum + row.valid.length, 0);
+    return {
+      system,
+      harness,
+      count: made,
+      billed: billedAll(log),
+      own: new Map([...all].filter(([task]) => drawn.has(task))),
+    };
+  });
+  const old = trials[0]?.own ?? new Map<string, Solved>();
+  const at = { solves, level, direction: objectiveNamed(source)?.direction };
   const lines = [
     `${String(tasks.length)} of the ${String(held.length)} held-out tasks of ${seed}, drawn by its contract's hash. Its Examiner admitted them under ${recorded.solver === null ? "the stored cycle's solver" : `${recorded.solver.model} at ${recorded.solver.effort}`} against its reference harnesses. Task selection therefore depended on that solver and those harnesses.`,
     `Every solve: ${String(recorded.minutes)} minutes and ${recorded.modelTurns === null ? "unlimited" : String(recorded.modelTurns)} model turns, the campaign's checks, and the Referee on every rejection.`,
     "",
-    ...opened.flatMap(({ system, harness }, index) =>
-      systemLines(system, harness.digest, solvedBy[index] ?? new Map<string, Solved>()),
-    ),
+    ...trials.flatMap(({ system, harness, own }) => systemLines(system, harness.digest, own)),
     "",
-    ...tableLines(
-      opened.map(({ system, log }, index) => ({
-        system,
-        own: solvedBy[index] ?? new Map<string, Solved>(),
-        billed: existsSync(log) ? billedAll(read(log)) : 0,
-      })),
-    ),
+    ...tableLines(trials),
     "",
-    ...itself(baseline, solvedBy[0] ?? new Map<string, Solved>(), { solves, level, direction }),
-    ...opened.slice(1).flatMap(({ system }, index) =>
-      pairLines([baseline, solvedBy[0] ?? new Map()], [system, solvedBy[index + 1] ?? new Map()], {
-        solves,
-        level,
-        direction,
-      }),
-    ),
+    ...itself(baseline, old, at),
+    ...trials.slice(1).flatMap(({ system, own }) => pairLines([baseline, old], [system, own], at)),
   ];
   console.log(lines.join("\n"));
   return 0;

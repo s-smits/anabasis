@@ -5,6 +5,7 @@ import { describe, expect, it } from "bun:test";
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readlinkSync,
   realpathSync,
   rmSync,
@@ -59,13 +60,19 @@ describe("the runs zip", () => {
       put("states/deliverables/abc", "a report a solver left\n");
       put(`states/${DIGEST}/node_modules/dep/index.js`, "module.exports = 1;\n");
       put(`states/${DIGEST}/auth.json`, "{}");
+      put(`states/${DIGEST}/.env.local`, "fixture");
       put("states/tree-abc/bin/solver", "#!/bin/sh\n");
       put(
         "states/tree-abc/pylibs/numpy-2.0.dist-info/RECORD",
         "numpy/core.py,,\nnumpy-2.0.dist-info/RECORD,,\n",
       );
       put("states/tree-abc/pylibs/numpy/core.py", "installed\n");
+      put("states/tree-abc/pylibs/numpy/own.py", "the harness's own\n");
       put("states/tree-abc/pylibs/own.py", "the harness's own\n");
+      // A package whose cache was written after its install, as under uv, still goes whole.
+      put("states/tree-abc/pylibs/six-1.0.dist-info/RECORD", "six/a.py,,\nsix-1.0.dist-info/RECORD,,\n");
+      put("states/tree-abc/pylibs/six/a.py", "installed\n");
+      put("states/tree-abc/pylibs/six/__pycache__/a.cpython-314.pyc", "cached\n");
       put("notes.txt", "kept by hand\n");
       symlinkSync("../tree-abc", join(folder, "states", DIGEST, ".toolchain"));
       symlinkSync(join(folder, "states", "tree-abc"), join(folder, "states", DIGEST, "absolute"));
@@ -89,12 +96,15 @@ describe("the runs zip", () => {
       }
       const run: Run = { name: "r1", tree, path: join(folder, "log.jsonl"), end: "comparison.reported" };
       expect(fit(dirname(run.path)).left).toEqual([
+        { path: `states/${DIGEST}/.env.local`, why: "a secret's name" },
         { path: `states/${DIGEST}/absolute`, why: "a link out of its folder" },
         { path: `states/${DIGEST}/auth.json`, why: "a secret's name" },
         { path: `states/${DIGEST}/node_modules`, why: "installed, cached or built" },
         { path: `states/${DIGEST}/outside`, why: "a link out of its folder" },
-        { path: "states/tree-abc/pylibs/numpy", why: "installed, cached or built" },
+        { path: "states/tree-abc/pylibs/numpy/core.py", why: "installed, cached or built" },
         { path: "states/tree-abc/pylibs/numpy-2.0.dist-info", why: "installed, cached or built" },
+        { path: "states/tree-abc/pylibs/six", why: "installed, cached or built" },
+        { path: "states/tree-abc/pylibs/six-1.0.dist-info", why: "installed, cached or built" },
       ]);
       const light = [
         "brief tree/r1/checks/brief.json",
@@ -111,6 +121,7 @@ describe("the runs zip", () => {
         "deliverables tree/r1/states/deliverables/abc",
         "toolchain tree/r1/states/tree-abc/bin/solver",
         "toolchain tree/r1/states/tree-abc/pylibs/own.py",
+        "toolchain tree/r1/states/tree-abc/pylibs/numpy/own.py",
         `toolchain tree/r1/states/${DIGEST}/.toolchain`,
       ];
       const verbose = [
@@ -141,9 +152,11 @@ describe("the runs zip", () => {
       expect(readlinkSync(join(root, "opened", "medium", "tree", "r1", "states", DIGEST, ".toolchain"))).toBe(
         "../tree-abc",
       );
-      expect(() =>
-        zip([run], "light", { out: join(root, "too-small.zip"), maxBytes: 1, note: null }),
-      ).toThrow(/0 KB/);
+      const previous = readFileSync(join(root, "light.zip"));
+      expect(() => zip([run], "medium", { out: join(root, "light.zip"), maxBytes: 1, note: null })).toThrow(
+        /0 KB/,
+      );
+      expect(readFileSync(join(root, "light.zip"))).toEqual(previous);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

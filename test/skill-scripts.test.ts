@@ -1155,7 +1155,7 @@ describe("compare-systems reads a candidate against the baseline as a comparison
     for (const [baseline, old, candidate, fresh, facts] of [
       ["cheap", fails, "dear", passes, ["dear won 6, lost 0, tied 0", "dear is better", "0 more tasks"]],
       ["dear", passes, "cheap", fails, ["cheap won 0, lost 6, tied 0", "dear is better"]],
-      ["cheap", aside, "dear", passes, ["on the 0 tasks", "6 more tasks", "no step either way"]],
+      ["cheap", aside, "dear", passes, ["on the 0 tasks", "6 more tasks", "not scored"]],
       ["a", passes, "b", passes, ["b won 0, lost 0, tied 6", "no step either way"]],
     ] as const) {
       const lines = pairLines([system(baseline), old], [system(candidate), fresh], at).join("\n");

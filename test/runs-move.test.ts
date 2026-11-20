@@ -216,6 +216,10 @@ describe("recovering interrupted moves", () => {
     writeFileSync(join(made.folder, "log.jsonl"), log);
     expect(made.move(["--hold"], { FAKE_TRANSFER_FAIL: "1" }).code).toBe(1);
     expect(existsSync(made.folder)).toBe(true);
+    const dirty = made.move(["--hold"], { FAKE_DIRTY: " M tracked.ts" });
+    expect(dirty.code).toBe(1);
+    expect(existsSync(made.folder)).toBe(true);
+    expect(made.recorded().filter(({ tool }) => tool === "rsync")).toHaveLength(1);
     const retry = made.move(["--hold"]);
     expect(retry.err).toBe("");
     expect(retry.code).toBe(0);
@@ -245,6 +249,16 @@ describe("recovering interrupted moves", () => {
     expect(failed.code).toBe(1);
     expect(readdirSync(temporary).filter((entry) => entry.startsWith("ana-move-"))).toEqual([]);
     expect(existsSync(made.folder)).toBe(true);
+    const stale = join(temporary, "ana-move-seed");
+    mkdirSync(stale);
+    writeFileSync(join(stale, "superseded"), "from an interrupted relay");
+    const retry = made.move(
+      ["--hold"],
+      { ANA_HOSTS: JSON.stringify([made.host, other]), TMPDIR: temporary },
+      ["--from", made.host.name, "--to", other.name],
+    );
+    expect(retry.code).toBe(0);
+    expect(existsSync(join(made.into, "superseded"))).toBe(false);
   });
 
   it("points a retry to the destination after the source has been set aside", () => {

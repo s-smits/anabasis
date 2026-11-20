@@ -204,6 +204,19 @@ describe("what a solve opens with", () => {
       }
       // The JSON keeps every row as written: the files are a second form of it, not a cut.
       expect(JSON.parse(readFileSync(join(home, "public", "task.json"), "utf8"))).toEqual(listed);
+      // The first message names each written file instead of repeating it; any row not written
+      // as a file, the second row of one path included, stays as written.
+      const opening: unknown = JSON.parse(firstTurn(listed).split("Public input:\n")[1] ?? "");
+      const rows = listed.publicInput.files;
+      expect(opening).toEqual({
+        ...listed.publicInput,
+        files: [
+          { path: "data/sales.csv", file: "public/files/data/sales.csv", bytes: 21 },
+          { path: "notes/memo.md", file: "public/files/notes/memo.md", bytes: 7 },
+          ...rows.slice(2),
+        ],
+      });
+      expect(firstTurn(listed)).not.toContain("region,units");
       // A public input whose `files` is no list has none, and its home no folder for them.
       const other = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-prompt-files-")));
       try {

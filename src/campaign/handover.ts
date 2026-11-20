@@ -29,10 +29,10 @@
  * billed every move made inside its span, which those moves' own lines billed again.
  * The Referee triage of 20 October found unclear and unread practice rejections counted as failures.
  */
-import { type Measures, scoresIn, type Tally, testOf } from "../kernel/compare.ts";
+import { type Measures, pointsOf, scoresIn, type Tally, testOf } from "../kernel/compare.ts";
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { lastReports, latestBuilt, promoted } from "../kernel/reports.ts";
+import { lastReports, latestBuilt, pairsReported, promoted } from "../kernel/reports.ts";
 import { ownedBy, traceKind } from "../kernel/trace.ts";
 import { billedAll, billedParts } from "../kernel/meter.ts";
 import {
@@ -120,6 +120,10 @@ interface Compared {
    *  and its tally here is of its scores without it (`scoresIn`); any other report's is as tallied,
    *  since one from before 21 October holds no scores. */
   readonly tally: Tally | null;
+  /** How many of its tallied tasks the two harnesses' validity differed on (`pointsOf`), as the
+   *  starter read splits a tally (`starterReads`, `climb.ts`); null where nothing was tallied, or
+   *  where the report's pairs cannot be read again (`pairsReported`). */
+  readonly validity: number | null;
   /** Each harness by itself: the tasks with no, one, two... valid answers among its solves. */
   readonly valid: { readonly old: readonly number[]; readonly fresh: readonly number[] } | null;
   /** The points each measure gave the tallied tasks together (`pointsOf`); null where nothing was
@@ -254,7 +258,8 @@ function practiceFails(events: readonly LogEvent[]): (PracticeFail & { readonly 
 function compared(events: readonly LogEvent[], id: string): Compared {
   const report = reported(events, id);
   const began = events.findIndex(({ kind, data }) => kind === STARTED && data.session === id);
-  const start = events[began]?.data ?? lastReports(events).find(({ session }) => session === id)?.data ?? {};
+  const last = lastReports(events).find(({ session }) => session === id);
+  const start = events[began]?.data ?? last?.data ?? {};
   const solves = solvesIn(events).filter((solve) => solve.start.comparison === id);
   const own = new Set(solves.map((solve) => solve.id));
   const setting = events.findLast(({ kind }, index) => kind === "campaign.setting" && index < began)?.data;
@@ -270,6 +275,7 @@ function compared(events: readonly LogEvent[], id: string): Compared {
     report?.families == null
       ? null
       : Object.values(report.families).map(({ frontier: f }) => f.wins + f.losses + f.ties);
+  const pairs = last === undefined ? [] : pairsReported(events, last);
   const fixed = fixedIn(events, id);
   const repeat = fixed === null ? null : overlapOf(events, fixed);
   return {
@@ -284,6 +290,7 @@ function compared(events: readonly LogEvent[], id: string): Compared {
     modelTurns: isNumber(told) ? told : null,
     reading: report?.reading ?? null,
     tally: scored === null ? null : { wins: scored.wins, losses: scored.losses, ties: scored.ties },
+    validity: pairs.length === 0 ? null : pairs.filter((pair) => pointsOf(pair).validity !== 0).length,
     valid: report?.valid == null ? null : { old: report.valid.old, fresh: report.valid.fresh },
     points: report?.points ?? null,
     aside: report?.aside.length ?? 0,

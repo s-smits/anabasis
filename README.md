@@ -53,12 +53,14 @@ So first, if you haven’t already, please install Bun:
 ```sh
 curl -fsSL https://bun.com/install | bash -s "bun-v1.4.4"
 ```
+In Claude Code, `/setup-anabasis` walks through these steps on your machine and proves each one without spending.
+
 This example uses Claude for all four model seats.
 
 ```sh
 git clone https://github.com/s-smits/anabasis.git
 cd anabasis
-cp .env.example .env   # set CLAUDE_CODE_OAUTH_TOKEN in it; `claude setup-token` prints one
+cp -n .env.example .env   # set CLAUDE_CODE_OAUTH_TOKEN in it; `claude setup-token` prints one
 
 # A run executes its tree's source, so it starts from a worktree of its own.
 git worktree add --detach ../anabasis-trusses

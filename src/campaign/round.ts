@@ -29,9 +29,8 @@
  * later comparison read against it (`7f0add79:docs/plan.md`, What we will not do).
  *
  * The Starter Built Harness is the reference harness until a step is promoted
- * (`src/harness/starter.ts`). Once another reference is promoted, the starter is read in a
- * starter comparison after a promotion (`decide.ts`), and no side of a
- * comparison between two others.
+ * (`src/harness/starter.ts`). Once another reference is promoted, the starter is read in a starter
+ * comparison after a promotion (`decide.ts`), and no side of a comparison between two others.
  *
  * How each harness did by itself is in the report beside the test (`valid`): on how many tasks it
  * gave a valid answer in every solve, in some and in none. For the starter this is what the
@@ -40,9 +39,8 @@
  *
  * The reference is read against itself as the test is (the plan's A/A): its solves of a task
  * split into two halves mirrored in time, read as two harnesses are, with how often two of them
- * disagree (`flips`, `comparison.ts`).
- * The test's own solves hold it: at two solves a side, the first of each task against the second.
- * It should read no step, and decides nothing here.
+ * disagree (`flips`, `comparison.ts`). The test's own solves hold it: at two solves a side, the
+ * first of each task against the second. It should read no step, and decides nothing here.
  *
  * A comparison is read at the one budget its solves were told: a reading of the same solves at a
  * shorter budget would read a solver told the longer one.
@@ -67,7 +65,8 @@
  * the labels can move. A person's labels settle it (`settleReading`): a task whose set-aside
  * rejections are all labelled earned is restored, one labelled a check defect is disputed for
  * good, and one labelled unclear stays out. A solve that ended at its limits or gave no answer has
- * nothing to recompute and needs no ruling. A check that could not run disputes its task at once.
+ * nothing to recompute and needs no ruling. A check that could not run on the reference's answer
+ * disputes its task at once; on the other side's it leaves the task short of solves.
  * Past `defects` tasks with a check that could not run or a rejection the Referee ruled a check
  * defect, the comparison stops, since the check program then needs its owner before more is spent.
  * A task a person released or refused while the comparison ran is left out and named
@@ -401,9 +400,8 @@ function dispute(log: string, id: string, version: string, found: { solve: strin
  *  was not started. A solve the provider cut after an hour's work holds thousands (8 October),
  *  and is a non-result the comparison solves on from. On 10 October a rehearsal whose wall
  *  refused every solve ran 56 of them to `sandbox-crash` before it was killed: a dead wall is a
- *  dead provider's case (AGENTS.md, rule 14). A solve whose start does
- *  not name the comparison is refused: no fold would count it, and the comparison would buy it
- *  again at every pass. */
+ *  dead provider's case (AGENTS.md, rule 14). A solve whose start does not name the comparison is
+ *  refused: no fold would count it, and the comparison would buy it again at every pass. */
 function unanswered(log: string, id: string, { solve, ending }: Practised): string | null {
   const ran = solvesIn(read(log)).find((each) => each.id === solve);
   if (ran?.start.comparison !== id) {
@@ -493,10 +491,12 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     const solved = await request.solve(task, under, id, kill);
     const { solve, ending } = solved;
     quiet.note(task, unanswered(log, id, solved), ending);
-    // A second such solve of the task disputes nothing: the log holds the task disputed (`dispute`).
+    // The task's defect on either side, and solved no further here (`sequence`). Only the
+    // reference's answer disputes it: a candidate's may move no count its Builder reads (rule 3).
     if (checkCouldNotRun(ending)) {
       defects.add(task);
-      dispute(log, id, task, { solve, reason: "its own check could not run on an answer" });
+      const reason = "its own check could not run on an answer";
+      if (under.digest === fixed.old) dispute(log, id, task, { solve, reason });
     }
     // Only a rejected answer has anything to recompute: a solve its limits ended, or one that gave
     // no answer, is not valid with no ruling (`src/kernel/compare.ts`).
@@ -521,10 +521,10 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
         }
         running += 1;
         try {
-          const { outcome } = await run(job);
-          if (outcome === "non-result" && job.again) return;
-          if (outcome === "non-result") jobs[0] = { ...job, again: true };
-          else jobs.shift();
+          const ending = await run(job);
+          if (ending.outcome !== "non-result") jobs.shift();
+          else if (job.again || checkCouldNotRun(ending)) return;
+          else jobs[0] = { ...job, again: true };
         } catch (error) {
           if (!kill.aborted || error !== kill.reason) thrown ??= asError(error);
           halt.abort();

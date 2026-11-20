@@ -178,33 +178,29 @@ export async function inExaminerWall<T>(
 
 /**
  * A tool's arguments with every `{ from_file: <path> }` replaced by the JSON the file holds, read
- * from the session's home and nowhere else, so that a large value an Examiner wrote in its home
- * need not be printed into its context and pasted back, where a printout cut short or a slip in the
- * copy changes the value. The value read is the one the arguments then carry, so the gate and the
- * log see the same bytes as for the value written inline, and a file's own content is not read for
- * `from_file` again. Refused, with a sentence the session can act on: no home, a path outside it (by
- * its real path, so a link out is outside), no file, a file too large, or text that is not JSON.
+ * from the session's home and nowhere else, so a large value need not be printed into context and
+ * pasted back, where a printout cut short or a slip in the copy changes it; the gate and the log see
+ * the same bytes as for the value written inline. A file's own content is not expanded for `from_file` again.
  */
 export function fromHome<T>(home: string | undefined, args: T): T {
-  const named = (value: JsonValue): JsonValue => {
-    if (Array.isArray(value)) return value.map(named);
+  const expand = (value: JsonValue): JsonValue => {
+    if (Array.isArray(value)) return value.map(expand);
     if (!isRecord(value)) return value;
-    const keys = Object.keys(value);
-    const path = value.from_file;
-    if (keys.length === 1 && isString(path)) return homeFile(home, path);
-    return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, named(inner)]));
+    const entries = Object.entries(value);
+    if (entries.length === 1 && entries[0]?.[0] === "from_file" && isString(entries[0][1])) {
+      return homeFile(home, entries[0][1]);
+    }
+    return Object.fromEntries(entries.map(([key, inner]) => [key, expand(inner)]));
   };
   // SAFETY: a tool's arguments are JSON the provider parsed; only a value the tool's schema leaves
   // open is spelled `{ from_file }`, and a file holds JSON, which such a value is.
-  return named(args as JsonValue) as T;
+  return expand(args as JsonValue) as T;
 }
 
 /** The JSON a file in `home` holds, by its path under it, or a refusal. */
 function homeFile(home: string | undefined, path: string): JsonValue {
   if (home === undefined) {
-    throw new Error(
-      `from_file names ${path}, and this session has no home to read it from: give the value inline`,
-    );
+    throw new Error(`from_file names ${path}, and this session has no home: give the value inline`);
   }
   const root = realpathSync(home);
   const file = resolve(root, path);
@@ -213,20 +209,24 @@ function homeFile(home: string | undefined, path: string): JsonValue {
       `from_file names ${path}, which lies outside your home: name a file under it, by its path relative to it`,
     );
   }
-  if (!existsSync(file) || !statSync(file).isFile()) {
+  if (!existsSync(file)) {
     throw new Error(`from_file names ${path}, and your home holds no such file`);
   }
-  if (!containsPath(realpathSync(file), root)) {
+  const real = realpathSync(file);
+  if (!containsPath(real, root)) {
     throw new Error(`from_file names ${path}, which links outside your home: name a file under it`);
   }
-  const { size } = statSync(file);
-  if (size > FILE_BYTES) {
+  const stat = statSync(real);
+  if (!stat.isFile()) {
+    throw new Error(`from_file names ${path}, which is not a regular file`);
+  }
+  if (stat.size > FILE_BYTES) {
     throw new Error(
-      `from_file names ${path}, which holds ${String(size)} bytes, more than the ${String(FILE_BYTES)} a value may take`,
+      `from_file names ${path} (${String(stat.size)} bytes), over the ${String(FILE_BYTES)}-byte limit`,
     );
   }
   try {
-    return parseJsonAs<JsonValue>(readFileSync(file, "utf8"));
+    return parseJsonAs<JsonValue>(readFileSync(real, "utf8"));
   } catch (error) {
     throw new Error(`from_file names ${path}, which is not valid JSON: ${errorMessage(error)}`, {
       cause: error,

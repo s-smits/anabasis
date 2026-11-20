@@ -39,13 +39,12 @@ import { isSafePathSegment } from "../meta/path-segment.ts";
 import { capturedExecPath, capturedSpawn } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
-import { pooled } from "../meta/pool.ts";
 import { killProcessGroupId, terminateAndReapProcessGroupId } from "../meta/subprocess.ts";
 import { commandIsolationPolicy, isolatedArgv, toolTreeSearchDirs } from "../wall/isolation.ts";
 import { hostFolder, releaseRoot } from "../wall/seat-root.ts";
 import { type SolveIsolationPolicy, solveIsolationPolicy } from "../wall/base.ts";
 import { hostScratch } from "../wall/policy.ts";
-import type { CheckChildInput, CheckChildResult } from "./check-child.ts";
+import type { CellInput, CellResult, CheckInput, CheckResult } from "./check-child.ts";
 import type { Objective } from "./contract.ts";
 import type { AnswerFile } from "./answer-files.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -58,7 +57,7 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 // and task-split modules, which did not come over. A second: `checkEvaluationRequest` returns its
 // projection without v1's `structuredClone`, which kept a check run in v1's own process from
 // reaching the caller's objects. Here the projection is written to the check child's stdin as JSON
-// in the same synchronous stretch of `runCheck`, and `task.ts` reads it only for its throw, so
+// in the same synchronous stretch of `runCell`, and `task.ts` reads it only for its throw, so
 // nothing holds the projection long enough to share it with a writer.
 
 interface CheckExecution {
@@ -132,6 +131,8 @@ export interface Engine {
 interface Closed {
   readonly otherTrees?: readonly string[] | undefined;
   readonly packRoots?: readonly string[] | undefined;
+  /** One check's time, its tools included; `PER_CHECK_MS` where unset. */
+  readonly checkMs?: number | undefined;
 }
 
 export type Verdict =
@@ -156,10 +157,13 @@ interface Wall {
   readonly toolPath: string;
   /** The base of every check's command wall, or why this host has none. */
   readonly base: SolveIsolationPolicy | { readonly unsupported: string };
+  readonly checkMs: number;
 }
 
-/** The objective, run as a check is, in a cell of its own: the evaluator's `objective` export,
- *  given the whole answer, the whole public task and the task's hidden values, with no tool. It is
+/** The objective, run as a check is, in the verdict's cell: the evaluator's `objective` export,
+ *  given the whole answer, its files, the whole public task and the task's hidden values, with no
+ *  tool. Until 20 November 2026 it was given no file, so a work product the prompt asks for, such
+ *  as a workbook, could be checked and never measured. It is
  *  the author's own computation, so `accept.ts` lists it as a fault until the operator admits it by
  *  name (rule 10). Until 4 November 2026 it was given no hidden value, so an objective could only
  *  recompute from the public input what the solver could recompute too: jobstath2's g-1 tied 0-0-8
@@ -171,6 +175,7 @@ export const OBJECTIVE: BriefTruthCheck = {
   execution: {
     families: "all",
     artifactPaths: ["$"],
+    filePaths: ["$"],
     publicInputPaths: ["$"],
     hidden: "whole",
     evidence: { kind: "authored" },
@@ -187,16 +192,18 @@ const REPO = resolve(import.meta.dir, "..", "..");
 const TOOL_CEILING_MS = 300_000;
 
 /**
- * The cells a verdict runs at once. Each check's cell is its own walled process, and one after
+ * The checks a cell runs at once. When each check had a walled process of its own, one after
  * another the 14 checks of an esp32 exam took 658 ms of a verdict on the operator's macOS host at a
  * load of 9 (22 October): 208 ms four at a time, 138 ms eight at a time, and no less fourteen at
- * a time. Four keeps what one verdict starts at once within the Linux runner's four cores, where
+ * a time. Four keeps the tools one verdict runs at once within the Linux runner's four cores, where
  * several solves are judged together.
  */
-const CELLS = 4;
+const CHECKS_AT_ONCE = 4;
 
-/** One check's whole run, its tools included. */
-export const CHECK_WALL_MS = 2 * TOOL_CEILING_MS;
+/** One check's whole run, its tools included; past it the check is at fault, and the task is set
+ *  aside as the check's defect instead of stopping the run (operator, 20 November 2026). Until then
+ *  it was twice the tool ceiling, ten minutes, which a tool may still ask for and no check reaches. */
+export const PER_CHECK_MS = 120_000;
 
 /** What the checker measured of a valid answer; null for any verdict but a pass with a measure.
  *  A comparison's objective, a Builder's practice record, an Examiner's room and the acceptance's
@@ -418,42 +425,35 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
       readAllowRoots: CHECK_CHILD_SOURCES,
       network: false,
     }),
+    checkMs: given.checkMs ?? PER_CHECK_MS,
   };
   return async (task, answer, signal, files) => {
     if (answer === undefined) return { kind: "fail", blocking: [] };
-    if (signal?.aborted === true) return { kind: "non-result", reason: "the verifier was cancelled" };
-    const blocking: string[] = [];
     const request = {
       publicTask: task,
       artifact: answer,
       hidden: task.hidden,
       ...keyIfDefined("files", files),
     };
-    // Every check runs, and the first that cannot decide or is faulty, in the brief's order,
-    // decides the verdict, as it did when they ran one at a time.
-    const ran = await pooled(applicableTruthChecks(brief, task), CELLS, async (check) => ({
-      check,
-      result: await runCheck(wall, check, request, signal),
-    }));
-    for (const { check, result } of ran) {
-      if ("nonResult" in result) return { kind: "non-result", reason: `${check.id}: ${result.nonResult}` };
-      if ("faulty" in result) return { kind: "faulty", check: check.id, reason: result.faulty };
-      if ("value" in result) {
-        return { kind: "faulty", check: check.id, reason: "the check returned a number" };
-      }
-      if (!result.passed) blocking.push(check.id);
+    const checks = applicableTruthChecks(brief, task);
+    const objective = brief.objective === undefined ? null : OBJECTIVE;
+    const ran = await runCell(wall, checks, objective, request, signal);
+    if ("nonResult" in ran) return { kind: "non-result", reason: ran.nonResult };
+    if ("held" in ran) return { kind: "faulty", check: ran.held, reason: ran.reason };
+    // Every check ran, and the first that cannot decide or is faulty, in the brief's order, decides.
+    const blocking: string[] = [];
+    for (const [index, result] of ran.results.entries()) {
+      const { id } = checks[index] ?? OBJECTIVE;
+      if ("nonResult" in result) return { kind: "non-result", reason: `${id}: ${result.nonResult}` };
+      if ("faulty" in result) return { kind: "faulty", check: id, reason: result.faulty };
+      if (!result.passed) blocking.push(id);
     }
     if (blocking.length > 0) return { kind: "fail", blocking };
-    if (brief.objective === undefined) return { kind: "pass" };
-    // The objective is read of a valid answer only, in a cell of its own like a check.
-    const measured = await runCheck(wall, OBJECTIVE, request, signal);
-    if ("nonResult" in measured) {
-      return { kind: "non-result", reason: `${OBJECTIVE.id}: ${measured.nonResult}` };
-    }
-    if ("faulty" in measured) return { kind: "faulty", check: OBJECTIVE.id, reason: measured.faulty };
-    if (!("value" in measured)) {
-      return { kind: "faulty", check: OBJECTIVE.id, reason: "the objective returned a boolean" };
-    }
+    const { measured } = ran;
+    if (measured === null) return { kind: "pass" };
+    const { id } = OBJECTIVE;
+    if ("nonResult" in measured) return { kind: "non-result", reason: `${id}: ${measured.nonResult}` };
+    if ("faulty" in measured) return { kind: "faulty", check: id, reason: measured.faulty };
     return { kind: "pass", objective: measured.value };
   };
 }
@@ -476,17 +476,33 @@ export async function decided(
   return verdict;
 }
 
-async function runCheck(
+/** One check's input to the cell: its own projection of the answer, and the tools it declares. */
+const inputOf = (check: BriefTruthCheck, request: EvaluationRequest): CheckInput => ({
+  checkId: check.id,
+  request: checkEvaluationRequest(check, request),
+  tools: requiredToolsOf(check.execution),
+});
+
+/**
+ * One verdict's cell: a walled process that runs every check, and the objective where the answer
+ * passes them, and writes their answers (`check-child.ts`). Its own time is the checks' times in
+ * waves of `CHECKS_AT_ONCE`, one more for the objective and one for its start, so it runs out only
+ * where a check holds the process's thread, and that check, which the cell names as it runs, is at
+ * fault. A cell that runs out before any check starts, a cancel and a host that cannot wall a check
+ * are non-results.
+ */
+async function runCell(
   wall: Wall,
-  check: BriefTruthCheck,
+  checks: readonly BriefTruthCheck[],
+  objective: BriefTruthCheck | null,
   request: EvaluationRequest,
   signal?: AbortSignal,
-): Promise<CheckChildResult> {
+): Promise<CellResult | { readonly nonResult: string } | { readonly held: string; readonly reason: string }> {
   const { base } = wall;
   if (signal?.aborted === true) return { nonResult: "the verifier was cancelled" };
   if ("unsupported" in base) return { nonResult: `this host cannot wall a check: ${base.unsupported}` };
-  // The cell is a seat of its own: one root the check writes, the program in the host's folder in
-  // it, which the check reads and cannot write, and the profile beside the root, out of its reach.
+  // The cell is a seat of its own: one root the checks write, the program in the host's folder in
+  // it, which they read and cannot write, and the profile beside the root, out of their reach.
   // The root lies in the host's own scratch, which the wall closes whole but for the cell it runs.
   const root = hostScratch("cell-");
   const dirs = {
@@ -496,35 +512,31 @@ async function runCheck(
     kept: join(root, "kept"),
     host: hostFolder(root),
   };
+  const cellMs = (Math.ceil(checks.length / CHECKS_AT_ONCE) + 2) * wall.checkMs;
   let child: Bun.Subprocess | null = null;
-  let captured: Promise<{
-    readonly kind: "finished";
-    readonly stderr: string;
-    readonly exitCode: number;
-  }> | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let abort: (() => void) | null = null;
   try {
     for (const dir of [dirs.home, dirs.temp, dirs.host]) mkdirSync(dir, { recursive: true });
-    // The program goes below the host's folder, so no file of it can stand as the check's
-    // `result.json`.
+    // The program goes below the host's folder, so no file of it can stand as `result.json`.
     const copy = join(dirs.kept, "program");
     for (const file of wall.program) {
       mkdirSync(dirname(join(copy, file)), { recursive: true });
       copyFileSync(join(wall.tree.checks, file), join(copy, file));
     }
-    const input: CheckChildInput = {
+    const input: CellInput = {
       program: join(copy, EVALUATOR_FILE),
-      checkId: check.id,
-      returns: check === OBJECTIVE ? "measure" : "verdict",
-      request: checkEvaluationRequest(check, request),
-      tools: requiredToolsOf(check.execution),
       toolPath: wall.toolPath,
       toolCeilingMs: TOOL_CEILING_MS,
+      checkMs: wall.checkMs,
+      width: CHECKS_AT_ONCE,
+      checks: checks.map((check) => inputOf(check, request)),
+      objective: objective === null ? null : inputOf(objective, request),
+      running: join(root, "running"),
     };
     const policy = commandIsolationPolicy(base, { ...dirs, toolTree: wall.tree.tools });
-    // The wall a seat's command takes, without its shell: the check child leads its own group, and
-    // the group is ended below.
+    // The wall a seat's command takes, without its shell: the cell leads its own group, and the
+    // group is ended below.
     const process = capturedSpawn({
       cmd: isolatedArgv(policy, join(dirs.host, "check.sb"), [capturedExecPath, CHECK_CHILD]),
       cwd: root,
@@ -535,64 +547,74 @@ async function runCheck(
       stderr: "pipe",
     });
     child = process;
-    const stopped = Promise.withResolvers<"deadline" | "cancelled">();
-    let stopReason: "deadline" | "cancelled" | null = null;
-    const stop = (reason: "deadline" | "cancelled") => {
-      if (stopReason !== null) return;
-      stopReason = reason;
+    const stopped = Promise.withResolvers<
+      { readonly nonResult: string } | { readonly held: string; readonly reason: string }
+    >();
+    const stop = (reason: string) => {
       killProcessGroupId(process.pid, "SIGKILL");
-      stopped.resolve(reason);
+      stopped.resolve({ nonResult: reason });
     };
-    timer = setTimeout(() => stop("deadline"), CHECK_WALL_MS);
-    abort = () => stop("cancelled");
+    timer = setTimeout(() => {
+      // A check that never yields holds the cell past every check's own time: it is at fault, as
+      // one that runs out its time is. A cell that started no check could not run, and decides nothing.
+      const held = existsSync(input.running) ? readFileSync(input.running, "utf8") : null;
+      if (held === null) return stop(`the cell ran past ${String(cellMs)} ms`);
+      killProcessGroupId(process.pid, "SIGKILL");
+      stopped.resolve({ held, reason: `the check timed out, holding the cell past ${String(cellMs)} ms` });
+    }, cellMs);
+    abort = () => stop("the verifier was cancelled");
     signal?.addEventListener("abort", abort, { once: true });
-    captured = Promise.all([new Response(process.stderr).text(), process.exited]).then(
-      ([stderr, exitCode]) => ({ kind: "finished" as const, stderr, exitCode }),
+    const finished = Promise.all([new Response(process.stderr).text(), process.exited]).then(
+      ([stderr, exitCode]) => ({ stderr, exitCode }),
     );
-    const outcome = await Promise.race([
-      captured,
-      stopped.promise.then((reason) => ({ kind: "stopped" as const, reason })),
-    ]);
-    if (outcome.kind === "stopped") {
-      return {
-        nonResult:
-          outcome.reason === "deadline"
-            ? `the check ran past ${CHECK_WALL_MS} ms`
-            : "the verifier was cancelled",
-      };
-    }
-    // End work left in the check's group before reading its result. The root's release below
-    // also ends detached holders, whose process group is their own.
-    await terminateAndReapProcessGroupId(process.pid);
+    const outcome = await Promise.race([finished, stopped.promise]);
+    if ("nonResult" in outcome || "held" in outcome) return outcome;
+    const { stderr, exitCode } = outcome;
     return (
-      writtenResult(join(root, "result.json")) ?? {
-        nonResult: `the check exited ${outcome.exitCode} without a result: ${outcome.stderr.slice(-2000).trim()}`,
+      writtenResult(join(root, "result.json"), checks.length) ?? {
+        nonResult: `the cell exited ${String(exitCode)} without a result: ${stderr.slice(-2000).trim()}`,
       }
     );
   } catch (error) {
-    return { nonResult: `the verifier could not run the check: ${errorMessage(error)}` };
+    return { nonResult: `the verifier could not run the checks: ${errorMessage(error)}` };
   } finally {
     if (timer !== null) clearTimeout(timer);
-    if (signal !== undefined && abort !== null) signal.removeEventListener("abort", abort);
+    if (abort !== null) signal?.removeEventListener("abort", abort);
+    // End work left in the cell's group; the root's release also ends detached holders, whose
+    // process group is their own.
     if (child !== null) await terminateAndReapProcessGroupId(child.pid);
     await releaseRoot(root);
-    if (captured !== null) await captured.catch(() => undefined);
   }
 }
 
-/** The check process's answer, or null when it wrote none that reads as one. */
-function writtenResult(path: string): CheckChildResult | null {
+/** What the cell wrote of a check or the objective that leaves it undecided, or null. */
+const undecided = (value: unknown) => {
+  const written = asRecord(value);
+  if (isString(written?.nonResult)) return { nonResult: written.nonResult };
+  if (isString(written?.faulty)) return { faulty: written.faulty };
+  return null;
+};
+
+/** The cell's answers, or null where it wrote none that reads as one for each of its `count` checks. */
+function writtenResult(path: string, count: number): CellResult | null {
   if (!existsSync(path)) return null;
-  let written: JsonValue;
+  let parsed: JsonValue;
   try {
-    written = capturedJsonParse(readFileSync(path, "utf8"));
+    parsed = capturedJsonParse(readFileSync(path, "utf8"));
   } catch {
     return null;
   }
-  const result = asRecord(written);
-  if (isBoolean(result?.passed)) return { passed: result.passed };
-  if (isNumber(result?.value) && Number.isFinite(result.value)) return { value: result.value };
-  if (isString(result?.nonResult)) return { nonResult: result.nonResult };
-  if (isString(result?.faulty)) return { faulty: result.faulty };
-  return null;
+  const written = asRecord(parsed);
+  const listed = Array.isArray(written?.results) ? written.results : [];
+  const results = listed
+    .map((each): CheckResult | null => {
+      const passed = asRecord(each)?.passed;
+      return isBoolean(passed) ? { passed } : undecided(each);
+    })
+    .filter((each) => each !== null);
+  const value = asRecord(written?.measured)?.value;
+  const measured = isNumber(value) && Number.isFinite(value) ? { value } : undecided(written?.measured);
+  if (listed.length !== count || results.length !== count) return null;
+  if (written?.measured !== null && measured === null) return null;
+  return { results, measured };
 }

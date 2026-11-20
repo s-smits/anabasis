@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { checkEvaluationRequest, type Task, openVerifier } from "../src/kernel/verify.ts";
+import { checkEvaluationRequest, openVerifier, type Task, type Verdict } from "../src/kernel/verify.ts";
 import {
   chmodSync,
   cpSync,
@@ -11,22 +11,36 @@ import {
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
+import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { killProcessGroupId } from "../src/meta/subprocess.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 import { hostScratch } from "../src/wall/policy.ts";
 import { releaseRoot } from "../src/wall/seat-root.ts";
 
-const DETACHED_MARKER = `ana-verifier-deadline-child-${crypto.randomUUID()}`;
+/** A word only the processes a test starts carry on their command line, so `ps` finds them. */
+const MARK = `ana-verify-${crypto.randomUUID().slice(0, 8)}`;
+/** A tool that outlives any check that runs it, and a process a check detaches, each named so that
+ *  `ps` finds it alone. */
+const LINGER = `linger-${MARK}`;
+const DETACHED = `detached-${MARK}`;
 
-const EVALUATOR = `import { readFileSync } from "node:fs";
+/** One check program for every case, each case a family of the brief, so one opening serves all. */
+const PROGRAM = `import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { same } from "./reference/model.ts";
+const meet = async (own, other) => {
+  writeFileSync(own, "here");
+  for (let waited = 0; waited < 2000; waited += 50) {
+    if (existsSync(other)) return true;
+    await Bun.sleep(50);
+  }
+  return false;
+};
 export const checks = {
   value: (req) => same(req.artifact.value, req.publicTask.publicInput.target),
-  tool: async (req) => {
-    const run = await req.runtime.tools.run({ toolId: "double", args: [], stdin: String(req.artifact.value) });
+  doubled: async (req) => {
+    const run = await req.runtime.tools.run({ toolId: "double", stdin: String(req.artifact.value) });
     return run.exitCode === 0 && run.stdout.trim() === String(req.artifact.value * 2);
   },
   walled: async (req) => {
@@ -36,12 +50,12 @@ export const checks = {
     try { await fetch(req.publicTask.publicInput.url); } catch { fetched = false; }
     return !read && !fetched;
   },
-  projection: (req) => !("note" in req.artifact),
+  projected: (req) => !("note" in req.artifact),
   throws: () => { throw new Error("no such rule"); },
-  answers: () => "yes",
-  host: async (req) => (await req.runtime.tools.run({ toolId: "sh", args: ["-c", "exit 0"] })).exitCode === 0,
-  slow: async (_req, runtime) => {
-    await runtime.tools.run({ toolId: "sleeper", args: [], timeoutMs: 100 });
+  says: () => "yes",
+  hostShell: async (req) => (await req.runtime.tools.run({ toolId: "sh", args: ["-c", "exit 0"] })).exitCode === 0,
+  slowTool: async (_req, runtime) => {
+    await runtime.tools.run({ toolId: "sleeper", timeoutMs: 100 });
     return true;
   },
   late: async () => {
@@ -52,30 +66,30 @@ export const checks = {
   first: async () => (await Bun.sleep(1000), true),
   second: async () => (await Bun.sleep(1000), true),
   ran: async (req) => (await req.runtime.tools.run({ toolId: req.publicTask.publicInput.tool })).exitCode === 0,
-  deadline: async () => {
-    const child = Bun.spawn(
-      [
-        process.execPath,
-        "-e",
-        "setTimeout(() => process.exit(75), 10000); setInterval(() => undefined, 1000); await new Promise(() => {})",
-        "${DETACHED_MARKER}",
-      ],
-      {
-        detached: true,
-        stdout: "ignore",
-        stderr: "inherit",
-      },
-    );
+  left: () => meet("mark-left", "mark-right"),
+  right: () => meet("mark-right", "mark-left"),
+  hangs: () => new Promise(() => {}),
+  lingers: async (req) => (await req.runtime.tools.run({ toolId: "${LINGER}" }), true),
+  answers: () => true,
+  spins: () => { for (;;) {} },
+  exits: () => process.exit(0),
+  detaches: async () => {
+    const child = Bun.spawn([process.execPath, "-e", "await new Promise(() => {})", "${DETACHED}"], {
+      detached: true,
+      stdout: "ignore",
+    });
     await child.exited;
     return true;
   },
 };
 `;
 
-/** A check program with an objective computed from the answer and the public input, or, in mode
- *  `truth`, measured against the value the task was built from, kept hidden. */
-const MEASURED_EVALUATOR = `export const checks = {
-  value: (req) => req.artifact.value > 0,
+/** A program with an objective: of the answer and the public input, against the hidden value the
+ *  task was built from (mode `truth`), of what a check left in the cell (mode `cell`), or no
+ *  finite number. */
+const MEASURED = `import { existsSync, writeFileSync } from "node:fs";
+export const checks = {
+  value: (req) => (writeFileSync("mark-value", "here"), req.artifact.value > 0),
   sees: (req) => req.hidden.length === 0,
 };
 export const objective = (req) => {
@@ -85,67 +99,61 @@ export const objective = (req) => {
   if (mode === "string") return "light";
   if (mode === "throws") throw new Error("no scale");
   if (mode === "truth") return Math.abs(req.artifact.value - req.hidden.truth);
+  if (mode === "cell") return existsSync("mark-value") ? 1 : 0;
   return req.artifact.value * req.publicTask.publicInput.density;
 };
 `;
-setDefaultTimeout(60_000);
 
 const root = mkdtempSync(join(tmpdir(), "ana-verify-"));
-/** Where a concurrent check's cell would hold its answer. */
+const tools = join(root, "tools");
+/** Another cell of the host's, holding an answer no check may read. */
 const sibling = hostScratch("cell-");
 const secret = join(sibling, "answer.json");
 
-function execution(
-  families: string[],
-  artifactPaths: string[],
-  publicInputPaths: string[],
-  tools?: string[],
-) {
-  return {
-    families,
-    artifactPaths,
-    publicInputPaths,
+const check = (
+  id: string,
+  family: string,
+  paths: { artifact?: string[]; input?: string[]; tools?: string[] } = {},
+) => ({
+  id,
+  execution: {
+    families: [family],
+    artifactPaths: paths.artifact ?? [],
+    publicInputPaths: paths.input ?? [],
     hidden: "none",
-    ...keyIfDefined("requiredToolIds", tools),
+    ...keyIfDefined("requiredToolIds", paths.tools),
     evidence: { kind: "authored" },
-  };
-}
+  },
+});
 
 const BRIEF = {
   correctnessContract: "check-program/v1",
   truthChecks: [
-    { id: "value", execution: execution(["plain"], ["$.value"], ["$.target"]) },
-    { id: "tool", execution: execution(["plain"], ["$.value"], [], ["double"]) },
-    { id: "walled", execution: execution(["walled"], [], ["$.secret", "$.url"]) },
-    { id: "projection", execution: execution(["projection"], ["$.value"], []) },
-    { id: "throws", execution: execution(["throws"], [], []) },
-    { id: "answers", execution: execution(["answers"], [], []) },
-    { id: "slow", execution: execution(["slow"], [], [], ["sleeper"]) },
-    { id: "host", execution: execution(["host"], [], [], ["sh"]) },
-    { id: "late", execution: execution(["order"], [], []) },
-    { id: "early", execution: execution(["order"], [], []) },
-    { id: "first", execution: execution(["pair"], [], []) },
-    { id: "second", execution: execution(["pair"], [], []) },
-    {
-      id: "ran",
-      execution: execution(
-        ["ran"],
-        [],
-        ["$.tool"],
-        ["compiles", "killed", "unlaunched", "unstarted", "refuses"],
-      ),
-    },
-    { id: "deadline", execution: execution(["deadline"], [], []) },
+    check("value", "plain", { artifact: ["$.value"], input: ["$.target"] }),
+    check("doubled", "plain", { artifact: ["$.value"], tools: ["double"] }),
+    check("walled", "walled", { input: ["$.secret", "$.url"] }),
+    check("projected", "projected", { artifact: ["$.value"] }),
+    check("throws", "throws"),
+    check("says", "says"),
+    check("slowTool", "slowTool", { tools: ["sleeper"] }),
+    check("hostShell", "hostShell", { tools: ["sh"] }),
+    check("late", "order"),
+    check("early", "order"),
+    check("first", "pair"),
+    check("second", "pair"),
+    check("ran", "ran", {
+      input: ["$.tool"],
+      tools: ["compiles", "killed", "unlaunched", "unstarted", "refuses"],
+    }),
+    check("left", "cell"),
+    check("right", "cell"),
+    check("hangs", "hang"),
+    check("answers", "hang"),
+    check("lingers", "linger", { tools: [LINGER] }),
+    check("spins", "spin"),
+    check("exits", "exit"),
+    check("detaches", "detach"),
   ],
-};
-
-const MEASURED_BRIEF = {
-  correctnessContract: "check-program/v1",
-  truthChecks: [
-    { id: "value", execution: execution(["plain"], ["$.value"], []) },
-    { id: "sees", execution: execution(["plain"], [], []) },
-  ],
-  objective: { quantity: "mass in kg", direction: "lower" },
 };
 
 function task(family: string, publicInput: Task["publicInput"] = {}): Task {
@@ -153,58 +161,51 @@ function task(family: string, publicInput: Task["publicInput"] = {}): Task {
 }
 
 function tool(name: string, script: string): void {
-  const path = join(root, "tools", "bin", name);
+  const path = join(tools, "bin", name);
   writeFileSync(path, `#!/bin/sh\n${script}\n`);
   chmodSync(path, 0o755);
 }
 
-function markedProcesses(): string[] {
-  const result = Bun.spawnSync({
-    cmd: ["ps", "-axo", "pid=,command="],
-    stdout: "pipe",
-    stderr: "ignore",
-  });
-  if (result.exitCode !== 0) throw new Error(`ps failed with exit ${String(result.exitCode)}`);
-  return result.stdout
+function marked(word = MARK): number[] {
+  const listed = Bun.spawnSync({ cmd: ["ps", "-axo", "pid=,command="], stdout: "pipe", stderr: "ignore" });
+  if (listed.exitCode !== 0) throw new Error(`ps exited ${String(listed.exitCode)}`);
+  return listed.stdout
     .toString()
     .split("\n")
-    .filter((line) => line.includes(DETACHED_MARKER));
+    .filter((line) => line.includes(word))
+    .map((line) => Number(line.trim().split(/\s+/u, 1)[0]));
 }
 
-async function waitForMarkedProcess(present: boolean): Promise<void> {
-  const deadline = performance.now() + 2000;
-  while (performance.now() < deadline) {
-    const found = markedProcesses().length > 0;
-    if (found === present) return;
-    await Bun.sleep(10);
+async function untilMarked(word: string, present: boolean): Promise<void> {
+  for (const started = performance.now(); performance.now() - started < 3000; await Bun.sleep(20)) {
+    if (marked(word).length > 0 === present) return;
   }
-  throw new Error(`the detached verifier child was ${present ? "not started" : "not reaped"}`);
+  throw new Error(`a marked process was ${present ? "never started" : "left running"}`);
 }
 
-function killMarkedProcesses(): void {
-  for (const line of markedProcesses()) {
-    const pid = Number(line.trim().split(/\s+/, 1)[0]);
-    if (Number.isSafeInteger(pid)) killProcessGroupId(pid, "SIGKILL");
-  }
-}
+/** The verdict, or a word saying none came within `ms`, so a verifier that waits out a check's
+ *  whole time fails here rather than at the suite's limit. */
+const within = (pending: Promise<Verdict>, ms: number) =>
+  Promise.race([pending, Bun.sleep(ms).then(() => `no verdict in ${String(ms)} ms`)]);
 
-afterAll(async () => {
-  rmSync(root, { recursive: true, force: true });
-  await releaseRoot(sibling);
-});
+const checks = join(root, "checks");
+setDefaultTimeout(60_000);
 
 let verify: ReturnType<typeof openVerifier>;
+/** The same program under a check's time short enough to run out within a test. */
+let brief: ReturnType<typeof openVerifier>;
+
 beforeAll(() => {
-  mkdirSync(join(root, "checks"));
-  mkdirSync(join(root, "tools", "bin"), { recursive: true });
-  writeFileSync(join(root, "checks", "brief.json"), JSON.stringify(BRIEF));
-  writeFileSync(join(root, "checks", "evaluator.ts"), EVALUATOR);
-  // As both check programs v1 wrote on 7 October do, the program imports a module from a directory.
-  mkdirSync(join(root, "checks", "reference"));
-  writeFileSync(join(root, "checks", "reference", "model.ts"), "export const same = (a, b) => a === b;\n");
+  mkdirSync(join(checks, "reference"), { recursive: true });
+  mkdirSync(join(tools, "bin"), { recursive: true });
+  writeFileSync(join(checks, "brief.json"), JSON.stringify(BRIEF));
+  writeFileSync(join(checks, "evaluator.ts"), PROGRAM);
+  // As both check programs v1 wrote on 7 October do, the program imports a module of its own.
+  writeFileSync(join(checks, "reference", "model.ts"), "export const same = (a, b) => a === b;\n");
   writeFileSync(secret, "another answer");
   tool("double", "read n; echo $((n * 2))");
   tool("sleeper", "sleep 30");
+  tool(LINGER, "sleep 30");
   tool("killed", "kill -KILL $$");
   tool("unlaunched", 'exec "$(dirname "$0")/missing"');
   tool(
@@ -213,69 +214,33 @@ beforeAll(() => {
   );
   tool("refuses", "echo no; exit 127");
   tool("compiles", 'echo "int main(void) { return 0; }" > p.c && /usr/bin/cc p.c -o p && ./p');
-  verify = openVerifier({ checks: join(root, "checks"), tools: join(root, "tools") });
+  verify = openVerifier({ checks, tools });
+  brief = openVerifier({ checks, tools, checkMs: 300 });
 });
 
-describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
-  it("projects only declared files and gives the objective none", async () => {
-    const checks = join(root, "file-checks");
-    mkdirSync(checks);
-    const truth = {
-      id: "file",
-      citedDecisionIds: [],
-      execution: {
-        families: ["plain"],
-        artifactPaths: ["$"],
-        publicInputPaths: [],
-        evidence: { kind: "authored" as const },
-        hidden: "none" as const,
-        filePaths: ["report.txt"],
-      },
-    };
-    const brief = {
-      correctnessContract: "check-program/v1",
-      truthChecks: [truth],
-      objective: { quantity: "value", direction: "min" },
-    };
-    writeFileSync(join(checks, "brief.json"), JSON.stringify(brief));
-    writeFileSync(
-      join(checks, "evaluator.ts"),
-      `export const checks = { file: req => req.artifact.value === 1 && req.files.length === 1 && req.files[0].path === "report.txt" && req.files[0].text === "good" }; export const objective = req => "files" in req ? req.files.length : 42;`,
-    );
-    const files = [
-      { path: "report.txt", base64: "Z29vZA==", text: "good" },
-      { path: "secret.txt", base64: "eA==", text: "x" },
-    ];
-    const tree = { checks, tools: join(root, "tools") };
-    expect(await openVerifier(tree)(task("plain"), { value: 1 }, undefined, files)).toEqual({
-      kind: "pass",
-      objective: 42,
+afterAll(async () => {
+  for (const pid of marked()) killProcessGroupId(pid, "SIGKILL");
+  rmSync(root, { recursive: true, force: true });
+  await releaseRoot(sibling);
+});
+
+describe.skipIf(!osIsolationSupport().ok)("a verdict's checks", () => {
+  it("pass an answer every check passes and fail one a check refuses, through an imported module and a tree tool", async () => {
+    expect(await verify(task("plain", { target: 21 }), { value: 21 })).toEqual({ kind: "pass" });
+    expect(await verify(task("plain", { target: 21 }), { value: 20 })).toEqual({
+      kind: "fail",
+      blocking: ["value"],
     });
-    const request = { artifact: { value: 1 }, publicTask: task("plain"), hidden: null, files };
-    expect(
-      checkEvaluationRequest(
-        { ...truth, execution: { ...truth.execution, hidden: "none", filePaths: ["missing.txt"] } },
-        request,
-      ).files,
-    ).toEqual([]);
-    const { filePaths: _filePaths, ...old } = truth.execution;
-    expect(
-      checkEvaluationRequest({ ...truth, execution: { ...old, hidden: "none" } }, request),
-    ).not.toHaveProperty("files");
-  });
-  it("runs the imported check and tree tool, passing only the matching answer", async () => {
-    for (const [value, verdict] of [
-      [21, { kind: "pass" }],
-      [20, { kind: "fail", blocking: ["value"] }],
-    ] as const) {
-      expect(await verify(task("plain", { target: 21 }), { value })).toEqual(verdict);
-    }
   });
 
-  it("keeps a check offline and out of a concurrent check's cell", async () => {
+  it("run in one cell, so the checks of one verdict see each other's files", async () => {
+    expect(await verify(task("cell"), {})).toEqual({ kind: "pass" });
+  });
+
+  it("run offline and out of every other cell of the host", async () => {
     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("open") });
     try {
-      // Both are open to the host, so a pass is the wall refusing them.
+      // The host reaches both, so a pass is the wall refusing them.
       expect(readFileSync(secret, "utf8")).toBe("another answer");
       expect(await (await fetch(server.url)).text()).toBe("open");
       expect(await verify(task("walled", { secret, url: server.url.href }), {})).toEqual({ kind: "pass" });
@@ -284,16 +249,16 @@ describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
     }
   });
 
-  it("hands a check only the answer paths it declares", async () => {
-    expect(await verify(task("projection"), { value: 1, note: "undeclared" })).toEqual({ kind: "pass" });
+  it("read only the answer paths they declare", async () => {
+    expect(await verify(task("projected"), { value: 1, note: "undeclared" })).toEqual({ kind: "pass" });
   });
 
-  it("runs a verdict's checks at once, and lets the first in the brief's order decide", async () => {
-    // Two checks of a second each, one after the other, took two seconds.
+  it("run at once, and the first in the brief's order names the verdict", async () => {
     const started = performance.now();
     expect(await verify(task("pair"), {})).toEqual({ kind: "pass" });
+    // Two checks of a second each, one after the other, would take two.
     expect(performance.now() - started).toBeLessThan(1800);
-    // The later check is faulty first, and the earlier one still names the verdict.
+    // The later check is at fault first, and the earlier one still names the verdict.
     expect(await verify(task("order"), {})).toEqual({
       kind: "faulty",
       check: "late",
@@ -301,100 +266,158 @@ describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
     });
   });
 
-  it("reads a check that throws or returns no boolean as faulty, neither a fail nor a non-result", async () => {
-    for (const [family, reason] of [
-      ["throws", "the check threw: no such rule"],
-      ["answers", "the check returned string"],
-    ] as const) {
-      expect(await verify(task(family), {})).toEqual({ kind: "faulty", check: family, reason });
-    }
-  });
-
-  it("reads a tool that runs out its time as a non-result, whatever the check returns", async () => {
-    expect(await verify(task("slow"), {})).toEqual({
-      kind: "non-result",
-      reason: "slow: sleeper ran past 100 ms",
+  it("are at fault when one throws or returns no boolean", async () => {
+    expect(await verify(task("throws"), {})).toEqual({
+      kind: "faulty",
+      check: "throws",
+      reason: "the check threw: no such rule",
+    });
+    expect(await verify(task("says"), {})).toEqual({
+      kind: "faulty",
+      check: "says",
+      reason: "the check returned string",
     });
   });
 
-  it("distinguishes tools ended by a signal or unable to start from a program that refuses with exit 127", async () => {
-    for (const [name, kind] of [
-      ["killed", "non-result"],
-      ["unlaunched", "non-result"],
-      ["unstarted", "non-result"],
-      ["refuses", "fail"],
-    ] as const) {
-      const verdict = await verify(task("ran", { tool: name }), {});
-      expect(verdict).toMatchObject(kind === "fail" ? { kind, blocking: ["ran"] } : { kind });
-    }
+  it("are at fault when one runs past its own time, while the others still answer", async () => {
+    expect(await within(brief(task("hang"), {}), 5000)).toEqual({
+      kind: "faulty",
+      check: "hangs",
+      reason: "the check timed out after 300 ms",
+    });
   });
 
-  // The verifier's own deny-default wall once refused clang its toolchain and the scratch it takes
-  // through `confstr` rather than `TMPDIR`; a check's tool that builds what it runs needs both.
-  it.if(existsSync("/usr/bin/cc"))("lets a check's tool compile through the host toolchain", async () => {
+  it("leave no tool running once a check has run past its time", async () => {
+    expect(await within(brief(task("linger"), {}), 5000)).toMatchObject({ kind: "faulty", check: "lingers" });
+    await untilMarked(LINGER, false);
+  });
+
+  it("fault one that holds the cell's thread, and decide nothing when one ends the cell's process", async () => {
+    expect(await within(brief(task("spin"), {}), 5000)).toEqual({
+      kind: "faulty",
+      check: "spins",
+      reason: "the check timed out, holding the cell past 900 ms",
+    });
+    expect(await verify(task("exit"), {})).toMatchObject({ kind: "non-result" });
+  });
+});
+
+describe.skipIf(!osIsolationSupport().ok)("a check's tools", () => {
+  it("decide nothing when one runs out its time, whatever the check returns", async () => {
+    expect(await verify(task("slowTool"), {})).toEqual({
+      kind: "non-result",
+      reason: "slowTool: sleeper ran past 100 ms",
+    });
+  });
+
+  it("decide nothing when one is killed, never launched or never started its interpreter, and fail on a program's own exit 127", async () => {
+    for (const name of ["killed", "unlaunched", "unstarted"]) {
+      expect(await verify(task("ran", { tool: name }), {})).toMatchObject({ kind: "non-result" });
+    }
+    expect(await verify(task("ran", { tool: "refuses" }), {})).toEqual({ kind: "fail", blocking: ["ran"] });
+  });
+
+  // The wall once refused clang its toolchain and the scratch it takes through `confstr`.
+  it.if(existsSync("/usr/bin/cc"))("compile through the host's toolchain", async () => {
     expect(await verify(task("ran", { tool: "compiles" }), {})).toEqual({ kind: "pass" });
   });
 
-  it("finds a check's tool only in the verifier's tree, never the host's copy", async () => {
-    expect(await verify(task("host"), {})).toEqual({
+  it("come from the verifier's tree only, never the host's", async () => {
+    expect(await verify(task("hostShell"), {})).toEqual({
       kind: "non-result",
-      reason: "host: sh is not on the verifier's tool path",
+      reason: "hostShell: sh is not on the verifier's tool path",
     });
   });
+});
 
-  it("cancels a check and its detached descendant before returning", async () => {
+describe.skipIf(!osIsolationSupport().ok)("a cancel", () => {
+  it("ends the cell and a process a check detached before the verdict returns, and one given before the start runs nothing", async () => {
     const controller = new AbortController();
-    const pending = verify(task("deadline"), {}, controller.signal);
-    try {
-      await waitForMarkedProcess(true);
-      controller.abort();
-      const outcome = await Promise.race([pending, Bun.sleep(3000).then(() => null)]);
-      if (outcome === null) {
-        // Bound the old implementation, which ignored the signal and awaited the descendant's pipe.
-        killMarkedProcesses();
-        await waitForMarkedProcess(false);
-        await pending;
-        throw new Error("the verifier did not return after cancellation");
-      } else {
-        expect(outcome).toMatchObject({ kind: "non-result" });
-        expect(markedProcesses()).toEqual([]);
-      }
-    } finally {
-      controller.abort();
-      killMarkedProcesses();
-      await waitForMarkedProcess(false);
-    }
+    const pending = verify(task("detach"), {}, controller.signal);
+    await untilMarked(DETACHED, true);
+    controller.abort();
+    expect(await within(pending, 3000)).toMatchObject({ kind: "non-result" });
+    expect(marked(DETACHED)).toEqual([]);
     expect(await verify(task("plain", { target: 21 }), { value: 21 })).toEqual({ kind: "pass" });
-
-    const preAborted = new AbortController();
-    preAborted.abort();
-    await expect(verify(task("deadline"), {}, preAborted.signal)).resolves.toMatchObject({
-      kind: "non-result",
-    });
-    expect(markedProcesses()).toEqual([]);
+    expect(await verify(task("detach"), {}, AbortSignal.abort())).toMatchObject({ kind: "non-result" });
+    expect(marked(DETACHED)).toEqual([]);
   });
+});
 
-  it("refuses a check program with a symlink in it when it opens", () => {
+describe("a check program", () => {
+  it("with a symlink in it is refused at the opening", () => {
     const linked = join(root, "linked");
-    cpSync(join(root, "checks"), linked, { recursive: true });
+    cpSync(checks, linked, { recursive: true });
     symlinkSync(secret, join(linked, "reference", "answer.json"));
-    expect(() => openVerifier({ checks: linked, tools: join(root, "tools") })).toThrow(
+    expect(() => openVerifier({ checks: linked, tools })).toThrow(
       "the check program's reference/answer.json is neither a file nor a directory",
     );
   });
+
+  it.skipIf(!osIsolationSupport().ok)(
+    "hands a check only the files it declares, and the objective every file",
+    async () => {
+      const fileChecks = join(root, "file-checks");
+      mkdirSync(fileChecks);
+      const truth = {
+        id: "file",
+        citedDecisionIds: [],
+        execution: {
+          families: ["plain"],
+          artifactPaths: ["$"],
+          publicInputPaths: [],
+          evidence: { kind: "authored" as const },
+          hidden: "none" as const,
+          filePaths: ["report.txt"],
+        },
+      };
+      const objective = { quantity: "value", direction: "min" };
+      writeFileSync(
+        join(fileChecks, "brief.json"),
+        JSON.stringify({ correctnessContract: "check-program/v1", truthChecks: [truth], objective }),
+      );
+      writeFileSync(
+        join(fileChecks, "evaluator.ts"),
+        `export const checks = { file: (req) => req.files.length === 1 && req.files[0].path === "report.txt" && req.files[0].text === "good" };
+export const objective = (req) => ("files" in req ? req.files.length : 42);`,
+      );
+      const files = [
+        { path: "report.txt", base64: "Z29vZA==", text: "good" },
+        { path: "secret.txt", base64: "eA==", text: "x" },
+      ];
+      expect(
+        await openVerifier({ checks: fileChecks, tools })(task("plain"), { value: 1 }, undefined, files),
+      ).toEqual({
+        kind: "pass",
+        objective: 2,
+      });
+      const request = { artifact: { value: 1 }, publicTask: task("plain"), hidden: null, files };
+      const missing = { ...truth, execution: { ...truth.execution, filePaths: ["missing.txt"] } };
+      expect(checkEvaluationRequest(missing, request).files).toEqual([]);
+      const { filePaths: _declared, ...undeclared } = truth.execution;
+      expect(checkEvaluationRequest({ ...truth, execution: undeclared }, request)).not.toHaveProperty(
+        "files",
+      );
+    },
+  );
 });
 
 describe.skipIf(!osIsolationSupport().ok)("the objective", () => {
   let measured: ReturnType<typeof openVerifier>;
   beforeAll(() => {
-    const checks = join(root, "measured");
-    mkdirSync(checks);
-    writeFileSync(join(checks, "brief.json"), JSON.stringify(MEASURED_BRIEF));
-    writeFileSync(join(checks, "evaluator.ts"), MEASURED_EVALUATOR);
-    measured = openVerifier({ checks, tools: join(root, "tools") });
+    const dir = join(root, "measured");
+    mkdirSync(dir);
+    const measuredBrief = {
+      correctnessContract: "check-program/v1",
+      truthChecks: [check("value", "plain", { artifact: ["$.value"] }), check("sees", "plain")],
+      objective: { quantity: "mass in kg", direction: "lower" },
+    };
+    writeFileSync(join(dir, "brief.json"), JSON.stringify(measuredBrief));
+    writeFileSync(join(dir, "evaluator.ts"), MEASURED);
+    measured = openVerifier({ checks: dir, tools });
   });
 
-  it("measures a valid answer after its checks pass, and measures no refused answer", async () => {
+  it("measures a valid answer once its checks pass, and no refused one", async () => {
     expect(await measured(task("plain", { density: 3 }), { value: 7 })).toEqual({
       kind: "pass",
       objective: 21,
@@ -405,7 +428,14 @@ describe.skipIf(!osIsolationSupport().ok)("the objective", () => {
     });
   });
 
-  it("measures an answer against the hidden values the task was built from, while a check that reads none still sees none", async () => {
+  it("measures in the verdict's own cell, after its checks", async () => {
+    expect(await measured(task("plain", { mode: "cell" }), { value: 7 })).toEqual({
+      kind: "pass",
+      objective: 1,
+    });
+  });
+
+  it("measures against the hidden values the task was built from, while a check that reads none sees none", async () => {
     const built = { ...task("plain", { mode: "truth" }), hidden: { truth: 10 } };
     expect(await measured(built, { value: 7 })).toEqual({ kind: "pass", objective: 3 });
     expect(await measured({ ...built, hidden: { truth: 4 } }, { value: 7 })).toEqual({
@@ -418,7 +448,7 @@ describe.skipIf(!osIsolationSupport().ok)("the objective", () => {
     });
   });
 
-  it("reads an objective that is no finite number or throws as faulty under its own name", async () => {
+  it("is at fault under its own name when it gives no finite number or throws", async () => {
     for (const mode of ["nan", "infinity", "string", "throws"]) {
       expect(await measured(task("plain", { density: 3, mode }), { value: 7 })).toMatchObject({
         kind: "faulty",

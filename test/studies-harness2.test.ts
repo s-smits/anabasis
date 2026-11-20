@@ -14,6 +14,7 @@ import {
   HERE,
   MODULE_FILE,
   placeHarness,
+  sourceNamed,
 } from "../studies/shared/bundle.ts";
 import { exportForClaudeCode, ownPython } from "../studies/shared/claude-export.ts";
 import { harnessIn, keyless, RESULT_FILE, TRACE_FILE } from "../studies/shared/pi-solve.ts";
@@ -142,6 +143,13 @@ describe("an arm's harness, taken from a campaign", () => {
     await expect(
       placeHarness(join(root, "arm-misnamed"), { campaign: ended.log, harness: misnamed }),
     ).rejects.toThrow(/no longer opens/u);
+  });
+
+  it("reads an arm's source from its two options, and refuses a kept harness of the starter", () => {
+    expect(sourceNamed("starter", undefined)).toBe("starter");
+    expect(sourceNamed("a-run", undefined)).toEqual({ campaign: "a-run" });
+    expect(sourceNamed("a-run", "B")).toEqual({ campaign: "a-run", harness: "B" });
+    expect(() => sourceNamed("starter", "B")).toThrow();
   });
 });
 

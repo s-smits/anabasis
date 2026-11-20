@@ -99,6 +99,13 @@ interface Source {
   readonly harness?: string;
 }
 
+/** The source an arm's `--from` and `--harness` name. */
+export function sourceNamed(from: string, harness: string | undefined): "starter" | Source {
+  if (from !== "starter") return harness === undefined ? { campaign: from } : { campaign: from, harness };
+  if (harness === undefined) return "starter";
+  throw new Error("--harness names a campaign's kept harness; the starter is one harness");
+}
+
 /** The harness folder `dir`, written from `source`. Returns what the mount records of it. */
 export async function placeHarness(dir: string, source: "starter" | Source): Promise<Origin> {
   if (source === "starter") {

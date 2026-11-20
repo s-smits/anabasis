@@ -50,12 +50,12 @@ import { tmpdir } from "#src/meta/os.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { dirname, join, relative } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { keyIfDefined, keyIfNotNull } from "#src/meta/optional-key.ts";
+import { keyIfNotNull } from "#src/meta/optional-key.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { type Program, programsOf } from "#src/harness/programs.ts";
 import { HOST_ONLY } from "#src/harness/starter.ts";
 import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
-import { HARNESS_DIR, HERE, type Place, placeHarness, placeOf } from "./bundle.ts";
+import { HARNESS_DIR, HERE, type Place, placeHarness, placeOf, sourceNamed } from "./bundle.ts";
 import { packageFolders, type PythonFor, rebuildForeignPython, uvPython } from "./foreign-python.ts";
 
 /** Where the tool tree lands in the exported tree, under the runner's `scripts/` entry. */
@@ -224,13 +224,7 @@ async function main(args: readonly string[]): Promise<void> {
     },
   });
   if (values.from === undefined || values.into === undefined) throw new Error("name --from and --into");
-  if (values.from === "starter" && values.harness !== undefined) {
-    throw new Error("--harness names a campaign's kept harness; the starter is one harness");
-  }
-  const source =
-    values.from === "starter"
-      ? "starter"
-      : { campaign: values.from, ...keyIfDefined("harness", values.harness) };
+  const source = sourceNamed(values.from, values.harness);
   const place = values.for === undefined ? HERE : placeOf(values.for);
   const record = await exportForClaudeCode(values.into, source, place);
   console.log(`export: ${values.into} is harness ${record.harness}, ${capturedJsonStringify(record)}`);

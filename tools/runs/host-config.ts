@@ -81,13 +81,17 @@ function listed(text: string, name = "ANA_HOSTS"): readonly JsonValue[] {
   throw new Error(`${name} takes a JSON list (.env.runs.example)`);
 }
 
-/** The hosts `text` lists, by default the environment's `ANA_HOSTS`. */
+/** Whether this verb is kept to this machine: one another host sent here (`ANA_HOP`, set by
+ *  `scriptCommand` in hosts.ts), or one asked for here alone (`cli.ts`). It reaches no further
+ *  host, so two machines that list each other do not ask each other in a loop. Until 28 October
+ *  the sender emptied `ANA_HOSTS` instead, and a keeper started that way inherited the empty
+ *  list and counted no other machine's runs against a login's cap. */
+export const keptHere = (env: Readonly<Record<string, string | undefined>> = runtimeProcess.env): boolean =>
+  env.ANA_HOP === "1";
+
+/** The hosts `text` lists, by default the environment's `ANA_HOSTS`: none for a verb kept here. */
 export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Host[] {
-  // A verb another host sent here reaches no further host (`ANA_HOP`, set by `scriptCommand` in
-  // hosts.ts), so two machines that list each other do not ask each other in a loop. Until
-  // 28 October the sender emptied `ANA_HOSTS` instead, and a keeper started that way inherited the
-  // empty list and counted no other machine's runs against a login's cap.
-  if (runtimeProcess.env.ANA_HOP === "1") return [];
+  if (keptHere()) return [];
   const value = listed(text);
   const names = new Set<string>();
   return value.map((entry) => {
@@ -178,7 +182,7 @@ export const ownName = (): string => hostname().replace(/\..*$/u, "");
 
 /** The benchmarks `EVAL_RUNNER` lists (`.env.runs.example`), none where unset. Until 17 November
  *  2026 it, and `ABLATION_HOST` before it, named one machine alone, which is refused as not JSON.
- *  A verb kept to this machine (`ANA_HOP`, `hostsOf`) reads the benchmarks rolled here alone: until
+ *  A verb kept to this machine (`keptHere`) reads the benchmarks rolled here alone: until
  *  19 November 2026 it found no host for one rolled elsewhere and refused the whole verb. */
 export function benchesOf(env: Readonly<Record<string, string | undefined>> = runtimeProcess.env): Bench[] {
   const value = listed(env.EVAL_RUNNER ?? "", "EVAL_RUNNER");
@@ -195,7 +199,7 @@ export function benchesOf(env: Readonly<Record<string, string | undefined>> = ru
     if (!Array.isArray(packs) || packs.length === 0 || !packs.every(isString)) {
       throw new Error(`${name}: packs takes a list of the packs whose runs it reads`);
     }
-    if (host !== "here" && env.ANA_HOP === "1") return [];
+    if (host !== "here" && keptHere(env)) return [];
     return [{ name, host: host === "here" ? undefined : hostNamed(host, known), store, sitting, packs }];
   });
 }

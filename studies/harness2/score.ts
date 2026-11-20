@@ -96,7 +96,7 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runSync } from "#src/meta/subprocess.ts";
 import { LIMITS } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
-import { foreignPrograms, HARNESS_DIR, HERE, placeHarness, placeOf } from "../shared/bundle.ts";
+import { foreignPrograms, HARNESS_DIR, HERE, placeHarness, placeOf, sourceNamed } from "../shared/bundle.ts";
 import { exportForClaudeCode, ownPython } from "../shared/claude-export.ts";
 import { RESULT_FILE, TRACE_FILE } from "../shared/pi-solve.ts";
 import { inGroup, REFUSED, type Agent, type Claude } from "./h2/claude.ts";
@@ -429,8 +429,7 @@ async function armOf(values: Values, out: string, baseHarness: string, place = H
   if (arm === "") throw new Error("name --arm");
   const pi = arm.startsWith(PI);
   const from = pi ? arm.slice(PI.length) : arm;
-  const source =
-    from === "starter" ? "starter" : { campaign: from, ...keyIfDefined("harness", values.harness) };
+  const source = sourceNamed(from, values.harness);
   // An arm's name binds its tree, written once: another harness takes another name.
   const into = join(out, "trees", name);
   if (!existsSync(into)) {

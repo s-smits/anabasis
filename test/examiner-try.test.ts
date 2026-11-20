@@ -1,9 +1,11 @@
 // `try_reference`: a writing session's billed solves of an instance by the reference harness. What
 // the author is told of each solve, what it is never told (an answer, a trace, a check), when the
 // host refuses the call, and that the solves stay out of every comparison and practice fold while
-// the campaign's budget pays for them.
+// the campaign's budget pays for them. Then the cap on an ask's solves, the line on room above the
+// author's checked answer, and a value given by `from_file` from the session's home.
 import { afterAll, describe, expect, it } from "bun:test";
-import { writing } from "../src/examiner/write.ts";
+import { fromHome } from "../src/examiner/shell.ts";
+import { TRIES, writing } from "../src/examiner/write.ts";
 import { budgetLeft } from "../src/campaign/opening.ts";
 import { contentOf } from "../src/kernel/history.ts";
 import { append, read } from "../src/kernel/log.ts";
@@ -11,7 +13,10 @@ import { poolOf } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { countedSolves, practiceRan, solvesIn } from "../src/kernel/solves.ts";
 import type { Task } from "../src/kernel/verify.ts";
+import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
+import { tmpdir } from "../src/meta/os.ts";
+import { join } from "../src/meta/path.ts";
 import { instance, invoke, seat, sweep, toolOf } from "./helpers/examiner-seat.ts";
 import { present } from "./helpers/matchers.ts";
 
@@ -21,6 +26,8 @@ const TRY = "try_reference";
 const PASS: Ending = { outcome: "pass" };
 const REJECTED: Ending = { outcome: "fail", kind: "rejected" };
 const BILL = 1;
+// An answer in the fixture's format.
+const ANSWER = { answer: "49", unit: "N" };
 
 afterAll(sweep);
 
@@ -167,5 +174,110 @@ describe("trying the reference at writing", () => {
     expect(bare.system).not.toContain(TRY);
     expect(bare.opening).not.toContain("of the reference harness to ask for");
     expect(bare.started).toMatchObject({ limits: { tries: 0 } });
+  });
+
+  it("gives an ask at most eight solves of the reference, whatever the probe allows", async () => {
+    const made = seated(100, 36, []);
+    expect(made.mode.opening).toContain(`${String(TRIES)} solves of the reference harness`);
+    expect(made.mode.started).toMatchObject({ limits: { tries: TRIES } });
+    for (let call = 1; call <= TRIES / 2; call += 1) {
+      expect(await said(made, { task: spelled(7) })).toContain(`${String(2 * call)} of ${String(TRIES)}`);
+    }
+    await expect(said(made, { task: spelled(7) })).rejects.toThrow("no try");
+    expect(made.handed).toHaveLength(TRIES);
+  });
+
+  it("says whether the reference's best valid solve leaves the author's checked answer room on the objective", async () => {
+    // The probe's valid solves measure 2.5, and lower is better.
+    const told = async (author: number) => {
+      const s = seat("write", []);
+      append(s.log, "campaign.opened", { budget: { dollars: 100, reserve: 1 } });
+      append(s.log, "exam.started", { session: "x-1" });
+      const made = probe(s.log, 4, [PASS, REJECTED]);
+      const mode = writing(
+        {
+          ...s.request,
+          contract: { ...s.request.contract, objective: { quantity: "cost", direction: "lower" } },
+          verify: async () => ({ kind: "pass", objective: author }),
+          probe: made.probe,
+        },
+        undefined,
+      );
+      const before = await invoke(toolOf(mode, TRY), "try", { solves: 1, task: spelled(5) });
+      await invoke(toolOf(mode, "try_answer"), "answer", { ...spelled(7), answer: ANSWER });
+      const after = await invoke(toolOf(mode, TRY), "try", { solves: 2, task: spelled(7) });
+      return [before, after].map(({ output: [part] = [] }) => (part?.type === "text" ? part.text : ""));
+    };
+    const [unchecked = "", roomy = ""] = await told(2);
+    expect(unchecked).not.toContain("try_answer");
+    expect(roomy).toContain("measures 2, and the best valid solve here 2.5: yours is better by at least");
+    expect(roomy).toContain("leaves the reference room");
+    const [, tied = ""] = await told(2.5);
+    expect(tied).toContain("yours is not better by the comparison's floor (1%)");
+    expect(tied).not.toContain(CANARY);
+  });
+});
+
+describe("a value given from a file in the Examiner's home", () => {
+  const home = realpathSync(mkdtempSync(join(tmpdir(), "ana-from-file-")));
+  const outside = realpathSync(mkdtempSync(join(tmpdir(), "ana-from-file-out-")));
+  afterAll(() => {
+    for (const dir of [home, outside]) rmSync(dir, { recursive: true, force: true });
+  });
+  // An instance of about 50 KB, the size a jobstat Examiner wrote with a program of its own.
+  const large = {
+    ...spelled(7),
+    public_input: { base: 7, rows: Array.from({ length: 10_000 }, (_, n) => n * 1.5) },
+  };
+  writeFileSync(join(home, "task.json"), JSON.stringify(large));
+  writeFileSync(join(home, "input.json"), JSON.stringify(large.public_input));
+  writeFileSync(join(home, "answer.json"), JSON.stringify(ANSWER));
+  writeFileSync(join(outside, "task.json"), JSON.stringify(large));
+  symlinkSync(join(outside, "task.json"), join(home, "linked.json"));
+
+  it("reads a value of 50 KB as the same JSON written inline", () => {
+    expect(JSON.stringify(large).length).toBeGreaterThan(50_000);
+    const args: JsonObject = { tasks: [{ from_file: "task.json" }] };
+    expect(fromHome(home, args)).toEqual({ tasks: [large] });
+  });
+
+  it("admits an instance given by file as it admits the same instance given inline", async () => {
+    const outputs = async (byFile: boolean) => {
+      const s = seat("write", []);
+      const mode = writing({ ...s.request, verify: async () => ({ kind: "pass" }) }, undefined, { home });
+      const task = byFile ? { from_file: "task.json" } : large;
+      const answer = byFile ? { from_file: "answer.json" } : ANSWER;
+      const input = byFile ? { from_file: "input.json" } : large.public_input;
+      const tried = await invoke(toolOf(mode, "try_answer"), "answer", {
+        ...large,
+        public_input: input,
+        answer,
+      });
+      const put = await invoke(toolOf(mode), "put", { tasks: [task] });
+      const logged = read(s.log).filter(({ kind }) => kind.startsWith("task."));
+      return {
+        tried: tried.output,
+        put: put.output,
+        logged: logged.map(({ kind, data }) => ({ kind, data })),
+      };
+    };
+    const inline = await outputs(false);
+    const filed = await outputs(true);
+    expect(filed).toEqual(inline);
+    expect(inline.logged.map(({ kind }) => kind)).toContain("task.proposed");
+  });
+
+  it("refuses a path outside the home, a link out of it, a missing file and text that is not JSON", () => {
+    writeFileSync(join(home, "broken.json"), "{ not json");
+    for (const [path, refusal] of [
+      ["../outside.json", "outside your home"],
+      [join(outside, "task.json"), "outside your home"],
+      ["linked.json", "links outside your home"],
+      ["absent.json", "no such file"],
+      ["broken.json", "not valid JSON"],
+    ] as const) {
+      expect(() => fromHome(home, { task: { from_file: path } })).toThrow(refusal);
+    }
+    expect(() => fromHome(undefined, { task: { from_file: "task.json" } })).toThrow("no home");
   });
 });

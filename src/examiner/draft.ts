@@ -99,6 +99,7 @@ import { ROOM } from "../kernel/compare.ts";
 import { PER_CHECK_MS } from "../kernel/verify.ts";
 import { REACH } from "./ladder.ts";
 import { budgetLine, FAIR, type SolveBudget, TASK, UNHELD } from "./prompt.ts";
+import { FROM_FILE, fromHome } from "./shell.ts";
 import { append, type LogEvent } from "../kernel/log.ts";
 import { capturedJsonStringify, decodedJsonText, parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
@@ -485,19 +486,25 @@ export function draftOf(events: readonly LogEvent[]): Draft | null {
  *  on the host's load. On 3 November a truss session put its first draft at 44 of its 60 minutes,
  *  and the clock ended it during the host's work on that draft, so the draft got no reading and
  *  still counted as one of the campaign's tries. */
-export function drafting(terms: DraftingTerms, within: <T>(action: () => Promise<T>) => Promise<T>) {
+export function drafting(
+  terms: DraftingTerms,
+  within: <T>(action: () => Promise<T>) => Promise<T>,
+  // The home of the session's shell, which `from_file` reads; absent where it has none.
+  home?: string,
+) {
   const { limits } = terms;
   const kind = "draft";
   const desk = { tries: 0, stands: false };
   const none = `This session can put no further ${kind}. Call finish.`;
   const put = tool({
     name: "draft_exam",
-    description: "Put a whole draft of the exam to the host's reading, as the system prompt says.",
+    description: `Put a whole draft of the exam to the host's reading, as the system prompt says.${home === undefined ? "" : ` ${FROM_FILE}`}`,
     parameters: DRAFT_PARAMETERS,
-    execute: async (args) => {
+    execute: async (spelled) => {
       if (desk.tries >= limits.puts) throw new Error(none);
+      // A file that cannot be read refuses the call before it counts as a put.
+      const draft = draftedFrom(fromHome(home, spelled));
       desk.tries += 1;
-      const draft = draftedFrom(args);
       const seen = capturedJsonStringify(draft);
       const unformed = draftFaults(draft);
       const faults = unformed.length > 0 ? unformed : await within(async () => await terms.reading(draft));

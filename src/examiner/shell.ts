@@ -32,8 +32,20 @@
 import type { SeatTool } from "../agent/session.ts";
 import { type Engine, pinnedEngines, type VerifierTree } from "../kernel/verify.ts";
 import { read } from "../kernel/log.ts";
-import { chmodSync, cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
-import { basename, dirname, join } from "../meta/path.ts";
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+} from "../meta/filesystem.ts";
+import { parseJsonAs } from "../meta/json-runtime.ts";
+import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
+import { basename, dirname, join, resolve } from "../meta/path.ts";
+import { containsPath } from "../meta/path-containment.ts";
+import { errorMessage } from "../meta/runtime-values.ts";
 import {
   type CommandWall,
   networkReach,
@@ -46,6 +58,13 @@ import { codingTools } from "../tools/coding.ts";
 import { installedPrograms } from "../harness/programs.ts";
 import { claimRoot } from "../wall/seat-root.ts";
 import { shellQuote } from "../wall/isolation.ts";
+
+/** The most bytes a file named by `from_file` may hold: twenty times a large task instance of 50 KB. */
+const FILE_BYTES = 1_000_000;
+
+/** What a tool that takes JSON values tells a session with a home of `from_file` (`fromHome`). */
+export const FROM_FILE =
+  'Any JSON value this tool takes, such as a public input, hidden values, an answer or a format, may instead be given as { "from_file": "<path>" }: a JSON file in your home, by its path relative to the home, which the host reads and takes as if the value had been written here.';
 
 /** Where an Examiner session's shell runs: what the wall denies, and what only a
  *  session with a campaign's exam before it is given. Without a wall a session has no shell. */
@@ -154,5 +173,63 @@ export async function inExaminerWall<T>(
     return result;
   } finally {
     await release();
+  }
+}
+
+/**
+ * A tool's arguments with every `{ from_file: <path> }` replaced by the JSON the file holds, read
+ * from the session's home and nowhere else, so that a large value an Examiner wrote in its home
+ * need not be printed into its context and pasted back, where a printout cut short or a slip in the
+ * copy changes the value. The value read is the one the arguments then carry, so the gate and the
+ * log see the same bytes as for the value written inline, and a file's own content is not read for
+ * `from_file` again. Refused, with a sentence the session can act on: no home, a path outside it (by
+ * its real path, so a link out is outside), no file, a file too large, or text that is not JSON.
+ */
+export function fromHome<T>(home: string | undefined, args: T): T {
+  const named = (value: JsonValue): JsonValue => {
+    if (Array.isArray(value)) return value.map(named);
+    if (!isRecord(value)) return value;
+    const keys = Object.keys(value);
+    const path = value.from_file;
+    if (keys.length === 1 && isString(path)) return homeFile(home, path);
+    return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, named(inner)]));
+  };
+  // SAFETY: a tool's arguments are JSON the provider parsed; only a value the tool's schema leaves
+  // open is spelled `{ from_file }`, and a file holds JSON, which such a value is.
+  return named(args as JsonValue) as T;
+}
+
+/** The JSON a file in `home` holds, by its path under it, or a refusal. */
+function homeFile(home: string | undefined, path: string): JsonValue {
+  if (home === undefined) {
+    throw new Error(
+      `from_file names ${path}, and this session has no home to read it from: give the value inline`,
+    );
+  }
+  const root = realpathSync(home);
+  const file = resolve(root, path);
+  if (!containsPath(file, root)) {
+    throw new Error(
+      `from_file names ${path}, which lies outside your home: name a file under it, by its path relative to it`,
+    );
+  }
+  if (!existsSync(file) || !statSync(file).isFile()) {
+    throw new Error(`from_file names ${path}, and your home holds no such file`);
+  }
+  if (!containsPath(realpathSync(file), root)) {
+    throw new Error(`from_file names ${path}, which links outside your home: name a file under it`);
+  }
+  const { size } = statSync(file);
+  if (size > FILE_BYTES) {
+    throw new Error(
+      `from_file names ${path}, which holds ${String(size)} bytes, more than the ${String(FILE_BYTES)} a value may take`,
+    );
+  }
+  try {
+    return parseJsonAs<JsonValue>(readFileSync(file, "utf8"));
+  } catch (error) {
+    throw new Error(`from_file names ${path}, which is not valid JSON: ${errorMessage(error)}`, {
+      cause: error,
+    });
   }
 }

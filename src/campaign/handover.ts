@@ -32,7 +32,7 @@
 import { type Measures, pointsOf, scoresIn, type Tally, testOf } from "../kernel/compare.ts";
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { lastReports, latestBuilt, pairsReported, promoted } from "../kernel/reports.ts";
+import { CUT, lastReports, latestBuilt, pairsReported, promoted } from "../kernel/reports.ts";
 import { ownedBy, traceKind } from "../kernel/trace.ts";
 import { billedAll, billedParts } from "../kernel/meter.ts";
 import {
@@ -358,11 +358,13 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
       // A session cut before its end left what it last froze: until 2 November a Builder resumed
       // after one was told that harness came from no session (esp32-fresh-opus-forkedPR569, lane
       // 4). A killed session's ending names no harness, so until 4 November it hid the checkpoint
-      // the same way (the buffer campaign of #595 and a truss one, lanes 4 and 22).
+      // the same way (the buffer campaign of #595 and a truss one, lanes 4 and 22), and a crashed
+      // one names its tree past the checkpoint, where no session starts (`latestBuilt`), so until
+      // 20 November it did too (a fork at #979, lane 4).
       const frozen = window.findLast(
         (event) => event.kind === "build.checkpoint" && event.data.session === id,
       );
-      const named = text(end?.harness);
+      const named = CUT.has(end?.ended) ? null : text(end?.harness);
       const harness = named ?? text(frozen?.data.harness);
       return [
         {

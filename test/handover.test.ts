@@ -7,6 +7,7 @@ import { comparisonsTold, failsTold, startTold } from "../src/builder/past.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
 import { billedAll, billedFor } from "../src/kernel/meter.ts";
+import { latestBuilt } from "../src/kernel/reports.ts";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
@@ -452,6 +453,17 @@ describe("the Builder's filter over that reading", () => {
     // What the cut left and what it did not, so the session reopens knowing where its memory is.
     expect(killed).toMatch(/\bonly its notes and the harness above remain\b/u);
     expect(killed).not.toContain("no Builder session");
+    // A crashed ending names the harness its tree held past its last checkpoint, which no session
+    // starts from (`latestBuilt`): until 20 November b-2 of a fork at #979 was told twice that the
+    // checkpoint it opened on came from no session.
+    const crash = campaign();
+    crash.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
+    crash.record("build.checkpoint", { session: "b-1", harness: HA });
+    crash.record("build.finished", { session: "b-1", ended: "crashed", harness: HB, changed: true });
+    expect(latestBuilt(crash.events())).toBe(HA);
+    const opened = startTold(campaignOf(crash.events()), HA, "b-2");
+    expect(opened).toMatch(/\baaaaaaaa\b.*\bb-1\b.*\bcrashed\b/su);
+    expect(opened).not.toContain("no Builder session");
     // A checkpoint of the parent itself changed nothing, so no session left the starter.
     const same = campaign();
     same.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });

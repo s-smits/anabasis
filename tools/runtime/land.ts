@@ -2,7 +2,7 @@
  * Lands a pull request, with every open one beneath it, on main, after proving each commit the
  * landing would publish where it sits.
  *
- *   bun run land -- [<pull request> | latest] [--auto] [--watch] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]
+ *   bun run land -- [<pull request> | latest] [--auto] [--watch] [--whole] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]
  *
  * `--auto` follows the top: it lands the top of the longest chain above the pull request named, and
  * after the proof, and again after `ci.yml` before a merge, it reads the chain again and lands its
@@ -18,8 +18,11 @@
  * and nearby tests over the pushed head (`tools/runtime/pre-push.ts`), so a pushed commit is unproved
  * until it lands here. This is where
  * each landing head's first-parent line above main is proved over its own checkout: the static
- * steps and its nearby tests, and the whole CI gate, the full suite among it, on the top's head
- * (`tools/runtime/gate.ts`), each pass already recorded skipped. `--sanitize` runs that proof when
+ * steps and its nearby tests, the top's too, and at a merge or on `--whole` the whole CI gate, the
+ * full suite among it, on the top's head (`tools/runtime/gate.ts`), each pass already recorded
+ * skipped. A sanitize ran the full suite on its top until 20 November, when the operator asked that
+ * a proof re-test only what a change reaches at one import, since the top moves with each pull
+ * request stacked on it and its suite was the landing's whole cost. `--sanitize` runs that proof when
  * its author judges the stack ready, without merging. The stack is read
  * from GitHub as v2's stack-pr reads it, each pull request's base the head of the one beneath it, and
  * the bottom must be based on main. Each head must contain the one beneath it and the bottom main's
@@ -166,6 +169,8 @@ interface Mode {
   readonly kind: "proving" | "sanitizing" | "merging";
   readonly auto: boolean;
   readonly alone: boolean;
+  /** The top's pass: the whole CI gate, the full suite among it, at a merge or on `--whole`. */
+  readonly topPass: "whole" | "static";
   readonly places: readonly Place[];
   /** The release `--merge --tag` cuts at the merge. */
   readonly tag: string | null;
@@ -209,7 +214,7 @@ export const CATEGORIES = new Set([
   "docs",
 ]);
 const USAGE =
-  "usage: bun run land -- [<pull request> | latest] [--auto] [--watch] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]";
+  "usage: bun run land -- [<pull request> | latest] [--auto] [--watch] [--whole] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]";
 const TAG = /^v\d+\.\d+\.\d+$/u;
 
 class Refusal extends Error {}
@@ -649,7 +654,12 @@ async function landTo(root: string, target: number, mode: Mode, board: Board): P
   const proofs = addedLine(root, heads, [landing.trunkSha], say).map(
     (commit): Proof => ({
       commit,
-      pass: commit === top.headRefOid ? "whole" : changesSource(root, commit) ? "static" : null,
+      pass:
+        commit === top.headRefOid && mode.topPass === "whole"
+          ? "whole"
+          : changesSource(root, commit)
+            ? "static"
+            : null,
     }),
   );
   say(
@@ -742,6 +752,7 @@ async function main(argv: readonly string[]): Promise<number> {
     sanitize: { type: "boolean", default: false },
     auto: { type: "boolean", default: false },
     watch: { type: "boolean", default: false },
+    whole: { type: "boolean", default: false },
     alone: { type: "boolean", default: false },
     jobs: { type: "string" },
     tag: { type: "string" },
@@ -767,6 +778,7 @@ async function main(argv: readonly string[]): Promise<number> {
     kind: values.merge ? "merging" : values.sanitize ? "sanitizing" : "proving",
     auto: values.auto || named === null,
     alone: values.alone,
+    topPass: values.whole || values.merge ? "whole" : "static",
     places,
     tag: values.tag ?? null,
   };

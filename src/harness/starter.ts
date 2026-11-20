@@ -120,18 +120,19 @@ export const EXAMPLE = {
   tools: STARTER.tools,
   programs: {
     [CHECKER]: `#!/usr/bin/env bun
-// ${CHECKER} <rota.json> [task.json]
-// Tests a rota against each person's hour limit, one line a person.
+// ${CHECKER} <rota.json> <limits.json>
+// Tests a rota against each person's hour limit, one line a person. <limits.json> holds the staff
+// and the shifts, alone or as a task's publicInput.
 // Exit 0: every limit is met. 1: one is not. 2: it could not run.
 import { readFileSync } from "node:fs";
 
-const USAGE = "usage: ${CHECKER} <rota.json> [task.json]  (the task is public/task.json unless named)";
-const [rota, task = "public/task.json"] = process.argv.slice(2);
+const USAGE = "usage: ${CHECKER} <rota.json> <limits.json>  (staff and shifts, alone or as a task's publicInput)";
+const [rota, limits] = process.argv.slice(2);
 if (rota === "--help") {
   console.log(USAGE);
   process.exit(0);
 }
-if (rota === undefined) {
+if (rota === undefined || limits === undefined) {
   console.error(USAGE);
   process.exit(2);
 }
@@ -145,7 +146,8 @@ function read(file) {
   }
 }
 
-const { staff, shifts } = read(task).publicInput;
+const given = read(limits);
+const { staff, shifts } = given.publicInput ?? given;
 const hours = {};
 for (const { staff: person, shift } of read(rota).assignments) {
   hours[person] = (hours[person] ?? 0) + (shifts.find(({ id }) => id === shift)?.hours ?? 0);
@@ -163,9 +165,9 @@ process.exit(failed === 0 ? 0 : 1);
   guide: `# Operating Guide
 
 ## Programs and tools
-- ${CHECKER} <rota.json>: tests a rota file against each person's hour limit in public/task.json and
-  prints one line a person. Exit 0 when every limit is met, 1 when one is not, 2 when it could not
-  run. It tests the hour limits and no other rule.
+- ${CHECKER} <rota.json> <limits.json>: tests a rota file against each person's hour limit and prints
+  one line a person; public/task.json serves as the second file. Exit 0 when every limit is met, 1
+  when one is not, 2 when it could not run. It tests the hour limits and no other rule.
 - ${ADVISOR.name} (a tool, where the harness declares one): ${ADVISOR.description}
 
 ## Working with them
@@ -244,7 +246,8 @@ on agent/tools.ts.
 ## What every solver has, whatever the harness
 
 - One working directory, its home, kept for the whole task. It holds the task as public/task.json,
-  the domain's public rules as files under public/resources/, and the answer's format as
+  each file the task's public input lists under files as that file under public/files/, the
+  domain's public rules as files under public/resources/, and the answer's format as
   public/answer-format.json.
 - The answer as a file: the solver writes answer.json in its working directory, and submit sends
   it. The host checks the file against the answer format and refuses one that does not follow it,
@@ -276,8 +279,8 @@ A program of your own keeps to one convention, so that a solver meets the same t
 harness:
 
 - Its name says what it does, verb first, in lower case with hyphens: ${CHECKER}, simulate-mix.
-- It takes its input as files named in its arguments, by paths relative to the solver's working
-  directory, and reads the task from public/task.json unless another file is named.
+- It takes every input as a file named in its arguments, by a path relative to the solver's
+  working directory, and opens no file it was not named.
 - One that computes also takes what it computes on in a plain form, a CSV file or JSON of the
   values alone, so that it runs on any data of that kind, a task's or not.
 - It prints its result to standard output, in lines a solver can read, and what went wrong to

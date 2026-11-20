@@ -2,7 +2,7 @@
 // opening and files. The assertions hold the facts and the wall, rather than a vendor prompt copy.
 import { describe, expect, it } from "bun:test";
 import type { Contract } from "../src/kernel/contract.ts";
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { openDesk, publicResource, submitTool } from "../src/tools/answer.ts";
@@ -36,6 +36,7 @@ const TOLD: Told = {
   wallSeconds: 7200,
   limits: { shellDefaultSeconds: 300, shellMaxSeconds: 900 },
   resources: 4,
+  files: 0,
   programs: [],
   network: "reached",
 };
@@ -140,7 +141,7 @@ describe("what a solve opens with", () => {
     try {
       const rules = publicResource("public rules", [{ id: "r1" }]);
       const files = seedHome(home, task, [rules, publicResource("public/rules", [])], CONTRACT.answerFormat);
-      expect(files).toBe(2);
+      expect(files).toEqual({ resources: 2, files: 0 });
       expect(JSON.parse(readFileSync(join(home, "public", "answer-format.json"), "utf8"))).toEqual(
         CONTRACT.answerFormat,
       );
@@ -159,5 +160,67 @@ describe("what a solve opens with", () => {
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
+  });
+
+  it("writes each file the public input lists as that file, and nothing a row's path would put elsewhere", () => {
+    const listed = {
+      taskId: "t-2",
+      family: "fixture",
+      publicInput: {
+        note: "the rows are data a practitioner is handed",
+        files: [
+          { path: "data/sales.csv", text: "region,units\nnorth,3\n" },
+          { path: "notes/memo.md", text: "# Memo\n" },
+          { path: "book.xlsx", base64: "UEsDBA==" },
+          { path: "data", text: "a file where a folder already stands" },
+          { path: "notes/memo.md/under", text: "a folder where a file already stands" },
+          { path: "data/sales.csv", text: "a second row of one path" },
+          { path: "nul\0.txt", text: "a name no file may have" },
+          { path: `${"n".repeat(300)}.txt`, text: "a name past the length a file may have" },
+          { path: "../outside.txt", text: "leaves the folder" },
+          { path: "/etc/absolute.txt", text: "names a root" },
+          { path: "data/../../climbs.txt", text: "leaves it by a detour" },
+          { path: "no-content.txt" },
+          { text: "no path" },
+          "not a row",
+        ],
+      },
+    };
+    const home = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-prompt-files-")));
+    try {
+      expect(seedHome(home, listed, [], CONTRACT.answerFormat)).toEqual({ resources: 0, files: 2 });
+      const root = join(home, "public", "files");
+      expect(readFileSync(join(root, "data", "sales.csv"), "utf8")).toBe("region,units\nnorth,3\n");
+      expect(readFileSync(join(root, "notes", "memo.md"), "utf8")).toBe("# Memo\n");
+      for (const stray of [
+        join(home, "public", "outside.txt"),
+        join(home, "climbs.txt"),
+        join(home, "public", "climbs.txt"),
+        join(root, "no-content.txt"),
+        join(root, "book.xlsx"),
+        join(root, "etc", "absolute.txt"),
+      ]) {
+        expect(existsSync(stray)).toBe(false);
+      }
+      // The JSON keeps every row as written: the files are a second form of it, not a cut.
+      expect(JSON.parse(readFileSync(join(home, "public", "task.json"), "utf8"))).toEqual(listed);
+      // A public input whose `files` is no list has none, and its home no folder for them.
+      const other = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-prompt-files-")));
+      try {
+        const none = { ...listed, publicInput: { files: { "a.csv": "x" } } };
+        expect(seedHome(other, none, [], CONTRACT.answerFormat)).toEqual({ resources: 0, files: 0 });
+        expect(existsSync(join(other, "public", "files"))).toBe(false);
+      } finally {
+        rmSync(other, { recursive: true, force: true });
+      }
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("tells the solver where those files are only where a task has them", () => {
+    expect(systemPrompt(TOLD)).not.toContain("public/files/");
+    expect(systemPrompt({ ...TOLD, files: 2 })).toMatch(/public\/files\/ too, 2 files,/u);
+    expect(systemPrompt({ ...TOLD, files: 1 })).toMatch(/public\/files\/ too, 1 file,/u);
   });
 });

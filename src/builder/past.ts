@@ -21,7 +21,11 @@
  * - A comparison is told as its tally and its reading, and only once it has tallied a task. It
  *   names no task, no share of valid answers, no ruling and no cost: a held-out task is never
  *   shown, and which of them were won is a way to it. That is a few bits a comparison, which the
- *   plan accepts while comparisons are few. The line says how many tasks the tally is over, which
+ *   plan accepts while comparisons are few. It also says on how many of the tallied tasks the two
+ *   harnesses' validity differed, a count no task can be read from: on 19 November a Builder told
+ *   only "18 won, 5 lost" of a no-step that one validity loss held went back to practice, where
+ *   the task it lost could not be, and none of its four comparisons had said which measure
+ *   decided. The line says how many tasks the tally is over, which
  *   is the tally's own sum. It names the two harnesses, and the prompt limit each solve was held to
  *   where they were limited: a campaign's reference changes at a promotion, and a list that said
  *   "the reference harness" of each line set tallies against two references side by side as if
@@ -84,20 +88,25 @@ export function failsTold(fails: readonly PracticeFail[], tasks: ReadonlyMap<str
 
 /**
  * Every comparison of the campaign that tallied a task, a line each, oldest first: the harness
- * that was measured, the tally with the number of tasks it is over, and the reading. No task is
- * named and no count but the tally's.
+ * that was measured, the tally with the number of tasks it is over, the reading, and how many of
+ * those tasks validity differed on where the report's pairs can be read. No task is named.
  */
 export function comparisonsTold(steps: readonly Handover[]): string[] {
   return steps.flatMap((step) => {
     const reading = step.step === "comparison" ? READ.get(step.reading ?? "") : undefined;
     if (step.step !== "comparison" || step.tally === null || reading === undefined) return [];
     const { wins, losses, ties } = step.tally;
+    const tasks = plural(wins + losses + ties, "task");
     const held =
       step.modelTurns === null
         ? ""
         : `, each solve held to ${plural(step.modelTurns, "turn")} of the solver's`;
+    const validity =
+      step.validity === null
+        ? ""
+        : ` Validity differed on ${step.validity === 0 ? "none" : String(step.validity)} of the ${tasks}.`;
     return [
-      `- Harness ${short(step.fresh)} against harness ${short(step.old)}, one comparison over ${plural(wins + losses + ties, "task")}${held}: ${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied, which reads ${reading}.`,
+      `- Harness ${short(step.fresh)} against harness ${short(step.old)}, one comparison over ${tasks}${held}: ${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied, which reads ${reading}.${validity}`,
     ];
   });
 }

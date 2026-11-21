@@ -20,8 +20,7 @@ import { join } from "../src/meta/path.ts";
 import { agreement, clears } from "../src/referee/agreement.ts";
 import { type ProbeRow, probeTool } from "../src/referee/probe.ts";
 import { keepAnswerFiles, shownFiles, type AnswerFile } from "../src/kernel/answer-files.ts";
-import type { Reader } from "../src/referee/reader.ts";
-import { referee } from "../src/referee/referee.ts";
+import { type Reader, referee } from "../src/referee/referee.ts";
 import { containing, copies, objectWith } from "./helpers/matchers.ts";
 import { zipOf } from "./helpers/zip.ts";
 

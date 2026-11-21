@@ -78,7 +78,7 @@
  * held before and after instead, to the reader and in the finding, and the prompt says what a
  * shorter file's probe leaves open.
  */
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { type Static, Type } from "typebox";
 import { sit } from "../agent/session.ts";
 import type { Contract } from "../kernel/contract.ts";
@@ -106,7 +106,18 @@ import { keyIfDefined, keyIfNotNull, keysIf } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import { ending, RESULT, text, tool } from "../tools/answer.ts";
 import { conclusive, FILE, fileTexts, inFile, type ProbeRow, probeTool, reaches } from "./probe.ts";
-import type { Reader } from "./reader.ts";
+
+/** Who reads, and on what. */
+export interface Reader {
+  readonly model: Model<Api>;
+  readonly effort: ThinkingLevel;
+  /** The backends, built for one session on the home its model process keeps its state in. */
+  readonly models: (home: string, shutdown: AbortSignal) => Models;
+  /** Seconds one session may run; half an hour when the caller names none. */
+  readonly wallSeconds?: number;
+  /** Aborts when the run is killed. */
+  readonly kill?: AbortSignal;
+}
 
 export type Ruling = "earned" | "check-defect" | "unclear";
 

@@ -4,10 +4,9 @@
  * there proves every commit of the stack again, though the CI gate that the passes record has not
  * changed. Nothing here runs inside a pass.
  */
-import { existsSync, lstatSync, readFileSync, rmSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
-import { processAnswers, runtimeProcess } from "../../src/meta/process.ts";
-import { hold, holderOf, recordIn, release } from "#src/meta/holder.ts";
+import { runtimeProcess } from "../../src/meta/process.ts";
+import { hold, holderOf, release } from "#src/meta/holder.ts";
 import { errorMessage } from "../../src/meta/runtime-values.ts";
 import { checkHost, checkSlots, type Host, hostsFor } from "../runs/host-config.ts";
 import { git, lines, type Place, type Proof, short } from "./gate.ts";
@@ -43,20 +42,8 @@ export async function holdAlone(
     // The run CLI's lock (`holder.ts`): a holder is a live process of this host with the start its
     // record names, and a dead one's lock is taken over under a `flock` of the folder, so of two
     // landings that find it dead one takes it and the other waits.
-    // A landing without this lock writes its pid alone or `<pid> #<n> <kind>`, as a link or, in an
-    // older form, into `<lock>/pid` of a folder (a link's record names no file, so only a folder
-    // has one). While that pid answers signal 0 it is waited for and never ended, since a bare pid
-    // may name a later process; a folder naming no live pid is removed. The clause goes once no
-    // open branch writes that record.
-    const left = join(lock, "pid");
-    const record = existsSync(left) ? readFileSync(left, "utf8") : recordIn(lock);
-    const older = Number(/^(\d+)(?: #|$)/u.exec(record)?.[1]);
-    const live = older > 0 && processAnswers(older);
-    if (!live && lstatSync(lock, { throwIfNoEntry: false })?.isDirectory() === true) {
-      rmSync(lock, { recursive: true, force: true });
-    }
-    if (!live && hold(lock, claim?.note)) return () => release(lock);
-    const found = live ? { pid: older, note: "" } : holderOf(lock);
+    if (hold(lock, claim?.note)) return () => release(lock);
+    const found = holderOf(lock);
     if (found === null) continue;
     const { pid: holder, note: held } = found;
     if (ended !== holder && held !== "" && claim?.over(held) === true) {

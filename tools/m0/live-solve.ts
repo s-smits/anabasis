@@ -8,13 +8,12 @@
  * Without `--live` no model is called. The condition is built and printed, and then what the solver
  * would read: its system prompt whole and its tools by name, built on a mounted wall as a solve
  * builds them. They are not held to what the stored solve read, row by row: a v2 solver is pi's
- * coding agent and no longer v1's Built
- * shell (`src/tools/coding.ts`, `src/solver/prompt.ts`), so its tools and its prompt part from
- * the sweep's by design, and only what still is v1's is held to it: the first turn's template, the
- * nudge and the turn cap, against the digests and `maxTurns` v1 recorded. With `--live` the solve runs, and
- * its log is read back: the ending, the meter's billed dollars against Claude Code's reported cost
- * (exit test 2 asks within 1%), and the events the solve wrote (exit test 3). A live solve on a Mac
- * runs under `caffeinate -s`.
+ * coding agent and not v1's Built shell (`src/tools/coding.ts`, `src/solver/prompt.ts`), so its
+ * tools and its prompt part from the sweep's by design, and only what still is v1's is held to it:
+ * the first turn's template, the nudge and the turn cap, against the digests and `maxTurns` v1
+ * recorded. With `--live` the solve runs, and its log is read back: the ending, the meter's billed
+ * dollars against Claude Code's reported cost (exit test 2 asks within 1%), and the events the
+ * solve wrote (exit test 3). A live solve on a Mac runs under `caffeinate -s`.
  *
  * The solve is the stored one's: its harness state is `hb-bundles/<sweep>-<cycle>`, its model and
  * effort are those it recorded, and its contract, task and resources are the bundle's, as

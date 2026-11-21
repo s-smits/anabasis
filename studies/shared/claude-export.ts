@@ -17,30 +17,25 @@
  *   Code reads (`installTree`, `studies/harness2/h2/tree.ts`) and which puts the directories a
  *   solve's shell searches (`toolTreeSearchDirs`, `src/wall/isolation.ts`) on the PATH of every
  *   command after it. A campaign's shell searches them first; here they come behind the machine's
- *   own programs, since the 9 November pilot's line that put them ahead hid the machine's
- *   openpyxl, docx and matplotlib behind the harness's Python. The note lists the names by the
- *   reader a campaign's prompt uses (`installedPrograms`, `src/harness/programs.ts`) and says
- *   that a name the machine has too starts the machine's. Until 17 November nothing put them on
- *   the PATH, and no rollout of twelve named one of a reference's five programs. A note of that
- *   day that listed every file of those directories as a program to run by its path, the
- *   interpreters among them, and left the machine's `python3` out sent a solver to the harness's
- *   interpreter first: a rollout met a module that interpreter lacks in four tasks of four,
- *   against one of four the day before. The note names no interpreter at all, the tool tree's
- *   own `python3` and `pip` left out of its list of programs: one that said
- *   the harness's starts by its path was followed by a command on that interpreter, most often a
- *   rollout's second, in 9 of 16 rollouts, each meeting a module it lacks. Where the tree holds Python built for another machine, as a reference built on a Mac does on Linux,
- *   its interpreter and compiled distributions are installed again for this one at the same
- *   versions, or the export is refused (`rebuildForeignPython`, `foreign-python.ts`), and
+ *   own programs, since a line that put them ahead would hide the machine's openpyxl, docx and
+ *   matplotlib behind the harness's Python. The note lists the names by the reader a campaign's
+ *   prompt uses (`installedPrograms`, `src/harness/programs.ts`) and says that a name the machine
+ *   has too starts the machine's. The note names no interpreter at all, the tool tree's own
+ *   `python3` and `pip` left out of its list of programs, since a note that lists an interpreter,
+ *   or says the harness's starts by its path, sends a solver to that interpreter, where it meets
+ *   modules it lacks. Where the tree holds Python built for another machine, as a reference built
+ *   on a Mac does on Linux, its interpreter and compiled distributions are installed again for
+ *   this one at the same versions, or the export is refused (`rebuildForeignPython`,
+ *   `foreign-python.ts`), and
  *   `export.json` names what was replaced under `rebuilt`;
- * - `agent/tools-spec.json` is dropped, and `agent/tools.ts` where a harness kept before 20
- *   November 2026 still holds one: Claude Code has its own tools, and `export.json` lists both.
+ * - `agent/tools-spec.json` is dropped, and `agent/tools.ts` where an older kept harness still
+ *   holds one: Claude Code has its own tools, and `export.json` lists both.
  * The harness's other files stay under `harness/`, which the runner does not copy, for provenance;
- * its tool tree is there no longer, since until 17 November a tree held it twice (17,111 of a
- * reference's 34,265 entries) and every copy to another machine carried both.
+ * its tool tree is not kept there too, since a tree holding it twice makes every copy to another
+ * machine carry both.
  *
  * Claude Code is another runtime than the one the harness was built in (pi's tools, an answer file
  * and `submit`), so a score of the export measures the harness after that transfer, and is read so.
- * Until 3 November the JobBench pilot planned a one-off script in a scratch folder for this.
  */
 import { existsSync, lstatSync, mkdirSync, renameSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE } from "#src/meta/bundle-layout.ts";
@@ -171,11 +166,10 @@ export async function exportForClaudeCode(
  * What the exported tree's own `python3` makes of its packages on this machine under `env`, a
  * rollout's environment with the tree's folders behind it as its hook puts them, or null where the
  * tree has no `python3`. Refuses one that cannot start: a reference whose launcher execs its
- * campaign machine's interpreter by path (17 November 2026, a `python3.14` under `/opt`, exit 127
- * on Linux) rolls without its method, and nothing that reads its files sees it. A link to that
- * interpreter is found as the link it is, since one that leads nowhere here is the same defect and
- * no file to `existsSync`. A module that does not import is a condition of the read, said and
- * refused nothing.
+ * campaign machine's interpreter by path (a `python3.14` under `/opt`, exit 127 on Linux) rolls
+ * without its method, and nothing that reads its files sees it. A link to that interpreter is found
+ * as the link it is, since one that leads nowhere here is the same defect and no file to
+ * `existsSync`. A module that does not import is a condition of the read, said and refused nothing.
  */
 export async function ownPython(tree: string, env: Readonly<Record<string, string>>): Promise<string | null> {
   const dirs = toolTreeSearchDirs(join(tree, TOOLCHAIN));

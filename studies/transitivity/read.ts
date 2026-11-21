@@ -7,7 +7,7 @@
  *   bun studies/transitivity/read.ts --log <campaign folder>/log.jsonl --id <comparison> [--id ...]
  *
  * The study's predictions are read on the frontier alone and without the bill (README,
- * "Predictions"), and no reader gave that on 25 October: a report tests the frontier and the
+ * "Predictions"), which no other reader gives: a report tests the frontier and the
  * retained set together with the bill, and the promotion tuner weighs a reading again but tests the
  * two sets together and leaves seeds out (`.claude/skills/promotion-tuner/scripts/tree.ts`), while
  * the study's comparisons run on seeds. Every fact here is a production owner's: the pairs
@@ -17,10 +17,8 @@
  * the digest of the tasks their starts fixed, sorted.
  * Without the bill a task's score is its validity and objective points, as the tree scores it.
  *
- * The scores with the bill are the differences the report stored: the tree has not scored the bill
- * since 2 November, and the study's reports, of 25 October, were written with it. Until then the
- * study scored each set again with the bill as a check on itself, and over the seven comparisons
- * of buffer-fresh-opus-v065-a it matched all fourteen sets.
+ * The scores with the bill are the differences the report stored: the tree no longer scores the
+ * bill, and the study's reports were written with it.
  *
  * It prints counts, digests and comparison ids, never a task's content, answer or measure: the log
  * is on the exam side (AGENTS.md, section 5).

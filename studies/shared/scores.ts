@@ -21,11 +21,10 @@
  * uses (`flipP`) on each task's summed difference in whole hundredths of a score, read at the
  * campaign's level (0.02, `tools/d2/round.ts`). The A/A splits one arm's trials by the campaign's
  * mirrored halves, the first and last of each four against the two between, so a drift over the
- * job's hours falls on both halves (`halves`). Until 2 November tasks short on a side were paired
- * on what they had, the step was read at 0.10, and the halves split first against last in the
- * order of Harbor's random trial names. Until 3 November a non-result took a place in the halves
- * and the streams, so a retry shifted every later one, and a Harbor exception in an agent other
- * than the study's solver counted as whatever its verifier found.
+ * job's hours falls on both halves (`halves`). A task short on a side is not paired on what it
+ * has, a non-result takes no place in the halves or the streams, since a retry would shift every
+ * later one, and a Harbor exception in an agent other than the study's solver is not counted as
+ * whatever its verifier found.
  */
 import { flipP, readsStep, readsStepEitherWay } from "#src/kernel/compare.ts";
 import { read } from "#src/kernel/log.ts";

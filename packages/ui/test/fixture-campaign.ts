@@ -31,7 +31,7 @@
  */
 import { setSystemTime } from "bun:test";
 import { compared, fixedIn, NO_LABELS } from "../../../src/campaign/comparison.ts";
-import { settleReading } from "../../../src/campaign/round.ts";
+import { settleReading } from "../../../src/campaign/settle.ts";
 import { recordCondition, settingId } from "../../../src/kernel/condition.ts";
 import { append, type EventKind, LOG_FILE, read } from "../../../src/kernel/log.ts";
 import { comparedAs } from "../../../src/kernel/reports.ts";

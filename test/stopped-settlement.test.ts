@@ -4,7 +4,8 @@
 import { afterAll, expect, it, spyOn } from "bun:test";
 import * as comparison from "../src/campaign/comparison.ts";
 import { epochsOf } from "../src/campaign/climb.ts";
-import { checkpoint, settleReading, type CheckpointRequest } from "../src/campaign/round.ts";
+import { checkpoint, type CheckpointRequest } from "../src/campaign/round.ts";
+import { settleReading } from "../src/campaign/settle.ts";
 import { scored } from "../src/kernel/compare.ts";
 import { recordCondition, settingId } from "../src/kernel/condition.ts";
 import { append, read } from "../src/kernel/log.ts";

@@ -6,7 +6,7 @@ import { errorCode, errorMessage, type RuntimeSignal } from "./runtime-values.ts
 /**
  * `process.kill` as it was at load. Every group signal below goes through this reference rather
  * than through the global at call time, because whatever replaces that global also decides whether
- * a surviving process group is reported — and a replacement that throws answers that there is
+ * a surviving process group is reported, and a replacement that throws answers that there is
  * none, which is the answer that lets a verifier accept output while a child keeps running.
  */
 const processKill = runtimeProcess.kill.bind(runtimeProcess);
@@ -17,7 +17,7 @@ const processKill = runtimeProcess.kill.bind(runtimeProcess);
  * memory.
  *
  * The 1 MiB default a reader may be thinking of is Node's contract, not Bun's: there is no default
- * to raise here, so the number is not what is being defended — the existence of a cap is.
+ * to raise here, so the number is not what is being defended: the existence of a cap is.
  */
 export const CAPTURE_MAX_BYTES = 64 * 1024 * 1024;
 
@@ -56,8 +56,8 @@ interface SpawnSyncOptions {
 /**
  * Signal one exact controller-owned process identity: its group first, since reaching the
  * descendants a solve left behind is the whole point, then the process alone. The fallback is
- * there because a child does not always lead a group — bubblewrap's namespace init is the case
- * this meets — and without it such a child would be signalled by nobody.
+ * there because a child does not always lead a group (bubblewrap's namespace init is the case
+ * this meets) and without it such a child would be signalled by nobody.
  *
  * Ids of 1 and below are refused rather than passed through: `kill(-1, …)` signals every process
  * the host allows and `kill(0, …)` the caller's own group, so an id that arrived from a closed or
@@ -121,7 +121,7 @@ export function processGroupExists(processGroupId: number): boolean {
  * a pid the next check still finds.
  *
  * It answers with a boolean rather than throwing, because a group that will not die is a fact its
- * caller records — `tools/runs/stop.ts` counts the groups it left — and not an error that should
+ * caller records (`tools/runs/stop.ts` counts the groups it left) and not an error that should
  * displace whatever the command produced.
  */
 export async function terminateAndReapProcessGroupId(processGroupId: number): Promise<boolean> {

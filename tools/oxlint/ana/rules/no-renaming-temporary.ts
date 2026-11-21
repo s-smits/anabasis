@@ -13,7 +13,7 @@ import { statementBelow } from "../shared/statements.ts";
  *
  * A temporary earns its line in two ways: it holds work that would otherwise be repeated, or
  * its name says something the expression does not. A single use rules out the first, and an
- * initialiser that is only an identifier or a dotted path rules out the second — `rows` and
+ * initialiser that is only an identifier or a dotted path rules out the second: `rows` and
  * `bundle.rows` carry the same word.
  *
  * This is rung 5 of the simplify ladder read at its smallest: the line exists, and removing it
@@ -26,23 +26,23 @@ import { statementBelow } from "../shared/statements.ts";
  * keeps it too: the annotation is a narrowing the expression does not carry.
  *
  * The single use has to be in the very next statement, and that is the rule's main defence. A
- * name read further down is often a snapshot rather than a rename — `const before = store.seq;`
+ * name read further down is often a snapshot rather than a rename (`const before = store.seq;`
  * three statements above the mutation it is measured against, or `const reader = activeReader;`
- * one statement above `activeReader = null` — and inlining either of those changes what the
+ * one statement above `activeReader = null`) and inlining either of those changes what the
  * code does. Adjacency is also where the reading cost actually is: two lines saying one thing.
  *
  * Uses are counted by name over the enclosing function's text, ignoring positions after a dot
  * and before a colon so a property with the same name does not read as a use. A spread is a
  * use: `[...hostScratchRoots]` was the second read of a binding this rule called single-use. That is a
  * heuristic, and a shadowed name inside a nested scope will read as a use and silence the
- * report — which is the safe direction for a catcher that a person reads.
+ * report, which is the safe direction for a catcher that a person reads.
  *
  * Two more exemptions, measured on 2026-09-20 over 13 sites.
  *
  * A name for a value the same scope then replaces is a moment, not a second name. `const original =
  * console.error` reads `console.error` once, in the `finally` that puts it back, and by then
  * `console.error` is the stub the test installed. The file assigning to that same path is what
- * separates the two, and it took three sites — the saved `globalThis.fetch`, `Bun.dns.lookup`
+ * separates the two, and it took three sites: the saved `globalThis.fetch`, `Bun.dns.lookup`
  * and `console.error` of three tests.
  *
  * It fixes what it reports: the value is an identifier or a dotted path, so it is atomic and
@@ -54,8 +54,8 @@ import { statementBelow } from "../shared/statements.ts";
  * A narrowing does not cross into a closure, so a binding read inside a nested function below a
  * guard is carrying the guard. `const key = options.apiKey` under `if (options.apiKey !==
  * undefined)` is `string`; `options.apiKey` inside the `env` callback two lines down is
- * `string | undefined` again. Three sites, one of them — `start.credential` under a guard on
- * `start.credential.token` — narrowed a level deeper than the binding, which `narrowedIn`
+ * `string | undefined` again. Three sites, one of them (`start.credential` under a guard on
+ * `start.credential.token`) narrowed a level deeper than the binding, which `narrowedIn`
  * admits on purpose: a missed narrowing is a finding a reader cannot act on.
  *
  * The report and the edit part at evaluation order. `const before = state.value;` then `return
@@ -156,7 +156,7 @@ export const noRenamingTemporaryRule = defineRule({
      * Whether the value's text can stand where the name stands.
      *
      * Two positions where it cannot, and neither is visible to the match alone. In `{ label }`
-     * the name is the key as well as the value, so substituting renames the key — or, with a
+     * the name is the key as well as the value, so substituting renames the key, or, with a
      * dotted value, writes `{ row.name }`, which does not parse. And `reader()` on a binding of
      * `stream.read` calls an unbound function, where `stream.read()` binds a receiver: the same
      * call with a different `this`.
@@ -197,7 +197,7 @@ export const noRenamingTemporaryRule = defineRule({
         const value = rename(node.init);
         if (value === null) return;
 
-        // Not after a dot, so a property of the same name is not a use — but `...name` is one.
+        // Not after a dot, so a property of the same name is not a use, but `...name` is one.
         const spelling = new RegExp(String.raw`(?<![\w$])(?<!(?<!\.\.)\.)${node.id.name}(?![\w$:])`, "gu");
         // The declaration itself is one occurrence; a second is the single read that keeps it.
         const uses = scopeText(node).match(spelling);
@@ -231,8 +231,8 @@ export const noRenamingTemporaryRule = defineRule({
             // report stands and the author makes that edit.
             if (declaration.declarations.length !== 1) return null;
             // The binding read the value when it was declared; the path reads it where the name
-            // stood. Those differ when the statement changes the value first — `state.value++ -
-            // before` — or when the read waits in a closure, so neither is edited.
+            // stood. Those differ when the statement changes the value first (`state.value++ -
+            // before`) or when the read waits in a closure, so neither is edited.
             if (changedBefore(masked.slice(0, read.index)) || /=>|\bfunction\b/u.test(masked)) return null;
             const at = next.start + read.index;
             // Removing the declaration alone, rather than the span up to the next statement,

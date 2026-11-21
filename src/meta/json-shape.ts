@@ -14,7 +14,7 @@
  * `no-runtime-typeof` and `no-unsafe-dictionary-type` report a `typeof` test, an open dictionary
  * and a callable everywhere else and admit them here in one written shape each, because here is
  * where those rules send every other file. A second copy of `isString` somewhere else is still
- * reported, and so is any other `typeof` in this file — the admission names the two shapes rather
+ * reported, and so is any other `typeof` in this file: the admission names the two shapes rather
  * than turning the rule off for the file, which would admit every line of it.
  */
 
@@ -116,8 +116,8 @@ export function isBoolean(value: unknown): value is boolean {
  *
  * The null test belongs here rather than at each call site because `typeof null` is `"object"`.
  * A predicate returning `value is object | null` and asking every caller to add `value !== null`
- * gets that back in several spellings — before the call, after it, either way round inside a
- * negation — and from some callers not at all. A miss is live: in v1 a null content part passing
+ * gets that back in several spellings (before the call, after it, either way round inside a
+ * negation) and from some callers not at all. A miss is live: in v1 a null content part passing
  * `!isObject(part)` in a generated-tool worker reached `part.type` and threw a TypeError from a
  * function that declared "generated tool result must contain text content", which sent the
  * controller after the wrong owner. A check every caller has to repair is the check that is wrong.
@@ -133,7 +133,7 @@ export function isObject(value: unknown): value is object {
  *
  * Sharing it is what stops a caller admitting an array by accident. Without the check, a model
  * returning valid JSON of an unexpected shape has a reader index into undefined, and the TypeError
- * becomes a runtime non-result — a finding misclassified as an environment failure. A shape check
+ * becomes a runtime non-result: a finding misclassified as an environment failure. A shape check
  * lets the caller report the invalid value instead of crashing. It is only the first step: required
  * fields still need validating.
  */

@@ -63,7 +63,7 @@ import {
  * the seat's cap counts them.
  *
  * `hostToolchainEnv` adds the names a toolchain uses to find its own installation, which moving
- * `HOME` otherwise hides — `RUSTUP_HOME`, naming a real directory the command may read and may not
+ * `HOME` otherwise hides: `RUSTUP_HOME`, naming a real directory the command may read and may not
  * write, absent where the directory is. Python's user base stays in the home, where pip can install.
  *
  * The four fixed names sit on the type rather than only in the body, so a reader sees what a
@@ -316,8 +316,8 @@ function darwinCommandProfile(
     ...sbRule("deny file-read*", "subpath", readDenies),
     ...traversalMetadataRules(readAllows),
     // Seatbelt prefers the rule naming the more specific operation over the one naming the family,
-    // whatever their order, so a `file-read*` allow on its own leaves the pattern denies above —
-    // which name `file-read-metadata` outright — in charge of `stat`: `cat .toolchain/bin/own-tool`
+    // whatever their order, so a `file-read*` allow on its own leaves the pattern denies above
+    // (which name `file-read-metadata` outright) in charge of `stat`: `cat .toolchain/bin/own-tool`
     // prints the file while `ls` of its directory and the shell's PATH search over it answer
     // "Operation not permitted". Naming both operations in the allow puts this rule back in charge.
     ...sbRule("allow file-read* file-read-metadata", "subpath", readAllows),
@@ -381,7 +381,7 @@ export function commandIsolationPolicy(
    * denied roots, which are the repository, its other worktrees, a stored pack and the operator
    * home; and the shared temporary directories. The temporary directory holds every
    * other seat's root and every concurrent verification's staged workdir, so it is hidden whole
-   * and this seat's root is bound back inside it — a separation the Darwin profile spends two rules
+   * and this seat's root is bound back inside it: a separation the Darwin profile spends two rules
    * on only because a Seatbelt deny cannot be reopened by a mount.
    *
    * `TMPDIR` points at a tree bound back inside the overmount, so hiding the shared directory costs
@@ -400,7 +400,7 @@ export function commandIsolationPolicy(
 }
 
 /** Escapes one argument for a POSIX shell's command line, which `/bin/bash` reads the same way. A
- *  single quote ends the literal, so the quote itself is spliced back in outside it — the standard
+ *  single quote ends the literal, so the quote itself is spliced back in outside it: the standard
  *  transformation. */
 export function shellQuote(value: string): string {
   return `'${value.replaceAll("'", String.raw`'\''`)}'`;

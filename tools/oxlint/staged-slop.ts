@@ -1,7 +1,7 @@
 // The pre-commit slop report: the whole-tree scans, narrowed to the lines this commit changes.
 //
 // `bun run simplify` prints every site in the tree, a census a person reads once and finishes. At
-// commit time the question is narrower — did this change add one — and the reader is often an
+// commit time the question is narrower (did this change add one) and the reader is often an
 // agent that sees the hook's output and nothing else. So this prints the sites with a place on a
 // changed line, numbered, each with the id `bun run not-slop -- answer` takes; writes the whole
 // report, with each shape's argument, into the git directory, where it is never committed; and

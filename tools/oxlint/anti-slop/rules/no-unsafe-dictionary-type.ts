@@ -126,7 +126,7 @@ function isOwnedOpenRecord(node: ESTree.TSType, filename: string): boolean {
  * `{ [key: string]: any }`, a mapped type over a broad key with an `object` or `{}` value, or an
  * alias or union that resolves to one of those.
  *
- * The key being open is not the problem — a table of things keyed by name is a normal thing to
+ * The key being open is not the problem: a table of things keyed by name is a normal thing to
  * want. The problem is that the value type then says nothing either, so the contract describes a
  * bag rather than a table, and every reader has to decide for itself what it expects to find. A
  * value type is the one part of a dictionary that can still be named, and this rule is what keeps

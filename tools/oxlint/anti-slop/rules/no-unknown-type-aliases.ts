@@ -123,8 +123,8 @@ function isPublic(element: ESTree.PropertyDefinition | ESTree.MethodDefinition):
 /**
  * A named type that stands where `unknown` or `any` is, directly or through other aliases.
  *
- * The other `unknown` rules — `no-unknown-returns`, `unproven-unknown-parameter`,
- * `no-unsafe-dictionary-type` — all read a written annotation, and a name is the one move that
+ * The other `unknown` rules (`no-unknown-returns`, `unproven-unknown-parameter`,
+ * `no-unsafe-dictionary-type`) all read a written annotation, and a name is the one move that
  * takes the word out of the annotation without taking the top type out of the program. `type
  * Payload = unknown` reads at every use as though someone had decided something. This rule is
  * what stops the rest of the set being answered by a rename. It reports five places:
@@ -170,7 +170,7 @@ function isPublic(element: ESTree.PropertyDefinition | ESTree.MethodDefinition):
  *
  * `unknown` itself is not banned, only the name hiding it. The message says where it stays legal:
  * at a parsing boundary, where the value genuinely has not been read yet, and on a `cause` field.
- * Both of those are written `unknown` at the site, which is the point — the reader sees the top
+ * Both of those are written `unknown` at the site, which is the point: the reader sees the top
  * type where it is.
  *
  * There is no fix: the repair is the type the name was avoiding, and a name exists because

@@ -18,7 +18,7 @@ const MINIMUM_LINKS = 3;
  *
  * This is the twenty-lines-to-four shape the operator keeps naming, stated so a scan can find it.
  * `ana/no-renaming-temporary` is its N=1 case restricted to a rename; this one admits work in the
- * initialiser, which is why it has no fixer — see below.
+ * initialiser, which is why it has no fixer: see below.
  *
  * The threading is what separates the shape from an ordinary block of locals. Each step after the
  * first has to read the step above it, so the run is one value moving rather than four unrelated
@@ -34,14 +34,14 @@ const MINIMUM_LINKS = 3;
  * exempt" dial the shape was queued with, in the one form a rule can decide: the author wrote the
  * sentence or they did not.
  *
- * A step with a type annotation ends the run for the reason the rename rule gives — the annotation
- * is a narrowing the expression does not carry — and it is the read count that ends it, not a test
+ * A step with a type annotation ends the run for the reason the rename rule gives (the annotation
+ * is a narrowing the expression does not carry) and it is the read count that ends it, not a test
  * of its own. `const rows: string[]` spells the binding's name before a colon, and the count skips
  * a name in that position so a property key is not read as a use, which leaves one occurrence where
  * two are wanted. An explicit check for the annotation stood here and was deleted: no mutation of
  * it changed the fixture, and the tree reports the same no sites without it, so the line was
- * restating a decision the count had already made. The fixture holds the behaviour instead — it
- * asserts the run starts *below* an annotated step rather than at it — so a change to how
+ * restating a decision the count had already made. The fixture holds the behaviour instead (it
+ * asserts the run starts *below* an annotated step rather than at it) so a change to how
  * occurrences are counted fails there rather than dropping the exemption in silence.
  *
  * A step whose initialiser holds a function or an arrow is not one expression to compose. Inlining
@@ -52,7 +52,7 @@ const MINIMUM_LINKS = 3;
  * over `src`, `tools`, `test`, `vendor`, `starters`, `packages` and `.claude` (measured
  * 2026-09-20). At two it has 80, and reading them settles the question rather than leaving it a
  * preference: 60 are a test arranging a fixture and then reading a result, which is the shape a
- * test is meant to have, and twelve of the twenty elsewhere were read one by one — `decision`,
+ * test is meant to have, and twelve of the twenty elsewhere were read one by one: `decision`,
  * `readable`, `contradicts`, `violations`, `counted`, `observer`, `shareMount`, `judge`,
  * `promptOptions`, `mins`, `indexed`, `verdict`. Every one of them says something its expression
  * does not, and composing any of them reads worse. So two threaded steps are ordinary and three are
@@ -130,7 +130,7 @@ export const noSingleUseConstChainRule = defineRule({
      * Whether a comment sits on its own line above this statement, explaining the step.
      *
      * The slice runs from the end of the statement above, so it opens with whatever that
-     * statement's own line still held — a trailing `// ...` explains the line it is on, not the
+     * statement's own line still held: a trailing `// ...` explains the line it is on, not the
      * next one. Dropping the first line of the slice is what separates the two.
      */
     function explained(above: ESTree.Statement | undefined, statement: ESTree.Statement): boolean {

@@ -226,7 +226,7 @@ export function pinnedPythonDir(home: string): string {
  * A confined command's `HOME` points at its own scratch tree, because a toolchain writing its cache
  * to the real home would be refused and that refusal reads as a broken tool rather than as the
  * isolation doing its job. The cost is that a toolchain looking for its installation under `$HOME`
- * no longer finds it — `rustc` fails with `rustup could not choose a version` while `~/.rustup`
+ * no longer finds it: `rustc` fails with `rustup could not choose a version` while `~/.rustup`
  * sits readable on disk. `RUSTUP_HOME` puts rustup back on its real installation, which it may read
  * and may not write.
  *

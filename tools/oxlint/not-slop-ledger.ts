@@ -3,25 +3,25 @@
  *
  * The slop cleaner is heuristic. Its best measured scan was right at 51 of 71 sites; a report that
  * reprints the other twenty at every commit teaches its reader to stop reading it. So a site can be
- * answered once, and every reader of the findings — `bun run lint`, `bun run simplify` and the
- * pre-commit slop report — drops what the ledger lists.
+ * answered once, and every reader of the findings (`bun run lint`, `bun run simplify` and the
+ * pre-commit slop report) drops what the ledger lists.
  *
  * One ledger holds the answers to both halves of the cleaner. The whole-tree scans have no other
  * place for one: a copied block spans two files, and a comment in either would answer only half
  * of it. The per-file rules had inline `oxlint-disable` comments, and those were the weaker store:
  * a comment survives an edit to the line it excuses, so an answer about one expression kept
- * excusing whatever was later written there, and a comment without a reason — thirty-one of
- * the forty in the tree on 2026-09-21 had none — records that someone was silenced, not why.
+ * excusing whatever was later written there, and a comment without a reason (thirty-one of
+ * the forty in the tree on 2026-09-21 had none) records that someone was silenced, not why.
  *
  * A row is keyed by what the site is rather than where it sits. The id hashes the rule, the paths
  * and the text of every place the site spans, whitespace collapsed: lines moving above it keep the
  * id, and an edit to any place gives a new one and brings the site back for a fresh answer. The
- * vocabulary is SARIF's external suppression — a fingerprint, the rule, the location and a
- * justification — with the date it was given and an excerpt of the hashed text, so a reviewer can
+ * vocabulary is SARIF's external suppression (a fingerprint, the rule, the location and a
+ * justification) with the date it was given and an excerpt of the hashed text, so a reviewer can
  * read a row without opening the file and see what it answers.
  *
- * Only a finding with no repair can be answered. A rule with a fixer states a fact — `--fix`
- * rewrites the site, and the ledger does not stop it — so a wrong report from one is a defect in
+ * Only a finding with no repair can be answered. A rule with a fixer states a fact (`--fix`
+ * rewrites the site, and the ledger does not stop it) so a wrong report from one is a defect in
  * the rule (`FIXER-DECISIONS.md`). A core oxlint rule is a correctness rule, not a heuristic, and
  * its exception is a fact about the code that belongs beside it: an inline comment with a reason.
  *

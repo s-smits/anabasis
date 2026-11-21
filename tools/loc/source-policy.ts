@@ -15,8 +15,8 @@ import { scanTokens } from "./token-facts.ts";
 // 600 and 80 were chosen when an author picked every line break and a 200-character line counted
 // as one. `biome format` owns the breaks now, at lineWidth 110, and the same code measures larger:
 // 77,570 nonblank lines to 84,984 over src, tools and vendor. The factor is not one number. A flat
-// function barely moves and a deeply indented one nearly doubles — `runReferenceChild` went from 39
-// lines to 92 without a character of it changing — so no single multiplier restates the old
+// function barely moves and a deeply indented one nearly doubles (`runReferenceChild` went from 39
+// lines to 92 without a character of it changing) so no single multiplier restates the old
 // ceilings, and the 90th percentile is the honest place to put them: 1.330 per file and 1.425 per
 // function over everything the formatter touched. 600 x 1.330 and 80 x 1.425, rounded up.
 //
@@ -101,7 +101,7 @@ function walkFiles(root: string): string[] {
  * `export` on a declaration that nothing outside its own file names.
  *
  * An export is a statement that another file may depend on the name, so changing the declaration
- * means looking for those dependents first — and for these there are none to find. It is the
+ * means looking for those dependents first, and for these there are none to find. It is the
  * single largest shape a simplification pass removes.
  *
  * The search is textual, which decides two things. A name declared in two files is left alone,

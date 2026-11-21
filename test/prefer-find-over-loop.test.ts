@@ -2,8 +2,8 @@
  * The rule that reads a written-out search, and the fix that puts the array method back.
  *
  * Which method a site wants is read off the `return`, not guessed, so the rewrite is decided.
- * What is not decided by the loop alone is what the method yields on no match — `undefined`,
- * `false`, `true` — and that is why the fix reads the statement below and stands down where it
+ * What is not decided by the loop alone is what the method yields on no match (`undefined`,
+ * `false`, `true`) and that is why the fix reads the statement below and stands down where it
  * says anything else. The exception is the loop that returns nothing: it is a guard, exact on
  * its own, and it has its own message because calling it `rows.some(…)` named a replacement
  * that would have returned a boolean from a void function.

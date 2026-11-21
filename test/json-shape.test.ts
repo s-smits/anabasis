@@ -9,7 +9,7 @@
  * that can narrow them before pi takes them back. Neither file says the two shapes agree.
  *
  * When pi 0.86 made its arrays readonly they stopped agreeing, and it surfaced as two calls in
- * `provider.ts` reporting that `JsonObject` was not assignable to `JsonObject` — the same name
+ * `provider.ts` reporting that `JsonObject` was not assignable to `JsonObject`: the same name
  * on both sides of the sentence, which is not a diagnosis. The repair was to say `readonly`
  * here too. Both directions get a case because only one of them is ever at risk at a time: a
  * mutable array satisfies a readonly one, so the break is always on the side that reads.

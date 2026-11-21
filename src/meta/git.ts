@@ -29,7 +29,7 @@ export function gitText(repo: string, ...args: readonly string[]): string {
   return gitOutput(repo, ...args).trim();
 }
 
-/** The same question where "no" is an answer — an unknown commit, a key nobody set — as null. */
+/** The same question where "no" is an answer (an unknown commit, a key nobody set) as null. */
 export function gitMaybe(repo: string, ...args: readonly string[]): string | null {
   try {
     return gitText(repo, ...args);

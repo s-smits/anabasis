@@ -9,8 +9,8 @@
  *
  * A declaration and a fix have to agree. oxlint ignores a `fix` from a rule that did not
  * declare itself fixable, and it does so silently: the rule keeps reporting, the sweep keeps
- * passing, and nothing is ever rewritten. The reverse — declaring `fixable` and carrying no fix
- * — is only a lie in the metadata, but it is the same lie a reader acts on.
+ * passing, and nothing is ever rewritten. The reverse (declaring `fixable` and carrying no fix)
+ * is only a lie in the metadata, but it is the same lie a reader acts on.
  *
  * A fixer has to have a fixture. A report is read by a person, so a wrong one is found; a fix
  * writes source nobody looks at again, which makes it the one kind of lint code that can be

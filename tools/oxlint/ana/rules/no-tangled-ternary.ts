@@ -26,8 +26,8 @@ import type { RuleExample } from "../../rule-examples.ts";
  * "blocked"` has three outcomes and reads as though it had two.
  *
  * The remedy is to name the inner ternary, or to make the whole thing a function whose branches
- * return. Naming is usually the lighter one — `const found = findings === 0 ? "clear" :
- * "findings";` leaves `page.available ? found : "blocked"` behind — and a tail past three wants
+ * return. Naming is usually the lighter one: `const found = findings === 0 ? "clear" :
+ * "findings";` leaves `page.available ? found : "blocked"` behind, and a tail past three wants
  * the function. Both are available at every site, which is what the rule had to be tuned until
  * it could say.
  *
@@ -35,11 +35,11 @@ import type { RuleExample } from "../../rule-examples.ts";
  * first thing that comes to mind. `unicorn/no-negated-condition` is on, and it reads `!x` and
  * `x !== y` in a ternary test as negated, so turning `a === null ? (…) : b` around into
  * `a !== null ? b : (…)` trades this finding for that one. A guard inside a function does not
- * have the problem, because an `if` with no `else` is not a negated condition — which is part of
+ * have the problem, because an `if` with no `else` is not a negated condition, which is part of
  * why the function is the remedy that always works.
  *
  * Only the head of a cascade is counted, so one long chain is one finding rather than one per
- * link. A ternary behind any other syntax — a call argument, an array element, a template hole —
+ * link. A ternary behind any other syntax (a call argument, an array element, a template hole)
  * is not nesting for this purpose: the enclosing node is a boundary and the reader stops there.
  *
  * There is no fix. Which of the two remedies a site wants is the decision, and at

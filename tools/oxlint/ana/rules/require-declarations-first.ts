@@ -16,8 +16,8 @@ import { declaredBy, identifierName, isConstDeclaration, isNamedMember } from ".
  * hoisting it to the front cannot be observed. Two things make that observable and the rule tests
  * for both:
  *
- *  - an **effect** in the initialiser — a call, `new`, `await`, a tagged template, an assignment or
- *    an update — unless it is one of the pure builders below, which have no result but their value;
+ *  - an **effect** in the initialiser (a call, `new`, `await`, a tagged template, an assignment or
+ *    an update) unless it is one of the pure builders below, which have no result but their value;
  *  - a **read of a name whose value depends on where the read happens**. A name is safe when
  *    nothing can change it between the front of the file and here: an import, a function
  *    declaration (hoisted, so it exists before any statement runs), a built-in namespace, and any
@@ -52,7 +52,7 @@ import { declaredBy, identifierName, isConstDeclaration, isNamedMember } from ".
  * beside it moved.
  *
  * The fixer is the reason the rule is worth having: this is a reordering pass, not a set of
- * judgements. The comment is the part a hand edit gets wrong — a JSDoc block left behind above the
+ * judgements. The comment is the part a hand edit gets wrong: a JSDoc block left behind above the
  * next function now documents the wrong thing, and nothing fails.
  */
 
@@ -123,8 +123,8 @@ interface Read {
  * Whether this statement only declares a name, which is the question "has the code started yet".
  *
  * Asked from this side it is exhaustive: an import, a re-export, a type, an enum, a directive and
- * a constant are declarations, and everything else — a function, a class, an `if`, a loop, a
- * `try`, a bare call — is the code. A `const` holding an arrow is a function under another
+ * a constant are declarations, and everything else (a function, a class, an `if`, a loop, a
+ * `try`, a bare call) is the code. A `const` holding an arrow is a function under another
  * spelling, so it starts the code too, and a computed `const` does not: `const REPO = resolve(…)`
  * is still one of the declarations a reader expects to find at the front.
  */
@@ -164,8 +164,8 @@ function boundNames(inner: ESTree.Node): string[] {
 
 /**
  * Every name a hoisted initialiser may read: the ones whose value does not depend on the position
- * of the read. Imports and function declarations qualify wherever they sit — both exist before the
- * first statement runs — and a `const`, `class` or `enum` qualifies once it is above the code.
+ * of the read. Imports and function declarations qualify wherever they sit (both exist before the
+ * first statement runs) and a `const`, `class` or `enum` qualifies once it is above the code.
  */
 function readableFromTheFront(body: readonly ESTree.Node[], firstCode: number): Set<string> {
   const names = new Set(CONSTANT_GLOBALS);
@@ -222,14 +222,14 @@ function moduleReads(scope: Scope): Read[] {
  * clean runtime move and a type error, so a read inside a guarded name's shadow is barred too.
  *
  * Only a binding this file declares is narrowable. A test mentions plenty of names it cannot
- * narrow — `if (isBoolean(value))` names the imported predicate it calls, and `if (x ===
- * undefined)` names the global — and barring a later read of those refuses a constant for no
+ * narrow, `if (isBoolean(value))` names the imported predicate it calls, and `if (x ===
+ * undefined)` names the global, and barring a later read of those refuses a constant for no
  * reason. Two of the first ten refusals were exactly that.
  *
  * The third bar is what `const` does not promise. The binding cannot be reassigned; what it holds
  * can be written to all day. `const CONFIG = { limit: 1 }` above the code, `CONFIG.limit =
  * measured()` in the code, and `export const SIZE = CONFIG.limit` below it reads the measured
- * value today and `1` once it is hoisted above the write — the same program, a different number,
+ * value today and `1` once it is hoisted above the write: the same program, a different number,
  * and nothing to compile against. So a read that takes a *part* of a name this file declares is
  * barred, while the name itself still reads safely. `Object.freeze({…})`, `Math.max(…)` and a
  * part of an imported namespace are untouched, because none of those is a binding this file owns.

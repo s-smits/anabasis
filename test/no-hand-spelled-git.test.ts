@@ -2,8 +2,8 @@
  * The rule that sends a git subprocess to its owner, `src/meta/git.ts`, from a skill script, from
  * `src`, and from the run and campaign commands of `tools/runs` and `tools/d2`.
  *
- * The admitted side pins what is not a subprocess — a guard building the command it refuses as a
- * string, and `"git"` as ordinary data — and the scope pins where the owner is asked.
+ * The admitted side pins what is not a subprocess (a guard building the command it refuses as a
+ * string, and `"git"` as ordinary data) and the scope pins where the owner is asked.
  */
 import { describe, it } from "bun:test";
 import { lintRules } from "./helpers/lint-rule.ts";

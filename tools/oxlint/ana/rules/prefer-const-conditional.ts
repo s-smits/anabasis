@@ -18,8 +18,8 @@ import { everyStatementList, onlyStatement, plainAssignment } from "../shared/st
  * statements, so a third branch can be added later without anyone noticing that the name now
  * means three things.
  *
- * The commit lane found this in `23086a056` and `7a4387da1`, and `no-useless-assignment` — now
- * on, five sites — catches the neighbouring case where the first value is never read at all.
+ * The commit lane found this in `23086a056` and `7a4387da1`, and `no-useless-assignment` (now
+ * on, five sites) catches the neighbouring case where the first value is never read at all.
  * This one is the case where it *is* read: the initialiser is the default.
  *
  * The second spelling is the same decision with no default to start from:
@@ -67,7 +67,7 @@ import { everyStatementList, onlyStatement, plainAssignment } from "../shared/st
  *
  * This is the whole grammar, not a sample: a conditional's test accepts a short-circuit
  * expression, so the five forms that bind looser are assignment, arrow, yield, sequence and a
- * conditional itself. The last one is the one that bites, because `?:` is right-associative —
+ * conditional itself. The last one is the one that bites, because `?:` is right-associative:
  * `a ? b : c` dropped unparenthesised into the test of `? p : q` reads as `a ? b : (c ? p : q)`,
  * which is a different program that still compiles.
  */

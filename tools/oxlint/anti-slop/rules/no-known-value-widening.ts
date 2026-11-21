@@ -209,15 +209,15 @@ function hasParentAssertion(node: ESTree.Node): boolean {
  * `Record<string, unknown>` return type, an argument asserted to `any`.
  *
  * The annotation looks like extra care and is the opposite of it. Inference had the exact type of
- * the literal on the line below, and the written type replaces it with a container — so every
+ * the literal on the line below, and the written type replaces it with a container, so every
  * reader of that binding, and every caller of that function, now has to narrow a value that was
  * never in doubt. The repair is usually to delete the annotation, which is why the message offers
  * `satisfies`: it checks the value against the broad type without replacing what the value knows.
  *
  * Two things both have to hold before anything is reported, and each is a gate that keeps this
  * from firing on ordinary code. `hasKnownEvidence` asks whether the expression states its own
- * type — a literal, an array, an object literal whose keys are all written down, a `new`, a
- * function or a template — or is a `const` never written after its declaration whose initialiser
+ * type (a literal, an array, an object literal whose keys are all written down, a `new`, a
+ * function or a template) or is a `const` never written after its declaration whose initialiser
  * does, followed recursively. Anything else is not established evidence, so nothing is lost.
  * `classifyWideningTarget` then asks whether the destination actually gives something away, and
  * it answers with one of six kinds: `any`, `object` and `unknown` name themselves, and an open
@@ -229,7 +229,7 @@ function hasParentAssertion(node: ESTree.Node): boolean {
  * the loss of it. An assertion sitting directly inside another assertion is passed over, so a
  * chain is reported once at the outside and `no-chained-type-assertions` owns the chain itself.
  *
- * Six sites carry a written destination the flow can be read against — a declarator, a property,
+ * Six sites carry a written destination the flow can be read against: a declarator, a property,
  * an accessor, an assignment back to an annotated binding, a `return` or concise arrow body
  * against the function's declared return, and a standalone assertion. The seventh is different:
  * a call to a locally visible type predicate whose subject parameter is annotated `unknown`. The

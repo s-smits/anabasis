@@ -5,7 +5,7 @@
 //
 // Each refusal is paired with a read that has to succeed: a wall that refuses everything would pass
 // a suite testing refusals alone while making the product unusable. Run 4 is the reason it is not
-// hypothetical — it walled off its own repair-attribution and Judge paths.
+// hypothetical: it walled off its own repair-attribution and Judge paths.
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   existsSync,

@@ -3,8 +3,8 @@
  *
  * The admitted side is the part worth pinning, because each admitted shape is one the library's own
  * callers use: the executable at index zero, the slice handed straight to a parser behind
- * `import.meta.main`, and a testable `main(argv)` that forwards its parameter — through a second
- * local function as well — to the library. A forwarding function that parses by hand is the case
+ * `import.meta.main`, and a testable `main(argv)` that forwards its parameter (through a second
+ * local function as well) to the library. A forwarding function that parses by hand is the case
  * that separates following a parameter from trusting a name.
  */
 import { describe, it } from "bun:test";

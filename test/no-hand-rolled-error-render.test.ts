@@ -5,7 +5,7 @@
  * Both shapes are pinned, and so is every way of not being them: the subject has to be the same
  * text in all three places, the rendering call has to be `String` or `errorMessage`, and a
  * ternary that reads one value and renders another is left alone. That last case is why the rule
- * compares source text rather than matching identifiers by name — `outer.error` and
+ * compares source text rather than matching identifiers by name: `outer.error` and
  * `inner.error` are different subjects and only one of them is the caught value.
  *
  * The fix is pinned the same way, and only over a bare identifier; a call or a member is reported

@@ -79,7 +79,7 @@ export interface SecretHit {
   line: number;
   rule: string;
   what: string;
-  /** The source line with the credential itself replaced — the report never echoes the secret. */
+  /** The source line with the credential itself replaced: the report never echoes the secret. */
   masked: string;
 }
 

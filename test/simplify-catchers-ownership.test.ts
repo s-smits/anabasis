@@ -2,8 +2,8 @@
  * The simplify catchers that read a file rather than an expression: an alias with one mention, a
  * second owner of process lifetime, a pyramid of conditions, and one string spelled four times.
  *
- * These are the catchers whose answer depends on where the file is. Two of them exempt a path —
- * the lifetime owners, the test tree — so a fixture that does not say where it lives would pass
+ * These are the catchers whose answer depends on where the file is. Two of them exempt a path
+ * (the lifetime owners, the test tree) so a fixture that does not say where it lives would pass
  * while reporting nothing, and each test places its fixture in the tree on purpose.
  */
 import { describe, expect, it } from "bun:test";

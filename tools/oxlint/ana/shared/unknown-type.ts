@@ -5,7 +5,7 @@ import type { ESTree } from "@oxlint/plugins";
  *
  * A union is the one place where `unknown` takes the other members with it: `unknown | Row` is
  * `unknown`, so the `Row` beside it tells a reader something the type does not say. An
- * intersection goes the other way — `unknown & Row` is `Row`, and nothing was given away — and a
+ * intersection goes the other way (`unknown & Row` is `Row`, and nothing was given away) and a
  * container keeps its `unknown` where it can still be read, which is why `Promise<unknown>` and
  * `Record<string, unknown>` are `no-unknown-returns` and `no-unsafe-dictionary-type` rather than
  * this. So the walk goes into a union and through parentheses and stops everywhere else.

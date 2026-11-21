@@ -4,13 +4,13 @@
  * A parameter hides that type as easily as it spells it. `rows: object[]`, `pair: [string,
  * object]`, `input: { rows: object[] }` and `rows: Map<string, object>` each hand the callee the
  * same unparsed value `input: object` would, and before 2026-09-20 the rule read through an alias
- * and a union and stopped there — so the four spellings above passed a gate that refused the
+ * and a union and stopped there, so the four spellings above passed a gate that refused the
  * first one. The fixture states each position once, so a reader can see which shapes the search
  * enters and, from the admitted half, exactly where it stops.
  *
  * It stops at a function type. A callback's parameters are the callback author's contract with
  * whoever calls it, not this function's contract with its caller, and the rule already visits
- * every function type and method signature on its own — so the report belongs at the callback,
+ * every function type and method signature on its own, so the report belongs at the callback,
  * where the repair is, rather than twice.
  *
  * It also stops at `WeakMap` and `WeakSet`, where `object` is the language's own key constraint

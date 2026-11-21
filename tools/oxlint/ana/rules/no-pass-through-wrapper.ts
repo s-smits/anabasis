@@ -11,7 +11,7 @@ type AnyFunction = ESTree.Function | ESTree.ArrowFunctionExpression;
  *
  *     function readOpening(dir: string): Opening { return loadOpening(dir); }
  *
- * The working contract asks for exactly this cut — "inline rule-free one-caller wrappers" — and
+ * The working contract asks for exactly this cut ("inline rule-free one-caller wrappers") and
  * the word that carries it is rule-free. A wrapper earns its place when it *does* something on
  * the way past: a default, a narrowing, a reordering, a fixed argument that the callers should
  * not have to know. This rule reads only the case where it does none of those, so the two names
@@ -25,7 +25,7 @@ type AnyFunction = ESTree.Function | ESTree.ArrowFunctionExpression;
  * Six shapes stay out, four of them measured on 2026-09-20 over 25 sites.
  *
  * A function with no parameters forwards nothing, so the finding does not apply to it. What a
- * zero-parameter body names is either a computation — `nodeRuntimeReadRoots().map(…).sort()` —
+ * zero-parameter body names is either a computation, `nodeRuntimeReadRoots().map(…).sort()`,
  * or a receiver binding: `const atExit = () => this.closeAtExit()` is the only spelling that
  * survives being handed to `process.on`, because `this.closeAtExit` alone loses its receiver.
  * Five sites.
@@ -41,7 +41,7 @@ type AnyFunction = ESTree.Function | ESTree.ArrowFunctionExpression;
  * detail rather than two names; `PROMPT.indexOf` fixes the haystack. A global receiver is not
  * the file's to fix, so `Bun.sleep` and `String` are still reported. Four sites.
  *
- * A return type predicate — `value is JsonSchema` — is the narrowing, stated. One site.
+ * A return type predicate (`value is JsonSchema`) is the narrowing, stated. One site.
  *
  * An `async` wrapper of a sync call is changing the contract and is skipped. And a wrapper whose
  * return annotation merely differs from its callee's is still reported: the plugin cannot see

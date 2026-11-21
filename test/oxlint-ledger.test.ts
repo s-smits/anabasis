@@ -71,7 +71,7 @@ describe("the .oxlintrc.json debt ledger", () => {
   });
 
   it("only ever exempts from a block that lists files, so debt cannot arrive as configuration", () => {
-    // A block whose files are globs is policy for an area — `test/**` where Bun's matcher types
+    // A block whose files are globs is policy for an area: `test/**` where Bun's matcher types
     // make a rule wrong, or the vendored bridge checkout. A block listing
     // concrete paths is the debt ledger, and a ledger entry that set a severity other than
     // "off" would be turning a rule on for those files alone, which is not what it is for.

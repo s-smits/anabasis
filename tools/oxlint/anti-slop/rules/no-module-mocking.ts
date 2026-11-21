@@ -176,7 +176,7 @@ function memberReplacementCall(
  *
  * A mocked module is a test that passes against a description of the dependency instead of the
  * dependency. The description is written once and then drifts, so the module can change its
- * signature, its errors or its side effects and the suite keeps reporting green — and it keeps
+ * signature, its errors or its side effects and the suite keeps reporting green, and it keeps
  * reporting green about a call that no longer exists. It also decides the test can only run one
  * way, because the substitution happens above the code rather than inside it, which is why a
  * mocked suite so often cannot be asked the second question.

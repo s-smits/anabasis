@@ -1,6 +1,6 @@
 /**
- * The one platform dispatch for the OS isolation. Callers keep a single policy value — which roots
- * are readable or denied, whether the network is open — and this module selects the mechanism that
+ * The one platform dispatch for the OS isolation. Callers keep a single policy value (which roots
+ * are readable or denied, whether the network is open) and this module selects the mechanism that
  * enforces it on the current host, Darwin Seatbelt or Linux Bubblewrap. Both fail closed: an
  * unavailable mechanism returns an explicit reason, and the caller does not run open.
  */

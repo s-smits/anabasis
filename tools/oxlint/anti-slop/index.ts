@@ -27,7 +27,7 @@ import { requireSafetyCommentForTypeAssertionRule } from "./rules/require-safety
  *  exemption list of files was the wrong answer.
  *
  *  Being a copy is what decides where a change goes. A rule whose reason is a fact about
- *  Anabasis — an owner module, a campaign path, a contract this repository declares — belongs in
+ *  Anabasis (an owner module, a campaign path, a contract this repository declares) belongs in
  *  `ana/` next door, because a change here is paid for again at the next copy from upstream. */
 const antiSlopPlugin = eslintCompatPlugin({
   meta: { name: "anti-slop" },

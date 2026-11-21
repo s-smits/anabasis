@@ -55,18 +55,18 @@ function sliceCall(argv: ESTree.MemberExpression): ESTree.CallExpression | null 
  * spelled a different way, which is how every one of these arrived.
  *
  * Two reads are not a parse. `Bun.argv[0]` is the runtime's own executable, which a script uses to
- * spawn Bun again. And `Bun.argv.slice(2)` handed straight to the library — `runCommand` or
- * `parseCliArgs` — is the library doing the reading, including
+ * spawn Bun again. And `Bun.argv.slice(2)` handed straight to the library (`runCommand` or
+ * `parseCliArgs`) is the library doing the reading, including
  * behind `import.meta.main ? … : []`. A script that keeps a testable `main(argv)` passes too, when
  * that function hands its parameter to the library, directly or through another function the file
  * declares; the parameter is followed by name and position, not guessed at.
  *
  * Everything else reports: an index past zero, a destructure, `.length`, `.includes`, a loop, and a
  * slice held in a `const` first, because once the value has a name the rule cannot see every use
- * of it, and nothing needs the name — the library parsers default their `argv` to exactly that slice.
+ * of it, and nothing needs the name: the library parsers default their `argv` to exactly that slice.
  *
- * There is no fix. The repair is a `runCommand` spec — which options are values, which are flags,
- * which are absolute paths, how many positionals — and that is the script's contract to write,
+ * There is no fix. The repair is a `runCommand` spec (which options are values, which are flags,
+ * which are absolute paths, how many positionals) and that is the script's contract to write,
  * not something the expression holds.
  */
 export const noHandReadArgvRule = defineRule({

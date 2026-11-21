@@ -16,41 +16,23 @@
  * Each part of a harness is given one purpose, here as there: the presets select pi's tools, the
  * programs compute, and the guide is words about them. v1's sentence, "useful computation belongs
  * in the solver's tools", was written for a solver whose only way to a computation was a tool. A
- * v2 solver has a shell, so a computation is a program. Until 20 November 2026 a harness could
- * also declare tools of its own, and the prompt left the choice between the two to the Builder
+ * v2 solver has a shell, so a computation is a program, and a harness declares no tools of its own
  * (`src/harness/open.ts`).
  *
- * Until 20 October the ceiling was one rule: no harness tool returns a finished answer for a task
- * (`7f0add79:docs/plan.md`, principle 6). v1's sentence had two routes, a verdict on a candidate and the answer to a case the
- * solver names, and forbade both as "a check's work", with the reason that the Builder's own
- * exam would then measure a search. That Builder had written the checks. The operator lifted
- * the first on 9 October, with the same rule in every session: a tool may tell the solver whether
- * a candidate meets a public rule. A solver does that unaided, as v1 recorded when its solver
- * wrote a search and ran it until the checks cleared; this Builder is never shown a check; and
- * both harnesses are solved under the same limits, which price the search. A tool that hands over the answer stays forbidden.
+ * The one limit on a harness is the one against cheating: nothing in it names a task, copies its
+ * text or holds its answer. v1 also forbade a tool that judged a candidate or answered a case the
+ * solver names, as "a check's work", because its Builder had written the checks. This Builder is
+ * never shown a check, a solver does the same search unaided, and both harnesses are solved under
+ * the same limits, which price the search. A rule against composing a domain engine, a judge and a
+ * search in one program was tried and lifted, leaning to the Builder's freedom: no reader of a
+ * harness can tell a program that filters its own candidates against the public rules from one
+ * that hands over a finished answer it judged, and a comparison prices whatever a harness does. A
+ * separated search and test is still an engine against a Starter that has none, so the comparison
+ * does not attribute the gain to a part; `ANSWER FROM A PROGRAM` in `tools/wri/read.ts` reads
+ * whether a harness answered for its solver, against the reference.
  *
- * Permitting the judge while permitting the search left them composable, and on 10 October a
- * Builder composed them: one program held a domain engine, a judge and a search, and all 12 of that
- * campaign's solves called it from the shell and submitted on the pass report it printed. The
- * comparison that would have followed could have named no cause, the reference Starter carrying no
- * engine (`docs/transfer.md`, section 1, which ranked this the binding constraint). So the rule
- * names the composition and not only its end, and gives the test a reader can apply to a harness.
- * The operator settled it this way, against a condition that would separate the three and record
- * which a harness holds. The clause is on the composition and not on an all-clear, because the
- * permitted test reports nothing unmet when nothing is: a Builder reading both would otherwise not
- * know whether a checker of its own may ever say so. What the rule guards is a harness that answers
- * for its solver; it does not make the comparison attributable, since a separated search and test
- * is still an engine against a Starter that has none, one turn longer. `ANSWER FROM A PROGRAM` in
- * `tools/wri/read.ts` reads whether a harness answered for its solver, against the reference.
- *
- * On 20 October the operator lifted the clause on the composition, leaning to the Builder's
- * freedom: r3's search programs and esp32-r2's helper each filtered their own candidates against
- * the public rules, and no reader of a harness can tell a filter from a finished answer it judged.
- * A comparison prices whatever a harness does, so the one limit left is the one against cheating:
- * nothing in a harness names a task, copies its text or holds its answer.
- *
- * A session is a new conversation, so the opening message carries what the plan gives a Builder
- * whose conversation was lost: the notes its earlier sessions left (`memory.ts`),
+ * A session is a new conversation, so the opening message carries what stands in for a Builder's
+ * lost conversation: the notes its earlier sessions left (`memory.ts`),
  * and, from the log, every failed practice solve so far and each comparison's tally (`past.ts`).
  *
  * New here: what the harness is measured on, and how a practice result is to be read. It is
@@ -65,32 +47,26 @@
  * it holds. That is a fact, not a course: which part to keep, amend or rewrite stays the Builder's.
  *
  * It hears no count from other campaigns, since a number fixed in a prompt goes stale while the
- * Builder reads its own campaign's tallies in its opening. On 20 November two were taken out: how
- * promoted harnesses fared against the starter on the tasks written after each promotion
- * (`starter-reads.ts --all`), with the account of the starter comparison it came with, and the
- * share of scored tasks from a family never released as practice (742 of 1,432 over 170
- * comparisons opened from 29 October). The same day the operator rewrote the system prompt, the
- * handover and the shell's wall in fewer words, the prompt as paragraphs with the harness's three
- * parts as a list.
+ * Builder reads its own campaign's tallies in its opening. The system prompt is written as
+ * paragraphs, with the harness's three parts as a list.
  *
- * On 2 November the texts were read for a model that follows a prompt literally (Opus 5.5), and
- * each place a sentence read as a course or a second limit was put as a fact: "leaves the solving
- * method to the solver" and "answers a particular task" read as bans on a method in the guide and
- * on a program that computes a candidate, against the search this prompt permits, so the one limit
- * is stated once in the words of 20 October above; "useful computation belongs in the harness" and
- * "decide before you practise" were courses. The time-and-turns rule and "keep it to words" are
- * stated once, in `HARNESS.md` (`src/harness/starter.ts`). Two facts the Builder lacked were added:
- * one retained task, exhausted or held before the reference's promotion, is scored for every three
- * others (`scoredSet`, `src/campaign/round.ts`; `poolOf`, `src/kernel/reports.ts`), and a solve cut at its limit fails, which "turns decide nothing" hid.
+ * The texts are written for a model that follows a prompt literally, so each sentence is a fact
+ * and not a course or a second limit: phrasings such as "leaves the solving method to the solver"
+ * or "answers a particular task" read as bans on a method in the guide and on a program that
+ * computes a candidate, against the search this prompt permits, so the one limit is stated once.
+ * The time-and-turns rule and "keep it to words" are stated once, in `HARNESS.md`
+ * (`src/harness/starter.ts`). Two facts the Builder would otherwise lack are stated: one retained
+ * task, exhausted or held before the reference's promotion, is scored for every three others
+ * (`scoredSet`, `src/campaign/round.ts`; `poolOf`, `src/kernel/reports.ts`), and a solve cut at
+ * its limit fails.
  *
- * On 4 November the Builder's texts were consolidated so that each fact is stated once, where the
- * Builder reads it (a draft for paired live seats before adoption). A tool's own behaviour is in its
- * description, so this prompt no longer describes `check_harness`, `preview_harness`, `practice`,
+ * Each fact is stated once, where the Builder reads it. A tool's own behaviour is in its
+ * description, so this prompt does not describe `check_harness`, `preview_harness`, `practice`,
  * `read_trace`, `read_opening` or `finish`; the shape of each harness part (the programs'
  * convention, the guide's place in the solver's prompt) is in `HARNESS.md`. This prompt keeps a map
  * of the three parts and the one fact no section there holds: a harness whose scripts or links name
- * the home is not frozen. That `agent/config.yaml` is not read was taken out on 20 November: the
- * host tells the solver its limits (`HARNESS.md`), and no seat ever named the file.
+ * the home is not frozen. The host tells the solver its limits (`HARNESS.md`), so no file of the
+ * harness sets them.
  */
 import { GAP_FLOOR, WEIGHTS } from "../kernel/compare.ts";
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
@@ -274,13 +250,12 @@ export function systemPrompt(said: Said): string {
  * The last line of every tool result a Builder reads: the turn it is in, the session time used, the
  * practice solves left, and, until one has run, that none has. A solver has the same of its own
  * limits (`timed`, `src/solver/run.ts`). The facts ride on tool results because that is where a
- * Builder reads: in the seven sessions on record on 9 October, 365 turns in all, every turn ended
- * in a tool call, so a message sent only between turns was never sent once.
+ * Builder reads: nearly every turn ends in a tool call, so a message sent only between turns is
+ * hardly ever read.
  *
- * The practice fact is there because on 10 October a session of 43 turns spent 69% of its time limit
- * measuring a tool chain through 40 shell calls, called `check_harness`, `preview_harness` and
- * `practice` not once, and left a tree whose own module spawns a program the tree does not hold;
- * the continuation (`tried`), which alone said where `harness/` stood, no turn of it triggered.
+ * The practice fact is there because a session can spend most of its time limit measuring a tool
+ * chain through the shell without once calling `check_harness`, `preview_harness` or `practice`,
+ * and leave a tree that does not open.
  * The line states the condition and no course: which fact matters is the Builder's.
  */
 export function usedLine(used: Used, limits: Pick<Told, "wallSeconds" | "turns">): string {
@@ -349,10 +324,9 @@ export function firstMessage(contract: Contract, tasks: readonly Listed[], told:
     ...(past.comparisons.length === 0
       ? []
       : [`Comparisons so far, on tasks you are not shown:\n${past.comparisons.join("\n")}`]),
-    // Who solves with the harness and what each solve is held to. Until 13 October a Builder was
-    // told neither: the solver as "a separate solving model", and a solve's limits only as the "of"
-    // in a practice result, while one campaign of that day ran a smaller solver under a Builder of
-    // the larger, and a guide written for one reads differently to the other.
+    // Who solves with the harness and what each solve is held to, since a campaign can run a
+    // smaller solver under a Builder of the larger, and a guide written for one reads differently
+    // to the other.
     `The solver your harness is measured with is ${told.solver.model} at ${told.solver.effort} effort. Each of its solves, in practice and in a comparison, has ${plural(Math.round(told.solve.wallSeconds / 60), "minute")} and ${told.solve.modelTurns === undefined ? "its model turns unlimited" : plural(told.solve.modelTurns, "model turn")}.`,
     HANDOVER,
     `This session has ${plural(told.practiceSolves, "practice solve")}, ${plural(Math.round(told.wallSeconds / 60), "minute")} and ${plural(told.turns, "turn")}.`,

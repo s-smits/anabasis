@@ -2,10 +2,9 @@
  * What a session is told of the campaign before it, at its opening: every failed practice solve
  * on a task it may practise on, and each comparison's tally.
  *
- * A session opens a new conversation. The plan keeps one conversation for a campaign
- * (`7f0add79:docs/plan.md`, Phase 5) and names what stands in for it when the conversation is lost: the
- * Builder's notes (`memory.ts`), the list of failed practice solves, and each comparison's result
- * in aggregate.
+ * A session opens a new conversation. A campaign keeps one conversation where it can, and what
+ * stands in for it when the conversation is lost is the Builder's notes (`memory.ts`), the list of
+ * failed practice solves, and each comparison's result in aggregate.
  *
  * Nothing is read from the log here. The two lists are the campaign's one reading
  * (`campaignOf`, `handover.ts`) through the Builder's filter, so that what a Builder is told and
@@ -21,11 +20,11 @@
  * - A comparison is told as its tally and its reading, and only once it has tallied a task. It
  *   names no task, no share of valid answers, no ruling and no cost: a held-out task is never
  *   shown, and which of them were won is a way to it. That is a few bits a comparison, which the
- *   plan accepts while comparisons are few. It also says on how many of the tallied tasks the two
- *   harnesses' validity differed, a count no task can be read from: on 19 November a Builder told
- *   only "18 won, 5 lost" of a no-step that one validity loss held went back to practice, where
- *   the task it lost could not be, and none of its four comparisons had said which measure
- *   decided. The line says how many tasks the tally is over, which
+ *   design accepts while comparisons are few. It also says on how many of the tallied tasks the two
+ *   harnesses' validity differed, a count no task can be read from, since a Builder told only "18
+ *   won, 5 lost" of a no-step that one validity loss held went back to practice, where the task it
+ *   lost could not be, not knowing which measure decided. The line says how many tasks the tally
+ *   is over, which
  *   is the tally's own sum. It names the two harnesses, and the prompt limit each solve was held to
  *   where they were limited: a campaign's reference changes at a promotion, and a list that said
  *   "the reference harness" of each line set tallies against two references side by side as if
@@ -40,7 +39,7 @@ import { short } from "../campaign/move.ts";
 import type { Built } from "./session.ts";
 
 /** A comparison's reading as a Builder is told it. A reading that tallied nothing has none. The
- *  last two are readings a comparison made before 11 October, which an older log holds. */
+ *  last two are readings only the oldest logs hold. */
 const READ = new Map([
   ["step", "a step"],
   ["no-step", "no step"],
@@ -113,8 +112,8 @@ export function comparisonsTold(steps: readonly Handover[]): string[] {
 
 /**
  * Where the harness session `id` starts from came from, and how the Builder session before it
- * ended. Until 14 October a session was told the digest alone: buffer-149's b-2 started from the
- * starter after b-1 crashed, and found out by listing harness/ that its guide was gone.
+ * ended, since a session told the digest alone can start from the starter after a crash and find
+ * out only by listing harness/ that its guide is gone.
  */
 export function startTold({ steps, reference }: Campaign, digest: string, id: string): string {
   const builders = steps.flatMap((step) => (step.step === "builder" && step.id !== id ? [step] : []));

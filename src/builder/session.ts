@@ -188,13 +188,13 @@ export interface BuildRequest {
     readonly tools: SeatTool[];
     readonly hook: () => string;
     /** Halts the conversation where the campaign has ended, as `hook` does, and renders nothing:
-     *  before each model request, where a status would be discarded (plan item 6.4, 14 October). */
+     *  before each model request, where a status would be discarded. */
     readonly halts?: () => void;
     /** Settles once no action of the campaign's runs: an Examiner session writing beside the
      *  conversation ends on record before the conversation does, however the conversation ended. */
     readonly closing?: () => Promise<void>;
     /** A move the host makes as the conversation opens, and what it said of it, which the opening
-     *  message carries, or nothing: the campaign's first Examiner session (14 October). */
+     *  message carries, or nothing: the campaign's first Examiner session. */
     readonly start?: () => Promise<string>;
     /** What `finish` tells the Builder where no comparison has read harness `digest` against the
      *  reference, or null (`finishNotice`, `tools.ts`). */
@@ -236,11 +236,9 @@ export async function practised(request: SolveRequest): Promise<Practised> {
 
 /** Keep the state an interrupted session's own practice solve last ran on as a harness snapshot, once,
  *  where it changed the parent and its saved state opens. A cut harness is passed over
- *  (`latestBuilt`) as one left half way through an edit, but a practised state is no half-edit: on
- *  13 October buffer-149's b-1 crashed with a harness it had practised three of three on, and b-2
- *  rebuilt it from b-1's notes for 25 turns. Until 20 October only a crash kept it, and a session a
- *  stop cut was ended as killed with nothing kept: esp32-r2's and recode's b-2 began from the
- *  starter (whole-run investigations of 20 October). */
+ *  (`latestBuilt`) as one left half way through an edit, but a practised state is no half-edit,
+ *  and a session that crashed or was stopped with one would otherwise leave the next to rebuild it
+ *  from its notes or begin from the starter. */
 export async function keepPractised(log: string, id: string, states: string): Promise<void> {
   const events = read(log);
   const mine = events.filter(ownedBy(events, id));
@@ -267,9 +265,8 @@ export async function keepPractised(log: string, id: string, states: string): Pr
 }
 
 /** Keep the notes of session `id`, cut by a stop or a lost process, from its home while the home
- *  stands, as its own end would have (`keepMemory`). Until 27 October only a session that ended
- *  itself kept them: a stop released the home with the notes in it, and PR377's b-2 opened
- *  on the starter's (lane 16 of the investigation of 27 October). */
+ *  stands, as its own end would have (`keepMemory`), since a stop releases the home with the notes
+ *  in it and the next session would open on the starter's. */
 export function keepCutNotes(log: string, id: string): void {
   const { home } = sessionDirs(log, id);
   if (existsSync(home)) keepMemory(home, join(dirname(log), "memory"), id);
@@ -329,8 +326,8 @@ export async function session(
     limits: { ...limits },
   });
   // The deadline counts the Builder's own time: its clock stops while a campaign action runs, which is
-  // the host's time (`Bench.within`). Until 14 October the opening armed a second timer that the
-  // session's own arming overwrote, and it cut main0_5_1's Builder four hours on, a comparison in flight.
+  // the host's time (`Bench.within`). The session arms one timer, so no second clock cuts a
+  // Builder with a comparison in flight.
   const clock = sessionClock(began, limits.wallSeconds);
   const bench: Bench = {
     request,
@@ -424,10 +421,9 @@ async function converse(
     practiceLeft: practiceLeft(bench, request.cap === undefined && campaign === undefined ? [] : read(log)),
     practised: bench.opened?.harness.digest ?? null,
   });
-  // The line goes under the first result of each turn, once a turn: until 14 October a turn of six
-  // calls read it six times, and then the last call carried it, which a call pi refuses before it
-  // runs (a tool the session lacks, arguments its schema refuses) never reaches, so such a turn
-  // read nothing of its limits. A result is a result whichever call made it.
+  // The line goes under the first result of each turn, once a turn, rather than under every call or
+  // the last, which a call pi refuses before it runs (a tool the session lacks, arguments its schema
+  // refuses) never reaches. A result is a result whichever call made it.
   let told = false;
   const footer = () => {
     if (told) return "";
@@ -467,9 +463,8 @@ async function converse(
     trace: { log, of: "build" },
     // A campaign conversation's bounds are the campaign's, asked of the table (`halts`), and a
     // session by hand is held to its dollar cap, before a request and again after a compaction, which
-    // bills too. Until 19 October the cap held practice alone: a session the host ran opened on
-    // what was left of a campaign's total and could bill turns past it until its finish, its
-    // session turn limit or its deadline, as two reviews of the host-led loop found (#202, closed). A campaign
+    // bills too, rather than practice alone, which would let a session bill turns past a campaign's
+    // total until its finish, its turn limit or its deadline. A campaign
     // conversation's cap is what was left when it opened, and the operator's word can raise the
     // total after: the table's reading of the budget is the one that holds it, as `practiceLeft`
     // already has it.
@@ -507,7 +502,7 @@ async function finishSession(bench: Bench, sat: Sat, clock: BuildClock, turns: n
   // Where what it holds does not open, the session is not lost with it: the last state it
   // practised with is what is measured, and `broken` says why the final one was not. That a harness
   // opens is all that is left of v1's submission check, and there a round that ended refused measured
-  // nothing: 13 firmware rounds, 3,803 minutes, by v1 #113's count. A session cut at its deadline half way
+  // nothing: 13 firmware rounds, 3,803 minutes, by v1's count. A session cut at its deadline half way
   // through an edit ends so, and the state before it was one real solves ran on. A session that
   // never practised has no such state, and leaves none.
   let frozen: HarnessSnapshot | null;
@@ -607,8 +602,8 @@ async function left(events: readonly LogEvent[], request: BuildRequest, parent: 
  * Run session `request.id` once, and say what it left. A session the log already holds is not run
  * again: it is read from the log, whether it ran now or in an earlier run of the command, and one
  * that did not end whole is refused (`spent`). It is the session of a round, which then compares
- * what it left, and the whole of a session run with no comparison after it: the plan measures
- * several sessions together in one standalone comparison (`7f0add79:docs/plan.md`, Phase 5).
+ * what it left, and the whole of a session run with no comparison after it, since several sessions
+ * can be measured together in one standalone comparison.
  */
 export async function sessionOnce(
   request: BuildRequest,

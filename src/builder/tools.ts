@@ -27,8 +27,8 @@
  * program is not read for it: a path built into one is as often a build's record as the place it runs from.
  *
  * `practice` is where the Referee meets the Builder. A rejected answer goes to it, as in a
- * comparison; a check defect's task leaves the session. The triage of 20 October found unclear and
- * unread rejections still shown as failures. What comes back names the ending and the
+ * comparison; a check defect's task leaves the session, and an unclear or unread rejection is not
+ * shown as a failure. What comes back names the ending and the
  * task's record, and never a check, a verdict's detail or the Referee's reasons. A practice solve
  * that could not be run at all, the verifier failing to decide for one, ends the session: its
  * error can name a check, so it is kept for the host and the Builder is told only that the session ends.
@@ -120,9 +120,8 @@ export interface Bench {
   readonly faults: string[];
   /** Aborted when the host stops the session at a bound or a campaign action fails. */
   readonly halt: AbortController;
-  /** Run a campaign action without charging its elapsed time to the session's deadline.
-   *  Until 13 October the clock included actions, and a led Builder had 45 of its 240 minutes to build and
-   *  ended one second after the comparison it bought reported, which it never read. */
+  /** Run a campaign action without charging its elapsed time to the session's deadline, so that a
+   *  led Builder is not left minutes to build and cut off before reading the comparison it bought. */
   readonly within: <T>(action: () => Promise<T>) => Promise<T>;
   /** What that practice solve threw; the session throws it again once its record is written. */
   fatal: Error | null;
@@ -190,8 +189,8 @@ export function hasPractice(
 
 /** The parent's tool tree, where it really is; null when the parent has none. Every caller copies
  *  it as the host, outside every wall, into a seat's home or a handover, so the tree lies in the
- *  harness or beside it, as a kept state's does. Until 26 October a link to anywhere was followed,
- *  and an imported harness's `.toolchain` could hand any folder the host reads to the next Builder. */
+ *  harness or beside it, as a kept state's does: a link to anywhere would let an imported
+ *  harness's `.toolchain` hand any folder the host reads to the next Builder. */
 export function parentToolTree(parent: string): string | null {
   const tree = join(parent, TOOL_TREE_DIR);
   if (!existsSync(tree)) return null;
@@ -224,8 +223,8 @@ function refuseNamingHome(dir: string, home: string, under: string): void {
 
 /** Remove a tree copy no kept state's `.toolchain` names, which is what the last copy becomes once
  *  the tree has changed and nothing was frozen under it. A `check_harness` call keeps nothing and
- *  makes one all the same: on 10 October a first session left a 6.4 MB copy linked by no state,
- *  and one domain's tree is 316 MB, so a check after each tree edit would leave one each. */
+ *  makes one all the same, and a domain's tree can run to hundreds of megabytes, so a check after
+ *  each tree edit would leave one each. */
 function dropUnlinked(states: string, dir: string): void {
   const named = join("..", basename(dir));
   const links = readdirSync(states).map((name) => join(states, name, TOOL_TREE_DIR));
@@ -352,10 +351,9 @@ export async function snapshot(bench: Bench): Promise<HarnessSnapshot> {
  *  its start to its end, the verifier's among them, of its time limit, the model's own turns, and
  *  the tokens the model read and wrote over them. Empty where the log holds no end for the solve.
  *  A Builder that is not told this cannot tell a harness that passes with a minute to spare from
- *  one that passes at the limit (`7f0add79:docs/plan.md`, Phase 2). The tokens are the one measure of what
- *  a tool or a program costs a solve that the Builder can act on: on 10 October a promoted
- *  harness's solve read 8,600 to 13,200 tokens over two turns in three campaigns, nearly all of it
- *  the prompt read twice. */
+ *  one that passes at the limit. The tokens are the one measure of what a tool or a program costs a
+ *  solve that the Builder can act on, since most of a short solve's tokens are its prompt read
+ *  again each turn. */
 function usedText(events: readonly LogEvent[], solve: string): string {
   const { start, end } = solvesIn(events).find(({ id }) => id === solve) ?? {};
   const limits = limitsIn(start?.limits);
@@ -382,15 +380,14 @@ async function practise(bench: Bench, task: PracticeTask, kept: HarnessSnapshot,
     lines.push("The task's own check could not run on this answer: the task leaves this session's practice.");
   }
   // Only a rejected answer has anything to recompute: a solve its limits ended, or one that gave no
-  // answer, is not valid with no ruling (`src/campaign/round.ts`). Until 15 October each went to the
-  // Referee and was logged earned, unread: seven of them in three campaigns.
+  // answer, is not valid with no ruling (`src/campaign/round.ts`), and the Referee is not asked of
+  // it.
   if (rejected(ending) && request.referee !== undefined) {
     try {
       const finding = await request.referee(solve, task, kill);
       // The log holds the dispute, as a comparison's does (`dispute`, `src/campaign/round.ts`), so
-      // every reader of the practice set sees it. Until 5 November only the session's memory did:
-      // the campaign still counted the task as practice, owed no other in its place, and the next
-      // session paid to learn it again.
+      // every reader of the practice set sees it, and the campaign owes another practice task in
+      // its place rather than leaving the next session to pay to learn it again.
       if (finding.ruling === "check-defect") {
         if (taskStates(read(request.log)).get(task.version) === "released") {
           append(request.log, "task.state", {
@@ -411,8 +408,8 @@ async function practise(bench: Bench, task: PracticeTask, kept: HarnessSnapshot,
 
 /**
  * The practice solves a session may still start. A Builder that leads its campaign has as many as
- * what is left of the campaign's total holds a reserve for, and no count of its own: r3's b-1 ran
- * out of its 24 at turn 161 with $560 left (deep dive, 20 October). A session by hand keeps
+ * what is left of the campaign's total holds a reserve for, and no count of its own, since a fixed
+ * count can run out with most of the budget left. A session by hand keeps
  * its count, and no more than its own part of the log leaves its cap a reserve for (`billedParts`).
  * The Builder is told a count and never a sum.
  */
@@ -428,13 +425,10 @@ export function practiceLeft({ request, spent }: Bench, events: readonly LogEven
 }
 
 /** A task's practice record under each harness `roles` names, each digest once with all its roles,
- *  and under an objective each valid answer's measure. Until 27 October it named harness/ and the
- *  parent whatever ran, so 129 of 852 practice calls under the reference (8 to 26 October) were told
- *  nothing of its record; until 3 November it counted passes alone, and 283 of 285 buffer record
- *  clauses from v0.9.1 read "passed N of N" (lane 9); until 4 November it named no author's answer
- *  (`task.feasible`), and buffer592's Builder read a task 18% dearer than its author's as nothing to
- *  gain; until 19 November a solve under harness/ named no record under the reference, which a
- *  promotion moves off the parent. Only practice solves of released tasks are read (`record`). */
+ *  and under an objective each valid answer's measure and the author's answer (`task.feasible`), so
+ *  that a pass that costs more than the author's still reads as room to gain. A solve under
+ *  harness/ also names the record under the reference, which a promotion moves off the parent.
+ *  Only practice solves of released tasks are read (`record`). */
 function recordText(
   events: readonly LogEvent[],
   version: string,
@@ -505,8 +499,8 @@ export function practiceTool(bench: Bench): SeatTool {
       const kill = AbortSignal.any([context.abortSignal ?? bench.halt.signal, failed.signal]);
       // Under the reference the solve runs the harness the session's is compared with, and harness/
       // as it stands need not open. What the reference does on a task is the Builder's to buy with
-      // its own solve, and each result's record names what such solves found. `under: "parent"`
-      // went on 27 October: 4 of 852 practice calls on record named it.
+      // its own solve, and each result's record names what such solves found. There is no
+      // `under: "parent"`, since Builders hardly ever named it.
       const ran: HarnessSnapshot =
         args.under === "reference"
           ? { dir: bench.reference, harness: await openHarness(bench.reference) }
@@ -613,16 +607,15 @@ export function traceTool(bench: Bench): SeatTool {
  *
  * These are finish notices. v1's submit refused a round that then measured nothing, 13 firmware
  * rounds by its own count, and a session here is frozen whatever it holds (`session.ts`). A Builder that
- * finishes is the one reader who can still act. In two sessions of 9 October the harness that
- * went to the comparison was one no practice solve had run: the six solves were spent on earlier
- * versions, which is why `practice` says when the last one is gone. A session that never
+ * finishes is the one reader who can still act. A harness can go to the comparison with no
+ * practice solve run on it, the solves spent on earlier versions, which is why `practice` says when
+ * the last one is gone. A session that never
  * practised chose so and is told nothing here. A second `finish` ends the session as it is.
  *
  * A Builder that leads its campaign is also told that no comparison has read the harness it would
- * leave: on 13 October buffer-151-haiku's Builder finished while an Examiner session wrote, and the
- * campaign ended `finished` with no comparison.
- * One that would finish on the harness last promoted is told the move the table names next, since on
- * 14 October buffer-149's Builder finished on the harness just promoted and the climb stopped there.
+ * leave, since a Builder that finishes while an Examiner session writes can end the campaign
+ * `finished` with no comparison. One that would finish on the harness last promoted is told the
+ * move the table names next, since finishing there stops the climb.
  */
 async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<string | null> {
   const { request, told } = bench;
@@ -662,9 +655,9 @@ export async function harnessNow(bench: Bench): Promise<string | Error> {
  * conversation was compacted, or lost with its process, has the public rules, practice tasks,
  * failed practice solves and comparisons in no other place: the host builds them from the log,
  * and the Builder's own notes are its prose about them. A campaign's conversation rebuilds them; a session
- * by hand keeps the original message. An Examiner's opening holds the record of every task and,
- * since 21 October, serves it again: 65 Examiner sessions on record compacted, and the summary
- * kept what the model chose of that record.
+ * by hand keeps the original message. An Examiner's opening holds the record of every task and
+ * serves it again, since Examiner sessions compact and a summary keeps only what the model chose
+ * of that record.
  */
 export function openingTool(opening: string | (() => string), description: string): SeatTool {
   return tool({
@@ -678,10 +671,8 @@ export function openingTool(opening: string | (() => string), description: strin
 /**
  * `wait`: the next word of work running beside a session, as a call, for a seat whose results come
  * later: an Examiner's task admission, or the Examiner session beside a Builder's conversation.
- * Without one a sleep in the shell was the only call that waits: Builders slept bare 536 times while an
- * Examiner wrote beside them, most for about 900 s, on their own clock, and Examiners 119 times; on
- * 21 October a live Examiner still slept 190 s past its task admission's result at a head whose
- * turn with no call waited for it.
+ * Without one a sleep in the shell is the only call that waits, on the seat's own clock and often
+ * long past the result it waits for.
  */
 export function waitTool(description: string, next: () => Promise<string>): SeatTool {
   return tool({

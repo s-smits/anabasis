@@ -132,6 +132,14 @@ describe("trying the reference at writing", () => {
     expect(budgetLeft(events)?.dollars).toBe(100 - 5 * BILL);
   });
 
+  it("gives a later ask without a probe no try, rather than the first ask's probe", async () => {
+    const made = seated(100, 4, [PASS, PASS]);
+    await invoke(toolOf(made.mode), "put", { tasks: [instance(7)] });
+    made.mode.ask?.({ ...made.request, id: "x-2", probe: null });
+    await expect(said(made, { task: spelled(7) })).rejects.toThrow("no try");
+    expect(made.handed).toEqual([]);
+  });
+
   it("refuses a call the campaign's reserve does not cover or whose reference it never checked, and solves nothing for it", async () => {
     const made = seated(1.5, 4, []);
     await expect(said(made, { task: spelled(7) })).rejects.toThrow("no reserve");

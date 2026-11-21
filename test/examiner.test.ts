@@ -859,6 +859,8 @@ describe("one Examiner conversation across the host's asks", () => {
     expect(s.of("exam.turn").map(({ session }) => session)).toEqual(["x-1", "x-2", "x-2", "x-2"]);
     // A call that rests its ask and wakes in the next stays its own ask's.
     expect(s.of(CALLED).map(({ session }) => session)).toEqual(["x-1", "x-2", "x-2", "x-2"]);
+    // Its time is unknown, not the rest it spent parked.
+    expect(s.of(CALLED).map(({ ms }) => ms === null)).toEqual([true, false, false, false]);
     expect(s.of("task.proposed").map(({ taskId }) => taskId)).toEqual(["x-1-001", "x-2-001"]);
     // The second request is the same conversation: its context holds the opening and the wake.
     const [opening = "", woken = ""] = s.sent;
@@ -872,6 +874,22 @@ describe("one Examiner conversation across the host's asks", () => {
     expect(told).toContain("The reference harness was promoted on the step of comparison c-1");
     expect(told).toContain("No comparison has reported since the host last told you.");
     for (const unsaid of ["17", "harder", "wanted"]) expect(told).not.toContain(unsaid);
+  });
+
+  it("closes a conversation whose ask finished holding nothing, so the next ask opens afresh", async () => {
+    const s = seat("write", [finish, finish, propose(2), finish]);
+    const rested: string[] = [];
+    const examined = await examine({
+      ...s.request,
+      wanted: 1,
+      rest: async (ask) => {
+        rested.push(ask.ended);
+        return { ...s.request, id: "x-2", wanted: 1 };
+      },
+    });
+    expect(rested).toEqual([]);
+    expect(examined).toMatchObject({ ended: "finished", held: [] });
+    expect(s.of("exam.started").map(({ session }) => session)).toEqual(["x-1"]);
   });
 
   it("serves at `read_opening` what the current ask was told: its record and its limits, whose wake a compaction would drop", async () => {

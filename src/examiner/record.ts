@@ -157,14 +157,13 @@ function refusedLines(events: readonly LogEvent[], since: number): string[] {
   return [...why].map(([reason, named]) => `${reason}: ${named.join(", ")}`);
 }
 
-/** The task versions comparisons reported on after event `after`. */
+/** The task versions of the comparisons first reported after event `after`, each at its last report,
+ *  as `stoodLines` reads them: a resumed comparison's second report or a ladder's adds none. */
 const reportedAfter = (events: readonly LogEvent[], after: number) =>
   new Set(
-    events
-      .slice(after)
-      .flatMap(({ kind, data }) =>
-        kind === "comparison.reported" && Array.isArray(data.versions) ? data.versions.filter(isString) : [],
-      ),
+    lastReports(events)
+      .filter(({ index }) => index >= after)
+      .flatMap(({ data }) => (Array.isArray(data.versions) ? data.versions.filter(isString) : [])),
   );
 
 /** What a task's line says after its name: the turns each of the reference's valid answers took and

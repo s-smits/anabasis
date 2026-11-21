@@ -479,6 +479,21 @@ describe("the tasks awaiting task review", () => {
     for (const kind of ["wall-ended", "context-ended"]) {
       const cut = bounded(bounded(start, "b-1", "h2", kind), "b-2", "h3", kind);
       expect(poolOf(cut)).toMatchObject({ awaiting: [], scorable: ["hard", "easy"] });
+      // Only the reference's own cut solve passes a comparison over: a candidate's held-out solve
+      // cut short moves nothing the Builder is told (rule 3).
+      const candidateCut = (log: readonly LogEvent[], session: string, fresh: string) => [
+        ...log,
+        ...solvedUnder(session, told("hard", "h1"), [F, F]),
+        ...solvedUnder(session, told("hard", fresh), [kind, F]),
+        ...solvedUnder(session, told("easy", "h1"), [P, P]),
+        ...solvedUnder(session, told("easy", fresh), [P, P]),
+        reported(session, "no-step", fresh, { ...terms, setting, fresh, versions: ["hard", "easy"] }),
+      ];
+      const clean = bounded(bounded(start, "b-1", "h2", F), "b-2", "h3", F);
+      const other = candidateCut(candidateCut(start, "b-1", "h2"), "b-2", "h3");
+      expect(poolOf(other)).toMatchObject({ awaiting: ["hard"], scorable: ["easy"] });
+      expect(poolOf(other).frontier).toEqual(poolOf(clean).frontier);
+      expect(poolOf(other).practiceFrontier).toEqual(poolOf(clean).practiceFrontier);
     }
     expect(awaiting([...spent, event("task.feasible", { version: "hard", session: "x-1" })])).toEqual([]);
     expect(awaiting([...spent, ...solved(undefined, "hard", "h1", [P])])).toEqual([]);
@@ -506,7 +521,8 @@ describe("the tasks awaiting task review", () => {
     expect(unanswered(twice)).toEqual(["hard"]);
     const cut = compared(compared(start, "b-1", "h2", "turns-ended"), "b-2", "h3", "turns-ended");
     expect(unanswered(cut)).toEqual(["hard"]);
-    expect(awaiting(cut)).toEqual([]);
+    // The limit cut only the candidate's solves, which passes no comparison over (rule 3).
+    expect(awaiting(cut)).toEqual(["hard"]);
     expect(unanswered(compared(twice, "b-3", "h4", P))).toEqual(["hard"]);
     expect(
       unanswered([

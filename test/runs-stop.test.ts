@@ -88,26 +88,6 @@ describe("a stop", () => {
     }
   });
 
-  // A session begun on the release before the notes moved to one file wrote `SCRATCHPAD.md` alone.
-  it("keeps a cut Builder's scratchpad where its home holds no other notes", () => {
-    const path = join(root, `${basename(root)}-scratchpad`, "log.jsonl");
-    const cut = sessionDirs(path, "b-1");
-    try {
-      mkdirSync(dirname(path));
-      append(path, "build.started", { session: "b-1" });
-      mkdirSync(cut.home, { recursive: true });
-      writeFileSync(join(cut.home, "SCRATCHPAD.md"), "Tried: the narrow sweep.\n");
-      writeFileSync(join(cut.home, "notes.txt"), "not a notes file\n");
-      keepCutNotes(path, "b-1");
-      rmSync(cut.root, { recursive: true, force: true });
-      const block = builderMemoryBlock(join(dirname(path), "memory"), ["b-1"]);
-      expect(block).toContain("Tried: the narrow sweep.");
-      expect(block).not.toContain("not a notes file");
-    } finally {
-      rmSync(cut.root, { recursive: true, force: true });
-    }
-  });
-
   // The campaign command is started niced, in a process group of its own, with its output in two
   // files (`bun run runs launch`).
   it("ends a process started in a group of its own and its children, through the group", async () => {

@@ -39,7 +39,7 @@ function judgedIn(store: string): Map<string, Set<string>> {
 }
 
 /** The labels in `store` whose reference and Starter are both judged and that have no table yet. */
-export function readsDone(store: string): string[] {
+function readsDone(store: string): string[] {
   const judged = judgedIn(store);
   return [...judged.keys()]
     .filter((arm) => arm.startsWith("starter-"))

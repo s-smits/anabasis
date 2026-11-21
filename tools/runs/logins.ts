@@ -511,7 +511,7 @@ function shown(window: Window, length: number, now: number, end?: End): string {
 /** The weeks the model reads now: those `weeks` read, and the other logins' from the last of `kept`
  *  where still in their window, so a reading of a few logins reads every login as the whole view does
  *  and a head line names the same end in either. */
-export function weeksFor(weeks: readonly Week[], kept: readonly Snapshot[], now: number): Snapshot["weeks"] {
+function weeksFor(weeks: readonly Week[], kept: readonly Snapshot[], now: number): Snapshot["weeks"] {
   const others = Object.entries(byTime(kept).at(-1)?.weeks ?? {});
   return {
     ...Object.fromEntries(others.filter(([, { reset }]) => reset > now)),
@@ -543,14 +543,14 @@ export function perRunRate(history: readonly Snapshot[]): number | null {
 /** What one of `on` live runs on `week` spends an hour of the clock: the measured rate, active
  *  `ACTIVE_SHARE` of the time, or before there is one the week's own pace shared over its runs, so
  *  70% in 4 days with two runs left on it reads about 0.36% a run an hour. Null with neither. */
-export function perRunHour(week: Week, on: number, rate: number | null, now: number): number | null {
+function perRunHour(week: Week, on: number, rate: number | null, now: number): number | null {
   if (rate !== null) return rate * ACTIVE_SHARE;
   return on > 0 ? weekPace(week, now) / on : null;
 }
 
 /** How many runs `week` carries for `RUN_HOURS`, or to its reset where that is sooner, each spending
  *  `perHour` of it an hour; null without a rate. */
-export function fitOf(week: Week, perHour: number | null, now: number): number | null {
+function fitOf(week: Week, perHour: number | null, now: number): number | null {
   if (perHour === null) return null;
   const need = perHour * Math.max(0, Math.min(RUN_HOURS, (week.reset - now) / HOUR_MS));
   return need <= 0 ? Number.POSITIVE_INFINITY : Math.floor(Math.max(0, 100 - week.pct) / need);
@@ -605,7 +605,7 @@ const uncounted = (hosts: readonly string[]) => `not counted on ${hosts.join(", 
 
 /** One line a login of the runs in `live`, each login `allowed` names first, then any other a run
  *  names and the runs that name none, and the hosts in `unasked` that went uncounted. */
-export function activeLines(
+function activeLines(
   live: readonly Live[],
   allowed: readonly string[],
   unasked: readonly string[],

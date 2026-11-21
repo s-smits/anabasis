@@ -334,7 +334,7 @@ export function zip(
 }
 
 /** `2h`, `90m`, `45s` or `1.5d` as seconds. */
-export function secondsOf(text: string): number {
+function secondsOf(text: string): number {
   const found = /^(\d+(?:\.\d+)?)([smhd])$/.exec(text);
   const per = SECONDS.get(found?.[2] ?? "");
   if (found === null || per === undefined) {
@@ -352,7 +352,7 @@ const countOf = (flag: string, text: string, least: number) => {
 };
 
 /** A date, a date with a time and a zone, or how long ago (`36h`), as milliseconds since the epoch. */
-export function momentOf(flag: string, text: string, now = Date.now()): number {
+function momentOf(flag: string, text: string, now = Date.now()): number {
   if (AGO.test(text)) return now - secondsOf(text) * 1000;
   const at = MOMENT.test(text) ? Date.parse(text) : Number.NaN;
   if (Number.isNaN(at)) {

@@ -31,17 +31,13 @@ const LIVE = Type.Array(
  *  rather than by hand. */
 export const CODEX = "codex";
 
-/** Whether `flags`, a launch's, seat a model through the Codex CLI's login. */
-export function seatsCodex(flags: readonly string[]): boolean {
-  return Object.values(looseFlagsOf(flags)).some(
-    (value) => isString(value) && value.startsWith("openai-codex/"),
-  );
-}
-
 /** Who pays a run on `login` with the launch flags `flags`: the login, or the Codex CLI's where it
  *  names none and a seat goes through it. */
 export const payerOf = (login: string | undefined, flags: readonly string[]): string | undefined =>
-  login ?? (seatsCodex(flags) ? CODEX : undefined);
+  login ??
+  (Object.values(looseFlagsOf(flags)).some((value) => isString(value) && value.startsWith("openai-codex/"))
+    ? CODEX
+    : undefined);
 
 /** The live seats of the skill `system-path-simulation` among the processes `table`, each by the seed
  *  and the login its own flags name, since a seat keeps no launch receipt. A shell that started one

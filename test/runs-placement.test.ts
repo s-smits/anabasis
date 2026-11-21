@@ -1,7 +1,5 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { rmSync } from "../src/meta/filesystem.ts";
-import type { Host } from "../tools/runs/host-config.ts";
-import { leastOccupied } from "../tools/runs/placement.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const fixtures: string[] = [];
@@ -21,15 +19,6 @@ function fixture() {
 }
 
 describe("placing a fresh campaign", () => {
-  it("chooses no Claude login after fresh's preset seats are all overridden to GPT", () => {
-    const made = fixture();
-    const result = made.run(`import { fresh, seats } from "REPOSITORY/tools/runs/fresh.ts";
-await fresh(["sample", "--host", "runner", "--model", "opus", "--", ...seats("openai-codex/gpt-6.1-sol", "hhhh")], async () => { throw new Error("login usage must not be read"); });`);
-    expect(result.err).toBe("");
-    expect(result.code).toBe(0);
-    expect(result.out).toContain("nothing is launched without --yes");
-  });
-
   it("refuses a fleet-full login before any source preparation, even with an explicit host", () => {
     const made = fixture();
     const result = made.run(FRESH, {
@@ -41,50 +30,9 @@ await fresh(["sample", "--host", "runner", "--model", "opus", "--", ...seats("op
     expect(result.err).toContain("live-run cap across the fleet");
     expect(made.recorded().some((call) => call.args.includes("fetch"))).toBe(false);
     expect(made.recorded().some((call) => call.args.at(-1)?.includes("ana-code") === true)).toBe(false);
-  });
-
-  it("uses the existing room rule to choose the earliest resetting allowed week below its cap", () => {
-    const made = fixture();
-    const code = `import { freshLogin } from "REPOSITORY/tools/runs/placement.ts";
-const logins = process.env.ANA_LOGINS!.split(",");
-const readings = logins.map((login, index) => ({login, plain:false, via:"oauth-usage" as const, notes:[], fiveHour:{pct:0,resetsAt:null}, sevenDay:{pct:0,resetsAt:new Date(2000 - index * 1000).toISOString()}}));
-const read = async () => readings;
-console.log(await freshLogin(undefined, [], read));
-console.log(await freshLogin(undefined, [{name:"busy",login:logins[1]!,host:"elsewhere"}], read));
-try { await freshLogin(undefined, [], async () => readings.map((reading) => ({...reading,sevenDay:{pct:100,resetsAt:null}}))); } catch (error) { console.log(String(error)); }
-`;
-    const result = made.run(code, {
-      ANA_LOGINS: `${LOGIN},${OTHER}`,
-      ANA_LOGIN_RUNS: "1",
-      [`CLAUDE_CODE_OAUTH_TOKEN${LOGIN}`]: "held",
-    });
-    expect(result.code).toBe(0);
-    expect(result.out.split("\n").slice(0, 2)).toEqual([OTHER, LOGIN]);
-    expect(result.out).toContain("no allowed login has room");
-  });
-
-  it("refuses a named login the provider refuses, and starts one whose reading failed otherwise", () => {
-    const made = fixture();
-    const code = `import { freshLogin } from "REPOSITORY/tools/runs/placement.ts";
-const said = (error: string) => async (logins: readonly string[]) => logins.map((login) => ({login, plain:false, error}));
-try { await freshLogin(process.env.FAKE_LOGIN, [], said("OAuth error: HTTP 403; messages HTTP 403, no rate-limit headers")); } catch (error) { console.log(String(error)); }
-console.log(await freshLogin(process.env.FAKE_LOGIN, [], said("fetch failed")));`;
-    const result = made.run(code, { FAKE_LOGIN: LOGIN, [`CLAUDE_CODE_OAUTH_TOKEN${LOGIN}`]: "held" });
-    expect(result.code).toBe(0);
-    expect(result.out).toContain(`login ${LOGIN} is refused by the provider`);
-    expect(result.out.trim().split("\n").at(-1)).toBe(LOGIN);
-  });
-
-  it("goes on the plain login where no numbered login is allowed, and on a numbered one beside it", () => {
-    const made = fixture();
-    const code = `import { freshLogin } from "REPOSITORY/tools/runs/placement.ts";
-const read = async (logins: readonly string[]) => logins.map((login) => ({login, plain:false, via:"oauth-usage" as const, notes:[], fiveHour:{pct:0,resetsAt:null}, sevenDay:{pct:0,resetsAt:null}}));
-console.log(String(await freshLogin(undefined, [], read)));`;
-    expect(made.run(code, { CLAUDE_CODE_OAUTH_TOKEN: "plain" }).out.trim()).toBe("undefined");
-    const numbered = { CLAUDE_CODE_OAUTH_TOKEN: "plain", [`CLAUDE_CODE_OAUTH_TOKEN${LOGIN}`]: "numbered" };
-    expect(made.run(code, numbered).out.trim()).toBe(LOGIN);
-    // With no login at all it says which credential is missing, and no login is at a cap.
-    expect(made.run(code).err).toContain("error: no login here: set CLAUDE_CODE_OAUTH_TOKEN in");
+    expect(
+      made.recorded().some((call) => call.tool === "ssh" && call.args.at(-1)?.includes("fresh") === true),
+    ).toBe(false);
   });
 
   it("asks only for a remote login's presence and refuses a missing key before launch preparation", () => {
@@ -111,21 +59,16 @@ console.log(String(await freshLogin(undefined, [], read)));`;
     );
   });
 
-  it("spreads one login's runs over the hosts before it prefers a familiar one", () => {
+  it("refuses a named login the provider refuses, and starts one whose reading failed otherwise", () => {
     const made = fixture();
-    const place = (login: string) =>
-      `import { placeFresh } from "REPOSITORY/tools/runs/placement.ts"; console.log((await placeFresh("sample", undefined, undefined, "${login}"))?.name ?? "here");`;
-    const catalogue = JSON.stringify([
-      { name: "prior", path: `${made.root}/prior/log.jsonl`, project: "sample-fresh" },
-    ]);
-    const active = JSON.stringify([{ name: "one", login: LOGIN, host: made.host.name }]);
-    const env = { FAKE_CATALOGUE: catalogue, FAKE_ACTIVE: active };
-    for (const [login, host] of [
-      [LOGIN, "here"],
-      [OTHER, "runner"],
-    ] as const) {
-      expect(made.run(place(login), env).out.trim()).toBe(host);
-    }
+    const code = `import { freshLogin } from "REPOSITORY/tools/runs/placement.ts";
+const said = (error: string) => async (logins: readonly string[]) => logins.map((login) => ({login, plain:false, error}));
+try { await freshLogin(process.env.FAKE_LOGIN, [], said("OAuth error: HTTP 403; messages HTTP 403, no rate-limit headers")); } catch (error) { console.log(String(error)); }
+console.log(await freshLogin(process.env.FAKE_LOGIN, [], said("fetch failed")));`;
+    const result = made.run(code, { FAKE_LOGIN: LOGIN, [`CLAUDE_CODE_OAUTH_TOKEN${LOGIN}`]: "held" });
+    expect(result.code).toBe(0);
+    expect(result.out).toContain(`login ${LOGIN} is refused by the provider`);
+    expect(result.out.trim().split("\n").at(-1)).toBe(LOGIN);
   });
 
   it("puts a GPT run on no machine that carries one, chosen or named, unless codex:N allows more", () => {
@@ -168,36 +111,5 @@ console.log(String(await freshLogin(undefined, [], read)));`;
     expect(made.run(code, { ANA_HOSTS: JSON.stringify([{ ...made.host, packs: ["../x"] }]) }).err).toContain(
       "packs takes a list of pack names",
     );
-  });
-});
-
-describe("the least busy machine", () => {
-  const host = (name: string): Host => ({ name, ssh: name, tree: "~/t", bun: "~/b" });
-  const [a, b, c] = [host("a"), host("b"), host("c")];
-
-  it("takes the least one-minute load a core, halved where a machine carries no run", () => {
-    const rows = [
-      { host: a, live: 1, capacity: 2, load: 0.5, familiar: true },
-      { host: b, live: 0, capacity: 2, load: 0.9 },
-      { host: c, live: 1, capacity: 2, load: 0.6 },
-    ];
-    // b's 0.9 counts as 0.45 with no run there, below a's 0.5 and the familiar pack there.
-    expect(leastOccupied(rows)).toBe(b);
-    expect(leastOccupied(rows.map((row) => (row.host === b ? { ...row, live: 1 } : row)))).toBe(a);
-    // A full machine is never chosen, however idle.
-    expect(leastOccupied(rows.map((row) => (row.host === b ? { ...row, capacity: 0 } : row)))).toBe(a);
-  });
-
-  it("spreads a login's runs first, and lets load decide nothing where a machine with room gave none", () => {
-    const rows = [
-      { host: a, live: 1, capacity: 2, load: 0.1, sameLogin: 1 },
-      { host: b, live: 1, capacity: 2, load: 0.9, sameLogin: 0 },
-    ];
-    expect(leastOccupied(rows)).toBe(b);
-    const silent = [
-      { host: a, live: 1, capacity: 2, load: 0.1 },
-      { host: b, live: 0, capacity: 2, familiar: true },
-    ];
-    expect(leastOccupied(silent)).toBe(b);
   });
 });

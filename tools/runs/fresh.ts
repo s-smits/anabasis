@@ -120,7 +120,7 @@ function parsed(own: readonly string[]) {
  * seat and named by its id. A served model is refused here, before a worktree is made, where no
  * backend serves it.
  */
-export function modelOf(model: string): { id: string; effort: string; label: string } {
+function modelOf(model: string): { id: string; effort: string; label: string } {
   const named = Object.entries(NAMED).find(([one]) => one === model);
   if (named !== undefined) return { ...named[1], label: named[0] };
   if (!model.includes("/")) {
@@ -144,13 +144,6 @@ export function seats(id: string, letters: string): string[] {
     ...seat("reviewer", review),
     ...seat("solver", solve),
   ];
-}
-
-/** The first of `base`, `base-r2`, `base-r3` ... that `taken` does not hold. */
-export function freeName(base: string, taken: (name: string) => boolean): string {
-  const name = (n: number): string => (n === 1 ? base : `${base}-r${String(n)}`);
-  const free = (n: number): string => (taken(name(n)) ? free(n + 1) : name(n));
-  return free(1);
 }
 
 /** `bun run runs fresh`. */
@@ -291,7 +284,11 @@ async function startFresh(pack: string, login: string | undefined, start: Start)
     ? start.as
     : [start.as, ownName()].filter((part) => part !== undefined).join("-");
   const base = [pack, "fresh", start.label, ...(suffix === undefined ? [] : [suffix])].join("-");
-  const name = freeName(base, (one) => held.has(one) || existsSync(join(beside, `anabasis-${one}`)));
+  // The first of `base`, `base-r2`, `base-r3` ... that no campaign or worktree holds.
+  const nameOf = (n: number): string => (n === 1 ? base : `${base}-r${String(n)}`);
+  const taken = (one: string): boolean => held.has(one) || existsSync(join(beside, `anabasis-${one}`));
+  const free = (n: number): string => (taken(nameOf(n)) ? free(n + 1) : nameOf(n));
+  const name = free(1);
   if (!isSafePathSegment(name)) throw new Error("the campaign name exceeds the path-segment limit");
   const tree = join(beside, `anabasis-${name}`);
   const flags = [

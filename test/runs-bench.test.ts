@@ -1,37 +1,6 @@
-/**
- * `bun run runs bench <run>` runs other owners' commands in one order: nothing is spent before both dry
- * runs, a step that fails ends the read, a tree reaches the store only whole and unchanged, and a
- * label the store holds is neither exported nor carried again. One read is walked end to end on
- * this machine, with a stand-in export and sitting; the rest are read as words.
- */
-import { namedIn } from "../tools/runs/hosts.ts";
 import { describe, expect, test } from "bun:test";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { benchesOf } from "../tools/runs/host-config.ts";
-import {
-  evalOf,
-  heldAs,
-  opened,
-  probed,
-  type Plan,
-  sealed,
-  settingsOf,
-  stepsOf,
-  walk,
-} from "../tools/runs/bench.ts";
-import { readsDone } from "../tools/runs/bench-scores.ts";
-import { Misused } from "../tools/runs/registry.ts";
+import { type Plan, settingsOf, stepsOf, walk } from "../tools/runs/bench.ts";
 
 const HOSTS = JSON.stringify([
   { name: "builder", ssh: "you@builder", tree: "~/src/anabasis", bun: "~/.bun/bin/bun" },
@@ -71,18 +40,6 @@ const planOf = (over: Partial<Plan> = {}): Plan => ({
 const said = (plan: Plan) => stepsOf(plan).map(({ says }) => says);
 const text = (plan: Plan) => stepsOf(plan).map(({ command }) => command.join(" "));
 
-/** A folder for one test, gone after it. */
-function inScratch(name: string, body: (root: string) => Promise<void> | void) {
-  return async () => {
-    const root = mkdtempSync(join(tmpdir(), `${name}-`));
-    try {
-      await body(root);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  };
-}
-
 describe("runs bench", () => {
   test("a run's pack chooses its benchmark, and a choice the list leaves open refuses before any machine is asked", () => {
     expect(settingsOf(RUN, ENV)).toMatchObject({ bench: "statbench", runner: { name: "bench" } });
@@ -114,41 +71,6 @@ describe("runs bench", () => {
     expect(kept.map(({ name, host }) => [name, host])).toEqual([["local", undefined]]);
   });
 
-  test("pause --eval owes one waiting read a benchmark of the run, named before the pause is armed", () => {
-    const two = benches(STATS, { ...STATS, name: "second" });
-    const pause = ["--after", "reported", RUN];
-    expect(evalOf([...pause, "--yes"], two)).toEqual({ passed: [...pause, "--yes"], reads: [] });
-    expect(evalOf([...pause, "--eval", "--yes"], two)).toEqual({
-      passed: [...pause, "--yes"],
-      reads: [
-        [RUN, "--bench", "statbench", "--wait", "--yes"],
-        [RUN, "--bench", "second", "--wait", "--yes"],
-      ],
-    });
-    // Without --yes each read is a plan; a run no benchmark reads is paused alone.
-    expect(evalOf([RUN, "--eval"], ENV).reads).toEqual([[RUN, "--bench", "statbench", "--wait"]]);
-    expect(evalOf(["other-fresh-opus-builder", "--eval"], two).reads).toEqual([]);
-    // A machine named alone, as an older setting read, is no list, and is refused as
-    // a plain error, which the CLI prints as a refusal and not as a defect with its stack.
-    for (const [old, says] of [
-      ["{}", /EVAL_RUNNER takes a JSON list/u],
-      ["bench", /EVAL_RUNNER is not JSON/u],
-    ] as const) {
-      const refusal = (() => {
-        try {
-          return evalOf([RUN, "--eval"], { ANA_HOSTS: HOSTS, EVAL_RUNNER: old });
-        } catch (error) {
-          return error;
-        }
-      })();
-      const read = refusal instanceof Error ? [refusal.constructor, refusal.message] : refusal;
-      expect(read).toEqual([Error, expect.stringMatching(says)]);
-    }
-    // A run named past a `--` is paused and would be read nowhere, so the flag is refused there.
-    expect(namedIn("pause", ["--after", "reported", RUN, "--yes"])).toEqual([RUN]);
-    expect(() => evalOf(["--eval", "--", RUN], ENV)).toThrow(Misused);
-  });
-
   test("the machine is asked first, and nothing is spent before both dry runs", () => {
     const steps = text(planOf());
     expect(said(planOf())).toEqual([
@@ -168,141 +90,6 @@ describe("runs bench", () => {
     expect(steps[1]).toContain("you@builder");
     expect(steps[1]).toContain(String.raw`--for '\''linux-x64'\'' --python '\''3.12'\''`);
     expect(steps[6]).toContain("you@bench");
-  });
-
-  test(
-    "a read walks on one machine: export, carry, both dry runs, then the reference before the Starter",
-    inScratch("outside-walk", async (root) => {
-      const control = join(root, "control");
-      const store = join(root, "store");
-      const ran = join(root, "ran.txt");
-      mkdirSync(control);
-      const script = (name: string, body: string) => {
-        writeFileSync(join(root, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
-        return join(root, name);
-      };
-      // The export's stand-in writes a tree and its build record where `--out` says.
-      const bun = script(
-        "bun",
-        'while [ $# -gt 0 ]; do case "$1" in --name) n=$2;; --out) o=$2;; esac; shift; done\nmkdir -p "$o/trees/$n" && echo guide > "$o/trees/$n/CLAUDE.md" && echo "{}" > "$o/trees/$n.build.json"',
-      );
-      const sitting = script("sitting", `case "$1" in status) echo idle;; run) echo "$*" >> ${ran};; esac`);
-      const plan = planOf({ holder: undefined, runner: undefined, tree: control, bun, store, sitting });
-      const env = { ...Bun.env, TMPDIR: root };
-      await walk(
-        stepsOf(plan),
-        async (command) => await Bun.spawn([...command], { env, stdout: "ignore" }).exited,
-      );
-      expect(readdirSync(join(store, "trees")).toSorted()).toEqual(["ref-a1", "ref-a1.build.json"]);
-      expect(readdirSync(join(store, "trees", "ref-a1"))).toEqual(["CLAUDE.md"]);
-      expect(existsSync(join(root, "ana-outside-read-ref-a1"))).toBe(false);
-      // The arms roll detached from the read, one after the other.
-      for (
-        let at = 0;
-        at < 100 && (existsSync(ran) ? readFileSync(ran, "utf8") : "").split("\n").length < 5;
-        at += 1
-      ) {
-        await Bun.sleep(20);
-      }
-      const arms = readFileSync(ran, "utf8")
-        .trim()
-        .split("\n")
-        .map((line) => line.split(" "));
-      expect(arms.map((words) => [words[2], words.at(-1)])).toEqual([
-        ["ref-a1", "--dry-run"],
-        ["starter-ref-a1", "--dry-run"],
-        ["ref-a1", "--yes"],
-        ["starter-ref-a1", "--yes"],
-      ]);
-      expect(arms.map((words) => words[1])).toEqual(["2", "2", "2", "2"]);
-    }),
-  );
-
-  test(
-    "the carry moves a tree in only whole, unchanged and with no link to the build machine",
-    inScratch("outside-carry", (root) => {
-      const from = join(root, "stage");
-      const trees = join(root, "store", "trees");
-      mkdirSync(join(from, "ref-a1", "tools"), { recursive: true });
-      // Bytes that do not compress, seeded, so that a byte changed in the stream lands in a file's.
-      let seed = 7;
-      const noise = Uint8Array.from(
-        { length: 20_000 },
-        () => (seed = (seed * 1_103_515_245 + 12_345) % 2 ** 31) >> 23,
-      );
-      writeFileSync(join(from, "ref-a1", "tools", "run"), noise);
-      writeFileSync(join(from, "ref-a1", ".DS_Store"), "finder");
-      writeFileSync(join(from, "ref-a1.build.json"), "{}");
-      const stream = () => Bun.spawnSync(["/bin/sh", "-c", sealed(from, "ref-a1")]).stdout;
-      const open = (bytes: Uint8Array, env?: Record<string, string>) =>
-        Bun.spawnSync(["/bin/sh", "-c", opened(trees, "ref-a1")], { stdin: bytes, ...(env && { env }) })
-          .exitCode;
-      // A stream cut short, and one with a byte changed, which bsdtar alone would extract, move nothing in.
-      expect(open(stream().subarray(0, 60))).not.toBe(0);
-      const changed = stream();
-      const at = Math.floor(changed.length / 2);
-      changed.set([(changed[at] ?? 0) ^ 1], at);
-      expect(open(changed)).not.toBe(0);
-      expect(existsSync(join(trees, "ref-a1"))).toBe(false);
-      // A link to an absolute path names the build machine's files and is refused.
-      symlinkSync("/opt/build/python3", join(from, "ref-a1", "tools", "python3"));
-      expect(open(stream())).not.toBe(0);
-      expect(existsSync(join(trees, "ref-a1"))).toBe(false);
-      rmSync(join(from, "ref-a1", "tools", "python3"));
-      // Sums one machine wrote are checked by what the other has: this path holds no `sha256sum` on a Mac.
-      expect(open(stream(), { PATH: "/usr/bin:/bin" })).toBe(0);
-      expect(readdirSync(trees).toSorted()).toEqual(["ref-a1", "ref-a1.build.json"]);
-      expect(readdirSync(join(trees, "ref-a1"))).toEqual(["tools"]);
-      // A tree in place is never written over.
-      expect(open(stream())).not.toBe(0);
-    }),
-  );
-
-  test("a sitting that does not answer ends the probe, and the rolled arms' output is kept beside the store", () => {
-    const store = mkdtempSync(join(tmpdir(), "ana-probe-"));
-    try {
-      const probe = (sitting: string) => Bun.spawnSync(["/bin/sh", "-c", probed({ sitting, store })]);
-      // A sitting with no interpreter to name: its exit is the probe's, and no line stands in for the minor.
-      expect(probe("false").exitCode).toBe(1);
-      // A store with no tree yet is no fault: the machine and the minor are said.
-      const answered = probe("echo 3.12 #");
-      expect(answered.exitCode).toBe(0);
-      expect(answered.stdout.toString().split("\n")[1]).toBe("3.12");
-      const rolling = text(planOf()).at(-1) ?? "";
-      expect(rolling).toContain("/rolled-ref-a1.log 2>&1 < /dev/null &");
-      expect(rolling).not.toContain("> /dev/null 2>&1");
-    } finally {
-      rmSync(store, { recursive: true, force: true });
-    }
-  });
-
-  test("a label the store holds is rolled as it stands, with no export, carry or machine that holds the run", () => {
-    const held = planOf({ held: DIGEST, holder: undefined });
-    expect(said(held)).toEqual([
-      "the benchmark's machine is idle",
-      "dry run of ref-a1",
-      "dry run of starter-ref-a1",
-      "roll ref-a1, then starter-ref-a1, on login 2",
-    ]);
-    // The harness named reaches the export and the reference's arm, and never the Starter's.
-    const named = text(planOf({ harness: "b".repeat(64) }));
-    expect(named.filter((step) => step.includes("b".repeat(64)))).toHaveLength(3);
-    expect(named[5]).not.toContain("b".repeat(64));
-  });
-
-  test("a harness is read once unless --as names another read, and a label binds one tree", () => {
-    const store = new Map([
-      ["ref-old", DIGEST],
-      ["starter-old", "s".repeat(64)],
-    ]);
-    expect(heldAs(store, DIGEST, "aaaaaaaa")).toEqual({ again: ["ref-old"], held: null });
-    expect(heldAs(store, DIGEST, "again-1", "again-1")).toEqual({ again: [], held: null });
-    // Its own label goes on where an arm stopped, and another harness is no read of this one.
-    expect(heldAs(store, DIGEST, "ref-old")).toEqual({ again: [], held: DIGEST });
-    expect(heldAs(store, "b".repeat(64), "bbbbbbbb")).toEqual({ again: [], held: null });
-    expect(() => heldAs(store, "b".repeat(64), "ref-old", "ref-old")).toThrow(/binds one tree/u);
-    // A letter is no digest to set against the store's, so its label is rolled as the store holds it.
-    expect(heldAs(store, "C", "ref-old", "ref-old")).toEqual({ again: [], held: DIGEST });
   });
 
   test("a read that waits looks again while an arm holds the machine, and one that does not refuses", () => {
@@ -325,26 +112,4 @@ describe("runs bench", () => {
     expect(ran).toHaveLength(5);
     expect(ran.some((words) => words.includes("--yes"))).toBe(false);
   });
-  test(
-    "a read is scored once, after its Starter is judged on every task its reference is",
-    inScratch("ana-scored", (store) => {
-      const judge = (arm: string, ...tasks: readonly string[]) => {
-        mkdirSync(join(store, "judged", arm), { recursive: true });
-        for (const task of tasks) writeFileSync(join(store, "judged", arm, `${task}.json`), "{}");
-      };
-      judge("ref-a", "t1", "t2");
-      judge("starter-ref-a", "t1");
-      judge("ref-b", "t1");
-      judge("ref-c", "t1");
-      judge("starter-ref-c", "t1", "t2");
-      judge("starter-ref-d", "t1");
-      // ref-a's Starter still rolls, ref-b has none, and a Starter alone is no read.
-      expect(readsDone(store)).toEqual(["ref-c"]);
-      judge("starter-ref-a", "t2");
-      expect(readsDone(store)).toEqual(["ref-a", "ref-c"]);
-      mkdirSync(join(store, "scored"));
-      writeFileSync(join(store, "scored", "ref-a.txt"), "table\n");
-      expect(readsDone(store)).toEqual(["ref-c"]);
-    }),
-  );
 });

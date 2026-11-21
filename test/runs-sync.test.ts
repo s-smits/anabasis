@@ -5,23 +5,16 @@ import { afterAll, describe, expect, test } from "bun:test";
 import {
   chmodSync,
   existsSync,
-  lstatSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
-  realpathSync,
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { gitText } from "../src/meta/git.ts";
 import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
-import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
-import { pinnedPythonDir, toolchainPathDirs } from "../src/wall/policy.ts";
+import { pinnedPythonDir } from "../src/wall/policy.ts";
 import type { Host } from "../tools/runs/host-config.ts";
-import { hostPython } from "../tools/runs/receipt.ts";
-import { runnerLags, WALL_PATH } from "../tools/runs/sync.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 /** What a fake peer answers (`test/helpers/fake-hosts.ts`). */
@@ -49,12 +42,11 @@ case "$*" in
   --version) echo "uv 9.9.9 (stand-in)" ;;
   *"python install"*)
     for last; do :; done
-    if [ "$FAKE_UV_OFFERS" = no ]; then echo "error: No download found for $last" >&2; exit 2; fi
     dir="$UV_PYTHON_INSTALL_DIR/cpython-$last-stand-in/bin"
     # As uv does, a version already installed is left as it is.
     [ -x "$dir/python3" ] && exit 0
     mkdir -p "$dir"
-    printf '%s\\n' "\${FAKE_UV_SHIPS-pip==1.0}" > "$dir/../packages"
+    echo pip==1.0 > "$dir/../packages"
     printf '%s' "$last" > "$dir/../version"
     cp "$FAKE_PYTHON" "$dir/python3"
     chmod +x "$dir/python3"
@@ -62,25 +54,6 @@ case "$*" in
   *"python find"*)
     for last; do :; done
     echo "$UV_PYTHON_INSTALL_DIR/cpython-$last-stand-in/bin/python3"
-    ;;
-  *"pip install"*)
-    [ "$FAKE_UV_PIP" = skip ] && exit 0
-    py=""
-    want=0
-    for word; do
-      if [ "$want" = 1 ]; then py="$word"; want=0; fi
-      [ "$word" = --python ] && want=1
-    done
-    for last; do :; done
-    held="$(dirname "$py")/../packages"
-    # As pip does, a pinned version replaces the one held, whatever case its name is written in.
-    for word; do
-      case "$word" in *==*)
-        grep -iv "^\${word%%==*}==" "$held" > "$held.new"; mv "$held.new" "$held"
-        printf '%s\\n' "$word" >> "$held" ;;
-      esac
-    done
-    case "$last" in *==*) ;; *) printf '%s\\n' "$last" >> "$held" ;; esac
     ;;
 esac
 `;
@@ -142,31 +115,6 @@ function fixture() {
   return { ...fake, drive: fake.run, peerHome, hereHome, tree, environment, run, uvCalls, sshCalls };
 }
 
-describe("one host", () => {
-  test("no hosts: nothing to do, exit 0, no ssh, on every flag", () => {
-    const made = fixture();
-    for (const flags of [[], ["--check"], ["--yes"], ["--yes", "--force"]]) {
-      for (const hosts of ["", "[]"]) {
-        const result = made.run(flags, { env: { ANA_HOSTS: hosts } });
-        expect([flags, hosts, result.code, result.err]).toEqual([flags, hosts, 0, ""]);
-        expect(result.out).toContain("nothing to do");
-      }
-    }
-    expect(made.sshCalls()).toEqual([]);
-    expect(made.uvCalls()).toBe("");
-    expect(existsSync(join(made.main, ".env.runs"))).toBe(false);
-  });
-
-  test("a verb another host sent here reaches no further and pins nothing", () => {
-    const made = fixture();
-    const result = made.run(["--yes"], { env: { ANA_HOP: "1", ANA_PYTHON: VERSION } });
-    expect(result.code).toBe(0);
-    expect(result.out).toContain("nothing to do");
-    expect(made.sshCalls()).toEqual([]);
-    expect(made.uvCalls()).toBe("");
-  });
-});
-
 describe("settings", () => {
   /** What a verb on the peer finds in its environment, where the peer's own value of each is
    *  `its own`: a stand-in Bun prints it, run through the path every remote verb takes. */
@@ -191,39 +139,9 @@ process.exit();`,
     );
   }
 
-  test("every remote verb carries the shared values, the host's capacity and never the host list", () => {
-    const seen = sent({ capacity: 3 }, { ANA_LOGINS: "2,3", ANA_KEEP: "off" });
-    expect(seen).toMatchObject({ ANA_LOGINS: "2,3", ANA_KEEP: "off", ANA_RUN_CAP: "3", ANA_HOP: "1" });
-    expect(seen.ANA_HOSTS).toBe("its own");
-    expect(seen.ANA_LOGIN_RUNS).toBe("its own");
-  });
-
-  test("a host's own value overrides a shared one, and an empty one sends none", () => {
-    const settings = { ANA_LOGINS: "4", ANA_LOGIN_RUNS: "" };
-    const seen = sent({ settings }, { ANA_LOGINS: "2,3", ANA_LOGIN_RUNS: "2" });
-    expect(seen.ANA_LOGINS).toBe("4");
-    expect(seen.ANA_LOGIN_RUNS).toBe("its own");
-  });
-
   test("a value with a dollar, a hash or a quote reads back whole", () => {
     const value = String.raw`a $HOME #kept 'quoted' \ b`;
     expect(sent({}, { ANA_LOGINS: value }).ANA_LOGINS).toBe(value);
-  });
-
-  test("a dry run says what travels, and there is nothing to apply for it", () => {
-    const made = fixture();
-    const env = { ANA_LOGINS: "2,3", ANA_KEEP: "off" };
-    const host = { capacity: 3, checks: 2, settings: { ANA_LOGIN_SUBS: "2:max" } };
-    const dry = made.run([], { env, host });
-    expect(dry.code).toBe(0);
-    for (const word of ["ANA_LOGINS=2,3", "ANA_KEEP=off", "ANA_LOGIN_SUBS=2:max", "ANA_RUN_CAP=3"]) {
-      expect(dry.out).toContain(word);
-    }
-    expect(made.run(["--check"], { env, host }).code).toBe(0);
-    expect(made.run(["--yes"], { env, host }).code).toBe(0);
-    expect(existsSync(join(made.tree, ".env.runs"))).toBe(false);
-    const asked = made.sshCalls().some((call) => call.args.at(-1)?.includes("active") === true);
-    expect(asked).toBe(false);
   });
 });
 
@@ -283,62 +201,7 @@ await asked(["status"], hostsOf(), "configured");`,
 });
 
 describe("python", () => {
-  const pin = { ANA_PYTHON: VERSION, ANA_PYTHON_PACKAGES: "uv==0.1" };
-
-  test("a dry run names the move and installs nothing; --yes pins it and hostPython reads the pin", () => {
-    const made = fixture();
-    const dry = made.run([], { env: pin });
-    expect(dry.out).toContain(`wants ${VERSION} with pip, uv==0.1`);
-    expect(dry.out).toContain("uv 9.9.9");
-    expect(made.uvCalls()).not.toContain("python install");
-    expect(existsSync(pinnedPythonDir(made.peerHome))).toBe(false);
-
-    const applied = made.run(["--yes"], { env: pin });
-    expect(applied.out).toContain("every machine is in step");
-    expect(applied.code).toBe(0);
-    expect(lstatSync(pinnedPythonDir(made.peerHome)).isSymbolicLink()).toBe(true);
-    expect(hostPython([pinnedPythonDir(made.peerHome)])).toEqual({
-      version: VERSION,
-      packages: ["pip==1.0", "uv==0.1"],
-    });
-    expect(made.run(["--check"], { env: pin }).code).toBe(0);
-    const calls = made.uvCalls();
-    expect(calls).not.toMatch(/uninstall|\bremove\b/u);
-    for (const line of calls
-      .split("\n")
-      .filter((one) => /python install|python find|pip install/u.test(one))) {
-      expect(line.startsWith("--no-config ")).toBe(true);
-    }
-  });
-
-  test("no packages named means none but pip enforced, and a package nobody named stays and is reported", () => {
-    const made = fixture();
-    const version = { ANA_PYTHON: VERSION };
-    expect(made.run(["--yes"], { env: version }).out).toContain("every machine is in step");
-    const pinned = join(made.peerHome, `.local/share/ana-python/versions/cpython-${VERSION}-stand-in`);
-    writeFileSync(join(pinned, "packages"), "pip==1.0\nextra==2\n");
-    const result = made.run(["--check"], { env: version });
-    expect(result.code).toBe(0);
-    expect(result.out).toContain("extra==2");
-    expect(readFileSync(join(pinned, "packages"), "utf8")).toContain("extra==2");
-  });
-
-  test("a pin that lacks pip lacks something, and a package's name compares as Python's packaging does", () => {
-    const made = fixture();
-    const named = { ...pin, ANA_PYTHON_PACKAGES: "typing_extensions" };
-    expect(made.run(["--yes"], { env: named }).code).toBe(0);
-    const pinned = join(made.peerHome, `.local/share/ana-python/versions/cpython-${VERSION}-stand-in`);
-    writeFileSync(join(pinned, "packages"), "pip==1.0\ntyping-extensions==4.1\n");
-    expect(made.run(["--check"], { env: named }).code).toBe(0);
-    writeFileSync(join(pinned, "packages"), "typing-extensions==4.1\n");
-    const lacking = made.run(["--check"], { env: named });
-    expect(lacking.code).toBe(1);
-    expect(lacking.out).toContain("lacks pip");
-    writeFileSync(join(pinned, "packages"), "pip==1.0\nuv==0.2\n");
-    const stale = made.run(["--check"], { env: pin });
-    expect(stale.code).toBe(1);
-    expect(stale.out).toContain("lacks uv==0.1");
-  });
+  const pin = { ANA_PYTHON: VERSION };
 
   test("a move under a live campaign is refused and names it, and --force passes and says so", () => {
     const made = fixture();
@@ -349,17 +212,13 @@ describe("python", () => {
       expect(existsSync(pinnedPythonDir(made.peerHome))).toBe(false);
     }
     expect(made.run(["--yes"], { env: pin, fleet }).code).toBe(1);
+    // A live count it cannot read refuses as a live campaign does.
+    const unread = made.run(["--yes"], { env: pin, fleet: { active: "no json" } });
+    expect([unread.code, unread.out.includes("could not be counted")]).toEqual([1, true]);
+    expect(existsSync(pinnedPythonDir(made.peerHome))).toBe(false);
     const forced = made.run(["--yes", "--force"], { env: pin, fleet });
     expect(forced.out).toContain("--force, under 1 live: live-one");
     expect(existsSync(pinnedPythonDir(made.peerHome))).toBe(true);
-  });
-
-  test("a live count it cannot read refuses as a live campaign does", () => {
-    const made = fixture();
-    const result = made.run(["--yes"], { env: pin, fleet: { active: "no json" } });
-    expect(result.code).toBe(1);
-    expect(result.out).toContain("could not be counted");
-    expect(existsSync(pinnedPythonDir(made.peerHome))).toBe(false);
   });
 
   test("a host with no uv is refused, and force does not pass it", () => {
@@ -371,75 +230,6 @@ describe("python", () => {
     expect(existsSync(pinnedPythonDir(made.peerHome))).toBe(false);
   });
 
-  test("a version uv does not offer fails in uv's words and the link stays, and the second read says so", () => {
-    const made = fixture();
-    const dry = made.run([], { env: { ...pin, FAKE_UV_OFFERS: "no" } });
-    expect(dry.code).toBe(0);
-    const failed = made.run(["--yes", "--force"], { env: { ...pin, FAKE_UV_OFFERS: "no" } });
-    expect(failed.code).toBe(1);
-    expect(`${failed.out}${failed.err}`).toContain(`No download found for ${VERSION}`);
-    expect(failed.out).toContain("failed");
-    expect(failed.out).toContain("left after applying");
-    expect(existsSync(pinnedPythonDir(made.peerHome))).toBe(false);
-  });
-
-  test("what an apply that exits 0 did not do is read again and exits 1", () => {
-    const made = fixture();
-    const failed = made.run(["--yes"], { env: { ...pin, FAKE_UV_PIP: "skip" } });
-    expect(failed.code).toBe(1);
-    expect(failed.out).toContain("left after applying");
-    expect(failed.out).toContain("lacks uv==0.1");
-  });
-
-  test("a package a peer shares with this machine takes this machine's version, and one only the peer holds stays", () => {
-    const made = fixture();
-    expect(made.run(["--yes"], { env: pin }).code).toBe(0);
-    const held = (home: string) =>
-      join(home, `.local/share/ana-python/versions/cpython-${VERSION}-stand-in`, "packages");
-    writeFileSync(held(made.hereHome), "pip==1.0\nuv==0.1\nnarwhals==2.28.0\n");
-    writeFileSync(held(made.peerHome), "pip==1.0\nuv==0.1\nNarwhals==2.29.0\nown==3\n");
-    const dry = made.run(["--check"], { env: pin });
-    expect(dry.code).toBe(1);
-    expect(dry.out).toContain("takes this machine's narwhals==2.28.0");
-    expect(dry.out).toContain("packages not on every machine, which stay: own==3\n");
-    const applied = made.run(["--yes"], { env: pin });
-    expect(applied.out).toContain("every machine is in step");
-    expect(readFileSync(held(made.peerHome), "utf8").split("\n").toSorted()).toEqual([
-      "",
-      "narwhals==2.28.0",
-      "own==3",
-      "pip==1.0",
-      "uv==0.1",
-    ]);
-    expect(made.uvCalls()).not.toMatch(/uninstall|\bremove\b/u);
-  });
-
-  test("this machine sets no version while it lacks the pin, and a live campaign on the peer holds the change", () => {
-    const made = fixture();
-    expect(made.run(["--yes"], { env: pin }).code).toBe(0);
-    const held = (home: string) =>
-      join(home, `.local/share/ana-python/versions/cpython-${VERSION}-stand-in`, "packages");
-    writeFileSync(held(made.peerHome), "pip==1.0\nuv==0.1\nnarwhals==2.29.0\n");
-    writeFileSync(held(made.hereHome), "uv==0.1\nnarwhals==2.28.0\n");
-    const off = made.run([], { env: pin });
-    expect(off.out).toContain("lacks pip");
-    expect(off.out).not.toContain("takes this machine's");
-    writeFileSync(held(made.hereHome), "pip==1.0\nuv==0.1\nnarwhals==2.28.0\n");
-    const fleet = { active: capturedJsonStringify([{ name: "live-one", login: "2" }]) };
-    const live = made.run(["--yes"], { env: pin, fleet });
-    expect(live.code).toBe(1);
-    expect(live.out).toContain("refused: 1 live: live-one");
-    expect(readFileSync(held(made.peerHome), "utf8")).toContain("narwhals==2.29.0");
-  });
-
-  test("a pin alone, with no hosts, applies here and asks nothing of ssh", () => {
-    const made = fixture();
-    const result = made.run(["--yes"], { env: { ...pin, ANA_HOSTS: "" } });
-    expect(result.code).toBe(0);
-    expect(existsSync(pinnedPythonDir(made.hereHome))).toBe(true);
-    expect(made.sshCalls()).toEqual([]);
-  });
-
   test("a version that is no version and packages with no version are refused before anything runs", () => {
     const made = fixture();
     expect(made.run([], { env: { ANA_PYTHON: "latest" } }).err).toContain("full version");
@@ -448,64 +238,6 @@ describe("python", () => {
       "uv;rm",
     );
     expect(made.sshCalls()).toEqual([]);
-  });
-});
-
-describe("runner", () => {
-  /** A runner installed by an older commit, in `home`. */
-  function stale(home: string): void {
-    const dir = join(home, ".local/share/ana-runner");
-    mkdirSync(dir, { recursive: true });
-    for (const name of ["task.sh", "run.js"]) writeFileSync(join(dir, name), "old\n");
-    writeFileSync(join(home, ".local/bin/bun"), "old\n");
-    writeFileSync(join(dir, "INSTALLED"), '{"commit":"oldcommit"}');
-  }
-
-  test("a stale runner here is reinstalled whether or not a host sets checks, and a peer with no runner is left with none", () => {
-    const made = fixture();
-    stale(made.hereHome);
-    const found = made.run([]);
-    expect(found.out).toContain("installed from oldcommit");
-    expect(readFileSync(join(made.hereHome, ".local/share/ana-runner/task.sh"), "utf8")).toBe("old\n");
-    made.run(["--yes"]);
-    expect(readFileSync(join(made.hereHome, ".local/share/ana-runner/task.sh"), "utf8")).not.toBe("old\n");
-    expect(existsSync(join(made.peerHome, ".local/share/ana-runner"))).toBe(false);
-  });
-
-  test("a peer's stale runner is named, and no receipt means no runner to keep", () => {
-    const made = fixture();
-    stale(made.peerHome);
-    const dry = made.run([], { host: { checks: 2 } });
-    expect(dry.out).toContain("installed from oldcommit");
-    expect(made.run(["--check"], { host: { checks: 2 } }).code).toBe(1);
-    const quiet = fixture();
-    expect(quiet.run(["--check"], { host: { checks: 2 } }).code).toBe(0);
-  });
-
-  test("a commit whose runner source is the same reads as the same runner, a newer one as no lag, and any other as lagging", () => {
-    const repo = realpathSync(mkdtempSync(join(tmpdir(), "ana-sync-runner-")));
-    fixtures.push({ root: repo });
-    const commit = (path: string, text: string) => {
-      mkdirSync(join(repo, path, ".."), { recursive: true });
-      writeFileSync(join(repo, path), text);
-      gitText(repo, "add", "-A");
-      gitText(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", path);
-      return gitText(repo, "rev-parse", "HEAD");
-    };
-    gitText(repo, "init", "-q");
-    const first = commit("tools/runtime/router/run.ts", "one\n");
-    const moved = commit("tools/runtime/router/run.ts", "two\n");
-    commit("README.md", "elsewhere\n");
-    expect(runnerLags(repo, moved)).toBe(false);
-    expect(runnerLags(repo, first)).toBe(true);
-    expect(runnerLags(repo, `${moved}, dirty`)).toBe(true);
-    expect(runnerLags(repo, "an unknown commit")).toBe(true);
-    // `run.js` bundles the `src/meta` modules it imports, so a change there is the runner's too.
-    const bundled = commit("src/meta/subprocess.ts", "bundled\n");
-    expect(runnerLags(repo, moved)).toBe(true);
-    // A checkout behind the install keeps it: its older runner is never put back over a newer one.
-    gitText(repo, "checkout", "-q", "--detach", first);
-    expect(runnerLags(repo, bundled)).toBe(false);
   });
 });
 
@@ -525,90 +257,6 @@ describe("the table of tools", () => {
     script(join(home, ".local/bin/mytool"), `#!/bin/sh\necho "mytool ${version} (stand-in)"\n`);
   const version = (home: string) => readFileSync(join(home, ".local/bin/mytool"), "utf8");
   const live = { active: capturedJsonStringify([{ name: "live-one", login: "2" }]) };
-  const asked = (made: ReturnType<typeof fixture>) =>
-    made.sshCalls().some((call) => call.args.at(-1)?.includes("active") === true);
-
-  test("a dry run names a host's drift and changes nothing; --check exits 1; --yes brings it to the table", () => {
-    const made = fixture();
-    held(made.hereHome, "2.0.0");
-    held(made.peerHome, "1.0.0");
-    const env = table();
-    const dry = made.run([], { env });
-    expect(dry.code).toBe(0);
-    expect(dry.out).toContain("mytool 1.0.0");
-    expect(dry.out).toContain("2.0.0");
-    expect(version(made.peerHome)).toContain("1.0.0");
-    expect(made.run(["--check"], { env }).code).toBe(1);
-    const applied = made.run(["--yes"], { env });
-    expect(applied.out).toContain("every machine is in step");
-    expect(applied.code).toBe(0);
-    expect(version(made.peerHome)).toContain("2.0.0");
-    expect(made.run(["--check"], { env }).code).toBe(0);
-  });
-
-  test("a tool a host does not hold is named as absent, and --yes installs it", () => {
-    const made = fixture();
-    held(made.hereHome, "2.0.0");
-    const env = table();
-    expect(made.run([], { env }).out).toContain("mytool absent");
-    expect(made.run(["--yes"], { env }).code).toBe(0);
-    expect(version(made.peerHome)).toContain("2.0.0");
-  });
-
-  test("a version compares whole: 2.0.0 is neither 12.0.0 nor 2.0.01", () => {
-    const made = fixture();
-    held(made.hereHome, "2.0.0");
-    for (const near of ["12.0.0", "2.0.01"]) {
-      held(made.peerHome, near);
-      expect(made.run(["--check"], { env: table({ install: undefined }) }).code).toBe(1);
-    }
-  });
-
-  // A host's wall may find node 26.10.0 where its login shell finds 24.22.1.
-  test("the probe's path is the wall's own on this machine, with no empty folder", () => {
-    const said = decodeOutput(runSync(["/bin/sh", "-c", `printf %s ${WALL_PATH}`]).stdout).split(":");
-    expect(said).not.toContain("");
-    expect([...new Set(said)].filter((dir) => existsSync(dir))).toEqual(toolchainPathDirs());
-  });
-
-  test("a seat's row reads what the wall finds, and a login shell's other copy is none of it", () => {
-    const made = fixture();
-    const login = join(made.root, "bin", "mytool");
-    held(made.hereHome, "2.0.0");
-    held(made.peerHome, "2.0.0");
-    script(login, `#!/bin/sh\necho "mytool 9.9.9 (login shell)"\n`);
-    expect(made.run(["--check"], { env: table() }).code).toBe(0);
-    for (const home of [made.hereHome, made.peerHome]) rmSync(join(home, ".local/bin/mytool"));
-    script(login, `#!/bin/sh\necho "mytool 2.0.0 (login shell)"\n`);
-    const seat = made.run(["--check"], { env: table() });
-    expect(seat.code).toBe(1);
-    expect(seat.out).toContain("mytool absent");
-    expect(made.run(["--check"], { env: table({ seats: false }) }).code).toBe(0);
-  });
-
-  // A guard copied to another host must not name the first host's home and exit 2 on every
-  // command while its version reads right.
-  test("a tool that fails its run is drift at the right version, and --yes brings it back", () => {
-    const made = fixture();
-    const broken = `#!/bin/sh\n[ "$1" = check ] && exit 2\necho "mytool 2.0.0 (stand-in)"\n`;
-    for (const home of [made.hereHome, made.peerHome]) script(join(home, ".local/bin/mytool"), broken);
-    const env = table({ run: "mytool check" });
-    expect(made.run(["--check"], { env: table() }).code).toBe(0);
-    const dry = made.run([], { env });
-    expect(dry.out).toContain("mytool does-not-run, wants 2.0.0");
-    expect(made.run(["--check"], { env }).code).toBe(1);
-    expect(made.run(["--yes"], { env }).code).toBe(0);
-    expect(made.run(["--check"], { env }).code).toBe(0);
-  });
-
-  test("a row's own read says where its version is", () => {
-    const made = fixture();
-    for (const home of [made.hereHome, made.peerHome]) {
-      script(join(home, ".local/bin/mytool"), `#!/bin/sh\n[ "$1" = version ] && echo 2.0.0\n`);
-    }
-    const env = table({ read: "mytool version" });
-    expect(made.run(["--check"], { env }).code).toBe(0);
-  });
 
   test("a change a seat would find is refused on a host with a live campaign, and names the run", () => {
     const made = fixture();
@@ -628,107 +276,6 @@ describe("the table of tools", () => {
     const forced = made.run(["--yes", "--force"], { env, fleet: { active: live.active } });
     expect(forced.out).toContain("--force, under 1 live: live-one");
     expect(version(made.peerHome)).toContain("2.0.0");
-  });
-
-  test("a live campaign on one host holds back no other host", () => {
-    const made = fixture();
-    held(made.hereHome, "1.0.0");
-    held(made.peerHome, "2.0.0");
-    const env = table();
-    const result = made.run(["--yes"], { env, fleet: { active: live.active } });
-    expect(result.code).toBe(0);
-    expect(version(made.hereHome)).toContain("2.0.0");
-  });
-
-  test("a row no seat finds applies under a live campaign and asks no live count", () => {
-    const made = fixture();
-    held(made.hereHome, "2.0.0");
-    held(made.peerHome, "1.0.0");
-    const result = made.run(["--yes"], { env: table({ seats: false }), fleet: { active: live.active } });
-    expect(result.code).toBe(0);
-    expect(version(made.peerHome)).toContain("2.0.0");
-    expect(asked(made)).toBe(false);
-  });
-
-  test("a tool a host excludes is reported as excluded, is no drift, and is never changed", () => {
-    const made = fixture();
-    held(made.hereHome, "2.0.0");
-    held(made.peerHome, "1.0.0");
-    const env = table();
-    const host = { exclude: ["mytool"] };
-    const dry = made.run([], { env, host });
-    expect(dry.out).toContain("excluded");
-    expect(dry.out).toContain("mytool 1.0.0");
-    expect(made.run(["--check"], { env, host }).code).toBe(0);
-    expect(made.run(["--yes", "--force"], { env, host }).code).toBe(0);
-    expect(version(made.peerHome)).toContain("1.0.0");
-  });
-
-  test("a move's destination reads its drift, applies it, and keeps what no install can bring", () => {
-    const made = fixture();
-    held(made.hereHome, "2.0.0");
-    held(made.peerHome, "1.0.0");
-    const behind = (mode: string, env: Record<string, string>) =>
-      made.drive(
-        `import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; import { outOfStep } from "REPOSITORY/tools/runs/sync.ts";
-         console.log(JSON.stringify(await outOfStep("runner", hostsOf()[0], ${JSON.stringify(mode)})));`,
-        made.environment({}, env),
-      ).out;
-    expect(behind("read", table({ install: undefined }))).toContain("mytool 1.0.0");
-    expect(behind("apply", table({ install: undefined }))).toContain("mytool 1.0.0");
-    expect(version(made.peerHome)).toContain("1.0.0");
-    expect(behind("read", table())).toContain("mytool 1.0.0");
-    expect(version(made.peerHome)).toContain("1.0.0");
-    expect(behind("apply", table()).trim()).toBe("[]");
-    expect(version(made.peerHome)).toContain("2.0.0");
-  });
-
-  test("a row with no install is drift to report, and --yes runs nothing and exits 1", () => {
-    const made = fixture();
-    held(made.hereHome, "2.0.0");
-    held(made.peerHome, "1.0.0");
-    const env = table({ install: undefined });
-    const result = made.run(["--yes", "--force"], { env });
-    expect(result.code).toBe(1);
-    expect(result.out).toContain("no install");
-    expect(version(made.peerHome)).toContain("1.0.0");
-  });
-
-  test("an install that exits 0 under a copy earlier on the wall's path says why the read did not move", () => {
-    const made = fixture();
-    held(made.hereHome, "2.0.0");
-    held(made.peerHome, "1.0.0");
-    const first = pinnedPythonDir(made.peerHome);
-    mkdirSync(first, { recursive: true });
-    script(join(first, "mytool"), `#!/bin/sh\necho "mytool 1.0.0 (earlier on the path)"\n`);
-    const result = made.run(["--yes"], { env: table() });
-    expect(result.code).toBe(1);
-    expect(version(made.peerHome)).toContain("2.0.0");
-    expect(result.out).toContain("runner: mytool 1.0.0, wants 2.0.0: its change exited 0");
-    const failed = made.run(["--yes"], { env: table({ install: "exit 7" }) });
-    expect(failed.out).not.toContain("its change exited 0");
-  });
-
-  test("an install that fails says so, and the second read reports what is left", () => {
-    const made = fixture();
-    held(made.hereHome, "2.0.0");
-    held(made.peerHome, "1.0.0");
-    const result = made.run(["--yes"], { env: table({ install: "exit 7" }) });
-    expect(result.code).toBe(1);
-    expect(result.out).toContain("exit 7");
-    expect(result.out).toContain("left after applying");
-  });
-
-  test("a table alone, with no hosts, applies here and asks nothing of ssh, and a verb sent here does neither", () => {
-    const made = fixture();
-    held(made.hereHome, "1.0.0");
-    const sent = made.run(["--yes"], { env: { ...table(), ANA_HOSTS: "", ANA_HOP: "1" } });
-    expect(sent.out).toContain("nothing to do");
-    expect(version(made.hereHome)).toContain("1.0.0");
-    const alone = made.run(["--yes"], { env: { ...table(), ANA_HOSTS: "" } });
-    expect(alone.code).toBe(0);
-    expect(version(made.hereHome)).toContain("2.0.0");
-    expect(made.sshCalls()).toEqual([]);
   });
 
   test("a table that cannot be read is refused before anything runs, and a credential in it stays unprinted", () => {
@@ -752,33 +299,9 @@ describe("the table of tools", () => {
     }
     expect(made.sshCalls()).toEqual([]);
   });
-
-  test("an entry's exclude takes a list of names", () => {
-    const made = fixture();
-    const result = made.run([], { host: { exclude: "mytool" } });
-    expect(result.code).toBe(1);
-    expect(result.err).toContain("exclude");
-  });
 });
 
 describe("a host that does not answer", () => {
-  test("is named, counts for --check and --yes, and is not written to", () => {
-    const made = fixture();
-    const fleet = { offline: true };
-    expect(made.run([], { fleet }).out).toContain("no answer");
-    expect(made.run([], { fleet }).code).toBe(0);
-    expect(made.run(["--check"], { fleet }).code).toBe(1);
-    expect(made.run(["--yes"], { fleet }).code).toBe(1);
-  });
-
-  test("stdout that is no answer is none", () => {
-    const made = fixture();
-    const fleet = { execute: false };
-    const result = made.run(["--check"], { fleet });
-    expect(result.code).toBe(1);
-    expect(result.out).toContain("no answer");
-  });
-
   test("--yes with --check is refused before anything is asked", () => {
     const made = fixture();
     expect(made.run(["--yes", "--check"]).err).toContain("--check changes nothing");

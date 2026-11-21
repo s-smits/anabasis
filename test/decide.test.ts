@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { decide, practiceDue, shortOf, supplyRun, unpromoted } from "../src/campaign/decide.ts";
+import { decide, practiceDue, tasksToAskFor, supplyRun, unpromoted } from "../src/campaign/decide.ts";
 import type { Plan } from "../src/campaign/ground.ts";
 import { pendingWords } from "../src/campaign/word.ts";
 import { scored } from "../src/kernel/compare.ts";
@@ -408,15 +408,15 @@ describe("task supply", () => {
     // compare; the target of twelve binds after it.
     expect(move([...SIX, built("b-1", "h1")])).toMatchObject({ move: "build" });
     // One short of the floor, the session is still asked for a sweep (4 at 0.1).
-    expect([shortOf(FIVE, PLAN), shortOf(SIX, PLAN)]).toEqual([4, 0]);
-    expect(shortOf([...SIX, ...compared("g-1", "h1", "no-step")], PLAN)).toBe(6);
+    expect([tasksToAskFor(FIVE, PLAN), tasksToAskFor(SIX, PLAN)]).toEqual([4, 0]);
+    expect(tasksToAskFor([...SIX, ...compared("g-1", "h1", "no-step")], PLAN)).toBe(6);
     // The sweep comes on top of the practice a reading releases.
-    expect(shortOf(FIVE, { ...PLAN, practice: 5 })).toBe(9);
+    expect(tasksToAskFor(FIVE, { ...PLAN, practice: 5 })).toBe(9);
     // After a promotion one ask is short of at most sixteen, and the next ask of the rest.
     const wide = { ...PLAN, wanted: { ...PLAN.wanted, target: 40 } };
     const read = [...SIX, ...compared("g-1", "h1", "no-step")];
-    expect(shortOf(read, wide)).toBe(34);
-    expect(shortOf([...read, promotion("h1")], wide)).toBe(16);
+    expect(tasksToAskFor(read, wide)).toBe(34);
+    expect(tasksToAskFor([...read, promotion("h1")], wide)).toBe(16);
     expect(move([...SIX, built("b-1", "h1"), ...HELD.slice(6).flatMap(heldOut)])).toMatchObject({
       move: "build",
     });
@@ -610,8 +610,8 @@ describe("unread harnesses and tasks", () => {
     // One task short of the target, the session is asked for the sweep the table waits for (4 at
     // 0.1); where nothing is short the command's default ask holds a sweep.
     const eleven = [READ, ...HELD.slice(0, 11).flatMap(heldOut), ...RELEASED, built("b-1", "h1")];
-    expect(shortOf([...eleven, ...noRoom], PLAN)).toBe(4);
-    expect(shortOf([...FIRST, ...noRoom], PLAN)).toBe(0);
+    expect(tasksToAskFor([...eleven, ...noRoom], PLAN)).toBe(4);
+    expect(tasksToAskFor([...FIRST, ...noRoom], PLAN)).toBe(0);
 
     // After a promotion the starter is compared once the tasks written for the new reference could
     // clear the level alone; one is not enough, and the Examiner is asked for more.

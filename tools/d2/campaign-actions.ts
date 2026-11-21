@@ -31,7 +31,7 @@
 import { Type } from "typebox";
 import { type SeatTool, textsOf } from "#src/agent/session.ts";
 import { comparisonFloor, Refused, stopRule } from "#src/campaign/admission.ts";
-import { CRASHES, decide, practiceDue } from "#src/campaign/decide.ts";
+import { CRASHES_IN_A_ROW, decide, practiceDue } from "#src/campaign/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/campaign/ground.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
 import { type Decided, short } from "#src/campaign/move.ts";
@@ -635,7 +635,7 @@ function spentLines({ events }: Turn): string[] {
     ...(count === 0
       ? []
       : [
-          `Sessions the provider failed in a row: ${String(count)} of the ${String(CRASHES)} that end the campaign.`,
+          `Sessions the provider failed in a row: ${String(count)} of the ${String(CRASHES_IN_A_ROW)} that end the campaign.`,
         ]),
   ];
 }

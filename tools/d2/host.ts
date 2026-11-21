@@ -31,7 +31,7 @@
  * Load, reserve, slot and pause waits are interruptible; a load wait records its elapsed time even when
  * cancellation ends it.
  */
-import { CRASHES } from "#src/campaign/decide.ts";
+import { CRASHES_IN_A_ROW } from "#src/campaign/decide.ts";
 import { crashedRun } from "#src/campaign/ground.ts";
 import { affords, flying, inFlight } from "#src/campaign/opening.ts";
 import { paused } from "#src/campaign/word.ts";
@@ -148,7 +148,7 @@ function queued({ seated, loaded, host = seated === solved ? HOST : SCRIPTED }: 
 /**
  * The wait after the sessions in a row that crashed (`crashedRun`): to the provider's reset where
  * the last crash names one, counted or not, and otherwise, where the network failed it, one wait a
- * crash on record as `for: "network"`. The third ends the campaign on its environment (`CRASHES`,
+ * crash on record as `for: "network"`. The third ends the campaign on its environment (`CRASHES_IN_A_ROW`,
  * `decide.ts`) and is not waited for. This is asked after every move, and until 14 October each
  * asking slept the same minute again until a session ended whole.
  */
@@ -156,7 +156,7 @@ export async function waitCrashed(log: string, host: Host = HOST): Promise<void>
   const events = read(log);
   const { count, crash } = crashedRun(events);
   if ((await waitOut(log, crash, host.sleep)) || crash === null || !NETWORK.test(crash)) return;
-  if (count === 0 || count >= CRASHES) return;
+  if (count === 0 || count >= CRASHES_IN_A_ROW) return;
   const ended = events.findLastIndex(({ kind }) => kind === "exam.finished" || kind === "build.finished");
   if (events.slice(ended + 1).some(({ kind, data }) => kind === WAITED && data.for === "network")) return;
   const ms = NETWORK_WAITS_MS[Math.min(count, NETWORK_WAITS_MS.length) - 1] ?? 0;

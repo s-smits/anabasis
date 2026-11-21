@@ -95,7 +95,7 @@ export const cutShort = (event: LogEvent) =>
 
 /** The sessions in a row, to the log's end and since the campaign last ended, that the provider
  *  failed before they held out a task or changed a harness, with the last one's crash. The table
- *  ends a campaign on its environment after `CRASHES` of them (`decide.ts`) instead of `no-room`
+ *  ends a campaign on its environment after `CRASHES_IN_A_ROW` of them (`decide.ts`) instead of `no-room`
  *  (six on a session limit, 11 October), and the count starts again after that ending. */
 export function crashedRun(events: readonly LogEvent[]) {
   // A wait for the provider's named reset starts the count again as an ending does (`waitOut`).

@@ -19,10 +19,10 @@
  * different things (five or more word-bearing literals differ, or the block is mostly data and most
  * of its literals differ) is a table with different rows rather than a copy of work.
  *
- * Rewritten on 27 October. The windows of one to six statements, grown to a copy's full extent,
- * became one unbounded window. Expressions are no longer grouped: they only ever covered windows.
- * The filter for four or more parallel variants (a dialect per directory) went: written for other
- * repositories, here it read any two one-word files in one directory as variants, and hid real
+ * One unbounded window is read, grown to a copy's full extent. Expressions are not grouped, since
+ * they only ever covered windows. There is no filter for four or more parallel variants (a dialect
+ * per directory): written for other repositories, here it read any two one-word files in one
+ * directory as variants, and hid real
  * copies such as the preambles `tools/d2/checkpoint.ts`, `round.ts` and `session.ts` share.
  */
 import * as ts from "typescript5";

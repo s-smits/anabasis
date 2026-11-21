@@ -4,8 +4,8 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
 
 /**
  * A React effect runs after the frame it belongs to has painted, so whatever it sets is drawn one
- * frame late, and whatever it reads is the last render's. On 14 October the browser tests of the
- * operator's page (`packages/ui/test/browser-*.test.ts`) counted that cost in frames: a choice of
+ * frame late, and whatever it reads is the last render's. The browser tests of the operator's page
+ * (`packages/ui/test/browser-*.test.ts`) count that cost in frames: under effects, a choice of
  * harness card, a file opened in the inspector and a campaign picked each painted a loading line
  * for one to four frames, because an effect noticed the change after it had drawn and set the
  * placeholder in its place; closing the inspector left focus on the page's body, because an effect

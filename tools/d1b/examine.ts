@@ -12,40 +12,31 @@
  * harness did on each in the last comparison that scored it, with who won it and on which measure,
  * what the reference's valid answers measured, whether a valid answer to it is on record, and any
  * check a ruling found at fault on an answer to it (`src/examiner/record.ts`). The home the last
- * session computed in is carried into this one, and its shell runs the engines the pack's checks run
- * (12 October). In a campaign the next ask wakes the same conversation instead, until a promotion
+ * session computed in is carried into this one, and its shell runs the engines the pack's checks
+ * run. In a campaign the next ask wakes the same conversation instead, until a promotion
  * (`conversing`, `tools/d2/campaign-actions.ts`).
  *
- * The gate solves nothing. From 12 October to 1 November it also put each draft to up to three
- * room solves by the reference harness, through the launcher a comparison uses and with each
- * rejection ruled by the Referee, and held it only where they left the reference room; the gate
- * ablation of 31 October found the campaign without them promoting as soon and as far, an
- * indication from one campaign an arm. Since 4 November the author may put an instance to that
- * launcher itself, at most `--proposals` solves with a result a session (`try_reference`,
- * `probing`): no Referee rules their rejections, since they decide nothing, and no comparison counts
- * them, since their start names the session. From 9 to 12 October a task was held out on its shape check
- * as now; until 9 October each instance was put to a stronger solver and to the measured one, and
- * the second live session spent $48.45 that way, $2.01 of it on the Examiner.
+ * The gate solves nothing: a gate that held a draft only where room solves by the reference left
+ * it room was ablated, and the campaign without it promoted as soon and as far, an indication from
+ * one campaign an arm. The author may put an instance to the comparison's launcher itself, at most
+ * `--proposals` solves with a result a session (`try_reference`, `probing`): no Referee rules their
+ * rejections, since they decide nothing, and no comparison counts them, since their start names
+ * the session. A task is held out on its shape check; putting each instance to a stronger solver
+ * as well cost a live session many times what its Examiner spent.
  *
  * The session stops at `--tasks` held-out tasks, at `--proposals` instances put to the gate, at
- * its deadline and model turn limit, or when the Examiner calls `finish`, which it may at any count: on
- * 10 October every session held out two to four tasks and finished of its own accord. `--tasks` is
- * the host's and is never told to the Examiner. The campaign command names it from what the
- * campaign is short of, at least a sweep (`examinerRun`, `tools/d2/campaign-terms.ts`); run by hand it defaults to 12,
- * a scored set's size until 12 October (`SIZE.tasks` is 24 since). Asking for many at once is what v1 found dilutes them, a probe grown to
- * 25 tasks in 10 of 13 cases (`7f0add79:docs/plan.md`).
+ * its deadline and model turn limit, or when the Examiner calls `finish`, which it may at any count,
+ * and sessions often finish of their own accord after a few tasks. `--tasks` is the host's and is
+ * never told to the Examiner. The campaign command names it from what the campaign is short of, at
+ * least a sweep (`examinerRun`, `tools/d2/campaign-terms.ts`); run by hand it defaults to 12, half
+ * a scored set (`SIZE.tasks`). Asking for many at once is what v1 found dilutes them, a probe
+ * grown to 25 tasks in 10 of 13 cases.
  *
  * The home holds no copy of the reference harness; the session tries the reference as a black box
- * (`try_reference`). From 19 October to 18 November a copy was laid in it afresh each session.
- * After a promotion the Examiner had written drafts the reference's programs answered every time,
- * 0 of 49 held in esp32-fresh-opus, and never saw those programs. A supply ablation on the buffer
- * domain after its second promotion, one Examiner session an arm, held 1 of 8 drafts blind for
- * $9.22 and 4 of 8 with the copy for $14.41: $9.22 a held draft against $3.60. On esp32, with no
- * room left, both arms held none (20 drafts blind, 6 with the copy). The operator turned it on on
- * that word, and its switch went on 28 October. Both readings predate `try_reference`
- * (4 November). The copy went on 18 November because the starter comparisons after a promotion
- * read tasks aimed at one harness's programs, which the Starter, holding none, can win; a blind
- * session with tries had not been read.
+ * (`try_reference`). A copy laid in the home once let a supply ablation hold more drafts for each
+ * dollar, but that reading predates `try_reference`, and with the copy the starter comparisons
+ * after a promotion read tasks aimed at one harness's programs, which the Starter, holding none,
+ * can win; so the copy went on the operator's word.
  *
  * Not run here: see `campaign.ts`.
  */
@@ -155,8 +146,7 @@ export async function examineCommand(
       id,
       mode: "write",
       verify: campaign.verify,
-      // The budget every solve is held to, as the drafting session is told it (`draft.ts`). Until
-      // 5 November a log with no setting yet read the opening's limit here, which repeated it.
+      // The budget every solve is held to, as the drafting session is told it (`draft.ts`).
       budget: {
         modelTurns: setting.named.limits.modelTurns ?? null,
         minutes: setting.named.limits.wallSeconds / 60,

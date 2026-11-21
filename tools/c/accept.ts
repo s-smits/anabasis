@@ -16,8 +16,7 @@
  * check at once (`--admit-authored`, which a campaign without `--hitl` gives). The reading goes into
  * the campaign's log as `checker.read`, under the contract's hash and the check program's digest.
  * Exits 1 on any fault. A format the smallest value its schema yields does not follow is printed as
- * a note, since the format refuses that answer before a check reads it: from 11 to 31 October it
- * was a fault.
+ * a note rather than a fault, since the format refuses that answer before a check reads it.
  *
  * `--cycle` names the stored cycle the campaign opens over, as every other command of a campaign
  * names it; without it the cycle is the sweep's first graded row's.
@@ -25,15 +24,16 @@
  * `--freeze` is the operator's word that this checker stands: with no fault in the reading, it
  * writes `contract.frozen` for the same two hashes. With a fault it writes nothing, unless the
  * operator says why the checker stands all the same: `--despite "<reason>"`, which the event keeps
- * beside the count of faults. A pack's controls can go stale while its checks are sound, as the
- * truss pack's accept controls had by 8 October, and the reading reports that without deciding it. It is to be given once the refused answers have
+ * beside the count of faults. A pack's controls can go stale while its checks are sound, and the
+ * reading reports that without deciding it. It is to be given once the refused answers have
  * been read too (`rejections.ts`), which this command cannot see. From then on a campaign of this
  * name whose contract or check program is another does not open (`tools/d2/campaign.ts`): a
  * repaired checker takes a campaign of its own.
  *
- * The stored verdicts are v1's, as `grades.tsv` holds them, and are not run again. Since 14 October their rows are reported apart and only fresh
- * controls establish the opening's current faults. The check program is the campaign's staged copy
- * of the bundle's, without its battery, and its tools are the bundle's.
+ * The stored verdicts are v1's, as `grades.tsv` holds them, and are not run again. Their rows are
+ * reported apart and only fresh controls establish the opening's current faults. The check program
+ * is the campaign's staged copy of the bundle's, without its battery, and its tools are the
+ * bundle's.
  *
  * It needs the pack and its tool tree on disk, and the verifier's wall: Seatbelt on macOS, Bubblewrap
  * on Linux.
@@ -89,7 +89,7 @@ export function keepReading(
 ): { readonly faults: readonly string[]; readonly frozen: boolean } {
   const { runs, checks, historical, idle, unformed, rejected } = reading;
   // A campaign without `--hitl` gives the operator's word for every check its author decides
-  // (the operator, 16 October), the objective among them, whatever the reading finds.
+  // (the operator's choice), the objective among them, whatever the reading finds.
   const admitted = new Set([
     ...word.admitted,
     ...(word.authored ? checks.flatMap(({ id, instrument }) => (instrument === AUTHOR ? [id] : [])) : []),

@@ -34,10 +34,10 @@ function isConditionalEmptyObjectSpread(node: ESTree.Expression): boolean {
  * `{...(absent ? {} : { key })}` is the same construction written the other way round, and
  * parentheses around the conditional are unwrapped first.
  *
- * The message names the owner of that decision, `src/meta/optional-key.ts`. Until 19 October it
- * said to build the object in separate statements and add the key after, which is the guarded
- * assignment `ana/prefer-key-if-defined` folds back into the literal: the two rules pulled against
- * each other, and every site on record was answered with the helper instead.
+ * The message names the owner of that decision, `src/meta/optional-key.ts`, rather than saying to
+ * build the object in separate statements and add the key after, which is the guarded assignment
+ * `ana/prefer-key-if-defined` folds back into the literal: the two rules would pull against each
+ * other, and every site on record was answered with the helper instead.
  *
  * There is no fix: whether the field should be absent or present and null is the contract, and
  * the spread is where that decision was avoided.

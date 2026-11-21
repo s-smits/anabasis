@@ -117,8 +117,7 @@ async function gradedStored({ campaign, rows, sweep, bundle, jobs, taskOf }: Sto
       const verdict = await decided(campaign.verify, taskOf(taskId), answer);
       // An accept control the checks refuse is no answer a solver gave and no accepted answer to
       // set beside one: it is a fault of the pack's controls, which `accept.ts` names. Logged, it
-      // stood among the refused answers and was read and counted as one: on the truss pack, 10 of
-      // the 74 the Referee ruled on 8 October were such controls.
+      // would stand among the refused answers and be read and counted as one.
       if (control && verdict.kind !== "pass") {
         return `${solve}: the pack's accept control does not pass (${spelled(verdict)}), so it is not logged`;
       }

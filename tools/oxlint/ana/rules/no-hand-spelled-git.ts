@@ -58,8 +58,8 @@ function isCommandPosition(array: ESTree.ArrayExpression): boolean {
  * can, some paying the Darwin xcrun shim on every call by spelling bare `git` where `hostTool`
  * skips it, and some leaving the capture unbounded so that a runaway listing ended as a short read
  * instead of a refusal. A copied helper is caught by the duplicate-block scans; one written again in
- * a different spelling is caught here. Until 15 October the owner was a skill module, which
- * production code cannot import, and `tools/runs` and `tools/d2` spelled git at five sites.
+ * a different spelling is caught here. The owner lives in production, since production code
+ * cannot import a skill module and would otherwise spell git again.
  *
  * Four spellings report: `hostTool("git")` anywhere, since resolving the executable is the first
  * line of every hand-written call; a command array whose first element is `"git"` in a position

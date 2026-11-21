@@ -11,10 +11,8 @@
  * campaign's exam from then on (`exam.drafted`), and the session ends with the reading it stood on
  * kept as the checker's (`checker.read`).
  *
- * From 22 October to 1 November, and again on 3 and 4 November (#585), a draft with no
- * fault was then solved before it stood: the Starter Built Harness solved each example, and the
- * Examiner was told, or refused, where it answered them all. No solve runs here now; why, with
- * the record: `src/examiner/draft.ts`.
+ * No solve runs here: a draft with no fault is not solved by the Starter Built Harness before it
+ * stands; why, with the record: `src/examiner/draft.ts`.
  *
  * The session stops at a draft that stands, at `--tries` drafts put to the reading, or at its
  * deadline and model turn limit; a session that ends with no draft standing leaves the campaign to
@@ -105,12 +103,12 @@ export async function draftCommand(
       log,
     },
     // The home is kept beside the log, as a writing session's is, so the first writing session opens
-    // on the generators and environment the draft was built with (5 November, overhaul report 16).
+    // on the generators and environment the draft was built with.
     { repoRoot: REPO, otherTrees: worktreesOf(REPO), keep: join(dirname(log), "examiner-home") },
   );
   // A draft that stands keeps the reading it stood on as the checker's (`keepReading`), and a
   // launch without `--hitl` is the operator's word on its checks and its freeze, as at the `accept`
-  // move. Until 5 November that move read the same exam again: 71 of 71 such readings found no fault.
+  // move, which would otherwise read the same exam again and find no fault in it.
   const after = read(log);
   const stood = after.some(({ kind, data }) => kind === "exam.drafted" && data.session === id);
   const last = readings.at(-1);

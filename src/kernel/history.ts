@@ -5,10 +5,10 @@
  * history that could not have happened. Its readers ask one thing more of a proposal than a state:
  * which tasks the log holds whole, since no pack holds an Examiner's. Here it is
  * read once, for every reader.
- * The review of 20 October found an author's answer absent from Referee packets. Its answer and
- * passing solves have one reader here, by proposed version; the known valid answer remains `poolOf`'s fact.
- * The audit of 29 October 2026 found settled wrong passes still offered as valid answers. Their
- * labels are read here for answer history, reported pairs and settlement alike (rule 12).
+ * An author's answer and passing solves have one reader here, by proposed version, so a Referee
+ * packet cannot miss them; the known valid answer remains `poolOf`'s fact. Passes a person labelled
+ * wrong are read here too, for answer history, reported pairs and settlement alike (rule 12), so a
+ * settled wrong pass is never offered as a valid answer.
  *
  * Nothing here judges a history. An event the fold would refuse is handed over like any other; a
  * caller that needs the log to be sound asks the fold first (`taskSets`).
@@ -28,12 +28,12 @@ interface Proposal {
   readonly version: string;
   readonly taskId: string | null;
   /** The task's family, which a comparison tallies by (`compared`, `comparison.ts`); null where the
-   *  proposal names none, as a pack's did until 12 October. */
+   *  proposal names none, as an old pack's may not. */
   readonly family: string | null;
   /** The Examiner session that wrote it; null for a pack's task. */
   readonly session: string | null;
-  /** The task whole, where the proposal holds it. A proposal written between 4 and 5 November also
-   *  holds its author's `claim` beside the task, which nothing reads any more (`write.ts`). */
+  /** The task whole, where the proposal holds it. A few old proposals also hold their author's
+   *  `claim` beside the task, which nothing reads any more (`write.ts`). */
   readonly task: Task | null;
 }
 

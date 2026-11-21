@@ -47,7 +47,7 @@ event the kit lacks, copy its writer's shape from `src/` or from `test/decide.te
 
 Write the outcomes first (rule 1), then build the smallest log that tells them apart.
 
-- **One constant changed** (`RUNS` or `SIZE` in `src/kernel/size.ts`, a floor, a weight) in a copied
+- **One constant changed** (`READINGS_IN_A_ROW` or `SIZE` in `src/kernel/size.ts`, a floor, a weight) in a copied
   tree, one scenario under both with `--tree`: a reader that does not move holds its own copy.
 - **Threshold edges**: below, at and above; a streak broken by one fail; ties at the gap floor.
 - **Two readers of one fact** should agree (rule 12), and two logs differing only in what a seat must

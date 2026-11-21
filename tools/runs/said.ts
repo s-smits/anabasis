@@ -15,7 +15,7 @@ import { BARS, epochsOf, starterReads } from "#src/campaign/climb.ts";
 import { readsStep, readsStepEitherWay, scoresIn, type Tally, testOf } from "#src/kernel/compare.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { endingOf } from "#src/kernel/reports.ts";
-import { clearing, sizeLines } from "#src/kernel/size.ts";
+import { smallestSteps, sizeLines } from "#src/kernel/size.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -143,7 +143,7 @@ function startLine(data: JsonObject): string {
     `${plural(data.solves, "solve")} a side`,
     ...(retained > 0 ? [`${plural(retained, "task")} retained`] : []),
   ];
-  const mark = clearing(tasks, data.level).length === 0 ? "⚠" : "·";
+  const mark = smallestSteps(tasks, data.level).length === 0 ? "⚠" : "·";
   return `${mark} ${terms.join(", ")}: ${sizeLines(tasks, data.level)[0] ?? ""}`;
 }
 

@@ -8,7 +8,7 @@
  * how many differ. It then gives three tallies: as scored, on validity alone and on the objective
  * alone, each beside the same three of the reference's A/A halves. It counts the tasks on which every
  * new solve beat every reference solve: valid against invalid, or by the objective by at least the
- * gap floor (`gainOver`, `ROOM`). Two last tallies split the scores by whether a task of the same
+ * gap floor (`gainOver`, `GAP_FLOOR`). Two last tallies split the scores by whether a task of the same
  * family was practice before the comparison began, over every tested task and over those no
  * earlier comparison tested (`practisedLines`).
  *
@@ -33,7 +33,7 @@ import {
   gainOver,
   type Paired,
   pointsOf,
-  ROOM,
+  GAP_FLOOR,
   readsStep,
   testOf,
   wholePoints,
@@ -70,7 +70,7 @@ export function beatsAll(pair: Paired): boolean {
   return pair.fresh.every((freshValid, f) =>
     pair.old.every((oldValid, o) => {
       if (freshValid !== oldValid) return freshValid;
-      return freshValid && rule !== undefined && gainOver(rule, rule.fresh[f], rule.old[o]) >= ROOM;
+      return freshValid && rule !== undefined && gainOver(rule, rule.fresh[f], rule.old[o]) >= GAP_FLOOR;
     }),
   );
 }

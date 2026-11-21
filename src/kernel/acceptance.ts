@@ -34,7 +34,7 @@ import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { pooled } from "../meta/pool.ts";
 import type { AnswerFile } from "./answer-files.ts";
-import { gainOver, ROOM } from "./compare.ts";
+import { gainOver, GAP_FLOOR } from "./compare.ts";
 import { answerFormatFault, type Contract } from "./contract.ts";
 import type { LogEvent } from "./log.ts";
 import {
@@ -195,7 +195,7 @@ function doNothingAnswer(
  * is run on every other example: a control that every other example's checks also pass answers any
  * task, so no check reads the task. Where every example carries hidden values, each such control is
  * run on its own example with each other example's differing hidden values in place of its own:
- * where no verdict moves and no measure moves by the comparison's floor (`ROOM`), no check and no
+ * where no verdict moves and no measure moves by the comparison's floor (`GAP_FLOOR`), no check and no
  * objective is decided by them. The replay of the 190 distinct drafts on record on 20 November found
  * neither in any of them. A probe the verifier cannot decide is left unread, so a probe never stops
  * the reading its controls make.
@@ -247,7 +247,7 @@ async function probeFaults(
     moved.every(
       ({ run, verdict }) =>
         verdict.kind === "pass" &&
-        Math.abs(gainOver(rule, objectiveOf(verdict), objectiveOf(run.verdicts[0]))) < ROOM,
+        Math.abs(gainOver(rule, objectiveOf(verdict), objectiveOf(run.verdicts[0]))) < GAP_FLOOR,
     );
   return [
     ...swapped,

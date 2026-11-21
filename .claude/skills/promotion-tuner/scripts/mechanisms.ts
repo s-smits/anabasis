@@ -30,7 +30,7 @@
  *   effect), by its mean score or its `first` task's, or each family's first two or three tasks
  *   (`cap2`, `cap3`); a task of no family stands alone.
  */
-import { flipP, ROOM, WEIGHTS, wholePoints } from "#src/kernel/compare.ts";
+import { flipP, GAP_FLOOR, WEIGHTS, wholePoints } from "#src/kernel/compare.ts";
 import type { Solve, Task } from "./record.ts";
 
 export interface Mechanism {
@@ -76,7 +76,7 @@ export const TODAY: Knobs = {
   bill: 0,
   turns: 0,
   seconds: 0,
-  room: ROOM,
+  room: GAP_FLOOR,
   floor: 1.25,
   untied: 0,
   level: null,

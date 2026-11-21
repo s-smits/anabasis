@@ -14,7 +14,7 @@ doubting a reading `whole-run-investigation`'s, and rescoring the record under a
 | Section | Reference | What it explains |
 | --- | --- | --- |
 | 7. The draw and the solves | `references/draw-and-solves.md` | the terms fixed first, which tasks are scored (`poolOf`, `scoredSet`), the mirror, how each ending counts |
-| 7. The tally and the test | `references/tally-and-test.md` | `pointsOf`, `WEIGHTS`, `ROOM`, `flipP`, `readsStep`, the A/A and each reading word |
+| 7. The tally and the test | `references/tally-and-test.md` | `pointsOf`, `WEIGHTS`, `GAP_FLOOR`, `flipP`, `readsStep`, the A/A and each reading word |
 | 7. Limits and room | `references/limits-and-room.md` | rulings, the budget and cap, `roomOf`, `stopRule`, promotion |
 | 7. The move table | `references/move-table.md` | the nine rows of `decide`, `roomless`, supply patience |
 | 8. Rules | `references/rules.md` | each rule's reason and edge |

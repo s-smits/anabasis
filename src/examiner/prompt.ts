@@ -8,7 +8,7 @@
  * and a worse one does not. While the budget was withheld the tasks of ten campaigns tied.
  *
  * Room is defined once, in the scoring section, as a comparison reads it (`informative`,
- * `src/kernel/compare.ts`), with the objective's floor (`ROOM`); the opening refers to it. What
+ * `src/kernel/compare.ts`), with the objective's floor (`GAP_FLOOR`); the opening refers to it. What
  * v1's prompt said of tasks is kept: no limit the field does not hold, and no growth by size or a
  * moved limit alone (limits reset at a 3.4-hour search's best passed 5 of 6).
  *
@@ -79,7 +79,7 @@
  * On 20 November "Who solves a task" was halved, and the gate's section moved into propose_tasks's
  * description (`write.ts`), where the Examiner reads what the tool does.
  */
-import { ROOM } from "../kernel/compare.ts";
+import { GAP_FLOOR } from "../kernel/compare.ts";
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
@@ -121,7 +121,7 @@ export const UNHELD =
  *  `tries` says whether the session may put instances to the reference harness (`try_reference`).
  *  On 20 November the operator rewrote each section in fewer words. */
 export function systemPrompt(tries: "given" | "none"): string {
-  const floor = `${String(ROOM * 100)}%`;
+  const floor = `${String(GAP_FLOOR * 100)}%`;
   return [
     `You are the Examiner. You write tasks of one domain, on which a solving model is measured. The public rules, answer format and checks are fixed: you write no rule and no check. ${TASK}`,
     "## Who solves a task\n\nA solve is one system: a solving model inside a harness. The model reads the task, public rules, check assertions and harness guide, works in a shell with the harness's programs and its own code (reading all output, errors included), and submits one answer within the opening's budget. A failing program visible to the model can be retried or worked around. The reference harness is the starter (no domain programs) until a comparison promotes one built by a Builder on practice tasks. You never see a solver's tools, guide, answers or traces.",

@@ -43,7 +43,7 @@ iteration's.
 | # | lever | owner | selected by |
 | --- | --- | --- | --- |
 | R1 | Tally weights (*operator*) | `WEIGHTS`, `src/kernel/compare.ts` | steps carried by a split objective |
-| R2 | Objective gap floor (*operator*) | `ROOM`, `src/kernel/compare.ts` | A/A splits past 1% |
+| R2 | Objective gap floor (*operator*) | `GAP_FLOOR`, `src/kernel/compare.ts` | A/A splits past 1% |
 | R3 | Solves a side, level (*operator*) | `SIZE`, `src/kernel/size.ts` | too few untied tasks |
 | R4 | Starter comparison timing (*operator*) | `heldSince`, `src/campaign/decide.ts` | epoch hours spent confirming |
 | R5 | Patience (*operator*) | `stopRule`, `src/campaign/admission.ts` | `stop` while the frontier grows |

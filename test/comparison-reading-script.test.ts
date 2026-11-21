@@ -10,7 +10,7 @@ import { scoresRead, sizeOf } from "#skills/comparison-reading/scripts/size.ts";
 import { rowsOf, zoneRows } from "#skills/comparison-reading/scripts/reading.ts";
 import { barLines, epochLine, epochsOf, starterReads } from "../src/campaign/climb.ts";
 import { flipP } from "../src/kernel/compare.ts";
-import { clearing } from "../src/kernel/size.ts";
+import { smallestSteps } from "../src/kernel/size.ts";
 import { type EventKind, LOG_FILE, type LogEvent } from "../src/kernel/log.ts";
 import { mkdtempSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { capturedJsonStringify } from "../src/meta/json-runtime.ts";
@@ -109,8 +109,8 @@ describe("the size figures the skill states", () => {
         expect(scoresRead(scores(wins, losses), level, null).p).toBeLessThanOrEqual(level);
         expect(scoresRead(scores(wins - 1, losses), level, null).p).toBeGreaterThan(level);
       }
-      // The production's list of clearing tallies is the same, as far as twelve or fifteen tasks hold.
-      const fits = clearing(level === 0.02 ? 15 : 12, level).map(({ wins, losses }) => [wins, losses]);
+      // The production's list of smallestSteps tallies is the same, as far as twelve or fifteen tasks hold.
+      const fits = smallestSteps(level === 0.02 ? 15 : 12, level).map(({ wins, losses }) => [wins, losses]);
       expect(fits).toStrictEqual(tallies.map(([wins, losses]) => [wins, losses]));
     }
   });

@@ -8,7 +8,7 @@ import { readFileSync } from "../src/meta/filesystem.ts";
 import { drafting } from "../src/examiner/draft.ts";
 import { FIELDS, GRADES, LADDER, REACH } from "../src/examiner/ladder.ts";
 import { systemPrompt } from "../src/examiner/prompt.ts";
-import { ROOM } from "../src/kernel/compare.ts";
+import { GAP_FLOOR } from "../src/kernel/compare.ts";
 
 /** A drafting session's system prompt. */
 const DRAFTING = drafting(
@@ -56,7 +56,7 @@ describe("the Examiner's ladder", () => {
   });
 
   it("tells a drafting session the floor two valid answers are compared at, and the export that measures them", () => {
-    expect(DRAFTING).toContain(`${String(ROOM * 100)}%`);
+    expect(DRAFTING).toContain(`${String(GAP_FLOOR * 100)}%`);
     expect(DRAFTING).toContain("`objective`");
   });
 });

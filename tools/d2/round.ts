@@ -323,7 +323,7 @@ export function solvingAs(campaign: Campaign, { limits }: Pick<AskedSetting, "na
 
 /** The objective a comparison pairs two valid answers by, where its check program declares one:
  *  the brief's direction. Undefined otherwise. Until 19 October a margin went with it (`--margin`),
- *  and until 21 October a floor; the floor is now one constant (`ROOM`, `src/kernel/compare.ts`). */
+ *  and until 21 October a floor; the floor is now one constant (`GAP_FLOOR`, `src/kernel/compare.ts`). */
 export function objectiveNamed(campaign: Pick<Campaign, "checks">): ObjectiveRule | undefined {
   const declared = readBrief(campaign.checks).objective;
   return declared === undefined ? undefined : { direction: declared.direction };

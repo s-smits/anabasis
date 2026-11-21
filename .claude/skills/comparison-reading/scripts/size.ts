@@ -5,15 +5,15 @@
  *   bun .claude/skills/comparison-reading/scripts/size.ts [--level <n>] [--untied <n>]
  *     [--scores <s,s,...> [--unbilled <s,s,...>]]
  *
- * Without scores, print the smallest all-win set, comparison admission floor and sizeLines:
- * clearing tallies, detectable win share and false-positive rate. Defaults are level 0.02 and
- * 24 untied tasks. The readers are sweepOf, comparisonFloor, power, detectable and sizeLines;
+ * Without scores, print the smallest all-win set, comparison admission floor and sizeLines: the
+ * smallest tallies that read a step, the detectable win share and the false-positive rate. Defaults
+ * are level 0.02 and 24 untied tasks. The readers are sweepOf, comparisonFloor, power, detectable and sizeLines;
  * the script does not implement a second statistical rule.
  *
  * --scores evaluates comma-separated task scores, with ties as zero. It reports the tally, p,
  * false-positive rate and detectable share at those margins. --unbilled supplies the same tasks
  * in the same order, allowing readsStep to read the step on them. Without scores it also lists every
- * equal-margin tally that clears within --untied tasks (clearing), beyond the three sizeLines
+ * equal-margin tally that clears within --untied tasks (smallestSteps), beyond the three sizeLines
  * names.
  *
  * Written on 30 October to check the figures moved from AGENTS.md section 7: 6-0 through 12-3
@@ -22,7 +22,7 @@
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { comparisonFloor } from "#src/campaign/admission.ts";
 import { detectable, power, readsStep, sweepOf, testOf } from "#src/kernel/compare.ts";
-import { clearing, SIZE, sizeLines } from "#src/kernel/size.ts";
+import { smallestSteps, SIZE, sizeLines } from "#src/kernel/size.ts";
 
 const USAGE = `usage:
   bun .claude/skills/comparison-reading/scripts/size.ts [--level <n>] [--untied <n>]
@@ -69,8 +69,8 @@ function percent(share: number): string {
 }
 
 /** The lines `sizeOf` is told in: the sweep and the floor, then the production's own lines for a
- *  launch (`sizeLines`), which name the three smallest clearing tallies, the detectable share and
- *  the false rate, and every clearing tally that fits (`clearing`). */
+ *  launch (`sizeLines`), which name the three smallest tallies that read a step, the detectable
+ *  share and the false rate, and every such tally that fits (`smallestSteps`). */
 function sizeTold(untied: number, level: number): string[] {
   const { sweep, floor } = sizeOf(untied, level);
   return [
@@ -78,7 +78,7 @@ function sizeTold(untied: number, level: number): string[] {
     `comparison admission asks for ${String(floor)} frontier tasks (comparisonFloor: a sweep plus one set aside and one tie)`,
     ...sizeLines(untied, level),
     `every tally that clears with equal margins on ${String(untied)} untied tasks: ${
-      clearing(untied, level)
+      smallestSteps(untied, level)
         .map(({ wins, losses }) => `${String(wins)}-${String(losses)}`)
         .join(", ") || "none"
     }`,

@@ -92,7 +92,7 @@
  * the home is not frozen. That `agent/config.yaml` is not read was taken out on 20 November: the
  * host tells the solver its limits (`HARNESS.md`), and no seat ever named the file.
  */
-import { ROOM, WEIGHTS } from "../kernel/compare.ts";
+import { GAP_FLOOR, WEIGHTS } from "../kernel/compare.ts";
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
@@ -259,7 +259,7 @@ export function systemPrompt(said: Said): string {
     ].join("\n"),
     "Hidden checks enforce the public rules. Programs may run domain compilers or simulators, search for candidates, test them against the public rules and report which meet them, spending the solve's shared turn and time budget. The solver decides what it writes to answer.json, which the host reads when it submits: nothing of yours takes the answer.",
     "One practice solve is noisy: the same harness can fail and then pass. Read the full record, not just the last run: a change shows in practice only on the tasks it moves, and anything changed after your last practice solve is measured untried.",
-    `Tasks are scored over all candidate-vs-reference solve pairings using validity (weight ${String(WEIGHTS.validity * 100)}) and, between two valid answers when an objective exists, objective gain of at least ${String(ROOM * 100)}% of the larger magnitude (weight ${String(WEIGHTS.objective * 100)}). An invalid answer never beats a valid one. Retained tasks are those the reference answered on every solve of its last two comparisons or that were held out before it became the reference; up to one of them is scored per three others, rounded up, so a change that breaks an easy task can lose it. A comparison reads a step when its test clears the level. Cost and turns are reported but unscored; hitting a turn, time, or context limit without submitting, or flagging a task malformed, counts as a fail. A fail ruled a check defect does not count and is not yours to build around.`,
+    `Tasks are scored over all candidate-vs-reference solve pairings using validity (weight ${String(WEIGHTS.validity * 100)}) and, between two valid answers when an objective exists, objective gain of at least ${String(GAP_FLOOR * 100)}% of the larger magnitude (weight ${String(WEIGHTS.objective * 100)}). An invalid answer never beats a valid one. Retained tasks are those the reference answered on every solve of its last two comparisons or that were held out before it became the reference; up to one of them is scored per three others, rounded up, so a change that breaks an easy task can lose it. A comparison reads a step when its test clears the level. Cost and turns are reported but unscored; hitting a turn, time, or context limit without submitting, or flagging a task malformed, counts as a fail. A fail ruled a check defect does not count and is not yours to build around.`,
     "Use read, edit, and write with paths relative to your home (such as harness/agent/BUILT_AGENTS.md), and bash for everything else: searching, listing, running and installing. Each reply counts as one turn, with or without a tool call.",
     [
       said.closing,

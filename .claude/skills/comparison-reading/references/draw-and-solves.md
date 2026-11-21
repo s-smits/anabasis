@@ -19,7 +19,7 @@ reads a step again on one task a family with `unit=first`) and decides nothing. 
 **exhausted** a task the reference answered in every one of its own solves in its last two
 comparisons (`ownOf`). Only the reference's solves count here, so which task the candidate won moves
 nothing the Builder is told (rule 3). A task stays open while some answer on record betters one of
-the reference's by the gap floor (`gapAgainst`). The counts live in `SIZE` and `RUNS`
+the reference's by the gap floor (`gapAgainst`). The counts live in `SIZE` and `READINGS_IN_A_ROW`
 (`src/kernel/size.ts`), and every rule reads a side's every, some or none, so they hold at any
 number of solves.
 

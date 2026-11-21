@@ -61,7 +61,7 @@ exempt by name. Refusals run in the order admission, terms, stop override, setti
 
 Owners and edges of the defaults in `AGENTS.md` section 6:
 
-- `--target` and `--solves` live in `SIZE` (`src/kernel/size.ts`); `ROOM` is one constant read by
+- `--target` and `--solves` live in `SIZE` (`src/kernel/size.ts`); `GAP_FLOOR` is one constant read by
   the tally, task admission, the frontier and `roomOf`.
 - The defect stop is `--defects` of a hand comparison only.
 - The reserve (`--reserve`) sits above the most a solve billed under the default limits, and is the

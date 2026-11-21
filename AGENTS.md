@@ -55,7 +55,7 @@ Each change names the factor it moves and the count that shows it; `docs/plan.md
 - **Supply**, the precondition: is there gradient? Only an informative task can register an
   effect: one the reference answers in some solves only, fails in every solve while a valid answer
   is on record, or answers every time while an answer on record beats one of its own by at least the
-  gap floor (`ROOM`, 1%; `informative`, `src/kernel/compare.ts`). Which tasks are informative is
+  gap floor (`GAP_FLOOR`, 1%; `informative`, `src/kernel/compare.ts`). Which tasks are informative is
   known only once they are solved, so admission counts frontier tasks instead, those the reference
   has not closed, and needs eight at the default level (`comparisonFloor`).
 - **1. Climb**: promotions within one campaign (`src/campaign/climb.ts`). A promotion is confirmed
@@ -83,7 +83,7 @@ Each change names the factor it moves and the count that shows it; `docs/plan.md
 - **The objective against chance**: once validity saturates, the noisier objective decides; say
   which measure carried a step. A reference that answers each task alike ties its own A/A and reads
   no false rate, so read the starter against itself beside it (`barLines`). A higher gap floor
-  (`ROOM`) is no remedy for margin noise: it moves the noise to the next margin and starves supply.
+  (`GAP_FLOOR`) is no remedy for margin noise: it moves the noise to the next margin and starves supply.
 - **Promotion against confirmation**: the host owes one starter comparison after every promotion and
   runs it at the Builder's next `compare` (`heldSince`, `src/campaign/decide.ts`). Before the table
   owes it, while too few tasks are held out since the promotion, a Builder's own comparison can read
@@ -261,7 +261,7 @@ refusal, so a refused move leaves the log as it was, but for the harness the Bui
 froze to ask for it (`build.checkpoint`), which the table then names as not yet compared.
 
 **Defaults**: 24 scored tasks; 2 solves a side (`SIZE`); level 0.02; improvement and supply
-patience of 6; gap floor 1% (`ROOM`); a stop after more than 3 tasks with a check defect; a reserve
+patience of 6; gap floor 1% (`GAP_FLOOR`); a stop after more than 3 tasks with a check defect; a reserve
 of 3 dollars a solve; a solve of 20 turns, 30 minutes and 24 prompts (`LIMITS`,
 `tools/d2/campaign.ts`); a Builder session of 24 hours and 300 turns.
 

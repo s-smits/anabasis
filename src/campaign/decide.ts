@@ -501,7 +501,7 @@ function stepped(ground: Ground): Move | null {
  * Examiner sessions after its first two promotions held out 24 tasks informative for the new
  * reference, against r1's 3 and r2's 4, and its next two promotions were read on them; r1's
  * Builder compared six minutes after its promotion on 1 informative task of 25. At the time,
- * before the `ROOM` objective gap floor, those promotion comparisons read 21, 24 and 6 informative
+ * before the `GAP_FLOOR` objective gap floor, those promotion comparisons read 21, 24 and 6 informative
  * tasks for the new reference, against 0 before #242. The floor now applies; tasks are still
  * written once for each promoted reference whatever its last reading left.
  */

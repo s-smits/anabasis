@@ -52,7 +52,7 @@ import { affords, openingOf } from "../campaign/opening.ts";
 import { type AnswerFile, keepAnswerFiles, textFiles } from "../kernel/answer-files.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, contentOf, proposalsOf, writtenTasks } from "../kernel/history.ts";
-import { gainOver, ROOM } from "../kernel/compare.ts";
+import { gainOver, GAP_FLOOR } from "../kernel/compare.ts";
 import { poolOf } from "../kernel/reports.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
@@ -501,15 +501,15 @@ const filed = (desk: Desk): string => (desk.home === undefined ? "" : ` ${FROM_F
 
 /** Where the contract declares an objective, the author's `try_answer` measure of the instance and
  *  this call's valid solves measured, whether the best of those leaves the author's answer better
- *  by the comparison's floor (`ROOM`): one line, or none. A fact for the author; the gate reads none
+ *  by the comparison's floor (`GAP_FLOOR`): one line, or none. A fact for the author; the gate reads none
  *  of it. */
 function roomLine(contract: Contract, author: number | null, valid: readonly number[]): string[] {
   const declared = contract.objective;
   if (declared === undefined || author === null || valid.length === 0) return [];
   const best = valid.reduce((kept, next) => (gainOver(declared, next, kept) > 0 ? next : kept));
-  const ahead = gainOver(declared, author, best) >= ROOM;
+  const ahead = gainOver(declared, author, best) >= GAP_FLOOR;
   return [
-    `Your answer that passed try_answer on this instance measures ${measured(author)}, and the best valid solve here ${measured(best)}: ${ahead ? `yours is better by at least the comparison's floor (${String(ROOM * 100)}%), so the task leaves the reference room on the objective` : `yours is not better by the comparison's floor (${String(ROOM * 100)}%), so on the objective the task leaves the reference no room above your answer`}.`,
+    `Your answer that passed try_answer on this instance measures ${measured(author)}, and the best valid solve here ${measured(best)}: ${ahead ? `yours is better by at least the comparison's floor (${String(GAP_FLOOR * 100)}%), so the task leaves the reference room on the objective` : `yours is not better by the comparison's floor (${String(GAP_FLOOR * 100)}%), so on the objective the task leaves the reference no room above your answer`}.`,
   ];
 }
 

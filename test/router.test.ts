@@ -176,6 +176,7 @@ for (const name of [
   "ANA_LINT_STRICT",
   "ANA_TEST_BAIL",
   "GIT_INDEX_FILE",
+  "EVAL_RUNNER",
 ]) {
   delete quiet[name];
 }

@@ -63,6 +63,18 @@ try { await freshLogin(undefined, [], async () => readings.map((reading) => ({..
     expect(result.out).toContain("no allowed login has room");
   });
 
+  it("refuses a named login the provider refuses, and starts one whose reading failed otherwise", () => {
+    const made = fixture();
+    const code = `import { freshLogin } from "REPOSITORY/tools/runs/placement.ts";
+const said = (error: string) => async (logins: readonly string[]) => logins.map((login) => ({login, plain:false, error}));
+try { await freshLogin(process.env.FAKE_LOGIN, [], said("OAuth error: HTTP 403; messages HTTP 403, no rate-limit headers")); } catch (error) { console.log(String(error)); }
+console.log(await freshLogin(process.env.FAKE_LOGIN, [], said("fetch failed")));`;
+    const result = made.run(code, { FAKE_LOGIN: LOGIN, [`CLAUDE_CODE_OAUTH_TOKEN${LOGIN}`]: "held" });
+    expect(result.code).toBe(0);
+    expect(result.out).toContain(`login ${LOGIN} is refused by the provider`);
+    expect(result.out.trim().split("\n").at(-1)).toBe(LOGIN);
+  });
+
   it("goes on the plain login where no numbered login is allowed, and on a numbered one beside it", () => {
     const made = fixture();
     const code = `import { freshLogin } from "REPOSITORY/tools/runs/placement.ts";

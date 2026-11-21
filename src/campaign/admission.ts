@@ -52,7 +52,7 @@
 import { frozenChecker } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import { type Cap, CUT, lastReports, patienceOf, poolOf, roomOf } from "../kernel/reports.ts";
+import { type Cap, INTERRUPTED, lastReports, patienceOf, poolOf, roomOf } from "../kernel/reports.ts";
 import { ended, practiceRan, rejectionAside, solvesIn } from "../kernel/solves.ts";
 import { sizeLines } from "../kernel/size.ts";
 import { taskSets } from "../kernel/task.ts";
@@ -197,7 +197,7 @@ export function stopRule(events: readonly LogEvent[]) {
     (solve) => solve.ending?.outcome === "fail" && !rejectionAside(events, solve),
   );
   const whole = ({ kind, data }: LogEvent, harness: "changed" | "unchanged") =>
-    kind === "build.finished" && data.changed === (harness === "changed") && !CUT.has(data.ended);
+    kind === "build.finished" && data.changed === (harness === "changed") && !INTERRUPTED.has(data.ended);
   // The harnesses a whole session changed, or a live one froze as a snapshot.
   const built = new Set(
     events.flatMap((event) =>

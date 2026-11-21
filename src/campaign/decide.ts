@@ -31,7 +31,7 @@
 import { unadmitted } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { CUT, poolOf, roomOf } from "../kernel/reports.ts";
+import { INTERRUPTED, poolOf, roomOf } from "../kernel/reports.ts";
 import { taskSets } from "../kernel/task.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";
 import { draftOf } from "../examiner/draft.ts";
@@ -294,7 +294,7 @@ function exam(ground: Ground): Move | null {
 function drafting(events: readonly LogEvent[]): Move {
   const put = ({ tries }: LogEvent["data"]) => (isNumber(tries) ? tries : 0);
   const sessions = events.filter(
-    ({ kind, data }) => kind === "draft.finished" && (!CUT.has(data.ended) || put(data) > 0),
+    ({ kind, data }) => kind === "draft.finished" && (!INTERRUPTED.has(data.ended) || put(data) > 0),
   );
   const tries = sessions.reduce((sum, { data }) => sum + put(data), 0);
   if (tries < DRAFTS && sessions.length < DRAFTS) {
@@ -519,7 +519,7 @@ function noRoom(ground: Ground): Move | null {
     const since = events.slice(promotedAt);
     const cut = new Set(
       since
-        .filter((event) => sessionEnded(event) && CUT.has(event.data.ended))
+        .filter((event) => sessionEnded(event) && INTERRUPTED.has(event.data.ended))
         .map(({ data }) => data.session),
     );
     const written = since.some(

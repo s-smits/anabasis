@@ -24,7 +24,7 @@ interface Outward {
 /**
  * The built-in containers that hand their reader a value, and which type argument that value is:
  * an array's element, a promise's result, a map's value. A `Set<unknown>` is left out on purpose:
- * it is asked only whether it holds a value nothing has parsed yet (`CUT.has(data.ended)`).
+ * it is asked only whether it holds a value nothing has parsed yet (`INTERRUPTED.has(data.ended)`).
  */
 const CONTAINER_SLOTS: ReadonlyMap<string, number> = new Map([
   ["Array", 0],

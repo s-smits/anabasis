@@ -121,7 +121,9 @@ describe("the suggested labels", () => {
   it("files a code change under its code's subject, not under the prose beside it", () => {
     const labels = labelsOf(["src/examiner/session.ts", "docs/plan.md"]);
     expect(labels.category.label).toBe("supply");
-    expect(labels.importance.label).toBe("importance:I2");
+    expect(labels.importance.label).toBe("importance:I1");
+    expect(labelsOf(["tools/runs/manage.ts"]).importance.label).toBe("importance:I2");
+    expect(labelsOf(["AGENTS.md"]).importance.label).toBe("importance:I3");
   });
 
   it("suggests only categories the landing accepts", () => {

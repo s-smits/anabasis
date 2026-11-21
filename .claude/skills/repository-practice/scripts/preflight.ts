@@ -128,8 +128,9 @@ const CATEGORY_OF: readonly (readonly [RegExp, string])[] = [
 /** The category that names a subject only where no other does: prose beside code is the code's,
  *  and a file no rule holds is counted with it. */
 const FALLBACK = new Set(["docs"]);
-/** The categories whose change may bear on comparison validity, so I1 is worth asking about. */
-const VALIDITY = new Set(["comparison", "exam", "verdicts"]);
+/** The categories of the engine: what a campaign decides, measures or shows a seat, where a
+ *  change is I1 unless it fixes no defect (`AGENTS.md` section 11). */
+const ENGINE = new Set(["comparison", "exam", "verdicts", "climb", "supply", "harness", "solve"]);
 
 /** The diff of one commit against its first parent, or of the working tree against `base`. */
 export function changeOf(
@@ -200,18 +201,18 @@ export function labelsOf(files: readonly string[]): Pick<Owed, "category" | "imp
   );
   const label = ranked[0]?.[0] ?? "docs";
   if (!CATEGORIES.has(label)) throw new CommandFailure(`category ${label} is not one land accepts`);
-  const validity = Object.keys(counts).filter((kind) => VALIDITY.has(kind));
+  const engine = Object.keys(counts).filter((kind) => ENGINE.has(kind));
   const importance =
-    validity.length > 0
+    engine.length > 0
       ? {
           label: "importance:I1",
-          why: `it touches ${validity.join(", ")}: I0 if it corrects a result already wrong or a wall breach, I1 if it protects comparison validity, else I2`,
+          why: `it touches ${engine.join(", ")}: I0 if it corrects a result already wrong or a wall breach, I2 if it fixes no defect there`,
         }
       : subjects.length === 0
         ? { label: "importance:I3", why: "documentation, skills or wording only" }
         : {
             label: "importance:I2",
-            why: "a functional change with bounded impact, unless it blocks a release (I0)",
+            why: "a change to production code or the tools: I1 if it prevents a crash, stall, lost session or wasted spend",
           };
   return { category: { label, counts }, importance };
 }

@@ -270,8 +270,10 @@ Every remote verb carries `ANA_LOGINS`, `ANA_LOGIN_RUNS`, `ANA_LOGIN_SUBS`, `ANA
 that looks like a credential is refused. `ANA_HOSTS` stays on the central machine. `bun run runs sync`
 aligns what does live on each machine: `ANA_TOOLS`, a table of tools and versions read in the wall's
 path order, and `ANA_PYTHON` with `ANA_PYTHON_PACKAGES`, one Python through `uv` on every machine
-(what a solve finds is `hostPython`). With no flag it prints the differences; `--yes` applies and
-rechecks; `--check` exits 1 on any difference, for a timer. A change a seat would see is refused on a
+(what a solve finds is `hostPython`), where every package a peer shares with this machine's pinned
+Python takes this machine's version, since what the named packages pull in resolves at each install's
+hour. With no flag it prints the differences; `--yes` applies and rechecks, and names an install that
+exited 0 while its read did not move; `--check` exits 1 on any difference, for a timer. A change a seat would see is refused on a
 host with a live campaign, or an uncountable one, unless `--force`, because what a solver is given is
 the operator's. Sync uninstalls nothing, never touches a run, and never carries `.env` or an env
 file: logins move between hosts by the operator's hand.

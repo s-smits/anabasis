@@ -51,6 +51,8 @@ case "$*" in
     for last; do :; done
     if [ "$FAKE_UV_OFFERS" = no ]; then echo "error: No download found for $last" >&2; exit 2; fi
     dir="$UV_PYTHON_INSTALL_DIR/cpython-$last-stand-in/bin"
+    # As uv does, a version already installed is left as it is.
+    [ -x "$dir/python3" ] && exit 0
     mkdir -p "$dir"
     printf '%s\\n' "\${FAKE_UV_SHIPS-pip==1.0}" > "$dir/../packages"
     printf '%s' "$last" > "$dir/../version"
@@ -70,7 +72,15 @@ case "$*" in
       [ "$word" = --python ] && want=1
     done
     for last; do :; done
-    printf '%s\\n' "$last" >> "$(dirname "$py")/../packages"
+    held="$(dirname "$py")/../packages"
+    # As pip does, a pinned version replaces the one held, whatever case its name is written in.
+    for word; do
+      case "$word" in *==*)
+        grep -iv "^\${word%%==*}==" "$held" > "$held.new"; mv "$held.new" "$held"
+        printf '%s\\n' "$word" >> "$held" ;;
+      esac
+    done
+    case "$last" in *==*) ;; *) printf '%s\\n' "$last" >> "$held" ;; esac
     ;;
 esac
 `;
@@ -381,6 +391,47 @@ describe("python", () => {
     expect(failed.out).toContain("lacks uv==0.1");
   });
 
+  test("a package a peer shares with this machine takes this machine's version, and one only the peer holds stays", () => {
+    const made = fixture();
+    expect(made.run(["--yes"], { env: pin }).code).toBe(0);
+    const held = (home: string) =>
+      join(home, `.local/share/ana-python/versions/cpython-${VERSION}-stand-in`, "packages");
+    writeFileSync(held(made.hereHome), "pip==1.0\nuv==0.1\nnarwhals==2.28.0\n");
+    writeFileSync(held(made.peerHome), "pip==1.0\nuv==0.1\nNarwhals==2.29.0\nown==3\n");
+    const dry = made.run(["--check"], { env: pin });
+    expect(dry.code).toBe(1);
+    expect(dry.out).toContain("takes this machine's narwhals==2.28.0");
+    expect(dry.out).toContain("packages not on every machine, which stay: own==3\n");
+    const applied = made.run(["--yes"], { env: pin });
+    expect(applied.out).toContain("every machine is in step");
+    expect(readFileSync(held(made.peerHome), "utf8").split("\n").toSorted()).toEqual([
+      "",
+      "narwhals==2.28.0",
+      "own==3",
+      "pip==1.0",
+      "uv==0.1",
+    ]);
+    expect(made.uvCalls()).not.toMatch(/uninstall|\bremove\b/u);
+  });
+
+  test("this machine sets no version while it lacks the pin, and a live campaign on the peer holds the change", () => {
+    const made = fixture();
+    expect(made.run(["--yes"], { env: pin }).code).toBe(0);
+    const held = (home: string) =>
+      join(home, `.local/share/ana-python/versions/cpython-${VERSION}-stand-in`, "packages");
+    writeFileSync(held(made.peerHome), "pip==1.0\nuv==0.1\nnarwhals==2.29.0\n");
+    writeFileSync(held(made.hereHome), "uv==0.1\nnarwhals==2.28.0\n");
+    const off = made.run([], { env: pin });
+    expect(off.out).toContain("lacks pip");
+    expect(off.out).not.toContain("takes this machine's");
+    writeFileSync(held(made.hereHome), "pip==1.0\nuv==0.1\nnarwhals==2.28.0\n");
+    const fleet = { active: capturedJsonStringify([{ name: "live-one", login: "2" }]) };
+    const live = made.run(["--yes"], { env: pin, fleet });
+    expect(live.code).toBe(1);
+    expect(live.out).toContain("refused: 1 live: live-one");
+    expect(readFileSync(held(made.peerHome), "utf8")).toContain("narwhals==2.29.0");
+  });
+
   test("a pin alone, with no hosts, applies here and asks nothing of ssh", () => {
     const made = fixture();
     const result = made.run(["--yes"], { env: { ...pin, ANA_HOSTS: "" } });
@@ -641,6 +692,21 @@ describe("the table of tools", () => {
     expect(result.code).toBe(1);
     expect(result.out).toContain("no install");
     expect(version(made.peerHome)).toContain("1.0.0");
+  });
+
+  test("an install that exits 0 under a copy earlier on the wall's path says why the read did not move", () => {
+    const made = fixture();
+    held(made.hereHome, "2.0.0");
+    held(made.peerHome, "1.0.0");
+    const first = pinnedPythonDir(made.peerHome);
+    mkdirSync(first, { recursive: true });
+    script(join(first, "mytool"), `#!/bin/sh\necho "mytool 1.0.0 (earlier on the path)"\n`);
+    const result = made.run(["--yes"], { env: table() });
+    expect(result.code).toBe(1);
+    expect(version(made.peerHome)).toContain("2.0.0");
+    expect(result.out).toContain("runner: mytool 1.0.0, wants 2.0.0: its change exited 0");
+    const failed = made.run(["--yes"], { env: table({ install: "exit 7" }) });
+    expect(failed.out).not.toContain("its change exited 0");
   });
 
   test("an install that fails says so, and the second read reports what is left", () => {

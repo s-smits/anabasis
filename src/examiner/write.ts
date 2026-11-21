@@ -157,8 +157,9 @@ interface Lent {
 /** The event a task admission writes of each draft (`admitDraft`). */
 const TASK_ADMISSION = "task.gate";
 /** The most solves of the reference harness with a result one ask may have (`try_reference`),
- *  whatever the host's probe allows. */
-export const TRIES = 8;
+ *  whatever the host's probe allows. Eight until 21 November: in both jobstat runs of 20 November the
+ *  session after the promotion, asked for 30 tasks, used all eight and proposed 13 and 12. */
+export const TRIES = 14;
 /** An instance as each tool that takes one spells it: its family, its public input and what only the
  *  checks read of it. */
 const SPELLED = {

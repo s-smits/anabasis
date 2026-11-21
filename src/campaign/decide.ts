@@ -103,6 +103,8 @@ export const CRASHES = DRAFTS;
 const SHORT = ["no-held", "held-short"] as const;
 const WANTS = "comparison admission refuses the next comparison for want of tasks";
 const ASKS = "the Builder builds, and asks for tasks";
+/** The most tasks one ask after a promotion is short of (`shortBy`). */
+const AFTER_PROMOTION = 16;
 /** Whether comparison admission would refuse the next comparison for want of tasks. */
 const wantsTasks = ({ refused }: Ground): boolean => SHORT.some((code) => refused.has(code));
 
@@ -428,7 +430,10 @@ function shortBy({ plan, supply, all, events }: Ground): number {
   ).length;
   const practice = Math.max(0, (plan.practice ?? 0) - (promoted === -1 ? supply.released : released));
   const target = all.length === 0 ? 0 : plan.wanted.target;
-  return Math.max(0, practice + Math.max(target, comparisonFloor(plan.wanted.level)) - supply.held);
+  const owed = Math.max(0, practice + Math.max(target, comparisonFloor(plan.wanted.level)) - supply.held);
+  // After a promotion one ask takes at most `AFTER_PROMOTION`, and the next ask the rest: the sessions
+  // after the promotions of 20 November were asked for 30 and proposed 13 and 12 (`TRIES`).
+  return promoted === -1 ? owed : Math.min(owed, AFTER_PROMOTION);
 }
 
 function unfinished({ all }: Ground): Move | null {

@@ -74,6 +74,8 @@ const BLOCKS = {
   "reference-none": "The reference harness valid in no solve of the last comparison that scored the task",
   "reference-some": "Valid in some solves of it",
   "reference-every": "Valid in every solve of it",
+  closed:
+    "Closed: valid in every solve of its last two comparisons with no room left by the objective, so now scored only as a check against regressions",
   new: "Not yet compared",
   disputed: "Set aside until a person settles a rejection of an answer to it",
   faulted: "Disputed: a check was at fault on an answer to it",
@@ -86,7 +88,7 @@ const CARRIED = { validity: "on validity", objective: "on the objective" } as co
 const WON = { reference: "the reference harness", other: "the harness it was compared with" } as const;
 
 /** The block a task stands in: its state first, then the reference's outcome on it. */
-function blockOf(state: string | undefined, outcome: Outcome | undefined): keyof typeof BLOCKS {
+function blockOf(state: string | undefined, outcome: Outcome | "closed" | undefined): keyof typeof BLOCKS {
   if (state === "released") return "practice";
   if (state === "disputed") return "faulted";
   return outcome ?? "new";
@@ -114,6 +116,8 @@ export function heard(
   );
   const answered = referenceAnswers(events);
   const faulted = faultedOf(events);
+  const setting = events.findLast(({ kind }) => kind === "campaign.setting")?.data.modelTurns;
+  const budget = isNumber(setting) ? setting : undefined;
   const since = events.findLastIndex(({ kind }) => kind === "harness.promoted");
   const compared = after === undefined ? null : reportedAfter(events, after);
   const lines = new Map<string, string[]>();
@@ -123,11 +127,11 @@ export function heard(
     const version = proposal?.version ?? "";
     const state = states.get(version);
     if (state === "refused" || compared?.has(version) === false) continue;
-    const block = blockOf(state, pool.outcomes.get(version));
+    const block = blockOf(state, pool.exhausted.includes(version) ? "closed" : pool.outcomes.get(version));
     if (block !== "practice") listed.push(version);
     const named = `${taskId} (${family})`;
     const plain = block === "practice" || block === "earlier-reference" || block === "faulted";
-    const clauses = plain ? [] : clausesOf(block, pool, version, answered.get(version));
+    const clauses = plain ? [] : clausesOf(block, pool, version, answered.get(version), budget);
     const checks = faulted.get(taskId);
     const fault =
       checks === undefined ? [] : [`ruled at fault on an answer to it: ${[...checks].join(", ")}`];
@@ -181,12 +185,15 @@ function clausesOf(
   pool: ReturnType<typeof poolOf>,
   version: string,
   { turns, measures }: Answered = { turns: [], measures: [] },
+  budget?: number,
 ): string[] {
-  const answered = block === "reference-every" || block === "reference-some";
+  const answered = block === "reference-every" || block === "reference-some" || block === "closed";
   const best = pool.bests.get(version);
   const sorted = (values: readonly number[]) => values.toSorted((a, b) => a - b);
   return [
-    ...(answered && turns.length > 0 ? [`in ${sorted(turns).join(", ")} turns`] : []),
+    ...(answered && turns.length > 0
+      ? [`in ${sorted(turns).join(", ")}${budget === undefined ? "" : ` of ${String(budget)}`} turns`]
+      : []),
     ...(answered && measures.length > 0 ? [`measured ${sorted(measures).map(measured).join(", ")}`] : []),
     ...(answered && measures.length > 0 && best !== undefined
       ? [`the author's answer measured ${measured(best)}`]

@@ -13,7 +13,17 @@ import {
   unmeasured,
 } from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
 import { clockTurns, progressOf as rowOf, triggerOf } from "#tools/runs/said.ts";
-import { forkOf, idsOf, OUTSIDE, outcomesOf, outsideOf, outsideOwed, pullOf } from "#tools/wri/ledger.ts";
+import {
+  carryOf,
+  forkOf,
+  idsOf,
+  OUTSIDE,
+  outcomesOf,
+  outsideOf,
+  outsideOwed,
+  owedOf,
+  pullOf,
+} from "#tools/wri/ledger.ts";
 import { recordWith } from "#tools/wri/record.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import {
@@ -577,6 +587,17 @@ describe("the next step of an investigation", () => {
     // An id with a hyphen is carried whole, each its own row, and a hyphen after one ends it.
     ledger(PREDICTIONS_R, `${table(["P1"])}\n## Carried\n\n- q-forkedPR601:TR-1, q-forkedPR601:TR-2-, too\n`);
     expect(step()[0]).toContain("resolve q-forkedPR601:TR-1, q-forkedPR601:TR-2 from the log");
+    // An id that starts lower-case is owed as one that starts upper-case is, and a row a parent
+    // itself carried is owed under its own run's name, never under the run before it.
+    ledger(
+      PREDICTIONS_R,
+      `${table(["P1"])}\n## Carried\n\n- q-forkedPR601:v9-validity, p:q-forkedPR601:E3\n`,
+    );
+    ledger(
+      OUTCOMES_R,
+      `${table(["P1", "q-forkedPR601:v9-validity"], "held")}| q-forkedPR601:E3 | falsified |\n`,
+    );
+    expect(step()[0]).toStartWith("step: vet · recount");
   });
 
   it("reopens a row left unreached or pending once the log grows past its count, and keeps it while the log stands", () => {
@@ -818,6 +839,20 @@ describe("the next step of an investigation", () => {
         ["P2", ""],
       ],
     );
+  });
+
+  it("reads what a fork carries and what it owes from one reading of its carried section", () => {
+    const ids = (...rows: string[]) =>
+      `| id | claim |\n| --- | --- |\n${rows.map((id) => `| ${id} | a |`).join("\n")}\n`;
+    // The parent's own rows, one that starts lower-case among them, and one it carried itself.
+    const parent = { name: "r", predictions: ids("P1", "p-low", "q:E3"), outcomes: "" };
+    const fork = (carried: string) => `${ids("F1")}\n## Carried\n\n${carried}\n`;
+    expect(carryOf(fork("- r:P1"), [parent]).missing).toEqual(["r:p-low", "q:E3"]);
+    // A row the parent carried may be named under the parent's name or under its own run's, and is
+    // owed once under its own run's, never as `<parent>:<run>`, whose last part is a run's name.
+    const whole = fork("- r:P1, r:p-low, r:q:E3, and r:q-forkedPR601:E4 aside");
+    expect(carryOf(whole, [parent]).missing).toEqual([]);
+    expect(owedOf(whole)).toEqual(["F1", "r:P1", "r:p-low", "q:E3", "q-forkedPR601:E4"]);
   });
 
   it("reads the pull request only from its own line, not from a number cited in the prose", () => {

@@ -20,10 +20,10 @@ export interface Parent {
   readonly outcomes: string;
 }
 
-/** One predictions ledger's `## Carried` section and the run whose ledger it is. */
+/** What one predictions ledger's `## Carried` section names (`carriedOf`), and the run whose ledger it is. */
 interface Carried {
   readonly run: string;
-  readonly text: string;
+  readonly tokens: ReadonlySet<string>;
 }
 
 /** One run's ledgers for the derived views: its two hand-written files and its iteration's plan. */
@@ -122,16 +122,30 @@ export const outcomesOf = (text: string): Map<string, string> =>
     ]),
   );
 
-/** The ids a predictions ledger owes one outcome each in its outcomes ledger: those of its `id`
- *  tables, and each `<run>:<id>` its `## Carried` section names, resolved under that whole name,
- *  a hyphened id such as `TR-1` whole. */
-export const owedOf = (predictions: string): string[] => [
-  ...new Set([
-    ...idsOf(predictions),
-    ...((sectionOf(predictions, "Carried") ?? [])
+/**
+ * Each `<run>:<id>` a predictions ledger's `## Carried` section names: the one reader of the section
+ * for what a run owes (`owedOf`), carries for a parent (`carryOf`) and takes up for another run
+ * (`droppedOf`). An id is taken in either case, a hyphened one such as `TR-1` whole, and
+ * `<parent>:<run>:<id>` as `<run>:<id>` (`carriedName`). Until 21 November the owing reader took
+ * only ids that start upper-case, so a fork that carried `v9-validity` passed its carry step and
+ * its outcomes step called that row predicted nowhere.
+ */
+const carriedOf = (predictions: string): ReadonlySet<string> =>
+  new Set(
+    (sectionOf(predictions, "Carried") ?? [])
       .join("\n")
-      .match(/(?<![\w.-])[a-z][\w.-]*:[A-Z]\w*(?:-\w+)*/gu) ?? []),
-  ]),
+      .matchAll(/(?<![\w.-])[a-z][\w.-]*:[A-Za-z]\w*(?:-\w+)*(?![\w:]|-\w)/gu)
+      .map(([token]) => token),
+  );
+
+/** The name under which a fork carries the id `id` of the run `run`: an id that already names its
+ *  run, one `run` itself carried, keeps that name. */
+const carriedName = (run: string, id: string): string => (id.includes(":") ? id : `${run}:${id}`);
+
+/** The ids a predictions ledger owes one outcome each in its outcomes ledger: those of its `id`
+ *  tables, and each id its `## Carried` section names, resolved under its whole carried name. */
+export const owedOf = (predictions: string): string[] => [
+  ...new Set([...idsOf(predictions), ...carriedOf(predictions)]),
 ];
 
 /** The ids among `ids` whose outcome in the outcomes ledger is not `held`. */
@@ -244,16 +258,13 @@ export function droppedOf(runs: readonly RunLedgers[], carried: readonly Carried
     among.flatMap((run) => {
       const outcome = outcomesOf(run.outcomes);
       const opposed = (sectionOf(run.plan, "Intentionally opposed") ?? []).join("\n");
-      const others = carried
-        .filter((each) => each.run !== run.name)
-        .map(({ text }) => text)
-        .join("\n");
+      const others = new Set(
+        carried.filter((each) => each.run !== run.name).flatMap(({ tokens }) => [...tokens]),
+      );
       const left = owedOf(run.predictions)
         .map((id) => ({ id, read: outcome.get(id) ?? "" }))
         .filter(({ read }) => read === "unreached" || read === "falsified")
-        .filter(
-          ({ id }) => !names(others, id.includes(":") ? id : `${run.name}:${id}`) && !names(opposed, id),
-        );
+        .filter(({ id }) => !others.has(carriedName(run.name, id)) && !names(opposed, id));
       return left.length === 0
         ? []
         : [`- ${run.name}: ${left.map(({ id, read }) => `${id} (${read})`).join(", ")}`];
@@ -304,19 +315,19 @@ export function stillMissingOf(run: RunLedgers): string[] {
 
 /**
  * What a fork's `predictions` owes its parents in its `## Carried` section, and what that section
- * leaves out: each id a parent did not hold, as `<parent>:<id>`. Matched as whole words, so `r:P2`
- * is not carried by `r:P20`. What a parent leaves out on purpose is its iteration's plan's, which
- * the still-missing view reads, so the section owes no file.
+ * leaves out: each id a parent did not hold, as `carriedName` names it. Matched as whole tokens
+ * (`carriedOf`), so `r:P2` is not carried by `r:P20`. What a parent leaves out on purpose is its
+ * iteration's plan's, which the still-missing view reads, so the section owes no file.
  */
 export function carryOf(
   predictions: string,
   parents: readonly Parent[],
 ): { owed: string[]; missing: string[] } {
   const owed = parents.flatMap(({ name, predictions: theirs, outcomes }) =>
-    unheldOf(idsOf(theirs), outcomes).map((id) => `${name}:${id}`),
+    unheldOf(idsOf(theirs), outcomes).map((id) => carriedName(name, id)),
   );
-  const carried = (sectionOf(predictions, "Carried") ?? []).join("\n");
-  return { owed, missing: owed.filter((token) => !names(carried, token)) };
+  const carried = carriedOf(predictions);
+  return { owed, missing: owed.filter((token) => !carried.has(token)) };
 }
 
 /** The pull request a plan names as its iteration's (`Pull request: #N`), or null. */
@@ -372,7 +383,7 @@ export const carriedIn = (root: string, dir: string): Carried[] =>
         .filter((file) => /^predictions-.+\.md$/u.test(file))
         .map((file) => ({
           run: file.slice("predictions-".length, -".md".length),
-          text: (sectionOf(readFileSync(join(folder, file), "utf8"), "Carried") ?? []).join("\n"),
+          tokens: carriedOf(readFileSync(join(folder, file), "utf8")),
         })),
     );
 

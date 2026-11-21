@@ -16,6 +16,7 @@
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
+import { runtimeProcess } from "#src/meta/process.ts";
 import type { State, Watched } from "./load.ts";
 import { bar, DIM, headOf, RESET, waitingOf, watch } from "./watch.ts";
 
@@ -173,6 +174,15 @@ export function pairsOf(read: readonly (readonly [string, readonly Link[]])[]): 
 const sum = (pairs: readonly Pair[], key: "now" | "moved"): number =>
   pairs.reduce((total, pair) => total + pair[key], 0);
 
+/** Each machine's link at most, in bytes a second, from `ANA_NET_MAX` (`<name>:<MB/s>,...`), measured
+ *  by hand; a link's most is the slower of its two ends', and the intranet's the fastest machine's. */
+const MOST = new Map(
+  (runtimeProcess.env.ANA_NET_MAX ?? "").split(",").flatMap((entry) => {
+    const [name = "", most = ""] = entry.trim().split(":");
+    return Number(most) > 0 ? [[name, Number(most) * 1e6] as const] : [];
+  }),
+);
+
 /** The frame below the title, and the intranet's peak since the watch began. */
 function framer(): (watched: readonly Watched<Reading>[]) => string[] {
   let peak = 0;
@@ -180,6 +190,7 @@ function framer(): (watched: readonly Watched<Reading>[]) => string[] {
   return (watched) => {
     const read = linksOf(watched);
     const busiest = Math.max(1e6, ...read.flatMap(([, links]) => links.map((link) => link.down + link.up)));
+    const mostOf = (a: string, b: string) => Math.min(MOST.get(a) ?? busiest, MOST.get(b) ?? busiest);
     const blocks = watched.flatMap(({ label, state }) => {
       // A machine with one report so far has no rate yet, so it is still connecting.
       if (state === "connecting" || state === "unreachable" || state.links === null) {
@@ -193,7 +204,7 @@ function framer(): (watched: readonly Watched<Reading>[]) => string[] {
         `${headOf(label)} ↓ ${rate(down).padStart(9)}  ↑ ${rate(up).padStart(9)}`,
         ...links.map(
           (link) =>
-            `  ${link.name.padEnd(14)} ${bar(link.down + link.up, busiest)}  ↓ ${rate(link.down).padStart(9)}  ↑ ${rate(link.up).padStart(9)}  ${DIM}${size(link.moved).padStart(7)} moved; ${link.path}${RESET}`,
+            `  ${link.name.padEnd(14)} ${bar(link.down + link.up, mostOf(label, link.name))}  ↓ ${rate(link.down).padStart(9)}  ↑ ${rate(link.up).padStart(9)}  ${DIM}${size(link.moved).padStart(7)} moved; ${link.path}${RESET}`,
         ),
         ...(links.length === 0 ? [`  ${DIM}no traffic with any peer${RESET}`] : []),
       ];
@@ -201,12 +212,13 @@ function framer(): (watched: readonly Watched<Reading>[]) => string[] {
     const pairs = pairsOf(read);
     const now = sum(pairs, "now");
     peak = Math.max(peak, now);
+    const most = Math.max(0, ...MOST.values());
     return [
       ...blocks,
       "",
-      `${headOf("intranet")} ${bar(now, Math.max(peak, 1e6))}  ${rate(now)} now, peak ${rate(peak)}; ${size(sum(pairs, "moved"))} moved since ${since}`,
+      `${headOf("intranet")} ${bar(now, most || Math.max(peak, 1e6))}  ${rate(now)} now, peak ${rate(peak)}${most > 0 ? ` of ${rate(most)}` : ""}; ${size(sum(pairs, "moved"))} moved since ${since}`,
       "",
-      `${DIM}↓ received, ↑ sent by the machine named above, over Tailscale; link bars against the busiest link now (at least 1 MB/s), the intranet's against its peak; the intranet counts each link once, at the larger of its two ends${RESET}`,
+      `${DIM}↓ received, ↑ sent by the machine named above, over Tailscale; bars against each link's most in ANA_NET_MAX, else the busiest link now (at least 1 MB/s) and the intranet's peak; the intranet counts each link once, at the larger of its two ends${RESET}`,
     ];
   };
 }

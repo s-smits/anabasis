@@ -7,8 +7,8 @@ import { OUTCOMES } from "./outcome.ts";
  * What the Campaign pane reads off its `CampaignReading` before it draws: the comparisons chart's
  * slots, its axis and the outcome totals of the legend. Each is a reading of the reading the server
  * sent, never of a log event, so the page and `bun run runs view` agree as far as the contract does.
- * The totals over all comparisons are the page's own, a derived reading listed in the report of
- * 11 October: they count a task once a comparison.
+ * The totals over all comparisons are the page's own, a derived reading: they count a task once a
+ * comparison.
  */
 
 /** The Starter's letter, which it holds by role (`namesOf`), and its name on the page. */

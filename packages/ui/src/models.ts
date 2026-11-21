@@ -8,7 +8,7 @@
  * tally is `Tally`. A field the page needs and no fold returns names, in its comment, the fold it is
  * computed from.
  *
- * Two tiers (the brief of 11 October, section 8). The default tier, a token alone, serves counts,
+ * Two tiers. The default tier, a token alone, serves counts,
  * tallies, readings, digests, costs, task ids and states, a Builder session's own turns and calls, a
  * practice solve's trace and a kept harness's files. The exam tier, a server started with
  * `--exam-side`, adds task text, hidden values, answers, verdicts, rulings and their reasons, an
@@ -85,7 +85,7 @@ export interface CampaignRow {
   /** The worktree's folder name, the small label beside the name. */
   readonly tree: string;
   /** The project the campaign's opening names (`--project`, `Opening.project`), or `NO_PROJECT`
-   *  for a campaign whose opening names none: one opened before 12 October, or run by the hand
+   *  for a campaign whose opening names none: an older one, or one run by the hand
    *  commands alone, which write no opening. */
   readonly project: string;
   /** `running` while a process writes the log (`writers`, `tools/runs/registry.ts`), `ended` once its
@@ -221,8 +221,8 @@ export interface ComparisonBar {
   } | null;
   /** Its won and its lost tasks by the measure that carried each (`carriedBy`,
    *  `src/kernel/compare.ts`). A headline of 28 won, 1 lost, 1 tied read alike whether the new
-   *  harness answered more tasks or answered as many more cheaply; on 30 October one campaign's
-   *  six promotions were all of the second kind. Null before it reports. */
+   *  harness answered more tasks or answered as many more cheaply, and a campaign's promotions can
+   *  all be of the second kind. Null before it reports. */
   readonly carried: { readonly won: Measures; readonly lost: Measures } | null;
   /** The Referee's last ruling of each of its rejections, as the handover counts them, by kind only
    *  while none is withheld. */
@@ -475,7 +475,7 @@ export interface ScoredTask {
 /** What a comparison's report says beside its test of what the test could see (`reported`). */
 export interface Sensitivity {
   /** The set the step was read on, every tallied task (the frontier alone in a report written
-   *  before 20 October): its untied tasks, the least share of them the new harness has to win for
+   *  by an older host): its untied tasks, the least share of them the new harness has to win for
    *  one reading to detect a step four times in five, null where none would; and the chance that an
    *  attempt at its margins promotes between equal harnesses (`falseRate`). Null in a report
    *  written before the sets were read apart. */
@@ -485,11 +485,10 @@ export interface Sensitivity {
     readonly falseRate: number;
   } | null;
   /** The tallied tasks informative for each harness, which room is read by (`roomOf`); null in a
-   *  report written before 9 October. */
+   *  report written by an older host. */
   readonly informative: { readonly old: number; readonly fresh: number } | null;
   /** The tied tasks no counted solve answered validly, the tallied tasks with a solve a solver
-   *  flagged, and the points each measure gave the tallied tasks (null in a report before 21
-   *  October). */
+   *  flagged, and the points each measure gave the tallied tasks (null in an older report). */
   readonly unsolved: number;
   readonly flagged: number;
   readonly points: { readonly validity: number; readonly objective: number } | null;
@@ -565,7 +564,7 @@ export interface TaskRow {
 
 /** A held-out task's place in the draw (`poolOf`), each held task in one: on the frontier; in the
  *  retained set, which holds every exhausted task (answered by the reference in every solve of its
- *  last readings) since 16 October; or out of the draw, waiting for a person's label, doubted
+ *  last readings); or out of the draw, waiting for a person's label, doubted
  *  (a rejection of the reference's that set it aside stands unearned), or both. */
 export type TaskDraw =
   | { readonly place: "frontier" }

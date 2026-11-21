@@ -47,7 +47,8 @@ function rulingsText({ rulings }: Pick<ComparisonBar, "rulings">): string {
 
 /** A side's solves of one task in a scored task's row, each opened on a click, with what they
  *  billed. Where every solve ended alike the ending is said once with its count, and each solve is a
- *  numbered chip: on 30 October a comparison's 30 tasks drew 120 chips that each said "valid". The
+ *  numbered chip, since a comparison's tasks would otherwise draw a hundred chips that each say
+ *  "valid". The
  *  ending alone would give every chip of a table one of four names, so each is named for its solve
  *  too. */
 function SolveChips({ rows, onOpen }: { rows: readonly SolveRow[]; onOpen: (id: string) => void }) {

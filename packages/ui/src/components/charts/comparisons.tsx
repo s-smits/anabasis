@@ -26,7 +26,7 @@ import { ChartContainer, ChartTooltip } from "../ui/chart.tsx";
 import { ChartKey, CountsTable } from "./comparisons-key.tsx";
 
 /*
- * The Campaign pane's one wide chart (the brief of 11 October, section 6): one stacked column a
+ * The Campaign pane's one wide chart: one stacked column a
  * comparison, its scored tasks by outcome, in counts and never joined by a line, since the scored
  * set changes from one comparison to the next. The marks Recharts has no element for are drawn by
  * `Marks` from the chart's own scales: a promotion's divider (its own mark where it was made with
@@ -148,10 +148,9 @@ function sessionGlyphs(x: number, y: number, examiner: number, builder: number):
 /**
  * A promotion's divider and its flag, each after the last comparison that began before it. The flag
  * carries the harness's letter alone, and its words, digest and any reason given with `--despite`
- * show on hover. Until 31 October it carried "promoted D (bf461326)", placed by a search over two
- * rows and both sides, and the labels still crossed and left the card at either edge (operator).
- * The flag turns left at the right edge, and a second promotion after the same comparison takes
- * the row below.
+ * show on hover, since a flag carrying "promoted D" and a digest, placed by a search over two rows
+ * and both sides, still crossed its neighbours and left the card at either edge. The flag turns
+ * left at the right edge, and a second promotion after the same comparison takes the row below.
  */
 function promotionFlags(
   promotions: readonly Promotion[],

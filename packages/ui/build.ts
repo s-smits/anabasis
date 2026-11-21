@@ -1,10 +1,9 @@
 import { rmSync } from "../../src/meta/filesystem.ts";
 
 /**
- * The page alone. v1 baked one workspace reading into `dist/` so that it opened without a server;
- * a log holds hidden values, so the static build carries none, and the page reads everything from
- * the server it is opened against (the brief of 11 October, section 8). No environment variable is
- * inlined either.
+ * The page alone. v1 baked one workspace reading into `dist/` so that it opened without a server; a
+ * log holds hidden values, so the static build carries none, and the page reads everything from the
+ * server it is opened against. No environment variable is inlined either.
  */
 rmSync("./dist", { recursive: true, force: true });
 const result = await Bun.build({

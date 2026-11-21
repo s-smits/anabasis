@@ -12,7 +12,7 @@ import { HarnessStrip } from "./campaign-harnesses.tsx";
 import { money, percent, time } from "./format.ts";
 
 /*
- * The Campaign pane, the main page (the brief of 11 October, section 6), top to bottom: the
+ * The Campaign pane, the main page, top to bottom: the
  * campaign's line, three readouts, the comparisons chart, the harness strip, the two small charts
  * and the counters. Each block has one title and at most one qualifying line; what explains a
  * number is one click away, in the chart's tooltip, a card of the strip or the Moves pane a column
@@ -21,9 +21,9 @@ import { money, percent, time } from "./format.ts";
  *
  * What `bun run runs view` prints and the readouts do not stands one click or one line away: the
  * set-up line with the seats and the terms in one collapsed disclosure, the steps open at the log's
- * end in the next move's detail as the view words it, and when the log was last written beside the status of a campaign no process writes, since an open
- * campaign that last wrote long ago is probably a process stopped with no ending, which the log
- * cannot say; a running one leaves it out (operator, 30 October).
+ * end in the next move's detail as the view words it, and when the log was last written beside the
+ * status of a campaign no process writes, since an open campaign that last wrote long ago is
+ * probably a process stopped with no ending, which the log cannot say; a running one leaves it out.
  */
 
 const MOVE_WORD = {
@@ -60,8 +60,8 @@ const READING_TONE = new Map<string, Tone>([
 
 function Head({ reading }: { reading: CampaignReading }) {
   const { row } = reading;
-  // The title is the whole name, as commands take it, alone: the project above it repeated the name's
-  // opening in 117 of 153 recorded campaigns on 30 October, and the picker groups by it.
+  // The title is the whole name, as commands take it, alone: a project above it would mostly repeat
+  // the name's opening, and the picker groups by it.
   const status = row.ending === null ? row.status : `ended: ${row.ending.ending}`;
   const tone: Tone =
     row.status === "running" ? "info" : row.ending?.ending === "environment" ? "bad" : "neutral";
@@ -84,8 +84,8 @@ function Head({ reading }: { reading: CampaignReading }) {
   );
 }
 
-/** A move's reason as its first clause, the rest behind a disclosure: until 30 October the card
- *  printed the table's reason, the open sessions and the Builder's lead as one run-on line. */
+/** A move's reason as its first clause, the rest behind a disclosure, rather than the table's
+ *  reason, the open sessions and the Builder's lead as one run-on line. */
 function reasonOf(line: string) {
   const cut = line.indexOf("; ");
   if (cut === -1) return line;

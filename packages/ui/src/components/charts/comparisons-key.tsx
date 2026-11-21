@@ -9,8 +9,7 @@ import { OUTCOMES } from "../../views/outcome.ts";
  * the marks this campaign's chart draws. Beside it, the same counts as a table a screen reader
  * reads, one row a comparison, each named by a button that opens it in Moves as a click on its
  * column does. The chart's columns and labels take a pointer alone, so the table is the keyboard's
- * way in: hidden until focus enters it, and then in view under the chart (the stack review of
- * 12 October, finding 7).
+ * way in: hidden until focus enters it, and then in view under the chart.
  */
 
 const TEXT = "var(--ana-text)";

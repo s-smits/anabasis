@@ -15,13 +15,12 @@ import { SolveTable } from "./solve-rows.tsx";
 /*
  * One Builder or Examiner session: what it handed over, the harness a Builder session left with the
  * way to its files and its diff, its practice solves, and its own turns and calls. An Examiner
- * session's turns are the exam side's (the brief of 11 October, section 8): it reads the checks
+ * session's turns are the exam side's: it reads the checks
  * through `try_answer`, so the default tier says where they are instead.
  */
 
 const NO_AWAITING: ReadonlySet<string> = new Set();
-/** The one fact in prose, which takes half the row: in a sixth it ran to eleven lines (operator,
- *  30 October). */
+/** The one fact in prose, which takes half the row, since in a sixth it runs to many lines. */
 const WIDE = "Table row";
 
 /** The handover's fields, as facts in a row. */

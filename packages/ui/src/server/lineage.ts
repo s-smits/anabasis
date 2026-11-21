@@ -9,8 +9,8 @@
  * began before it, in the chart's order (`barsIn`), so that a comparison cut before its report
  * stands on the side of the divider it ran on. A harness version is one a Builder session left
  * (`campaignOf`), one its conversation froze for a comparison (`build.checkpoint`), or one the
- * operator imported. Until 14 October the strip left the frozen ones out, so a harness compared
- * twice and promoted inside one conversation had no card, and the cards' captions named it by a
+ * operator imported. The frozen ones are kept, since without them a harness compared twice and
+ * promoted inside one conversation would have no card, and the cards' captions would name it by a
  * digest no card held; its practice record is its practice solves
  * (`practiceRan`); its comparisons are the bars it was the new harness of.
  */

@@ -173,7 +173,7 @@
 }
 
 /* A row of facts shares its width out evenly; a fact in prose (`is-wide`) takes five shares, so that
-   six facts read 10/10/10/10/10/50 (operator, 30 October). */
+   six facts read 10/10/10/10/10/50. */
 .ana-facts--row {
   background: var(--ana-card);
   border: 1px solid var(--ana-border);
@@ -667,12 +667,12 @@
   max-height: min(72vh, 1200px);
   max-width: 100%;
   overflow: auto;
-  /* Holds each cell's hidden words inside the scroll: placed against the page, they made a phone's
-     page 434 px wider than the screen (30 October). */
+  /* Holds each cell's hidden words inside the scroll: placed against the page, they would make a
+     phone's page hundreds of pixels wider than the screen. */
   position: relative;
 }
 
-/* A row is 44 px: 30 tasks took two screens of a laptop at 66 px a row (operator, 30 October). */
+/* A row is 44 px: at 66 px a row, 30 tasks took two screens of a laptop. */
 .ana-grid {
   border-collapse: separate;
   border-spacing: 0;

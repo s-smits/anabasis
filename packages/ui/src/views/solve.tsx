@@ -16,7 +16,7 @@ import { RulingBadge } from "./solve-rows.tsx";
  * step of the drill-down from a campaign. The Moves pane opens it from a session's practice solves
  * and a comparison's scored tasks, the Tasks pane from a task's solves.
  *
- * What the default tier withholds (the brief of 11 October, section 8): a held-out task's trace,
+ * What the default tier withholds: a held-out task's trace,
  * the verdict and the ruling. Each place says where it is instead. A ruling also stays hidden on the
  * exam side while its rejection waits for a person's label or its comparison has not reported,
  * which `SolveDetail` says, so that the two absences read apart.
@@ -102,11 +102,11 @@ function SolveDetailView({
   navigation: Navigation;
 }) {
   const { solve } = detail;
-  // Titled by its task and side: a recorded solve's id opens with the campaign's name (the first
-  // of buffer-178-opus-zbook runs to 34 characters), so it stands in the line below instead.
+  // Titled by its task and side: a recorded solve's id opens with the campaign's name, which can
+  // run to dozens of characters, so it stands in the line below instead.
   const task = solve.taskId ?? shortHash(solve.task, 8);
   // The Referee rules a rejection inside a comparison only, so a practice solve has no ruling to
-  // place, on either side: until 14 October its rejection said the exam side held one.
+  // place, on either side, and its rejection does not say the exam side holds one.
   const ruled =
     (detail.heldOut && isRejection(solve)) || (detail.ruling !== undefined && detail.ruling !== null);
   const facts = [

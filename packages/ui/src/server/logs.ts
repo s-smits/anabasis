@@ -8,16 +8,16 @@
  *
  * A seed is left out wherever it lies: a copy of another campaign cut at a recorded position and
  * rehearsed with a script in each seat (`seed.json` beside its log, `bun run runs seed`), which
- * proves a path and no climb (`AGENTS.md`, section 10, item 9). On 19 October 538 of the 633 logs
- * in this repository's worktrees were seeds, most of them the campaign command's own tests
- * (`test-hb-*`), and they buried the 95 real campaigns in the picker. A seed's key opens nothing.
+ * proves a path and no climb (`AGENTS.md`, section 10, item 9). Most logs in this repository's
+ * worktrees can be seeds, many of them the campaign command's own tests (`test-hb-*`), and listed
+ * they would bury the real campaigns in the picker. A seed's key opens nothing.
  *
  * The list is polled every few seconds and a host may hold thirty logs of several megabytes, so a
  * log is read and folded again only where its size or its modification time moved since the last
  * read (`stampOf`). The list keeps each log's row facts alone (`campaigns.ts`), and only the `KEEP`
- * logs a detail endpoint read last keep their events (`Log`, `folds.ts`): until 4 November every
- * log the list had read kept its events, and a server up four days held 3.7 GB for the 176 logs of
- * every worktree, retired campaigns' included. A log is read
+ * logs a detail endpoint read last keep their events (`Log`, `folds.ts`), since a list that kept
+ * every log's events would hold gigabytes after a few days for the logs of every worktree, retired
+ * campaigns' included. A log is read
  * whole by the kernel's reader, which refuses a line that is no event; a log whose last line is
  * torn is an append in flight, read without that line by the pulse's reader (`logEvents`), and the
  * answer says so. A log that cannot be read is an issue beside the list, never a row that vanished

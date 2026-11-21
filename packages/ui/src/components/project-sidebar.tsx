@@ -17,7 +17,7 @@ import { standing } from "../views/format.ts";
 import { AnabasisMark, AnabasisWordmark } from "./brand.tsx";
 import { Picker } from "./picker.tsx";
 
-/** The four panes, in this order and with these labels (the brief of 11 October, decision 5). */
+/** The four panes, in this order and with these labels. */
 const NAV: readonly { readonly id: Pane; readonly label: string; readonly icon: typeof Activity }[] = [
   { id: "campaign", label: "Campaign", icon: Activity },
   { id: "moves", label: "Moves", icon: ListOrdered },
@@ -65,10 +65,10 @@ function groupsOf(campaigns: readonly CampaignRow[], now: number) {
   });
 }
 
-/** The sidebar: the brand, one campaign picker over every project, and the navigation. Until
- *  30 October a Project picker stood above a Campaign picker that listed the project's campaigns by
- *  bare name; with 176 campaigns in 28 projects, finding a live one took a guess at its project and
- *  a scroll. One picker, grouped by project, filtered by typing, and saying each campaign's state,
+/** The sidebar: the brand, one campaign picker over every project, and the navigation. A Project
+ *  picker above a Campaign picker that listed the project's campaigns by bare name would make
+ *  finding a live one, among hundreds, a guess at its project and a scroll. One picker, grouped by
+ *  project, filtered by typing, and saying each campaign's state,
  *  answers which campaign is live in one place. */
 export function ProjectSidebar({
   campaigns,

@@ -19,8 +19,8 @@ import { matchesTerms } from "./tool-call.tsx";
 /*
  * The page's one data table: rows sorted by a column's head, narrowed by a search box and by a
  * choice for each column that offers one, all in the browser over rows already read (TanStack
- * Table). Until 30 October each table filtered by hand with native selects of its own, and none
- * sorted (operator). A table draws `ROWS` rows and the rest on asking, since a log of a few
+ * Table), rather than each table filtering by hand with native selects of its own and none
+ * sorting. A table draws `ROWS` rows and the rest on asking, since a log of a few
  * thousand events drawn whole held the page for a second. Its sort, search, ticks and rows drawn
  * are kept across a reload of the view (`useKept`).
  */

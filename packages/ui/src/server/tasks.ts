@@ -60,8 +60,8 @@ const LEFT_OUT = ["disputed", "short", "withdrawn"] as const satisfies readonly 
  *  and tallied it nowhere; null where it did not fix the task. A set-aside task's sides are cut to
  *  the comparison's solves a side, as a pair's are (`pairsOf`, `src/kernel/compare.ts`): under an
  *  A/A reading the reference solved it twice as often, and the further arm is no part of its side.
- *  Until 14 October a task left out read "not scored" beside its own solves in that comparison: the
- *  fixture's word-05, which a person's label disputed in b-2. */
+ *  A task left out says why, rather than "not scored" beside its own solves in that comparison, as
+ *  the fixture's word-05, which a person's label disputed in b-2, shows. */
 function cellOf(
   log: Log,
   bar: Pick<ComparisonBar, "id" | "old" | "fresh">,

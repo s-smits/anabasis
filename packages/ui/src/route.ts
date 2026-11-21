@@ -3,7 +3,7 @@
  * solve, task and harness, what the inspector shows, and the token.
  *
  * v1 kept the pane in component state, so the back button left the page and no view could be
- * linked (the brief of 11 October, decision 5). Here the URL is the one record of the selection:
+ * linked. Here the URL is the one record of the selection:
  * a change is pushed onto the history or replaces its entry, and `popstate` restores it. Every
  * reader of the route shares one store, so a change one component makes is the route every other
  * component renders next.
@@ -12,14 +12,13 @@
  * project is the opening's prompt, and written beside the campaign it made every link several
  * hundred characters long. A move, a solve and a task belong to the pane they were opened in, and
  * a change of pane clears them and closes the inspector unless it names them itself: kept, a solve
- * opened in Moves came back as the Tasks pane's open detail with its grid hidden (seen live,
- * 11 October).
+ * opened in Moves would come back as the Tasks pane's open detail with its grid hidden.
  *
  * The browser keeps the token and the campaign a URL last named. A URL without the token reads
- * with the kept one, so the bare address opens the page (a second tab opened bare was refused,
- * 30 October). A URL that names neither a project nor a campaign opens the kept campaign, read at
- * once beside the list rather than after it: a cold list took 4.4 s that day, and the newest
- * campaign is known only once the list is read.
+ * with the kept one, so the bare address opens the page, as a second tab opened bare does. A URL
+ * that names neither a project nor a campaign opens the kept campaign, read at once beside the
+ * list rather than after it: a cold list takes seconds, and the newest campaign is known only once
+ * the list is read.
  */
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import type { CampaignReading } from "./models.ts";
@@ -108,7 +107,7 @@ const INSIDE_CAMPAIGN = {
 
 /** What a view's own state is kept under: the campaign and the pane, without the token, the
  *  selection or the inspector. Keyed by the move as well, a reload of an open detail mounted the
- *  hidden list under the detail's key, and the way back showed it unfiltered (31 October). */
+ *  hidden list under the detail's key, and the way back would show it unfiltered. */
 const OVER_VIEW: readonly string[] = [
   TOKEN_PARAMETER,
   "move",
@@ -134,8 +133,8 @@ export function kept(key: string, value: string | null): string | null {
   return value;
 }
 
-/** `useState` that a reload keeps. Until 31 October a refresh, a hot reload or the way back to a
- *  view put every sort, search and choice back to its default (operator). The value is kept in this
+/** `useState` that a reload keeps, so that a refresh, a hot reload or the way back to a view does
+ *  not put every sort, search and choice back to its default. The value is kept in this
  *  tab's session storage under `key` and the campaign and pane the URL named as the component
  *  mounted, so another pane or campaign starts afresh; `"every-view"` keeps one value for every view.
  *  Closed storage keeps nothing. */

@@ -5,7 +5,7 @@
  * `Host` is not a loopback name is refused, so a page on another origin cannot reach it through a
  * name it controls. Every request carries the token the server printed at its start: on macOS the
  * command wall lets a Builder's or a solver's shell reach the network, so a loopback port alone
- * keeps nothing from them (the brief of 11 October, section 8). And an endpoint the exam tier alone
+ * keeps nothing from them. And an endpoint the exam tier alone
  * answers (`EXAM_ONLY`) is refused on a server started without `--exam-side`.
  *
  * Nothing here writes. The API reads the campaigns' logs on every request, refolding a log only

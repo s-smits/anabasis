@@ -3,14 +3,13 @@ import { useWaited } from "../waited.ts";
 
 /*
  * What a detail shows while the next is read. `live.ts` says that an answer to the previous request
- * is no answer to the one asked now, and every caller used to put a loading line in its place at
- * once: on 14 October a browser test counted the harness strip's files and the inspector replaced
- * by "Reading …" for one to three frames on every card chosen and every file opened, on a server
- * that answered within 20 ms. Here the last view that was ready stays while the next is read, the
- * part it stands in marked busy and closed to the pointer, and the loading line comes only once
- * the read has outlasted the page's patience (`waited.ts`), so a quick answer replaces the last
- * with no frame between, and a slow one still says that it is reading. The last view is kept as
- * the render finds it, with no effect between.
+ * is no answer to the one asked now, and a loading line put in its place at once would replace the
+ * harness strip's files and the inspector by "Reading …" for a few frames on every card chosen and
+ * every file opened, even on a server that answers within milliseconds. Here the last view that was
+ * ready stays while the next is read, the part it stands in marked busy and closed to the pointer,
+ * and the loading line comes only once the read has outlasted the page's patience (`waited.ts`), so
+ * a quick answer replaces the last with no frame between, and a slow one still says that it is
+ * reading. The last view is kept as the render finds it, with no effect between.
  */
 
 /** The view to show: the one ready now, else the last that was; `stale` where it is the last, and

@@ -8,10 +8,9 @@ import { duration, time } from "./format.ts";
 
 /*
  * The Log pane: the campaign as a timeline, one line a thing that happened, newest first, with a
- * session's and a solve's turns and calls counted into its own line (`server/log.ts`). Until
- * 30 October it listed every raw event, three in four a model's turn or call, and on the default
- * tier an event opened to nothing (operator). A line opens where its detail lives: its move, its
- * solve or its task. The exam tier also opens a line's first event raw in the inspector.
+ * session's and a solve's turns and calls counted into its own line (`server/log.ts`), rather than
+ * every raw event, most of them a model's turn or call. A line opens where its detail lives: its
+ * move, its solve or its task. The exam tier also opens a line's first event raw in the inspector.
  */
 
 const GROUPS: ReadonlyMap<string, string> = new Map<TimelineGroup, string>([

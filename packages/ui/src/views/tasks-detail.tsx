@@ -12,8 +12,8 @@ import { AWAITING, countsOf, drawWords, leftOutWords, outcomeOf } from "./tasks-
 /*
  * One task version: what each comparison came to on it, its text where the tier shows it, and its
  * solves across comparisons and practice. A held-out task's text, its family and its hidden values
- * are the exam side's (the brief of 11 October, section 8); a
- * practice task's text crossed to the Builder already and is shown in either tier.
+ * are the exam side's; a practice task's text crossed to the Builder already and is shown in either
+ * tier.
  */
 
 const STATE_TONES = {

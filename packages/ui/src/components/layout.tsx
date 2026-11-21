@@ -5,7 +5,7 @@ import { Card } from "./primitives.tsx";
 import { hasText } from "../../../../src/meta/text.ts";
 
 /** One issue: its message first, and the log or path it came from behind an (i), since that matters
- *  to whoever repairs a log and not to whoever reads the page (operator, 30 October). */
+ *  to whoever repairs a log and not to whoever reads the page. */
 export function IssueCallout({ issue, onDismiss }: { issue: Issue; onDismiss?: () => void }) {
   const [where, setWhere] = useState(false);
   return (

@@ -5,8 +5,8 @@
  * `len` and slices count code points, that `sorted(Path.rglob("*"))` orders by path parts, what
  * `fnmatch` matches, and `difflib`'s unified diff, whose hunks come from `SequenceMatcher` with its
  * autojunk rule. Each is CPython's behaviour for the inputs Harness² gives it; where the port
- * knowingly falls short, the function says so. Ported 3 November 2026 for `../README.md`'s
- * TypeScript Harness² (`h2/`), so that its evidence matches the pilot's recorded trees.
+ * knowingly falls short, the function says so. It serves `../README.md`'s TypeScript Harness²
+ * (`h2/`), so that its evidence matches the pilot's recorded trees.
  */
 import { readdirSync, statSync } from "#src/meta/filesystem.ts";
 import { isNumber, isRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";

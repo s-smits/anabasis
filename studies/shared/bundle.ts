@@ -11,8 +11,8 @@
  * `copyHarness` copies it with its programs as files and its correctness model left out; and the
  * copy must open as the same digest. The mount also records how the campaign ended and whether the
  * epoch the harness led was confirmed against the starter (`epochsOf`, `src/campaign/climb.ts`), so
- * a score is read beside what the campaign itself measured. Until 2 November an arm was any folder
- * named on the command line, and nothing tied a score to a campaign or a digest.
+ * a score is read beside what the campaign itself measured, and a score is tied to a campaign and
+ * a digest rather than to any folder named on the command line.
  *
  * A campaign that has not ended can still promote, so its reference is taken only when named by
  * digest or letter. `programs-of:` is refused: `keptAs` makes that control among the campaign's

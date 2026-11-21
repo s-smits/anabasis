@@ -9,18 +9,17 @@
  * It reads JobBench's layout: `<dataset>/<group>/<task>/eval_result/eval_<arm>__<group>__<task>/`,
  * one `*judge.json` in it, and the rollout's trajectory beside it under `model_traj/`.
  *
- * Why. On 5 November 2026 a review of the first promoted jobstat harness took ten throwaway scripts to
- * find that 7 criteria of 241 had become 32 points of 550, and nobody could say afterwards how many
- * cuts had been looked at. So one command prints every grain side by side, in the same order whichever
- * side leads, and lists every split rubric both ways, so that reading only the losses takes extra work.
- * On 16 November 2026 a second review counted by hand that 0 of 140 shell commands in a promoted
- * harness's eight rollouts ran one of its programs. Each block now prints for both arms the
- * commands that name the export's program folder and those of them that only look at it; on that
- * store 17 name it, so the hand count was near and not exact. The count reads a shell line
- * without a parser and proves no use: the guide reaches a rollout whatever its commands do. Since
- * the export put the programs on the solver's path (17 November 2026), a program started by its
- * name alone names no folder, so a command that starts one counts too, by the names the arm's tree
- * in the store (`<store>/trees/<arm>`) lists; a copy of the store without its trees says so.
+ * Why. A review of a promoted harness otherwise takes many throwaway scripts to find that a few
+ * criteria have become many points, and nobody can say afterwards how many cuts were looked at.
+ * So one command prints every grain side by side, in the same order whichever side leads, and lists
+ * every split rubric both ways, so that reading only the losses takes extra work. Each block prints
+ * for both arms the commands that name the export's program folder and those of them that only
+ * look at it, since a count by hand of the commands that ran one of a harness's programs comes out
+ * near and not exact. The count reads a shell line without a parser and proves no use: the guide
+ * reaches a rollout whatever its commands do. Since the export puts the programs on the solver's
+ * path, a program started by its name alone names no folder, so a command that starts one counts
+ * too, by the names the arm's tree in the store (`<store>/trees/<arm>`) lists; a copy of the store
+ * without its trees says so.
  *
  * The seal is what keeps a pattern from confirming itself. `--salt` orders the tasks by a hash of the
  * salt and the task, opens the first half and withholds the rest: no score of a sealed task is printed
@@ -206,8 +205,8 @@ export function partOf(a: Arm, b: Arm, only: readonly string[]): { a: Arm; b: Ar
 }
 
 /** Each task's half by a hash of the salt and its own name, about half each way. A cut at half the
- *  tasks graded so far moved a sealed task into the open half as each grading arrived (landing
- *  review, 7 November 2026), so no task's half depends on the others. */
+ *  tasks graded so far would move a sealed task into the open half as each grading arrived, so no
+ *  task's half depends on the others. */
 export function sealOf(tasks: readonly string[], salt: string) {
   const sealed = (task: string) => Number.parseInt(sha256(`${salt}\n${task}`).slice(0, 1), 16) >= 8;
   const sorted = tasks.toSorted();

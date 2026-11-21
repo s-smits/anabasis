@@ -4,14 +4,13 @@
  * 6c9d3d66). Benchmarks that run on Harbor read an agent's run in this shape, Harbor's viewer
  * shows it, and Harness²'s agents write it, so a trace in it can be read beside theirs by their
  * tools instead of by a reader of this log. The study's solve in a benchmark's container writes it
- * (`pi-solve.ts`); until 5 November it lived in `src/kernel` and the runs zip wrote one a trace too,
- * which no handover on record read, so it is the study's alone.
+ * (`pi-solve.ts`); no handover reads one from the runs zip, so it is the study's alone.
  *
  * It is a view of `src/kernel/trace.ts` and reads nothing else. One step is one model turn: the
  * text it said, the calls it made, each call's result as an observation linked by the call's id,
  * and its tokens as Harbor's pi agent counts them (prompt is every input token, cache reads and
- * writes among them; cached is the reads). A call names the turn it belongs to, which a log of
- * before 22 October writes after the call and a durable seat's before it, so a call joins the turn
+ * writes among them; cached is the reads). A call names the turn it belongs to, which an older log
+ * writes after the call and a durable seat's before it, so a call joins the turn
  * logged last where their numbers match and the turn logged next otherwise; a call that names no
  * turn joins the next, as the older order had it. A compaction is a system
  * step, its summaries' dollars in `extra`, since ATIF gives metrics to agent steps alone. Calls
@@ -19,7 +18,7 @@
  * without metrics.
  *
  * What the log never held stays out rather than being made up: the prompts the seat was given,
- * reasoning and non-text content. A call logged before 21 October has no provider id, and is
+ * reasoning and non-text content. A call in an older log has no provider id, and is
  * given one from its place in the log. What ATIF has no field for, a turn's stop reason and error,
  * a call's duration and whether it failed, goes in `extra` under Harbor's own snake case.
  */

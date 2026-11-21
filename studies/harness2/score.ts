@@ -2,7 +2,7 @@
  * Every arm of the JobBench pilot scored on one path: each task solved once under one frozen
  * harness by the k=1 sweep's own rollout (`jobBench(...).execute`, the port of `jb_claude_runner.py`)
  * and judged by JobBench's own `eval/judge.py` with the flags of the pilot's `judge-arm.sh` and the
- * adapter's `_run_judge`. The operator asked on 3 November 2026 to "mimick how the benchmark works
+ * adapter's `_run_judge`. The operator asked to "mimick how the benchmark works
  * and copy over to our system but for our produced jobstat harness(ses) through Anabasis to fairly
  * compare", and allowed tuning to our primitives "but it should not be changing the core premise".
  *
@@ -26,8 +26,8 @@
  * by nothing else). Scoring into the sweep's `--out` keeps every arm in one store, as the pilot's
  * `runs/jb/dataset` was. The tasks default to the pilot's eight, the fair five for `heldout`.
  * Rollouts run one at a time and each is judged before the next begins, so that no rollout's clock
- * or deadline depends on another's load on the machine (`score.sh` ran three, and until
- * 12 November 2026 so did this; the operator's word that day), and a judgement's dollars are the
+ * or deadline depends on another's load on the machine (`score.sh` ran three; the operator's
+ * rule), and a judgement's dollars are the
  * shim log's rows inside its window. One record a task lands in
  * `<out>/judged/<name>/`, and `table` prints the pilot's arms table from them: every arm over all
  * the tasks (unless named, those its records hold, since a sitting's eight are not the pilot's) and
@@ -39,8 +39,8 @@
  * cut file or a cut nobody counted; a record written before `cut` existed counts as holding none.
  * It shows every arm in the store, or those `--name` lists by the label `score` gave each: a store
  * gathers arms over weeks, and one old arm's cut file takes its task out of the block for a pair
- * neither side of which cut it (18 November 2026: a reference read 8 points under its Starter on
- * five such tasks and level with it on the pair's own six). Beside an arm's points it prints the
+ * neither side of which cut it, which can read a reference points under its Starter where the
+ * pair's own tasks read them level. Beside an arm's points it prints the
  * criteria the judge passed of those it read, from the judge's details in the store: a rubric pays
  * its weight only where all its criteria pass, so points alone magnify a near tie.
  * `compare.ts` runs a whole comparison through `score`: `--solve-only` leaves a block's judging for
@@ -741,8 +741,8 @@ const uncutOf = (tasks: readonly string[], records: readonly JsonObject[]): stri
  * block) that every one of them scored: each rollout's points, their range, and each task's range,
  * the lowest mean share first. The outside row reads every difference against the Starter's spread
  * between rollouts, and asks that an arm's spread and worst task stand within what the Starter's
- * show (system-audit, "The pillars and the v1.0 bar"); until 20 November 2026 both were worked out
- * by hand from `table`.
+ * show (system-audit, "The pillars and the v1.0 bar"), rather than both being worked out by hand
+ * from `table`.
  */
 function spread(out: string, shown: readonly string[]): void {
   const store = recordsOf(out, undefined);
@@ -783,14 +783,14 @@ function spread(out: string, shown: readonly string[]): void {
 function table(out: string, named: string | undefined, shown: readonly string[] | undefined): void {
   const records = recordsOf(out, shown);
   const arms = [...new Set(records.map((record) => text(record.arm)))].toSorted();
-  // Unnamed, the tasks are those the records hold: until 20 November 2026 the pilot's eight, of
-  // which every sitting rolls six, so each arm read "6 of 8" over a fair five no sitting chose.
+  // Unnamed, the tasks are those the records hold, not the pilot's eight, of which a sitting may
+  // roll six, so that no arm reads "6 of 8" over a fair five no sitting chose.
   const tasks = tasksOf(named, [...new Set(records.map((record) => text(record.task)))].toSorted());
   const money = (value: number | null): string => (value === null ? "?" : value.toFixed(2));
   const width = Math.max(10, ...arms.map((arm) => arm.length));
   const uncut = uncutOf(tasks, records);
-  // A rubric pays its weight only where every criterion passes, so points magnify a near tie: on
-  // 16 November 2026 two arms 36 points of 518 apart stood 2 criteria of 225 apart. The judge's own
+  // A rubric pays its weight only where every criterion passes, so points magnify a near tie: two
+  // arms dozens of points apart can stand two criteria apart. The judge's own
   // count is read from its details, and is unknown where a store holds none for a record.
   const criteria = (rows: readonly JsonObject[]): string => {
     const results = rows.flatMap((row) => {
@@ -835,8 +835,8 @@ function table(out: string, named: string | undefined, shown: readonly string[] 
         sum("judgeUsd"),
         sum("seconds"),
       ];
-      // A system costs its build and its solves; the judge prices the benchmark, not the system. On
-      // 4 November the starter's "total $60.62" was $10.79 of solving and $49.83 of judging.
+      // A system costs its build and its solves; the judge prices the benchmark, not the system,
+      // and most of a sitting's total can be judging.
       const system = build === null || solve === null ? null : build + solve;
       const share =
         points === null || total === null || total === 0 ? "?" : ((100 * points) / total).toFixed(1);

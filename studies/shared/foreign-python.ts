@@ -2,10 +2,10 @@
  * A tool tree a campaign built on one machine, made to run on another. A Builder that wants Python
  * packages copies an interpreter and installs wheels into its `.toolchain`, so a tree built on a Mac
  * holds a CPython and compiled extension modules for the Mac, and on a Linux machine its programs
- * die at the first exec or import. On 16 November one promoted jobstat reference held a
- * python-build-standalone CPython 3.12.15 (its executable, seven shared libraries of `libpython` and
- * Tcl/Tk, and three `lib-dynload` modules) and 200 extension modules of numpy, scipy, pandas,
- * statsmodels and wrapt, beside 5,106 Python files that run anywhere.
+ * die at the first exec or import. A promoted reference can hold a python-build-standalone CPython
+ * (its executable, shared libraries of `libpython` and Tcl/Tk, and `lib-dynload` modules) and
+ * hundreds of extension modules of numpy, scipy, pandas and the like, beside thousands of Python
+ * files that run anywhere.
  *
  * Each program `foreignFiles` names (`foreignHead`, the rollout's own test) is put down to its owner:
  * - a file a distribution's `RECORD` lists: that distribution is installed again for this machine,
@@ -18,8 +18,8 @@
  *   left out.
  * A compiled distribution in a folder that names no minor (a flat `--target`) is read by the place's
  * own `python3` where the tree carries no CPython of its minor, so where the place's minor is known
- * (`Place.python`) it is installed again for that minor: on 17 November two references of 3.14
- * wheels imported 8 of 14 and 8 of 10 of their modules under the Linux benchmark's 3.12. Nothing else
+ * (`Place.python`) it is installed again for that minor, since wheels of 3.14 import only some of
+ * their modules under a Linux benchmark's 3.12. Nothing else
  * changes: pure-Python distributions, the harness's own programs and its data keep their bytes. A
  * program no owner accounts for, a
  * version with no CPython for the place, a distribution with no build for it, and a compiled file

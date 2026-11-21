@@ -389,10 +389,16 @@ another session's PR, worktree or run changes only on the operator's word. One w
 - `I0`: results are already wrong or unsafe (a reading or promotion computed wrong, the wall
   crossed, answers lost, a credential exposed, spend past its cap, `main` failing its gate); live
   runs should pause until it lands. About one PR in 50.
-- `I1`: protects validity before a result goes wrong, prevents a crash, stall or lost session, or
-  removes a whole mechanism.
-- `I2`: a bounded improvement to a mechanism, a prompt or the run tooling.
-- `I3`: reporting, wording, documentation, tests alone, convenience.
+- `I1`: corrects a defect in what a campaign decides, measures or shows a seat (admission,
+  practice release, supply, the draw, the climb, the comparison, the Referee, the wall); protects
+  validity before a result goes wrong; prevents a crash, stall, lost session, wasted spend or a run
+  ended by a fault it could recover from; or removes a whole mechanism.
+- `I2`: any other change to production code, a prompt or the run and landing tools, including a
+  simplification that removes code.
+- `I3`: reporting, wording, comments, documentation and skill prose, or tests alone.
+
+Between two levels, take the higher: a label read too low hides a fix from the review and the
+landing order it deserves.
 
 Push only your authorised branch, with `--force-with-lease` when rewriting, and read back at the
 remote what you published (the heads, and the counts and commits a body cites) before reporting

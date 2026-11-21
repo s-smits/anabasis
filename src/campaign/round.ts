@@ -239,7 +239,8 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
   const picked = draw(
     pool.retained,
     Math.min(pool.retained.length, Math.ceil(count / 3)),
-    `${contract}:retained`,
+    // Rotated by comparison, so the same retained tasks are not drawn into every comparison.
+    `${contract}:retained:${String(events.filter(({ kind }) => kind === STARTED).length)}`,
   );
   // The newest epoch first, and of each the tasks held out since the last comparison began first.
   const tiers = tasksByEpoch(events)

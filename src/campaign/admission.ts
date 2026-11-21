@@ -202,7 +202,11 @@ export function stopRule(events: readonly LogEvent[]) {
     const from = events.findLastIndex(
       (began, at) => at < index && began.kind === "build.started" && began.data.session === each.data.session,
     );
-    return failed.some(({ started }) => started > from && started < index) ? [{ index, step: false }] : [];
+    // A failure before the epoch the session finished in belongs to the reference it replaced.
+    const epoch = events.findLastIndex((one, at) => at < index && one.kind === "harness.promoted");
+    return failed.some(({ started }) => started > Math.max(from, epoch) && started < index)
+      ? [{ index, step: false }]
+      : [];
   });
   // Each pair of a harness and a reference: where it first reported, whether any of its
   // comparisons read a step, and whether it counts (a step, or room at its latest reading).

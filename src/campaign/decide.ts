@@ -182,15 +182,29 @@ function enoughWrittenSince(ground: Ground, reading: Reading): boolean {
  */
 function fruitlessRun({ events, reports, reference }: Ground) {
   const read = Math.max(-1, ...reports.map(({ at }) => at));
+  // A report that tallied no task found nothing to gain, whatever its counts or the reference since,
+  // so it is a fruitless reading: kept out, a run of them would redraw one pair until the budget.
   const compared = reports.map(({ id, old, report, reported }) => ({
     at: reported,
     id,
-    gain: old !== reference || roomOf(report) === "room",
+    gain: report.reading !== "not-scored" && (old !== reference || roomOf(report) === "room"),
   }));
+  const gatedAt = new Map(
+    events.flatMap(({ kind, data }, at) =>
+      kind === "task.gate" && isString(data.version) ? [[data.version, at]] : [],
+    ),
+  );
   const examined = events.flatMap((event, at) => {
     if (event.kind !== "exam.finished") return [];
     const wrote = heldOut(event.data);
-    const passed = wrote ? at < read : cutShort(event);
+    // A session that finished while a comparison ran passed into it where its last task was gated
+    // before that comparison began.
+    const held: readonly unknown[] = Array.isArray(event.data.held) ? event.data.held : [];
+    const lastGate = Math.max(
+      -1,
+      ...held.map((version) => (isString(version) ? (gatedAt.get(version) ?? at) : at)),
+    );
+    const passed = wrote ? lastGate < read : cutShort(event);
     return passed ? [] : [{ at, id: null, gain: wrote }];
   });
   const readings = [...compared, ...examined].toSorted((one, other) => one.at - other.at);
@@ -416,9 +430,7 @@ function shortBy({ plan, supply, all, events }: Ground): number {
   // task held before its promotion is retained. Counting the whole campaign's releases let a new
   // reference's practice eat its comparison floor.
   const promoted = events.findLastIndex(({ kind }) => kind === PROMOTED);
-  const released = events.filter(
-    ({ kind, data }, at) => at > promoted && kind === "task.state" && data.state === "released",
-  ).length;
+  const released = releasedSince(events, promoted).length;
   const practice = Math.max(0, (plan.practice ?? 0) - (promoted === -1 ? supply.released : released));
   const target = all.length === 0 ? 0 : plan.wanted.target;
   const owed = Math.max(0, practice + Math.max(target, comparisonFloor(plan.wanted.level)) - supply.held);
@@ -542,7 +554,10 @@ function heldSince(ground: Ground): Move | null {
   // Count tasks held after both the promotion and the last starter comparison's start, so the
   // confirmation reads tasks aimed at this reference.
   const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
-  const lastStarter = reports.findLast(({ old, fresh }) => old === starter || fresh === starter);
+  // A starter comparison that tallied no task confirmed nothing, so tasks held before it still count.
+  const lastStarter = reports.findLast(
+    ({ old, fresh, report }) => (old === starter || fresh === starter) && report.reading !== "not-scored",
+  );
   const since = heldOutAfter(events, Math.max(lastStarter?.at ?? -1, promotedAt));
   const owed = reference !== null && starter !== null && reference !== starter && since > 0;
   if (owed && epochsOf(events).at(-1)?.starter_tally === null) {
@@ -591,6 +606,21 @@ function buildsOn(ground: Ground): string {
  * own solves alone, since practice is visible to the Builder and must not move with which task the
  * other harness won (rule 3).
  */
+/** The tasks released after `from` that are practice still: a release that a check defect has
+ *  since closed is no longer practice, so another is owed in its place. */
+function releasedSince(events: readonly LogEvent[], from: number): string[] {
+  const { states } = taskSets(events);
+  return events.flatMap(({ kind, data }, at) =>
+    at > from &&
+    kind === "task.state" &&
+    data.state === "released" &&
+    isString(data.version) &&
+    states.get(data.version) === "released"
+      ? [data.version]
+      : [],
+  );
+}
+
 export function practiceDue(
   events: readonly LogEvent[],
   practice: number | null,
@@ -607,17 +637,7 @@ export function practiceDue(
       (kind === "comparison.reported" &&
         !events.slice(0, at).some((one) => one.kind === kind && one.data.session === data.session)),
   );
-  // A release that a check defect has since closed is no longer practice, so another is owed in
-  // its place.
-  const releases = events.flatMap(({ kind, data }, at) =>
-    at > since &&
-    kind === "task.state" &&
-    data.state === "released" &&
-    isString(data.version) &&
-    sets.states.get(data.version) === "released"
-      ? [data.version]
-      : [],
-  );
+  const releases = releasedSince(events, since);
   const count = releases.length;
   // A frontier task's release spends the allowance by leaving the frontier; one held out before
   // the promotion leaves the frontier as it was, so it is subtracted, or the allowance is granted

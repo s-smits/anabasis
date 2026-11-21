@@ -5,10 +5,9 @@
  * - `stood`: the comparisons the reference harness stood in that the session has not heard of, each
  *   from its side: the tasks it scored and how many its largest family held, how many each harness
  *   won, the reference's every, some and none, the tasks set aside, and how often its own two solves
- *   differed in that comparison's A/A. From 26 October to 19 November 2026 nothing counted families. An
- *   opening tells the last one, and a wake each since it was last told. On 2 November the archive's
- *   objective domains showed the reference's own solves differing on the objective alone on 314 of
- *   1,373 tasks, which the prompt then named as a count; the session's own comparison now says it.
+ *   differed in that comparison's A/A. An opening tells the last one, and a wake each since it was
+ *   last told. The reference's own solves often differ on the objective alone, and the session's own
+ *   comparison says how often, rather than a count from the archive.
  * - `groups`: every task under the reference's outcome in the last comparison that scored it, one
  *   block an outcome with a heading that says once what the block means. A line gives the task, then
  *   the turns each of the reference's valid answers took and, under an objective, what each measured,
@@ -18,29 +17,22 @@
  *   promoted, and how many tasks were held out before then.
  * - `refused`: at an opening alone, the drafts the gate refused since that promotion, by its reason.
  *
- * Until 5 November each session was a new conversation, and its opening also told each task's last
- * three comparisons; a conversation now hears each reading at the wake after it. A live conversation
+ * A conversation hears each reading at the wake after it, so an opening tells no task's earlier
+ * comparisons. A live conversation
  * hears each refusal from the gate, so a wake repeats none, but one that crashed or met a limit
  * opens afresh from the log (`AGENTS.md`, section 4) and has that record of them alone. A wake
  * after a promotion says it, as an opening does.
  *
- * Until 4 November the opening carried a legend for every clause, the outcome on every line, the
- * gate's room solves, which no gate has run since 1 November, and the last session's note. An
- * earlier log's gate readings are read by `tools/wri/gate-era.ts`.
+ * The record carries no legend, no grade or sentence of the author's on a task, and no line of its
+ * tries of the reference, which `try_reference`'s reply tells once. An older log's gate readings are
+ * read by `tools/wri/gate-era.ts`. A line gives the reference's measures, so a saturated objective
+ * reads as "measured 1, 1" instead of passing unremarked. The check a ruling found at fault is
+ * named, so that a later session does not write more tasks that the same frozen check refuses.
  *
- * On 5 November the overhaul took out three things #610 to #612 had added and no campaign had yet
- * run: the author's grade and sentence on each open task, a line of its tries of the reference (told
- * once, in `try_reference`'s reply), and a gap clause that said whether the reference's own two solves
- * or an answer on record made it. In its place a line gives the reference's measures, so a saturated
- * objective reads as "measured 1, 1": at jobstath2-fresh-opus-forkedPR608, 243 of 265 passing verdicts
- * measured exactly 1, and the record said nothing of it. The check a ruling found at fault is named
- * because at jobstat-fresh-opus-forkedPR607-r2 a later session wrote three more tasks that one frozen
- * check, ruled at fault on 10 answers, then refused.
- *
- * Reference measurements are told by epoch: on 16 October a session after a promotion read the
+ * Reference measurements are told by epoch, so a session after a promotion does not read the
  * starter's admission counts as the new reference's. Nothing here names a harness or a target, no
  * check but one a ruling found at fault, and no count carries a band or a number to reach (the
- * operator's decision of 11 October).
+ * operator's decision).
  */
 import { scoresIn } from "../kernel/compare.ts";
 import { familySizes, proposalsOf } from "../kernel/history.ts";
@@ -222,10 +214,9 @@ function faultedOf(events: readonly LogEvent[]): Map<string, Set<string>> {
   return faulted;
 }
 
-/** Who won a task in the last comparison that scored it and on which measure. Until 5 November
- *  the line also gave the objective gap the reference's answers left, which in a truss campaign of
- *  #588 came from its own two solves on all five such lines (WRI lane 13); its measures say that
- *  now. */
+/** Who won a task in the last comparison that scored it and on which measure. The objective gap
+ *  the reference's answers left is told by its measures rather than a clause, since that gap often
+ *  came from its own two solves. */
 function standingOf(standing: Standing | undefined): string[] {
   if (standing === undefined) return [];
   return [
@@ -237,8 +228,8 @@ function standingOf(standing: Standing | undefined): string[] {
 
 /** The comparisons the reference harness stood in that a session has not heard of, or null where
  *  there are none: the last at an opening, whose record lists every task, and at a wake each one
- *  reported since `after`. Until 6 November a wake told only the newest, so 1 of the 6 wakes on
- *  record heard of its g-4 and not of the g-3 that read the new reference against the starter. */
+ *  reported since `after`, so a wake after two readings does not miss the one that read the new
+ *  reference against the starter. */
 function stoodLines(events: readonly LogEvent[], after: number | undefined): string | null {
   const reference = referenceOf(events);
   const stood = lastReports(events).filter(({ data }) => data.old === reference || data.fresh === reference);
@@ -289,9 +280,8 @@ function stoodLine(
 }
 
 /** That the reference harness was promoted, on which comparison, and how many of the tasks
- *  `listed`, by version, were held out before then, under the harness it replaced. At esp32-fresh-opus-terra's x-4 (27
- *  October) the promoted harness answered all 22 listed tasks in 2 turns each, and the opening said
- *  nothing of the promotion: the session spent 362 minutes on ten drafts of one kind, each refused. */
+ *  `listed`, by version, were held out before then, under the harness it replaced, since a session
+ *  not told of a promotion can spend hours drafting tasks the new reference answers at once. */
 function promotedLine(events: readonly LogEvent[], since: number, listed: readonly string[]): string | null {
   const promotion = events[since];
   if (promotion === undefined) return null;

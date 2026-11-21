@@ -2,64 +2,51 @@
  * The scale an Examiner grades a task's difficulty on, with worked examples from three fields no
  * campaign examines, so that "demanding" has a measure and the top of the scale has a picture.
  *
- * Until 31 October the writing prompt said "Harder is yours to judge" and gave no scale, and the
- * drafting prompt none either. The investigation of that day graded every scored task of
- * kernel-cyber2-fresh-DeepSeek-V4.1-Flash-1017 at reach 3 or below on lane 14's scale (12 of 37 at
- * 3, none above), because the drafted exam defined each weakness by its exact syntax and each fix
- * as one canonical edit. Of esp32-fresh-opus's 81 drafts, the reference harness answered
- * all 3 solves of 76, so task admission refused them. And the reference's room came from chance on easy
- * tasks: it flipped between a valid and an invalid solve on 18 of 85 compared tasks. Two
- * promotions bought no reach the starter lacked. The operator asked the same day for a ladder from
- * easy to very hard, from fields outside the system, that "REALLY get very hard".
+ * Without a scale, "harder" was the Examiner's alone to judge, and drafted exams sat low: an
+ * investigation graded every scored task of one campaign at reach 3 or below on lane 14's scale,
+ * because the exam defined each weakness by its exact syntax and each fix as one canonical edit;
+ * another campaign's reference answered all three solves of nearly every draft, so task admission
+ * refused them; and the reference's room came from chance on easy tasks, so promotions bought no
+ * reach the starter lacked. The operator asked for a ladder from easy to very hard, from fields
+ * outside the system, that "REALLY get very hard".
  *
  * The grades are lane 14's reach scale word for word (`whole-run-investigation`, `lanes.md`), so
  * the Examiner and the investigation grade on one scale. `test/examiner-ladder.test.ts` holds the
  * two together. The examples are from orbital transfers, power-distribution load flow and
  * feedback-loop tuning: fields each with an engine that decides an answer (a two-body propagator,
  * Newton-Raphson load flow, a closed-loop simulation). They keep clear of every domain a campaign
- * examined by 31 October: buffer formulation, business records, trusses, ESP32 pin maps, C memory
- * safety and event seating, which replaced codon recoding on the operator's word that day, and also
- * each field beside one of those, so no example is a task shape of an exam in use. The same test
- * refuses any of their names here.
+ * examines, and of each field beside one, so no example is a task shape of an exam in use. The same
+ * test refuses any of those names in the examples.
  *
- * The rungs were set against the record the same day. Graded blind from their public inputs, the
- * scored tasks of buffer (75), business records (24) and the ESP32 drafts (83) sat at grades 2 to 5,
- * and the reference answered 1,438 of 1,465 of their solves, a median of 3 to 5 turns, grade 5
- * included. A solver with a shell scripts every case and checks its own answer, so a first draft of
- * these fields, whose 7s rested on "a specialist misses a case", re-rated at 4 to 5. Each rung above 1
- * is set in one of the three places the closing paragraph names.
+ * The rungs are set against the record. Graded blind from their public inputs, the scored tasks of
+ * three domains sat at grades 2 to 5, and the reference answered nearly all of their solves in a
+ * median of 3 to 5 turns, grade 5 included. A solver with a shell scripts every case and checks its
+ * own answer, so a rung whose 7 rests on "a specialist misses a case" re-rates at 4 to 5. Each rung
+ * above 1 is set in one of the three places the closing paragraph names.
  *
- * The same day graders that had not read the ladder re-rated each rung blind from its words
- * (`examiner-complexity`, `grades.ts rungs`). The first put 3 of 18 rungs at their stated grade and 15
- * below, so each field was rewritten: a flat rung replaced, and each field's 7 set within a
- * tolerance of a bound the contract states. Five more rounds of two fresh graders each moved the
- * rungs to the graders' medians; the last put 14 of 18 at their stated grade and the other 4 one
- * below, with no rung at or under the one before it. Two graders agreed within one grade on every
- * rung, so a count is read over two graders or more.
+ * Graders that had not read the ladder re-rated each rung blind from its words
+ * (`examiner-complexity`, `grades.ts rungs`), and each field was rewritten until the graders'
+ * medians matched: a flat rung replaced, and each field's 7 set within a tolerance of a bound the
+ * contract states. The last round put 14 of 18 rungs at their stated grade and the other 4 one below,
+ * with no rung at or under the one before it. Two graders agreed within one grade on every rung, so
+ * a count is read over two graders or more.
  *
- * Text alone overrates margins. That evening two blind graders put the first ladder's esp32 drafts a
- * grade above its control's (median 5 against 4; 38 of 50 grades equal, all 50 within one), for
- * totals within 0.01 of their limit, every pin in use and one resistor value a part, and the
- * reference answered 28 of 29 solves of those graded 5 and 6 at a median of 3 turns. The solver's
- * description already ranked tight margins at grade 2 and the Examiner wrote them anyway, so it
- * now names those forms and says when a tolerance does punish approximation.
+ * Text alone overrates margins: blind graders put drafts whose totals sat within 0.01 of their limit
+ * a grade above their control, while the reference answered nearly every solve of them in a median
+ * of 3 turns. The solver's description already ranked tight margins at grade 2 and the Examiner
+ * wrote them anyway, so it names those forms and says when a tolerance does punish approximation.
  *
  * Grades are a measure and never a target: no count or share is named, and code decides nothing on
  * a grade (`AGENTS.md`, section 2, consequence 2). The over-time rule the writing prompt states is
  * relative to measured facts: a grade the reference answers on every solve measures nothing more.
  *
- * On 4 November two things moved. `SOLVER`'s second place gave a data form, read from JobBench's
- * statistics tasks that morning; the jobstat draft that followed listed every break in its data
- * with its repair, so the place is said in its general form again, "and nothing public says
- * where", and a stated procedure joins what the solver meets at grade 2. And a drafting session
- * reads the scale and the solver (`REACH`) instead of the whole ladder: the worked fields teach
- * how hard a task is, which the writing session decides, and no drafting record shows them
- * raising supply (buffer untied 82% of the tasks it drafted before the ladder and 80% after,
- * truss 96% and 95%).
- *
- * On 18 November `SOLVER` stopped saying the solver "forgets no case and skips no check": under the
- * Starter a jobstat run's solver had 47 of 144 answers refused by one bookkeeping check, so it says
- * what the solver can do instead of what it never fails at.
+ * `SOLVER`'s second place is said in its general form, "and nothing public says where", since a
+ * concrete data form was copied straight into a draft that listed every break in its data with its
+ * repair; a stated procedure joins what the solver meets at grade 2. A drafting session reads the
+ * scale and the solver (`REACH`) instead of the whole ladder: the worked fields teach how hard a
+ * task is, which the writing session decides, and no drafting record shows them raising supply.
+ * `SOLVER` says what the solver can do rather than that it "forgets no case and skips no check",
+ * which a solver whose answers one bookkeeping check often refuses belies.
  */
 
 /** Reach, from 0 to 7: how hard a task is for a strong current model working in the field. */

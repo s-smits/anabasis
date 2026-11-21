@@ -12,15 +12,14 @@
  * `shell.ts`), which seeds a writing session's home and carries it on.
  *
  * Neither mode receives the reference harness's guide or programs, nor a solver's trace or answer:
- * a writing session tries the reference as a black box (`try_reference`). Until 18 November its
- * home also held a copy of the reference harness (`tools/d1b/examine.ts`). Its shell is a walled home, closed to the repository.
+ * a writing session tries the reference as a black box (`try_reference`), and its home holds no
+ * copy of the reference harness. Its shell is a walled home, closed to the repository.
  *
  * The session clock charges setup and every turn and tool call except a drafting session's wait for
  * the host's reading of a draft, which is the verifier's time (`drafting`), and kill
  * and budget signals stay independent of it. Typed abort reasons latch the first parent source
- * before the agent loop aborts an invocation. Until 1 November the clock paused while the session
- * waited on its gate's room solves, a tool result told what that gate had said since, and `finish`
- * and the session's end waited for it; no solve runs at the gate now (`write.ts`).
+ * before the agent loop aborts an invocation. No solve runs at the gate (`write.ts`), so the clock
+ * never waits on one.
  */
 import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
@@ -160,11 +159,10 @@ function withinBudget(log: string, spent: AbortController): boolean {
 }
 
 /** The session's `finish`: declined where the mode declines one, its work is not
- *  done and its count moved since the last decline. Until 28 October only a first `finish` was:
- *  round 11's GPT arm proposed three more drafts after it and ended at its second, at 9 of 36
- *  drafts and 35 of 240 minutes; two in a row still end a session that has nothing left. A note
- *  is kept to its first 700 bytes, as a Referee's reason is: until 28 October a longer one was
- *  refused, 23 times in 417 calls, each a turn spent rewriting it. */
+ *  done and its count moved since the last decline, so a session that is still producing is not
+ *  ended early by its second `finish`; two in a row still end a session that has nothing left. A
+ *  note is kept to its first 700 bytes, as a Referee's reason is, rather than refused, which cost a
+ *  turn spent rewriting it. */
 function finishTool(mode: Mode, said: Said, rest: Rest): SeatTool {
   return tool({
     name: "finish",
@@ -189,7 +187,7 @@ function finishTool(mode: Mode, said: Said, rest: Rest): SeatTool {
  * its turns and calls, and its end with what it billed and, for a crash, how many of its commands
  * were running, which decides whether its home is carried on (`inExaminerWall`).
  *
- * Given `rest`, a writing session is one ask of a conversation (5 November): its done work or
+ * Given `rest`, a writing session is one ask of a conversation: its done work or
  * accepted `finish` ends the ask on record and the call waits, off any clock, for the next ask, with
  * its own id, events, clock and turns, and is told the readings since (`ask`, `write.ts`).
  */
@@ -293,8 +291,8 @@ async function examining(
     const mode = modeOf(AbortSignal.any(stops), async (action) => await clock.within(action), rest);
     start();
     request.opened?.();
-    // The current turn's last call, whose result says what the session has used: told its limits at the
-    // opening alone, two of eleven sessions on 14 October were cut at their deadline while still proposing.
+    // The current turn's last call, whose result says what the session has used, since a session
+    // told its limits at the opening alone can be cut at its deadline while still proposing.
     let lastCall: string | undefined;
     const used = (call: string) => {
       const minutes = `${String(Math.floor(clock.seconds() / 60))} of ${plural(Math.round(current.limits.wallSeconds / 60), "minute")}`;
@@ -374,7 +372,7 @@ async function examining(
  * solver's command wall (`shell.ts`), and its time is counted from before its root is claimed;
  * without one it has no shell and computes nothing. A drafting session is given no engines, since
  * nothing is drafted yet that names one, and its home is kept for the first
- * writing session (5 November). A run killed before the
+ * writing session. A run killed before the
  * session began, and an id a session of the log already took, claim nothing and start nothing.
  */
 export async function examine(request: ExamRequest, wall?: Wall): Promise<Examined> {
@@ -396,7 +394,7 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
   return await inExaminerWall(request, walled, seated);
 }
 
-/** The Examiner's asks as one conversation (5 November): each later ask wakes it where it rests,
+/** The Examiner's asks as one conversation: each later ask wakes it where it rests,
  *  and where it crashed or met a limit the next opens afresh from the log (`record.ts`). An ask is
  *  answered at its own end or at the conversation's; `close` ends a resting one, as the host does
  *  at the first ask after a promotion (`examineAction`). */

@@ -406,6 +406,17 @@ describe("bun run land", () => {
     expect(gatesRun(gateLog).at(-1)).toBe(`${merged} suite`);
   });
 
+  it("proves only the commits from the pull request --from names, and turns no head green", () => {
+    // The commits beneath #12 would fail, so a partial proof that reached them would fail too.
+    const result = runLand(["12", "--sanitize", "--from", "12"], { ANA_FAKE_FAIL: `${lower} lint` });
+    expect(result.status).toBe(0);
+    expect(gatesRun(gateLog)).toEqual([`${upper} suite`]);
+    expect(statuses(COMMIT)).toEqual([`pending ${upper}`, `success ${upper}`]);
+    expect(statuses("mergeable")).toEqual([]);
+    expect(runLand(["12", "--sanitize", "--from", "13"]).stderr).toContain("#13 is not in #11, #12.");
+    expect(runLand(["12", "--merge", "--from", "12"]).status).toBe(2);
+  });
+
   it("stops at the first commit that fails and names its pull request and where the fix goes", () => {
     const result = runLand(["12", "--sanitize"], { ANA_FAKE_FAIL: `${lower} lint` });
     expect(result.status).toBe(1);

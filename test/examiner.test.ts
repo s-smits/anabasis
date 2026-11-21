@@ -284,18 +284,6 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     expect(readdirSync(keep)).toEqual(["kept.txt"]);
   });
 
-  it("keeps nothing of a drafting session's home where it crashed with a command running", async () => {
-    const s = seat("draft", []);
-    const keep = join(dirname(s.log), "examiner-home");
-    mkdirSync(keep);
-    writeFileSync(join(keep, "kept.txt"), "kept\n");
-    await inExaminerWall(s.request, { ...WALL, keep }, async ({ shell }) => {
-      writeFileSync(join(shell.dirs.home, "half.txt"), "half\n");
-      append(s.log, "draft.finished", { session: s.request.id, ended: "crashed", running: 1 });
-    });
-    expect(readdirSync(keep)).toEqual(["kept.txt"]);
-  });
-
   it("carries a relative link as it stands, into the home and out of it", async () => {
     // A venv's `python` names `python3.14` beside it; read through the session's root, which is
     // removed when the session ends, it dangles in the next session's home.

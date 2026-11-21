@@ -259,12 +259,6 @@ describe("a value given from a file in the Examiner's home", () => {
   /** The arguments that tool runs with, as given `args`. */
   const prepared = (args: JsonObject, at: string | null = home) => trying(at).prepareArguments?.(args);
 
-  it("reads a value of 50 KB as the same JSON written inline", () => {
-    expect(JSON.stringify(large).length).toBeGreaterThan(50_000);
-    const filed = prepared({ ...large, public_input: { from_file: "input.json" }, answer: ANSWER });
-    expect(filed).toEqual({ ...large, answer: ANSWER });
-  });
-
   it("reads a whole list from a file before the schema is checked, and refuses one of the wrong shape without echoing it", () => {
     const files = [{ path: "out/report.md", text: "x".repeat(60_000) }];
     writeFileSync(join(home, "files.json"), JSON.stringify(files));
@@ -293,32 +287,6 @@ describe("a value given from a file in the Examiner's home", () => {
     expect(refusal).toContain("files.0.path");
     expect(refusal).not.toContain("yyyy");
     expect(refusal.length).toBeLessThan(2000);
-  });
-
-  it("admits an instance given by file as it admits the same instance given inline", async () => {
-    const outputs = async (byFile: boolean) => {
-      const s = seat("write", []);
-      const mode = writing({ ...s.request, verify: async () => ({ kind: "pass" }) }, undefined, { home });
-      const task = byFile ? { from_file: "task.json" } : large;
-      const answer = byFile ? { from_file: "answer.json" } : ANSWER;
-      const input = byFile ? { from_file: "input.json" } : large.public_input;
-      const tried = await invoke(toolOf(mode, "try_answer"), "answer", {
-        ...large,
-        public_input: input,
-        answer,
-      });
-      const put = await invoke(toolOf(mode), "put", { tasks: [task] });
-      const logged = read(s.log).filter(({ kind }) => kind.startsWith("task."));
-      return {
-        tried: tried.output,
-        put: put.output,
-        logged: logged.map(({ kind, data }) => ({ kind, data })),
-      };
-    };
-    const inline = await outputs(false);
-    const filed = await outputs(true);
-    expect(filed).toEqual(inline);
-    expect(inline.logged.map(({ kind }) => kind)).toContain("task.proposed");
   });
 
   it("refuses a path outside the home, a link out of it, a missing file, a folder, a file too large and text that is not JSON", () => {

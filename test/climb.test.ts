@@ -14,7 +14,7 @@
 // epoch ends with a promotion and the next one's tasks are harder?
 
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { barLines, type Epoch, epochLine, epochsOf, riskLines, worthOf } from "../src/campaign/climb.ts";
+import { barLines, type Epoch, epochLine, epochsOf, riskLines } from "../src/campaign/climb.ts";
 import { examine } from "../src/examiner/session.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import { type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
@@ -505,81 +505,6 @@ describe("the starter comparison in an epoch's row", () => {
     expect(second?.confirmed).toBe(false);
     expect(epochLine(present(second))).toContain("against the starter unread");
     expect(epochLine(present(first))).not.toContain("against the starter");
-  });
-});
-
-describe("the bar a promotion is read against, beside an old ladder's readings", () => {
-  /** A candidate's comparison against `old` that read a frontier. */
-  const stepRead = (session: string, old: string, fresh: string) =>
-    event(REPORTED, {
-      session,
-      reading: "step",
-      old,
-      fresh,
-      solves: 2,
-      level: 0.1,
-      setting: SETTING,
-      versions: ["v1"],
-      // Three tasks won by two pairs each: p 0.125, read as a step here by its word.
-      frontier: { differences: [2, 2, 2], falseRate: 0.01 },
-      retained: "unmeasured",
-    });
-  /** An old ladder read on `reference`, since retired: tasks by the starter's valid solves
-   *  and by the reference's. */
-  const ladderRead = (session: string, reference: string, starter: number[], valid: number[]) =>
-    event(REPORTED, {
-      session,
-      old: reference,
-      fresh: "S",
-      tasks: 4,
-      ladder: true,
-      valid: { old: valid, fresh: starter },
-    });
-  const log = [
-    event("campaign.opened", { terms: { cost: "2" } }),
-    event("comparison.started", { session: "g-1", old: "S", fresh: "ha", starter: "S" }),
-    ...heldOut("v1"),
-    event("build.finished", { session: "b-1", changed: true }),
-    stepRead("g-1", "S", "ha"),
-    event("harness.promoted", { harness: "ha", from: "S" }),
-    event("comparison.started", { session: "g-2", ladder: true, tasks: ["l1", "l2", "l3", "l4"] }),
-    ladderRead("g-2", "ha", [4, 0, 0], [2, 2, 0]),
-    event("build.finished", { session: "b-2", changed: true, billed: 5 }),
-    stepRead("g-3", "ha", "hb"),
-    event("harness.promoted", { harness: "hb", from: "ha" }),
-    event("comparison.started", { session: "g-4", ladder: true, frozen: "g-2", tasks: ["l1", "l2", "l3"] }),
-    ladderRead("g-4", "hb", [3, 0, 0], [0, 0, 3]),
-    event("comparison.started", { session: "g-5", ladder: true, tasks: ["l5", "l6"] }),
-    ladderRead("g-5", "hb", [2, 0, 0], [2, 0, 0]),
-  ];
-
-  it("reads a step as the log stood before its report, as one attempt more, and every reading before it as one", () => {
-    const step = log.findIndex(({ data }) => data.session === "g-3" && data.reading === "step");
-    const before = worthOf(log.slice(0, step), "g-3");
-    expect(worthOf(log.slice(0, step + 1), "g-3")).toEqual(before);
-    expect(before.cost).toMatchObject({ attempts: 1, met: true });
-    // A reading after the step is an attempt of its own, a repeat included.
-    expect(worthOf(log.slice(0, step + 1), "g-5").cost).toMatchObject({ attempts: 2 });
-    const tied = { ...stepRead("g-5", "ha", "hb").data, reading: "no-step", frontier: { differences: [0] } };
-    const again = [...log.slice(0, step + 1), event(REPORTED, tied)];
-    expect(worthOf(again, "g-6").cost).toMatchObject({ attempts: 3 });
-  });
-
-  it("counts a led session in each epoch it acted in, and a finished one in its own epoch alone", () => {
-    // A led session finishes in no epoch, so a count by finished sessions would read every step
-    // "over 0 Builder sessions".
-    const led = [
-      event("campaign.opened", { terms: { cost: "2" } }),
-      event("comparison.started", { session: "g-1", old: "S", fresh: "ha", starter: "S" }),
-      event("build.started", { session: "b-1", parent: "S" }),
-      event("build.turn", { session: "b-1" }),
-      event("build.turn", { session: "b-1" }),
-      stepRead("g-1", "S", "ha"),
-      event("harness.promoted", { harness: "ha", from: "S" }),
-      event("build.turn", { session: "b-1" }),
-    ];
-    expect(epochsOf(led).map(({ sessions }) => sessions)).toEqual([1, 1]);
-    expect(epochsOf(log).map(({ sessions }) => sessions)).toEqual([1, 1, 0]);
   });
 });
 

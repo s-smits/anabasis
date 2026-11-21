@@ -152,7 +152,7 @@ function verdictText(value: JsonValue | undefined): string {
 }
 
 /** One rejection's finding whole, and each probe row it ran, cited or not. */
-export function probeLines(events: readonly LogEvent[], wanted: string): string[] {
+function probeLines(events: readonly LogEvent[], wanted: string): string[] {
   const log = indexOf(events);
   const solve = log.solves.find(({ id }) => id === wanted || id.endsWith(`-${wanted}`));
   if (solve === undefined) return [`no solve ${wanted} in the log`];

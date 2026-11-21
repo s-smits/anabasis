@@ -166,7 +166,7 @@ export const EXAM_END = "exam.finished";
 export const REPORTED = "comparison.reported";
 
 /** Every trigger this reader can print, and the lane it starts. `lanes.md` names each one in the
- *  `Starts from` paragraph of that lane, and `test/wri-catalogue.test.ts` holds the two together. */
+ *  `Starts from` paragraph of that lane, and `test/wri-readers.test.ts` holds the two together. */
 export const TRIGGERS = {
   "INSTRUMENT AUTHORED": 1,
   "PASSES UNREAD": 1,

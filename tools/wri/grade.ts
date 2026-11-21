@@ -96,7 +96,7 @@ const clipped = (value: JsonValue | undefined) => {
  * not resolve in the answer or a value would change the field's JSON type. A scalar answer's root
  * `$` can be replaced; an object or array root cannot, as a Referee's probe cannot.
  */
-export function withSet(answer: JsonValue, sets: readonly string[]): { answer: JsonValue; said: string[] } {
+function withSet(answer: JsonValue, sets: readonly string[]): { answer: JsonValue; said: string[] } {
   let changed = answer;
   const said = sets.map((each) => {
     const at = each.indexOf("=");

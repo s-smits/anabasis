@@ -59,7 +59,7 @@ function rowOf(ruled: readonly Ruled[]): string {
 }
 
 /** One read of `log`: a head line and the groups worth naming, or one line where there is nothing. */
-export async function restatedOf(log: string, ways: EmbedWays): Promise<string[]> {
+async function restatedOf(log: string, ways: EmbedWays): Promise<string[]> {
   const index = indexOf(read(log, NO_TRACES));
   const said = [...index.rulings].flatMap(([solve, data]): Ruled[] => {
     const words = text(data.reason).trim();

@@ -310,7 +310,7 @@ function installedBy(files: readonly { readonly path: string }[], recordOf: (pat
  *  module beside installed packages stays, so that one `.dist-info` does not drop the whole folder
  *  that holds it and hide a harness's own module behind the packages beside it. A
  *  bundled interpreter's home goes whole (`HOME`), whatever the harness named it. */
-export function ownPrograms(
+function ownPrograms(
   files: readonly { readonly path: string; readonly bytes: number }[],
   recordOf: (path: string) => string | null = () => null,
 ): string[] {
@@ -466,7 +466,7 @@ export function gradesIn(text: string): Grades {
 const fixed = (value: number | null, places = 1) => (value === null ? "-" : value.toFixed(places));
 
 /** The longest stretch with no promotion, from the opening through to the run's last hour. */
-export function longestGap({ promotions, work }: Pick<Trajectory, "promotions" | "work">): number {
+function longestGap({ promotions, work }: Pick<Trajectory, "promotions" | "work">): number {
   const marks = [0, ...promotions.map(({ hour }) => hour), work];
   return Math.max(...marks.slice(1).map((mark, nth) => mark - (marks[nth] ?? 0)));
 }

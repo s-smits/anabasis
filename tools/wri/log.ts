@@ -132,7 +132,7 @@ function span(lines: readonly number[]): string {
 }
 
 /** Each kind and each of its `data` keys: the types each held and the lines it stood on. */
-export function kindRows(events: readonly LogEvent[], only?: ReadonlySet<string>): string[] {
+function kindRows(events: readonly LogEvent[], only?: ReadonlySet<string>): string[] {
   const kinds = new Map<string, KindHeld>();
   for (const [index, { kind, data }] of events.entries()) {
     const entry: KindHeld = kinds.get(kind) ?? { lines: [], keys: new Map() };
@@ -214,7 +214,7 @@ function filtered<T>(items: readonly T[], dataOf: (item: T) => JsonValue, where:
 }
 
 /** One kind's events a row each, or several kinds' with the kind named, or one field's counts. */
-export function eventRows(events: readonly LogEvent[], query: EventQuery): string[] {
+function eventRows(events: readonly LogEvent[], query: EventQuery): string[] {
   const range = /^(\d+)(?:-(\d+))?$/u.exec(query.lines ?? "");
   const from = Number(range?.[1] ?? 1);
   const to = Number(range?.[2] ?? range?.[1] ?? events.length);
@@ -348,7 +348,7 @@ export function solveRows(events: readonly LogEvent[], only: SolveQuery): string
 }
 
 /** The `slice.ts` command for each seat's trace or solve whose id is `id`, or ends or begins so. */
-export function traceRows(events: readonly LogEvent[], id: string, log: string): string[] {
+function traceRows(events: readonly LogEvent[], id: string, log: string): string[] {
   const owners = new Map<string, string>();
   for (const { seat, id: owner } of tracesIn(events)) owners.set(`${seat} ${owner}`, owner);
   for (const { kind, data } of events) {

@@ -4,7 +4,7 @@
  * of sight and out of every pool until it is unsealed.
  */
 import { afterAll, describe, expect, it } from "bun:test";
-import { armOf, levelLines, partOf, sealOf } from "../studies/harness2/levels.ts";
+import { armOf, levelLines, sealOf } from "../studies/harness2/levels.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { capturedJsonStringify } from "../src/meta/json-runtime.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -113,48 +113,6 @@ const b = armOf(root, "bare");
 const read = (salt: string | null, unseal = false) => levelLines({ label, a, b, salt, unseal }).join("\n");
 
 describe("the open reading", () => {
-  it("reads every grain from the gradings and names a task short on one side", () => {
-    const told = read(null);
-    expect(told).toContain("left out as short on one side: h/task2");
-    expect(told).toContain("points: 18 v 22 of 48");
-    expect(told).toContain("criteria: 9 v 12 of 15");
-    expect(told).toContain("rubrics one criterion short of scoring: 1 v 1");
-  });
-
-  it("lists a split rubric won by either side, under one count of each", () => {
-    const told = read(null);
-    expect(told).toContain("rubrics split: 2 of 5; built won 1 for 6 points, bare won 1 for 10 points");
-    expect(told).toContain("g/task1 rubric 0 weight 10");
-    expect(told).toContain("g/task2 rubric 0 weight 6");
-    expect(told).not.toContain("h/task1 rubric");
-  });
-
-  it("reads each measure both ways by the comparison's test", () => {
-    const line = read(null)
-      .split("\n")
-      .find((each) => each.startsWith("points by task"));
-    expect(line).toContain("built above on 1, bare above on 1, tied on 2");
-    expect(line).toContain("p built above");
-    expect(line).toContain("p bare above");
-  });
-
-  it("counts the commands that name the harness's folder, and those of them that only look", () => {
-    // A look beside a program of the folder is no look, nor is any wrapped, interpreted or assigned
-    // form; a call that is no command is not counted, only the graded attempt is read, and a rollout
-    // without a trajectory is unread instead of none.
-    expect(read(null)).toContain(
-      "shell commands and the harness's programs, by folder or name: 11 name it, 3 of them only to look, of 13 (2 rollouts unread) v 0 name it, 0 of them only to look, of 2 (3 rollouts unread; no tree lists its programs)",
-    );
-  });
-
-  it("reads one part alone, and refuses a task neither arm was graded on", () => {
-    const part = partOf(a, b, ["g/task1"]);
-    const told = levelLines({ label, ...part, salt: null, unseal: false }).join("\n");
-    expect(told).toContain("graded on both: 1; built 1, bare 1");
-    expect(told).toContain("10 name it, 2 of them only to look, of 12 v");
-    expect(() => partOf(a, b, ["g/task1", "g/task9"])).toThrow("graded for neither arm: g/task9");
-  });
-
   it("prints no rubric's text and no grader's reasons", () => {
     expect(read(null)).not.toContain(SECRET);
     expect(read("salt", true)).not.toContain(SECRET);

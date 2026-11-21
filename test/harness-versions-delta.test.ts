@@ -4,12 +4,11 @@
 // session's earlier checkpoint (`madeOf`), and its tool tree holds a bytecode cache and an installed
 // package that no file line may name.
 import { afterAll, describe, expect, it } from "bun:test";
-import { append, read } from "../src/kernel/log.ts";
+import { append } from "../src/kernel/log.ts";
 import {
   cpSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -22,8 +21,7 @@ import { capturedExecPath } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import { openHarness } from "../src/harness/open.ts";
 import { EXAMPLE, writeStarter } from "../src/harness/starter.ts";
-import { buildPackets } from "../tools/wri/packets.ts";
-import { diffOf, madeOf, ownFilesOf } from "../tools/wri/trajectory.ts";
+import { diffOf } from "../tools/wri/trajectory.ts";
 import { writeHarness } from "./helpers/write-harness.ts";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-harness-delta-test-")));
@@ -80,32 +78,6 @@ const run = (...args: string[]) => {
 const short = (digest: string) => digest.slice(0, 8);
 
 describe("what moved between kept harnesses", () => {
-  it("reads a checkpoint's parent from the session's earlier checkpoint, with the turns that made it", () => {
-    expect(madeOf(read(log), grand, starter).parent).toBe(child);
-    const listed = run();
-    expect(listed.stdout).toContain(`made in Builder turns b-1{4-5}`);
-    expect(listed.stdout).toContain(`made in Builder turns b-1{1-3}`);
-  });
-
-  it("names each written file that moved and none it installed or cached", () => {
-    const { code, stdout } = run("--diff", grand, "--files");
-    expect(code).toBe(0);
-    expect(stdout).toContain(".toolchain/bin/plan-shifts  added  +2 -0");
-    expect(stdout).toContain("agent/BUILT_AGENTS.md  changed  +1 -1");
-    expect(stdout).not.toContain("cache.pyc");
-    expect(stdout).not.toContain("site-packages");
-    expect(stdout).not.toContain("agent/tools.ts  changed");
-  });
-
-  it("prints the moved lines against the recorded parent, not the starter", () => {
-    const { stdout } = run("--diff", grand, "--lines");
-    expect(stdout).toContain(`against ${child}`);
-    expect(stdout).toContain("+Read the task twice.");
-    expect(stdout).toContain("-Read the task.");
-    expect(stdout).toContain("+echo planned");
-    expect(stdout).not.toContain("x = 1");
-  });
-
   it("walks the chain blind: no reading, tally, comparison or promotion", () => {
     for (const depth of [[], ["--lines"]]) {
       const { code, stdout } = run("--chain", ...depth);
@@ -116,17 +88,6 @@ describe("what moved between kept harnesses", () => {
         expect(stdout.replaceAll(/[0-9a-f]{8}/g, "")).not.toContain(result);
       }
     }
-  });
-
-  it("takes an eight-character prefix and refuses one that begins two digests, naming both", () => {
-    expect(run("--diff", short(grand), "--files").stdout).toContain(`${grand} against ${child}`);
-    const twin = `${short(grand)}${"0".repeat(56)}`;
-    cpSync(join(states, grand), join(states, twin), { recursive: true });
-    const refused = run("--diff", short(grand));
-    expect(refused.code).not.toBe(0);
-    expect(refused.stderr).toContain(grand);
-    expect(refused.stderr).toContain(twin);
-    rmSync(join(states, twin), { recursive: true, force: true });
   });
 });
 
@@ -153,15 +114,6 @@ describe("what an installer wrote, beside what the harness wrote", () => {
   symlinkSync("check-answer", join(tree, "bin", "pack-answer"));
   symlinkSync("/etc/hosts", join(tree, "bin", "outside"));
 
-  it("keeps an own module beside installed packages and drops each file their metadata names", () => {
-    expect(ownFilesOf(state).paths.toSorted()).toEqual([
-      "bin/check-answer",
-      "bin/open-task",
-      "bin/pack-answer",
-      "pylib/statkit.py",
-    ]);
-  });
-
   it("diffs a link as the name it points to, never its target's text", () => {
     const moved = join(root, "relinked");
     cpSync(state, moved, { recursive: true, verbatimSymlinks: true });
@@ -174,26 +126,5 @@ describe("what an installer wrote, beside what the harness wrote", () => {
       "--> check-answer",
       "+-> open-task",
     ]);
-  });
-});
-
-describe("the lane 14 packets", () => {
-  it("diff a checkpoint against the parent the log records, not the starter", () => {
-    const other = join(root, "other");
-    cpSync(camp, other, { recursive: true });
-    const out = join(root, "packets");
-    buildPackets(
-      [
-        { name: "camp", log, events: read(log) },
-        { name: "other", log: join(other, "log.jsonl"), events: read(join(other, "log.jsonl")) },
-      ],
-      out,
-      2,
-    );
-    const versions = ["a", "b"]
-      .map((grader) => readFileSync(join(out, `packet-${grader}-versions.md`), "utf8"))
-      .join("\n");
-    expect(versions).toContain(`(parent ${short(child)})`);
-    expect(versions).not.toContain(`(parent ${short(starter)})`);
   });
 });

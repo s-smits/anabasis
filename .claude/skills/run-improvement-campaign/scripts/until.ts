@@ -19,7 +19,7 @@ interface Wait {
 }
 
 /** The `--at` asked; a kind no log holds is refused, since a mistyped one would wait for good. */
-export function boundOf(text: string): NonNullable<Wait["bound"]> {
+function boundOf(text: string): NonNullable<Wait["bound"]> {
   const [kind = "", count = "1"] = text.split(":");
   if (!isKind(kind)) throw new Error(`--at ${text}: ${kind} is no event kind`);
   if (!/^[1-9]\d*$/.test(count)) throw new Error(`--at ${text}: the count is a whole number, at least 1`);
@@ -27,7 +27,7 @@ export function boundOf(text: string): NonNullable<Wait["bound"]> {
 }
 
 /** The line that ends the wait on `events` at `now`, or null while it goes on. */
-export function untilLine(name: string, events: readonly LogEvent[], wait: Wait, now: number): string | null {
+function untilLine(name: string, events: readonly LogEvent[], wait: Wait, now: number): string | null {
   const { bound, hours, say } = wait;
   const count = events.filter(({ kind }) => kind === bound?.kind).length;
   const opened = events.find(({ kind }) => kind === "campaign.opened")?.at;

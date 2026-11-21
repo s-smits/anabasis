@@ -169,7 +169,7 @@ function textOf(root: string, at: string | null, file: string): string | null {
 }
 
 /** Section 13's visible slips in one Markdown text, outside fenced code and what `QUOTED` matches. */
-export function proseFindings(path: string, text: string): ProseFinding[] {
+function proseFindings(path: string, text: string): ProseFinding[] {
   let fenced = false;
   return text.split("\n").flatMap((raw, index) => {
     if (raw.trimStart().startsWith("```")) {
@@ -189,7 +189,7 @@ const inside = (file: string, path: string): boolean => file === path || file.st
 
 /** The suggested labels: the category most changed files fall under, and an importance by the
  *  definitions of `AGENTS.md` section 11, read from the categories alone. */
-export function labelsOf(files: readonly string[]): Pick<Owed, "category" | "importance"> {
+function labelsOf(files: readonly string[]): Pick<Owed, "category" | "importance"> {
   const counts: Record<string, number> = {};
   for (const file of files.filter((each) => !TEST_FILE.test(each))) {
     const kind = CATEGORY_OF.find(([pattern]) => pattern.test(file))?.[1] ?? "docs";

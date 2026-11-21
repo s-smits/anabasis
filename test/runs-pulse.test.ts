@@ -236,7 +236,11 @@ describe("the runs pulse", () => {
     // The A/A is read as a step is, on the scores without the bill, and in either direction.
     const swept = [-1, -1, -1, -1, -1, -1, -1, 0];
     expect(said(report({ differences: swept, unbilled: swept }, 9))).toMatch(
-      /^⚠.*A\/A 0-7-1 cleared the level/,
+      /^⚠.*A\/A 0-7-1 cleared the level reversed/,
+    );
+    const sweptUp = swept.map((one) => -one);
+    expect(said(report({ differences: sweptUp, unbilled: sweptUp }, 9))).toMatch(
+      /^⚠.*A\/A 7-0-1 cleared the level ·/,
     );
     const billOnly = { differences: [1, 1, 1, 1, 1, 1, 1, 0], unbilled: [0, 0, 0, 0, 0, 0, 0, 0] };
     expect(said(report(billOnly, 9))).toMatch(/^◆.*A\/A 0-0-8 ·/);

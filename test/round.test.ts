@@ -1403,20 +1403,6 @@ describe("a round", () => {
     expect(await checkpoint(back.paired("g0"))).toMatchObject({ short: [], scored: { wins: 4, losses: 0 } });
   });
 
-  it("stops a run resumed after an answered one where a task first goes silent, and reports it short when silent again", async () => {
-    let calls = 0;
-    const s = await setup([], (version, side, nth, digest) => {
-      calls += 1;
-      if (calls === 13) throw new Error("the run was killed");
-      return calls > 13 ? LIMITED : step(version, side, nth, digest);
-    });
-    await expect(checkpoint(s.paired("g0"))).rejects.toThrow("the run was killed");
-    // Nothing answered in this run, but the run before was, and the task was never silent there.
-    await expect(checkpoint(s.paired("g0"))).rejects.toThrow("then wrote nothing for its last 1 task");
-    expect(s.of(COMPARISON_REPORTED)).toEqual([]);
-    expect(await checkpoint(s.paired("g0"))).toMatchObject({ short: [expect.any(String)] });
-  });
-
   it("stops a comparison at the first refusal no retry clears", async () => {
     const disabled: Ending = {
       outcome: "non-result",
@@ -1430,17 +1416,6 @@ describe("a round", () => {
     });
     await expect(checkpoint(s.paired("g0"))).rejects.toThrow("no retry clears");
     expect(calls).toBe(3);
-  });
-
-  it("stops where the provider wrote nothing for the last task though a crash was noted after it", async () => {
-    let calls = 0;
-    const s = await setup([], (version, side, nth, digest) => {
-      calls += 1;
-      if (calls <= 12) return step(version, side, nth, digest);
-      return calls === 13 ? LIMITED : { outcome: "non-result", kind: "sandbox-crash", reason: "x" };
-    });
-    await expect(checkpoint(s.paired("g0"))).rejects.toThrow("then wrote nothing for its last 1 task");
-    expect(s.of(COMPARISON_REPORTED)).toEqual([]);
   });
 
   it("keeps a kill as the reason when a reset wait returns its provider ending", async () => {

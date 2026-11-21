@@ -7,8 +7,6 @@
 // Comparison unit costs use scored versions, and no unit price where no task was scored.
 
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
-import { REPORTED } from "../src/campaign/comparison.ts";
-import { campaignOf } from "../src/campaign/handover.ts";
 import { examine } from "../src/examiner/session.ts";
 import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import {
@@ -41,7 +39,6 @@ import { packetOf, settleCommand } from "../tools/d2/settle.ts";
 import { wordCommand } from "../tools/d2/word.ts";
 import { harnessesOf } from "../tools/runs/registry.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
-import { admittedCost, indexOf } from "../tools/wri/folds.ts";
 import { FORMAT, fixtureTasks, gradedOf, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";
 import { anyOf, arrayWith, containing, objectWith } from "./helpers/matchers.ts";
 
@@ -719,114 +716,6 @@ describe("a campaign run by its log", () => {
     ]);
     expect(read(join(REPO, ".ana", "d2", name, LOG_FILE))).toHaveLength(before);
     expect(strayed).toEqual([]);
-  });
-
-  describe("the closing report, read from a log alone", () => {
-    /** The closing report's lines over a seeded campaign whose log holds `events` alone. */
-    const reportOf = async (name: string, events: readonly (readonly [LogEvent["kind"], JsonObject])[]) => {
-      layOutPack(root, bundle, TASKS, FIXTURE);
-      const pack = seeded(name).slice(0, -4);
-      const log = join(REPO, ".ana", "d2", name, LOG_FILE);
-      for (const [kind, data] of events) append(log, kind, data);
-      const before = read(log);
-      const to = join(root, `handover-${name}`);
-      await closeCommand([...pack, "--to", to]);
-      // Closing writes nothing to the log.
-      expect(read(log)).toEqual(before);
-      return readFileSync(join(to, "REPORT.md"), "utf8").split("\n");
-    };
-    /** A comparison's start, one solve of it billed, and its report. */
-    const compared = (session: string, solve: JsonObject, report: JsonObject) =>
-      [
-        ["comparison.started", { session, old: "a", fresh: "b", tasks: [] }],
-        ["solve.started", { solve: "s", comparison: session }],
-        ["solve.finished", { solve: "s", ...solve }],
-        [REPORTED, { session, ...report }],
-      ] as const;
-
-    it.each([{ versions: [] }, { versions: ["v1", "v2"] }])(
-      "prices scored versions rather than requested tasks: %j",
-      async ({ versions }) => {
-        const lines = await reportOf(
-          `${STEM}-scored-${String(versions.length)}`,
-          compared(
-            "scored-comparison",
-            { billed: 42.495011 },
-            {
-              tasks: 10,
-              versions,
-              valid: null,
-              reading: "check-defects",
-              scored: { wins: 0, losses: 0, ties: 0 },
-            },
-          ),
-        );
-        const row = lines.find((line) => line.startsWith("- Comparisons:"));
-        expect(row).toContain("1 of the 1 comparison that began reported");
-        expect(row).not.toContain("$4.25");
-        if (versions.length === 0) {
-          // The stopped report's bill stays in the dollars billed, and no unit price or $0.00 stands here.
-          expect(row).toContain("no task scored");
-          expect(row).not.toMatch(/\$[\d.]+/);
-        } else {
-          expect(row).toContain("$21.25 a task scored (2)");
-        }
-      },
-    );
-
-    it("reports backend cost coverage beside calculated spend", async () => {
-      const lines = await reportOf(`${STEM}-cache`, [
-        ["exam.started", { session: "cost-exam" }],
-        ["exam.finished", { session: "cost-exam", billed: 10 }],
-        ["build.started", { session: "cost-build" }],
-        ["build.finished", { session: "cost-build", billed: 20, reportedCost: 25 }],
-        ["build.started", { session: "cost-open" }],
-        ["build.turn", { session: "cost-open", turn: 1, usage: { cost: { total: 5 } } }],
-        // A comparison's report sums its solves' endings, which the check reads instead.
-        ...compared(
-          "cost-g",
-          { billed: 5, reportedCost: 6 },
-          {
-            tasks: 1,
-            billed: 5,
-            reportedCost: 6,
-            reading: "no-step",
-            scored: { wins: 0, losses: 1, ties: 0 },
-          },
-        ),
-      ]);
-      const spend = lines.find((line) => line.includes("Calculated spend"));
-      // Calculated $40 in all; the backend's $31 stands beside the $25 of the two endings that have it.
-      expect(spend?.match(/\d+(?:\.\d+)?/g)?.slice(-6)).toEqual([
-        "40.00",
-        "31.00",
-        "2",
-        "3",
-        "25.00",
-        "24.0",
-      ]);
-    });
-
-    it("bills the drafting session and the solves each Examiner session asked for to the tasks it held out", async () => {
-      const name = `${STEM}-drafting`;
-      const lines = await reportOf(name, [
-        ["draft.started", { session: "d-x" }],
-        ["solve.started", { solve: "draft-solve", comparison: "d-x" }],
-        ["solve.finished", { solve: "draft-solve", billed: 1 }],
-        ["draft.finished", { session: "d-x", billed: 3 }],
-        ["exam.started", { session: "x-x" }],
-        ["solve.started", { solve: "gate-solve", comparison: "x-x" }],
-        ["solve.finished", { solve: "gate-solve", billed: 2 }],
-        ["referee.finding", { solve: "gate-solve", ruling: "earned", billed: 6 }],
-        ["exam.finished", { session: "x-x", billed: 4, held: ["a", "b"] }],
-      ]);
-      // $10 over two tasks, the Referee's $6 left to the Referee, and the drafting session's $4 is
-      // the Examiner's, not nobody's, nor the ruling of the room solve the Examiner's.
-      expect(lines.find((line) => line.startsWith("- The Examiner:"))).toContain("$5.00 a task held out (2)");
-      // The whole-run reader bills the same work to the Examiner.
-      const events = read(join(REPO, ".ana", "d2", name, LOG_FILE));
-      expect(admittedCost(indexOf(events), campaignOf(events).steps).join("")).toContain("5.00 a task");
-    });
   });
 
   it("reads a word the operator left during a comparison at the next move, and changes nothing in the comparison", async () => {

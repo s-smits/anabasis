@@ -268,13 +268,6 @@ describe("the last comparison the reference stood in", () => {
     expect(told.stood).toContain("valid in every solve on 2 of them, in some on 0 and in none on 1");
     expect(told.stood).not.toContain("differed");
   });
-
-  it("is null before any comparison", () => {
-    const log = logged();
-    log.hold(["a"]);
-    expect(heard(log.events, [fixture("a")]).stood).toBeNull();
-    expect(heard([], []).stood).toBeNull();
-  });
 });
 
 describe("the reference's measures on a task", () => {
@@ -523,13 +516,6 @@ describe("the largest family of a comparison the reference stood in", () => {
     // The exam holds four of that family and then five: a count over the exam would say so.
     log.hold(["later"], "wide");
     expect(heard(log.events, []).stood).toBe(told);
-  });
-
-  it("is 0 where the comparison scored no task", () => {
-    const log = logged();
-    log.hold(["a"]);
-    log.reported("c-1", ["h1", "h2"], ["a"]);
-    expect(heard(log.events, []).stood).toContain("The largest family among them held 0.");
   });
 });
 

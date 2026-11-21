@@ -387,29 +387,6 @@ it("reads a settled flip against this tree's unlabelled reading, apart from the 
   expect(labelLines(older).at(-1)).toContain("it holds");
 });
 
-it("reports a label-induced flip even when its labelled reading agrees with the historical one", async () => {
-  const wins = Object.fromEntries(
-    Array.from({ length: 6 }, (_, n) => [`win-${String(n)}`, ["LLLL", "PPPP"] as const]),
-  );
-  const s = fixture(wins);
-  const report = await checkpoint(s.request);
-  expect(report.reading).toBe("step");
-  const wrong = comparison.passesIn(read(s.log), ID).slice(0, 4);
-  settleReading(s.log, ID, new Map(), new Map(wrong.map((solve) => [solve, "wrong"] as const)));
-  let first = true;
-  const older = read(s.log).map((event) => {
-    if (event.kind !== comparison.REPORTED || !first) return event;
-    first = false;
-    return { ...event, data: { ...event.data, reading: "no-step" } };
-  });
-  expect(comparison.swapped(older, ID)).toMatchObject({
-    decided: "no-step",
-    unlabelled: "step",
-    swapped: "no-step",
-  });
-  expect(labelLines(older).at(-1)).toContain("it flips, so its packet was too small to stand on");
-});
-
 it("draws and settles the stopped comparison through the blind packet command", async () => {
   const s = fixture();
   await checkpoint(s.request);

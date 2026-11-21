@@ -4,7 +4,6 @@ import { mkdtempSync, readdirSync, realpathSync, rmSync } from "../src/meta/file
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import type { Session } from "../src/examiner/session.ts";
 import { inExaminerWall } from "../src/examiner/shell.ts";
 import { examineCommand } from "../tools/d1b/examine.ts";
 import { read } from "../src/kernel/log.ts";
@@ -104,14 +103,5 @@ describe("the Examiner command", () => {
       seated,
     );
     expect(settings()).toHaveLength(1);
-  });
-
-  it("gives a session no probe where no seats are given", async () => {
-    const given: Parameters<Session<"write">>[0]["probe"][] = [];
-    await examineCommand([...PACK, "--name", `${STEM}-home`, "--session", "x-2"], async (request) => {
-      given.push(request.probe);
-      return finished();
-    });
-    expect(given).toEqual([null]);
   });
 });

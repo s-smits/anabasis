@@ -60,13 +60,13 @@ const CHAIN_PEERS = 3;
  * term, and two statements is where that stops being a ternary and starts being a puzzle. So the
  * expression site keeps 2 statements and 5 lines and the statement site takes 3 and 7.
  *
- * Measured 2026-09-20 on the tree at `ce72b1f49`: a flat 3 and 7 reported 77 sites, and reading
- * fourteen of them found nine that could not be spelled at the call site at all. `epochBindingKeys`
- * is called inside a `...spread`, `starterAuthority` and `presetAuthority` inside a `.map` arrow's
- * object literal, `bindsProject` and `isRegularFileDeny` inside a `.some` and a `.flatMap` arrow
- * whose bodies are expressions, `probeOutcomeStatus` inside an `.every`. Three of those bodies
- * hold a `throw` or a `try`, which an expression cannot hold at all. The dial was not wrong about
- * the size; it was wrong about where the lines would go.
+ * Measured 2026-09-20: a flat 3 and 7 reported 77 sites, and reading fourteen of them found nine
+ * that could not be spelled at the call site at all. `epochBindingKeys` is called inside a
+ * `...spread`, `starterAuthority` and `presetAuthority` inside a `.map` arrow's object literal,
+ * `bindsProject` and `isRegularFileDeny` inside a `.some` and a `.flatMap` arrow whose bodies are
+ * expressions, `probeOutcomeStatus` inside an `.every`. Three of those bodies hold a `throw` or a
+ * `try`, which an expression cannot hold at all. The dial was not wrong about the size; it was
+ * wrong about where the lines would go.
  *
  * Ten things keep their name.
  *

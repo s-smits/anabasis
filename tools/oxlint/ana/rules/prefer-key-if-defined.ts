@@ -30,8 +30,7 @@ import {
  * the two helpers, `keyIfDefined` and `keyIfNotNull`, and 290 call sites already spell the fold
  * through them. The guarded assignment is the same decision made after the literal instead of in
  * it, with the object's shape spread over as many statements as it has optional keys. Two
- * simplify passes made exactly this fold by hand, `743608504` and `421533e8f`, and the tree held
- * 26 more of them on 2026-09-20.
+ * simplify passes made exactly this fold by hand, and the tree held 26 more of them on 2026-09-20.
  *
  * The shape is read strictly, because the fold moves an evaluation. A run of guards directly
  * below a `const` whose initialiser is an object literal; each guard has no `else`, tests one

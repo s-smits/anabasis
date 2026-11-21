@@ -30,7 +30,7 @@ export const EVALUATOR_FILE = "evaluator.ts";
 
 /** The guide, under `AGENT_DIR` on disk and by this name in the solver's system prompt. It is not
  *  `AGENTS.md`, the name a solver's backend may load by itself, so that the guide reaches the solver
- *  once, through its prompt, and never beside a file of the backend's own (operator, 27 October). */
+ *  once, through its prompt, and never beside a file of the backend's own (the operator's choice). */
 export const GUIDE_FILE = "BUILT_AGENTS.md";
 
 /** The check program's declaration: the domain plan and its public rule decisions. */
@@ -45,8 +45,8 @@ export const CONTROLS_FILE = "correctness-model/controls.json";
 /** The harness's selection of pi's coding tools, with a tools list that stays empty. */
 export const TOOLS_SPEC_FILE = "agent/tools-spec.json";
 
-/** The module of tools of its own that a harness held until 20 November 2026 (`src/harness/open.ts`).
- *  No opener reads it; a harness kept before then still holds the file, which its readers list. */
+/** The module of tools of its own that an older harness held (`src/harness/open.ts`). No opener
+ *  reads it; a harness that still holds the file has it listed by its readers. */
 export const GENERATED_TOOLS_FILE = "agent/tools.ts";
 
 /** A harness's installed programs, at its root: the tree the solver's shell finds them in. */
@@ -55,8 +55,7 @@ export const TOOL_TREE_DIR = ".toolchain";
 /** The bytecode caches Python writes beside a program it runs. Python reads a file in one only while
  *  the source beside it is there, and checks it against that source unless the file was compiled
  *  as unchecked, so a cache holds nothing the source does not, and a harness whose programs ran
- *  once is the harness it was before. Running its Python programs left `__pycache__` in 26 of the
- *  54 states buffer-fresh-opus-v065-b kept, and on 24 October two states that differed from the one
- *  practised by those caches alone read as never practised. A `.pyc` outside `__pycache__` is code
+ *  once is the harness it was before; counting the caches would read a state that differs from the
+ *  one practised by them alone as never practised. A `.pyc` outside `__pycache__` is code
  *  Python imports with no source beside it, and stays in. */
 export const BYTECODE = /(^|\/)__pycache__(\/|$)/;

@@ -2,8 +2,8 @@
  * Shared filesystem compatibility exports for operations Bun 1.4 does not expose with equivalent
  * synchronous, descriptor, metadata, permission or atomicity semantics. Callers retain the original
  * API contracts; replace exports only when Bun provides the same ordering and error behaviour.
- * The log's two-process transition test exposed concurrent validation against stale history on
- * 26 October. `flock` supplies a cross-process exclusive lock released by closing the descriptor;
+ * The log's two-process transition test holds that two writers never validate against stale
+ * history. `flock` supplies a cross-process exclusive lock released by closing the descriptor;
  * Bun exposes no equivalent descriptor lock.
  */
 import { dlopen, FFIType } from "bun:ffi";

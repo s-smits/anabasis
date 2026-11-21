@@ -117,7 +117,7 @@ const move = (events: readonly LogEvent[], plan: Plan = PLAN) => {
   return decided;
 };
 const promotion = (harness: string, more: JsonObject = {}) => event("harness.promoted", { harness, ...more });
-/** A harness that read a step against `old` twice, as two comparisons, as until 19 October. */
+/** A harness that read a step against `old` twice, as two comparisons, as an older rule asked. */
 const steppedTwice = (id: string, fresh: string, old: string) => [
   ...compared(`${id}a`, fresh, "step", { old }),
   ...compared(`${id}b`, fresh, "step", { old }),
@@ -520,10 +520,9 @@ describe("room for the reference", () => {
     expect(newReference).toMatchObject({ move: "examine", code: "no-room" });
     expect(newReference.why).toContain("h1");
     expect(move([...promotedHalf, ...examined("x-1")])).toMatchObject({ move: "build" });
-    // A session the provider crashed or a stop killed is owed again, with tasks held or none. In a
-    // jobstat run of 14 November the sessions written for two new references were cut at 6 and 4
-    // tasks held, none followed either, and the scored set fell from 22 tasks to 14 in three
-    // comparisons.
+    // A session the provider crashed or a stop killed is owed again, with tasks held or none, since
+    // sessions cut short with none to follow them would let the scored set fall comparison by
+    // comparison.
     const crashed = { ended: "crashed", crash: "x" };
     const killed = { ended: "killed", crash: null };
     for (const cut of [crashed, killed]) {
@@ -577,7 +576,7 @@ describe("room for the reference", () => {
 describe("unread harnesses and tasks", () => {
   it("unread: tasks held out since the last reading are read before anything is built", () => {
     // A harness no comparison has read waits for the Builder's own compare: no count of sessions
-    // names one for it (`--sessions` went on 5 November).
+    // names one for it.
     for (const events of [
       FIRST,
       [...FIRST, ...compared("g-1", "h1", "no-step"), built("b-2", "h2")],
@@ -728,9 +727,8 @@ describe("the build conditions", () => {
     ];
     const left = (dollars: number) => ({ ...PLAN, left: { dollars, reserve: 0.4 } });
     // Twelve held-out tasks at two solves a side make a test of 48 solves, $24 at the $0.50 the
-    // log's two solves billed each. What is left covers it or the campaign ends before paying: on
-    // 20 October the forecast that did this went, since no record held a comparison its cap had
-    // cut, and three have been cut since.
+    // log's two solves billed each. What is left covers it or the campaign ends before paying,
+    // since a comparison its cap cuts reads nothing.
     expect(move(log, left(24))).toMatchObject({ move: "build" });
     expect(decide(log, left(23.99))).toMatchObject({ move: "end", ending: "budget", code: "bound" });
     expect(decide(log, left(0.3))).toMatchObject({ move: "end", ending: "budget" });
@@ -819,8 +817,8 @@ describe("the build conditions", () => {
     }
   });
 
-  // Until 30 October practice was owed once an epoch: buffer-fresh-opus-v072 released six of 69
-  // tasks held after its second promotion while its Builder passed all 103 practice solves.
+  // Practice is owed more than once an epoch, since a release once an epoch can leave a Builder
+  // that passes every practice solve with a handful of the tasks held.
   it("owes the practice named again after each reading, and not before one", () => {
     const released = (version: string) => event("task.state", { version, state: "released" });
     // A task held out since the last release, so each reading is owed the whole practice named.
@@ -831,8 +829,8 @@ describe("the build conditions", () => {
     expect(owed(read, 3, 0.1)).toBe(3);
     expect(owed([...read, released("v1")], 3, 0.1)).toBe(2);
     expect(owed([...read, released("v1"), released("v2"), released("v3")], 3, 0.1)).toBe(0);
-    // A release that a practice solve's check defect has since closed is owed again: until
-    // 5 November the closed task still counted, and no other was released in its place.
+    // A release that a practice solve's check defect has since closed is owed again: the closed
+    // task does not count, so another is released in its place.
     const closed = event("task.state", { version: "v2", state: "disputed", session: "b-1", solve: "s-1" });
     expect(owed([...read, released("v1"), released("v2"), released("v3"), closed], 3, 0.1)).toBe(1);
     // A settlement reports g-1 again (`settleReading`): the same reading, so nothing more is owed.

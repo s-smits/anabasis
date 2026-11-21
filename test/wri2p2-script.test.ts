@@ -1,6 +1,6 @@
 // WRI2P2's driver reads each run's trigger from its log and an investigation's next step from its
 // folder, so a session or a timer takes the iteration one printed step at a time. Every gate is a
-// default a recorded reason passes (operator, 7 November), so each is walked owed, met and deviated.
+// default a recorded reason passes (the operator's rule), so each is walked owed, met and deviated.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   dueLines,
@@ -127,8 +127,8 @@ describe("a run's step at its trigger", () => {
   });
 
   it("owes the pause of a run a `continue --after` waits on, which starts it again and holds its one waiter", () => {
-    // 16 November 2026: a move armed at a compaction stood when the run promoted a second time, the
-    // pause was refused beside it, and this step read `waits`, which `due` does not count.
+    // A move armed at a compaction can stand when the run promotes a second time, with the pause
+    // refused beside it, so this step must not read `waits`, which `due` does not count.
     const moving = pausing(["bun", "tools/runs/cli.ts", "continue", "r1", "--after", "compacted"]);
     const step = openingOf(row, "2 promotions", moving);
     expect(step[0]).toStartWith("step: pause · 2 promotions; a continue --after of it waits in process 1");
@@ -289,7 +289,7 @@ describe("the next step of an investigation", () => {
     expect(step()[0]).toBe(`step: record · ${reads(5)}`);
     write("record.md", made);
     expect(step()[0]).toStartWith("step: isolated");
-    // An iteration opened before 17 November whose synthesis is written is not sent back for them.
+    // An older iteration whose synthesis is written is not sent back for them.
     rmSync(join(dir, "record.md"));
     write("synthesis.md", "# Synthesis\n");
     expect(step()[0]).toStartWith("step: isolated");
@@ -353,7 +353,7 @@ describe("the next step of an investigation", () => {
   });
 
   it("owes the plan every confirmed finding, under any first header and in bold, and no prediction's row", () => {
-    // Until 17 November a table not headed `#`, or a verdict in bold, left the plan owing no finding.
+    // A table not headed `#`, or a verdict in bold, still leaves the plan owing its findings.
     for (const first of ["#", "id", "vet", "row"]) {
       const { write, ledger, step, lone } = folder(`answers-${first === "#" ? "hash" : first}`, "r", true);
       lone(6, "launch.json");
@@ -813,7 +813,7 @@ describe("the next step of an investigation", () => {
     lone(6);
     ledger("predictions-p.md", table(["P1"]));
     ledger("outcomes-p.md", table(["P1"], "falsified"));
-    // A run that kept its opposed trade-offs in a still-missing file before 8 November has said them.
+    // A run that kept its opposed trade-offs in an older still-missing file has said them.
     ledger("still-missing-p.md", "- P1\n\n## Intentionally opposed\n\n- none\n");
     write(VETTING_FILE, "| # | finding |\n| --- | --- |\n| 1 | P1 |\n");
     write("cross-domain.md", "rows");

@@ -3,7 +3,7 @@
 // `test/decide.test.ts` writes one, each move the one `decide` names or a Builder's own `compare`
 // (`comparedOf`, `tools/d2/campaign-actions.ts`). It proves the path and nothing of a model: how often
 // a promotion clears against the starter is the record's (`AGENTS.md`, "Promotion against
-// confirmation"). Written on 5 November for the recount of what a release still requires.
+// confirmation").
 
 import { describe, expect, it } from "bun:test";
 import { barLines, epochsOf } from "../src/campaign/climb.ts";

@@ -3,8 +3,8 @@
  * offers clicked once from a fresh page (`sweep`), and long seeded runs of clicks, keys, history steps and
  * window sizes (`walk`), with what must hold after every step (`unsound`).
  *
- * The other browser tests click what their author chose, and on 14 October each fault they found
- * was one a person met by clicking where no test had: an axis label that opened two comparisons, a
+ * The other browser tests click what their author chose, and the faults a person meets by
+ * clicking where no test has are of another kind: an axis label that opened two comparisons, a
  * label crossed by a divider, focus lost on the inspector's close. The hypothesis repository's
  * `merge-and-verify` skill holds the same line, that whatever a page offers is clicked in the
  * browser before it ships. A walk is the stateful form of a property test: a failure names its seed
@@ -138,12 +138,11 @@ async function controlsOf(page: Page): Promise<Control[]> {
 
 /** Waits until the page has settled: no read of the API in flight, two frames painted since, a pane
  *  drawn in `main`, and nothing busy or loading. A read says nothing for its first 400 ms
- *  (`waited.ts`), so a page that looks settled may still be about to replace what it shows: on
- *  14 October a walk over a real campaign read the Tasks pane's filters while a task was read, and
- *  waited on them once the task's detail had hidden them. On a host loaded to 14 on 8 cores the
- *  walk over the fixture's Campaign pane still read "reading" after 15 s in 13 gate logs from 20 and
- *  21 October, so the wait is twice an action's, and a read open longer than an action is no longer
- *  counted (`inFlight`). */
+ *  (`waited.ts`), so a page that looks settled may still be about to replace what it shows: a walk
+ *  over a real campaign could read the Tasks pane's filters while a task was read, and wait on them
+ *  once the task's detail had hidden them. On a loaded host the walk over the fixture's Campaign
+ *  pane can still read "reading" after 15 s, so the wait is twice an action's, and a read open
+ *  longer than an action is no longer counted (`inFlight`). */
 async function settle(page: Page, pending: () => number): Promise<void> {
   await expect
     .poll(async () => (pending() > 0 ? "reading" : await drawn(page)), { timeout: 2 * ACTION_MS })
@@ -297,9 +296,9 @@ function representatives(described: readonly string[]): [number, string][] {
 /**
  * Every kind of control the page at `start` offers, acted on once from a fresh load of it, then
  * Escape and one step back, with what must hold checked after each. The first and last of each
- * kind are acted on (`representatives`): on 18 October the log pane offered 113 controls of 14
- * kinds, 100 of them its rows, and a sweep of every control took 51 seconds on a quiet host and two
- * minutes in a loaded gate, against 10 seconds for the kinds. A control is found again by its description, so
+ * kind are acted on (`representatives`): a pane such as the log offers a hundred controls of a
+ * dozen kinds, most of them its rows, and a sweep of every control takes several times as long as
+ * one of the kinds. A control is found again by its description, so
  * a page that draws its controls in another order on a second load still lines up.
  */
 export async function sweep(opened: Opened, start: string, rules: Rules): Promise<Explored> {

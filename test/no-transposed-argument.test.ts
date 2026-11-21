@@ -10,9 +10,9 @@
  * The wider spellings sit beside their nearest neighbour that is not a swap: a member read whose
  * property is the other parameter's name, a word-level match (`sourcePath` for `source`), a
  * method reached through `this` or an object literal, a constructor reached by `new`, three
- * arguments rotated, and a pair whose declared types differ but compile either way. It reports zero sites on this tree and on seven trees from 12 October to 5
- * November, so the rule is registered for the shape it refuses to let in, and this file is the
- * only thing that proves it still reports at all.
+ * arguments rotated, and a pair whose declared types differ but compile either way. It reports
+ * zero sites on this tree and on older trees, so the rule is registered for the shape it refuses to
+ * let in, and this file is the only thing that proves it still reports at all.
  */
 import { describe, expect, it } from "bun:test";
 import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";

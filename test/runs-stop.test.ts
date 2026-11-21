@@ -68,8 +68,8 @@ describe("a stop", () => {
     expect(left({ path: copy, seed: true })).toEqual(["solve-build-sim-r1-b-2", "solve-s-3"]);
   });
 
-  // A stop releases a cut Builder's root, and its home with it. PR377's b-2 opened on the
-  // starter's notes after its b-1 was stopped (lane 22 of the investigation of 27 October).
+  // A stop releases a cut Builder's root, and its home with it, so the next session does not open
+  // on the starter's notes after its predecessor was stopped.
   it("keeps a cut Builder's notes for the next session before its home goes", () => {
     const path = join(root, basename(root), "log.jsonl");
     const cut = sessionDirs(path, "b-1");

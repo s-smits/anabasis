@@ -673,7 +673,7 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
 
   it.concurrent("cuts a command before the solve's end, so the solver can still answer", async () => {
     // A 48-second solve reserves six seconds for an answer after its command is cut. At 24 and
-    // three, a gate at a load of 19 on 20 November 2026 ended it wall-ended before its answer.
+    // three, a gate on a loaded host could end it wall-ended before its answer.
     const long = fauxAssistantMessage(
       fauxToolCall("bash", { command: "echo began; sleep 50", timeout: 60 }),
       toolUse,
@@ -780,7 +780,7 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
 
   it.concurrent("reruns a solve that rewrote a harness file under its old size and time", async () => {
     // `cp -p` and `tar` put the modification time back, so the stamp holds each file's change time
-    // too, as a tool tree's does (`treeStamp`); until 9 November this rewrite went unseen.
+    // too, as a tool tree's does (`treeStamp`), or this rewrite would go unseen.
     let harness = "";
     const move: FauxResponseStep = () => {
       const guide = join(harness, "agent", "BUILT_AGENTS.md");

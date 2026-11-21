@@ -1,8 +1,8 @@
 // The comparison's arithmetic against the plan's own figures, and its view over the log: the test
 // a reading is made by and what it can detect, one reading's step, which solves count for a
 // held-out task under a harness, symmetric score quantisation, and what it refuses to compare.
-// Unequal margins can support a step containing losses. The retained-loss cases answer
-// buffer-pr197-opus-m1's single flagged solve blocking a promotion (18 October 2026).
+// Unequal margins can support a step containing losses. The retained-loss cases hold that a
+// single flagged solve does not block a promotion.
 import { describe, expect, it } from "bun:test";
 import {
   carriedBy,
@@ -192,8 +192,8 @@ describe("one reading", () => {
   const STRICT = 0.02;
 
   it("promotes on its own reading at the level, and reads a 5-0 at 0.02 as no step", () => {
-    // Since 19 October one reading is the whole rule: 6-0 clears 0.02 (p 1/64) and 5-0 (p 1/32)
-    // reads no step and buys nothing, where it bought a repeat at the trigger before.
+    // One reading is the whole rule: 6-0 clears 0.02 (p 1/64) and 5-0 (p 1/32) reads no step and
+    // buys nothing, no repeat at the trigger.
     expect(flipP(units(6, 0))).toBe(1 / 64);
     expect(flipP(units(5, 0))).toBe(1 / 32);
     expect(stepOf(report(units(6, 0, 4, 9)), STRICT)).toBe("step");
@@ -216,8 +216,8 @@ describe("one reading", () => {
 
   it("reads the frontier and the retained tasks in one test, an empty retained set being unmeasured and never no loss", () => {
     const fixes = [16, 16, 16, 16];
-    // Since 20 October the retained tasks enter the frontier's test. Four won and three lost by as
-    // many pairs is p 0.5 and no step; until then it read `regressed`, the same in what it promoted.
+    // The retained tasks enter the frontier's test. Four won and three lost by as many pairs is
+    // p 0.5 and no step, not a separate `regressed` reading.
     expect(stepOf(report(fixes, [-16, -16, -16]), LEVEL)).toBe("no-step");
     expect(stepOf(report(units(6, 0, 4), [-4, -4]), STRICT)).toBe("no-step");
     // One retained task lost by a small margin leaves a wide frontier's step standing (p 0.0625),
@@ -238,8 +238,8 @@ describe("one reading", () => {
     const billed = (...each: number[]) => each.map((one) => ({ billed: one }));
     const lower = { direction: "lower" } as const;
     // Six tasks every solve of both sides answers alike, the new harness at half the bill: all six
-    // tie, and nothing is tested. v065-a's aecc1c92 was promoted on such a bill, 25-3 with it and
-    // 0-10 without it (25 October), and from 2 November the bill is no measure at all.
+    // tie, and nothing is tested, since the bill is no measure: a harness read on its bill alone
+    // could win 25-3 where it loses 0-10 without it.
     const cheaper = Array.from({ length: 6 }, (_, at) => ({
       task: `c${String(at)}`,
       old: [P, P],
@@ -539,7 +539,7 @@ describe("the pairs a comparison reads from the log", () => {
   it("counts every pass and fail of a held-out task under either harness, cut to the solves a side it asked, with what each cost", () => {
     const log = [
       ...held,
-      // An end of 9 October, with the figures a solve reported then; what a pair keeps of it is the cost.
+      // An older end, with the figures a solve reported then; what a pair keeps of it is the cost.
       ...solve(base, "pass", {
         turns: 20,
         prompts: 2,

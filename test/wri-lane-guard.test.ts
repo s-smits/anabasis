@@ -56,7 +56,7 @@ describe("the lane guard", () => {
   });
 
   it("reads what a command runs and where it writes, never what it only names", () => {
-    // Each of these was refused by the first guard in a lane session of 4 November, replayed.
+    // Each of these was refused by an earlier guard in a lane session, replayed.
     for (const ok of [
       "cd /a/anabasis && sed -n 360,395p tools/d2/harness-builder.ts; grep -n parent tools/d2/session.ts",
       String.raw`grep -rn "runs copy\|seedFrom" tools/wri/*.ts | head`,
@@ -251,7 +251,7 @@ describe("the lane guard", () => {
   });
 
   it("reads a word inside quotes and substitutions whole, so a campaign's path runs only as the command", () => {
-    // The shapes of the lane refusals of 3 to 9 November that read nothing but a campaign's files.
+    // The shapes of recorded lane refusals that read nothing but a campaign's files.
     for (const ok of [
       `L=/a/.ana/d2/r/log.jsonl; for k in a b; do jq -c "select(.kind==\\"$k\\") | .data | keys" "$L" | head -2; done`,
       `jq -c "select(.kind==\\"x\\")" < /a/data/runs/h/r/log.jsonl`,

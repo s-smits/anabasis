@@ -192,7 +192,7 @@ suite("acceptance and freezing over a stored pack", () => {
     const unadmitted = run("tools/c/accept.ts", { name: ACCEPTED, cycle: "c01" });
     expect(unadmitted.said).toMatch(/fault: check-product.*--admit check-product/u);
     expect(unadmitted.code).toBe(1);
-    // A campaign without `--hitl` gives that word for every check its author decides (16 October).
+    // A campaign without `--hitl` gives that word for every check its author decides.
     const unattended = run("tools/c/accept.ts", { name: ACCEPTED, cycle: "c01" }, "--admit-authored");
     expect(unattended.code).toBe(0);
     expect(held("checker.read").at(-1)).toMatchObject({ admitted: ["check-product"], faults: [] });
@@ -378,14 +378,13 @@ suite("preparation and rehearsal over a stored pack", () => {
     expect(again.said).toContain(isString(two?.harness) ? two.harness : "missing harness");
     expect(of("build.started")).toHaveLength(2);
 
-    // The campaign's view prints each step's handover. Fix row F7: of the moves, it names the
-    // table's alone. It takes the campaign command's flags and no other: a launch's, which it
-    // parsed until 11 October, went with the launcher (`7f0add79:docs/simplify.md`, D2).
+    // The campaign's view prints each step's handover. Of the moves, it names the table's alone.
+    // It takes the campaign command's flags and no other, not a launch's.
     const viewed = cli("view", SEED, "--level", "0.02").said;
     expect(
       viewed.split("\n").filter((line) => line.includes("Builder session, finished: from")),
     ).toHaveLength(2);
-    // Two solves a side, fixed since 29 October, and the level 0.02 where nothing names another (`SIZE`).
+    // Two solves a side, fixed, and the level 0.02 where nothing names another (`SIZE`).
     expect(viewed).toMatch(/1 task.*2 solves.*0\.02.*1 won.*0 lost.*0 tied.*no-step/u);
     expect(viewed).not.toContain("  a round");
     expect(cli("view", SEED, "--cap", "100").said).toContain("Unknown option '--cap'");

@@ -598,7 +598,7 @@ describe("bun run land", () => {
     expect(execTextSync("git", ["-C", origin, "rev-parse", "ub"]).trim()).toBe(upper);
   });
 
-  // #531 on 30 October 2026: based on the branch beneath #530 while its head held #530's.
+  // A pull request based on the branch beneath another while its head holds that one's.
   it("refuses a head that holds another open pull request's without standing on it", () => {
     const result = runLand(["14"], { ANA_FAKE_PULLS: stack(upper, pull(14, "c", "a", stacked)) });
     expect(result.status).toBe(1);
@@ -806,7 +806,7 @@ describe("bun run land", () => {
   });
 
   it("moves a pull request left on the merged top's branch onto main, and none based elsewhere", () => {
-    // #15 is stacked on #12 and in no stack of GitHub's, as #560 was in the landing of v0.9.1.
+    // #15 is stacked on #12 and in no stack of GitHub's.
     const result = stackMerge("merged", {
       ANA_FAKE_PULLS: stack(upper, pull(15, "c", "b", stacked)),
       ANA_FAKE_STACK: "7 11,12",

@@ -1,7 +1,7 @@
 /**
  * `tree/no-unowned-fact` (`tools/oxlint/tree-fact.ts`): one fact about a value written out in
  * three or more production files. The recorded case is "what the checker measured of a valid
- * answer", spelled four ways in three files until `measureOf` owned it on 5 November 2026; the
+ * answer", once spelled four ways in three files before `measureOf` owned it; the
  * hostile cases are the same fact in two files, a test of one field, and a test read beside a
  * value of the code's own.
  */

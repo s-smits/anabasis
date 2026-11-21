@@ -632,7 +632,7 @@ describe("earned evidence", () => {
   });
 
   it("the Referee records the ruling it gives after a turn with no call", async () => {
-    // On 27 October two esp32 readers answered in prose and were set aside as unruled.
+    // A reader that answers in prose is set aside as unruled.
     const s = setup([fauxAssistantMessage("The rejection looks earned."), ruling(UNSETTLED)]);
     expect(await referee(s.reader, fail(s))).toMatchObject({ ruling: "unclear", reason: "Not settled." });
     expect(s.calls()).toBe(2);

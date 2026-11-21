@@ -208,7 +208,7 @@ describe("pre-push", () => {
     expect(result.status).toBe(0);
     expect(gatesRun(log)).toEqual([`${second} -`]);
     // The install, format check and secret scan run in turn; typecheck and lint then run side by
-    // side, so they finish in either order (a proof of 3 November read lint first).
+    // side, so they finish in either order.
     const steps = stepsOver(second);
     expect(steps.slice(0, 3)).toEqual(STATIC.slice(0, 3));
     expect(steps.slice(3).toSorted()).toEqual(STATIC.slice(3).toSorted());

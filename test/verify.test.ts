@@ -200,7 +200,7 @@ beforeAll(() => {
   mkdirSync(join(tools, "bin"), { recursive: true });
   writeFileSync(join(checks, "brief.json"), JSON.stringify(BRIEF));
   writeFileSync(join(checks, "evaluator.ts"), PROGRAM);
-  // As both check programs v1 wrote on 7 October do, the program imports a module of its own.
+  // As v1's check programs do, the program imports a module of its own.
   writeFileSync(join(checks, "reference", "model.ts"), "export const same = (a, b) => a === b;\n");
   writeFileSync(secret, "another answer");
   tool("double", "read n; echo $((n * 2))");

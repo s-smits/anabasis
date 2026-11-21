@@ -5,15 +5,14 @@ import { expect } from "./browser.ts";
  * What the browser tests of the Tasks and Log panes watch beyond one assertion: the frames a page
  * paints while it reads (`watchFrames`), and the keyboard's way through a pane (`tabTo`).
  *
- * The page put a placeholder in the place of a table or a grid for the frames a read took, on every
- * click (14 October); a web-first assertion waits past such a frame and never sees it. So a loop of
+ * The page could put a placeholder in the place of a table or a grid for the frames a read took,
+ * on every click; a web-first assertion waits past such a frame and never sees it. So a loop of
  * animation frames, installed before the page's own script, counts each frame in which the region
  * watched is gone, empty, or says it is reading, from the moment a test arms it.
  *
- * When the page first said it was reading is read off the document as well as off a frame: on
- * 19 October, on a host at a load of 13.3 on 8 cores, the browser painted no frame in the second
- * and a half the Tasks pane was busy, and a test that had just seen `aria-busy` read it as never
- * said (`busyAfter` -1).
+ * When the page first said it was reading is read off the document as well as off a frame: on a
+ * loaded host the browser may paint no frame in the second and a half the Tasks pane is busy, and
+ * a test that had just seen `aria-busy` would read it as never said (`busyAfter` -1).
  */
 
 /** What the frame loop counts, kept on the page's window. */

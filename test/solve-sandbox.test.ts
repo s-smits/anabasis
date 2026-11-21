@@ -1,8 +1,7 @@
 // The solve isolation's policy, and the wall built on it proved by running it: every case that runs
 // a command runs it as a seat's commands run (`runWalled`, in a claimed root), on the host the suite
 // runs on, because a profile checked only as configuration is a profile nobody has seen refuse
-// anything. Until 11 October these cases ran v1's launch of its sandboxed model process, which no
-// seat of v2 runs (`7f0add79:docs/simplify.md`, F5 and W2).
+// anything, rather than v1's launch of its sandboxed model process, which no seat of v2 runs.
 //
 // Each refusal is paired with a read that has to succeed: a wall that refuses everything would pass
 // a suite testing refusals alone while making the product unusable. Run 4 is the reason it is not
@@ -111,8 +110,8 @@ describe("the solve isolation's policy", () => {
   });
 
   it("reopens a tool tree with what it links to, but for one in the seat's root that links out of it", () => {
-    // Until 11 October the tree's real path was reopened wherever a link led, so a Builder that
-    // linked `harness/.toolchain` to the repository read it through the wall. A tree the host or a
+    // The tree's real path is not reopened wherever a link leads, since a Builder that linked
+    // `harness/.toolchain` to the repository would read it through the wall. A tree the host or a
     // pack provides keeps its link. The policy is built by hand, as it is a pure function of its
     // roots and runs where no wall does.
     const repoRoot = realpathSync(workRepo());
@@ -173,8 +172,8 @@ describe("the solve isolation's policy", () => {
     });
   }, 60_000);
 
-  // esp32 (12 October): Node, deciding a `.js` program's module type, walked up from a kept tree to
-  // the checkout's package.json, and the wall's refusal of it ended every program of the tree.
+  // Node, deciding a `.js` program's module type, walks up from a kept tree to the checkout's
+  // package.json, and the wall's refusal of it must not end every program of the tree.
   // A host with no Node of its own, as a Linux one may be, has no module walk to test: `bun run`
   // puts a `node` that is Bun on the path, in a folder the wall closes.
   it.skipIf(!realNode)(
@@ -200,7 +199,7 @@ describe("the solve isolation's policy", () => {
     60_000,
   );
 
-  // pip installs into the user base, and refused there it reads as a broken pip (21 October).
+  // pip installs into the user base, and refused there it reads as a broken pip.
   it.skipIf(Bun.which("python3") === null)(
     "keeps Python's user base in the seat's home, where a package installs",
     async () => {
@@ -276,7 +275,7 @@ describe("the wall's probe", () => {
       // The seat's probe: once a policy a process, before the wall's first use.
       const base = await walledBase(wall.dirs, { repoRoot, otherTrees: [sibling, bare] }, "a test");
       expect(base.policyHash).toBe(wall.base.policyHash);
-      // The probe writes nothing in a sibling, which another user may own (10 October), leaves
+      // The probe writes nothing in a sibling, which another user may own, leaves
       // nothing in the repository, and nothing in the seat's own folders or the host's in it.
       expect(readdirSync(sibling)).toEqual(["package.json"]);
       expect(readdirSync(bare)).toEqual([]);
@@ -315,7 +314,7 @@ describe("the rename guard", () => {
 
 // Seatbelt confines a process and its children, not what it asks of a process outside: each case
 // asks an unconfined one to act and checks that nothing came back. Under `(allow default)` the first
-// two read a denied file and reached a socket (11 November). Linux's pid namespace and overmounts
+// two would read a denied file and reach a socket. Linux's pid namespace and overmounts
 // answer the same questions by construction.
 describe.skipIf(!onDarwin)("the Darwin wall's edges", () => {
   it("is not started by `open` on an app the command wrote", async () => {

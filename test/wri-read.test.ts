@@ -132,8 +132,8 @@ record(REPORTED, {
 
 describe("the whole-run investigation's reader", () => {
   it("counts as a session's practice a task released while it ran, and a solver's flag beside a pass as a flip", () => {
-    // Buffer-r3 on 20 October: b-1 opened on 1 task and practised 24 solves, of which the set of its
-    // opening counted 5; a flagged solve beside a passing one in g-3 was left out of the flips.
+    // A session that opens on 1 task and practises 24 solves counts them all, not the 5 the set of
+    // its opening holds, and a flagged solve beside a passing one stays in the flips.
     const ended = (
       id: string,
       task: string,
@@ -361,8 +361,8 @@ function comparedFromAnotherParent() {
 describe("the reader of a round compared with another harness than its session started from", () => {
   const log = comparedFromAnotherParent();
 
-  // Until 11 October lane 12 opened on every live campaign's running Examiner session, and row F's
-  // moves left out the move being made, whose `campaign.move` is written when it ends.
+  // Lane 12 does not open on a live campaign's running Examiner session, and row F's moves include
+  // the move being made, whose `campaign.move` is written only when it ends.
   it("names a session open at the log's end in row F, with what it did so far, and says it apart in lane 22", () => {
     const live = [...log];
     const more = appendTo(live);
@@ -382,7 +382,7 @@ describe("the reader of a round compared with another harness than its session s
     expect(line).toContain(live.at(-3)?.at ?? "MISSING_TIMESTAMP");
   });
 
-  // N on 28 October: twelve proposals, five held and one refused, six still at the gate.
+  // N mid-session: twelve proposals, five held and one refused, six still at the gate.
   it("reads thin supply on the tasks the gate decided, leaving out those still at the gate", () => {
     const thin = (held: number, refused: number, pending: number) => {
       const exam: LogEvent[] = [];
@@ -403,7 +403,7 @@ describe("the reader of a round compared with another harness than its session s
     expect(thin(1, 3, 2)).toBe("1 of 4 decided tasks passed task admission");
   });
 
-  // buffer-main's g-1 had four solves in flight on 11 October, and lane 14 read them as killed.
+  // Solves still in flight are not read as killed by lane 14.
   it("reads a solve with no end as open while its comparison is, and as never finished once the campaign ended", () => {
     const live = [...log];
     const more = appendTo(live);
@@ -482,13 +482,13 @@ describe("the reader of a round compared with another harness than its session s
     const supported = withUnbilled([-2, -2, -2, -2]);
     expect(withUnbilled([0, 0, 0, 0])).not.toBe(supported);
     expect(supported).toBe(baselineNoise);
-    // The counts are read without the bill too, as the step is: until 2 November the billed ones.
+    // The counts are read without the bill too, as the step is, not the billed ones.
     expect(withUnbilled([0, 0, 0, 0])).toContain("0 won, 0 lost and 4 tied");
   });
 
   it("names edited tools only for a session whose end record says it changed its harness", () => {
-    // A shell command that runs the tool tree names it as a write does: on 11 November three esp32
-    // sessions whose end records read `changed` false were named.
+    // A shell command that runs the tool tree names it as a write does, so a session whose end
+    // record reads `changed` false is not named for running it.
     const edited = (read: readonly LogEvent[]) =>
       overview(read)
         .triggers.filter(({ name }) => name === "TOOLS EDITED")
@@ -576,8 +576,9 @@ describe("the reader of a round compared with another harness than its session s
   });
 
   it("reads the tools a new harness called whether its Builder session finished or not", () => {
-    // A led session freezes its harness for a comparison and may never finish: until 2 November
-    // these triggers keyed on the finished harness and opened lane 16 in none of seven led runs.
+    // A led session freezes its harness for a comparison and may never finish, so these triggers
+    // key on the frozen harness rather than the finished one, which would open lane 16 in no led
+    // run.
     const called = (read: readonly LogEvent[]) => detailOf(read, "TOOLS CALLED");
     const open = events.map(
       (event): LogEvent =>
@@ -590,8 +591,8 @@ describe("the reader of a round compared with another harness than its session s
   });
 
   it("names every program a new harness's solves ran through bash, past cd, assignments, quotes and heredocs", () => {
-    // A harness's `.toolchain/bin` programs are reached on the shell's path, so until 5 November
-    // this line counted them as `bash` alone and could not say whether a solve used them.
+    // A harness's `.toolchain/bin` programs are reached on the shell's path, so this line names
+    // them apart from `bash`, which alone could not say whether a solve used them.
     const ran = events.flatMap((event): LogEvent[] => {
       if (event.kind !== "solve.call") return [event];
       const shell = (command: string): LogEvent => ({
@@ -719,8 +720,8 @@ describe("the reader of the load a comparison's solves started under", () => {
   };
 
   it("names a comparison whose task's counted solves started off its mirrored order", () => {
-    // buffer-v070's g-1 on 24 October: one side's solves waited for a provider's reset. g-5's
-    // places sum alike on both sides, which the balance test before 25 October let pass.
+    // One side's solves waited for a provider's reset. g-5's places sum alike on both sides, which
+    // a balance test of the sums alone would let pass.
     const said = read([
       ["g-1", [1, 1, 1, 1, 1, 1, 1, 1], 4, "onoonnno"],
       ["g-2", [1, 1, 1, 1, 1, 1, 1, 1], 4, "onnoonno"],
@@ -735,7 +736,7 @@ describe("the reader of the load a comparison's solves started under", () => {
   });
 
   it("reads the wall and the load on the solves a comparison measured, not on the non-results it reran", () => {
-    // Buffer's g-1 on 12 October: provider attempts of a second or two at a low load, then reruns.
+    // Provider attempts of a second or two at a low load, then reruns.
     const log: LogEvent[] = [];
     const put = appendTo(log);
     const terms = { session: "g-1", old: "hbase", fresh: "hy", starter: "hbase", setting: SETTING };
@@ -836,7 +837,7 @@ describe("the reader of misses at a limit, by comparison and side", () => {
   });
 
   it("counts a miss on its turns, on its context or near its wall as at a limit, by side, with the bound told", () => {
-    // recode on 10 October: 41 of 58 scored misses ended on turns, and a read of the wall saw none.
+    // Most scored misses ended on turns, which a read of the wall alone would not see.
     const [detail] = read([
       ["hp", { outcome: "fail", kind: "turns-ended" }, 40],
       ["hp", refused, 97],
@@ -928,7 +929,7 @@ describe("the reader of comparisons the campaign command named apart from its Bu
   ]);
 
   it("reads a quick win of a task won on the objective, where the reference was valid too", () => {
-    // buffer-fresh-gpt-v071's g-1 on 26 October: six tasks won with all 48 solves valid.
+    // Six tasks won with all 48 solves valid.
     const onObjective = log.map((event) =>
       event.kind === REPORTED && event.data.session === "g-2"
         ? { ...event, data: { ...event.data, frontier: { of: ["v1", "v2"], differences: [3, 0] } } }
@@ -936,8 +937,8 @@ describe("the reader of comparisons the campaign command named apart from its Bu
     );
     const quick = (read: readonly LogEvent[]) => detailOf(read, "WIN AT A SMALL WALL SHARE");
     expect(quick(onObjective)).toContain("b-1: 2 passed solves of tasks the new harness won");
-    // A led session is still open when its comparisons report: until 2 November its quick wins were
-    // keyed on the harness it finished with, and seven led campaigns read none (WRI lane 17).
+    // A led session is still open when its comparisons report, so its quick wins are keyed on the
+    // harness it froze, not the one it finished with, which led campaigns never reach (lane 17).
     const open = onObjective.map(
       (event): LogEvent =>
         event.kind === BUILD_FINISHED
@@ -948,7 +949,7 @@ describe("the reader of comparisons the campaign command named apart from its Bu
   });
 
   it("reads a task its report's test names by the difference that report recorded", () => {
-    // The Linux fork of #306 on 22 October: a task its comparison tied read as won by a later score.
+    // A task its comparison tied is not read as won by a later score.
     const tied = log.map((event) =>
       event.kind === REPORTED && event.data.session === "g-1"
         ? { ...event, data: { ...event.data, frontier: { of: ["v1"], differences: [0] } } }

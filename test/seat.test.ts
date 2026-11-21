@@ -197,7 +197,7 @@ describe("durable session boundaries", () => {
   });
 
   it("prices each turn, and the session, at the model that served it where the seat's catalogue lists it, and at its own otherwise", async () => {
-    // Recode on 25 October: Claude Code answered claude-opus-5-5's requests as claude-opus-5.
+    // Claude Code may answer claude-opus-5-5's requests as claude-opus-5.
     const served = (responseModel: string | undefined) => (): AssistantMessage => ({
       ...fauxAssistantMessage([fauxToolCall("look", {})], TOOL_USE),
       ...keyIfDefined("responseModel", responseModel),

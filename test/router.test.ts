@@ -86,7 +86,7 @@ exit "$status"
 
 /** A Bun that records how it was called in its HOME's bun.log and each install in install.log, and
  *  hands the runner itself to Bun. A held call gives up after two minutes: a suite killed before its
- *  `finally` released them left three fakes waiting on the Linux runner from 28 to 30 October. */
+ *  `finally` released them would leave fakes waiting on a runner for days. */
 const RECORDING_BUN = `#!/bin/bash
 case "$*" in *run.js*) exec ${capturedExecPath} "$@" ;; esac
 if [[ "\${1-}" == --version ]]; then echo 1.4.2; exit 0; fi

@@ -25,8 +25,7 @@ import { answersOver, MARKERS } from "./fixture-campaign.ts";
  * The Tasks pane in Chrome over the fixture's 26 task versions and 8 comparisons: every cell of the
  * grid, the search and the three filters, a task's detail opened and left with its filters restored,
  * the disputed task and the one waiting for a label, the grid's own scroll at a phone's width, and
- * what the page paints while a task is read: the grid, never a placeholder in its place
- * (14 October).
+ * what the page paints while a task is read: the grid, never a placeholder in its place.
  */
 
 /** The comparisons, as their heads say them: the id, then the kind and the reading. */
@@ -491,7 +490,7 @@ describe("the Tasks pane as a whole", () => {
     const opened = await openPage(browser, "about:blank");
     const on = opened.page;
     // Every answer read through the route, so that its body is kept: a read the page cancels for a
-    // newer one keeps none to ask for once it has ended, which failed this test on CI on 14 October.
+    // newer one keeps none to ask for once it has ended, which would fail this test on CI.
     const answers: string[] = [];
     await on.route("**/api/**", async (route) => {
       const response = await route.fetch();

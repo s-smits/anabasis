@@ -1,8 +1,7 @@
 /**
  * What a command is told of a path the wall closes, which differs by wall: Seatbelt refuses the
  * read, and Bubblewrap leaves the path out of the command's view. Each says the content was not
- * read, and a test of the wall reads either as a closed path (18 October, when the wall's tests
- * first ran on Linux and three asserted Seatbelt's word).
+ * read, and a test of the wall reads either as a closed path rather than asserting Seatbelt's word.
  */
 import { runtimeProcess } from "../../src/meta/process.ts";
 

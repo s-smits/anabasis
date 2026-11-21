@@ -48,8 +48,8 @@ describe("opening a harness", () => {
     );
     expect(opened).toMatchObject({ presets: ["read", "bash"], guide: GUIDE, toolTree: null });
     expect((await openHarness(written("unguided", { spec: PLAIN.spec }))).guide).toBeNull();
-    // 21 of the 1,340 kept harnesses on record on 20 November 2026 declare a tool, in nine campaigns
-    // opened from 21 to 31 October. One is refused by the names it declares, whatever their kind.
+    // Some kept harnesses on record declare a tool. One is refused by the names it declares,
+    // whatever their kind.
     const declares = written("declares", {
       ...PLAIN,
       spec: {
@@ -71,8 +71,8 @@ describe("opening a harness", () => {
   });
 
   it("names a harness without a tool as the opener that bundled its tool module named it", async () => {
-    // Read from the opener of 20 November 2026, which bundled `agent/tools.ts` into the digest: a
-    // condition on record names its harness by these, so a harness kept then is the same one now.
+    // Read from an older opener, which bundled `agent/tools.ts` into the digest: a condition on
+    // record names its harness by these, so a harness kept then is the same one now.
     expect((await openHarness(written("named"))).digest).toBe(
       "a3cd175d636a164ed528a48a80b67368f3caf7c68dd147340980dbd35dfa1c6b",
     );
@@ -114,8 +114,8 @@ describe("opening a harness", () => {
     const then = new Date("2026-10-01T00:00:00Z");
     utimesSync(join(bin, "tool"), then, then);
     digests.push((await openHarness(dir)).digest);
-    // A rewrite of the same size with its modification time set back: until 11 October the tree's
-    // stamp held, and its content was read from before it. The wait puts the change time past
+    // A rewrite of the same size with its modification time set back must change the tree's stamp,
+    // or its content would be read from before it. The wait puts the change time past
     // the coarse clock a file system stamps it with.
     const settled = statSync(join(bin, "tool")).ctimeMs + 20;
     while (Date.now() < settled) await Bun.sleep(5);
@@ -129,8 +129,8 @@ describe("opening a harness", () => {
   });
 
   it("leaves the bytecode caches a run of its Python programs writes out of its digest, and a sourceless .pyc in", async () => {
-    // v065-b on 24 October: running its programs left `__pycache__` in 26 of the 54 states it kept,
-    // and two states that differed from the one practised by those caches alone read as unpractised.
+    // Running its programs can leave `__pycache__` in the states a campaign keeps, and two states
+    // that differ from the one practised by those caches alone must not read as unpractised.
     const dir = written("bytecode");
     const lib = join(dir, ".toolchain", "lib");
     mkdirSync(join(lib, "deeper"), { recursive: true });

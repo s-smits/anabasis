@@ -177,7 +177,7 @@ describe("table-timeline", () => {
     const lines = timelineLines(log.events, HERE);
     expect(lines.filter((line) => line.startsWith("warning:"))).toHaveLength(1);
     const [old, current] = rowsOf(lines, "move");
-    // A log before 5 November reads `asked`, kept as recorded.
+    // An older log reads `asked`, kept as recorded.
     expect(old).toContain("recorded build/asked b-1");
     expect(old).toContain(` ${OTHER.slice(0, 8)} `);
     expect(current).toContain(`=${HERE.slice(0, 8)}`);

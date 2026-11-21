@@ -161,7 +161,7 @@ describe("the fold of one look", () => {
   });
 
   it("says each ending a run went on past between two looks, and none the look before saw it stand on", () => {
-    // 13 November: three endings in 41 minutes, each gone on from within 36 s, and a look every ten.
+    // Three endings in 41 minutes, each gone on from within 36 s, and a look every ten.
     const twice = row({ endings: ["environment", "environment"], kept: ["T r: continue on login 2"] });
     const { lines, next } = alertsOf(lookedAt(row({ endings: [] })), here(twice));
     expect(lines).toEqual([

@@ -340,7 +340,7 @@ describe("the Builder running its campaign", () => {
     expect(s.ran).toHaveLength(1);
     expect(s.sent[2]).toContain("Examiner returned; practice was refreshed.");
     expect(s.sent[2]).toContain(GUIDE.trim());
-    // No campaign advice ends a result: until 5 November a campaign tool's ended with the table's move.
+    // No campaign advice ends a result, not even the table's move after a campaign tool's.
     expect(s.sent[2]).not.toContain("Advice: compare");
     expect(s.sent[3]).toContain(late.task.taskId);
     expect(s.sent.join("\n")).not.toContain(CHECK);
@@ -604,8 +604,8 @@ describe("a Builder session", () => {
 
   it("starts no session on a task an earlier session's practice ruled a check defect", async () => {
     // The dispute is in the log, so the campaign hands a later session only what is still released;
-    // one handed the task anyway is refused before it spends. Until 5 November the ruling lived in
-    // the session's memory and a later one paid to learn it again.
+    // one handed the task anyway is refused before it spends, rather than paying to learn the
+    // ruling again.
     for (const left of [true, false]) {
       const s = await setup([call("practice", { tasks: ["t-2"] }), finish], [{ outcome: "pass" }]);
       const disputed = { version: "v2", state: "disputed", session: "b-0", solve: "s-0" };
@@ -765,8 +765,8 @@ describe("a Builder session", () => {
 
   it("practises under the reference harness where asked, and is told the record of the harness that ran", async () => {
     // What the reference does on a released task is the Builder's to find out, and the host hands
-    // it no table of it (the plan's climb section, C5). Until 27 October the record named harness/
-    // and the parent whatever ran, so a solve under the reference came back without its record.
+    // it no table of it. The record names the harness that ran, not harness/ and the parent
+    // whatever ran, so a solve under the reference comes back with its record.
     const s = await setup([
       edit,
       call("practice", { tasks: ["t-1"] }),
@@ -785,9 +785,8 @@ describe("a Builder session", () => {
 
   it("is told the practice record under the reference a promotion made, and nothing of a comparison's solve under it", async () => {
     // A promotion inside a conversation makes the harness it froze the reference, whose practice
-    // record is the Builder's own solves before it. Until 19 November a result named harness/ and
-    // the harness the conversation started from, and that record was to be had only by solving
-    // again `under: "reference"`.
+    // record is the Builder's own solves before it, rather than one to be had only by solving again
+    // `under: "reference"`.
     const s = await setup([
       edit,
       call("practice", { tasks: ["t-1"] }),
@@ -861,7 +860,7 @@ describe("a Builder session", () => {
 
   it("is told a measure to four significant digits, in a result, a record and an author's answer", async () => {
     // A measure may depend on a practice task's hidden values, and a comparison ties two valid
-    // answers within 1% (`GAP_FLOOR`). Until 19 November each was printed whole, up to 17 digits.
+    // answers within 1% (`GAP_FLOOR`), so neither is printed whole, up to 17 digits.
     // 0.1234567901234568 and 1234.567901234568, then a whole number of three digits and one of six.
     const measures = [1 / 8.1, 10_000 / 8.1, 100, 123_456];
     const s = await setup(
@@ -968,7 +967,7 @@ describe("a Builder session", () => {
 
   it("is told an author's better answer on a released task under an objective, and nothing of a held-out one's", async () => {
     // A harness that answers alike in every solve still leaves room where its author's answer is
-    // better; until 4 November the Builder was told only its own measures and read that as none.
+    // better, so the Builder is told the author's measure beside its own.
     const objective = { ...CONTRACT, objective: { quantity: "cost", direction: "lower" as const } };
     const steps = [edit, call("practice", { tasks: ["t-1"] }), finish];
     const told = async (authored: readonly (readonly [string, number])[]) => {
@@ -1059,7 +1058,7 @@ describe("a Builder session", () => {
   });
 
   it("freezes no tool tree that is a link out of its home, and copies nothing it names", async () => {
-    // Until 11 October the freeze copied what the link named into the tree every later solve reads.
+    // The freeze does not copy what the link names into the tree every later solve reads.
     const tree = (s: { home: string }) => join(s.home, HOME_TOOL_TREE);
     const s = await setup(
       [
@@ -1117,8 +1116,8 @@ describe("a Builder session", () => {
     expect(s.of(BUILD_CALL).map(({ tool: name }) => name)).toEqual(["practice"]);
   });
 
-  // Found in buffer-149, 13 October: b-1 crashed on a provider error with a harness it had
-  // practised three of three on, and b-2 started from the starter.
+  // A session that crashes on a provider error with a harness it practised three of three on
+  // must not leave the next session to start from the starter.
   it("keeps the harness a crashed session last practised as a harness snapshot, and no edit after it", async () => {
     const failed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded" });
     const tried = await setup([edit, call("practice", { tasks: ["t-1"] }), failed]);
@@ -1344,7 +1343,7 @@ describe("what crosses to the Builder", () => {
       [
         edit,
         call("practice", { tasks: ["t-1", "t-2"] }),
-        // Under the reference harness too: what that reads is the wall's to keep (11 October).
+        // Under the reference harness too: what that reads is the wall's to keep.
         call("practice", { tasks: ["t-1"], under: "reference" }),
         call("read_trace", { solve: "s-3" }),
         // The leaking case pages the call the leak put the check into.

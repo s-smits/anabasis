@@ -146,8 +146,8 @@ describe("a checker's acceptance", () => {
   });
 
   it("names a check's instrument by the tool it runs, whatever its brief labels it, and refuses an exam no engine decides until every check is admitted", async () => {
-    // buffer-141-m3 (12 October): checks labelled `authored` that ran the pack's engine read as
-    // their author's own computation. esp32-141-m3b's draft: nine checks, no tool behind any.
+    // Checks labelled `authored` that run the pack's engine are not their author's own computation,
+    // and a draft of nine checks with no tool behind any is.
     const engined: Brief = {
       ...brief,
       truthChecks: brief.truthChecks.map((check) =>

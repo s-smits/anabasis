@@ -70,7 +70,7 @@ const beating = (name: string) =>
 
 /** Whether the loop `beating` started still runs, read from the host: its count moves. A pid is no
  *  evidence here, since Bubblewrap numbers a command's processes in a namespace of their own, and the
- *  pid a command prints names another process on the host or none (18 October). */
+ *  pid a command prints names another process on the host or none. */
 async function stillBeats(beat: string): Promise<boolean> {
   const count = () => (existsSync(beat) ? readFileSync(beat, "utf8") : "");
   await Bun.sleep(100);
@@ -235,7 +235,7 @@ describe("a solve's walled commands", () => {
 
   it("refuse a command a signal to a process outside its wall, and let it signal its own", async () => {
     // Under Seatbelt's `(allow default)` a command could `kill` any process of the operator's, the
-    // campaign that runs it among them (probe, 20 October); Linux gives it a pid namespace.
+    // campaign that runs it among them; Linux gives it a pid namespace.
     const repoRoot = toolchainTemp("ana-command-signal-repo");
     const outside = Bun.spawn(["sleep", "60"], { stdout: "ignore", stderr: "ignore" });
     try {
@@ -328,7 +328,7 @@ describe("a solve's walled commands", () => {
   // Linux hides the seats' parent under an empty tmpfs and binds a seat's root back inside it.
   // Seatbelt closes the parent, and the per-user temporary directory it lies in, by rule, and opens
   // the seat's root again after both (`darwinCommandProfile`). With either closure alone this
-  // passes; with both taken out of the profile it fails on a macOS runner (2 November).
+  // passes; with both taken out of the profile it fails on a macOS runner.
   it.skipIf(!osIsolationSupport().ok)(
     "keep a seat's temporary directory across its commands, and close it to every other seat",
     async () => {
@@ -384,12 +384,12 @@ describe("a solve's walled commands", () => {
     "close the host's /tmp and /var/tmp to a command: what another seat left there is neither read nor run, and a command leaves nothing there",
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-closed-tmp-")));
-      // What another campaign's Builder left in /tmp on 10 October: a file, and a program a later
-      // solve of a third campaign ran.
+      // What another campaign's Builder might leave in /tmp: a file, and a program a later solve of
+      // a third campaign could run.
       const canary = join("/tmp", `ana-h1-canary-${String(runtimeProcess.pid)}`);
       const program = join("/tmp", `ana-h1-program-${String(runtimeProcess.pid)}`);
       const left = join("/tmp", `ana-h1-left-${String(runtimeProcess.pid)}`);
-      // And what a v1 run left in /var/tmp on 12 October: a folder an Examiner listed and read.
+      // And what a v1 run left in /var/tmp: a folder an Examiner could list and read.
       const kept = join("/private/var/tmp", `ana-h1-canary-${String(runtimeProcess.pid)}`);
       writeFileSync(canary, "left by the host");
       writeFileSync(program, "#!/bin/sh\necho ran\n", { mode: 0o755 });
@@ -465,12 +465,12 @@ describe("a solve's walled commands", () => {
             String.raw`printf '#include <stdio.h>\nint main(void){puts("built");return 0;}\n' > h.c && cc h.c -o h && ./h`,
           );
           expect(built.output).toBe("built\n");
-          // A lead from the truss campaign's whole-run reading (12 October): a Bun child of a solver's
-          // command might not see the seat's TMPDIR, fall back to a temporary folder the wall closes,
-          // and end a solve on the environment's fault. Each Bun below says what TMPDIR and
-          // `os.tmpdir()` name and makes a folder there as a tool would. On a macOS runner whose
-          // `/opt/homebrew/bin` held Bun 1.1.34 the command's `bun` was that one until 19 October, and
-          // started in the seat it read no environment: `/tmp`, refused, and no `bun` on its PATH.
+          // A Bun child of a solver's command might not see the seat's TMPDIR, fall back to a
+          // temporary folder the wall closes, and end a solve on the environment's fault. Each Bun
+          // below says what TMPDIR and `os.tmpdir()` name and makes a folder there as a tool would.
+          // The command's `bun` is the host's own, not an older one a macOS runner's
+          // `/opt/homebrew/bin` holds, which started in the seat would read no environment: `/tmp`,
+          // refused, and no `bun` on its PATH.
           const probe = String.raw`const os = require("os"); const fs = require("fs"); const path = require("path");
 const made = fs.mkdtempSync(path.join(os.tmpdir(), "p-")); fs.writeFileSync(path.join(made, "f"), "x");
 console.log(JSON.stringify({ probe: process.argv.at(-1), said: process.env.TMPDIR, taken: os.tmpdir(), made }));`;
@@ -517,8 +517,8 @@ describe("a wall's network reach", () => {
   it.skipIf(!osIsolationSupport().ok)(
     "probes again once an unreached reading is ten minutes old, and keeps a reached one",
     async () => {
-      // Until 9 November one unreached probe stood for the process's life, so a provider's blip at a
-      // Builder session's opening told that whole 24-hour session it had no network.
+      // One unreached probe does not stand for the process's life, since a provider's blip at a
+      // Builder session's opening would tell that whole 24-hour session it had no network.
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-reach-")));
       try {
         await inSeat(repoRoot, async (wall) => {

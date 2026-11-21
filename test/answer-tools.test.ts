@@ -250,7 +250,7 @@ describe("submit", () => {
       { path: "xl/sharedStrings.xml", text: "<t>caf\u00E9</t>" },
     ];
     const files = textFiles([{ path: "a.xlsx", entries: members }]);
-    // Until 19 November 2026 the archive was kept as no bytes, and read back with no member.
+    // The archive is kept as its bytes, not as none read back with no member.
     expect(readAnswerFiles(s.log, keepAnswerFiles(s.log, files))[0]?.entries).toEqual(members);
     const book = join(s.home, "a.xlsx");
     writeFileSync(book, Buffer.from(files[0]?.base64 ?? "", "base64"));

@@ -250,7 +250,7 @@ describe("a led Builder's lifetime and bill", () => {
     c.record("comparison.started", { session: "g-1" });
     c.solved("s1", HA, "pass", "g-1");
     c.record("build.turn", { session: "b-1", turn: 2, usage: { cost: { total: 0.25 } } });
-    // Until 14 October b-1 read as cut at x-1's start, its turns and dollars cut there with it.
+    // b-1 is not read as cut at x-1's start, its turns and dollars cut there with it.
     const live = { id: "b-1", ended: null, cut: false, turns: 2, practiceSolves: 1, billed: 3.5 };
     expect(steps(c, "builder")).toMatchObject([live]);
     expect(openSteps(campaignOf(c.events()).steps)).toContain("b-1");
@@ -258,8 +258,8 @@ describe("a led Builder's lifetime and bill", () => {
     expect(steps(c, "builder")).toMatchObject([{ ...live, cut: true }]);
   });
 
-  // A reading's turns name its reader alone, and only its finding names the solve: until 20 November
-  // an open Builder was billed the readings of every comparison that ran inside its window.
+  // A reading's turns name its reader alone, and only its finding names the solve, so an open
+  // Builder is not billed the readings of every comparison that ran inside its window.
   it("bills an open led Builder the readings of its own practice, and a comparison's to the comparison", () => {
     const c = campaign();
     c.record("campaign.opened", { led: true });
@@ -276,8 +276,8 @@ describe("a led Builder's lifetime and bill", () => {
     expect(steps(c, "builder")).toMatchObject([{ id: "b-1", ended: null, billed: 2 }]);
   });
 
-  // Until 19 October an ended session was billed everything in its span: buffer-fresh-opus's view
-  // put $123.34 on b-4, whose own end billed $1.61, and its steps summed to $362.92 of $199.48.
+  // An ended session is not billed everything in its span, which could put a hundred dollars on a
+  // session whose own end billed one and make its steps sum past the campaign's bill.
   it("bills an ended led Builder its own turns and practice alone, and each dollar of the log to one step", () => {
     const c = campaign();
     c.record("campaign.opened", { led: true });
@@ -301,7 +301,7 @@ describe("a led Builder's lifetime and bill", () => {
 });
 
 describe("unfinished comparisons", () => {
-  // buffer-main's g-1 had four solves in flight on 11 October, and nothing said how far it was.
+  // A comparison with solves in flight says how far it is.
   it("reads a comparison with no report as open, with its solves so far, and as cut once the campaign ended", () => {
     const c = campaign();
     c.compared("g-1", { old: STARTER, fresh: HA }, null);
@@ -415,8 +415,8 @@ describe("practice repair histories", () => {
 });
 
 describe("the Builder's filter over that reading", () => {
-  // Found in buffer-149, 13 October: b-2 was told only a digest, and found by listing harness/
-  // that b-1's crash had left it the starter.
+  // b-2 is told more than a digest, rather than finding by listing harness/ that b-1's crash had
+  // left it the starter.
   it("tells where the starting harness came from, and how the last Builder session ended", () => {
     const c = campaign();
     // With no session before it, the start names no session at all.
@@ -454,8 +454,8 @@ describe("the Builder's filter over that reading", () => {
     expect(killed).toMatch(/\bonly its notes and the harness above remain\b/u);
     expect(killed).not.toContain("no Builder session");
     // A crashed ending names the harness its tree held past its last checkpoint, which no session
-    // starts from (`latestBuilt`): until 20 November b-2 of a fork at #979 was told twice that the
-    // checkpoint it opened on came from no session.
+    // starts from (`latestBuilt`), so b-2 is not told that the checkpoint it opened on came from no
+    // session.
     const crash = campaign();
     crash.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
     crash.record("build.checkpoint", { session: "b-1", harness: HA });
@@ -520,8 +520,8 @@ describe("the Builder's filter over that reading", () => {
 
   it("tells a report that also scored the bill by the tally its step was read on", () => {
     const c = campaign();
-    // Three tasks won with the bill tie without it (26 October to 2 November), so the line says
-    // 1 won and 3 tied, and nothing of the bill.
+    // Three tasks won with the bill tie without it, as an older report stored them, so the line
+    // says 1 won and 3 tied, and nothing of the bill.
     const billed = tallied("no-step", 4, 0);
     const scored = { wins: 4, losses: 0, ties: 0, p: 0.0625, unsolved: 0, differences: [700, 100, 100, 100] };
     c.compared("g-1", { old: HA, fresh: HB }, { ...billed, scored: { ...scored, unbilled: [600, 0, 0, 0] } });
@@ -530,8 +530,8 @@ describe("the Builder's filter over that reading", () => {
     expect(told).not.toContain("bill");
   });
 
-  // After a no-step of 18 won and 5 lost that one validity loss held (19 November), the Builder was
-  // told the tally alone and practised on, though no practice task could be the one it lost.
+  // After a no-step of 18 won and 5 lost that one validity loss held, a Builder told the tally
+  // alone would practise on, though no practice task could be the one it lost.
   it.each([
     ["fail", "Validity differed on 1 of the 2 tasks"],
     ["pass", "Validity differed on none of the 2 tasks"],

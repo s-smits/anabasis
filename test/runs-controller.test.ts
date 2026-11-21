@@ -66,8 +66,8 @@ describe("remote controller lifecycle", () => {
       const lock = join(made.root, "git", "ana-code", `${made.commit}.lock`);
       mkdirSync(lock, { recursive: true });
       // The holder is orphaned at once, so its exit is reaped while this process waits on the run.
-      // It touches `released` as it ends, so a run that waited for it finds the file: on 29 October
-      // a 3 s bound on the other two kinds read 3.6 s at a load of 24.9 on 12 cores.
+      // It touches `released` as it ends, so a run that waited for it finds the file, where a
+      // bound of seconds on the other two kinds can be overrun on a loaded host.
       const released = join(made.root, "released");
       const live = kind.startsWith("live");
       const holder = live

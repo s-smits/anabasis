@@ -58,7 +58,7 @@ const REPORTS = [
   "  - 1.1, observation confirmed, cause plausible, owner host: lane 9: ok, finding, 4 findings,",
   "- lane 2: ok, no finding, 0 findings, at `lanes/02-report.md`",
   "- lane 3: missing, at `lanes/03-report.md`",
-  // A lane left unread, which until 9 November the index counted as one read with no finding.
+  // A lane left unread, which the index does not count as one read with no finding.
   "- lane 4: ok, omitted although its trigger fired, 0 findings, at `lanes/04-report.md`",
   "- lane 5: ok, could not read, 0 findings, at `lanes/05-report.md`",
   "",

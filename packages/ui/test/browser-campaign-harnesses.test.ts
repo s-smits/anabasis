@@ -19,8 +19,8 @@ import {
  * parent and each of its files in the inspector, the back button undoing each, and the strip on a
  * phone. Then what a person sees between two states: a frame probe counts every animation frame in
  * which a watched part of the page is gone, empty or saying it is reading, across each step, since
- * on 14 October every card chosen and every file opened flashed a loading line for one to three
- * frames; a held read shows that the previous view stays and that the loading line waits.
+ * a card chosen or a file opened could flash a loading line for one to three frames; a held read
+ * shows that the previous view stays and that the loading line waits.
  */
 
 /** What the frame probe counted between its start and its stop. */

@@ -22,9 +22,9 @@ const USAGE = {
 const home = mkdtempSync(join(tmpdir(), "ana-atif-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
 
-/** A solve of two turns with a compaction between them, the first's calls logged before it as
- *  before 22 October and the second's after it as a durable seat logs them, a call no turn ended,
- *  and a Builder's turn. */
+/** A solve of two turns with a compaction between them, the first's calls logged before it
+ *  as an older seat did and the second's after it as a durable seat logs them, a call no turn
+ *  ended, and a Builder's turn. */
 function written(): string {
   const log = join(home, "log.jsonl");
   let turn = 1;

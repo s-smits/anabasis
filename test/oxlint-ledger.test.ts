@@ -25,7 +25,7 @@ const repoRoot = resolve(import.meta.dirname, "..");
 const topRules: Readonly<Record<string, JsonValue>> = oxlintrc.rules;
 
 /**
- * The rules whose every member is decided, as of the whole-tree count of 5 November 2026: each
+ * The rules whose every member is decided: each
  * one Oxlint offers in these categories and plugins is configured at the top level of
  * `.oxlintrc.json`, or is a row of `tools/oxlint/rules-off.tsv` with the one sentence that keeps
  * it off. Nursery rules are outside, and so are the repository's own plugins, which are all on.

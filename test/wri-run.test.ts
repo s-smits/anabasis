@@ -223,7 +223,7 @@ describe("the reader of the campaign's clock", () => {
   });
 
   it("ends a draft that a later draft started over, instead of counting it to the log's end", () => {
-    // truss v4 on 27 October: d-1 cut at a minute and a half, relaunched as d-2.
+    // d-1 cut at a minute and a half, relaunched as d-2.
     const line = hoursOf(
       timed([
         [0, "draft.started", { session: "d-1" }],
@@ -279,8 +279,8 @@ describe("the reader of campaign spend", () => {
   });
 
   it("counts the solves an Examiner session asked for as the Examiner's, and says its cost a task held out", () => {
-    // An earlier log's `try_task`: about seven reference solves an admitted task at three a draft (the overhaul plan,
-    // 4b), which until 12 October read as the solver's.
+    // An earlier log's `try_task`: about seven reference solves an admitted task at three a draft,
+    // which must not read as the solver's.
     const log = timed([
       [0, "exam.started", { session: "x-1" }],
       [1, "solve.started", { solve: "t1", comparison: "x-1", limits: { wallSeconds: 900 } }],

@@ -59,7 +59,7 @@ it("reads two comparisons from one stream, each with its whole draw, and scores 
           level: 0.02,
           reading: "no-step",
           scored: {},
-          // A report of 25 October stored its scores with the bill, which decided this task.
+          // An older report stored its scores with the bill, which decided this task.
           frontier: { tasks: [pair.task], of: [pair.task], differences: [10] },
           retained: "unmeasured",
         },

@@ -84,9 +84,9 @@ describe("deriving a campaign's readers", () => {
   });
 
   it("keeps a folder for each log of one campaign name, so neither replaces the other", async () => {
-    // A snapshot, a host's copy and the live log share the campaign's name: until 9 November they
-    // shared its folder, and the pulse's derivation of the live log replaced the one a `start
-    // --snapshot` had pointed its lanes at.
+    // A snapshot, a host's copy and the live log share the campaign's name but not its folder,
+    // since the pulse's derivation of the live log would replace the one a `start --snapshot` had
+    // pointed its lanes at.
     const copy = join(dir, "snapshot", "camp", "log.jsonl");
     mkdirSync(dirname(copy), { recursive: true });
     writeFileSync(copy, OPENED + STARTED);

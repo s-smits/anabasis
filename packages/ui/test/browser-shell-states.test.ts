@@ -98,7 +98,7 @@ describe("a read in flight or failed", () => {
     });
     const page = await context.newPage();
     await page.goto(served.url(`campaign=${main}`));
-    // At ten parallel files on 14 October a campaign read took past the 5 s an assertion waits: the
+    // At ten parallel files a campaign read can take past the 5 s an assertion waits: the
     // page is what is tested here, not the server's pace.
     await expect(page.getByRole("heading", { level: 1, name: "fixture" })).toBeVisible({
       timeout: ACTION_MS,

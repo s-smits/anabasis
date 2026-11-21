@@ -130,8 +130,8 @@ function chipOf(page: Page, id: string) {
 
 /** One transition, armed just before it: evidence in every frame, and no placeholder sooner than
  *  the page's patience. A read that outlasts the patience is said by design (`waited.ts`), and a
- *  loaded machine makes one late: on 12 November 2026, beside a gate and a sweep of the archive, a
- *  commit that changed nothing here failed a landing on two such frames. */
+ *  loaded machine makes one late, which would fail a landing on a commit that changed nothing
+ *  here. */
 function expectSteady(frames: Frames): void {
   expect(frames.frames).toBeGreaterThan(0);
   const early = frames.loading > 0 && (frames.firstLoading ?? 0) < PATIENCE_FLOOR_MS;

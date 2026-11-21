@@ -1,5 +1,5 @@
 // Settled pass labels must reach the pairs and the Examiner's known-answer facts together.
-// The audit of 29 October 2026 found both still reading a wrong pass as valid.
+// Otherwise both would still read a wrong pass as valid.
 import { describe, expect, it } from "bun:test";
 import { stopRule as stopOf } from "../src/campaign/admission.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
@@ -707,9 +707,9 @@ describe("the release before the draw", () => {
 
   it("releases the same tasks whichever held-out task the new harness won where the reference answered neither", () => {
     // Two campaigns with equal tallies over two comparisons, which differ only in which of two
-    // tasks the reference never answers the new harness won. Until 26 October a valid answer of
-    // any harness took a task off the first list, so the other task was released from each, and
-    // the Builder could read which one its harness had won (AGENTS.md rule 3).
+    // tasks the reference never answers the new harness won. A valid answer of any harness must
+    // not take a task off the first list, since the other task would then be released from each,
+    // and the Builder could read which one its harness had won (AGENTS.md rule 3).
     const won = (task: string) => [
       ...["u1", "u2"].flatMap(heldOut),
       ...["b-1", "b-2"].flatMap((session) => [
@@ -899,8 +899,8 @@ describe("the tasks the reference harness exhausted", () => {
   });
 
   it("tell the Builder one frontier size whichever held-out task the other harness failed (rule 3)", () => {
-    // The v0.9.0 review, 30 October: with the other side's solves pooled, two campaigns of equal
-    // tallies, each a loss on one task, held frontiers of 3 and 2.
+    // With the other side's solves pooled, two campaigns of equal tallies, each a loss on one task,
+    // would hold frontiers of 3 and 2.
     const frontierOf = (r1: readonly [boolean[], boolean[]], r3: readonly [boolean[], boolean[]]) =>
       poolOf([
         ...["r1", "r2", "r3", "r4"].flatMap(heldOut),

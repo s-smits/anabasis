@@ -35,7 +35,7 @@ const opus = {
   provider: "claude",
   cost: { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
 };
-// The model Claude Code answered opus's requests with on 25 October, at half opus's prices.
+// A model Claude Code has answered opus's requests with, at half opus's prices.
 const served = {
   ...opus,
   id: "claude-opus-5",

@@ -128,7 +128,7 @@ describe("runs bench", () => {
     // Without --yes each read is a plan; a run no benchmark reads is paused alone.
     expect(evalOf([RUN, "--eval"], ENV).reads).toEqual([[RUN, "--bench", "statbench", "--wait"]]);
     expect(evalOf(["other-fresh-opus-builder", "--eval"], two).reads).toEqual([]);
-    // A machine named alone, as the setting read until 17 November, is no list, and is refused as
+    // A machine named alone, as an older setting read, is no list, and is refused as
     // a plain error, which the CLI prints as a refusal and not as a defect with its stack.
     for (const [old, says] of [
       ["{}", /EVAL_RUNNER takes a JSON list/u],

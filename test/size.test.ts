@@ -14,8 +14,8 @@ describe("what a comparison of a given size can show, said before it runs", () =
     // A comparison buys tasks, not untied tasks: the share is the best case, where none ties.
     for (const fact of ["no task to tie", "81%"]) expect(share).toContain(fact);
     for (const fact of ["7.3%", "no task ties", "per-comparison"]) expect(rate).toContain(fact);
-    // Three campaigns of 9 and 10 October stopped on 3-0, one win short of the sweep at 0.10. At
-    // 0.20 a 3-0 clears, and neither 2-0 nor 3-1 does.
+    // A 3-0 is one win short of the sweep at 0.10. At 0.20 a 3-0 clears, and neither 2-0 nor 3-1
+    // does.
     expect(sizeLines(12, 0.2).at(0)).toContain("3-0, 4-1, 6-2");
     expect(sizeLines(24, 0.02).at(0)).toContain("6-0, 8-1, 10-2");
     // A rate too small for a tenth of a percent is said as under it, never as none.

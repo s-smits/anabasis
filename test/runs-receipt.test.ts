@@ -139,8 +139,7 @@ describe("what a launch records of the host's Python", () => {
   const said = (version: string, ...packages: string[]) =>
     `echo '${capturedJsonStringify([version, packages])}'`;
 
-  // Added while production was being written, on the 5 November reading of 17 packages for 12 names,
-  // with numpy named at 2.5.3 where an import found 2.5.4.
+  // A reading of 17 packages for 12 names, with numpy named at 2.5.3 where an import found 2.5.4.
   const realPython = Bun.which("python3");
   it.skipIf(realPython === null)(
     "names a package once where stale folders hold several, at the version an import finds",

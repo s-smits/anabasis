@@ -30,12 +30,11 @@ import { bindingName, identifierName, propertyName } from "../shared/statements.
  *
  * An oxlint rule sees one file, and its plugin API offers no other module's declarations, so a
  * call into another file is read by the whole-tree scan `tree/no-transposed-argument`
- * (`tools/oxlint/tree-crossed-argument.ts`) with the same reading. On 8 November that scan resolved
- * 9,989 calls into other files, with 7,742 argument pairs, and found no crossing.
+ * (`tools/oxlint/tree-crossed-argument.ts`) with the same reading.
  *
  * One argument that carries another parameter's name is a coincidence, and the rule does not
- * report it. Measured on 8 November across today's tree and seven trees from 12 October to 5
- * November, that shape gave 6 to 10 findings a tree, every one a correct call (`flag("name",
+ * report it. Measured across eight trees, that shape gave 6 to 10 findings a tree, every one a
+ * correct call (`flag("name",
  * name)`, `addUsage(turn.usage, usage)`); requiring the caller to hold the displaced parameter's
  * name as well left only calls inside the callee itself. A chain of such pointers that never
  * closes is the same coincidence twice. The crossed shape, with every widening above, reported

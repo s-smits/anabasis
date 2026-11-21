@@ -44,7 +44,7 @@ import { identifierName } from "../shared/statements.ts";
  * Measured 2026-09-20: 30 sites, 19 with unions excluded, 9 with wide bodies excluded, 5 once
  * object shapes were excluded too.
  *
- * Until 20 October the message asked for `ReturnType<typeof findingArgs>`, which cannot be
+ * The message does not ask for `ReturnType<typeof findingArgs>`, which cannot be
  * written as `findingArgs`'s own annotation, since that is circular; the only edit left was to
  * delete the alias and the annotation and let the return infer, and an inferred return is not
  * the annotated one: that is the `satisfies` trap the same pass recorded, where dropping the

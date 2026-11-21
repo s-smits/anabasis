@@ -446,7 +446,7 @@ function isCaughtValue(sourceCode: SourceCode, identifier: ESTree.IdentifierRefe
  * And a caught value is `unknown`, so an assertion on it is a guess that `instanceof` or a record
  * test would make a fact.
  *
- * Read in the census of 8 November and left out, each as the honest boundary: `JSON.parse(...)`,
+ * Read in a census and left out, each as the honest boundary: `JSON.parse(...)`,
  * a dynamic `import()` or a host's document asserted to its shape (foreign input, which a parser
  * owns); `Object.fromEntries`, `Object.keys` and a computed key asserted to a typed record (the
  * library's signatures cannot carry the key type); a property read asserted to a literal union,

@@ -31,8 +31,7 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
  * shape, because the cost is the second owner existing, not any one line of it. The owner and
  * its reader are exempt by path. Tests are exempt: a test that starts a process has to be able to
  * stop it. `capturedSpawn` (`src/meta/process.ts`) is `Bun.spawn` taken at import, and the
- * launch paths that start a confined child call it; until 20 October the rule did not read it as
- * a spawn.
+ * launch paths that start a confined child call it, so the rule reads it as a spawn too.
  *
  * A signal sent through the process object is not that shape. `process.kill(pid, signal)` ends
  * an identity the file was handed, which is what `src/meta/subprocess.ts` itself does, what

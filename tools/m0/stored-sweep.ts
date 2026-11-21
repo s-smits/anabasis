@@ -176,8 +176,8 @@ function endingOf(
  * A v1 bundle's check program, copied to `to` without its battery: the verifier hands a check its
  * whole program, and `tasks.json` and `controls.json` hold every task's hidden values and every
  * control. Returns `to`. The copy is made beside it and renamed into place once whole: a campaign
- * stages its checks where none are (`packOpened`, `campaign.ts`), and until 14 October a copy cut
- * short left a folder there that every later run took for the whole program.
+ * stages its checks where none are (`packOpened`, `campaign.ts`), so a copy cut short in place
+ * would leave a folder there that every later run took for the whole program.
  */
 export function checkProgram(bundle: string, to: string): string {
   const filter = (path: string) => !BATTERY_FILES.has(basename(path));
@@ -224,7 +224,7 @@ export function storedAnswer(row: Row): JsonValue | undefined {
  *  `home`; a campaign's `--solver-window` names another window (`tools/d2/setting.ts`). A solve's
  *  cache lives five minutes: over 110,009 recorded solver turns, 0.9% came more than five minutes
  *  after the one before, and the hour-long writes a login gets by default billed 13% more than
- *  five-minute writes would have (20 October). */
+ *  five-minute writes would have. */
 export function sweepOptions(
   home = homedir(),
   window = SWEEP_COMPACT_WINDOW,
@@ -318,7 +318,7 @@ export function sweepResources(brief: PackBrief): PublicResource[] {
         ? []
         : [{ domain: brief.domain, scope: brief.scope ?? "", conventions: brief.conventions ?? "" }],
     ],
-    // The objective is public with the rules: a solver held to it has to read it (10 October).
+    // The objective is public with the rules: a solver held to it has to read it.
     [
       "public-objective",
       brief.objective === undefined

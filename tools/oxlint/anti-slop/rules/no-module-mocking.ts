@@ -160,9 +160,9 @@ function memberReplacementCall(
  * `vi.mock`, `vi.doMock`, `jest.mock` and `unstable_mockModule`: replacing a module at the
  * loader rather than substituting a dependency the code under test accepts. This repository
  * tests with `bun:test`, whose spelling is `mock.module(…)`, and the upstream rule did not read
- * it; this copy reads a `mock` imported from `bun:test` too (20 October).
+ * it; this copy reads a `mock` imported from `bun:test` too.
  *
- * This copy also reads the other ways of replacing what every caller shares (8 November): `spyOn`
+ * This copy also reads the other ways of replacing what every caller shares: `spyOn`
  * over a member of any import or of a steering global (`spyOn(prepare, "prepareCommand")`,
  * `spyOn(Date, "now")`); in a test, an assignment, `Object.defineProperty` or `Object.assign`
  * over one (`fs.readFileSync = …`, `globalThis.fetch = …`); and a faked clock

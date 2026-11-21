@@ -31,8 +31,8 @@ import { asSubject, identifierName, onlyStatement, statementBelow } from "../sha
  * `find` at all, even where the module walks one and asks it `.has(…)` two lines later. The rule
  * reads both from the file — a name declared `new Set(…)` or `new Map(…)`,
  * or asked `.has(…)` anywhere in the same module, or annotated as a `string`, a `Set`, a `Map`,
- * an `Iterable` or an `IterableIterator` (20 October, when a `ReadonlySet` parameter was fixed
- * into a `find` that did not compile), is not an array — so that the admission test
+ * an `Iterable` or an `IterableIterator` (a `ReadonlySet` parameter fixed into a `find` does not
+ * compile), is not an array — so that the admission test
  * holds at every site it reports: the method is legal where the loop was, it is shorter, and no
  * other rule in this tree asks for a loop.
  *

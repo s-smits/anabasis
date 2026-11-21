@@ -4,8 +4,8 @@
  *
  * The recorded case: `tool()` in `src/tools/answer.ts` returns `defineTool({ ...definition,
  * executionMode: "sequential", ... })`, and 20 callers in 10 files passed `executionMode:
- * "sequential"` inside the `tool({ ... })` they wrote. Commits 073acaa7c and 4c1209737 deleted
- * those lines on 5 November 2026. No per-file rule could see it, since the wrapper and most of its
+ * "sequential"` inside the `tool({ ... })` they wrote, every one of them dead. No per-file rule
+ * could see it, since the wrapper and most of its
  * callers sit in different files.
  *
  * The scan is syntactic and leans to silence. A wrapper is a top-level function (a declaration, or

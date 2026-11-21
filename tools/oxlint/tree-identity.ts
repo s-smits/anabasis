@@ -5,8 +5,8 @@
  * The scan has to decide what counts as a name. A literal is one when it has no whitespace, holds
  * a `/` or a `.`, is not an interpolation fragment, an assignment or a slug, is no other program's
  * name (`literal-owner.ts`), and is at least 15 characters or a file name with a stem and an
- * extension. On 20 September `battery.json` stood in seven files and `opening.json` in six, so a
- * short file name counts too, at three files rather than two, because two files agreeing on
+ * extension. A short file name such as `battery.json` can stand in many files, so it counts too,
+ * at three files rather than two, because two files agreeing on
  * `index.ts` share a word rather than a layout.
  *
  * What is not a second copy: an import line, a comment, a quote inside another string or a
@@ -14,10 +14,11 @@
  * `import("…")` type, and a literal the compiler already checks. The last is a type, a member's
  * declared type (`schema: "tag/v2";`), a TypeBox literal, and a constant table that `satisfies` a
  * non-string type or is read with `typeof`: mistyping one copy then fails the build. `join(dir,
- * "a", "b.ts")` is read as `a/b.ts`; on 20 September that blindness hid 22 of 90 sites.
+ * "a", "b.ts")` is read as `a/b.ts`, since reading the pieces apart hides about a quarter of the
+ * sites.
  *
- * Rewritten on 27 October: one tokenizer over each line in place of a regex and a state machine
- * run on the text before every match.
+ * One tokenizer reads each line, rather than a regex and a state machine run on the text before
+ * every match.
  */
 import manifest from "../../package.json" with { type: "json" };
 import { ownedElsewhere } from "./ana/shared/literal-owner.ts";
@@ -152,7 +153,7 @@ function spellingsOf(path: string, text: string): Spelling[] {
 }
 
 /** What the row asks for. An owner of a longer path ending in the name counts: the repair is to
- *  derive the name from it, not to give it a second owner (judged on 1 October). */
+ *  derive the name from it, not to give it a second owner. */
 function ownerClause(owner: Spelling | undefined, value: string): string {
   if (owner === undefined) return "and no file names it";
   const where = `\`${owner.owner}\` in ${owner.path}`;

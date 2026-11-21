@@ -80,13 +80,10 @@ const CHAIN_PEERS = 3;
  * land in: 115 nonblank lines, which `tools/loc/source-policy.ts` holds, and cyclomatic
  * complexity 22, which v1's `5bc9988:tools/loc/complexity-policy.ts` refused and which no v2 gate
  * holds; v2 never copied that file. A caller already at either has no spelling that also absorbs a
- * helper without growing past it. The complexity limit stays as this rule's own: on 20 October,
- * without it, the rule reported two helpers in `tools/wri/folds.ts`, `records` and `refusals`,
- * each a named computation whose caller already measures 22 or more. It happened six times in one pass over
- * `e7636e472:src/backends`, `5bc9988:src/correctness-bundle`, `94b305a54:src/author` and
- * `e7636e472:src/solve` before the rule was taught to check,
- * every time after the push gate had already run; the arithmetic is cheap and the reader of the
- * report should not have to do it.
+ * helper without growing past it. The complexity limit stays as this rule's own: without it, the
+ * rule reported two helpers in `tools/wri/folds.ts`, `records` and `refusals`,
+ * each a named computation whose caller already measures 22 or more. Without the check such
+ * findings arrive after the push gate has already run; the arithmetic is cheap and the reader of the report should not have to do it.
  *
  * That room is spent rather than only measured, because a caller can have room for either of two
  * helpers and not for both. `settle` in `5bc9988:src/builder/verifier-workshop.ts` measured 19 and

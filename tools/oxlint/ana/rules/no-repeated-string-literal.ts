@@ -43,8 +43,8 @@ import { ownedElsewhere } from "../shared/literal-owner.ts";
  * in it fails that test: `"no value"` beside `"moved, better"` in one verdict union. Where the file
  * itself writes the spelling as a literal type, the union is in view, and the copies in value
  * position are the ones the compiler holds to it: a returned `{ verdict: "no valeu" }` and a
- * comparison `verdict === "no valeu"` are both build failures. On 11 November 2026 the rule asked
- * for a constant for four such copies, and the constant then had to be read back into the union as
+ * comparison `verdict === "no valeu"` are both build failures. Asking for a constant for such
+ * copies would leave the constant to be read back into the union as
  * `typeof NO_VALUE`, which is the declaration bent around the rule. So a spelling this file
  * declares as a literal type is not counted. It is still a proxy: a copy handed to an untyped
  * place is not checked, and a union another file declares is out of view, where the report stands.
@@ -81,9 +81,9 @@ import { ownedElsewhere } from "../shared/literal-owner.ts";
  *
  * A suite's prose is not held to it at all. A string with whitespace in a test is a note no reader
  * compares, such as a scripted Builder's `finish` note, or the sentence an assertion reads, and a
- * constant hides from the case what it asserts. On 14 October the rule asked for a local constant
- * for ten copies of "Nothing to add." in `test/builder-led.test.ts`, a note whose copies never need
- * to agree. A directory or a file name has no whitespace, and stays counted.
+ * constant hides from the case what it asserts: a repeated note such as "Nothing to add." in
+ * `test/builder-led.test.ts` never needs its copies to agree. A directory or a file name has no
+ * whitespace, and stays counted.
  */
 const REPEAT_FLOOR = { source: 4, test: 10 };
 

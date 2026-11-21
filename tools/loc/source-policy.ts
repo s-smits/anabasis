@@ -88,9 +88,9 @@ function walkFiles(root: string): string[] {
     // the walk descends into, so `.claude` still opens.
     if (name === "node_modules" || name === "dist" || name.startsWith(".")) continue;
     const path = join(root, name);
-    // A directory holding its own `.git` is another checkout, never this one's source: on
-    // 5 November 2026 three agent worktrees under `.claude/worktrees/` lifted the main checkout's
-    // census from 2 findings to 2,429, every one a copy of a file already read.
+    // A directory holding its own `.git` is another checkout, never this one's source: agent
+    // worktrees under `.claude/worktrees/` would otherwise fill the census with copies of files
+    // already read.
     if (!statSync(path).isDirectory()) files.push(path);
     else if (!existsSync(join(path, ".git"))) files.push(...walkFiles(path));
   }

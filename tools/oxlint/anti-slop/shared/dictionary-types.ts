@@ -421,7 +421,7 @@ export function classifyUnsafeDictionary(
  * target, and it is produced before the walk follows a name and never after: the same members
  * behind an alias are that alias's contract.
  *
- * Until 19 October any unnamed shape with members was reported. Of the findings on record that
+ * An unnamed shape with members is not reported on that alone: of the findings on record that
  * were judged, the anonymous-object ones were false at nearly every site: a function's declared
  * return type stating exactly the literal it returns, answered by deleting the annotation or by a
  * one-use interface that `no-alias-restating-return` would then ask to remove.

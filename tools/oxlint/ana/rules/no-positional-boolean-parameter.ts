@@ -44,7 +44,6 @@ function guardsCallOf(read: ESTree.Node, name: string): boolean {
  * `[true, false, null].map(counted)` is called with the data, and no line of the file spells
  * `counted(true)`. So a function this file never calls and never exports, and only hands on as an
  * argument, keeps its boolean; one direct call, or an export, and its call sites are judged again.
- * On 11 November 2026 that was one of the two sites the widened reading still held.
  *
  * An assertion or guard keeps its boolean. `judgeIntegrity(condition: boolean): asserts condition`
  * needs that parameter to be the thing TypeScript narrows on, so the union the message asks for

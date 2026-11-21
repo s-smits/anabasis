@@ -50,9 +50,9 @@ function isPassedOverKey(node: ESTree.Node): boolean {
  * underscores, digits and case steps so that `jsonShaped` is three words and `reshaped` is one.
  *
  * The key of an object-literal entry that holds a literal is exempt, through `isPassedOverKey`.
- * Of the findings on record by 19 October, the three answered as false were all this: the field
- * `shape` of an artifact-schema row as the truss pack and v1's prose contract spell it (two ledger
- * rows of 8 October), and a count's label for drafts refused on their package's shape in
+ * Of the findings on record, those answered as false were all this: the field `shape` of an
+ * artifact-schema row as a pack and v1's prose contract spell it, and a count's label for drafts
+ * refused on their package's shape in
  * `test/skill-scripts.test.ts`, renamed `package` only to pass. A key holding a computed value,
  * `{ taskShape: buildTask() }`, still reports: there the key is the only place the name is chosen.
  *

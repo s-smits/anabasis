@@ -8,11 +8,8 @@
 // makes the output a question for a person rather than a gate: `bun run simplify` prints all of
 // it, and `bun run commit:check` prints the sites on the lines a commit changes.
 //
-// Rewritten from scratch on 27 October to half its size. Over nine trees of main from 22 September
-// to 27 October, the rewrite reports the sites the earlier scans reported, within a few; the
-// pull request gives the counts. Dropped with it: the closed-set scan (no site in any of the nine
-// trees, one ledger row ever), and a filter that kept the scans' own files from reading as helpers,
-// which merging them made moot.
+// The scans share one walk and one parse of each file, which keeps this file small; a scan that
+// found no site in any tree on record has no place here.
 
 import type { RuleExample } from "./rule-examples.ts";
 import { existsSync, readFileSync } from "../../src/meta/filesystem.ts";
@@ -329,7 +326,7 @@ const EXPORTED =
 const MOVABLE = new Set(["function", "class", "abstract class"]);
 
 /** The nonblank size of a home file that the recorded moves took, and the most a reader may hold
- *  after taking one: judged blind on 24 September, every refused move landed at 559 or more. */
+ *  after taking one: judged blind, every refused move landed at 559 or more. */
 const HELPER_LINES = { least: 10, most: 60 } as const;
 const READER_ROOM = 560;
 /** A skill script reads repository source and cannot receive it. */

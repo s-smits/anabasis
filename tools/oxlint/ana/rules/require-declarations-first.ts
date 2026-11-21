@@ -40,16 +40,16 @@ import { declaredBy, identifierName, isConstDeclaration, isNamedMember } from ".
  * `let`s, and hoisting those three alone left the block worse than it was found.
  *
  * Declarations that stand one after another below the code are one finding and move as one block.
- * On 11 November 2026 one arrow constant written above the declarations of promotion-tuner's
- * `table.ts` read as fourteen errors, each naming a declaration that stood where it always had,
- * and the sweep needed a pass for each; by runs the same file reads three. The report lands once a
+ * Read one by one, a single arrow constant written above a file's declarations has read as
+ * fourteen errors, each naming a declaration that stood where it always had, and the sweep needed
+ * a pass for each; by runs the same file reads three. The report lands once a
  * run, on its first declaration, and names the rest; the fix carries the run across the code in
  * one replacement, with the comments and blank lines between its members where they were.
  *
  * `as const` is no read. The assertion's `const` arrives as a reference to a name nothing can
- * declare, and until 11 November 2026 it was barred as a global whose value depends on where it is
- * read, so `const BY = ["release", "pack"] as const` stayed under the code unreported while the
- * plain array beside it moved. Eighteen sites tree-wide stood behind that, in fifteen files.
+ * declare, and barred as a global whose value depends on where it is read it would leave
+ * `const BY = ["release", "pack"] as const` under the code unreported while the plain array
+ * beside it moved.
  *
  * The fixer is the reason the rule is worth having: this is a reordering pass, not a set of
  * judgements. The comment is the part a hand edit gets wrong — a JSDoc block left behind above the

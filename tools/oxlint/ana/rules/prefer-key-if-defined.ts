@@ -46,9 +46,9 @@ import {
  *
  * Which helper is which: `!== undefined` is `keyIfDefined`, which omits undefined alone; `!==
  * null`, `!= null` and `!= undefined` are `keyIfNotNull`, which omits both. A `!== null` guard
- * over a value that may also be undefined assigned that undefined, and the fold does not. The
- * head comment used to call that a program that did not compile; on 20 October a key declared
- * `k?: string | null | undefined` compiled with `if (w !== null) o.k = w`, and the fold dropped a
+ * over a value that may also be undefined assigned that undefined, and the fold does not, and the
+ * program still compiles: a key declared
+ * `k?: string | null | undefined` compiles with `if (w !== null) o.k = w`, and the fold drops a
  * key the original set to `undefined`. A plugin rule cannot see whether the value admits
  * undefined, so a run holding a strict `!== null` guard is reported without a fix.
  *

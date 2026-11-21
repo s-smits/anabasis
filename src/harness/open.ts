@@ -9,12 +9,10 @@
  * (`src/tools/coding.ts`).
  *
  * The host reads the guide and the spec and builds or runs nothing from a harness's files: what a
- * harness computes is a program under `.toolchain/bin`, which the solver starts in its shell. Until
- * 20 November 2026 a harness also held `agent/tools.ts`, a module of tools of its own that the host
- * bundled, listed under the wall before every solve and called one process a call. 21 of the 1,340
- * kept harnesses on record that day declared a tool, in nine campaigns opened from 21 to 31
- * October, and an export dropped them. A harness kept before then still holds the file, which
- * nobody reads, and one that declares a tool is refused by the names it declares.
+ * harness computes is a program under `.toolchain/bin`, which the solver starts in its shell. An
+ * older harness may also hold `agent/tools.ts`, a module of tools of its own that the host once
+ * bundled; few harnesses ever declared a tool, and an export dropped them. Nobody reads the file
+ * now, and a harness that declares a tool is refused by the names it declares.
  */
 import { AGENT_DIR, BYTECODE, GUIDE_FILE, TOOLS_SPEC_FILE, TOOL_TREE_DIR } from "../meta/bundle-layout.ts";
 import { sha256OfFile } from "../meta/digest.ts";
@@ -40,8 +38,8 @@ export interface Harness {
 /**
  * What the tool module of every harness without a tool bundled to, as the digest read it. A
  * condition on record names its harness by a digest that held that text, so it stays in the
- * digest: each of the 1,319 kept harnesses on record on 20 November 2026 that declare no tool held
- * the Starter's module but for its comments, and keeps its name (`test/harness-open.test.ts`).
+ * digest: each kept harness that declares no tool held the Starter's module but for its comments,
+ * and keeps its name (`test/harness-open.test.ts`).
  */
 const NO_TOOLS_MODULE =
   "// @bun\n\nvar createDomainHarness = () => ({\n  tools: []\n});\nexport {\n  createDomainHarness\n};\n";
@@ -109,8 +107,8 @@ const TREES = new Map<string, { stamp: string; content: ReturnType<typeof treeCo
  *  `tar` and `cp -p` set the modification time back, so a stamp of size and modification time alone
  *  survived a rewrite of the same size under them, and a freeze reused the copy from before it. No
  *  process can set the change time back, and hashing the content, which the stamp stands in for,
- *  reads a tree of 316 MB. Until 9 November the solver kept a stamp of its own without the change
- *  time, mode or inode, and a solve that rewrote a harness file so went unseen. */
+ *  can read a tree of hundreds of megabytes. A stamp without the change time, mode or inode would
+ *  miss a solve that rewrote a harness file so. */
 export function treeStamp(real: string): string {
   return hashJsonValue(
     pathsUnder(real).map((path) => {

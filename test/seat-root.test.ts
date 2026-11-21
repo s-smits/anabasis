@@ -84,8 +84,8 @@ describe("a seat's root", () => {
     rmSync(parent, { recursive: true, force: true });
   });
 
-  // A command the host killed left its child running, which wrote its home again after the
-  // release, and ran on at 80 forks a second (2026-10-09).
+  // A command the host kills must not leave its child running, which would write its home again
+  // after the release and run on, forking.
   it.skipIf(!onDarwin)(
     "ends a process working in it, and spares one working beside it",
     async () => {

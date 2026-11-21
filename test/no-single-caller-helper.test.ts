@@ -15,8 +15,8 @@
  * caller's `return`, where the escapes land exactly as written.
  * The two scope exemptions were measured the same way: a `.tsx` component rendered once from
  * one parent is not a helper, and a test's fixture builder is not one either. A third, over
- * `tools/oxlint/anti-slop`, went on 2026-09-20 with the pin it claimed, which never existed; the
- * last case here holds that tree to the same rule as `src` so the exemption cannot come back by
+ * `tools/oxlint/anti-slop`, went with the pin it claimed, which never existed; the last case
+ * here holds that tree to the same rule as `src` so the exemption cannot come back by
  * accident.
  *
  * There is no fixer on purpose. Substituting the arguments into a one-`return` body is

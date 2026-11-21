@@ -20,8 +20,8 @@ const root = mkdtempSync(join(tmpdir(), "ana-runs-stop-test-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 describe("a stop", () => {
-  // What a stop releases. A Builder's root was once named for its session id alone, and one left
-  // mounted refused that id to every campaign on the host with a bare EEXIST (2026-10-08).
+  // What a stop releases. A Builder's root named for its session id alone, left mounted, would
+  // refuse that id to every campaign on the host with a bare EEXIST.
   it("names what a run's unfinished solves and sessions left, and nothing of a seed's source", () => {
     const path = join(root, "r1", "log.jsonl");
     mkdirSync(dirname(path));

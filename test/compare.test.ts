@@ -576,7 +576,7 @@ describe("the pairs a comparison reads from the log", () => {
           fresh: [P, P],
           solves: { old: ["s-1", "s-5"], fresh: ["s-3", "s-6"] },
           // What each solve cost; its turns, prompts, CPU and seconds stay in the log's events
-          // for the investigation and are no part of a pair since 2026-10-11.
+          // for the investigation and are no part of a pair.
           used: { old: [{ billed: 6.5 }, none], fresh: [none, none] },
         },
       ],
@@ -627,8 +627,8 @@ describe("the identity of a counted solve", () => {
       return pair === undefined ? { short: paired.short } : { old: pair.old, fresh: pair.fresh };
     };
     // The runner stops a comparison on a solve that opened another harness, and the comparison
-    // goes on from this log: a kept harness once opened without its tool tree (2026-10-09), and
-    // its answer stayed in the log under the condition that names the whole harness.
+    // goes on from this log: a kept harness opened without its tool tree would otherwise leave its
+    // answer in the log under the condition that names the whole harness.
     const opened = [
       ...solve(base, "pass", { harness: "old" }),
       ...solve(fresh, "fail", { harness: "other" }),

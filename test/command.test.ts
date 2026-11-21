@@ -115,7 +115,7 @@ describe("a solve's walled commands", () => {
 
             // A command that backgrounds work and returns has left nothing running. The shell around the
             // wall leads the command's group, not the shell that reaps it: read by its own pid, the group
-            // was empty and a solver's loop ran on for over 20 minutes after its command (2026-10-09).
+            // would be empty and a solver's loop would run on long after its command.
             for (const [name, command] of [
               ["left", `nohup ${beating("left")} >/dev/null 2>&1 &`],
               ["apart", `set -m; ${beating("apart")} >/dev/null 2>&1 &`],
@@ -132,8 +132,8 @@ describe("a solve's walled commands", () => {
             await expect(run(wall, "sleep 5")).rejects.toThrow("timeout:1");
             await expect(run(wall, "sleep 5", undefined, 60)).rejects.toThrow("timeout:2");
             // A command the wall cuts is killed by its group and never runs its trap, so a child in a
-            // group of its own outlived that too: five of the nine commands one run's wall cut sat under
-            // an inner `timeout` (2026-10-09).
+            // group of its own would outlive that too, as under an inner `timeout`, which solvers
+            // often write.
             await expect(run(wall, `set -m; ${beating("cut")} & wait`)).rejects.toThrow("timeout:1");
             expect(await stillBeats(join(dirs.home, "cut"))).toBe(false);
           },
@@ -452,8 +452,8 @@ describe("a solve's walled commands", () => {
           const { dirs } = wall;
           const own = join(basename(dirs.root), "tmp");
           // `/usr/bin/python3` and `/usr/bin/make` are xcrun shims, which start their tool with TMPDIR
-          // reset to the user temporary directory: three days of campaigns left 1.56 million Python
-          // temp folders there, outside every solve's root and its command's end (2026-10-10).
+          // reset to the user temporary directory, where campaigns would leave millions of Python
+          // temp folders, outside every solve's root and its command's end.
           const pythonTemp = await run(wall, "python3 -c 'import tempfile; print(tempfile.mkdtemp())'");
           expect(pythonTemp.output).toContain(own);
           expect(existsSync(pythonTemp.output.trim())).toBe(true);

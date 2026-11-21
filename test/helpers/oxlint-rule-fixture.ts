@@ -95,10 +95,10 @@ async function runRule(
   // oxlint's own built-ins report over the fixture too, `eslint(no-unused-vars)` fires on
   // nearly every parameter a rule fixture declares, so keep only rows this rule tagged.
   //
-  // The path comes from the file that was staged rather than a pattern for it. The pattern here
-  // was `[^/:]+\.tsx?:`, which matched no row at all once `at` named a `.mjs` file, and `.claude`
-  // joined the lint scope on 2026-09-20 carrying a whole tree of them. A test placing its fixture
-  // there read back an empty list and passed, having asked the rule nothing.
+  // The path comes from the file that was staged rather than a pattern for it. A pattern such as
+  // `[^/:]+\.tsx?:` matches no row at all once `at` names a `.mjs` file, and `.claude` holds a
+  // whole tree of them, so a test placing its fixture there would read back an empty list and
+  // pass, having asked the rule nothing.
   const escaped = fixture.replaceAll(/[.*+?^\\${}()|[\]]/gu, String.raw`\$&`);
   const tagged = new RegExp(`${escaped}:(?<row>\\d+:\\d+: .*\\(${rule}\\)\\])`, "gu");
   return [...(await run()).matchAll(tagged)].map(([, row]) => row ?? "");

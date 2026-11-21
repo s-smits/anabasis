@@ -353,8 +353,7 @@ describe("practice repair histories", () => {
   it("tracks established practice failures and tells the Builder only its tasks", () => {
     const c = campaign();
     const [open] = c.built("b-1", STARTER, HA, ["fail"]);
-    // A reading of the fail by a Diagnoser, as a log of before 2026-10-11 holds one, is no part of
-    // the fail since (`7f0add79:docs/simplify.md`, E1).
+    // A reading of the fail by a Diagnoser, as an older log holds one, is no part of the fail.
     c.record("diagnosis.recorded", {
       solve: open ?? "",
       owner: "solver",

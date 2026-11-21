@@ -990,8 +990,8 @@ describe("a campaign run by its log", () => {
     // with the draft's checks admitted, its tasks are set apart, a Builder builds, and the two
     // harnesses are compared on the tasks the draft gave. The Builder's conversation counts against
     // no move of the run's three. Every move runs by the terms the campaign was opened with, which
-    // this command does not name: the second campaign from a prompt, continued so, ran each by its
-    // default (2026-10-09).
+    // this command does not name, since a campaign from a prompt, continued so, would otherwise run
+    // each by its default.
     const next = await harnessBuilder(["--name", name, "--no-hitl", "--moves", "3"], seats);
     expect(of(name, OPENED)).toHaveLength(2);
     expect(of(name, OPENED).at(-1)).not.toHaveProperty("attended");

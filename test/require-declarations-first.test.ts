@@ -18,10 +18,10 @@
  * which nothing declares, so no table written with the assertion would move and its sites would
  * stand under the code unreported.
  *
- * The safe-name set is where the rule was blind until 2026-09-20: it admitted an import and a
- * function declaration wherever they sat but not an `interface` or a `type` this file declares,
- * so `const BY_LATE = new Map<string, Late>()` was refused for reading a name that is erased and
- * cannot depend on position. Eight true sites tree-wide were hidden by that. `FROM_ENUM` is the
+ * The safe-name set is where the rule is easiest to blind: one that admitted an import and a
+ * function declaration wherever they sat but not an `interface` or a `type` this file declares
+ * would refuse `const BY_LATE = new Map<string, Late>()` for reading a name that is erased and
+ * cannot depend on position, and hide true sites behind that. `FROM_ENUM` is the
  * boundary: an enum is not erased, so a read of one below the code stays refused.
  */
 import { describe, expect, it } from "bun:test";

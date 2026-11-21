@@ -205,7 +205,7 @@ describe("what the gate refuses, by its code", () => {
   });
 
   // The plan stops a campaign after as many moves as its patience that could have shown a gain and
-  // showed none. Until 2026-10-09 four commands printed that reading and none acted on it.
+  // showed none, since a reading that only prints is one no command acts on.
   it("stopped: a campaign past its patience, unless the operator says why it goes on", () => {
     const stopped = { ...SETS, stop: { checkpoints: 3, sinceStep: 3, stop: true } };
     expect(codes(stopped)).toEqual(["stopped"]);
@@ -330,9 +330,9 @@ describe("a command about to start", () => {
     const begun = six([event("comparison.started", { session: "g-1" })]);
     expect(admitComparison(begun, ASKED)).toEqual([]);
     expect(() => admitComparison(begun, { ...ASKED, id: "g-2" })).toThrow(Refused);
-    // Fix row F42: a session that ran by itself left a start under its id, and until 2026-10-09 a
-    // round started by hand under that id compared with no check, on an unread checker. The
-    // session itself goes on from its own start, and a comparison's start admits no session.
+    // A session that ran by itself leaves a start under its id, and a round started by hand under
+    // that id would compare with no check, on an unread checker. The session itself goes on from
+    // its own start, and a comparison's start admits no session.
     const alone = six([
       event("build.started", { session: "b-2" }),
       event("build.finished", { session: "b-2", ended: "finished" }),

@@ -540,8 +540,7 @@ describe("a campaign", () => {
     );
     expect(() => refereeNamed({ reviewer: SERVED }, "paid")).not.toThrow();
     expect(() => refereeNamed({}, "scripted")).not.toThrow();
-    // Until 2026-10-11 the same solves were also read at each shorter `--budget`; the flag is
-    // refused since.
+    // The same solves are not read again at each shorter `--budget`, and the flag is refused.
     expect(ROUND_OPTIONS).not.toHaveProperty("budget");
     const campaign = await openCampaign(ARGS);
     expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);
@@ -645,7 +644,7 @@ describe("a campaign", () => {
     const campaign = await openCampaign(ARGS);
     // From the starter: an earlier case left the latest kept state one that no longer opens.
     const flags = [...PACK, "--cap", "100", "--reviewer", SERVED, "--parent", "starter"];
-    // The campaign's checker has never been read, which only the launcher refused until 2026-10-09.
+    // The campaign's checker has never been read, which every command refuses, the launcher too.
     const unread = "the campaign's checker has never been read: run tools/c/accept.ts";
     await expect(roundCommand([...flags, "--session", "z-5", "--builder", SERVED])).rejects.toThrow(unread);
     await expect(
@@ -780,8 +779,7 @@ describe("a campaign", () => {
       "--solve-minutes 5 names another setting than the campaign's, which was recorded as --solve-minutes 8";
     await expect(roundCommand([...flags, "--solve-minutes", "5"], seats)).rejects.toThrow(other);
     await expect(checkpoint("--solve-minutes", "5")).rejects.toThrow(other);
-    // No word changes it: `--new-setting` is no flag since 2026-10-11, and another setting is
-    // another campaign.
+    // No word changes it: `--new-setting` is no flag, and another setting is another campaign.
     await expect(roundCommand([...flags, "--solve-minutes", "5", "--new-setting"], seats)).rejects.toThrow(
       "--new-setting",
     );

@@ -413,8 +413,8 @@ describe("a Builder session", () => {
     // The solver's public resources, in the home as one file, which the opening message names.
     expect(readFileSync(join(s.home, "resources.json"), "utf8")).toContain('"maxSpan": 12');
     expect(s.sent[0]).toContain("resources.json");
-    // The practice result: endings, records under both harnesses, the budget. Until 2026-10-11 a
-    // Diagnoser's reading of the fail came too (`7f0add79:docs/simplify.md`, E1).
+    // The practice result: endings, records under both harnesses, the budget, and no reading of
+    // the fail by another seat.
     const practised = s.sent[2] ?? "";
     expect(practised).toContain("t-1: fail (rejected). Solve s-3.");
     expect(practised).toContain("passed 0 of 1. Under the harness you started from: 0 of 1.");
@@ -1049,8 +1049,8 @@ describe("a Builder session", () => {
     const trees = readdirSync(s.request.states).filter((name) => name.startsWith("tree-"));
     expect(trees).toHaveLength(2);
     // A state goes where its campaign's folder goes, its tree beside it. Linked by the tree's whole
-    // path, one moved with its campaign opened with no tree and under another digest, and a
-    // comparison paid for two solves of that harness before it stopped (2026-10-09).
+    // path, one moved with its campaign would open with no tree and under another digest, and a
+    // comparison would pay for two solves of that harness before it stopped.
     const moved = `${s.request.states}-moved`;
     renameSync(s.request.states, moved);
     const reopened = await openHarness(join(moved, s.ran[1]?.digest ?? ""));
@@ -1290,11 +1290,10 @@ describe("a Builder session", () => {
   });
 });
 
-// Fix row F19, and rule 3 of AGENTS.md: nothing crosses from the exam side to the build side but
-// a closed list. Until 2026-10-09 the tests held three canaries (a check's name, the Referee's
-// reason, a held-out solve's id) and no proof of the rest. Here two campaigns are alike in
-// everything a Builder may know and differ in everything it may not, and a session over each has
-// to read the same bytes.
+// Rule 3 of AGENTS.md: nothing crosses from the exam side to the build side but a closed list.
+// A few canaries (a check's name, the Referee's reason, a held-out solve's id) would prove only
+// themselves, so here two campaigns are alike in everything a Builder may know and differ in
+// everything it may not, and a session over each has to read the same bytes.
 describe("what crosses to the Builder", () => {
   /** What a campaign keeps from its Builder: the check that refused an answer, the Referee's
    *  reason, the hidden value of a held-out task and of a practice task (a practice solve's measure,
@@ -1691,8 +1690,8 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
     expect(states).toEqual([built.harness ?? ""]);
     expect(kept).toHaveLength(2);
     // And no copy of the tree is left that no state links. A check keeps nothing and copies the
-    // tree all the same, and buffer's first session left a 6.4 MB copy linked by none of its four
-    // states (2026-10-10); a truss tree is 316 MB.
+    // tree all the same, and a copy linked by no state is megabytes wasted each time; a large
+    // tree runs to hundreds.
     const linked = states.map((state) => readlinkSync(join(request.states, state, ".toolchain")));
     for (const name of kept.filter((each) => each.startsWith("tree-"))) {
       expect(linked).toContain(join("..", name));

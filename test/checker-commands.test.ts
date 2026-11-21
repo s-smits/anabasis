@@ -319,9 +319,9 @@ suite("preparation and rehearsal over a stored pack", () => {
     expect(log.flatMap((event) => (event.kind === "checker.read" ? [event.data.faults] : []))).toEqual([[]]);
   });
 
-  // The plan's checkpoint as its commands walk it (`7f0add79:docs/plan.md`, Phase 5): two Builder sessions,
-  // each with no comparison after it, and then one comparison of what the second left. A script
-  // sits in every seat. Until 2026-10-09 a session ran only inside a round.
+  // A checkpoint as its commands walk it: two Builder sessions, each with no comparison after it,
+  // and then one comparison of what the second left, since a session runs outside a round too. A
+  // script sits in every seat.
   it("rehearses two sessions and then one checkpoint over a seed", () => {
     const source = join(REPO, ".ana", "d2", SOURCE);
     const seeded = join(REPO, ".ana", "d2", SEED);
@@ -342,9 +342,9 @@ suite("preparation and rehearsal over a stored pack", () => {
     const of = (kind: string) =>
       read(join(seeded, LOG)).flatMap((event) => (event.kind === kind ? [event.data] : []));
 
-    // Fix row F44: a round refused on its own terms leaves the log as it was. Until 2026-10-09 it
-    // had recorded the campaign's setting first, a mistyped flag with it, and the corrected
-    // command was then refused as another setting.
+    // A round refused on its own terms leaves the log as it was. Were it to record the campaign's
+    // setting first, a mistyped flag would go with it, and the corrected command would then be
+    // refused as another setting.
     const lines = () => read(join(seeded, LOG)).length;
     const before = lines();
     expect(rehearse("--session", "b-0", "--target", "0").said).toMatch(/--target 0.*at least one/u);

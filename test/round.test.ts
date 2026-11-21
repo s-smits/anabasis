@@ -666,7 +666,7 @@ describe("a round", () => {
     ]);
     // Four tasks, two harnesses, two solves. A worker runs each task's mirror in order,
     // and the next task's mirror starts the other way round. The starter is
-    // solved on none: until 2026-10-11 a step was held to it on the tallied tasks.
+    // solved on none, and no step is held to it on the tallied tasks.
     expect(s.asked.map(({ side }) => side)).toEqual(copies(2, MIRRORED).flat());
     const runs = Array.from({ length: 4 }, (_, at) => s.asked.slice(4 * at, 4 * at + 4));
     expect(runs.every((run) => run.every(({ version }) => version === run[0]?.version))).toBe(true);
@@ -1333,8 +1333,8 @@ describe("a round", () => {
 
   it("stops, to go on from its log, when no solve of three tasks in a row ran: a provider that answers none, or a wall that refuses every solve", async () => {
     {
-      // exam-1, 2026-10-08: the login reached its session limit mid-run and every solve after it
-      // ended in three seconds. A round that solved on would have reported every task short.
+      // A login that reaches its session limit mid-run ends every solve after it in seconds, and
+      // a round that solved on would report every task short.
       // A task's four solves run together: five answered are one task and one solve of the next.
       let left = 5;
       const s = await setup([edit, finish], (version, side, nth, digest) => {
@@ -1572,7 +1572,7 @@ describe("a round", () => {
       [{ tasks: [...HELD, "s1"] }, "task s1 is listed twice"],
       [{ tasks: ["s5"] }, "task s5 is released, and only a held-out task is scored"],
       [{ tasks: ["s9"] }, "task s9 is not proposed, and only a held-out task is scored"],
-      // The eight truss rounds of 2026-10-08 asked for no task, ran their sessions and scored nothing.
+      // A round that asks for no task would run its sessions and score nothing.
       [{ tasks: [] }, "no task to score"],
       // The retained set is part of the scored set the draw gave: a task named beside it is no task of it.
       [{ retained: ["s9"] }, "retained task s9 is not among the tasks to score"],
@@ -1767,9 +1767,8 @@ describe("a standalone comparison", () => {
 describe("a session with no comparison after it", () => {
   const practise = call("practice", { tasks: ["t-p1"] });
 
-  // The plan's standalone comparison (`7f0add79:docs/plan.md`, Phase 5): several sessions, then one
-  // comparison. Until
-  // 2026-10-09 a session ran only inside a round, so two sessions were two paid comparisons.
+  // A standalone comparison: several sessions, then one comparison, so that two sessions are not
+  // two paid comparisons.
   it("runs twice, the second from what the first left, and one standalone comparison compares what they leave", async () => {
     const s = await setup([edit, practise, finish, again, finish], step);
     const { session: build, builder } = s.request;
@@ -2033,7 +2032,7 @@ describe("the scored set", () => {
     expect(pool.exhausted.toSorted()).toEqual(["s2", "s3", "s4"]);
     expect(scoredSet(read(s.log), 12, "c")).toEqual({ tasks: [], retained: [] });
     // Named for a comparison all the same, it is refused: the draw leaves it out, and a name
-    // was the one way past that (2026-10-09).
+    // would otherwise be the one way past that.
     await expect(checkpoint(s.paired("g-3"))).rejects.toThrow(
       "task s1 waits for a person's label, and is not scored until it has one: tools/d2/prepare.ts --keep or --infeasible",
     );

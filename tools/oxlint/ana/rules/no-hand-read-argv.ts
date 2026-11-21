@@ -63,7 +63,7 @@ function sliceCall(argv: ESTree.MemberExpression): ESTree.CallExpression | null 
  *
  * Everything else reports: an index past zero, a destructure, `.length`, `.includes`, a loop, and a
  * slice held in a `const` first, because once the value has a name the rule cannot see every use
- * of it, and nothing needs the name: the library parsers default their `argv` to exactly that slice.
+ * of it, and nothing needs the name: the library parsers default their `argv` to that very slice.
  *
  * There is no fix. The repair is a `runCommand` spec (which options are values, which are flags,
  * which are absolute paths, how many positionals) and that is the script's contract to write,

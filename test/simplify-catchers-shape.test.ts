@@ -3,7 +3,7 @@
  * temporary that renames, a wrapper that forwards, a `let` decided on the next line, and a
  * constant table built inside a function body.
  *
- * All of them gate as of 2026-09-20, so what a test has to pin is the boundary between the shape
+ * All of them gate, so what a test has to pin is the boundary between the shape
  * and its neighbours in both directions: a rule that reports the neighbour too now refuses a
  * push, and one that stopped reporting its own shape fails nothing at all.
  */

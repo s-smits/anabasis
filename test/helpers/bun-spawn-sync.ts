@@ -56,9 +56,9 @@ export function execTextSync(
 ): string {
   const result = spawnTextSync(command, args, options);
   // The message carries the whole failure. Bun prints a thrown Error by its message alone, and reads
-  // it the same way through `toMatchObject`, so the fields this used to assign onto the error were
-  // invisible to every reader: a caller debugging a failed command saw the exit code and nothing
-  // else, and the one test that asserted stdout and stderr could not see them either (2026-09-18).
+  // it the same way through `toMatchObject`, so fields assigned onto the error would be invisible
+  // to every reader: a caller debugging a failed command would see the exit code and nothing
+  // else, and a test that asserted stdout and stderr could not see them either.
   if (result.error !== null || result.status !== 0 || result.signal !== null) {
     const cause =
       result.status === null || result.status === 0

@@ -508,7 +508,7 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
     expect(done?.data.prompts).toBe(1);
     expect(done?.data.billed).toBeGreaterThan(0);
     expect(done?.data.harness).toMatch(/^[0-9a-f]{64}$/);
-    // A solve's end holds no CPU figure since 2026-10-11: the meter read zero under Bubblewrap.
+    // A solve's end holds no CPU figure: the meter reads zero under Bubblewrap.
     expect(done?.data).not.toHaveProperty("cpu");
     const record = (kind: string) => events().find((event) => event.kind === kind)?.data;
     expect(record("solve.started")?.condition).toBe("c-fixture");

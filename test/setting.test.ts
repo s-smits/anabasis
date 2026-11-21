@@ -40,8 +40,8 @@ const SHORT: Recorded = {
 describe("what the flags of a setting name", () => {
   it("is another wall, a number of the model's own turns, or another solver", () => {
     const longer = settingNamed({ "solve-minutes": "240" }).limits;
-    // The prompts a solve is given are every solve's (`LIMITS.turns`): until 2026-10-11
-    // `--solve-turns` named them, and no command takes the flag since.
+    // The prompts a solve is given are every solve's (`LIMITS.turns`), and no command takes
+    // `--solve-turns`.
     expect(longer).toEqual({ ...LIMITS, wallSeconds: 14_400 });
     expect(SETTING_OPTIONS).not.toHaveProperty("solve-turns");
     // The model's own turns are the one budget's where no command names a number, whoever solves.
@@ -71,7 +71,7 @@ describe("what the flags of a setting name", () => {
 });
 
 describe("a campaign's setting, recorded once", () => {
-  // Until 2026-10-09 the same flags were typed on every command, and one that differed was a note.
+  // The setting is recorded once, so a flag that differs on a later command is refused, not noted.
   it("refuses a flag that names another, and says each with what the campaign's is", () => {
     for (const [flags, recorded, fact] of [
       [{ "solve-minutes": "5" }, SHORT, /--solve-minutes 5.*--solve-minutes 8/u],
@@ -100,8 +100,8 @@ describe("a campaign's setting, recorded once", () => {
     // A command that runs under the record keeps nothing more.
     keepSetting(log, settingAsked({}, recordedSetting(read(log))));
     expect(read(log)).toHaveLength(1);
-    // A second record on a log, as a command of before 2026-10-11 wrote on `--new-setting`, is the
-    // one read back: the last stands, and no command writes one since.
+    // A second record on a log, as an older command wrote on `--new-setting`, is the one read
+    // back: the last stands, and no command writes one now.
     keepSetting(log, settingAsked({ "solve-minutes": "8" }, null));
     expect(recordedSetting(read(log))).toEqual({ ...UNNAMED, minutes: 8 });
     expect(read(log).map(({ kind }) => kind)).toEqual(["campaign.setting", "campaign.setting"]);

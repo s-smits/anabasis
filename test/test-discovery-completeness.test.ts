@@ -8,14 +8,14 @@
  * add: `bun test .claude`, and naming the file itself, both match nothing and say so in the same
  * words as a typo. So a suite under `.claude/skills/**` is invisible to the runner.
  *
- * Until 2026-09-20 the repository answered that with eleven files in `test/` that did nothing but
- * re-import twenty-four hidden suites, and this guard checked that each hidden suite had one.
- * Two costs. A wrapper is a second place to remember, held together by nothing but this test. And
- * a wrapper is one file to Bun's scheduler: v1's `claude-system-path-runners.test.js` re-imported
- * eight process-spawning suites and was the slowest file in the whole suite at 54.1 s against
- * 18.7 s for the next one, which on a slowest-first schedule is the floor for the entire run;
- * split, its longest member takes 33.4 s and the other seven go wherever there is room. The
- * suites now live in `test/` under their own names, and the wrappers are gone.
+ * One answer is a file in `test/` that does nothing but re-import a hidden suite, with a guard that
+ * checks each hidden suite has one. It has two costs. A wrapper is a second place to remember, held
+ * together by nothing but this test. And a wrapper is one file to Bun's scheduler: v1's
+ * `claude-system-path-runners.test.js` re-imported eight process-spawning suites and was the
+ * slowest file in the whole suite at 54.1 s against 18.7 s for the next one, which on a
+ * slowest-first schedule is the floor for the entire run; split, its longest member takes 33.4 s
+ * and the other seven go wherever there is room. The suites now live in `test/` under their own
+ * names, and the wrappers are gone.
  *
  * What is left is one rule with one owner. The roots below are every place a gate step actually
  * runs, so a suite written anywhere else is named here rather than sitting green and unread.

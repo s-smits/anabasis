@@ -70,7 +70,7 @@ writes one of these is reversing a decision, and should say so.
 ## The rest: where the rule does not hold the repair
 
 In each of these the missing piece is information the rule has no access to, and every one says
-so in its own doc comment: `test/oxlint-rule-contract.test.ts` refuses a rule that neither declares
+so in its own doc comment: `test/lint-registry.test.ts` refuses a rule that neither declares
 `fixable` nor writes the words.
 
 - **The repair is a type** (8): `no-unproven-unknown-parameter`, `no-unknown-returns`,

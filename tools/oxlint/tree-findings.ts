@@ -507,7 +507,7 @@ function supersededSchemaTags(code: ReadonlyMap<string, string>): TreeFinding[] 
 }
 
 /** One row per authored production file, at the first line spelling `legacy` inside a longer name. */
-export function compatibilityPaths(code: ReadonlyMap<string, string>): TreeFinding[] {
+function compatibilityPaths(code: ReadonlyMap<string, string>): TreeFinding[] {
   const spelled = matchesOf(code, NAME).filter(
     ({ path, match: [name] }) =>
       /legacy/iu.test(name) &&

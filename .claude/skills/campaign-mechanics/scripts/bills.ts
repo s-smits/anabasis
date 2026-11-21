@@ -81,7 +81,7 @@ export interface Billed {
 
 /** Every solve and session of `events` that ended with a bill on record. A Referee's reading ends
  *  in a finding with no bill of its own, so none is listed. */
-export function billedSeats(events: readonly LogEvent[]): Billed[] {
+function billedSeats(events: readonly LogEvent[]): Billed[] {
   const reserve = openingOf(events)?.budget?.reserve ?? null;
   const open = new Map<string, { model: string; each: number[] }>();
   const seats: Billed[] = [];
@@ -127,7 +127,7 @@ function ranks(values: readonly number[]): number[] {
 }
 
 /** Spearman's rank correlation of `one` with `other`, or null where either does not vary. */
-export function rankCorrelation(one: readonly number[], other: readonly number[]): number | null {
+function rankCorrelation(one: readonly number[], other: readonly number[]): number | null {
   const [a, b] = [ranks(one), ranks(other)];
   const mid = (a.length - 1) / 2;
   let [both, left, right] = [0, 0, 0];
@@ -147,7 +147,7 @@ const hasDearTurn = ({ each }: Billed): boolean => {
 };
 
 /** One row a seat and model, the largest group first. */
-export function billRows(seats: readonly Billed[]): string[][] {
+function billRows(seats: readonly Billed[]): string[][] {
   const groups = Map.groupBy(seats, ({ seat, model }) => `${seat}\t${model}`);
   return [...groups.values()]
     .toSorted((a, b) => b.length - a.length)

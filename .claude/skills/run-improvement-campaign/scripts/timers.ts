@@ -90,7 +90,7 @@ function textOf(value: JsonValue | undefined): string {
  * the order first seen. A creation is read from any time, so that a timer made before `since` keeps
  * its kind, and a firing's turn ends at the next prompt or at the end of its file.
  */
-export function timersIn(files: Iterable<Iterable<string>>, since = ""): Timer[] {
+function timersIn(files: Iterable<Iterable<string>>, since = ""): Timer[] {
   const from = since === "" ? -Infinity : Date.parse(since);
   const seen = new Set<string>();
   const asked = new Map<string, JsonObject>();
@@ -170,7 +170,7 @@ const share = (part: number, whole: number) =>
   whole === 0 ? "" : ` (${String(Math.round((100 * part) / whole))}%)`;
 
 /** One line a timer that fired, the most firings first, then the counts of each kind. */
-export function timerLines(timers: readonly Timer[]): string[] {
+function timerLines(timers: readonly Timer[]): string[] {
   const total = (kind: "recurring" | "one-shot") => {
     const own = timers.filter((each) => each.recurring === (kind === "recurring"));
     const sum = (pick: (each: Timer) => number) => own.reduce((count, each) => count + pick(each), 0);

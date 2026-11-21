@@ -325,7 +325,7 @@ function cutOf(logged: readonly LogEvent[], { until = Date.now(), age = Infinity
 
 /** One campaign as a row, or null for a rehearsal; `meterOf` reprices its turns, and `cut` stops the
  *  log short (`cutOf`), so that the run is read as it stood then. */
-export function runOf(
+function runOf(
   found: Found,
   logged: readonly LogEvent[],
   tags: readonly { name: string; at: number }[],

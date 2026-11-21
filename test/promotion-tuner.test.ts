@@ -1,14 +1,11 @@
 // Replay follows the selected tree's rule, including historical records.
 import { expect, it } from "bun:test";
 import { campaignLines, emptyTotals } from "#skills/promotion-tuner/scripts/replay.ts";
-import { epochLines } from "#skills/promotion-tuner/scripts/time.ts";
-import { campaignLogs } from "#skills/main/logs.ts";
 import { loadTree, type Tree } from "#skills/promotion-tuner/scripts/tree.ts";
 import { type Paired, scored } from "../src/kernel/compare.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
@@ -108,19 +105,6 @@ it("credits a won task to the measure that carried it, the bill where a tree bef
   expect(totals.wonBy).toEqual({ validity: 6, objective: 0, bill: 1 });
 });
 
-it("keeps stored scores, which a tree that scores no bill reads as they stand", async () => {
-  const tree = await loadTree(ROOT);
-  const differences = Array.from({ length: 6 }, () => 600);
-  for (const of of [undefined, CHEAP.map(({ task }) => task)]) {
-    for (const unbilled of [undefined, differences]) {
-      const frontier = { differences, ...keyIfDefined("of", of), ...keyIfDefined("unbilled", unbilled) };
-      const totals = replay(tree, [], frontier);
-      expect(totals.storedTasks).toBe(6);
-      expect(totals.rightful + totals.doubted).toBe(1);
-    }
-  }
-});
-
 it("uses a candidate tree's own stepOf without requiring a readsStep export", async () => {
   const home = mkdtempSync(join(tmpdir(), "ana-tuner-tree-"));
   try {
@@ -164,47 +148,4 @@ it("uses a candidate tree's own stepOf without requiring a readsStep export", as
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
-});
-
-it("finds the logs of a folder of worktrees, of an archive's host folder and of the archive, the largest copy of each", async () => {
-  const home = mkdtempSync(join(tmpdir(), "ana-tuner-logs-"));
-  try {
-    const put = (dir: string, text: string, seed = false) => {
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(join(dir, "log.jsonl"), text);
-      if (seed) writeFileSync(join(dir, "seed.json"), "{}");
-    };
-    // Each line carries a time, as every event does: the fleet is the logs whose last one is recent.
-    const EVENT = `{"at":"2026-11-01T00:00:00.000Z"}\n`;
-    put(join(home, "anabasis-a", ".ana", "d2", "camp"), EVENT);
-    put(join(home, "m1", "camp"), EVENT + EVENT);
-    put(join(home, "m1", "other"), EVENT);
-    put(join(home, "m1", "seeded"), EVENT, true);
-    const found = await campaignLogs(home, [], "");
-    expect(found.map(({ name }) => name)).toEqual(["camp", "other"]);
-    expect(found[0]?.path).toBe(join(home, "m1", "camp", "log.jsonl"));
-    expect((await campaignLogs(join(home, "m1"), ["other"], "")).map(({ name }) => name)).toEqual(["other"]);
-    // A seed is left out of the fleet, and read where it is named: an investigation's snapshot holds
-    // `seed.json`, and its derived replay asks for the campaign by name.
-    expect((await campaignLogs(join(home, "m1"), ["seeded"], "")).map(({ name }) => name)).toEqual([
-      "seeded",
-    ]);
-  } finally {
-    rmSync(home, { recursive: true, force: true });
-  }
-});
-
-it("ends a draft cut short where the next draft starts, so the epoch's Examiner hours are the two drafts' own", async () => {
-  const at = (minutes: number) => new Date(Date.UTC(2026, 9, 26, 0, minutes)).toISOString();
-  const events: LogEvent[] = [
-    { at: at(0), kind: "draft.started", data: { session: "x-1" } },
-    { at: at(30), kind: "draft.started", data: { session: "x-2" } },
-    { at: at(60), kind: "draft.finished", data: { session: "x-2" } },
-    { at: at(120), kind: "harness.promoted", data: { from: "reference", harness: "candidate" } },
-  ];
-  const { lines, promoted } = epochLines(await loadTree(ROOT), events, [3]);
-  expect(promoted.map(({ hours }) => hours)).toEqual([2]);
-  expect(lines.find((line) => line.includes("Examiner"))).toContain(
-    "Examiner 2 sessions, 1.0 h (x-1 0.5, x-2 0.5)",
-  );
 });

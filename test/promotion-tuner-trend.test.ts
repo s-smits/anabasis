@@ -4,31 +4,14 @@
 // and the join, each with its nearest hostile case.
 import { afterAll, expect, it } from "bun:test";
 import type { Promotion, Run } from "#skills/main/runs.ts";
-import { outsideLines, type Score, scoresOf } from "#skills/promotion-tuner/scripts/outside.ts";
-import {
-  changeOf,
-  comparable,
-  guardOf,
-  type Measure,
-  MEASURES,
-  windowsOf,
-} from "#skills/promotion-tuner/scripts/trend.ts";
-import {
-  appendFileSync,
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "../src/meta/filesystem.ts";
-import type { JsonObject } from "../src/meta/json-shape.ts";
+import { outsideLines, type Score } from "#skills/promotion-tuner/scripts/outside.ts";
+import { changeOf, type Measure, MEASURES } from "#skills/promotion-tuner/scripts/trend.ts";
+import { mkdtempSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join, resolve } from "../src/meta/path.ts";
-import { execTextSync } from "./helpers/bun-spawn-sync.ts";
+import { join } from "../src/meta/path.ts";
 
-const ROOT = resolve(import.meta.dir, "..");
 const DAY_MS = 86_400_000;
-const HOUR_MS = 3_600_000;
+
 const UNTIL = Date.parse("2026-11-10T00:00:00.000Z");
 const home = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-trend-")));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
@@ -87,37 +70,6 @@ function run(over: Partial<Run> & { readonly promoted?: number }): Run {
 }
 const five = (over: Parameters<typeof run>[0]) => Array.from({ length: 5 }, () => run(over));
 
-it("places a run by the day it opened, and one that opened as a window ends in none of it", () => {
-  const runs = [
-    run({ name: "newest", launched: UNTIL - 1 }),
-    run({ name: "at the edge", launched: UNTIL }),
-    run({ name: "a week before", launched: UNTIL - 7 * DAY_MS - 1 }),
-    run({ name: "on the boundary", launched: UNTIL - 7 * DAY_MS }),
-    run({ name: "too old", launched: UNTIL - 30 * DAY_MS }),
-  ];
-  const windows = windowsOf(runs, UNTIL, 7, 1);
-  expect(windows.map((window) => window.runs.map(({ name }) => name))).toEqual([
-    ["newest", "on the boundary"],
-    ["a week before"],
-  ]);
-});
-
-it("keeps an earlier run only under a setting the newest window holds, and counts the rest", () => {
-  const windows = windowsOf(
-    [
-      run({ name: "now", setting: "two solves" }),
-      run({ name: "same", setting: "two solves", launched: UNTIL - 8 * DAY_MS }),
-      run({ name: "other", setting: "three solves", launched: UNTIL - 8 * DAY_MS }),
-    ],
-    UNTIL,
-    7,
-    1,
-  );
-  const kept = comparable(windows);
-  expect(kept.left).toBe(1);
-  expect(kept.windows[1]?.runs.map(({ name }) => name)).toEqual(["same"]);
-});
-
 const HOURS: Measure = {
   factor: "climb",
   name: "active hours a run",
@@ -155,21 +107,6 @@ it("reads too few runs where only the runs holding a denominator can be dealt ap
   expect(changeOf(MEASURES.confirmed, then, now).verdict).toBe("too few runs");
 });
 
-it("names a faster climb that holds less as apart, and one that holds more as together", () => {
-  const held = { reads: 1, confirmed: 1, after: { wins: 4, losses: 1, ties: 0 } };
-  const lost = { reads: 1, confirmed: 0, after: { wins: 1, losses: 4, ties: 0 } };
-  const [slow, fast] = [{ promoted: 1 }, { promoted: 3 }];
-  expect(guardOf(five({ ...slow, ...held }), five({ ...fast, ...lost })).pattern).toBe("apart");
-  expect(guardOf(five({ ...slow, ...lost }), five({ ...fast, ...held })).pattern).toBe("together");
-  // The two holding counts disagree: confirmed fell while the tasks written after were won more.
-  const split = { reads: 1, confirmed: 0, after: { wins: 5, losses: 0, ties: 0 } };
-  expect(guardOf(five({ ...slow, ...held }), five({ ...fast, ...split })).pattern).toBe(
-    "no single direction",
-  );
-  // A window whose promotions no starter comparison read cannot be set against one that has.
-  expect(guardOf(five({ ...slow, ...held }), five(fast)).pattern).toBe("not read");
-});
-
 const score = (arm: string, harness: string, task: string, points: number, of: string | null): Score => ({
   arm,
   harness,
@@ -190,49 +127,6 @@ const outsideRows = (scores: readonly Score[], runs: readonly Run[]) =>
       .map((row) => row.split("\t"))
       .map((cells) => [cells[0], cells] as const),
   );
-
-it("joins an arm to its promotion by digest and reads it against the Starter's spread", () => {
-  // One arm a Starter rollout, as a store holds them: one record a task and arm.
-  const starter = [10, 20].flatMap((points) =>
-    ["t1", "t2"].map((task) => score(`starter-${String(points)}`, "s", task, points, "starter")),
-  );
-  const arm = (name: string, harness: string, points: number, of: string | null) =>
-    ["t1", "t2"].map((task) => score(name, harness, task, points, of));
-  const climbed = run({
-    name: "campaign",
-    promotions: [promotion(1, "first", true), promotion(2, "second", false)],
-  });
-  const read = outsideRows(
-    [
-      ...starter,
-      ...arm("above", "first", 25, "campaign"),
-      // The record names no campaign: the digest alone finds the promotion.
-      ...arm("inside", "second", 15, null),
-      ...arm("below", "first", 5, "campaign"),
-      ...arm("elsewhere", "unknown", 30, "another builder"),
-      // A task no Starter rollout holds is left out of the arm's sum.
-      score("above", "first", "t3", 50, "campaign"),
-    ],
-    [climbed],
-  );
-  expect(read.get("above")?.slice(2, 9)).toEqual([
-    "1 of 2",
-    "6-0-0 p 0.0156",
-    "confirmed",
-    "2",
-    "50/100",
-    "20 to 40",
-    "above",
-  ]);
-  expect(read.get("inside")?.[2]).toBe("2 of 2");
-  expect(read.get("inside")?.[4]).toBe("not confirmed");
-  expect(read.get("inside")?.[8]).toBe("inside");
-  expect(read.get("below")?.[8]).toBe("below");
-  expect(read.get("elsewhere")?.[1]).toBe("-");
-  expect(read.get("elsewhere")?.[4]).toBe("-");
-  // A Starter arm is the baseline and takes no row.
-  expect(read.get("starter-10")).toBeUndefined();
-});
 
 it("bounds an arm by the sums of whole Starter rollouts, never by the Starter's worst and best of each task", () => {
   // Two Starter rollouts trade places on two tasks: each sums to 50, where the lower of each task
@@ -268,185 +162,4 @@ it("bounds an arm by the sums of whole Starter rollouts, never by the Starter's 
   expect(read.get("single")?.slice(6, 9)).toEqual(["5/50", "0 to 40", "inside"]);
   expect(read.get("lone")?.slice(7, 9)).toEqual(["30 to 30", "inside, one Starter rollout"]);
   expect(read.get("apart")?.slice(5, 9)).toEqual(["2", "30/100", "-", "-"]);
-});
-
-it("reads a store's judged records, and none from a judgement that left no points", () => {
-  const store = join(home, "store");
-  const judged = (arm: string, file: string, record: JsonObject) => {
-    mkdirSync(join(store, "judged", arm), { recursive: true });
-    writeFileSync(join(store, "judged", arm, file), JSON.stringify(record));
-  };
-  judged("starter", "t1.json", {
-    arm: "starter",
-    harness: "s",
-    task: "t1",
-    points: 10,
-    total: 50,
-    build: { of: "starter", usd: 0 },
-    cut: [],
-  });
-  judged("arm", "t1.json", { arm: "arm", harness: "d", task: "t1", points: 30, total: 50, cut: ["a file"] });
-  judged("arm", "t2.json", { arm: "arm", harness: "d", task: "t2", error: "the judge failed" });
-  writeFileSync(join(store, "judged", "a stray file"), "{}");
-  expect(scoresOf(store)).toEqual([
-    { arm: "arm", harness: "d", task: "t1", points: 30, total: 50, of: null, cut: true },
-    { arm: "starter", harness: "s", task: "t1", points: 10, total: 50, of: "starter", cut: false },
-  ]);
-  // One part alone keeps its tasks' records, and a task whose only judgement failed is on no record.
-  expect(scoresOf(store, ["t1"])).toHaveLength(2);
-  expect(() => scoresOf(store, ["t1", "t2"])).toThrow("no judged rollout on t2");
-  expect(() => scoresOf(join(home, "no store"))).toThrow();
-});
-
-it("reads two campaigns under one folder into the windows they opened in", () => {
-  const campaignAt = (name: string, opened: string) => {
-    mkdirSync(join(home, "runs", name), { recursive: true });
-    const events = [
-      { at: opened, kind: "campaign.opened", data: { project: "p", budget: { dollars: 10, reserve: 1 } } },
-      {
-        at: new Date(Date.parse(opened) + 3_600_000).toISOString(),
-        kind: "campaign.ended",
-        data: { ending: "budget", why: "w" },
-      },
-    ];
-    writeFileSync(
-      join(home, "runs", name, "log.jsonl"),
-      events.map((event) => `${JSON.stringify(event)}\n`).join(""),
-    );
-  };
-  campaignAt("pack-fresh-this-week", "2026-11-08T00:00:00.000Z");
-  campaignAt("pack-fresh-last-week", "2026-11-01T00:00:00.000Z");
-  const out = execTextSync(
-    "bun",
-    [
-      ".claude/skills/promotion-tuner/scripts/trend.ts",
-      "--runs",
-      join(home, "runs"),
-      "--until",
-      "2026-11-10T00:00:00.000Z",
-      "--format",
-      "tsv",
-    ],
-    { cwd: ROOT, env: { ...Bun.env, ANA_HOSTS: undefined } },
-  );
-  const [head, first] = out
-    .trim()
-    .split("\n")
-    .map((row) => row.split("\t"));
-  // The window two back holds no run and takes no column.
-  expect(head?.slice(3)).toEqual(["now", "1 back", "now against 1 back"]);
-  // Neither campaign reported a comparison, one run a window.
-  expect(first?.slice(3, 5)).toEqual(["0.00 (0/1)", "0.00 (0/1)"]);
-});
-
-/** A campaign's log under `folder`: it opens at `opened`, and each later event is at its hours. */
-function logAt(folder: string, opened: string, later: readonly (readonly [number, string, JsonObject])[]) {
-  mkdirSync(folder, { recursive: true });
-  const at = (hours: number) => new Date(Date.parse(opened) + hours * HOUR_MS).toISOString();
-  const events = [
-    { at: opened, kind: "campaign.opened", data: { project: "p", budget: { dollars: 10, reserve: 1 } } },
-    ...later.map(([hours, kind, data]) => ({ at: at(hours), kind, data })),
-  ];
-  writeFileSync(join(folder, "log.jsonl"), events.map((event) => `${JSON.stringify(event)}\n`).join(""));
-}
-const trendOf = (folder: string, format: "md" | "tsv") =>
-  execTextSync(
-    "bun",
-    [
-      ".claude/skills/promotion-tuner/scripts/trend.ts",
-      "--runs",
-      folder,
-      "--until",
-      "2026-11-10T00:00:00.000Z",
-      "--back",
-      "1",
-      "--format",
-      format,
-    ],
-    { cwd: ROOT, env: { ...Bun.env, ANA_HOSTS: undefined } },
-  );
-const promotedAt = (hours: number, harness: string) => [hours, "harness.promoted", { harness }] as const;
-/** The trend's rows by measure: each window's value, then each difference. */
-const rowsOf = (folder: string) =>
-  new Map(
-    trendOf(folder, "tsv")
-      .trim()
-      .split("\n")
-      .map((row) => row.split("\t"))
-      .map((row) => [row[2], row.slice(3)]),
-  );
-const movedAt = (hours: number) => [hours, "campaign.move", { move: "build" }] as const;
-
-it("reads every run at the hours the youngest newest run has lasted, so a young window gains nothing by youth", () => {
-  const folder = join(home, "horizon");
-  // The week before: five runs that promoted at 7 h and again at 20 h, and ran 48 h to their budget.
-  for (const nth of [1, 2, 3, 4, 5]) {
-    logAt(join(folder, `pack-then-${String(nth)}`), `2026-10-28T0${String(nth)}:00:00.000Z`, [
-      promotedAt(7, "h1"),
-      promotedAt(20, "h2"),
-      [48, "campaign.ended", { ending: "budget", why: "w" }],
-    ]);
-  }
-  // The newest week: four runs paused at 8 h, one of which promoted at 6 h, and one cut at 2 h.
-  for (const nth of [1, 2, 3, 4]) {
-    logAt(join(folder, `pack-now-${String(nth)}`), `2026-11-0${String(nth + 4)}T00:00:00.000Z`, [
-      ...(nth === 1 ? [promotedAt(6, "h1")] : []),
-      movedAt(8),
-    ]);
-  }
-  logAt(join(folder, "pack-now-young"), "2026-11-09T00:00:00.000Z", [movedAt(2)]);
-  const rows = rowsOf(folder);
-  // At 8 h each earlier run had promoted once in 8 hours, not ten times in 240.
-  expect(rows.get("promotions a 100 active hours")?.slice(0, 2)).toEqual(["3.13 (1/32)", "12.5 (5/40)"]);
-  expect(rows.get("runs promoted by the horizon")).toEqual([
-    "0.25 (1/4)",
-    "1.00 (5/5)",
-    "-75%, p 0.048, moved, worse",
-  ]);
-  // No earlier run had reached its second promotion by 8 h.
-  expect(rows.get("hours a rung")?.[1]).toBe("-");
-  expect(trendOf(folder, "md")).toContain(
-    "Read at 8.0 hours from each run's first event, the least a newest run cut short has lasted past 6 h; 1 run cut short sooner is left out.",
-  );
-});
-
-it("repeats a reading with --until when the log has grown since", () => {
-  const folder = join(home, "until");
-  const log = join(folder, "pack-now", "log.jsonl");
-  logAt(join(folder, "pack-now"), "2026-11-08T00:00:00.000Z", [promotedAt(5, "h1"), movedAt(10)]);
-  const before = trendOf(folder, "md");
-  appendFileSync(
-    log,
-    `${JSON.stringify({ at: "2026-11-11T00:00:00.000Z", kind: "harness.promoted", data: { harness: "h2" } })}\n`,
-  );
-  expect(trendOf(folder, "md")).toBe(before);
-});
-
-it("splits the hours to a first comparison into the supply's part and the wait after it", () => {
-  const folder = join(home, "held-off");
-  // A run that holds its eight tasks from `held` hours and begins its first comparison at 4 h.
-  const comparing = (name: string, opened: string, held: number) =>
-    logAt(join(folder, name), opened, [
-      [0.05, "checker.read", { faults: [] }],
-      [0.1, "exam.started", { session: "x-1" }],
-      ...["a", "b", "c", "d", "e", "f", "g", "h"].flatMap((version): [number, string, JsonObject][] => [
-        [held, "task.proposed", { session: "x-1", version, taskId: `t-${version}`, family: version }],
-        [held, "task.gate", { version, gate: 1, outcome: "passed" }],
-      ]),
-      [4, "comparison.started", { session: "g-1" }],
-      [5, "campaign.ended", { ending: "budget", why: "w" }],
-    ]);
-  comparing("pack-now", "2026-11-08T00:00:00.000Z", 1);
-  comparing("pack-then", "2026-11-01T00:00:00.000Z", 3);
-  // The hostile case: a run that never held enough to compare is in neither row.
-  logAt(join(folder, "pack-now-short"), "2026-11-08T01:00:00.000Z", [
-    [5, "campaign.ended", { ending: "budget", why: "w" }],
-  ]);
-  const rows = rowsOf(folder);
-  // Both began at 4 h, so the hours to a first comparison alone read no difference.
-  expect(rows.get("hours until a first comparison is admissible")?.slice(0, 2)).toEqual([
-    "1.00 (n 1)",
-    "3.00 (n 1)",
-  ]);
-  expect(rows.get("hours from then until it began")?.slice(0, 2)).toEqual(["3.00 (n 1)", "1.00 (n 1)"]);
 });

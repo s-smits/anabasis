@@ -49,7 +49,7 @@ export function sizeOf(untied: number, level: number) {
 
 /** One set of task scores read as a comparison reads them at `level`; `unbilled`, where given, the
  *  same tasks without the bill. */
-export function scoresRead(scores: readonly number[], level: number, unbilled: readonly number[] | null) {
+function scoresRead(scores: readonly number[], level: number, unbilled: readonly number[] | null) {
   if (unbilled !== null && unbilled.length !== scores.length) {
     throw new Error(
       `--unbilled holds ${String(unbilled.length)} scores and --scores ${String(scores.length)}`,

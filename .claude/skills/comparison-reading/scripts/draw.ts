@@ -35,7 +35,7 @@ const USAGE = `usage: draw.ts <log.jsonl | campaign name> [--target <n>] [--leve
 The held-out pool by its parts, the set the next comparison would score, and admission's reading.`;
 
 /** What a comparison starting now on `events` would score at `target`, and the pool it draws from. */
-export function drawOf(events: readonly LogEvent[], target: number, contract: string) {
+function drawOf(events: readonly LogEvent[], target: number, contract: string) {
   const pool = poolOf(events);
   const { tasks, retained } = scoredSet(events, target, contract);
   const epochs = tasksByEpoch(events);

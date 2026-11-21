@@ -14,7 +14,7 @@
  * fix moves the run whole, so one function written above twelve declarations is one error instead
  * of twelve. `Lone`, which code separates from the run, is a finding of its own.
  *
- * `TUPLE` is where the rule was once blind: `as const` reads as a reference to a name `const`,
+ * `TUPLE` holds a blind spot shut: `as const` reads as a reference to a name `const`,
  * which nothing declares, so no table written with the assertion would move and its sites would
  * stand under the code unreported.
  *

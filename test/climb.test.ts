@@ -144,7 +144,7 @@ describe("the climb", () => {
         "2",
         // The target a simulated climb stalls at when drawn by hash from the tasks of every epoch
         // at once: 8 over the 19 tasks the third epoch held take two or three the reference fails
-        // and leave the comparison one win short. The draw now takes the newest epoch's tasks first
+        // and leave the comparison one win short. The draw takes the newest epoch's tasks first
         // (`scoredSet`), and this run is the proof that the third epoch reads its step at the
         // target a real campaign runs near.
         "--target",

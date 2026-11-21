@@ -13,7 +13,7 @@
  * A Builder that leads its campaign makes its own moves and is never told the table's, so the table
  * gives it no advice: practice is released by the host as each conversation opens and each
  * comparison reports (`releaseOwed`), and a Builder that compares too early hears admission's
- * refusal itself. When the table used to advise, the Builder went against it in most comparisons.
+ * refusal itself. A Builder that was given the table's advice went against it in most comparisons.
  *
  * One count ends a campaign that cannot be given tasks or room (`fruitlessRun`), at its supply
  * patience. A setting is recorded once (`campaign.setting`) and never changes, so every comparison

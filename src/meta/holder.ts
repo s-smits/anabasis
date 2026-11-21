@@ -14,16 +14,14 @@
  * like any other taker: the pass takes its one lock once, and a fetch waits by polling, so a second
  * refresh of one copy in the process waits for the first to release it.
  *
- * Until 9 November each lock was hand-rolled: the pass's lapsed two `PASS_MS` after it was taken
- * whether or not the pass still ran, so a pass slower than a minute lost it to a second pass; a
- * preparation's lapsed after five minutes though a cold install could take longer; and a fetch's
- * left its stage behind when it was killed. Taking a lock over is the one step two processes could
+ * A lock held by its taker's life, rather than lapsing at an age, keeps a slow pass, a cold
+ * install or a fetch from losing its lock to a second taker while it still runs, and leaves no
+ * stage behind a killed one. Taking a lock over is the one step two processes could
  * race at, so it runs under a `flock` of the folder, which closes with the process.
  *
  * A file a writer fills before renaming it into place names its writer by pid alone (`remember`'s
  * `<file>.<pid>.tmp`, the model library's `.tmp.<pid>.<suffix>`), and is the writer's while that pid
- * lives (`dropCutWrites`). Until 9 November both were removed by their age instead, so a download
- * slower than ten minutes lost its part.
+ * lives (`dropCutWrites`), rather than by its age, which would take the part from a slow download.
  */
 import {
   closeSync,

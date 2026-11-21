@@ -30,8 +30,8 @@ export const capturedJsonStringify: <T>(
 ) => undefined extends T ? string | undefined : string = JSON.stringify.bind(JSON);
 
 /** A value a model sent as JSON, decoded where it arrived as JSON text: a tool's argument the
- *  provider passed as the string `"null"` where the same call elsewhere passed null (an Examiner's
- *  hidden values, 12 October: 19 of 19 tries checked). Text that is no JSON stays the string it is. */
+ *  provider passed as the string `"null"` where the same call elsewhere passed null, as an
+ *  Examiner's hidden values have arrived. Text that is no JSON stays the string it is. */
 export function decodedJsonText(value: JsonValue): JsonValue {
   if (!isString(value)) return value;
   try {

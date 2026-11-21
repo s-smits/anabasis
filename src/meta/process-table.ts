@@ -3,18 +3,16 @@
  * runs, its parent and its process group, the facts a seat's release reads to end what its commands
  * left behind (`endHolders`, `src/wall/seat-root.ts`).
  *
- * Until 22 October the release asked `lsof -d cwd,txt` for them. On the operator's macOS host that
- * listing took 240 ms over 770 processes, and a solve asked it after each of its commands, at its
- * release and after each check of its verdict: 238 of the 264 ms a walled `true` took, and most of
- * the 1.9 s a solve with no model time spent outside the model. libproc gives the same facts in
- * 3 ms. Over every process on that host the working directories read here matched lsof's, 562 of
- * 562. A program is read by its path, and where a process's file was replaced after it started, as
- * 68 Chrome and Spotify helpers' were, by the file of its first mapped region, which is where lsof
- * reads it too.
+ * libproc gives these facts in a few milliseconds, where `lsof -d cwd,txt` takes hundreds over a
+ * busy host's processes, and a solve asks after each of its commands, at its release and after
+ * each check of its verdict, so lsof would take most of a walled `true` and most of the time a solve
+ * spends outside the model. The working directories read here match lsof's. A program is read by
+ * its path, and where a process's file was replaced after it started, as browser and media helpers'
+ * often are, by the file of its first mapped region, which is where lsof reads it too.
  *
- * The parent and the group replaced a shell trap that ended a command's group and descendants by
- * `pgrep` as the command exited: 30 ms of each walled command on that host, against 0.6 ms for this
- * table's 723 more reads.
+ * The parent and the group stand in for a shell trap that would end a command's group and
+ * descendants by `pgrep` as the command exits, which costs each walled command far more than this
+ * table's reads.
  */
 import { dlopen, FFIType } from "bun:ffi";
 

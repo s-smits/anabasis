@@ -259,8 +259,8 @@ export function runTextSyncOrThrow(cmd: readonly string[], options: RunSyncOptio
 /**
  * `runSync` for a caller that has more to do while the command runs: the same capture and the same
  * report, awaited. A synchronous spawn holds the event loop until the command exits, so commands
- * that could run at once run one after another: on 30 October the table of runs spent 25 s of a
- * 38 s reading refreshing remote copies one rsync at a time. The streams come back as text, and a
+ * that could run at once run one after another, as the table of runs refreshing remote copies one
+ * rsync at a time would. The streams come back as text, and a
  * command that never started reports its spawn error as its stderr, as `runSync` does.
  */
 export async function runCaptured(

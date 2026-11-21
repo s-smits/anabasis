@@ -63,8 +63,8 @@ export function zipTexts(
 
 /** An archive of `members` as stored text, each with its checksum, so that any zip reader opens it.
  *  A control's archive is given as its members alone, since a seat writes no archive
- *  (`textFiles`), and these are the bytes it then has: until 19 November 2026 it had none, and the
- *  accepted answer kept beside `task.feasible` read back as an empty file with no member. */
+ *  (`textFiles`), and these are the bytes it then has; without them the accepted answer kept
+ *  beside `task.feasible` would read back as an empty file with no member. */
 export function storedZip(members: readonly { readonly path: string; readonly text: string }[]): Buffer {
   const locals: Buffer[] = [];
   const centrals: Buffer[] = [];

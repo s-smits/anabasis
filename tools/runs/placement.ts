@@ -40,6 +40,7 @@ import {
   type readLogins,
   readNotClosed,
   room,
+  tokenOf,
 } from "./logins.ts";
 import { minuteLoads } from "./load.ts";
 import { localCatalogue, remoteRuns } from "./snapshots.ts";
@@ -185,6 +186,12 @@ export async function freshLogin(
   if (requested !== undefined) {
     if (atCap(env, [requested], live).size > 0) {
       throw new Error(`login ${requested} is at its live-run cap across the fleet`);
+    }
+    // A login the provider refuses outright (a revoked or narrowed token) would fail every seat; a
+    // closed window is a wait (rule 15) and still starts.
+    const [reading] = tokenOf(env, requested) === undefined ? [] : await read([requested], env);
+    if (reading !== undefined && "error" in reading && /messages HTTP 40[13]/.test(reading.error)) {
+      throw new Error(`login ${requested} is refused by the provider: ${reading.error}`);
     }
     return requested;
   }

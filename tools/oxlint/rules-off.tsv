@@ -95,7 +95,6 @@ unicorn/no-null	*	2129	off	`null` is the tree's JSON value for absent, written t
 unicorn/no-object-as-default-parameter	*	6	off	Its sites are helpers whose default record a caller replaces whole, where destructured defaults would change what a partial argument means.
 unicorn/no-useless-undefined	*	47	off	Its sites pass `undefined` to skip a positional parameter or return it from a function typed to allow it, and `.catch(() => undefined)` would become an empty function `eslint/no-empty-function` would flag.
 unicorn/number-literal-case	*	34	off	It asks for upper-case hexadecimal digits, and Biome lower-cases them on every write.
-unicorn/prefer-dom-node-dataset	*	2	off	Its two sites, in packages/ui/test/explore.ts, hold an `Element`, which has no `dataset`.
 unicorn/prefer-dom-node-text-content	*	14	off	Its sites read `innerText`, the rendered text a person sees, which is what the UI tests assert and `textContent` is not.
 unicorn/prefer-global-this	*	42	off	Its sites, all in packages/ui, name the page's `window` and `document`, and Playwright runs the tests' page functions in the page, where `window` is what is meant.
 unicorn/prefer-number-coercion	*	5	off	`Number.parseInt` and `Number.parseFloat` read a leading number (`"12px"` gives 12) where `Number` gives NaN, so its fix changes behaviour at each site.

@@ -34,12 +34,15 @@ bun packages/ui/test/fixture-campaign.ts /tmp/ana-fixture
 cd packages/ui && bun serve.ts --repo /tmp/ana-fixture
 ```
 
-The browser tests (`test/browser-*.test.ts`) start `serve.ts` on that fixture and drive the
-installed Google Chrome through Playwright, with Playwright's own assertions under `bun:test`;
+What the page computes before it draws (the address, formatted values, the Campaign pane's
+chart data) is tested without a browser (`test/view-model.test.ts`). Two smoke tests
+(`test/browser-smoke.test.ts`) start `serve.ts` on that fixture and drive the installed Google
+Chrome through Playwright, with Playwright's own assertions under `bun:test`: the default tier
+shows and receives nothing of the exam side, and every pane fits a phone and passes axe.
 `ANA_UI_CHROME=<path>` names another Chromium. They run with the rest of `packages/ui/test`:
 
 ```sh
-bun run test -- packages/ui/test/browser-shell.test.ts   # one file
+bun run test -- packages/ui/test/browser-smoke.test.ts   # the browser alone
 bun run test -- packages/ui/test                          # every UI test
 ```
 

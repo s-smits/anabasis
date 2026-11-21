@@ -24,7 +24,7 @@
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { refusals, stopRule, supplyOf } from "#src/campaign/admission.ts";
-import { CRASHES, decide, supplyRun } from "#src/campaign/decide.ts";
+import { CRASHES_IN_A_ROW, decide, supplyRun } from "#src/campaign/decide.ts";
 import { askedOf, crashedRun } from "#src/campaign/ground.ts";
 import { decidedLine } from "#src/campaign/move.ts";
 import { pendingWords } from "#src/campaign/word.ts";
@@ -66,7 +66,7 @@ function standingOf(events: readonly LogEvent[]) {
     left: plan.left,
     patience: { since: stop.sinceStep, of: plan.patience, counted: stop.checkpoints, spent: stop.stop },
     supply: { count: supplyRun(events, plan), of: plan.patience },
-    crashes: { count: crashes.count, of: CRASHES, last: crashes.crash },
+    crashes: { count: crashes.count, of: CRASHES_IN_A_ROW, last: crashes.crash },
     idle: { count: idleOf(events), of: IDLE },
     refused: refusals(supplyOf(events), askedOf(plan)).map(({ code }) => code),
     words: pendingWords(events).map(({ word, why }) => (why === "" ? word : `${word} (${why})`)),

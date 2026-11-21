@@ -7,7 +7,7 @@
  * the gate's room solves of that time went unruled.
  */
 import { STARTED, startOf } from "#src/campaign/comparison.ts";
-import { shortOf } from "#src/campaign/decide.ts";
+import { tasksToAskFor } from "#src/campaign/decide.ts";
 import { cutShort, type Plan } from "#src/campaign/ground.ts";
 import type { Decided } from "#src/campaign/move.ts";
 import { type Opening, openingOf, planOf, SEATS, type Seat, TERMS } from "#src/campaign/opening.ts";
@@ -416,7 +416,7 @@ export function sharedOf({ plan, opening, values, seats }: Turn) {
  *  for. Each session reads the campaign's setting from the log, where the campaign command
  *  records it as it starts (`startSetting`, `harness-builder.ts`), and runs by its own defaults.
  *
- *  The count is what the campaign is short of, at least a sweep (`shortOf`, `decide.ts`), and none
+ *  The count is what the campaign is short of, at least a sweep (`tasksToAskFor`, `decide.ts`), and none
  *  where it is short of nothing. No flag names another count: an ask above the shortfall had
  *  campaigns examine towards a target for hours before their first comparison. */
 export function examinerRun(turn: Turn, session: string, kind: "draft" | "write") {
@@ -433,7 +433,7 @@ export function examinerRun(turn: Turn, session: string, kind: "draft" | "write"
     "--examiner-effort",
     examiner?.effort ?? DEFAULTS.effort,
   ];
-  const wanting = shortOf(turn.events, turn.plan);
+  const wanting = tasksToAskFor(turn.events, turn.plan);
   const tasks = wanting > 0 ? String(wanting) : undefined;
   return {
     args:

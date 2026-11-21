@@ -73,7 +73,7 @@ Owners and edges of the defaults in `AGENTS.md` section 6:
   reserve them (`practiceLeft`, `src/builder/tools.ts`); an Examiner session 240 minutes, 200 turns
   and 36 proposals (`tools/d1b/examine.ts`).
 
-An Examiner session finishes when it has supplied the need (`shortOf`, `src/campaign/decide.ts`:
+An Examiner session finishes when it has supplied the need (`tasksToAskFor`, `src/campaign/decide.ts`:
 practice and the admission floor before the first comparison, the target after, at least a sweep), when it calls `finish` twice without proposing between, or after spending its
 proposals. An early `finish` is declined with the need but no count, since an Examiner told a count
 proposes one small batch and stops. The first two endings rest the conversation for the next ask.

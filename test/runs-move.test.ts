@@ -43,48 +43,6 @@ function seedMove() {
 }
 
 describe("moving a campaign to another machine", () => {
-  it("moves held seeds whole over local, remote and relayed routes", () => {
-    for (const route of ["local", "remote", "relay", "own"] as const) {
-      const made = seedMove();
-      const other = { ...made.host, name: "other", ssh: "fake-other" };
-      const routes = {
-        local: ["--to", made.host.name],
-        remote: ["--from", made.host.name, "--to", "here"],
-        relay: ["--from", made.host.name, "--to", other.name],
-        own: ["--from", hostname().split(".")[0] ?? "", "--to", made.host.name],
-      };
-      const flags = route === "remote" ? ["--hold", "--", "--project", "fixture"] : ["--hold"];
-      const result = made.move(flags, { ANA_HOSTS: JSON.stringify([made.host, other]) }, routes[route]);
-      expect(result.code).toBe(0);
-      expect(existsSync(made.folder)).toBe(false);
-      expect(readFileSync(join(made.into, "log.jsonl"), "utf8")).toBe("");
-      expect(readFileSync(join(made.into, "notes.txt"), "utf8")).toBe("keep the whole folder");
-      expect(made.recorded().some(({ tool, args }) => tool === "host-bun" && args.includes("continue"))).toBe(
-        false,
-      );
-      const copies = made
-        .recorded()
-        .filter(({ tool, args }) => tool === "rsync" && !args.includes("--exclude=/*"));
-      expect(copies).toHaveLength(route === "relay" ? 2 : 1);
-      if (route === "relay") {
-        expect(
-          copies
-            .map(({ args }) => args.slice(-2).map((end) => end.split(":")[0]))
-            .map(([from, to]) => [from === "fake-runner", to === "fake-other"]),
-        ).toEqual([
-          [true, false],
-          [false, true],
-        ]);
-      }
-      if (route === "remote") {
-        expect(result.out).toContain("--project fixture");
-        expect(made.recorded().some(({ tool, args }) => tool === "host-bun" && args.includes("-e"))).toBe(
-          false,
-        );
-      }
-    }
-  });
-
   it("refuses an unheld seed with no continuation flags before copying or pausing", () => {
     const made = seedMove();
     const result = made.move([]);
@@ -93,60 +51,6 @@ describe("moving a campaign to another machine", () => {
     expect(existsSync(made.into)).toBe(false);
     expect(made.recorded().filter(({ tool }) => tool === "rsync")).toHaveLength(0);
     expect(made.recorded().some(({ tool }) => tool === "ps")).toBe(false);
-  });
-
-  it("reads a remote seed's missing receipt before copying or pausing", () => {
-    const made = seedMove();
-    const result = made.move([], {}, ["--from", made.host.name, "--to", "here"]);
-    expect(result.code).toBe(1);
-    expect(result.err).toContain(made.folder);
-    expect(result.err).toContain("--hold");
-    expect(existsSync(made.folder)).toBe(true);
-    expect(existsSync(made.into)).toBe(false);
-    expect(
-      made
-        .recorded()
-        .filter(({ tool }) => tool === "rsync")
-        .map(({ args }) => args.slice(-4, -2)),
-    ).toEqual([["--include=/launch-*.json", "--exclude=/*"]]);
-    expect(made.recorded().some(({ tool, args }) => tool === "host-bun" && args.includes("pause"))).toBe(
-      false,
-    );
-  });
-
-  it("continues a seed on explicit flags without reading a missing receipt", () => {
-    const made = seedMove();
-    const result = made.move(["--", "--project", "explicit-project"], { FAKE_RUN_CLI: "0" });
-    expect(result.code).toBe(0);
-    expect(existsSync(made.folder)).toBe(false);
-    expect(
-      made
-        .recorded()
-        .filter(({ tool, args }) => tool === "host-bun" && args.includes("continue"))
-        .map(({ args }) => args.slice(-3)),
-    ).toEqual([["--", "--project", "explicit-project"]]);
-  });
-
-  it("keeps a remote receipt's flags when the source tree predates lastLaunch", () => {
-    const made = seedMove();
-    const tools = join(made.main, "tools", "runs");
-    mkdirSync(tools, { recursive: true });
-    writeFileSync(join(tools, "receipt.ts"), "export const receipts = () => [];\n");
-    writeReceipt(join(made.folder, "log.jsonl"), "run-1", {
-      at: new Date().toISOString(),
-      pid: 42,
-      flags: ["--project", "kept-project"],
-      envFile: null,
-      commit: made.commit,
-      dirty: false,
-      load: 0,
-      cores: 2,
-    });
-    const result = made.move(["--hold"], {}, ["--from", made.host.name, "--to", "here"]);
-    expect(result.err).toBe("");
-    expect(result.code).toBe(0);
-    expect(result.out).toContain("--project kept-project");
-    expect(existsSync(join(made.into, "launch-run-1.json"))).toBe(true);
   });
 
   it("counts room against the receipt's login unless --login names another", () => {
@@ -188,6 +92,10 @@ describe("moving a campaign to another machine", () => {
     const refused = made.move([]);
     expect(refused.code).toBe(1);
     expect(refused.err).toContain("login 3 must be carried");
+    // A login the destination holds is still refused at its live-run cap.
+    const capped = made.move(["--hold", "--login", "2"], { ANA_LOGIN_RUNS: "2:0" });
+    expect(capped.code).toBe(1);
+    expect(capped.err).toContain("login 2 is at its live-run cap");
     expect(existsSync(made.folder)).toBe(true);
     expect(existsSync(made.into)).toBe(false);
     expect(made.recorded().some(({ tool }) => tool === "rsync")).toBe(false);

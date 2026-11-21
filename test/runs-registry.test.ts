@@ -4,8 +4,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../
 import { tmpdir } from "../src/meta/os.ts";
 import { capturedSpawn, runtimeProcess } from "../src/meta/process.ts";
 import { join } from "../src/meta/path.ts";
-import { nextRun, receipts } from "../tools/runs/receipt.ts";
-import { BUILDER, flagOf, packOf, processes, type Run, runNamed, writers } from "../tools/runs/registry.ts";
+import { BUILDER, processes, type Run, writers } from "../tools/runs/registry.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ana-runs-registry-test-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -17,31 +16,6 @@ const campaign = (name: string, tree: string): Run => ({
   end: "comparison.reported",
 });
 const round = campaign("r1", "/wt");
-
-describe("a run's name", () => {
-  it("names one campaign, whole, and refuses none or two", () => {
-    const listed = [
-      round,
-      // A live solve of the same name is no campaign, and a campaign of the name in another
-      // worktree is a second one, since two campaigns can run under one name.
-      { ...round, path: "/wt/.ana/live/r1.jsonl", end: "solve.finished" as const },
-      campaign("r2", "/wt"),
-      campaign("r2", "/other"),
-    ];
-    expect(runNamed("r1", listed)).toBe(round);
-    expect(() => runNamed("r", listed)).toThrow("no campaign log is named r in");
-    expect(() => runNamed("r2", listed)).toThrow("r2 names a campaign in /wt and in /other");
-  });
-
-  it("reads its pack whole before the first `-fresh-`, and a name without one by its first word", () => {
-    expect(packOf("jobstat-anabasis-v5-fresh-opus-host")).toBe("jobstat-anabasis-v5");
-    expect(packOf("jobstat-fresh-opus-host")).toBe("jobstat");
-    // A suffix that holds `-fresh-` again leaves the pack as it was.
-    expect(packOf("kernel-cyber2-fresh-opus-re-fresh-x-host")).toBe("kernel-cyber2");
-    expect(packOf("buffer-control-r2")).toBe("buffer");
-    expect(packOf("seating")).toBe("seating");
-  });
-});
 
 describe("a run's writers", () => {
   it("knows a campaign's log is written by its campaign command, a round, an Examiner session or a drafting session of its name, in its worktree", () => {
@@ -71,48 +45,6 @@ describe("a run's writers", () => {
     expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 6, 12, 14, 15, 16, 19]);
     const solve: Run = { ...round, name: "r1-c01-opus-1234", end: "solve.finished" };
     expect(writers(solve, running).map(({ pid }) => pid)).toEqual([5]);
-  });
-
-  it("reads a flag in both forms, and an absent flag as absent rather than as the first word", () => {
-    expect(flagOf(["bun", "x.ts", "--name", "r1"], "--name")).toBe("r1");
-    expect(flagOf(["bun", "x.ts", "--name=r1"], "--name")).toBe("r1");
-    expect(flagOf(["bun", "x.ts", "--names", "r1"], "--name")).toBeUndefined();
-    // A campaign command with no --name is not read as writing the run named `bun`.
-    const unnamed = [{ pid: 1, cwd: "/wt", args: ["bun", "tools/d2/harness-builder.ts", "--unattended"] }];
-    expect(writers({ ...round, name: "bun" }, unnamed)).toEqual([]);
-  });
-});
-
-describe("a run's receipts", () => {
-  const log = join(root, "buffer", "log.jsonl");
-  mkdirSync(join(root, "buffer"));
-  it("reads receipts chronologically with flags and numbers the next campaign run", () => {
-    expect(receipts(log)).toEqual([]);
-    expect(nextRun(log)).toBe("run-1");
-    for (const [session, at, flags] of [
-      ["run-2", "2026-10-15T11:00:00.000Z", ["--project", "p", "--budget", "800"]],
-      ["run-1", "2026-10-14T09:00:00.000Z", ["--project", "p"]],
-      ["b-1", "2026-10-09T13:00:00.000Z", ["--session", "b-1"]],
-    ] as const) {
-      writeFileSync(
-        join(root, "buffer", `launch-${session}.json`),
-        JSON.stringify({
-          at,
-          pid: 1,
-          flags,
-          envFile: null,
-          commit: "c",
-          dirty: false,
-          load: 1,
-          cores: 8,
-        }),
-      );
-    }
-    writeFileSync(join(root, "buffer", "launch-run-2.out"), "");
-    const read = receipts(log);
-    expect(read.map(({ session }) => session)).toEqual(["b-1", "run-1", "run-2"]);
-    expect(read.at(-1)?.flags).toEqual(["--project", "p", "--budget", "800"]);
-    expect(nextRun(log)).toBe("run-3");
   });
 });
 

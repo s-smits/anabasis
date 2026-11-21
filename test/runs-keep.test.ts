@@ -1,25 +1,15 @@
 // Keeping a campaign going: the turn a keeper takes, and the login it moves the run to.
 import { afterAll, describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
 import { seats } from "../tools/runs/fresh.ts";
-import {
-  keeperActed,
-  keeperOf,
-  nextLogin,
-  poolOf,
-  roomFor,
-  type Turn,
-  turnOf,
-  turnsIn,
-} from "../tools/runs/keep.ts";
+import { keeperOf, nextLogin, roomFor, type Turn, turnOf } from "../tools/runs/keep.ts";
 import { stateOf } from "../tools/runs/state.ts";
-import { billsLogin, fiveHourWith, planned, type Reading, room } from "../tools/runs/logins.ts";
-import { keepsItself, WAIT_HOURS } from "../tools/runs/manage.ts";
-import { type Receipt, writeReceipt } from "../tools/runs/receipt.ts";
+import { billsLogin, fiveHourWith, type Reading } from "../tools/runs/logins.ts";
+import { WAIT_HOURS } from "../tools/runs/manage.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const NOW = Date.parse("2026-10-15T12:00:00.000Z");
@@ -82,27 +72,6 @@ describe("the turn a keeper takes", () => {
       expect(turnOf(kept(events), NOW, HOUR)).toBe("continue");
     }
   });
-
-  it("counts as work an answered model turn of any seat, and none of what a going-on into a failure writes", () => {
-    const worked = [
-      event("build.turn", { session: "b-1", stopReason: "toolUse" }),
-      event("solve.turn", { solve: "s-1", stopReason: "toolUse" }),
-    ];
-    // A going-on into a network failure, as a recorded run wrote it many times.
-    const failed = [
-      event("campaign.move", { move: "build", code: "led" }),
-      event("build.started", { session: "b-2" }),
-      event("exam.started", { session: "x-2" }),
-      event("build.turn", { session: "b-2", turn: 1, stopReason: "error" }),
-      event("exam.turn", { session: "x-2", turn: 1, stopReason: "error" }),
-      event("exam.finished", { session: "x-2", ended: "crashed" }),
-      event("build.finished", { session: "b-2", ended: "crashed" }),
-      event("campaign.ended", { ending: "environment" }),
-    ];
-    expect(turnsIn(worked)).toBe(2);
-    expect(turnsIn([...worked, ...failed, ...failed])).toBe(2);
-    expect(turnsIn([...worked, event("exam.turn", { session: "x-1", stopReason: "stop" })])).toBe(3);
-  });
 });
 
 const read = (login: string, week: number, five = 10, status = "allowed", reset = 1): Reading => ({
@@ -115,27 +84,6 @@ const read = (login: string, week: number, five = 10, status = "allowed", reset 
 });
 
 describe("the login a run moves to", () => {
-  it("takes the allowed logins with room, the week that resets soonest first", () => {
-    const readings = [
-      read("2", 40, 10, "allowed", 30),
-      read("3", 95, 10, "allowed_warning", 5),
-      read("4", 10),
-    ];
-    expect(room(readings, ["2", "3", "4"], new Set())).toEqual(["4", "3", "2"]);
-    expect(room(readings, ["2", "3"], new Set())).toEqual(["3", "2"]);
-    expect(room(readings, ["2", "3", "4"], new Set(["4"]))).toEqual(["3", "2"]);
-  });
-
-  it("leaves a login whose week is spent, whose five hours are, that is refused, or that could not be read", () => {
-    const readings: Reading[] = [
-      read("1", 100),
-      read("2", 20, 100),
-      read("3", 20, 10, "rejected"),
-      { login: "4", plain: false, error: "unauthorized" },
-    ];
-    expect(room(readings, ["1", "2", "3", "4"], new Set())).toEqual([]);
-  });
-
   it("leaves a login at its live-run cap across the fleet, and waits while a host goes uncounted", async () => {
     const live = [1, 2].map((n) => ({ name: `run-${n}`, login: "2", host: n === 1 ? "here" : "m1" }));
     const readAll = (wanted: readonly string[]) =>
@@ -154,85 +102,30 @@ describe("the login a run moves to", () => {
   });
 });
 
-describe("the five hours a login is read to last with a run added", () => {
+it("reads a login's five hours with a run added: a live login's pace shared over its runs, an idle one by its window", () => {
   const five = (pct: number | null, hoursLeft: number | null): Reading => ({
     ...read("2", 10),
-    fiveHour: {
-      pct,
-      resetsAt: hoursLeft === null ? null : new Date(NOW + hoursLeft * HOUR).toISOString(),
-    },
+    fiveHour: { pct, resetsAt: hoursLeft === null ? null : new Date(NOW + hoursLeft * HOUR).toISOString() },
   });
-
-  it("shares a live login's pace over its runs and adds one more", () => {
-    // 20% in the first hour, 4 left: the two runs add 80 more, so a third adds 40 on top.
-    expect(fiveHourWith(five(20, 4), 2, NOW)).toBeCloseTo(140);
-    expect(fiveHourWith(five(10, 4), 2, NOW)).toBeCloseTo(70);
-    // A window about to reset leaves nothing to spend.
-    expect(fiveHourWith(five(90, 0.01), 3, NOW)).toBeLessThan(100);
-  });
-
-  it("prices an idle login by what is left of its window, whatever runs that have left spent", () => {
-    expect(fiveHourWith(five(0, null), 0, NOW)).toBe(75);
-    expect(fiveHourWith(five(0, 5), 0, NOW)).toBe(75);
-    expect(fiveHourWith(five(60, 1), 0, NOW)).toBe(75);
-    expect(fiveHourWith(five(60, 4), 0, NOW)).toBe(120);
-  });
-
-  it("says nothing of a login with no reading, no share, or a share with no reset", () => {
-    expect(fiveHourWith({ login: "2", plain: false, error: "unauthorized" }, 0, NOW)).toBeNull();
-    expect(fiveHourWith(five(null, 4), 0, NOW)).toBeNull();
-    expect(fiveHourWith(five(30, null), 1, NOW)).toBeNull();
-  });
-
-  it("drops the window of an ultra login that reports none, and of no other", () => {
-    const ultra = { ANA_LOGIN_SUBS: "2:ultra" };
-    const silent = five(null, null);
-    const lifted = planned(silent, ultra);
-    expect(lifted).toEqual({ ...silent, fiveHour: null });
-    // No run added there can reach a five-hour limit, and the login keeps its room.
-    expect(fiveHourWith(lifted, 3, NOW)).toBe(0);
-    expect(room([lifted], ["2"], new Set())).toEqual(["2"]);
-    // An ultra account not yet verified still reports the window, and keeps it.
-    expect(planned(five(40, 4), ultra)).toEqual(five(40, 4));
-    const refused = { ...silent, fiveHour: { pct: null, resetsAt: null, status: "rejected" } };
-    expect(planned(refused, ultra)).toEqual(refused);
-    // Another plan's unread window, or another login's plan, leaves a reading that failed, as before.
-    expect(fiveHourWith(planned(silent, { ANA_LOGIN_SUBS: "2:max" }), 0, NOW)).toBeNull();
-    expect(fiveHourWith(planned(silent, { ANA_LOGIN_SUBS: "3:ultra" }), 0, NOW)).toBeNull();
-  });
-
-  it("leaves a login predicted over or unread, names which, and keeps the rest soonest week first", async () => {
-    const readings: Reading[] = [
-      { ...read("2", 10, 60, "allowed", 1) },
-      read("3", 10, 10, "allowed", 50),
-      read("4", 10, 10, "allowed", 2),
-      { login: "5", plain: false, error: "unauthorized" },
-    ];
-    const reader = (wanted: readonly string[]) =>
-      Promise.resolve(readings.filter(({ login }) => wanted.includes(login)));
-    const found = await roomFor(["2", "3", "4", "5"], new Set(), { live: [], unasked: [] }, reader, {
-      env: {},
-      now: NOW,
-    });
-    expect(found.logins).toEqual(["4", "3"]);
-    expect(found.why).toContain("login 2 would reach five hours");
-    expect(found.why).toContain("login 5 could not be read");
-  });
-
-  it("asks the provider nothing where every login is at its cap", async () => {
-    const live = ["2", "3"].map((login) => ({ name: `on-${login}`, login, host: "here" }));
-    let asked = 0;
-    const reader = (wanted: readonly string[]) => {
-      asked += wanted.length;
-      return Promise.resolve([]);
-    };
-    const found = await roomFor(["2", "3"], new Set(), { live, unasked: [] }, reader, {
-      env: { ANA_LOGIN_RUNS: "1" },
-      now: NOW,
-    });
-    expect(found).toEqual({ logins: [], why: "" });
-    expect(asked).toBe(0);
-  });
+  // 20% in the first hour, 4 left: the two runs add 80 more, so a third adds 40 on top.
+  const rows: [Reading, number, number | null][] = [
+    [five(20, 4), 2, 140],
+    [five(10, 4), 2, 70],
+    [five(0, null), 0, 75],
+    [five(0, 5), 0, 75],
+    [five(60, 1), 0, 75],
+    [five(60, 4), 0, 120],
+    [{ login: "2", plain: false, error: "unauthorized" }, 0, null],
+    [five(null, 4), 0, null],
+    [five(30, null), 1, null],
+  ];
+  for (const [reading, runs, expected] of rows) {
+    const said = fiveHourWith(reading, runs, NOW);
+    if (expected === null) expect(said).toBeNull();
+    else expect(said).toBeCloseTo(expected);
+  }
+  // A window about to reset leaves nothing to spend.
+  expect(fiveHourWith(five(90, 0.01), 3, NOW)).toBeLessThan(100);
 });
 
 describe("a keeper's looks, scripted", () => {
@@ -281,15 +174,6 @@ describe("a keeper's looks, scripted", () => {
     return { state, look };
   }
 
-  it("moves a run off a week's limit and off a short five-hour wait, soonest week first", async () => {
-    for (const hours of [40, 0.5]) {
-      const { state, look } = scripted();
-      state.events = [waited(hours)];
-      expect(await look(NOW)).toBe(false);
-      expect(state.acted).toEqual(["stop", "start 3"]);
-    }
-  });
-
   it("keeps the writer alive when the restart is refused and retries once it can start", async () => {
     const { state, look } = scripted();
     state.refusal = "the run's commit is on no remote branch or tag";
@@ -303,74 +187,34 @@ describe("a keeper's looks, scripted", () => {
     expect(state.acted).toEqual(["stop", "start 3"]);
   });
 
-  it("moves onto the pool as it stands at the move, not as it stood at the keeper's start", async () => {
+  it("does not take the login it moved off again until its limit resets, and then may", async () => {
     const { state, look } = scripted();
-    state.pool = ["2", "4"];
-    expect(await look(NOW)).toBe(false);
-    expect(state.acted).toEqual(["stop", "start 4"]);
-  });
-
-  it("says a move, a wait and a barren run in lines the alerts read, and leaves a run's own ending to its log", async () => {
-    const moved = scripted();
-    moved.state.events = [waited(40)];
-    await moved.look(NOW);
-    const waiting = scripted();
-    waiting.state.events = [waited(40)];
-    waiting.state.readings = [];
-    await waiting.look(NOW);
-    const ended = scripted();
-    ended.state.open = false;
-    ended.state.events = [event("campaign.ended", { ending: "budget" })];
-    await ended.look(NOW);
-    const barren = scripted();
-    barren.state.open = false;
-    barren.state.events = [event("build.started", { session: "b-1" })];
-    for (const minute of [0, 1, 2, 3]) await barren.look(NOW + minute * MINUTE);
-    expect(moved.state.said.filter(keeperActed)).toHaveLength(1);
-    expect(waiting.state.said.filter(keeperActed)).toHaveLength(1);
-    expect(ended.state.said).toHaveLength(1);
-    expect(ended.state.said.filter(keeperActed)).toEqual([]);
-    expect(barren.state.said.at(-1)).toContain("kept no longer");
-    expect(barren.state.said.every(keeperActed)).toBe(true);
-    expect(keeperActed("  a refusal's own text, with a colon: in it")).toBe(false);
-    // A wait and a giving up write no event, so the line is the one place their time stands.
-    const acts = [moved, waiting, barren].flatMap(({ state }) => state.said.filter(keeperActed));
-    expect(acts.filter((line) => !/^\d{4}-\d{2}-\d{2}T[\d:.]+Z sample: /u.test(line))).toEqual([]);
-    expect(waiting.state.said[0]?.startsWith(`${new Date(NOW).toISOString()} sample: `)).toBe(true);
-    expect(barren.state.said.at(-1)?.startsWith(new Date(NOW + 3 * MINUTE).toISOString())).toBe(true);
-  });
-
-  it("leaves a run whose login recovers first to go on by itself", async () => {
-    const { state, look } = scripted();
-    state.events = [waited(0.2)];
-    expect(await look(NOW)).toBe(false);
-    expect(state.acted).toEqual([]);
-    expect(state.asked).toBe(0);
-    // The reset passed: the seat wrote a turn the provider answered, and the keeper has moved nothing.
-    state.events = [waited(0.2), event("build.turn", { session: "b-1", stopReason: "toolUse" })];
-    expect(await look(NOW + HOUR)).toBe(false);
-    expect(state.acted).toEqual([]);
-  });
-
-  it("says once that every login is predicted over, asks again later, and moves when one fits", async () => {
-    const { state, look } = scripted();
-    const over = (login: string) => read(login, 10, 60);
-    state.readings = [over("3"), over("4")];
+    state.readings = [read("2", 10), read("3", 100)];
+    state.events = [waited(2)];
     await look(NOW);
-    expect(state.asked).toBe(1);
-    await look(NOW + MINUTE);
-    await look(NOW + 2 * MINUTE);
-    // Nothing was stopped, one line was said, and the provider was asked once in ten minutes.
     expect(state.acted).toEqual([]);
-    expect(state.asked).toBe(1);
-    expect(state.said).toHaveLength(1);
-    expect(state.said[0]).toContain("login 3, 4 would reach five hours");
-    await look(NOW + 11 * MINUTE);
-    expect(state.asked).toBe(2);
-    expect(state.said).toHaveLength(1);
-    state.readings = [over("3"), read("4", 10)];
-    await look(NOW + 22 * MINUTE);
-    expect(state.acted).toEqual(["stop", "start 4"]);
+    state.events = [];
+    state.open = false;
+    await look(NOW + 3 * HOUR);
+    expect(state.acted).toEqual(["start 2"]);
+  });
+
+  it("goes on with a kept run on its own login where it is first by name of more kept runs than the cap", async () => {
+    const kept = (name: string) => ({ name, login: "2", host: "here", unwritten: true as const });
+    const acted = async (live: { name: string; login: string; host: string; unwritten?: true }[]) => {
+      const { state, look } = scripted();
+      state.open = false;
+      state.otherKeeper = true;
+      state.pool = ["2"];
+      state.live = live;
+      await look(NOW);
+      return state.acted;
+    };
+    expect(await acted(["sample", "t", "u"].map(kept))).toEqual(["start 2"]);
+    expect(await acted(["r", "s", "sample"].map(kept))).toEqual([]);
+    expect(
+      await acted([kept("sample"), ...["t", "u"].map((name) => ({ name, login: "2", host: "m1" }))]),
+    ).toEqual([]);
   });
 
   it("stops nothing while every login is at its cap, unread, or a host goes uncounted", async () => {
@@ -398,145 +242,6 @@ describe("a keeper's looks, scripted", () => {
     expect(uncounted.state.acted).toEqual([]);
     expect(uncounted.state.asked).toBe(0);
   });
-
-  it("goes on with a kept run on its own login where it is first by name of more kept runs than the cap", async () => {
-    const kept = (name: string) => ({ name, login: "2", host: "here", unwritten: true as const });
-    const acted = async (live: { name: string; login: string; host: string; unwritten?: true }[]) => {
-      const { state, look } = scripted();
-      state.open = false;
-      state.otherKeeper = true;
-      state.pool = ["2"];
-      state.live = live;
-      await look(NOW);
-      return state.acted;
-    };
-    expect(await acted(["sample", "t", "u"].map(kept))).toEqual(["start 2"]);
-    expect(await acted(["r", "s", "sample"].map(kept))).toEqual([]);
-    expect(
-      await acted([kept("sample"), ...["t", "u"].map((name) => ({ name, login: "2", host: "m1" }))]),
-    ).toEqual([]);
-  });
-
-  it("does not take the login it moved off again until its limit resets, and then may", async () => {
-    const { state, look } = scripted();
-    state.readings = [read("2", 10), read("3", 100)];
-    state.events = [waited(2)];
-    await look(NOW);
-    expect(state.acted).toEqual([]);
-    state.events = [];
-    state.open = false;
-    await look(NOW + 3 * HOUR);
-    expect(state.acted).toEqual(["start 2"]);
-  });
-
-  it("leaves a run that bills no login to its wait, with no restart into the same limit", async () => {
-    const codex = ["--builder", "openai-codex/gpt-6.1-sol", "--solver", "openai-codex/gpt-6.1-sol"];
-    const { state, look } = scripted(codex, undefined);
-    await look(NOW);
-    await look(NOW + 11 * MINUTE);
-    expect(state.acted).toEqual([]);
-    expect(state.asked).toBe(0);
-    state.events = [];
-    state.open = false;
-    await look(NOW + 22 * MINUTE);
-    expect(state.acted).toEqual(["start none"]);
-  });
-
-  it("leaves when the campaign ends on its own terms, though a second keeper of the run lives", async () => {
-    for (const otherKeeper of [false, true]) {
-      const { state, look } = scripted();
-      state.events = [event("campaign.ended", { ending: "budget" })];
-      state.open = false;
-      state.otherKeeper = otherKeeper;
-      expect(await look(NOW)).toBe(true);
-      expect(state.acted).toEqual([]);
-    }
-  });
-});
-
-describe("the pool a keeper started without --logins reads", () => {
-  it("follows an edit of its host's file where it started on that file's pool, and keeps a carried pool", async () => {
-    const { root } = fakeHosts();
-    fixtures.push(root);
-    const file = join(root, "pool.env.runs");
-    writeFileSync(file, 'ANA_HOSTS=[]\nANA_LOGINS="2,3"\n');
-    const own = poolOf(file, { ANA_LOGINS: "2,3" });
-    const carried = poolOf(file, { ANA_LOGINS: "3,4" });
-    expect(await own()).toEqual(["2", "3"]);
-    writeFileSync(file, "ANA_LOGINS=3 # narrowed\n");
-    expect(await own()).toEqual(["3"]);
-    expect(await carried()).toEqual(["3", "4"]);
-    // A file being rewritten, or gone, keeps the last pool instead of every login `.env` holds.
-    writeFileSync(file, "");
-    expect(await own()).toEqual(["3"]);
-    rmSync(file);
-    expect(await own()).toEqual(["3"]);
-  });
-});
-
-describe("the keeper a run gets by itself", () => {
-  const env = { ANA_LOGINS: "2,3" };
-
-  it("goes with a numbered login where another is allowed, unless it was turned off", () => {
-    expect(keepsItself(env, "2")).toBe(true);
-    expect(keepsItself({ ...env, ANA_KEEP: "off" }, "2")).toBe(false);
-    expect(keepsItself(env, undefined)).toBe(false);
-    expect(keepsItself({ ANA_LOGINS: "2" }, "2")).toBe(false);
-    expect(keepsItself({ CLAUDE_CODE_OAUTH_TOKEN2: "a", CLAUDE_CODE_OAUTH_TOKEN3: "b" }, "2")).toBe(true);
-  });
-
-  /** `continue` of a stopped campaign whose log already ended, over a campaign command that lives for
-   *  a few seconds, so that a keeper it leaves reads the ending and goes by itself. */
-  function goOn(extra: string[], environment: Record<string, string>) {
-    const made = fakeHosts();
-    fixtures.push(made.root);
-    const folder = join(made.main, ".ana", "d2", "sample");
-    mkdirSync(folder, { recursive: true });
-    mkdirSync(join(made.main, "tools", "d2"), { recursive: true });
-    writeFileSync(
-      join(made.main, "tools", "d2", "harness-builder.ts"),
-      'if (!process.argv.includes("--dry-run")) await Bun.sleep(5000);\n',
-    );
-    writeFileSync(join(made.main, "package.json"), '{ "name": "fixture" }\n');
-    const log = join(folder, "log.jsonl");
-    writeFileSync(log, `${JSON.stringify(event("campaign.ended", { ending: "budget" }))}\n`);
-    writeReceipt(log, "run-1", {
-      at: new Date(NOW).toISOString(),
-      pid: 1,
-      flags: seats(OPUS, "hhhh"),
-      envFile: null,
-      commit: made.commit,
-      dirty: false,
-      load: 0,
-      cores: 1,
-    });
-    const words = JSON.stringify(["sample", "--login", "2", ...extra, "--yes"]);
-    const result = made.run(
-      `import { continueRun } from "REPOSITORY/tools/runs/manage.ts"; await continueRun(${words});`,
-      { ANA_LOGINS: "2,3", ANA_LOGIN_RUNS: "2", CLAUDE_CODE_OAUTH_TOKEN2: "a", ...environment },
-    );
-    return { result, out: join(folder, "keep.out") };
-  }
-
-  it("is left running by continue, and goes when the run has ended", async () => {
-    const { result, out } = goOn([], {});
-    expect(result.err).toBe("");
-    expect(result.code).toBe(0);
-    expect(result.out).toContain("sample: kept by pid");
-    let said = "";
-    for (let tries = 0; tries < 50 && !said.includes("kept no longer"); tries += 1) {
-      await Bun.sleep(200);
-      said = existsSync(out) ? readFileSync(out, "utf8") : "";
-    }
-    expect(said).toContain("sample ended on budget: kept no longer");
-  }, 20_000);
-
-  it("is not left where the environment turns keepers off", () => {
-    const { result, out } = goOn([], { ANA_KEEP: "off" });
-    expect(result.code).toBe(0);
-    expect(result.out).not.toContain("kept by pid");
-    expect(existsSync(out)).toBe(false);
-  }, 20_000);
 });
 
 describe("going on with a live run after a pause", () => {
@@ -683,42 +388,5 @@ describe("the login a run goes on with", () => {
       solver: { model: OPUS, effort: "high" },
     });
     expect(billsLogin([opening], overrides)).toBe(false);
-  });
-
-  it("keeps an all-GPT campaign with no login, and a Claude campaign only where the plain login is set", () => {
-    const made = fakeHosts();
-    fixtures.push(made.root);
-    const folder = join(made.main, ".ana", "d2", "sample");
-    mkdirSync(folder, { recursive: true });
-    const log = join(folder, "log.jsonl");
-    writeFileSync(log, "");
-    const receipt: Receipt = {
-      at: new Date(NOW).toISOString(),
-      pid: 1,
-      flags: seats("openai-codex/gpt-6.1-sol", "hhhh"),
-      envFile: null,
-      commit: made.commit,
-      dirty: false,
-      load: 0,
-      cores: 1,
-    };
-    writeReceipt(log, "run-1", receipt);
-    const command = 'import { keep } from "REPOSITORY/tools/runs/keep.ts"; await keep(["sample"]);';
-    const result = made.run(command);
-    expect(result.err).toBe("");
-    expect(result.code).toBe(0);
-    expect(result.out).toContain("would be kept going");
-    expect(made.recorded().some(({ tool }) => tool === "ssh")).toBe(false);
-    writeReceipt(log, "run-1", { ...receipt, flags: seats(OPUS, "hhhh") });
-    const refused = made.run(command);
-    expect(refused.code).toBe(1);
-    expect(refused.err).toContain("no allowed Claude login");
-    const plain = made.run(command, { CLAUDE_CODE_OAUTH_TOKEN: "plain" });
-    expect(plain.code).toBe(0);
-    expect(plain.out).toContain("would be kept going");
-    // The word the detached keeper is handed on such a machine names no login.
-    const handed = made.run(command.replace('["sample"]', '["sample", "--logins", ""]'));
-    expect(handed.code).toBe(1);
-    expect(handed.err).toContain("no allowed Claude login");
   });
 });

@@ -166,12 +166,6 @@ export function heldBy(events: readonly LogEvent[], after: string, base: number)
   ];
 }
 
-/** How long a pause at the next step lets the open solves of the run whose log is `events` finish:
- *  the limit its setting recorded, as the solves were given it. */
-export function solvesMs(events: readonly LogEvent[]): number {
-  return pauseWaitMs((recordedSetting(events)?.minutes ?? LIMITS.wallSeconds / 60) * 60);
-}
-
 /** Stop `run` at the point `after` names, first leaving the word that starts no further solve, once
  *  `ready`, asked there, neither refused nor said false; `next` asks nothing, its word left at once.
  *  The word says which verb left it (`by`) and at which point, since a log read later cannot tell a
@@ -186,7 +180,9 @@ async function pauseAt(run: Run, after: string, by: string, ready = async () => 
   }
   const events = logEvents(run.path);
   const base = countOf(events, kinds);
-  const allowed = solvesMs(events);
+  // How long a pause at the next step lets the open solves finish: the limit the run's setting
+  // recorded, as the solves were given it.
+  const allowed = pauseWaitMs((recordedSetting(events)?.minutes ?? LIMITS.wallSeconds / 60) * 60);
   console.log(
     after === "next"
       ? `${run.name}: starting no further solve, and letting its open ones finish, ${String(allowed / 60_000)} minutes at most`

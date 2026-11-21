@@ -103,7 +103,7 @@ const BREWED = USERS.map((user) => `${user}/opt/python*/libexec/bin`).join(" ");
 const DEVELOPER = "$(xcode-select -p 2>/dev/null || :)";
 /** `toolchainPathDirs` as a shell word for any machine, each folder that is not there left to the
  *  shell; `test/runs-sync.test.ts` holds it to the real one. */
-export const WALL_PATH = `"${pinnedPythonDir("$HOME")}:${USERS.map((user) => `${user}/bin`).join(":")}:$(sh -c 'ls -d ${BREWED}' 2>/dev/null | LC_ALL=C sort -r | tr '\\n' ':')${[
+const WALL_PATH = `"${pinnedPythonDir("$HOME")}:${USERS.map((user) => `${user}/bin`).join(":")}:$(sh -c 'ls -d ${BREWED}' 2>/dev/null | LC_ALL=C sort -r | tr '\\n' ':')${[
   ...TOOLCHAIN_HOME_ROOTS.flatMap((root) => [`$HOME/${root}/bin`, `$HOME/${root}/shims`]),
   "/usr/local/shims",
   `${DEVELOPER}/usr/bin`,
@@ -306,7 +306,7 @@ function pythonFinding(
  *  read, a dirty one among them, does. One installed from a descendant of `tree`'s head does not, so
  *  that a main checkout left behind the stack does not put its older runner back over one installed
  *  from the top. */
-export function runnerLags(tree: string, commit: string): boolean {
+function runnerLags(tree: string, commit: string): boolean {
   if (gitMaybe(tree, "merge-base", "--is-ancestor", "HEAD", commit) !== null) return false;
   const same = ["diff", "--quiet", "--end-of-options", commit, "HEAD", "--", ...RUNNER_SOURCE];
   return gitMaybe(tree, ...same) === null;

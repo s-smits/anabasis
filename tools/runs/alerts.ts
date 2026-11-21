@@ -148,15 +148,6 @@ function rowOf(run: Run, running: readonly Running[], now: number): Row {
   };
 }
 
-/**
- * Whether a look reads a run: as `status` shows it, where a launch with a model in every seat kept
- * its receipt (`keepReceipt`). A rehearsal's seed and a test's campaign run scripted seats and keep
- * none, and `status` shows both, so that neither a seed's promotions nor a check's campaigns reach
- * the operator's notifications beside real ones.
- */
-export const onAlerts = (run: Run, writing: "open" | "closed", age: number): boolean =>
-  lastLaunch(run.path) !== undefined && onStatus(run, writing, age);
-
 /** This machine's rows, and the name of every campaign its worktrees hold. */
 function rowsHere(now: number): HostRows {
   const running = processes();
@@ -167,7 +158,12 @@ function rowsHere(now: number): HostRows {
     const log = statSync(run.path, { throwIfNoEntry: false });
     if (log === undefined) return [];
     const writing = writers(run, running).length > 0 ? "open" : "closed";
-    return onAlerts(run, writing, now - log.mtimeMs) ? [rowOf(run, running, now)] : [];
+    // A look reads a run as `status` shows it, where a launch with a model in every seat kept its
+    // receipt (`keepReceipt`). A rehearsal's seed and a test's campaign run scripted seats and keep
+    // none, and `status` shows both, so that neither a seed's promotions nor a check's campaigns
+    // reach the operator's notifications beside real ones.
+    const read = lastLaunch(run.path) !== undefined && onStatus(run, writing, now - log.mtimeMs);
+    return read ? [rowOf(run, running, now)] : [];
   });
   const retired = archived().flatMap((run) => (run.archived === HERE ? [run.name] : []));
   return { rows, held: held.map(({ name }) => name), retired };

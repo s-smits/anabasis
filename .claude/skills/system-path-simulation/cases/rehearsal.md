@@ -116,5 +116,5 @@ the reference alone, which the investigation's reader should name as `SET ASIDE 
 `READING MOVES WITH THE SET-ASIDE`. A reader silent on its own planted condition is a `blocking`
 finding against the reader.
 
-`test/runs-rehearse.test.ts` holds the seed and scripts; a rehearsal that passes proves only its own
+`test/runs-rehearse.test.ts` holds the seed's refusals and the scripted solves' refusal of a campaign that is no seed; a rehearsal that passes proves only its own
 platform's wall.

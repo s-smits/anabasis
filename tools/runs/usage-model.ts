@@ -374,7 +374,7 @@ export function ahead(model: Model, history: readonly Snapshot[]): Record<string
 /** The hour `week` runs out from `at`, by `curve`, its rise hour by hour to `HORIZON`, or by `held`,
  *  the rise an hour its live runs would keep up, whichever is sooner, and past `HORIZON` at the mean
  *  rate of what those read by then. Null where it reaches its reset first. */
-export function weekEnd(
+function weekEnd(
   curve: readonly number[],
   week: { pct: number; reset: number },
   at: number,

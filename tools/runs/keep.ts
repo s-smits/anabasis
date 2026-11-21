@@ -87,7 +87,7 @@ const BARREN = 3;
  * each seat it opened, stopped on `error`, so the log grows however little was done, and a keeper
  * that counted the log's bytes would go on into one DNS failure again and again and never leave.
  */
-export const turnsIn = (events: readonly LogEvent[]): number =>
+const turnsIn = (events: readonly LogEvent[]): number =>
   events.filter(({ kind, data }) => kind.endsWith(".turn") && data.stopReason !== "error").length;
 
 /** What a keeper does at `now` with a run that stands as `state`: it moves one waiting on a provider

@@ -429,7 +429,7 @@ function draftedSource(name: string): DraftedSource {
  * `src/examiner/session.ts`), so that a rehearsal claims an Examiner's root, rests and wakes, and a
  * stop at a rest, which can keep a closed run's root, is within its reach.
  */
-export function scriptedExaminer(
+function scriptedExaminer(
   later: Task[],
   answered: readonly Task[],
   supply: number,

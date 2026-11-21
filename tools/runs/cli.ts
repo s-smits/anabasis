@@ -8,8 +8,7 @@
  *
  * A verb given words it cannot act on (`Misused`, or a flag or an argument `parseArgs` did not take)
  * is answered with that usage, so the refusal is the correction; a word that names no verb is
- * answered with the verbs nearest it (`unknown`). `test/runs-cli.test.ts` holds each parser's options
- * to the help of its file's verbs.
+ * answered with the verbs nearest it (`unknown`).
  *
  * `here` always names this machine, whichever verb hears it: `--here` is accepted by every verb, and a
  * verb with no use of its own for it reaches no other host for that one call, as a verb another host

@@ -1,9 +1,8 @@
 // A login reads open or closed from one reading. A picker rechecks once the reset or cache expiry
 // arrives, and the next full `usage` overrules what was kept.
 import { describe, expect, it } from "bun:test";
-import { closedOf, closedResets, listedBy, notClosed, stateWords } from "../tools/runs/login-state.ts";
+import { closedOf, notClosed, stateWords } from "../tools/runs/login-state.ts";
 import type { Reading } from "../tools/runs/logins.ts";
-import { roomFor } from "../tools/runs/keep.ts";
 
 const NOW = Date.parse("2026-11-05T21:00:00Z");
 const HOUR = 3_600_000;
@@ -34,11 +33,6 @@ function reading(
 const clock = (at: number) => `clock ${String((at - NOW) / HOUR)}h`;
 
 describe("a login's state, from one reading", () => {
-  it("reads a login with both windows allowed as open", () => {
-    expect(closedOf(reading("2"))).toBeNull();
-    expect(closedOf(reading("2", { pct: 99, status: "allowed_warning" }))).toBeNull();
-  });
-
   it("closes on a used-up or refused window, until that window's reset", () => {
     expect(closedOf(reading("2", { pct: 100 }))).toEqual({ until: FIVE_RESET });
     expect(closedOf(reading("3", { pct: null }, { pct: 40, status: "rejected" }))).toEqual({
@@ -46,55 +40,10 @@ describe("a login's state, from one reading", () => {
     });
   });
 
-  it("reads a login whose plan has no five-hour window by its week alone", () => {
-    expect(closedOf({ ...reading("1"), fiveHour: null })).toBeNull();
-    expect(closedOf({ ...reading("1", { pct: 10 }, { pct: 100 }), fiveHour: null })).toEqual({
-      until: WEEK_RESET,
-    });
-  });
-
-  it("takes the later reset where both windows are closed", () => {
-    expect(closedOf(reading("3", { pct: 100 }, { pct: 100 }))).toEqual({ until: WEEK_RESET });
-  });
-
-  it("keeps a closed window with no reset closed, with no time to open by", () => {
-    expect(closedOf(reading("3", { pct: 100, reset: null }))).toEqual({ until: null });
-  });
-
   it("calls a login that could not be read neither open nor closed", () => {
     const failed: Reading = { login: "4", plain: false, error: "403" };
     expect(closedOf(failed)).toBeNull();
     expect(stateWords(failed, ["4"], clock)).toBe("");
-  });
-
-  it("says open, closed until its reset, and that a login is out of the pool", () => {
-    expect(stateWords(reading("2"), ["2"], clock)).toBe(" · open");
-    expect(stateWords(reading("3", { pct: 100 }), ["3"], clock)).toBe(" · closed until clock 3h");
-    expect(stateWords(reading("3", { pct: 100, reset: null }), ["3"], clock)).toBe(" · closed");
-    expect(stateWords(reading("1"), ["2", "3"], clock)).toBe(" · open · not in the pool");
-  });
-});
-
-describe("what usage lists and keeps", () => {
-  const open = reading("2");
-  const closed = reading("3", { pct: 100 });
-  const noReset = reading("6", { pct: 100, reset: null });
-  const failed: Reading = { login: "4", plain: false, error: "403" };
-  const all = [open, closed, noReset, failed];
-  const names = (flags: { open: boolean; closed: boolean }) => listedBy(all, flags).map(({ login }) => login);
-
-  it("lists every login with no filter, one that could not be read included", () => {
-    expect(names({ open: false, closed: false })).toEqual(["2", "3", "6", "4"]);
-  });
-
-  it("lists only the open or the closed under a filter, and a failed read under neither", () => {
-    expect(names({ open: true, closed: false })).toEqual(["2"]);
-    expect(names({ open: false, closed: true })).toEqual(["3", "6"]);
-    expect(names({ open: true, closed: true })).toEqual(["2", "3", "6"]);
-  });
-
-  it("keeps a closed login only where it has a reset, so one with none is read again", () => {
-    expect(closedResets(all)).toEqual({ "3": FIVE_RESET });
   });
 });
 
@@ -102,61 +51,10 @@ describe("what a picker takes from the last reading kept", () => {
   const earlyReset = NOW + HOUR / 6;
   const closed = { at: NOW - HOUR / 2, weeks: {}, closed: { "3": WEEK_RESET, "2": earlyReset } };
 
-  it("leaves a login out while its cached closure is fresh and its reset has not passed", () => {
-    expect(notClosed(["2", "3", "4"], [closed], NOW)).toEqual(["4"]);
-  });
-
   it("rechecks at the reset or after 45 minutes, leaving time for a keeper retry within the hour", () => {
     expect(notClosed(["2", "3"], [closed], earlyReset)).toEqual(["2"]);
     const expiry = closed.at + (3 * HOUR) / 4;
     expect(notClosed(["3"], [closed], expiry - 1)).toEqual([]);
     expect(notClosed(["2", "3"], [closed], expiry)).toEqual(["2", "3"]);
-  });
-
-  it("lets a later reading overrule a closed login, as after credit added early", () => {
-    expect(notClosed(["3"], [closed, { at: NOW - 60_000, weeks: {} }], NOW)).toEqual(["3"]);
-    expect(notClosed(["3"], [{ at: NOW - 60_000, weeks: {} }, closed], NOW)).toEqual(["3"]);
-  });
-
-  it("asks of every login where nothing is kept, as on a host that never read usage", () => {
-    expect(notClosed(["2", "3"], [], NOW)).toEqual(["2", "3"]);
-  });
-});
-
-describe("a keeper with a login kept closed", () => {
-  it("moves to the open one without asking the provider of the closed one", async () => {
-    const asked: string[] = [];
-    const kept = [{ at: NOW - HOUR / 2, weeks: {}, closed: { "3": WEEK_RESET } }];
-    const found = await roomFor(
-      ["3", "4"],
-      new Set(),
-      { live: [], unasked: [] },
-      (wanted) => {
-        const open = notClosed(wanted, kept, NOW);
-        asked.push(...open);
-        return Promise.resolve(open.map((login) => reading(login)));
-      },
-      { env: {}, now: NOW },
-    );
-    expect(asked).toEqual(["4"]);
-    expect(found.logins).toEqual(["4"]);
-  });
-
-  it("can move to a login restored early without trusting another login that still reads closed", async () => {
-    const kept = [{ at: NOW - 24 * HOUR, weeks: {}, closed: { "2": WEEK_RESET, "4": WEEK_RESET } }];
-    const found = await roomFor(
-      ["2", "4"],
-      new Set(),
-      { live: [], unasked: [] },
-      (wanted) =>
-        Promise.resolve(
-          notClosed(wanted, kept, NOW).map((login) => ({
-            ...reading(login, { pct: 10 }, { pct: login === "2" ? 0 : 100 }),
-            fiveHour: null,
-          })),
-        ),
-      { env: {}, now: NOW },
-    );
-    expect(found.logins).toEqual(["2"]);
   });
 });

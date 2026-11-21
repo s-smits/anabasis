@@ -24,7 +24,7 @@ import { READERS, type Reader, readerOutput, type Source, sourceOf } from "./der
 type Ended = Parameters<typeof endPass>[1];
 
 /** One reader on one log that a moment has moved past. */
-export interface Due {
+interface Due {
   readonly log: string;
   readonly reader: Reader;
   /** How long it last took, 0 where it never ran. */
@@ -45,7 +45,7 @@ function bytesOf(log: string, from: number, to: number): Buffer {
 
 /** What `readers` owe on `logs`: on each log in turn, the readers with a moment past what they read,
  *  in the list's order. The scan starts where the reader that has read least stopped. */
-export function dueOf(store: string, logs: readonly string[], readers: readonly Reader[]): Due[] {
+function dueOf(store: string, logs: readonly string[], readers: readonly Reader[]): Due[] {
   const timed = readers.filter(({ at }) => at !== undefined);
   return logs.flatMap((log) => {
     const read = timed.map((reader) => ({ reader, kept: resultOf(store, log, reader.name) }));

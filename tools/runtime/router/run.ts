@@ -1,10 +1,10 @@
 /**
  * The check runner: `run.js <tree> <bun pin> <test|typecheck|lint|secrets|gate> [arguments...]`,
  * which the bun router (`bun` in this folder) calls for a tree's check tasks. `ANA_CHECK_HOST` says
- * where the task runs: `auto` on the first with a free slot of this machine and the hosts
- * `ANA_HOSTS` lists with `checks`, least loaded first by one-minute load a core (`placesFor`), which
- * costs about a second's sample before each task; unset or empty as `auto` where some host takes
- * checks, and otherwise here without a sample, as where the host list cannot be read; `here` on this
+ * where the task runs: `auto` on the first with a free slot of this machine and every host
+ * `ANA_HOSTS` lists, least loaded first by one-minute load a core (`placesFor`), which costs about a
+ * second's sample before each task; unset or empty as `auto` where the list names a host, and
+ * otherwise here without a sample, as where the host list cannot be read; `here` on this
  * machine, without reading the host list; a host's name or ssh destination on
  * that host. Any other value is refused with the names to write. Wherever it runs, the task is
  * `task.sh` over the working tree as it stands, uncommitted bytes included, and its exit status is
@@ -18,8 +18,8 @@
  * once per lockfile (`task.sh`). The snapshot keeps `HEAD`'s parents, so a static gate there chooses
  * the tests it would choose here, where a parentless snapshot would read every file as changed.
  *
- * **Slots.** A host takes as many tasks at once from this machine as its `checks` says, and this
- * machine one. A slot is a link in the temp folder whose target is its holder's PID, made in one
+ * **Slots.** A host takes as many tasks at once from this machine as its `checks` says (two where it
+ * says nothing), and this machine one. A slot is a link in the temp folder whose target is its holder's PID, made in one
  * step, so a holder that died holds nothing; a task that finds none free looks again each second.
  *
  * Settings, each optional, in seconds unless said: `ANA_RUNNER_WALL` (a task's deadline, 3600),
@@ -51,6 +51,7 @@ import {
   type Bench,
   benchesOf,
   checkHost,
+  checkSlots,
   hostsOf,
   ownName,
   RUNNER_SLOTS,
@@ -138,27 +139,23 @@ async function armHolds({ name, ssh }: Host, benches: readonly Bench[], announce
 
 /**
  * Where `ANA_CHECK_HOST` lets the task run, in the order its slots are tried, and whether loads chose
- * it: this machine alone, the one host it names, or for `auto` this machine and every host with
- * `checks` by one-minute load a core, least loaded first (`minuteLoads`, as `runs loadwatch` orders
+ * it: this machine alone, the one host it names, or for `auto` this machine and every host listed,
+ * by one-minute load a core, least loaded first (`minuteLoads`, as `runs loadwatch` orders
  * them). A machine that has not answered within `ANA_RUNNER_PICK_WAIT` is left out, never read as
  * idle, and where none answers the task runs here. A host a benchmark's arm holds (`armHolds`) is
  * left out of `auto` and warned of when named explicitly.
  */
 async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean }> {
   const choice = checkHost() ?? "";
-  if (runtimeProcess.env.ANA_CHECK_HOST === undefined && runtimeProcess.env.RUN_REMOTE !== undefined) {
-    say(`RUN_REMOTE is read as ANA_CHECK_HOST until the next release; write ANA_CHECK_HOST=${choice}`);
-  }
   const here = { places: [undefined], picked: false };
   if (choice === "here") return here;
   const { hosts, benches } = listed(choice);
-  const taking = hosts.filter((each) => each.checks !== undefined);
-  if (choice === "" && taking.length === 0) return here;
+  if (choice === "" && hosts.length === 0) return here;
   if (choice === "" || choice === "auto") {
     const started = performance.now();
-    const holds = await Promise.all(taking.map((host) => armHolds(host, benches)));
+    const holds = await Promise.all(hosts.map((host) => armHolds(host, benches)));
     const { order, silent } = await minuteLoads(
-      [undefined, ...taking.filter((_, index) => holds[index] !== true)],
+      [undefined, ...hosts.filter((_, index) => holds[index] !== true)],
       setting("ANA_RUNNER_PICK_WAIT", 5) * 1000,
     );
     const read = order.map(({ label, share }) => `${label} ${share.toFixed(2)}`);
@@ -170,17 +167,17 @@ async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean 
     );
     return { places: order.length === 0 ? [undefined] : order.map(({ host }) => host), picked: true };
   }
-  const host = taking.find((each) => each.name === choice || each.ssh === choice);
+  const host = hosts.find((each) => each.name === choice || each.ssh === choice);
   if (host !== undefined) {
     if (await armHolds(host, benches, false)) {
       say(`a benchmark's arm holds ${host.name}: running there because ANA_CHECK_HOST named it`);
     }
     return { places: [host], picked: false };
   }
-  const names = taking.map((each) => each.name).join(", ");
+  const names = hosts.map((each) => each.name).join(", ");
   throw new Refusal(
-    `ANA_CHECK_HOST=${choice} names no host that takes checks; write here, auto or one of: ${
-      names === "" ? "none, since ANA_HOSTS sets checks for no host" : names
+    `ANA_CHECK_HOST=${choice} names no host; write here, auto or one of: ${
+      names === "" ? "none, since ANA_HOSTS lists no host" : names
     }`,
     EXIT.usage,
   );
@@ -231,7 +228,7 @@ async function slotAmong(places: readonly Place[]): Promise<{ place: Place; slot
   const queues = places.map((place) => {
     const folder = join(tmpdir(), "ana-runner", place?.ssh ?? "local");
     mkdirSync(folder, { recursive: true });
-    return { place, folder, count: place?.checks ?? 1 };
+    return { place, folder, count: place === undefined ? 1 : checkSlots(place) };
   });
   const named = queues.map(({ place }) => place?.ssh ?? "local").join(" or ");
   const limit = setting("ANA_RUNNER_QUEUE_WAIT", 2400);

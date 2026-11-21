@@ -125,7 +125,6 @@ esac
 
 const PEER = { name: "peer", ssh: "fake-peer", tree: "~/anabasis", bun: "~/.bun/bin/bun" };
 const HOSTS = JSON.stringify([
-  PEER,
   { name: "m1", ssh: "fake-mac", tree: "~/anabasis", bun: "~/.bun/bin/bun", checks: 2 },
   { name: "zbook", ssh: "fake-linux", tree: "~/anabasis", bun: "~/.bun/bin/bun", checks: 1 },
 ]);
@@ -171,7 +170,6 @@ function tree(path: string, files: Readonly<Record<string, string>>): void {
 const quiet = { ...Bun.env };
 for (const name of [
   "ANA_CHECK_HOST",
-  "RUN_REMOTE",
   "ANA_RUNNER_ACTIVE",
   "ANA_TEST_WORKERS",
   "ANA_LINT_STRICT",
@@ -384,7 +382,7 @@ describe("the router on the command line", () => {
 });
 
 describe("which host runs a task", () => {
-  it("takes a host by its name or ssh destination, and refuses a place in the list, a host without checks or one not listed, naming the hosts that take checks", () => {
+  it("takes a host by its name or ssh destination, and refuses a place in the list or a host not listed, naming the hosts there are; a host that sets no checks takes them too", () => {
     for (const choice of ["zbook", "fake-linux"]) {
       fresh();
       expect(run(["test"], { ANA_CHECK_HOST: choice }).status).toBe(0);
@@ -399,30 +397,25 @@ describe("which host runs a task", () => {
       expect(connections()).toEqual([]);
       expect(calls(home)).toEqual([]);
     }
+    fresh();
+    expect(run(["test"], { ANA_CHECK_HOST: "peer", ANA_HOSTS: JSON.stringify([PEER]) }).status).toBe(0);
+    expect(ran("fake-peer")).toBe(true);
   });
 
-  it("runs a task here when ANA_CHECK_HOST, or the RUN_REMOTE it replaces, is here, asking no host and reading no host list", () => {
-    for (const named of ["ANA_CHECK_HOST", "RUN_REMOTE"]) {
-      fresh();
-      // A list that cannot be read refuses a task that reads it, as the last lines show.
-      const local = run(["test"], { [named]: "here", ANA_HOSTS: "not a list" });
-      expect(local.status, `${named}: ${local.stderr}`).toBe(0);
-      expect(lastCall(home), named).toMatchObject({ args: "run test", bun: pinned, active: "1" });
-      expect(connections()).toEqual([]);
-      expect(local.stderr.includes("write ANA_CHECK_HOST=here"), named).toBe(named === "RUN_REMOTE");
-    }
+  it("runs a task here when ANA_CHECK_HOST is here, asking no host and reading no host list", () => {
     fresh();
-    // The new name wins over the old where both are set.
-    expect(run(["test"], { ANA_CHECK_HOST: "here", RUN_REMOTE: "m1", ANA_HOSTS: "not a list" }).status).toBe(
-      0,
-    );
+    // A list that cannot be read refuses a task that reads it, as the last lines show.
+    const local = run(["test"], { ANA_CHECK_HOST: "here", ANA_HOSTS: "not a list" });
+    expect(local.status, local.stderr).toBe(0);
+    expect(lastCall(home)).toMatchObject({ args: "run test", bun: pinned, active: "1" });
+    expect(connections()).toEqual([]);
     fresh();
     expect(run(["test"], { ANA_CHECK_HOST: "0", ANA_HOSTS: JSON.stringify([PEER]) }).status).toBe(2);
     fresh();
     expect(run(["test"], { ANA_CHECK_HOST: "m1", ANA_HOSTS: "not a list" }).status).toBe(2);
-    const none = run(["test"], { ANA_CHECK_HOST: "m1", ANA_HOSTS: JSON.stringify([PEER]) });
+    const none = run(["test"], { ANA_CHECK_HOST: "m1", ANA_HOSTS: "[]" });
     expect(none.status).toBe(2);
-    expect(none.stderr).toContain("ANA_HOSTS sets checks for no host");
+    expect(none.stderr).toContain("ANA_HOSTS lists no host");
     expect(calls(home)).toEqual([]);
   });
 
@@ -471,7 +464,7 @@ describe("which host runs a task", () => {
     }
   });
 
-  it("runs ANA_CHECK_HOST=auto on the least loaded place by 1m load a core, never on a host without checks, reading the hosts from .env.runs", () => {
+  it("runs ANA_CHECK_HOST=auto on the least loaded place by 1m load a core, reading the hosts from .env.runs", () => {
     fresh();
     spreadLoads();
     writeFileSync(join(source, ".env.runs"), `ANA_HOSTS='${HOSTS}'\n`);
@@ -484,14 +477,12 @@ describe("which host runs a task", () => {
         /runner: auto: 1m load a core m1 0\.00, \S+ \d+\.\d\d, zbook 100\.00 \(read in/u,
       );
       expect(sent.stderr).toContain("runner: auto: runs on m1");
-      // The idle host that takes no checks is never asked for its load.
-      expect(connections().map(({ host }) => host)).not.toContain("fake-peer");
     } finally {
       unlinkSync(join(source, ".env.runs"));
     }
   });
 
-  it("reads an unset or empty ANA_CHECK_HOST as auto where a host takes checks, and runs here unsampled where none does or the list cannot be read", () => {
+  it("reads an unset or empty ANA_CHECK_HOST as auto where a host is listed, and runs here unsampled where none is or the list cannot be read", () => {
     for (const choice of [undefined, ""]) {
       fresh();
       spreadLoads();
@@ -500,7 +491,7 @@ describe("which host runs a task", () => {
       expect(["fake-mac", "fake-linux", "fake-peer"].filter(ran), String(choice)).toEqual(["fake-mac"]);
       expect(sent.stderr).toContain("runner: auto: runs on m1");
     }
-    for (const hosts of [JSON.stringify([PEER]), "not a list"]) {
+    for (const hosts of ["[]", "not a list"]) {
       fresh();
       const local = run(["test"], { ANA_CHECK_HOST: undefined, ANA_HOSTS: hosts });
       expect(local.status, `${hosts}: ${local.stderr}`).toBe(0);

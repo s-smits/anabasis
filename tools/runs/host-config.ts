@@ -28,7 +28,7 @@ export interface Host {
   readonly envFiles?: readonly string[];
   /** Live campaigns or simulation seats this machine may carry. */
   readonly capacity?: number;
-  /** The check tasks this machine runs at once for the runner; unset, the runner sends it none. */
+  /** The check tasks this machine runs at once for the runner; unset, two. */
   readonly checks?: number;
   /** The packs this machine is kept for: it takes no other, and no other machine takes them. */
   readonly packs?: readonly string[];
@@ -91,10 +91,11 @@ export const keptHere = (env: Readonly<Record<string, string | undefined>> = run
   env.ANA_HOP === "1";
 
 /** Where a check runs (`auto`, `here` or a host's name), as `ANA_CHECK_HOST` says; undefined where it
- *  is unset. `RUN_REMOTE`, its name before 21 November 2026, is read in its place until the next
- *  release, so a command written with it still runs where it says. */
-export const checkHost = (): string | undefined =>
-  runtimeProcess.env.ANA_CHECK_HOST ?? runtimeProcess.env.RUN_REMOTE;
+ *  is unset. */
+export const checkHost = (): string | undefined => runtimeProcess.env.ANA_CHECK_HOST;
+
+/** The check tasks `host` takes at once from the check runner and a landing: its `checks`, or two. */
+export const checkSlots = (host: Host): number => host.checks ?? 2;
 
 /** The hosts `text` lists, by default the environment's `ANA_HOSTS`: none for a verb kept here. */
 export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Host[] {

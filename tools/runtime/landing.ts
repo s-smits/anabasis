@@ -9,7 +9,7 @@ import { join } from "../../src/meta/path.ts";
 import { processAnswers, runtimeProcess } from "../../src/meta/process.ts";
 import { hold, holderOf, recordIn, release } from "#src/meta/holder.ts";
 import { errorMessage } from "../../src/meta/runtime-values.ts";
-import { checkHost, type Host, hostsFor } from "../runs/host-config.ts";
+import { checkHost, checkSlots, type Host, hostsFor } from "../runs/host-config.ts";
 import { git, lines, type Place, type Proof, short } from "./gate.ts";
 import { beneath, chainAbove, openPulls, type Pull } from "./pulls.ts";
 
@@ -162,8 +162,8 @@ export function watching(Interrupted: new (message: string) => Error, moved: () 
 /**
  * Where a landing in `root` proves its commits. `ANA_CHECK_HOST` set, `here` among its values, is one
  * place to the landing, which hands each pass to the runner, so under `auto` each pass picks its own
- * least loaded slot; unset, the passes spread over every host `ANA_HOSTS` lists with `checks`,
- * each taking as many at once as its `checks` says, and with no such host they stay on this machine.
+ * least loaded slot; unset, the passes spread over every host `ANA_HOSTS` lists, each taking
+ * as many at once as `checkSlots` gives it, and with no host listed they stay on this machine.
  * `--jobs N` is the most at once: N on one place, or N dealt in turn over the hosts' slots. A list
  * that cannot be read is refused, null, before anything is proved or posted.
  */
@@ -183,7 +183,7 @@ export function whereToProve(
     );
     return null;
   }
-  const hosts = listed.flatMap(({ name, checks }) => (checks === undefined ? [] : [{ name, checks }]));
+  const hosts = listed.map((host) => ({ name: host.name, checks: checkSlots(host) }));
   if (hosts.length === 0) return one;
   const dealt = new Map(hosts.map((host) => [host, 0]));
   for (let left = jobs ?? Infinity; left > 0 && [...dealt].some(([host, slots]) => slots < host.checks); ) {

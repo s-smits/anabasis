@@ -38,10 +38,9 @@ fi
 
 # A task for another host needs ANA_HOSTS, which lives in the main worktree's .env.runs, where
 # `bun run runs` finds it; unset ANA_CHECK_HOST reads it too, since it means auto where a host takes
-# checks. A task told to run here reads no host list. RUN_REMOTE is the old name, read until the
-# next release.
+# checks. A task told to run here reads no host list.
 hosts=()
-place="${ANA_CHECK_HOST-${RUN_REMOTE:-}}"
+place="${ANA_CHECK_HOST:-}"
 if [[ "$place" != here && -z "${ANA_HOSTS:-}" ]]; then
   main="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
   [[ ! -f "$main/.env.runs" ]] || hosts=(--env-file="$main/.env.runs")

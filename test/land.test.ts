@@ -196,8 +196,6 @@ const landEnv = (env: Record<string, string | undefined> = {}): Record<string, s
   ANA_FAKE_STACK_END: "merged",
   ANA_FAKE_STACK_UUID: "u1",
   ANA_FAKE_STACK_SHA: upper,
-  // The old name of ANA_CHECK_HOST, still read, would set the place a test leaves unset.
-  RUN_REMOTE: undefined,
   ...env,
 });
 
@@ -472,12 +470,12 @@ describe("bun run land", () => {
     bun: "bun",
     checks,
   });
-  const twoHosts = JSON.stringify([host("alpha", 1), host("idle"), host("beta", 2)]);
+  const hosts = JSON.stringify([host("alpha", 1), host("unset"), host("beta", 3)]);
 
-  it("spreads its proofs over the hosts that take checks where ANA_CHECK_HOST is unset, the whole gate on the first", () => {
-    const result = runLand(["12", "--sanitize"], { ANA_HOSTS: twoHosts, ANA_CHECK_HOST: undefined });
+  it("spreads its proofs over every listed host where ANA_CHECK_HOST is unset, two on one that sets no checks, the whole gate on the first", () => {
+    const result = runLand(["12", "--sanitize"], { ANA_HOSTS: hosts, ANA_CHECK_HOST: undefined });
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("proving on alpha (1), beta (2) at once");
+    expect(result.stdout).toContain("proving on alpha (1), unset (2), beta (3) at once");
     expect(wherePassesRan(gateLog)).toContain(`${upper} alpha`);
     expect(statuses(COMMIT)).toContain(`success ${upper}`);
   });
@@ -498,7 +496,7 @@ describe("bun run land", () => {
   });
 
   it("proves at the one place an explicit ANA_CHECK_HOST names, whatever the host list holds", () => {
-    const result = runLand(["12", "--sanitize"], { ANA_HOSTS: twoHosts, ANA_CHECK_HOST: "here" });
+    const result = runLand(["12", "--sanitize"], { ANA_HOSTS: hosts, ANA_CHECK_HOST: "here" });
     expect(result.status).toBe(0);
     expect(result.stdout).not.toContain("proving on");
     // Every pass inherits the caller's ANA_CHECK_HOST, which the runner reads as this machine.
@@ -511,7 +509,7 @@ describe("bun run land", () => {
     const repo = join(fixture, "hosts-repo");
     mkdirSync(repo);
     execTextSync("git", ["init", "-q"], { cwd: repo });
-    writeFileSync(join(repo, ".env.runs"), `ANA_HOSTS='${twoHosts}'\n`);
+    writeFileSync(join(repo, ".env.runs"), `ANA_HOSTS='${hosts}'\n`);
     const landing = JSON.stringify(join(import.meta.dir, "..", "tools", "runtime", "landing.ts"));
     const where = (jobs: string) =>
       spawnTextSync(
@@ -522,7 +520,9 @@ describe("bun run land", () => {
         ],
         { cwd: repo, env: { ...Bun.env, ANA_HOSTS: "", ANA_CHECK_HOST: undefined } },
       ).stdout.trim();
-    expect(where("undefined")).toBe('[{"remote":"alpha","slots":1},{"remote":"beta","slots":2}]');
+    expect(where("undefined")).toBe(
+      '[{"remote":"alpha","slots":1},{"remote":"unset","slots":2},{"remote":"beta","slots":3}]',
+    );
     expect(where("1")).toBe('[{"remote":"alpha","slots":1}]');
   });
 

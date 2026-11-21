@@ -22,7 +22,8 @@ import { pooled } from "#src/meta/pool.ts";
 import { runtimeProcess, warn } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { asked, answerOf } from "./hosts.ts";
-import { benchesOf, type Host, hostNamed, hostsOf } from "./host-config.ts";
+import { type Bench, benchesOf, type Host, hostNamed, hostsOf } from "./host-config.ts";
+import { homedir } from "#src/meta/os.ts";
 import { quoted, rsync, sideOf, sshScript } from "./host-command.ts";
 import { runTextOrThrow } from "#src/meta/subprocess.ts";
 import { hold, release } from "#src/meta/holder.ts";
@@ -377,6 +378,13 @@ export async function syncRuns(
   return [...brought.filter((log) => log !== null), ...left.map((run) => run.path)];
 }
 
+/** Where this machine holds a benchmark's records: its store where it is rolled here, otherwise the
+ *  copy `fetchBenches` keeps in `data/bench/<benchmark>`. */
+export const recordsHere = ({ name, host, store }: Pick<Bench, "name" | "host" | "store">): string =>
+  host === undefined
+    ? store.replace(/^~\//u, `${homedir()}/`)
+    : join(dirname(archiveOf(runtimeProcess.cwd())), "bench", name);
+
 /**
  * Copy each benchmark's score store (`score.ts --out`) from the machine that rolls it into
  * `data/bench/<benchmark>` here: every task's rollout and judgement, which `score.ts table` reads
@@ -389,9 +397,10 @@ export async function syncRuns(
  */
 export async function fetchBenches(): Promise<string[]> {
   const copied: string[] = [];
-  for (const { name, host, store } of benchesOf()) {
+  for (const bench of benchesOf()) {
+    const { name, host, store } = bench;
     if (host === undefined) continue;
-    const into = join(dirname(archiveOf(runtimeProcess.cwd())), "bench", name);
+    const into = recordsHere(bench);
     mkdirSync(into, { recursive: true });
     // rsync reads a relative path from the home folder there, and a quoted `~` as a folder's name.
     const from = `${sideOf(host, store.replace(/^~\//u, ""))}/`;

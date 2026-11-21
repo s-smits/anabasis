@@ -30,12 +30,11 @@ const ATOMIC = new Set([
  *
  * Each was written out inside `create(context)` in several rules, and none reads `context`, so
  * the copies were never anything but copies: `onlyStatement` three times byte for byte, the
- * visitor twice. A line-based copy scan reached them on 2026-09-20 once it stopped requiring six
- * identical lines; the syntax-based scan reached the enclosing body, the single `const`, the
- * one-argument method call and the function argument in two rules each on 2026-09-22. The four
- * node facts below them (a member by its written name, an identifier's name, a `const` and a call
- * of one argument) stood in three to eleven files each until `tree/no-unowned-fact` read them
- * on 2026-11-05.
+ * visitor twice. A line-based copy scan reaches them once it stops requiring six identical lines,
+ * and the syntax-based scan reaches the enclosing body, the single `const`, the one-argument
+ * method call and the function argument in two rules each. The four node facts below them (a
+ * member by its written name, an identifier's name, a `const` and a call of one argument) would
+ * otherwise stand in three to eleven files each, which `tree/no-unowned-fact` reports.
  */
 
 /**

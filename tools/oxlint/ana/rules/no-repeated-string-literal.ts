@@ -73,8 +73,8 @@ import { ownedElsewhere } from "../shared/literal-owner.ts";
 /**
  * Spellings of one string in a file below which repetition is ordinary, by the file's job.
  *
- * A suite naming one fixture in twenty cases is doing its job, which is why this rule skipped
- * test files entirely until 2026-09-20. Skipping them also skipped the case the floor exists for:
+ * A suite naming one fixture in twenty cases is doing its job, which is why test files take a
+ * higher floor rather than being skipped. Skipping them would skip the case the floor exists for:
  * `5bc9988:test/run-triage.test.ts` spells one campaign directory 23 times, and when the fixture moved,
  * 23 lines had to move with it. Measured over the whole test corpus at a floor of 12, the rule
  * finds the files where the repetition is a fixture nobody named and nothing else.

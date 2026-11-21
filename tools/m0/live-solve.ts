@@ -7,8 +7,8 @@
  *
  * Without `--live` no model is called. The condition is built and printed, and then what the solver
  * would read: its system prompt whole and its tools by name, built on a mounted wall as a solve
- * builds them. Until 2026-10-09 both were held to what the stored solve read, row by row, which was
- * milestone 0's parity with v1's sweep. A v2 solver is pi's coding agent and no longer v1's Built
+ * builds them. They are not held to what the stored solve read, row by row: a v2 solver is pi's
+ * coding agent and no longer v1's Built
  * shell (`src/tools/coding.ts`, `src/solver/prompt.ts`), so its tools and its prompt part from
  * the sweep's by design, and only what still is v1's is held to it: the first turn's template, the
  * nudge and the turn cap, against the digests and `maxTurns` v1 recorded. With `--live` the solve runs, and

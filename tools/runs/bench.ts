@@ -1,7 +1,11 @@
 /**
- * `bun run runs outside <run> [--bench <name>] [--as <label>] [--harness <kept>] [--login N] [--wait] [--yes]`
+ * `bun run runs bench <run> [--bench <name>] [--as <label>] [--harness <kept>] [--login N] [--wait] [--yes]`
+ * `bun run runs bench [--bench <name>] [--store <dir>] [--host <name>]`
  *
- * One command for a run's outside read (run-improvement-campaign, "The outside aim"): the run's
+ * One verb for the outside benchmarks. With no run it scores each read whose reference and Starter
+ * are both judged, once, in the records this machine holds or those of the host `--host` names
+ * (`scoreDone`, `bench-scores.ts`); the alerts job runs it after every look. With a run it is one
+ * command for that run's outside read (run-improvement-campaign, "The outside aim"): the run's
  * newest promoted harness, or the kept harness `--harness` names by its letter or whole digest, is
  * written for the machine that rolls the benchmark, carried into the score store there, proved by a
  * dry run of each arm, and rolled with a fresh Starter behind it. `runs pause <run> --after <word>
@@ -42,8 +46,9 @@ import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src
 import { runTextOrThrow } from "#src/meta/subprocess.ts";
 import { readControllers } from "./code.ts";
 import { quoted, shellOn, shellPath, treeBun } from "./host-command.ts";
-import { type Bench, benchesOf, type Host } from "./host-config.ts";
-import { holders, namedIn } from "./hosts.ts";
+import { type Bench, benchesOf, type Host, hostNamed } from "./host-config.ts";
+import { scoreDone } from "./bench-scores.ts";
+import { holders, namedIn, verbOn } from "./hosts.ts";
 import { roomFor } from "./keep.ts";
 import { allowedLogins, asGathered, type Env, liveEverywhere } from "./logins.ts";
 import { logEvents, Misused, packOf, readNamed, runs } from "./registry.ts";
@@ -100,19 +105,19 @@ export function settingsOf(
   named?: string,
 ): Pick<Plan, "bench" | "runner" | "store" | "sitting"> {
   const benches = benchesFor(run, env, named);
-  const [bench] = benches;
+  const [only] = benches;
   if (benches.length > 1) {
     throw new Error(`${run}: ${benches.map(({ name }) => name).join(", ")} read it; name one with --bench`);
   }
-  if (bench === undefined) {
+  if (only === undefined) {
     const which = named === undefined ? `reads pack ${packOf(run)}` : `is named ${named}`;
     throw new Error(`${run}: no benchmark ${which} (EVAL_RUNNER, .env.runs.example)`);
   }
   return {
-    bench: bench.name,
-    runner: bench.host,
-    store: shellPath(bench.store),
-    sitting: shellPath(bench.sitting),
+    bench: only.name,
+    runner: only.host,
+    store: shellPath(only.store),
+    sitting: shellPath(only.sitting),
   };
 }
 
@@ -250,10 +255,10 @@ export function evalOf(
 export async function readEach(reads: readonly (readonly string[])[]): Promise<void> {
   for (const words of reads) {
     if (!words.includes("--yes")) {
-      await outside(words);
+      await bench(words);
       continue;
     }
-    const command = [capturedExecPath, join(import.meta.dir, "cli.ts"), "outside", ...words];
+    const command = [capturedExecPath, join(import.meta.dir, "cli.ts"), "bench", ...words];
     const child = capturedSpawn(command, {
       detached: true,
       stdin: "ignore",
@@ -321,14 +326,16 @@ async function planOf(
   return { run, label, harness, login, ...exporter, ...settings, place, python, held, wait: values.wait };
 }
 
-/** `bun run runs outside`. */
-export async function outside(args: readonly string[]): Promise<void> {
+/** `bun run runs bench`. */
+export async function bench(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],
     allowPositionals: true,
     options: {
       as: { type: "string" },
       bench: { type: "string" },
+      host: { type: "string" },
+      store: { type: "string" },
       harness: { type: "string" },
       login: { type: "string" },
       wait: { type: "boolean", default: false },
@@ -336,7 +343,15 @@ export async function outside(args: readonly string[]): Promise<void> {
     },
   });
   const [run, ...rest] = positionals;
-  if (run === undefined || rest.length > 0 || !isSafePathSegment(run)) throw new Misused();
+  if (run === undefined && values.host !== undefined) {
+    const passed = args.filter((word, at) => word !== "--host" && args[at - 1] !== "--host");
+    runtimeProcess.exitCode = await verbOn(hostNamed(values.host), ["bench", ...passed]);
+    return;
+  }
+  if (run === undefined) return await scoreDone(values);
+  if (rest.length > 0 || !isSafePathSegment(run) || values.host !== undefined || values.store !== undefined) {
+    throw new Misused();
+  }
   const plan = await planOf(run, values);
   if (plan === null) return;
   const { label, held } = plan;

@@ -32,7 +32,7 @@ import { loadwatch } from "./loadwatch.ts";
 import { active, logins } from "./logins.ts";
 import { continueRun, launch, pause } from "./manage.ts";
 import { copy, fetch, move } from "./move.ts";
-import { evalOf, outside, readEach } from "./outside.ts";
+import { bench, evalOf, readEach } from "./bench.ts";
 import { runsStatus, watch } from "./pulse.ts";
 import { source } from "./receipt.ts";
 import { rehearse } from "./rehearse.ts";
@@ -202,10 +202,10 @@ const GROUPS = {
       file: "rehearse.ts",
       says: "run a round over a seed with a script in each model seat",
     },
-    outside: {
-      run: outside,
-      file: "outside.ts",
-      says: "export a run's reference, carry it to the benchmark's machine and roll it beside a Starter",
+    bench: {
+      run: bench,
+      file: "bench.ts",
+      says: "roll a run's reference beside a Starter on its outside benchmark, or score each finished read",
     },
   },
 } satisfies Record<string, Record<string, Verb>>;

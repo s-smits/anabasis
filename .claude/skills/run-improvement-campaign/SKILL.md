@@ -518,13 +518,13 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    Starter queued behind it.
 
    ```sh
-   bun run runs outside <campaign> [--bench <name>] [--as <label>] [--harness <kept>] [--login N] [--wait]   # the plan; --yes runs it
+   bun run runs bench <campaign> [--bench <name>] [--as <label>] [--harness <kept>] [--login N] [--wait]   # the plan; --yes runs it
    bun run runs pause <campaign> --after reported --eval --yes   # the pause, then the same read with --wait on each benchmark
    ```
 
    Without `--yes` it starts nothing, so the prediction file is written from its plan first; behind
    `--eval`, which starts the read unattended once the run rests, it is written before the
-   reference's first task is judged, about twenty minutes in. The head of `tools/runs/outside.ts`
+   reference's first task is judged, about twenty minutes in. The head of `tools/runs/bench.ts`
    says which harness and label it takes by default, how it waits for the machine, and what it does
    with a label the store holds or a pack two benchmarks read.
 4. **Run, detached, on the operator's standing word**, which covers the moment and the size

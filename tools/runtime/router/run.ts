@@ -116,7 +116,7 @@ function listed(choice: string): { hosts: readonly Host[]; benches: readonly Ben
  * Whether a benchmark's arm holds `host`: an arm's rollouts are read against each other at equal
  * load, so a check beside them moves what they score. On 20 November 2026 a gate sent to such a
  * machine during a sitting loaded it until it stopped answering, and the arm was rolled again. A
- * sitting whose `status` does not answer `idle` on its first line (`outside.ts`) holds it, a silent
+ * sitting whose `status` does not answer `idle` on its first line (`bench.ts`) holds it, a silent
  * one too.
  */
 async function armHolds({ name, ssh }: Host, benches: readonly Bench[]): Promise<boolean> {

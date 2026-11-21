@@ -294,7 +294,8 @@ from `gh pr view <n> --json headRefOid` at the launch. Run it only on the operat
 
 Replace GitHub's generated notes (`gh release edit vX.Y.Z --notes-file <file>`) with 550 to 800
 words shaped like the last releases (`gh release view <tag>`): at most three opening sentences (what
-changed, whether the minor version moves and why, run-improvement-campaign, "A run proves the
+changed, whether the release is small or big and why (`AGENTS.md`, section 11), run-improvement-
+campaign, "A run proves the
 release", and whether a fresh campaign ran on the tree); "Includes **N PRs from #a to #b**, merged
 at `<sha>`."; three or four bold subject groups, a bullet each for changes to what a run measures,
 with one or two bold counts and their denominators and the pull requests in brackets; every rule 3

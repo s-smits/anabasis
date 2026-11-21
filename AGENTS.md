@@ -430,7 +430,14 @@ and commit cited and each local change listed.
 
 ### The stack and pull requests
 
-PRs stack, and a release lands one chain. Expand the open PR a change belongs to, or put a new one
+PRs stack, and a release lands one chain. A release is **small** (`0.x.y` to `0.x.y+1`) or
+**big** (`0.x` to `0.x+1.0`). A small one lands any chain whose proof passes. A big one needs
+something worth announcing, shown in a fresh run's log rather than claimed: a new or rewritten
+mechanism exercised live at the release's top, and a count of one of section 1's factors that moved
+against the last big release's runs by more than the spread between runs, which its notes lead
+with. A release that changes what a run measures without such a count is small, and its notes say
+what the seats now read or how a comparison now decides; which runs compare is read from each run's
+commit (`bun run runs source`), never from the version. Expand the open PR a change belongs to, or put a new one
 on the top. Read `stack-pr` and the stack (`bun .claude/skills/stack-pr/scripts/stack.ts`) before
 you branch and again before you push, since other sessions move it. Moving your own PR onto the top
 is yours; another session's PR, worktree or run changes only on the operator's word. Use one

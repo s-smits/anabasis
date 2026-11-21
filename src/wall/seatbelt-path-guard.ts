@@ -22,7 +22,7 @@
  * these rules close the rest: a command may also write in a folder named as `mktemp` names one in
  * the per-user temporary directory (`userTempRules`), so a denied root lying in such a folder, as a
  * rehearsal's or a test's repository does, has an ancestor the command can rename. With the rules
- * left out, `test/solve-sandbox.test.ts`'s rename returned the canary (11 November).
+ * left out, `test/solve-sandbox.test.ts`'s rename returns the canary.
  *
  * Two deliberate departures from upstream:
  * - No `(with message ...)` log tag. Upstream tags its rules so a log stream can attribute

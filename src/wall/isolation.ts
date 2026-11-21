@@ -164,11 +164,10 @@ export function toolTreeSearchDirs(toolTree: string): string[] {
  * wholesale in a cell that inherited the launcher's PATH and found a different version first.
  *
  * Next comes the folder that holds the executable the host runs on, its real path, so that a
- * command's `bun` is that executable wherever it is installed. Until 19 October only Linux put a
- * runtime folder there, taken from the read grants, which leave out a prefix under `/usr` or `/opt`;
- * on a macOS runner whose `/opt/homebrew/bin` held Bun 1.1.34 a command's `bun` was that one, and
- * started in the seat it read no environment: no `TMPDIR`, `/tmp` refused, and no `bun` on its
- * PATH. `executable` and `fallback` are the host's own but where a test names others.
+ * command's `bun` is that executable wherever it is installed, on every system; the read grants
+ * leave out a prefix under `/usr` or `/opt`, so an older Bun there would otherwise be a command's
+ * `bun`, and start with no environment of the seat's: no `TMPDIR`, `/tmp` refused, and no `bun` on
+ * its PATH. `executable` and `fallback` are the host's own but where a test names others.
  */
 function commandSearchPath(
   toolTree: string | null,
@@ -210,8 +209,8 @@ function commandIsolationEnvironment(dirs: CommandDirectories): CommandIsolation
  *
  * `manifests` are the package.json paths between the tree and the root that closes it, which
  * Darwin reopens one by one: Node takes a `.js` program's module type from the nearest one above
- * it, and a refused read of one ends the program at startup. On esp32 (12 October) every program of
- * a kept tree with none of its own died so in 6 of 6 practice solves, on the checkout's. That one
+ * it, and a refused read of one ends the program at startup, so every program of a kept tree with
+ * none of its own would die so on the checkout's. That one
  * stays closed: opened, its `"type": "module"` would make the same program an ES module, which it
  * was not on the Builder's bench outside the checkout. A campaign's folder holds an empty one
  * (`openCampaign`), so the walk ends there as it ends on the bench with none. Linux needs none: its
@@ -257,12 +256,11 @@ function darwinCommandProfile(
   const { roots: readAllows, manifests } = commandReadAllows(base, readDenies, dirs);
   // The host's shared temporary folders. `mktemp` and Python follow `TMPDIR`, which is the seat's
   // own folder, and what a command spells as `/tmp/...` outright landed in a folder every seat of
-  // every campaign on the host shares: on 10 October reference solves of two campaigns ran a
-  // PHREEQC that a third campaign's Builder had installed under `/tmp` four hours before. Linux
-  // gives each command an empty `/tmp` of its own; a Seatbelt rule cannot, so Darwin closes it, and
-  // such a write is refused where Linux would keep it private. `/var/tmp` is the same, and was left
-  // open until 12 October: a v1 run's folder there held a held-out task's text and a graded solve of
-  // it, and an Examiner listed and read inside it. The per-user one, `confstr`'s, is the same
+  // every campaign on the host shares, so reference solves of one campaign could run a program
+  // another campaign's Builder installed there. Linux gives each command an empty `/tmp` of its
+  // own; a Seatbelt rule cannot, so Darwin closes it, and such a write is refused where Linux would
+  // keep it private. `/var/tmp` is the same, since an old run's folder there can hold a held-out
+  // task's text and a graded solve of it. The per-user one, `confstr`'s, is the same
   // again but for the files and folders `mktemp` and Apple's `/usr/bin` shims make in it, which
   // take it whatever `TMPDIR` says (`userTempRules`).
   const userTemp = userTempRules();
@@ -274,12 +272,12 @@ function darwinCommandProfile(
     ...seatbeltBaseRules(base),
     // The base allows `process-info*` on the command's own processes, which leaves another's to the
     // default, and under that default a walled `sysctl(KERN_PROCARGS2)` still returned another
-    // process's command line (probe, 11 November): another seat's `bash -c` text, a held-out task's
+    // process's command line, as a probe showed: another seat's `bash -c` text, a held-out task's
     // among them, is what that would read. Named outright, the deny holds.
     "(deny process-info* (target others))",
     // launchd answers every process of the user, walled or not: a walled `launchctl kickstart`
     // started a job the command had not made, unconfined, and `launchctl disable` switched it off
-    // (probe, 11 November). No profile operation gates those requests, so the program that sends
+    // (as a probe showed). No profile operation gates those requests, so the program that sends
     // them is refused, and the system kills a copy; one speaking launchd's own protocol is heard.
     '(deny process-exec* (literal "/bin/launchctl"))',
     // Reads open by default, with the repository and its worktrees, a stored pack and the home
@@ -289,7 +287,7 @@ function darwinCommandProfile(
     // A seat's command may reach the network, so it can install what its task needs; a check may
     // not (`src/kernel/verify.ts`). A Unix socket is a door to whatever listens on it, unconfined:
     // an ssh control master's runs commands on the hosts it reaches, and a walled connect reached a
-    // VPN daemon's control socket and the print server's (probe, 11 November). So with the network
+    // VPN daemon's control socket and the print server's (as a probe showed). So with the network
     // a command reaches the one the resolver answers on, without which no name resolves, and with
     // or without it those in its own root, as a check on Linux does; the later rule wins.
     ...(base.network
@@ -310,8 +308,8 @@ function darwinCommandProfile(
     ...sbRule("deny file-read* file-read-metadata file-write*", "subpath", sharedTmp),
     ...userTemp.rules,
     // But for the file Apple's `diff` stages a pipe in, `/tmp/diff.` and eight random characters,
-    // whatever `TMPDIR` says: without it every `diff <(a) <(b)` failed, 130 times in seats' commands
-    // in the month to 11 November where Linux ran each. A command that cannot list `/tmp` finds
+    // whatever `TMPDIR` says: without it every `diff <(a) <(b)` fails, which seats write often and
+    // Linux runs. A command that cannot list `/tmp` finds
     // another's such file only by its random name, as in `userTempRules`.
     `(allow file-read* file-read-metadata file-write* (require-all (regex #"^/private/tmp/diff[.]${"[A-Za-z0-9]".repeat(8)}$") (vnode-type REGULAR-FILE)))`,
     ...sbRule("allow file-read-metadata", "literal", ["/tmp", "/private/tmp"]),
@@ -425,7 +423,7 @@ export function shellQuote(value: string): string {
  * as durable's worker does a seat's shell commands (`src/tools/env.ts`): pi names its tool bash and
  * models write Bash. Under `/bin/sh`, 16 of 29,694 recorded solver commands failed on shell syntax
  * that Bash parses (7 process substitutions, 4 `time ( … )` under Linux's dash, 5 others). The
- * operator chose the system's bash on 25 October; nothing is shipped or installed for it.
+ * system's bash is the operator's choice; nothing is shipped or installed for it.
  */
 export function stageCommandIsolation(
   policy: CommandIsolationPolicy,

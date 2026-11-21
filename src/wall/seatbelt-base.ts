@@ -4,8 +4,8 @@
  * `f7a0f19fd:src/sandbox/macos-sandbox-utils.ts` (`generateSandboxProfile`, the array before its
  * network rules), Apache-2.0, at f7a0f19fd2 (@anthropic-ai/sandbox-runtime 0.0.82).
  *
- * The wall ran on `(allow default)` with path denies until this copy, and on 11 November a walled
- * command was measured getting out of it four ways: `open` on an app it wrote in its own root had
+ * Under `(allow default)` with path denies, a walled command was measured getting out four ways:
+ * `open` on an app it wrote in its own root had
  * LaunchServices start that app unconfined, and the app read a file every path rule denied; `nc -U`
  * reached an unconfined listener's socket in a denied folder; `pbpaste` returned the operator's
  * clipboard; and `defaults read` returned the home's preferences, which `cfprefsd` reads on the
@@ -21,7 +21,7 @@
  * - `enableWeakerNetworkIsolation` is the seat's network setting: a command that may reach the
  *   network gets `trustd`, without which Go's TLS refuses every certificate, and
  *   `TrustEvaluationAgent`, without which Apple's `/usr/bin/curl` refuses every certificate (found by
- *   removing services from launchd's whole list until `curl https://` failed, 11 November).
+ *   removing services from launchd's whole list until `curl https://` failed).
  * - `(allow sysctl*)` instead of upstream's list of about sixty names, which is what a JavaScript
  *   runtime reads: `sysctl -n hw.ncpu` resolves its name by a write to `sysctl.name2oid`, and Apple's
  *   `java` launcher, which finds its runtime through `java_home`, reads more again. An unprivileged

@@ -130,8 +130,8 @@ function darwinAnswer(...command: string[]): string | undefined {
  * another process's, and stays closed with everything in it, as the directory's listing does, so a
  * folder of the grant's shape is found only by its random name.
  *
- * Until 12 October every child of the directory was granted, folders and all, so a command read and
- * wrote every other process's folder there: a v1 run's, another agent's scratch, a test suite's.
+ * Granting every child of the directory, folders and all, would let a command read and write every
+ * other process's folder there: an old run's, another agent's scratch, a test suite's.
  * `vnode-type` keeps the first grant to files, and Seatbelt's regex takes no counted repetition, so
  * the names are spelled out class by class. The directory is asked of the system rather than of the
  * environment, once per process, since `confstr` is what those tools read and `TMPDIR` does not move
@@ -165,11 +165,11 @@ export function userTempRules() {
  * `shims` is here for pyenv and rbenv, which put no binaries in `bin` at all.
  *
  * What the host's user installed goes ahead of what the operating system ships, as it does in that
- * user's own shell. Until 22 October the system's folders came first, so a bare `python3` was
- * Apple's 3.9.6 from the Command Line Tools on macOS and Ubuntu's 3.10 on Linux, while the 3.13 and
- * 3.14 installed through Homebrew, zerobrew and `/usr/local` were reachable only by their versioned
- * names; Apple's 3.9 no longer receives security fixes, and its pip 21.2.4 cannot install much of
- * what a solver asks it for. Homebrew and zerobrew keep each Python's bare `python` in its `libexec`.
+ * user's own shell. With the system's folders first, a bare `python3` would be the old Python the
+ * operating system ships, while newer ones installed through Homebrew, zerobrew and `/usr/local`
+ * would be reachable only by their versioned names; the system's Python may no longer receive
+ * security fixes, and its pip cannot install much of what a solver asks it for. Homebrew and
+ * zerobrew keep each Python's bare `python` in its `libexec`.
  */
 export function toolchainPathDirs(): string[] {
   // Both /opt entries are readable under the open read default, so neither needs a read rule of its
@@ -202,8 +202,8 @@ export function toolchainPathDirs(): string[] {
  * on a seat's path: `homedir()`, which is `HOME`, or the account's home from the user database where
  * `HOME` is unset or empty. A relative `HOME` comes back as it is and resolves against the working
  * directory, so the wall closed that folder in the home's place, leaving the operator's home open to
- * every seat, and put a folder there first on a seat's path, where a `python3` the seat planted ran
- * (a layer walk under the wall, 7 November 2026). Undefined then, so the wall refuses to start.
+ * every seat, and put a folder there first on a seat's path, where a `python3` the seat planted
+ * would run. Undefined then, so the wall refuses to start.
  */
 export function closedHome(): string | undefined {
   const home = homedir();
@@ -212,8 +212,8 @@ export function closedHome(): string | undefined {
 
 /**
  * The folder of the Python `bun run runs sync` keeps on a host, first on the wall's path where it
- * exists, so a machine that never pinned one finds what it always found. On 5 November the hosts'
- * `python3` was moved by hand through three package managers. It sits under `~/.local`, which the
+ * exists, so a machine that never pinned one finds what it always found, and a seat's `python3`
+ * does not move when someone changes the host's package managers. It sits under `~/.local`, which the
  * wall already lets a seat read (`darwinToolchainInstallRoots`).
  */
 export function pinnedPythonDir(home: string): string {
@@ -230,12 +230,10 @@ export function pinnedPythonDir(home: string): string {
  * sits readable on disk. `RUSTUP_HOME` puts rustup back on its real installation, which it may read
  * and may not write.
  *
- * Python's user base stays in the seat's home. It was pointed at the real `~/.local` until
- * 21 October, so `pip install` and `pip install --user` were refused there ("Operation not
- * permitted: '~/.local/lib/python'") wherever that directory existed. In the first DeepSeek
- * campaign on a macOS host, 7 of 10 solves ran pip and 4 were refused so, then spent turns finding
- * `--target`. A solve on the Linux host would also have seen the 609 packages installed there by
- * hand, which one on macOS could not.
+ * Python's user base stays in the seat's home. Pointed at the real `~/.local`, `pip install` and
+ * `pip install --user` would be refused there ("Operation not permitted: '~/.local/lib/python'")
+ * wherever that directory exists, and solves would spend turns finding `--target`. A solve on one
+ * host would also see packages installed there by hand, which one on another host could not.
  *
  * `SDKROOT` is the same for a Darwin compiler. `/usr/bin/cc` is an xcrun shim that names the SDK for
  * the compiler it starts; with the developer directory ahead of `/usr/bin` on PATH no shim runs, and

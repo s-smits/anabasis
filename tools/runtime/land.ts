@@ -686,7 +686,7 @@ async function landTo(root: string, target: number, mode: Mode, board: Board): P
     who: "land",
     places: mode.places,
     stop: watch.signal,
-    say: sayingPulls(proofs, landing.pulls, say),
+    say: sayingPulls(proofs, landing.pulls.slice(lowest), say),
     mark: (commit, state, description) => {
       if (state === "pending") {
         checkListed(root, target, landing);

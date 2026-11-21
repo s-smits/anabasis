@@ -3,8 +3,8 @@
  * OpenRouter on `OPENROUTER_API_KEY`, each OpenAI-compatible endpoint of `ENDPOINTS` on the key its
  * entry names, and Claude Code on `CLAUDE_CODE_OAUTH_TOKEN`, or, as the provider `claude-api`, on
  * `ANTHROPIC_API_KEY`. The Builder and the Built Harness both resolve their models here.
- * Codex's terminal response names the model that served it, which pi's normalisation drops, so
- * job-fresh-gpt-v071 recorded no served model on any of its 724 turns (26 October). `codexStream`
+ * Codex's terminal response names the model that served it, which pi's normalisation drops, so a
+ * Codex campaign would record no served model on any turn. `codexStream`
  * keeps it as `responseModel` for the session recorder and the bill. Pi's Codex usage cost is a
  * catalogue calculation rather than the backend's bill, so these turns report no backend cost.
  */
@@ -42,7 +42,7 @@ import type { ConversationRetryPolicy } from "@earendil-works/pi-durable";
 
 const CODEX = "openai-codex";
 
-/** DeepSeek V4.1 Flash of 17 October as DeepInfra serves it at fp8, on either route: its list price
+/** DeepSeek V4.1 Flash as DeepInfra serves it at fp8, on either route: its list price
  *  per million tokens and its output limit. */
 const DEEPSEEK_FLASH = {
   cost: { input: 0.098, output: 0.294, cacheRead: 0.00294, cacheWrite: 0 },
@@ -54,8 +54,8 @@ const DEEPSEEK_FLASH = {
  * pi's compat for that base, on the key the environment holds under `key`. A campaign names a model
  * `<id>/<model id>`; the prices are the endpoint's own per million tokens, which the meter bills.
  * DeepInfra serves the DeepSeek release that OpenRouter is pinned to (`openrouter`), at the same
- * discounted list price, billed to DeepInfra's own account (29 October: an OpenRouter account out of
- * credit ended a campaign while the DeepInfra account was funded).
+ * discounted list price, billed to DeepInfra's own account, so that one account out of credit does
+ * not end a campaign while the other is funded.
  */
 const ENDPOINTS: readonly {
   readonly id: string;
@@ -182,9 +182,9 @@ function endpoint({ id, baseUrl, key, models }: (typeof ENDPOINTS)[number]): Pro
 }
 
 /**
- * OpenRouter as pi serves it, with DeepSeek V4.1 Flash of 17 October held to one endpoint: pi's own
+ * OpenRouter as pi serves it, with DeepSeek V4.1 Flash held to one endpoint: pi's own
  * entry for the release, with what OpenRouter lists differently for DeepInfra fp8, its prices per
- * million tokens and output limit, and that endpoint alone, with no fallback (operator, 21 October).
+ * million tokens and output limit, and that endpoint alone, with no fallback (the operator's choice).
  * OpenRouter otherwise picks one of the release's 26 endpoints for each call, at fp4, fp8 or an
  * unnamed quantization, so two solves of one model could run on different weights, and pi's entry
  * prices it at OpenRouter's list price. The study's solver (`studies/shared/pi-solve.ts`) serves its

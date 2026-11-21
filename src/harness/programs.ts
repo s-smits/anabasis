@@ -2,12 +2,11 @@
  * The programs a harness installed: by the names that run them, for the solver's prompt, the
  * Examiner's shell and the Builder's preview; and each with what it says of itself, for the page.
  *
- * 0 of the 193 harnesses kept in this repository's worktrees by 19 October declared a tool in
- * `agent/tools.ts`: each gave the solver its computation as programs under `.toolchain/`, named in
- * its guide's prose alone. A program's account is what opens its file past a shebang: comment lines,
- * a docstring or a block comment, or, for a launcher that says nothing, the account of the file of
- * its name under `lib/`. Of the 1,386 programs kept by 19 October, comment lines alone gave 446 an
- * account and this reading 1,281; 42 of the rest are binaries.
+ * A harness gives the solver its computation as programs under `.toolchain/`, named in its guide's
+ * prose alone. A program's account is what opens its file past a shebang: comment lines, a
+ * docstring or a block comment, or, for a launcher that says nothing, the account of the file of
+ * its name under `lib/`, which gives most kept programs an account where comment lines alone give
+ * about a third.
  *
  * Nothing here runs a program or reads past `HEAD_BYTES` of it, and an account is read only from a
  * file inside the tree and outside `correctness-model/`: a program linked to a host file, or to the

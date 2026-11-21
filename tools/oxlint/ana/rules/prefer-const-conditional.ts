@@ -18,8 +18,8 @@ import { everyStatementList, onlyStatement, plainAssignment } from "../shared/st
  * statements, so a third branch can be added later without anyone noticing that the name now
  * means three things.
  *
- * The commit lane found this in `23086a056` and `7a4387da1`, and `no-useless-assignment` (now
- * on, five sites) catches the neighbouring case where the first value is never read at all.
+ * Recorded simplify passes made this cut twice, and `no-useless-assignment` (on, five sites)
+ * catches the neighbouring case where the first value is never read at all.
  * This one is the case where it *is* read: the initialiser is the default.
  *
  * The second spelling is the same decision with no default to start from:

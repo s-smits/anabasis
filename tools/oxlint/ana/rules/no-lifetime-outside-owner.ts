@@ -11,15 +11,13 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
  * second owner.
  *
  * The rule was written in v1, where a second launch owner stood beside `stageCommandIsolation`
- * for the Builder's isolated commands, and the record it keeps is v1's.
- * On 2026-09-15 an `AbortSignal` threaded into the Builder's command runner was refused twice
- * ("why do we even need to kill", then "one layer higher") because the spawner already killed
- * the group on timeout and in `finally`, and the leak was the controller recording its terminal
- * before its session had stopped. The repair that landed (v1's `c4bd09b88`) put the reaping of
- * the group on exit inside `stageCommandIsolation`, on the Darwin launch only, at a net cost of
- * −1 production line.
- * v2 copied `stageCommandIsolation` and `src/meta/subprocess.ts` and left the Builder's spawner
- * behind, so the owner list below names two files and the message one owner.
+ * for the Builder's isolated commands. There an `AbortSignal` threaded into the Builder's command
+ * runner was refused, because the spawner already killed the group on timeout and in `finally`,
+ * and the leak was the controller recording its terminal before its session had stopped. The
+ * repair put the reaping of the group on exit inside `stageCommandIsolation`, on the Darwin
+ * launch only, for one production line fewer. v2 copied `stageCommandIsolation` and
+ * `src/meta/subprocess.ts` and left the Builder's spawner behind, so the owner list below names
+ * two files and the message one owner.
  *
  * Every hand-rolled kill pays the same three costs. It races the owner's own teardown, so two
  * signals arrive and the second one's failure means nothing. It kills the process and not its

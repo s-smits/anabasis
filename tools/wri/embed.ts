@@ -2,9 +2,8 @@
  * How a reader of the pulse turns a log's prose into vectors: the pinned local model, and a store that
  * a kill leaves usable. Only `tools/wri/` imports it, so its dependency stays out of every seat's reach.
  *
- * Kept from v1 (`5bc9988:.claude/skills/whole-run-investigation/classifier/`): the pin and two failures
- * that taught something. `40e540bdd` embeds only what no earlier read embedded, and `495c4cde2` finishes
- * offline and with a store it cannot write.
+ * Kept from v1's investigation classifier: the pin, and two lessons. A read embeds only what no
+ * earlier read embedded, and it finishes offline and with a store it cannot write.
  *
  * Progress survives a kill: the vectors go down after every batch, and the next read embeds the rest.
  * A reader that calls this marks itself `embeds`, which `derive --no-embed` leaves out; no moment names
@@ -43,7 +42,7 @@ const MODEL = "Xenova/bge-small-en-v1.5";
 const REVISION = "ea104dacec62c0de699686887e3f920caeb4f3e3";
 /** What a whole cached model holds. Only then does it load from its folder: the library looks for a
  *  hub model's files at its main revision whatever revision is asked for, so offline it built a null
- *  tokenizer from a whole cache (`495c4cde2`), and a folder a cut download left is not a model. */
+ *  tokenizer from a whole cache, and a folder a cut download left is not a model. */
 const MODEL_FILES = ["config.json", "tokenizer.json", "tokenizer_config.json", "onnx/model.onnx"];
 /** A cut download leaves its part behind, up to 133 MB a try: `FileCache.put` (transformers.js
  *  4.2.0) writes `<file>.tmp.<pid>.<suffix>` and renames it into place, so the part is its writer's

@@ -11,10 +11,9 @@ import { asSubject, identifierName, onlyStatement, statementBelow } from "../sha
  *     for (const row of rows) if (row.runId === runId) return row;      // rows.find(…)
  *     for (const row of rows) if (!row.settled) return false;           // rows.every(…)
  *
- * The commit lane found four of the recorded simplify passes making this cut: `10cff319e`,
- * `9d05d17d0`, `7a4387da1` and `44213a5ff`, the last of which also turned `filter(p).at(-1)`
- * into `findLast`. `unicorn/prefer-array-find` is on the built-in list and reports a different
- * slice, `xs.filter(p)[0]`; it has nothing to say about a written-out loop.
+ * Four of the recorded simplify passes made this cut by hand, one of which also turned
+ * `filter(p).at(-1)` into `findLast`. `unicorn/prefer-array-find` is on the built-in list and
+ * reports a different slice, `xs.filter(p)[0]`; it has nothing to say about a written-out loop.
  *
  * Five shapes keep their loop, each because the array method cannot express it. A body holding
  * `await` keeps it, because `find` takes no async predicate and `Promise.all` over the whole

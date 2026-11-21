@@ -21,9 +21,8 @@ const SPELLING_FLOOR = { source: 3, test: 5 };
  * Rung 5 of the simplify skill's ladder, second clause: "three spellings of one object literal
  * are one small function (one owner, even when the line count is equal)."
  *
- * The commit lane found this in five of the 138 net-negative commits the recorded simplify
- * passes produced: `66a1ba978`, `23086a056`, `c273c01a7`, `32950a6fb`, `602397c8d`. The shape
- * is always the same: a row, a finding, a fixture or an options bag written out in full at
+ * Five of the 138 net-negative commits the recorded simplify passes produced made this cut. The
+ * shape is always the same: a row, a finding, a fixture or an options bag written out in full at
  * three or more places in one file, so that changing what the shape means is three edits and
  * forgetting one of them is a silent drift.
  *

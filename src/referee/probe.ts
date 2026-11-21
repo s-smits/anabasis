@@ -1,16 +1,15 @@
 /**
  * The Referee's answer probe: compare the rejected answer with a copy after one list of changes.
  * Each replaces an existing field or parent, including a scalar root, or edits one text passage.
- * Coupled changes are one answer probe, with both complete answers checked once: the review of 20 October
- * found three unclear rulings that could not clear a check by changing one failing part alone
- * (buffer-fresh-opus:2829,4268; recode-pr169-sonnet:291). Parent replacement alone is insufficient
+ * Coupled changes are one answer probe, with both complete answers checked once, since some checks
+ * cannot be cleared by changing one failing part alone. Parent replacement alone is insufficient
  * when coupled source fields together exceed the value cap. The eight-probe budget and the cap per
- * value or passage remain; a side without a verdict still supplies no evidence. The same
- * review found that whole-answer swaps could manufacture defect evidence: object and array roots
+ * value or passage remain; a side without a verdict still supplies no evidence. Whole-answer swaps
+ * could manufacture defect evidence, so object and array roots
  * stay fixed, and a coupled answer probe has at most three paths that one refusing check reads together.
  *
  * A probe may add a file the answer lacks, and each row records what every file text it changed
- * held before and after, in lines and bytes (19 November; `referee.ts` says why).
+ * held before and after, in lines and bytes (`referee.ts` says why).
  */
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
@@ -33,9 +32,8 @@ const PROBE_BUDGET = 8;
 /** Bound each replacement value and each half of a text edit, including within a coupled probe, or
  *  the field's own length as JSON where that is longer: one field still changes, whatever its size.
  *  The field is read in the refused answer and in the accepted one the prompt offers, so that value
- *  always fits. Until 5 November the bound was 4000 alone, and all six unclear rulings of one truss
- *  campaign (truss-fresh-opus-forkedPR588 r2) said it kept them from replacing a members list of 8000
- *  to 12000 characters, which left three tasks out of its comparisons (Referee audit, 5 November). */
+ *  always fits, since a bound of 4000 alone kept rulings from replacing a long field such as a
+ *  members list, which left tasks out of comparisons. */
 const VALUE_MAX_CHARS = 4000;
 
 /** The one passage of a text field that `find` names, rewritten to `replace`. */
@@ -56,7 +54,7 @@ export type ProbeRow = {
     readonly edit: ProbeEdit | null;
   }[];
   /** Each file text the changes replaced, edited or added, as a change names it, with what it held
-   *  before, null where the answer held no file there, and after. A row of before 19 November has none. */
+   *  before, null where the answer held no file there, and after. The oldest rows have none. */
   readonly texts: readonly {
     readonly path: string;
     readonly was: { readonly lines: number; readonly bytes: number } | null;
@@ -174,9 +172,8 @@ function rowText(row: ProbeRow): string {
   ].join("\n");
 }
 
-/** How much of the review's probe budget is spent. In two campaigns of 12 October every unclear
- *  ruling, 8 of 8, came after the eighth probe, while no message had named the budget: the ninth
- *  was refused unannounced. */
+/** How much of the review's probe budget is spent, since a reader never told the budget spends it
+ *  and has its next probe refused unannounced. */
 function budgetLine(used: number): string {
   const left = PROBE_BUDGET - used;
   return left === 0

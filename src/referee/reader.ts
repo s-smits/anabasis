@@ -1,7 +1,7 @@
 /**
  * The Referee's session options stay separate because campaign callers import this contract.
- * The session itself belongs to `referee.ts`: the naming pass of 28 October folded its sole-caller
- * wrapper there, keeping the deadline and cancellation on the same session as the ruling tools.
+ * The session itself belongs to `referee.ts`, which keeps the deadline and cancellation on the same
+ * session as the ruling tools.
  */
 import type { Api, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 

@@ -102,17 +102,17 @@ EXCLUDE = re.compile(
     r"|(^|/)(vendor|vendored|third_party)/|\.venv/|\.uv-cache/"
     r"|(^|/)node_modules/"
 )
-# Skill scripts are code a reviewer reads as well. Until 21 October they were outside, so #322's
-# rewrite of the promotion tuner read 0 on every row and its decision points were counted by hand.
+# Skill scripts are code a reviewer reads as well; outside, a rewrite of a skill's scripts would
+# read 0 on every row and its decision points would be counted by hand.
 SOURCE_ROOTS = ("src/", "tools/", "packages/", ".claude/skills/")
-# Shell is source too: without it the check runner's move from 739 nonblank lines of shell to 661 of
-# TypeScript read as 332 lines and 55 decision points written (15 November).
+# Shell is source too: without it a move from shell to TypeScript would read as lines and decision
+# points written, though the total fell.
 SOURCE_SUFFIX = (".ts", ".tsx", ".mts", ".js", ".mjs", ".py", ".sh")
 
 # Files that compose text a model receives in an ordinary session: system prompts, the loop's
 # continuation and advice text, and the descriptions and results of the tools a session calls.
 # Keep this selection explicit; the count is a literal-byte proxy, not the delivered message.
-# Campaign data and upstream descriptions are outside it. The Diagnoser was removed on 11 October;
+# Campaign data and upstream descriptions are outside it. The Diagnoser is gone;
 # task-writing tools, carried history and campaign tools now have their own live composers.
 PROMPT_FILES = (
     "src/builder/prompt.ts",
@@ -146,8 +146,8 @@ SHELL_DECISION = re.compile(r"^\s*(?:if|elif|for|while|until|case)\b|&&|\|\|", r
 # A file named without a suffix is shell where its first line says so (the check router's shim).
 SHEBANG = re.compile(r"#!.*\b(?:sh|bash|zsh)\b")
 # Python's own: the keywords that open a line and the two word operators, read outside comments and
-# docstrings, where prose says "and" and "or". Until 15 November a Python file matched almost no
-# token, so a function moved from Python to TypeScript read as decisions written.
+# docstrings, where prose says "and" and "or". Without them a Python file matches almost no token,
+# so a function moved from Python to TypeScript would read as decisions written.
 PY_DECISION = re.compile(r"^\s*(?:if|elif|for|while|except)\b|\band\b|\bor\b", re.M)
 PY_PROSE = re.compile(r'""".*?"""|#[^\n]*', re.S)
 EXPORT = re.compile(r"^\s*export\s+(?:const|function|class|interface|type|enum|async)\b", re.M)

@@ -4,11 +4,10 @@
  * here once, from its last attempt, and every reader takes that decision. `gpt-sessions.ts` runs
  * the sessions and hands each one's last attempt here.
  *
- * Two records of v1's launcher decide what is kept. On 2026-09-25 lanes ended by SIGTERM were all
- * labelled rate limited from what their commands printed, so only what Codex itself said counts
- * towards a failure's kind. On 2026-09-29 sixty lanes of one batch sat unread because nothing
- * drained them, so every settled report is appended to `reports.md` as it settles and the drain
- * prints what that file gained since it last ran.
+ * Two faults decide what is kept. Lanes ended by SIGTERM read as rate limited from what their
+ * commands printed, so only what Codex itself said counts towards a failure's kind. A batch's
+ * lanes sit unread where nothing drains them, so every settled report is appended to `reports.md`
+ * as it settles and the drain prints what that file gained since it last ran.
  */
 import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -21,7 +20,7 @@ export interface SessionRecord {
   workdir: string;
   sandbox: string;
   ownedPaths: string[];
-  /** Absent in a launch recorded before 9 November. */
+  /** Absent in an older launch. */
   effort?: string | null;
   promptSha256: string;
 }

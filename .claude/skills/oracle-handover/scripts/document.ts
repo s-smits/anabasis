@@ -9,14 +9,14 @@
  * lines, a declaration with its head comment, or markdown sections), `diff <from>..<to> [paths]`,
  * `pr <N>`, `log <run> <selector>... [--whole]` (`slice.ts`) and `file <local path>`.
  *
- * Source comes from a published commit (`publishedAt`), never the working tree: on 3 November a
- * document appended the main checkout's `AGENTS.md`, behind the stack's top, and the Oracle
- * reported a contradiction the top had resolved. Home folders become `~/` and each machine
+ * Source comes from a published commit (`publishedAt`), never the working tree: a document that
+ * appends the main checkout's `AGENTS.md`, behind the stack's top, has the Oracle report
+ * contradictions the top has resolved. Home folders become `~/` and each machine
  * `ANA_HOSTS` names `host-a`, `host-b` (said here, not in the file); a credential refuses it, and so
  * does a `.env.runs` that names hosts this command did not load. With no hosts this machine's own
  * name is the one to alias.
- * Its size is printed, never capped (operator, 4 November: "do not optimize for it"), in o200k
- * tokens at 3.17 bytes each, from the 4 November document (452 KB, 142,579 tokens).
+ * Its size is printed, never capped (the operator's words: "do not optimize for it"), in o200k
+ * tokens at 3.17 bytes each, as measured on one whole document.
  */
 import * as ts from "typescript5";
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
@@ -179,7 +179,7 @@ const isVerb = (verb: string): verb is keyof typeof PARTS => Object.hasOwn(PARTS
 /** `text` with every home folder as `~`, also where a path is written with dashes (a session's
  *  folder), every login number dropped (machine rules: none in published text), and each
  *  machine's names, `machines[i]`, in any case, as one alias. A tree and a session's scratchpad go
- *  whole: a document of 6 November carried both, and a login's table row, to the outside. */
+ *  whole, since a document would otherwise carry both, and a login's table row, to the outside. */
 export function sanitised(text: string, machines: readonly (readonly string[])[]) {
   const aliases = new Map(
     machines.flatMap((names, index) =>

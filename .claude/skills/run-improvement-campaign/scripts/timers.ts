@@ -16,8 +16,8 @@
  * and one whose creation is not in the transcripts is of kind unknown, in neither total.
  *
  * The cycle ledgers asked every firing to say whether it was useful and when it should have fired.
- * Over 389 rows in nine ledgers up to 10 November 2026, 68 said the first and none the second, while
- * the transcripts of the same weeks held 941 firings of recurring timers of which 470 were quiet.
+ * Few rows said the first and none the second, while about half of the recurring timers' firings
+ * in the transcripts were quiet, so this counts the firings from the transcripts instead.
  * A session copied between logins repeats its past, so each line counts once, by its `uuid`.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";

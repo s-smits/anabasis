@@ -16,7 +16,7 @@
  * task ids, or a short version digest for stored-pack tasks absent from proposals. Practice task
  * content, limits and notes require the pack and home, so this script omits them.
  *
- * Written on 30 October alongside examiner-view.ts, which summarises the exam-side view in counts.
+ * Its counterpart is examiner-view.ts, which summarises the exam-side view in counts.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { comparisonsTold, failsTold, startTold } from "#src/builder/past.ts";

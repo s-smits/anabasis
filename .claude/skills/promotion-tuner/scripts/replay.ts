@@ -36,8 +36,8 @@
  * changes every reference after it, so it never establishes a gain. It prints counts, session ids,
  * short digests and campaign names, and never a task, an answer, a measure or a check.
  *
- * Rewritten on 21 October for the weighted score of #306: until then it read the margin, the trigger
- * and the two-stage rule of older trees, and the rule-by-rule tally, none of which `main` holds.
+ * It reads no margin, trigger or two-stage rule of older trees and no rule-by-rule tally, none of
+ * which `main` holds.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type Found, campaignLogs, rehearsed } from "#skills/main/logs.ts";
@@ -398,8 +398,8 @@ function pairLines(
 }
 
 /** Readings that step, and whether the pair's next reading stepped too or only won at least as many
- *  tasks as it lost: on 22 October an outside review found r3's g-14, 12-9-11 at p 0.0223, counted as
- *  held at 0.02, and a tied repeat would have been. */
+ *  tasks as it lost, since a reading just over the level can be counted as held where only a tied
+ *  repeat would have been. */
 function countFollowed(list: readonly Reading[], totals: Totals): void {
   for (const [at, reading] of list.entries()) {
     const next = list[at + 1]?.differences;

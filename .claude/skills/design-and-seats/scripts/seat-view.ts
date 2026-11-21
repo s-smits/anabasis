@@ -18,8 +18,8 @@
  * owners and tests; missing entries cause refusal. The Referee has owning tests in review.test.ts,
  * but no separate byte-identity test for its view.
  *
- * The script reads no log and prints no hidden values. Written on 30 October, when AGENTS.md
- * sections 1 to 3 moved into design-and-seats.
+ * The script reads no log and prints no hidden values. It gives design-and-seats the part of
+ * AGENTS.md sections 1 to 3 that a diff can be checked against.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
@@ -58,7 +58,7 @@ type ImportsOf = (file: string) => readonly string[];
 /** "1 changed file reaches", "2 changed files reach". */
 const reaching = (count: number) => `${plural(count, "changed file")} ${count === 1 ? "reaches" : "reach"}`;
 
-/** Each seat's owners and wall tests, read from the tree at 060cddcf6 (30 October). */
+/** Each seat's owners and wall tests, as the tree holds them; a moved seat file moves its row. */
 export const SEATS = {
   Builder: {
     owners: [

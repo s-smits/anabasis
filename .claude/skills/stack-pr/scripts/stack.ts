@@ -5,7 +5,7 @@
  *   bun .claude/skills/stack-pr/scripts/stack.ts [--branch <branch>]
  *
  * Several stacks may be open, each a chain of pull requests whose bottom is based on the trunk (`main`) and
- * which lands alone (operator, 27 October). A stack's top is the end of its chain, not the highest
+ * which lands alone (the operator's rule). A stack's top is the end of its chain, not the highest
  * number: a side branch off the middle carries a higher one, and is listed apart, since it cannot
  * land without the pull requests beneath it. `--branch` says where one branch sits: its parent, and
  * what is stacked on it, which decides whether it may still be rewritten. The reading is GitHub's at

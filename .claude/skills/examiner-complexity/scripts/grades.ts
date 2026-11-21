@@ -12,7 +12,7 @@
  * result under any harness, how many were valid, the tasks valid on every solve, and the median
  * turns of the valid ones. Non-results count nowhere (rule 7) and a flag is its side's fail. A grade
  * whose tasks are valid on every solve in a few turns measures nothing for this solver, which is how
- * the ladder was re-rated on 31 October: 1,438 of 1,465 solves valid at grades 2 to 5. Read-only;
+ * the ladder was re-rated once nearly every solve at grades 2 to 5 was valid. Read-only;
  * the grades and the outcomes stay on the exam side and reach no seat.
  *
  * `rungs packet` prints what a grader reads: the scale (`GRADES`), who the grades are for (`SOLVER`),
@@ -22,8 +22,8 @@
  * and flags a rung whose median (the lower of two middle grades) is below its stated grade, or not
  * above the rung before it, since such a rung shows the Examiner a picture of a grade it does not
  * reach. Two graders agreed exactly on 13 of 18 rungs and within one on the rest, so one table is a
- * lead. On 31 October a blind re-rating of the first rungs against a solver with a shell moved 15 of
- * 18 down, by a median of two grades, which is why the rungs are graded this way.
+ * lead. A blind re-rating of the first rungs against a solver with a shell moved most of them down,
+ * by a median of two grades, which is why the rungs are graded this way.
  */
 import { FIELDS, GRADES, SOLVER } from "#src/examiner/ladder.ts";
 import { read } from "#src/kernel/log.ts";

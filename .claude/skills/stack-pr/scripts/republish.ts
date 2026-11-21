@@ -19,18 +19,18 @@
  * it unstacks, retargets every survivor and every absorbed pull request to main, pushes moved heads
  * atomically with leases on the heads GitHub showed, sets bases bottom to top, closes absorbed pull
  * requests with a comment naming where their changes went, and relinks. An absorbed pull request
- * left on its survivor's branch is marked merged by the push where the survivor's new head holds its
- * commits, and GitHub then stacks the two itself and refuses the survivor's base (15 November). Unnamed survivors follow the named ones in their old order
- * and keep their heads; name every survivor when reordering the whole stack.
+ * left on its survivor's branch is marked merged by the push where the survivor's new head holds
+ * its commits, and GitHub then stacks the two itself and refuses the survivor's base. Unnamed
+ * survivors follow the named ones in their old order and keep their heads; name every survivor when
+ * reordering the whole stack.
  *
- * The consolidation of 25 October did these steps by hand, and each went wrong once or nearly did: zsh
- * read `$sha:refs/...` as a `:r` modifier, macOS's /bin/bash 3.2 has no `mapfile`, and main was
- * rewritten mid-consolidation (same tree, new commits), so a stack built on the old main had to be
- * replayed before it could land. So the script runs git without a shell, refuses before it writes
- * anything unless the bottom holds origin/main's head and each head holds the one beneath it (what
- * `bun run land` will ask). On 25 October pushing reordered heads while their old bases remained
- * attached let GitHub mark #390 and #392 merged into intermediate branches. Unstacking and
- * retargeting must therefore precede the push, as the hostile test of 26 October checks.
+ * Done by hand, each of these steps can go wrong: zsh reads `$sha:refs/...` as a `:r` modifier,
+ * macOS's /bin/bash 3.2 has no `mapfile`, and a main rewritten mid-consolidation (same tree, new
+ * commits) leaves a stack built on the old main to be replayed before it can land. So the script
+ * runs git without a shell, refuses before it writes anything unless the bottom holds origin/main's
+ * head and each head holds the one beneath it (what `bun run land` will ask). Pushing reordered
+ * heads while their old bases remain attached lets GitHub mark pull requests merged into
+ * intermediate branches, so unstacking and retargeting precede the push, as the hostile test checks.
  * `--no-verify` passes the operator's word to skip the pre-push hook; the stack stays
  * unproved until `bun run land -- <top> --sanitize`.
  */
@@ -165,9 +165,9 @@ export function planConsolidation(
 }
 
 /** The new head of every pull request on `line`, bottom to top, replayed onto origin/main
- *  (`restacked`, `tools/runtime/restack.ts`). On 6 November #632 to #653 stood on a merged branch,
- *  and the fix took an unstack, a base edit, a rebase in a scratch worktree, a hand-built map of 18
- *  heads and this script; `--onto-main` is that sequence. */
+ *  (`restacked`, `tools/runtime/restack.ts`). A stack standing on a merged branch needs an unstack,
+ *  a base edit, a rebase in a scratch worktree, a map of its heads and this script; `--onto-main` is
+ *  that sequence. */
 export function replayedHeads(root: string, line: readonly Pull[], trunkName: string): Map<number, string> {
   if (line.length === 0) throw new CommandFailure("no open stack to replay");
   const trunk = gitText(root, "rev-parse", "--verify", trunkHead(trunkName));
@@ -181,7 +181,7 @@ export function replayedHeads(root: string, line: readonly Pull[], trunkName: st
 
 /** Where a republish keeps its plan from its first write until its last: between the retarget and
  *  the bases set again, the chain of bases it rewrites is broken, so a run cut short there could not
- *  be planned again from GitHub. Until 9 November nothing was kept, and such a stack was mended by hand. */
+ *  be planned again from GitHub, and such a stack would be mended by hand. */
 const recordOf = (root: string): string =>
   join(gitText(root, "rev-parse", "--path-format=absolute", "--git-common-dir"), "ana-republish.json");
 

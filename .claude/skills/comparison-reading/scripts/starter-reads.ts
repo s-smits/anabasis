@@ -9,22 +9,21 @@
  * A promotion is confirmed by one tally over three kinds of task: those of the comparison that chose
  * the harness, which it is read on again; those written before the promotion and not drawn then; and
  * those written after it. Only the last two can say anything about tasks that did not choose it, and
- * the tally does not tell them apart. The middle group is no neutral one: on 6 November all 19 of its
- * tasks on record had been scored in a step that chose an earlier promotion. So each read also says
+ * the tally does not tell them apart. The middle group is no neutral one: its tasks can all have
+ * been scored in a step that chose an earlier promotion. So each read also says
  * what the tasks written after read alone, the one origin no step selected. A read also has the
- * reference on the old side, where the promoting comparison had it on the new, and on 5 November a
- * table printed with no sides was read backwards by two reviews. So each read names its sides, and
+ * reference on the old side, where the promoting comparison had it on the new, and a table printed
+ * with no sides is easily read backwards. So each read names its sides, and
  * each origin gives its whole tally, its tasks on which validity differed, and the rest. `epochsOf`
- * gave up a split of this tally on 3 November since it decided no move; this decides none either, and
- * is read beside the climb.
- * A count over the gathered record alone misses campaigns not yet retired: on 6 November it held 13
- * reads where this holds 15.
- * An origin can hold several writing sessions: on 6 November one read's 10-6-0 on the tasks read at
- * its promotion held one writer's 1-5-0, which stood nearer the 0-6-0 on the tasks written after it
- * than the rest of its own group. So each read also gives one line a writer.
+ * gives no split of this tally since it decides no move; this decides none either, and is read
+ * beside the climb.
+ * A count over the gathered record alone misses campaigns not yet retired.
+ * An origin can hold several writing sessions, and one writer's tally can stand nearer the tasks
+ * written after the promotion than the rest of its own group. So each read also gives one line a
+ * writer.
  *
- * Each read also gives what lanes 12 and 19 counted by hand between 3 and 10 November (all 4 lane
- * 12 sessions and all 5 of lane 19's): the summed margin of each origin and its share of the
+ * Each read also gives what lane 12 and 19 sessions would otherwise count by hand: the summed
+ * margin of each origin and its share of the
  * read's; how many of the sign draws of the untied tasks written after, every other task as scored,
  * read a step (`stepCount`, `selection.ts`); and the tasks written after, slice by writing session,
  * each by majority and alone, with no test across the slices. The sums over reads give the

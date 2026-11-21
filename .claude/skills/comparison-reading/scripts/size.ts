@@ -16,8 +16,8 @@
  * equal-margin tally that clears within --untied tasks (smallestSteps), beyond the three sizeLines
  * names.
  *
- * Written on 30 October to check the figures moved from AGENTS.md section 7: 6-0 through 12-3
- * at level 0.02, and false-positive rates of 1.1% and 7.6% on 24 untied equal-margin tasks.
+ * It checks the figures AGENTS.md section 7 gives: 6-0 through 12-3 at level 0.02, and
+ * false-positive rates of 1.1% and 7.6% on 24 untied equal-margin tasks.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { comparisonFloor } from "#src/campaign/admission.ts";

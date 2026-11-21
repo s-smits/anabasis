@@ -2,7 +2,7 @@
  * The outside scores on record set beside the promotions they belong to, so that a climb read on a
  * campaign's own held-out tasks is checked against a grader the campaign never saw: promotions
  * that come faster while their harnesses score no higher outside than the Starter are fitted to
- * the campaign's comparisons (operator, 11 November 2026: "link the evals to the promotion ratio").
+ * the campaign's comparisons (the operator's rule: "link the evals to the promotion ratio").
  *
  * The scores are the records `studies/harness2/score.ts` writes under `<store>/judged/<arm>/`,
  * one a task and arm. This reader is kept apart from that script on purpose, since a change to

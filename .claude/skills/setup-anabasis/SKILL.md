@@ -47,7 +47,7 @@ Show one table of what is present and what is missing, then take the sections in
 answer each. Lead each with the recommended answer so a word accepts it, and skip a section that
 exploration settled.
 
-**A. This machine.** Recommended: whatever is missing of Bun 1.4.4 (the README's `curl` line,
+**A. This machine.** Recommended: whatever is missing of the Bun `package.json` pins (the README's `curl` line,
 printed for the user), on Linux `bubblewrap` and the AppArmor setting (printed, since both take
 `sudo`), then `bun install --frozen-lockfile` and `bun run hooks:install`, which you run. Bun's
 installer adds `~/.bun/bin` to the shell profile, so the session that ran it finds the new Bun

@@ -356,7 +356,7 @@ merge stay the operator's. Wake on events (`runs alerts`, `runs pulse`), not the
 
 ## 11. Working in the repository
 
-Use Bun 1.4.4 and no Node, npm or npx, and keep hooks enabled. Run owning tests with
+Use the Bun `package.json` pins and no Node, npm or npx, and keep hooks enabled. Run owning tests with
 `bun run test -- <paths>` while editing and `bun run gate` once at the change's top; the check
 runner places each on the fleet (`local-checks`), and GitHub Actions runs only `ci.yml`.
 

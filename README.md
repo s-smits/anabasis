@@ -47,11 +47,11 @@ These are v1's results (v0.4.0); v2 has not repeated them yet.
 
 ## Run it
 
-We use **Bun 1.4.4** (Stable) and support macOS or Linux. Linux also needs `bubblewrap`.
+We use **Bun 1.4.5** (Stable) and support macOS or Linux. Linux also needs `bubblewrap`.
 On Ubuntu 24.04 and later, `bubblewrap` also needs unprivileged user namespaces, which AppArmor restricts by default: `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`.
 So first, if you haven’t already, please install Bun:
 ```sh
-curl -fsSL https://bun.com/install | bash -s "bun-v1.4.4"
+curl -fsSL https://bun.com/install | bash -s "bun-v1.4.5"
 ```
 In Claude Code, `/setup-anabasis` walks through these steps on your machine and proves each one without spending.
 
@@ -112,7 +112,7 @@ bun tools/d2/close.ts --name your-campaign --to data/harnesses/your-campaign --s
 - **Solver.** The campaign's own, or the one `--solver` and the other setting flags name.
 - **Solve** runs the solver confined, under the campaign's checks, with this checkout's solve and verifier code: a fresh solve instead of a replay of the measured run. It is recorded in `handover/log.jsonl`, which no reading of the campaign counts. It is a local evaluation instead of a capability claim: one solve is weak evidence.
 - **Checks.** The handover holds no check, hidden value or answer, and the report names no task, so the folder can leave the exam side.
-- **Host.** Bun 1.4.4 and the wall a run uses: Seatbelt on macOS, `bubblewrap` on Linux. Without the wall a case is a typed non-result, never an unconfined run.
+- **Host.** Bun 1.4.5 and the wall a run uses: Seatbelt on macOS, `bubblewrap` on Linux. Without the wall a case is a typed non-result, never an unconfined run.
 - **Tools.** `.toolchain/` holds the tools the Builder installed, built for the operating system and architecture that installed them. Under `data/harnesses/`, a tree over 100 MB is copied once to `data/harnesses/.trees/<campaign>/` and linked to, so a handover at each ending does not copy it again.
 - **Comparing.** To read a Harness against the starter or another system on many tasks, use the skill `compare-systems`.
 

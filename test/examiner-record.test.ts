@@ -368,10 +368,12 @@ describe("after a promotion", () => {
       ["old", "new"].map(fixture),
     );
     expect(unpromoted.promoted).toBeNull();
-    // No wake tells it: the host opens afresh at the first ask after a promotion.
+    // A conversation that last heard before the promotion is told it at its wake, and one that
+    // heard after it is not told it again.
     const at = log.events.findIndex(({ kind }) => kind === "harness.promoted");
-    const woken = heard(log.events, ["old", "new"].map(fixture), at);
-    expect(woken.promoted).toBeNull();
+    const woken = heard(log.events, ["old", "new"].map(fixture), at - 1);
+    expect(woken.promoted).toContain("g-9");
+    expect(heard(log.events, ["old", "new"].map(fixture), at).promoted).toBeNull();
     // A conversation still open heard each refusal from the gate.
     expect(woken.refused).toEqual([]);
   });
@@ -426,8 +428,10 @@ describe("a wake", () => {
     const [first, second] = wakes;
     expect(first).toContain("b-2");
     expect(first).toContain("run (fixture)");
-    // The promotion beside the first ask is an opening's to tell, as the host opens one after it.
-    expect(first).not.toContain(heard(read(s.log), [fixture("run")]).promoted ?? "no promotion line");
+    // The promotion beside the first ask is told at the wake after it, and only there.
+    const promotion = heard(read(s.log), [fixture("run")]).promoted ?? "no promotion line";
+    expect(first).toContain(promotion);
+    expect(second).not.toContain(promotion);
     // What the opening told stays out of the wake, and the next wake repeats nothing.
     expect(first).not.toContain("mixed (fixture)");
     expect(second).not.toContain("b-2");

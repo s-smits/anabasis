@@ -14,15 +14,15 @@
  *   the turns each of the reference's valid answers took and, under an objective, what each measured,
  *   who won and on which measure (`carriedBy`), whether a valid answer is on record where none of the
  *   reference's was valid, and the checks a ruling found at fault on an answer to it (`faultedOf`).
- * - `promoted`: at an opening alone, that the reference was promoted, and how many tasks were held
- *   out before then.
+ * - `promoted`: at an opening and at the first wake after a promotion, that the reference was
+ *   promoted, and how many tasks were held out before then.
  * - `refused`: at an opening alone, the drafts the gate refused since that promotion, by its reason.
  *
  * Until 5 November each session was a new conversation, and its opening also told each task's last
  * three comparisons; a conversation now hears each reading at the wake after it. A live conversation
- * hears each refusal from the gate, so a wake repeats none, but one that crashed, met a limit or
- * rested through a promotion (`examineAction`, `tools/d2/campaign-actions.ts`) opens afresh from
- * the log (`AGENTS.md`, section 4) and has that record of them alone.
+ * hears each refusal from the gate, so a wake repeats none, but one that crashed or met a limit
+ * opens afresh from the log (`AGENTS.md`, section 4) and has that record of them alone. A wake
+ * after a promotion says it, as an opening does.
  *
  * Until 4 November the opening carried a legend for every clause, the outcome on every line, the
  * gate's room solves, which no gate has run since 1 November, and the last session's note. An
@@ -146,9 +146,8 @@ export function heard(
   return {
     stood: stoodLines(events, after),
     groups,
-    // An opening's alone: the host ends a resting conversation at the first ask after a promotion
-    // (`examineAction`, `tools/d2/campaign-actions.ts`), so no wake follows one.
-    promoted: after === undefined ? promotedLine(events, since, listed) : null,
+    // An opening's, and a wake's where the promotion came after the conversation last heard.
+    promoted: after === undefined || since > after ? promotedLine(events, since, listed) : null,
     refused: after === undefined ? refusedLines(events, since) : [],
   };
 }

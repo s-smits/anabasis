@@ -868,8 +868,8 @@ describe("one Examiner conversation across the host's asks", () => {
     expect(woken).toContain(JSON.stringify(told.split("\n\n").at(-1)).slice(1, -1));
     expect(opening).toContain("Public rules of the domain");
     expect(woken).toContain("Public rules of the domain");
-    // Only readings: that no comparison reported; no promotion, no count wanted, no target.
-    expect(told).not.toContain("promoted");
+    // Only readings: that no comparison reported and the promotion since; no count wanted, no target.
+    expect(told).toContain("The reference harness was promoted on the step of comparison c-1");
     expect(told).toContain("No comparison has reported since the host last told you.");
     for (const unsaid of ["17", "harder", "wanted"]) expect(told).not.toContain(unsaid);
   });

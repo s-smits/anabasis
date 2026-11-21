@@ -213,8 +213,8 @@ ${brief}`,
 
 /** What a resting conversation is told as the host asks again (`ask`, `write.ts`): the readings
  *  since it was last told and its limits from here. No count of tasks and no target: what to write
- *  is the author's (`AGENTS.md`, section 2, consequence 2). No promotion is among them, since the
- *  first ask after one opens afresh (`examineAction`, `tools/d2/campaign-actions.ts`). */
+ *  is the author's (`AGENTS.md`, section 2, consequence 2). A promotion since then is said as an
+ *  opening says it (`heard`). */
 export function wakeMessage(tasks: ReturnType<typeof heard>, told: Told): string {
   return [
     "The host asks for more tasks under the same exam.",
@@ -224,6 +224,7 @@ export function wakeMessage(tasks: ReturnType<typeof heard>, told: Told): string
       : [
           `The tasks compared since the host last told you, under how the harness that is the reference now did on each there. These are measurements, and no instruction or target.\n\n${grouped(tasks.groups)}`,
         ]),
+    ...(tasks.promoted === null ? [] : [tasks.promoted]),
     limitsLine(told, "From here the session has"),
   ].join("\n\n");
 }

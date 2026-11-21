@@ -4,10 +4,10 @@
  * semantics are upstream's and the OS policy stays the only authority, for symlinks and concurrent
  * path changes too. The host only stages files under `kept` and never opens a model-named path.
  *
- * Until 22 October the worker held its own copies of every file and shell operation. Durable's
- * conformance suite (`test/walled-env-conformance.test.ts`) then found two of them wrong: a
- * command's timeout under the wall's default never fired, and a directory reader returned entries
- * removed while it paged. The readers stay on the host, as snapshots a worker took, since an open
+ * The worker keeps no copies of its own of the file and shell operations, since durable's
+ * conformance suite (`test/walled-env-conformance.test.ts`) found such copies wrong: a command's
+ * timeout under the wall's default never fired, and a directory reader returned entries removed
+ * while it paged. The readers stay on the host, as snapshots a worker took, since an open
  * descriptor cannot cross the wall; a directory reader lists again for each page, as upstream's
  * reads each entry as it pages. All operations share a queue because runWalled shares the profile
  * and leader files.

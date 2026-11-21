@@ -90,10 +90,9 @@ const WALL_TEST_LIMITS = { shellDefaultSeconds: 20, shellMaxSeconds: 20 };
 /**
  * Whether a package index is reached from inside the wall: `reached` where a command run as a
  * solver's fetched one, `unreached` where it did not. A prompt that
- * said "commands have network access" whatever the host did was false on the Linux host of
- * 10 October, where the wall's commands had an empty environment and no resolver: 0 of 143 solves
- * of one campaign installed anything, and 26 of the 34 that ran out of turns had spent one on a pip
- * install. A sentence a host makes false is the host's to make true, so the prompt says what the
+ * said "commands have network access" whatever the host did would be false on a host whose wall
+ * gives commands an empty environment and no resolver, and solves there would spend turns on pip
+ * installs that cannot succeed. A sentence a host makes false is the host's to make true, so the prompt says what the
  * probe found.
  */
 export type NetworkReach = "reached" | "unreached";
@@ -149,9 +148,8 @@ export function usedSeconds(clock: SolveClock | undefined, now = performance.now
  * it: at a five-minute deadline 12 of 46 Starter solves ended at it, 11 of them inside a command, with
  * nothing sent. So a command returns while there is time to act on it. One started inside
  * the reserve is left to its own limits: the solver is told the time used with every result, and
- * what it starts then is its own to judge. Until 15 October one started under five seconds before
- * the reserve kept its own limits too, while the solver is told such a command is cut (lane 13 of
- * main0_5_1's investigation).
+ * what it starts then is its own to judge, and one started just before the reserve is cut as the
+ * solver is told it is.
  */
 export function heldSeconds(
   timeout: number | undefined,
@@ -192,8 +190,8 @@ export function makeSeatDirs(dirs: SolveDirs): void {
  *
  * The wall is a test and no convention (`AGENTS.md`, rule 3): before its first use in a process
  * each policy runs its wall test (`probeWall`), and a failed test refuses the start with its own
- * lines. While the wall test ran in the test suite alone, a sibling worktree's log was readable in
- * every live run (10 October).
+ * lines, since a wall test run in the test suite alone would not catch a live policy that leaves a
+ * sibling worktree's log readable.
  */
 export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Promise<SolveIsolationPolicy> {
   makeSeatDirs(dirs);
@@ -225,8 +223,8 @@ export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Pr
  * all four held, and otherwise the command's output, a line a step. The last step tests its own
  * write and read: a launch that refuses everything fails it, as one that refuses nothing fails the first.
  *
- * Nothing is written in the sibling, which another user may own: a rehearsal as the campaign user refused
- * every solve on EACCES in the root-owned main tree when the wall test wrote a canary there (10 October).
+ * Nothing is written in the sibling, which another user may own, so a rehearsal as another user
+ * does not refuse every solve on EACCES when the wall test would write a canary there.
  */
 export async function probeWall(
   wall: CommandWall,
@@ -290,7 +288,7 @@ async function probeReach(wall: CommandWall): Promise<NetworkReach> {
 
 /** The reach of the wall `wall` stands for (`NetworkReach`), as this process last probed it at
  *  `now`: a reached reading stands, and an unreached one is probed again once `UNREACHED_MS` old.
- *  Until 9 November one unreached probe stood for the process's life, a Builder session's 24 hours. */
+ *  An unreached probe that stood for the process's life would hold for a whole Builder session. */
 export async function networkReach(
   wall: CommandWall,
   { now = Date.now(), probe = probeReach }: { now?: number; probe?: typeof probeReach } = {},
@@ -311,9 +309,9 @@ export async function networkReach(
 /**
  * Runs `command` on `wall`, in the seat's home, or beside a copy of what it brings (`stage`).
  *
- * A command that brings nothing makes nothing to start. One solve filled its 2 GiB disk cap on
- * 9 October and was then refused `rm -rf ~/w` fourteen times running, each before it started, when
- * every command made a folder of its own first. One that brings files has nowhere to stage them on
+ * A command that brings nothing makes nothing to start, so a seat that fills its disk can still run
+ * the `rm` that frees it, which a command that made a folder of its own first could not. One that
+ * brings files has nowhere to stage them on
  * a full disk, and fails as the full disk it is.
  */
 export async function runWalled(

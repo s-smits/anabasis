@@ -24,10 +24,10 @@
  * is wrong with its file, and none is counted.
  *
  * Every seat's own tool caps text results here at pi's 50 KB and 2,000 lines, with the full text
- * in a `.log` of its environment's TMPDIR. Until 25 October read_example cut at 20,000
- * characters, leaving four drafts of 22,191 to 73,638 characters as JSON that did not parse. On 26 October the
- * operator made spilling automatic for all seats, including harness tools; pi's coding tools
- * keep their own limits. A seat without an environment gets the size alone.
+ * in a `.log` of its environment's TMPDIR, rather than cut, since a long draft cut part way is JSON
+ * that does not parse. Spilling is automatic for all seats, harness tools included, on the
+ * operator's word; pi's coding tools keep their own limits. A seat without an environment gets the
+ * size alone.
  */
 import type { Context } from "@earendil-works/chord/context";
 import { copyJson } from "@earendil-works/chord/json";

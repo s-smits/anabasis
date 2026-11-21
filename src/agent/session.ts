@@ -10,21 +10,16 @@
  * keeps what is its own: its tools, its prompt, its events and its ending's name, and how long its
  * deadline runs and what pauses it, on the one timer `sessionClock` keeps.
  *
- * Until 21 October the trace and the spend lived in the solve's runner, which the Builder's and the
- * Examiner's sessions imported for them; until 22 October each of the four spelled the loop's
- * wiring for itself; and until 23 October each spelled this frame around it. `src/kernel/trace.ts`
- * reads back what this writes.
+ * The trace, the spend, the loop's wiring and the frame around it live here once for all four
+ * seats. `src/kernel/trace.ts` reads back what this writes.
  * The session's bill is its backend's own ledger at the host's frozen prices (`src/kernel/meter.ts`):
  * Claude Code's last result, or pi-durable's `pi.usage` for every other backend, a retried attempt
  * and a compaction summary included. Each turn is still priced as it ends, for the cap a seat reads
  * while it runs and for a seat that never ended: at the model that served it, as its provider's
- * catalogue lists it, and at the requested model's otherwise. Until 25 October every turn was billed
- * at the requested model: recode's seats
- * asked for claude-opus-5-5 and Claude Code answered all 1,898 recorded turns of one campaign as
- * claude-opus-5, a quarter dearer per input and output token and two and a half times per cache
- * read, so calculated spend on recode's three campaigns ran 31 to 35% under what Claude Code reported
- * for the same endings, and the cap, the score bills and the reports with it. Priced at the served
- * model, the same endings come within 3 to 7% of Claude Code's totals.
+ * catalogue lists it, and at the requested model's otherwise. A backend can serve another model
+ * than the one asked for, dearer per token, so pricing at the requested model would put the
+ * calculated spend, the cap, the score bills and the reports well under what the backend reports;
+ * priced at the served model they come within a few per cent of its totals.
  */
 import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import type { Api, AssistantMessage, Message, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
@@ -146,7 +141,7 @@ const HARNESS_WRITTEN: ReadonlySet<string> = new Set([
 export function traceSink(log: string, of: SeatKind, id: string | (() => string), turn: () => number) {
   const named = () => ({ [whose(of)]: isString(id) ? id : id() });
   // A call is traced under the session it started in: an Examiner's `finish` rests its ask inside
-  // the call and wakes in the next, whose id the trace would otherwise give it (5 November).
+  // the call and wakes in the next, whose id the trace would otherwise give it.
   const calls = new Map<string, { at: number; whose: ReturnType<typeof named> }>();
   return {
     beforeTool: (call: ToolHookCall) => {
@@ -459,10 +454,9 @@ function toolHooks(seat: Seat, sink: ReturnType<typeof traceSink> | undefined) {
 
 /** A seat's own deadline, one timer that pauses while the host works (`within`): the Builder's while a
  *  campaign action runs. Overlapping waits share one interval; the last to end arms the remaining
- *  allowance, unless the owner has closed it. Until 28 October the Builder and the Examiner each
- *  kept a copy, and the Builder's neither nested nor named its cancellation; until 1 November the
- *  Examiner's paused while it awaited its gate's room solves; a drafting session's pauses while the
- *  host reads a draft, and a writing session's while the reference harness tries an instance. */
+ *  allowance, unless the owner has closed it. One timer serves every seat, so waits nest and the
+ *  cancellation is named once; a drafting session's pauses while the host reads a draft, and a
+ *  writing session's while the reference harness tries an instance. */
 export function sessionClock(began: number, seconds: number) {
   const deadline = new AbortController();
   let aside = 0;

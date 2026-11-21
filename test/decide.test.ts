@@ -257,6 +257,14 @@ describe("the campaign bounds", () => {
     });
     expect(decide(FIRST, spent).why.match(/\d+(?:\.\d+)?/g)).toEqual(["4.50", "10"]);
     expect(move(FIRST, { ...PLAN, left: { dollars: 10, reserve: 10 } })).toMatchObject({ move: "build" });
+    // A step already read is promoted before the budget ends the campaign, since promoting bills
+    // nothing; once promoted, the budget ends it.
+    const stepped = [...FIRST, ...compared("g-1", "h1", "step")];
+    expect(decide(stepped, spent)).toMatchObject({ move: "promote", code: "step", harness: "h1" });
+    expect(decide([...stepped, promotion("h1", { from: "start" })], spent)).toMatchObject({
+      move: "end",
+      ending: "budget",
+    });
 
     const crashed = (kind: typeof EXAM_FINISHED | "build.finished", id: string, held: string[] = []) =>
       event(kind, {

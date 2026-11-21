@@ -354,7 +354,7 @@ export interface CampaignReading extends Answer {
   /** The held-out tasks a comparison scores, as the setting records them; null before one is. */
   readonly target: number | null;
   /** Whether the freeze and a promotion wait for the operator's word (`Opening.attended`,
-   *  `--attended`). The table names such a move all the same, and the campaign command waits. */
+   *  `--hitl`). The table names such a move all the same, and the campaign command waits. */
   readonly attended: boolean;
   /** The bar a promotion's cost is read against (`BARS`, `src/campaign/climb.ts`): read and
    *  printed, refusing nothing. */

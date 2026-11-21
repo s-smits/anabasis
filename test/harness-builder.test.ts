@@ -893,18 +893,14 @@ describe("a campaign run by its log", () => {
     expect(of(name, OPENED).at(-1)).toMatchObject({ budget: { dollars: 100 } });
     await harnessBuilder([...flags, "--moves", "0"], seats);
     expect(of(name, OPENED).at(-1)).toMatchObject({ budget: { dollars: 100 } });
-    // A total under what one solve is held at ends the campaign on its budget at the next move.
+    // A total under what one solve is held at spends the budget at the next move, where the step
+    // already read is promoted first, since a promotion bills nothing.
     wordCommand(["--name", name, "--budget", "1"]);
     const before = read(join(REPO, ".ana", "d2", name, LOG_FILE));
-    expect(await harnessBuilder([...flags, "--dry-run"], seats)).toMatchObject({
-      move: "end",
-      ending: "budget",
-    });
+    const promoting = { move: "promote", code: "step" };
+    expect(await harnessBuilder([...flags, "--dry-run"], seats)).toMatchObject(promoting);
     expect(read(join(REPO, ".ana", "d2", name, LOG_FILE))).toEqual(before);
-    expect(await harnessBuilder([...flags, "--moves", "0"], seats)).toMatchObject({
-      move: "end",
-      ending: "budget",
-    });
+    expect(await harnessBuilder([...flags, "--moves", "0"], seats)).toMatchObject(promoting);
     // No word is left for a campaign that has no opening, and none that names two things.
     expect(() => wordCommand(["--name", `${name}-none`, "--stop", "x"])).toThrow("has no opening on record");
     expect(() => wordCommand(["--name", name, "--stop", "x", "--budget", "5"])).toThrow("one word");

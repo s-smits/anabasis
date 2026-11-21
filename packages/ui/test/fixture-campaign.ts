@@ -822,7 +822,7 @@ function secondPart(w: Writer): string {
   return cut.get("word-17 old 0") ?? "";
 }
 
-/** A campaign in the same project with no comparison yet, opened `--attended`: its exam, its tasks
+/** A campaign in the same project with no comparison yet, opened `--hitl`: its exam, its tasks
  *  and its practice. */
 function earlyCampaign(root: string, name: string): void {
   const dir = folderOf(root, name);

@@ -174,7 +174,8 @@ export function lastReports(events: readonly LogEvent[], read: "all" | "current"
  * one: the next session starts there unless the operator names another. A killed or crashed
  * session is passed over, except for a snapshot it froze before the interruption. A session that
  * finished whole without changing its parent took its snapshots back: a Builder that compared B,
- * restored its parent and finished left the parent, not B.
+ * restored its parent and finished left the parent, not B, unless B was promoted meanwhile, since
+ * the reference stands whatever the session left.
  */
 export function latestBuilt(events: readonly LogEvent[]): string | null {
   const undone = new Set(
@@ -182,9 +183,10 @@ export function latestBuilt(events: readonly LogEvent[]): string | null {
       kind === BUILD_FINISHED && data.changed === false && !INTERRUPTED.has(data.ended) ? [data.session] : [],
     ),
   );
+  const made = new Set(events.flatMap(({ kind, data }) => (kind === PROMOTED ? [data.harness] : [])));
   const left = events.findLast(
     ({ kind, data }) =>
-      ((kind === "build.checkpoint" && !undone.has(data.session)) ||
+      ((kind === "build.checkpoint" && (!undone.has(data.session) || made.has(data.harness))) ||
         (kind === BUILD_FINISHED && data.changed === true && !INTERRUPTED.has(data.ended))) &&
       isString(data.harness),
   )?.data.harness;

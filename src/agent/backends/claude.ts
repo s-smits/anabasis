@@ -795,7 +795,7 @@ export function resetOf(said: string, now: Date): Date | null {
   const dated = named === undefined ? undefined : MONTHS.indexOf(named.toLowerCase());
   if (dated === -1 || hour > 23 || Number(m) > 59) return null;
   try {
-    const dateParts = new Intl.DateTimeFormat("en-US", {
+    const format = new Intl.DateTimeFormat("en-US", {
       ...keyIfDefined("timeZone", zone),
       hourCycle: "h23",
       year: "numeric",
@@ -803,13 +803,28 @@ export function resetOf(said: string, now: Date): Date | null {
       day: "numeric",
       hour: "numeric",
       minute: "numeric",
-    }).formatToParts(now);
-    const part = (type: string) => Number(dateParts.find((one) => one.type === type)?.value);
-    const [year, month, day] = [part("year"), part("month") - 1, part("day")];
-    const offset =
-      Date.UTC(year, month, day, part("hour"), part("minute")) - Math.floor(now.getTime() / 60_000) * 60_000;
-    const at =
-      Date.UTC(year, dated ?? month, dated === undefined ? day : Number(date), hour, Number(m)) - offset;
+    });
+    const wall = (instant: number) => {
+      const parts = format.formatToParts(instant);
+      const part = (type: string) => Number(parts.find((one) => one.type === type)?.value);
+      const [year, month, day] = [part("year"), part("month") - 1, part("day")];
+      const offset =
+        Date.UTC(year, month, day, part("hour"), part("minute")) - Math.floor(instant / 60_000) * 60_000;
+      return { year, month, day, offset };
+    };
+    const { year, month, day, offset } = wall(now.getTime());
+    // A named month over half a year behind the zone's today is next year's ("resets Jan 4" on
+    // 28 December); a date just behind is a reset that has passed, never a year's wait.
+    const wraps = dated !== undefined && month - dated > 6;
+    const local = Date.UTC(
+      wraps ? year + 1 : year,
+      dated ?? month,
+      dated === undefined ? day : Number(date),
+      hour,
+      Number(m),
+    );
+    // The zone's offset on the reset's own day, which differs from today's across a change of clocks.
+    const at = local - wall(local - offset).offset;
     return new Date(at > now.getTime() || dated !== undefined ? at : at + 86_400_000);
   } catch {
     // A zone the host does not know names no instant it can wait for.

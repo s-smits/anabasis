@@ -312,6 +312,11 @@ describe("unfinished comparisons", () => {
     expect(viewLines("truss", campaignOf(c.events()), Date.now())[2]).toMatch(
       /no report.*open.*1 solve ended.*1 open.*\$1\.50/u,
     );
+    // An Examiner asked beside it starts and ends while it runs, and leaves it open.
+    c.record("exam.started", { session: "x-1" });
+    c.record("exam.finished", { session: "x-1", ended: "finished", billed: 0, held: [] });
+    expect(steps(c, "comparison")).toMatchObject([{ ...open, cut: false }]);
+    expect(openSteps(campaignOf(c.events()).steps)).toContain("g-1");
     c.record("campaign.ended", { ending: "no-room" });
     expect(steps(c, "comparison")).toMatchObject([{ ...open, cut: true }]);
     expect(openSteps(campaignOf(c.events()).steps)).toEqual([]);

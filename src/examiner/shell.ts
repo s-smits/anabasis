@@ -67,7 +67,7 @@ const FILE_BYTES = 4_000_000;
 
 /** What a tool that takes JSON values tells a session with a home of `from_file` (`fromHome`). */
 export const FROM_FILE =
-  'Any JSON value this tool takes, such as a public input, hidden values, an answer or a format, may instead be given as { "from_file": "<path>" }: a JSON file in your home, by its path relative to the home, which the host reads and takes as if the value had been written here.';
+  'Any JSON value this tool takes, such as a public input, hidden values, an answer, a format or a check program, may instead be given as { "from_file": "<path>" }: a file in your home, by its path relative to the home, which the host reads and takes as if the value had been written here, a .json file as the JSON it holds and any other file as its text.';
 
 /** Where an Examiner session's shell runs: what the wall denies, and what only a
  *  session with a campaign's exam before it is given. Without a wall a session has no shell. */
@@ -228,7 +228,8 @@ export function fromHome<Parameters extends TSchema>(
   };
 }
 
-/** The JSON a file in `home` holds, by its path under it, or a refusal. */
+/** What a file in `home` holds, by its path under it, or a refusal: a `.json` file's JSON and any
+ *  other file's text, so a check program is named by its own source file. */
 function homeFile(home: string | undefined, path: string): JsonValue {
   if (home === undefined) {
     throw new Error(`from_file names ${path}, and this session has no home: give the value inline`);
@@ -256,8 +257,10 @@ function homeFile(home: string | undefined, path: string): JsonValue {
       `from_file names ${path} (${String(stat.size)} bytes), over the ${String(FILE_BYTES)}-byte limit`,
     );
   }
+  const text = readFileSync(real, "utf8");
+  if (!/\.json$/iu.test(real)) return text;
   try {
-    return parseJsonAs<JsonValue>(readFileSync(real, "utf8"));
+    return parseJsonAs<JsonValue>(text);
   } catch (error) {
     throw new Error(`from_file names ${path}, which is not valid JSON: ${errorMessage(error)}`, {
       cause: error,

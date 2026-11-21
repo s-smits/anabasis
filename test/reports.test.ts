@@ -1133,5 +1133,10 @@ describe("the harness the next Builder session opens on", () => {
     expect(latestBuilt([finished("b-0", "P", true), ...compared, finished("b-1", "P", false)])).toBe("P");
     expect(latestBuilt([...compared, finished("b-1", "A", false, "killed")])).toBe("B");
     expect(latestBuilt([...compared, finished("b-1", "C", true)])).toBe("C");
+    // A snapshot promoted while its session ran stands though the session restored its parent.
+    const made = event("harness.promoted", { harness: "B", from: "start" });
+    expect(latestBuilt([finished("b-0", "P", true), ...compared, made, finished("b-1", "P", false)])).toBe(
+      "B",
+    );
   });
 });

@@ -53,7 +53,16 @@ const ROWS: readonly {
   // bounds because reading the exam bills nothing; a draft does bill, so it checks the bounds first.
   { code: "exam", move: exam },
   // A bound is spent: the budget, the provider, the improvement patience, or a comparison cut short.
-  { code: "bound", move: bound },
+  // Under a spent budget a step already read is promoted first, since a promotion bills nothing and
+  // the comparison that earned it, or a session writing beside it, may be what spent the budget.
+  {
+    code: "bound",
+    move: (ground) => {
+      const ended = bound(ground);
+      const owed = ended?.move === "end" && ended.ending === "budget" ? owedPromotion(ground) : null;
+      return owed === null ? ended : { ...owed, code: "step" };
+    },
+  },
   // The tasks are not ready: taken in, released, written on the operator's word, or written up to
   // what a first comparison and its practice need, before the first session is paid for.
   { code: "tasks", move: tasks },

@@ -183,7 +183,7 @@ describe("trying the reference at writing", () => {
     expect(bare.started).toMatchObject({ limits: { tries: 0 } });
   });
 
-  it("gives an ask at most eight solves of the reference, whatever the probe allows", async () => {
+  it("gives an ask at most fourteen solves of the reference, whatever the probe allows", async () => {
     const made = seated(100, 36, []);
     expect(made.mode.opening).toContain(`${String(TRIES)} solves of the reference harness`);
     expect(made.mode.started).toMatchObject({ limits: { tries: TRIES } });
@@ -316,14 +316,17 @@ describe("a value given from a file in the Examiner's home", () => {
   it("refuses a path outside the home, a link out of it, a missing file, a folder, a file too large and text that is not JSON", () => {
     writeFileSync(join(home, "broken.json"), "{ not json");
     mkdirSync(join(home, "folder.json"));
-    writeFileSync(join(home, "large.json"), `"${"x".repeat(1_000_000)}"`);
+    writeFileSync(join(home, "large.json"), `"${"x".repeat(4_000_000)}"`);
+    // A dataset of 2 MB, as drafts of 20 November named, is read.
+    writeFileSync(join(home, "dataset.json"), `"${"x".repeat(2_000_000)}"`);
+    expect(() => prepared({ ...large, answer: { from_file: "dataset.json" } })).not.toThrow();
     for (const [path, refusal] of [
       ["../outside.json", "outside your home"],
       [join(outside, "task.json"), "outside your home"],
       ["linked.json", "links outside your home"],
       ["absent.json", "no such file"],
       ["folder.json", "not a regular file"],
-      ["large.json", "over the 1000000-byte limit"],
+      ["large.json", "over the 4000000-byte limit"],
       ["broken.json", "not valid JSON"],
     ] as const) {
       expect(() => prepared({ ...large, answer: { from_file: path } })).toThrow(refusal);

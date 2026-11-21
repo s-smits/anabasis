@@ -14,15 +14,15 @@
  *   the turns each of the reference's valid answers took and, under an objective, what each measured,
  *   who won and on which measure (`carriedBy`), whether a valid answer is on record where none of the
  *   reference's was valid, and the checks a ruling found at fault on an answer to it (`faultedOf`).
- * - `promoted`: at an opening alone, that the reference was promoted, and how many tasks were held
- *   out before then.
+ * - `promoted`: at an opening and at the first wake after a promotion, that the reference was
+ *   promoted, and how many tasks were held out before then.
  * - `refused`: at an opening alone, the drafts the gate refused since that promotion, by its reason.
  *
  * Until 5 November each session was a new conversation, and its opening also told each task's last
  * three comparisons; a conversation now hears each reading at the wake after it. A live conversation
- * hears each refusal from the gate, so a wake repeats none, but one that crashed, met a limit or
- * rested through a promotion (`examineAction`, `tools/d2/campaign-actions.ts`) opens afresh from
- * the log (`AGENTS.md`, section 4) and has that record of them alone.
+ * hears each refusal from the gate, so a wake repeats none, but one that crashed or met a limit
+ * opens afresh from the log (`AGENTS.md`, section 4) and has that record of them alone. A wake
+ * after a promotion says it, as an opening does.
  *
  * Until 4 November the opening carried a legend for every clause, the outcome on every line, the
  * gate's room solves, which no gate has run since 1 November, and the last session's note. An
@@ -74,6 +74,8 @@ const BLOCKS = {
   "reference-none": "The reference harness valid in no solve of the last comparison that scored the task",
   "reference-some": "Valid in some solves of it",
   "reference-every": "Valid in every solve of it",
+  closed:
+    "Closed: valid in every solve of its last two comparisons with no room left by the objective, so now scored only as a check against regressions",
   new: "Not yet compared",
   disputed: "Set aside until a person settles a rejection of an answer to it",
   faulted: "Disputed: a check was at fault on an answer to it",
@@ -86,7 +88,7 @@ const CARRIED = { validity: "on validity", objective: "on the objective" } as co
 const WON = { reference: "the reference harness", other: "the harness it was compared with" } as const;
 
 /** The block a task stands in: its state first, then the reference's outcome on it. */
-function blockOf(state: string | undefined, outcome: Outcome | undefined): keyof typeof BLOCKS {
+function blockOf(state: string | undefined, outcome: Outcome | "closed" | undefined): keyof typeof BLOCKS {
   if (state === "released") return "practice";
   if (state === "disputed") return "faulted";
   return outcome ?? "new";
@@ -114,6 +116,8 @@ export function heard(
   );
   const answered = referenceAnswers(events);
   const faulted = faultedOf(events);
+  const setting = events.findLast(({ kind }) => kind === "campaign.setting")?.data.modelTurns;
+  const budget = isNumber(setting) ? setting : undefined;
   const since = events.findLastIndex(({ kind }) => kind === "harness.promoted");
   const compared = after === undefined ? null : reportedAfter(events, after);
   const lines = new Map<string, string[]>();
@@ -123,11 +127,11 @@ export function heard(
     const version = proposal?.version ?? "";
     const state = states.get(version);
     if (state === "refused" || compared?.has(version) === false) continue;
-    const block = blockOf(state, pool.outcomes.get(version));
+    const block = blockOf(state, pool.exhausted.includes(version) ? "closed" : pool.outcomes.get(version));
     if (block !== "practice") listed.push(version);
     const named = `${taskId} (${family})`;
     const plain = block === "practice" || block === "earlier-reference" || block === "faulted";
-    const clauses = plain ? [] : clausesOf(block, pool, version, answered.get(version));
+    const clauses = plain ? [] : clausesOf(block, pool, version, answered.get(version), budget);
     const checks = faulted.get(taskId);
     const fault =
       checks === undefined ? [] : [`ruled at fault on an answer to it: ${[...checks].join(", ")}`];
@@ -142,9 +146,8 @@ export function heard(
   return {
     stood: stoodLines(events, after),
     groups,
-    // An opening's alone: the host ends a resting conversation at the first ask after a promotion
-    // (`examineAction`, `tools/d2/campaign-actions.ts`), so no wake follows one.
-    promoted: after === undefined ? promotedLine(events, since, listed) : null,
+    // An opening's, and a wake's where the promotion came after the conversation last heard.
+    promoted: after === undefined || since > after ? promotedLine(events, since, listed) : null,
     refused: after === undefined ? refusedLines(events, since) : [],
   };
 }
@@ -173,19 +176,27 @@ const reportedAfter = (events: readonly LogEvent[], after: number) =>
   );
 
 /** What a task's line says after its name: the turns each of the reference's valid answers took and
- *  what each measured, whether a valid answer is on record where none of its solves was valid or
+ *  what each measured, beside the best of its author's answers on record (`task.feasible`), whether
+ *  a valid answer is on record where none of its solves was valid or
  *  none was read, and who won and on which measure. */
 function clausesOf(
   block: keyof typeof BLOCKS,
   pool: ReturnType<typeof poolOf>,
   version: string,
   { turns, measures }: Answered = { turns: [], measures: [] },
+  budget?: number,
 ): string[] {
-  const answered = block === "reference-every" || block === "reference-some";
+  const answered = block === "reference-every" || block === "reference-some" || block === "closed";
+  const best = pool.bests.get(version);
   const sorted = (values: readonly number[]) => values.toSorted((a, b) => a - b);
   return [
-    ...(answered && turns.length > 0 ? [`in ${sorted(turns).join(", ")} turns`] : []),
+    ...(answered && turns.length > 0
+      ? [`in ${sorted(turns).join(", ")}${budget === undefined ? "" : ` of ${String(budget)}`} turns`]
+      : []),
     ...(answered && measures.length > 0 ? [`measured ${sorted(measures).map(measured).join(", ")}`] : []),
+    ...(answered && measures.length > 0 && best !== undefined
+      ? [`the author's answer measured ${measured(best)}`]
+      : []),
     ...(answered
       ? []
       : [pool.feasible.has(version) ? "a valid answer on record" : "no valid answer on record"]),

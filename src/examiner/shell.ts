@@ -62,8 +62,9 @@ import { installedPrograms } from "../harness/programs.ts";
 import { claimRoot } from "../wall/seat-root.ts";
 import { shellQuote } from "../wall/isolation.ts";
 
-/** The most bytes a file named by `from_file` may hold: twenty times a large task instance of 50 KB. */
-const FILE_BYTES = 1_000_000;
+/** The most bytes a file named by `from_file` may hold: eighty times a large task instance of 50 KB,
+ *  since a draft of 20 November named a dataset of 1.9 MB. */
+const FILE_BYTES = 4_000_000;
 
 /** What a tool that takes JSON values tells a session with a home of `from_file` (`fromHome`). */
 export const FROM_FILE =

@@ -243,7 +243,12 @@ const DRAFT_PARAMETERS = Type.Object({
     }),
     { minItems: 1 },
   ),
-  evaluator: Type.String({ minLength: 1, description: "The check program's TypeScript source." }),
+  // The check program may name a file as an object, since a strict schema of text alone had each
+  // draft of 20 November spell the object as text (`fromHome` reads both).
+  evaluator: Type.Union([
+    Type.String({ minLength: 1, description: "The check program's TypeScript source." }),
+    Type.Object({ from_file: Type.String({ minLength: 1 }) }),
+  ]),
   objective: Type.Object(
     {
       quantity: Type.Optional(
@@ -446,7 +451,8 @@ function draftedFrom(args: Static<typeof DRAFT_PARAMETERS>): Draft {
     // SAFETY: a tool's arguments are JSON the provider parsed, here and for each value below.
     answerFormat: args.answer_format as JsonValue,
     checks: args.checks,
-    evaluator: args.evaluator,
+    // SAFETY: `fromHome` has read a `from_file` object into the text its file holds before this runs.
+    evaluator: args.evaluator as string,
     ...keyIfDefined(
       "objective",
       quantity !== undefined && direction !== undefined ? { quantity, direction } : undefined,

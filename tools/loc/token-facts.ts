@@ -135,8 +135,8 @@ export function scanTokens(text: string): TokenFacts {
   // CloseBrace. Re-scan it exactly as the parser does so the rest of the template is not code.
   const templateStack: number[] = [];
   // A token-only scan never re-scans `/` as a regex, and TypeScript 7's scanner does not advance
-  // past a bare `#` inside one (`/##/`), so the gate held its full 3600 s wall twice on
-  // 2026-09-07. Step over a position the scanner did not leave instead of looping on it.
+  // past a bare `#` inside one (`/##/`), so the gate would sit out its full 3600 s wall. Step over
+  // a position the scanner did not leave instead of looping on it.
   let lastEnd = -1;
   for (let kind = state.scanner.scan(); kind !== SyntaxKind.EndOfFile; kind = state.scanner.scan()) {
     const end = state.scanner.getTokenEnd();

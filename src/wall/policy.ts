@@ -181,8 +181,8 @@ export function toolchainPathDirs(): string[] {
   // `git` and `cc` as xcrun shims. A shim starts its tool with TMPDIR reset to the user temporary
   // directory, so a command's own TMPDIR never reached a Python it started: every temp folder of
   // every solve landed in that one shared directory, outside the solve's capped volume, and stayed
-  // when the command was gone. On 2026-10-10 one host held 1.56 million of them, 121 GB, from three
-  // days of campaigns. Started by its own path a tool keeps the TMPDIR it is given, and a program
+  // when the command was gone, so that a few days of campaigns left millions of them on one host.
+  // Started by its own path a tool keeps the TMPDIR it is given, and a program
   // the user installed is never such a shim, so the user's folders may go first.
   const system = [...activeDeveloperBinDirs(), "/usr/bin", "/bin", "/usr/sbin", "/sbin"];
   // Every entry is checked for existence, as /opt/homebrew/bin is on Darwin and not on Linux, where

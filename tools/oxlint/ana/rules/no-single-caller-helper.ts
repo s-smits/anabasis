@@ -26,8 +26,8 @@ const FUNCTIONS = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFu
  *  relocates to unchanged, so it is a third kind rather than a second flag. */
 type Site = "tail" | "statement" | "term";
 
-/** `tools/loc/source-policy.ts` refuses a function over this many nonblank lines. Formatted
- *  lines since 2026-09-20; the comment there says why the number moved from 80. */
+/** `tools/loc/source-policy.ts` refuses a function over this many nonblank lines, counted as
+ *  formatted; the comment there says why the number is not 80. */
 const CALLER_LINES = 115;
 
 /** The cyclomatic complexity at which a caller has no room for a helper's branches (v1's gate). */

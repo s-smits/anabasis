@@ -1979,6 +1979,15 @@ describe("the scored set", () => {
     expect(set.tasks.filter((version) => open.includes(version)).toSorted()).toEqual(open);
     expect(set.retained).toHaveLength(1);
     expect(set.tasks).toHaveLength(4);
+    // The retained draw turns with each comparison begun, so the same retained task does not head
+    // every comparison.
+    const begun = (id: string) => ({ at, kind: "comparison.started", data: { session: id } }) as const;
+    const picks = new Set(
+      ["g-3", "g-4", "g-5", "g-6", "g-7"].map((_, nth, ids) =>
+        scoredSet([...logged, ...ids.slice(0, nth + 1).map(begun)], 12, "contract-a").retained.join(","),
+      ),
+    );
+    expect(picks.size).toBeGreaterThan(1);
   });
 
   it("takes the tasks held out since the last comparison began first within an epoch, then the rest by hash", () => {

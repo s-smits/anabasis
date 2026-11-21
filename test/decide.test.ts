@@ -697,6 +697,13 @@ describe("unread harnesses and tasks", () => {
       built("b-2", "h2"),
     ];
     expect(decide(untallied, PLAN)).toMatchObject({ move: "compare", fresh: "starter" });
+    // Nor does one that read not-scored: the tasks held before it are still owed the reading.
+    const unscored = [
+      ...written,
+      ...compared("g-3", "start", "not-scored", { old: "h1", extra: { scored: null, versions: [] } }),
+      built("b-2", "h2"),
+    ];
+    expect(decide(unscored, PLAN)).toMatchObject({ move: "compare", fresh: "starter" });
     // Tasks written since and all released for practice leave the starter comparison nothing to draw.
     const releasedAll = [
       ...written,
@@ -878,6 +885,18 @@ describe("the build conditions", () => {
     expect(owed(seeds(["one"]), 1000, 0.1)).toBe(1);
   });
 
+  it("counts a release a check defect has since closed as no practice delivered, when asking for tasks as when releasing", () => {
+    const plan = { ...PLAN, practice: 2 };
+    const released = [
+      ...PROMOTED,
+      ...heldOut("p2"),
+      event("task.state", { version: "p2", state: "released" }),
+    ];
+    const closed = [...released, event("task.state", { version: "p2", state: "disputed" })];
+    expect(tasksToAskFor(closed, plan)).toBe(tasksToAskFor(PROMOTED, plan));
+    expect(tasksToAskFor(closed, plan)).toBeGreaterThan(tasksToAskFor(released, plan));
+  });
+
   it("spends the allowance on a task held before the promotion, as on a frontier task", () => {
     const released = (version: string) => event("task.state", { version, state: "released" });
     const epoch = (count: number) => [...PROMOTED, ...SINCE.slice(0, count).flatMap(heldOut)];
@@ -918,6 +937,25 @@ describe("the build conditions", () => {
       expect(withoutPractice.code).toBe(code);
       expect(decide(events, { ...plan, practice: 2 })).toEqual(withoutPractice);
     }
+  });
+
+  it("counts no practice failure from before the promotion the unchanged session finished after", () => {
+    const condition = conditionOf("p1", "start");
+    const failed = [
+      event("condition.recorded", { id: conditionId(condition), condition: requireJsonValue(condition) }),
+      event("solve.started", { solve: "practice", condition: conditionId(condition) }),
+      event("solve.finished", { solve: "practice", ending: { outcome: "fail", kind: "rejected" } }),
+      event("referee.finding", { solve: "practice", ruling: "earned" }),
+    ];
+    const opened = [...SET_UP, event("build.started", { session: "b-1" })];
+    expect(
+      stopRule([...opened, ...failed, promotion("h0"), built("b-1", "start", { changed: false })])
+        .checkpoints,
+    ).toBe(0);
+    expect(
+      stopRule([...opened, promotion("h0"), ...failed, built("b-1", "start", { changed: false })])
+        .checkpoints,
+    ).toBe(1);
   });
 
   it("counts an unchanged session towards the stop only where an established practice failure was shown", () => {
@@ -965,6 +1003,35 @@ describe("the one count", () => {
     expect(move(tied, { ...PLAN, patience: 1 })).toMatchObject({ move: "examine" });
     expect(move([...promotedAll, ...idle(2)])).toMatchObject({ move: "examine" });
     expect(move([...promotedAll, ...idle(3)])).toMatchObject({ move: "end", ending: "no-room" });
+  });
+
+  it("counts a reading that tallied no task as fruitless, never as a gain, so a run of them ends", () => {
+    const tied = [...FIRST, ...full("g-1")];
+    // Counts that leave the room unread would read as room on a scored report.
+    const blank = (id: string) =>
+      compared(id, "h1", "not-scored", { tally: [0, 0, 0], extra: { valid: { old: [], fresh: [] } } });
+    expect(supplyRun([...tied, ...full("g-2"), ...blank("g-3"), ...full("g-4")], PLAN)).toBe(3);
+    // Each Examiner session holding tasks, each comparison of them setting every task aside: the
+    // campaign ends at its patience instead of redrawing the same pair until the budget.
+    const round = (nth: number) => [
+      ...examined(
+        `x-${String(nth)}`,
+        ["a", "b", "c", "d", "e", "f"].map((s) => `${s}${String(nth)}`),
+      ),
+      ...compared(`g-${String(nth + 1)}`, "h1", "not-scored", {
+        tally: [0, 0, 0],
+        valid: { old: [0, 0, 0], fresh: [0, 0, 0] },
+      }),
+    ];
+    expect(move([...tied, ...round(1), ...round(2), ...round(3)])).toMatchObject({ move: "end" });
+  });
+
+  it("passes over a session that finished while a comparison ran where its tasks were gated before that comparison began", () => {
+    const next = full("g-2");
+    const tied = [...FIRST, ...full("g-1")];
+    const finished = event(EXAM_FINISHED, { session: "x-1", held: ["v13"], refused: [], proposed: 1 });
+    const gatedBefore = [...tied, ...heldOut("v13"), ...next.slice(0, 1), finished, ...next.slice(1)];
+    expect(supplyRun(gatedBefore, PLAN)).toBe(1);
   });
 
   it("keeps the gain of a session that held tasks while a comparison ran, since that comparison drew at its start", () => {

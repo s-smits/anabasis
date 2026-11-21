@@ -55,7 +55,7 @@ import { type Cap, INTERRUPTED } from "../kernel/reports.ts";
 import { ownedBy } from "../kernel/trace.ts";
 import { ended as endedSolves, practiceRan, solvesIn } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -272,15 +272,26 @@ export function keepCutNotes(log: string, id: string): void {
  *  session lays them as it opens and a campaign again after a release, so a link a Builder left
  *  there is removed, never written through. */
 export function layPractice(home: string, tasks: readonly PracticeTask[]): void {
-  const folder = join(home, "practice");
-  rmSync(folder, { recursive: true, force: true });
-  mkdirSync(folder, { recursive: true });
+  // Laid beside the folder and renamed in, so a Builder's shell never lists it empty; the old one,
+  // or a link planted in its place, is moved aside whole and removed without being followed.
+  const [folder, next, old] = [
+    join(home, "practice"),
+    join(home, ".practice-next"),
+    join(home, ".practice-old"),
+  ];
+  for (const path of [next, old]) rmSync(path, { recursive: true, force: true });
+  mkdirSync(next, { recursive: true });
   for (const { task } of tasks) {
     writeFileSync(
-      join(folder, `${task.taskId.replaceAll(/[^A-Za-z0-9._-]+/g, "-")}.json`),
+      join(next, `${task.taskId.replaceAll(/[^A-Za-z0-9._-]+/g, "-")}.json`),
       `${capturedJsonStringify(publicView(task), null, 2)}\n`,
     );
   }
+  if (existsSync(folder)) renameSync(folder, old);
+  // A dangling link, which `existsSync` does not see.
+  rmSync(folder, { force: true });
+  renameSync(next, folder);
+  rmSync(old, { recursive: true, force: true });
 }
 
 /**

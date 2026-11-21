@@ -13,7 +13,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { crashedRun } from "../src/campaign/ground.ts";
-import { type BuildRequest, build, type PracticeTask, session } from "../src/builder/session.ts";
+import { type BuildRequest, build, layPractice, type PracticeTask, session } from "../src/builder/session.ts";
 import { HOME_TOOL_TREE, snapshot } from "../src/builder/kept.ts";
 import { type Bench, practiceLeft, record } from "../src/builder/tools.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
@@ -351,6 +351,31 @@ describe("the Builder running its campaign", () => {
 });
 
 describe("a Builder session", () => {
+  it("lays practice in place of what the Builder left there, following none of its links", () => {
+    const scratch = realpathSync(mkdtempSync(join(tmpdir(), "ana-practice-")));
+    scratches.push(scratch);
+    const [home, outside] = [join(scratch, "home"), join(scratch, "outside")];
+    mkdirSync(home);
+    mkdirSync(outside);
+    writeFileSync(join(outside, "kept.json"), "OUTSIDE");
+    // The folder is a link out of the home, and a stale folder waits where the next lay is made.
+    symlinkSync(outside, join(home, "practice"));
+    mkdirSync(join(home, ".practice-next"));
+    writeFileSync(join(home, ".practice-next", "stale.json"), "STALE");
+    layPractice(home, TASKS);
+    expect(readdirSync(join(home, "practice")).toSorted()).toEqual(["t-1.json", "t-2.json"]);
+    expect(readdirSync(outside)).toEqual(["kept.json"]);
+    expect(readdirSync(home)).toEqual(["practice"]);
+    // A file the Builder left inside goes, and a dangling link in the folder's place is replaced.
+    writeFileSync(join(home, "practice", "notes.json"), "MINE");
+    layPractice(home, TASKS.slice(0, 1));
+    expect(readdirSync(join(home, "practice"))).toEqual(["t-1.json"]);
+    rmSync(join(home, "practice"), { recursive: true });
+    symlinkSync(join(scratch, "nowhere"), join(home, "practice"));
+    layPractice(home, TASKS);
+    expect(readdirSync(join(home, "practice")).toSorted()).toEqual(["t-1.json", "t-2.json"]);
+  });
+
   it("refuses a held task handed to a session before showing it to the Builder", async () => {
     const s = await setup([]);
     const held = { version: "v3", task: { taskId: "t-3", family: "fixture", publicInput: {} } };

@@ -878,6 +878,18 @@ describe("the build conditions", () => {
     expect(owed(seeds(["one"]), 1000, 0.1)).toBe(1);
   });
 
+  it("spends the allowance on a task held before the promotion, as on a frontier task", () => {
+    const released = (version: string) => event("task.state", { version, state: "released" });
+    const epoch = (count: number) => [...PROMOTED, ...SINCE.slice(0, count).flatMap(heldOut)];
+    // Seven new tasks are one above the floor of six, and one inherited release spends it.
+    expect(owed(epoch(7), 3, 0.1)).toBe(1);
+    expect(owed([...epoch(7), released("v1")], 3, 0.1)).toBe(0);
+    // Eight are two above it. An inherited release leaves one, and so does a frontier release,
+    // which spends its share by leaving the frontier and is not counted twice.
+    expect(owed([...epoch(8), released("v1")], 3, 0.1)).toBe(1);
+    expect(owed([...epoch(8), released("n1")], 3, 0.1)).toBe(1);
+  });
+
   it("leaves owed practice to the host, so no row reads it", () => {
     const log = [
       ...SET_UP,

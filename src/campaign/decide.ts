@@ -586,7 +586,8 @@ function buildsOn(ground: Ground): string {
  * Each release is one task fewer to compare, so two limits apply. A reading with nothing held out
  * since the last release is owed only one task, and after a promotion none: the new reference's
  * practice is held out for it. And once practice exists or a promotion is on record, a release
- * must leave the admission floor of frontier tasks held. That frontier is read from the reference's
+ * must leave the admission floor of frontier tasks held, each task held out before the promotion
+ * released since the reading counting as one frontier task spent. That frontier is read from the reference's
  * own solves alone, since practice is visible to the Builder and must not move with which task the
  * other harness won (rule 3).
  */
@@ -608,18 +609,30 @@ export function practiceDue(
   );
   // A release that a check defect has since closed is no longer practice, so another is owed in
   // its place.
-  const count = events.filter(
-    ({ kind, data }, at) =>
-      at > since &&
-      kind === "task.state" &&
-      data.state === "released" &&
-      isString(data.version) &&
-      sets.states.get(data.version) === "released",
-  ).length;
+  const releases = events.flatMap(({ kind, data }, at) =>
+    at > since &&
+    kind === "task.state" &&
+    data.state === "released" &&
+    isString(data.version) &&
+    sets.states.get(data.version) === "released"
+      ? [data.version]
+      : [],
+  );
+  const count = releases.length;
+  // A frontier task's release spends the allowance by leaving the frontier; one held out before
+  // the promotion leaves the frontier as it was, so it is subtracted, or the allowance is granted
+  // again at the next release.
+  const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
+  const inherited = new Set(taskSets(events.slice(0, Math.max(0, promotedAt))).held);
   const allowance =
-    released === 0 && !events.some(({ kind }) => kind === PROMOTED)
+    released === 0 && promotedAt === -1
       ? Infinity
-      : Math.max(0, poolOf(events).practiceFrontier.length - comparisonFloor(level));
+      : Math.max(
+          0,
+          poolOf(events).practiceFrontier.length -
+            comparisonFloor(level) -
+            releases.filter((version) => inherited.has(version)).length,
+        );
   // The last release (or promotion) before the reading, so the reading's own releases do not count.
   const last = events.findLastIndex(
     ({ kind, data }, at) =>

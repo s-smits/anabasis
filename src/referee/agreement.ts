@@ -9,16 +9,15 @@
  *
  * Two rates carry the risk, and they pull apart. A check defect the Referee lets stand turns a broken
  * check into a scored task; an earned fail it voids removes a real limit from the count. A fail is
- * voided by any ruling but `earned`, since `unclear` sets its task aside as `check-defect` does:
- * until 14 October the rates counted `check-defect` alone, and a Referee that ruled every earned
- * fail unclear read as voiding none of them.
+ * voided by any ruling but `earned`, since `unclear` sets its task aside as `check-defect` does, so
+ * a Referee that ruled every earned fail unclear does not read as voiding none of them.
  *
- * Beside them, since 12 October, the agreement of each kind and over all three (the overhaul plan's
- * M3, research 06): on kinds as uneven as these, most fails earned, Cohen's kappa can be low while
+ * Beside them, the agreement of each kind and over all three: on kinds as uneven as these, most
+ * fails earned, Cohen's kappa can be low while
  * the share read alike is high, so kappa is reported beside PABAK, the share read alike corrected
  * for three kinds and not for how they are spread, and never alone.
  *
- * Since 13 October no bar is read on fewer than thirty labelled fails (`LEAST_LABELS`), whatever
+ * No bar is read on fewer than thirty labelled fails (`LEAST_LABELS`), whatever
  * else the operator sets. And where a person
  * labels more than one in four of the Referee's `unclear` rulings earned, it is said in one line
  * (`unclearReport`): an unclear ruling sets its task aside, so a Referee that rules unclear what a

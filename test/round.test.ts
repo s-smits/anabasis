@@ -28,8 +28,8 @@ import {
   refuseTerms,
   round,
   scoredSet,
-  settleReading,
 } from "../src/campaign/round.ts";
+import { settleReading } from "../src/campaign/settle.ts";
 import {
   type BuildRequest,
   type Built,

@@ -297,7 +297,7 @@ export function reported(events: readonly LogEvent[], id: string): Report | null
   // A report written before a field existed reads as that field's absence. The oldest reports hold
   // `counted` as a reading rather than a tally, and it reads as absent.
   const data: JsonObject = { ...NOTHING, ...found, counted: asRecord(found.counted) };
-  // SAFETY: only `checkpoint`, `round` and `settleReading` write this event, from the report each returns.
+  // SAFETY: only `checkpoint`, `round` (`round.ts`) and `settleReading` (`settle.ts`) write this event, from the report each returns.
   return Object.fromEntries(REPORT_KEYS.map((key) => [key, data[key]])) as unknown as Report;
 }
 

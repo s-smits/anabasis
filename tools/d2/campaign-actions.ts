@@ -107,13 +107,10 @@ export interface CampaignContext {
   used: number;
   /** The action that threw after it began, with what it threw: the environment's ending. */
   failed: { readonly move: string; readonly why: string } | null;
-  /** The Examiner session writing beside the conversation, which settles and never throws, and the
-   *  next practice release the host makes while it writes (`releaseOwed`). */
-  examining?: {
-    readonly session: string;
-    readonly done: Promise<void>;
-    readonly released: () => Promise<void>;
-  } | null;
+  /** The Examiner session writing beside the conversation, which settles and never throws. */
+  examining?: { readonly session: string; readonly done: Promise<void> } | null;
+  /** The last practice release or comparison, which the next release waits for (`releaseOwed`). */
+  releasing?: Promise<boolean>;
   /** The Examiner conversation each `examine` asks in turn (`conversing`). */
   examiner?: ReturnType<typeof conversing>;
 }
@@ -315,28 +312,11 @@ const examineAction =
     // it: woken wakes put most of their tasks in one family more often than fresh openings do, but
     // the scored draw takes a family at most two in five (`scoredSet`), so a family's run of tasks
     // does not weigh on a reading.
-    context.examiner ??= conversing(seats.examine ?? examine);
-    const sitting = context.examiner.session;
-    // As the gate holds out each task the host releases what is owed since the last reading, one release at a time,
-    // and each release settles `next`, on which `wait` returns. A throw is the environment's ending.
-    let releasing = Promise.resolve();
-    let next = Promise.withResolvers<void>();
-    const held = () => {
-      releasing = releasing
-        .then(async () => {
-          const why = `Examiner session ${session} beside the conversation held a task out`;
-          if (!(await releaseOwed(context, why, bench))) return;
-          next.resolve();
-          next = Promise.withResolvers<void>();
-        })
-        .catch((error: unknown) => {
-          context.failed = { move: "prepare", why: errorMessage(error) };
-          bench.halt.abort();
-        });
-    };
+    const examiner = context.examiner ?? conversing(seats.examine ?? examine);
+    context.examiner = examiner;
     const work = examineCommand(
       args,
-      (request, wall) => sitting({ ...request, opened: resolve, held }, wall),
+      (request, wall) => examiner.session({ ...request, opened: resolve }, wall),
       // The author's tries of the reference harness wait in the solve queue as a comparison's
       // solves do; a scripted Examiner is given none.
       seats.examine === undefined ? turn.held : null,
@@ -348,11 +328,12 @@ const examineAction =
     // The session writes beside the conversation, and on past its end, which waits for it
     // (`closing`): a Builder's finish or its deadline does not stop it, while the host's halt and the
     // run's kill do, and it then ends on record as killed. A limit it met is waited out, and a
-    // throw after it began is the environment's ending, as an action's is (`actionTool`).
+    // throw after it began is the environment's ending, as an action's is (`actionTool`). Practice
+    // owed is released once the session ends, not as it holds tasks: a release while it writes drew
+    // the frontier down to the sweep for a comparison started meanwhile.
     const done = work
       .then(() => waitCrashed(context.log, context.seats.host))
-      .then(() => releasing)
-      .then(() => releaseOwed(context, "an Examiner session beside the conversation ended", bench))
+      .then(() => releaseOwed(context, `Examiner session ${session} beside the conversation ended`, bench))
       .catch(async (error: unknown) => {
         if (await waitOut(context.log, error, context.seats.host?.sleep)) return;
         context.failed = { move: "examine", why: errorMessage(error) };
@@ -361,12 +342,12 @@ const examineAction =
       .then(() => {
         context.examining = null;
       });
-    context.examining = { session, done, released: () => next.promise };
+    context.examining = { session, done };
     return {
       // The count is where the session stops, not a size it reaches, since sessions asked for a
       // count rarely end holding that many. The result names the compare that waits for the
       // session and gives no course, which a Builder would repeat back.
-      said: `Examiner session ${session} is writing tasks beside this conversation${tasks === undefined ? "" : `, and stops once it holds ${plural(Number(tasks), "task")}`}${promotedSince(turn.events) ? "; a compare waits for this session to end" : ""}. As it holds tasks the host releases any practice owed since the last reading.`,
+      said: `Examiner session ${session} is writing tasks beside this conversation${tasks === undefined ? "" : `, and stops once it holds ${plural(Number(tasks), "task")}`}${promotedSince(turn.events) ? "; a compare waits for this session to end" : ""}. Once it ends the host releases any practice owed since the last reading.`,
     };
   };
 
@@ -382,9 +363,16 @@ const examineAction =
  * A comparison that has not reported is not thinned by it: a task it drew that a release takes is
  * solved no more (`round.ts`), so practice waits for the report. The sweep at the level stays held
  * (`practiceDue`). `bench`, inside a conversation, is laid with what was released. Returns whether
- * it released a task.
+ * it released a task. Releases run one at a time, since two at once would read one count released
+ * before them and each log a move.
  */
-export async function releaseOwed(context: CampaignContext, cause: string, bench?: Bench): Promise<boolean> {
+export function releaseOwed(context: CampaignContext, cause: string, bench?: Bench): Promise<boolean> {
+  const release = Promise.resolve(context.releasing).then(() => releaseOnce(context, cause, bench));
+  context.releasing = release.catch(() => false);
+  return release;
+}
+
+async function releaseOnce(context: CampaignContext, cause: string, bench?: Bench): Promise<boolean> {
   if (context.failed !== null || bench?.halt.signal.aborted === true || context.used >= context.maxMoves) {
     return false;
   }
@@ -490,13 +478,22 @@ const compareTool = (context: CampaignContext, bench: Bench): SeatTool =>
     // The comparison's own flags beside the pack's, so the log says what command the move ran
     // (a flag left off would otherwise show on no record). The move is on record once the
     // comparison is admitted, so that one the admission refused leaves no move that never began.
-    await checkpointCommand(args, context.held, signal, () =>
-      begin({
-        session,
-        args: args.slice(packOf(context.values).length),
-        ...keysIf(named.move !== decided, () => ({ code: named.move.code, why: named.move.why })),
-      }),
+    // It runs in turn with the releases, so none takes a task between its draw and its start on
+    // record, before `comparing` sees it.
+    const comparison = Promise.resolve(context.releasing).then(() =>
+      checkpointCommand(args, context.held, signal, () =>
+        begin({
+          session,
+          args: args.slice(packOf(context.values).length),
+          ...keysIf(named.move !== decided, () => ({ code: named.move.code, why: named.move.why })),
+        }),
+      ),
     );
+    context.releasing = comparison.then(
+      () => false,
+      () => false,
+    );
+    await comparison;
     const events = read(context.log);
     const step = campaignOf(events).steps.findLast(
       (each) => each.step === "comparison" && each.id === session,
@@ -734,11 +731,11 @@ export function campaignTools(
         ),
         // On the host's time, as a comparison's wait for the same session is.
         waitTool(
-          "Wait for the Examiner session writing beside this conversation to end, or for the host to release practice tasks while it writes, on the host's time, and return the campaign's facts; at once where none is writing.",
+          "Wait for the Examiner session writing beside this conversation to end, on the host's time, and return the campaign's facts; at once where none is writing.",
           async () => {
             const writing = context.examining;
             if (writing == null) return campaignStatus(context, bench);
-            await bench.within(() => Promise.race([writing.done, writing.released()]));
+            await bench.within(() => writing.done);
             return campaignStatus(context, bench);
           },
         ),

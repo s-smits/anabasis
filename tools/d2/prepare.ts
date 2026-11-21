@@ -13,9 +13,10 @@
  * stored answer has a say, neither a stored cycle's answer nor v1's control answers for it.
  *
  * A stored answer does say whether a task has a known valid answer. Each held-out task the
- * stored sweep accepted an answer to is rechecked under today's checks, until one passes, and a
- * pass is logged as `task.feasible`, as an author's answer is: such a task is never read as
- * possibly infeasible (`poolOf`). A recheck that fails establishes nothing and is said nowhere.
+ * stored sweep accepted an answer to, or a drafted exam's example its accept control answers, is
+ * rechecked under today's checks, until one passes, and a pass is logged as `task.feasible`, as an
+ * author's answer is: such a task is never read as possibly infeasible (`poolOf`). A recheck that
+ * fails establishes nothing and is said nowhere.
  *
  * Practice is what the Builder learns from, and a practice task is never scored. `--practice` is
  * the number of released tasks the campaign is brought to. What is missing is released from the
@@ -47,11 +48,13 @@ import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { poolOf, releaseOrder } from "#src/kernel/reports.ts";
 import { SIZE, sizeLines } from "#src/kernel/size.ts";
 import { admissionsOf, packageGate, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
-import type { JsonValue } from "#src/meta/json-shape.ts";
-import { keyIfDefined } from "#src/meta/optional-key.ts";
+import { draftOf } from "#src/examiner/draft.ts";
+import { feasibleOf } from "#src/examiner/write.ts";
+import { textFiles } from "#src/kernel/answer-files.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
 import { awaitingLines, openCampaign, PACK_OPTIONS, packNamed } from "./campaign.ts";
+import { exampleId } from "./exam.ts";
 import { type Campaign, ROUND_OPTIONS } from "./round.ts";
 import { recordedSetting, targetNamed } from "./setting.ts";
 
@@ -113,24 +116,40 @@ export async function prepareCommand(
   }
 
   const packages = campaign.packages();
-  // Each held-out task an answer the stored sweep accepted is rechecked for, under today's checks.
-  const accepted = new Map<string, JsonValue[]>();
-  // An exam drafted from a prompt has no stored sweep behind it, and so no stored answer.
-  for (const row of root === undefined || sweep === undefined ? [] : sweepRows(root, sweep)) {
-    const answer = row.ending.outcome === "pass" ? storedAnswer(row) : undefined;
-    if (answer !== undefined) accepted.set(row.taskId, [...(accepted.get(row.taskId) ?? []), answer]);
-  }
+  // Each held-out task an answer the stored sweep accepted is rechecked for, under today's checks;
+  // an exam drafted from a prompt has no stored sweep, and its accept controls answer its examples.
+  const stored = root === undefined || sweep === undefined ? [] : sweepRows(root, sweep);
+  const accepted = Map.groupBy(
+    [
+      ...stored.flatMap((row) => {
+        const answer = row.ending.outcome === "pass" ? storedAnswer(row) : undefined;
+        return answer === undefined ? [] : [{ taskId: row.taskId, answer, files: [], sweep }];
+      }),
+      ...(draftOf(opened)?.accept ?? []).map(({ task, answer, files }) => ({
+        taskId: exampleId(task),
+        answer,
+        files: textFiles(files ?? []),
+        sweep: undefined,
+      })),
+    ],
+    ({ taskId }) => taskId,
+  );
   const knownValid = poolOf(read(log)).feasible;
   for (const version of taskSets(read(log)).held) {
     const task = packages.get(version);
     if (task === undefined) continue;
     const { taskId } = task;
     if (knownValid.has(version) || !accepted.has(taskId)) continue;
-    for (const answer of accepted.get(taskId) ?? []) {
-      if ((await campaign.verify(task, answer)).kind !== "pass") continue;
-      append(log, "task.feasible", { version, ...keyIfDefined("sweep", sweep) });
+    for (const { answer, files, sweep: from } of accepted.get(taskId) ?? []) {
+      const verdict = await campaign.verify(task, answer, undefined, files);
+      if (verdict.kind !== "pass") continue;
+      // A stored sweep's answer is a past solve's, not an author's best, so it keeps no measure.
+      append(log, "task.feasible", {
+        version,
+        ...(from === undefined ? feasibleOf(log, contract, verdict, answer, files) : { sweep: from, answer }),
+      });
       console.log(
-        `${taskId}: a stored accepted answer passes today's verifier, so a valid answer to it is on record`,
+        `${taskId}: an accepted answer passes today's verifier, so a valid answer to it is on record`,
       );
       break;
     }

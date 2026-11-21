@@ -55,7 +55,7 @@ import { packageGate as checkPackage, type TaskPackage, taskSets, taskVersion } 
 import { objectiveOf, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
-import { keyIfDefined } from "../meta/optional-key.ts";
+import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
@@ -89,9 +89,6 @@ interface Terms {
   /** The campaign's verifier, for `try_answer`: the checks run on an instance with an answer of the
    *  Examiner's own. Null, the tool is not given. */
   readonly verify: Verifier | null;
-  /** Called as the gate holds a task, so the campaign can release practice while the session writes
-   *  (`releaseOwed`, `campaign-actions.ts`). */
-  readonly held?: () => void;
   /** One fresh solve of an instance by the reference harness in force, under the campaign's setting
    *  and through its solve queue, its start naming this session (`probing`, `tools/d1b/examine.ts`),
    *  and the most of them with a result the session may ask for. Null, `try_reference` is not given. */
@@ -232,10 +229,19 @@ function measureOf(contract: Contract, verdict: Verdict): JsonObject {
   return { objective: { quantity, direction, measure } };
 }
 
-/** The files of the author's valid answer, kept by digest as a solve's are, so that the Referee
- *  reads a known valid answer whole. */
-const keptFiles = (log: string, files: readonly AnswerFile[] = []): JsonObject =>
-  files.length === 0 ? {} : { files: keepAnswerFiles(log, files).map((file) => ({ ...file })) };
+/** What `task.feasible` keeps of a valid answer beside its version: the answer, its files by digest
+ *  as a solve's are, so that the Referee reads it whole, and its measure (`measureOf`). */
+export const feasibleOf = (
+  log: string,
+  contract: Contract,
+  verdict: Verdict,
+  answer: JsonValue,
+  files: readonly AnswerFile[] = [],
+): JsonObject => ({
+  answer,
+  ...keysIf(files.length > 0, () => ({ files: keepAnswerFiles(log, files).map((file) => ({ ...file })) })),
+  ...measureOf(contract, verdict),
+});
 
 /** A verdict as the Examiner reads it. */
 function tried(verdict: Verdict): string {
@@ -282,26 +288,19 @@ async function admitDraft(desk: Desk, instance: Task): Promise<string> {
   }
   desk.held.push(version);
   const held = `${taskId}: held out.`;
-  // The release `held` may start reads the author's proof, so it is logged first.
-  try {
-    if (verify === null || answer === undefined) return held;
-    const verdict = await Promise.try(() => verify(instance, answer, undefined, files)).catch(
-      (error: unknown): Verdict => ({ kind: "non-result", reason: errorMessage(error) }),
-    );
-    if (verdict.kind !== "pass") {
-      return `${held} Author proof was not retained under this task id: ${tried(verdict)}`;
-    }
-    append(log, "task.feasible", {
-      version,
-      session,
-      answer,
-      ...keptFiles(log, files),
-      ...measureOf(request.contract, verdict),
-    });
-    return held;
-  } finally {
-    request.held?.();
+  if (verify === null || answer === undefined) return held;
+  const verdict = await Promise.try(() => verify(instance, answer, undefined, files)).catch(
+    (error: unknown): Verdict => ({ kind: "non-result", reason: errorMessage(error) }),
+  );
+  if (verdict.kind !== "pass") {
+    return `${held} Author proof was not retained under this task id: ${tried(verdict)}`;
   }
+  append(log, "task.feasible", {
+    version,
+    session,
+    ...feasibleOf(log, request.contract, verdict, answer, files),
+  });
+  return held;
 }
 
 /** Whether the host has the tasks it asked for. */
@@ -412,19 +411,16 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
       sets.held.includes(version) ||
       sets.released.includes(version) ||
       sets.states.get(version) === "disputed";
-    const measure = measureOf(contract, verdict);
     if (
       inExam &&
       (!poolOf(events).feasible.has(version) ||
         acceptedAnswers(events, version).length === 0 ||
-        "objective" in measure)
+        "objective" in measureOf(contract, verdict))
     ) {
       append(log, "task.feasible", {
         version,
         session: desk.request.id,
-        answer,
-        ...keptFiles(log, files),
-        ...measure,
+        ...feasibleOf(log, contract, verdict, answer, files),
       });
     }
   };

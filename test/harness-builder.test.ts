@@ -993,6 +993,10 @@ describe("a campaign run by its log", () => {
     expect(of(name, OPENED).at(-1)).not.toHaveProperty("attended");
     expect(of(name, "campaign.setting")).toHaveLength(1);
     expect(of(name, "task.state").filter(({ state }) => state === "released")).toHaveLength(2);
+    // Each example the draft's accept control answers has that answer on record as valid.
+    expect(of(name, "task.feasible").map(({ answer }) => answer)).toEqual(
+      examples.map(({ answer }) => answer),
+    );
     expect(of(name, "comparison.started")).toMatchObject([{ solves: 3 }]);
     expect(of(name, "comparison.started")[0]?.tasks).toHaveLength(8);
     expect(

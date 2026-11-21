@@ -209,6 +209,20 @@ describe("the host's practice release", () => {
     expect(await releaseOwed(alone, "no comparison started")).toBe(true);
     expect(released(alone)).toBe(4);
   });
+
+  it("releases once where two causes ask at the same moment", async () => {
+    layOutPack(root, bundle, MANY, FIXTURE);
+    const name = `${STEM}-release-twice`;
+    const twice = await owing(name);
+    const asked = await Promise.all([
+      releaseOwed(twice, "the first cause"),
+      releaseOwed(twice, "the second cause"),
+    ]);
+    expect(asked).toEqual([true, false]);
+    expect(released(twice)).toBe(4);
+    expect(twice.used).toBe(1);
+    expect(of(name, MOVED, true).filter(({ code }) => code === "practice")).toHaveLength(1);
+  });
 });
 
 describe("a campaign run by its live Builder", () => {
@@ -529,7 +543,7 @@ describe("a campaign run by its live Builder", () => {
     expect(of(name, EXAM_STARTED, true)).toHaveLength(1);
   });
 
-  describe("releases the epoch's practice as task admission holds out tasks", () => {
+  describe("releases the epoch's practice once the Examiner session ends", () => {
     // Seven tasks held, three released for a practice of four: the epoch is owed one, which the
     // admission floor of five at 0.125 leaves room for once the frontier holds six.
     const flags = ["--practice", "4", ...LEVEL];
@@ -543,13 +557,11 @@ describe("a campaign run by its live Builder", () => {
         .filter(({ kind, data }) => kind === "task.state" && data.state === "released").length;
     };
 
-    it("into the workspace of a Builder in wait, which returns before the session ends", async () => {
+    it("into the workspace of a Builder in wait, and none while the session writes", async () => {
       layOutPack(root, bundle, TASKS, FIXTURE);
       const name = `${STEM}-on-hold`;
-      // The Examiner proposes once the Builder waits, and finishes once its wait has returned, or at
-      // a deadline, where wait returned only with the session's end and the test then fails.
+      // The Examiner proposes once the Builder waits, holding six, and finishes.
       const waiting = Promise.withResolvers<void>();
-      const waited = Promise.withResolvers<void>();
       const seats: Seats = {
         seated: builderScript(winning(), [
           {
@@ -558,12 +570,7 @@ describe("a campaign run by its live Builder", () => {
               return ["wait", {}];
             },
           },
-          {
-            wait: async () => {
-              waited.resolve();
-              return ["finish", { note: "Practice arrived while the Examiner wrote." }];
-            },
-          },
+          ["finish", { note: "Practice arrived once the Examiner ended." }],
         ]),
         examine: (request) =>
           examine({
@@ -575,20 +582,15 @@ describe("a campaign run by its live Builder", () => {
                   return proposing(6);
                 },
               },
-              {
-                wait: async () => {
-                  await Promise.race([waited.promise, Bun.sleep(20_000)]);
-                  return ["finish", { note: "Nothing to add." }];
-                },
-              },
+              ["finish", { note: "Nothing to add." }],
               ["finish", { note: "Nothing to add." }],
             ]),
           }),
       };
       await harnessBuilder([...seeded(name), ...flags, "--target", "5"], seats);
       const at = positions(name);
-      expect(at(`${CALLED}:wait`)).toBeLessThan(at(EXAMINED));
-      expect(releasedWhileWriting(name)).toBe(1);
+      expect(at(`${CALLED}:wait`)).toBeGreaterThan(at(EXAMINED));
+      expect(releasedWhileWriting(name)).toBe(0);
       const [told] = said(name, "wait");
       expect(told).toContain("Campaign facts: 9 held-out tasks, 4 practice tasks.");
       // Nine are held and the target scores five of them.
@@ -600,7 +602,7 @@ describe("a campaign run by its live Builder", () => {
       expect(of(name, MOVED, true).filter(({ code }) => code === "practice")).toMatchObject([
         {
           move: "prepare",
-          why: containing("Examiner session x-1 beside the conversation held a task out"),
+          why: containing("Examiner session x-1 beside the conversation ended"),
         },
       ]);
     });
@@ -652,7 +654,6 @@ describe("a campaign run by its live Builder", () => {
       const name = `${STEM}-on-hold-promoted`;
       const log = join(REPO, ".ana", "d2", name, LOG_FILE);
       const waiting = Promise.withResolvers<void>();
-      const waited = Promise.withResolvers<void>();
       const seats: Seats = {
         seated: builderScript(winning(GRADED_MANY), [
           CHANGE_GUIDE,
@@ -663,12 +664,7 @@ describe("a campaign run by its live Builder", () => {
               return ["wait", {}];
             },
           },
-          {
-            wait: async () => {
-              waited.resolve();
-              return ["finish", { note: "Practice arrived in the new epoch." }];
-            },
-          },
+          ["finish", { note: "Practice arrived in the new epoch." }],
           FINISH_IDLE,
         ]),
         examine: (request) => {
@@ -687,15 +683,7 @@ describe("a campaign run by its live Builder", () => {
                   return proposing(1);
                 },
               },
-              ...Array.from({ length: 10 }, (_, n) => proposing(1, n + 1)),
-              {
-                wait: async () => {
-                  // With the old target bound wait returns only after this deadline lets the
-                  // Examiner end. Six held tasks already leave room for one practice task.
-                  await Promise.race([waited.promise, Bun.sleep(20_000)]);
-                  return proposing(1, 11);
-                },
-              },
+              ...Array.from({ length: 11 }, (_, n) => proposing(1, n + 1)),
             ]),
           });
         },
@@ -713,10 +701,9 @@ describe("a campaign run by its live Builder", () => {
         held: 7,
         released: 4,
       });
-      expect(at(`${CALLED}:wait`)).toBeGreaterThan(at("harness.promoted"));
-      expect(at(`${CALLED}:wait`)).toBeLessThan(at(EXAMINED));
-      expect(releasedWhileWriting(name)).toBeGreaterThanOrEqual(1);
-      expect(said(name, "wait")[0]).toContain("3 practice tasks");
+      expect(at(`${CALLED}:wait`)).toBeGreaterThan(at(EXAMINED));
+      expect(releasedWhileWriting(name)).toBe(0);
+      expect(said(name, "wait")[0]).toContain("4 practice tasks");
     });
   });
 

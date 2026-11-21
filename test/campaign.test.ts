@@ -837,12 +837,12 @@ describe("a campaign", () => {
     const passed = await preparedUnder(PROVEN, right);
     const [version = ""] = TASKS.slice(0, 1).map((task) => taskVersion(passed.campaign.pack(task)));
     expect(passed.first).toContain(
-      "t-1: a stored accepted answer passes today's verifier, so a valid answer to it is on record",
+      "t-1: an accepted answer passes today's verifier, so a valid answer to it is on record",
     );
     // Once on record it is not rechecked.
     expect(passed.again).not.toContain("t-1:");
     const feasible = read(passed.campaign.log).filter(({ kind }) => kind === "task.feasible");
-    expect(feasible.map(({ data }) => data)).toEqual([{ version, sweep: "s" }]);
+    expect(feasible.map(({ data }) => data)).toEqual([{ version, sweep: "s", answer: { answer: "12" } }]);
     // A recheck the checks reject establishes nothing, and says nothing.
     const rejected = await preparedUnder(UNPROVEN, "() => false");
     expect(rejected.first).not.toContain("t-1:");

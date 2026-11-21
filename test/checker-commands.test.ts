@@ -279,7 +279,7 @@ suite("preparation and rehearsal over a stored pack", () => {
       run("tools/d2/prepare.ts", { cycle: "c01", name: PREPARED, practice, target: "2" });
     // The stored sweep accepted an answer to t-1, which still passes, and none to t-2.
     const both = prepare("0");
-    expect(both.said).toMatch(/t-1:.*stored.*passes/u);
+    expect(both.said).toMatch(/t-1: an accepted answer passes/u);
     expect(both.code).toBe(0);
     const sets = taskSets(read(join(prepared, LOG)));
     expect([sets.held.length, sets.released.length]).toEqual([2, 0]);

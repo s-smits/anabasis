@@ -1,5 +1,5 @@
 /**
- * `bun run runs outside` runs other owners' commands in one order: nothing is spent before both dry
+ * `bun run runs bench <run>` runs other owners' commands in one order: nothing is spent before both dry
  * runs, a step that fails ends the read, a tree reaches the store only whole and unchanged, and a
  * label the store holds is neither exported nor carried again. One read is walked end to end on
  * this machine, with a stand-in export and sitting; the rest are read as words.
@@ -29,7 +29,8 @@ import {
   settingsOf,
   stepsOf,
   walk,
-} from "../tools/runs/outside.ts";
+} from "../tools/runs/bench.ts";
+import { readsDone } from "../tools/runs/bench-scores.ts";
 import { Misused } from "../tools/runs/registry.ts";
 
 const HOSTS = JSON.stringify([
@@ -82,7 +83,7 @@ function inScratch(name: string, body: (root: string) => Promise<void> | void) {
   };
 }
 
-describe("runs outside", () => {
+describe("runs bench", () => {
   test("a run's pack chooses its benchmark, and a choice the list leaves open refuses before any machine is asked", () => {
     expect(settingsOf(RUN, ENV)).toMatchObject({ bench: "statbench", runner: { name: "bench" } });
     // A benchmark with no machine named is rolled on this one.
@@ -324,4 +325,26 @@ describe("runs outside", () => {
     expect(ran).toHaveLength(5);
     expect(ran.some((words) => words.includes("--yes"))).toBe(false);
   });
+  test(
+    "a read is scored once, after its Starter is judged on every task its reference is",
+    inScratch("ana-scored", (store) => {
+      const judge = (arm: string, ...tasks: readonly string[]) => {
+        mkdirSync(join(store, "judged", arm), { recursive: true });
+        for (const task of tasks) writeFileSync(join(store, "judged", arm, `${task}.json`), "{}");
+      };
+      judge("ref-a", "t1", "t2");
+      judge("starter-ref-a", "t1");
+      judge("ref-b", "t1");
+      judge("ref-c", "t1");
+      judge("starter-ref-c", "t1", "t2");
+      judge("starter-ref-d", "t1");
+      // ref-a's Starter still rolls, ref-b has none, and a Starter alone is no read.
+      expect(readsDone(store)).toEqual(["ref-c"]);
+      judge("starter-ref-a", "t2");
+      expect(readsDone(store)).toEqual(["ref-a", "ref-c"]);
+      mkdirSync(join(store, "scored"));
+      writeFileSync(join(store, "scored", "ref-a.txt"), "table\n");
+      expect(readsDone(store)).toEqual(["ref-c"]);
+    }),
+  );
 });

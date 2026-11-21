@@ -17,7 +17,10 @@ test; a change that writes no code can skip it.
 - Helper code has three homes, `tools/wri/`, `.claude/skills/main/` and a skill's `scripts/`, told
   apart by who reads it (`AGENTS.md`, section 12, "Where a reader or a helper lives"). Before
   adding a helper, search `main/` and `tools/wri/folds.ts`; no check yet enforces that `main/`
-  imports no skill's `scripts/`.
+  imports no skill's `scripts/`. No `bun run` verb lives in a skill's `scripts/`, a script a job runs
+  only prints what production computes, and a second command that prints another view of a fold
+  becomes a view of its owner. A helper that gains a caller in a second skill moves to `main/`
+  instead of being copied.
 - A test checks the facts a message carries (an outcome, a count, a limit) and the wall's exclusions
   by their absence, because wording changes freely. A prompt's sentence is checked by reading the
   composed prompt.

@@ -29,6 +29,9 @@ campaign actions, `--dry-run` prints the table's advice, and `--handover <dir>` 
 handover at the end, which must open as the harness it was kept as. Each launch through
 `bun run runs` writes a receipt, `launch-run-<n>.json`, holding the commit the log does not.
 
+**The budget** is one total, and the campaign ends (`budget`) once less is left than one solve's
+reserve, or than the next comparison's test costs at what its solves billed.
+
 **The solve queue** (`tools/d2/host.ts`) waits for load at most half an hour (`campaign.waited`),
 then off the record while the budget holds no reserve for the solve beside those in flight
 (`affords`). A cancelled wait starts no solve: the comparison ends killed, or the practice solve

@@ -18,6 +18,25 @@ the campaign command refuses another Bun (`pinFault`, `tools/d2/harness-builder.
 | `bun run follow` | Moves this checkout to the top of the oldest open stack, where commits are not kept |
 | `bun tools/loc/source-policy.ts` | Size and unused-export policy, run by hand only |
 
+### Commands a guard reads
+
+A command guard reads each shell command before it runs, the one inside `ssh <host> '...'` or
+`sh -c` too, so write it plainly and, where it refuses one, use the form its refusal names, never a
+variant that slips past.
+
+- Write a file with the file-editing tools instead of `>` or `cat > <file> <<EOF`. Keep `>` for a
+  new file in the session's scratch or temporary folder, named by a literal path or by a variable
+  assigned one literal path once in the same command (`S=<path>; ... > "$S/out"`). A target ending
+  in a loop's variable (`> "$S/out-$n"`), taken from `$(...)`, or under the home folder outside the
+  scratch folder is refused: write those with the editing tools or print the output.
+- Put a script longer than a line in a file and run it (`python3 -I <file>`, `bun <file>`) instead
+  of feeding text to an interpreter (`python3 - <<'EOF'`, `python3 -c "$(...)"`, `... | python3`),
+  since code holds the `${...}`, `$(...)` and backticks a guard cannot parse. A short heredoc of
+  data quotes its delimiter (`<<'EOF'`).
+- Quote every expansion and glob, and give `mv` and `git -C` literal paths.
+- Read an older file with `git show <ref>:<path>` instead of `git checkout <ref> -- <path>`,
+  `git restore` or `git reset --hard`.
+
 ## Hooks and CI
 
 Without hooks (`git config core.hooksPath`) commits and pushes go unchecked silently, and a pushed

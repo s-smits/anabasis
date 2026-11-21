@@ -12,6 +12,9 @@ each as it binds and is the one to cite. A rule with nothing to add here is omit
   choice of practice tasks; a pull request that touches such a message says how it checked this.
   The Examiner's view is in `design-and-seats`, `seats.md`.
 
+- **6. One solve is weak evidence.** In v1 a fail repeated on the same bytes 5 times in 21, so a
+  single solve shown to an agent is marked as one solve.
+
 - **4. Terms first.** The tasks, solves a side, level, cap and prediction are logged before solving,
   because a term chosen after a result is chosen on the result.
 

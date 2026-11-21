@@ -64,7 +64,7 @@ function tallied(scores: readonly number[]): string {
 
 /** Whether every new solve of `pair` beat every reference solve: valid against invalid, or both
  *  valid and the new answer better by the objective by the gap floor at least. */
-export function beatsAll(pair: Paired): boolean {
+function beatsAll(pair: Paired): boolean {
   const rule = pair.objective;
   return pair.fresh.every((freshValid, f) =>
     pair.old.every((oldValid, o) => {
@@ -75,7 +75,7 @@ export function beatsAll(pair: Paired): boolean {
 }
 
 /** The recount against the record: the pairs on the tested tasks, and how many scores differ. */
-export function recountOf(
+function recountOf(
   report: JsonObject,
   pairs: readonly Paired[],
 ): { tested: Paired[]; recorded: number[]; unmatched: number; differing: number } {

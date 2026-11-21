@@ -149,7 +149,7 @@ export function draftRows(events: readonly LogEvent[]): string[] {
 }
 
 /** The archived campaigns drafted from the same prompt, each with its standing draft's counts. */
-export function siblingRows(prompt: string, archive: string, own: string): string[] {
+function siblingRows(prompt: string, archive: string, own: string): string[] {
   if (!existsSync(archive)) return [`siblings: no archive at ${archive}`];
   const digest = digestOf(prompt);
   const logs = readdirSync(archive).flatMap((host) =>

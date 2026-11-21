@@ -207,7 +207,7 @@ function sessionAt(events: readonly LogEvent[], index: number, session: string, 
 /** Every Examiner writing session of `events`, in the order they started: what each could read
  *  (the reference in force, the last report, its home, its tries and shell calls) and what it wrote
  *  (tasks proposed and admitted, and the comparisons that tallied them). */
-export function examSessionsOf(
+function examSessionsOf(
   events: readonly LogEvent[],
   reported: readonly PairedReport[] = pairedReports(events),
 ): ExamSession[] {

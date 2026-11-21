@@ -141,7 +141,7 @@ function measuresOf(pair: Paired): (number | null)[] {
 
 /** Of a task its score ties (`differenceOf`), the kind of tie its solves make; null for one it
  *  does not tie. */
-export function tieKind(pair: Paired): TieKind | null {
+function tieKind(pair: Paired): TieKind | null {
   if (differenceOf(pair) !== 0) return null;
   if (unsolved(pair)) return "both-invalid";
   if (![...pair.old, ...pair.fresh].every(Boolean)) return "cancelling";

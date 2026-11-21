@@ -186,7 +186,7 @@ function examinerLine({ kind, data }: LogEvent): string {
 }
 
 /** The timeline's lines, `here` being the host-code digest of the tree the table is replayed under. */
-export function timelineLines(events: readonly LogEvent[], here: string): string[] {
+function timelineLines(events: readonly LogEvent[], here: string): string[] {
   const tableAt = tableReader(events);
   const digests = digestsOf(events);
   const ranAt = (index: number) => {

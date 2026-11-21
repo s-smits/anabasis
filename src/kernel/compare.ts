@@ -304,25 +304,40 @@ function objectiveGain(pair: Paired, f: number, o: number): number {
  *  part is its mean over the pairings times its weight (`WEIGHTS`), in thousandths
  *  (`POINTS_SCALE`). */
 export function pointsOf(pair: Paired): Measures {
-  const sums = { validity: 0, objective: 0 };
+  let validity = 0;
+  const gains: number[] = [];
   for (const [f, freshValid] of pair.fresh.entries()) {
     for (const [o, oldValid] of pair.old.entries()) {
-      if (freshValid !== oldValid) sums.validity += freshValid ? 1 : -1;
-      else if (freshValid) sums.objective += objectiveGain(pair, f, o);
+      if (freshValid !== oldValid) validity += freshValid ? 1 : -1;
+      else if (freshValid) gains.push(objectiveGain(pair, f, o));
     }
   }
   const each = POINTS_SCALE / (pair.fresh.length * pair.old.length);
   return {
-    validity: sums.validity * WEIGHTS.validity * each,
-    objective: sums.objective * WEIGHTS.objective * each,
+    validity: validity * WEIGHTS.validity * each,
+    objective: orderFreeSum(gains) * WEIGHTS.objective * each,
   };
+}
+
+/** The sum of `gains`, added in an order that does not depend on the order of the pairings: each
+ *  sign's sizes smallest first. Exchanging the sides negates every gain and lists them in another
+ *  order, and summed in loop order a total of exactly half a point came out -22.5 one way and
+ *  22.499999999999996 the other, so the two rounded to different whole points. */
+function orderFreeSum(gains: readonly number[]): number {
+  const sizes = (sign: number) =>
+    gains
+      .filter((gain) => Math.sign(gain) === sign)
+      .map(Math.abs)
+      .toSorted((one, other) => one - other);
+  return sumOf(sizes(1)) - sumOf(sizes(-1));
 }
 
 /** `points` rounded to a whole number, halves away from zero and with no negative zero, so that
  *  swapping the sides exactly negates the result. Scores, their parts and the tuner's replay all
  *  round through here. */
 export function wholePoints(points: number): number {
-  return Math.sign(points) * Math.round(Math.abs(points));
+  const rounded = Math.sign(points) * Math.round(Math.abs(points));
+  return rounded === 0 ? 0 : rounded;
 }
 
 /** One task's score: its two parts added, then rounded. */

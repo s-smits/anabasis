@@ -11,7 +11,7 @@
  * and a pull request stacked above it stays open, moved onto the trunk once the merge goes
  * through; `bun run split` then replays the rest onto the merge with every pass kept. With no pull
  * request named, it lands the stack of two or more that holds the oldest open pull request, the one
- * `bun run follow` moves the main checkout to (`firstStack`, `pulls.ts`; operator, 27 October), and
+ * `bun run follow` moves the main checkout to (`firstStack`, `pulls.ts`; the operator's choice), and
  * follows its top; `latest` follows the highest-numbered top. It never follows into another chain.
  *
  * A plain push runs no step of the CI gate, and one with `ANA_PUSH_VERIFY=1` only the static steps
@@ -19,8 +19,8 @@
  * until it lands here. Here each landing head's first-parent line above main is proved over its own
  * checkout: the static steps and nearby tests, the top's too, and at a merge or on `--whole` the
  * whole CI gate on the top's head (`tools/runtime/gate.ts`), each pass already recorded skipped.
- * Until 20 November a sanitize also ran the full suite on its top, which moves with each pull
- * request stacked on it (operator). `--sanitize` runs that proof when its author judges the stack
+ * A sanitize runs no full suite on its top, which moves with each pull request stacked on it (the
+ * operator's choice). `--sanitize` runs that proof when its author judges the stack
  * ready, without merging. The stack is read from GitHub as v2's stack-pr reads it, each pull
  * request's base the head of the one beneath it, and the bottom must be based on main. Each head
  * must contain the one beneath it and the bottom main's head, so the last merge leaves main at
@@ -36,24 +36,24 @@
  * ends, so a red an earlier landing left clears once its fix is being proved. A check belongs to its
  * commit, so a push leaves the new head without it and the pull request reads unproved again (the
  * pre-push hook marks the heads above it pending); a label would outlive the head it was earned on
- * (the operator, 27 October). A pull request stays a draft until its author or the operator marks
+ * (the operator's choice). A pull request stays a draft until its author or the operator marks
  * it ready (`gh pr ready <number>`): the check alone says a head is proved, and `--merge` refuses a
- * draft, so a change that waits on the operator (`AGENTS.md`, section 3) waits as one, where until
- * 19 November 2026 a proof marked it ready. `--merge` posts the same, and
+ * draft, so a change that waits on the operator (`AGENTS.md`, section 3) waits as one, rather than
+ * being marked ready by a proof. `--merge` posts the same, and
  * also wants `ci.yml` passed on the top's head, since only it proves the Linux isolation on a clean
- * runner. No pull request push starts that run (since 19 October, `ci.yml`); when none exists and
+ * runner. No pull request push starts that run (`ci.yml`); when none exists and
  * `ci.yml` takes `workflow_dispatch`, `--merge` dispatches one before gating, so it runs meanwhile,
  * and waits for it after. No pull request merges before that run has passed. A failed run is not dispatched again, since nothing about its head changed, unless no runner
- * ever took the jobs that did not pass: on 5 November GitHub cancelled both macOS jobs of run
- * 41910589537 untaken, so `land` reruns those jobs once and waits for them. The run dispatched on the
+ * ever took the jobs that did not pass, as GitHub has cancelled jobs untaken, so `land` reruns
+ * those jobs once and waits for them. The run dispatched on the
  * top's head is `ci-fixes` wherever no wall or install changed since the last full run or the trunk: the
  * files that failed there and the tests near the change alone (`fixesFor`, `tools/runtime/ci-runs.ts`). Then, on heads
  * read again, it posts `ana/stack-gate` on every head and merges through GitHub, so each pull request
- * ends Merged; a local merge pushed to main left 98 pull requests open on 21 September 2026. The
+ * ends Merged, where a local merge pushed to main would leave every pull request of it open. The
  * merge is GitHub's asynchronous merge of the top, pinned to the top's gated head, which merges
  * everything beneath it in the native stack all or nothing: GitHub refuses the pull request's own
- * merge for a stack's member (HTTP 403), and on 14 October that left stack 160, #150 to #166, open
- * after every one of its 64 commits had passed. So a landing of several pull requests has to be one
+ * merge for a stack's member (HTTP 403), which would leave a whole stack open after every one of
+ * its commits had passed. So a landing of several pull requests has to be one
  * native stack, its members up to the top the chain of bases. Before anything is gated, `--sanitize`
  * and `--merge` run `gh stack link` over the whole chain where the stack holds only its lower part
  * or several are in none, so a pull request opened on the top joins at its first landing; without a
@@ -62,17 +62,15 @@
  *
  * A merge is refused before anything is gated where another open chain starts on main, a pull
  * request based there with another above it: the merge would leave that chain short of main's new
- * head, and every pull request on it would have to be replayed before it could land. On 22 October
- * #343 merged alone beside the chain #338 to #352, which then needed 26 commits replayed, three of
- * them by hand, before it could land. A lone pull request beside the landing is cheap to replay and
- * is left alone. `--alone` merges anyway, on the operator's word, and that chain is replayed after
- * (operator, 27 October).
+ * head, and every pull request on it would have to be replayed, some commits by hand, before it
+ * could land. A lone pull request beside the landing is cheap to replay and is left alone.
+ * `--alone` merges anyway, on the operator's word, and that chain is replayed after.
  *
  * Every pull request of the landing carries exactly one importance label, `importance:I0` to
- * `importance:I3`, which the operator ranks the stack by; since 25 October a title carries no "Ix:"
- * prefix in its place. It also carries at least one category label, the subject the operator files
- * it under (`CATEGORIES`, mostly the investigation's lane groups); on 27 October four pull requests
- * were opened with none. A landing in which any lacks either, or carries two importance labels, is
+ * `importance:I3`, which the operator ranks the stack by; a title carries no "Ix:" prefix in its
+ * place. It also carries at least one category label, the subject the operator files it under
+ * (`CATEGORIES`, mostly the investigation's lane groups). A landing in which any lacks either, or
+ * carries two importance labels, is
  * refused before anything is gated, in every mode, so `--sanitize` too shows a stack that is not
  * ready, and the refusal names each such pull request (`checkLabels`).
  *
@@ -91,17 +89,17 @@
  * (`follow`) until the pull request closes; a merge lands once.
  *
  * `ci.yml` is waited for in the open: the top's head carries a status of that name, pending while
- * the run goes and linked to it, since a dispatched run shows on no pull request, and on 28 October
- * a landing that reused a passed run read as one that merged without CI. A failed run brings its
+ * the run goes and linked to it, since a dispatched run shows on no pull request, and a landing
+ * that reused a passed run would otherwise read as one that merged without CI. A failed run brings its
  * failed jobs and the tail of their log home beside the gate's logs, and the refusal names the run
  * to rerun where its runner was at fault. `--merge --tag vX.Y.Z` cuts that release at the merge
  * commit, with the notes GitHub writes from the merged pull requests (`release`); a tag origin
  * holds already is refused before anything is gated.
  *
- * GitHub holds main to this command. Since 25 October the repository allows merge commits only,
- * and ruleset 25824510 on the default branch, with no bypass actors, refuses deleting main and any
- * non-fast-forward push to it (an author-identity fix rewrote main's history that day at 14:24Z),
- * and requires a pull request merged by the merge method with the status `ana/stack-gate`, which
+ * GitHub holds main to this command. The repository allows merge commits only, and ruleset
+ * 25824510 on the default branch, with no bypass actors, refuses deleting main and any
+ * non-fast-forward push to it, and requires a pull request merged by the merge method with the
+ * status `ana/stack-gate`, which
  * only `--merge` posts (`STACK_CONTEXT`). `gh api repos/s-smits/anabasis/rulesets/25824510` reads
  * it. The one gap: a token with admin rights can post that status by hand.
  */
@@ -212,7 +210,7 @@ const TAG = /^v\d+\.\d+\.\d+$/u;
 
 class Refusal extends Error {}
 /** A head moved while the landing was proved. Passes are remembered by tree, so landing again costs
- *  only the moved commits; until 28 October it refused, and someone had to start it again. */
+ *  only the moved commits, rather than refusing and waiting for someone to start it again. */
 class Moved extends Refusal {}
 
 const say = (line: string): void => console.log(`land: ${line}`);
@@ -336,7 +334,7 @@ function startCi(root: string, top: Pull): void {
 
 /** Waits for `ci.yml` on the top's head and shows its verdict there as the check `ci.yml`, linked to
  *  its run: a run `land` dispatches is no pull request's run, so GitHub lists it on no pull request,
- *  and on 28 October a merge after a passed run read as one made without CI. */
+ *  and a merge after a passed run would otherwise read as one made without CI. */
 async function awaitCi(root: string, top: Pull): Promise<void> {
   const deadline = Date.now() + CI_WAIT_MS;
   let ci = ciRun(root, top.headRefOid);
@@ -483,8 +481,8 @@ async function mergeStack(
 
 /** `checkCurrent`, read in full only where GitHub's one list of open pull requests, about 0.8 s,
  *  differs from the landing's; the full reading adds the trunk's head, two fetches and the doubled
- *  lines, about 3 s. On 30 October a landing of 17 pull requests, every pass remembered, read the
- *  chain in full 17 times before its first commit was proved afresh. */
+ *  lines, about 3 s, which a landing of many pull requests with every pass remembered would
+ *  otherwise pay once for each before its first commit was proved afresh. */
 function checkListed(root: string, target: number, landing: Landing): void {
   const open = openPulls(root);
   if (placesOf(open) !== placesOf(landing.open)) checkCurrent(root, target, landing, open);
@@ -500,7 +498,7 @@ function checkCurrent(root: string, target: number, landing: Landing, open: read
 }
 
 /** `landing`, each pull request up to the stack top whose parent moved replayed onto it and pushed
- *  (operator, 9 November: "restack everything that is sequentially on top of that again"), with
+ *  (on the operator's word: "restack everything that is sequentially on top of that again"), with
  *  `--sanitize` or `--merge`; otherwise `checkChain` refuses a chain that needs it. */
 function restack(root: string, target: number, landing: Landing, mode: Mode): Landing {
   if (mode.kind === "proving") return landing;
@@ -525,7 +523,7 @@ function restack(root: string, target: number, landing: Landing, mode: Mode): La
 
 /** Posts the required status on every head, then merges the top with the stack beneath it, and
  *  gives the merge commit. A merge not read as merged, refused or unsure, takes the status back from
- *  every head (until 9 November an unsure one left it green); one that is moves each pull request on
+ *  every head, an unsure one included; one that is moves each pull request on
  *  the top's branch onto the trunk. */
 async function merge(root: string, target: number, landing: Landing): Promise<string | null> {
   checkCurrent(root, target, landing, openPulls(root));
@@ -549,8 +547,8 @@ async function merge(root: string, target: number, landing: Landing): Promise<st
     return null;
   }
   // A pull request left on the top's branch would sit on a merged branch that no landing reads as
-  // a bottom (#560 in the landing of v0.9.1, 1 November), so its base moves to the trunk; a failed read
-  // is said, since the merge has gone through.
+  // a bottom, so its base moves to the trunk; a failed read is said, since the merge has gone
+  // through.
   let above: readonly Pull[] = [];
   try {
     above = openPulls(root).filter((pull) => pull.baseRefName === landing.top.headRefName);
@@ -567,9 +565,8 @@ async function merge(root: string, target: number, landing: Landing): Promise<st
 }
 
 /** Cuts the release at the merge the landing made, with the notes GitHub writes from the pull
- *  requests it merged; they can be rewritten on the release afterwards. Until 28 October the release
- *  was a step by hand after each landing (run-improvement-campaign), taken from main's head rather
- *  than the gated merge (the operator, 28 October). */
+ *  requests it merged; they can be rewritten on the release afterwards. It is cut here, at the
+ *  gated merge, rather than by hand from main's head after the landing (the operator's choice). */
 function release(root: string, mode: Mode, sha: string): number {
   if (mode.tag === null) return 0;
   const args = ["release", "create", mode.tag, "--target", sha, "--title", mode.tag, "--generate-notes"];

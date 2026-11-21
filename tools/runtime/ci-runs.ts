@@ -2,17 +2,16 @@
  * The `ci.yml` runs a landing reads, and the `ci-fixes` run it dispatches after a failed one.
  *
  * A full run of `ci.yml` takes about 17 runner-minutes over its three jobs and ten to fifteen
- * minutes of a landing's wall clock. When one failed in its tests and the fix is pushed, the next
- * landing used to dispatch the whole run again although most of its files had just passed on a tree
- * that differs from the new one only by the fix. Of 60 runs from 20 October to 7 November, 7
- * failed, and each fix paid the whole run again (the operator, 7 November: "we only need to rerun
- * 'ci-fixes' which is only the maxdepth1 of all the fixed tests").
+ * minutes of a landing's wall clock. When one failed in its tests and the fix is pushed, running the
+ * whole of it again would pay for files that had just passed on a tree that differs from the new one
+ * only by the fix (on the operator's word: "we only need to rerun 'ci-fixes' which is only the
+ * maxdepth1 of all the fixed tests").
  *
  * So the run on a new head is `ci-fixes` by default: the same workflow, dispatched with the test
  * files to run in place of the suite. Its base is the newest full run on the top's branch, or, where
- * the branch has none, the trunk's head, whose tree a full run passed before `land` merged it; a
- * release's top is a branch no run has seen, so until 21 November every landing ran the whole
- * suite. The files are those the base run failed, where it failed only in its test steps, and the
+ * the branch has none, the trunk's head, whose tree a full run passed before `land` merged it, since
+ * a release's top is a branch no run has seen and would otherwise run the whole suite at every
+ * landing. The files are those the base run failed, where it failed only in its test steps, and the
  * tests near what changed between the base's tree and the new head's, by the rule the gate's static
  * pass uses (`testsNear`, one import for the root's tests, and `uiTestsNear`, three for the UI's).
  * The diff is of trees, not of commits, since a fix goes into the commit that broke and the pull
@@ -161,8 +160,8 @@ export function fixesFor(root: string, top: Pull, say: (line: string) => void): 
   };
   if (ran === top.headRefOid) return full(`its last full run was on this head`);
   // With no full run on the branch, the trunk's head stands for one: `land` merges only a tree
-  // whose full run passed, so the trunk holds that tree (operator, 21 November 2026: "only test
-  // the things we need").
+  // whose full run passed, so the trunk holds that tree (on the operator's word: "only test the
+  // things we need").
   const trunk = ran === "" ? trunkHead(root) : undefined;
   if (ran === "" && trunk === undefined) return full("the trunk's head could not be read");
   const sha = trunk ?? ran;

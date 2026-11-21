@@ -1,9 +1,8 @@
 /**
  * What a landing does around its proofs, kept out of `gate.ts`: a pass is remembered under a
  * digest of the CI gate and every file it imports, read from the landing's checkout, so any edit
- * there proves every commit of the stack again. On 6 November `holdAlone`, added to `gate.ts`,
- * made `bun run land -- 661 --sanitize` prove all 49 commits from the bottom although the CI gate
- * that the passes record had not changed. Nothing here runs inside a pass.
+ * there proves every commit of the stack again, though the CI gate that the passes record has not
+ * changed. Nothing here runs inside a pass.
  */
 import { existsSync, lstatSync, readFileSync, rmSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
@@ -25,12 +24,11 @@ const WATCH_MS = Number(runtimeProcess.env.ANA_LAND_WATCH_MS) || 60_000;
 const KINDS = ["proving", "sanitizing", "merging"];
 
 /** Hold this clone's `who` alone until the returned release, waiting while another live one holds
- *  it. On 6 November two landings of one stack proved 795f3758c at once on two runners into one
- *  log, and the one whose flaky test failed posted red over a head the other had passed. The later
- *  landing now waits, then finds the earlier one's passes remembered. Where `claim.over` reads the
+ *  it. Two landings of one stack proving one commit at once on two runners into one log would let
+ *  the one whose flaky test failed post red over a head the other had passed, so the later landing
+ *  waits, then finds the earlier one's passes remembered. Where `claim.over` reads the
  *  holder's note as work the newer one covers, it ends the holder (SIGTERM) instead of waiting it
- *  out: on 9 November `land -- 729 --sanitize` waited behind a landing of #726, beneath it on the
- *  same chain, that had been proving for 1 hour 42 minutes. */
+ *  out, since a landing beneath it on the same chain can prove for hours. */
 export async function holdAlone(
   root: string,
   who: string,
@@ -45,8 +43,8 @@ export async function holdAlone(
     // The run CLI's lock (`holder.ts`): a holder is a live process of this host with the start its
     // record names, and a dead one's lock is taken over under a `flock` of the folder, so of two
     // landings that find it dead one takes it and the other waits.
-    // A landing without this lock writes its pid alone or `<pid> #<n> <kind>`, as a link or, until
-    // 9 November, into `<lock>/pid` of a folder (a link's record names no file, so only a folder
+    // A landing without this lock writes its pid alone or `<pid> #<n> <kind>`, as a link or, in an
+    // older form, into `<lock>/pid` of a folder (a link's record names no file, so only a folder
     // has one). While that pid answers signal 0 it is waited for and never ended, since a bare pid
     // may name a later process; a folder naming no live pid is removed. The clause goes once no
     // open branch writes that record.
@@ -134,8 +132,8 @@ export function claimOf(
 /**
  * A stop for a landing's proofs: `moved` is called every `WATCH_MS` and its error, where it returns one,
  * ends them, as SIGINT or SIGTERM does with an `Interrupted` error; each proof runs in a process group of its
- * own, so it ends whole, and the landing starts again with every pass so far kept. Until 9 November a move was
- * read only as the next proof started, so a whole gate over a stale top ran to its end.
+ * own, so it ends whole, and the landing starts again with every pass so far kept. A move read only
+ * as the next proof started would let a whole gate over a stale top run to its end.
  */
 export function watching(Interrupted: new (message: string) => Error, moved: () => Error | null) {
   const stop = new AbortController();
@@ -221,9 +219,9 @@ function openOrNull(root: string): Pull[] | null {
 /**
  * Lands with `round`, then again each time an open pull request moves, opens or closes, read every
  * `WATCH_MS`, until `target` is no longer open or SIGINT or SIGTERM ends it, where `--watch` is
- * named. A landing lands once by default (operator, 20 November: "standard just let it run and not
- * iterate", since a loop left running re-proves every move during heavy sessions and held the main
- * checkout from following the stack for a day), and a `--merge` lands once. A round costs only
+ * named. A landing lands once by default (on the operator's word: "standard just let it run and not
+ * iterate", since a loop left running re-proves every move during heavy sessions and can hold the
+ * main checkout from following the stack), and a `--merge` lands once. A round costs only
  * what moved, since every pass is remembered by tree; a round under way ends through `watching`,
  * a wait at once.
  */

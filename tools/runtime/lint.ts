@@ -264,8 +264,8 @@ function ledgerProblems(
 /**
  * The roots a whole-tree run lints. `packages/ui` keeps its own lock and `node_modules`; without
  * its React types the type-aware rules read every component as an error type and report findings
- * that are not there, so it waits for `bun run ui:deps` and says so (v1's rule, restored with the
- * UI on 11 October). Its own `tsconfig.json`, with `jsx` and `DOM`, is the one the type-aware rules
+ * that are not there, so it waits for `bun run ui:deps` and says so (v1's rule). Its own
+ * `tsconfig.json`, with `jsx` and `DOM`, is the one the type-aware rules
  * read for its files: without it they fall back to the compiler's defaults, not to the root's.
  */
 function lintRoots(): readonly string[] {

@@ -6,8 +6,7 @@
  * costs about a second's sample before each task; unset or empty as `auto` where some host takes
  * checks, and otherwise here without a sample, as where the host list cannot be read; `here` or the
  * older `0` on this machine, without reading the host list; a host's name or ssh destination on
- * that host. Any other value is refused with the names to write. Until 20 November 2026 unset meant
- * `here`, so no check left this machine unless a session asked. Wherever it runs, the task is
+ * that host. Any other value is refused with the names to write. Wherever it runs, the task is
  * `task.sh` over the working tree as it stands, uncommitted bytes included, and its exit status is
  * this command's.
  *
@@ -17,8 +16,7 @@
  * GitHub, usually the uncommitted change alone. Git decides what a tree is, so nothing it ignores
  * travels, the dependencies among them: the slot installs those from the lockfiles it was sent,
  * once per lockfile (`task.sh`). The snapshot keeps `HEAD`'s parents, so a static gate there chooses
- * the tests it would choose here. Until 12 November rsync carried the tree under a filter list of
- * its own, into a repository of one parentless commit, where a static pass read every file as changed.
+ * the tests it would choose here, where a parentless snapshot would read every file as changed.
  *
  * **Slots.** A host takes as many tasks at once from this machine as its `checks` says, and this
  * machine one. A slot is a link in the temp folder whose target is its holder's PID, made in one
@@ -114,8 +112,8 @@ function listed(choice: string): { hosts: readonly Host[]; benches: readonly Ben
 
 /**
  * Whether a benchmark's arm holds `host`: an arm's rollouts are read against each other at equal
- * load, so a check beside them moves what they score. On 20 November 2026 a gate sent to such a
- * machine during a sitting loaded it until it stopped answering, and the arm was rolled again. A
+ * load, so a check beside them moves what they score, and a gate sent there during a sitting can
+ * load the machine until it stops answering and the arm has to be rolled again. A
  * sitting whose `status` does not answer `idle` on its first line (`bench.ts`) holds it, a silent
  * one too.
  */

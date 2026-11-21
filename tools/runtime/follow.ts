@@ -8,17 +8,15 @@
  *
  * The top is the end of the stack `bun run land` lands first, read by the one reader of the chain
  * of bases (`firstStack`, `tools/runtime/pulls.ts`): of the stacks of two or more, the one that holds
- * the oldest open pull request (operator, 27 October). Until 27 October it took the stack with the
- * most open pull requests, so a later stack that grew longer took the checkout off the cycle's
- * stack, and until 9 November it read GitHub's native stacks where `land` read the bases.
- * The checkout lands on `stack-pr<top>`, tracking the top's branch, and an earlier `stack-pr<N>` branch is deleted. On
- * 18 October the main checkout sat on `stack-pr197` after the stack was restacked onto a newer
- * main and grew to #199, four commits ahead and six behind, where a fast-forward no longer reaches.
+ * the oldest open pull request (the operator's choice), so a later stack that grows longer does
+ * not take the checkout off the cycle's stack, and `follow` and `land` read the same chain.
+ * The checkout lands on `stack-pr<top>`, tracking the top's branch, and an earlier `stack-pr<N>`
+ * branch is deleted, since a checkout left on an old top after a restack onto a newer main can sit
+ * commits ahead and behind, where a fast-forward no longer reaches.
  *
  * Where no pull request is open the checkout lands on `main`, tracking `origin/main`, which holds
- * whatever landed, and the `stack-pr<N>` it left is deleted. Until 19 October it refused there
- * with "no pull request is open" and moved nothing, so a checkout on the last stack's branch stayed
- * behind `main` once that stack merged; on 19 October none was open.
+ * whatever landed, and the `stack-pr<N>` it left is deleted, so a checkout on the last stack's
+ * branch does not stay behind `main` once that stack merges.
  *
  * The branch is reset to the top: what matters is on GitHub, so a commit made on it is not kept.
  * Changes to tracked files are stashed and popped back on the new top, by the stash's own commit,
@@ -95,8 +93,8 @@ function workingIn(root: string): string[] {
 
 /** Why moving the checkout at `root`, its top-level folder, to `target` now could lose or disturb
  *  work, one reason a line, or none where the move is safe. The hourly pass of ana.follow moves the
- *  checkout only then, and leaves stashing, saving and clearing to its three daily passes (operator,
- *  6 November 2026: follow hourly, but never cost local work or block more than it must).
+ *  checkout only then, and leaves stashing, saving and clearing to its three daily passes (the
+ *  operator's choice: follow hourly, but never cost local work or block more than it must).
  *  Uncommitted changes are no reason in themselves, since `follow` carries them: only where they
  *  would not merge onto the new top. Each check reads git or the file system and moves nothing. */
 export function hazards(root: string, target: Target, now = Date.now()): string[] {
@@ -135,7 +133,7 @@ export function hazards(root: string, target: Target, now = Date.now()): string[
   const theirs = gitText(root, "diff", "--name-status", "--no-renames", "-z", "HEAD", upstream).split("\0");
   const changedByTop = theirs.filter((_, index) => index % 2 === 1);
   // Any file here at a path the top adds is in the way, ignored ones too: the switch refuses to
-  // overwrite those as well, so no ignored local file is lost unseen (landing review, 7 November 2026).
+  // overwrite those as well, so no ignored local file is lost unseen.
   const inWay = changedByTop.filter(
     (path, index) => theirs[index * 2] === "A" && changedAt(join(root, path)) !== null,
   );

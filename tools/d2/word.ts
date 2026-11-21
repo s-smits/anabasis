@@ -5,8 +5,8 @@
  *   bun tools/d2/word.ts --name buffer --tasks "the last three batches all tied"
  *   bun tools/d2/word.ts --name buffer --budget 250
  *
- * Until 2026-10-09 the operator could steer a campaign only by running a command, which meant
- * stopping the one that ran (`7f0add79:docs/plan.md`, row F50). A word is one event in the campaign's log
+ * A word lets the operator steer a campaign without stopping the one that runs to run another
+ * command. A word is one event in the campaign's log
  * (`campaign.word`). The campaign command reads it at the next move's boundary
  * (`pendingWords`, `src/campaign/word.ts`), so it changes the move after the one that is running
  * and nothing in it, and it is never waited for: a campaign with no word left goes on.
@@ -16,8 +16,8 @@
  *   --tasks   an Examiner session writes other tasks before anything else is built or compared.
  *   --budget  the campaign's total in dollars from there on: what is left of it caps each move.
  *
- * Until 20 October `--cause` released a campaign its A/A comparison had ended; an older log may hold
- * such a word, which nothing reads now.
+ * An older log may hold a `--cause` word, which released a campaign its A/A comparison had ended;
+ * nothing reads it now.
  *
  * Each takes effect once: the event that acts on a word names it. Nothing here reaches a seat. A
  * word is the operator's to the campaign's controller, and no Builder, Examiner, solver or

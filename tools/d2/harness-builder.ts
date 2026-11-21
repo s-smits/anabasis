@@ -11,9 +11,9 @@
  *   bun tools/d2/harness-builder.ts --name queues --prompt "<the domain, in the operator's words>" \
  *     --solver claude/claude-sonnet-5-5 --budget 60 --builder ... --examiner ... --reviewer ...
  *
- * A campaign is a loop of moves over one log (`7f0add79:docs/plan.md`, "The process"). Until 2026-10-09 a
- * session carried each one by hand: it read the view, chose a move by a skill's walk, and typed
- * the command with its flags. This command does that. It reads the log, asks move 7 for the one
+ * A campaign is a loop of moves over one log. Rather than a session carrying each one by hand,
+ * reading the view, choosing a move by a skill's walk and typing the command with its flags, this
+ * command does that. It reads the log, asks move 7 for the one
  * move that follows (`decide`, `src/campaign/decide.ts`), prints it with its reason, makes it by
  * the command an operator would run, and reads the log again, until the campaign ends or `--moves`
  * are made. It chooses nothing of its own: the table chooses, and every refusal is the command's.
@@ -25,17 +25,15 @@
  * promotion a step names, and every condition above stays the host's at each action. A conversation that ends at its own
  * limits is followed by another on the Builder's notes, and so is one the Builder ends with
  * `finish`, until three in a row have made no campaign move (`finished`). Every ending the table
- * names ends a live conversation too, a lack of room among them: until 22 October that one was
- * advice while a conversation lived, and a Builder bought an Examiner session past its supply patience.
- * From 13 October to 3 November a campaign could also run with the host making every move the
- * table names, a Builder session among them (`--no-builder-led`); no run on record made a move
- * past its draft so, and a log from before the term runs led like any other.
+ * names ends a live conversation too, a lack of room among them, since as advice a Builder could
+ * buy an Examiner session past its supply patience. An older log whose host made every move
+ * (`--no-builder-led`) runs led like any other.
  *
- * **A campaign opens over a stored pack, which four flags name, or from a prompt** (row F53).
+ * **A campaign opens over a stored pack, which four flags name, or from a prompt.**
  * The prompt and who solves are then part of what it runs by, its first move is the Examiner's
  * draft of the exam, and from there every command opens the campaign by its name alone, over the
  * exam its log holds. Every check of a drafted exam is its author's own computation, and the
- * launch is the operator's word for each (16 October): the exam is read with every check its author
+ * launch is the operator's word for each: the exam is read with every check its author
  * decides admitted, the objective among them, in a drafted exam or a stored pack
  * (`--admit-authored`), and frozen where nothing else is at fault. Under `--hitl` they wait for
  * `--admit`.
@@ -59,8 +57,8 @@
  * reserve one solve is held at (`--budget`, `--reserve`), the
  * campaign's improvement patience and supply patience (`--patience`: moves without a gain, and
  * readings that left nothing to gain, it bears in a row before it ends, six by default while the system is
- * built, since every campaign of 9 and 10 October ended on the plan's three before its tasks were
- * measured), who sits in each seat, and the terms of its moves as a command last named them
+ * built, since a patience of three ends campaigns before their tasks are measured), who sits in
+ * each seat, and the terms of its moves as a command last named them
  * (`TERMS`, `src/campaign/opening.ts`): a session's limits, a comparison's size, the practice tasks.
  * A later run that names nothing runs by the record, and one that names another records it again:
  * these are the operator's conditions, and a comparison logs its own terms at its start. The
@@ -68,18 +66,18 @@
  * is recorded once, as the first run that is no dry run starts (`campaign.setting`, `settingOf`),
  * and every command refuses another.
  *
- * **The budget is one total** (`7f0add79:docs/plan.md`, row F49). Each move's cap is what is left of it:
+ * **The budget is one total.** Each move's cap is what is left of it:
  * the total less every billed dollar the log holds, and where less is left than one solve is held
  * at, the campaign ends on its budget. **What it risks** is said as it opens: what one reading of
  * its target can show and its per-comparison rate (`sizeLines`, `src/kernel/size.ts`), and a paid
  * campaign whose target is too small for a step at its level is refused there.
  *
- * **A campaign runs unattended** (row F29; the operator, 12 and 16 October): it admits every check
+ * **A campaign runs unattended** (the operator's choice): it admits every check
  * its author's own computation decides, a drafted exam's objective among them, freezes an exam whose reading holds no fault and promotes a harness a comparison
- * against the reference read as a step (until 19 October, a step read twice). Under `--hitl`, the operator in the loop, kept by the opening until
+ * against the reference read as a step. Under `--hitl`, the operator in the loop, kept by the opening until
  * `--no-hitl`, all three wait for the operator's word and a promotion stops the command. Going on past the stop rule takes `--past-stop "<why>"` either way.
  *
- * **A word the operator leaves** (`word.ts`, row F50) is read at each move's boundary: a stop
+ * **A word the operator leaves** (`word.ts`) is read at each move's boundary: a stop
  * ends the campaign there, other tasks are written first, and another total is what the campaign
  * runs by from that move on. A word changes nothing in the move that was running when it came.
  *
@@ -88,7 +86,7 @@
  * once three of its Builder's conversations in a row made no campaign move (`idleOf`), and
  * its log's last event says which (`campaign.ended`). With `--handover <dir>` it then writes what
  * it hands over there: the reference harness as a directory that stands by itself, the public rules
- * and the closing report (`close.ts`, row F51). A move that threw after it had begun is the
+ * and the closing report (`close.ts`). A move that threw after it had begun is the
  * environment's ending, and run again the command goes on from the log; one whose session is on
  * record as crashed is the provider's failure, which the campaign goes on from (`goesOn`). A
  * session a stopped run left open is ended on record as killed before the next run's first move
@@ -183,9 +181,9 @@ type Made = Extract<Decided, { move: "draft" | "accept" | "prepare" | "compare" 
  * Whether the campaign goes on from a move that threw, which began where the log held `from`
  * events: a provider's limit with a reset is waited out, and so is a session on record as
  * crashed. A Builder's session that crashed is refused where it is read back (`spent`,
- * `src/builder/session.ts`), so its move throws, and until 13 October that throw was the
- * environment's ending: a provider's failure on the Builder's own turn ended the campaign, and led
- * by its Builder that turn is most of the campaign. It is the provider's failure as an Examiner's
+ * `src/builder/session.ts`), so its move throws. That throw is no environment's ending, which would
+ * let a provider's failure on the Builder's own turn end the campaign, and led by its Builder that
+ * turn is most of the campaign. It is the provider's failure as an Examiner's
  * crashed session is, which the campaign goes on from and the table's crash rule bounds
  * (`crashedRun`).
  */
@@ -233,7 +231,7 @@ async function make(decided: Made, turn: Turn, log: string): Promise<void> {
   }
   const { session, args } = comparisonOf(decided, turn);
   // The comparison's own flags beside the pack's, so the log says what command the move ran
-  // (11 October: the trigger had been left off, and no record could show it).
+  // (a flag left off would otherwise show on no record).
   begin({ session, args: args.slice(pack.length) });
   await checkpointCommand(args, turn.held);
 }
@@ -243,8 +241,8 @@ async function make(decided: Made, turn: Turn, log: string): Promise<void> {
  * stand on the operator's word alone. An exam drafted from a prompt always holds such checks,
  * since no engine of the field is installed for it, so a campaign from a prompt under `--hitl`
  * waits here once, for that word. A reading made in this run printed its faults a line each as it was made
- * (`accept.ts`), and until 10 October they were printed here a second time; a run that ends on a
- * reading an earlier run made is the one that has them to print.
+ * (`accept.ts`), so they are not printed here a second time; a run that ends on a reading an
+ * earlier run made is the one that has them to print.
  */
 function examLines(
   events: readonly LogEvent[],
@@ -261,8 +259,8 @@ function examLines(
     ...(authored.length === 0
       ? []
       : [
-          // With the flags that name the campaign's pack, where it has one: until 2026-10-09 the
-          // line named the campaign alone, and run so over a stored pack the command threw.
+          // With the flags that name the campaign's pack, where it has one: a line that named the
+          // campaign alone would throw, run over a stored pack.
           `to admit the checks their author's own computation decides, which is the operator's word for each: bun tools/d2/harness-builder.ts ${packOf(values).join(" ")} --admit ${authored.join(",")}`,
         ]),
   ];
@@ -272,9 +270,8 @@ function examLines(
  * Keep this run of the command on record: `launch-run-<n>.json` beside the log, with the flags,
  * the commit and the load it started under (`Receipt`, `tools/runs/receipt.ts`). The
  * log holds the host's code by content and no commit, and the opening keeps the terms and not the
- * flag line, so until 10 October a run under this command was on no record: the flag line of the
- * run that recorded the setting of the second campaign from a prompt on the test host (120 minutes
- * and 12 tasks where its flag file named 8 and 6) could not be traced. A rehearsal keeps none,
+ * flag line, so without the receipt a run under this command would be on no record, and a setting
+ * that differed from its flag file could not be traced. A rehearsal keeps none,
  * since its seats are scripts and it runs where it is told.
  */
 function keepReceipt(log: string, args: readonly string[]): void {
@@ -295,11 +292,11 @@ function keepReceipt(log: string, args: readonly string[]): void {
 
 /**
  * End on record, as killed, each Builder, Examiner and drafting session a stopped run of the command
- * left open, with what the log holds of it, and a Builder's notes where its home still stands. Until 13 October a reopened campaign started new sessions
- * beside them, and readers metered each only to its last turn and counted it open (x-1 and x-2 of
- * two campaigns stopped and reopened). Killed is no crash, so the crash rule counts none of them.
- * Until 29 October a draft was left open, and a pause waits for no draft to be open: truss-fresh-
- * opus-terra073v4 restarted inside d-1, finished d-2, and could never pause cleanly.
+ * left open, with what the log holds of it, and a Builder's notes where its home still stands, since
+ * a reopened campaign starting new sessions beside them would leave readers metering each only to
+ * its last turn and counting it open. Killed is no crash, so the crash rule counts none of them. A
+ * draft is ended too, since a pause waits for no draft to be open, and a campaign restarted inside
+ * one could otherwise never pause cleanly.
  */
 export async function endCut(log: string): Promise<void> {
   for (const { of, session, ...spent } of cutSessions(read(log))) {
@@ -379,28 +376,20 @@ async function converse(
     return { move: "end", ending: "environment", code: "failed", why };
   }
   // A conversation that ends whole, by finish or at its limits, is followed by another on the
-  // Builder's notes until IDLE in a row have made no campaign move (`idleOf`). Until 14 October every
-  // finish ended the campaign: five of five led campaigns ended so, with $22 to $122 of $300 spent,
-  // and the two that promoted finished within seconds of the promotion.
+  // Builder's notes until IDLE in a row have made no campaign move (`idleOf`), since a finish that
+  // ended the campaign would end it with most of its budget unspent, often seconds after a promotion.
   const idle = WHOLE.has(how) ? idleOf(after) : 0;
   const table = decide(after, turnOf(context).plan);
   // A comparison, any of them, and a promotion measure what a conversation left and ask no Builder for
-  // anything, so the host makes them first, and an ending the table names stands. Until 14 October a
-  // Builder's `finish` ended the campaign whatever was owed: buffer-159-opus's Builder finished a minute
-  // after a 9-0-1 step bought a repeat, and the campaign ended as its Examiner session settled two and a
-  // half hours later, the repeat never run; until 19 October the tasks a repeat waited for were owed
-  // too. Until 15 October an ordinary comparison was the Builder's alone, so three conversations that
-  // each changed the harness and finished ended the campaign with the table naming its comparison
-  // (truss-151-m1 b-1, buffer-151-haiku b-1 and buffer-pr169-opus b-1 finished on a harness no
-  // comparison read). The host makes a comparison that began under other code as its first move, and its
-  // terms refuse it with the campaign's environment ending (`begin`, `src/campaign/round.ts`), where the
-  // Builder's tool was refused it again and again (main0_5_1, three times at 8e0371c58). Every other
-  // Examiner session the table names starts as the next conversation opens, beside it (`campaignTools`).
-  // Until 16 October only the campaign's first did, and tasks for want of room were the host's once IDLE
-  // conversations in a row made no campaign move: buffer-159-opus's first promotion waited 5.9 hours for
-  // its next Examiner session and its second 2.1 hours, seven conversations that made no move, and a
-  // campaign short of tasks could end `finished` with the table naming them. A session that holds out
-  // nothing counts towards the table's own ending for want of room (`roomless`).
+  // anything, so the host makes them first, and an ending the table names stands: a Builder's
+  // `finish` does not end the campaign while a comparison is owed, which a harness changed and then
+  // finished on would otherwise never have read. The host makes a comparison that began under other
+  // code as its first move, and its terms refuse it with the campaign's environment ending (`begin`,
+  // `src/campaign/round.ts`), where the Builder's tool would be refused it again and again. Every
+  // Examiner session the table names starts as the next conversation opens, beside it
+  // (`campaignTools`), rather than waiting for IDLE conversations in a row to make no move, which
+  // left promotions hours from their next tasks. A session that holds out nothing counts towards the
+  // table's own ending for want of room (`roomless`).
   if (idle < IDLE || table.move === "promote" || table.move === "compare") {
     return how === "finished" || (AGAIN.has(how) && context.used < context.maxMoves) ? null : table;
   }
@@ -425,8 +414,8 @@ async function lead(
     return null;
   }
   console.log(`\nnext · ${decidedLine(left)}`);
-  // Every ending goes on record once (`ended`). Until 14 October an environment's was taken to be
-  // there already, and the crash rule's, read after the host halted a live Builder, never was.
+  // Every ending goes on record once (`ended`), an environment's and the crash rule's among them,
+  // which read after the host halted a live Builder would otherwise never be.
   if (left.move === "end") ended(log, read(log), left);
   // An environment's ending hands nothing over.
   if (left.move === "end" && left.ending !== "environment" && values.handover !== undefined) {
@@ -439,9 +428,8 @@ async function lead(
  * The setting the campaign runs under: the log's record, where a flag that names another is
  * refused with both, as every command refuses it; or, where the log holds none, what the flags
  * name, with the opening's solver for a campaign from a prompt, to be recorded as the command
- * starts (`keepSetting`). Until 5 November the opening kept its own copy of the deadline, the
- * scored tasks, the solves and the model turns, and each move was given them as flags until one
- * recorded the setting: two records of one fact, of which the setting was read.
+ * starts (`keepSetting`). The opening keeps no copy of the deadline, the scored tasks, the solves
+ * or the model turns, which would be two records of one fact.
  */
 function settingOf(log: string, given: Values): AskedSetting {
   const events = existsSync(log) ? read(log) : [];
@@ -467,9 +455,8 @@ function settingOf(log: string, given: Values): AskedSetting {
 /**
  * The opening of a paid campaign, refused where a seat's provider holds no credential here, before
  * anything is paid for (rule 14), and so also under `--dry-run`, which every launch runs first.
- * Every call of such a seat ends a provider non-result: on 21 October a campaign on the Linux host,
- * whose env file held no OpenRouter key, ended its Examiner's 9 room solves "Provider is not
- * configured: openrouter" while its Opus Examiner billed $3.11.
+ * Every call of such a seat ends a provider non-result, while the seats that are served go on
+ * billing for nothing.
  */
 async function served(opening: Opening, paid: "paid" | "scripted", named?: string): Promise<Opening> {
   if (paid === "scripted") return opening;
@@ -512,7 +499,7 @@ export async function harnessBuilder(
 ): Promise<Decided> {
   // Runtime drift, and a tree checked out again under paid seats, are refused before any opening,
   // receipt or recovery can write to the campaign. A dry run seats none, so it goes on and says so:
-  // until 5 November one passed in a main clone, whose real run was then refused.
+  // otherwise a dry run could pass in a main clone whose real run is then refused.
   const manifest = join(REPO, "package.json");
   const fault = pinFault(capturedJsonParse(readFileSync(manifest, "utf8")), Bun.version);
   if (fault !== null) throw new Error(`${manifest}: ${fault}`);
@@ -543,7 +530,7 @@ export async function harnessBuilder(
   let last: Decided["move"] | null = null;
   for (let made = 0; ; ) {
     // A total the operator left as a word rules from this move on: the newest stands, and the record
-    // answers every one (until 11 October the newest alone, and an older one applied at the next move).
+    // answers every one, so that no older one applies at the next move.
     const totals = pendingWords(read(log)).filter(({ word }) => word === "budget");
     if (totals.length > 0) opening = opened(log, values, paid, totals);
     const events = existsSync(log) ? read(log) : [];
@@ -554,7 +541,7 @@ export async function harnessBuilder(
       const size = sizeLines(plan.wanted.target, plan.wanted.level);
       for (const line of size) console.log(line);
       // A paid campaign that could never read a step is refused before it is paid for (rule 14):
-      // until 20 October it ran, and the table sent for tasks no target that small could use.
+      // run, the table would send for tasks no target that small could use.
       const floor = comparisonFloor(plan.wanted.level);
       if (paid === "paid" && plan.wanted.target < floor) {
         throw new Error(`${size[0] ?? ""}: name a --target of at least ${String(floor)}`);
@@ -596,7 +583,7 @@ export async function harnessBuilder(
     try {
       await make(decided, turn, log);
       // Inside the `try`, so a move that changed nothing ends the campaign as any other move that
-      // threw does: until 20 October the process exited here with no ending on record.
+      // threw does, rather than the process exiting here with no ending on record.
       if (read(log).length <= from + 1) {
         throw new Error(`the move changed nothing in ${log}: made again it would change nothing again`);
       }

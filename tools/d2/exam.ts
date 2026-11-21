@@ -51,8 +51,8 @@ function examStaged(dir: string, draft: Draft): Staged {
  * The exam a campaign's log drafted, where the campaign staged it, for a reader that may write
  * nothing under the campaign's folder (`tools/wri/wri.ts grade`): null where the log drafted no
  * exam, so the campaign's pack is a stored one, and refused where the draft was never staged.
- * On 10 October a lane of t-10's investigation was given `<campaign>/checks`, which only a
- * campaign over a stored pack has, and stopped on ENOENT.
+ * A reader given `<campaign>/checks`, which only a campaign over a stored pack has, would
+ * otherwise stop on ENOENT.
  */
 export function stagedExamOf(log: string): Staged | null {
   const draft = draftOf(read(log));
@@ -135,8 +135,7 @@ export function stageExam(dir: string, draft: Draft): Staged {
  * check program that does not load or a wall that is not there stops a verifier, and here that is
  * told as a fault too: the draft's author is in the session and can mend the first. The session
  * reads the draft's shape before it calls this (`draftFaults`), and the reading's notes are left
- * out: until 4 November they rode on the reply that ends the session, and none of 250 results on
- * record carried them to a model.
+ * out, since on the reply that ends the session they would carry nothing to a model.
  */
 export async function draftReading(
   dir: string,

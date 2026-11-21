@@ -3,27 +3,26 @@
  * sleeps it counts.
  *
  * - **The load, before a solve.** A solve's deadline measures elapsed time. Under load, it may run
- *   out of time on work it would finish on an idle host: on 9 October one harness answered the same seven tasks
- *   in a median of 105 s under a load of 31 and of 40 s under a load of 6 (`docs/transfer.md`). A
- *   solve starts once the one-minute load is at or under the cores, or after `LOOKS` looks: on 15
- *   October, three campaigns on a host of 8 cores held one of them 104 and 107 minutes. Until 12
- *   October the solve queue waited at a move's start, and a comparison of hours ran on whatever came after.
+ *   out of time on work it would finish on an idle host: one harness has answered the same tasks
+ *   more than twice as slowly under a heavy load as under a light one (`docs/transfer.md`). A
+ *   solve starts once the one-minute load is at or under the cores, or after `LOOKS` looks, since
+ *   several campaigns on one host can hold a solve for well over an hour. The queue waits before
+ *   each solve rather than at a move's start, where a comparison of hours would run on whatever came after.
  *   `--loaded` is the operator's word that the solves' times will not be compared.
  * - **The reserve, beside the solves in flight.** A solve waits while others fly and the budget
- *   holds no reserve for it (`affords`); until 14 October each kind of solve held its own.
+ *   holds no reserve for it (`affords`), one reserve for every kind of solve.
  * - **The solve slots, shared by every seat.** The same in-flight count holds comparison workers,
- *   practice and, until 1 November, the gate's room solves to the concurrency the condition records. On 26 October,
- *   buffer-fresh-opus-v072 showed 13 overlapping room solves at a recorded concurrency of 4:
- *   each draft and its remaining room solves could start together, outside the comparison's workers.
+ *   and practice to the concurrency the condition records, so that no seat's solves start outside
+ *   the comparison's workers and overlap far past it.
  * - **A pause's word**, which starts no further solve while the process it was left for runs, so
  *   that `runs pause` lets the open ones finish (`PAUSE`, `src/campaign/word.ts`).
  * - **A provider's named reset.** A usage limit that names when it lifts is slept out, not a crash:
- *   on 12 October one login's limit, an hour and forty minutes from its reset, ended five campaigns
- *   on two hosts at once (`waitOut`, `src/solver/run.ts`, which a solve also calls).
+ *   one login's limit, read as a crash, would end every campaign on it at once (`waitOut`,
+ *   `src/solver/run.ts`, which a solve also calls).
  * - **A network that failed a session**, a minute after the first crash and five after the second:
- *   in buffer-149 on 13 October, Builder session b-2 began 2 s after b-1 crashed on a failed DNS
- *   lookup (`waitCrashed`). The provider's edge, whose 403 page ended a campaign on 13 November, is
- *   on that route; a refusal the provider's own API writes (credit, a login, a model) gets no wait.
+ *   a session begun seconds after another crashed on a failed DNS lookup would only crash again
+ *   (`waitCrashed`). The provider's edge, whose 403 page can end a campaign, is on that route; a
+ *   refusal the provider's own API writes (credit, a login, a model) gets no wait.
  *
  * Every wait but the reserve's, slots' and pause's is on record as `campaign.waited`, so a reader tells
  * the solver's time from the host's, and a provider's starts the crash rule's count again
@@ -43,8 +42,8 @@ import { type Seated, solved } from "./round.ts";
 
 /** A host as the waits read it: its one-minute load, its cores, how long a look waits, and, where a
  *  test stands one in, how it sleeps and what its clock reads. `HOST` sleeps on `waiting`'s own timer, which a cancellation
- *  clears: until 25 October it slept on `Bun.sleep`, and a cancelled wait held the process until
- *  that sleep ran out. */
+ *  clears, where `Bun.sleep` would hold the process after a cancelled wait until that sleep ran
+ *  out. */
 export interface Host {
   readonly load: () => number;
   readonly cores: number;
@@ -84,10 +83,9 @@ const SCRIPTED: Host = { load: () => 0, cores: 1, waitMs: 1000 };
 
 /**
  * `seated` with each solve held at the load, reserve and shared slots, and at a pause's word. A
- * rehearsal's scripts, whose times nobody compares, meet no load: until 7 November they met no queue
- * at all, and a `runs pause` of a rehearsed campaign started 73 solves after its word and cut the 4
- * still open at its patience of 9 minutes, where the queue of a paid run let the open 4 finish and
- * stopped in 39 s (ablation study S1).
+ * rehearsal's scripts, whose times nobody compares, meet no load but still meet the queue, so that
+ * a `runs pause` of a rehearsed campaign lets its open solves finish and stops, as a paid run's
+ * does, rather than starting solves after its word and cutting them at its patience.
  */
 function queued({ seated, loaded, host = seated === solved ? HOST : SCRIPTED }: Queue, log: string): Seated {
   // A pause left before this process began was for the one it stopped.
@@ -106,10 +104,9 @@ function queued({ seated, loaded, host = seated === solved ? HOST : SCRIPTED }: 
             `a solve of ${task.taskId} waits for the campaign's reserve while others are in flight`,
           );
         }
-        // The load is read at every look until the solve starts: on 27 October three room solves
-        // of esp32-fresh-opus-terra read 3.2 on 12 cores, waited a minute for a slot, and began at 15.9.
-        // The wait on record is the time slept at a high load alone: until 31 October it ran from the
-        // first high look to the start, slot and reserve waits after the load cleared included.
+        // The load is read at every look until the solve starts, since a solve that waited for a
+        // slot can begin at a far higher load than it first read. The wait on record is the time
+        // slept at a high load alone, without the slot and reserve waits after the load cleared.
         let [looks, load, ms] = [0, 0, 0];
         for (;;) {
           const [now, flown] = [loaded || looks >= LOOKS ? 0 : host.load(), inFlight(log)];
@@ -149,8 +146,8 @@ function queued({ seated, loaded, host = seated === solved ? HOST : SCRIPTED }: 
  * The wait after the sessions in a row that crashed (`crashedRun`): to the provider's reset where
  * the last crash names one, counted or not, and otherwise, where the network failed it, one wait a
  * crash on record as `for: "network"`. The third ends the campaign on its environment (`CRASHES_IN_A_ROW`,
- * `decide.ts`) and is not waited for. This is asked after every move, and until 14 October each
- * asking slept the same minute again until a session ended whole.
+ * `decide.ts`) and is not waited for. This is asked after every move, and the minute is slept once
+ * a crash, not again at each asking until a session ends whole.
  */
 export async function waitCrashed(log: string, host: Host = HOST): Promise<void> {
   const events = read(log);

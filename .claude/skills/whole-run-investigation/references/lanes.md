@@ -2,7 +2,7 @@
 
 The catalogue: six deterministic rows the primary settles itself, and twenty-three lanes, each one
 question a paid session can be given. `tools/wri/catalogue.ts` parses this file, and
-`test/wri-catalogue.test.ts` holds it to `TRIGGERS` (`tools/wri/folds.ts`): each trigger the reader
+`test/wri-readers.test.ts` holds it to `TRIGGERS` (`tools/wri/folds.ts`): each trigger the reader
 prints is named in the `Starts from` paragraph of the lane it starts.
 
 ## Who holds which pen

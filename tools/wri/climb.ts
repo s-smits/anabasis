@@ -129,7 +129,7 @@ function rowOf({ name, events }: Campaign): string[] {
 }
 
 /** The climb table, one row a campaign, in Markdown. */
-export function climbTable(campaigns: readonly Campaign[]): string {
+function climbTable(campaigns: readonly Campaign[]): string {
   const line = (cells: readonly string[]) =>
     `| ${cells.map((cell) => cell.replaceAll("|", "/")).join(" | ")} |`;
   return [line(COLUMNS), line(COLUMNS.map(() => "---")), ...campaigns.map((each) => line(rowOf(each)))].join(

@@ -72,7 +72,7 @@ export const confirmedIn = (vetting: string): string[] =>
 
 /** The findings of `vetting`: each row of each table with a `verdict` column whose verdict begins
  *  with one of `VERDICTS`. A prediction's row, resolved as held or falsified, is no finding. */
-export function findingsIn(vetting: string): Finding[] {
+function findingsIn(vetting: string): Finding[] {
   return tablesOf(vetting).flatMap(({ header, rows }) => {
     const columns = header.map((cell) => plain(cell));
     const at = (name: string) => columns.indexOf(name);
@@ -101,10 +101,6 @@ export function findingsIn(vetting: string): Finding[] {
   });
 }
 
-/** The keys of the register of standing findings, the first cell of each row of its `key` table. */
-export const standingKeys = (register = readFileSync(REGISTER, "utf8")): string[] =>
-  rowsOf(register, "key").map(([key = ""]) => key);
-
 /** The register as the synthesis session is given it: each key beside its finding, a line a key. A
  *  lane is given none of it, since a lane told what to find finds it. */
 export const standingLines = (register = readFileSync(REGISTER, "utf8")): string =>
@@ -118,7 +114,11 @@ export const standingLines = (register = readFileSync(REGISTER, "utf8")): string
  * importance and a fate in every confirmed row; and a row for every lane that wrote a finding in
  * `reports` (`collect`'s list), by the lane's number or by each of its findings as `<lane>.<n>`.
  */
-export function vettingFaults(vetting: string, reports: string, keys = standingKeys()): string[] {
+export function vettingFaults(
+  vetting: string,
+  reports: string,
+  keys = rowsOf(readFileSync(REGISTER, "utf8"), "key").map(([key = ""]) => key),
+): string[] {
   const tables = tablesOf(vetting)
     .map(({ header, rows }) => ({ columns: header.map((cell) => plain(cell)), rows }))
     .filter(({ columns }) => columns.includes("verdict"));

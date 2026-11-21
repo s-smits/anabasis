@@ -59,7 +59,7 @@ const NONE = "-";
 const contentOf = (path: string) => (existsSync(path) ? readFileSync(path) : null);
 
 /** What `fresh`'s state wrote that `old`'s did not, or wrote otherwise, both kept beside the log. */
-export function writtenAgainst(old: string, fresh: string): Written {
+function writtenAgainst(old: string, fresh: string): Written {
   const before = existsSync(old) ? writtenIn(old) : new Map<string, string>();
   const after = writtenIn(fresh);
   const same = (path: string) => {
@@ -147,7 +147,7 @@ function programsLine(calls: readonly Call[]): string {
 }
 
 /** The printed rows: a header, the diff unless asked not to, a row a solve and a count a side. */
-export function partsLines(
+function partsLines(
   rows: readonly SolveRow[],
   { session, old, fresh, paired }: { session: string; old: string; fresh: string; paired: number },
   written: Written | null,

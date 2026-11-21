@@ -194,7 +194,7 @@ export function callRows(events: readonly LogEvent[], filters: Filters): string[
 }
 
 /** One row a call that passes the filters: never its text. */
-export function listRows(events: readonly LogEvent[], filters: Filters): string[] {
+function listRows(events: readonly LogEvent[], filters: Filters): string[] {
   const index = indexOf(events);
   const sideOf = sidesOf(events);
   const { solves, kept } = callsBySolve(index, filters);

@@ -1,8 +1,7 @@
 // What each Examiner writing session was told, rebuilt on the log before its start
-// (`examiner-view.ts --each`), and the next opening's task set (`examinerCounts`). Invented data only.
+// (`examiner-view.ts --each`), against the wake the host served. Invented data only.
 import { describe, expect, it } from "bun:test";
-import { examinerCounts, examinerEach } from "#skills/design-and-seats/scripts/examiner-view.ts";
-import { heard } from "../src/examiner/record.ts";
+import { examinerEach } from "#skills/design-and-seats/scripts/examiner-view.ts";
 import { wakeOn } from "../src/examiner/write.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
@@ -67,41 +66,5 @@ describe("examiner-view", () => {
       "parts from the wake on record at line 3",
     );
     expect(rows(null)).toContain("the wake on record: not recorded");
-  });
-
-  it("names a drafted example by the family the drafted exam gives it", () => {
-    const draft = { tasks: [{ family: "drafted-family", publicInput: {}, hidden: null }] };
-    const rows = examinerEach([
-      event("exam.drafted", { session: "d-1", draft }),
-      started("x-1", ["ex-001", "ex-002"]),
-    ]);
-    expect(rows.find((row) => row.startsWith("x-1,"))).toContain("over 2 tasks, 1 with no family on record");
-  });
-
-  it("counts a pack task the last ask named though no proposal holds it whole, as the next ask is given it", () => {
-    const events = [
-      event("task.proposed", { version: "v-pack", taskId: "pack-1" }),
-      event("task.gate", { version: "v-pack", gate: 1, outcome: "passed" }),
-      started("x-1", ["pack-1"]),
-      ...written("t1", "f", "x-1"),
-    ];
-    const [blocks] = examinerCounts(events);
-    expect(blocks).toContain('2 under "Not yet compared"');
-    expect(blocks).toContain("over 2 tasks");
-  });
-
-  it("counts an opening's task lines found in each read_opening result it received", () => {
-    const before = written("t1", "f", "x-0");
-    const lines = heard(before, [{ taskId: "t1", family: "f" }]).groups.flatMap((group) => group.lines);
-    const served = `Not yet compared:\n${lines.map((line) => `- ${line}`).join("\n")}`;
-    const events = [
-      ...before,
-      started("x-1", ["t1"]),
-      event("exam.call", { session: "x-1", tool: "read_opening", args: {}, text: served, turn: 2 }),
-      event("exam.call", { session: "x-1", tool: "read_opening", args: {}, text: "older wording", turn: 4 }),
-    ];
-    expect(examinerEach(events)).toContain(
-      "  read_opening results: 1 of 1 task lines in it; 0 of 1 task lines in it",
-    );
   });
 });

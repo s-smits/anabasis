@@ -77,7 +77,7 @@ function releasedLines(events: readonly LogEvent[], bundle: string): string[] {
 }
 
 /** The public exam as lines, from the log and the pack the exam is staged as. */
-export function publicExam(events: readonly LogEvent[], bundle: string): string[] {
+function publicExam(events: readonly LogEvent[], bundle: string): string[] {
   const format = draftOf(events)?.answerFormat;
   const contract = contractOf(readPack(bundle).brief, format ?? null);
   return [

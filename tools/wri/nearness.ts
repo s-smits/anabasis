@@ -83,7 +83,7 @@ function comparisonRows(events: readonly LogEvent[], written: readonly Written[]
 }
 
 /** One read of `log`: a head line, a row a session and a comparison, or one line where there is nothing. */
-export async function nearnessOf(log: string, ways: EmbedWays): Promise<string[]> {
+async function nearnessOf(log: string, ways: EmbedWays): Promise<string[]> {
   const events = read(log, NO_TRACES);
   const tasks = proposalsOf(events).flatMap(({ version, session, task }) => {
     const input = task?.publicInput ?? null;

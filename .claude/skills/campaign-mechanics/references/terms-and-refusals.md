@@ -28,8 +28,10 @@ where the solver's backend compacts, so a model served with a 200K context is re
 
 Practice keeps the Builder supplied with fresh failures, and each release is one task fewer to
 score. It is owed after each reading or promotion (`practiceDue`, `src/campaign/decide.ts`) and
-released by the host at the moments section 7 names (`releaseOwed`, `tools/d2/campaign-actions.ts`),
-never while a comparison is unreported. A task the reference's own rejection left in doubt is never
+released by the host (`releaseOwed`, `tools/d2/campaign-actions.ts`) as tasks are held out, as an
+Examiner session ends, as a conversation opens on tasks held since the last release, and after a
+reading that promoted nothing, which is owed one task where nothing was held out since the last
+release; never while a comparison is unreported. A task the reference's own rejection left in doubt is never
 released (`practicePool`, `poolOf`). The rest go in this order (`releaseOrder`,
 `src/kernel/reports.ts`):
 
@@ -59,7 +61,7 @@ exempt by name. Refusals run in the order admission, terms, stop override, setti
 
 ### Defaults
 
-Owners and edges of the defaults in `AGENTS.md` section 6:
+Owners and edges of the defaults whose owners `AGENTS.md` section 6 names:
 
 - `--target` and `--solves` live in `SIZE` (`src/kernel/size.ts`); `GAP_FLOOR` is one constant read by
   the tally, task admission, the frontier and `roomOf`.

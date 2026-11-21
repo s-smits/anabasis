@@ -51,6 +51,29 @@ small.
 Left out on purpose: the wall (a tested correctness property), practice results (training score,
 rule 1) and cost apart from climb.
 
+### Further trade-offs
+
+`AGENTS.md` section 1 keeps the trade-offs a change most often gets wrong; these are the rest.
+
+- **Task difficulty against statistical power**: tied tasks leave the test, and a step is likeliest
+  where the reference passes 30 to 50%; watch its valid share and the untied tasks a comparison.
+- **A stricter step against a faster climb**: 2 solves at 0.02 is the balance; an A/A step means the
+  level is loose for the noise, and a faster climb is a gain only where its promotions hold.
+- **Cost against value**: read dollars per promotion and per confirmed promotion on one meter
+  (`promotion-tuner`), and dollars a solve rising without validity gains as bloat.
+- **Supply against the clock**: an Examiner that aims higher takes longer and admits fewer; read
+  hours to the next comparison beside the tasks it admitted.
+- **Patience against stopping too soon**: six eligible moves without a gain end a campaign, and
+  each move after is another draw at the false rate; treat a step after `--past-stop` warily.
+- **A promotion against the starter**: a promotion beats its parent on the tasks that chose it, and
+  a near-sweep of one family from the newest session says less than the same tally over several. The
+  starter comparison after it splits its tally by where each task came from (`starterReads`), and a
+  reference that keeps losing the tasks written since is fitting its own draws, not climbing.
+- **The objective against the habits it leaves unpaid**: a harness learns only what the checks and
+  the objective reward, so a habit no check holds, a section's content for one, is no lever yet.
+- **A tuned query against its origin**: a query adapted from another system's prompt is bounded, in
+  words, against that origin instead of its last version, so that drift does not accumulate.
+
 ### Older vocabulary
 
 v1 is the history before v2 (`git show 5bc9988:<path>`, `docs/transfer.md`). A comment citing

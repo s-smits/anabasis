@@ -331,7 +331,7 @@ describe("a campaign run by its live Builder", () => {
     expect(woken.map(({ session }) => session)).toEqual(["x-1", "x-2"]);
   });
 
-  it("opens another Examiner conversation at the first ask after a promotion, where the one before it rests", async () => {
+  it("wakes the resting Examiner conversation at the first ask after a promotion and tells it of the promotion", async () => {
     layOutPack(root, bundle, MANY, FIXTURE);
     const name = `${STEM}-conversing-promoted`;
     let conversations = 0;
@@ -348,11 +348,10 @@ describe("a campaign run by its live Builder", () => {
         ["finish", { note: "One harness is promoted." }],
         ["finish", { note: "One harness is promoted." }],
       ]),
-      // The first conversation holds two asks' calls and rests after each; the one opened after the
-      // promotion holds one.
+      // One conversation holds all three asks' calls and rests after each.
       examine: (request, wall) => {
         conversations += 1;
-        const calls = conversations === 1 ? [proposing(12), proposing(12, 12)] : [proposing(12, 24)];
+        const calls = [proposing(12), proposing(12, 12), proposing(12, 24)];
         return examine({ ...request, ...scripted(calls), rest: request.rest }, wall);
       },
     };
@@ -361,15 +360,15 @@ describe("a campaign run by its live Builder", () => {
     const terms = ["--practice", "2", "--target", "5", "--level", "0.125", "--moves", "8"];
     await harnessBuilder([...seeded(name), ...terms], seats);
     expect(of(name, "harness.promoted")).toHaveLength(1);
-    // Until 19 November x-3 woke x-1's conversation, which went on in the family it knew.
+    // From 20 to 21 November x-3 opened a conversation of its own.
     expect(
       of(name, EXAM_STARTED).map(({ session, conversation }) => [session, conversation ?? null]),
     ).toEqual([
       ["x-1", null],
       ["x-2", "x-1"],
-      ["x-3", null],
+      ["x-3", "x-1"],
     ]);
-    expect(conversations).toBe(2);
+    expect(conversations).toBe(1);
   });
 
   it("makes no second draw of a pair whose reading had room, even on tasks written since", async () => {

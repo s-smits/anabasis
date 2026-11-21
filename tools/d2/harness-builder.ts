@@ -169,7 +169,7 @@ import { type AskedSetting, firstRecord, keepSetting, recordedSetting, settingAs
 
 const ENDED = "campaign.ended";
 /** How a Builder's campaign conversation ended whole, by its finish or at its own limits: the
- *  conversations `idleOf` counts towards `finished`. One cut (`CUT`) or stopped counts none. */
+ *  conversations `idleOf` counts towards `finished`. One cut (`INTERRUPTED`) or stopped counts none. */
 const WHOLE: ReadonlySet<unknown> = new Set(["finished", "wall", "turns"]);
 /** How a Builder's campaign conversation ended where the campaign goes on with another: at its
  *  own limits, or crashed, which the table's crash rule bounds (`crashedRun`). */

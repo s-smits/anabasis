@@ -32,7 +32,7 @@
 import { type Measures, pointsOf, scoresIn, type Tally, testOf } from "../kernel/compare.ts";
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { CUT, lastReports, latestBuilt, pairsReported, promoted } from "../kernel/reports.ts";
+import { INTERRUPTED, lastReports, latestBuilt, pairsReported, promoted } from "../kernel/reports.ts";
 import { ownedBy, traceKind } from "../kernel/trace.ts";
 import { billedAll, billedParts } from "../kernel/meter.ts";
 import {
@@ -364,7 +364,7 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
       const frozen = window.findLast(
         (event) => event.kind === "build.checkpoint" && event.data.session === id,
       );
-      const named = CUT.has(end?.ended) ? null : text(end?.harness);
+      const named = INTERRUPTED.has(end?.ended) ? null : text(end?.harness);
       const harness = named ?? text(frozen?.data.harness);
       return [
         {

@@ -46,7 +46,7 @@ import { countBy } from "#src/meta/tally.ts";
 import { indexOf, type Solve } from "./folds.ts";
 
 /** A string printed whole only under `--full`: one task statement or call result fills a screen. */
-const CUT = 80;
+const INTERRUPTED = 80;
 const DIGEST = /^[0-9a-f]{64}$/u;
 const NOT_RECORDED = "n/r";
 const SLICE = ".claude/skills/oracle-handover/scripts/slice.ts";
@@ -175,12 +175,14 @@ function fieldOf(data: JsonValue, path: string): JsonValue | undefined {
 const whole = (value: JsonValue | undefined): string =>
   value === undefined ? "-" : isString(value) ? value : JSON.stringify(value);
 
-/** A cell cut to `CUT` characters, with the count cut, and a digest to its first eight. */
+/** A cell cut to `INTERRUPTED` characters, with the count cut, and a digest to its first eight. */
 function cell(value: JsonValue | undefined, full: boolean): string {
   const said = whole(value).replaceAll("\n", String.raw`\n`);
   if (full) return said;
   if (DIGEST.test(said)) return said.slice(0, 8);
-  return said.length > CUT ? `${said.slice(0, CUT)}[+${String(said.length - CUT)} chars]` : said;
+  return said.length > INTERRUPTED
+    ? `${said.slice(0, INTERRUPTED)}[+${String(said.length - INTERRUPTED)} chars]`
+    : said;
 }
 
 /**
@@ -256,7 +258,7 @@ export function eventRows(events: readonly LogEvent[], query: EventQuery): strin
   }
   const cut = query.full
     ? ""
-    : `, strings cut at ${String(CUT)} characters and digests at 8 (--full lifts both)`;
+    : `, strings cut at ${String(INTERRUPTED)} characters and digests at 8 (--full lifts both)`;
   return [
     `events: ${String(chosen.length)} ${asked}${filters}, a row each: log line, time, ${several ? "kind, " : ""}then ${query.fields.length === 0 ? "every data field" : query.fields.join(", ")}${cut}`,
     ...chosen.map(({ line, event }) => {

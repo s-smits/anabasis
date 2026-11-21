@@ -51,7 +51,7 @@ import type { Contract } from "../kernel/contract.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { billedParts, priceKey } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
-import { type Cap, CUT } from "../kernel/reports.ts";
+import { type Cap, INTERRUPTED } from "../kernel/reports.ts";
 import { ownedBy } from "../kernel/trace.ts";
 import { ended as endedSolves, practiceRan, solvesIn } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
@@ -536,7 +536,7 @@ async function finishSession(bench: Bench, sat: Sat, clock: BuildClock, turns: n
   };
   const ended: Built["ended"] =
     bench.fatal === null ? (ENDINGS.find((reason) => by[reason]) ?? "stopped") : "crashed";
-  if (CUT.has(ended)) await keepPractised(log, request.id, request.states);
+  if (INTERRUPTED.has(ended)) await keepPractised(log, request.id, request.states);
   // Kept before the session is recorded as ended, so a session on record as ended has its notes.
   keepMemory(bench.home, request.memory, request.id);
   append(log, BUILD_FINISHED, {
@@ -575,7 +575,7 @@ export function spent(events: readonly LogEvent[], id: string): string | null {
   if (ended === undefined) {
     return `session ${id} started and never finished; a round does not run a second session under one id`;
   }
-  return CUT.has(ended)
+  return INTERRUPTED.has(ended)
     ? `session ${id} ${ended === "killed" ? "was killed" : "crashed"}, so what it froze is not compared; a round under a new session id starts again`
     : null;
 }

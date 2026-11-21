@@ -64,7 +64,7 @@ Write the manifest with a file-writing tool:
   "instructionsFile": "/absolute/shared-instructions.md",
   "sessions": [
     { "name": "readers", "task": "List every reader of comparison.reported and any two that disagree." },
-    { "name": "fixture", "task": "Write the hostile case named in the instructions.", "sandbox": "workspace-write", "ownedPaths": ["test/compare.test.ts"] }
+    { "name": "fixture", "task": "Write the hostile case named in the instructions.", "sandbox": "workspace-write", "ownedPaths": ["test/compare-exhaustive.test.ts"] }
   ]
 }
 ```

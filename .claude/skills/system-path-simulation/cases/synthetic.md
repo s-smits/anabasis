@@ -40,8 +40,8 @@ export default scenario;
 ```
 
 Start from the nearest example (`pool`, `examiner` or `decision`) and change its constants. For an
-event the kit lacks, copy its writer's shape from `src/` or from `test/decide.test.ts` and
-`test/reports.test.ts`, and add a method if it will be needed again.
+event the kit lacks, copy its writer's shape from `src/` or from `test/decide-explore.test.ts` and
+`test/wall-practice.test.ts`, and add a method if it will be needed again.
 
 ## What to try
 

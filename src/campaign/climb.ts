@@ -46,6 +46,9 @@ interface FalsePromotion {
    *  denominator leaves out controls too small to reach the level; an old report without unbilled
    *  scores is read on its full score. */
   readonly errors: number;
+  /** A/A controls that read a step in either direction. The two halves of an A/A control are
+   *  interchangeable, so a reversed step is as much noise as a forward one, at twice the rate. */
+  readonly either: number;
   readonly controls: number;
   readonly incapable: number;
   /** Of the incapable controls, those that tied every task: a reference that answers each task
@@ -275,7 +278,15 @@ function againstStarter(
 function controlOf(index: number, level: number, scores: readonly number[]) {
   const able = readsStep(scores.map(Math.abs), level);
   const tied = scores.length > 0 && scores.every((one) => one === 0);
-  return { index, level, scores, able, tied, step: readsStep(scores, level) };
+  return {
+    index,
+    level,
+    scores,
+    able,
+    tied,
+    step: readsStep(scores, level),
+    either: readsStepEitherWay(scores, level),
+  };
 }
 
 /** The A/A control beside each of `reports`: the reference against itself, read as a comparison is. */
@@ -315,6 +326,7 @@ function falsePromotionOf(
   return {
     attempts: attempts.length,
     errors: read.filter(({ step }) => step).length,
+    either: read.filter(({ either }) => either).length,
     controls,
     incapable: read.length - controls,
     tied: read.filter(({ tied }) => tied).length,
@@ -485,7 +497,7 @@ function controlsClause(risk: FalsePromotion): string {
   const comparisons =
     risk.controls === 0
       ? "no A/A comparison with enough untied tasks to read a step"
-      : `${String(risk.errors)} of ${plural(risk.controls, "A/A comparison")} with enough untied tasks to read a step read one`;
+      : `${String(risk.errors)} of ${plural(risk.controls, "A/A comparison")} with enough untied tasks to read a step read one (${String(risk.either)} either way)`;
   const tied =
     risk.tied === 0 ? "" : `, ${String(risk.tied)} of them because the reference tied every task with itself`;
   const incapable =
@@ -622,7 +634,8 @@ function honestyLine(events: readonly LogEvent[], sixth: number | undefined): st
   const all = controlsIn(lastReports(events));
   if (sixth === undefined) {
     const so = tiedClause(all, `the campaign's ${plural(all.length, "A/A comparison")} so far`);
-    return `- Honesty: no ${named} yet, so none of ${bar} A/A comparisons after it.${so}`;
+    const counted = all.length === 0 ? "" : ` So far ${controlCounts(all)}.`;
+    return `- Honesty: no ${named} yet, so none of ${bar} A/A comparisons after it.${counted}${so}`;
   }
   const after = all.filter(({ index }) => index > sixth);
   return `- Honesty: after ${named}, ${plural(after.length, "A/A comparison")} against ${bar}, ${controlCounts(after)}.${tiedClause(after, "them")}`;
@@ -632,7 +645,7 @@ function honestyLine(events: readonly LogEvent[], sixth: number | undefined): st
 function controlCounts(controls: readonly ReturnType<typeof controlOf>[]): string {
   const able = controls.filter((control) => control.able).length;
   const steps = controls.filter(({ step }) => step).length;
-  const either = controls.filter(({ scores, level }) => readsStepEitherWay(scores, level)).length;
+  const either = controls.filter((control) => control.either).length;
   return `${String(able)} with enough untied tasks to read a step: ${String(steps)} read one, ${String(either)} read one either way`;
 }
 

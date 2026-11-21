@@ -368,7 +368,7 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     });
     if (second === undefined) throw new Error("an epoch");
     expect(epochLine(second)).toContain(
-      "a false promotion among them estimated at 10%; 0 of 1 A/A comparison with enough untied tasks to read a step read one, and 3 too small to read one at their level, 3 of them because the reference tied every task with itself;",
+      "a false promotion among them estimated at 10%; 0 of 1 A/A comparison with enough untied tasks to read a step read one (0 either way), and 3 too small to read one at their level, 3 of them because the reference tied every task with itself;",
     );
     // A control too small with one untied task did not tie every task, so it is too small and no more.
     const short = [started, attempt("g-1", "S", "h2", [1, 0, 0])];
@@ -381,15 +381,20 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
       "Over the campaign, a false promotion in any epoch estimated at 50%:",
     );
     // A control whose four tasks all went one way reads a step at 0.10 (p 1/16): one error, said.
-    // The other way it reads none, one-sided as a comparison is.
+    // The other way it reads none one-sided, as a comparison is, and one either way.
     const lucky = [
       started,
       attempt("g-1", "S", "h2", [1, 1, 1, 1]),
       attempt("g-2", "S", "h2", [-1, -1, -1, -1]),
     ];
-    expect(epochsOf(lucky)[0]?.falsePromotion).toMatchObject({ errors: 1, controls: 2, incapable: 0 });
+    expect(epochsOf(lucky)[0]?.falsePromotion).toMatchObject({
+      errors: 1,
+      either: 2,
+      controls: 2,
+      incapable: 0,
+    });
     expect(riskLines(lucky)[0]).toContain(
-      "1 of 2 A/A comparisons with enough untied tasks to read a step read one.",
+      "1 of 2 A/A comparisons with enough untied tasks to read a step read one (2 either way).",
     );
     // Past one the sum is capped there.
     const many = Array.from({ length: 11 }, (_, at) =>
@@ -411,7 +416,12 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
       aa("opposite", [-1, -1, -1, -1]),
       aa("both", [1, 1, 1, 1]),
     ];
-    expect(epochsOf(log)[0]?.falsePromotion).toMatchObject({ errors: 1, controls: 3, incapable: 1 });
+    expect(epochsOf(log)[0]?.falsePromotion).toMatchObject({
+      errors: 1,
+      either: 2,
+      controls: 3,
+      incapable: 1,
+    });
   });
 });
 
@@ -653,7 +663,7 @@ describe("a campaign against its bars", () => {
       "- Honesty: after promotion 6, 5 A/A comparisons against the bar's 10, 3 with enough untied tasks to read a step: 1 read one, 2 read one either way. 1 of them tied every task, as the reference matched itself on every solve, and could read no step.",
     );
     expect(honesty([...five, tied])).toBe(
-      "- Honesty: no promotion 6 yet, so none of the bar's 10 A/A comparisons after it. 1 of the campaign's 1 A/A comparison so far tied every task, as the reference matched itself on every solve, and could read no step.",
+      "- Honesty: no promotion 6 yet, so none of the bar's 10 A/A comparisons after it. So far 0 with enough untied tasks to read a step: 0 read one, 0 read one either way. 1 of the campaign's 1 A/A comparison so far tied every task, as the reference matched itself on every solve, and could read no step.",
     );
     // A settlement reports a comparison again: it stands where it first reported, before the promotion.
     const settled = [

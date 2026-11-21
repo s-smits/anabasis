@@ -69,7 +69,7 @@ const ROUTES: readonly Route[] = [
   {
     id: "suite",
     command: /\bbun (run (test|gate)|test)\b/u,
-    said: "Checks (AGENTS.md section 11): use `bun run test -- <paths>` for the owning tests while editing. Avoid bare `bun test`. Run at most one full suite per host. `bun run gate` runs the CI gate. Report wall-test failures caused by missing user namespaces; such a suite has not passed.",
+    said: "Checks (AGENTS.md section 11): use `bun run test -- <paths>` for the owning tests while editing. Avoid bare `bun test`; the check runner places each run. `bun run gate` runs the CI gate. Report wall-test failures caused by missing user namespaces; such a suite has not passed.",
     skill: null,
   },
   {

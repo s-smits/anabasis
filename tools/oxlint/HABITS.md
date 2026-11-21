@@ -408,8 +408,10 @@ never add a file to one, and never widen a glob to take in the file you are edit
 - `bun:test`, in `test/`, one flat directory, named for the module they hold:
   `test/condition.test.ts` for `src/kernel/condition.ts`; a property over one compartment is named for
   what it checks (`test/decide-explore.test.ts`).
-- Keep the positive case and the nearest hostile case in the smallest owning file. Add the case
-  that is missing, and say in the pull request that the test fails when the change is removed.
+- `AGENTS.md`, section 12, says which kind of test to write. A bounded check enumerates its space
+  in the test itself and names the bound in its title; a generator is seeded and deterministic (a
+  linear congruential step, never `Math.random`) and counts each branch it reached.
+- Say in the pull request which test or mutant fails when the change is removed.
 - A test's name is a sentence about the system: "passes the plan's smallest wins at 0.10 and
   nothing one win short of them".
 - No module mocks; inject through an interface. No fixed sleeps; wait on

@@ -80,7 +80,7 @@
  * the landing asks only to be run again. The chain is read again as each commit's proof starts and
  * before each pull request turns green where a commit was proved since, in full only where a pull
  * request opened, closed or moved (`checkListed`), so a moved head is landed as it stands before a
- * stale commit is proved, up to `MOVES` times. `RUN_REMOTE` unset spreads them over the check hosts
+ * stale commit is proved, up to `MOVES` times. `ANA_CHECK_HOST` unset spreads them over the check hosts
  * (`whereToProve`); `--jobs N` gates up to N commits at once; the top's whole CI gate runs alone.
  *
  * What moves behind a landing's back is followed: a moved parent is replayed first (`restack`), a

@@ -5,7 +5,7 @@
  * out where they ran, and pass unless ANA_FAKE_FAIL names that commit and script (`<sha> lint`);
  * ANA_FAKE_DROP names one the same way whose runner gives no verdict, exiting ANA_FAKE_DROP_CODE
  * (255, a dropped connection, unless set), the first ANA_FAKE_DROPS times (1 unless set); every
- * routed step (`run secrets|typecheck|lint|test`) whose RUN_REMOTE is ANA_FAKE_DOWN exits so too;
+ * routed step (`run secrets|typecheck|lint|test`) whose ANA_CHECK_HOST is ANA_FAKE_DOWN exits so too;
  * anything else, a `.ts` entry point such as `tools/runtime/gate.ts`, runs on the real Bun, so the
  * hook, the landing and the gate's own choice of steps and nearby tests are the real ones.
  *
@@ -15,7 +15,7 @@
  * step, which then takes two seconds, for a pulse to read; the whole suite first creates the file
  * ANA_FAKE_SUITE_TOUCH names, so a fake `gh` can move a head while it runs. A test step also logs the workers it was
  * given and whether it stops at its first failure, `workers <sha> <ANA_TEST_WORKERS> <ANA_TEST_BAIL>`,
- * each empty for none, and an install where RUN_REMOTE names a place logs `where <sha> <RUN_REMOTE>`.
+ * each empty for none, and an install where ANA_CHECK_HOST names a place logs `where <sha> <ANA_CHECK_HOST>`.
  */
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
@@ -28,7 +28,7 @@ install | run | tools/loc/source-policy.ts) ;;
 esac
 commit=$(git rev-parse HEAD)
 printf '%s\t%s\n' "$commit" "$*" >> "$ANA_FAKE_LOG"
-[ "$1" != install ] || [ -z "$RUN_REMOTE" ] || printf 'where\t%s\t%s\n' "$commit" "$RUN_REMOTE" >> "$ANA_FAKE_LOG"
+[ "$1" != install ] || [ -z "$ANA_CHECK_HOST" ] || printf 'where\t%s\t%s\n' "$commit" "$ANA_CHECK_HOST" >> "$ANA_FAKE_LOG"
 [ "$1 $2" != "run test" ] || printf 'workers\t%s\t%s\t%s\n' "$commit" "$ANA_TEST_WORKERS" "$ANA_TEST_BAIL" >> "$ANA_FAKE_LOG"
 if [ "$1" = install ] && [ -n "$ANA_FAKE_TOGETHER" ]; then
   i=0
@@ -52,10 +52,10 @@ if [ "$commit $2" = "$ANA_FAKE_DROP" ] && [ "$(grep -c "^dropped.$commit" "$ANA_
   [ -n "$code" ] || code=255
   exit "$code"
 fi
-if [ -n "$ANA_FAKE_DOWN" ] && [ "$RUN_REMOTE" = "$ANA_FAKE_DOWN" ] && [ "$1" = run ]; then
+if [ -n "$ANA_FAKE_DOWN" ] && [ "$ANA_CHECK_HOST" = "$ANA_FAKE_DOWN" ] && [ "$1" = run ]; then
   case "$2" in
   secrets | typecheck | lint | test)
-    printf 'down\t%s\t%s\n' "$commit" "$RUN_REMOTE" >> "$ANA_FAKE_LOG"
+    printf 'down\t%s\t%s\n' "$commit" "$ANA_CHECK_HOST" >> "$ANA_FAKE_LOG"
     code=$ANA_FAKE_DROP_CODE
     [ -n "$code" ] || code=255
     exit "$code"
@@ -83,7 +83,7 @@ export const logLines = (log: string): string[] =>
         .filter((line) => line.length > 0)
     : [];
 
-/** Where each pass the fake saw began, as `<commit> <RUN_REMOTE>`, for the passes that named one. */
+/** Where each pass the fake saw began, as `<commit> <ANA_CHECK_HOST>`, for the passes that named one. */
 export const wherePassesRan = (log: string): string[] =>
   logLines(log).flatMap((line) => {
     const [kind, commit = "", place = ""] = line.split("\t");

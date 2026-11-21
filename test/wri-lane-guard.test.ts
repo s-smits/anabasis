@@ -76,7 +76,7 @@ describe("the lane guard", () => {
         "nohup bun --env-file=x tools/d2/harness-builder.ts --name x > /tmp/l.log 2>&1 &",
         "a campaign command",
       ],
-      ["RUN_REMOTE=1 bun run runs move foo --host h", "a run's life"],
+      ["ANA_CHECK_HOST=1 bun run runs move foo --host h", "a run's life"],
       ['bash -c "bun run runs stop x"', "a run's life"],
       ["echo $(bun run runs pause x)", "a run's life"],
       ["claude -p hello", "a paid session"],

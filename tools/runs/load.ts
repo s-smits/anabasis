@@ -1,6 +1,6 @@
 /**
  * The load of this machine and of hosts, sampled: what `runs loadwatch` draws and what the check
- * runner's `RUN_REMOTE=auto` chooses by, so both read the one sample and the one order.
+ * runner's `ANA_CHECK_HOST=auto` chooses by, so both read the one sample and the one order.
  *
  * Each machine runs one sampling loop, through `shellOn`: on a host that is `sshScript`, whose
  * control socket (`sshOptions`) the other verbs and the check runner share, so a reconnect after a

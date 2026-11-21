@@ -2,7 +2,7 @@
 # The one bun router, installed as ~/.local/bin/bun, first on PATH in every shell. It runs the Bun
 # the tree pins (package.json "packageManager": "bun@X", kept as ~/.bun/releases/X/bin/bun beside
 # the global ~/.bun/bin/bun), and hands Anabasis's check tasks to the installed runner (`run.ts`,
-# bundled as run.js), which runs them here or on the host RUN_REMOTE names. A Bun called by its full
+# bundled as run.js), which runs them here or on the host ANA_CHECK_HOST names. A Bun called by its full
 # path bypasses both, so call plain `bun`. `bun tools/runtime/router/install.ts` installs a change.
 #
 # A tree is Anabasis's when it holds tools/runtime/gate.ts, the script of `bun run gate`.
@@ -37,10 +37,12 @@ fi
 [[ -n "$task" ]] || exec "$bun" "$@"
 
 # A task for another host needs ANA_HOSTS, which lives in the main worktree's .env.runs, where
-# `bun run runs` finds it; unset RUN_REMOTE reads it too, since it means auto where a host takes
-# checks. A task told to run here reads no host list.
+# `bun run runs` finds it; unset ANA_CHECK_HOST reads it too, since it means auto where a host takes
+# checks. A task told to run here reads no host list. RUN_REMOTE is the old name, read until the
+# next release.
 hosts=()
-if [[ "${RUN_REMOTE:-}" != here && "${RUN_REMOTE:-}" != 0 && -z "${ANA_HOSTS:-}" ]]; then
+place="${ANA_CHECK_HOST-${RUN_REMOTE:-}}"
+if [[ "$place" != here && -z "${ANA_HOSTS:-}" ]]; then
   main="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
   [[ ! -f "$main/.env.runs" ]] || hosts=(--env-file="$main/.env.runs")
 fi

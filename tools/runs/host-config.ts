@@ -90,6 +90,12 @@ function listed(text: string, name = "ANA_HOSTS"): readonly JsonValue[] {
 export const keptHere = (env: Readonly<Record<string, string | undefined>> = runtimeProcess.env): boolean =>
   env.ANA_HOP === "1";
 
+/** Where a check runs (`auto`, `here` or a host's name), as `ANA_CHECK_HOST` says; undefined where it
+ *  is unset. `RUN_REMOTE`, its name before 21 November 2026, is read in its place until the next
+ *  release, so a command written with it still runs where it says. */
+export const checkHost = (): string | undefined =>
+  runtimeProcess.env.ANA_CHECK_HOST ?? runtimeProcess.env.RUN_REMOTE;
+
 /** The hosts `text` lists, by default the environment's `ANA_HOSTS`: none for a verb kept here. */
 export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Host[] {
   if (keptHere()) return [];

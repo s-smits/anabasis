@@ -9,7 +9,7 @@ import { join } from "../../src/meta/path.ts";
 import { processAnswers, runtimeProcess } from "../../src/meta/process.ts";
 import { hold, holderOf, recordIn, release } from "#src/meta/holder.ts";
 import { errorMessage } from "../../src/meta/runtime-values.ts";
-import { type Host, hostsFor } from "../runs/host-config.ts";
+import { checkHost, type Host, hostsFor } from "../runs/host-config.ts";
 import { git, lines, type Place, type Proof, short } from "./gate.ts";
 import { beneath, chainAbove, openPulls, type Pull } from "./pulls.ts";
 
@@ -160,7 +160,7 @@ export function watching(Interrupted: new (message: string) => Error, moved: () 
 }
 
 /**
- * Where a landing in `root` proves its commits. `RUN_REMOTE` set, `here` among its values, is one
+ * Where a landing in `root` proves its commits. `ANA_CHECK_HOST` set, `here` among its values, is one
  * place to the landing, which hands each pass to the runner, so under `auto` each pass picks its own
  * least loaded slot; unset, the passes spread over every host `ANA_HOSTS` lists with `checks`,
  * each taking as many at once as its `checks` says, and with no such host they stay on this machine.
@@ -173,13 +173,13 @@ export function whereToProve(
   say: (line: string) => void,
 ): readonly Place[] | null {
   const one = [{ slots: jobs ?? 1 }];
-  if (runtimeProcess.env.RUN_REMOTE !== undefined) return one;
+  if (checkHost() !== undefined) return one;
   let listed: readonly Host[];
   try {
     listed = hostsFor(root);
   } catch (error) {
     console.error(
-      `land: ${errorMessage(error)}; RUN_REMOTE=here proves on this machine. Nothing was merged.`,
+      `land: ${errorMessage(error)}; ANA_CHECK_HOST=here proves on this machine. Nothing was merged.`,
     );
     return null;
   }
@@ -196,7 +196,7 @@ export function whereToProve(
   }
   const places = [...dealt].flatMap(([host, slots]) => (slots === 0 ? [] : [{ remote: host.name, slots }]));
   const named = places.map(({ remote, slots }) => `${remote} (${String(slots)})`).join(", ");
-  say(`proving on ${named} at once; RUN_REMOTE=<one> proves at that one.`);
+  say(`proving on ${named} at once; ANA_CHECK_HOST=<one> proves at that one.`);
   return places;
 }
 

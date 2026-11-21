@@ -265,10 +265,11 @@ campaign launched at the top's head has reached two promotions under four condit
 - **Nothing above it.** A pull request above the run's commit is not proved by it; land the proved top
   by number. One that changes what a seat reads waits for its paired round of seats, then its own run.
 
-The notes name the proof run, its commit and its two `harness.promoted` events. The version tells
-which runs may be compared: the patch moves where runs measure what the last release's measured, the
-minor where the release changes what a run measures (a weight, the level, the step test, task
-admission, the setting, what a seat is told; never compare runs across minors).
+The notes name the proof run, its commit and its two `harness.promoted` events. Whether the release
+is small or big is `AGENTS.md`'s rule (section 11, "The stack and pull requests"); a big one cites
+the proof run's mechanism event and the factor's count against the last big release's runs
+(`promotion-tuner`, `scripts/trend.ts`). Which runs compare is read from their commits, never from
+the version.
 
 The major moves to 1 at the release at whose top every row of the v1.0 bar reads met (system-audit,
 "The pillars and the v1.0 bar", which owns the rule; the values are `docs/plan.md`'s). A row whose

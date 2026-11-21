@@ -168,7 +168,7 @@ export function useKept<T>(key: string, initial: T, scope: "view" | "every-view"
 
 /** The route a query string names. An unknown pane reads as the Campaign pane, and a move or an
  *  event that is not a whole number from zero as none. */
-function routeOf(search: string): Route {
+export function routeOf(search: string): Route {
   const query = new URLSearchParams(search);
   const named = (key: (typeof KEYS)[number]) => {
     const value = query.get(key);

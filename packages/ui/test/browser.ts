@@ -1,20 +1,18 @@
 /**
- * The page in a real browser, for the browser tests (`browser-*.test.ts`): the fixture's three
+ * The page in a real browser, for the smoke tests (`browser-smoke.test.ts`): the fixture's three
  * campaigns written once a file, `serve.ts` started on them as the operator starts it, and Chrome
  * driven by Playwright over that server.
  *
- * The other page tests render the panes to a string (`panes.test.tsx`), which proves what a pane
- * says and nothing of what a person can do with it: no effect runs, no click lands, no history
- * entry is pushed and no layout is measured. These tests drive the page the operator opens. They
- * run Chrome as installed (`channel: "chrome"`), as CI's macOS runner and the operator's Mac have
- * it, so the suite downloads no browser; `ANA_UI_CHROME` names another executable. A host without
- * either fails the launch with Playwright's own message rather than skipping, since a browser test
- * that skips says nothing.
+ * What the page computes before it draws is read without a browser (`view-model.test.ts`), which
+ * proves nothing of what a drawn page shows: no effect runs and no layout is measured. These tests
+ * drive the page the operator opens. They run Chrome as installed (`channel: "chrome"`), as CI's
+ * macOS runner and the operator's Mac have it, so the suite downloads no browser; `ANA_UI_CHROME`
+ * names another executable. A host without either fails the launch with Playwright's own message
+ * rather than skipping, since a browser test that skips says nothing.
  *
  * Assertions are Playwright's own web-first ones (`expect` of `@playwright/test`), which retry until
  * their timeout, so no test sleeps: Playwright's runner needs Node, which this repository does not
- * run, and its `expect` works under `bun:test` as it is. A test reads the page as a person does,
- * by role and accessible name, and reaches for a class only where the page has no role to offer.
+ * run, and its `expect` works under `bun:test` as it is.
  *
  * Every page records what the browser reported as wrong: a console error or warning, an uncaught
  * exception, and an HTTP failure of the API. A test ends by asserting that list empty
@@ -24,10 +22,8 @@ import { AxeBuilder } from "@axe-core/playwright";
 import {
   type Browser,
   type BrowserContext,
-  type BrowserContextOptions,
   chromium,
   errors,
-  type Locator,
   type Page,
   expect as web,
 } from "@playwright/test";
@@ -38,20 +34,13 @@ import {
   interruptAndReapProcessGroup,
   terminateAndReapProcessGroupId,
 } from "../../../src/meta/subprocess.ts";
-import type { Tier } from "../src/models.ts";
 import { type Fixture, writeFixtureCampaign } from "./fixture-campaign.ts";
 
-/** One server: its origin and token, and how to stop it. */
-export interface Server {
-  readonly origin: string;
-  readonly token: string;
+/** One server over the fixture, which it writes and removes, and how to stop it. */
+export interface Served {
   /** The page's address for a query string without the token, `?` excluded; the token is added. */
   readonly url: (query?: string) => string;
   readonly stop: () => Promise<void>;
-}
-
-/** One server over the fixture, which it writes and removes. */
-export interface Served extends Server {
   readonly fixture: Fixture;
 }
 
@@ -63,40 +52,6 @@ export interface Opened {
   readonly problems: string[];
 }
 
-/** Where a page is opened: the viewport, and the colour scheme and motion the browser reports. */
-export interface Viewing {
-  readonly width?: number;
-  readonly height?: number;
-  readonly reducedMotion?: "reduce" | "no-preference";
-}
-
-/** The sampler's counts, as the page holds them between two reads. */
-interface Sampled {
-  placeholder: number;
-  blank: number;
-  frames: number;
-  /** When the last click landed, in the page's clock. */
-  clickedAt: number;
-  /** The address of each frame counted as a placeholder or as blank. */
-  at: string[];
-}
-
-declare global {
-  interface Window {
-    anaFramesSeen?: Sampled;
-  }
-}
-
-/** What the frame sampler counted since it was last read. */
-export interface FramesSeen {
-  /** Frames in which `main` showed the "Reading the campaign" placeholder sooner than the page's
-   *  patience after the last click (`PATIENCE_FLOOR_MS`). */
-  readonly placeholder: number;
-  /** Frames in which `main` held no heading, no table and no placeholder: nothing was painted. */
-  readonly blank: number;
-  readonly frames: number;
-}
-
 const PACKAGE = join(import.meta.dir, "..");
 const STARTED = /anabasis at (http:\/\/127\.0\.0\.1:\d+)\/\?token=([0-9a-f]+)/u;
 const START_MS = 20_000;
@@ -105,41 +60,21 @@ const LAUNCHED = /<launched> pid=(\d+)/u;
 /** How long one load, click or other action may wait. Playwright's own 30 s twice over is the test's
  *  whole 60 s, so a page that never loaded under ten parallel files would time the test out
  *  and name no step; at 15 s the stuck step fails with its own message first. */
-export const ACTION_MS = 15_000;
-/** The page's patience (`waited.ts`, 400 ms), less a timer's granularity: no read the page waits on
- *  says it is reading sooner than this after the click that began it. */
-export const PATIENCE_FLOOR_MS = 390;
+const ACTION_MS = 15_000;
 /** Playwright's web-first assertions, each retried for as long as an action may wait. Its own `expect`
  *  gives up at 5 s, which `setDefaultTimeout` does not reach, and with campaigns solving on a
  *  loaded host browser cases would fail a pre-push gate at 5 s each. */
 export const expect = web.configure({ timeout: ACTION_MS });
-/** How long the page waits after a read answers before it reads again (`POLL_MS`, `live.ts`). */
-const POLL_MS = 5000;
 /** A desktop window, the width the operator reads the page at. */
-export const DESKTOP = { width: 1440, height: 1000 } as const;
+const DESKTOP = { width: 1440, height: 1000 } as const;
 /** A phone held upright. */
 export const PHONE = { width: 390, height: 844 } as const;
 
-/** The fixture written under a fresh directory, and `serve.ts` started on it. */
-export async function serveFixture(tier: Tier = "default"): Promise<Served> {
+/** The fixture written under a fresh directory, and `serve.ts` started on it in the default tier. */
+export async function serveFixture(): Promise<Served> {
   const scratch = realpathSync(mkdtempSync(join(tmpdir(), "ana-ui-browser-")));
-  try {
-    const fixture = writeFixtureCampaign(join(scratch, "repo"));
-    const server = await serveDirectory(fixture.root, tier);
-    const stop = async () => {
-      await server.stop();
-      rmSync(scratch, { recursive: true, force: true });
-    };
-    return { ...server, fixture, stop };
-  } catch (error) {
-    rmSync(scratch, { recursive: true, force: true });
-    throw error;
-  }
-}
-
-/** `serve.ts` started on the campaigns under `root`, which the caller owns and removes. */
-export async function serveDirectory(root: string, tier: Tier = "default"): Promise<Server> {
-  const child = Bun.spawn(["bun", "serve.ts", "--repo", root, ...(tier === "exam" ? ["--exam-side"] : [])], {
+  const fixture = writeFixtureCampaign(join(scratch, "repo"));
+  const child = Bun.spawn(["bun", "serve.ts", "--repo", fixture.root], {
     cwd: PACKAGE,
     env: { ...Bun.env, PORT: "0" },
     stdout: "pipe",
@@ -148,18 +83,16 @@ export async function serveDirectory(root: string, tier: Tier = "default"): Prom
   });
   const stop = async () => {
     await interruptAndReapProcessGroup(child, 2000);
+    rmSync(scratch, { recursive: true, force: true });
   };
   try {
     const [origin, token] = await startLine(child.stdout);
-    return {
-      origin,
-      token,
-      url: (query = "") => `${origin}/?${query === "" ? "" : `${query}&`}token=${token}`,
-      stop,
-    };
+    const url = (query = "") => `${origin}/?${query === "" ? "" : `${query}&`}token=${token}`;
+    return { url, stop, fixture };
   } catch (error) {
+    const said = await new Response(child.stderr).text();
     await stop();
-    throw new Error(`serve.ts did not start: ${await new Response(child.stderr).text()}`, { cause: error });
+    throw new Error(`serve.ts did not start: ${said}`, { cause: error });
   }
 }
 
@@ -237,19 +170,14 @@ async function startChrome(within: number, executable: string | undefined): Prom
   return null;
 }
 
-/** A fresh context and page at `url`, recording what goes wrong. The page has loaded its first
- *  campaign reading, or its refusal, when this returns. `ANA_UI_VIDEO=<dir>` records each page as
- *  a video in that directory, written as its context closes. */
-export async function openPage(browser: Browser, url: string, viewing: Viewing = {}): Promise<Opened> {
-  const viewport = { width: viewing.width ?? DESKTOP.width, height: viewing.height ?? DESKTOP.height };
-  const options: BrowserContextOptions = {
-    viewport,
-    reducedMotion: viewing.reducedMotion ?? "no-preference",
-    colorScheme: "dark",
-  };
-  const videos = Bun.env.ANA_UI_VIDEO;
-  if (videos !== undefined) options.recordVideo = { dir: videos, size: viewport };
-  const context = await browser.newContext(options);
+/** A fresh context and page at `url` in a `viewport`, recording what goes wrong. The page has loaded
+ *  its first campaign reading, or its refusal, when this returns. */
+export async function openPage(
+  browser: Browser,
+  url: string,
+  viewport: { readonly width: number; readonly height: number } = DESKTOP,
+): Promise<Opened> {
+  const context = await browser.newContext({ viewport, colorScheme: "dark" });
   context.setDefaultTimeout(ACTION_MS);
   const page = await context.newPage();
   const problems: string[] = [];
@@ -268,20 +196,6 @@ export async function openPage(browser: Browser, url: string, viewing: Viewing =
   return { page, context, problems };
 }
 
-/** The page loaded again on Playwright's clock, which runs as the real one until `nextPolls` moves
- *  it on, and settled. Eight tests waited out the page's real poll period, about 110 of the suite's
- *  seconds. The reload reads the campaign and each pane's parts afresh, and a test that began to
- *  watch for changes before they had all arrived would count them as a poll's: the harness strip's
- *  files could draw twice inside "two polls of a campaign that did not change redraw nothing". So
- *  the reload waits for the network to be idle, 500 ms with no read where the page polls every 5 s,
- *  and then for the page to settle. A count of reads in flight, as the walker keeps, stayed above
- *  zero here: a poll the reload cancelled was reported neither finished nor failed. */
-export async function withClock(page: Page): Promise<void> {
-  await page.clock.install();
-  await page.reload({ waitUntil: "networkidle" });
-  await expect.poll(() => drawn(page), { timeout: ACTION_MS }).toBe("settled");
-}
-
 /** What the page shows two frames from now: "settled", or why not. */
 export function drawn(page: Page): Promise<string> {
   return page.evaluate(async () => {
@@ -297,35 +211,9 @@ export function drawn(page: Page): Promise<string> {
   });
 }
 
-/**
- * Brings the page's next `count` reads of its campaign, or of what `path` names, at once, on a page `withClock` loaded: the
- * clock is moved on a poll period until a read answers. The next poll is set only once the last read
- * has answered (`poll.ts`), so a move made while a read runs brings nothing, and the clock is moved
- * again. A read of the campaign already shown starts no slow-read wait (`waited.ts`), so moving the
- * clock past one changes nothing else on the page.
- */
-export async function nextPolls(page: Page, count: number, path = "/api/campaign"): Promise<void> {
-  for (let read = 0; read < count; read += 1) {
-    let answered = false;
-    const answer = page
-      .waitForResponse((response) => new URL(response.url()).pathname === path)
-      .then(() => {
-        answered = true;
-      });
-    await expect
-      .poll(async () => {
-        if (!answered) await page.clock.fastForward(POLL_MS);
-        return answered;
-      })
-      .toBe(true);
-    await answer;
-  }
-}
-
-/** The page reported nothing wrong, less what a test expected (`allowed`, matched by substring). */
-export function expectQuiet(opened: Opened, allowed: readonly string[] = []): void {
-  const unexpected = opened.problems.filter((problem) => !allowed.some((each) => problem.includes(each)));
-  expect(unexpected).toEqual([]);
+/** The page reported nothing wrong. */
+export function expectQuiet(opened: Opened): void {
+  expect(opened.problems).toEqual([]);
 }
 
 /** Every answer the page reads from the API, its body kept as it passes: a read the page cancels
@@ -347,50 +235,6 @@ export async function keepAnswers(page: Page): Promise<string[]> {
   return answers;
 }
 
-/** A filter's picker (`Choose`, `picker.tsx`) by its label: its accessible name is the label and
- *  then the value it holds, so the picker "Kind" is named "Kind Every kind". */
-export function chooser(scope: Page | Locator, label: string): Locator {
-  return scope.getByRole("combobox", { name: new RegExp(`^${label} `, "u") });
-}
-
-/** Tick `option` in the picker `label` as a person does: open its list if it is closed and press
- *  the option, named by its words and then, in a table's choice, how many rows hold it. The list
- *  stays open, as a choice of several values does. */
-export async function tick(scope: Page | Locator, label: string, option: string): Promise<void> {
-  const list = scope.getByRole("listbox", { name: label, exact: true });
-  if (!(await list.isVisible())) await chooser(scope, label).click();
-  const words = option.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
-  await list.getByRole("option", { name: new RegExp(`^${words}( \\d+)?$`, "u") }).click();
-}
-
-/** Choose `option` alone in the picker `label`: clear its ticks with its first option, tick
- *  `option`, and close the list with Escape. */
-export async function choose(scope: Page | Locator, label: string, option: string): Promise<void> {
-  await chooser(scope, label).click();
-  await scope.getByRole("listbox", { name: label, exact: true }).getByRole("option").first().click();
-  await tick(scope, label, option);
-  await scope.getByRole("searchbox", { name: `Filter ${label.toLowerCase()}s` }).press("Escape");
-}
-
-/** What the picker `label` offers, each option's words and its count where it has one, read with
- *  its list open, which Escape then closes. */
-export async function choicesOf(scope: Page | Locator, label: string): Promise<string[]> {
-  await chooser(scope, label).click();
-  const options = await scope
-    .getByRole("listbox", { name: label, exact: true })
-    .getByRole("option")
-    .allInnerTexts();
-  await scope.getByRole("searchbox", { name: `Filter ${label.toLowerCase()}s` }).press("Escape");
-  return options;
-}
-
-/** The search parameters of the page's address now, the token left out. */
-export function routeParameters(page: Page): Record<string, string> {
-  const query = new URL(page.url()).searchParams;
-  query.delete("token");
-  return Object.fromEntries(query.entries());
-}
-
 /** The axe-core rules the page breaks at WCAG 2.2 AA, each with the nodes it names. */
 export async function accessibilityViolations(page: Page, within?: string): Promise<string[]> {
   const builder = new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]);
@@ -399,56 +243,4 @@ export async function accessibilityViolations(page: Page, within?: string): Prom
     (violation) =>
       `${violation.id}: ${violation.help} (${violation.nodes.map((node) => node.target.join(" ")).join(", ")})`,
   );
-}
-
-/**
- * Count, on every animation frame of every page of `context`, whether `main` shows the placeholder
- * a campaign stands behind while it is read sooner than the page's patience after the last click,
- * and whether it shows nothing at all, with the address of each such frame. A switch of project can
- * paint the placeholder for a few frames, which a screenshot taken before or after never catches,
- * so the page is sampled where it paints. A placeholder after the patience is what the page owes a
- * slow read, and on a loaded host a switch whose read the test answered at once can still take that
- * long to draw, so the count is held to the page's own clock. Read and reset the counts with
- * `framesSeen`.
- */
-export async function sampleFrames(context: BrowserContext): Promise<void> {
-  await context.addInitScript((patienceMs: number) => {
-    const seen: Sampled = { placeholder: 0, blank: 0, frames: 0, clickedAt: 0, at: [] };
-    window.anaFramesSeen = seen;
-    document.addEventListener(
-      "click",
-      () => {
-        seen.clickedAt = performance.now();
-      },
-      { capture: true },
-    );
-    const sample = () => {
-      const main = document.querySelector("main");
-      seen.frames += 1;
-      if (main !== null) {
-        const placeholder = (main.textContent ?? "").includes("Reading the campaign");
-        const early = placeholder && performance.now() - seen.clickedAt < patienceMs;
-        const blank = !placeholder && main.querySelector("h1, h2, table") === null;
-        if (early) seen.placeholder += 1;
-        if (blank) seen.blank += 1;
-        if (early || blank) seen.at.push(location.search);
-      }
-      requestAnimationFrame(sample);
-    };
-    requestAnimationFrame(sample);
-  }, PATIENCE_FLOOR_MS);
-}
-
-/** The sampler's counts since it was installed or last read, which this resets. */
-export async function framesSeen(page: Page): Promise<FramesSeen> {
-  return await page.evaluate(() => {
-    const seen = window.anaFramesSeen;
-    if (seen === undefined) throw new Error("the frame sampler is not installed: call sampleFrames first");
-    const counts = { placeholder: seen.placeholder, blank: seen.blank, frames: seen.frames };
-    seen.placeholder = 0;
-    seen.blank = 0;
-    seen.frames = 0;
-    seen.at = [];
-    return counts;
-  });
 }

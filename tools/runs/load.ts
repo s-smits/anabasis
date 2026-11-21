@@ -22,13 +22,13 @@ interface Sample {
   /** The share of the CPU busy over the last interval, in percent. */
   readonly busy: number;
 }
-export type State = Sample | "connecting" | "unreachable";
-export interface Watched {
+export type State<S = Sample> = S | "connecting" | "unreachable";
+export interface Watched<S = Sample> {
   readonly label: string;
   /** The host sampled, or undefined for this machine. */
   readonly host: Host | undefined;
   readonly argv: readonly string[];
-  state: State;
+  state: State<S>;
   child: Bun.Subprocess | null;
 }
 
@@ -37,6 +37,7 @@ export const WINDOWS = { "1m": 0, "5m": 1, "15m": 2 } as const;
 export type Window = (typeof WINDOWS)[keyof typeof WINDOWS];
 
 const SILENT_MS = 20_000;
+const RETRY_MS = 3000;
 // Each sample is "<cores>\n<1m> <5m> <15m>\n<idle percent>\n---\n". @I@ is the interval in seconds.
 const LOOP = String.raw`
 if [ -r /proc/stat ]; then
@@ -84,6 +85,11 @@ export function watchedOf(hosts: readonly (Host | undefined)[], seconds: number)
     "@W@",
     String(Math.max(1, Math.round(seconds))),
   );
+  return watchersOf(hosts, script);
+}
+
+/** This machine (`undefined`) and each host, each to run the shell loop `script`, not yet read. */
+export function watchersOf<S>(hosts: readonly (Host | undefined)[], script: string): Watched<S>[] {
   return hosts.map((host) => ({
     label: host?.name ?? ownName(),
     host,
@@ -93,8 +99,38 @@ export function watchedOf(hosts: readonly (Host | undefined)[], seconds: number)
   }));
 }
 
+/** Follow each connection for good, opening one that closes or falls silent again after a pause. */
+export function keepFollowing<S>(
+  watched: readonly Watched<S>[],
+  parse: (block: string) => S | null,
+  intervalMs: number,
+): void {
+  for (const each of watched) {
+    (async () => {
+      for (;;) {
+        await follow(each, parse, intervalMs, "closed");
+        await Bun.sleep(RETRY_MS);
+      }
+    })().catch(() => undefined);
+  }
+}
+
 /** Read one connection until it closes or falls silent, or until its first sample. */
-export async function stream(watched: Watched, intervalMs: number, until: "first" | "closed"): Promise<void> {
+export const stream = (watched: Watched, intervalMs: number, until: "first" | "closed"): Promise<void> =>
+  follow(watched, sampleOf, intervalMs, until);
+/** Follow each machine's load for good (`keepFollowing`). */
+export const keepSampling = (watched: readonly Watched[], intervalMs: number): void => {
+  keepFollowing(watched, sampleOf, intervalMs);
+};
+
+/** Read one connection's blocks, each ended by a `---` line, until it closes or falls silent, or
+ *  until its first block that `parse` reads; the newest read block is the watched state. */
+export async function follow<S>(
+  watched: Watched<S>,
+  parse: (block: string) => S | null,
+  intervalMs: number,
+  until: "first" | "closed",
+): Promise<void> {
   const child = capturedSpawn([...watched.argv], {
     stdin: "ignore",
     stdout: "pipe",
@@ -113,7 +149,12 @@ export async function stream(watched: Watched, intervalMs: number, until: "first
       buffer += decoder.decode(read.value, { stream: true });
       const blocks = buffer.split("---\n");
       buffer = blocks.pop() ?? "";
-      const sample = blocks.flatMap((block) => sampleOf(block) ?? []).at(-1);
+      const sample = blocks
+        .flatMap((block) => {
+          const parsed = parse(block);
+          return parsed === null ? [] : [parsed];
+        })
+        .at(-1);
       if (sample === undefined) continue;
       watched.state = sample;
       silentMs = intervalMs + SILENT_MS;

@@ -20,18 +20,17 @@
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { killProcessGroup } from "#src/meta/subprocess.ts";
 import { hostsOf } from "./host-config.ts";
-import { byLoad, firstSamples, stream, watchedOf, WINDOWS, type Watched, type Window } from "./load.ts";
+import { byLoad, firstSamples, keepSampling, watchedOf, WINDOWS, type Watched, type Window } from "./load.ts";
 import { Misused } from "./registry.ts";
 
-const RETRY_MS = 3000;
 const TICK_MS = 200;
 const BAR = 40;
 const ESC = "\u001B";
-const [RESET, DIM, BOLD] = [`${ESC}[0m`, `${ESC}[2m`, `${ESC}[1m`];
-const [GREEN, YELLOW, RED] = [`${ESC}[32m`, `${ESC}[33m`, `${ESC}[31m`];
+export const [RESET, DIM, BOLD] = [`${ESC}[0m`, `${ESC}[2m`, `${ESC}[1m`];
+export const [GREEN, YELLOW, RED] = [`${ESC}[32m`, `${ESC}[33m`, `${ESC}[31m`];
 const ROWS = ["cpu now ", "load 1m ", "load 5m ", "load 15m"] as const;
 
-function bar(value: number, most: number): string {
+export function bar(value: number, most: number): string {
   // A load above the core count shows as processes waiting beside the bar, never above 100%.
   const share = most > 0 ? value / most : 0;
   const filled = Math.min(BAR, Math.floor(share * BAR));
@@ -97,6 +96,32 @@ function paint(lines: readonly string[], before: readonly string[]): void {
   if (out.length > 0) runtimeProcess.stdout.write(`${ESC}[?2026h${out.join("")}${ESC}[?2026l`);
 }
 
+/** Draw `draw()` on the alternate screen until ctrl-c, which ends every watched connection and gives
+ *  the shell's screen back untouched. */
+export async function liveScreen(
+  watched: readonly { child: Bun.Subprocess | null }[],
+  draw: () => string[],
+): Promise<never> {
+  let before: string[] = [];
+  const quit = () => {
+    for (const { child } of watched) if (child !== null) killProcessGroup(child, "SIGKILL");
+    runtimeProcess.stdout.write(`${ESC}[?25h${ESC}[?1049l`);
+    runtimeProcess.exit(0);
+  };
+  runtimeProcess.on("SIGINT", quit);
+  runtimeProcess.on("SIGTERM", quit);
+  runtimeProcess.on("SIGWINCH", () => {
+    before = [];
+  });
+  runtimeProcess.stdout.write(`${ESC}[?1049h${ESC}[?25l`);
+  for (;;) {
+    const lines = draw();
+    paint(lines, before);
+    before = lines;
+    await Bun.sleep(TICK_MS);
+  }
+}
+
 export async function loadwatch(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],
@@ -128,31 +153,6 @@ export async function loadwatch(args: readonly string[]): Promise<void> {
     );
     return;
   }
-  for (const each of watched) {
-    (async () => {
-      for (;;) {
-        await stream(each, intervalMs, "closed");
-        await Bun.sleep(RETRY_MS);
-      }
-    })().catch(() => undefined);
-  }
-  let before: string[] = [];
-  const quit = () => {
-    for (const { child } of watched) if (child !== null) killProcessGroup(child, "SIGKILL");
-    runtimeProcess.stdout.write(`${ESC}[?25h${ESC}[?1049l`);
-    runtimeProcess.exit(0);
-  };
-  runtimeProcess.on("SIGINT", quit);
-  runtimeProcess.on("SIGTERM", quit);
-  runtimeProcess.on("SIGWINCH", () => {
-    before = [];
-  });
-  // The alternate screen and a hidden cursor; the shell's screen comes back untouched on exit.
-  runtimeProcess.stdout.write(`${ESC}[?1049h${ESC}[?25l`);
-  for (;;) {
-    const lines = frame(watched, given);
-    paint(lines, before);
-    before = lines;
-    await Bun.sleep(TICK_MS);
-  }
+  keepSampling(watched, intervalMs);
+  await liveScreen(watched, () => frame(watched, given));
 }

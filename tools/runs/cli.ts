@@ -28,6 +28,7 @@ import { hostsHealth } from "./health.ts";
 import { keep } from "./keep.ts";
 import { HERE, KEEPING, Misused, ownArgs } from "./registry.ts";
 import { loadwatch } from "./loadwatch.ts";
+import { netwatch } from "./netwatch.ts";
 import { active, logins } from "./logins.ts";
 import { continueRun, launch, pause } from "./manage.ts";
 import { copy, fetch, move } from "./move.ts";
@@ -183,6 +184,11 @@ const GROUPS = {
       run: loadwatch,
       file: "loadwatch.ts",
       says: "each machine's CPU and load, live",
+    },
+    netwatch: {
+      run: netwatch,
+      file: "netwatch.ts",
+      says: "the traffic between the machines over Tailscale and its total, live",
     },
   },
   "handover and simulation": {

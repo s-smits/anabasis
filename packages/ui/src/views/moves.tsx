@@ -11,7 +11,7 @@ import { SessionDetailView } from "./moves-session.tsx";
 import { SolveAnswerView } from "./solve.tsx";
 
 /*
- * The Moves pane (the brief of 11 October, section 7): every Examiner session, Builder session and
+ * The Moves pane: every Examiner session, Builder session and
  * comparison in order, one row each (`moves-list.tsx`); a row opens its detail in place through the
  * route's `move`, its place in the log (`moves-session.tsx`, `moves-comparison.tsx`), and a solve in
  * that detail opens
@@ -21,8 +21,8 @@ import { SolveAnswerView } from "./solve.tsx";
  *
  * The pane reads the move and the solve itself, so that the level shown changes only once the
  * level asked for has its answer: until then the one before stays on screen, and only past the
- * patience (`late.ts`) does the asked level say that it is read. Until 14 October the list hid
- * itself on a click and each opening painted "Reading move" before its detail.
+ * patience (`late.ts`) does the asked level say that it is read, so the list does not hide itself
+ * on a click nor each opening paint "Reading move" before its detail.
  */
 
 /** The list, a move, or a solve. */

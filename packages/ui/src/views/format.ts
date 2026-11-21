@@ -71,9 +71,9 @@ export function ago(value: string | null, now: number): string {
 }
 
 /** A campaign's state as the sidebar and the campaign's line say it. An open campaign says when it
- *  last wrote, since the log cannot say whether a process on another host still writes it: on
- *  30 October 132 of 134 open campaigns had no process on the serving host, and some of those were
- *  copies of live campaigns on a peer that the gather job refreshes every ten minutes. */
+ *  last wrote, since the log cannot say whether a process on another host still writes it: most
+ *  open campaigns have no process on the serving host, and some of those are copies of live
+ *  campaigns on a peer that the gather job refreshes every ten minutes. */
 export function standing(row: Pick<CampaignRow, "status" | "ending" | "lastEventAt">, now: number): string {
   if (row.ending !== null) return `ended: ${row.ending.ending}`;
   return row.status === "running" ? "running" : `open, wrote ${ago(row.lastEventAt, now)}`;

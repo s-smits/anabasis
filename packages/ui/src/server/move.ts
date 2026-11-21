@@ -122,7 +122,7 @@ function sensitivityOf(report: Report): Sensitivity | null {
   const { scored, frontier, valid, noise, families, overlap } = report;
   if (scored === null) return null;
   const untied = Object.values(families ?? {}).map(({ frontier: { wins, losses } }) => wins + losses);
-  // The set the step was read on: the scored tasks, or the frontier in a report before 20 October;
+  // The set the step was read on: the scored tasks, or the frontier in an older report;
   // untied on the scores the step reads (`steppedOf`).
   const test = testedSet(scored, frontier);
   const { wins, losses } = test === null ? { wins: 0, losses: 0 } : steppedOf(test).tally;
@@ -155,8 +155,8 @@ export function moveAnswer(reading: Reading, query: Query<"move">): MoveDetail {
         ? sessionTrace(log, move.id, move.step === "builder" ? "build" : "exam")
         : null;
     // A Builder session's practice solves are the ones that started inside its window, as
-    // `campaignOf` counts them. Cut at the first move it made instead, the open session b-4 of
-    // buffer-fresh-opus-forkedPR506 listed 2 solves on 30 October under a head that read 16.
+    // `campaignOf` counts them. Cut at the first move it made instead, an open session would list
+    // far fewer solves than its head reads.
     const solves =
       move.step === "builder"
         ? ranIn(log).flatMap((solve) =>

@@ -17,9 +17,9 @@
  *
  * The last answer of each endpoint is also kept in the tab's session storage, and a request that
  * asks for the same path again, after a refresh or a hot reload, starts from it while the server
- * is read. Until 31 October a refresh dropped the whole page to "Reading the campaign" and then the
- * pane to "Reading the tasks" for a few hundred milliseconds, and for as long as a restarting
- * server took (operator). One answer an endpoint is kept, so a long log cannot crowd the rest out
+ * is read, rather than dropping the whole page to "Reading the campaign" and then the pane to
+ * "Reading the tasks" for a few hundred milliseconds, or for as long as a restarting server takes.
+ * One answer an endpoint is kept, so a long log cannot crowd the rest out
  * of the storage, and the default tier's alone: the storage is a file on this machine, and an
  * exam-side answer holds hidden values.
  */

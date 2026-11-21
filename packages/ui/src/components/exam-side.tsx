@@ -1,6 +1,6 @@
 /*
  * What a page served in the default tier shows where the exam side's content would stand: one quiet
- * line that says where the content is and how to open it (the brief of 11 October, section 8). An
+ * line that says where the content is and how to open it. An
  * absence by design is neither an error nor an empty box, so it is drawn as neither: no callout
  * tone, no border, the faint text of a note.
  *

@@ -15,16 +15,16 @@ import { terminateAndReapProcessGroupId } from "../../src/meta/subprocess.ts";
  * Every API request needs the token printed here: on macOS a Builder's or a solver's shell can
  * reach a loopback port. It is drawn once and kept in `.token` beside this file, which Git ignores
  * and every seat's wall closes with the rest of the repository, so that a restart leaves the open
- * tabs working: drawn at each start, every restart refused them all (30 October). `--exam-side` answers in the exam tier,
- * which shows task text, hidden values, answers and rulings: start it where no Builder or solver
- * runs. `--repo <dir>` reads the campaigns under that one directory, `<dir>/.ana/d2/<name>/log.jsonl`,
- * in place of every worktree of this repository: a fixture's (`test/fixture-campaign.ts`) or another
- * checkout's.
+ * tabs working, where a token drawn at each start would have every restart refuse them all.
+ * `--exam-side` answers in the exam tier, which shows task text, hidden values, answers and
+ * rulings: start it where no Builder or solver runs. `--repo <dir>` reads the campaigns under that
+ * one directory, `<dir>/.ana/d2/<name>/log.jsonl`, in place of every worktree of this repository: a
+ * fixture's (`test/fixture-campaign.ts`) or another checkout's.
  *
  * It serves from a child of this process and starts a new child whenever the tree's commit moves.
- * Bun's watcher follows each file it bundled, and a rebase rewrites many in one burst: on
- * 31 October, after one, the server went on serving a `moves-list.tsx` that imported a component
- * the rebase had removed, through every reload, until the process was started again (operator).
+ * Bun's watcher follows each file it bundled, and a rebase rewrites many in one burst, after which
+ * the server could go on serving a file that imports a component the rebase had removed, through
+ * every reload, until the process was started again.
  */
 /** Marks the child that serves, in its environment. */
 const SERVING = "ANA_UI_SERVING";

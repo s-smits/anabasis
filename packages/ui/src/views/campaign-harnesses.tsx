@@ -13,7 +13,7 @@ import { time } from "./format.ts";
 import { PART_NAMES, partOf, useHarnessFiles } from "./harness-parts.tsx";
 
 /*
- * The lineage strip (the brief of 11 October, section 6): every harness version in the order kept,
+ * The lineage strip: every harness version in the order kept,
  * starter first, at one size in one row that scrolls sideways when it outgrows the page. The card
  * the route names is marked, and its detail stands in one panel under the row at the row's width:
  * who made it, its parent, its practice and the comparisons it was the new harness of. Every card
@@ -34,8 +34,8 @@ const KEYS = { ArrowLeft: -1, ArrowRight: 1 } as const;
 
 const STARTER = "starter";
 const PANEL_ID = "ana-harness-panel";
-/** A file list longer than this gets a search: a harness that vendors a Python package listed 400
- *  files under Programs (30 October), each a line of the page. The count is a choice of this view. */
+/** A file list longer than this gets a search: a harness that vendors a Python package lists
+ *  hundreds of files under Programs, each a line of the page. The count is this view's choice. */
 const SEARCHED_FROM = 12;
 type Names = CampaignReading["names"];
 
@@ -244,8 +244,8 @@ function Face({ card, names }: { card: HarnessCard; names: Names }) {
 }
 
 /** The strip of versions over the selected one's detail, with `beside` (the pane's small charts) in a
- *  second column on a wide page: below the detail, the charts sat under a panel as wide as the page
- *  that held five short facts (operator, 30 October). */
+ *  second column on a wide page: below the detail, the charts would sit under a panel as wide as
+ *  the page that holds five short facts. */
 export function HarnessStrip({ reading, navigation, beside }: PaneProps & { readonly beside: ReactNode }) {
   const cards = reading.harnesses;
   const selected = selectedIndex(cards, navigation.route.harness);

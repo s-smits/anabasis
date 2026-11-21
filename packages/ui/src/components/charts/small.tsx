@@ -64,10 +64,10 @@ export function CarriedKey() {
 }
 
 /** Each reported comparison's won tasks, one column a comparison split by the measure that carried
- *  each win (`carriedBy`). Until 30 October this place held each side's valid share, which read
- *  100% on both sides in every comparison of a campaign that promoted six times on the objective
- *  and the bill; the split says what the wins were made of (the bill no longer scores, from 2 November). Columns stand apart, never joined,
- *  since the scored tasks change from one comparison to the next. */
+ *  each win (`carriedBy`), rather than each side's valid share, which can read 100% on both sides
+ *  in every comparison of a campaign that promotes on other measures; the split says what the wins
+ *  were made of. Columns stand apart, never joined, since the scored tasks change from one
+ *  comparison to the next. */
 export const CarriedChart = memo(function CarriedChart({ bars }: { bars: readonly ComparisonBar[] }) {
   const rows: CarriedRow[] = useMemo(
     () => bars.flatMap((bar) => (bar.carried === null ? [] : [{ key: bar.id, ...bar.carried.won, bar }])),
@@ -119,10 +119,10 @@ function SpendTooltip({
   );
 }
 
-/** The dollars billed over the moves, on an axis of the spend itself. Until 30 October the axis
- *  ran to the campaign's budget, so a campaign $34 into $800 drew a flat line on the floor, and
- *  each step was held to the next move, so the last showed as a hook at the edge; the budget is in
- *  the card's head and the hero. */
+/** The dollars billed over the moves, on an axis of the spend itself: an axis to the campaign's
+ *  budget would draw a campaign early in its budget as a flat line on the floor, and each step
+ *  stands at its own move, not held to the next, so the last shows as no hook at the edge; the
+ *  budget is in the card's head and the hero. */
 export const SpendChart = memo(function SpendChart({ spend }: { spend: readonly SpendPoint[] }) {
   return (
     <ChartContainer>

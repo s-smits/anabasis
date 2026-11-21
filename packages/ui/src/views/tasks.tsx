@@ -8,14 +8,14 @@ import { TaskDetailView } from "./tasks-detail.tsx";
 import { TaskGridView } from "./tasks-grid.tsx";
 
 /*
- * The Tasks pane (the brief of 11 October, section 7): the grid of task versions against comparisons
+ * The Tasks pane: the grid of task versions against comparisons
  * (`tasks-grid.tsx`); a task opens its detail in place through the route's `task`
  * (`tasks-detail.tsx`), and a solve in it through the route's `solve` (`solve.tsx`), each level
  * hiding the one above it as the Moves pane's do.
  *
  * The grid stays on screen until the task opened from it is read, and is marked as reading only
- * once that read is late (`late.ts`): until 14 October the grid gave way at once to a "Reading the
- * task" placeholder for the frames the server took to answer.
+ * once that read is late (`late.ts`), rather than giving way at once to a "Reading the task"
+ * placeholder for the frames the server takes to answer.
  */
 
 export function TasksPane({ reading, navigation }: PaneProps) {

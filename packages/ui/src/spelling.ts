@@ -6,9 +6,9 @@ import { changedRoute, type Navigation, searchOf } from "./route.ts";
  * the address (`route.ts`), and the selection from the route and the list (`selectionOf`,
  * `shell.tsx`); where the address leaves the campaign out, names one the list does not hold, names a
  * pane the page does not have, a move or an event that is no place in a log, or a parameter the route
- * does not read, the shown selection is written back without a new history entry. Until 14 October
- * only a campaign or a project that differed was written back, so the rest stayed in the address and
- * a click on the pane already open pushed a second entry.
+ * does not read, the shown selection is written back without a new history entry. Writing back
+ * only a campaign or a project that differed would leave the rest in the address, and a click on
+ * the pane already open would push a second entry.
  *
  * Writing the history acts on the world, so it is done as a component mounts (`mount.ts`): the shell
  * mounts `SpelledAddress` only where the address differs from its spelling, keyed by that spelling,

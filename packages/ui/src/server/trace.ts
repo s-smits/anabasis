@@ -1,6 +1,6 @@
 /**
  * The solves, the turns and the calls the detail endpoints show, and what of them each tier may
- * carry (the brief of 11 October, section 8).
+ * carry.
  *
  * A solve is the kernel's join of its two events and its condition (`solvesIn`, `conditionsOf`),
  * with the calls it made since its last start. Its ruling is what stands of its rejection: a person's label where a settled report holds one, the

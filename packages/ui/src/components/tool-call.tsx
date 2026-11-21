@@ -7,8 +7,8 @@ import { asRecord, isString, type JsonValue } from "../../../../src/meta/json-sh
  * labelled by its number and its tool, opened in place to its arguments and its result. Two panes
  * draw calls, a session's in Moves and a solve's trace in Moves and Tasks, so the component is
  * theirs to share. The closed row also carries the first line of what the call was given, cut to
- * the row: reading the first ten commands of Builder session b-4 took ten clicks on 30 October,
- * one a call. Its turn is the heading the call stands under, so the row does not repeat it.
+ * the row, so that reading a session's first commands takes no click a call. Its turn is the
+ * heading the call stands under, so the row does not repeat it.
  */
 
 /** A call's arguments as a reader wants them: a shell command as it was typed, else the JSON. */

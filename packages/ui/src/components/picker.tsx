@@ -16,24 +16,23 @@ import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
  * closes, click outside closes), and the same one-way data flow, with the popup drawn in our own
  * styles. Groups carry an optional heading; a group with no heading renders its options flat. The
  * listbox holds only its groups and options, each group named by its heading, and the search box
- * stands above it in the panel: until 3 November both sat inside the listbox, which may own options
- * alone (axe, aria-required-children).
+ * stands above it in the panel, outside the listbox, which may own options alone (axe,
+ * aria-required-children).
  *
  * Focus stays on the trigger while the list is open, as a combobox's does: a press inside the list
  * keeps it there, so focus leaving the picker is a press or a Tab outside it, and closes the list
- * (`onBlur`). The active option scrolls into view as it is drawn active, through its ref. Until
- * 14 October both were effects that ran a frame after the list had drawn, one of them a listener on
- * the whole document for as long as the list was open.
+ * (`onBlur`). The active option scrolls into view as it is drawn active, through its ref. Neither
+ * is an effect that runs a frame after the list has drawn, nor a listener on the whole document for
+ * as long as the list is open.
  *
  * A `filtered` picker narrows its list as the operator types into a search box at the top of the
  * list, which takes focus as the list opens: a key typed on the trigger opens it with that key, the
  * arrows and Enter walk and pick as on the trigger, and Escape clears the filter before it closes the
- * list. The campaign picker needs it: on 30 October the repository held 176 campaigns, and the list
- * was two pickers of bare names with no way to find one but to scroll. Until the same day the filter
- * was typed on the trigger and drawn as text, which no Cmd+A, paste or caret could reach (operator).
- * The filter forgives typos (Fuse.js, `FUZZY`) and puts the closest match first: the list is a few
- * hundred names, so a loose match costs a few extra rows and a strict one hid "stakced" (operator,
- * 30 October).
+ * list. The campaign picker needs it: the repository holds hundreds of campaigns, with no other way
+ * to find one but to scroll. The filter is a box rather than text typed on the trigger, which no
+ * Cmd+A, paste or caret could reach. The filter forgives typos (Fuse.js, `FUZZY`) and puts the
+ * closest match first: the list is a few hundred names, so a loose match costs a few extra rows and
+ * a strict one would hide "stakced".
  *
  * A picker given `chosen` ticks several values: a pick toggles one and the list stays open, as a
  * filter's does, until a press or a Tab outside it or Escape closes it.
@@ -368,10 +367,9 @@ function PickerInner({
 export const Picker = memo(PickerInner);
 
 /** A choice in a filter row, in the search box's style: the list opens with a box that finds a
- *  value by typing, as the campaign picker does (operator, 30 October: a native select could not
- *  be searched, and drew in the system's style). It ticks any number of values, and a row passes
- *  where it holds one of them; the first option, `every`, clears the ticks. Until 31 October it
- *  held one value and closed on the pick (operator). */
+ *  value by typing, as the campaign picker does, since a native select cannot be searched and draws
+ *  in the system's style. It ticks any number of values, and a row passes where it holds one of
+ *  them; the first option, `every`, clears the ticks. */
 export function Choose({
   label,
   chosen,

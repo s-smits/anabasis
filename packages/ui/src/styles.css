@@ -100,8 +100,8 @@ body {
   color: var(--ana-text);
 }
 
-/* The page's heaviest weight is 600: the browser's bold is 700, and on 30 October nine rules and
-   every strong and table head set it. */
+/* The page's heaviest weight is 600: the browser's bold is 700, which every strong and table head
+   would otherwise set. */
 strong,
 b,
 th {
@@ -233,7 +233,7 @@ button.ana-hash.is-revealed {
 }
 
 /* The brand stands bare, its mark 20px from the top and 20px from the left: the sidebar's padding
-   and the margin here, with no box drawn around it on hover (operator, 31 October). */
+   and the margin here, with no box drawn around it on hover. */
 .ana-brand {
   align-items: center;
   background: transparent;
@@ -355,8 +355,8 @@ button.ana-hash.is-revealed {
 }
 
 /* In the sidebar the list spans the picker's whole row, its 8 px padding on each side included, so
-   it covers the nav row under it whole: until 3 November it began at the box, and left a sliver of
-   a nav row beside it at either width, a target too small to press (axe, target-size). */
+   it covers the nav row under it whole: begun at the box, it would leave a sliver of a nav row
+   beside it at either width, a target too small to press (axe, target-size). */
 .ana-sidebar .ana-picker-panel {
   left: -8px;
   min-width: calc(100% + 16px);
@@ -434,8 +434,8 @@ button.ana-hash.is-revealed {
 }
 
 /* The trigger's icon shows only where the sidebar is collapsed, and is then the whole trigger, one
-   nav row high, opening the list beside the sidebar. Until 30 October the collapsed sidebar hid
-   the picker, so another campaign took opening it first (operator). */
+   nav row high, opening the list beside the sidebar, so that another campaign does not take
+   opening the collapsed sidebar first. */
 .ana-picker-icon {
   display: none;
 }
@@ -529,8 +529,7 @@ button.ana-hash.is-revealed {
  * override the browser's toggle, so a reader who collapsed it would see it open again on the
  * next render.
  *
- * The rows touch, and the first touches the picker's rule, so their left lines read as one lane
- * (operator, 30 October).
+ * The rows touch, and the first touches the picker's rule, so their left lines read as one lane.
  */
 .ana-sidebar-nav {
   display: grid;
@@ -686,7 +685,7 @@ button.ana-hash.is-revealed {
   margin: 0;
 }
 
-/* A section's title is 14 px, a step of Word's sizes above the 11.5 px it was (operator, 30 October). */
+/* A section's title is 14 px, a step of Word's sizes above 11.5 px. */
 .ana-section h2,
 .ana-section-head h2 {
   font-size: 14px;
@@ -768,7 +767,7 @@ button.ana-hash.is-revealed {
 }
 
 /* A status is quiet text: a tone tints a small square-cornered ground, and a neutral one is the
-   word alone. Until 30 October every status was a filled pill, so a row of them led the page. */
+   word alone, since a row of filled pills would lead the page. */
 .ana-badge {
   align-items: center;
   border: 1px solid transparent;

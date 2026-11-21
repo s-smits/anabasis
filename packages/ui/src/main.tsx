@@ -24,8 +24,8 @@ import "./panes.css";
 
 /*
  * A reload comes back where it was scrolled. The browser restores the position as the document
- * loads, before the panes have drawn their rows, so on 31 October a reload put the Log pane back at
- * its top (operator). The page keeps the position as it is left, and scrolls back to it once the
+ * loads, before the panes have drawn their rows, so a reload would put the Log pane back at its
+ * top. The page keeps the position as it is left, and scrolls back to it once the
  * document is tall enough, for at most two seconds. The browser's own restoring stays on, since a
  * step back inside the page (a detail's "Back to moves") is restored by it alone.
  */

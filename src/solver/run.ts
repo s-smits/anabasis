@@ -3,7 +3,7 @@
  * command wall and `submit` beside them, pi-durable under the host's
  * deadline and prompt limit, then the ending typed and logged with the trace and the meter. A non-result from the solve's side is run
  * again, up to three times with backoff; named provider resets are waited out here without using a
- * rerun. On 21 October, 128 room solves refused 43 of 1,396 drafts in 30 campaigns at such resets.
+ * rerun, since a reset otherwise refuses drafts that have nothing wrong with them.
  * A task's check non-result returns to its caller; a verifier non-result stops the run.
  * Killed endings retain the first typed host cancellation source, or caller for an unlabelled
  * external abort. The solve's own deadline remains a `wall-ended` fail unless the model left no
@@ -90,7 +90,7 @@ export interface SolveRequest {
  * A solve's deadline observes completed turns and tool starts and endings through `sit`'s hooks,
  * including unavailable tools and argument refusals. When it falls it keeps the seconds since
  * that activity, or zero while a tool runs, which `unanswered` reads (`SILENT_SECONDS`). It observes
- * no partial stream content. Until 26 October `timed` missed calls that durable refused.
+ * no partial stream content. `timed` sees calls that durable refused, too.
  */
 export interface Wall {
   readonly signal: AbortSignal;
@@ -162,9 +162,9 @@ export async function waiting(ms: number, kill?: AbortSignal, wait?: (ms: number
 /**
  * Whether the campaign waited out the provider limit `said` names, an ending's reason, a throw or a
  * crash's words: where its reset is still ahead, the wait is on record (`for: "provider"`) and slept
- * to a minute past it, however far on, or until `kill`. Until 15 October a week's reset was the
- * environment's ending, and nothing reran buffer-159-opus for 7 h 10 min on 14 October; a long wait
- * is the operator's, or a keeper's (`tools/runs/keep.ts`), to move to another login.
+ * to a minute past it, however far on, or until `kill`, rather than ending the campaign
+ * `environment` with nothing to rerun it; a long wait is the operator's, or a keeper's
+ * (`tools/runs/keep.ts`), to move to another login.
  */
 export async function waitOut(
   log: string,
@@ -320,8 +320,8 @@ async function play(
       onTool: raised.onTool,
       // After a turn's tool calls have run, so an answer submitted in the last turn is held. An
       // accepted submit ends the solve here as its description says, and not only through its
-      // `terminate`, which pi heeds when every call of the turn returns it: on esp32 (12 October)
-      // 3 of 238 turns sent a submit beside a shell call, and the model was asked on.
+      // `terminate`, which pi heeds when every call of the turn returns it: a turn that sends a
+      // submit beside a shell call would otherwise ask the model on.
       over: () => desk.submitted !== undefined || desk.flagged !== undefined,
       next: async () => {
         if (desk.submitted !== undefined || desk.flagged !== undefined || prompts >= limits.turns) {
@@ -372,8 +372,8 @@ const PROCESS_CLOCK: WallClock = {
 
 /** A deadline armed now, that expires once `seconds` have passed by `clock.now`, the clock a solve's
  *  time is recorded and told on. A timer that fires sooner by that clock is armed again for the
- *  rest: the process's two clocks part while a host sleeps, where `performance.now` stands still (a
- *  solve of 11 November 2026 recorded 74 s over 788 s of a host's day), so a deadline that only the
+ *  rest: the process's two clocks part while a host sleeps, where `performance.now` stands still
+ *  (one solve recorded 74 s over 788 s of a host's day), so a deadline that only the
  *  timer had reached would end a solve as its harness's fail for time the host slept. */
 export function raiseWall(seconds: number, clock: WallClock = PROCESS_CLOCK): Wall {
   const fall = new AbortController();
@@ -416,10 +416,10 @@ export function clockText(seconds: number): string {
 
 /**
  * A solver's tool with the solve time used as the last line of whatever it returns, a result or an
- * error, and the turn it is in where its turns are limited. When a solver had no clock, in two live
- * rounds of 9 October, five of the six practice solves that failed had submitted an answer the
- * solver's own check had refused, stopping early or out of time, by the operator's account of them
- * (`docs/transfer.md`). What a solver does with its time is its own to decide; this says what the
+ * error, and the turn it is in where its turns are limited. When a solver had no clock, most of
+ * the practice solves that failed had submitted an answer the solver's own check had refused,
+ * stopping early or out of time, by the operator's account of them (`docs/transfer.md`). What a
+ * solver does with its time is its own to decide; this says what the
  * time is.
  */
 export function timed(tool: SeatTool, { clock, turns, modelTurns }: Used): SeatTool {

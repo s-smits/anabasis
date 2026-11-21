@@ -1,7 +1,7 @@
 /**
  * The names people read for a campaign's harnesses: the Starter Built Harness is A, and each other
  * harness the log names gets the next letter in the order the log first names it, B to Z, then AA,
- * AB and on (the hardening plan's PR 8, 14 October). A digest is the identity that saved states,
+ * AB and on. A digest is the identity that saved states,
  * comparisons, repeats and recovery go by; a letter is a name beside it, and every printed name
  * keeps the digest's first eight characters, so the hash stays there to inspect.
  *

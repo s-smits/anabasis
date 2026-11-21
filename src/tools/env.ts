@@ -180,7 +180,7 @@ class WalledEnv implements ExecutionEnv {
     context: Context,
     extra: {
       content?: string | Uint8Array | undefined;
-      timeout?: number;
+      bound?: number;
       onText?: (frame: Extract<Frame<T>, { text: string }>) => void;
     } = {},
   ): Promise<Wire<T>> {
@@ -203,7 +203,7 @@ class WalledEnv implements ExecutionEnv {
           `BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 ${shellQuote(capturedExecPath)} --no-env-file worker.mjs`,
           {
             signal: AbortSignal.any([signal, bounded.signal]),
-            timeout: extra.timeout,
+            bound: extra.bound,
             stage: (into) => {
               writeFileSync(join(into, "worker.mjs"), WORKER);
               for (const [name, source] of sources) writeFileSync(join(into, name), source);
@@ -486,8 +486,9 @@ class WalledEnv implements ExecutionEnv {
   /**
    * A command held to the timeout it names, or the wall's default, at most the wall's maximum and
    * cut near the solve's end (`heldSeconds`). Durable's own timer in the worker ends it there, so a
-   * timeout still reports the output it spilled, and runWalled's bound a second later is the
-   * backstop. The bash tool raises a shorter request to the default before it gets here.
+   * timeout still reports the output it spilled, and runWalled's bound a second later, taken as
+   * given rather than held again, is the backstop. The bash tool raises a shorter request to the
+   * default before it gets here.
    */
   async exec(
     command: string | readonly string[],
@@ -510,7 +511,7 @@ class WalledEnv implements ExecutionEnv {
       ],
       { ...context, abortSignal: AbortSignal.any([this.signal(context), outer.signal]) },
       {
-        timeout: timeout + 1,
+        bound: timeout + 1,
         onText: ({ text, ...info }) => {
           if (callbackError !== undefined) return;
           try {

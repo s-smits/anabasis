@@ -412,6 +412,11 @@ describe("task supply", () => {
     expect(shortOf([...SIX, ...compared("g-1", "h1", "no-step")], PLAN)).toBe(6);
     // The sweep comes on top of the practice a reading releases.
     expect(shortOf(FIVE, { ...PLAN, practice: 5 })).toBe(9);
+    // After a promotion one ask is short of at most sixteen, and the next ask of the rest.
+    const wide = { ...PLAN, wanted: { ...PLAN.wanted, target: 40 } };
+    const read = [...SIX, ...compared("g-1", "h1", "no-step")];
+    expect(shortOf(read, wide)).toBe(34);
+    expect(shortOf([...read, promotion("h1")], wide)).toBe(16);
     expect(move([...SIX, built("b-1", "h1"), ...HELD.slice(6).flatMap(heldOut)])).toMatchObject({
       move: "build",
     });

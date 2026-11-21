@@ -535,3 +535,22 @@ describe("the author's answer to a task", () => {
     expect(JSON.stringify(told)).not.toContain("measured 0.5");
   });
 });
+
+describe("a task the reference has closed", () => {
+  it("stands apart from the open ones, its turns told against the solve's budget", () => {
+    const log = logged();
+    log.add("campaign.setting", { modelTurns: 20, minutes: 30, solves: 2 });
+    log.hold(["shut", "open"]);
+    for (const comparison of ["c-1", "c-2"]) {
+      log.solved(comparison, "shut", "h1", [true, true], [6, 7]);
+      log.solved(comparison, "shut", "h2", [true, true]);
+      log.solved(comparison, "open", "h1", [true, false]);
+      log.solved(comparison, "open", "h2", [true, true]);
+      log.reported(comparison, ["h1", "h2"], ["shut", "open"]);
+    }
+    const told = heard(log.events, ["shut", "open"].map(fixture));
+    expect(block(told, "Closed").shut).toContain("in 6, 7 of 20 turns");
+    expect(block(told, "Closed").open).toBeUndefined();
+    expect(block(told, "some solves").open).toBeDefined();
+  });
+});

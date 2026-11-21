@@ -31,7 +31,13 @@ import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { type AnswerFile, keepAnswerFiles } from "../kernel/answer-files.ts";
 import { append } from "../kernel/log.ts";
 import { NOTHING_SPENT, priceKey } from "../kernel/meter.ts";
-import { Cancellation, checkCouldNotRun, type Ending, unanswered } from "../kernel/solve.ts";
+import {
+  Cancellation,
+  checkCouldNotRun,
+  type Ending,
+  nonRetryableProvider,
+  unanswered,
+} from "../kernel/solve.ts";
 import type { Task, Verifier } from "../kernel/verify.ts";
 import { lstatSync } from "../meta/filesystem.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
@@ -201,7 +207,9 @@ export async function solve(request: SolveRequest, wait?: (ms: number) => Promis
       if (request.kill?.aborted === true) return ending;
       continue;
     }
-    if (reruns === RERUNS) return ending;
+    if (reruns === RERUNS || (ending.kind === "provider" && nonRetryableProvider(ending.reason))) {
+      return ending;
+    }
     await waiting(30_000 * 2 ** reruns++, request.kill, wait);
     if (request.kill?.aborted === true) return ending;
   }

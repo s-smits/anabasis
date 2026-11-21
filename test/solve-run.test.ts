@@ -700,6 +700,29 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
     expect(finished()).toHaveLength(4);
   }, 120_000);
 
+  it.concurrent("reruns no solve the provider refused in a way no retry clears, and reruns a bare 403", async () => {
+    const disabled = "Claude Code: Your organization has disabled Claude subscription access for Claude Code";
+    const refused = fauxAssistantMessage("", { stopReason: "error", errorMessage: disabled });
+    const once = setup([refused, refused]);
+    const waits: number[] = [];
+    expect(
+      await solve(once.request, async (ms) => {
+        waits.push(ms);
+      }),
+    ).toEqual({
+      outcome: "non-result",
+      kind: "provider",
+      reason: disabled,
+    });
+    expect([waits, once.finished().length]).toEqual([[], 1]);
+    const cloudflare = "Claude Code: Failed to authenticate. API Error: 403 Attention Required! | Cloudflare";
+    const blocked = setup([
+      fauxAssistantMessage("", { stopReason: "error", errorMessage: cloudflare }),
+      ...answer,
+    ]);
+    expect(await solve(blocked.request, async () => {})).toEqual({ outcome: "pass" });
+  }, 120_000);
+
   it.concurrent("waits out repeated named resets without spending a rerun, between ordinary provider failures", async () => {
     const until = Math.ceil(Date.now() / 1000) + 3600;
     const limited = fauxAssistantMessage("", {

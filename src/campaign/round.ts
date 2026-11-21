@@ -92,7 +92,7 @@ import { familiesOf } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { type Cap, capHolds, poolOf } from "../kernel/reports.ts";
 import { billedFor } from "../kernel/meter.ts";
-import { checkCouldNotRun, type Ending } from "../kernel/solve.ts";
+import { checkCouldNotRun, type Ending, nonRetryableProvider } from "../kernel/solve.ts";
 import { refereeErrorOf, rejected, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
@@ -406,6 +406,11 @@ function unanswered(log: string, id: string, { solve, ending }: Practised): stri
   if (ending.outcome !== "non-result") return null;
   if (ending.kind === "sandbox-crash") return ending.reason;
   if (ending.kind !== "provider") return null;
+  if (nonRetryableProvider(ending.reason)) {
+    throw new Error(
+      `the provider refused in a way no retry clears (${ending.reason}), so the comparison stops. Run it again once the login works and it goes on from its log`,
+    );
+  }
   return asRecord(ran.end?.tokens)?.output === 0 ? ending.reason : null;
 }
 
@@ -420,14 +425,29 @@ function unruledOf(events: readonly LogEvent[], fixed: Fixed) {
 
 /** The provider's silence over one run of a comparison: `SILENT` tasks in a row stop it, and so do
  *  last solves written nothing for after an answer, though a crash is noted after one. A run with
- *  no answer, or a wall that refused the last task alone, reports that task short. */
-function silence() {
-  const [silent, provider] = [new Set<string>(), new Set<string>()];
+ *  no answer, or a wall that refused the last task alone, reports that task short. A resumed run
+ *  stops too where an earlier run of the comparison was answered and a silent task was never silent
+ *  in it, so a run killed after its answers loses no task; silent again, the task is reported short.
+ *  `from` is where this run's events begin. */
+function silence(log: string, id: string, from: number) {
+  const [silent, provider] = [new Set<string>(), new Map<string, string>()];
   let answered = false;
+  const resumedAnswered = () => {
+    const ran = solvesIn(read(log)).filter(({ start }) => start.comparison === id);
+    const earlier = ran.filter(({ started }) => started < from);
+    const taskOf = new Map(ran.map(({ id: solve, start }) => [solve, start.task]));
+    const silentBefore = new Set(
+      earlier.filter(({ ending }) => ending?.kind === "provider").map(({ start }) => start.task),
+    );
+    return (
+      earlier.some(({ ending }) => ending !== null && ending.outcome !== "non-result") &&
+      [...provider.values()].some((solve) => !silentBefore.has(taskOf.get(solve)))
+    );
+  };
   return {
-    note(task: string, why: string | null, ending: Ending): void {
+    note(task: string, solve: string, why: string | null, ending: Ending): void {
       answered ||= why === null;
-      if (ending.outcome === "non-result" && ending.kind === "provider") provider.add(task);
+      if (ending.outcome === "non-result" && ending.kind === "provider") provider.set(task, solve);
       if (why === null) {
         silent.clear();
         provider.clear();
@@ -438,7 +458,7 @@ function silence() {
       }
     },
     tail(): void {
-      if (!answered || provider.size === 0) return;
+      if (provider.size === 0 || !(answered || resumedAnswered())) return;
       throw new Error(
         `the provider answered this run, then wrote nothing for its last ${plural(silent.size, "task")}, so the comparison stops before its report. Run it again and it goes on from its log`,
       );
@@ -471,7 +491,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     ...rejections(before, fixed, NO_LABELS).flatMap(({ task, ruling }) => (ruling === DEFECT ? [task] : [])),
   ]);
   const going = () => thrown === null && !kill.aborted && !capped && defects.size <= request.defects;
-  const quiet = silence();
+  const quiet = silence(log, id, before.length);
   /** Put one rejected answer to the Referee where one is seated, and again by `ruleLeft` if unruled. */
   const rule = async (solve: string, task: string): Promise<void> => {
     if (request.referee === undefined) return;
@@ -484,7 +504,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
   const run = async ({ task, under }: Job): Promise<Ending> => {
     const solved = await request.solve(task, under, id, kill);
     const { solve, ending } = solved;
-    quiet.note(task, unanswered(log, id, solved), ending);
+    quiet.note(task, solve, unanswered(log, id, solved), ending);
     // The task's defect on either side, and solved no further here (`sequence`). Only the
     // reference's answer disputes it: a candidate's may move no count its Builder reads (rule 3).
     if (checkCouldNotRun(ending)) {

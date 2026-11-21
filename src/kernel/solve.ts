@@ -129,6 +129,15 @@ export function providerFailed(last: LastTurn): boolean {
 }
 
 /**
+ * Whether a provider's refusal names a state no retry clears: a subscription an organisation
+ * disabled, a provider never configured, or credits too few for the request. Each came back on every
+ * solve of a run on record, 268 of them. A bare 403 is no such state: Cloudflare's came and went.
+ */
+export function nonRetryableProvider(reason: string): boolean {
+  return /disabled Claude subscription access|Provider is not configured|requires more credits/u.test(reason);
+}
+
+/**
  * How a solve that left no answer ended: the deadline's, unless the model had been silent at it for
  * `SILENT_SECONDS`, its last turn's (the provider's failure or the window's), its spent turns', or
  * no answer. The one reading of it, which `judge` (`src/solver/run.ts`) asks once an answer, a flag,

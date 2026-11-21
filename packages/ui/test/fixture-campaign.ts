@@ -1,6 +1,6 @@
 /**
  * Three campaign logs written from typed events, as the repository's own tests build theirs
- * (`test/handover.test.ts`, `test/reports.test.ts`, `test/climb.test.ts`): the one sample the page's
+ * (`test/handover.test.ts`, `test/wall-practice.test.ts`, `test/climb.test.ts`): the one sample the page's
  * tests render from, through the server's handlers and so through the repository's folds, and the
  * one the page is started on to be looked at. There is no real campaign log in a container: they
  * live on the operator's host and are private.

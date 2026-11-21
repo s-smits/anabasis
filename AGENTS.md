@@ -86,7 +86,7 @@ The traps changes most often fall into; the rest are in `design-and-seats`.
   A higher gap floor only moves margin noise and starves supply.
 - **Promotion against confirmation**: the starter comparison owed after a promotion runs at the
   Builder's next `compare` (`heldSince`); a Builder comparison that reads first leaves the promotion
-  unconfirmed for good (`test/milestone-walk.test.ts`).
+  unconfirmed for good (`test/decide-explore.test.ts`).
 - **Practice against held-out supply**: a release takes at most half of what is held, so watch the
   frontier near the floor, and read practice gains that held-out comparisons do not repeat as
   overfitting.

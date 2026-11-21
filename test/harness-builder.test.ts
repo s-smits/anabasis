@@ -417,7 +417,7 @@ describe("a campaign run by its log", () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-climb`;
     // The seed holds fourteen tasks to score once two are released, and a comparison scores eight:
-    // the row that writes tasks up to the target is tested in `test/decide.test.ts`.
+    // the row that writes tasks up to the target is searched in `test/decide-explore.test.ts`.
     const terms = ["--practice", "2", "--target", "8", "--patience", "1"];
     const flags = [...seeded(name), ...terms];
     const strayed: string[] = [];
@@ -833,7 +833,7 @@ describe("a campaign run by its log", () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-word`;
     // The seed holds fourteen tasks to score once two are released, and a comparison scores eight:
-    // the row that writes tasks up to the target is tested in `test/decide.test.ts`.
+    // the row that writes tasks up to the target is searched in `test/decide-explore.test.ts`.
     const terms = ["--practice", "2", "--target", "8", "--patience", "2"];
     const flags = [...seeded(name), ...terms];
     const strayed: string[] = [];

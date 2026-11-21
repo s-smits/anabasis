@@ -74,17 +74,10 @@ export const SEATS = {
         file: "test/builder-led.test.ts",
         name: "tells the Builder the same whichever held-out task was won",
       },
+      { file: "test/wall-practice.test.ts", name: "what practice tells the Builder" },
       {
-        file: "test/reports.test.ts",
-        name: "releases the same tasks whichever held-out task the new harness bettered by the objective",
-      },
-      {
-        file: "test/reports.test.ts",
-        name: "releases the same tasks whichever held-out task the new harness won where the reference answered neither",
-      },
-      {
-        file: "test/decide.test.ts",
-        name: "practice: the allowance and released tasks stay the same whichever objective task the new harness won",
+        file: "test/wall-practice.test.ts",
+        name: "is one value whichever task the other harness bettered by the objective, every answer valid",
       },
       {
         file: "test/handover.test.ts",

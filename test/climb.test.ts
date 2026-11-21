@@ -65,7 +65,7 @@ const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-climb-")));
 const bundle = join(root, "bundle");
 const folder = join(REPO, ".ana", "d2", NAME);
 
-// A log written here as `test/reports.test.ts` writes one, for the epochs' reading.
+// A log written here as `test/wall-practice.test.ts` writes one, for the epochs' reading.
 const AT = "2026-10-10T00:00:00.000Z";
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at: AT, kind, data });
 const condition = (task: string, harness: string): Condition => ({

@@ -406,7 +406,8 @@ never add a file to one, and never widen a glob to take in the file you are edit
 ## 12.12 Tests
 
 - `bun:test`, in `test/`, one flat directory, named for the module they hold:
-  `test/compare.test.ts` for `src/kernel/compare.ts`.
+  `test/condition.test.ts` for `src/kernel/condition.ts`; a property over one compartment is named for
+  what it checks (`test/decide-explore.test.ts`).
 - Keep the positive case and the nearest hostile case in the smallest owning file. Add the case
   that is missing, and say in the pull request that the test fails when the change is removed.
 - A test's name is a sentence about the system: "passes the plan's smallest wins at 0.10 and

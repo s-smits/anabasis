@@ -17,10 +17,10 @@
  * count subtracts half the one-minute load average, so a runner already carrying four jobs of its
  * own is not asked for three times itself, while a laptop that merely looks busy keeps its workers.
  *
- * A failed test is the verdict, whatever the host's load. Until 5 November a failure ran again
- * where a clock ended it or the host's peak load passed its cores, and a pass then cleared it. That
- * test held on nearly every proof of a busy runner, and a retry cannot tell a test that depends on
- * time from a real race, so the operator took it out: a failure stops the run for someone to fix.
+ * A failed test is the verdict, whatever the host's load. A failure is not run again where a clock
+ * ended it or the host was loaded, since on a busy runner that retry would fire on nearly every
+ * proof and cannot tell a test that depends on time from a real race (the operator's choice): a
+ * failure stops the run for someone to fix.
  *
  * `ANA_TEST_BAIL=1` stops the run at its first failed test (`--bail`), which every proof of the
  * pre-push hook and `bun run land` asks for, so a red commit comes back in minutes rather than after
@@ -48,8 +48,8 @@
  * exists, since Bun treats an unknown path as a filter and would silently run only its neighbours.
  * The root lies under `SUITE_SCRATCH_ROOT` and this process claims it, as a seat claims its own: a
  * suite ended by SIGKILL, as a runner's deadline or a dead ssh shell ends one (`task.sh`), cannot
- * remove it, and `bun run runs retire` releases it once its claimant is gone. Until 16 November the
- * roots lay loose in the host's temporary folder and nothing removed what a killed suite left.
+ * remove it, and `bun run runs retire` releases it once its claimant is gone, where a root loose in
+ * the host's temporary folder would be left by a killed suite for good.
  */
 import { boundText } from "../../src/meta/bounded-text.ts";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync } from "../../src/meta/filesystem.ts";
@@ -240,9 +240,8 @@ function testCommand(requested: readonly string[], workers: string | undefined):
   // isolates every file by default, and a worker isolating file after file is where Bun's
   // spawnSync loses a child's exit and spins for good (oven-sh/bun#34069), so the workers share
   // one global per process and no test may lean on a fresh one.
-  // A browser file starts its own server and Chrome, so four of them fill a host. On 20 October, on
-  // 12 cores, the UI's files took 185.6 s at four workers and 235 s at ten, where a test that walks
-  // every move hit its 60 s limit; it took 7.9 s at four.
+  // A browser file starts its own server and Chrome, so four of them fill a host: more workers make
+  // the UI's files slower, not faster, and a test that walks every move can hit its 60 s limit.
   const browsers = workers === undefined && requested.some((path) => path.includes("packages/ui/test"));
   const command = [
     runtimeProcess.execPath,
@@ -345,8 +344,8 @@ async function killStrays(pids: number[]): Promise<void> {
 
 /** End every process whose command line names the suite's root, before the root goes. A test may
  *  start one in a process group of its own, as the UI's browser tests start `serve.ts`, and the
- *  group kill does not reach it: on 21 October the Linux runner held 15 such servers, 1.9 GB, from
- *  suites ended since 19 October, each naming a root long removed. */
+ *  group kill does not reach it, and such servers would otherwise pile up on a runner, each naming
+ *  a root long removed. */
 function endNaming(roots: readonly string[]): void {
   for (const row of decodeOutput(runSync(["ps", "-axo", "pid=,args="]).stdout).split("\n")) {
     const [, pid = "", args = ""] = /^\s*(\d+)\s+(.*)$/.exec(row) ?? [];
@@ -593,9 +592,8 @@ async function main(): Promise<number> {
     return again.exitCode ?? 1;
   } finally {
     endNaming(roots);
-    // A test the idle wall ended can leave something under the root its removal fails on: on
-    // 15 October a disk image still attached threw over a rerun of 179 passes and no failure, and
-    // the suite exited 1. Disk images went on 19 October; a process still writing remains.
+    // A test the idle wall ended can leave something under the root its removal fails on, such as
+    // a process still writing, and a suite with no failure would otherwise exit 1 over it.
     await releaseRoot(temporaryRoot).catch(() => {
       console.error(`test-suite: ${temporaryRoot} is still in use, and is left to the daily sweep`);
     });

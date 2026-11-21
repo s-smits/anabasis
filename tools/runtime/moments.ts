@@ -5,9 +5,8 @@
  * matches a command or edited path and supplies invariants and documentation links through
  * hookSpecificOutput.additionalContext. The hook informs; it never blocks and exits 0 on bad input.
  *
- * On 30 October, AGENTS.md was reduced from 34,150 tokens to about 8,600 by moving detail into four
- * skills with the same section numbers. About 4,400 tokens had already been repeated in skills.
- * This hook points to the relevant guidance when an area is first used. Sessions that never enter
+ * AGENTS.md keeps the invariants and leaves the detail to four skills with the same section
+ * numbers, so this hook points to the relevant guidance when an area is first used. Sessions that never enter
  * an area receive none of its hook text. Add a row for a new area and update stale pointers when
  * their owners change.
  */

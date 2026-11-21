@@ -4,7 +4,7 @@
  * on, onto the new head beneath it, by `git replay`, which needs no worktree and moves no ref. One
  * reading serves `bun run land --sanitize | --merge`, which restacks a chain whose parent moved
  * before it proves it, and `republish.ts --onto-main`, which replays a stack once what it stood on
- * has landed. Until 9 November land refused such a chain and someone replayed it by hand.
+ * has landed, so nobody replays such a chain by hand.
  */
 import { gitMaybe, gitText } from "../../src/meta/git.ts";
 import { errorMessage } from "../../src/meta/runtime-values.ts";

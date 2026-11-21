@@ -10,8 +10,8 @@ where="$1" dir="$2" pin="$3" wall_seconds="$4" task="$5"
 shift 5
 export ANA_RUNNER_ACTIVE=1
 
-# Tailscale SSH, which serves the Macs, reports 0 as every session's exit status: on 19 October a
-# suite that exited 1 there read 0 here. So a host's status goes back as a file beside the slot,
+# Tailscale SSH, which serves the Macs, reports 0 as every session's exit status, so a suite that
+# exited 1 there would read 0 here. So a host's status goes back as a file beside the slot,
 # written however this script ends, and run.ts reads it.
 if [[ "$where" == host ]]; then
   dir="$HOME/$dir"
@@ -101,8 +101,8 @@ fi
 # Orphaned Bun test workers have spun for ten hours, and a dead ssh shell can leave a whole task
 # alive. A stale process is an orphan (parent 1) running a test worker, or naming the marker, with
 # everything under it; this process's own ancestry never is. The marker must name a place only
-# tasks use, so a host passes its slot and this machine none: campaigns live inside a checkout, and
-# on 1 October its path matched a live campaign's orphaned qemu. Prints `pid<TAB>command` lines.
+# tasks use, so a host passes its slot and this machine none: campaigns live inside a checkout, so
+# its path can match a live campaign's orphaned processes. Prints `pid<TAB>command` lines.
 stale_run_pids() {
   ps -Ao pid=,ppid=,command= | awk -v self="$$" -v marker="$1" '
     {

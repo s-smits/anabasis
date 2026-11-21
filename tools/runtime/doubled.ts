@@ -3,14 +3,12 @@
  *
  * A pull request shows the commits from its base to its head, so where its head holds the head of
  * another open pull request that is not on its chain of bases, it lists that one's commits as its
- * own. On 30 October 2026 `gh stack link 524 531` appended #531 above GitHub's top of stack 524,
- * #529, because #530 had never been linked into it, and based #531 on #529's branch: #531 then
- * listed #530's commits beside its own eight, and nothing said so until the operator read it.
+ * own. A `gh stack link` that appends a pull request above a top that never took in the one
+ * beneath it does exactly that, and nothing says so until someone reads the list of commits.
  * Pull requests may stack in any order. What is refused is a head that holds another's without
  * standing on it: `bun run land` refuses a landing that holds one, and `stack.ts` lists them, each
- * with the base that mends it. Both run here. From 30 October the workflow `stacked.yml` also failed
- * on such a pull request on GitHub, as it opened or changed its base; the operator moved the check
- * back to this machine the same evening, since it needs no clean runner.
+ * with the base that mends it. Both run here rather than as a workflow on GitHub, since the check
+ * needs no clean runner (the operator's choice).
  */
 import { git, gitSays } from "./gate.ts";
 import { beneath, type Pull } from "./pulls.ts";

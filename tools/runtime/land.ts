@@ -389,14 +389,15 @@ function stackOf(root: string, landing: Landing, unlinked: "link" | "say"): numb
   const { pulls, top } = landing;
   const chain = pulls.map((pull) => String(pull.number));
   const [bottom = ""] = chain;
-  const link = `gh stack link ${chain.join(" ")}`;
   for (let linked = false; ; linked = true) {
     const read = gh(root, ["api", api(`stacks?pull_request=${bottom}`), "--jq", STACK_MEMBERS]);
     if (!read.ok) {
       throw new Refusal(`GitHub did not say which stack #${bottom} is in: ${read.err} Land again.`);
     }
-    const [stack = "", listed = ""] = read.out.split(" ");
+    const [stack = "", listed = "", closed = ""] = read.out.split(" ");
     const members = listed === "" ? [] : listed.split(",");
+    const linking = ["stack", "link", ...(closed === "" ? [] : closed.split(",")), ...chain];
+    const link = `gh ${linking.join(" ")}`;
     const upTo = members.slice(0, members.indexOf(String(top.number)) + 1);
     if (upTo.join(",") === chain.join(",")) return Number(stack);
     if (read.out === "" && chain.length === 1) return null;
@@ -412,7 +413,7 @@ function stackOf(root: string, landing: Landing, unlinked: "link" | "say"): numb
       say(`${numbers(pulls)} are not one stack on GitHub; --sanitize or --merge runs ${link}.`);
       return null;
     }
-    const made = gh(root, ["stack", "link", ...chain]);
+    const made = gh(root, linking);
     if (!made.ok) throw new Refusal(`${link} was refused: ${made.err} Land again.`);
     say(`linked ${numbers(pulls)} into one stack on GitHub: ${link}.`);
   }

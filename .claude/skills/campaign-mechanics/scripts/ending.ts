@@ -5,8 +5,8 @@
  *   bun .claude/skills/campaign-mechanics/scripts/ending.ts <name | path/to/log.jsonl> [--at <line | ISO time>]
  *
  * `--at` reads the log up to that line, or up to the last event at or before that time, as the table
- * would have read it then under this tree's code: one lane-13 session of 9 November copied ten
- * prefixes of a log by hand to ask this. `tools/wri/table-timeline.ts` asks it at every change point.
+ * would have read it then under this tree's code, rather than copying prefixes of a log by hand to
+ * ask this. `tools/wri/table-timeline.ts` asks it at every change point.
  *
  * The existing run view lists the climb and next move, but omits ending history and counts against
  * stopping thresholds. This script lists campaign.ended events with the preceding campaign.move
@@ -20,7 +20,7 @@
  * paths can also read archived copies no longer listed on their source host. --host runs remotely.
  * Output contains ids, codes, counts and host reasons, but no tasks or checks; it remains exam-side.
  *
- * Written on 30 October: the archive then held 158 logs whose endings had no reader.
+ * Without it a log's endings have no reader.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { refusals, stopRule, supplyOf } from "#src/campaign/admission.ts";
@@ -46,7 +46,7 @@ Each ending on record with the moves before it, and the counts the table's endin
 --at  read the log up to this line (1 is the first), or up to the last event at or before this time`;
 
 /** The `campaign.move` events of `events`: how many, and each `move·code` counted (`countBy`) in the
- *  order it first appears. A Builder's own move reads `led`, and `asked` in a log before 5 November. */
+ *  order it first appears. A Builder's own move reads `led`, and `asked` in an older log. */
 function movesOf(events: readonly LogEvent[]) {
   const moves = events.flatMap(({ kind, data }) => (kind === MOVED ? [data] : []));
   const counts = countBy(

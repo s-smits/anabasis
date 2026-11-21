@@ -11,20 +11,18 @@
  * refusal reasons and hidden values. This helps inspect a view before changing its delivery.
  *
  * The tasks are those the last ask named (`exam.started`'s `examples`) with every task written since,
- * as the next ask is given them; until 10 November they came from proposalsOf alone, which drops a
- * stored pack's tasks and the drafted examples, so the view listed fewer tasks than the session read.
+ * as the next ask is given them, rather than proposalsOf alone, which drops a stored pack's tasks
+ * and the drafted examples and so would list fewer tasks than the session read.
  *
  * `--each` rebuilds each session's view on the log as it stood when that ask began, through the same
  * code: a continued conversation's wake through `wakeOn` (`src/examiner/write.ts`), compared with the
  * wake on record, which the resting call's result carries; an opening's task lines, counted against
  * a `read_opening` result the session received. The contract, the checks and the budget come from the
- * campaign's terms and are not rebuilt. Between 3 and 10 November 18 of 18 lane-4 sessions and 14
- * of 18 lane-20 sessions rebuilt these by hand, cutting the log before each `exam.started`.
+ * campaign's terms and are not rebuilt. Without it lane 4 and lane 20 sessions rebuild these by
+ * hand, cutting the log before each `exam.started`.
  *
  * logAcross resolves names across configured hosts and refreshes their records. logEvents reads
  * through the last complete line, allowing live logs.
- *
- * Written on 30 October alongside seat-view.ts.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { draftOf } from "#src/examiner/draft.ts";

@@ -16,12 +16,12 @@
  *   keeps of every peer's, live ones included, each with the liveness its host last reported) and
  *   prints one row a run and its step: `run` while no trigger fired, `pause` once one did on a live
  *   run, `open` once the run has stopped, or the investigation's next step once one reads it. The
- *   trigger is whichever comes first (operator, 4 November; `triggerOf`): the promotions, the hours
+ *   trigger is whichever comes first (the operator's rule; `triggerOf`): the promotions, the hours
  *   since the opening, a scored comparison that left no task untied ("they likely won't promote so
  *   that's a bit ironic that we need to wait"), or an ending. At a live run's trigger the step is a
  *   pause at the first clean point after its next comparison (`runs pause --after reported`, which
  *   waits for no session to be open), and the investigation opens once the run has stopped, so its
- *   synthesis reads that comparison (operator, 10 November: "pause it after next comparison (ensure
+ *   synthesis reads that comparison (the operator's words: "pause it after next comparison (ensure
  *   the comparison pause actually includes the synthesis of this)", "not directly after solves").
  * - `due` is the same reading as a timer takes it (`dueLines`): a head line with the count of steps
  *   owed and the oldest's hours, one line a step, one line for each outside read a cycle still holds
@@ -40,12 +40,12 @@
  *   gates `gatesOf` lists in the iteration's order. Every folder passes the shared instructions, the
  *   lanes, their reports, the synthesis, the vetting, the plan, the pull request (`Pull request: #N`
  *   in `plan.md`) and the fresh runs at its head, which are launched without asking; an iteration's
- *   folder (`iteration.json`) passes the others too, and one opened from 17 November (`fixed`) owes
+ *   folder (`iteration.json`) passes the others too, and one opened under protocol 2 (`fixed`) owes
  *   each read of the record (`recordOwed`) and its vetting's fixed columns (`vettingFaults`).
  * - `ledger` prints the views derived from those files and never written by hand: the cycle view,
  *   the dropped view and each run's still-missing view (`tools/wri/ledger.ts`).
  *
- * Every gate is a default, never a wall (operator, 7 November: "to-be-deviated-from each time"): a
+ * Every gate is a default, never a wall (the operator's words: "to-be-deviated-from each time"): a
  * row `| <step> | <reason> |` in the folder's `deviations.md` passes it, and `next` prints the
  * deviation with the step it reaches, so a session's judgment is kept on the record beside the rule
  * it set aside.
@@ -177,13 +177,13 @@ const read = (path: string) => (existsSync(path) ? readFileSync(path, "utf8") : 
 
 /** Whether the folder `dir` takes an iteration's gates, read from its one record of that. */
 const marked = (dir: string) => existsSync(join(dir, MARKER));
-/** Whether `open` marked `dir` under protocol 2, of 17 November; one opened before keeps its gates. */
+/** Whether `open` marked `dir` under protocol 2; one opened under an earlier protocol keeps its gates. */
 const fixed = (dir: string) =>
   marked(dir) && (parseJsonAs<{ protocol?: number }>(read(join(dir, MARKER))).protocol ?? 1) >= PROTOCOL;
 
 /** The campaigns the investigation `dir` reads, by name. */
 function runsOf(dir: string): string[] {
-  // Before 21 October an investigation read one log, named `log`.
+  // An older investigation read one log, named `log`.
   const { logs, log } = parseJsonAs<{ logs?: string[]; log?: string }>(read(join(dir, INVESTIGATION)));
   return (logs ?? (log === undefined ? [] : [log])).map((each) => basename(dirname(each)));
 }
@@ -329,7 +329,7 @@ function unvetted({ root, dir }: Where, runs: readonly string[]): string[] | nul
  * named as `vet-<n>`, `cross-domain.md` named, and three levers of `references/levers.md` by id (its
  * rule: a plan with repairs only names the three that came closest); and it says what it leaves out
  * on purpose, the one owner of that fact for each run it read. An iteration whose every run kept the
- * section in a `still-missing-<run>.md`, as runs did until 8 November, has said it there.
+ * section in an older `still-missing-<run>.md` has said it there.
  */
 function unanswered({ root, dir }: Where, runs: readonly string[]): string[] | null {
   const text = read(join(dir, PLAN));
@@ -368,7 +368,7 @@ function gatesOf(where: Where): Gate[] {
   const forks = [...new Set([...where.campaigns, ...launchForks(deviations)])].filter((name) =>
     madeBy(plan, deviations, name),
   );
-  // The primary's own reads, which no lane makes; a folder opened before 17 November owes them
+  // The primary's own reads, which no lane makes; a folder opened under an earlier protocol owes them
   // only until its synthesis is there.
   const owing = marked(dir) && (fixed(dir) || !existsSync(at(SYNTHESIS)));
   const record = recordStep(owing ? recordOwed(read(at(RECORD)), runs).length : 0, dir);
@@ -749,7 +749,7 @@ function open(args: CommandArgs, repo: string): number {
   if (runs.length === 0) args.die(USAGE);
   // Each name is refused here if unknown, then handed to `wri.ts start` by name, not path, so a
   // peer's campaign is fetched whole, states included (`logAcross`); the ten-minute gather copies
-  // its record alone, and on 18 November a reference so read as not kept.
+  // its record alone, from which a reference reads as not kept.
   for (const name of runs) readNamed(name, repo);
   const root = wriRoot(repo);
   const hosts = envRunsFile(repo);

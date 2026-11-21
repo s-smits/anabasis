@@ -18,9 +18,8 @@
  * A `[tool,...]` list after the session keeps the calls to those tools and the turns that made them,
  * and refuses a tool the chosen calls never used, naming those they did. `--count <phrase>` prints,
  * in place of text, how often the phrase stands in each chosen call's result (an event kind: in each
- * event's data), which settles a count of a phrase in served text without a jq filter: 27 such counts
- * were written by hand in 14 of 18 lane-4 sessions between 3 and 10 November, none through this
- * script.
+ * event's data), which settles a count of a phrase in served text without a jq filter or a count
+ * written by hand.
  *
  * Seats are Builder (or HarnessBuilder, build), Examiner (exam), Drafter (draft), Referee,
  * Solver (solve) and Repair. A model turn and the calls it asked for are one group, so `{4}` is
@@ -37,8 +36,8 @@
  * the log holds, hidden values included: it is for the operator's side of the wall (`AGENTS.md`
  * section 1) and an Oracle, never for a seat.
  *
- * Until 4 November an Oracle document's log extracts were written by a script made for that one
- * document in a session's scratch folder (the drafting record of five jobstat campaigns that day).
+ * It gives an Oracle document its log extracts, which would otherwise come from a script made for
+ * that one document in a session's scratch folder.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
@@ -156,9 +155,8 @@ export function pick(items: string, count: number): number[] {
 }
 
 /** Every group of seat `seat`, of every session or solve whose id is or ends with `id` if given.
- *  A log of before about 23 October writes a turn's calls before the turn, numbered one lower
- *  (72 of 177 archived logs on 4 November): a session whose first trace is a call holds its calls
- *  for the turn that follows them. */
+ *  An older log writes a turn's calls before the turn, numbered one lower, as many archived logs
+ *  do: a session whose first trace is a call holds its calls for the turn that follows them. */
 export function groupsOf(events: readonly LogEvent[], seat: Seat, id: string | null): Group[] {
   const own = tracesIn(events).filter(
     (each): each is Turn | Call =>

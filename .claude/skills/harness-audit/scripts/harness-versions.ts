@@ -19,30 +19,28 @@
  * lane 15 diffs a parent and a child part by part; `--diff` is that count, and quotes a line only under `--lines`.
  *
  * The list reads only the folders of `states/` named by a digest, and the counts leave out the
- * bytecode caches the digest leaves out (`BYTECODE`). On 28 October, in buffer-fresh-gpt-v071, the
- * list showed each shared `tree-*` folder as a harness that does not open, with all 6,158 files of
- * one tree on a single line, and `--diff` counted 405 changed files where the digest saw one: the
- * other 404 were caches.
+ * bytecode caches the digest leaves out (`BYTECODE`). Without both, the list shows each shared
+ * `tree-*` folder as a harness that does not open, with every file of one tree on a single line,
+ * and `--diff` counts hundreds of changed files where the digest sees one, the rest being caches.
  *
  * `--blind` takes from each version how it was measured (`blinded`: every comparison, session,
  * promotion and role but the starter's) and prints its diff against a kept parent in their place.
- * Lane 14 grades soundness from it before it reads a result; on 30 October its first session
- * read the list's comparisons first.
+ * Lane 14 grades soundness from it before it reads a result, rather than reading the list's
+ * comparisons first.
  *
  * `--files` adds a line for each written file that moved (the guide, the spec, `tools.ts` and the
  * programs the harness wrote, `writtenIn` in `tools/wri/trajectory.ts`), and `--lines` prints the
  * moved lines themselves; `--chain` reads every kept version against its kept parent at either depth,
- * blind as `--blind` is. Between 3 and 10 November about 29 of 35 sessions of lanes 14 and 15
- * rebuilt these by hand, and 13 of their 21 refusals were a diff loop given a campaign's `states/`
- * path, which a lane guard refuses and this command, taking the log, does not need. A digest prefix
- * of eight characters names a version where it names one; lane 16 sessions typed the prefixes the
- * readers print.
+ * blind as `--blind` is. Without it lane 14 and 15 sessions rebuild these by hand, often as a diff
+ * loop given a campaign's `states/` path, which a lane guard refuses and this command, taking the
+ * log, does not need. A digest prefix of eight characters names a version where it names one, since
+ * sessions type the prefixes the readers print.
  *
  * `--diff` reads a kept state where it sits, as `--chain` does, and says in a line where one opens
  * as another harness. A copy of a campaign from another host leaves out what its harness installed
- * (`installs`, `tools/runs/snapshots.ts`), so there a state opens as another digest: on 12 November
- * every diff of such a copy's four states was refused (`keptAs`, which guards a solve), and a lane
- * read "not as kept" as a lost harness.
+ * (`installs`, `tools/runs/snapshots.ts`), so there a state opens as another digest: `keptAs`, which
+ * guards a solve, would refuse every diff of such a copy's states, and a lane would read "not as
+ * kept" as a lost harness.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type Handover, campaignOf } from "#src/campaign/handover.ts";
@@ -198,7 +196,7 @@ async function partsOf(dir: string): Promise<Parts> {
 }
 
 /** An open session has handed nothing over yet, so its handover carries its last checkpoint and reads
- *  "so far": until 1 November an open led session that had made three read "left it as it was". */
+ *  "so far", rather than "left it as it was" for an open led session that has made some. */
 function measured(steps: readonly Handover[], digest: string) {
   return {
     sessions: steps.flatMap((step) => {
@@ -229,8 +227,8 @@ function measured(steps: readonly Handover[], digest: string) {
 }
 
 /** The Builder turns between a version's making and the session's previous making (or its start), as
- *  a `slice.ts` selector: a checkpoint carries no turn, so on 10 November lane 15 sessions found
- *  the Builder's words for one delta by reading the session whole. Null where the log holds no such
+ *  a `slice.ts` selector: a checkpoint carries no turn, so without it a session finds the Builder's
+ *  words for one delta by reading the session whole. Null where the log holds no such
  *  turn. */
 function turnsOf(events: readonly LogEvent[], digest: string): string | null {
   const at = events.findIndex(
@@ -264,8 +262,8 @@ const opensAs = async (dir: string, digest: string): Promise<string> =>
 
 /** Every harness the log names or the states folder keeps: in the order the log first names them,
  *  the starter first, then any state the log never names. Only the list reads how a state opens and
- *  what its parts hold, and opening one digests its whole tree (25 s of every call on 34 states of
- *  3.4 GB, 10 November), so a diff or a chain asks for the versions `named` and reads neither. */
+ *  what its parts hold, and opening one digests its whole tree (tens of seconds a call on a few
+ *  gigabytes of states), so a diff or a chain asks for the versions `named` and reads neither. */
 export async function versionsOf(
   keeping: Keeping,
   detail: "opened" | "named" = "opened",

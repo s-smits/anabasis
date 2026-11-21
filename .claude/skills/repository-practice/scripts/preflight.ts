@@ -20,8 +20,8 @@
  * UI tests when it imports a changed root file; this script does not trace that case. Size findings
  * use current text before formatting. No check, campaign or model session is started here.
  *
- * Written on 30 October, when AGENTS.md sections 9 to 14 moved into repository-practice. The script
- * collects existing readers so a session need not reconstruct their rules before every commit.
+ * The script collects existing readers so a session need not reconstruct their rules before every
+ * commit.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
@@ -97,8 +97,8 @@ const PROSE: readonly (readonly [string, RegExp])[] = [
 const QUOTED = /`[^`]*`|"[^"]*"|\[[^\]]*\]\([^)]*\)|\S*\/\S*/gu;
 /** How many lines of one file's slips of one kind are named. */
 const SHOWN = 5;
-/** Paths to the category whose description names them, first match wins (`gh label list`, 30
- *  October). A test file is left out of the vote: it takes the subject of what it tests. */
+/** Paths to the category whose description names them, first match wins (`gh label list`). A test
+ *  file is left out of the vote: it takes the subject of what it tests. */
 const CATEGORY_OF: readonly (readonly [RegExp, string])[] = [
   [/^tools\/wri\/|^\.claude\/skills\/whole-run-investigation\//u, "investigation"],
   [/^(?:AGENTS\.md|README\.md|docs\/)|\.md$/u, "docs"],

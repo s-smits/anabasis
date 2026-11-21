@@ -12,8 +12,8 @@
  * files or the repeated --file selections. Report each import into a protected helper or test root
  * and exit 1 when any is found. The script reads no campaign logs.
  *
- * Written on 30 October because existing file-role lint distinguished tests from source without
- * checking this dependency direction. The initial tracked-tree scan reported no breach.
+ * It exists because the file-role lint distinguishes tests from source without checking this
+ * dependency direction.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { gitText } from "#src/meta/git.ts";

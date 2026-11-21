@@ -29,11 +29,11 @@
  * comparison has read at all, the denominator, and `after` is the reference's tally in them on the
  * tasks written after its promotion, which it was not chosen on.
  *
- * **Dollars** are what the log billed under its own commit's meter, and the meter moved: on
- * 25 October it began pricing each turn at the model that served it, and on 1 November (#563) it
- * began billing a session on its backend's ledger. **Repriced** dollars price every recorded turn
- * with the seat meter a live seat runs today (`seatMeter` on its provider's catalogue), the one
- * measure every run shares (operator, 2 November: "use current metrics mechanisms to backtrack
+ * **Dollars** are what the log billed under its own commit's meter, and the meter moved: it began
+ * pricing each turn at the model that served it, and later billing a session on its backend's
+ * ledger. **Repriced** dollars price every recorded turn with the seat meter a live seat runs today
+ * (`seatMeter` on its provider's catalogue), the one measure every run shares (the operator's
+ * words: "use current metrics mechanisms to backtrack
  * earlier runs and equally compare that way"); no old log holds a backend's excess over its turns.
  *
  * The first promotion over the Starter is set-up (epoch 0), as the closing report counts it
@@ -143,7 +143,7 @@ export interface Run {
   readonly dollars: number;
   /** Every recorded turn at today's list prices through today's seat meter, the one measure every
    *  run shares, or null with what stopped a turn being priced (`unpriced`). It leaves out a
-   *  backend's excess over its turns (compactions, retries), which `dollars` holds from #563 on. */
+   *  backend's excess over its turns (compactions, retries), which `dollars` holds in newer logs. */
   readonly repriced: number | null;
   readonly unpriced: string | null;
   /** Scored tasks, summed over the reported comparisons, and those of them the reference did not

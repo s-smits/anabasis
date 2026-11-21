@@ -13,9 +13,8 @@
  *
  * `--host <name>` runs any script that goes through `runCommand` on a host `ANA_HOSTS` names, by the
  * runs CLI's own transport (`scriptOn`), and writes a path under this machine's home as the same path
- * under that host's. On 28 October round 11's seats on the Linux runner were read every 15 minutes
- * through a hand-written ssh line naming the runner's tree and Bun, since `due`, `watch`, `compare`,
- * `pairs` and `stop` read only the machine they ran on.
+ * under that host's, so that `due`, `watch`, `compare`, `pairs` and `stop` read seats on another
+ * host without a hand-written ssh line naming its tree and Bun.
  */
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";

@@ -16,7 +16,7 @@
  * Represent other changed values by short digests. A changed host identifies a code change between
  * conditions. Output omits tasks, answers and checks, but remains exam-side and must stay untracked.
  *
- * Written on 30 October to make condition differences visible alongside the run view's summary.
+ * It makes condition differences visible alongside the run view's summary.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { short } from "#src/campaign/move.ts";

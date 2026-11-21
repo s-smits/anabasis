@@ -1,15 +1,14 @@
 /**
  * The campaign logs a skill script reads across the record, found one way for every skill: the
  * replay and its panel, the tables and the trend of promotion-tuner and the starter reads of
- * comparison-reading each list them here (until 11 November the list lived in promotion-tuner's
- * `tree.ts`, and comparison-reading reached into that skill for it).
+ * comparison-reading each list them here, so that no skill reaches into another's scripts for it.
  *
- * Default discovery uses the production registry and refreshed records on every configured host
- * (22 October 2026). An explicit home keeps the offline layouts the registry's `campaignsIn` reads:
+ * Default discovery uses the production registry and refreshed records on every configured host.
+ * An explicit home keeps the offline layouts the registry's `campaignsIn` reads:
  * a folder of worktrees, an archive (`data/runs`, a folder a host) or one host's folder of
  * campaigns, with the largest copy of each name there. Left out: a seed (`seed.json` beside its
- * log) unless named, as an investigation's snapshot is (until 4 November its derived replay read
- * none), a name that starts `sim-`, `rh-` or `test-`, and a rehearsal, whose seats are
+ * log) unless named, as an investigation's snapshot is, a name that starts `sim-`, `rh-` or
+ * `test-`, and a rehearsal, whose seats are
  * `faux/script` (`rehearsed`, which a caller asks once it has read the log).
  */
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -45,8 +44,7 @@ export function lastAt(path: string): string {
 /** Every campaign log under `home`, one a name, the largest where copies exist; seeds and the
  *  names of `LEFT_OUT` are not listed. `home` may be a folder of worktrees, an archive
  *  (`data/runs`, a folder a host) or one host's folder of campaigns: the registry's `campaignsIn`
- *  reads each layout. Until 30 October this walked worktrees alone, so a replay of the archive read
- *  no campaign. */
+ *  reads each layout, so that a replay of the archive reads its campaigns and not worktrees alone. */
 function everyLog(home: string, names: readonly string[]): Found[] {
   const largest = new Map<string, { path: string; size: number }>();
   const found = [home, ...readdirSync(home).map((entry) => join(home, entry))].flatMap((dir) => [

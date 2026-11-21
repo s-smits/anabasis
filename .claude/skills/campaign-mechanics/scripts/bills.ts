@@ -24,11 +24,10 @@
  *   `--reserve` is set high enough for a setting. Read it before naming longer limits or a lower
  *   reserve.
  *
- * Written on 13 November, when a reader of the README asked whether a turn budget tracks cost and
- * the answer took a scratch script. Over the 145 campaigns archived from 25 October that day, the
- * 29,241 Opus solves had a rank correlation of 0.82 and billed 0.018 to 0.059 dollars a turn
- * between the 10th and 90th centile, 63 held a turn at ten times their median, the dearest billed
- * 1.61 dollars, and none passed its reserve.
+ * It answers whether a turn budget tracks cost without a scratch script. Over the archived
+ * campaigns, Opus solves' turns and dollars rank together closely, a turn bills a few cents
+ * between the 10th and 90th centile, a few solves hold a turn at ten times their median, and none
+ * passes its reserve.
  *
  * It prints counts and dollars, and never a task, an answer or a check.
  */

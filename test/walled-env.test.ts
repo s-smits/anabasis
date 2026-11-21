@@ -133,6 +133,26 @@ describe.skipIf(!osIsolationSupport().ok)("the durable environment's OS wall", (
     });
   });
 
+  it("keeps the spilled output of a command held to the wall's maximum", async () => {
+    await withSeat(async (env) => {
+      // Asked past the 2 s maximum: durable's timer ends it at 2 s, and the backstop waits a second more.
+      const shell = await env.exec(
+        ["/bin/sh", "-c", String.raw`printf 'before the end\n'; sleep 10`],
+        {
+          timeout: 5,
+          spill: { afterBytes: 1, afterLines: 1 },
+        },
+        context,
+      );
+      expect(shell.ok).toBe(false);
+      if (shell.ok) return;
+      expect(shell.error.code).toBe("timeout");
+      const spillPath = shell.error.spillPath;
+      if (spillPath === undefined) throw new Error("The timeout lost its spill file");
+      expect(value(await env.readTextFile(spillPath, context))).toContain("before the end");
+    });
+  }, 20_000);
+
   it("ends a command on abort and cancels a queued file operation before it starts", async () => {
     await withSeat(async (env, wall) => {
       const abort = new AbortController();

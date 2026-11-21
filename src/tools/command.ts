@@ -126,6 +126,8 @@ interface WalledOptions {
   /** Seconds asked for, held to the limits by `heldSeconds`; pi's backend throws
    *  `timeout:<seconds>` when the command runs past what it was given. */
   readonly timeout?: number | undefined;
+  /** Seconds its caller already held (`heldSeconds`), taken as given instead of `timeout`. */
+  readonly bound?: number | undefined;
   /** Writes what the command brings into `into`, a fresh folder under the seat's `kept`, before it
    *  starts. */
   readonly stage?: ((into: string) => void) | undefined;
@@ -354,7 +356,7 @@ export async function runWalled(
         : `w=$(mktemp -d "$TMPDIR/in.XXXXXX") || exit\ncp -R ${shellQuote(into)}/. "$w" && cd "$w" && {\n${command}\n}\ns=$?\ncd / && rm -rf "$w"\nexit $s`;
     // One seat's commands run one at a time, so they share one profile file and one leader file.
     const staged = stageCommandIsolation(policy, join(dirs.host, "command.sb"), line);
-    const seconds = heldSeconds(options.timeout, wall).seconds;
+    const seconds = options.bound ?? heldSeconds(options.timeout, wall).seconds;
     const result = await SHELL.exec(
       `echo $$ > ${shellQuote(leader)}\n${staged}`,
       {

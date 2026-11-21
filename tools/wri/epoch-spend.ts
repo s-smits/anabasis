@@ -4,9 +4,9 @@
  *
  *   bun tools/wri/wri.ts reader epoch-spend --log <log>
  *
- * For lane 18, whose question is what the climb after a promotion cost. Between 3 and 10 November
- * 7 of 14 lane-18 sessions summed `solve.finished` and `exam.finished` bills after the promotion by
- * hand (`after.py`), since `view` gives each epoch's total and `cost` each campaign's roles, but
+ * For lane 18, whose question is what the climb after a promotion cost. Without it a session sums
+ * `solve.finished` and `exam.finished` bills after the promotion by hand, since `view` gives each
+ * epoch's total and `cost` each campaign's roles, but
  * nothing gives an epoch's roles. A sum over the epoch's events alone bills a session open across a
  * bound at its whole sum where it ends, so each figure here is what the log had billed by the
  * epoch's end less what it had by its start, as `billedBetween` reads a stretch: the roles are

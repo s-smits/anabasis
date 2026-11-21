@@ -15,8 +15,8 @@
  * for one pin, whichever reader asks, so a text two readers want is embedded once.
  *
  * A read with nothing new loads no model. One thread at the pass's lowest priority holds it to the one
- * core `room` allows a reader: 3,083 texts took 50 s at a peak footprint of 609 MB, and the next read
- * 0.3 s and 238 MB (5 November, the most prose in 238 logs).
+ * core `room` allows a reader: the log with the most prose takes under a minute at a footprint of
+ * some hundreds of megabytes, and the next read a fraction of a second.
  */
 import { sha256 } from "#src/meta/digest.ts";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";

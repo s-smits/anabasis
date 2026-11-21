@@ -15,14 +15,11 @@
  * never the comparison that started last, and its `--where` and `--count-by` name its columns. `trace` names the `slice.ts` command (oracle-handover)
  * that prints a solve's or a session's turns and calls.
  *
- * Between 3 and 10 November, 104 of 107 lane sessions listed an event kind's keys by hand (829
- * commands), 103 selected a kind (2,472), and 78 joined each solve to its comparison's side in 61
- * scripts of their own, one of which took the last `comparison.started` for a solve's comparison.
- * A timeline of several kinds at once was written by hand in 68 of those sessions, 7 of lane 23's
- * 13. A numeric bound on a field (`ms > 400000`) was written by hand in 24, 3 of lane 22's 7, and
- * 11 of lane 7's 26 grouped the passes under a tenth of the deadline by harness with `awk` over
- * `solves`. Of 40 `jq` commands sampled from the 35 lane sessions of 12 to 17 November, 5 cut a
- * range of lines out of the log to see what stood around one event, so `--lines` reads a range, of
+ * Without it nearly every lane session lists an event kind's keys and selects a kind by hand, joins
+ * each solve to its comparison's side in a script of its own (which can take the last
+ * `comparison.started` for a solve's comparison), writes a timeline of several kinds at once or a
+ * numeric bound on a field (`ms > 400000`), groups passes by harness with `awk` over `solves`, and
+ * cuts a range of lines out of the log to see what stood around one event, so `--lines` reads a range, of
  * every kind where no `--kind` is named. `events` prints what the log holds, hidden values among
  * them, which is the exam side's to read and never a seat's. It is no query language: a question
  * these flags cannot ask is `jq`'s.

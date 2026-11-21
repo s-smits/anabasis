@@ -5,10 +5,9 @@
  *
  *   bun tools/wri/wri.ts reader pairs --log <log>
  *
- * Lanes 8, 9, 10 and 11 read a comparison task by task. Between 3 and 10 November 11 of 17
- * lane-8 sessions built this table by hand (`ties.py`, `tiecost.py`, `rep.py`), 4 of 4 lane-11
- * sessions set each win beside its own task's A/A, and one tie script paired the tasks with the
- * report's scores by position, which misaligns once retained tasks are tallied. Here every number is
+ * Lanes 8, 9, 10 and 11 read a comparison task by task. Without it a session builds this table by
+ * hand and sets each win beside its own task's A/A, and a script that pairs the tasks with the
+ * report's scores by position misaligns once retained tasks are tallied. Here every number is
  * the production fold's on one pair (`pairsReported`, `differenceOf`, `pointsOf`, `carriedBy`,
  * `gapAgainst`, `src/kernel/`), and a pair is never matched to a score by its place in a list.
  *
@@ -30,8 +29,8 @@
  * The origin a starter read gives each task is `starter-reads.ts --tasks`'s column
  * (`comparison-reading`), so no column here repeats it. `x_best` gives each side's median ratio to
  * the best answer on record for the task, reference then new (1.00 is the best; `sideGap`, `reading.ts`'s gap line,
- * which prints the same per comparison): half of lane 20's sessions of 3 to 10 November set it
- * beside each task's writer by hand. It comes from hidden values, so the output stays on the exam
+ * which prints the same per comparison), so that lane 20 need not set it beside each task's writer
+ * by hand. It comes from hidden values, so the output stays on the exam
  * side: it names task versions and families and no task text, answer or measure.
  */
 import {

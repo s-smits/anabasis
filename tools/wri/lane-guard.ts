@@ -5,27 +5,24 @@
  * env file. Everything else passes.
  *
  * The hard rules of a whole-run investigation ("never write under the campaign's folder", "start no
- * solve, session, round or check run", `AGENTS.md` section 10 item 5) were text in every lane prompt
- * until 4 November 2026, and a lane session kept them by reading them. The operator asked for a Claude
- * agent type of its own for the lanes, so the rules a tool call can break are now refused in code,
+ * solve, session, round or check run", `AGENTS.md` section 10 item 5) are refused in code rather
+ * than kept only as text a lane session reads. The operator asked for a Claude agent type of its
+ * own for the lanes, so the rules a tool call can break are refused here,
  * and the prompt keeps only those a call cannot show (quote nothing behind the walls). A refusal
  * names its reason, so a lane that needed the call says so in its report.
  *
- * On 7 November 2026 a lane ran kept harness programs with Python from Bash inside a stopped
- * campaign's folder, which left `__pycache__` in three of its `states/` trees, and an audit of
- * `refusalOf` found interpreters, `perl -i`, `tar -C`, redirects into the investigation's gate files,
- * two writing steps of the primary and every `.env.*` but two let through. So a command now runs
+ * A lane that runs kept harness programs with Python inside a campaign's folder leaves `__pycache__`
+ * in its `states/` trees, and interpreters, `perl -i`, `tar -C`, redirects into the investigation's
+ * gate files and `.env.*` files are as many ways round a narrower guard. So a command runs
  * nowhere inside a campaign, an interpreter names no campaign path, Python runs with its bytecode
  * off, a shell write under `.ana/wri/` reaches only what the Write tool may, and every `.env*` file
  * but a committed `*.example` is closed. It stays a list of protected roots, never a reader of what
  * a program does.
  *
- * On 10 November an escaped quote inside double quotes, the words after a substitution's `)`, a `sed`
- * or `awk` program that only matched a campaign's path and `command -v python3` were refused as reads
- * of a campaign. Replayed over the 11,853 Bash commands of lane sessions from 3 to 10 November, run
- * from the checkout, the guard as it stood refused 2,079 and now refuses 2,014: 71 read-only commands
- * pass that did not (47 read as a kept program, 22 as an interpreter naming a campaign, 2 as Python),
- * and 6 Python commands without `-B`, which a misread quote had hidden, are refused that were not.
+ * An escaped quote inside double quotes, the words after a substitution's `)`, a `sed` or `awk`
+ * program that only matches a campaign's path and `command -v python3` are read as what they are,
+ * not as reads of a campaign, so that read-only commands pass and a quote read wrongly hides no
+ * Python command without `-B`. A replay over the Bash commands of recorded lane sessions holds this.
  */
 import { realpathSync } from "../../src/meta/filesystem.ts";
 import { capturedJsonParse } from "../../src/meta/json-runtime.ts";
@@ -61,7 +58,7 @@ const INVESTIGATIONS = /\/\.ana\/wri(?:\/|$)/u;
 /** Scratch a lane keeps for itself, which the hard rules put in a temporary directory of its own. */
 const SCRATCH = [tmpdir(), realpathSync(tmpdir()), "/tmp", "/private/tmp"];
 
-/** A Claude Code job's own temporary folder, where 37 lane writes of 4 November kept their scratch. */
+/** A Claude Code job's own temporary folder, where lane sessions keep their scratch. */
 const JOB_SCRATCH = /\/\.claude[^/]*\/jobs\/[^/]+\/tmp\//u;
 
 /** Scripts whose run spends, starts a seat or a solve, or writes a campaign's log. */
@@ -159,7 +156,7 @@ const ESCAPED = new Set(['"', "\\", "$", "`", "\n"]);
 const SED_ACTS = /(?:^|[^A-Za-z0-9])[gpiIMm0-9]*[wWe](?:\s+|$)([^;\n}]*)/gu;
 
 /** What passes instead of a refused call, from the allowed cases of `test/wri-lane-guard.test.ts`: a lane
- *  retried one refused call five times over on 8 November. */
+ *  would otherwise retry one refused call over and over. */
 const INSTEAD = new Map([
   [
     "a command run inside a campaign",
@@ -184,8 +181,7 @@ const INSTEAD = new Map([
 
 /**
  * The simple commands a shell line runs, each as its words, with every heredoc's body dropped and
- * quotes removed: until 4 November 2026 the guard matched patterns against the whole text, and in a
- * replay of 72 lane sessions it refused 246 of 7,710 calls, nearly all a report's heredoc naming a
+ * quotes removed, since patterns matched against the whole text refuse a report's heredoc naming a
  * command, a `grep` of a script's source, a copy out of a campaign or `git merge-base`.
  */
 function commandsOf(line: string): string[][] {
@@ -203,7 +199,7 @@ function commandsOf(line: string): string[][] {
   const text = kept.join("\n");
   const commands: string[][] = [[]];
   // What a substitution runs is read as commands of its own, after the line's, and stands in its
-  // word as `$()`: until 10 November its `)` began a command, so a path after it was read as a program.
+  // word as `$()`, so that its `)` begins no command and a path after it is not read as a program.
   const inner: string[][] = [];
   let word: string | null = null;
   const flush = () => {
@@ -238,8 +234,8 @@ function commandsOf(line: string): string[][] {
       word = (word ?? "") + text.slice(at + 1, close === -1 ? undefined : close);
       at = close === -1 ? text.length : close;
     } else if (char === '"') {
-      // An escaped quote stays inside the word: until 10 November it closed it, and a `jq` filter's
-      // `\"` turned the log path after it into a command, which 9 lane refusals of 3 to 9 November read.
+      // An escaped quote stays inside the word, so that a `jq` filter's `\"` does not turn the log
+      // path after it into a command.
       at = quoted(at + 1);
     } else if (char === "\\") {
       word = (word ?? "") + next;
@@ -379,9 +375,8 @@ function runRefusal(
 
 /**
  * Whether a `sed` or `awk` program writes to or runs a campaign's path, rather than only matching it:
- * sed's writing commands, and awk's `>`, `|` or `system(`. Until 10 November any campaign path in
- * the program was refused, and 5 lane refusals of 3 to 9 November were a `sed` that cut a campaign's
- * folder out of a listing.
+ * sed's writing commands, and awk's `>`, `|` or `system(`, so that a `sed` that cuts a campaign's
+ * folder out of a listing passes.
  */
 function actsOn(tool: string, program: string): boolean {
   if (tool !== "sed") return /[>|]|system\s*\(/u.test(program);

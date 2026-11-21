@@ -6,10 +6,9 @@
  *
  *   bun tools/wri/wri.ts reader checks --log <log | campaign folder | name>
  *
- * Lanes 1 and 5 read it first. Between 3 and 10 November all 18 lane 1 sessions found the exam's
- * files by hand and set each `checker.read` row beside its `brief.json` entry, and 5 of 8 lane 5
- * sessions built the same table, about 130 calls between them. `REFUSALS BY CHECK` gave one count a
- * check and no split by side, by who asked or by version.
+ * Lanes 1 and 5 read it first. Without it a session finds the exam's files by hand and sets each
+ * `checker.read` row beside its `brief.json` entry, in many calls, and `REFUSALS BY CHECK` gives one
+ * count a check and no split by side, by who asked or by version.
  *
  * The rows are the last `checker.read` at the frozen check program (`frozenChecker`), or the last
  * reading where none is frozen. A solve is counted under the program of the last reading before it

@@ -3,26 +3,22 @@
  * (lane 22), and where the campaign's hours, dollars and silences went (lane 23).
  * Role hours are elapsed open spans and can overlap. Every recorded wait, a provider's reset
  * (its grace minute included), a network wait and a solve-queue wait, joins one union, and the hours
- * a promotion stand with and without it. Until 25 October only provider waits were read, then load
- * waits alone were subtracted: on recode forkedPR345 that left 17.4 h a promotion where every
- * recorded wait leaves 10.8, provider waits being the larger part on most runs.
+ * a promotion stand with and without it, since subtracting one kind of wait alone leaves hours a
+ * promotion far above what every recorded wait leaves.
  *
- * Split from `read.ts` on 10 October, when that file stood at 794 nonblank lines against the size
- * policy's ceiling of 800 (`tools/loc/source-policy.ts`) and these lanes had three readings to add.
- * Each of the three answers what the first real campaigns of that day, buffer and recode, showed
- * missing:
+ * Split from `read.ts`, which stands near the size policy's ceiling of 800 nonblank lines
+ * (`tools/loc/source-policy.ts`). Each of these lanes' three readings answers a gap a reading of
+ * one measure alone leaves:
  *
  * - a miss is read at every limit the kernel calls one (`AT_A_LIMIT`), by comparison and by side,
- *   where it was read at the deadline alone; recode's 41 of 58 scored misses that ended on turns read
- *   none;
+ *   rather than at the deadline alone, which reads none of the misses that end on turns;
  * - a silence is read against the campaign's own median solve and labelled by what ran through
- *   it, where it was read at twenty minutes and only the first was given, by its time; buffer's
- *   longest gap was 19.5 minutes and read nothing;
- * - the hours are read by role beside the billed dollars, where only the dollars were.
+ *   it, rather than at a fixed twenty minutes with only the first given, by its time, which reads
+ *   nothing on a campaign of quick solves;
+ * - the hours are read by role beside the billed dollars.
  *
- * The six-campaign whole-run investigations on 20 October 2026 found unfinished comparisons'
- * solves labelled outside a comparison. Membership comes from `solve.started`, even before a
- * report can supply a scoring set.
+ * An unfinished comparison's solves belong to it, not outside a comparison: membership comes from
+ * `solve.started`, even before a report can supply a scoring set.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { AT_A_LIMIT } from "#src/kernel/reports.ts";
@@ -58,8 +54,8 @@ const ONWARD: ReadonlySet<string> = new Set(["campaign.ended", "build.started", 
 const DEADLINE_BOUND_SHARE = 0.95;
 /** The factor between the loads two comparisons ran under from which they are read as made on
  *  different hosts, and the load under which no factor is worth a line: a load of four moves no
- *  deadline on a host of four cores or more. On 2026-10-09 one harness answered the same tasks in a
- *  median of 105 s under a load of 31 and of 40 s under a load of 6. */
+ *  deadline on a host of four cores or more, while a heavy load can more than double one harness's
+ *  median time on the same tasks. */
 const LOAD_MOVED = 2;
 const LOAD_WORTH_A_LINE = 4;
 /** A task's two mirrored orders of slots, `o` for the reference harness and `f` for the new one,
@@ -68,9 +64,8 @@ const LOAD_WORTH_A_LINE = 4;
 const MIRRORS = ["offo", "foof"] as const;
 /** A silence is a gap between two events longer than this many of the campaign's median finished
  *  solve, and never shorter than the floor. A gap that long is no solve's ordinary pace. The floor
- *  holds a pack of quick solves to gaps a person would ask about: on 10 October buffer had 34 gaps
- *  over a minute and 10 over five, recode 173 and 30, nearly all a Builder's or a solver's command
- *  (recode ran 50 over five minutes), and 6 and 12 over ten. */
+ *  holds a pack of quick solves to gaps a person would ask about, since gaps of a few minutes are
+ *  common and nearly all a Builder's or a solver's command. */
 const SILENCE_SOLVES = 5;
 const SILENCE_FLOOR_SECONDS = 600;
 const SILENCES_NAMED = 5;
@@ -97,7 +92,7 @@ interface Span {
 }
 
 /** Whether a miss ended at a limit of its own: the kernel's kinds, every turn its bound allowed used
- *  (`limit`), as 5 of buffer's 17 on 12 October, or past the share of its deadline read as bound by it. */
+ *  (`limit`), or past the share of its deadline read as bound by it. */
 const atALimit = (solve: Solve) =>
   AT_A_LIMIT.has(solve.kind) ||
   solve.limit !== null ||
@@ -105,15 +100,15 @@ const atALimit = (solve: Solve) =>
 const limitOf = (solve: Solve) => (AT_A_LIMIT.has(solve.kind) ? solve.kind : solve.limit) ?? "wall share";
 
 /** A comparison's solves of the tasks it tallied. A task set aside, short or withdrawn stands in no
- *  pair, and read with them main0_5_1's g-1 had 5 of 20 misses at a limit and a 52.3% deadline share,
- *  where its tallied solves held 4 of 16 and 54.2% (lane 22, 15 October). */
+ *  pair, and reading its solves with them would move both the misses at a limit and the deadline
+ *  share. */
 const tallied = ({ own, scoring }: Compared) => {
   const versions = new Set(strings(own.versions));
   return scoring.filter((solve) => versions.has(solve.version));
 };
 
-/** The misses at a limit by comparison and side: recode on 10 October ended 41 of its 58 scored
- *  misses on turns, and a read of the deadline alone saw none. A miss at a limit says the budget was
+/** The misses at a limit by comparison and side, since most misses can end on turns, which a read
+ *  of the deadline alone does not see. A miss at a limit says the budget was
  *  short and nothing of the task, so a side whose misses are all there was cut and not beaten. */
 function limitTriggers(log: Index): Trigger[] {
   const misses = (solves: readonly Solve[]) => solves.filter((solve) => solve.outcome === "fail");
@@ -155,8 +150,8 @@ function limitTriggers(log: Index): Trigger[] {
  *  campaign's other seats where no scored solve shows it. */
 function servedTriggers(log: Index, results: ReturnType<typeof scoredOf>): Trigger[] {
   // The solves a model other than their condition's answered, by the fold the pulse and the gather
-  // read (`degradations`): on 23 October recode's comparisons ran on claude-opus-5 against a setting
-  // of claude-opus-5-5 (F19), and no live reader said so until 31 October.
+  // read (`degradations`), since a comparison can run on another model than its setting names, and
+  // nothing else would say so.
   const degraded = degradations(log.events);
   const servedBy = Map.groupBy(
     degraded.filter((row) => row.seat === "solve"),
@@ -175,7 +170,7 @@ function servedTriggers(log: Index, results: ReturnType<typeof scoredOf>): Trigg
     );
   });
   // A campaign whose comparisons scored none of the solves another model answered still opens the
-  // lane: recode's every seat ran on claude-opus-5 under a check-defects reading.
+  // lane, since every seat may have run on another model under a check-defects reading.
   const turns = degraded.reduce((sum, row) => sum + row.turns, 0);
   const anywhere = firedIf(
     otherModel.length === 0 && turns > 0,
@@ -214,8 +209,8 @@ export function deadlineTriggers(log: Index): Trigger[] {
   });
   // The one-minute load at each solve's start. The same elapsed-time limit allows less work on a
   // loaded host, so identical settings need not give solves equal computing time. Read the first
-  // and second halves of each comparison separately: esp32's one comparison started
-  // its solves at loads from 5.8 to 56.0 on 12 October, where a reading across comparisons was silent.
+  // and second halves of each comparison separately, since one comparison's solves can start at
+  // loads ten times apart, where a reading across comparisons is silent.
   const loads = results.flatMap(({ session, scoring }) => {
     const at = scoring.flatMap((solve) => (solve.load === null ? [] : [solve.load]));
     const middle = median(at);
@@ -235,11 +230,11 @@ export function deadlineTriggers(log: Index): Trigger[] {
         ]
       : [],
   );
-  // The tasks whose counted solves started out of their mirrored order. Since 24 October a worker
-  // runs a task's slots one after another and retries a non-result at its own slot, so a task's
-  // counted starts are a prefix of one mirror (`MIRRORS`). On host code from then a task off it is a
-  // defect of the round; before it, the queue ordered starts without holding them, and a wait for
-  // the load or a provider's reset on one side moved them.
+  // The tasks whose counted solves started out of their mirrored order. A worker runs a task's
+  // slots one after another and retries a non-result at its own slot, so a task's counted starts
+  // are a prefix of one mirror (`MIRRORS`), and a task off it is a defect of the round. On older
+  // host code the queue ordered starts without holding them, and a wait for the load or a
+  // provider's reset on one side moved them.
   const outOfTurn = results.flatMap(({ session, own, scoring }) => {
     const tasks = Map.groupBy(
       scoring.toSorted((one, other) => one.index - other.index),
@@ -275,7 +270,7 @@ export function deadlineTriggers(log: Index): Trigger[] {
 /** The parts of the campaign's clock: each Builder and Examiner session and each comparison, from
  *  its start to its end. One a stop cut ends at the campaign's ending, which a stop writes. A
  *  comparison so cut goes on under its id with no second start, so it opens again where the campaign
- *  resumes: buffer's g-1 ran 13.3 minutes so on 12 October that had read as between moves. */
+ *  resumes, rather than reading as between moves. */
 export function spansOf(events: readonly LogEvent[]): Span[] {
   const spans: Span[] = [];
   const open = new Map<string, Omit<Span, "until">>();
@@ -288,8 +283,8 @@ export function spansOf(events: readonly LogEvent[]): Span[] {
   for (const { at, kind, data } of events) {
     const time = Date.parse(at);
     for (const [key, span] of cut.splice(0)) open.set(key, { ...span, from: time });
-    // One exam is drafted at a time, so a draft that starts ends one left open: until 28 October a
-    // draft cut at 90 seconds counted to the log's end, 21.5 of truss v4's 33.3 Examiner hours.
+    // One exam is drafted at a time, so a draft that starts ends one left open, rather than a cut
+    // draft counting to the log's end and taking most of the Examiner's hours.
     for (const key of open.keys()) if (kind === "draft.started" && key.startsWith(kind)) close(key, time);
     for (const [part, start, end] of SPANS) {
       const id = text(data.session);
@@ -317,8 +312,8 @@ export function unionMs(windows: readonly { readonly from: number; readonly unti
 
 /** Every wait a log records, as the interval it covered. A provider's reset and a network wait are
  *  recorded before their sleep and stop at the first later ending or session start: a run moved to
- *  another login writes no ending, and on 30 October buffer-506's 39-hour reset read as waited
- *  until the run ended, although the run went on under another login after 4.5 hours. A load wait
+ *  another login writes no ending, and a long reset would otherwise read as waited until the run
+ *  ended, although the run went on under another login long before. A load wait
  *  is recorded when the host admits the solve, so it ends at its event. */
 export function waitsOf(events: readonly LogEvent[]): { from: number; until: number; kind: string }[] {
   const waits: { from: number; until: number; kind: string }[] = [];
@@ -426,12 +421,12 @@ function causeOf(log: Index, spans: readonly Span[], index: number, gap: number)
 }
 
 /** Lane 23: the longest silences, each by what ran through it, and a role that took most of the
- *  dollars. A silence is read against the campaign's own median solve: at a fixed twenty minutes it
- *  read nothing on buffer on 10 October, whose longest gap was 19.5 minutes, and gave recode's two
- *  longer ones as a count and the time of the first, with nothing of what ran. */
+ *  dollars. A silence is read against the campaign's own median solve, since a fixed twenty minutes
+ *  reads nothing on a campaign of quick solves, and gives longer ones as a count and the time of the
+ *  first, with nothing of what ran. */
 export function costTriggers(log: Index): Trigger[] {
-  // A solve that measured: truss's 30 provider and killed attempts of under 10 s on 12 October put the
-  // median at 6.2 minutes against 24.6 over its passes and rejections.
+  // A solve that measured, since short provider and killed attempts would pull the median far
+  // below its passes and rejections.
   const done = log.solves.filter(measured).map((solve) => solve.seconds);
   const scaled = (median(done) ?? 0) * SILENCE_SOLVES;
   const threshold = Math.max(scaled, SILENCE_FLOOR_SECONDS) * 1000;
@@ -446,8 +441,7 @@ export function costTriggers(log: Index): Trigger[] {
     .toSorted((a, b) => b.gap - a.gap);
   const spans = spansOf(log.events);
   const named = gaps.slice(0, SILENCES_NAMED).map(
-    // The log's lines either side, from 1 as `sed -n` counts: 11 of 13 lane 23 sessions to 10
-    // November found them again.
+    // The log's lines either side, from 1 as `sed -n` counts, so that a lane need not find them again.
     ({ index, gap }) =>
       `${(gap / MINUTE_MS).toFixed(1)} min ${causeOf(log, spans, index, gap)} (lines ${String(index)}-${String(index + 1)})`,
   );

@@ -4,9 +4,9 @@
  *   bun tools/wri/wri.ts packets --log <log>,<log>[,...] --out <dir> [--graders 2]
  *   bun tools/wri/wri.ts packets --out <dir> --join
  *
- * A grade read across campaigns must not follow a campaign's age or result. On 6 November sixteen
- * buffer campaigns were graded this way from hand-written scripts, which carried two faults into the
- * packets: a long requirement was reduced to its keys, and 19 of 21 diffs were cut at 500 lines. So
+ * A grade read across campaigns must not follow a campaign's age or result. Hand-written grading
+ * scripts carry two faults into the packets: a long requirement reduced to its keys, and diffs cut
+ * at a few hundred lines. So
  * here each campaign gets an opaque label, a grader holds half of them with old and new alternating
  * and tasks shuffled across them, a value is shown whole up to `VALUE_BYTES`, which every requirement
  * in those logs fits and a long table does not, and a diff is cut only past `DIFF_LINES`, which none

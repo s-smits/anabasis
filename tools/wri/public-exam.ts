@@ -6,10 +6,10 @@
  *
  *   bun tools/wri/public-exam.ts <log | campaign folder | name> [--bundle <pack>]
  *
- * Between 3 and 10 November all 7 lane 6 sessions pulled the released tasks and their practice
- * passes out of the log by hand, about 70 calls, and `exam.drafted`, the one event that holds the
- * public rules whole, holds the evaluator's source beside them, which a session reading it to stay
- * blind had to strip by hand.
+ * Without it a lane 6 session pulls the released tasks and their practice passes out of the log by
+ * hand, in dozens of calls, and `exam.drafted`, the one event that holds the public rules whole,
+ * holds the evaluator's source beside them, which a session reading it to stay blind would have to
+ * strip by hand.
  *
  * It prints only what crosses the wall (`AGENTS.md`, section 1): each rule's id and statement, the
  * conventions, the scope, the objective and the answer format; each released task's public input;

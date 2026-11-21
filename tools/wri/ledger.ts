@@ -33,7 +33,7 @@ interface RunLedgers extends Parent {
   /** Whether a plan of its own can still place the run's rows: an investigation names it, or it is
    *  live, and a live run's investigation opens at its trigger. */
   readonly awaited: boolean;
-  /** The run's `still-missing-<run>.md` written before 8 November, or "": read where the plan has no
+  /** The run's `still-missing-<run>.md` in an older folder, or "": read where the plan has no
    *  `## Intentionally opposed`, so an older run's trade-offs are shown rather than "none". */
   readonly older: string;
   /** The run's log length now, or null where it cannot be read. */
@@ -126,9 +126,8 @@ export const outcomesOf = (text: string): Map<string, string> =>
  * Each `<run>:<id>` a predictions ledger's `## Carried` section names: the one reader of the section
  * for what a run owes (`owedOf`), carries for a parent (`carryOf`) and takes up for another run
  * (`droppedOf`). An id is taken in either case, a hyphened one such as `TR-1` whole, and
- * `<parent>:<run>:<id>` as `<run>:<id>` (`carriedName`). Until 21 November the owing reader took
- * only ids that start upper-case, so a fork that carried `v9-validity` passed its carry step and
- * its outcomes step called that row predicted nowhere.
+ * `<parent>:<run>:<id>` as `<run>:<id>` (`carriedName`), lower-case ones such as `v9-validity`
+ * too, so that a row a fork carries is never called predicted nowhere by its outcomes step.
  */
 const carriedOf = (predictions: string): ReadonlySet<string> =>
   new Set(

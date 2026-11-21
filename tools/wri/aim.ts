@@ -6,18 +6,17 @@
  *   bun tools/wri/wri.ts reader aim --log <log>
  *
  * Lanes 17, 19 and 20 ask whether the tasks written after a promotion were written against the
- * reference in force, and a starter read pools them with the rest. Between 3 and 10 November 14 of
- * 18 lane-20 sessions joined each session's tasks to the comparisons' solves by hand, about 30
- * calls, and the three best reports of 9 and 10 November each built the measure against the
- * author's best by writing session and harness in a scratch script, since validity read every solve
- * valid there. One esp32 report took the writer from `task.feasible.session`, which a later
+ * reference in force, and a starter read pools them with the rest. Without it a lane 20 session
+ * joins each session's tasks to the comparisons' solves by hand, in dozens of calls, and builds the
+ * measure against the author's best by writing session and harness in a scratch script, since
+ * validity reads every solve valid there. A writer taken from `task.feasible.session`, which a later
  * session's `try_answer` on an earlier task also writes; the writer here is the proposal's
  * (`proposalsOf`).
  *
  * A session's block gives its span against each promotion: the reference at its start and at its
  * end, since a continued conversation can span one, the last comparison reported before it, the
  * conversation it continues, whether the reference's copy lay in its home and its shell calls
- * that name the copy's folder (both read logs up to 18 November, when the copy went), its
+ * that name the copy's folder (both read in logs of the code that laid the copy), its
  * `try_reference` calls and the harness each try was solved under,
  * the tasks the gate admitted, and the comparisons that later tallied them, starter reads named
  * apart. The table gives, per writer and harness, the valid solves, how many reached the author's
@@ -37,7 +36,7 @@ import { type Call, callsOf, tracesIn } from "#src/kernel/trace.ts";
 import { asRecord, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { median } from "#src/meta/tally.ts";
 
-/** Where a writing session's home held the reference harness, from 19 October to 18 November. */
+/** Where a writing session's home held the reference harness, under code that laid a copy there. */
 const REFERENCE_HOME = "reference-harness";
 
 /** A comparison's last report with the pairs it tallied. */
@@ -61,8 +60,8 @@ interface ExamSession {
   readonly promotedWithin: readonly string[];
   /** The last comparison reported before its start. */
   readonly lastReport: string | null;
-  /** Whether its home held the reference's copy, which `exam.started` recorded from 19 October to
-   *  18 November; a log without the field was written by code that laid none. */
+  /** Whether its home held the reference's copy, which `exam.started` recorded under code that laid
+   *  one; a log without the field was written by code that laid none. */
   readonly referenceHome: boolean;
   readonly tryCalls: number | null;
   /** The solves it asked for, by the harness each ran under. */

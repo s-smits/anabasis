@@ -5,9 +5,9 @@
  *
  * A deadline counts elapsed time, and a long solve is the model's thinking or a program's running.
  * `WALL SHARE` says how much of the deadline a solve took, and nothing says which of the two took it.
- * v1's `timeline.ts` read it for Builder rounds (`5bc9988`, `references/deterministic-lanes.md`): 79 to
- * 91% of a round's wall on 30 September, which decided whether a long round was the model's or the
- * host's. Here it is a solve's as well as a session's, since that is where a deadline binds. Changed
+ * v1's `timeline.ts` read it for Builder rounds (`references/deterministic-lanes.md`), where it
+ * decided whether a long round was the model's or the host's. Here it is a solve's as well as a
+ * session's, since that is where a deadline binds. Changed
  * from v1: the logged `ms` of each call in place of the observability stream, which v2 does not write,
  * and overlapping calls counted once.
  *

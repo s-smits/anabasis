@@ -2,7 +2,7 @@
  * A word the operator leaves for a campaign that runs, as the campaign's log holds it
  * (`campaign.word`, written by `tools/d2/word.ts`).
  *
- * A word steers a campaign without stopping the command that runs it (`7f0add79:docs/plan.md`, row F50).
+ * A word steers a campaign without stopping the command that runs it.
  * It is left while a move runs and read at the next move's boundary, by the table for a stop and
  * for other tasks (`decide.ts`) and by the campaign's command for the budget
  * (`tools/d2/harness-builder.ts`). It changes the move after it and nothing in the one that was
@@ -48,7 +48,7 @@ export const pauseSince = (events: readonly LogEvent[], since: number): LogEvent
  * Whether a pause holds a campaign's solves at `now`: one was left since the reading process began
  * (`pauseSince`), and less than its wait and a minute have passed, so `runs pause`'s stop comes
  * first. Nothing else answers a pause, so one that died before its stop would otherwise hold the
- * campaign for good (landing review, 7 November 2026).
+ * campaign for good.
  */
 export function paused(
   events: readonly LogEvent[],

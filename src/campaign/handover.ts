@@ -2,11 +2,8 @@
  * One reading of a campaign's log: what each step handed over.
  *
  * A campaign is a sequence of steps over one log: the set-up, Examiner sessions, Builder sessions
- * and comparisons. Readers of its parts can disagree: v1's Builder was handed one test set
- * through four readers until 21 September, and they disagreed: 20 of 25 in one paragraph and 0 of
- * 5 in the next.
- *
- * So the log is read here once (`campaignOf`), and each reader is a rendering of that reading
+ * and comparisons. Separate readers of its parts can disagree about the same facts, so the log is
+ * read here once (`campaignOf`), and each reader is a rendering of that reading
  * through its own filter: the operator's view prints it whole (`tools/runs/view.ts`), and the
  * Builder's opening message takes its fails and its tallies from it and nothing else (`past.ts`).
  * A step's handover is what the owner of a campaign needs of it, never its content: counts, a
@@ -15,19 +12,15 @@
  * Nothing here decides or launches anything. The move that comes next is the decision table's
  * (`decide.ts`), which the view prints once beside this reading.
  *
- * A session is read from its own events while it has no end, and from its end once it has one:
- * read from its end alone, an Examiner session still running read "0 proposed, 0 held out" and
- * $0.00 when it had held out seven tasks and metered $8.23. A step with no end is `cut`
- * where the campaign went past it, and open at the log's end otherwise (`nextBound`, `soFar`); an open one
- * may be running or stopped, which the log cannot tell apart, so the view says when it last wrote.
- * The Examiner's sessions and the comparisons run inside the Builder's conversation, and an
- * Examiner session can outlast it, so a session is gone past only at its own seat's next start or
- * the campaign's end (`soFar`). Until 14 October a Builder read as cut once its first Examiner
- * session began, and until 3 November a session of a campaign its host led was gone past at the
- * next bound: no such campaign made a move past its draft. A session is billed its own dollars
- * alone, open or ended (`ownedBy`, `src/kernel/reports.ts`): until 19 October an ended Builder was
- * billed every move made inside its span, which those moves' own lines billed again.
- * The Referee triage of 20 October found unclear and unread practice rejections counted as failures.
+ * A session is read from its own events while it has no end, and from its end once it has one,
+ * since a running session read from its end alone would show nothing proposed and nothing billed.
+ * A step with no end is `cut` where the campaign went past it, and open at the log's end otherwise
+ * (`nextBound`, `soFar`); an open one may be running or stopped, which the log cannot tell apart,
+ * so the view says when it last wrote. The Examiner's sessions and the comparisons run inside the
+ * Builder's conversation, and an Examiner session can outlast it, so a session is gone past only
+ * at its own seat's next start or the campaign's end (`soFar`). A session is billed its own dollars
+ * alone, open or ended (`ownedBy`, `src/kernel/reports.ts`), so a move made inside a Builder's span
+ * is not billed twice. Unclear and unread practice rejections are not counted as failures.
  */
 import { type Measures, pointsOf, scoresIn, type Tally, testOf } from "../kernel/compare.ts";
 import { proposalsOf } from "../kernel/history.ts";
@@ -116,9 +109,8 @@ interface Compared {
    *  turns were not limited. A changed limit is another setting, and no tally is read across two. */
   readonly modelTurns: number | null;
   readonly reading: string | null;
-  /** The tally the step is read on: a report from 26 October to 2 November also scored the bill,
-   *  and its tally here is of its scores without it (`scoresIn`); any other report's is as tallied,
-   *  since one from before 21 October holds no scores. */
+  /** The tally the step is read on: the scores without the bill where a report holds them
+   *  (`scoresIn`), and otherwise the report's own tally, since the oldest reports hold no scores. */
   readonly tally: Tally | null;
   /** How many of its tallied tasks the two harnesses' validity differed on (`pointsOf`), as the
    *  starter read splits a tally (`starterReads`, `climb.ts`); null where nothing was tallied, or
@@ -127,7 +119,7 @@ interface Compared {
   /** Each harness by itself: the tasks with no, one, two... valid answers among its solves. */
   readonly valid: { readonly old: readonly number[]; readonly fresh: readonly number[] } | null;
   /** The points each measure gave the tallied tasks together (`pointsOf`); null where nothing was
-   *  tallied, and in every report before 21 October. */
+   *  tallied, and in older reports. */
   readonly points: Measures | null;
   /** The tasks set aside for a person's labels. */
   readonly aside: number;
@@ -253,8 +245,8 @@ function practiceFails(events: readonly LogEvent[]): (PracticeFail & { readonly 
   });
 }
 
-/** A comparison's handover, from its start and its last report. A log written before 9 October
- *  holds reports and no starts, and such a comparison's terms are read from its report. */
+/** A comparison's handover, from its start and its last report. The oldest logs hold reports and
+ *  no starts, and such a comparison's terms are read from its report. */
 function compared(events: readonly LogEvent[], id: string): Compared {
   const report = reported(events, id);
   const began = events.findIndex(({ kind, data }) => kind === STARTED && data.session === id);
@@ -344,9 +336,9 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
               proposed: count(end.proposed),
               held: listed(end.held),
               refused: listed(end.refused),
-              // With the solves an earlier log's session asked for to try a draft task (`try_task`,
-              // until 1 November), which name it where a comparison's name the comparison: until
-              // 12 October no step held them.
+              // With the solves an older log's session asked for to try a draft task (`try_task`,
+              // since retired), which name the session where a comparison's solves name the
+              // comparison.
               billed: count(end.billed) + billedParts(events, id).comparison,
             };
       return [{ step: "examiner", id, ...read, ...counts }];
@@ -355,12 +347,10 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
       const { read, closed, until, window, billed } = soFar(events, index, id, "build");
       const end = events[closed]?.data;
       const within = ({ started }: { readonly started: number }) => started > index && started < until;
-      // A session cut before its end left what it last froze: until 2 November a Builder resumed
-      // after one was told that harness came from no session (esp32-fresh-opus-forkedPR569, lane
-      // 4). A killed session's ending names no harness, so until 4 November it hid the checkpoint
-      // the same way (the buffer campaign of #595 and a truss one, lanes 4 and 22), and a crashed
-      // one names its tree past the checkpoint, where no session starts (`latestBuilt`), so until
-      // 20 November it did too (a fork at #979, lane 4).
+      // A session cut before its end, killed or crashed, left the harness it last froze. Its ending
+      // names no harness, or a tree past the checkpoint where no session starts (`latestBuilt`), so
+      // the checkpoint is read instead, and a Builder resumed after it is told where that harness
+      // came from.
       const frozen = window.findLast(
         (event) => event.kind === "build.checkpoint" && event.data.session === id,
       );
@@ -375,8 +365,7 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
           harness,
           changed: named === null ? harness !== null && harness !== text(data.parent) : end?.changed === true,
           // Each attempt of one solve is logged as `<id>-<attempt>`, and the session charged the
-          // solve once: until 29 October an open session of buffer-fresh-deepseek read 7 practice
-          // solves where its ending wrote 4, one of them tried four times.
+          // solve once, so attempts are folded into their solve before counting.
           practiceSolves: isNumber(end?.practiceSolves)
             ? end.practiceSolves
             : new Set(practised.filter(within).map((solve) => solve.id.replace(/-\d+$/u, ""))).size,

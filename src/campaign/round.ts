@@ -26,13 +26,13 @@
  * comparison and ran under one of its harnesses and its setting. No other solve is counted, made
  * before it or beside it by another comparison: a condition names the host's code, which changes
  * between comparisons, and one frozen draw of the reference harness's solves would bias every
- * later comparison read against it (`7f0add79:docs/plan.md`, What we will not do).
+ * later comparison read against it.
  *
  * The Starter Built Harness is the reference harness until a step is promoted
  * (`src/harness/starter.ts`). Once another reference is promoted, the starter is read in a starter
  * comparison after a promotion (`decide.ts`), and no side of a comparison between two others.
  *
- * The reference is read against itself as the test is (the plan's A/A): its solves of a task
+ * The reference is read against itself as the test is (the A/A control): its solves of a task
  * split into two halves mirrored in time, read as two harnesses are, with how often two of them
  * disagree (`flips`, `comparison.ts`). The test's own solves hold it: at two solves a side, the
  * first of each task against the second. It should read no step, and decides nothing here.
@@ -52,7 +52,7 @@
  * Rejections. A rejected answer counts as not valid only once the rejection is ruled a true fail
  * (`earned`), by the Referee where the caller seats one. One ruled a check defect or unclear, and
  * one no ruling was made on, sets its task aside: the task is left out of every tally of the
- * comparison, for both harnesses, and named in `aside` (the plan's table, `compare.ts`). The
+ * comparison, for both harnesses, and named in `aside` (`compare.ts`). The
  * report also holds `counted`, the tally were every such rejection to stand, so a person sees what
  * the labels can move. A person's labels settle it (`settleReading`): a task whose set-aside
  * rejections are all labelled earned is restored, one labelled a check defect is disputed for
@@ -167,7 +167,7 @@ interface Terms {
   /** The dollar cap, where the solves are paid for. */
   readonly cap?: Cap | undefined;
   /** What the operator expects the comparison to read, in their own words, written with its terms
-   *  before the first solve (`7f0add79:docs/plan.md`, Phase 4). It decides nothing. A comparison gone on
+   *  before the first solve, so the prediction cannot move after a result. It decides nothing. A comparison gone on
    *  from its log keeps the one it began with: begun on another, or on none, it is refused with
    *  one, as it is on any other term that moved. */
   readonly prediction?: string | undefined;
@@ -223,17 +223,16 @@ const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]
  * three, which the step's one test reads with the frontier (`stepOf`, `compare.ts`). The newest
  * epoch comes first, and within each epoch the tasks held out since the last comparison began; the
  * epoch chooses the set and no result does, since the hash (`draw`) is fixed before any task exists.
- * A draw over every epoch at once drew for a target of 8 over 19 held tasks two or three the
- * reference failed, so three comparisons read one win short (`7f0add79:docs/plan.md`, B14); a draw
- * by the hash alone scored 4 of the 7 tasks written for a comparison. Within a tier the families
- * take turns, and where the frontier holds three or more one takes at most `FAMILY_SHARE` of the
- * set unless the others cannot fill it. Of 550 starts on record to 20 November, one family held
- * more of a set than that in 154, but in 133 the whole frontier was scored, which no draw changes.
+ * A draw over every epoch at once could fill a small target with tasks the reference already
+ * fails, and a draw by the hash alone could miss most of the tasks written for this comparison.
+ * Within a tier the families take turns, and where the frontier holds three or more one takes at
+ * most `FAMILY_SHARE` of the set unless the others cannot fill it; where the whole frontier is
+ * scored, no draw can change which tasks enter.
  *
  * The starter comparison after a promotion draws alike. Every task held before the promotion is
  * retained (`poolOf`), so its frontier is the tasks written since, which the Examiner writes above
- * the new reference's grade: in the six read from 30 October to 2 November on those tasks alone the
- * reference lost them to the starter 24 to 33 and won the older ones 62 to 17.
+ * the new reference's grade, and which the new reference can lose to the starter while it wins
+ * the older ones.
  */
 export function scoredSet(events: readonly LogEvent[], target: number, contract: string) {
   const pool = poolOf(events);
@@ -286,8 +285,7 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
  * (`draw`). A worker owns a whole sequence, including retries, before taking another task.
  * Within it the harness that goes first is mirrored, slot by slot and from one task to the next:
  * the reference then the new harness, the new then the reference, so that no side runs later than
- * the other: until 12 October the A/A's later solves ran after the test's, and a drift read as a
- * difference. `had` counts a task's completed
+ * the other, and a drift over time cannot read as a difference. `had` counts a task's completed
  * solves under each harness, so continuation omits the counted prefix and runs what it lacks.
  */
 function unsolvedJobs(
@@ -397,10 +395,10 @@ function dispute(log: string, id: string, version: string, found: { solve: strin
 
 /** What the environment said of a solve that never ran, or null: the provider wrote no output
  *  token in the solve's last attempt's record, or the wall did not hold on the host, so the solve
- *  was not started. A solve the provider cut after an hour's work holds thousands (8 October),
- *  and is a non-result the comparison solves on from. On 10 October a rehearsal whose wall
- *  refused every solve ran 56 of them to `sandbox-crash` before it was killed: a dead wall is a
- *  dead provider's case (AGENTS.md, rule 14). A solve whose start does not name the comparison is
+ *  was not started. A solve the provider cut after real work holds output tokens, and is a
+ *  non-result the comparison solves on from. A wall that refuses every solve would otherwise run
+ *  the whole comparison to `sandbox-crash`, so a dead wall is a dead provider's case (AGENTS.md,
+ *  rule 14). A solve whose start does not name the comparison is
  *  refused: no fold would count it, and the comparison would buy it again at every pass. */
 function unanswered(log: string, id: string, { solve, ending }: Practised): string | null {
   const ran = solvesIn(read(log)).find((each) => each.id === solve);
@@ -418,16 +416,15 @@ function unanswered(log: string, id: string, { solve, ending }: Practised): stri
 /** The rejections of the comparison that hold no ruling, on tasks still held out, by an earlier run
  *  killed before its ruling or by a reader that failed or gave no answer: each is put to the
  *  Referee again before the report (`ruleLeft`). A report that set such a rejection's task aside
- *  would keep it aside for good: one Referee call cut by the provider's session limit cost a step
- *  that way on 12 October. */
+ *  would keep it aside for good, so one Referee call cut by a session limit could cost a step. */
 function unruledOf(events: readonly LogEvent[], fixed: Fixed) {
   const held = new Set(taskSets(events).held);
   return rejections(events, fixed, NO_LABELS).filter(({ task, ruling }) => ruling === null && held.has(task));
 }
 
 /** The provider's silence over one run of a comparison: `SILENT` tasks in a row stop it, and so do
- *  last solves written nothing for after an answer (on 30 October esp32-fresh-gpt's g-1 read no-step
- *  one task short when the provider refused the model). A run with no answer, or a wall that refused
+ *  last solves written nothing for after an answer, as when the provider refuses the model
+ *  partway through. A run with no answer, or a wall that refused
  *  the last task alone, reports that task short. */
 function silence() {
   const silent = new Set<string>();
@@ -618,7 +615,7 @@ function write(
 ): Report {
   append(request.log, REPORTED, {
     session: request.id,
-    // Eight rounds of 8 October asked for no scored task, and their logs could not say so.
+    // Recorded so that a round that asked for no scored task says so.
     tasks: request.tasks.length,
     solves: request.solves,
     level: request.level,
@@ -633,8 +630,7 @@ function write(
 
 /**
  * One standalone comparison of `fresh` with the reference harness `old`, after several sessions.
- * It also reads an A/A comparison on mirrored halves of the reference solves
- * (the measurement in `7f0add79:docs/plan.md`, G2).
+ * It also reads the A/A control on mirrored halves of the reference solves.
  */
 export async function checkpoint(request: CheckpointRequest): Promise<Report> {
   const { log, id, old, fresh } = request;
@@ -696,7 +692,7 @@ function restopped(
 
 /**
  * A Builder session, then the comparison of the harness it left with the reference harness. The
- * plan's first round is one, from the Starter Built Harness and against it.
+ * campaign's first round is one, from the Starter Built Harness and against it.
  */
 export async function round(request: RoundRequest): Promise<Report> {
   const { session, builder, reference, ...terms } = request;
@@ -770,7 +766,7 @@ export function settleReading(
       `comparison ${id} reads ${report.reading} and compared nothing, so there is nothing to settle`,
     );
   }
-  // A comparison that began with shorter budgets, as one begun before 11 October may have, reported
+  // A comparison that began with shorter budgets, as an old one may have, reported
   // rows this source reads no longer, and the settled report would drop them in place of the report
   // the comparison began with.
   const began = startOf(before, id)?.budgets;

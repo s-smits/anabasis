@@ -45,9 +45,9 @@
  * `ci.yml` takes `workflow_dispatch`, `--merge` dispatches one before gating, so it runs meanwhile,
  * and waits for it after. No pull request merges before that run has passed. A failed run is not dispatched again, since nothing about its head changed, unless no runner
  * ever took the jobs that did not pass: on 5 November GitHub cancelled both macOS jobs of run
- * 41910589537 untaken, so `land` reruns those jobs once and waits for them. Where the newest full run
- * on the top's branch failed in its tests, the run dispatched on the fixed head is `ci-fixes`: the
- * files that failed and the tests near the fix alone (`fixesFor`, `tools/runtime/ci-runs.ts`). Then, on heads
+ * 41910589537 untaken, so `land` reruns those jobs once and waits for them. The run dispatched on the
+ * top's head is `ci-fixes` wherever no wall or install changed since the last full run or the trunk: the
+ * files that failed there and the tests near the change alone (`fixesFor`, `tools/runtime/ci-runs.ts`). Then, on heads
  * read again, it posts `ana/stack-gate` on every head and merges through GitHub, so each pull request
  * ends Merged; a local merge pushed to main left 98 pull requests open on 21 September 2026. The
  * merge is GitHub's asynchronous merge of the top, pinned to the top's gated head, which merges

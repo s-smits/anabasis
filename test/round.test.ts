@@ -637,7 +637,7 @@ describe("a round", () => {
         overlap: null,
         // Each harness by itself: the reference answered no task validly, the new one all, twice.
         // Every task is informative for the reference: a valid answer to each is on record, the
-        // new harness's, so the reference's failing them is room (`informative`, 15 October).
+        // new harness's, so the reference's failing them is room (`informative`).
         valid: { old: [4, 0, 0], fresh: [0, 0, 4], informative: { old: 4, fresh: 0 } },
         billed: { old: BILLED, fresh: BILLED },
         // The reference against itself, first solve against second: it answered nothing, so ties.
@@ -1052,8 +1052,8 @@ describe("a round", () => {
     });
     // Neither moves the held-out set, which a Builder's count and the table's advice read: the
     // check failed on the new harness's answer, and a ruling sets a task aside for this comparison
-    // alone. Until 20 November such a check disputed its task for good, so what a candidate
-    // answered on a held-out task moved a count its Builder reads (rule 3).
+    // alone, since a check that disputed its task for good would let what a candidate answered on a
+    // held-out task move a count its Builder reads (rule 3).
     expect(taskSets(read(s.log)).held).toEqual([...HELD, "s5"]);
     expect(s.of(TASK_STATE).filter(({ state }) => state === "disputed")).toEqual([]);
     // The task is solved no further in this comparison: the new harness's solve of s2 whose check
@@ -1094,8 +1094,8 @@ describe("a round", () => {
   });
 
   it("puts a rejection the Referee gave no answer on to it again, and stops before the report while one has none", async () => {
-    // buffer-a's g-5 (12 October): a Referee call the provider's session limit cut was logged
-    // unclear, set a won task aside in the report, and no later run put it again.
+    // A Referee call the provider's session limit cut must not be logged unclear, setting a won
+    // task aside in the report with no later run putting it again.
     /** A Referee that gives no answer, logged as `src/referee/referee.ts` logs one. */
     const silent =
       (log: string) =>
@@ -1362,8 +1362,8 @@ describe("a round", () => {
       expect(worked.report).toMatchObject({ short: HELD, versions: [], reading: NOT_SCORED });
     }
     {
-      // sim-t10, 10 October: a probe folder another user owned refused the wall on every solve, and
-      // the rehearsal ran 56 of them to sandbox-crash before it was killed.
+      // A probe folder another user owns refuses the wall on every solve, and a rehearsal would run
+      // dozens of them to sandbox-crash before it was killed.
       const unwalled: Ending = {
         outcome: "non-result",
         kind: "sandbox-crash",
@@ -1382,8 +1382,8 @@ describe("a round", () => {
   });
 
   it("stops short of three silent tasks where the provider answered and then wrote nothing to the last solve, and reports a task alone silent from the start", async () => {
-    // esp32-fresh-gpt's g-1, 30 October: the provider refused the model on the last task, and the
-    // comparison reported no-step one task short instead of waiting to be run again.
+    // A provider that refuses the model on the last task must not have the comparison report
+    // no-step one task short instead of waiting to be run again.
     let left = 12;
     const s = await setup([], (version, side, nth, digest) => {
       left -= 1;
@@ -1561,8 +1561,8 @@ describe("a round", () => {
 
   // Tasks nobody answers are no room, and neither are tasks the reference answers in every solve:
   // none is informative for it (`informative`), so a harness that gained nothing there showed no
-  // want of a gain. From 10 to 12 October the reference's half share of valid solves was room.
-  // Fix row F48: where the reference harness is valid on every solve, no harness could have shown
+  // want of a gain. The reference's half share of valid solves is not room either.
+  // Where the reference harness is valid on every solve, no harness could have shown
   // a gain, and the answer is another budget or other tasks. Such a comparison stops nothing.
   it("refuses, before any session, a set it could not score", async () => {
     const s = await setup([edit, finish], step);
@@ -1620,8 +1620,8 @@ describe("a standalone comparison", () => {
   });
 
   it("reads the frontier and the retained tasks in one test, on sets fixed before its first solve", async () => {
-    // Until 20 October this comparison read a step on its 4-0 frontier and let the one retained
-    // loss pass the second test; read as one, 4-1 by as many pairs is no step.
+    // This comparison is not read as a step on its 4-0 frontier with the one retained loss passing
+    // a second test; read as one, 4-1 by as many pairs is no step.
     // The reference answers s1 in every solve and nothing else; the starter breaks s1 and answers
     // the four tasks held out below.
     const s = await setup([], (version, side) => ((version === "s1") === (side === "old") ? PASS : LATE));
@@ -1657,8 +1657,8 @@ describe("a standalone comparison", () => {
   });
 
   it("names the attempt before it under the same reference, whatever its candidate, and never one of another kind or reference", () => {
-    // The live jobstat fork of 15 November: a new candidate on the tasks an earlier one drew read
-    // null, so each report hid that its test counted them as fresh draws.
+    // A new candidate on the tasks an earlier one drew must not read null, which would hide in each
+    // report that its test counted them as fresh draws.
     const tasks = Array.from({ length: 8 }, (_, nth) => `t${String(nth)}`);
     const events: LogEvent[] = [];
     const began = (id: string, old: string, fresh: string, drawn: readonly string[]) => {
@@ -1863,9 +1863,9 @@ describe("the scored set", () => {
   });
 
   it("takes the newest epoch's tasks first, and reads every task held before the promotion as retained", () => {
-    // The simulated climb of 10 October: after two promotions a draw over every epoch at once
-    // took two or three tasks the reference failed out of 19, and three comparisons read one win
-    // short. The tasks written since the last promotion are the exam, so they come first, whole.
+    // After two promotions a draw over every epoch at once would take two or three tasks the
+    // reference failed out of 19, and comparisons would read one win short. The tasks written since
+    // the last promotion are the exam, so they come first, whole.
     const climbed: LogEvent[] = [
       ...heldOut(held),
       { at, kind: "harness.promoted", data: { harness: "h1" } } as const,
@@ -1873,8 +1873,8 @@ describe("the scored set", () => {
     ];
     // The tasks held before the promotion, which h1 stood in no comparison of, were written for
     // the harness it replaced: retained, one for each three frontier tasks, by their own hash.
-    // Until 16 October one task in four of the set was kept for them as frontier, and after each
-    // of buffer-159-opus's promotions they tied with both sides valid in every solve.
+    // Kept for them as frontier, one task in four of the set would tie after each promotion with
+    // both sides valid in every solve.
     expect(poolOf(climbed)).toMatchObject({ frontier: ["v7", "v8"], retained: held });
     const newest = scoredSet(climbed, 4, "contract-a");
     expect(newest.tasks.slice(0, 2).toSorted()).toEqual(["v7", "v8"]);
@@ -1885,8 +1885,8 @@ describe("the scored set", () => {
     expect(drawn(climbed, 1).slice(0, 1)).toEqual(drawn(heldOut(["v7", "v8"]), 1));
     // A target past the held-out count scores the frontier whole and its share of the retained.
     expect(drawn(climbed, 12)).toHaveLength(3);
-    // A frontier that fills the target scores its retained share beside it: until 16 October the
-    // share was what the frontier left of the target, and here it left none.
+    // A frontier that fills the target scores its retained share beside it, not what the frontier
+    // leaves of the target, which here is none.
     const full = scoredSet(climbed, 2, "contract-a");
     expect(full.tasks.slice(0, 2).toSorted()).toEqual(["v7", "v8"]);
     expect(full.retained).toHaveLength(1);
@@ -1919,9 +1919,9 @@ describe("the scored set", () => {
 
   it("scores every frontier task, and of the retained tasks one for each three frontier tasks", () => {
     // Nine tasks the reference answered in every solve, three it answered in one of two: all nine
-    // are retained, and the set takes one of them. Since 31 October only the reference's own answer
-    // keeps a task out of the wait for a label, so the three are ones it answers sometimes. Until 16 October the hash kept three of the nine
-    // and the set took all three, topping a set short of frontier up with tasks that can only tie.
+    // are retained, and the set takes one of them. Only the reference's own answer keeps a task out
+    // of the wait for a label, so the three are ones it answers sometimes. The set does not take
+    // three of the nine, which would top a set short of frontier up with tasks that can only tie.
     const closed = Array.from({ length: 9 }, (_, nth) => `c${String(nth)}`);
     const open = ["f1", "f2", "f3"];
     const outcomes = Object.fromEntries([
@@ -1943,9 +1943,9 @@ describe("the scored set", () => {
   });
 
   it("takes the tasks held out since the last comparison began first within an epoch, then the rest by hash", () => {
-    // esp32-141-m3b, 12 October: an epoch starts only at a promotion, so the tasks an Examiner wrote
-    // after a comparison that left no room were drawn by the hash among the ones it had scored,
-    // and g-3 scored 4 of the 7 written for it.
+    // An epoch starts only at a promotion, so the tasks an Examiner writes after a comparison that
+    // left no room would otherwise be drawn by the hash among the ones it had scored, and the next
+    // comparison would score only some of those written for it.
     const first = drawn(heldOut(held), 4);
     const started = { at, kind: "comparison.started", data: { session: "g-1", tasks: first } } as const;
     const written = ["v7", "v8", "v9"];
@@ -1990,9 +1990,9 @@ describe("the scored set", () => {
   });
 
   it("draws the tasks held out since first and fills the rest from older epochs, whichever sides it compares", () => {
-    // From 30 October to 2 November a starter comparison scored the tasks held out since alone.
-    // Those were written above the new reference's grade, and in the six starter comparisons on
-    // record the reference lost them 23 to 33 while it won the older tasks 61 to 20.
+    // A starter comparison does not score the tasks held out since alone. Those are written above
+    // the new reference's grade, and in the starter comparisons on record the reference lost them
+    // while it won the older tasks.
     const started = { at, kind: "comparison.started", data: { session: "g-1", tasks: held } } as const;
     const climbed: LogEvent[] = [
       ...heldOut(held),
@@ -2009,7 +2009,7 @@ describe("the scored set", () => {
     {
       // A cut solve says the budget was short, and nothing of the task.
       const s = await setup([], (version) => (version === "s1" ? LATE : PASS));
-      // Only the reference's answers keep a task from the wait (31 October): make the kept one it.
+      // Only the reference's answers keep a task from the wait: make the kept one it.
       append(s.log, "harness.promoted", { harness: s.old, from: s.starter.digest, rests: [] });
       await checkpoint(s.paired("g-1"));
       await checkpoint(s.paired("g-2"));
@@ -2024,7 +2024,7 @@ describe("the scored set", () => {
     expect(poolOf(read(s.log)).scorable).toContain("s1");
     await checkpoint(s.paired("g-2"));
     // s2 to s4 were answered by both harnesses in every solve of both comparisons: exhausted, and
-    // retained as a check on regression. Until 16 October two thirds of them left the draw.
+    // retained as a check on regression, with none left out of the draw.
     // s5, held out before the promotion and never scored, is retained beside them, and with no
     // frontier task left the draw takes none.
     const pool = poolOf(read(s.log));

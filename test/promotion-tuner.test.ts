@@ -77,7 +77,7 @@ it("promotes and diagnoses A/A steps by the tree's own rule", async () => {
 
 it("credits a won task to the measure that carried it, the bill where a tree before 2 November scored one", async () => {
   const own = await loadTree(ROOT);
-  // A tree before 2 November also scored the bill: half the bill gave its whole 100 points.
+  // An older tree also scored the bill: half the bill gave its whole 100 points.
   const tree: Tree = {
     ...own,
     weights: { ...own.weights, bill: 0.1 },

@@ -14,9 +14,9 @@
  * fix moves the run whole, so one function written above twelve declarations is one error instead
  * of twelve. `Lone`, which code separates from the run, is a finding of its own.
  *
- * `TUPLE` is where the rule was blind until 11 November 2026: `as const` reads as a reference to a
- * name `const`, which nothing declares, so no table written with the assertion ever moved and
- * thirteen sites stood under the code unreported.
+ * `TUPLE` is where the rule was once blind: `as const` reads as a reference to a name `const`,
+ * which nothing declares, so no table written with the assertion would move and its sites would
+ * stand under the code unreported.
  *
  * The safe-name set is where the rule was blind until 2026-09-20: it admitted an import and a
  * function declaration wherever they sat but not an `interface` or a `type` this file declares,

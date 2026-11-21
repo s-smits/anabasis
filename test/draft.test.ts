@@ -364,8 +364,8 @@ describe("a draft put to the host", () => {
       };
       await invoke(toolOf(mode), "put", args);
       expect(draftOf(read(s.log))).toEqual(SOUND);
-      // The check program is a text field, which each draft of 20 November first gave as the text
-      // of a `from_file` object: the gate then loaded that text as the program and refused it.
+      // The check program is a text field, which a draft may give as the text of a `from_file`
+      // object: the gate must not load that text as the program and refuse it.
       const spelt = drafting({ ...s.request, reading: async () => [] }, async (act) => await act(), home);
       const filled = toolOf(spelt).prepareArguments?.({
         ...args,

@@ -264,8 +264,8 @@ describe("a value given from a file in the Examiner's home", () => {
       join(home, "misshapen.json"),
       JSON.stringify([{ name: "out/report.md", body: "y".repeat(60_000) }]),
     );
-    // pi checks a call's arguments against the tool's schema once they are prepared: until 20
-    // November the file was read after that check, which refused it in place of the list.
+    // pi checks a call's arguments against the tool's schema once they are prepared, so the file is
+    // read before that check, which would otherwise refuse it in place of the list.
     const byFile = { ...large, answer: ANSWER, files: { from_file: "files.json" } };
     const tool = trying();
     const check = (args: JsonObject) => {
@@ -317,7 +317,7 @@ describe("a value given from a file in the Examiner's home", () => {
     writeFileSync(join(home, "broken.json"), "{ not json");
     mkdirSync(join(home, "folder.json"));
     writeFileSync(join(home, "large.json"), `"${"x".repeat(4_000_000)}"`);
-    // A dataset of 2 MB, as drafts of 20 November named, is read.
+    // A dataset of 2 MB, as drafts name, is read.
     writeFileSync(join(home, "dataset.json"), `"${"x".repeat(2_000_000)}"`);
     expect(() => prepared({ ...large, answer: { from_file: "dataset.json" } })).not.toThrow();
     for (const [path, refusal] of [

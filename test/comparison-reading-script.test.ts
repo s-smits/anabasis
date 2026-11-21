@@ -387,7 +387,7 @@ describe("a log's comparisons read again", () => {
     // A first report of g-4, then its last, whose A/A loses every task to the other half.
     report("g-4", "step", { differences: scores(6, 0), unbilled: scores(6, 0) }),
     report("g-4", "no-step", { differences: scores(3, 3), unbilled: scores(3, 3), noise: scores(0, 7) }),
-    // A report before 26 October holds no unbilled scores.
+    // An older report holds no unbilled scores.
     report("g-5", "step", { differences: scores(7, 0), unbilled: null }),
   ];
   const rows = rowsOf(events, null, null);
@@ -502,7 +502,7 @@ describe("what the next comparison would score", () => {
 
   it("counts the tasks the comparison before scored, and the set's families, naming neither", () => {
     // The hostile cases: a pool that is the last comparison's tasks less one draws that comparison
-    // again, and on 14 November 19 tasks in families of 18 and 1 read as 19 independent ones.
+    // again, and 19 tasks in families of 18 and 1 must not read as 19 independent ones.
     const lines = (log: readonly LogEvent[]) => drawLines(log, { target: 24, level: 0.02 }).join("\n");
     const repeat = compared(exam(8, 2), 1, 9);
     expect(lines(repeat)).toContain("of those tasks, 8 of 8 scored in the comparison before (g-1)");

@@ -478,9 +478,9 @@ describe("the provider's named reset", () => {
     expect(crashedRun([crashed(1), waited({ load: 99 }), crashed(2)]).count).toBe(2);
   });
 
-  // Found in a jobstat run of 13 November: two Builder sessions crashed, the third was served 28
-  // turns and ran 40 practice solves, and an Examiner session's crash beside it read as the third
-  // in a row, so the campaign ended on its environment and the host stopped the working session.
+  // Two Builder sessions crashed and the third is working: an Examiner session's crash beside it
+  // must not read as the third in a row, ending the campaign on its environment and stopping the
+  // working session.
   it("starts the crash rule's count again at the first turn served to a session that does not crash", () => {
     const ending = (kind: LogEvent["kind"], session: string, ended: string): LogEvent => ({
       kind,

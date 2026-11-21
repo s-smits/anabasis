@@ -398,7 +398,7 @@ describe("accessibility", () => {
     const shown = page.locator(".ana-shown-on-focus");
     await shown.getByRole("button", { name: "b-1" }).focus();
     await expect(shown.locator("table")).toBeVisible();
-    // Shown at its own width the table made the page 331 px wider than a phone on 14 October.
+    // Shown at its own width the table would make the page wider than a phone.
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
     ).toBeLessThanOrEqual(0);

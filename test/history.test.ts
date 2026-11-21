@@ -1,5 +1,5 @@
 // A person's wrong label must remove a passing answer from the exam side's valid examples.
-// The audit of 29 October 2026 found that acceptedAnswers read only the checker's verdict.
+// acceptedAnswers would otherwise read only the checker's verdict.
 import { expect, it } from "bun:test";
 import { acceptedAnswers } from "../src/kernel/history.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";

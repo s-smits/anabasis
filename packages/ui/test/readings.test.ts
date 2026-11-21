@@ -144,7 +144,7 @@ describe("what a comparison came to", () => {
 
 describe("the scores a comparison is read on", () => {
   test("are those without the bill where a report of 26 October to 2 November holds them, else its differences", () => {
-    // g-2 of a gate-ablation run on 1 November: 13 won, 1 lost, 2 tied with the bill, and 3 won,
+    // 13 won, 1 lost, 2 tied with the bill, and 3 won,
     // 0 lost, 13 tied without it, which is what the step read. Scores are whole points.
     const differences = [...Array.from({ length: 13 }, () => 10), -10, 0, 0];
     const unbilled = [60, 60, 30, ...Array.from({ length: 13 }, () => 0)];

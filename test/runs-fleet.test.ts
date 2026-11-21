@@ -256,8 +256,8 @@ describe("code preparation", () => {
     expect(command).toContain("campaign-value");
     expect(command).toContain("prepared");
     expect(command).toMatch(/--placed\W+--yes/);
-    // On 27 October `--as terra` sent to two hosts opened one name on each, since each peer's
-    // `freeName` reads its own names alone: the host goes into the suffix.
+    // One `--as` suffix sent to two hosts would open one name on each, since each peer's `freeName`
+    // reads its own names alone: the host goes into the suffix.
     expect(command).toMatch(/--as\W+terra-runner\W/);
     expect(command).toContain("ANA_RUN_CAP");
     expect(command).not.toContain("ANA_KEEP");
@@ -448,8 +448,8 @@ describe("campaign snapshots", () => {
 
   it("brings every other copy of a host where one copy fails, names it, and still fails the read", () => {
     const made = fixture();
-    // One more campaign than a sync copies at once, the failing one first: until 10 November its
-    // failure started no further copy, so the last was never brought.
+    // One more campaign than a sync copies at once, the failing one first: its failure still starts
+    // the next copy, so the last is brought.
     const names = ["broken", ...Array.from({ length: 6 }, (_, at) => `whole-${String(at)}`)];
     const catalogue = names.map((name) => {
       mkdirSync(join(made.root, "remote", name), { recursive: true });

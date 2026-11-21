@@ -223,7 +223,7 @@ describe("the code a solve's condition records", () => {
 });
 
 describe("the trees a paid seat refuses", () => {
-  // 28 October: a live solve ran from the main checkout, which a job keeps at the stack's top.
+  // A live solve must not run from the main checkout, which a job keeps at the stack's top.
   const trees = realpathSync(mkdtempSync(join(tmpdir(), "ana-tree-fault-")));
   afterAll(() => rmSync(trees, { recursive: true, force: true }));
   const main = join(trees, "main");
@@ -281,8 +281,8 @@ describe("a campaign", () => {
     // answer. Two of the eight held out are then released for practice, by the contract's draw.
     const versions = TASKS.map((task) => taskVersion(campaign.pack(task)));
     // One of them as a command killed between its two appends leaves it, proposed and never put to
-    // its gate: it is still owed the gate. Until 13 November the task states answered for it, and it
-    // was never held out.
+    // its gate: it is still owed the gate, since the task states alone would leave it never held
+    // out.
     for (const cut of TASKS.slice(3, 4)) {
       const { taskId, family } = cut;
       append(campaign.log, "task.proposed", { version: taskVersion(campaign.pack(cut)), taskId, family });
@@ -304,8 +304,8 @@ describe("a campaign", () => {
     const packages = campaign.packages();
     expect(packages.get(extra)).toMatchObject({ taskId: "x-1-001", hidden: { seed: 1 }, ruleIds: ["R1"] });
     expect(versions.every((version) => packages.has(version))).toBe(true);
-    // Until 18 October the lookup held the map of its start, and a practice solve of this task ended
-    // the Builder's conversation crashed in three campaigns on 17 October.
+    // The lookup does not hold the map of its start, since a practice solve of this task would then
+    // end the Builder's conversation crashed.
     expect(packageOf(extra)).toMatchObject({ taskId: "x-1-001" });
     // A second run proposes and releases nothing.
     const events = read(campaign.log).length;
@@ -570,9 +570,8 @@ describe("a campaign", () => {
     }).at(-1);
     expect(took).toMatch(/\b2 tasks\b.*reference 11, new 5\b.*in no test/u);
     // Every reading says how many of its tallied tasks, frontier and retained together, were untied,
-    // the least share of them it detects four times in five, its false rate, and, since 26 October,
-    // and, since 26 October, the same tasks' tally with the bill beside the test without it, which
-    // alone reads the step (31 October).
+    // the least share of them it detects four times in five, its false rate, and the same tasks'
+    // tally with the bill beside the test without it, which alone reads the step.
     const scored = {
       unsolved: 0,
       wins: 4,
@@ -590,7 +589,7 @@ describe("a campaign", () => {
     for (const fact of ["the bill", "8 tallied", "4 of them untied", "95%"]) expect(size).toContain(fact);
     expect(rate).toContain("2%");
     expect(bill).toContain("4-0-4, p 0.063, which decides nothing by itself");
-    // A report written before 20 October read its step, and these, on its frontier alone.
+    // An older report read its step, and these, on its frontier alone.
     expect(reportLines({ valid, objective: null, frontier, noise: null }).at(0)).toContain("8 tallied");
     const none = reportLines({
       valid,
@@ -817,8 +816,8 @@ describe("a campaign", () => {
       ),
     ).rejects.toThrow("name --builder");
   });
-  // Plan item 5.3 (14 October): a pack's stored accepted answer said nothing of a task's
-  // feasibility, so a task only a stored solve had answered could go to a person as infeasible.
+  // A pack's stored accepted answer says nothing of a task's feasibility, so a task only a stored
+  // solve had answered must not go to a person as infeasible.
   it("logs a held-out task feasible where a stored accepted answer passes today's checks, and no other", async () => {
     const work = join(root, "runs", "s", "c01", "t-1", "work");
     mkdirSync(work, { recursive: true });

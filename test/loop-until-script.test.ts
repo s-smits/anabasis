@@ -1,6 +1,6 @@
-// A session's wait for a run's event was written by hand five times on 13 November 2026, each a
-// shell loop over the log: one named its bound in tenths of an hour as hours, and one ended as
-// failed because its last line counted no ending. Each case is an invented log cut to time and kind.
+// A session's wait for a run's event, written by hand as a shell loop over the log, can name its
+// bound in tenths of an hour as hours, or end as failed because its last line counted no ending.
+// Each case is an invented log cut to time and kind.
 import { expect, it } from "bun:test";
 import { boundOf, untilLine } from "#skills/run-improvement-campaign/scripts/until.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";

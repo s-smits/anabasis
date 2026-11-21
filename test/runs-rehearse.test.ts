@@ -2,7 +2,7 @@
 // rehearsal's script takes each task's answers from what is on record, writes the one its side was
 // scripted to into the answer file with what the harness selects, and names a solve that ended
 // otherwise. Its scripted Examiner proves each task it can through try_answer and puts its tasks to
-// the gate, which reads their packages alone (since 1 November 2026).
+// the gate, which reads their packages alone.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { normalizeContext } from "@earendil-works/pi-ai";
 import { conversing } from "../src/examiner/session.ts";
@@ -212,8 +212,8 @@ describe("a rehearsal's script", () => {
     const written = { taskId: "x-1-001", family: "fixture", publicInput: { base: 4 }, hidden: null };
     const log = join(root, "answered", LOG_FILE);
     mkdirSync(dirname(log), { recursive: true });
-    // Until 19 November the script wrote the answer alone, and every jobstat task, whose first check
-    // reads the delivered files, rejected each scripted pass.
+    // The script writes more than the answer, since a task whose first check reads the delivered
+    // files would reject each scripted pass.
     const report = { path: "report.md", base64: Buffer.from("# Report\n").toString("base64") };
     const files = keepAnswerFiles(log, [report]).map((file) => ({ ...file }));
     const events = [
@@ -324,8 +324,8 @@ describe("a rehearsal's scripted Examiner", () => {
     expect(named).toEqual([]);
   });
 
-  // A stop at an Examiner's rest is a rehearsal's to walk: until 7 November each scripted ask was a
-  // session of its own with no shell, so no rehearsal claimed an Examiner's root or rested.
+  // A stop at an Examiner's rest is a rehearsal's to walk: a scripted ask is not a session of its
+  // own with no shell, so a rehearsal claims an Examiner's root and rests.
   it("rests as one conversation in its wall, its root standing, and makes each later ask's own calls", async () => {
     const folder = campaignAt(`rest-${basename(root)}`, []);
     writeFileSync(join(folder, SEED_FILE), "{}\n");

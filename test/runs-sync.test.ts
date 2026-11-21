@@ -513,8 +513,7 @@ describe("the table of tools", () => {
     }
   });
 
-  // Added while production was being written, on the 5 November reading that one host's wall found
-  // node 26.10.0 and its login shell 24.22.1.
+  // A host's wall may find node 26.10.0 where its login shell finds 24.22.1.
   test("the probe's path is the wall's own on this machine, with no empty folder", () => {
     const said = decodeOutput(runSync(["/bin/sh", "-c", `printf %s ${WALL_PATH}`]).stdout).split(":");
     expect(said).not.toContain("");
@@ -536,8 +535,8 @@ describe("the table of tools", () => {
     expect(made.run(["--check"], { env: table({ seats: false }) }).code).toBe(0);
   });
 
-  // Added while production was being written, on the 5 November reading that a guard copied to another
-  // host named the first host's home and exited 2 on every command, with its version reading right.
+  // A guard copied to another host must not name the first host's home and exit 2 on every
+  // command while its version reads right.
   test("a tool that fails its run is drift at the right version, and --yes brings it back", () => {
     const made = fixture();
     const broken = `#!/bin/sh\n[ "$1" = check ] && exit 2\necho "mytool 2.0.0 (stand-in)"\n`;

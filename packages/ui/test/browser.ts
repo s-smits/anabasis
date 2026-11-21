@@ -103,15 +103,15 @@ const START_MS = 20_000;
 /** The process of a launch, as Playwright's call log names it in the launch's timeout. */
 const LAUNCHED = /<launched> pid=(\d+)/u;
 /** How long one load, click or other action may wait. Playwright's own 30 s twice over is the test's
- *  whole 60 s, so a page that never loaded under ten parallel files on 14 October timed the test out
- *  and named no step; at 15 s the stuck step fails with its own message first. */
+ *  whole 60 s, so a page that never loaded under ten parallel files would time the test out
+ *  and name no step; at 15 s the stuck step fails with its own message first. */
 export const ACTION_MS = 15_000;
 /** The page's patience (`waited.ts`, 400 ms), less a timer's granularity: no read the page waits on
  *  says it is reading sooner than this after the click that began it. */
 export const PATIENCE_FLOOR_MS = 390;
 /** Playwright's web-first assertions, each retried for as long as an action may wait. Its own `expect`
- *  gives up at 5 s, which `setDefaultTimeout` does not reach: on 17 October, with campaigns solving on
- *  the host at a load of 30 on 12 cores, 13 browser cases failed a pre-push gate at 5 s each. */
+ *  gives up at 5 s, which `setDefaultTimeout` does not reach, and with campaigns solving on a
+ *  loaded host browser cases would fail a pre-push gate at 5 s each. */
 export const expect = web.configure({ timeout: ACTION_MS });
 /** How long the page waits after a read answers before it reads again (`POLL_MS`, `live.ts`). */
 const POLL_MS = 5000;
@@ -191,12 +191,11 @@ async function startLine(stdout: ReadableStream<Uint8Array>): Promise<[string, s
  *  record it headless (`ANA_UI_VIDEO`, `openPage`).
  *
  *  One start is the launch and the first context, bounded together at `within`, so that two starts
- *  fit inside Bun's 60 s for the hook. On 14 October, at loads of 15 to 54 on 12 cores, Chrome
- *  stalled at its start in 4 of the first 15 commits the pre-push gate ran, and on 12 November in 2
- *  of the 7 proofs of a landing (0 of the 61 kept before it), on two commits that changed nothing
- *  of the page. A stall is the browser's and no test's, and the test wrapper runs no failed file
- *  again (`tools/runtime/test-suite.ts`), so a stalled start is tried once more here, saying so; a
- *  second stall fails the file's `beforeAll`, and a launch that fails outright fails it at once. */
+ *  fit inside Bun's 60 s for the hook. On a loaded host Chrome can stall at its start on commits
+ *  that change nothing of the page. A stall is the browser's and no test's, and the test wrapper
+ *  runs no failed file again (`tools/runtime/test-suite.ts`), so a stalled start is tried once more
+ *  here, saying so; a second stall fails the file's `beforeAll`, and a launch that fails outright
+ *  fails it at once. */
 export async function launchBrowser(within = START_MS, executable = Bun.env.ANA_UI_CHROME): Promise<Browser> {
   const browser = (await startChrome(within, executable)) ?? (await startChrome(within, executable));
   if (browser !== null) return browser;
@@ -272,12 +271,11 @@ export async function openPage(browser: Browser, url: string, viewing: Viewing =
 /** The page loaded again on Playwright's clock, which runs as the real one until `nextPolls` moves
  *  it on, and settled. Eight tests waited out the page's real poll period, about 110 of the suite's
  *  seconds. The reload reads the campaign and each pane's parts afresh, and a test that began to
- *  watch for changes before they had all arrived counted them as a poll's: on CI on 14 October the
- *  harness strip's files drew twice inside "two polls of a campaign that did not change redraw
- *  nothing". So the reload waits for the network to be idle, 500 ms with no read where the page
- *  polls every 5 s, and then for the page to settle. A count of reads in flight, as the walker
- *  keeps, stayed above zero here: a poll the reload cancelled was reported neither finished nor
- *  failed. */
+ *  watch for changes before they had all arrived would count them as a poll's: the harness strip's
+ *  files could draw twice inside "two polls of a campaign that did not change redraw nothing". So
+ *  the reload waits for the network to be idle, 500 ms with no read where the page polls every 5 s,
+ *  and then for the page to settle. A count of reads in flight, as the walker keeps, stayed above
+ *  zero here: a poll the reload cancelled was reported neither finished nor failed. */
 export async function withClock(page: Page): Promise<void> {
   await page.clock.install();
   await page.reload({ waitUntil: "networkidle" });
@@ -331,12 +329,11 @@ export function expectQuiet(opened: Opened, allowed: readonly string[] = []): vo
 }
 
 /** Every answer the page reads from the API, its body kept as it passes: a read the page cancels
- *  for a newer one keeps none to ask for once it has ended, which failed a test on CI on 14 October.
- *  A read still in flight when its page closes ends there and is no answer: on 20 October, under a
- *  load of 42 on 12 cores, a test that timed out left one, whose `socket hang up` was printed
- *  outside any test and failed `bun run land` on a commit that changed no test. One the page
- *  leaves between its arrival and the reading of its body is disposed, and is no answer either: on
- *  12 November, beside a live comparison, the reading threw in a test whose commit changed none. */
+ *  for a newer one keeps none to ask for once it has ended, which would fail a test on CI.
+ *  A read still in flight when its page closes ends there and is no answer, since under load a test
+ *  that timed out could leave one whose `socket hang up` is printed outside any test and fails
+ *  `bun run land` on a commit that changed no test. One the page leaves between its arrival and the
+ *  reading of its body is disposed, and is no answer either. */
 export async function keepAnswers(page: Page): Promise<string[]> {
   const answers: string[] = [];
   await page.route("**/api/**", async (route) => {
@@ -407,12 +404,12 @@ export async function accessibilityViolations(page: Page, within?: string): Prom
 /**
  * Count, on every animation frame of every page of `context`, whether `main` shows the placeholder
  * a campaign stands behind while it is read sooner than the page's patience after the last click,
- * and whether it shows nothing at all, with the address of each such frame. The operator's
- * recording of 14 October caught a switch of project painting the placeholder for four frames; a
- * screenshot taken before or after never would, so the page is sampled where it paints. A
- * placeholder after the patience is what the page owes a slow read, and on a host loaded to 14 on 8
- * cores on 21 October a switch whose read the test answered at once still took that long to draw,
- * so the count is held to the page's own clock. Read and reset the counts with `framesSeen`.
+ * and whether it shows nothing at all, with the address of each such frame. A switch of project can
+ * paint the placeholder for a few frames, which a screenshot taken before or after never catches,
+ * so the page is sampled where it paints. A placeholder after the patience is what the page owes a
+ * slow read, and on a loaded host a switch whose read the test answered at once can still take that
+ * long to draw, so the count is held to the page's own clock. Read and reset the counts with
+ * `framesSeen`.
  */
 export async function sampleFrames(context: BrowserContext): Promise<void> {
   await context.addInitScript((patienceMs: number) => {

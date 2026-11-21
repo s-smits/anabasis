@@ -4,8 +4,7 @@
  * the gate's steps (`test/helpers/fake-bun.ts`). A small driver written into the fixture imports the
  * gate from a checkout and proves the `<commit>:<pass>` pairs it is given, so a case names each
  * commit's pass as land would and reads which steps and nearby tests each pass ran, and which pass
- * a remembered one spared. Until 25 October these cases ran through the pre-push hook, which then
- * proved every commit a push added.
+ * a remembered one spared, without going through the pre-push hook.
  */
 import {
   appendFileSync,
@@ -343,8 +342,8 @@ describe("proveCommits", () => {
 
   it("ends a pass under way when stopped, records nothing of it and starts no other", () => {
     // The test step takes two seconds, so a stop once it starts lands while the static pass of
-    // `source` runs. Until 20 November 2026 the stop came at 1.2 s, which a host at a load of 19
-    // reached before that pass had begun, so no gate ran and the case failed.
+    // `source` runs. A stop at 1.2 s could land on a loaded host before that pass had begun, so no
+    // gate would run and the case would fail.
     const result = prove(landing, { ANA_FAKE_SUITE: "(pass) one", DRIVER_STOP_AT: `workers\t${source}` });
     expect(result.status).toBe(0);
     expect(result.stderr).toContain(`${short(source)}: stopped.`);

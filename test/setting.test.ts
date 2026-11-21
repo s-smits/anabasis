@@ -18,7 +18,7 @@ import {
 } from "../tools/d2/setting.ts";
 
 /** The setting of a campaign no command has named anything for: the one budget every solver is
- *  held to since 19 October (`LIMITS`), and 24 tasks to score since 12 October (`SIZE`), 12 before. */
+ *  held to (`LIMITS`), and 24 tasks to score (`SIZE`). */
 const UNNAMED: Recorded = {
   solver: null,
   minutes: 30,
@@ -26,7 +26,7 @@ const UNNAMED: Recorded = {
   target: 24,
   solves: 2,
 };
-/** The same, as a campaign recorded it before 19 October: 120 minutes, the model's turns unlimited. */
+/** The same, as an older campaign recorded it: 120 minutes, the model's turns unlimited. */
 const UNLIMITED: Recorded = { ...UNNAMED, minutes: 120, modelTurns: null };
 /** One an operator recorded: another solver, an eight-minute wall, forty model turns, three tasks. */
 const SHORT: Recorded = {
@@ -112,7 +112,7 @@ describe("a campaign's setting, recorded once", () => {
       data: { minutes: "8" },
     };
     expect(recordedSetting([torn])).toBeNull();
-    // A record of 10 October holds the prompts a solve was given; one that held another count than
+    // An older record holds the prompts a solve was given; one that held another count than
     // every solve is given now ran under another setting, and is refused rather than read as this one.
     const counted = (turns: number): LogEvent => ({ ...torn, data: { ...UNNAMED, turns } });
     expect(recordedSetting([counted(24)])).toEqual(UNNAMED);
@@ -149,8 +149,8 @@ describe("a campaign's setting, recorded once", () => {
 });
 
 // A campaign whose solves were made before a setting was recorded has one all the same: the one
-// its last test-side solves ran under. Recode ran on 9 October with its solver held to 15 of its
-// own turns, under a 30-minute wall, and its log holds no record.
+// its last test-side solves ran under, such as a solver held to 15 of its own turns under a
+// 30-minute wall, with no record in its log.
 describe("the first record of a campaign that already holds solves", () => {
   const ran = {
     model: "claude/claude-sonnet-5-5",

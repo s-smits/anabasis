@@ -52,7 +52,7 @@ const OPENED = "campaign.opened";
 /** The project every campaign here is opened under. */
 const PROJECT = "fixture-products";
 const MOVED = "campaign.move";
-// Fourteen held once two are released. At the default level, 0.02 since 12 October, a step takes
+// Fourteen held once two are released. At the default level, 0.02, a step takes
 // six tasks all won (`sweepOf`), and a paid comparison starts on two more (`comparisonFloor`):
 // eight still read one after a pass labelled wrong turns one win into a tie.
 const TASKS = fixtureTasks(16);
@@ -177,7 +177,7 @@ describe("a campaign run by its log", () => {
     names.push(name);
     const flags = flagsOf(["--root", root, "--name", name, "--project", PROJECT]);
     opened(log, flags, "scripted");
-    // Until 3 November an opening kept `led`, and one from before 13 October kept no such term.
+    // An older opening kept `led`, and an older one still kept no such term.
     const [first] = read(log);
     append(log, OPENED, { ...first?.data, led: true });
     expect(opened(log, flags, "scripted")).not.toHaveProperty("led");
@@ -232,8 +232,8 @@ describe("a campaign run by its log", () => {
   it("ends on its environment where a move it began changed nothing, so the run is never left without an ending", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-empty-move`;
-    // The move that takes the pack's tasks in writes nothing, as the M1's release did on 20 October,
-    // where the draw held no task and the process exited with no ending on record.
+    // The move that takes the pack's tasks in writes nothing, since a release there would find the
+    // draw holding no task and the process would exit with no ending on record.
     await expect(
       harnessBuilder(seeded(name), { seated: answering(), prepare: async () => 0 }),
     ).rejects.toThrow("the move changed nothing");
@@ -269,7 +269,7 @@ describe("a campaign run by its log", () => {
       expect(await harnessBuilder([...paid, "--target", "8", "--dry-run"])).toMatchObject({
         move: "accept",
       });
-      // A seat whose provider holds no key would end every call a provider non-result (21 October).
+      // A seat whose provider holds no key would end every call a provider non-result.
       const solver = ["--solver", "openrouter/deepseek/deepseek-v4.1-flash-1017"];
       await expect(harnessBuilder([...paid, ...solver, "--target", "8", "--dry-run"])).rejects.toThrow(
         "the solver's openrouter/deepseek/deepseek-v4.1-flash-1017: its provider holds no credential",
@@ -315,14 +315,13 @@ describe("a campaign run by its log", () => {
     expect(after.findIndex(({ kind }) => kind === MOVED)).toBeGreaterThan(2);
     // Reopened once more, with every session ended: nothing more is ended. Ending happens at the
     // opening, so no move is made: a comparison of scripted solves, each on its own disk image,
-    // ran past the test suite's idle deadline on a three-core macOS runner (15 October).
+    // can run past the test suite's idle deadline on a three-core macOS runner.
     const ends = () => read(log).filter(({ data }) => data.ended === "killed").length;
     await harnessBuilder([...flags, "--moves", "0"], seats);
     expect(ends()).toBe(3);
   });
 
-  // Three idle conversations end it: until 3 November a campaign its host led waited for as many
-  // sessions as a comparison followed (`--sessions`, which went on 5 November).
+  // Three idle conversations end it, rather than a count of sessions a comparison follows.
   it("runs from set-up to an ending on one command, with every move on record: 3 conversations with nothing to work on end it finished", async () => {
     const ended = 3;
     layOutPack(root, bundle, TASKS, FIXTURE);
@@ -330,7 +329,7 @@ describe("a campaign run by its log", () => {
     // A patience of two; a target of
     // eight, the fewest a paid comparison at the default level starts on, which the pack's held-out tasks hold, so
     // that the first move builds: a campaign short of its target has tasks written before the first
-    // session (11 and 12 October).
+    // session.
     const flags = [...seeded(name), "--patience", "2", "--target", "8"];
     const strayed: string[] = [];
     const solves = answering(strayed);
@@ -362,8 +361,8 @@ describe("a campaign run by its log", () => {
 
     const ending = await harnessBuilder([...flags, "--practice", "2"], { ...seats, host });
     // Reading the exam and setting the tasks apart asked the host nothing, and the conversations
-    // solved nothing, so nothing looked at the load: until 12 October the session waited at its
-    // start for a host it would never solve on, and until 15 October it read the load for its move.
+    // solved nothing, so nothing looked at the load: the session does not wait at its start for a
+    // host it will never solve on, nor read the load for its move.
     expect(looks).toHaveLength(0);
     expect(of(name, "campaign.waited")).toEqual([]);
     expect(ending).toMatchObject({
@@ -372,7 +371,7 @@ describe("a campaign run by its log", () => {
       code: "finished",
     });
     // A move records no time and no load of its own: its event's time is when it began, and the
-    // load is each solve's (`solve.started`). Until 15 October it held both.
+    // load is each solve's (`solve.started`).
     const moves = of(name, MOVED);
     expect(
       moves.filter(({ began, load, cores }) => [began, load, cores].some((held) => held !== undefined)),
@@ -470,7 +469,7 @@ describe("a campaign run by its log", () => {
       objectWith({ comparison: "g-1", load: 99, cores: 4, ms: anyOf(Number) }),
     ]);
     // A task's solves start together, so one beside it that read a quiet host may begin before the
-    // wait is written (the Linux job, 20 October): the task's last solve to begin is the one that waited.
+    // wait is written, as on a Linux runner: the task's last solve to begin is the one that waited.
     const held = kept[waited]?.data.task;
     const began = kept.findLastIndex(({ kind, data }) => kind === "solve.started" && data.task === held);
     expect(waited).toBeLessThan(began);
@@ -486,7 +485,7 @@ describe("a campaign run by its log", () => {
       ["compare", "g-1"],
     ]);
     // Each report carries `unsettled` until a person answers its packet, and the promotion below
-    // does not wait for it (the operator, 12 October).
+    // does not wait for it (the operator's rule).
     const [first] = of(name, "comparison.reported");
     expect(first).toMatchObject({
       reading: "step",
@@ -494,8 +493,8 @@ describe("a campaign run by its log", () => {
       settled: "unsettled",
     });
     expect(of(name, "harness.promoted")).toEqual([]);
-    // Reopened by its name alone, it still waits: the opening keeps the word. Until 12 October it
-    // was the running command's flag, and a reopen that left it off promoted without the operator.
+    // Reopened by its name alone, it still waits: the opening keeps the word, since a flag of the
+    // running command alone would let a reopen that left it off promote without the operator.
     expect(await harnessBuilder(flags, seats)).toMatchObject({ move: "promote" });
     expect(of(name, "harness.promoted")).toEqual([]);
     expect(of(name, OPENED).at(-1)).toMatchObject({ attended: true });
@@ -532,14 +531,14 @@ describe("a campaign run by its log", () => {
       // As the gate holds out the Examiner's tasks, the host releases the practice owed.
       { move: "prepare", code: "practice" },
     ]);
-    // The promoted harness answered every task of g-1, which one comparison does not close
-    // (29 October), and the tasks held before the promotion are retained: the session the table
+    // The promoted harness answered every task of g-1, which one comparison does not close, and
+    // the tasks held before the promotion are retained: the session the table
     // names after it is asked for the comparison floor and the practice on top, and ends once the
     // ten it wrote supply them.
     expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1", proposed: 10, ended: "supplied" }]);
     // The tasks written are read by a starter comparison before a Builder session is paid for: the starter
-    // against the promoted harness. Until 10 October the Builder built here, three times, on
-    // practice the promoted harness passed (t-4, t-9, t-10).
+    // against the promoted harness, rather than the Builder building here on practice the promoted
+    // harness passed.
     expect(next).toMatchObject({ move: "compare", fresh: "starter", reference: "promoted" });
     const after = await harnessBuilder([...flags, "--moves", "1"], seats);
     expect(of(name, "comparison.started").at(-1)).toMatchObject({
@@ -821,8 +820,8 @@ describe("a campaign run by its log", () => {
         ["referee.finding", { solve: "gate-solve", ruling: "earned", billed: 6 }],
         ["exam.finished", { session: "x-x", billed: 4, held: ["a", "b"] }],
       ]);
-      // $10 over two tasks, the Referee's $6 left to the Referee: until 27 October the drafting session's
-      // $4 read as nobody's here, and the ruling of the room solve as the Examiner's, $6.00 a task.
+      // $10 over two tasks, the Referee's $6 left to the Referee, and the drafting session's $4 is
+      // the Examiner's, not nobody's, nor the ruling of the room solve the Examiner's.
       expect(lines.find((line) => line.startsWith("- The Examiner:"))).toContain("$5.00 a task held out (2)");
       // The whole-run reader bills the same work to the Examiner.
       const events = read(join(REPO, ".ana", "d2", name, LOG_FILE));
@@ -909,7 +908,7 @@ describe("a campaign run by its log", () => {
     // No word is left for a campaign that has no opening, and none that names two things.
     expect(() => wordCommand(["--name", `${name}-none`, "--stop", "x"])).toThrow("has no opening on record");
     expect(() => wordCommand(["--name", name, "--stop", "x", "--budget", "5"])).toThrow("one word");
-    // `--cause` released a campaign its A/A comparison ended until 20 October, and is no word now.
+    // `--cause` once released a campaign its A/A comparison ended, and is no word now.
     expect(() => wordCommand(["--name", name, "--cause", "the host was loaded"])).toThrow();
     expect(strayed).toEqual([]);
   });
@@ -976,7 +975,8 @@ describe("a campaign run by its log", () => {
       },
     ]);
     // The setting is recorded as the first run starts, with the scored tasks the campaign opened
-    // with: t-2 (10 October) opened with --target 6 and its first session recorded the default 12.
+    // with, so that a campaign opened with --target 6 does not record the default 12 at its first
+    // session.
     expect(of(name, "campaign.setting")).toMatchObject([{ minutes: 8, target: 8, solves: 3 }]);
     expect(of(name, "draft.finished")).toMatchObject([{ session: "d-1", stands: true, tries: 2 }]);
     expect(of(name, "exam.drafted")).toHaveLength(1);
@@ -1042,9 +1042,9 @@ describe("a campaign run by its log", () => {
   });
 
   it("hands over a harness's links as links, and leaves nothing where the copy is not the harness", async () => {
-    // Until 11 October the handover was copied with every link followed: a link among a kept
-    // harness's programs to a host file came out as that file's bytes, in a folder written to leave
-    // the host, and a copy that then did not open as the harness stayed where it was written.
+    // The handover is not copied with every link followed, since a link among a kept harness's
+    // programs to a host file would come out as that file's bytes, in a folder written to leave the
+    // host, and a copy that then did not open as the harness would stay where it was written.
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-links`;
     // The pack and the campaign's name, which is what the handover takes: no project, no admission.

@@ -50,8 +50,8 @@ test("a load with no cores on record yet is no sample", () => {
 });
 
 test("a provider's wait ends at its reset, an ending or the next session start, whichever comes first", () => {
-  // buffer-506, 29 October: a reset 39 hours off was waited out under another login, which
-  // writes no ending; its next session started four and a half hours on.
+  // A reset 39 hours off waited out under another login writes no ending; the next session starts
+  // four and a half hours on.
   const reset = (minutes: number) => event(minutes, "campaign.waited", { for: "provider", ms: 600 * MIN });
   const moved = [reset(0), event(270, "build.started", {}), event(400, "solve.finished", {})];
   expect(waitsOf(moved)).toEqual([{ from: T0, until: T0 + 270 * MIN, kind: "provider" }]);

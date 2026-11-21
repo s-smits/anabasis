@@ -54,8 +54,8 @@ describe("the lane catalogue", () => {
     );
   });
 
-  // The sets each lane opened under while they were read from its `Starts from` prose, before the
-  // `Marks:` line (8 November 2026); a change to one is a change to how investigations open.
+  // The sets each lane opened under when they were read from its `Starts from` prose, before the
+  // `Marks:` line; a change to one is a change to how investigations open.
   it("reads each lane's standing, isolation, blindness and side-by-side climb from its marks", () => {
     const lanes = lanesOf(catalogueText());
     const marked = (flag: (lane: Lane) => boolean) =>
@@ -140,8 +140,7 @@ describe("lanes packed into sessions", () => {
     ]);
   });
 
-  // On 7 November the blind grading lane, packed after three lanes that read outcomes, said its
-  // grades were not blind.
+  // The blind grading lane, packed after lanes that read outcomes, could not call its grades blind.
   it("puts the blind lane first in its session, and the rest in number order", () => {
     const blind = lanes.filter((each) => each.blind);
     expect(blind.map(({ number }) => number)).toEqual([14]);

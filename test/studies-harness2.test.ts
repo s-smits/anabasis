@@ -133,8 +133,8 @@ describe("an arm's harness, taken from a campaign", () => {
 
 describe("the container solver", () => {
   it("loads as one compiled file, where no file of the tree is beside it", () => {
-    // Until 19 November the answer tool read its capture program from beside itself as it loaded,
-    // which a compiled solver does not hold, so the solver ended before it read a flag.
+    // The answer tool does not read its capture program from beside itself as it loads, which a
+    // compiled solver does not hold, so the solver would end before it read a flag.
     const solver = join(root, "pi-solve-here");
     const source = join(import.meta.dir, "..", "studies", "shared", "pi-solve.ts");
     runSync([capturedExecPath, "build", "--compile", source, "--outfile", solver]);

@@ -69,7 +69,7 @@ const triggered = (log: readonly LogEvent[]) => {
 
 /**
  * A promotion read twice on `count` tasks, every reference solve of them valid at one measure. A
- * gate holds only its outcome, as since 1 November. Every frontier task is won in each reading,
+ * gate holds only its outcome. Every frontier task is won in each reading,
  * `by` the new side's better measure or its bill of half the reference's (the new side then
  * measuring as the reference does); on validity alone they tie, unless the reference `fails` its
  * first solve of each task.
@@ -164,8 +164,8 @@ describe("lane 18: a promotion and the climb after it", () => {
   });
 
   it("reads a control's confirmation on tasks first drawn after the promotion apart from older ones", () => {
-    // Q5 of the climb investigation, 3 November: both confirmations on record rested on tasks the
-    // promoted harness had been promoted on. The starter is the fresh side, so the reference wins
+    // A confirmation can rest on tasks the promoted harness was promoted on, so the tally is split
+    // by age. The starter is the fresh side, so the reference wins
     // what the starter loses, and a task set aside or short is left out of both ages.
     const { log, put, compare } = held();
     compare("g-1", "hbase", "hn", STEP)();
@@ -221,8 +221,8 @@ describe("lane 18: a promotion and the climb after it", () => {
   });
 
   it("names a promotion no starter comparison confirmed, and leaves out one that a starter comparison did", () => {
-    // The gate ablation of 1 November: five promotions, a Builder's comparison in each starter
-    // comparison's place, and none confirmed.
+    // Five promotions, a Builder's comparison in each starter comparison's place, and none
+    // confirmed.
     const { log, put, compare } = held();
     compare("g-1", "hbase", "hn", STEP)();
     put("harness.promoted", { harness: "hn", from: "hbase", rests: [{ comparison: "g-1" }] });
@@ -237,7 +237,7 @@ describe("lane 18: a promotion and the climb after it", () => {
   });
 
   it("says how many of a step's wins it could lose, and reads no comparison that did not step", () => {
-    // The gate ablation's g-3 of 1 November cleared at 6-0 with none to spare at 0.02; at 8-0 two
+    // A 6-0 clears with none to spare at 0.02; at 8-0 two
     // wins can go before the seventh-largest sweep no longer clears.
     const { log, compare } = held();
     const step = (wins: number) => ({
@@ -324,7 +324,7 @@ describe("lane 18: a promotion and the climb after it", () => {
 
   it("files an Examiner's try apart from a comparison's two sides", () => {
     // A try names its Examiner session where a comparison's solve names its comparison, and no
-    // comparison starts under it: on 11 November esp32's 19 tries read as "x-1 new".
+    // comparison starts under it, so tries do not read as "x-1 new".
     const { log, put, compare } = held();
     compare("g-1", "hbase", "hn", STEP);
     for (const [solve, harness, comparison] of [
@@ -418,7 +418,7 @@ describe("lane 18 across campaigns", () => {
 });
 
 describe("a tally as its step is read", () => {
-  // g-3 of 1 November: 9 of 18 tied with the bill, 14 of 18 without it, which the step reads.
+  // 9 of 18 tied with the bill, 14 of 18 without it, which the step reads.
   const scored = {
     wins: 7,
     losses: 2,

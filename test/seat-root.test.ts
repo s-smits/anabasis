@@ -241,8 +241,8 @@ describe("what a seat left", () => {
     expect([folder, claimOf(folder)].map(there)).toEqual([false, false]);
   });
 
-  // A campaign that was killed released nothing, and nothing said whose its roots were: on
-  // 16 November 111 roots and 49 verifier cells stood on one host.
+  // A campaign that was killed released nothing, and nothing said whose its roots were, so roots
+  // and verifier cells would pile up on a host.
   it("is released by a sweep once its claimant is gone, and never while that process lives", async () => {
     const { parent, root } = unclaimed();
     const holder = claimant(root);

@@ -447,8 +447,8 @@ describe("the Claude backend", () => {
   });
 
   // A session that ends on its own call, `finish` or `submit`, leaves the query's `result` to come
-  // after its last turn: on buffer (12 October) 10.19 of 13.35 billed dollars had no figure of
-  // Claude Code's beside them while the result was read from the turns alone.
+  // after its last turn, so most billed dollars would have no figure of Claude Code's beside them
+  // if the result were read from the turns alone.
   it("takes the ledger from the result the close brings after a session's last call, and none for a session no query served", async () => {
     replay("parallel-tools.jsonl");
     const options = solveOptions();
@@ -610,8 +610,8 @@ describe("the Claude backend", () => {
   });
 
   // Claude Code lives on for up to three seconds after its query closes and writes its state as it
-  // goes. Until 16 November the home went before the ledger was read, and what Claude Code wrote
-  // after stood: 419 such homes on one host. Linux ends no process by the folder it works in.
+  // goes. The home goes only after the ledger is read, or what Claude Code wrote after would stand
+  // and homes would pile up on a host. Linux ends no process by the folder it works in.
   it.skipIf(runtimeProcess.platform !== "darwin")(
     "leaves nothing of a Claude Code that outlives its close and writes into its home on the way out",
     async () => {
@@ -633,8 +633,8 @@ describe("the Claude backend", () => {
     expect(launches()).toBe(0);
   });
 
-  // On 24 October a Builder's Claude Code sent nothing after its tool results for 22 hours, and only
-  // the session's wall, which stops while host actions run, would have ended the turn.
+  // A Builder's Claude Code can send nothing after its tool results for hours, and only the
+  // session's wall, which stops while host actions run, would end the turn.
   it("fails a turn whose Claude Code falls silent for the quiet bound, and closes its query", async () => {
     replay(TEXT, (text) => `${text.trim().split("\n").slice(0, -1).join("\n")}\n`);
     sweep = claudeProvider({ executable, compaction: "off", home, shutdown: shutdown.signal, quiet: 300 });

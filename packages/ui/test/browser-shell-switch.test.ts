@@ -1,8 +1,8 @@
 /**
  * What the page paints while it changes what it shows: a switch of project or campaign, a slow read
  * of the next campaign and a pane switch. What a poll that brings nothing new redraws is each pane's
- * own suite's to say. The operator's recording of 14 October showed a switch of project painting
- * "Reading the campaign" over the whole page for four frames; the frame sampler (`sampleFrames`)
+ * own suite's to say. A switch of project can paint "Reading the campaign" over the whole page for
+ * a few frames; the frame sampler (`sampleFrames`)
  * counts such frames where they are painted.
  */
 import { afterAll, beforeAll, describe, test } from "bun:test";
@@ -191,8 +191,8 @@ describe("a switch of project or campaign", () => {
     const opened = await sampled(`campaign=${keys.fixture}`, "fixture");
     const { page } = opened;
     // The previous campaign stands, inert, only for the page's patience before the placeholder
-    // replaces it, and on a host loaded to 14 on 8 cores on 21 October the click came later than
-    // that and found no card. The page's clock is held, so the patience runs out only after the click.
+    // replaces it, and on a loaded host the click can come later than that and find no card. The
+    // page's clock is held, so the patience runs out only after the click.
     await page.clock.install();
     await page.reload();
     await expect(page.getByRole("heading", { level: 1, name: "fixture" })).toBeVisible();

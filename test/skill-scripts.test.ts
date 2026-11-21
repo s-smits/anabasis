@@ -372,7 +372,7 @@ describe("republishing a consolidated stack", () => {
     );
     expect(() => pairs("head", ["1=x", "1=y"])).toThrow("names #1 twice");
 
-    // main is rewritten on the remote, as on 25 October: the same tree under a new commit.
+    // main is rewritten on the remote: the same tree under a new commit.
     git(co, "switch", "-q", "--detach", "origin/main");
     git(co, "commit", "-q", "--amend", "--allow-empty", "--author", "u <u@u.dev>", "-C", "HEAD");
     git(co, "push", "-q", "--force", "origin", "HEAD:refs/heads/main");
@@ -398,7 +398,7 @@ describe("replaying a stack onto main once what it stood on landed", () => {
   git(co, "config", "user.email", "t@t.dev");
   step("base.txt", "base\n");
   git(co, "push", "-q", "origin", "HEAD:refs/heads/main");
-  // As on 6 November: #1 stands on `lower`, which then merges into main, and #2 stands on #1.
+  // #1 stands on `lower`, which then merges into main, and #2 stands on #1.
   git(co, "switch", "-q", "-c", "lower");
   const lower = step("lower.txt", "lower\n");
   const a = step("a.txt", "a\n");

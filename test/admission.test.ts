@@ -129,9 +129,8 @@ beforeAll(() => {
 describe("what a log holds for the next comparison", () => {
   it("counts the frontier: the reference's closed tasks are retained, and after a promotion every task held before it", () => {
     // After a step read 7-0-4 the harness that won was valid in every solve on 8 of the 11 tasks,
-    // so a round made against it had 3 to win where the tally said 7 (2026-10-09). The frontier
-    // leaves out what the reference closed, which the untied share read a second time until
-    // 16 October.
+    // so a round made against it had 3 to win where the tally said 7. The frontier leaves out what
+    // the reference closed, which the untied share does not read a second time.
     // Two readings of the same pair, since one reading calls no task easy.
     const spelled = ["PP PP", "PF PP", "FF PP", "FF PP", "FF PP", "FF PP", "FF PF", "FF FP"];
     const solves = Object.fromEntries(EIGHT.map((task, place) => [task, spelled[place] ?? ""]));
@@ -142,16 +141,15 @@ describe("what a log holds for the next comparison", () => {
     // comparisons wait for a person whatever h1 answered (rule 3), so the frontier is one.
     expect(supplyOf(stepped)).toMatchObject({ held: 1, awaiting: 6 });
     // Once h1 is promoted every task held before it chose it, so all are retained and the frontier is
-    // empty until tasks are held out for it. Until 20 November the two h1 left open stayed frontier.
+    // empty until tasks are held out for it, the two h1 left open among the retained.
     const promotion = event("harness.promoted", { harness: "h1", from: "h0", rests: [] });
     expect(supplyOf([...stepped, promotion])).toMatchObject({ held: 0 });
   });
 
   it("counts the tasks that may still be scored, once the reference's closed ones retire", () => {
-    // The stack review (12 October): two comparisons in which the reference answered a to d in
-    // every solve and e and f in one of two close a to d, which stay as retained tasks: two are
-    // left on the frontier, where a step at 0.10 takes four, and at 0.25 two. Until 16 October two
-    // of the four left the draw by the contract's hash.
+    // Two comparisons in which the reference answered a to d in every solve and e and f in one of
+    // two close a to d, which stay as retained tasks rather than leaving the draw by the contract's
+    // hash: two are left on the frontier, where a step at 0.10 takes four, and at 0.25 two.
     const supply = supplyOf(closed);
     expect(supply).toMatchObject({ held: 2, exhausted: 4 });
     for (const level of [0.1, 0.25]) {
@@ -177,9 +175,9 @@ describe("what the gate refuses, by its code", () => {
   });
 
   it("held-short: counts every held-out task, a family's siblings too", () => {
-    // Read on 13 November: with one task a family scored, today's draw refused 20 of 27 recorded
-    // jobstat comparison starts, and the 8 comparisons since read no step on 8 tasks each. A
-    // family's tally is reported beside the reading (`compared`) and decides nothing.
+    // A draw that scored one task a family would refuse most recorded comparison starts and leave
+    // the rest too small to read a step. A family's tally is reported beside the reading
+    // (`compared`) and decides nothing.
     const wanted = { ...WANTED, level: 0.02 };
     const nine = ["a", "b", "c", "d", "e", "f", "g", "h", "i"].flatMap((version, place) => [
       event("task.proposed", { version, family: `f${String(place % 4)}` }),

@@ -98,8 +98,8 @@ describe("a clone with no hosts", () => {
   });
 
   test("a named fetch that can ask no host refuses, though a copy of that campaign is held", () => {
-    // Hostile: a reader takes a peer's copy as it stands where no host is listed, and until
-    // 16 November a named fetch did too, printing the copy's path and exiting 0 with nothing brought.
+    // Hostile: a reader takes a peer's copy as it stands where no host is listed, but a named fetch
+    // must not, printing the copy's path and exiting 0 with nothing brought.
     const copy = join(clone, "data/runs/peer/held");
     mkdirSync(copy, { recursive: true });
     const opened = { at: "2026-11-15T00:00:00.000Z", kind: "campaign.opened", data: { project: "held" } };

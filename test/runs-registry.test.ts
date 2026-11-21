@@ -23,7 +23,7 @@ describe("a run's name", () => {
     const listed = [
       round,
       // A live solve of the same name is no campaign, and a campaign of the name in another
-      // worktree is a second one: two buffer campaigns ran under one name on 13 October.
+      // worktree is a second one, since two campaigns can run under one name.
       { ...round, path: "/wt/.ana/live/r1.jsonl", end: "solve.finished" as const },
       campaign("r2", "/wt"),
       campaign("r2", "/other"),
@@ -77,7 +77,7 @@ describe("a run's writers", () => {
     expect(flagOf(["bun", "x.ts", "--name", "r1"], "--name")).toBe("r1");
     expect(flagOf(["bun", "x.ts", "--name=r1"], "--name")).toBe("r1");
     expect(flagOf(["bun", "x.ts", "--names", "r1"], "--name")).toBeUndefined();
-    // Until 10 November a campaign command with no --name read as writing the run named `bun`.
+    // A campaign command with no --name is not read as writing the run named `bun`.
     const unnamed = [{ pid: 1, cwd: "/wt", args: ["bun", "tools/d2/harness-builder.ts", "--unattended"] }];
     expect(writers({ ...round, name: "bun" }, unnamed)).toEqual([]);
   });

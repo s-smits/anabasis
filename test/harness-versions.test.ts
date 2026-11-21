@@ -112,8 +112,8 @@ describe("the harnesses a campaign keeps", () => {
 
 describe("a campaign its Builder leads", () => {
   it("reads each checkpoint's parent as the session's checkpoint before it, or what it began from, and an open session by its last checkpoint", async () => {
-    // A led conversation freezes with `build.checkpoint` alone: buffer-fresh-opus-v072's compared
-    // harnesses all read "no record of its making" (the sweep of 27 October, lane 15).
+    // A led conversation freezes with `build.checkpoint` alone, which must not leave its compared
+    // harnesses reading "no record of its making".
     const led = join(root, "led");
     const ledStates = join(led, "states");
     mkdirSync(ledStates, { recursive: true });
@@ -128,8 +128,8 @@ describe("a campaign its Builder leads", () => {
     append(ledLog, "build.started", { session: "b-1", parent: starter });
     append(ledLog, "build.checkpoint", { session: "b-1", harness: child });
     append(ledLog, "build.checkpoint", { session: "b-1", harness: later });
-    // A state the session practised and never froze, and one only a comparison solved: until
-    // 2 November both read "no record of its making" (lane 16: 28 states in seven campaigns).
+    // A state the session practised and never froze, and one only a comparison solved: neither
+    // reads "no record of its making".
     const practised = await keep(
       (dir) => writeHarness(dir, { ...EXAMPLE, guide: `${EXAMPLE.guide}\nPractised.` }),
       ledStates,
@@ -171,8 +171,8 @@ describe("a campaign its Builder leads", () => {
     expect(made.get(later)?.parent).toBe(child);
     expect(made.get(practised)?.made).toBe("a state its Builder practised and never froze");
     expect(made.get(compared)?.made).toStartWith("no record of its making");
-    // An open session has handed nothing over: until 1 November the starter read "left it as it
-    // was" beside the three checkpoints its session had made (gate validity arm, F13).
+    // An open session has handed nothing over, so the starter does not read "left it as it was"
+    // beside the three checkpoints its session had made.
     expect(made.get(starter)?.sessions).toEqual([
       `b-1: 1 practice solves, 0 counted fails, left ${short(later)} so far, open`,
     ]);

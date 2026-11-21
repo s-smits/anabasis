@@ -1,6 +1,6 @@
 // The vetted findings are read by their verdict column, whatever a table's other headers, so the
 // plan gate, the vet gate and the ledger over every investigation count the same rows. Each shape
-// below is one a vetting of 10 to 16 November held; the hostile ones are the tables beside them.
+// below is one a recorded vetting held; the hostile ones are the tables beside them.
 import { afterAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { tmpdir } from "#src/meta/os.ts";

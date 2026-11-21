@@ -35,7 +35,7 @@ describe("withSet", () => {
     );
     expect(() => withSet(answer, ["reagents[1].mm=3"])).toThrow("$.reagents[1].mm is no field of the answer");
     expect(() => withSet(answer, ["$.reagents[2].mM=3"])).toThrow("no field of the answer");
-    // A lane wrote an index with a dot (12 November); the refusal names the form that is read.
+    // A lane may write an index with a dot; the refusal names the form that is read.
     expect(() => withSet(answer, ["reagents.1.mM=3"])).toThrow("an index goes in brackets");
     expect(() => withSet(answer, ["$.note"])).toThrow("no field of the answer");
   });

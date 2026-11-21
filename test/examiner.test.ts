@@ -470,6 +470,22 @@ describe("a session that writes tasks", () => {
     expect(s.of("task.feasible")).toMatchObject([{ answer: GOOD }]);
   });
 
+  it("logs the author's proof of a held task before the release its hold may start", async () => {
+    const s = seat("write", []);
+    const proofs: number[] = [];
+    const slow: Verifier = async (...asked) => {
+      await Bun.sleep(20);
+      return verify(...asked);
+    };
+    const mode = writing(
+      { ...s.request, verify: slow, held: () => proofs.push(s.of("task.feasible").length) },
+      undefined,
+    );
+    await invoke(toolOf(mode, "try_answer"), "try", { ...instance(7), answer: GOOD });
+    await invoke(toolOf(mode, PROPOSE), "propose", { tasks: [instance(7)] });
+    expect(proofs).toEqual([1]);
+  });
+
   it("is given the contract, the checks and the campaign's tasks, and nothing of a solver", async () => {
     const s = seat("write", [
       call("read_example", { task: "e-1" }),

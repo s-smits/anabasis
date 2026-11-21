@@ -431,6 +431,18 @@ describe("the provider's named reset", () => {
       expect(resetOf(present(message), NOW)?.toISOString()).toBe(reset);
     }
     expect(resetOf("You've hit your limit · resets 15:50", NOW)).not.toBeNull();
+    // A date early in the year read late in December is next year's; a reset just passed is not.
+    const zoned = (message: string, at: string) => resetOf(message, new Date(at))?.toISOString();
+    expect(zoned("weekly limit · resets Jan 4 at 8pm (Europe/Amsterdam)", "2026-12-28T10:00:00Z")).toBe(
+      "2027-01-04T19:00:00.000Z",
+    );
+    expect(zoned("weekly limit · resets Jan 4 at 8pm (Europe/Amsterdam)", "2027-01-04T19:00:30Z")).toBe(
+      "2027-01-04T19:00:00.000Z",
+    );
+    // The offset is the reset day's: Amsterdam leaves summer time on 25 October 2026.
+    expect(zoned("weekly limit · resets Oct 27 at 9pm (Europe/Amsterdam)", "2026-10-22T10:00:00Z")).toBe(
+      "2026-10-27T20:00:00.000Z",
+    );
     for (const message of ["You've hit your limit", "socket hang up", "limit · resets 3pm (Mars/Olympus)"]) {
       expect(resetOf(message, NOW)).toBeNull();
     }

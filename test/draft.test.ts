@@ -372,6 +372,13 @@ describe("a draft put to the host", () => {
         evaluator: JSON.stringify({ from_file: "evaluator.json" }),
       });
       expect(filled).toMatchObject({ evaluator: SOUND.evaluator });
+      // A check program named by its own source file is taken as that file's text.
+      writeFileSync(join(home, "evaluator.ts"), SOUND.evaluator);
+      expect(
+        toolOf(spelt).prepareArguments?.({ ...args, evaluator: { from_file: "evaluator.ts" } }),
+      ).toMatchObject({
+        evaluator: SOUND.evaluator,
+      });
       const homeless = drafting(s.request, async (act) => await act());
       expect(toolOf(homeless).description).not.toContain("from_file");
     } finally {

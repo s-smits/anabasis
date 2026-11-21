@@ -93,7 +93,7 @@ import { append, type LogEvent, read } from "../kernel/log.ts";
 import { type Cap, capHolds, poolOf } from "../kernel/reports.ts";
 import { billedFor } from "../kernel/meter.ts";
 import { checkCouldNotRun, type Ending } from "../kernel/solve.ts";
-import { ranUnder, rejected, solvesIn } from "../kernel/solves.ts";
+import { ranUnder, refereeErrorOf, rejected, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -423,25 +423,26 @@ function unruledOf(events: readonly LogEvent[], fixed: Fixed) {
 }
 
 /** The provider's silence over one run of a comparison: `SILENT` tasks in a row stop it, and so do
- *  last solves written nothing for after an answer, as when the provider refuses the model
- *  partway through. A run with no answer, or a wall that refused
- *  the last task alone, reports that task short. */
+ *  last solves written nothing for after an answer, though a crash is noted after one. A run with
+ *  no answer, or a wall that refused the last task alone, reports that task short. */
 function silence() {
-  const silent = new Set<string>();
-  let [answered, provider] = [false, false];
+  const [silent, provider] = [new Set<string>(), new Set<string>()];
+  let answered = false;
   return {
     note(task: string, why: string | null, ending: Ending): void {
       answered ||= why === null;
-      provider = ending.outcome === "non-result" && ending.kind === "provider";
-      if (why === null) silent.clear();
-      else if (silent.add(task).size >= SILENT) {
+      if (ending.outcome === "non-result" && ending.kind === "provider") provider.add(task);
+      if (why === null) {
+        silent.clear();
+        provider.clear();
+      } else if (silent.add(task).size >= SILENT) {
         throw new Error(
           `no solve of ${String(SILENT)} tasks in a row ran, so the comparison stops: ${why}. Run it again and it goes on from its log`,
         );
       }
     },
     tail(): void {
-      if (!answered || !provider || silent.size === 0) return;
+      if (!answered || provider.size === 0) return;
       throw new Error(
         `the provider answered this run, then wrote nothing for its last ${plural(silent.size, "task")}, so the comparison stops before its report. Run it again and it goes on from its log`,
       );
@@ -544,10 +545,13 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
       const lane = left.slice(at, at + request.concurrency);
       await Promise.all(lane.map(({ solve, task }) => rule(solve, task)));
     }
-    const still = request.referee === undefined || !going() ? [] : unruledOf(read(log), fixed);
+    const events = read(log);
+    const still = request.referee === undefined || !going() ? [] : unruledOf(events, fixed);
     if (still.length > 0) {
+      const silent = still.map(({ solve }) => solve);
+      const why = refereeErrorOf(events, silent);
       throw new Error(
-        `the Referee gave no ruling on ${still.map(({ solve }) => solve).join(", ")}, so the comparison stops before its report: run it again and it goes on from its log, where they are put to the Referee again`,
+        `the Referee gave no ruling on ${silent.join(", ")}, so the comparison stops before its report: run it again and it goes on from its log, where they are put to the Referee again${why === null ? "" : ` (${why})`}`,
       );
     }
   };

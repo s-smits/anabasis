@@ -205,6 +205,19 @@ export function rulingsOf(events: readonly LogEvent[]): Map<string, string | nul
   );
 }
 
+/** The provider's error on the Referee's last session of any of `solves` that recorded one, which a
+ *  comparison's stop carries so that a limit it names is waited out like a solve's (`waitOut`). */
+export function refereeErrorOf(events: readonly LogEvent[], solves: readonly string[]): string | null {
+  const error = events.findLast(
+    ({ kind, data }) =>
+      kind === "referee.finding" &&
+      isString(data.solve) &&
+      solves.includes(data.solve) &&
+      isString(data.error),
+  )?.data.error;
+  return isString(error) ? error : null;
+}
+
 /** A person's label of each rejected answer, by its solve, as its comparison's last report holds it
  *  once settled (`settleReading`, `src/campaign/round.ts`). Only a comparison's own rejections are
  *  labelled, so no practice solve carries one. */

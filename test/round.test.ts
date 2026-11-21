@@ -1123,7 +1123,7 @@ describe("a round", () => {
     // and reads the step once the Referee answers.
     const t = await setup([], rejecting);
     await expect(checkpoint(t.paired("g0", { referee: silent(t.log) }))).rejects.toThrow(
-      "the Referee gave no ruling on",
+      "put to the Referee again (the session limit is reached)",
     );
     expect(t.of(COMPARISON_REPORTED)).toEqual([]);
     expect(await checkpoint(t.paired("g0", { referee: referee(t.log) }))).toMatchObject({
@@ -1401,6 +1401,17 @@ describe("a round", () => {
     });
     await expect(checkpoint(back.paired("g0"))).rejects.toThrow("then wrote nothing");
     expect(await checkpoint(back.paired("g0"))).toMatchObject({ short: [], scored: { wins: 4, losses: 0 } });
+  });
+
+  it("stops where the provider wrote nothing for the last task though a crash was noted after it", async () => {
+    let calls = 0;
+    const s = await setup([], (version, side, nth, digest) => {
+      calls += 1;
+      if (calls <= 12) return step(version, side, nth, digest);
+      return calls === 13 ? LIMITED : { outcome: "non-result", kind: "sandbox-crash", reason: "x" };
+    });
+    await expect(checkpoint(s.paired("g0"))).rejects.toThrow("then wrote nothing for its last 1 task");
+    expect(s.of(COMPARISON_REPORTED)).toEqual([]);
   });
 
   it("keeps a kill as the reason when a reset wait returns its provider ending", async () => {

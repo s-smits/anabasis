@@ -45,8 +45,8 @@ const HOSTS_OWN: ReadonlySet<Decided["move"]> = new Set(["draft", "accept", "pre
 /** What the campaign command does with a move the table names where the opening is attended, which
  *  the table does not read (`tools/d2/harness-builder.ts`). */
 const ATTENDED_WAITS = new Map<Decided["move"], string>([
-  ["accept", "; under --attended the exam is read and its freeze waits for the operator's word"],
-  ["promote", "; under --attended the promotion waits for the operator's word (promote.ts)"],
+  ["accept", "; under --hitl the exam is read and its freeze waits for the operator's word"],
+  ["promote", "; under --hitl the promotion waits for the operator's word (promote.ts)"],
 ]);
 
 /** A reading's tone; a reading the page does not know is neutral. */

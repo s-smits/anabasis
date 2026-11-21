@@ -294,8 +294,11 @@ function compared(events: readonly LogEvent[], id: string): Compared {
       unclear: ruled.filter((ruling) => ruling === "unclear").length,
     },
     billed: billedParts(events, id).comparison,
-    // A comparison with no report has a start: a step is a start or a report.
-    cut: report === null && nextBound(events, began) !== -1,
+    // A comparison with no report has a start: a step is a start or a report. Like a session it is
+    // cut by its own kind's next start or the campaign's end; an Examiner writes beside it.
+    cut:
+      report === null &&
+      events.some(({ kind }, at) => at > began && (kind === STARTED || kind === "campaign.ended")),
     begun: solves.length,
     solved: ended(solves).length,
   };

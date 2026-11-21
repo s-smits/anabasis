@@ -281,23 +281,27 @@ async function admitDraft(desk: Desk, instance: Task): Promise<string> {
     return `${taskId}: refused: ${reason}`;
   }
   desk.held.push(version);
-  request.held?.();
   const held = `${taskId}: held out.`;
-  if (verify === null || answer === undefined) return held;
-  const verdict = await Promise.try(() => verify(instance, answer, undefined, files)).catch(
-    (error: unknown): Verdict => ({ kind: "non-result", reason: errorMessage(error) }),
-  );
-  if (verdict.kind !== "pass") {
-    return `${held} Author proof was not retained under this task id: ${tried(verdict)}`;
+  // The release `held` may start reads the author's proof, so it is logged first.
+  try {
+    if (verify === null || answer === undefined) return held;
+    const verdict = await Promise.try(() => verify(instance, answer, undefined, files)).catch(
+      (error: unknown): Verdict => ({ kind: "non-result", reason: errorMessage(error) }),
+    );
+    if (verdict.kind !== "pass") {
+      return `${held} Author proof was not retained under this task id: ${tried(verdict)}`;
+    }
+    append(log, "task.feasible", {
+      version,
+      session,
+      answer,
+      ...keptFiles(log, files),
+      ...measureOf(request.contract, verdict),
+    });
+    return held;
+  } finally {
+    request.held?.();
   }
-  append(log, "task.feasible", {
-    version,
-    session,
-    answer,
-    ...keptFiles(log, files),
-    ...measureOf(request.contract, verdict),
-  });
-  return held;
 }
 
 /** Whether the host has the tasks it asked for. */

@@ -158,10 +158,11 @@ const written = fauxAssistantMessage(
   fauxToolCall("bash", { command: `printf %s '{"answer":"42"}' > answer.json` }),
   toolUse,
 );
+/** A command that reads the task the host seeded the home with. */
+const look = fauxAssistantMessage(fauxToolCall("bash", { command: "cat public/task.json" }), toolUse);
 const answer = [
-  fauxAssistantMessage(fauxToolCall("scale_base", { factor: 6 }), toolUse),
-  // The harness's own process reads what the host handed it.
-  fauxAssistantMessage(fauxToolCall("read_path", { path: "input.json" }), toolUse),
+  look,
+  fauxAssistantMessage(fauxToolCall("bash", { command: "ls public" }), toolUse),
   written,
   fauxAssistantMessage(fauxToolCall("submit", {}), toolUse),
 ];
@@ -489,18 +490,17 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
       .map(({ data }) => data);
     expect(calls.map(({ tool, isError }) => [tool, isError])).toEqual([
       ["bash", false],
-      ["scale_base", false],
-      ["read_path", false],
+      ["bash", false],
+      ["bash", false],
       ["bash", false],
       ["submit", false],
     ]);
     expect(calls[0]?.text).toContain("found:1");
     // Every result ends with the solve time used, which is all the clock a solver has.
-    const scaled = calls[1]?.text;
-    if (!isString(scaled)) throw new Error("Missing scale result");
-    for (const fact of ["t-1", "fixture", "42"]) expect(scaled).toContain(fact);
-    expect(scaled.match(/\b\d+:\d\d\b/g)).toEqual([expect.stringMatching(/^0:\d\d$/), "10:00"]);
-    expect(calls[2]?.text).toContain('"publicInput":{"base":7}');
+    const looked = calls[1]?.text;
+    if (!isString(looked)) throw new Error("Missing the task's text");
+    for (const fact of ["t-1", "fixture", "base"]) expect(looked).toContain(fact);
+    expect(looked.match(/\b\d+:\d\d\b/g)).toEqual([expect.stringMatching(/^0:\d\d$/), "10:00"]);
     const [done] = finished();
     // Five turns of the model answered one prompt: the two are counted apart, and a budget read
     // in either is read from its own count (`src/kernel/compare.ts`).
@@ -517,13 +517,9 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
     expect(record("verdict")?.answer).toEqual({ answer: "42" });
 
     // Exit test 5: the hidden value reaches nothing the solver reads: the prompt, the tool rows,
-    // the first turn and every tool result among them, the harness's process, and its home.
+    // the first turn and every tool result among them, and its home.
     expect(sent.join("\n")).not.toContain(CANARY);
-    // Each tool is described in its own words, and the fixture's writer, which took the answer
-    // before the answer was a file, is given to no solver.
-    expect(sent[0]).toContain('"name":"scale_base"');
     expect(sent[0]).not.toContain("Role: ");
-    expect(sent[0]).not.toContain("Records the answer.");
     expect(sent[0]).toContain("answer.json");
     // The fixture selects the shell alone, so pi's file tools and their rules are not in its prompt.
     expect(sent[0]).toContain('"name":"bash"');
@@ -577,7 +573,7 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
   it.concurrent("nudges a model that stops, up to the host's prompts whatever the harness asks", async () => {
     // The cap counts prompts, as v1's maxTurns did: the opening one and one nudge here, each
     // answered by a turn that calls a tool and then stops without submitting.
-    const scale = fauxAssistantMessage(fauxToolCall("scale_base", { factor: 1 }), toolUse);
+    const scale = look;
     const stop = fauxAssistantMessage("Done.");
     const { scratch, sent, request, events, finished } = setup([scale, stop, scale, stop, scale, stop], {
       limits: { ...LIMITS, wallSeconds: 300, turns: 2 },
@@ -614,7 +610,7 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
   }, 120_000);
 
   it.concurrent("ends at the model's turns where it is given a number of them, and says each turn", async () => {
-    const scale = fauxAssistantMessage(fauxToolCall("scale_base", { factor: 1 }), toolUse);
+    const scale = look;
     const limits = { ...LIMITS, modelTurns: 3 };
     const spent = setup([scale, scale, scale, scale, scale], { limits });
     expect(await solve(spent.request, noWait)).toEqual({ outcome: "fail", kind: "turns-ended" });
@@ -676,19 +672,20 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
   }, 120_000);
 
   it.concurrent("cuts a command before the solve's end, so the solver can still answer", async () => {
-    // A 24-second solve reserves three seconds for an answer after its command is cut.
+    // A 48-second solve reserves six seconds for an answer after its command is cut. At 24 and
+    // three, a gate at a load of 19 on 20 November 2026 ended it wall-ended before its answer.
     const long = fauxAssistantMessage(
       fauxToolCall("bash", { command: "echo began; sleep 50", timeout: 60 }),
       toolUse,
     );
     const submit = fauxAssistantMessage(fauxToolCall("submit", {}), toolUse);
-    const { request, events } = setup([long, written, submit], { limits: { ...LIMITS, wallSeconds: 24 } });
+    const { request, events } = setup([long, written, submit], { limits: { ...LIMITS, wallSeconds: 48 } });
     expect(await solve(request, noWait)).toEqual({ outcome: "pass" });
     const [cut] = events().flatMap(({ kind, data }) => (kind === "solve.call" ? [data] : []));
     expect(cut).toMatchObject({ tool: "bash", isError: true });
     expect(cut?.text).toContain("began");
-    expect(cut?.text).toMatch(/\b2[01] seconds\b/);
-    expect(cut?.text).toMatch(/0:2\d of 0:24/);
+    expect(cut?.text).toMatch(/\b4[12] seconds\b/);
+    expect(cut?.text).toMatch(/0:4\d of 0:48/);
   }, 120_000);
 
   it.concurrent("reruns a failed provider turn three times, then reports it as the provider's non-result", async () => {
@@ -819,11 +816,19 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
     expect(finished().map(({ data }) => data.homeBytes)).toEqual([null]);
   }, 120_000);
 
-  it.concurrent("fails a harness whose tools do not bundle once, with no rerun", async () => {
-    const { request, finished } = setup([]);
-    writeFileSync(join(request.harness, "agent", "tools.ts"), "export const = ;\n");
-    expect(await solve(request, noWait)).toMatchObject({ outcome: "fail", kind: "broken-harness" });
-    expect(finished().map(({ data }) => data.harness)).toEqual([null]);
+  it.concurrent("fails a harness that does not open once, with no rerun, and one that selects a tool no solve serves", async () => {
+    const spec = (request: { harness: string }, text: string) => {
+      writeFileSync(join(request.harness, "agent", "tools-spec.json"), text);
+    };
+    const declares = setup([]);
+    spec(declares.request, '{ "presets": ["bash"], "tools": [{ "name": "scale_base", "kind": "reader" }] }');
+    expect(await solve(declares.request, noWait)).toMatchObject({ outcome: "fail", kind: "broken-harness" });
+    expect(declares.finished().map(({ data }) => data.harness)).toEqual([null]);
+    // It opens and has a digest, and the solve still ends as the harness's own fail.
+    const selects = setup([]);
+    spec(selects.request, '{ "presets": ["bash", "browse"], "tools": [] }');
+    expect(await solve(selects.request, noWait)).toMatchObject({ outcome: "fail", kind: "broken-harness" });
+    expect(selects.finished()).toHaveLength(1);
   }, 120_000);
 
   it.concurrent("returns a faulty check's ending once, neither rerun nor stopping the run", async () => {

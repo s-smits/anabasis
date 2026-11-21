@@ -29,7 +29,7 @@ from it.
   may reward other things (JobBench's rubric also scores completeness, interpretation and
   presentation). A climb on the checks may not move the benchmark's score at all.
 - **Anabasis is scored on another runtime than the one it built on.** It builds on pi's tools and is
-  scored after export, with `agent/tools.ts` dropped (stage 2).
+  scored after export (stage 2).
 
 So a lower score for Anabasis is the expected outcome and says little against it. **An Anabasis
 harness that matches Harness², or comes within a margin fixed before its first scored solve, is a
@@ -137,8 +137,8 @@ provider is to match Harness²'s too.
 
 **The task interface still differs.** A campaign's solver reads a task's JSON inputs, writes
 `answer.json` and calls `submit`; a WorkBuddy solver reads `instruction.md` in a repository and
-leaves a diff in it. A harness whose guide or tools speak of `answer.json` meets a task in another
-shape at scoring, and that gap remains even with the runtime held fixed. D's and U's prompts
+leaves a diff in it. A harness whose guide or programs speak of `answer.json` meets a task in
+another shape at scoring, and that gap remains even with the runtime held fixed. D's and U's prompts
 therefore ask for tasks whose answer is a patch to a repository given in the inputs, so that what a
 harness learns is about patches, and the gap is reported with the scores. The other way to close
 it is to put each WorkBuddy test task through Anabasis's own solve path, with the solver's diff
@@ -146,19 +146,12 @@ then applied and scored in WorkBuddy's container. That keeps every solve identic
 campaign's, but the solver then works without the container's installed environment. The
 container route comes first, because the environment is part of what the benchmark measures.
 
-**The harness's own tools reach the container.** The container solver serves pi's tools, the
-harness's guide and programs, and the tools its `agent/tools.ts` declares, listed and called by the
-loader a campaign's solve uses (`harnessTools`, `src/harness/open.ts`): each call is a fresh process
-in a folder of its own, with the harness's programs on its PATH. A campaign starts that process
-behind the host's wall; in the container, the container is the wall, and the compiled solver,
-acting as Bun, starts it. The compiled solver holds none of the host's source to bundle a harness's
-tools over, so the mount carries the module the host bundled when it made the arm (`tools.mjs`,
-`bundleArm`). The factory is given the task's instruction as its public input, since a benchmark
-task has no campaign id or family. A harness whose tools cannot be opened or listed in the
-container ends the trial as `broken-harness`: the container is still scored, and the score counts as
-that arm's own, as a campaign counts a broken harness against its side (rule 7). The dry run
-of `run.ts check` writes the tools it listed to its result, so a harness that cannot serve them
-shows before a paid solve.
+**The harness reaches the container whole.** The container solver serves pi's tools and the
+harness's guide, with the harness's programs first on its PATH, as a campaign's solve has them. A
+harness that does not open in the container ends the trial as `broken-harness`: the container is
+still scored, and the score counts as that arm's own, as a campaign counts a broken harness against
+its side (rule 7). The dry run of `run.ts check` writes the tools it listed to its result, so a
+harness that does not open shows before a paid solve.
 
 **The solve budget matches.** The benchmark's executor took 29.6 steps per Code task under OpenCode
 at base, and Anabasis's default solve is 20 model turns and 30 minutes (`LIMITS`,
@@ -250,8 +243,8 @@ crosses runtimes, and it is read only against the OpenCode base rerun beside it:
 `opencode-base` of `run.ts`, OpenCode at the version and variant Harness² runs it (`_job_yaml`,
 `harness2/benchmarks/workbuddy.py`), over the study's route to the same solver. To set a learned
 Anabasis harness on OpenCode beside it, the harness would be translated into Harness²'s editable
-tree (the guide into the always-on files, programs into `scripts/` or skills, `tools.ts` into an
-OpenCode plugin where one is possible) through a patch that lets a run start from a given tree.
+tree (the guide into the always-on files, programs into `scripts/` or skills) through a patch that
+lets a run start from a given tree.
 Neither that patch nor a verb that runs Harness²'s own `k=1` sweep
 (`harness2.cli.run_sweep --bench wb --subset code --substrate oc --k 1 --split test`) is in the
 study yet; the base arm is.
@@ -356,7 +349,8 @@ its venv (`trials.py`), and the spend from the solver's own trace by the kernel'
 in two, the A/A, as "Metric and statistics" says.
 
 A first pilot on JobBench's statistics tasks, every arm scored under `claude -p`, has its own
-protocol in `jobbench-pilot.md`. Harness²'s own k=1 path on JobBench, Claude Code as executor and
+protocol in `jobbench-pilot.md`; Harness²'s own JobBench text, from which the pilot's shared
+domain text was tuned, is kept verbatim in `jobbench-prompt-original.md`. Harness²'s own k=1 path on JobBench, Claude Code as executor and
 improver, is ported to TypeScript in `h2/`, run by `bun studies/harness2/jobbench.ts sweep`, so a
 sweep of ours can be set beside the pilot's Python one; its head comment lists what differs.
 `bun studies/harness2/score.ts score` scores any arm the pilot scored, an Anabasis kept harness

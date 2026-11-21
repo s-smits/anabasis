@@ -163,8 +163,12 @@ function rowsHere(now: number): HostRows {
   const running = processes();
   const held = runs().filter(isCampaign);
   const rows = held.flatMap((run) => {
+    // A log can go between the listing and this read: on 20 November a test's `afterAll` deleted
+    // its campaign then, and the look failed whole.
+    const log = statSync(run.path, { throwIfNoEntry: false });
+    if (log === undefined) return [];
     const writing = writers(run, running).length > 0 ? "open" : "closed";
-    return onAlerts(run, writing, now - statSync(run.path).mtimeMs) ? [rowOf(run, running, now)] : [];
+    return onAlerts(run, writing, now - log.mtimeMs) ? [rowOf(run, running, now)] : [];
   });
   const retired = archived().flatMap((run) => (run.archived === HERE ? [run.name] : []));
   return { rows, held: held.map(({ name }) => name), retired };

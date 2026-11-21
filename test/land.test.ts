@@ -185,7 +185,7 @@ const stack = (top = upper, ...more: ReturnType<typeof pull>[]): string =>
     ...more,
   ]);
 
-const landEnv = (env: Record<string, string | undefined>): Record<string, string | undefined> => ({
+const landEnv = (env: Record<string, string | undefined> = {}): Record<string, string | undefined> => ({
   ...Bun.env,
   ...fake,
   // No host list, and the fixture's main worktree holds no `.env.runs`, so every proof stays here.
@@ -199,9 +199,10 @@ const landEnv = (env: Record<string, string | undefined>): Record<string, string
   ...env,
 });
 
-/** One landing, as a session runs it with `--once`; following its stack is proved on its own. */
+/** One landing, with the top's whole gate as at a merge (`--whole`); the top's one-import pass by
+ *  default, and following the stack (`--watch`), are each proved on their own. */
 function runLand(args: readonly string[], env: Record<string, string | undefined> = {}) {
-  return spawnTextSync(capturedExecPath, [land, ...args, "--once"], { cwd: work, env: landEnv(env) });
+  return spawnTextSync(capturedExecPath, [land, ...args, "--whole"], { cwd: work, env: landEnv(env) });
 }
 
 const statuses = (context: string): string[] =>
@@ -263,6 +264,19 @@ describe("bun run land", () => {
     expect(statuses("mergeable")).toEqual([`success ${lowerDocs}`, `success ${upper}`]);
     expect(writes().filter((line) => !/context=(ana\/commit|mergeable) /u.test(line))).toEqual([]);
     expect(logLines(ghLog).some((line) => line.startsWith("run list"))).toBe(false);
+  });
+
+  it("proves the top as every other commit, by its nearby tests, unless it merges or --whole is named", () => {
+    const result = spawnTextSync(capturedExecPath, [land, "12", "--sanitize"], { cwd: work, env: landEnv() });
+    expect(result.status).toBe(0);
+    expect(gatesRun(gateLog)).toEqual([`${lower} -`, `${lowerMore} test/owner.test.ts`, `${upper} -`]);
+    expect(described(COMMIT)).toContain(
+      `${upper} its static steps and nearby tests passed on its own checkout`,
+    );
+    // A merge gives the top the whole gate, which the sanitize's nearby tests do not stand in for.
+    rmSync(gateLog, { force: true });
+    expect(runLand(["12", "--merge"]).status).toBe(0);
+    expect(gatesRun(gateLog)).toEqual([`${upper} suite`]);
   });
 
   it("merges over the passes a sanitize left, running no gate again", () => {
@@ -1007,11 +1021,11 @@ describe("bun run land", () => {
     expect(leftPending(COMMIT)).toEqual([]);
   });
 
-  it("follows its stack once a landing ends, lands again when a head moves, and ends when the pull request closes", async () => {
+  it("with --watch, follows its stack once a landing ends, lands again when a head moves, and ends when the pull request closes", async () => {
     const later = join(fixture, "followed-pulls");
     rmSync(`${later}.read`, { force: true });
     writeFileSync(later, JSON.stringify([pull(11, "a", "main", lowerDocs), pull(12, "b", "a", stacked)]));
-    const child = Bun.spawn([capturedExecPath, land, "12"], {
+    const child = Bun.spawn([capturedExecPath, land, "12", "--watch", "--whole"], {
       cwd: work,
       env: landEnv({ ANA_FAKE_PULLS_LATER: later, ANA_LAND_WATCH_MS: "100" }),
       stdout: "pipe",

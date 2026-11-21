@@ -166,7 +166,7 @@ Each seat has one job and a closed view:
 - **Builder** (model, `src/builder/`): edits `harness/`, chooses moves and freezes a harness,
   reading only section 1's list, its notes and the kept harnesses.
 - **Solver** (model, `src/solver/`): answers one task with `read`, `bash`, `edit`, `write`,
-  `submit` and the harness's tools.
+  `submit` and the harness's programs.
 - **Verifier** (code, `src/kernel/verify.ts`): runs each check in a fresh walled cell, offline.
 - **Referee** (model, `src/referee/referee.ts`): rules each rejection the host's replay of the
   checks repeats (never a pass, a cut solve or a crash) `earned`, `check-defect` or `unclear`,
@@ -174,9 +174,9 @@ Each seat has one job and a closed view:
 - **Host** (code): everything section 2 gives to code.
 
 A **harness** is a directory (`agent/tools-spec.json`, `.toolchain/`, the guide
-`agent/BUILT_AGENTS.md`, `agent/tools.ts`) whose digest is its identity. The **Starter Built
-Harness** (`src/harness/starter.ts`) is the first reference and the fixed baseline: pi's coding
-agent as released, its four coding tools and the starter instructions as its guide. Three names
+`agent/BUILT_AGENTS.md`) whose digest is its identity. The **Starter Built Harness**
+(`src/harness/starter.ts`) is the first reference and the fixed baseline: pi's coding agent as
+released, its four coding tools and the starter instructions as its guide. Three names
 keep its uses apart, each in one meaning:
 
 - the **Starter**, also the **bareSolver**: the solver under the Starter Built Harness, the
@@ -435,9 +435,20 @@ on the top. Read `stack-pr` and the stack (`bun .claude/skills/stack-pr/scripts/
 you branch and again before you push, since other sessions move it. Moving your own PR onto the top
 is yours; another session's PR, worktree or run changes only on the operator's word. Use one
 worktree per PR, never `git stash` by hand, and make every commit pass alone. Each PR carries one
-importance label (`I0` blocks a release; `I1` protects evaluation validity, prevents serious run
-failures or broadly simplifies the tree; `I2` is a bounded improvement; `I3` covers reporting,
-wording and convenience) and a category (`CATEGORIES`, `tools/runtime/land.ts`). Push only your
+importance label, the highest whose test it meets, and a category (`CATEGORIES`,
+`tools/runtime/land.ts`):
+
+- `I0` corrects a defect that already makes results wrong or unsafe: a reading, score or
+  promotion computed wrong, hidden content crossing the wall or a seat escaping it, answers lost or
+  never checked, a credential exposed or spend past its cap, or `main` failing its gate. Its test
+  is whether live runs should be paused and the release held until it lands; about one PR in 50
+  meets it.
+- `I1` protects evaluation validity before a result goes wrong, prevents a serious run failure (a
+  crash, stall or lost session), or removes a whole mechanism.
+- `I2` is a bounded improvement to a mechanism, a seat's prompt or the run tooling.
+- `I3` covers reporting, wording, documentation, tests alone and convenience.
+
+Push only your
 authorised branch, with `--force-with-lease` when rewriting, and read back at the remote what you
 published (the heads, and the counts and commits a body cites) before reporting it. Merging and
 restacking others' branches are the operator's; before `bun run land -- <top> --merge`, three

@@ -15,9 +15,9 @@
  * in the process it constrains is a convention and not a wall (`7af7315:src/builder/candidate-isolation.ts`).
  * So every file tool here works through a walled command.
  *
- * One read is the host's own: the host opens and bundles a harness snapshot, as a solve opens any
- * harness. `openHarness` builds a harness's tools from its own files alone, refusing a named file
- * that links out of the harness and an import that lands outside it, so nothing here asks that again.
+ * One read is the host's own: the host opens a harness snapshot, as a solve opens any harness.
+ * `openHarness` reads the guide and the spec alone, refusing either where it links out of the
+ * harness, so nothing here asks that again.
  *
  * The installed programs are the session's own. `harness/.toolchain` starts as a copy of the
  * parent's tool tree, which the wall puts first on PATH. A frozen harness links to a copy of that
@@ -79,22 +79,20 @@ import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import { ending as endSession, openDesk, text, tool } from "../tools/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../tools/coding.ts";
-import { type CommandWall, launchOn, type NetworkReach, networkReach } from "../tools/command.ts";
-import { type Harness, harnessTools, openHarness, pathsUnder, treeStamp } from "../harness/open.ts";
+import { type CommandWall, type NetworkReach, networkReach } from "../tools/command.ts";
+import { type Harness, openHarness, pathsUnder, treeStamp } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
-import { systemPrompt } from "../solver/prompt.ts";
+import { homeHolds, systemPrompt } from "../solver/prompt.ts";
 import { clockText, solverTools } from "../solver/run.ts";
 import { STARTED as COMPARISON_STARTED } from "../campaign/comparison.ts";
 import { budgetLeft } from "../campaign/opening.ts";
 import { type Said, shellWalls } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
 
-/** `harness/` frozen: a copy kept under its digest, what a solve would open it as, and the tools
- *  it listed for a practice task, null where no wall was there to list them under. */
+/** `harness/` frozen: a copy kept under its digest, and what a solve would open it as. */
 export interface HarnessSnapshot {
   readonly dir: string;
   readonly harness: Harness;
-  readonly listed: readonly string[] | null;
 }
 
 /** What a session's tools share. */
@@ -120,9 +118,6 @@ export interface Bench {
   readonly faulty: Set<string>;
   /** Reviewer failures, kept for the host: their text may name a check, so the Builder is not shown it. */
   readonly faults: string[];
-  /** Lists a harness's tools for a practice task as a solve would, under the command wall; null
-   *  until the walled tools are made, and for a session with no wall or no practice task. */
-  lists: ((harness: Harness) => Promise<string[] | null>) | null;
   /** Aborted when the host stops the session at a bound or a campaign action fails. */
   readonly halt: AbortController;
   /** Run a campaign action without charging its elapsed time to the session's deadline.
@@ -294,10 +289,10 @@ export function stagedState(source: string, states: string, tree: string | null,
 }
 
 /**
- * `harness/` as it stands, copied beside the kept states, opened as a solve would open it and, under
- * a wall, asked for its tools as a solve would ask, then handed to `use`. Throws, with the harness's
- * own error, when a solve could not: a harness whose tools do not list fails every task before its
- * first turn, and one frozen so would be scored at a full round's cost to say only that. Links are
+ * `harness/` as it stands, copied beside the kept states and opened as a solve would open it, then
+ * handed to `use`. Throws, with the harness's own error, when a solve could not: a harness that
+ * does not open fails every task before its first turn, and one frozen so would be scored at a
+ * full round's cost to say only that. Links are
  * copied as they are: a stored state carries links that resolve to nothing, and following one would
  * copy what it points at. The copy is removed once `use` returns or throws, unless `use` moved it
  * away: only a state a solve ran with, or the session's last, is kept (`snapshot`).
@@ -316,9 +311,8 @@ async function frozen<T>(bench: Bench, use: (kept: HarnessSnapshot) => T | Promi
     const harness = await openHarness(dir);
     // A preset no solve serves fails every solve, and is refused here before one is spent on it.
     selectedCodingTools(harness.presets);
-    const listed = (await bench.lists?.(harness)) ?? null;
     opened = true;
-    return await use({ dir, harness, listed });
+    return await use({ dir, harness });
   } catch (error) {
     if (opened) throw error;
     // The copy's own path is the host's, and says where the states and the log beside them are.
@@ -338,7 +332,7 @@ async function frozen<T>(bench: Bench, use: (kept: HarnessSnapshot) => T | Promi
  * solve could run a program from.
  */
 export async function snapshot(bench: Bench): Promise<HarnessSnapshot> {
-  return await frozen(bench, ({ dir, harness, listed }) => {
+  return await frozen(bench, ({ dir, harness }) => {
     const kept = join(dirname(dir), harness.digest);
     try {
       renameSync(dir, kept);
@@ -349,7 +343,6 @@ export async function snapshot(bench: Bench): Promise<HarnessSnapshot> {
     bench.opened = {
       dir: kept,
       harness: { ...harness, toolTree: harness.toolTree === null ? null : join(kept, TOOL_TREE_DIR) },
-      listed,
     };
     return bench.opened;
   });
@@ -516,7 +509,7 @@ export function practiceTool(bench: Bench): SeatTool {
       // went on 27 October: 4 of 852 practice calls on record named it.
       const ran: HarnessSnapshot =
         args.under === "reference"
-          ? { dir: bench.reference, harness: await openHarness(bench.reference), listed: null }
+          ? { dir: bench.reference, harness: await openHarness(bench.reference) }
           : await snapshot(bench);
       if (kill.aborted) throw new Error("The session has ended.");
       bench.spent += chosen.length;
@@ -738,11 +731,9 @@ export function finishTool(bench: Bench, unmeasured?: Unmeasured): SeatTool {
   });
 }
 
-/** What a harness that opens gives a solver, a line for each of its four parts, and a note where
- *  one part makes another unreachable: programs under a solver with no shell. No note says that
- *  tools beside the shell are a program built twice, which would be a steer: the account states
- *  what each costs (`HARNESS.md`). */
-function opens(harness: Harness, tools: readonly string[]): string {
+/** What a harness that opens gives a solver, a line for each of its three parts, and a note where
+ *  one part makes another unreachable: programs under a solver with no shell. */
+function opens(harness: Harness): string {
   const presets = selectedCodingTools(harness.presets);
   const programs = installedPrograms(harness.toolTree);
   return [
@@ -750,7 +741,6 @@ function opens(harness: Harness, tools: readonly string[]): string {
     `pi's tools: ${presets.join(", ") || "none"}.`,
     `Programs: ${programs.join(", ") || "none"}.`,
     `Guide: ${String(harness.guide?.length ?? 0)} characters.`,
-    `Tools of its own: ${tools.join(", ") || "none"}.`,
     ...(programs.length > 0 && !presets.includes("bash")
       ? ["The solver has no shell, so it can run none of the programs itself."]
       : []),
@@ -763,10 +753,9 @@ function checkTool(bench: Bench): SeatTool {
   return tool({
     name: "check_harness",
     description:
-      "Open harness/ as a solve would, for one practice task. Reports pi's tools it selects, its programs by name, the guide's length and its own tools, or the error a solve would stop on. Spends no practice solve.",
+      "Open harness/ as a solve would. Reports pi's tools it selects, its programs by name and the guide's length, or the error a solve would stop on. Spends no practice solve.",
     parameters: Type.Object({}),
-    execute: async () =>
-      await frozen(bench, ({ harness, listed }) => text(opens(harness, listed ?? [...harness.kinds.keys()]))),
+    execute: async () => await frozen(bench, ({ harness }) => text(opens(harness))),
   });
 }
 
@@ -787,19 +776,14 @@ function previewTool(bench: Bench, wall: CommandWall): SeatTool {
       const [sample] = bench.tasks;
       if (sample === undefined) return text("This session has no practice task to preview a solve of.");
       return await frozen(bench, async ({ harness }) => {
-        const tools = await solverTools(
-          { task: sample.task, contract: request.contract },
-          harness,
-          { ...wall, toolTree: harness.toolTree },
-          openDesk(),
-        );
+        const tools = solverTools(request, harness, { ...wall, toolTree: harness.toolTree }, openDesk());
         const prompt = systemPrompt({
           tools,
           home: SOLVE_HOME,
           guide: harness.guide,
           wallSeconds: request.solve.wallSeconds,
           limits: request.solve,
-          resources: request.resources.length,
+          ...homeHolds(sample.task, request.resources),
           programs: installedPrograms(harness.toolTree),
           network: await networkReach({ ...wall, toolTree: harness.toolTree }),
         });
@@ -813,15 +797,8 @@ function previewTool(bench: Bench, wall: CommandWall): SeatTool {
 }
 
 /** The tools that run on the command wall: pi's four, with what the Builder's shell is told of its
- *  wall, and the two that ask the host about `harness/`. Making them also gives a freeze its
- *  listing: every harness frozen from here on is asked for its tools under this wall. */
+ *  wall, and the two that ask the host about `harness/`. */
 export function walledTools(bench: Bench, wall: CommandWall, network: NetworkReach): SeatTool[] {
-  bench.lists = async (harness) => {
-    const sample = bench.tasks[0];
-    return sample === undefined
-      ? null
-      : (await harnessTools(harness, sample.task, launchOn(wall))).map(({ name }) => name);
-  };
   return [
     ...codingTools(wall, CODING_TOOLS).map((each) =>
       each.name === "bash" ? { ...each, description: `${each.description}${shellWalls(network)}` } : each,

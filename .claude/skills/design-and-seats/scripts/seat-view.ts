@@ -88,7 +88,7 @@ export const SEATS = {
       },
       {
         file: "test/handover.test.ts",
-        name: "tells each comparison as its tally and its reading, with no task and no other count",
+        name: "tells each comparison as its tally and its reading, with no task",
       },
     ],
   },

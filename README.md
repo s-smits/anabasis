@@ -14,7 +14,7 @@ The solver model stays the same throughout, so a difference between two harnesse
 
 | Component | What does it contain? |
 | --- | --- |
-| **Built Harness** | A directory on pi's coding agent, named by its digest: an operating guide, tools of its own and installed programs, which a separate solver uses to solve and submit tasks in the domain |
+| **Built Harness** | A directory on pi's coding agent, named by its digest: an operating guide and installed programs, which a separate solver uses to solve and submit tasks in the domain |
 | **Exam** | A public contract (rules with their sources, the answer format and, where the field has one, an objective), a hidden check for each rule and tasks with hidden values, all written by a separate Examiner |
 | **Run evidence** | One append-only log: every solve with its trace, verdicts, Referee rulings, each comparison's terms and reading, promotions and the bill |
 | **Handover** | The reference Harness as a directory that stands by itself, with the public rules and a closing report |
@@ -53,12 +53,14 @@ So first, if you haven’t already, please install Bun:
 ```sh
 curl -fsSL https://bun.com/install | bash -s "bun-v1.4.4"
 ```
+In Claude Code, `/setup-anabasis` walks through these steps on your machine and proves each one without spending.
+
 This example uses Claude for all four model seats.
 
 ```sh
 git clone https://github.com/s-smits/anabasis.git
 cd anabasis
-cp .env.example .env   # set CLAUDE_CODE_OAUTH_TOKEN in it; `claude setup-token` prints one
+cp -n .env.example .env   # set CLAUDE_CODE_OAUTH_TOKEN in it; `claude setup-token` prints one
 
 # A run executes its tree's source, so it starts from a worktree of its own.
 git worktree add --detach ../anabasis-trusses
@@ -122,7 +124,7 @@ bun tools/d2/close.ts --name your-campaign --to data/harnesses/your-campaign --s
 format and lint on the staged files and scans them for secrets, and the push hook checks what the push adds
 with `git diff --check`, the formatter and the secret scan. `ANA_PUSH_VERIFY=1 git push` adds
 `bun run gate -- --static` on each pushed head: every step, with the tests near the head's own change in place of the suite.
-`bun run land -- <top> --sanitize` proves each commit with its nearby tests and the top with the whole `bun run gate`.
+`bun run land -- <top> --sanitize` proves each commit, the top's too, with its nearby tests; `--merge`, or `--whole`, gives the top the whole `bun run gate`.
 The lint plugins beside oxlint's own rules (`anti-slop`, copied from dmmulroy/anti-slop, `ana` and the two `implicit-state` tiers)
 are optional: their findings fail only `bun run lint -- --strict`, which the gate runs, or a run with `ANA_LINT_STRICT=1`.
 

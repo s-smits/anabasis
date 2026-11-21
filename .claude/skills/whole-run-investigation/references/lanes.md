@@ -661,7 +661,7 @@ Is what a harness tells its solver true of what it ships and what its solves did
 the guide costs on every task, invisibly. Compare three accounts:
 
 1. **The guide's claims**: each method, check, default, limit or order it says a program keeps.
-2. **The programs**: whether `.toolchain/` or `agent/tools.ts` keeps each claim fully, in part (a
+2. **The programs**: whether `.toolchain/` keeps each claim fully, in part (a
    cross-check run on one case) or not.
 3. **The solves**: which tools they called, in what order, and which the guide leans on but none
    called (`TOOLS CALLED`, `TOOL CALLS ERRED`; a non-zero exit may be by design, so read the

@@ -1,11 +1,4 @@
 {
   "presets": ["bash"],
-  "tools": [
-    {
-      "name": "scale_base",
-      "kind": "reader",
-      "description": "Returns the task's base multiplied by a factor."
-    },
-    { "name": "read_path", "kind": "advisor", "description": "Returns a file's text." }
-  ]
+  "tools": []
 }

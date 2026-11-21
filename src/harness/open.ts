@@ -1,157 +1,57 @@
 /**
- * A v1 Built Harness state, opened for a v2 solve: its guide, its tool kinds, its tool tree, and
- * its domain tools as pi tools whose every call runs one-shot under the command wall.
+ * A Built Harness, opened for a solve: its guide, its selection of pi's coding tools and its tool
+ * tree, named by one digest.
  *
- * The state is v1's on-disk format: `agent/BUILT_AGENTS.md`, `agent/tools-spec.json`,
- * `agent/tools.ts` exporting `createDomainHarness`, and `.toolchain/`. `agent/config.yaml` is never
- * read: the host owns every limit a solve runs under (`AGENTS.md`, rule 11), so a harness's own
- * figures for turns, minutes or command seconds change nothing.
+ * On disk a harness is `agent/BUILT_AGENTS.md`, `agent/tools-spec.json` and `.toolchain/`.
+ * `agent/config.yaml` is never read: the host owns every limit a solve runs under (`AGENTS.md`,
+ * rule 11), so a harness's own figures for turns, minutes or command seconds change nothing.
+ * `presets` names pi's coding tools, any of `read`, `bash`, `edit` and `write`
+ * (`src/tools/coding.ts`).
  *
- * Departure from v1: harness tools keep no state across calls in v2, each call runs alone under the
- * command wall. v1 loaded the factory once into a long-lived confined worker that held the solve's
- * DraftStore; here every call, and the one listing before them, is a fresh `bun` over the bundled
- * module in the command's own folder, which is removed when it ends, so stdout is the only channel
- * back. A call names no timeout, so it runs for the condition's shell default, where v1 gave a
- * request 30 s. What the bundle sees in place of `@ana/agent-bundle` and pi-ai, and the departures
- * there, are in `shim.ts`.
- *
- * Two more departures. `presets` names pi's coding tools, any of `read`, `bash`,
- * `edit` and `write`, where v1's named its own `files` and `shell` (`src/tools/coding.ts`). And the
- * answer is no tool's (`src/tools/answer.ts`): a tool is a reader or an advisor, and a state that
- * declares v1's artifact-writer is refused as any unknown kind is, since none of the 1,252 kept
- * harnesses on record on 17 November 2026 declared one.
+ * The host reads the guide and the spec and builds or runs nothing from a harness's files: what a
+ * harness computes is a program under `.toolchain/bin`, which the solver starts in its shell. Until
+ * 20 November 2026 a harness also held `agent/tools.ts`, a module of tools of its own that the host
+ * bundled, listed under the wall before every solve and called one process a call. 21 of the 1,340
+ * kept harnesses on record that day declared a tool, in nine campaigns opened from 21 to 31
+ * October, and an export dropped them. A harness kept before then still holds the file, which
+ * nobody reads, and one that declares a tool is refused by the names it declares.
  */
-import type { JsonValue } from "@earendil-works/chord/json";
-import type { TSchema } from "typebox";
-import type { SeatTool } from "../agent/session.ts";
-import {
-  AGENT_DIR,
-  BYTECODE,
-  GENERATED_TOOLS_FILE,
-  GUIDE_FILE,
-  TOOLS_SPEC_FILE,
-  TOOL_TREE_DIR,
-} from "../meta/bundle-layout.ts";
+import { AGENT_DIR, BYTECODE, GUIDE_FILE, TOOLS_SPEC_FILE, TOOL_TREE_DIR } from "../meta/bundle-layout.ts";
 import { sha256OfFile } from "../meta/digest.ts";
-import { existsSync, lstatSync, readlinkSync, realpathSync, writeFileSync } from "../meta/filesystem.ts";
-import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
+import { existsSync, lstatSync, readlinkSync, realpathSync } from "../meta/filesystem.ts";
+import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isRecord, isString } from "../meta/json-shape.ts";
-import { keyIfDefined } from "../meta/optional-key.ts";
-import { basename, dirname, join, resolve } from "../meta/path.ts";
+import { join, resolve } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
-import { capturedExecPath } from "../meta/process.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
-import { shellQuote } from "../wall/isolation.ts";
-import { CODING_TOOLS } from "../tools/coding.ts";
-import { text, tool } from "../tools/answer.ts";
-import type { Launch } from "../tools/command.ts";
-import { DRAFT_TOOL } from "./shim.ts";
-import { type PublicTask, publicView } from "../solver/prompt.ts";
-
-type ToolKind = "reader" | "advisor";
+import { plural } from "../meta/text.ts";
 
 export interface Harness {
   /** `agent/BUILT_AGENTS.md` as written, untrimmed; null when the state has none. */
   readonly guide: string | null;
   readonly presets: readonly string[];
-  /** Each declared domain tool's kind, from `agent/tools-spec.json`. */
-  readonly kinds: ReadonlyMap<string, ToolKind>;
   /** `.toolchain`, for the wall's `toolTree`; null when the state has none. */
   readonly toolTree: string | null;
-  /** `agent/tools.ts` bundled into one self-contained ESM module over `shim.ts`. */
-  readonly module: string;
-  /** sha256 over everything the solver-visible tools depend on: module, spec, guide and the tool
-   *  tree's files but its Python bytecode caches (`BYTECODE`), so a tool tree changed under an
-   *  unchanged module changes it. */
+  /** sha256 over everything a solve under the harness depends on: spec, guide and the tool tree's
+   *  files but its Python bytecode caches (`BYTECODE`). */
   readonly digest: string;
 }
 
-/** A tool's result as the shim's `call` returns it (v1's `Evidence`). */
-interface Evidence {
-  text: string;
-  details?: JsonValue;
-  terminate?: boolean;
-}
-
-/** One listed tool, as the caller prints it: the factory's own row, functions dropped. */
-interface ToolRow {
-  name: string;
-  label: string;
-  description: string;
-  /** The TypeBox schema printed as JSON, which is the JSON Schema pi validates against. */
-  parameters: TSchema;
-  executionMode?: "sequential" | "parallel";
-}
-
-const KINDS: ReadonlySet<string> = new Set(["reader", "advisor"]);
-/** The names a solver's tools already hold, whatever the harness: pi's coding tools and `submit`. */
-const HOST_TOOLS: readonly string[] = [...CODING_TOOLS, "submit"];
-const SHIM = Bun.fileURLToPath(new URL("shim.ts", import.meta.url));
-/** The host's own source and installed packages, which the shim imports from. */
-const HOST_ROOTS = [dirname(dirname(SHIM)), join(dirname(dirname(dirname(SHIM))), "node_modules")];
-const MARKER = "@@ana-harness-result@@";
-/** The tail of a call's output kept for the result line and an error's context; a tool printing
- *  without end is cut by the command's timeout, not by the host's memory. */
-const OUTPUT_TAIL_BYTES = 8 * 1024 * 1024;
-
 /**
- * What runs inside the wall: read `input.json`, load the factory, and print one marker line with
- * the listing, the tool's evidence or the error, last on stdout. Fixed text, never composed from
- * the harness, and plain JavaScript because it runs where nothing of this repository is readable.
- * The brand and the "must return tools" refusals are v1's. The
- * signal `run` receives never fires: the host's abort reaches the call by killing its process tree.
+ * What the tool module of every harness without a tool bundled to, as the digest read it. A
+ * condition on record names its harness by a digest that held that text, so it stays in the
+ * digest: each of the 1,319 kept harnesses on record on 20 November 2026 that declare no tool held
+ * the Starter's module but for its comments, and keeps its name (`test/harness-open.test.ts`).
  */
-const CALLER = `import { readFileSync } from "node:fs";
-const out = (value) => process.stdout.write("\\n${MARKER}" + JSON.stringify(value) + "\\n");
-try {
-  const input = JSON.parse(readFileSync("input.json", "utf8"));
-  const { createDomainHarness } = await import("./harness.mjs");
-  const tools = createDomainHarness(input.task)?.tools;
-  if (!Array.isArray(tools)) throw new Error("createDomainHarness must return tools");
-  if (tools.some((tool) => tool?.[Symbol.for(${capturedJsonStringify(DRAFT_TOOL.description)})] !== true))
-    throw new Error("createDomainHarness tools must be created with defineDraftTool");
-  if (input.name === null) {
-    out({ tools: tools.map(({ name, label, description, parameters, executionMode }) => ({ name, label, description, parameters, executionMode })) });
-  } else {
-    const tool = tools.find((candidate) => candidate.name === input.name);
-    if (tool === undefined) throw new Error(\`createDomainHarness has no tool "\${input.name}"\`);
-    const { text, details, terminate } = await tool.call(input.params, new AbortController().signal);
-    out({ result: { text, details, terminate } });
-  }
-} catch (error) {
-  out({ error: error instanceof Error ? error.message : String(error) });
-  process.exitCode = 1;
-}
-`;
+const NO_TOOLS_MODULE =
+  "// @bun\n\nvar createDomainHarness = () => ({\n  tools: []\n});\nexport {\n  createDomainHarness\n};\n";
 
-/** Bun writes each bundled file's path, relative to where the host was started, on a comment line
- *  of its own. The digest leaves those lines out: with them, one harness had another digest in every
- *  directory it was copied to and from every directory the host was run in, and a condition names
- *  its harness by this digest. The module that runs keeps them. */
-const BUNDLED_PATH = /^\/\/ .+\.(?:[cm]?[jt]sx?|json)$/gm;
-
-/** A harness's module as its digest reads it: without the path comments, and with the harness's own
- *  directory, which Bun writes out whole wherever a bundled CommonJS file reads `__dirname` or
- *  `__filename`, replaced by one name. Its resolved tool tree is read as `.toolchain` under it,
- *  whether inside or beside it. Otherwise such an import changes the digest on freezing or copying. */
-function located(module: string, dir: string, toolTree: string | null): string {
-  const source =
-    toolTree === null ? module : module.replaceAll(realpathSync(toolTree), join(resolve(dir), TOOL_TREE_DIR));
-  const places = [...new Set([realpathSync(dir), resolve(dir)])].toSorted((a, b) => b.length - a.length);
-  return places
-    .reduce((bundled, place) => bundled.replaceAll(place, "<harness>"), source)
-    .replace(BUNDLED_PATH, "");
-}
-
-/** The harness `dir`, opened. `bundled` is its tools module as `openHarness` bundled it before, for
- *  a process with no host source to bundle over: the compiled container solver, whose mount carries
- *  the module its host bundled (`bundleArm`, `studies/shared/bundle.ts`). */
-export async function openHarness(dir: string, bundled?: string): Promise<Harness> {
-  // The three files the host reads by name are the harness's own: a guide or a spec linked to a host
+export async function openHarness(dir: string): Promise<Harness> {
+  // The two files the host reads by name are the harness's own: a guide or a spec linked to a host
   // file would be read here, outside every wall, and handed to the solver.
   const root = realpathSync(dir);
   const guideName = `${AGENT_DIR}${GUIDE_FILE}`;
-  for (const name of [guideName, TOOLS_SPEC_FILE, GENERATED_TOOLS_FILE]) {
+  for (const name of [guideName, TOOLS_SPEC_FILE]) {
     const file = join(dir, name);
     if (existsSync(file) && !containsPath(realpathSync(file), root)) {
       throw new Error(`${name} links outside the harness`);
@@ -166,33 +66,18 @@ export async function openHarness(dir: string, bundled?: string): Promise<Harnes
   if (presets === null || declared === null) {
     throw new Error(`${TOOLS_SPEC_FILE} needs presets and tools lists`);
   }
-  const kinds = new Map<string, ToolKind>();
-  for (const row of declared) {
-    if (!isRecord(row) || !isString(row.name) || !isString(row.kind) || !KINDS.has(row.kind)) {
-      throw new Error(`${TOOLS_SPEC_FILE} row ${capturedJsonStringify(row)} needs a name and a kind`);
-    }
-    // SAFETY: KINDS just admitted the kind.
-    kinds.set(row.name, row.kind as ToolKind);
-  }
-  // A solver is given one tool under each name, and these are pi's and the host's.
-  const taken = [...kinds.keys()].filter((name) => HOST_TOOLS.includes(name));
-  if (taken.length > 0) {
+  if (declared.length > 0) {
+    const names = declared.map((row) =>
+      isRecord(row) && isString(row.name) ? row.name : capturedJsonStringify(row),
+    );
     throw new Error(
-      `${TOOLS_SPEC_FILE} names a tool ${taken.join(", ")}: ${HOST_TOOLS.join(", ")} are the host's own`,
+      `${TOOLS_SPEC_FILE} declares ${plural(names.length, "tool")} (${names.join(", ")}): a harness gives its solver programs under ${TOOL_TREE_DIR}/bin and a guide, and its tools list stays empty`,
     );
   }
-  const module = bundled ?? (await bundle(join(dir, GENERATED_TOOLS_FILE)));
   const toolchain = resolve(dir, TOOL_TREE_DIR);
   const toolTree = existsSync(toolchain) ? toolchain : null;
   const tree = toolTree === null ? null : keptTreeContent(toolTree);
-  return {
-    guide,
-    presets,
-    kinds,
-    toolTree,
-    module,
-    digest: hashJsonValue({ module: located(module, dir, toolTree), spec, guide, tree }),
-  };
+  return { guide, presets, toolTree, digest: hashJsonValue({ module: NO_TOOLS_MODULE, spec, guide, tree }) };
 }
 
 /**
@@ -248,149 +133,4 @@ function keptTreeContent(toolTree: string) {
   const content = treeContent(real).filter(({ path }) => !BYTECODE.test(path));
   TREES.set(real, { stamp, content });
   return content;
-}
-
-/**
- * v1's bundling, with the two imports a harness makes of
- * the host resolved to the shim, and the output kept in memory rather than in a temporary directory,
- * since every call stages it afresh.
- *
- * The bundle is built by the host, outside every wall, from files a Builder wrote. Left alone, Bun
- * runs a macro import in this process as it bundles, and inlines any file an import names, a text
- * import of a check program among them, into the module the solver's tools then run. So macros are
- * off, and every file the bundle loads must sit, links followed, inside the harness, its installed
- * packages among it, or in the host's own source and packages, which the shim imports. A package linked in from
- * elsewhere is outside it, as v1's states link theirs into the run that built them.
- *
- * The question is asked of each file as it is loaded and not of each import as it is resolved. A
- * guard on resolution has to trust some importers, an installed package's among them, and a Builder
- * writes `node_modules` under its harness: a package there importing `../../../log.jsonl` as text
- * passed such a guard, and the log, with every hidden value in it, was bundled into the solver's
- * tools. Whatever names a file, by whatever route it resolves, it is loaded here or not at all.
- *
- * A kept state's `.toolchain` is a link to the tree beside it (`stagedState`), so a tool that imports
- * the harness's own programs reached that tree and was refused once frozen, though it opened in the
- * Builder's home: on 26 October a Builder of `buffer-fresh-opus-forkedPR377` copied its
- * `.toolchain/lib` into `agent/` to get past it. That tree is admitted where it lies directly beside
- * the harness, and no other: a link to the folder above or to a tree further off still reaches
- * outside.
- */
-async function bundle(entry: string): Promise<string> {
-  const root = realpathSync(dirname(dirname(entry)));
-  const roots = [root, ...besideTree(root), ...HOST_ROOTS];
-  const result = await Bun.build({
-    entrypoints: [entry],
-    target: "bun",
-    format: "esm",
-    splitting: false,
-    sourcemap: "none",
-    // SAFETY: Bun 1.4.2 takes `macros: false` and fails a build that imports one, though its types do
-    // not declare the option; `test/harness-tools.test.ts` fails if a later Bun stops honouring it.
-    ...({ macros: false } as object),
-    throw: false,
-    plugins: [
-      {
-        name: "harness-shim",
-        setup(build) {
-          build.onResolve({ filter: /^(@ana\/agent-bundle|@earendil-works\/pi-ai)$/ }, () => ({
-            path: SHIM,
-          }));
-          build.onLoad({ filter: /.*/ }, ({ path }) => {
-            const file = realpathSync(path);
-            if (roots.some((own) => containsPath(file, own))) return undefined;
-            throw new Error(
-              `an import reaches ${basename(file)}, which is outside the harness: its tools are built from its own files and installed packages`,
-            );
-          });
-        },
-      },
-    ],
-  });
-  const [output] = result.outputs;
-  if (!result.success || output === undefined || result.outputs.length !== 1) {
-    throw new Error(`harness bundle failed: ${result.logs.map((log) => log.message).join("; ")}`);
-  }
-  return await output.text();
-}
-
-/** The tree a kept state's `.toolchain` links to, where it lies directly beside the harness. */
-function besideTree(root: string): string[] {
-  const tree = join(root, TOOL_TREE_DIR);
-  if (!existsSync(tree)) return [];
-  const real = realpathSync(tree);
-  return real !== root && dirname(real) === dirname(root) ? [real] : [];
-}
-
-/**
- * The harness's domain tools for one task, in the factory's order, after one walled listing. The
- * name check is v1's. Each call is a fresh process `launch` starts: on the solve's command wall
- * (`launchOn`), or in a benchmark's container, which is the wall there.
- *
- * No tool writes the answer: it is a file the host reads at `submit` (`answer.ts`), so no harness
- * carries the answer's path and none can break it. When a harness had to declare a writer bound to
- * the answer format, three of four Builders on 8 October froze a harness without one, and every
- * solve under each ended with no answer.
- */
-export async function harnessTools(harness: Harness, task: PublicTask, launch: Launch): Promise<SeatTool[]> {
-  const view = publicView(task);
-  const call = <T>(name: string | null, params: unknown, signal?: AbortSignal) =>
-    callHarness<T>({ harness, launch, input: { task: view, name, params }, signal });
-  const { tools: rows } = await call<{ tools: ToolRow[] }>(null, null);
-  const actual = rows.map(({ name }) => name).toSorted();
-  const expected = [...harness.kinds.keys()].toSorted();
-  if (capturedJsonStringify(actual) !== capturedJsonStringify(expected)) {
-    throw new Error(
-      `domain tool mismatch: generated [${actual.join(", ")}], recorded [${expected.join(", ")}]`,
-    );
-  }
-  return rows.map(
-    (row): SeatTool =>
-      tool({
-        name: row.name,
-        description: row.description,
-        parameters: row.parameters,
-        execute: async (params, _api, context) => {
-          const { result } = await call<{ result: Evidence }>(row.name, params, context.abortSignal);
-          return {
-            ...text(result.text),
-            details: result.details ?? null,
-            ...keyIfDefined("control", result.terminate === true ? { terminate: true } : undefined),
-          };
-        },
-      }),
-  );
-}
-
-/** One launched run of the caller: the listing when `name` is null, otherwise one tool call. Returns
- *  the marker line's value, or throws the harness's own error message. */
-async function callHarness<T>(run: {
-  harness: Harness;
-  launch: Launch;
-  input: { task: PublicTask; name: string | null; params: unknown };
-  signal?: AbortSignal | undefined;
-}): Promise<T> {
-  const chunks: Buffer[] = [];
-  let held = 0;
-  const { exitCode } = await run.launch(`${shellQuote(capturedExecPath)} caller.mjs`, {
-    onData: (data) => {
-      chunks.push(data);
-      held += data.length;
-      while (held - (chunks[0]?.length ?? 0) > OUTPUT_TAIL_BYTES) held -= chunks.shift()?.length ?? 0;
-    },
-    signal: run.signal,
-    stage: (into) => {
-      writeFileSync(join(into, "harness.mjs"), run.harness.module);
-      writeFileSync(join(into, "caller.mjs"), CALLER);
-      writeFileSync(join(into, "input.json"), capturedJsonStringify(run.input));
-    },
-  });
-  const output = Buffer.concat(chunks).toString("utf8");
-  const at = output.lastIndexOf(`\n${MARKER}`);
-  const line = at === -1 ? null : (output.slice(at + MARKER.length + 1).split("\n")[0] ?? "");
-  const reply = line === null ? null : parseJsonAs<T & { error?: JsonValue }>(line);
-  if (reply !== null && isString(reply.error)) throw new Error(reply.error);
-  if (reply === null || exitCode !== 0) {
-    throw new Error(`harness call exited ${String(exitCode)} without a result: ${output.slice(-2000)}`);
-  }
-  return reply;
 }

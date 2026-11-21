@@ -39,7 +39,7 @@ import { pinnedPythonDir, TOOLCHAIN_HOME_ROOTS } from "#src/wall/policy.ts";
 import { RUNNER_SOURCE } from "../runtime/router/install.ts";
 import { scanText } from "../secrets/rules.ts";
 import { quoted, shellOn } from "./host-command.ts";
-import { type Host, hostsOf, ownName } from "./host-config.ts";
+import { type Host, hostsOf, keptHere, ownName } from "./host-config.ts";
 import { carriedTo, scriptOn } from "./hosts.ts";
 import { type Env, liveEverywhere } from "./logins.ts";
 import { type HostPython, PYTHON_PROBE, pythonIn } from "./receipt.ts";
@@ -273,8 +273,11 @@ function pythonFinding(machine: Machine, facts: Facts, pin: Pin | null): Finding
 }
 
 /** Whether the runner a receipt's `commit` installed differs from `tree`'s; a commit git cannot
- *  read, a dirty one among them, does. */
+ *  read, a dirty one among them, does. One installed from a descendant of `tree`'s head does not: on
+ *  20 November the main checkout could not follow the stack for a day, and its hourly sync would
+ *  have put its older runner back over one installed from the top. */
 export function runnerLags(tree: string, commit: string): boolean {
+  if (gitMaybe(tree, "merge-base", "--is-ancestor", "HEAD", commit) !== null) return false;
   const same = ["diff", "--quiet", "--end-of-options", commit, "HEAD", "--", ...RUNNER_SOURCE];
   return gitMaybe(tree, ...same) === null;
 }
@@ -394,7 +397,7 @@ export async function sync(args: readonly string[]): Promise<void> {
   if (values.yes && values.check) throw new Error("--check changes nothing, and --yes applies");
   const hosts = hostsOf();
   // A verb another host sent here reaches no further, and leaves this machine to its own sync.
-  const sent = runtimeProcess.env.ANA_HOP === "1";
+  const sent = keptHere();
   const pin = sent ? null : pinOf(runtimeProcess.env);
   const tools = sent ? [] : toolsOf(runtimeProcess.env.ANA_TOOLS ?? "");
   if (hosts.length === 0 && pin === null && tools.length === 0) {

@@ -35,7 +35,8 @@ not in the log.
    it.
 5. `comparison.reported`: the round's test and its reading.
 6. `states/<digest>/agent/`: the harness a session kept, as the solver had it. The guide is
-   `BUILT_AGENTS.md`, the tools are `tools.ts` and their kinds are in `tools-spec.json`.
+   `BUILT_AGENTS.md`, and `tools-spec.json` selects pi's tools; a harness kept before 20 November
+   2026 may also hold tools of its own in `tools.ts`, which no solve serves any more.
 7. `memory/<session>/`: the notes a Builder session left the next, its `MEMORY.md` (a run from
    before claude-mem's base also holds `SCRATCHPAD.md` and helper files under `scratch/`). They are
    the Builder's own words and no part of a harness.

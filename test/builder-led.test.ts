@@ -39,7 +39,9 @@ import { containing } from "./helpers/matchers.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = join(REPO, "test", "fixtures", "harness-min");
-const STEM = `test-hb-${String(runtimeProcess.pid)}`;
+// Not `harness-builder.test.ts`'s stem: the suite's workers run files without isolation, so both
+// files can share a process id, and both open a campaign named `-limit`.
+const STEM = `test-bl-${String(runtimeProcess.pid)}`;
 const OPENED = "campaign.opened";
 const PROJECT = "fixture-products";
 const MOVED = "campaign.move";
@@ -1569,6 +1571,8 @@ describe("a campaign tool where the table names more than the action", () => {
     const moved = await everythingRead(`${STEM}-won-two`, { "g-1": [1, 2, 3], "g-2": [2, 3, 4] });
     expect(moved).toBe(same);
     expect(same).toContain("2 won, 0 lost, 3 tied");
+    // The count by validity crosses too, and is the same whichever tasks were won.
+    expect(same).toMatch(/Validity differed on \w+ of the 5 tasks/u);
     expect(same).toContain("Comparison g-2 took 0 minutes and billed");
   });
 

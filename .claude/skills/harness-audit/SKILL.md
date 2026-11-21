@@ -70,8 +70,7 @@ A campaign promotes by itself unless `--hitl` is set. For a manual one, show the
 `bun tools/d2/close.ts --name <campaign> --to <folder>` writes `harness/`, `RULES.md` and
 `REPORT.md` without calling a model. Hand an independent reviewer only `harness/` and `RULES.md`,
 never `REPORT.md`, the log or a reading (a Codex reviewer is one read-only row through
-[codex-gpt-swarm](../codex-gpt-swarm/SKILL.md), with the folder as its workdir), and ask neutrally: structure; whether `tools-spec.json` has one row per tool `tools.ts` returns, in
-name and order; whether the guide matches the programs; stale files; links leaving the folder; and
+[codex-gpt-swarm](../codex-gpt-swarm/SKILL.md), with the folder as its workdir), and ask neutrally: structure; whether the guide matches the programs; stale files; links leaving the folder; and
 any part that names a task, copies its text or holds its answer. A search that tests candidates
 against the public rules is allowed (`src/builder/prompt.ts`). Record digest and folder with the
 review, which is advisory only.
@@ -105,5 +104,5 @@ Starter or to what a Builder is told, on the operator's word.
 | what a solver is told | `src/solver/prompt.ts` | `test/solver-prompt.test.ts` |
 | what the Examiner and Referee are told | `src/examiner/prompt.ts`, `src/referee/referee.ts` | `test/examiner.test.ts`, `test/review.test.ts` |
 
-The four parts are in `AGENTS.md`, section 3, and their shapes in `HARNESS_ACCOUNT`; read the parser
+The three parts are in `AGENTS.md`, section 3, and their shapes in `HARNESS_ACCOUNT`; read the parser
 or tool that carries an instruction before rewording it.

@@ -7,7 +7,7 @@
  *   bun studies/shared/claude-export.ts --from <starter | campaign> [--harness <kept>] --into <tree>
  *
  * The harness is found and checked by the owner the study's container bundle uses (`placeHarness`,
- * `bundle.ts`), so the digest and origin a score is read beside are the same. Of its four parts:
+ * `bundle.ts`), so the digest and origin a score is read beside are the same. Of its parts:
  * - the guide becomes `CLAUDE.md`, under a note that says what of a campaign's solve is not here:
  *   its task and answer files and `submit`, and, for every harness alike, whatever the guide says of
  *   a limit on turns or time, of checking or submitting an answer, or of scoring;
@@ -32,9 +32,8 @@
  *   its interpreter and compiled distributions are installed again for this one at the same
  *   versions, or the export is refused (`rebuildForeignPython`, `foreign-python.ts`), and
  *   `export.json` names what was replaced under `rebuilt`;
- * - `agent/tools-spec.json` and `agent/tools.ts` are dropped: Claude Code has its own tools and no
- *   loader for a harness's, so the note names each declared tool as unavailable, and `export.json`
- *   lists both files.
+ * - `agent/tools-spec.json` is dropped, and `agent/tools.ts` where a harness kept before 20
+ *   November 2026 still holds one: Claude Code has its own tools, and `export.json` lists both.
  * The harness's other files stay under `harness/`, which the runner does not copy, for provenance;
  * its tool tree is there no longer, since until 17 November a tree held it twice (17,111 of a
  * reference's 34,265 entries) and every copy to another machine carried both.
@@ -50,12 +49,12 @@ import { tmpdir } from "#src/meta/os.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { dirname, join, relative } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { keyIfDefined, keyIfNotNull } from "#src/meta/optional-key.ts";
+import { keyIfNotNull } from "#src/meta/optional-key.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { type Program, programsOf } from "#src/harness/programs.ts";
 import { HOST_ONLY } from "#src/harness/starter.ts";
 import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
-import { HARNESS_DIR, HERE, type Place, placeHarness, placeOf } from "./bundle.ts";
+import { HARNESS_DIR, HERE, type Place, placeHarness, placeOf, sourceNamed } from "./bundle.ts";
 import { packageFolders, type PythonFor, rebuildForeignPython, uvPython } from "./foreign-python.ts";
 
 /** Where the tool tree lands in the exported tree, under the runner's `scripts/` entry. */
@@ -96,7 +95,6 @@ export async function exportForClaudeCode(
   mkdirSync(part, { recursive: true });
   const origin = await placeHarness(join(part, HARNESS_DIR), source);
   const harness = await openHarness(join(part, HARNESS_DIR));
-  const unavailable = [...harness.kinds.keys()].toSorted();
   const searched =
     harness.toolTree === null
       ? []
@@ -134,12 +132,6 @@ export async function exportForClaudeCode(
     "# How this harness reaches you",
     "",
     "The guide below was written for another runner, where a task came as `input.json`, the answer went into `answer.json` and a `submit` tool sent it. None of those is here: the task prompt is the whole task and says where the deliverable goes, and the files you leave are the answer, whatever the guide says of those three. Whatever it says of a limit on turns or time, of checking or submitting an answer, or of how an answer is scored also belongs to that runner and does not hold here.",
-    ...(unavailable.length === 0
-      ? []
-      : [
-          "",
-          `The guide may name tools of its own: ${unavailable.join(", ")}. They are not available here; use your own tools.`,
-        ]),
     ...(programs.length === 0
       ? []
       : [
@@ -165,7 +157,6 @@ export async function exportForClaudeCode(
     harness: harness.digest,
     ...origin,
     dropped: DROPPED,
-    unavailable,
     toolchain: harness.toolTree === null ? null : TOOLCHAIN,
     searched,
     ...keyIfNotNull("rebuilt", rebuilt === null ? null : { for: place.name, ...rebuilt }),
@@ -224,13 +215,7 @@ async function main(args: readonly string[]): Promise<void> {
     },
   });
   if (values.from === undefined || values.into === undefined) throw new Error("name --from and --into");
-  if (values.from === "starter" && values.harness !== undefined) {
-    throw new Error("--harness names a campaign's kept harness; the starter is one harness");
-  }
-  const source =
-    values.from === "starter"
-      ? "starter"
-      : { campaign: values.from, ...keyIfDefined("harness", values.harness) };
+  const source = sourceNamed(values.from, values.harness);
   const place = values.for === undefined ? HERE : placeOf(values.for);
   const record = await exportForClaudeCode(values.into, source, place);
   console.log(`export: ${values.into} is harness ${record.harness}, ${capturedJsonStringify(record)}`);

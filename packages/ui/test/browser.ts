@@ -197,8 +197,8 @@ async function startLine(stdout: ReadableStream<Uint8Array>): Promise<[string, s
  *  of the page. A stall is the browser's and no test's, and the test wrapper runs no failed file
  *  again (`tools/runtime/test-suite.ts`), so a stalled start is tried once more here, saying so; a
  *  second stall fails the file's `beforeAll`, and a launch that fails outright fails it at once. */
-export async function launchBrowser(within = START_MS): Promise<Browser> {
-  const browser = (await startChrome(within)) ?? (await startChrome(within));
+export async function launchBrowser(within = START_MS, executable = Bun.env.ANA_UI_CHROME): Promise<Browser> {
+  const browser = (await startChrome(within, executable)) ?? (await startChrome(within, executable));
   if (browser !== null) return browser;
   throw new Error(`Chrome stalled at its start twice, ${String(within)} ms each`);
 }
@@ -206,8 +206,7 @@ export async function launchBrowser(within = START_MS): Promise<Browser> {
 /** Chrome once it has opened a context, or `null` where its start has not answered `within` ms of
  *  the launch. A Chrome whose launch stalled is ended with its process group, and one whose first
  *  context stalled is closed without waiting on it. */
-async function startChrome(within: number): Promise<Browser | null> {
-  const executable = Bun.env.ANA_UI_CHROME;
+async function startChrome(within: number, executable: string | undefined): Promise<Browser | null> {
   const options = {
     headless: Bun.env.ANA_UI_HEADED !== "1",
     slowMo: Number(Bun.env.ANA_UI_SLOW_MS ?? "0"),

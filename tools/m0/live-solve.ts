@@ -204,16 +204,16 @@ async function shown(
   const release = claimRoot(dirs.root);
   try {
     const base = await walledBase(dirs, { repoRoot: REPO, otherTrees: worktreesOf(REPO) }, "a solve");
-    const files = seedHome(dirs.home, request.task, request.resources, request.contract.answerFormat);
+    const seeded = seedHome(dirs.home, request.task, request.resources, request.contract.answerFormat);
     const wall = { base, dirs, toolTree: harness.toolTree, limits: LIMITS };
-    const tools = await solverTools(request, harness, wall, openDesk());
+    const tools = solverTools(request, harness, wall, openDesk());
     const prompt = systemPrompt({
       tools,
       home: dirs.home,
       guide: harness.guide,
       wallSeconds: LIMITS.wallSeconds,
       limits: LIMITS,
-      resources: files,
+      ...seeded,
       programs: installedPrograms(harness.toolTree),
       network: await networkReach(wall),
     });

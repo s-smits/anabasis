@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { supplyOf } from "../src/campaign/admission.ts";
 import { campaignOf, type Handover, openSteps } from "../src/campaign/handover.ts";
 import { comparisonsTold, failsTold, startTold } from "../src/builder/past.ts";
-import { type Condition, recordCondition } from "../src/kernel/condition.ts";
+import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
 import { billedAll, billedFor } from "../src/kernel/meter.ts";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -31,6 +31,24 @@ let seed = "";
 
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
+/** The condition of a test-side solve of `task` under `harness`. */
+const conditionOf = (task: string, harness: string): Condition => ({
+  contract: "c1",
+  harness,
+  task,
+  model: "faux/solver",
+  effort: "medium",
+  prices: { "faux/solver": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
+  runtime: {},
+  compaction: "off",
+  solverTools: "s1",
+  verifierTools: "t1",
+  sandbox: "p1",
+  limits: LIMITS,
+  host: "h1",
+  side: "test",
+});
+
 /** A log to which a campaign's steps are added as its commands log them. */
 function campaign() {
   const log = join(scratch, `log-${String(logs++)}.jsonl`);
@@ -45,27 +63,11 @@ function campaign() {
     comparison?: string,
     again = 0,
   ) => {
-    const condition: Condition = {
-      contract: "c1",
-      harness,
-      task,
-      model: "faux/solver",
-      effort: "medium",
-      prices: { "faux/solver": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
-      runtime: {},
-      compaction: "off",
-      solverTools: "s1",
-      verifierTools: "t1",
-      sandbox: "p1",
-      limits: LIMITS,
-      host: "h1",
-      side: "test",
-    };
     if (again === 0) solves += 1;
     const solve = `s-${String(solves)}-${String(again + 1)}`;
     record("solve.started", {
       solve,
-      condition: recordCondition(log, condition),
+      condition: recordCondition(log, conditionOf(task, harness)),
       ...keyIfDefined("comparison", comparison),
     });
     record("solve.finished", {
@@ -162,6 +164,8 @@ describe("a campaign's reading", () => {
       cap: 100,
       modelTurns: null,
       points: null,
+      // Its report names no setting, so its pairs cannot be read again.
+      validity: null,
       aside: 0,
       cut: false,
     } as const;
@@ -251,6 +255,24 @@ describe("a led Builder's lifetime and bill", () => {
     expect(openSteps(campaignOf(c.events()).steps)).toContain("b-1");
     c.record("campaign.ended", { ending: "environment" });
     expect(steps(c, "builder")).toMatchObject([{ ...live, cut: true }]);
+  });
+
+  // A reading's turns name its reader alone, and only its finding names the solve: until 20 November
+  // an open Builder was billed the readings of every comparison that ran inside its window.
+  it("bills an open led Builder the readings of its own practice, and a comparison's to the comparison", () => {
+    const c = campaign();
+    c.record("campaign.opened", { led: true });
+    c.began("b-1");
+    const reading = (reader: string, solve: string, billed: number) => {
+      c.record("referee.turn", { reader, turn: 1, usage: { cost: { total: billed } } });
+      c.record("referee.finding", { solve, reader, ruling: "earned", billed });
+    };
+    reading("reader-1", c.solved("p1", HA, "fail"), 0.5);
+    // The practice solve and its reading, once: the reading's turn is summed in its finding.
+    expect(steps(c, "builder")).toMatchObject([{ id: "b-1", ended: null, billed: 2 }]);
+    c.record("comparison.started", { session: "g-1" });
+    reading("reader-2", c.solved("s1", HA, "fail", "g-1"), 0.75);
+    expect(steps(c, "builder")).toMatchObject([{ id: "b-1", ended: null, billed: 2 }]);
   });
 
   // Until 19 October an ended session was billed everything in its span: buffer-fresh-opus's view
@@ -437,7 +459,7 @@ describe("the Builder's filter over that reading", () => {
     expect(startTold(campaignOf(same.events()), STARTER, "b-2")).toContain("no Builder session");
   });
 
-  it("tells each comparison as its tally and its reading, with no task and no other count", () => {
+  it("tells each comparison as its tally and its reading, with no task", () => {
     const c = campaign();
     c.compared("b-1", { old: STARTER, fresh: HA }, tallied("step", 4, 0));
     c.compared(
@@ -495,4 +517,47 @@ describe("the Builder's filter over that reading", () => {
     expect(told).toMatch(/1 won, 0 lost, 3 tied, which reads no step/u);
     expect(told).not.toContain("bill");
   });
+
+  // After a no-step of 18 won and 5 lost that one validity loss held (19 November), the Builder was
+  // told the tally alone and practised on, though no practice task could be the one it lost.
+  it.each([
+    ["fail", "Validity differed on 1 of the 2 tasks"],
+    ["pass", "Validity differed on none of the 2 tasks"],
+  ] as const)(
+    "tells how many tallied tasks validity differed on, naming none, where the old side's s1 is a %s",
+    (outcome, said) => {
+      const c = campaign();
+      const setting = settingId(conditionOf("any", "any"));
+      const sides = { old: HA, fresh: HB };
+      const versions = ["s1", "s2"];
+      c.record("comparison.started", {
+        session: "g-1",
+        ...sides,
+        starter: STARTER,
+        setting,
+        solves: 1,
+        level: 0.1,
+        tasks: versions,
+      });
+      c.solved("s1", HB, "pass", "g-1");
+      c.solved("s1", HA, outcome, "g-1");
+      c.solved("s2", HB, "pass", "g-1");
+      c.solved("s2", HA, "pass", "g-1");
+      const wins = outcome === "fail" ? 1 : 0;
+      c.record("comparison.reported", {
+        session: "g-1",
+        ...sides,
+        starter: STARTER,
+        setting,
+        solves: 1,
+        versions,
+        reading: "no-step",
+        scored: { wins, losses: 0, ties: 2 - wins, p: 0.5, unsolved: 0 },
+        aside: [],
+      });
+      const [told] = comparisonsTold(campaignOf(c.events()).steps);
+      expect(told).toContain(said);
+      expect(told).not.toMatch(/\bs[12]\b/u);
+    },
+  );
 });

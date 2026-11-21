@@ -377,8 +377,12 @@ against the last big release's runs by more than the spread between runs. Which 
 read from each run's commit (`bun run runs source`), never from the version.
 
 Read `stack-pr` and the stack (`bun .claude/skills/stack-pr/scripts/stack.ts`) before you branch
-and before you push. Expand the open PR a change belongs to, or put a new one on the top; another
-session's PR, worktree or run changes only on the operator's word. One worktree per PR, no
+and again before you push, since other sessions move it. Expand the open PR a change belongs to, or
+put a new one on the top: push its branch, open it with `gh pr create --draft --base <top's
+branch>` and run `bun run land -- <new top> --sanitize`, which links the whole chain into GitHub's
+native stack (`gh stack link`), the unit `land --merge` merges. A base alone leaves a PR outside
+that stack, and a base in the middle of one forks it. Moving your own PR onto the top is yours;
+another session's PR, worktree or run changes only on the operator's word. One worktree per PR, no
 `git stash` by hand, and every commit passes alone. Each PR carries a category (`CATEGORIES`,
 `tools/runtime/land.ts`) and the highest importance label whose test it meets:
 
@@ -397,8 +401,10 @@ Between two levels, take the higher: a label read too low hides a fix from the r
 landing order it deserves.
 
 Push only your authorised branch, with `--force-with-lease` when rewriting, and read back at the
-remote what you published before reporting it. Merging and restacking others' branches are the
-operator's, and a landing is reviewed through three lenses first (`stack-pr`, section 9).
+remote what you published (the heads, and the counts and commits a body cites) before reporting
+it. Merging and restacking others' branches are the operator's; before `bun run land -- <top>
+--merge` the landing is reviewed through three lenses (`stack-pr`, section 9), and confirmed
+findings go on the stack before `--sanitize` runs again.
 
 **Shell commands.** A guard reads each command before it runs: write it plainly, use the form a
 refusal names (`repository-practice`, "Commands a guard reads"), write files with the editing tools

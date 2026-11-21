@@ -7,9 +7,8 @@
  *
  * Each read says under its heading when it ran, how many lane reports were written then, and its
  * exit code, so a later reading of the investigations counts whether the reads were made while the
- * lanes were out instead of inferring it from file times: of the 34 investigations of 3 to
- * 16 November that held a launch manifest and lane reports, one wrote a script's lines inside the
- * lanes' hours, and the one `record.md` was written after its last report.
+ * lanes were out instead of inferring it from file times, which rarely shows them made in the
+ * lanes' hours.
  */
 import { packOf } from "../runs/registry.ts";
 

@@ -6,21 +6,17 @@
  * What every open lane shares (the shared instructions, the overview, what is already counted, the
  * catalogue's stance and the report's form) is one file a session reads once (`sharedPrompt`), and
  * an open lane's prompt carries its question, its own triggers whole, the predictions that name it
- * and where its report goes. Until 10 November each prompt carried the shared part too: of one
- * prompt's 60 thousand characters 56 thousand were shared, 20 thousand of those the solve ids of one
- * lane's triggers, and two sessions given 12 and 14 such prompts both compacted before their last
+ * and where its report goes, rather than each prompt carrying the shared part too, which made most
+ * of every prompt the same text and left a session given a dozen of them compacting before its last
  * lanes. An isolated lane's prompt stands alone and carries the campaigns' rows, the hard rules, the
  * deterministic rows, its own triggers, the lane and the reporting rules: it is told neither the
  * operator's question nor what any other lane was started by, because it freezes its result before
  * it reads anything that could lead it. A blind lane's carries the campaigns' rows and the hard rules
- * alone: on 8 November lane 14 was handed the orientation, row F's readings and every trigger, and
- * said its grades were sighted.
+ * alone, since a blind lane handed the orientation, the readings and every trigger grades sighted.
  *
  * An investigation reads one campaign or several as equals, and each lane reads every one of them.
- * Until 21 October one campaign was under review and the others were peers that only lane 14 read
- * beside it: the final investigation of four stopped Opus campaigns then ran 40 sessions, ten lanes
- * a campaign, and found the crashed Examiner session after a promotion four times over, while a
- * defect one campaign held alone was read by the ten sessions of that campaign only. Now every
+ * Reading one campaign under review and the others as peers would find a shared defect once per
+ * campaign, and a defect one campaign holds alone only by that campaign's sessions. So every
  * finding says on its `Seen in:` line which campaigns show it.
  */
 import { basename, dirname, join } from "#src/meta/path.ts";
@@ -98,8 +94,7 @@ const RESOLUTIONS = ["held", "falsified", "unreached"] as const;
 type Resolution = (typeof RESOLUTIONS)[number];
 const PREDICTION = "Prediction";
 /** A trigger's detail past this many characters is cut in the part every lane reads, and stands
- *  whole in its own lane's prompt: seven `WINS` lines of lane 16 were 20 of the 56 thousand
- *  characters each lane's prompt shared on 10 November. */
+ *  whole in its own lane's prompt, so that one lane's long lines do not fill every lane's. */
 const DETAIL = 300;
 const FIELDS = ["Observation:", "Cause:", "Owner:", "Reverses if:", "Decision:"] as const;
 const [OBSERVATION, CAUSE, OWNER] = FIELDS;
@@ -108,9 +103,8 @@ const SEEN = "Seen in:";
 const TITLE = "### ";
 /**
  * What a lane says of its own observation and cause, the first two of the vetting's verdicts:
- * recounted by the command its line names, or read from a sample and still to settle. Of the 121
- * rows the syntheses of 12 to 16 November merged, vetting ruled 35 plausible and 85 confirmed, 15 of
- * those in their counts alone, since no report said which of its statements a command reprints.
+ * recounted by the command its line names, or read from a sample and still to settle, so that the
+ * vetting knows which of a report's statements a command reprints.
  * A line that opens with neither is listed as unmarked and refused nowhere, so a report written to
  * the older form still collects.
  */
@@ -125,8 +119,8 @@ interface Written {
 }
 /**
  * The derived file (`READERS`, `tools/wri/derive.ts`) that holds the rows a trigger counted, where one
- * does. A trigger prints a count and at most a few ids, and the sessions of 3 to 10 November went
- * from that line to a query of their own over the log for rows a file already held.
+ * does. A trigger prints a count and at most a few ids, and a session would otherwise go from that
+ * line to a query of its own over the log for rows a file already holds.
  */
 export const ROWS = {
   "REFUSALS BY CHECK": "checks",
@@ -192,9 +186,9 @@ export function numbersOf(spec: string): number[] {
 }
 
 /** Where the campaign of a stored log that is gone stands now, among the runs a reader reads: `retire`
- *  moves a closed run into the archive, and a log read at its old path is an empty history. On 10
- *  November 23 of 58 investigations named such a log (43 of 190), so `lanes` refused an isolated lane
- *  as untriggered and `collect` and `synthesis` read a campaign with no trigger. */
+ *  moves a closed run into the archive, and a log read at its old path is an empty history, which
+ *  would make `lanes` refuse an isolated lane as untriggered and `collect` and `synthesis` read a
+ *  campaign with no trigger. */
 export function movedTo(log: string, held: readonly { name: string; path: string }[]): string {
   const name = basename(dirname(log));
   const run = held.find((each) => each.name === name);
@@ -244,10 +238,9 @@ const heavierFirst = (one: readonly Lane[], other: readonly Lane[]) => weightOf(
  * heaviest first by the sum of its lanes' importance, joins the lightest session so far. The
  * groups start as whole labels, and while the sessions are fewer than they could be or the lightest
  * weighs under three quarters of the heaviest, the heaviest group of several lanes is halved,
- * alternating its lanes by importance (operator, 9 November: about four groups of roughly equal
- * weight, every lane in exactly one; on 1 November a label was never split, and the climb label,
- * a third of the catalogue's weight, left the lightest of four sessions over its 29 open lanes at
- * 0.64 of the heaviest).
+ * alternating its lanes by importance (the operator's choice: about four groups of roughly equal
+ * weight, every lane in exactly one), since a label never split can carry a third of the catalogue's
+ * weight and leave the lightest session far below the heaviest.
  */
 function packed(groups: readonly Lane[][], count: number): Lane[][] {
   const sessions = Array.from({ length: Math.min(count, groups.length) }, (): Lane[] => []);
@@ -269,8 +262,8 @@ function packed(groups: readonly Lane[][], count: number): Lane[][] {
 
 /**
  * Lanes packed into sessions (`packed`), an isolated lane a session of its own. Within a session
- * the lanes run in number order, a blind lane first: on 7 November the blind grading lane, read
- * after three lanes of its session, said its grades were not blind.
+ * the lanes run in number order, a blind lane first, since one read after other lanes of its session
+ * grades sighted.
  */
 export function sessionsOf(lanes: readonly Lane[], count: number): Lane[][] {
   const open = lanes.filter((lane) => !lane.isolated);
@@ -296,9 +289,8 @@ export function blankSections(shared: string): string[] {
 /**
  * The rows of every table of the shared instructions whose header names an `id` and a `lanes`
  * column: the predictions a release cycle lists under the prior state, each with the lanes that
- * recount it. On 10 November the table went whole into every prompt and was owed by none: of the 42
- * pairs of a lane and a prediction naming it, five sessions' reports named 14 and two sessions' 13,
- * and both sessions said afterwards that they had not read the table as work.
+ * recount it, so that each prediction is owed by its lanes, rather than a table every prompt carries
+ * whole and no session reads as work.
  */
 function predictionsOf(shared: string): Prediction[] {
   const cellsOf = (line: string) =>
@@ -340,8 +332,8 @@ function predicting(owed: readonly Prediction[]): string[] {
 }
 
 /** Where a lane's report goes and how it opens. A report's second line was to be its verdict from
- *  the start, so sessions wrote one they did not hold yet ("provisional", 4 November) or said
- *  afterwards that the early line could not be honest (10 November). */
+ *  the start, so sessions wrote one they did not hold yet ("provisional") or said afterwards that
+ *  the early line could not be honest. */
 function opening(lane: Lane, report: string): string[] {
   return [
     "## Your report",
@@ -394,7 +386,7 @@ function form(
     ].join("\n"),
     ...(open
       ? [
-          // The operator, 3 November 2026: a session should follow a problem where it leads and
+          // The operator's rule: a session should follow a problem where it leads and
           // write only the lanes that matter for these runs (`docs/backlog/wri-free-lanes.md`).
           "Where a lane's evidence leads past its question, follow it to the code or the text that let it through, and write what you find in that lane's report with the same fields. Where a lane matters less for these campaigns, at the point their logs have reached, than the other lanes your session was given, you may leave it unread: write only the heading and `Verdict: omitted`, then one sentence why (its question does not arise here, the primary's section already settles it, or another of your lanes covers it).",
         ]
@@ -441,7 +433,7 @@ function holds(
 
 /**
  * What a lane owes where several campaigns are read: each read first-hand, and each finding triaged
- * against the others. The operator's word of 21 October: read every campaign as an equal, and for
+ * against the others. The operator's rule: read every campaign as an equal, and for
  * everything found on one, look whether the others show it.
  */
 function equalsSection(campaigns: readonly Campaign[]): string[] {
@@ -458,12 +450,11 @@ function equalsSection(campaigns: readonly Campaign[]): string[] {
 }
 
 /**
- * What an open lane can lean on, and that it may read past it. The operator, 10 November 2026: the
- * helpers are to spare a session its plumbing without narrowing what it sees. The 265 lane
- * transcripts mined that day show sessions rebuilding by hand what a derived file already held,
- * since no prompt said what each file answers (`slice.ts` ran in none of the 107 sessions of 3 to
- * 10 November), while the findings vetting confirmed often came from one trace or one state read
- * whole, which no table prints. So the files and tools are named as counts already made, and the
+ * What an open lane can lean on, and that it may read past it. The operator's rule: the helpers
+ * are to spare a session its plumbing without narrowing what it sees. Sessions rebuild by hand what
+ * a derived file already holds where no prompt says what each file answers, while the findings
+ * vetting confirms often come from one trace or one state read whole, which no table prints. So
+ * the files and tools are named as counts already made, and the
  * last paragraph says that the record behind them stays open.
  */
 function counted(derived: string, catalogue: string): string[] {
@@ -491,8 +482,7 @@ function climbSection(climb: string): string[] {
 
 /**
  * Which of the triggers a lane starts from fired, and on which campaign. The lane's body names every
- * one it can start from, and a session read a name there as a trigger the log had fired: buffer-a's
- * lane 13 on 11 October reported `NEVER CHECKED` false, which the reader had never fired. `rows`
+ * one it can start from, and a session can read a name there as a trigger the log had fired. `rows`
  * names the derived file behind a trigger (`ROWS`), and is empty for a lane handed no derived file.
  */
 function firedLine(
@@ -664,9 +654,9 @@ export function reportOf(
   const named = lines.flatMap((line) => (line.startsWith(OWNER) ? [line.slice(OWNER.length)] : []));
   const unowned = named.filter((line) => !owners.some((owner) => line.includes(owner))).length;
   // Each entry is a campaign's whole name and its triage: a name that holds another as a prefix
-  // must not pass for it (review of 21 October). Entries part at a comma or a semicolon: on 22
-  // October 9 of 20 lanes over two campaigns parted them with semicolons, their triage holding
-  // commas, and were refused for leaving out a campaign they named.
+  // must not pass for it. Entries part at a comma or a semicolon, since lanes part them with
+  // semicolons where their triage holds commas, and would be refused for leaving out a campaign
+  // they named.
   const unseen = names.filter((name) =>
     lines.some(
       (line) =>
@@ -689,17 +679,17 @@ export function reportOf(
       : []),
     ...(verdict === "finding" && findings === 0 ? ["the verdict is a finding and none is written"] : []),
     // An isolated lane is a session of its own with one lane, so it has no other lane to weigh
-    // against and may not leave its lane unread (release review, 3 November).
+    // against and may not leave its lane unread.
     ...(verdict === "omitted" && lane.isolated ? ["an isolated lane may not be omitted"] : []),
-    // A session opens its report before it reads, as the hard rules ask; on 4 November buffer583's
-    // lane 22 stood as "could not read, provisional" and `collect` read it as a final verdict.
+    // A session opens its report before it reads, as the hard rules ask, so a verdict such as
+    // "could not read, provisional" is one still being written, not a final one.
     ...(unfinished === undefined ? [] : [`the verdict is ${unfinished}: the session is still writing`]),
     ...(unresolved.length > 0
       ? [
           `no \`${PREDICTION} <id>: ${RESOLUTIONS.join(" | ")}\` line for ${unresolved.join(", ")}, which the prior state hands this lane`,
         ]
       : []),
-    // Recode's lane 16 on 10 October said no finding over two written findings, and was accepted.
+    // A report can say no finding over findings it wrote, which is refused rather than accepted.
     ...((verdict === "no finding" || verdict === "omitted") && findings > 0
       ? [`the verdict is ${verdict} and the report writes ${plural(findings, "finding")}`]
       : []),

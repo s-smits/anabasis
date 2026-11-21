@@ -13,10 +13,10 @@
  * a wrapper (`bash -lc "..."`, `python3 -B path`, `timeout 30 prog`, a pipe's later stage) counts once,
  * under the program (`programsOf`, `programs.ts`), and a segment whose program the text does not name
  * (`$RUN x`, `..`) counts as not attributed instead of being dropped. Imports are not traced: a
- * library a script imports (`lib/*.js`) runs under the script's name and reads 0 here. Between 3
- * and 10 November 12 of 16 lane 15 sessions built this table by hand, and lane 15 sessions counted
- * the solves whose command or output reached a changed path; vet-12's finding that a version's
- * change sat on a path no g-2 solve took came from such a count.
+ * library a script imports (`lib/*.js`) runs under the script's name and reads 0 here. Lane 15
+ * sessions would otherwise build this table by hand, and count the solves whose command or output
+ * reached a changed path, from which a finding that a version's change sat on a path no solve took
+ * comes.
  *
  * `--list` prints one row a matching call (its solve, side, harness, tool and whether it erred) and
  * never the call's text: lane 18 reads which calls named a shared temporary folder. `--sequences`

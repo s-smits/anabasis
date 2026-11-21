@@ -13,10 +13,9 @@
  * shell write leaves no `edit` call, so the digests are the reading and the calls are the context;
  * where a solve's condition names no harness, the row says that it rests on the calls alone.
  *
- * Between 3 and 10 November 13 of 16 lane 13 sessions built this table by hand, parsing solve ids
- * out of the practice call's text, and the vetting of one of them refuted its count: it took 98
- * solves under practised-only states for probes of the starter, where 52 of 264 practice solves ran
- * under the starter. The role column is that count's fold.
+ * Without it lane 13 sessions build this table by hand, parsing solve ids out of the practice call's
+ * text, and can take solves under practised-only states for probes of the starter. The role column
+ * is that count's fold.
  *
  * It prints outcomes, so lane 14 reads it only after it has graded. It decides nothing: which
  * practice taught the Builder what is the lane's reading of the turns around each call (`slice.ts

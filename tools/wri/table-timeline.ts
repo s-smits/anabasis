@@ -9,9 +9,9 @@
  *
  *   bun tools/wri/table-timeline.ts <log>
  *
- * For lanes 13, 18 and 22 for time. Lane 13 wrote this replay twice by hand (6 and
- * 10 November), and 1 of 18 lane-13 sessions rebuilt it from copies of the log's prefixes; that one
- * found an owed starter comparison the table named for 4.7 hours while the Builder sat in a `wait`.
+ * For lanes 13, 18 and 22 for time. Without it lane 13 rebuilds this replay by hand from copies of
+ * the log's prefixes, which is how an owed starter comparison the table named for hours while the
+ * Builder sat in a `wait` is found.
  *
  * The replay is this tree's `decide` on an old log. Where the rule changed since the run, the
  * replayed column is what this tree would have named, not what the run's code named, so the two
@@ -20,7 +20,7 @@
  * A move is recorded as it begins (row F), so one may still be under way at the log's end: the move
  * that began each step open there is marked (`openAt`, `launches.ts`), and the last move carries
  * any open step no move names. A move the Builder chose reads `led`, and
- * `asked` before 5 November.
+ * `asked` in older logs.
  *
  * The table is asked at each event of the kinds in `POINTS`; where it names another move between two
  * of them, the first task event that moved it is found by halving (`FINE`), so a move the table

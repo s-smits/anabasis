@@ -80,7 +80,7 @@
  *   lacks and a change of JSON type), or every file of a folder (`--answers`) with each one's sha256
  *   (`tools/wri/grade.ts`). It writes nothing and logs nothing.
  *
- * A log is named by its path or, since 15 October, by its campaign's whole name in any of the
+ * A log is named by its path or by its campaign's whole name in any of the
  * repository's worktrees (`runNamed`). No verb starts a solve, a session
  * or a round, and none appends to a log.
  */
@@ -190,7 +190,7 @@ const resolvedLogs = await Promise.all(
     .filter((each) => each !== "")
     .map(async (each) => resolve(await logAcross(each))),
 );
-/** A campaign's name, and its copy's host folder where two `logs` share the name (27 October). */
+/** A campaign's name, and its copy's host folder where two `logs` share the name. */
 const nameOf = (log: string, logs: readonly string[] = resolvedLogs) => {
   const name = basename(dirname(log));
   const shared = logs.filter((each) => basename(dirname(each)) === name).length > 1;
@@ -257,9 +257,9 @@ function liveOf(logs: readonly string[], running: readonly Running[]): string[] 
 }
 
 /**
- * Refuse an investigation of a campaign that may still write its log. The operator's rule of 3
- * November: every lane reads one sheet, so no finding is about events that arrived after another
- * lane read the log. `start --snapshot` reads a frozen copy of each live one instead (4 November).
+ * Refuse an investigation of a campaign that may still write its log. The operator's rule: every
+ * lane reads one sheet, so no finding is about events that arrived after another lane read the
+ * log. `start --snapshot` reads a frozen copy of each live one instead.
  */
 function refuseRunning(logs: readonly string[], running = processes()): void {
   const live = liveOf(logs, running);
@@ -285,8 +285,8 @@ function frozen(logs: readonly string[], out: string, running: readonly Running[
 async function start(): Promise<number> {
   needed("log");
   const out = resolve(needed("out"));
-  // Every refusal before anything is written: a snapshot is a copy of the run's folder, and until
-  // 9 November a log named twice was refused only after it was made.
+  // Every refusal before anything is written, since a snapshot is a copy of the run's folder, and a
+  // log named twice would otherwise be refused only after it was made.
   if (existsSync(join(out, SHARED))) throw new Error(`${out} already holds ${SHARED}`);
   if (new Set(resolvedLogs.map((log) => nameOf(log))).size < resolvedLogs.length) {
     throw new Error("--log names a log twice");
@@ -329,9 +329,9 @@ async function start(): Promise<number> {
       : texts.map((each, index) => `## ${nameOf(logs[index] ?? "")}\n\n${each}`).join("\n");
   writeFileSync(join(out, "overview.md"), text);
   writeFileSync(join(out, INVESTIGATION), `${JSON.stringify({ logs }, null, 2)}\n`);
-  // The shared instructions last, since a start refuses a folder that holds them: until 9 November
-  // they came first, and a start that failed after them left a folder no start or later verb could
-  // read. The author's comments stay in the copy: they say what each blank section is for.
+  // The shared instructions last, since a start refuses a folder that holds them, and a start that
+  // failed after writing them would leave a folder no start or later verb could read. The author's
+  // comments stay in the copy: they say what each blank section is for.
   writeFileSync(
     join(out, SHARED),
     template.replace("{campaigns}", () => campaigns),
@@ -380,10 +380,9 @@ function lanes(): number {
     named,
   );
   // A prompt already built is kept: a report may have been written against it, and `collect` reads
-  // the report and never the prompt, so a rebuilt one would change under it unseen. v1 kept an
-  // earlier read's lanes (9762afb0) and bound a report to its prompt's bytes (23bdedb8). With
-  // `--regroup` a kept prompt with no report yet is launched again, its bytes untouched: on 9 November
-  // the operator changed the number of groups after a build, and regrouping took a sibling folder.
+  // the report and never the prompt, so a rebuilt one would change under it unseen. With
+  // `--regroup` a kept prompt with no report yet is launched again, its bytes untouched, so that the
+  // number of groups can change after a build without a sibling folder.
   const asked = [...open, ...isolated];
   const kept = asked.filter(
     (lane) =>
@@ -395,9 +394,7 @@ function lanes(): number {
   // The lanes launched go to `--agents N` sessions of `launch.json`, four by default, packed by
   // importance (`sessionsOf`), each session reading its prompts in turn and writing their reports
   // itself. Nothing kept is in it, so its count is the spend (SKILL.md, step 3) and no session is
-  // started twice against one prompt, where a regroup's caller stopped the old ones. Until 15
-  // October each launch turned a Markdown list into this by hand, until 1 November it held one
-  // session a lane, and until 9 November that stayed the default without `--agents`.
+  // started twice against one prompt, where a regroup's caller stopped the old ones.
   const count = Number(values.agents ?? 4);
   if (!Number.isInteger(count) || count < 1) {
     throw new Error(`--agents ${String(values.agents)}: name a whole number from 1`);
@@ -417,8 +414,8 @@ function lanes(): number {
     writeFileSync(promptPath(out, lane.number), `${lanePrompt({ ...parts, lane, report, climb, common })}\n`);
   }
   const groups = sessionsOf(launched, count);
-  // `--high K` gives the K heaviest sessions high reasoning and the rest medium (operator, 9
-  // November: "medium or high based on complexity of the group"); without it the launch's effort holds.
+  // `--high K` gives the K heaviest sessions high reasoning and the rest medium (the operator's
+  // choice: "medium or high based on complexity of the group"); without it the launch's effort holds.
   const high = values.high === undefined ? null : Number(values.high);
   if (high !== null && (!Number.isInteger(high) || high < 0 || high > groups.length)) {
     throw new Error(`--high ${String(values.high)}: name a whole number from 0 to ${String(groups.length)}`);
@@ -447,9 +444,8 @@ function lanes(): number {
   // A lane reads campaign logs, which hold hidden values, so its sessions search nothing: a query
   // leaves the machine (`AGENTS.md`, section 5). Every other Codex launch searches by default.
   // Every build after the first has a manifest of its own beside the first's, named by its lanes, so
-  // no session a manifest launched loses the manifest that owes its report: on 4 November building
-  // lane 17 alone wrote over buffer583's five grouped sessions, and until 9 November a later build
-  // of open lanes still wrote over `launch.json`.
+  // no session a manifest launched loses the manifest that owes its report, as a later build of one
+  // lane would otherwise write over the grouped sessions of `launch.json`.
   const first = join(out, "launch.json");
   const launch = existsSync(first)
     ? join(out, `launch-${launched.map((lane) => stem(lane.number)).join("-")}.json`)

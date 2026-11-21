@@ -15,9 +15,8 @@
  * them as the control; `--leaves` adds one line a leaf. It prints positions, sources and counts, never
  * a value, and reads no reading, score or other lane's file.
  *
- * 10 of 15 lane-16 sessions between 3 and 10 November wrote this search by hand (`trace.py` in six
- * versions, `literal.py`, `writer.py`), at a median of 44 calls a session, and 6 of the 9 calls the
- * lane guard refused there were greps of the kept states this opens itself.
+ * Without it lane 16 sessions write this search by hand, in dozens of calls a session, and the lane
+ * guard refuses their greps of the kept states this opens itself.
  */
 import { draftOf } from "#src/examiner/draft.ts";
 import { proposalsOf } from "#src/kernel/history.ts";

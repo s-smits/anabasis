@@ -16,7 +16,7 @@
  * neither a small sample nor dependence on winning every task, so it starts no trigger.
  *
  * The folds of the log, the catalogue of triggers and the lanes of the exam side (1 to 4 and 7 to
- * 11) are `folds.ts` since 10 October, when this file was over the size policy's ceiling. This file
+ * 11) are `folds.ts`, which keeps this file within the size policy's ceiling. This file
  * keeps the lanes of the review, the harness, the comparison and the solve (5, 12 to 21 and 24),
  * the rows and the overview. The climb's lane (22) is `promotion.ts`, and the lanes of how a run
  * was conducted are `run.ts`. The lanes that read the clock (24 and 25) and
@@ -144,7 +144,7 @@ function practiceTriggers(log: Index, { build, changed, read, round }: Practised
   const fails = round.practice.filter((solve) => solve.outcome === "fail");
   // A fail under the harness the session began from, or under one a solve ran under before it began
   // (the reference, where the session followed a cut one), is a baseline's, which no edit of the
-  // session made or answered: on 13 November two such read as two fails a change had answered.
+  // session made or answered, and would otherwise read as a fail a change had answered.
   const older = new Set(log.solves.flatMap((solve) => (solve.index < build.from ? [solve.harness] : [])));
   const failed = fails.filter((fail) => fail.harness !== build.parent && !older.has(fail.harness));
   const earned = failed.filter((fail) => log.stands.get(fail.id) === "earned").length;
@@ -161,10 +161,10 @@ function practiceTriggers(log: Index, { build, changed, read, round }: Practised
   const answered = failed.filter((fail) => laterPass(fail, "other")).length;
   const flipped = failed.filter((fail) => laterPass(fail, "same")).length;
   const exposed = round.exposed.size;
-  // A task won in one comparison is no win of another's: recode's b-1 was measured twice. A win
-  // on the objective or the bill counts as one on validity does: buffer-fresh-gpt-v071's one step,
-  // g-1 on 26 October, won six tasks where all 48 solves were valid, and a reference fail was
-  // asked for until then, so lane 17 could not open on the promotion that most needed it.
+  // A task won in one comparison is no win of another's, since one harness can be measured twice. A
+  // win on the objective or the bill counts as one on validity does, since a step can win every task
+  // where all solves were valid, and asking for a reference fail would keep lane 17 from opening on
+  // the promotion that most needs it.
   const wonTasks = new Set(
     wonOf(log).flatMap((each) => each.won.map((pair) => `${each.session} ${pair.task}`)),
   );
@@ -203,13 +203,11 @@ function practiceTriggers(log: Index, { build, changed, read, round }: Practised
 
 /**
  * Lane 16's wins, by solve: each comparison's tasks the new harness won, read as the comparison
- * paired them, with every counted solve of the task on each side: since 31 October most wins
- * are on the objective between two valid answers (1 November). Lane 16 open those solves'
- * turns and calls, and until this reader lane 16 rebuilt the pairing
- * by hand from a log of thousands of events: the #107 buffer campaign won 11 tasks over 3
- * comparisons in 5,531 (2026-10-10). A task the report's test names is read by the difference it
- * recorded (`testedOf`), and only another by this tree's score: on 22 October the score of weighted
- * measures listed as won a task the Linux fork of #306 tied and one it lost, both scored before it.
+ * paired them, with every counted solve of the task on each side: most wins are on the objective
+ * between two valid answers. Lane 16 opens those solves' turns and calls, rather than rebuilding
+ * the pairing by hand from a log of thousands of events. A task the report's test names is read by
+ * the difference it recorded (`testedOf`), and only another by this tree's score, since a later
+ * score can list as won a task the comparison tied or lost under the score it ran with.
  */
 export function wonOf(log: Index) {
   return log.compared.map(({ session, last, pairs: settled }) => {
@@ -240,7 +238,7 @@ function winTriggers(log: Index): Trigger[] {
 
 /**
  * Lane 16's reading of whether a harness answered for its solver, which `src/builder/prompt.ts`
- * permits since 20 October so long as nothing in the harness names a task, copies its text or holds
+ * permits so long as nothing in the harness names a task, copies its text or holds
  * its answer, so the lead is whether the program computes from public input or reaches a check, its
  * instrument or a verdict: a solve whose one shell call was followed by its submit, with no write of
  * its own, and a logged judged answer, submitted what one program made. Read per Builder session's
@@ -248,11 +246,10 @@ function winTriggers(log: Index): Trigger[] {
  * control, because a solver can do the whole task in one command of its own.
  *
  * The shape is that strict because these solvers do everything through the shell, the answer file
- * included: across the #107 buffer campaign's solves, 1,920 `bash` calls to 7 `write` and no `read`.
- * A looser shape, a shell call last before `submit`, read 57 of the 68 solves under the reference
- * Starter there, which carries no engine to answer with. This one read none of the 132 reference
- * solves of the #107 buffer and recode campaigns, and 24 of recode's 40 measured solves under its
- * built harnesses and 21 of its 22 practice solves, every one a pass.
+ * included: `bash` calls outnumber `write` by hundreds to one, and `read` is rare. A looser shape, a
+ * shell call last before `submit`, reads most solves under the reference Starter, which carries no
+ * engine to answer with. This one reads no reference solve on record, and most measured and
+ * practice solves under built harnesses that did answer for their solver.
  */
 function programTriggers(log: Index): Trigger[] {
   const oneProgram = (solve: Solve) =>
@@ -289,7 +286,7 @@ function harnessTriggers(log: Index): Trigger[] {
   const comparisons = comparisonsOf(log.events);
   return log.builds.flatMap((build) => {
     const { session, finished, parent, calls } = build;
-    // Every comparison of the harness this session left: recode measured b-1's twice (2026-10-10).
+    // Every comparison of the harness this session left, which can be measured more than once.
     const compared = log.compared.filter((each) => each.build === build);
     const practice = practiceOf(log, build);
     const round = {
@@ -312,8 +309,8 @@ function harnessTriggers(log: Index): Trigger[] {
         log.events.findLast(({ kind, data }) => kind === "build.checkpoint" && data.session === session)?.data
           .harness,
       );
-    // pi's `write` and `edit` since 2026-10-09, `write_file` in the sessions before it, and the tool tree
-    // where a shell command named it: esp32's b-1 kept 9 tool files on 12 October, its file tools none.
+    // pi's `write` and `edit`, `write_file` in older sessions, and the tool tree where a shell
+    // command named it, since a session can keep tool files its file tools never wrote.
     const files = [
       ...new Set(calls.flatMap(({ tool, args }) => (FILE_WRITERS.has(tool) ? [text(args?.path)] : []))),
     ];
@@ -322,12 +319,11 @@ function harnessTriggers(log: Index): Trigger[] {
       ...new Set(calls.flatMap(({ args }) => /\.toolchain/.exec(text(args?.command)) ?? [])),
     ];
     // A session a stop cut says nothing of what it changed: it has no end record, or the `killed`
-    // one a relaunch writes for it (`endCut`), which holds no `changed`. Recode's b-1 wrote its
-    // harness for forty minutes and this read none of it (2026-10-10), and a jobstat b-1 killed
-    // after its edits fired no trigger here (2026-11-13). Its file-tool calls and the harness it
+    // one a relaunch writes for it (`endCut`), which holds no `changed`, so a session cut after an
+    // hour of edits would read as having changed nothing. Its file-tool calls and the harness it
     // left are what the end record would have said, so they stand in for `changed`. A shell command
-    // that names the tool tree does not: it may only run a program there, and standing in it named
-    // two killed sessions of other domains that wrote no file and left no harness (2026-11-13). A
+    // that names the tool tree does not: it may only run a program there, and standing in it would
+    // name killed sessions that wrote no file and left no harness. A
     // cut session that changed its tools through the shell alone and never practised or compared
     // the result therefore reads as unchanged.
     const edited =
@@ -335,7 +331,7 @@ function harnessTriggers(log: Index): Trigger[] {
         ? files.length > 0 || (left !== "" && left !== parent)
         : finished.changed === true;
     // A shell command that only runs or lists the tool tree names it too, so `edited` decides:
-    // on 11 November three esp32 sessions whose end records read `changed` false were named.
+    // otherwise sessions whose end records read `changed` false would be named.
     const toolFiles = edited ? written.filter((path) => /tools|\.toolchain/.test(path)) : [];
     const fresh = edited ? round.scoring : [];
     const erring = fresh.filter((solve) => solve.errors > 0).length;
@@ -489,7 +485,7 @@ function comparisonTriggers(log: Index): Trigger[] {
   });
   const chain = log.compared.map(({ session, own, last, build }) => {
     const fresh = isString(last.fresh) ? short(last.fresh) : "none";
-    // A report written before 2026-10-09 names no reference harness: it compared with its parent.
+    // An older report names no reference harness: it compared with its parent.
     return `${session} ${short(text(own.old) || (build?.parent ?? ""))}>${fresh} ${text(last.reading)}`;
   });
   return [
@@ -522,14 +518,13 @@ function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
   const missed = done.filter((solve) => solve.outcome === "fail");
   // A session or a solve with no end that the campaign went past was cut. One open at the log's end
   // is running, or was stopped by `bun run runs stop`, which writes no ending, and the trigger says
-  // it apart: until 11 October it read buffer-225's running x-1, and the four solves buffer-main's
-  // g-1 had in flight, as killed.
+  // it apart, so that a running session and the solves in flight are not read as killed.
   const unended = steps.flatMap((step) => (step.step === "examiner" && step.ended === null ? [step] : []));
   const ids = (end: "cut" | "open") =>
     unended.flatMap((step) => (step.cut === (end === "cut") ? [step.id] : [])).join(", ");
   const { cut, open } = unendedSolves(log);
   const solves = (many: number) => (many > 0 ? plural(many, "solve") : "");
-  // The gate's cut of the room solves it no longer needed (until 1 November) is its design, not a kill.
+  // An older gate's cut of the room solves it no longer needed is its design, not a kill.
   const non = done.filter((solve) => solve.outcome === "non-result" && solve.cancelledBy !== "admission");
   const unjudged = countBy(
     missed.filter((solve) => solve.kind !== "rejected"),
@@ -593,10 +588,10 @@ function reviewTriggers(log: Index): Trigger[] {
     ),
     ...log.compared.flatMap(({ session, own, last }) => {
       // The tally were every rejection that set a task aside to stand, beside the one without them,
-      // both read without the bill as the step is (`tallyOf`); until 2 November it read the billed p.
+      // both read without the bill as the step is (`tallyOf`), not as the billed p.
       // A starter comparison is also read from the reference's side, which is what confirms a
-      // promotion: until 3 November only the starter's side was, and postplan g-2 (the reference
-      // 7-3-2 at p 0.0244 without its set-aside task, 8-3-2 at p 0.0151 with it) stayed silent.
+      // promotion, so that a reference that clears the level only with its set-aside task counted
+      // is not left silent.
       const level = count(own.level);
       const clears = (tested: { readonly p: number }) => tested.p <= level;
       const flipped = (tested: JsonValue | undefined) => {
@@ -644,7 +639,8 @@ function reviewTriggers(log: Index): Trigger[] {
  * The campaign command's own record, for lane 13's "what runs next": its moves, how it ended, and
  * its calculated dollars against the budget it opened with, beside the backend's own totals. Lane
  * 25 read the stop rule from the command's output, which the log outlives. An ending before the
- * last event is one the campaign went on from: both #107 campaigns ended `exam` at their fourth event and ran on under the same opening.
+ * last event is one the campaign went on from, as a campaign can end `exam` early and run on under
+ * the same opening.
  * None for a log no campaign command wrote.
  */
 function campaignOf(log: Index): string[] {
@@ -709,7 +705,7 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
       .filter((each) => each.build === build)
       .map((each) => `${each.session} ${text(each.last.reading)}`);
     // The end record counts a session's practice. One still running has none, and neither has one
-    // killed (main0_5_1's b-3 on 15 October, whose practice passed): their solves are read from the log.
+    // killed, whose practice may have passed: their solves are read from the log.
     const recorded = build.finished?.practiceSolves;
     const practised = isNumber(recorded) ? recorded : practiceOf(log, build).length;
     return `${build.session}: ${short(build.parent)} > ${child}, ended ${ended}, ${plural(practised, "practice solve")}, reading ${readings.join(", ") || "none"}`;
@@ -748,8 +744,8 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
         `${plural(conditions.length, "condition")}: ${tally(countBy(conditions, (condition) => `${condition.side} ${condition.model}`))}`,
         `host code ${distinct((condition) => condition.host)}, sandbox ${distinct((condition) => condition.sandbox)}, verifier tools ${distinct((condition) => condition.verifierTools)}, harnesses ${distinct((condition) => condition.harness)}`,
         `${share(done.filter((solve) => solve.served.length === 0).length, done.length)} finished solves name no response model`,
-        // Every seat's turns, not only a comparison's scored solves: recode's campaigns ran every seat
-        // on claude-opus-5 for a check-defects reading that scored none, so no trigger fired (31 October).
+        // Every seat's turns, not only a comparison's scored solves, since a campaign whose readings
+        // score nothing would otherwise fire no trigger when another model answers its seats.
         ...degradationLines(log.events).slice(0, 1),
       ],
     },
@@ -767,7 +763,7 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
       title: "case partition",
       lines: [
         `test side: ${partition(TEST)}`,
-        // A log written before 2026-10-09 holds solves of a stronger condition, which no comparison counts.
+        // An older log holds solves of a stronger condition, which no comparison counts.
         ...(done.some((solve) => solve.side === "strong") ? [`strong side: ${partition("strong")}`] : []),
         `${plural(cut, "solve")} never finished${open > 0 ? `, ${String(open)} open at the log's end` : ""}`,
       ],

@@ -7,9 +7,9 @@
  *   bun tools/wri/names.ts --log <log> [--harness <prefix>]
  *
  * The Builder's one limit is that no part of a harness names a task, copies its text or holds its
- * answer (`src/builder/prompt.ts`), and no production check reads it. Between 3 and 10 November 9 of
- * 18 lane 15 sessions scanned own programs for it by hand, and two such scans were refused for
- * walking the checkout or giving an interpreter a campaign's path. The files read are what the
+ * answer (`src/builder/prompt.ts`), and no production check reads it. Without this a lane 15
+ * session scans own programs for it by hand, and such a scan can be refused for walking the
+ * checkout or giving an interpreter a campaign's path. The files read are what the
  * harness wrote (`writtenIn`, `tools/wri/trajectory.ts`: the guide and its own programs, nothing it
  * installed). A word matches whole: `x-1-3` is not found inside `x-1-31`.
  *

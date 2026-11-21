@@ -6,7 +6,7 @@
  * A promotion count says nothing across runs whose comparisons draw other tasks under other rules,
  * and hours to a promotion says nothing of what it bought: a run that reaches a fair harness in two
  * hours and stalls can read better or worse than one that takes four, depending on where it is cut.
- * On 6 November the operator asked for a reading that holds both, so that a race to the first
+ * The operator asked for a reading that holds both, so that a race to the first
  * comparison and a stall after it both show. Each run therefore reads as step functions of its work
  * hours, cut at one set of hours, and a run that had stopped by an hour reads `.` there rather than
  * standing still: an ended run is censored, not flat.
@@ -18,19 +18,18 @@
  *   The Starter's digest is one across these runs, so it is the one opponent they share, though the
  *   tasks differ. A step's own size reads against a reference that moves, so it is printed apart.
  * - **Weight**: the reference's guide lines, and the files and lines of the programs it wrote. An
- *   installed interpreter, package or binary is left out (`ownPrograms`): a harness's first 3,526
- *   files of 6 November were 6 programs and one Python.
+ *   installed interpreter, package or binary is left out (`ownPrograms`), since a harness's files
+ *   can be thousands of an interpreter's beside a handful of programs.
  * - **Exam load**: each comparison's clock, tally, and each side's turns and valid share.
  * - **Task grade**, only with `--grades`: the median of lane 14's task grades in each comparison,
  *   from `task<TAB>run<TAB>id<TAB>grade` rows in any report. It changes no reading and no seat is
  *   told it (`AGENTS.md`, rules 1 and 3).
  *
  * A first version read quality off the grades, the mean of a version's soundness and the highest
- * grade it held, by the hour and up to horizons. A second reading of sixteen runs on 6 November found
- * that the grade held was the highest grade the exam offered in 30 or 31 of 31 promoted versions, that
- * 2.62 of the first promotion's mean rise of 2.78 was half a soundness the Starter is given none of,
- * and that carrying a stopped run's last reference made a stall and a stop one number. So none of it
- * is computed here, and a stopped run stays censored in every table.
+ * grade it held, by the hour and up to horizons. That reading found the grade held was nearly always
+ * the highest grade the exam offered, that most of the first promotion's rise was a soundness the
+ * Starter is given none of, and that carrying a stopped run's last reference made a stall and a stop
+ * one number. So none of it is computed here, and a stopped run stays censored in every table.
  *
  * A read's lead falls by construction as tasks that did not choose the harness join it, so set it
  * beside the split `starter-reads` prints, and read it across one run's reads only with that in mind.
@@ -308,8 +307,8 @@ function installedBy(files: readonly { readonly path: string }[], recordOf: (pat
 /** The tool tree's files a harness wrote, given each file's path and size (`recordOf` reads a file
  *  of the tree by its path, or gives null): not an installed folder (`INSTALLED`, a wheel's `.libs`),
  *  not a file an installed package's metadata names, and not a binary-sized file. A harness's own
- *  module beside installed packages stays: until 10 November one `.dist-info` dropped the whole folder
- *  that held it, which hid a jobstat harness's own `pylib/statkit.py` behind thirteen packages. A
+ *  module beside installed packages stays, so that one `.dist-info` does not drop the whole folder
+ *  that holds it and hide a harness's own module behind the packages beside it. A
  *  bundled interpreter's home goes whole (`HOME`), whatever the harness named it. */
 export function ownPrograms(
   files: readonly { readonly path: string; readonly bytes: number }[],
@@ -350,9 +349,8 @@ export function ownFilesOf(state: string): { readonly root: string; readonly pat
 
 const unrecorded = (value: JsonValue | undefined): string => (isString(value) ? value : "unrecorded");
 
-/** The guide and the programs a kept harness wrote, by path (the guide as `guide`). Moved here from
- *  `packets.ts` on 10 November so that `harness-versions.ts --lines` and `names.ts` read the one list
- *  a blind packet reads. */
+/** The guide and the programs a kept harness wrote, by path (the guide as `guide`), here so that
+ *  `harness-versions.ts --lines` and `names.ts` read the one list a blind packet reads. */
 export function writtenIn(state: string): Map<string, string> {
   const { root, paths } = ownFilesOf(state);
   const found = new Map(paths.map((path) => [path, join(root, path)]));
@@ -399,9 +397,8 @@ export function diffOf(
 }
 
 /** How the campaign came to hold `digest`, and the parent the log records for it: the one reader of
- *  a version's parent, which `harness-versions.ts` and the lane 14 packets both call (moved from
- *  `harness-versions.ts` on 10 November, when the packets read `harness.version` alone and gave a led
- *  session's checkpoints the starter for a parent). */
+ *  a version's parent, which `harness-versions.ts` and the lane 14 packets both call, since reading
+ *  `harness.version` alone gives a led session's checkpoints the starter for a parent. */
 export function madeOf(events: readonly LogEvent[], digest: string, starter: string) {
   const version = events.find(
     ({ kind, data }) => kind === "harness.version" && data.version === digest,
@@ -418,9 +415,8 @@ export function madeOf(events: readonly LogEvent[], digest: string, starter: str
   )?.data;
   if (imported !== undefined) return { made: `imported from ${unrecorded(imported.from)}`, parent: null };
   // A Builder that leads its campaign freezes a harness with `build.checkpoint` and no parent: its
-  // parent is the session's harness snapshot before it, or what the session began from. Until 27 October
-  // this read only `harness.version`, and every harness compared in a led campaign read as made by
-  // no record.
+  // parent is the session's harness snapshot before it, or what the session began from, rather
+  // than every harness compared in a led campaign reading as made by no record.
   const at = events.findIndex(({ kind, data }) => kind === "build.checkpoint" && data.harness === digest);
   const session = events[at]?.data.session;
   const before = events.slice(0, Math.max(at, 0)).filter(({ data }) => data.session === session);
@@ -430,8 +426,8 @@ export function madeOf(events: readonly LogEvent[], digest: string, starter: str
   if (isString(parent)) {
     return { made: `checkpoint of session ${unrecorded(session)} from ${parent.slice(0, 8)}`, parent };
   }
-  // A led session practises states it never freezes: until 2 November each read as made by no
-  // record, 28 of them in seven campaigns (lane 16), though the log's practice solves name each.
+  // A led session practises states it never freezes, which the log's practice solves name, so they
+  // read as practised rather than as made by no record.
   if (digest === starter) {
     return { made: "the Starter Built Harness as this checkout writes it", parent: null };
   }

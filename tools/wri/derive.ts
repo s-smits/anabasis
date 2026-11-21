@@ -1,16 +1,16 @@
 /**
  * Every deterministic reader of a campaign's record, run over its log into one folder a campaign, so
- * a person or a session opens a file instead of running forty commands. The operator asked for it on
- * 30 October: the readers run quietly over every run whose log moved, while it runs and after it,
+ * a person or a session opens a file instead of running forty commands. The operator asked for it:
+ * the readers run quietly over every run whose log moved, while it runs and after it,
  * and an investigation's `start` runs them too. A folder is replaced whole with what the readers say
  * of the log as it stands, never appended to, so no file in it describes another moment of the log
  * than the rest; a folder whose log, and the commit that reads it, have not moved is left as it is.
  * A reader's code changed without a commit is not seen, so `--force` derives again.
  *
  * `READERS` is the one list of them, and `wri.ts reader <name>` prints any one. Most are a function
- * of the log's events, called in this process on one parse of the log: until 11 November each was a
- * command of its own that parsed the log again, and the 27 of them took 277 s on the largest log
- * (96 MB), where one parse takes a fraction of a second. A reader that needs more than the log
+ * of the log's events, called in this process on one parse of the log, rather than a command of its
+ * own that parses the log again, which on the largest logs takes minutes where one parse takes a
+ * fraction of a second. A reader that needs more than the log
  * (a campaign found by its name in the registry, every campaign beside it, the embedding model, or
  * every kept harness) keeps a process of its own, named by its `args`, under a time limit, with no
  * credential in its environment and with `ANA_HOP=1`, under which it reaches no other host.
@@ -176,12 +176,12 @@ const namedReader = (
 /**
  * One line on where the code the campaign last ran under stands: this checkout, or the tree the
  * campaign runs in (`<tree>/.ana/d2/<campaign>/log.jsonl`), which a live campaign keeps unmoved.
- * The condition names that code by a digest of its content, which is no commit: two lanes of
- * 14 October read one digest against a receipt's commit as two trees. So the line calls it a
+ * The condition names that code by a digest of its content, which is no commit, and a lane can read
+ * one digest against a receipt's commit as two trees. So the line calls it a
  * digest and names the commit the last launch's receipt holds (`receipts`) beside it. A snapshot's
  * log lies under the investigation, not the campaign's tree, so the tree `start` checks out at
- * that commit is asked too: on 7 November the esp32 investigation's line called that tree, which
- * held the code that ran, "another tree", and three lanes discounted exact source evidence.
+ * that commit is asked too, so that the tree that held the code that ran is not called "another
+ * tree" and exact source evidence is not discounted.
  */
 function hostLine(log: string, events: readonly LogEvent[], repo: string): string {
   const last = lastHost(events);
@@ -218,8 +218,8 @@ export function overviewText(log: string, events: readonly LogEvent[], repo: str
  *  nothing of the campaign's, the likeliest news first. Those marked `embeds` run a local model and
  *  keep their vectors in the reader store, and come after all but the readers of kept harnesses, as a
  *  first read is the longest and their news the least likely. Each moment's readers (`at`) come
- *  from what their text says of it; a `gist` stands where, on three closed logs of three domains
- *  (10 November), naming the session or harness found none of the reader's lines: a summary row, a
+ *  from what their text says of it; a `gist` stands where, on closed logs of several domains,
+ *  naming the session or harness found none of the reader's lines: a summary row, a
  *  table's own row. A reader whose text is a block or a table over the whole log (a check's row, a
  *  pair's, a compaction, a launch, a sequence of calls) has no line of one moment and names none,
  *  so only `derive` runs it, as it does `aim` and `epoch-spend`, whose lines of a moment repeat
@@ -577,8 +577,8 @@ async function ownProcess(reader: OwnProcess, { log, repo }: Source, timeout: nu
 /** What `reader` says of the log, and the log's bytes it read. A failure ends its text on a line
  *  naming it; `cut` is a reader of its own process its time limit ended, so what it would have said
  *  is unknown. A reader that finds its campaign by name is not run on a log the name does not find,
- *  a snapshot or a second copy: on 10 November six files of a snapshot's folder described the live
- *  log, 294 events on, under the snapshot's name. */
+ *  a snapshot or a second copy, since its files would describe the live log under the snapshot's
+ *  name. */
 export async function readerOutput(
   reader: Reader,
   source: Source,
@@ -618,7 +618,7 @@ function kept(dir: string): { stamp: string; failed: string[] } | null {
  *  each and a `manifest.json`, `<path>` the head of the hash of the log's path. The folder is written
  *  beside its place and renamed into it, so a reader of it never finds half of one derivation and
  *  half of another. A live log, its snapshot and a host's copy share the campaign's name, so the
- *  name alone is no key: until 9 November they shared one folder, and each replaced the other's. */
+ *  name alone is no key, since each would replace the other's folder. */
 export async function derive(
   log: string,
   {
@@ -694,10 +694,9 @@ function linesOf(file: string): string {
 
 /**
  * What each derived file answers, and how many lines it holds for each campaign, as a table for a
- * lane's prompt; "" where no folder of `folders` stands. Between 3 and 10 November the prompt named
- * the folders and no file in them: no lane 10 or lane 11 session opened `answers.txt`, which holds
- * the repeat spread both lanes rebuilt, and no lane 9 session opened `nearness.txt`. A length
- * beside each name lets a session open a short file whole and search a long one.
+ * lane's prompt; "" where no folder of `folders` stands. Naming the folders and no file in them
+ * leaves lanes rebuilding what a file such as `answers.txt` or `nearness.txt` already holds. A
+ * length beside each name lets a session open a short file whole and search a long one.
  */
 export function derivedMap(
   folders: readonly { readonly name: string; readonly dir: string }[],

@@ -21,10 +21,9 @@
  * family, is `pairs.ts`'s; a step read on one task a family is the replay's (`promotion-tuner`,
  * `unit=first`).
  *
- * Evidence: 9 of 12 lane-9 sessions between 3 and 10 November recomputed a step's p by hand without
- * one win and then without two. 4 of 7 lane-3 sessions split a tally by measure in their own
- * scripts, and two of those disagreed on one comparison: one counted the objective where both
- * answers were valid, the other everywhere.
+ * Without it lane sessions recompute a step's p by hand without one win and then without two, and
+ * split a tally by measure in their own scripts, which can disagree on one comparison: one counting
+ * the objective where both answers were valid, the other everywhere.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import {

@@ -19,22 +19,20 @@
  *   begins with (`<taskId>.json` or `<taskId>--<label>.json`), and prints the sha256 of the bytes it
  *   graded, so a lane's frozen digests can be set against what was graded.
  *
- * Between 3 and 10 November 16 of 18 lane 1 sessions pulled answers out of verdicts by hand, 4 wrote
- * their own one-field mutation, and 6 of 7 lane 6 sessions graded a corpus in a shell loop; the one
- * rounding defect three lanes of one investigation found was vetted plausible only, since no session
- * printed a repeatable grade of it.
+ * Without it lane sessions pull answers out of verdicts by hand, write their own one-field
+ * mutations and grade a corpus in a shell loop, and a defect several lanes find is vetted plausible
+ * only, since no session prints a repeatable grade of it.
  *
  * An answer outside a drafted exam's answer format is refused first, as `judge` refuses a solver's,
  * and no check reads it (`src/solver/run.ts`). The format is the draft's, which the campaign's
- * contract holds (`packOpened`, `tools/d2/campaign.ts`). Until 20 October grade put every answer to
- * the checks alone, and a lane of buffer-fresh-opus-forkedPR223_v0_5_4-r3's investigation, probing
- * through it, read the evaluator's leniency on keys the format refuses as a gap of the exam, where the
- * host refuses such an answer before any check: none of the campaign's 2,480 verdicts held a format
- * fault. A stored pack's format is read from its sweep, which grade is not given, so its answers are
+ * contract holds (`packOpened`, `tools/d2/campaign.ts`). Putting every answer to the checks alone
+ * would let a lane read the evaluator's leniency on keys the format refuses as a gap of the exam,
+ * where the host refuses such an answer before any check. A stored pack's format is read from its
+ * sweep, which grade is not given, so its answers are
  * put to the checks alone, and grade says so. A campaign over a stored pack names it with `--bundle`,
  * and its checks stand beside the log; a campaign that drafted its exam names none, and its exam is
- * read where the campaign staged it (`exams/<digest>/`, `tools/d2/exam.ts`). On 10 October t-10's
- * lane 1 was given `<campaign>/checks` for a drafted exam and stopped on ENOENT.
+ * read where the campaign staged it (`exams/<digest>/`, `tools/d2/exam.ts`), not under
+ * `<campaign>/checks`, which a drafted exam does not hold.
  */
 import { draftOf } from "#src/examiner/draft.ts";
 import { type AnswerFile, readAnswerFiles } from "#src/kernel/answer-files.ts";

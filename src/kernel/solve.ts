@@ -9,13 +9,13 @@
  * harness's own fail: a non-result would be rerun into the same break and then dropped, and the
  * harness would leave the score with it. A context
  * that outgrows the model is the solver's own ending, never the provider's, though the provider
- * reports it as an error. On 7 October every solver checked its
- * answer with the grading engine before submitting, so rejected answers are expected to be the rare
- * kind, and a report that counts fails without their kinds would hide where supply comes from.
+ * reports it as an error. Solvers check their answer with the grading engine before submitting,
+ * so rejected answers are expected to be the rare kind, and a report that counts fails without
+ * their kinds would hide where supply comes from.
  *
  * A non-result is an ending the solver does not own: the provider failed the turn (it refused, was
- * overloaded or closed the connection, as a Sol solve's did on 8 October with "WebSocket closed
- * 1000"), the sandbox crashed, its caller cancelled it, files or tools moved during the solve, the
+ * overloaded or closed the connection), the sandbox crashed, its caller cancelled it, files or
+ * tools moved during the solve, the
  * task's own check failed on the answer (it threw or returned no verdict), or the verifier could
  * not decide. It is never counted as a pass
  * or a fail. One from the solve's side is run again, up to three times with backoff. A faulty check
@@ -32,16 +32,15 @@
  * harness: counted nowhere, a flag would take a task its harness was losing out of the tally. So a
  * task that really is malformed costs nothing, both sides flag it and it ties, and a harness that
  * flags a task the other side answers loses it. It is not run again inside the solve, since the
- * solver chose it. Added on 12 October (the overhaul plan's M3, research 06): offered such an
- * outcome, solvers that cheated on impossible tasks in 54% of them did so in 9% (ImpossibleBench).
+ * solver chose it. Offered such an outcome, solvers that cheated on impossible tasks in 54% of
+ * them did so in 9% (ImpossibleBench).
  */
 import { type AssistantMessage, isContextOverflow } from "@earendil-works/pi-ai";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
 
 /** Who cancelled a piece of work. `admission` was the gate's own cut of the room solves still
- *  running once a reading left room, from 31 October until the gate stopped solving on 1 November;
- *  it stays for the logs that hold it. Until 31 October it was `caller`, and lane 12's
- *  `NON-RESULTS` counted each such designed cut as a kill. */
+ *  running once a reading left room, from when the gate still solved; it stays for the logs that
+ *  hold it, so such a designed cut is not read as a kill. */
 export type CancellationOrigin = "session-wall" | "campaign-budget" | "caller" | "invocation" | "admission";
 
 export type Ending =
@@ -72,16 +71,14 @@ interface LastTurn {
 
 /**
  * Time without a completed model turn or tool activity, with none of its tools running, at the
- * deadline before it is read as the provider's. Nine solves went silent for 22 to 30 minutes
- * until the deadline ended them, and were counted as the solver's fail (`wall-ended`): seven on GPT
- * solves of two v0.5.4 runs ("Request was aborted"), and at 14:04Z on 26 October two solves of
- * buffer-fresh-opus-v071's comparison g-3, one on each side; two room solves of an Examiner seat on
- * the same machine, started that minute, heard nothing in the 21 minutes until the seat was stopped.
- * A stalled stream is the provider's failure (rule 7), and as a fail it hands the other side a win by
+ * deadline before it is read as the provider's. Solves on record went silent for 22 to 30 minutes
+ * until the deadline ended them, and were counted as the solver's fail (`wall-ended`), on both
+ * sides of a comparison and on GPT and Claude alike. A stalled stream is the provider's failure
+ * (rule 7), and as a fail it hands the other side a win by
  * validity, or a draft room through task admission.
  * This threshold is an elapsed-time heuristic, not an upper bound on returning turns: fifteen
- * completed historical GPT turns took 14.6 to 22.3 minutes before their first tool began
- * (esp32-fresh-gpt-forkedPR223_v0_5_4). Their completions restart the clock; partial streams do not.
+ * completed GPT turns on record took 14.6 to 22.3 minutes before their first tool began. Their
+ * completions restart the clock; partial streams do not.
  */
 export const SILENT_SECONDS = 10 * 60;
 
@@ -108,9 +105,9 @@ export function checkCouldNotRun(ending: Ending): boolean {
  * (`src/solver/run.ts`) asks it of the last turn it holds, and the pool (`taskRecords`,
  * `src/kernel/reports.ts`) of the last `solve.turn` the log records, its `stopReason` and its
  * `error`. A solve the window ended is cut, whatever its turns: the solver is told its turns and
- * never its window. Until 19 October `judge` read spent turns first and wrote `turns-ended` for a
- * window filled on the last allowed turn, so a log of before holds such solves, and the pool reads
- * them by their last turn as it reads the ones written since.
+ * never its window. An old `judge` read spent turns first and wrote `turns-ended` for a window
+ * filled on the last allowed turn, so old logs hold such solves, and the pool reads them by their
+ * last turn as it reads newer ones.
  */
 export function windowEnded(last: LastTurn): boolean {
   const { stopReason, errorMessage } = last;
@@ -124,8 +121,8 @@ export function windowEnded(last: LastTurn): boolean {
 /**
  * Whether the provider failed a solve's last turn: an error that is not the window's. `judge` ends
  * such a solve a non-result (`provider`), and the pool reads one a log holds as `turns-ended` as a
- * cut: until 14 October `judge` wrote `turns-ended` for a provider failure on the last allowed
- * turn (`src/solver/run.ts`), and a log of before must read as it did.
+ * cut, since an old `judge` wrote `turns-ended` for a provider failure on the last allowed turn
+ * (`src/solver/run.ts`), and an old log must read as it did.
  */
 export function providerFailed(last: LastTurn): boolean {
   return last.stopReason === "error" && !windowEnded(last);
@@ -156,8 +153,8 @@ export function unanswered(stopped: {
   }
   if (stopped.wallEnded) return { outcome: "fail", kind: "wall-ended" };
   // A last turn the provider failed is the provider's, though it was the last the solve was
-  // allowed: until 14 October it was read as the solver's loss at its turns (`turns-ended`). A
-  // context the solver filled is its own, and comes as an error too.
+  // allowed, and not the solver's loss at its turns (`turns-ended`). A context the solver filled
+  // is its own, and comes as an error too.
   if (last !== undefined && providerFailed(last)) {
     const reason = isString(last.errorMessage) ? last.errorMessage : "the provider failed the turn";
     return { outcome: "non-result", kind: "provider", reason };

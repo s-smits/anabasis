@@ -5,9 +5,8 @@
  * cell. The answers go to a file because a check may print what it likes.
  *
  * The program is imported once and its checks run in this one process, a few at once, so they share
- * its module and the cell's folder; until 20 November 2026 each check and the objective had a walled
- * process of their own, n + 1 a verdict, though no check program on record writes a file or keeps
- * any state but a memo cache. Each check has a time of its own: past it the check is at fault, as one
+ * its module and the cell's folder, since no check program on record writes a file or keeps any
+ * state but a memo cache. Each check has a time of its own: past it the check is at fault, as one
  * that throws is, its tools are ended and the other checks' answers stand. A check that holds the
  * process's one thread is ended with the cell, by the host.
  *

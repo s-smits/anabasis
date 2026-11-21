@@ -131,9 +131,8 @@ export interface Cap {
 /**
  * How many moves in a row without a gain end a campaign. The same number bounds supply: Examiner
  * sessions in a row that held out no task, and comparisons of one harness that left no room.
- * Three ended every campaign of early October before its tasks were measured, and the operator
- * chose to err towards more Builder iterations; six stands until a campaign that climbs shows what
- * the figure should be.
+ * Three ended campaigns before their tasks were measured, so the operator chose to err towards
+ * more Builder iterations; six stands until a campaign that climbs shows what the figure should be.
  */
 export const PATIENCE = 6;
 /** The ways a solve ends at one of its own limits: time, model turns or context. The investigation
@@ -154,8 +153,8 @@ export function capHolds({ dollars, reserve }: Cap): boolean {
 }
 
 /**
- * Each comparison's last report, in the order the comparisons first reported. Logs from mid
- * October may hold ladder readings (`ladder`: the starter read against a new reference on tasks
+ * Each comparison's last report, in the order the comparisons first reported. Old logs may hold
+ * ladder readings (`ladder`: the starter read against a new reference on tasks
  * held apart, retired since). They are not steps, starter comparisons or evidence of room, so only
  * `"all"` returns them, for what they show of the reference's solves (`taskRecords`) and for the
  * sessions they name.
@@ -511,7 +510,7 @@ function addReportReadings(
  *
  * **Outcomes** give each task some comparison scored or set aside, by version, how the reference
  * did in the last such comparison: valid in every counted solve, in some, or in none. An author
- * may hear this (`7f0add79:docs/plan.md`, Phase 2) because without it they would hear nothing, and
+ * may hear this because without it they would hear nothing, and
  * v1 found that authors write towards a difficulty zone. Only the reference's side is read: which
  * other harness was compared and what it answered are not the author's to hear. The outcome comes
  * from the last report whatever setting id it carries, since a campaign runs at one setting and the

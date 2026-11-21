@@ -9,7 +9,7 @@
  * `detectable` in `compare.ts`), with no normal approximation: the small sizes used here are where
  * an approximation is worst.
  *
- * Each side solves each task twice by default, in every domain (operator, 29 October), and a
+ * Each side solves each task twice by default, in every domain (the operator's choice), and a
  * campaign may set another count once with `--solves`. Four solves a side cost about a sixth more of
  * a campaign's budget and more of its hours, and one reading of four still could not call a task
  * easy without a second. Two solves still show a task the harnesses split, and readings add up

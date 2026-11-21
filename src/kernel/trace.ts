@@ -3,20 +3,16 @@
  * compaction of a solve or of a session, each under its seat's prefix (`solve.turn`, `build.call`,
  * `exam.compacted`), as `traceSink` and `sit` write them (`src/agent/session.ts`).
  *
- * Until 21 October nine readers took these events apart for themselves: the dollars of a session
- * that never ended, the last turn of a solve, the Builder's `read_trace`, the campaign page's
- * turns, calls and call counts, the pulse's failed turns and the whole-run reader's lanes. Each
- * spelled the kinds, the field that names whose a trace is and the price of a usage again, and two
- * of them read a solve's calls from its last start, a guard that held nothing: no solve id in the
- * 76 logs of that day was started twice. Here an event is read once into a typed record.
+ * Every reader of these events reads them here, once, into a typed record: the dollars of a
+ * session that never ended, the last turn of a solve, the Builder's `read_trace`, the campaign
+ * page's turns, calls and call counts, the pulse's failed turns and the whole-run reader's lanes.
+ * None spells the kinds, the field that names whose a trace is or the price of a usage again.
  *
  * The Builder reads a practice solve's calls through `callList` and `callText` and nothing wider;
  * a verdict's checks and the Referee's reasons share the log and never enter a practice trace.
- * Until 27 October the list named each call's tool alone and a call was read in windows of 4,000
- * characters. Over the 297 Builder sessions on record (8 to 26 October), 955 single-call reads
- * opened a median of 2 calls a solve, 893 of them bash calls the list showed only as "bash", and
- * 139 reads were cut at the window while 9 paged on. The list now shows each call's arguments and
- * size, and a call comes back whole: the seat tool's own cap spills a longer one to a file.
+ * The list shows each call's arguments and size, since a list of tool names alone showed most
+ * calls only as "bash", and a call comes back whole, since a Builder rarely paged past a cut
+ * window: the seat tool's own cap spills a longer one to a file.
  * The same records bill completed and unfinished sessions (`billedAll`, `src/kernel/meter.ts`).
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -91,7 +87,7 @@ export interface Turn extends Mark {
 /** One tool call: its tool, its arguments, its result's text and how long it ran. */
 export interface Call extends Mark {
   readonly part: "call";
-  /** The provider's id for the call, which a log of before 21 October does not hold. */
+  /** The provider's id for the call, which the oldest logs do not hold. */
   readonly callId: string | null;
   readonly turn: number | null;
   readonly tool: string;
@@ -200,9 +196,7 @@ export function askedOf(events: readonly LogEvent[]): Map<string, string> {
  *  session or solve and model served. Every seat's start names the model asked for, as
  *  `provider/model`; the Referee's turns have no start, so they go unread. A dated snapshot reads as
  *  its model's, after an exact match, so a seat that asks for a snapshot is not read as served
- *  another. Seats that asked for claude-opus-5-5 were answered by another model on 7,542 recorded
- *  turns from 20 to 31 October, in seven recode campaigns and two buffer ones: as claude-opus-5 on
- *  all but 24, which claude-opus-4-8 answered. Read by the pulse for each look's
+ *  another, as a backend may answer a request with an older model. Read by the pulse for each look's
  *  new turns, by the gather for the record it keeps in `data/runs/degradations/` and by the
  *  investigation. */
 export function degradations(events: readonly LogEvent[], from = 0): Degradation[] {
@@ -292,13 +286,13 @@ export function callText(calls: readonly Call[], number: number): string {
  * run was killed from outside, so no `finished` event summed them, and the cap and the total read 0
  * for what was spent. A turn's `usage.cost.total` is the host's price of that turn at the model that
  * served it, retried attempts included, and the sum over a session's or a solve's turns is what its
- * end carries as `billed`: equal to five decimals on every session and solve of one campaign of 10
- * October; a Builder session of another, killed at its seventh turn the same day, had metered 0.12
- * dollars that nothing summed. A compaction of pi's loop is billed in the end's sum too, and its
+ * end carries as `billed`, equal to five decimals where both are on record, so a session killed
+ * before its end is billed what it metered rather than nothing. A compaction of pi's loop is billed
+ * in the end's sum too, and its
  * summary's price is on its `*.compacted` event (`sit`, `src/agent/session.ts`); a stop and a pause
  * read it too (`tools/runs`). It reads the log twice for every seat at once, the ends and then the
- * rest; until 1 November each seat read it twice of its own, which made it most of what the billing
- * folds cost on a long log.
+ * rest, rather than twice for each seat, which would be most of what the billing folds cost on a
+ * long log.
  */
 export function unfinished(events: readonly LogEvent[]): Unfinished[] {
   const seats = METERED.map(({ of, id }) => ({
@@ -360,12 +354,11 @@ export function cutSessions(events: readonly LogEvent[]) {
  * each completed `draft_exam` (`desk.tries`, `src/examiner/draft.ts`), and one more where solves
  * naming the session started after the last: a draft with no fault is measured inside its call,
  * which logs nothing until it returns, so a cut there left the put counted live and absent from the
- * calls. On 28 October buffer-fresh-gpt-stackedPR489's d-1 was cut with 9 such solves
- * and no completed call, and read 0 drafts, which `drafting` (`src/campaign/decide.ts`) passes over.
- * An Examiner session holds out and refuses what the task admissions of its proposals decided
- * (`desk.held`, `src/examiner/write.ts`): until 29 October its killed ending held none, so
- * `cutShort` (`src/campaign/ground.ts`) read main0_5_1's x-2, which held a task, as having moved
- * nothing, and the Builder was told it held out 0 tasks.
+ * calls, and a drafting session cut with such solves and no completed call would read 0 drafts,
+ * which `drafting` (`src/campaign/decide.ts`) passes over. An Examiner session holds out and
+ * refuses what the task admissions of its proposals decided (`desk.held`, `src/examiner/write.ts`),
+ * counted here for a killed ending too, so `cutShort` (`src/campaign/ground.ts`) does not read a
+ * session that held a task as having moved nothing and tell the Builder it held out 0 tasks.
  */
 function cutCounts(events: readonly LogEvent[], of: "build" | "exam" | "draft", id: string) {
   if (of === "draft") {
@@ -392,7 +385,7 @@ function cutCounts(events: readonly LogEvent[], of: "build" | "exam" | "draft", 
  * Whose each solve of a log is, by the solve's id: the comparison or Examiner session its start
  * names (`asked`), or else the Builder session open where it started, since a practice solve names
  * nothing and only a Builder makes one. In a campaign its Builder leads, an Examiner session runs
- * beside the Builder's practice, and until 19 October an open one was billed that practice too.
+ * beside the Builder's practice, and is not billed that practice.
  * A Referee's reading is its solve's owner's, under its reader's id: its turns and calls name the
  * reader alone, and only its finding names the solve.
  */
@@ -418,10 +411,9 @@ export function ownersOf(events: readonly LogEvent[]): Map<string, Owner> {
  * another's (`ownersOf`). A Builder session's own are its turns, its practice solves and their
  * reviewers; an Examiner session's include the solves it asked for to try a draft task, which name
  * it. In a campaign its Builder leads, the comparisons and the Examiner's sessions run inside the
- * Builder's span, and are theirs, with the Referee's readings of a comparison's solves: until
- * 20 November a reading's turns named no solve and so were every open session's, and a campaign's
- * view billed an open Builder for them in 5 of 14 sessions of five logs, by up to $4.75. A reading
- * with no finding yet names no solve anywhere, and stays the open session's until it has one.
+ * Builder's span, and are theirs, with the Referee's readings of a comparison's solves, so an open
+ * Builder is not billed for them. A reading with no finding yet names no solve anywhere, and stays
+ * the open session's until it has one.
  */
 export function ownedBy(events: readonly LogEvent[], id: string, owners = ownersOf(events)) {
   return ({ data }: LogEvent) => {

@@ -190,9 +190,8 @@ export function readsStepEitherWay(scores: readonly number[], level: number): bo
   );
 }
 
-/** The task scores of a recorded test. Reports written between 26 October and 2 November counted
- *  the bill in `differences` and kept the scores without it as `unbilled`, which is read where
- *  present. */
+/** The task scores of a recorded test. Some older reports counted the bill in `differences` and
+ *  kept the scores without it as `unbilled`, which is read where present. */
 export function scoresIn(test: unknown): number[] {
   const { unbilled, differences } = asRecord(test) ?? {};
   const found = Array.isArray(unbilled) ? unbilled : differences;
@@ -224,7 +223,7 @@ export function sweepOf(level: number): number {
 }
 
 /** The task set a report's test ran on: the whole scored set, which carries a `falseRate`, or the
- *  frontier alone in reports written before 20 October. */
+ *  frontier alone in the oldest reports. */
 export function testedSet<S extends { readonly falseRate?: unknown }, F>(
   whole: S | null,
   frontier: F,
@@ -233,8 +232,7 @@ export function testedSet<S extends { readonly falseRate?: unknown }, F>(
 }
 
 /** The objective rule recorded in a comparison's start or report, or undefined where it has none.
- *  Logs from before 21 October may also hold a margin or floor beside the direction; those are
- *  ignored. */
+ *  Older logs may also hold a margin or floor beside the direction; those are ignored. */
 export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
   const { direction } = asRecord(data.objective) ?? {};
   return direction === "lower" || direction === "higher" ? { direction } : undefined;
@@ -441,8 +439,8 @@ export function pairsOf(
     // For an A/A control, split the reference's solves into two halves (`halves`). The pattern
     // carries on from one task to the next, so with one solve per half the earlier solve goes to
     // the first half on every other task. Always putting the earlier solve first was biased: over
-    // the 234 controls on record by 10 November the later half lost 446 tasks and won 363 (sign
-    // test, p 0.004); alternating, it won 405 and lost 404.
+    // 234 recorded controls the later half lost 446 tasks and won 363 (sign test, p 0.004), while
+    // alternating, it won 405 and lost 404.
     const ran = old === fresh ? place * 2 * solves : 0;
     const first = (at: number) => halves === undefined || (ran + at) % 4 === 0 || (ran + at) % 4 === 3;
     const reference = under(old);

@@ -16,7 +16,10 @@
  *   lists tools it keeps outside the table, reported and never changed. Until then each tool was by
  *   hand on each machine: git at three versions, and a guard installed on one of three.
  * - **Python.** `ANA_PYTHON` pins a version under `pinnedPythonDir` through `uv`, which refuses in its
- *   own words a version it lacks. Nothing is uninstalled, and a package nobody named stays and is said.
+ *   own words a version it lacks. The packages it names pull in others, which float with the hour of
+ *   each install, so every package a peer shares with this machine's pinned Python takes this
+ *   machine's version, once this machine holds the pin (`behind`). Nothing is uninstalled, and a
+ *   package nobody named stays and is said.
  * - **Runner.** An installed runner is stale where git says its source moved since the receipt's commit.
  *
  * A change a seat would find (a Python, and a table row unless it says `"seats":false`) is refused on
@@ -219,17 +222,19 @@ function toolFindings(machine: Machine, facts: Facts, tools: readonly Tool[]): F
   });
 }
 
+/** As Python's packaging compares names: `typing_extensions` is `typing-extensions`. */
+const normal = (one: string) => one.toLowerCase().replaceAll(/[-_.]+/gu, "-");
+const nameOf = (one: string) => normal(one.split("==")[0] ?? one);
+
 /** What a pin asks that `python` lacks, or null: a version, then pip and each package named. */
 function pythonLacks(python: HostPython | null, { version, packages }: Pin): string | null {
   if (python?.version !== version) {
     return `wants ${packages.length === 0 ? version : `${version} with pip, ${packages.join(", ")}`}`;
   }
-  // As Python's packaging compares names: `typing_extensions` is `typing-extensions`.
-  const normal = (one: string) => one.toLowerCase().replaceAll(/[-_.]+/gu, "-");
   const have = new Set(python.packages.map(normal));
-  const names = new Set([...have].map((one) => one.split("==")[0]));
+  const names = new Set(python.packages.map(nameOf));
   const lacking = ["pip", ...packages].filter((one) =>
-    one.includes("==") ? !have.has(normal(one)) : !names.has(normal(one)),
+    one.includes("==") ? !have.has(normal(one)) : !names.has(nameOf(one)),
   );
   return lacking.length === 0 ? null : `lacks ${lacking.join(", ")}`;
 }
@@ -261,14 +266,39 @@ const pythonFound = ({ python, pythonPath }: Facts) =>
     ? `finds no python3 that answers${pythonPath === "" ? "" : ` at ${pythonPath}`}`
     : `finds ${python.version} at ${pythonPath} with ${String(python.packages.length)} packages`;
 
-function pythonFinding(machine: Machine, facts: Facts, pin: Pin | null): Finding | null {
-  const lacks = pin === null ? null : pythonLacks(facts.python, pin);
-  if (pin === null || lacks === null) return null;
+/**
+ * Each package `python` shares with `reference` at another version, as `reference` holds it. The
+ * packages a pin names pull in others, which resolve at each install's hour: a peer pinned two hours
+ * after this machine took a newer `narwhals` beneath the same `statsmodels`. A reference holds the
+ * pin, so a package the pin names already has the pin's version there.
+ */
+function behind(python: HostPython | null, reference: HostPython | null): string[] {
+  if (python === null || reference === null) return [];
+  const versions = new Map(python.packages.map((one) => [nameOf(one), one.split("==")[1]]));
+  return reference.packages.filter((one) => {
+    const [, version] = one.split("==");
+    const own = versions.get(nameOf(one));
+    return version !== undefined && own !== undefined && own !== version;
+  });
+}
+
+function pythonFinding(
+  machine: Machine,
+  facts: Facts,
+  pin: Pin | null,
+  reference: HostPython | null,
+): Finding | null {
+  if (pin === null) return null;
+  const lacks = pythonLacks(facts.python, pin);
+  const apart = machine.host === undefined ? [] : behind(facts.python, reference);
+  if (lacks === null && apart.length === 0) return null;
+  const more = apart.length > SHOWN ? ` and ${String(apart.length - SHOWN)} more` : "";
+  const takes = apart.length === 0 ? null : `takes this machine's ${apart.slice(0, SHOWN).join(", ")}${more}`;
   return {
-    line: `python ${pythonFound(facts)}; ${lacks}`,
+    line: `python ${pythonFound(facts)}; ${[lacks, takes].filter((one) => one !== null).join("; ")}`,
     seats: true,
     blocked: facts.uv === "" ? "no uv on this machine" : null,
-    apply: () => runOn(machine, pinScript(pin)),
+    apply: () => runOn(machine, pinScript({ ...pin, packages: [...pin.packages, ...apart] })),
   };
 }
 
@@ -298,8 +328,9 @@ function runnerFinding(machine: Machine, facts: Facts, { hosts }: Options): Find
 
 /** What differs without being anything to apply. */
 function notesOf({ host }: Machine, facts: Facts, everyone: readonly Facts[], options: Options): string[] {
-  const common = everyone.map(({ python }) => new Set(python?.packages));
-  const own = (facts.python?.packages ?? []).filter((one) => !common.every((set) => set.has(one)));
+  // By name: a version apart is a finding, which takes this machine's.
+  const common = everyone.map(({ python }) => new Set(python?.packages.map(nameOf)));
+  const own = (facts.python?.packages ?? []).filter((one) => !common.every((set) => set.has(nameOf(one))));
   const more = own.length > SHOWN ? ` and ${String(own.length - SHOWN)} more` : "";
   const sent = host === undefined ? [] : Object.entries(carriedTo(host));
   return [
@@ -340,10 +371,15 @@ function held(
 async function planned(machines: readonly Machine[], options: Options): Promise<Plan[]> {
   const read = await Promise.all(machines.map(async (machine) => await factsOf(machine, options.tools)));
   const everyone = read.filter((facts) => facts !== null);
+  // This machine's pinned Python sets the version of every package a peer shares with it, once it
+  // holds the pin itself; a plan that reads no peer or not this machine sets none.
+  const here = read[machines.findIndex(({ host }) => host === undefined)]?.python ?? null;
+  const pin = options.pin;
+  const reference = pin !== null && pythonLacks(here, pin) === null ? here : null;
   const found = machines.map((machine, index) => {
     const facts = read[index];
     if (facts === null || facts === undefined) return [];
-    const python = pythonFinding(machine, facts, options.pin);
+    const python = pythonFinding(machine, facts, pin, reference);
     const runner = runnerFinding(machine, facts, options);
     return [...toolFindings(machine, facts, options.tools), python, runner].filter((one) => one !== null);
   });
@@ -440,9 +476,11 @@ export async function sync(args: readonly string[]): Promise<void> {
     const owed = plans.flatMap(({ machine, findings }) =>
       findings.filter(({ refused }) => refused === null).map((one) => ({ ...one, name: machine.name })),
     );
+    const passed = new Set<string>();
     for (const { name, line, apply } of owed) {
       const code = await apply();
-      if (code !== 0) console.log(`${name}: failed with exit ${String(code)}: ${line}`);
+      if (code === 0) passed.add(`${name}\n${line}`);
+      else console.log(`${name}: failed with exit ${String(code)}: ${line}`);
     }
     const after = await planned(machines, options);
     const left = counts(after);
@@ -452,6 +490,16 @@ export async function sync(args: readonly string[]): Promise<void> {
     }
     console.log(`${String(left.open + left.silent)} left after applying:`);
     for (const plan of after) printPlan(plan);
+    // An install into ~/.local/bin can exit 0 while a seat's row, read in the wall's order, still
+    // finds a package manager's copy first.
+    const unmoved = after.flatMap(({ machine: { name }, findings }) =>
+      findings.filter(({ line }) => passed.has(`${name}\n${line}`)).map(({ line }) => `${name}: ${line}`),
+    );
+    for (const said of unmoved) {
+      console.log(
+        `${said}: its change exited 0 and reads the same, so another copy comes first on the path it is read from, or the change did nothing`,
+      );
+    }
     runtimeProcess.exitCode = 1;
     return;
   }

@@ -15,10 +15,11 @@ import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
  *  passed, and the pre-push hook turns pending on each head stacked above a pushed branch. */
 export const MERGEABLE_CONTEXT = "mergeable";
 
-/** `gh api`'s filter over the stacks a pull request is in: the open one's number and its members still
- *  open, bottom first. A stack keeps the members a partial merge took, listed closed, which would
- *  otherwise read as part of the next landing and have `stackOf` refuse it. */
-export const STACK_MEMBERS = String.raw`map(select(.open)) | first // empty | "\(.number) \(.pull_requests | map(select(.state == "open") | .number) | join(","))"`;
+/** `gh api`'s filter over the stacks a pull request is in: the open one's number, its members still
+ *  open and then those closed, each bottom first. A stack keeps the members a partial merge took,
+ *  listed closed: they are no part of the next landing, but `gh stack link` refuses a list that
+ *  leaves them out, so a link names them below the chain. */
+export const STACK_MEMBERS = String.raw`map(select(.open)) | first // empty | "\(.number) \(.pull_requests | map(select(.state == "open") | .number) | join(",")) \(.pull_requests | map(select(.state != "open") | .number) | join(","))"`;
 
 /** Each status a GraphQL reading of commits finds, as `statusBoard` spells a status it posts. */
 const SHOWN = String.raw`.data.repository[] | select(. != null) | .oid as $sha | (.status.contexts // [])[] | [$sha, .context, (.state | ascii_downcase), .description] | join("\t")`;

@@ -741,6 +741,16 @@ describe("bun run land", () => {
     expect(gatesRun(gateLog)).toContain(`${stacked} suite`);
   });
 
+  it("names the members a partial merge left closed below the chain, since a link that drops them is refused", () => {
+    const result = runLand(["15", "--sanitize"], {
+      ...opened,
+      ANA_FAKE_STACK: "7 11,12 9,10",
+      ANA_FAKE_LINKED: "7 11,12,15 9,10",
+    });
+    expect(result.status).toBe(0);
+    expect(linkCalls()).toEqual(["stack link 9 10 11 12 15"]);
+  });
+
   it("links a landing of several pull requests in no stack, and merges it as one", () => {
     const result = runLand(["12", "--merge"], { ANA_FAKE_STACK: "", ANA_FAKE_LINKED: "7 11,12" });
     expect(result.status).toBe(0);
@@ -1210,6 +1220,6 @@ describe("the stack a landing reads after a partial merge", () => {
       },
     ]);
     const read = spawnTextSync("jq", ["-r", STACK_MEMBERS], { stdin: stacks });
-    expect(read.stdout.trim()).toBe("7 12,13");
+    expect(read.stdout.trim()).toBe("7 12,13 11");
   });
 });

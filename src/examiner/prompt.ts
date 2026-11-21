@@ -14,70 +14,50 @@
  *
  * A task needs a valid answer. Nothing solves a task before it is held (`AGENTS.md`, rule 9), so
  * the author alone stands between the exam and a task no answer satisfies: in the first campaign
- * opened from a prompt, two of seven tasks pressed to the margin had none. The prompt states what `try_answer` shows and leaves the method to the author.
- * Until 31 October it prescribed one, to plant an answer and grow the task around it, which tied
- * each task to what the author could build: of 6,225 admission readings since 16 October, 5,664 had
- * the reference valid on every room solve, and only 27 were refused for want of the author's proof
- * (section 2, consequence 1: facts, never a course). An answer that passed never reaches a solver:
- * the gate refuses a task that carries it (`write.ts`).
+ * opened from a prompt, two of seven tasks pressed to the margin had none. The prompt states what
+ * `try_answer` shows and leaves the method to the author (section 2, consequence 1: facts, never a
+ * course), since a prescribed method, to plant an answer and grow the task around it, tied each task
+ * to what the author could build and left the reference valid on nearly every solve. An answer that
+ * passed never reaches a solver: the gate refuses a task that carries it (`write.ts`).
  *
  * The solve is described as one system, the model inside the harness, because an Examiner that read
- * the reference harness's programs wrote against them: at esp32-fresh-opus-terra's x-4 (27 October)
- * ten drafts made `plan-pins` fail, the solver repaired each in 3 to 7 of its 20 turns, and the
- * gate's room solves refused all ten. The prompt separates the three kinds of room, but names no kind
- * of draft. Until 28 October it listed three constructions admitted in v0.7.2; in later sessions,
- * the author described fifteen held drafts with fifteen family labels as one construction. In one
- * paired trial from a recorded position, both Opus seats held 12 of 12 drafts. The seat without the
- * list billed 11% less per draft (28 October). From 19 October to 18 November a copy of the
- * reference harness lay in a writing session's home, and the prompt said that the solver can reach
- * answers its programs compute: at buffer-fresh-gpt-v071's x-3 the Examiner computed its answers
- * with the reference's own optimiser, and in 9 refusals that compared them its answer equalled the
- * reference's best or was up to 0.59% worse (27 October). The copy went because it pointed the
- * Examiner at one harness's programs, as at x-4 above (`tools/d1b/examine.ts`).
+ * the reference harness's programs wrote against them: drafts aimed at one program's faults, which
+ * the solver repaired in a few turns. For the same reason a writing session's home holds no copy of
+ * the reference harness, which pointed the Examiner at one harness's programs and let it compute its
+ * answers with the reference's own optimiser. The prompt separates the three kinds of room, but names
+ * no kind of draft: a list of admitted constructions led the author to describe many held drafts as
+ * one construction, and a paired trial without the list held as many drafts for less per draft.
  *
- * Each fact is stated once, in the section that owns it (17 October, #191: 1,088 words to 793).
- * What the host enforces is said by the tool result that enforces it and not beforehand: a declined
- * first finish (195 of 417 finishes in the record), an instance not taken again and a planted answer
- * carried whole (forbidden by the gate, but never observed on record) (28 October), and the end of
- * a session once the host has the tasks it needs (4 November). What a passing try shows is said
- * here, in "What the exam needs", and its result names the verdict alone (4 November).
+ * Each fact is stated once, in the section that owns it, and once to each session: the valid-answer
+ * section is a point of "What the exam needs", the turns a method cost are part of "How hard", and
+ * the task's make-up and the limit the field does not hold are one text each for both modes (`TASK`,
+ * `UNHELD`, read by `draft.ts`). What the host enforces is said by the tool result that enforces it
+ * and not beforehand: a declined first finish, an instance not taken again, a planted answer carried
+ * whole, and the end of a session once the host has the tasks it needs. What a passing try shows is
+ * said here, in "What the exam needs", and its result names the verdict alone.
+ *
  * How hard a task should be has a scale and worked examples (`ladder.ts`, with the record behind
- * them) instead of "Harder is yours to judge", which stood until 31 October. The section asks for
- * tasks above the highest grade the reference answers on every solve, which is relative to the
- * record the session reads and names no count, so the exam climbs as the reference does.
- * Until 1 November the gate also put each draft to the reference harness's room solves under
- * `try_task`, and the prompt said how; it reads the package alone now (`write.ts`), so the prompt
- * names no solve at the gate and leaves room to the comparisons.
+ * them), given as calibration facts before the request. The section asks for tasks above the
+ * highest grade the reference answers on every solve, which is relative to the record the session
+ * reads and names no count, so the exam climbs as the reference does; a grade is what the field
+ * demands, never "above the new reference's", which points the Examiner at one harness's faults that
+ * the starter, holding none, can win. `SOLVER` owns where grade 2 ends. The gate reads the package
+ * alone (`write.ts`), so the prompt names no solve at the gate and leaves room to the comparisons.
  *
- * On 2 November the texts were read for a model that follows a prompt literally (Opus 5.5). Only
- * validity flips were called chance, while in every A/A of the archive's objective domains since
- * 26 October the reference's two solves differed on the objective alone on 314 of 1,373 tasks, so a
- * literal reader took that spread for room; it is named as chance, and since 4 November the
- * record's first line gives the count of the session's own last comparison instead. "Above the new
- * reference's" grade and the programs in the home pointed the Examiner at one harness's faults,
- * which the starter, holding none, can win; a grade is now what the field demands. "Below grade 3"
- * disagreed with `SOLVER` ("grade 2 or below"), which owns the point, as does the sentence on size
- * and numbers removed here. "Varying what they ask" on a declined finish was a course (`write.ts`).
- *
- * On 4 November the Examiner's texts were consolidated so that each fact is said once to each
- * session: the valid-answer section became a point of "What the exam needs", the turns a method
- * cost joined "How hard", and the task's make-up and the limit the field does not hold are one
- * text each for both modes (`TASK`, `UNHELD`, read by `draft.ts`). It awaits paired live seats.
- *
- * Also on 4 November: "How hard" gives the calibration facts before the request. From then until
- * 5 November each draft also carried its author's grade and one sentence on where a solver falls
- * short ("What you put"), which no campaign ran with and which the overhaul took out: a required
- * account of each draft adds strictness and no fact. Where no objective is declared, two
- * valid answers always tie, which the scoring section now says: at jobstat-fresh-opus-forkedPR595
- * the comparisons tied on every task the reference answered in every solve.
+ * The texts are written for a model that follows a prompt literally. The reference's two solves
+ * often differ on the objective alone, so that spread is named as chance alongside validity flips,
+ * and the record's first line gives the count of the session's own last comparison, lest a literal
+ * reader take it for room. Where no objective is declared, two valid answers always tie, which the
+ * scoring section says. A draft carries no grade or account of where a solver falls short, since a
+ * required account adds strictness and no fact, and a declined finish names no course (`write.ts`).
  *
  * Where the host gives the session tries of the reference harness ("Trying the reference",
  * `try_reference` in `write.ts`), the section says what a try shows and what it decides, which is
  * nothing at the gate or in a comparison, and that one solve is weak evidence (`AGENTS.md`, rule 6).
  * It names no count to reach and no course: when to try, and what to make of it, is the author's.
  *
- * On 20 November "Who solves a task" was halved, and the gate's section moved into propose_tasks's
- * description (`write.ts`), where the Examiner reads what the tool does.
+ * The gate's section is in propose_tasks's description (`write.ts`), where the Examiner reads what
+ * the tool does.
  */
 import { GAP_FLOOR } from "../kernel/compare.ts";
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
@@ -104,7 +84,7 @@ export interface CheckRow {
 /** An ask's limits, as an opening and a wake tell them. */
 type Told = Parameters<typeof firstMessage>[3];
 
-/** What a task is made of, as both modes are told it: the objective reads hidden values too (#616). */
+/** What a task is made of, as both modes are told it: the objective reads hidden values too. */
 export const TASK =
   "A task is a family, a public input and hidden values. A solver reads the family's name and the public input; only the check program receives hidden values.";
 
@@ -118,8 +98,7 @@ export const UNHELD =
 
 /** The system prompt of a session that holds tasks out by `propose_tasks`. Each fact is stated
  *  once, in the section that owns it, and the gate's in `propose_tasks`'s description (`write.ts`).
- *  `tries` says whether the session may put instances to the reference harness (`try_reference`).
- *  On 20 November the operator rewrote each section in fewer words. */
+ *  `tries` says whether the session may put instances to the reference harness (`try_reference`). */
 export function systemPrompt(tries: "given" | "none"): string {
   const floor = `${String(GAP_FLOOR * 100)}%`;
   return [

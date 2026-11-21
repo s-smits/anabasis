@@ -2,7 +2,7 @@
  * Move 2 of a campaign that opens from a prompt: the Examiner drafts the exam.
  *
  * A campaign opens either over a stored pack a v1 Builder wrote, which four flags name, or from a
- * prompt (`7f0add79:docs/plan.md`, row F53). Here the operator's prompt names a domain, and one session
+ * prompt. Here the operator's prompt names a domain, and one session
  * drafts what a campaign needs before its first task is solved: the public rules, each with the
  * source that states it, the answer format, one check for each rule, the objective or why there is
  * none, a few example tasks, and control answers, which are answers to those examples with a known
@@ -16,84 +16,70 @@
  * smallest answer the format allows on every example. The Examiner is told the faults and puts the
  * draft again. A draft with no fault stands: it goes into the log whole, as `exam.drafted`, and the
  * session ends. The campaign reads its exam from that event (`draftOf`). Validation and acceptance
- * stay together here because only drafting submits a whole exam (28 October).
+ * stay together here because only drafting submits a whole exam.
  *
  * What the readings cannot say is whether a rule is the field's and its source real. The source
  * is on record beside the rule for a person to look up, and the host holds a draft only to
- * naming one (row F33).
+ * naming one.
  *
  * Every check a draft holds is its author's own computation, since nothing installs an engine of
  * the field for a campaign yet. The acceptance reading lists each such check as a fault until the
  * operator admits it by name (`tools/c/accept.ts --admit`), so a drafted exam is frozen on the
  * operator's word and never by this session (`AGENTS.md`, rule 10). A campaign launched without
  * `--hitl` is that word for every check of its draft (`planOf`, `src/campaign/opening.ts`; the
- * operator, 16 October).
+ * operator's choice).
  *
  * The prompt is built around the comparison's two ways of telling harnesses apart, validity and
  * the objective (`GAP_FLOOR`, `src/kernel/compare.ts`), since the draft fixes which a campaign can ever
- * use. On 4 November every exam drafted since 1 November with an objective had untied most of its
- * compared tasks (buffer 305 of 381, truss 20 of 21) and every one without had tied nearly all
- * (esp32 0 of 62, jobstat 7 of 180, 0 promotions). The business-records exams, also work products,
- * declared an objective in 18 of 21 puts and untied 49 of 50 tasks; the jobstat exams declared one
- * in 0 of 17, each convention naming a data defect's repair and each task's input naming every
- * step, and one program answered 43 of 43 solves (jobstat-fresh-opus-forkedPR600-turns6,
- * g-1). Until then the objective was one optional paragraph ending "a field with no such quantity
- * declares none", and omitting it was silent. Now the session is asked what a practitioner
- * prefers between two valid answers, and a draft gives a quantity with its direction or its
- * author's reason for none (`unmeasured`, kept on the exam side), a decision the shape requires.
- * The same day the prompt named conventions and a task's input beside rules as what can hand over
- * the whole method. Until 5 November it said nothing a solver needs is hidden, and all 7 jobstat
- * drafts published every planted defect with its repair; validity now rests on `FAIR` alone.
+ * use. Exams drafted with an objective untied most of their compared tasks, and exams without one
+ * tied nearly all and promoted nothing: in one domain each convention named a data defect's repair
+ * and each task's input named every step, and one program answered every solve. So the session is
+ * asked what a practitioner prefers between two valid answers, and a draft gives a quantity with
+ * its direction or its author's reason for none (`unmeasured`, kept on the exam side), a decision
+ * the shape requires rather than one optional paragraph it may silently omit. The prompt names
+ * conventions and a task's input beside rules as what can hand over the whole method, since drafts
+ * told that nothing a solver needs is hidden published every planted defect with its repair;
+ * validity rests on `FAIR` alone.
  *
- * On 5 November an exam that declared the objective as the share of an answer's values agreeing
- * with a recomputation from the input scored 243 of 265 solves at exactly 1, and its three
- * comparisons tied every task, 51 of 51 (jobstath2-fresh-opus-forkedPR608). So the
- * prompt names that measure as one the standard method reaches, beside one read against what the
- * task was built from. A rule requiring hidden values whenever an objective is declared was
- * weighed and not taken: truss's mass reads none, and the standard method does not reach its best.
+ * An objective read as the share of an answer's values agreeing with a recomputation from the
+ * input scores nearly every solve at exactly 1 and ties every task, so the prompt names that measure
+ * as one the standard method reaches, beside one read against what the task was built from. A rule
+ * requiring hidden values whenever an objective is declared was weighed and not taken: truss's mass
+ * reads none, and the standard method does not reach its best.
  *
- * On 7 November an esp32 draft whose prompt named a quantity no check could compute declared an
- * extra-channel count in its place, and a step promoted on it alone (esp32-fresh-opus-forkedPR668,
- * g-5). So a declared stand-in is named as one in the scope, beside the quantity it stands in for,
- * which is named as not measured, and a reader of the step knows what it measured.
+ * A declared stand-in is named as one in the scope, beside the quantity it stands in for, which is
+ * named as not measured, so a reader of a step knows what it measured: a draft whose prompt named a
+ * quantity no check could compute declared an extra-channel count in its place, and a step promoted
+ * on it alone.
  *
- * On 11 November two of the four esp32 exams drafted since 5 November had declared no objective,
- * each with the reason the prompt asked for: its own tasks fixed the board and every device, so
- * valid answers differed in nothing a practitioner pays for. The reference answered all 41 of
- * their compared tasks validly in every solve, all 41 tied, and both campaigns ended `no-room`
- * (the runs forked at #687 and #761). The two exams that left the answer a choice of parts
- * declared its count or its cost, and each campaign promoted once. The reason was true of the
- * draft and not of the field, so the prompt now says that the answer format and the scope decide
- * whether valid answers differ, and takes a reason for none only where no task of the domain
- * could leave that choice.
+ * Whether valid answers differ is decided by the answer format and the scope, which the prompt
+ * says, and a reason for no objective is taken only where no task of the domain could leave that
+ * choice. Exams whose own tasks fixed every part gave a reason true of the draft and not of the
+ * field: the reference answered every compared task validly, all tied, and the campaigns ended
+ * `no-room`, while exams that left the answer a choice of parts declared its count or cost and
+ * promoted.
  *
  * The Examiner is told the prompt, its limits and what the host found in each draft, and no count
  * of tasks, since an author told a target writes towards it. It reads the reach scale and who the
  * grades are for (`REACH`, `ladder.ts`), not the worked fields, which teach how hard a task is and
- * belong to writing. On 16 October five fresh campaigns' task admissions refused 74 of 95 drafts,
- * 67 as answered in all three solves, which is why it is told that a lookup, a matching or a search
- * meets any rules that leave them. Until 31 October it was told to choose rules that act together;
- * both of that day's paired esp32 arms did, and the reference answered 34 of 35 of their first room
- * solves validly. Both then drafted rules restating the field's tables and formulas, whose examples
- * passed 9 of 9 solves at 3 turns; a rule now states its property and names its public standard.
+ * belong to writing. It is told that a lookup, a matching or a search meets any rules that leave
+ * them, since task admission refused most early drafts as answered in all three solves. A rule
+ * states its property and names its public standard: drafts told to choose rules that act together
+ * restated the field's tables and formulas, and the reference answered nearly all of them.
  *
- * It is told that the prompt's requirements stay in the exam at the strength the prompt states:
- * truss-fresh-opus-v064 was asked for trusses "within strict mass limits" and drafted no check of
- * mass, and the host's reading cannot see a requirement a draft leaves out (27 October). Where it
- * has a shell (`shell.ts`) it is told what the shell is and what the wall test found of the
- * network, and not what to use it for; nothing hidden exists at drafting, and the wall closes the
- * repository, where the log lies.
+ * It is told that the prompt's requirements stay in the exam at the strength the prompt states,
+ * since a draft asked for trusses "within strict mass limits" can leave mass unchecked, and the
+ * host's reading cannot see a requirement a draft leaves out. Where it has a shell (`shell.ts`) it
+ * is told what the shell is and what the wall test found of the network, and not what to use it
+ * for; nothing hidden exists at drafting, and the wall closes the repository, where the log lies.
  *
- * No solve runs at drafting. From 22 October to 1 November a draft with no fault was solved before
- * it stood, and from 3 to 4 November (#585) one the Starter Built Harness answered on every solve
- * was refused: four jobstat campaigns put 10 drafts, 60 of 60 example solves valid, three ended
- * `exam` with nothing compared, at $1.17 to $2.77 and up to half an hour a draft. The operator asked
- * for gates that trust a capable model. The reading's notes, facts a draft stood with, left with
- * it: they rode on the reply that ends the session (`ending`, `src/tools/answer.ts`), and none of
- * 250 `draft_exam` results on record carried them to a model.
+ * No solve runs at drafting: solving a draft before it stood, or refusing one the Starter Built
+ * Harness answered on every solve, ended campaigns `exam` with nothing compared, and the operator
+ * asked for gates that trust a capable model. The reading's notes, facts a draft stood with, ride
+ * on the reply that ends the session (`ending`, `src/tools/answer.ts`), so no model reads them.
  *
- * On 20 November the operator cut two passages to one sentence each: the account of proper losses
- * and their scales, and what the host's reading of a draft checks, which its faults name.
+ * The account of proper losses and their scales, and what the host's reading of a draft checks,
+ * are one sentence each (the operator's choice); the reading's faults name the rest.
  */
 import { type Static, Type } from "typebox";
 import { answerFormatFault, type Objective } from "../kernel/contract.ts";
@@ -144,7 +130,7 @@ export interface Draft {
   readonly objective?: Objective;
   /** Why the draft declares no objective, in its author's words, where it declares none. Kept on
    *  the exam side: `stageExam` stages it nowhere, so no solver, Builder or writing session reads
-   *  it. Absent from drafts logged before 4 November, which `draftOf` reads as they are. */
+   *  it. Absent from the oldest drafts, which `draftOf` reads as they are. */
   readonly unmeasured?: string;
   /** The example tasks, which are the exam's first. */
   readonly tasks: readonly {
@@ -208,9 +194,8 @@ const CONTROL = {
 /** What `draft_exam` takes: a whole draft, in the words the Examiner is told. */
 const DRAFT_PARAMETERS = Type.Object({
   domain: Type.String({ minLength: 1, description: "The domain, in a few words." }),
-  // What a size fixed here costs is said where the scope is written. The second exam drafted
-  // from a prompt (9 October) held every task to six rows and six columns, which its field
-  // does not: the starter then answered 24 of 24 solves at the full limit whatever was
+  // What a size fixed here costs is said where the scope is written: an exam that held every
+  // task to a small size its field does not had the starter answer every solve whatever was
   // written, and the harness that read a step listed every candidate of a task that small.
   scope: Type.String({
     minLength: 1,
@@ -243,8 +228,8 @@ const DRAFT_PARAMETERS = Type.Object({
     }),
     { minItems: 1 },
   ),
-  // The check program may name a file as an object, since a strict schema of text alone had each
-  // draft of 20 November spell the object as text (`fromHome` reads both).
+  // The check program may name a file as an object, since under a strict schema of text alone a
+  // draft spells the object as text (`fromHome` reads both).
   evaluator: Type.Union([
     Type.String({ minLength: 1, description: "The check program's TypeScript source." }),
     Type.Object({ from_file: Type.String({ minLength: 1 }) }),
@@ -325,13 +310,11 @@ const twice = (ids: readonly string[]): string | undefined =>
 /**
  * The fields an answer carries that its format leaves unnamed, as paths. A solver learns an
  * answer's fields from the format alone, so a check that reads one refuses a right answer spelled
- * another way. On 2 November esp32-fresh-opus-forkedPR569 drafted a `pwm` object with no
- * properties, its PWM check read `clk_div_q8` from it, and the Referee ruled all 8 rejections it
- * made check defects; of 159 drafted exams on record, 2 carried such a field, both esp32 PWM
- * settings. An accept control carries every field its checks need, so reading the controls
- * covers every check. A reference, a combination, a condition or a pattern counts as naming: until
- * the release review of 3 November the `anyOf` and `oneOf` options were read without the
- * `properties` beside them, which refused a sound "at least one of" format.
+ * another way: a drafted object with no properties, whose check read a field from it, had every
+ * rejection it made ruled a check defect. An accept control carries every field its checks need,
+ * so reading the controls covers every check. A reference, a combination, a condition or a pattern
+ * counts as naming, and the `anyOf` and `oneOf` options are read with the `properties` beside them,
+ * so a sound "at least one of" format is not refused.
  */
 function unnamed(schema: JsonValue | undefined, answer: JsonValue, path: string): string[] {
   const held = asRecord(schema);
@@ -492,9 +475,9 @@ export function draftOf(events: readonly LogEvent[]): Draft | null {
  *  tool it puts a draft by, the shape a draft is held to before the caller's reading, and the event
  *  a draft that stands is kept in. The reading runs `within` the session's clock, which pauses for
  *  it: its runs of every control answer through the checks are the verifier's time, and they wait
- *  on the host's load. On 3 November a truss session put its first draft at 44 of its 60 minutes,
- *  and the clock ended it during the host's work on that draft, so the draft got no reading and
- *  still counted as one of the campaign's tries. */
+ *  on the host's load. A clock that ran through them could end a session during the host's work
+ *  on a late draft, which would then get no reading and still count as one of the campaign's
+ *  tries. */
 export function drafting(
   terms: DraftingTerms,
   within: <T>(action: () => Promise<T>) => Promise<T>,

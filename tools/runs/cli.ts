@@ -14,8 +14,8 @@
  * `here` always names this machine, whichever verb hears it: `--here` is accepted by every verb, and a
  * verb with no use of its own for it reaches no other host for that one call, as a verb another host
  * sent here does (`ANA_HOP`, `hostsOf`). With no hosts it changes nothing, since an empty list is
- * already this machine alone. A refusal prints its one line and exits 1; until 5 November each of
- * about 25 ordinary refusals printed a Bun frame and a stack trace. An error of another kind keeps
+ * already this machine alone. A refusal prints its one line and exits 1, without a Bun frame or a
+ * stack trace. An error of another kind keeps
  * its trace, since that is a defect and not an answer.
  */
 import { readFileSync } from "#src/meta/filesystem.ts";

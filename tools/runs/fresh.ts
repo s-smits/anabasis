@@ -18,29 +18,27 @@
  * campaigns and simulation seats (`leastOccupied`, `placement.ts`). An explicit
  * `--host here` or peer overrides placement. Remote source is prepared by `code.ts` before launch,
  * and the peer's own `fresh` is told `--placed`, the caller's word that it placed the run there and
- * named it with the peer's `ANA_HOSTS` name: without it the peer placed the run again over itself
- * alone, and on 23 October refused a named host that held its cap of two live runs. A run placed
- * here ends with this machine's own name (`ownName`), so from 28 October every name says where it
- * runs; until then only a peer's did, and the operator asked that the machines be named alike.
+ * named it with the peer's `ANA_HOSTS` name: without it the peer would place the run again over
+ * itself alone, and could refuse a named host at its cap. A run placed here ends with this
+ * machine's own name (`ownName`), so that every name says where it runs, as the operator asked.
  * `launch` leaves the run its keeper on the machine it runs on, unless `ANA_KEEP=off` (`keepsItself`).
  * Several packs are planned as one (`plan`): each pack's login and host are reserved in the counts
  * before the next is placed, the whole plan is printed, and nothing launches while a login it takes
  * is missing from its host.
  *
- * Until 16 October each fresh launch was typed by hand: a worktree, a prompt file, eight seat
- * flags and a name, and one launch that left out `--login` ended on its environment.
+ * The verb replaces typing a launch by hand (a worktree, a prompt file, eight seat flags and a
+ * name), where one flag left out, such as `--login`, ends a launch on its environment.
  *
  * A solve's limits are the campaign's one budget (`LIMITS`, `tools/d2/campaign.ts`), unless the
- * flags after `--` name others. From 17 to 19 October this verb named its own by model, 8 or 30
- * minutes and 16 turns, beside a campaign default of 120 minutes with the turns unlimited: one
- * budget a solve, held in two places that disagreed.
+ * flags after `--` name others, so that a solve's budget is held in one place, not two that
+ * disagree.
  *
  * `gpt` seats GPT-6.1 Sol through the Codex CLI's login, which `--login` does not choose, at high in
- * every seat (the operator, 19 October). That login is one a machine, and placement and a named
+ * every seat (the operator's choice). That login is one a machine, and placement and a named
  * `--host` hold it to one live GPT run a machine (`fullOn`, `logins.ts`). Any other model a backend serves is named by its id, so
  * `--model openrouter/deepseek/deepseek-v4.1-flash-1017` seats DeepSeek V4.1 Flash 1017 in every seat
- * as `<pack>-fresh-deepseek-v4.1-flash-1017`; on 21 October such a campaign needed four seat flags
- * after `--` under a name that said opus.
+ * as `<pack>-fresh-deepseek-v4.1-flash-1017`, with no seat flags after `--` and under a name that
+ * says which model it seats.
  */
 import { existsSync } from "#src/meta/filesystem.ts";
 import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";

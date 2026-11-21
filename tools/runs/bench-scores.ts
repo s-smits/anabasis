@@ -5,8 +5,8 @@
  * store's `judged/<arm>/`. A read is done once the Starter holds a record for every task the
  * reference does, since the sitting rolls the Starter last over the reference's own tasks. Its
  * `score.ts table` is then written once to the store's `scored/<label>.txt`, beside the records it
- * reads, and the verb prints one line for it, so the alerts job (operator, 21 November 2026: "ideally
- * should be automatic") hears each read once.
+ * reads, and the verb prints one line for it, so the alerts job (the operator's choice) hears each
+ * read once.
  *
  * It reads the records this machine holds (`recordsHere`): a benchmark's own store where it is rolled
  * here, otherwise the copy `runs fetch` keeps in `data/bench/<benchmark>`, which only adds, so a

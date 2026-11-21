@@ -4,8 +4,8 @@ import type { Host } from "./host-config.ts";
 import { sshOptions } from "#src/meta/ssh.ts";
 /**
  * `from` copied into `to` with rsync, either of them `<ssh>:<path>` on a host. It compresses what it
- * sends: a campaign's folder is mostly logs and traces, and on 20 October one log of 4.6 MB took
- * 18.6 s to reach the Linux host over Wi-Fi, and 2.5 s with `-z`.
+ * sends: a campaign's folder is mostly logs and traces, which compress several times over and so
+ * cross a slow network many times faster.
  */
 export async function rsync(from: string, to: string, ...flags: readonly string[]): Promise<string> {
   const remote = [from, to].find((side) => !side.startsWith("/") && side.includes(":"));
@@ -15,8 +15,8 @@ export async function rsync(from: string, to: string, ...flags: readonly string[
 
 /**
  * The ssh command rsync runs to reach `destination`, as one `-e` value, each word quoted: rsync splits
- * it on spaces, and the check runner, which joined its options bare until 29 October, cut a control
- * socket under a temp root with a space into two arguments.
+ * it on spaces, and options joined bare would cut a control socket under a temp root with a space
+ * into two arguments.
  */
 export const sshCommand = (destination: string) => ["ssh", ...sshOptions(destination)].map(quoted).join(" ");
 
@@ -33,9 +33,9 @@ export const shellPath = (path: string) =>
 /**
  * The Bun that runs a tree's code on a host, as shell text evaluated in that tree: the release its
  * `package.json` pins where the host holds it under `~/.bun/releases`, as the check runner picks
- * one, else the configured Bun. A campaign runs under the Bun of the verb that launched it, and on
- * 23 October a fork made through `fresh --host` on the Linux runner ran its verb on that host's
- * default Bun, 1.4.3, while its tree pinned 1.4.4.
+ * one, else the configured Bun. A campaign runs under the Bun of the verb that launched it, so a
+ * fork made through `fresh --host` must not run its verb on that host's default Bun while its tree
+ * pins another.
  */
 export const treeBun = (configured: string) =>
   `"$(p=$(grep -o '"packageManager": *"bun@[^"]*"' package.json 2>/dev/null | sed 's/.*bun@//; s/"$//'); if test -n "$p" && test -x "$HOME/.bun/releases/$p/bin/bun"; then echo "$HOME/.bun/releases/$p/bin/bun"; else echo ${shellPath(configured)}; fi)"`;

@@ -62,8 +62,8 @@ function sizesHere(main: string, controllers: string): Record<string, number | n
       paths: worktrees(main).filter((tree) => tree !== main && !tree.startsWith(`${controllers}/`)),
     },
   ];
-  // One `du` an area: on a machine of 198 worktrees (22 October) the worktrees alone took 39 s,
-  // past the probe's 20 s, and one call for every area left every size unavailable.
+  // One `du` an area, since on a machine of many worktrees those alone can outlast the probe's
+  // time, and one call for every area would leave every size unavailable.
   return Object.fromEntries(
     areas.map((area) => {
       const paths = area.paths.filter(existsSync);

@@ -27,8 +27,8 @@ const LIVE = Type.Array(
 
 /** The payer of a run that seats an `openai-codex/` model and names no numbered login: the Codex
  *  CLI's login of the machine it runs on. Each machine signs Codex in on its own, so a cap on it
- *  counts one machine's runs (`fullOn`, `logins.ts`). Until 29 October such a run counted under no
- *  login, and one GPT run a machine was a rule kept by hand. */
+ *  counts one machine's runs (`fullOn`, `logins.ts`), so that one GPT run a machine is kept by code
+ *  rather than by hand. */
 export const CODEX = "codex";
 
 /** Whether `flags`, a launch's, seat a model through the Codex CLI's login. */

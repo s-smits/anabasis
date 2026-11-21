@@ -18,16 +18,16 @@
  * which `hostsOf` lists no host: a verb run on another host reaches no further one, so two
  * machines that list each other do not ask each other's status in a loop. `hosts` asks every host at
  * once and prints each one's rows as they come, under a time limit a host, so a host that is slow or
- * does not answer holds up no other (15 October: asked one after another, a loaded runner held the
- * rows of every host after it).
+ * does not answer holds up no other, where asking one after another would let a loaded runner hold
+ * the rows of every host after it.
  *
  * A verb that acts on a run it names goes wherever the run is (`routesOf`): every host is asked
- * before acting, and unavailable hosts and duplicate originals refuse the route. On
- * 20 October a stop of eight runs on two machines took two commands, each naming its host, and a
- * keeper and continue each took the host's name by hand. Readers now use snapshots.ts instead of
- * routing to another reader. The transport prepares a detached controller at the caller's nearest
- * published ancestor for ordinary verbs and skill scripts; all configured paths remain literal shell words.
- * Live records belong to live.ts, shared by usage and placement (22 October 2026).
+ * before acting, and unavailable hosts and duplicate originals refuse the route, so that a stop of
+ * runs on several machines is one command and no verb takes a host's name by hand. Readers use
+ * snapshots.ts instead of routing to another reader. The transport prepares a detached controller
+ * at the caller's nearest published ancestor for ordinary verbs and skill scripts; all configured
+ * paths remain literal shell words.
+ * Live records belong to live.ts, shared by usage and placement.
  */
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
@@ -59,9 +59,8 @@ interface Routes {
 /**
  * What a verb on `host` is told, whatever its own files say: this machine's shared settings, the
  * entry's own over them, an empty value sending none, and its capacity. It goes with the verb, so a
- * keeper the verb starts inherits it and no peer holds a copy to drift: until 5 November the central
- * file named no `ANA_RUN_CAP`, and a verb on either peer saw no `ANA_LOGINS`, so every login there was
- * allowed and uncapped. A value that looks like a credential is refused, naming its key alone.
+ * keeper the verb starts inherits it and no peer holds a copy to drift, which could leave every login
+ * on a peer allowed and uncapped. A value that looks like a credential is refused, naming its key alone.
  */
 export function carriedTo(host: Host): Readonly<Record<string, string>> {
   const shared = CARRIED.map((key) => [key, runtimeProcess.env[key] ?? ""] as const);
@@ -247,7 +246,7 @@ export async function holders(
   const held = new Map<string, Host>();
   if (names.length === 0) return held;
   for (const { host, lines } of await asked(["holds", ...names])) {
-    // A run held here goes on while a peer is silent: until 30 October one down host refused it.
+    // A run held here goes on while a peer is silent, rather than one down host refusing it.
     if (lines === null && names.every((name) => here.has(name))) {
       warn(`${host.name}: not checked for another original of ${names.join(", ")}`);
       continue;
@@ -267,8 +266,8 @@ export async function holders(
 /** Find every original before a mutation: a local match cannot hide a remote duplicate. */
 export async function routed(verb: string, args: readonly string[]): Promise<Routes> {
   const here = new Set(runs().map(({ name }) => name));
-  // `--here` names this machine, as the keeper `keep` starts does: until 29 October it asked every peer
-  // first, and one peer that did not answer ended the keeper at its start.
+  // `--here` names this machine, as the keeper `keep` starts does, so that a peer that does not
+  // answer cannot end the keeper at its start.
   const names = args.includes("--here") ? [] : namedIn(verb, args);
   const held = await holders(names, here);
   const duplicate = names.find((name) => here.has(name) && held.has(name));

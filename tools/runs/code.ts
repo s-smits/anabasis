@@ -1,8 +1,8 @@
 /**
- * Code preparation for a fresh campaign, a transfer and a continuation (22 October 2026).
- * A remote verb used to run whatever source its configured checkout held, leaving the scheduled
- * fork to update that checkout by hand. Remote launch verbs now run from a detached control
- * worktree at the requested published commit. The configured tree and its live runs stay put.
+ * Code preparation for a fresh campaign, a transfer and a continuation. Remote launch verbs run
+ * from a detached control worktree at the requested published commit, rather than whatever source
+ * the configured checkout holds, so nobody updates that checkout by hand. The configured tree and
+ * its live runs stay put.
  * Cold controllers fetch, check publication and install frozen dependencies. Launch preparation
  * checks its exact commit again. Ordinary requests reuse a successful install while checking its clean source.
  */
@@ -24,18 +24,17 @@ const CONTROLLERS = "ana-code";
 /** A cold Linux controller can need several minutes for its frozen install. */
 const PREPARE_MS = 300_000;
 const warned = new Set<string>();
-/** One in-flight preparation a host and commit in a process. On 27 October `wri.ts start` named five
- *  campaigns, each asked every host, and the five preparations on one host raced one `git fetch`
- *  ("cannot lock ref") and one lock, which refused the losers until the wait below. */
+/** One in-flight preparation a host and commit in a process, since a command naming several
+ *  campaigns asks every host for each, and several preparations on one host would race one
+ *  `git fetch` ("cannot lock ref") and one lock. */
 const preparing = new Map<string, Promise<Host | null>>();
 
 /** The shell function that says whether the lock folder `$1` is stale, by the rule of `holder.ts`:
  *  its holder's process is gone, however long it held; a lock that names no holder, left by a shell
  *  killed before it wrote one, lapses after a preparation's time. It reads the pid alone, so a pid
  *  the system has given to a later process holds the lock until that one ends too. A preparation
- *  takes a stale lock of its own commit over, and `PRUNE` removes a controller behind one: on 22
- *  October a preparation on a peer host left `c5e16d7f.lock`, which kept that controller from
- *  pruning for good. Any other holder
+ *  takes a stale lock of its own commit over, and `PRUNE` removes a controller behind one, so that a
+ *  lock a preparation left does not keep its controller from pruning for good. Any other holder
  *  is waited for: the fetch runs under the lock, since two fetches in one repository race on its
  *  refs, and a cold install may outlast `PREPARE_MS`. */
 const STALE = `stale() {
@@ -46,7 +45,7 @@ const STALE = `stale() {
 }`;
 
 /** Only old, idle controllers are disposable. Failure to inspect processes preserves them.
- *  The process list is `running`: zsh, a macOS login shell, reserves `commands` (22 October). */
+ *  The process list is `running`: zsh, a macOS login shell, reserves `commands`. */
 const PRUNE = `
 if running="$(ps -axww -o args=)"; then
   if command -v lsof >/dev/null 2>&1; then
@@ -90,8 +89,8 @@ function readCommit(): string {
 }
 
 /** Resolve a requested revision after fetching, and refuse a commit no remote branch holds and no
- *  remote ref names. A campaign's commit may be held by its pushed run tag alone: on 23 October a
- *  move was refused for one whose branch had been rewritten. */
+ *  remote ref names. A campaign's commit may be held by its pushed run tag alone, once its branch
+ *  has been rewritten. */
 export function publishedAt(tree: string, revision: string): string {
   gitText(tree, "fetch", "-q", "origin");
   const commit = gitText(tree, "rev-parse", "--verify", `${revision}^{commit}`);

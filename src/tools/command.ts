@@ -88,14 +88,21 @@ const WALL_TEST_MARK = "ANA-WALL-PROBE";
 const WALL_TEST_LIMITS = { shellDefaultSeconds: 20, shellMaxSeconds: 20 };
 
 /**
- * Whether a package index is reached from inside the wall: `reached` where a command run as a
- * solver's fetched one, `unreached` where it did not. A prompt that
+ * Whether a package index is reached from inside the wall, and what installs from it: `uv` where a
+ * command run as a solver's fetched one and found `uv` on its path, `pip` where it fetched one
+ * without, `unreached` where it did not. A prompt that
  * said "commands have network access" whatever the host did would be false on a host whose wall
  * gives commands an empty environment and no resolver, and solves there would spend turns on pip
  * installs that cannot succeed. A sentence a host makes false is the host's to make true, so the prompt says what the
  * probe found.
  */
-export type NetworkReach = "reached" | "unreached";
+export type NetworkReach = "uv" | "pip" | "unreached";
+/** What every seat is told installs Python packages where the index is reached (operator,
+ *  21 November 2026: "use uv if present with uv add remove etc and otherwise pip"). */
+export const INSTALLER_TOLD: Readonly<Record<Exclude<NetworkReach, "unreached">, string>> = {
+  uv: " uv is installed, so use it for Python packages (`uv init`, `uv add`, `uv remove`, `uv run`, `uv tree`) rather than pip.",
+  pip: " uv is not installed, so use pip for Python packages.",
+};
 /** How long an `unreached` reading stands before the next asker probes again. A reached one stands
  *  for the process's life. */
 export const UNREACHED_MS = 10 * 60_000;
@@ -104,7 +111,8 @@ export const UNREACHED_MS = 10 * 60_000;
 const REACH = new Map<string, { readonly at: number; readonly probe: Promise<NetworkReach> }>();
 const REACH_MARK = "ANA-NETWORK-REACHED";
 /** The index pip reads; curl first, and the resolver pip itself uses where curl is not on the host. */
-const REACH_COMMAND = `(curl -fsS -m 10 -o /dev/null https://pypi.org/simple/pip/ 2>/dev/null || python3 -c 'import urllib.request; urllib.request.urlopen("https://pypi.org/simple/pip/", timeout=10)' 2>/dev/null) && echo ${REACH_MARK}`;
+const UV_MARK = "ANA-UV-FOUND";
+const REACH_COMMAND = `(curl -fsS -m 10 -o /dev/null https://pypi.org/simple/pip/ 2>/dev/null || python3 -c 'import urllib.request; urllib.request.urlopen("https://pypi.org/simple/pip/", timeout=10)' 2>/dev/null) && echo ${REACH_MARK} && command -v uv >/dev/null 2>&1 && echo ${UV_MARK}`;
 
 /** A solve's time: when its first turn started, null until it has, and how long the solve may be. */
 export interface SolveClock {
@@ -273,8 +281,8 @@ export async function probeWall(
   }
 }
 
-/** Whether a command run on `wall` fetched the package index. A probe that fails to run reads as
- *  unreached. */
+/** Whether a command run on `wall` fetched the package index, and found `uv`. A probe that fails to
+ *  run reads as unreached. */
 async function probeReach(wall: CommandWall): Promise<NetworkReach> {
   let out = "";
   await runWalled(wall, REACH_COMMAND, {
@@ -283,7 +291,8 @@ async function probeReach(wall: CommandWall): Promise<NetworkReach> {
     },
     timeout: 30,
   }).catch(() => undefined);
-  return out.includes(REACH_MARK) ? "reached" : "unreached";
+  if (!out.includes(REACH_MARK)) return "unreached";
+  return out.includes(UV_MARK) ? "uv" : "pip";
 }
 
 /** The reach of the wall `wall` stands for (`NetworkReach`), as this process last probed it at
@@ -295,7 +304,7 @@ export async function networkReach(
 ): Promise<NetworkReach> {
   const key = wall.base.policyHash;
   const known = REACH.get(key);
-  if (known !== undefined && (now - known.at < UNREACHED_MS || (await known.probe) === "reached")) {
+  if (known !== undefined && (now - known.at < UNREACHED_MS || (await known.probe) !== "unreached")) {
     return known.probe;
   }
   // Callers that waited on the same stale reading share the one probe the first of them started.

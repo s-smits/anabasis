@@ -28,9 +28,8 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { dirname, join } from "../meta/path.ts";
 import { plural } from "../meta/text.ts";
-import type { NetworkReach } from "../tools/command.ts";
 import { ANSWER_FILE, ANSWER_FORMAT_FILE, type PublicResource } from "../tools/answer.ts";
-import { reserveSeconds } from "../tools/command.ts";
+import { INSTALLER_TOLD, type NetworkReach, reserveSeconds } from "../tools/command.ts";
 import type { CODING_TOOLS } from "../tools/coding.ts";
 
 export interface PublicTask {
@@ -123,9 +122,9 @@ function environment({ limits, programs, wallSeconds, network }: Told): string {
   const listed =
     programs.slice(0, LISTED_PROGRAMS).join(", ") + (rest > 0 ? `, and ${String(rest)} more on PATH` : "");
   const reach =
-    network === "reached"
-      ? "Commands have network access: a package index was reached from inside the command wall when this process started, so a toolchain or package can be installed into the home directory."
-      : "Commands have no network access: a package index could not be reached from inside the command wall when this process started, so nothing can be installed, and what the host and this harness hold is all there is.";
+    network === "unreached"
+      ? "Commands have no network access: a package index could not be reached from inside the command wall when this process started, so nothing can be installed, and what the host and this harness hold is all there is."
+      : `Commands have network access: a package index was reached from inside the command wall when this process started, so a toolchain or package can be installed into the home directory.${INSTALLER_TOLD[network]}`;
   return [
     "The working directory is your home directory, $HOME. Commands and the file tools can write it and $TMPDIR, both kept for the whole task; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. They can read the host's toolchains and public runtime roots, but no repository or private data.",
     `${reach} sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host.`,

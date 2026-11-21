@@ -7,7 +7,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { openDesk, publicResource, submitTool } from "../src/tools/answer.ts";
 import { codingTools } from "../src/tools/coding.ts";
-import { type CommandWall, solveDirs } from "../src/tools/command.ts";
+import { type CommandWall, type NetworkReach, solveDirs } from "../src/tools/command.ts";
 import { firstTurn, seedHome, systemPrompt, type Told } from "../src/solver/prompt.ts";
 
 const CONTRACT: Contract = {
@@ -38,7 +38,7 @@ const TOLD: Told = {
   resources: 4,
   files: 0,
   programs: [],
-  network: "reached",
+  network: "uv",
 };
 
 /** The command rule's numeric facts, independent of the prose around them. */
@@ -53,6 +53,14 @@ function commandLimits(prompt: string): number[] {
 }
 
 describe("the solver's system prompt", () => {
+  it("names uv for Python packages where the wall found it, pip where it did not, and neither offline", () => {
+    const told = (network: NetworkReach) => systemPrompt({ ...TOLD, network });
+    for (const verb of ["uv add", "uv remove", "uv tree"]) expect(told("uv")).toContain(verb);
+    expect(told("pip")).toContain("use pip for Python packages");
+    expect(told("pip")).not.toContain("uv add");
+    expect(told("unreached")).not.toMatch(/\buv\b|\bpip\b/u);
+  });
+
   it("states the role, tools, duty, working directory and wall facts under the Starter", () => {
     const prompt = systemPrompt(TOLD);
     expect(prompt).toContain("coding assistant operating inside pi");

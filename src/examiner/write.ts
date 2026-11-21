@@ -52,6 +52,7 @@ import { affords, openingOf } from "../campaign/opening.ts";
 import { type AnswerFile, keepAnswerFiles, textFiles } from "../kernel/answer-files.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, contentOf, proposalsOf, writtenTasks } from "../kernel/history.ts";
+import { gainOver, ROOM } from "../kernel/compare.ts";
 import { poolOf } from "../kernel/reports.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
@@ -68,7 +69,7 @@ import { ending, text, tool } from "../tools/answer.ts";
 import { TEXT_FILES } from "./draft.ts";
 import { type CheckRow, firstMessage, type SolveBudget, systemPrompt, wakeMessage } from "./prompt.ts";
 import { heard, measured } from "./record.ts";
-import type { Walls } from "./shell.ts";
+import { FROM_FILE, fromHome, type Walls } from "./shell.ts";
 
 /** What a task-writing session is handed: who sits, as far as this mode reads it, and its campaign. */
 interface Terms {
@@ -125,7 +126,10 @@ interface Desk {
   readonly seen: Map<string, "now" | "earlier">;
   /** The last author answer that passed on each instance, kept only in session memory and
    *  rechecked on the final task before recording a known valid answer. */
-  readonly answered: Map<string, { readonly answer: JsonValue; readonly files?: readonly AnswerFile[] }>;
+  readonly answered: Map<
+    string,
+    { readonly answer: JsonValue; readonly files?: readonly AnswerFile[]; readonly measure: number | null }
+  >;
   /** Checked content, kept once so a proposal can name it without sending its input again. */
   readonly checked: Map<string, Task>;
   /** Every answer that passed, by hash: a task that carries one whole is refused, since a planted
@@ -135,6 +139,8 @@ interface Desk {
   refused: string[];
   /** Where the host has its tasks: the next ask's message, or null to end (`examining`). */
   readonly rest: (ended: "supplied") => Promise<string | null>;
+  /** The shell's home, which `from_file` reads (`Lent`). */
+  readonly home: string | undefined;
 }
 
 /** What the seat lends a writing session (`examining`, `session.ts`): its signal, its clock's pause
@@ -143,10 +149,16 @@ interface Lent {
   readonly stop?: AbortSignal;
   readonly within?: Within;
   readonly rest?: Desk["rest"];
+  /** The home of the session's shell, which `from_file` reads (`fromHome`, `shell.ts`); absent
+   *  where the session has no shell. */
+  readonly home?: string | undefined;
 }
 
 /** The event a task admission writes of each draft (`admitDraft`). */
 const TASK_ADMISSION = "task.gate";
+/** The most solves of the reference harness with a result one ask may have (`try_reference`),
+ *  whatever the host's probe allows. */
+export const TRIES = 8;
 /** An instance as each tool that takes one spells it: its family, its public input and what only the
  *  checks read of it. */
 const SPELLED = {
@@ -318,37 +330,39 @@ function proposeTool(desk: Desk): SeatTool {
     desk.proposed += 1;
     return { ...instance, taskId: `${desk.request.id}-${String(desk.proposed).padStart(3, "0")}` };
   };
-  return tool({
-    name: "propose_tasks",
-    description: "Put task instances to the host's gate, as the system prompt's section on the gate says.",
-    parameters: Type.Object({
-      tasks: Type.Array(GIVEN, { minItems: 1 }),
+  return tool(
+    fromHome(desk.home, {
+      name: "propose_tasks",
+      description: `Put task instances to the host's gate. The gate reads the shape of each package: its family, its inputs, and that the checks have what they need to run on it. No solver is put to it there. Of each it says held out, or refused with its reason. A task held out is in the exam from then on, and a comparison scores no other.${filed(desk)}`,
+      parameters: Type.Object({
+        tasks: Type.Array(GIVEN, { minItems: 1 }),
+      }),
+      execute: async (args, _api, context) => {
+        context.abortSignal?.throwIfAborted();
+        const signal = desk.stop;
+        if (supplied(desk)) throw new Error(SUPPLIED);
+        if (spent(desk)) throw new Error("This session can propose no further task. Call finish.");
+        // Take the call's instances before the gate reads them, so a batch may exceed what is wanted.
+        const instances = args.tasks.map((given) => {
+          if (!("reference" in given)) return taken(instanceOf("", given), signal);
+          const checked = desk.checked.get(given.reference);
+          return checked === undefined
+            ? `Unknown instance reference ${given.reference}. Known references: ${desk.checked.size === 0 ? "none" : [...desk.checked.keys()].join(", ")}.`
+            : taken(checked, signal);
+        });
+        // How many of its drafts the session has put: told the limit at the opening alone, esp32-fresh-opus-terra's
+        // x-2 and x-3 met it unawares with a draft still unproposed (27 October).
+        const used = `${String(desk.proposed)} of ${plural(desk.request.limits.puts, "draft")} put to the gate in this session.`;
+        const lines = await Promise.all(
+          instances.map(async (instance) => (isString(instance) ? instance : admitDraft(desk, instance))),
+        );
+        const said = `${lines.join("\n")}\n${used}`;
+        if (!supplied(desk)) return text(said);
+        const woken = await desk.rest("supplied");
+        return woken === null ? ending(text(`${said}\n\n${SUPPLIED}`)) : text(`${said}\n\n${woken}`);
+      },
     }),
-    execute: async (args, _api, context) => {
-      context.abortSignal?.throwIfAborted();
-      const signal = desk.stop;
-      if (supplied(desk)) throw new Error(SUPPLIED);
-      if (spent(desk)) throw new Error("This session can propose no further task. Call finish.");
-      // Take the call's instances before the gate reads them, so a batch may exceed what is wanted.
-      const instances = args.tasks.map((given) => {
-        if (!("reference" in given)) return taken(instanceOf("", given), signal);
-        const checked = desk.checked.get(given.reference);
-        return checked === undefined
-          ? `Unknown instance reference ${given.reference}. Known references: ${desk.checked.size === 0 ? "none" : [...desk.checked.keys()].join(", ")}.`
-          : taken(checked, signal);
-      });
-      // How many of its drafts the session has put: told the limit at the opening alone, esp32-fresh-opus-terra's
-      // x-2 and x-3 met it unawares with a draft still unproposed (27 October).
-      const used = `${String(desk.proposed)} of ${plural(desk.request.limits.puts, "draft")} put to the gate in this session.`;
-      const lines = await Promise.all(
-        instances.map(async (instance) => (isString(instance) ? instance : admitDraft(desk, instance))),
-      );
-      const said = `${lines.join("\n")}\n${used}`;
-      if (!supplied(desk)) return text(said);
-      const woken = await desk.rest("supplied");
-      return woken === null ? ending(text(`${said}\n\n${SUPPLIED}`)) : text(`${said}\n\n${woken}`);
-    },
-  });
+  );
 }
 
 /** `read_example`, over the log as it stands at each call: until 28 October it served what stood at
@@ -418,49 +432,54 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
       });
     }
   };
-  return tool({
-    name: "try_answer",
-    description:
-      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. Return an instance reference for proposing this checked content without resending it. A try enters no task in the exam. Where the checks pass, the host keeps the answer on the exam side for the Referee, for a task held with that content before or after the try. A refused task stays refused. The gate's reading of the instance's package comes first, where it would refuse it.",
-    parameters: Type.Object({
-      ...SPELLED,
-      answer: Type.Unknown({ description: "An answer in the domain's answer format." }),
-      files: TEXT_FILES,
+  return tool(
+    fromHome(desk.home, {
+      name: "try_answer",
+      description: `Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. Return an instance reference for proposing this checked content without resending it. A try enters no task in the exam. Where the checks pass, the host keeps the answer on the exam side for the Referee, for a task held with that content before or after the try. A refused task stays refused. The gate's reading of the instance's package comes first, where it would refuse it.${filed(desk)}`,
+      parameters: Type.Object({
+        ...SPELLED,
+        answer: Type.Unknown({ description: "An answer in the domain's answer format." }),
+        files: TEXT_FILES,
+      }),
+      execute: async (args, _api, context) => {
+        const candidate = instanceOf("try", args);
+        // SAFETY: a tool's arguments are JSON the provider parsed.
+        const answer = args.answer as JsonValue;
+        const events = read(log);
+        const content = contentOf(candidate);
+        const instance = heldAs(desk.request, events, candidate) ?? candidate;
+        const packaged = checkPackage(contract, desk.request.pack(instance));
+        const admission =
+          packaged.outcome === "passed" ? "" : `The gate would refuse this instance: ${packaged.reason}\n`;
+        if (context.abortSignal?.aborted === true) throw new Error("The session has ended.");
+        const unformed = answerFormatFault(contract.answerFormat, answer);
+        if (unformed !== null) {
+          return text(
+            `${admission}This answer does not follow the answer format, so a solver's answer like it is refused before any check reads it, and no check was run: ${unformed}`,
+          );
+        }
+        const files = args.files === undefined ? undefined : textFiles(args.files);
+        const verdict = await verify(instance, answer, undefined, files);
+        desk.checked.set(content, instance);
+        if (verdict.kind === "pass") {
+          desk.answered.set(content, {
+            answer,
+            ...keyIfDefined("files", files),
+            measure: objectiveOf(verdict),
+          });
+          desk.planted.add(hashJsonValue(answer));
+          recordValidAnswer(events, taskVersion(desk.request.pack(instance)), verdict, answer, files);
+        }
+        // The verifier's measure, kept with a held task's answer for the comparisons (`measureOf`).
+        const { objective } = measureOf(contract, verdict);
+        const measure =
+          isRecord(objective) && isNumber(objective.measure)
+            ? ` By the objective it measures ${measured(objective.measure)}.`
+            : "";
+        return text(`${admission}${tried(verdict)}${measure}\nInstance reference: ${content}.`);
+      },
     }),
-    execute: async (args, _api, context) => {
-      const candidate = instanceOf("try", args);
-      // SAFETY: a tool's arguments are JSON the provider parsed.
-      const answer = args.answer as JsonValue;
-      const events = read(log);
-      const content = contentOf(candidate);
-      const instance = heldAs(desk.request, events, candidate) ?? candidate;
-      const packaged = checkPackage(contract, desk.request.pack(instance));
-      const admission =
-        packaged.outcome === "passed" ? "" : `The gate would refuse this instance: ${packaged.reason}\n`;
-      if (context.abortSignal?.aborted === true) throw new Error("The session has ended.");
-      const unformed = answerFormatFault(contract.answerFormat, answer);
-      if (unformed !== null) {
-        return text(
-          `${admission}This answer does not follow the answer format, so a solver's answer like it is refused before any check reads it, and no check was run: ${unformed}`,
-        );
-      }
-      const files = args.files === undefined ? undefined : textFiles(args.files);
-      const verdict = await verify(instance, answer, undefined, files);
-      desk.checked.set(content, instance);
-      if (verdict.kind === "pass") {
-        desk.answered.set(content, { answer, ...keyIfDefined("files", files) });
-        desk.planted.add(hashJsonValue(answer));
-        recordValidAnswer(events, taskVersion(desk.request.pack(instance)), verdict, answer, files);
-      }
-      // The verifier's measure, kept with a held task's answer for the comparisons (`measureOf`).
-      const { objective } = measureOf(contract, verdict);
-      const measure =
-        isRecord(objective) && isNumber(objective.measure)
-          ? ` By the objective it measures ${measured(objective.measure)}.`
-          : "";
-      return text(`${admission}${tried(verdict)}${measure}\nInstance reference: ${content}.`);
-    },
-  });
+  );
 }
 
 /** One solve `try_reference` ran, as its reply tells it: valid in how many turns and by what measure,
@@ -473,6 +492,26 @@ function toldOf(ended: Ending, turns: number | null, measure: number | null): st
   return measure === null ? valid : `${valid}, measuring ${measured(measure)}`;
 }
 
+/** The solves of the reference harness an ask may have under `probe`: none without one. */
+const capped = (probe: Terms["probe"]): number => Math.min(probe?.tries ?? 0, TRIES);
+
+/** What a tool that takes JSON values tells of `from_file`, where the session has a home to read. */
+const filed = (desk: Desk): string => (desk.home === undefined ? "" : ` ${FROM_FILE}`);
+
+/** Where the contract declares an objective, the author's `try_answer` measure of the instance and
+ *  this call's valid solves measured, whether the best of those leaves the author's answer better
+ *  by the comparison's floor (`ROOM`): one line, or none. A fact for the author; the gate reads none
+ *  of it. */
+function roomLine(contract: Contract, author: number | null, valid: readonly number[]): string[] {
+  const declared = contract.objective;
+  if (declared === undefined || author === null || valid.length === 0) return [];
+  const best = valid.reduce((kept, next) => (gainOver(declared, next, kept) > 0 ? next : kept));
+  const ahead = gainOver(declared, author, best) >= ROOM;
+  return [
+    `Your answer that passed try_answer on this instance measures ${measured(author)}, and the best valid solve here ${measured(best)}: ${ahead ? `yours is better by at least the comparison's floor (${String(ROOM * 100)}%), so the task leaves the reference room on the objective` : `yours is not better by the comparison's floor (${String(ROOM * 100)}%), so on the objective the task leaves the reference no room above your answer`}.`,
+  ];
+}
+
 /**
  * `try_reference`: fresh solves of an instance by the reference harness, one or two a call, side by
  * side, and of each whether it was valid, in how many turns and by what measure, or what ended it.
@@ -483,48 +522,56 @@ function toldOf(ended: Ending, turns: number | null, measure: number | null): st
  * the log under the id the probe returns.
  */
 function tryReferenceTool(desk: Desk, first: NonNullable<Terms["probe"]>, within: Within): SeatTool {
-  return tool({
-    name: "try_reference",
-    description:
-      "Put an instance, or its checked reference, to fresh solves by the reference harness, as the system prompt's section on trying the reference says. A try enters no task in the exam.",
-    parameters: Type.Object({
-      task: GIVEN,
-      solves: Type.Integer({ minimum: 1, maximum: 2, description: "How many solves to run side by side." }),
+  return tool(
+    fromHome(desk.home, {
+      name: "try_reference",
+      description: `Put an instance, or its checked reference, to fresh solves by the reference harness, as the system prompt's section on trying the reference says. A try enters no task in the exam.${filed(desk)}`,
+      parameters: Type.Object({
+        task: GIVEN,
+        solves: Type.Integer({ minimum: 1, maximum: 2, description: "How many solves to run side by side." }),
+      }),
+      execute: async (args, _api, context) => {
+        context.abortSignal?.throwIfAborted();
+        // The ask's own: its solves' starts name the ask (`probing`, `tools/d1b/examine.ts`).
+        const { request } = desk;
+        const probe = request.probe ?? first;
+        const left = capped(probe) - desk.tried;
+        if (left <= 0) throw new Error("This session has no try of the reference harness left.");
+        const given =
+          "reference" in args.task ? desk.checked.get(args.task.reference) : instanceOf("", args.task);
+        if (given === undefined) throw new Error("Unknown instance reference. try_answer returns one.");
+        const instance = heldAs(request, read(request.log), given) ?? {
+          ...given,
+          taskId: `try-${contentOf(given).slice(0, 12)}`,
+        };
+        const solves = Math.min(args.solves, left);
+        if (!affords(request.log, solves)) {
+          throw new Error("The campaign's budget holds no reserve for these solves.");
+        }
+        const ran = await within(async () =>
+          Promise.all(Array.from({ length: solves }, async () => probe.solve(instance, desk.stop))),
+        );
+        const events = read(request.log);
+        const verdicts = verdictsOf(events);
+        const ends = new Map(solvesIn(events).map(({ id, end }) => [id, end]));
+        const measures = ran.map((one) =>
+          objectiveOf(one.solve === null ? undefined : verdicts.get(one.solve)?.checker),
+        );
+        const lines = ran.map((one, nth) => {
+          const turns = one.solve === null ? undefined : ends.get(one.solve)?.turns;
+          return `Solve ${String(nth + 1)}: ${toldOf(one.ending, isNumber(turns) ? turns : null, measures[nth] ?? null)}.`;
+        });
+        desk.tried += ran.filter((one) => one.ending.outcome !== "non-result").length;
+        const used = `Solves of the reference harness used in this session: ${String(desk.tried)} of ${String(capped(probe))}; one that could not run uses none.`;
+        const valid = ran.flatMap((one, nth) => {
+          const measure = measures[nth] ?? null;
+          return one.ending.outcome === "pass" && measure !== null ? [measure] : [];
+        });
+        const room = roomLine(request.contract, desk.answered.get(contentOf(given))?.measure ?? null, valid);
+        return text([...lines, ...room, used].join("\n"));
+      },
     }),
-    execute: async (args, _api, context) => {
-      context.abortSignal?.throwIfAborted();
-      // The ask's own: its solves' starts name the ask (`probing`, `tools/d1b/examine.ts`).
-      const { request } = desk;
-      const probe = request.probe ?? first;
-      const left = probe.tries - desk.tried;
-      if (left <= 0) throw new Error("This session has no try of the reference harness left.");
-      const given =
-        "reference" in args.task ? desk.checked.get(args.task.reference) : instanceOf("", args.task);
-      if (given === undefined) throw new Error("Unknown instance reference. try_answer returns one.");
-      const instance = heldAs(request, read(request.log), given) ?? {
-        ...given,
-        taskId: `try-${contentOf(given).slice(0, 12)}`,
-      };
-      const solves = Math.min(args.solves, left);
-      if (!affords(request.log, solves)) {
-        throw new Error("The campaign's budget holds no reserve for these solves.");
-      }
-      const ran = await within(async () =>
-        Promise.all(Array.from({ length: solves }, async () => probe.solve(instance, desk.stop))),
-      );
-      const events = read(request.log);
-      const verdicts = verdictsOf(events);
-      const ends = new Map(solvesIn(events).map(({ id, end }) => [id, end]));
-      const lines = ran.map((one, nth) => {
-        const turns = one.solve === null ? undefined : ends.get(one.solve)?.turns;
-        const measure = objectiveOf(one.solve === null ? undefined : verdicts.get(one.solve)?.checker);
-        return `Solve ${String(nth + 1)}: ${toldOf(one.ending, isNumber(turns) ? turns : null, measure)}.`;
-      });
-      desk.tried += ran.filter((one) => one.ending.outcome !== "non-result").length;
-      const used = `Solves of the reference harness used in this session: ${String(desk.tried)} of ${String(probe.tries)}; one that could not run uses none.`;
-      return text([...lines, used].join("\n"));
-    },
-  });
+  );
 }
 
 /**
@@ -554,6 +601,7 @@ export function writing(
     stop = new AbortController().signal,
     within = async (action) => action(),
     rest = async () => null,
+    home,
   }: Lent = {},
 ) {
   const { verify, probe } = request;
@@ -564,7 +612,7 @@ export function writing(
       asked.contract,
       asked.checks,
       heard(events, asked.tasks),
-      { ...asked.limits, tries: asked.probe?.tries ?? 0 },
+      { ...asked.limits, tries: capped(asked.probe) },
       {
         brief: openingOf(events)?.prompt ?? null,
         budget: asked.budget,
@@ -577,6 +625,7 @@ export function writing(
     request,
     stop,
     rest,
+    home,
     proposed: 0,
     tried: 0,
     seen: new Map(admittedDrafts(before).map((task) => [contentOf(task), "earlier"] as const)),
@@ -601,7 +650,7 @@ export function writing(
           turns: asked.limits.turns,
           proposals: asked.limits.puts,
           tasks: asked.wanted,
-          tries: asked.probe?.tries ?? 0,
+          tries: capped(asked.probe),
         },
         checks: asked.checks.map(({ id }) => id),
         examples: asked.tasks.map(({ taskId }) => taskId),
@@ -630,7 +679,7 @@ export function writing(
       Object.assign(desk, { request: next, proposed: 0, tried: 0, held: [], refused: [] });
       const events = read(next.log);
       told = openedOn(next, events);
-      return wakeOn(events, next.tasks, { ...next.limits, tries: next.probe?.tries ?? 0 });
+      return wakeOn(events, next.tasks, { ...next.limits, tries: capped(next.probe) });
     },
   };
 }

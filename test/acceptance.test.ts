@@ -70,9 +70,19 @@ const verify: Verifier = async (task, answer) => {
   return blocking.length === 0 ? { kind: "pass" } : { kind: "fail", blocking };
 };
 const ignored: Verifier = async () => ({ kind: "pass" });
-/** A reading as the acceptance command makes one: the controls put to the checks, nothing stored. */
+/** A reading as the acceptance command makes one: the controls put to the checks, nothing stored,
+ *  and no probe of a drafted exam's examples, which `test/draft.test.ts` holds. */
 const reading = (given: Partial<Read> & Pick<Read, "tasks" | "controls">) =>
-  readChecker({ brief, contract: HEAVY, verify, stored: [], found: () => true, width: 2, ...given });
+  readChecker({
+    brief,
+    contract: HEAVY,
+    verify,
+    stored: [],
+    found: () => true,
+    width: 2,
+    probes: false,
+    ...given,
+  });
 /** A reading over two tasks under `answerFormat`, with no control, by checks that pass every
  *  answer unless `checks` says otherwise. */
 const readUnder = (answerFormat: JsonObject, checks: Verifier = ignored) => {

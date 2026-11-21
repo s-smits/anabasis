@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { foreignPrograms } from "../studies/shared/bundle.ts";
+import { foreignPrograms } from "../src/harness/place.ts";
 import {
   packageFolders,
   PlatformRefusal,

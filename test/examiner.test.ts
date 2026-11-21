@@ -723,10 +723,10 @@ describe("a session that writes tasks", () => {
     expect(s.of(TASK_ADMISSION).filter((gate) => "reference" in gate || "proved" in gate)).toEqual([]);
     expect(solvesIn(read(s.log))).toEqual([]);
     expect(s.of(EXAM_FINISHED)[0]).not.toHaveProperty("hostSeconds");
-    // Its tools put a task to the gate and wait on nothing, and its prompt names no solve at the gate.
+    // Its tools put a task to the gate and wait on nothing, and the gate's tool names no solve there.
     const mode = writing({ ...s.request, id: "x-2", verify }, undefined);
     expect(mode.tools.map(({ name }) => name)).toEqual([PROPOSE, "read_example", "try_answer"]);
-    expect(mode.system).toContain("No solver is put to it there.");
+    expect(mode.tools[0]?.description).toContain("No solver is put to it there.");
     for (const unsaid of [
       "try_task",
       "solved by the reference harness",
@@ -762,8 +762,8 @@ describe("a session that writes tasks", () => {
   it("is told where no objective leaves room, asked for no account of a draft, quotes no archive count, and finishes with a sentence for the log", () => {
     const mode = writing(seat("write", []).request, undefined);
     for (const said of [
-      "Where the domain declares no objective, two valid answers tie whatever they contain",
-      "says how often its own two solves differed",
+      "Without an objective, valid answers always tie",
+      "reports how often its own solves differed",
     ]) {
       expect(mode.system).toContain(said);
     }

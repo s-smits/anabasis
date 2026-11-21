@@ -614,6 +614,25 @@ describe("the table of tools", () => {
     expect(version(made.peerHome)).toContain("1.0.0");
   });
 
+  test("a move's destination reads its drift, applies it, and keeps what no install can bring", () => {
+    const made = fixture();
+    held(made.hereHome, "2.0.0");
+    held(made.peerHome, "1.0.0");
+    const behind = (mode: string, env: Record<string, string>) =>
+      made.drive(
+        `import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; import { outOfStep } from "REPOSITORY/tools/runs/sync.ts";
+         console.log(JSON.stringify(await outOfStep("runner", hostsOf()[0], ${JSON.stringify(mode)})));`,
+        made.environment({}, env),
+      ).out;
+    expect(behind("read", table({ install: undefined }))).toContain("mytool 1.0.0");
+    expect(behind("apply", table({ install: undefined }))).toContain("mytool 1.0.0");
+    expect(version(made.peerHome)).toContain("1.0.0");
+    expect(behind("read", table())).toContain("mytool 1.0.0");
+    expect(version(made.peerHome)).toContain("1.0.0");
+    expect(behind("apply", table()).trim()).toBe("[]");
+    expect(version(made.peerHome)).toContain("2.0.0");
+  });
+
   test("a row with no install is drift to report, and --yes runs nothing and exits 1", () => {
     const made = fixture();
     held(made.hereHome, "2.0.0");

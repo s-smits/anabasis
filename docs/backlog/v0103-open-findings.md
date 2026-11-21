@@ -1,7 +1,7 @@
 # Findings left open at v0.10.3
 
 Status: rows 1, 2, 3, 17 and 19 are proved without a model, each by a hostile test that failed
-before its repair; the rest are planned. Each row was found by the landing review of 10 November
+before its repair, and rows 7 and 8 by a test of their repair (20 November); the rest are planned. Each row was found by the landing review of 10 November
 2026 (three lenses over the stack of #721 to #748), by the second-reader pass that followed it, by
 the review of the stack above the release (rows 28 to 35), or by a read of the night's jobs
 (row 36). Rows 1 to 27 were left as they are so that the release could land. Each says what would

@@ -192,6 +192,27 @@ describe("moving a campaign to another machine", () => {
     expect(existsSync(made.into)).toBe(false);
     expect(made.recorded().some(({ tool }) => tool === "rsync")).toBe(false);
   });
+
+  it("refuses a destination of another system whose kept harness holds a program it cannot run", () => {
+    const made = seedMove();
+    const tree = join(made.folder, "states", "a".repeat(64), ".toolchain");
+    mkdirSync(tree, { recursive: true });
+    // A Mach-O header, as a toolchain a Builder built on a Mac holds.
+    writeFileSync(join(tree, "tool"), Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 0, 0, 0, 0]));
+    writeFileSync(join(made.root, "bin", "uname"), `#!/bin/sh\necho "\${FAKE_UNAME:-Darwin arm64}"\n`, {
+      mode: 0o755,
+    });
+    const fleet = { [made.host.ssh]: { env: { FAKE_UNAME: "Linux x86_64" } } };
+    const refused = made.move(["--hold"], { FAKE_FLEET: JSON.stringify(fleet) });
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("cannot run");
+    expect(refused.err).toContain("tool (a Mach-O binary)");
+    expect(existsSync(made.folder)).toBe(true);
+    expect(existsSync(made.into)).toBe(false);
+    // The same harness moves to a machine of its own system.
+    const same = { [made.host.ssh]: { env: { FAKE_UNAME: "Darwin arm64" } } };
+    expect(made.move(["--hold"], { FAKE_FLEET: JSON.stringify(same) }).err).not.toContain("cannot run");
+  });
 });
 
 describe("recovering interrupted moves", () => {
@@ -216,6 +237,10 @@ describe("recovering interrupted moves", () => {
     writeFileSync(join(made.folder, "log.jsonl"), log);
     expect(made.move(["--hold"], { FAKE_TRANSFER_FAIL: "1" }).code).toBe(1);
     expect(existsSync(made.folder)).toBe(true);
+    const dirty = made.move(["--hold"], { FAKE_DIRTY: " M tracked.ts" });
+    expect(dirty.code).toBe(1);
+    expect(existsSync(made.folder)).toBe(true);
+    expect(made.recorded().filter(({ tool }) => tool === "rsync")).toHaveLength(1);
     const retry = made.move(["--hold"]);
     expect(retry.err).toBe("");
     expect(retry.code).toBe(0);
@@ -245,6 +270,16 @@ describe("recovering interrupted moves", () => {
     expect(failed.code).toBe(1);
     expect(readdirSync(temporary).filter((entry) => entry.startsWith("ana-move-"))).toEqual([]);
     expect(existsSync(made.folder)).toBe(true);
+    const stale = join(temporary, "ana-move-seed");
+    mkdirSync(stale);
+    writeFileSync(join(stale, "superseded"), "from an interrupted relay");
+    const retry = made.move(
+      ["--hold"],
+      { ANA_HOSTS: JSON.stringify([made.host, other]), TMPDIR: temporary },
+      ["--from", made.host.name, "--to", other.name],
+    );
+    expect(retry.code).toBe(0);
+    expect(existsSync(join(made.into, "superseded"))).toBe(false);
   });
 
   it("points a retry to the destination after the source has been set aside", () => {

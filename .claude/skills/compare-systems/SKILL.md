@@ -42,7 +42,10 @@ system (`rejectionAside`).
 4. **Solve, on the operator's word**: drop `--read`, add `--cap <dollars>`, `--reviewer <model>` and,
    for a Claude solver, `--login N`, counted by hand against that login's cap. Run under
    `bun --env-file=<.env with the logins>` on one quiet host (truss where the machine rules place
-   it). Rerunning solves only what each log lacks.
+   it). A rerun fills the missing solves under the recorded harness and setting, then retries any
+   rejection whose Referee call ended without a ruling. A seed admits one solving command at a time.
+   Once the recorded bill reaches the cap, further solves, retries and rulings wait. Calls already
+   in flight can still bill.
 5. **Clean up**: `/usr/bin/trash .ana/d2/cmp-<what> .ana/compare/cmp-<what>`.
 
 Price solves from earlier `solve.finished.billed` of the same solver and pack. `--solves 2` adds the A/A at twice the price, on the operator's word only.

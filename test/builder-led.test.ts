@@ -674,10 +674,11 @@ describe("a campaign run by its live Builder", () => {
         ]),
         examine: (request) => {
           expect(of(name, "harness.promoted")).toHaveLength(1);
-          // One comparison closes no task, so the seven g-1 scored stay on the frontier and the
-          // campaign is short of nothing: the session is asked for the command's own default.
-          expect(supplyOf(read(log))).toMatchObject({ held: 7, exhausted: 0, released: 2 });
-          expect(request.wanted).toBe(12);
+          // Every task held before the promotion is retained, so the new reference has no frontier and the
+          // session is asked for the whole target and the new epoch's practice on top of it. Until
+          // 20 November the seven g-1 scored stayed frontier and the ask was the default 12.
+          expect(supplyOf(read(log))).toMatchObject({ held: 0, released: 2 });
+          expect(request.wanted).toBe(9);
           return examine({
             ...request,
             ...scripted([
@@ -706,17 +707,17 @@ describe("a campaign run by its live Builder", () => {
       const starterComparison = events.findIndex(
         ({ kind, data }) => kind === COMPARED && data.session === "g-2",
       );
-      expect(of(name, EXAMINED)[0]?.held).toHaveLength(12);
+      expect(of(name, EXAMINED)[0]?.held).toHaveLength(9);
       expect(
         supplyOf(events.slice(0, starterComparison === -1 ? undefined : starterComparison)),
       ).toMatchObject({
-        held: 18,
+        held: 7,
         released: 4,
       });
       expect(at(`${CALLED}:wait`)).toBeGreaterThan(at("harness.promoted"));
       expect(at(`${CALLED}:wait`)).toBeLessThan(at(EXAMINED));
       expect(releasedWhileWriting(name)).toBeGreaterThanOrEqual(1);
-      expect(said(name, "wait")[0]).toContain("4 practice tasks");
+      expect(said(name, "wait")[0]).toContain("3 practice tasks");
     });
   });
 
@@ -1148,9 +1149,10 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(starterComparison).toMatchObject({ fresh: first?.old, old: first?.fresh });
     expect(of(name, "build.checkpoint")).toHaveLength(1);
     expect(said(name, "compare")[1]).toContain("the starter harness was read against it");
-    // The new reference's practice is released by the host as x-1 ends, before the starter comparison;
-    // that comparison's report releases one, the most a reading with nothing held out since the last
-    // release is owed (until 5 November it released none, and the table built), and the table builds.
+    // The new reference's practice is released by the host as x-1 ends, before the starter comparison.
+    // Its report releases none, since the frontier written for the new reference stands at the floor,
+    // and the table builds, then asks for the tasks that practice is still owed, as x-1 was cut. Until
+    // 20 November the tasks held before the promotion stayed frontier, and the report released one.
     expect(
       of(name, MOVED)
         .slice(6, 10)
@@ -1158,8 +1160,8 @@ describe("a campaign tool where the table names more than the action", () => {
     ).toEqual([
       ["prepare", "practice"],
       ["compare", "unread"],
-      ["prepare", "practice"],
       ["build", "led"],
+      ["examine", "no-room"],
     ]);
     // buffer-149, 14 October: its Builder finished on the harness just promoted, and the climb
     // stopped at one step while the table named a move.

@@ -679,8 +679,9 @@ function firstFacts({ practice, wanted }: Turn["plan"], held: number, released: 
  */
 function campaignStatus(context: CampaignContext, bench: Bench): string {
   const { turn } = halted(context, bench);
-  // The counts are of what was written and released, which no outcome of a held-out task moves:
-  // the scorable, exhausted and waiting counts follow which tasks were answered (rule 3).
+  // The counts are of what was written and released, which no candidate's outcome on a held-out
+  // task moves (a check that could not run disputes its task on the reference's answer alone,
+  // `floor`): the scorable, exhausted and waiting counts follow which tasks were answered (rule 3).
   const sets = taskSets(turn.events);
   const tallies = comparisonsTold(campaignOf(turn.events).steps);
   const writing = context.examining?.session;

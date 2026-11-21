@@ -29,11 +29,26 @@
  * the path and not out of reach. Its tasks still enter through the gate alone (`propose_tasks`),
  * and its answers are ruled on by `try_answer` alone.
  */
+import { validateToolArguments } from "@earendil-works/pi-ai/utils/validation";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
+import type { TSchema } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
 import { type Engine, pinnedEngines, type VerifierTree } from "../kernel/verify.ts";
 import { read } from "../kernel/log.ts";
-import { chmodSync, cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
-import { basename, dirname, join } from "../meta/path.ts";
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+} from "../meta/filesystem.ts";
+import { parseJsonAs } from "../meta/json-runtime.ts";
+import { isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { basename, dirname, join, resolve } from "../meta/path.ts";
+import { containsPath } from "../meta/path-containment.ts";
+import { errorMessage } from "../meta/runtime-values.ts";
 import {
   type CommandWall,
   networkReach,
@@ -46,6 +61,13 @@ import { codingTools } from "../tools/coding.ts";
 import { installedPrograms } from "../harness/programs.ts";
 import { claimRoot } from "../wall/seat-root.ts";
 import { shellQuote } from "../wall/isolation.ts";
+
+/** The most bytes a file named by `from_file` may hold: twenty times a large task instance of 50 KB. */
+const FILE_BYTES = 1_000_000;
+
+/** What a tool that takes JSON values tells a session with a home of `from_file` (`fromHome`). */
+export const FROM_FILE =
+  'Any JSON value this tool takes, such as a public input, hidden values, an answer or a format, may instead be given as { "from_file": "<path>" }: a JSON file in your home, by its path relative to the home, which the host reads and takes as if the value had been written here.';
 
 /** Where an Examiner session's shell runs: what the wall denies, and what only a
  *  session with a campaign's exam before it is given. Without a wall a session has no shell. */
@@ -154,5 +176,93 @@ export async function inExaminerWall<T>(
     return result;
   } finally {
     await release();
+  }
+}
+
+/**
+ * `definition` with every `{ from_file: <path> }` in a call's arguments replaced by the JSON the
+ * file holds, read from the session's home and nowhere else, so a large value need not be printed
+ * into context and pasted back, where a printout cut short or a slip in the copy changes it; the gate
+ * sees the same bytes as for the value written inline, and the log the call as written. A file's own
+ * content is not expanded for `from_file` again. The files are read before pi checks the arguments
+ * against the tool's schema (`prepareArguments`), so a file may stand for any value, a whole list or
+ * object included: until 20 November the check came first and refused a file in place of one (6 of
+ * the 33 calls that gave a file in a pair of runs that day). A refusal names its faults and not the
+ * arguments the files filled.
+ */
+export function fromHome<Parameters extends TSchema>(
+  home: string | undefined,
+  definition: ToolRegistration<Parameters>,
+): ToolRegistration<Parameters> {
+  const expand = (value: JsonValue): JsonValue => {
+    if (Array.isArray(value)) return value.map(expand);
+    // A text field given a file as the text of `{ "from_file": ... }`, as the first draft of each of 4
+    // runs on 20 November gave the check program, which the gate then loaded as the program.
+    if (isString(value) && /^\s*\{\s*"from_file"\s*:\s*"[^"\\]+"\s*\}\s*$/u.test(value)) {
+      return expand(parseJsonAs<JsonValue>(value));
+    }
+    if (!isRecord(value)) return value;
+    const entries = Object.entries(value);
+    if (entries.length === 1 && entries[0]?.[0] === "from_file" && isString(entries[0][1])) {
+      return homeFile(home, entries[0][1]);
+    }
+    return Object.fromEntries(entries.map(([key, inner]) => [key, expand(inner)]));
+  };
+  return {
+    ...definition,
+    prepareArguments: (spelled) => {
+      // SAFETY: a call's arguments are the JSON object the provider parsed, and a file holds JSON.
+      const args = expand(spelled as JsonValue) as JsonObject;
+      try {
+        validateToolArguments(definition, {
+          type: "toolCall",
+          id: "",
+          name: definition.name,
+          arguments: args,
+        });
+      } catch (error) {
+        const [faults = ""] = errorMessage(error).split("\n\nReceived arguments:");
+        throw new Error(faults, { cause: error });
+      }
+      // SAFETY: just checked against the tool's schema, which pi checks and coerces it by again.
+      return args as ReturnType<NonNullable<ToolRegistration<Parameters>["prepareArguments"]>>;
+    },
+  };
+}
+
+/** The JSON a file in `home` holds, by its path under it, or a refusal. */
+function homeFile(home: string | undefined, path: string): JsonValue {
+  if (home === undefined) {
+    throw new Error(`from_file names ${path}, and this session has no home: give the value inline`);
+  }
+  const root = realpathSync(home);
+  const file = resolve(root, path);
+  if (!containsPath(file, root)) {
+    throw new Error(
+      `from_file names ${path}, which lies outside your home: name a file under it, by its path relative to it`,
+    );
+  }
+  if (!existsSync(file)) {
+    throw new Error(`from_file names ${path}, and your home holds no such file`);
+  }
+  const real = realpathSync(file);
+  if (!containsPath(real, root)) {
+    throw new Error(`from_file names ${path}, which links outside your home: name a file under it`);
+  }
+  const stat = statSync(real);
+  if (!stat.isFile()) {
+    throw new Error(`from_file names ${path}, which is not a regular file`);
+  }
+  if (stat.size > FILE_BYTES) {
+    throw new Error(
+      `from_file names ${path} (${String(stat.size)} bytes), over the ${String(FILE_BYTES)}-byte limit`,
+    );
+  }
+  try {
+    return parseJsonAs<JsonValue>(readFileSync(real, "utf8"));
+  } catch (error) {
+    throw new Error(`from_file names ${path}, which is not valid JSON: ${errorMessage(error)}`, {
+      cause: error,
+    });
   }
 }

@@ -384,6 +384,26 @@ const pinOf = (env: Env): Pin | null => {
   return { version, packages };
 };
 
+/** What a seat on `host` (this machine where undefined) would find out of step with the table, once
+ *  `apply` has brought in step what `--yes` would: a campaign moves there only once none is left
+ *  (`move.ts`), since its solves after the move would find other programs than those before it. */
+export async function outOfStep(
+  name: string,
+  host: Host | undefined,
+  mode: "read" | "apply",
+): Promise<string[]> {
+  const env = runtimeProcess.env;
+  const options = { pin: pinOf(env), tools: toolsOf(env.ANA_TOOLS ?? ""), force: false, hosts: hostsOf() };
+  const machine = [{ name, host }];
+  const [plan] = await planned(machine, options);
+  for (const { refused, apply: change } of mode === "apply" ? (plan?.findings ?? []) : []) {
+    if (refused === null) await change();
+  }
+  const [after] = mode === "apply" ? await planned(machine, options) : [plan];
+  if (after?.facts === null || after === undefined) return [`${name} did not answer`];
+  return after.findings.filter(({ seats }) => seats).map(({ line }) => line);
+}
+
 /** `bun run runs sync`. */
 export async function sync(args: readonly string[]): Promise<void> {
   const { values } = parseArgs({

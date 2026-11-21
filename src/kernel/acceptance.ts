@@ -34,6 +34,7 @@ import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { pooled } from "../meta/pool.ts";
 import type { AnswerFile } from "./answer-files.ts";
+import { gainOver, ROOM } from "./compare.ts";
 import { answerFormatFault, type Contract } from "./contract.ts";
 import type { LogEvent } from "./log.ts";
 import {
@@ -121,6 +122,9 @@ export interface Read {
   readonly found: (toolId: string) => boolean;
   /** Verifier runs in flight at once. */
   readonly width: number;
+  /** False for a stored pack, whose reading runs no probe of its tasks (`probeFaults`): they are not
+   *  a draft's few examples, and the swap probe runs every task's control on every other. */
+  readonly probes?: false;
 }
 
 /** Every control answer through the checks, twice, `width` at once. A control answer of a task the pack does not
@@ -183,6 +187,76 @@ function doNothingAnswer(
     return isNumber(held.exclusiveMinimum) ? held.exclusiveMinimum + 1 : 0;
   }
   return type === "boolean" ? false : null;
+}
+
+/**
+ * Two probes of a drafted exam's examples, run without a model beside its controls, a fault each
+ * where one finds the checks blind to which task an answer is for. Each accept control that passed
+ * is run on every other example: a control that every other example's checks also pass answers any
+ * task, so no check reads the task. Where every example carries hidden values, each such control is
+ * run on its own example with each other example's differing hidden values in place of its own:
+ * where no verdict moves and no measure moves by the comparison's floor (`ROOM`), no check and no
+ * objective is decided by them. The replay of the 190 distinct drafts on record on 20 November found
+ * neither in any of them. A probe the verifier cannot decide is left unread, so a probe never stops
+ * the reading its controls make.
+ */
+async function probeFaults(
+  { verify, brief, tasks, width }: Read,
+  runs: readonly ControlAnswerRun[],
+): Promise<string[]> {
+  const accepted = runs.filter(
+    ({ refusedBy, verdicts: [first] }) => refusedBy === null && first.kind === "pass",
+  );
+  const judged = async (probes: readonly { readonly run: ControlAnswerRun; readonly task: Task }[]) =>
+    (
+      await pooled(probes, width, async ({ run, task }) => ({
+        run,
+        verdict: await verify(task, run.answer, undefined, run.files),
+      }))
+    ).filter(({ verdict }) => verdict.kind !== "non-result");
+  const others = (run: ControlAnswerRun, as: (other: Task) => Task | null) =>
+    tasks.flatMap((other) => {
+      const task = other.taskId === run.taskId ? null : as(other);
+      return task === null ? [] : [{ run, task }];
+    });
+  const swaps = await judged(accepted.flatMap((run) => others(run, (other) => other)));
+  const swapped = accepted.flatMap((run) => {
+    const own = swaps.filter((swap) => swap.run === run);
+    return own.length > 0 && own.every(({ verdict }) => verdict.kind === "pass")
+      ? [`the accept control of ${run.taskId} passed every other example: its checks do not bind to the task`]
+      : [];
+  });
+  const byId = new Map(tasks.map((task) => [task.taskId, task]));
+  const hiddenOf = (task: Task) => capturedJsonStringify(task.hidden ?? null);
+  const carried = tasks.length > 1 && tasks.every(({ hidden }) => hidden !== null);
+  const moved = carried
+    ? await judged(
+        accepted.flatMap((run) => {
+          const own = byId.get(run.taskId);
+          return own === undefined
+            ? []
+            : others(run, (other) =>
+                hiddenOf(other) === hiddenOf(own) ? null : { ...own, hidden: other.hidden },
+              );
+        }),
+      )
+    : [];
+  const rule = { direction: brief.objective?.direction ?? "higher" } as const;
+  const blind =
+    moved.length > 0 &&
+    moved.every(
+      ({ run, verdict }) =>
+        verdict.kind === "pass" &&
+        Math.abs(gainOver(rule, objectiveOf(verdict), objectiveOf(run.verdicts[0]))) < ROOM,
+    );
+  return [
+    ...swapped,
+    ...(blind
+      ? [
+          "hidden values had no effect on any accept control: with another example's hidden values in place of its own, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective is decided by them",
+        ]
+      : []),
+  ];
 }
 
 /** The do-nothing answer through every task's checks, `width` at once. */
@@ -340,11 +414,12 @@ export async function readChecker(given: Read) {
   const rejected = unformed === null ? await runDoNothing(verify, tasks, idle, width) : [];
   const { checks, faults } = acceptance(brief, tasks, runs, [], given.found);
   const { checks: historical } = acceptance(brief, tasks, [], given.stored, given.found);
+  const probed = given.probes === false ? [] : await probeFaults(given, runs);
   return {
     runs,
     checks,
     historical,
-    faults: [...faults, ...(unformed === null ? doNothingFaults(rejected) : [])],
+    faults: [...faults, ...(unformed === null ? doNothingFaults(rejected) : []), ...probed],
     notes:
       unformed === null
         ? []

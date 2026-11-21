@@ -96,7 +96,8 @@ export class Cancellation extends Error {
 }
 
 /** Whether a non-result was the task's own check, which could not run on the answer: the task's
- *  fault rather than the solve's, so a round disputes the task and a solve is not run again. */
+ *  fault rather than the solve's, so no solve of it is run again, and a round disputes the task
+ *  where the answer was the reference's (`floor`, `src/campaign/round.ts`). */
 export function checkCouldNotRun(ending: Ending): boolean {
   return ending.outcome === "non-result" && ending.kind === "check";
 }

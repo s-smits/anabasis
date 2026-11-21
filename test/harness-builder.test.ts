@@ -422,8 +422,8 @@ describe("a campaign run by its log", () => {
     const terms = ["--practice", "2", "--target", "8", "--patience", "1"];
     const flags = [...seeded(name), ...terms];
     const strayed: string[] = [];
-    // An Examiner that proposes eight tasks once `ready` settles.
-    const written = [41, 42, 43, 44, 45, 46, 47, 48].map((base) => ({
+    // An Examiner that proposes ten tasks once `ready` settles.
+    const written = [41, 42, 43, 44, 45, 46, 47, 48, 49, 50].map((base) => ({
       family: "fixture",
       public_input: { base },
       hidden: null,
@@ -440,8 +440,8 @@ describe("a campaign run by its log", () => {
                 return ["propose_tasks", { tasks: written }];
               },
             },
-            ["finish", { note: "Eight more." }],
-            ["finish", { note: "Eight more." }],
+            ["finish", { note: "Ten more." }],
+            ["finish", { note: "Ten more." }],
           ]),
         });
     // Under the new harness every held-out task is answered, and under the reference none.
@@ -533,9 +533,10 @@ describe("a campaign run by its log", () => {
       { move: "prepare", code: "practice" },
     ]);
     // The promoted harness answered every task of g-1, which one comparison does not close
-    // (29 October): the campaign is short of nothing, so the session the table names after a
-    // promotion is asked for the command's own count and ends at its second finish.
-    expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1", proposed: 8, ended: "finished" }]);
+    // (29 October), and the tasks held before the promotion are retained: the session the table
+    // names after it is asked for the comparison floor and the practice on top, and ends once the
+    // ten it wrote supply them.
+    expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1", proposed: 10, ended: "supplied" }]);
     // The tasks written are read by a starter comparison before a Builder session is paid for: the starter
     // against the promoted harness. Until 10 October the Builder built here, three times, on
     // practice the promoted harness passed (t-4, t-9, t-10).
@@ -549,10 +550,9 @@ describe("a campaign run by its log", () => {
     // The script answers nothing under the reference nor the starter, so the starter comparison reads its
     // eight frontier tasks as beyond both, and draws three retained tasks beside them, one for each three
     // frontier tasks, as every comparison does: a valid answer to each is on record, so the reference
-    // failing it now is room. Two of the new tasks went to practice as the gate held them out, so
-    // two older tasks g-1's new harness answered fill the frontier, and are room too. From 30
-    // October to 2 November it scored the new tasks alone, found no room and asked for tasks, and
-    // the promotion it confirms was read only where the reference was weakest.
+    // failing it now is room. Two of the ten new tasks went to practice as the gate held them out,
+    // and the eight left are the whole frontier, since the tasks held before the promotion are
+    // retained; with no answer on record they are no room, so the three retained are the room.
     // One retained task for every three frontier ones, rounded up, as the Builder is told: three
     // beside eight, where one for each whole three would allow two.
     const { tasks, retained } = of(name, "comparison.started").at(-1) ?? {};
@@ -562,7 +562,7 @@ describe("a campaign run by its log", () => {
     expect(of(name, "comparison.reported").at(-1)).toMatchObject({
       session: "g-2",
       reading: "no-step",
-      valid: { old: [11, 0, 0], fresh: [11, 0, 0], informative: { old: 5, fresh: 5 } },
+      valid: { old: [11, 0, 0], fresh: [11, 0, 0], informative: { old: 3, fresh: 3 } },
     });
     // The practice owed is released, so the Builder builds.
     expect(after).toMatchObject({ move: "build" });
@@ -896,6 +896,12 @@ describe("a campaign run by its log", () => {
     expect(of(name, OPENED).at(-1)).toMatchObject({ budget: { dollars: 100 } });
     // A total under what one solve is held at ends the campaign on its budget at the next move.
     wordCommand(["--name", name, "--budget", "1"]);
+    const before = read(join(REPO, ".ana", "d2", name, LOG_FILE));
+    expect(await harnessBuilder([...flags, "--dry-run"], seats)).toMatchObject({
+      move: "end",
+      ending: "budget",
+    });
+    expect(read(join(REPO, ".ana", "d2", name, LOG_FILE))).toEqual(before);
     expect(await harnessBuilder([...flags, "--moves", "0"], seats)).toMatchObject({
       move: "end",
       ending: "budget",

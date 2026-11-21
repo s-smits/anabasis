@@ -47,7 +47,7 @@ import { stopRule } from "../src/campaign/admission.ts";
 import { latestBuilt, poolOf } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { passed, ranUnder } from "../src/kernel/solves.ts";
-import { taskStates } from "../src/kernel/task.ts";
+import { taskSets, taskStates } from "../src/kernel/task.ts";
 import {
   cpSync,
   mkdirSync,
@@ -1045,19 +1045,19 @@ describe("a round", () => {
       // Were the rejections of s1 to stand, the new harness would have won that as well.
       counted: { wins: 3, losses: 0, p: 0.125 },
       versions: ["s3", "s4"],
-      disputed: ["s2"],
+      disputed: [],
+      short: ["s2"],
       aside: ["s1"],
       reading: NO_STEP,
     });
-    // Only the task whose check could not run is disputed for good. A ruling sets a task aside for
-    // this comparison, and a person decides what becomes of it.
-    const states = taskStates(read(s.log));
-    expect([states.get("s1"), states.get("s2"), states.get("s3")]).toEqual(["held", "disputed", "held"]);
-    expect(s.of(TASK_STATE).filter(({ state }) => state === "disputed")).toMatchObject([
-      { version: "s2", reason: "its own check could not run on an answer" },
-    ]);
-    // A disputed task is solved no further: the new harness's solve of s2 whose check could not run
-    // is its last, and its only one, whichever harness the slot put first.
+    // Neither moves the held-out set, which a Builder's count and the table's advice read: the
+    // check failed on the new harness's answer, and a ruling sets a task aside for this comparison
+    // alone. Until 20 November such a check disputed its task for good, so what a candidate
+    // answered on a held-out task moved a count its Builder reads (rule 3).
+    expect(taskSets(read(s.log)).held).toEqual([...HELD, "s5"]);
+    expect(s.of(TASK_STATE).filter(({ state }) => state === "disputed")).toEqual([]);
+    // The task is solved no further in this comparison: the new harness's solve of s2 whose check
+    // could not run is its last, and its only one, whichever harness the slot put first.
     const disputed = s.asked.filter(({ version }) => version === "s2");
     expect(disputed.at(-1)).toEqual({ version: "s2", side: "fresh" });
     expect(disputed.filter(({ side }) => side === "fresh")).toHaveLength(1);
@@ -1073,6 +1073,24 @@ describe("a round", () => {
     ]);
     expect(refereed.filter((version) => version === "s2")).toHaveLength(disputed.length - 1);
     expect(s.of(COMPARISON_REPORTED)[0]?.reviewFaults).toHaveLength(2);
+  });
+
+  it("disputes a task for good where its own check could not run on the reference's answer", async () => {
+    const s = await setup([], (version, side, nth, digest) =>
+      version === "s2" && side === "old"
+        ? { outcome: "non-result", kind: "check", reason: "check-9: threw" }
+        : rejecting(version, side, nth, digest),
+    );
+    const report = await checkpoint(s.paired("g0", { referee: referee(s.log, {}) }));
+    // What the reference answers is the exam side's to act on, so the task leaves the held-out set
+    // and no later comparison draws it.
+    expect(report).toMatchObject({ disputed: ["s2"], short: [] });
+    expect(taskSets(read(s.log)).held).toEqual(["s1", "s3", "s4", "s5"]);
+    expect(s.of(TASK_STATE).filter(({ state }) => state === "disputed")).toMatchObject([
+      { version: "s2", reason: "its own check could not run on an answer" },
+    ]);
+    // The reference's solve whose check could not run is its only one of the task.
+    expect(s.asked.filter(({ version, side }) => version === "s2" && side === "old")).toHaveLength(1);
   });
 
   it("puts a rejection the Referee gave no answer on to it again, and stops before the report while one has none", async () => {
@@ -1844,7 +1862,7 @@ describe("the scored set", () => {
     expect(scoredSet([], 12, "contract-a")).toEqual({ tasks: [], retained: [] });
   });
 
-  it("takes the newest epoch's tasks first, and reads the epochs before the reference never stood in as retained", () => {
+  it("takes the newest epoch's tasks first, and reads every task held before the promotion as retained", () => {
     // The simulated climb of 10 October: after two promotions a draw over every epoch at once
     // took two or three tasks the reference failed out of 19, and three comparisons read one win
     // short. The tasks written since the last promotion are the exam, so they come first, whole.
@@ -1873,7 +1891,7 @@ describe("the scored set", () => {
     expect(full.tasks.slice(0, 2).toSorted()).toEqual(["v7", "v8"]);
     expect(full.retained).toHaveLength(1);
     expect(full.tasks).toHaveLength(3);
-    // A task of the epoch before that the reference stood in and left open is frontier still.
+    // A task of the epoch before that the reference stood in is retained too: it chose the reference.
     const stood: LogEvent[] = [
       ...climbed,
       {
@@ -1888,7 +1906,7 @@ describe("the scored set", () => {
         },
       } as const,
     ];
-    expect(poolOf(stood).frontier.toSorted()).toEqual(["v1", "v7", "v8"]);
+    expect(poolOf(stood).frontier.toSorted()).toEqual(["v7", "v8"]);
     // A task released in the newest epoch leaves room for no older one: the frontier is v7 alone.
     const released: LogEvent[] = [
       ...climbed,
@@ -1941,6 +1959,36 @@ describe("the scored set", () => {
     );
   });
 
+  it("takes the families in turn, one at most two in five of the set where three or more are held, unless the others cannot fill it", () => {
+    const family = (name: string, count: number) =>
+      heldOut(
+        Array.from({ length: count }, (_, n) => `${name}${String(n)}`),
+        name,
+      );
+    const familyOf = (version: string) => version.replace(/\d+$/u, "");
+    const share = (events: readonly LogEvent[], target: number) =>
+      Map.groupBy(drawn(events, target), familyOf);
+    // Six of one family and two each of two others: at a target of five, two of the large one.
+    const many = [...family("a", 6), ...family("b", 2), ...family("c", 2)];
+    const five = share(many, 5);
+    expect(five.get("a")).toHaveLength(2);
+    expect([...five.values()].flat()).toHaveLength(5);
+    // Where the large family alone was held out since the last comparison began, it comes first and
+    // would take the whole set: the cap leaves it two.
+    const began = { at, kind: "comparison.started", data: { session: "g-1" } } as const;
+    const newest = share([...family("b", 2), ...family("c", 2), began, ...family("a", 6)], 5);
+    expect(newest.get("a")).toHaveLength(2);
+    expect([...newest.values()].flat()).toHaveLength(5);
+    // The others hold four, so a set of eight takes the rest of the large family to fill it.
+    expect(share(many, 8).get("a")).toHaveLength(4);
+    // With two families the cap does not hold, and the turns alone share the set.
+    expect(share([...family("a", 6), ...family("b", 2)], 5).get("a")).toHaveLength(3);
+    // The draw stays fixed by the contract: written in another order, the same set.
+    expect(drawn([...family("c", 2), ...family("b", 2), ...family("a", 6)], 5).toSorted()).toEqual(
+      drawn(many, 5).toSorted(),
+    );
+  });
+
   it("draws the tasks held out since first and fills the rest from older epochs, whichever sides it compares", () => {
     // From 30 October to 2 November a starter comparison scored the tasks held out since alone.
     // Those were written above the new reference's grade, and in the six starter comparisons on
@@ -1966,14 +2014,14 @@ describe("the scored set", () => {
       await checkpoint(s.paired("g-1"));
       await checkpoint(s.paired("g-2"));
       expect(poolOf(read(s.log)).awaiting).toEqual([]);
-      expect(scoredSet(read(s.log), 12, "c").tasks).toContain("s1");
+      expect(poolOf(read(s.log)).scorable).toContain("s1");
     }
     const s = await setup([], (version) => (version === "s1" ? UNANSWERED : PASS));
     // The fixture compares a kept harness with a different starter: make the kept one the reference.
     append(s.log, "harness.promoted", { harness: s.old, from: s.starter.digest, rests: [] });
     await checkpoint(s.paired("g-1"));
     expect(poolOf(read(s.log)).awaiting).toEqual([]);
-    expect(scoredSet(read(s.log), 12, "c").tasks).toContain("s1");
+    expect(poolOf(read(s.log)).scorable).toContain("s1");
     await checkpoint(s.paired("g-2"));
     // s2 to s4 were answered by both harnesses in every solve of both comparisons: exhausted, and
     // retained as a check on regression. Until 16 October two thirds of them left the draw.
@@ -1994,6 +2042,6 @@ describe("the scored set", () => {
       state: "held",
       reason: "a person read the task as feasible",
     });
-    expect(scoredSet(read(s.log), 12, "c").tasks).toContain("s1");
+    expect(poolOf(read(s.log)).scorable).toContain("s1");
   });
 });

@@ -19,7 +19,7 @@ eslint/no-duplicate-imports	*	27	off	Its sites import a module's types on an `im
 eslint/no-empty-function	*	6	off	Its six sites are no-op stand-ins a test passes or reassigns later (`let release = () => {}`, a silenced `console.error`), where the empty body is the meaning.
 eslint/no-eq-null	*	33	off	`== null` tests null and undefined together on purpose, as `eslint/eqeqeq` allows with `null: ignore`.
 eslint/no-implied-eval	*	0	off	`typescript/no-implied-eval`, which is on, checks the same calls with types.
-eslint/no-inline-comments	*	15	off	Its sites are notes at the end of table rows and fixture lines, among them the `// REPORT` markers the rule tests read, which a line above would part from their row.
+eslint/no-inline-comments	*	15	off	Its sites are notes at the end of table rows and fixture lines, which a line above would part from their row.
 eslint/no-lonely-if	*	0	off	`unicorn/no-lonely-if`, which is on, reports the same shape.
 eslint/no-loop-func	*	8	off	Seven of its eight sites read a reassigned `let` on purpose when the closure runs (fixtures assigned in `beforeAll`, a restarted child, loop state read synchronously), and the eighth was harmless.
 eslint/no-magic-numbers	*	10347	off	Its sites are fixture values, indices and limits used once, and a constant for each would add a name read once.

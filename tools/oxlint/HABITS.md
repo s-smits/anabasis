@@ -54,7 +54,7 @@ is an error. A rule still being settled sits in `tools/oxlint/staged-rules.json`
   perf, pedantic, style and restriction categories of the `eslint`, `import`, `node`, `oxc`,
   `promise`, `typescript` and `unicorn` plugins is configured at the top level of `.oxlintrc.json`,
   or is a row of `tools/oxlint/rules-off.tsv`: `off` with the one sentence that keeps it off, or
-  `staged` with the count still to fix. `test/oxlint-ledger.test.ts` fails on a rule that is
+  `staged` with the count still to fix. `test/lint-registry.test.ts` fails on a rule that is
   neither, on a row for a rule that is on, and on an `"off"` for some files without its row. A
   commit that turns a rule on removes its row.
 - **When a finding is wrong about a site**, the answer depends on the rule
@@ -62,7 +62,7 @@ is an error. A rule still being settled sits in `tools/oxlint/staged-rules.json`
 
   | The rule is | The answer |
   | --- | --- |
-  | a plugin rule with a fixer | Tune the rule's source, so that the legitimate shape passes and every case it caught still fails, with a fixture for each side. The ledger refuses these rules |
+  | a plugin rule with a fixer | Tune the rule's source, so that the legitimate shape passes and every case it caught still fails, checked by running it over real diffs and the tree. The ledger refuses these rules |
   | a plugin rule without a fixer, or a `tree/` scan | Tune the rule, or answer the site: `bun run not-slop -- answer <id> "<a reason a reviewer can check>"` |
   | a core Oxlint rule | Fix the code. An exception is a fact about the code, written beside it as an `oxlint-disable` comment with the reason; an unused one fails the lint |
 
@@ -355,7 +355,7 @@ campaign under `.ana/d2/<name>` (15 October):
 | `no-lifetime-outside-owner` | `stageCommandIsolation` (`src/wall/isolation.ts`), `killProcessGroup` and `terminateAndReapProcessGroupId` (`src/meta/subprocess.ts`) | Present. The owner and its reader are the two files the rule exempts |
 
 If a rule reports on your code and names an owner that is absent, do not obey a remedy that
-does not exist. Retune the rule's source to v2's owner with a fixture for each side, in the same
+does not exist. Retune the rule's source to v2's owner, checked over real diffs and the tree, in the same
 change, as 12.2 allows.
 
 ## 12.9 The whole-tree scans
@@ -418,8 +418,8 @@ never add a file to one, and never widen a glob to take in the file you are edit
   `Promise.withResolvers()` or poll with a deadline. Do not raise a timeout to hide a slow test.
 - A model seat in a test is a script. `test/fixtures/` holds a fake Claude CLI and recorded SDK
   streams.
-- A lint rule's fixture marks every declaration `// REPORT <why>` or `// ADMITTED <why>`
-  (`test/helpers/oxlint-rule-fixture.ts`), so one text states both halves of the rule.
+- A lint rule has no test file of its own: it is tuned by running it over real diffs and the tree,
+  and `test/rule-examples.test.ts` lints the pairs it prints.
 - A test that proves an export nothing else calls is what `tree/no-test-only-export` reports. Test
   the live path.
 
@@ -431,11 +431,11 @@ theirs: `no-` for a pattern refused, `prefer-` or `require-` for the alternative
 specifically than the smell and never by its mechanism or tier; a whole-tree scan's kind follows
 the same pattern under `tree/`. The rule lives in `tools/oxlint/ana/rules/<name>.ts`, is
 registered under that name in `tools/oxlint/ana/index.ts` and in `.oxlintrc.json` as `"error"`,
-and has a fixture test; `tools/oxlint/plugins.ts` is the record every other list of rules reads,
-and `test/rule-names.test.ts` fails on a name off the pattern, a file and a registration that
-differ, a rule no config runs or no test names, and a config entry, ledger row or document that
-names a rule that does not exist. Its head comment carries the
-argument: the shape, its cost, what was measured and when, each exemption with the site that
+and is tuned by running it over real diffs and the tree rather than by a test file of its own;
+`tools/oxlint/plugins.ts` is the record every other list of rules reads, and
+`test/lint-registry.test.ts` fails on a name off the pattern, a file and a registration that
+differ, a rule no config runs, and a config entry, ledger row or document that names a rule that
+does not exist. Its head comment carries the argument: the shape, its cost, what was measured and when, each exemption with the site that
 forced it, and whether it fixes and why. A rule enters only when, at every site it reports, some
 spelling passes every other rule; a rule whose remedy another rule refuses ends up switched off.
 `tools/oxlint/FIXER-DECISIONS.md` states when a rule may carry a fixer, and a rule's

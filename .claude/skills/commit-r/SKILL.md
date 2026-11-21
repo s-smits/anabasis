@@ -1,6 +1,6 @@
 ---
 name: commit-r
-description: "Rewrite one compartment of Anabasis with the old code as an oracle: test-first where an outcome or interface changes, as a refold held by the oracle where every output is kept. Use when the operator asks to rewrite, overhaul, rebuild or speed up code, or says commit R; also within an authorised change when the old shape needs another exception or about half the machinery could give the same result. A stack overhaul belongs to stack-pr."
+description: "Rewrite one compartment of Anabasis with the old code or the old tests as an oracle: test-first where an outcome or interface changes, as a refold held by the oracle where every output is kept, and as a test pass, held by mechanical mutants, where examples give way to bounded checks and properties. Use when the operator asks to rewrite, overhaul, rebuild or speed up code or tests, to remove or consolidate unit tests, or says commit R; also within an authorised change when the old shape needs another exception or about half the machinery could give the same result. A stack overhaul belongs to stack-pr."
 ---
 
 # Commit R
@@ -20,7 +20,7 @@ when two owners decide one fact (rule 12), when tests pin internals, or when a f
 lines or 21 decision points (`measure.py`) would grow. Tell the operator in one line which
 compartment and number should move, then proceed; a compartment outside the task is only proposed.
 
-## Two kinds of pass
+## Three kinds of pass
 
 Choose the compartment by its measured cost (`measure.py`, and a profile where speed is asked), not
 its size, and name the kind of pass in the frame:
@@ -31,6 +31,10 @@ its size, and name the kind of pass in the frame:
 - A **refold** keeps every output (a result held instead of recomputed, a copy folded into its
   owner). The tests stay, steps 3, 4 and 6 fall away, and the oracle's text, identical on every
   input, holds it. The first intended difference makes it a rewrite.
+- A **test pass** keeps production and replaces a compartment's example tests with the kinds
+  `AGENTS.md`, section 12, prefers. Steps 5 to 7 fall away; the new tests pass on unchanged
+  production (a failure is a defect, fixed in a commit of its own), and step 8's mutants are the
+  oracle. Production may be tuned where a check needs a seam, never its decisions.
 
 ## The frame
 
@@ -75,10 +79,23 @@ A test edited once production starts needs its reason in the commit.
    `bun tools/loc/source-policy.ts` and every importing test, and read each exit code. A budget is
    never met by dropping a boundary: a test that fails after a shortening brings the old form back.
 8. **Put it to the oracle**: restore old tests as `<original directory>/_old-<name>.test.ts`, run
-   them through `bun run test --`, then trash them; diff the outputs on step 2's input (an empty
-   `diff` for text), and read old and new times in turn, twice or more, keeping every reading. Fix
-   regressions into step 7: `git commit --fixup` and
-   `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <base>`.
+   them through `bun run test --`, and diff the outputs on step 2's input (an empty `diff` for
+   text). Then run the mutants of the owner's files, in a copy of the worktree at the base with
+   the old tests restored, under three suites: `old` (the restored tests), `new`, and `kept` (every
+   other test that imports the owner):
+
+   ```sh
+   bun .claude/skills/commit-r/scripts/mutate.ts run <copy> <files...> --out <scratchpad>/kills.jsonl --suites <suites.json> --jobs 6 --stop-at-kill
+   bun .claude/skills/commit-r/scripts/mutate.ts report <scratchpad>/kills.jsonl --old old [--survivors]
+   ```
+
+   Order the suites `new`, `kept`, `old` with `--stop-at-kill` only for a rerun of `--survivors`,
+   since the first count needs every suite's verdict. Each `O-` mutant (the old tests killed it,
+   nothing else did) is restored as a case, or answered in the commit as incidental (wording, an
+   internal shape) or as an old test that was wrong; more than about 15% of the old kills left
+   unanswered stops the pass. Trash the old tests, then read old and new times in turn, twice or
+   more, keeping every reading. Fix regressions into step 7 (step 4 in a test pass):
+   `git commit --fixup` and `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <base>`.
 
    Code that deletes or moves things runs first on a full copy (`cp -cRp`) with every link pointed
    inside it; for worktrees, rewrite each copied `.git` file and admin `gitdir` by hand and restore

@@ -30,7 +30,7 @@ delivery.
    have not just read there; a summary, your own included, is a lead. Correct a wrong description
    in the change that finds it, and a wrong statement to whoever heard it.
 5. **Review yourself hostilely.** Name the strongest objection, the count that would refute the
-   change, and the test that fails before it and passes after.
+   change, and the test or mutant that fails before it and passes after.
 
 Resolve routine ambiguity by the most reasonable reading and say what would overturn it; ask only
 for missing permission or a section 3 decision, with the result ready, and answer each question
@@ -257,9 +257,9 @@ nonzero task scores reads a step at the level. Readings are `step`, `no-step` (t
    command pass; fix a cross-domain defect in the host, a prompt or the contract code.
 3. **Nothing crosses the wall except section 1's list.** Changing a hidden value, a check or which
    held-out task a candidate won leaves every Builder and solver message byte-identical but the
-   budget (`test/builder.test.ts`, `test/builder-led.test.ts`). That covers prompts, tool
-   descriptions, tool results, home files and the choice of practice tasks, and a PR touching such
-   a message says how it checked this.
+   budget (`test/builder.test.ts`, `test/builder-led.test.ts`, `test/wall-practice.test.ts`). That
+   covers prompts, tool descriptions, tool results, home files and the choice of practice tasks, and
+   a PR touching such a message says how it checked this.
 4. **Terms are fixed before the first solve and never moved after a result**: do not top up a set
    that a dispute thinned, or rerun a finished comparison on other terms.
 5. **Both sides are solved afresh under one setting**; no stored solve stands in for a side.
@@ -291,7 +291,7 @@ nonzero task scores reads a step at the level. Readings are `step`, `no-step` (t
 
 Read `attribution-and-proof` before claiming an improvement. Never write "built" or "done"; name one
 rung of the ladder, none standing in for the next: planned; present in source (commit and live
-reader); proved without a model (a test with its nearest hostile case, a replay or a rehearsal);
+reader); proved without a model (a bounded check or property, a replay or a rehearsal);
 exercised live (an event in a real run's log); shown in an outcome (a reading that moved, repeated
 on fresh solves); withdrawn (with the reason). `docs/plan.md` keeps each part's level.
 
@@ -356,11 +356,9 @@ merge stay the operator's. Wake on events (`runs alerts`, `runs pulse`), not the
 
 ## 11. Working in the repository
 
-Use Bun 1.4.4 and no Node, npm or npx. Run owning tests with `bun run test -- <paths>` while editing
-and `bun run gate` once at the change's final top, at most one full suite per host (`local-checks`).
-Keep hooks enabled; GitHub Actions runs only `ci.yml`. A check counts once it ran over the whole
-change and its exit code was read, which a pipe hides; a failure that passes alone is a lead, not
-yet noise, and a wall test failing for want of user namespaces is a failure.
+Use Bun 1.4.4 and no Node, npm or npx, and keep hooks enabled. Run owning tests with
+`bun run test -- <paths>` while editing and `bun run gate` once at the change's top; the check
+runner places each on the fleet (`local-checks`), and GitHub Actions runs only `ci.yml`.
 
 ### What you never touch
 
@@ -426,7 +424,24 @@ and a decision that reconciles two invariants stays with you. A report is an age
 Read `tools/oxlint/HABITS.md` first. Add no strict-lint findings and never disable a rule: a finding
 wrong about one site is answered in `bun run not-slop`, one wrong about a kind of site is the rule's
 defect. Production imports `node:` only through `src/meta`. Keep files within 800 nonblank lines and
-functions within 115, export only names another file reads, and test facts rather than wording.
+functions within 115, and export only names another file reads.
+
+### Tests
+
+A test states an outcome over a space of inputs rather than one example, so that a defect nobody
+imagined still falls inside it. In order of preference: every input up to a small bound, against the
+owner's stated rule or an independent count (`test/compare-exhaustive.test.ts`); a search over
+reachable states with invariants that span moves (`test/decide-explore.test.ts`); a seeded generator
+over raw events that counts each branch it reached (`test/pairs-property.test.ts`); and a named
+example only for a flow across a process, file or provider boundary, or a refusal's nearest hostile
+case. Pin each measured constant (`WEIGHTS`, `GAP_FLOOR`, `SIZE`, `PATIENCE`) once, as the protocol.
+Delete or replace a test only against mechanical mutants of its owner (commit-r, step 8): a mutant
+the old tests killed that the new ones and the kept suite miss returns as a case or is answered as
+incidental. A bounded check stays within about ten seconds on one host, through a symmetry or a
+canonical state before a smaller bound. Test facts rather than wording, through the live path. A
+check counts once it ran over the whole change and its exit code was read, which a pipe hides; a
+failure that passes alone is a lead, and a wall test failing for want of user namespaces is a
+failure.
 
 ### Where a reader or a helper lives
 

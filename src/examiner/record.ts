@@ -173,7 +173,8 @@ const reportedAfter = (events: readonly LogEvent[], after: number) =>
   );
 
 /** What a task's line says after its name: the turns each of the reference's valid answers took and
- *  what each measured, whether a valid answer is on record where none of its solves was valid or
+ *  what each measured, beside the best of its author's answers on record (`task.feasible`), whether
+ *  a valid answer is on record where none of its solves was valid or
  *  none was read, and who won and on which measure. */
 function clausesOf(
   block: keyof typeof BLOCKS,
@@ -182,10 +183,14 @@ function clausesOf(
   { turns, measures }: Answered = { turns: [], measures: [] },
 ): string[] {
   const answered = block === "reference-every" || block === "reference-some";
+  const best = pool.bests.get(version);
   const sorted = (values: readonly number[]) => values.toSorted((a, b) => a - b);
   return [
     ...(answered && turns.length > 0 ? [`in ${sorted(turns).join(", ")} turns`] : []),
     ...(answered && measures.length > 0 ? [`measured ${sorted(measures).map(measured).join(", ")}`] : []),
+    ...(answered && measures.length > 0 && best !== undefined
+      ? [`the author's answer measured ${measured(best)}`]
+      : []),
     ...(answered
       ? []
       : [pool.feasible.has(version) ? "a valid answer on record" : "no valid answer on record"]),

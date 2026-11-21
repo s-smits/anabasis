@@ -355,6 +355,8 @@ describe("a draft put to the host", () => {
       const s = seat("draft", []);
       const mode = drafting({ ...s.request, reading: async () => [] }, async (act) => await act(), home);
       expect(toolOf(mode).description).toContain("from_file");
+      // A strict caller holds the program to the schema, which takes the object as well as the text.
+      expect(JSON.stringify(toolOf(mode).parameters)).toContain('"from_file"');
       const args = {
         ...draftArgs(SOUND),
         evaluator: { from_file: "evaluator.json" },

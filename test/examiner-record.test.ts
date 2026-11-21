@@ -289,6 +289,7 @@ describe("the reference's measures on a task", () => {
     const told = heard(log.events, ["capped", "spread"].map(fixture));
     expect(block(told, "every solve").capped).toContain("in 6, 6 turns; measured 1, 1");
     expect(block(told, "some solves").spread).toContain("in 4 turns; measured 0.875");
+    expect(block(told, "every solve").capped).not.toContain("author");
     // The other harness's measures, and a target, are told nowhere.
     for (const unsaid of ["0.25", "0.5", "0.125", "0.375", "harder"]) {
       expect(JSON.stringify(told)).not.toContain(unsaid);
@@ -507,5 +508,30 @@ describe("the largest family of a comparison the reference stood in", () => {
     log.hold(["a"]);
     log.reported("c-1", ["h1", "h2"], ["a"]);
     expect(heard(log.events, []).stood).toContain("The largest family among them held 0.");
+  });
+});
+
+describe("the author's answer to a task", () => {
+  it("is told by its best measure beside the reference's, so that a closed gap reads as a fact", () => {
+    const log = logged();
+    log.hold(["closed", "open"]);
+    for (const [version, measure] of [
+      ["v-closed", 0.9],
+      ["v-closed", 0.95],
+      ["v-open", 0.5],
+    ] as const) {
+      log.add("task.feasible", { version, session: "x-1", objective: { measure, direction: "higher" } });
+    }
+    log.solved("c-1", "closed", "h1", [0.94, 0.94]);
+    log.solved("c-1", "closed", "h2", [0.25, 0.25]);
+    log.solved("c-1", "open", "h1", [false, false]);
+    log.solved("c-1", "open", "h2", [false, false]);
+    log.reported("c-1", ["h1", "h2"], ["closed", "open"]);
+    const told = heard(log.events, ["closed", "open"].map(fixture));
+    expect(block(told, "every solve").closed).toContain(
+      "measured 0.94, 0.94; the author's answer measured 0.95",
+    );
+    // A task the reference answered in no solve has no measure of its own to set the author's beside.
+    expect(JSON.stringify(told)).not.toContain("measured 0.5");
   });
 });

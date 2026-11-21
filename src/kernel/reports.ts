@@ -465,16 +465,20 @@ function addReportReadings(
  * were held out. They split into **retained** and **frontier**: the step reads both, the supply
  * counts only the frontier (`supplyOf`, `admission.ts`).
  *
- * **Awaiting** tasks go to a person as possibly infeasible. Nothing on record answers them
- * validly, and two comparisons in which no limit cut a solve short (counted from the last time a
- * person kept the task) gave no valid answer either. Such a task ties whatever the harnesses are
- * and costs solves at every comparison. It may be hard, wrongly checked, or impossible, and only a
- * person can tell the last apart, so it leaves the scored set until it is labelled
+ * **Awaiting** tasks go to a person as possibly infeasible. No independent valid answer is on
+ * record (the author's proof, the gate's, or a reference's solve), and the reference failed them
+ * in two comparisons (counted from the last time a person kept the task). Such a task ties
+ * whatever the harnesses are and costs solves at every comparison. It may be hard, wrongly
+ * checked, or impossible, and only a person can tell the last apart, so it leaves the scored set
+ * until it is labelled
  * (`tools/d2/prepare.ts`). Two guards keep a short budget from sending an answerable task there:
  * an independent valid answer (`TaskRecord.validAnswer`) settles the question for good, and a
- * comparison where a limit cut one of the task's solves short is not counted. A solve that used
+ * comparison where a limit cut the reference's own solve short is not counted. A solve that used
  * every model turn was not cut, and its comparison counts. A label that keeps the task holds it
- * again and restarts the count; a label that calls it infeasible refuses it.
+ * again and restarts the count; a label that calls it infeasible refuses it. Only the reference's
+ * side is read: a candidate's pass is no independent answer and a candidate's cut solve passes no
+ * comparison over, since the frontier sets the size the Builder is told and must not move with how
+ * another harness did on a held-out task (rule 3). The practice allowance leaves these tasks out too.
  *
  * **Doubted** tasks leave the scored set and the practice allowance too: the last comparison that
  * read the task set it aside, and a rejection of the reference's own solve there stands unearned
@@ -527,9 +531,13 @@ export function poolOf(events: readonly LogEvent[]) {
   const { records, held } = taskRecords(events);
   const heldRecords = records.filter((record) => record.held);
   const awaiting = orderedBy(heldRecords, ({ validAnswer, keptAt, tallied }) =>
-    runStart(
-      tallied.filter(({ index, cut }) => validAnswer !== "independent" && index >= keptAt && cut === "none"),
-    ),
+    validAnswer === "independent"
+      ? undefined
+      : runStart(
+          tallied.filter(
+            ({ reference: side, index, cut }) => side !== null && index >= keptAt && cut !== "reference",
+          ),
+        ),
   );
   const easy = orderedBy(heldRecords, ({ tallied }) => {
     const readings = tallied.filter(({ reference, cut }) => reference !== null && cut !== "reference");
@@ -548,22 +556,7 @@ export function poolOf(events: readonly LogEvent[]) {
   const inherited = held.filter((task) => heldBeforePromotion.has(task) && !leftOut.has(task));
   const retained = [...new Set([...exhausted, ...inherited])];
   const scorable = held.filter((task) => !leftOut.has(task));
-  // The practice allowance also leaves out a task with no independent valid answer that the
-  // reference failed in two comparisons. Unlike `awaiting`, only the reference's own cut solves
-  // pass a comparison over, so the allowance reads nothing of the other harness (rule 3).
-  const practiceOut = new Set([
-    ...easy,
-    ...doubted,
-    ...orderedBy(heldRecords, ({ validAnswer, keptAt, tallied }) =>
-      validAnswer === "independent"
-        ? undefined
-        : runStart(
-            tallied.filter(
-              ({ reference: side, index, cut }) => side !== null && index >= keptAt && cut !== "reference",
-            ),
-          ),
-    ),
-  ]);
+  const practiceOut = new Set([...easy, ...doubted, ...awaiting]);
   const firstSeen = ({ tallied, asideOrder }: TaskRecord) =>
     Math.min(tallied[0]?.order ?? asideOrder, asideOrder);
   return {

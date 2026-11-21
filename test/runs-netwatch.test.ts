@@ -1,7 +1,7 @@
-// The net watch reads each link's rate from two Tailscale reports in a row, and the intranet total
-// counts a link seen from both ends once.
+// The net watch reads each link's rate from two Tailscale reports in a row, and the intranet counts a
+// link seen from both ends once.
 import { expect, test } from "bun:test";
-import { linksBetween, network, reportOf } from "../tools/runs/netwatch.ts";
+import { linksBetween, pairsOf, reportOf } from "../tools/runs/netwatch.ts";
 
 const status = (rx: number, tx: number) =>
   JSON.stringify({
@@ -28,7 +28,7 @@ test("a link's rate comes from the bytes between two reports, and a counter that
   expect(reportOf("not json")).toBeNull();
 });
 
-test("the intranet counts each link once, at the larger of its two ends' readings", () => {
+test("each link counts once, at the larger of its two ends' readings, busiest first", () => {
   const link = (name: string, down: number, up: number, moved: number) => ({
     name,
     path: "",
@@ -37,9 +37,12 @@ test("the intranet counts each link once, at the larger of its two ends' reading
     moved,
   });
   expect(
-    network([
-      ["a", [link("b", 100, 50, 1000), link("c", 10, 0, 10)]],
+    pairsOf([
+      ["a", [link("c", 10, 0, 10), link("b", 100, 50, 1000)]],
       ["b", [link("a", 40, 90, 900)]],
     ]),
-  ).toEqual({ now: 160, moved: 1010 });
+  ).toEqual([
+    { ends: "a↔b", now: 150, moved: 1000 },
+    { ends: "a↔c", now: 10, moved: 10 },
+  ]);
 });

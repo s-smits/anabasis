@@ -1,26 +1,23 @@
 /**
- * `bun run runs netwatch [<seconds>] [--once]`: the traffic between the machines, live in the
- * terminal beside `loadwatch`, refreshed every `<seconds>` (2 by default). Each machine `ANA_HOSTS`
- * lists, this one included, reports the bytes it has sent to and received from each Tailscale peer
- * (`tailscale status --json`), and the watch reads the rate of each link from two reports in a row,
- * whether it is direct or relayed, and the bytes moved since the watch began. The last line is the
- * whole network: the sum over links, each counted once, as the larger of its two ends' readings, with
- * the peak since the watch began. `--once` prints one frame after two reports from every machine.
+ * `bun run runs netwatch [<seconds>] [--once | -s|--short]`: the traffic between the machines, live
+ * beside `loadwatch` and through the same driver (`watch.ts`), refreshed every `<seconds>` (2 by
+ * default). Each machine reports the bytes it has sent to and received from each Tailscale peer
+ * (`tailscale status --json`), and each reading holds every link's rate from that report against the
+ * one before, whether it is direct or relayed, and the bytes moved since the watch reached the
+ * machine. The intranet is every link counted once, at the larger of its two ends' readings, with
+ * its peak since the watch began. `--once` prints one frame once every machine has two reports, and
+ * `-s` one line: the intranet's rate and each link's, busiest first.
  *
  * Traffic that does not cross Tailscale (a Thunderbolt link, the LAN by address) is not counted.
- * Each machine runs one sampling loop for the whole watch (`follow`, `load.ts`). Its Tailscale CLI is
- * the first on the login path, Homebrew's or the macOS app's that answers, and where `tailscaled`
- * runs in userspace with a socket of its own, that socket.
+ * Each machine's Tailscale CLI is the first that answers of the one on its path, Homebrew's,
+ * `/usr/bin`'s and the macOS app's, and where `tailscaled` runs in userspace with a socket of its
+ * own, that socket.
  */
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
-import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
-import { killProcessGroup } from "#src/meta/subprocess.ts";
-import { hostsOf } from "./host-config.ts";
-import { keepFollowing, watchersOf, type Watched } from "./load.ts";
-import { bar, BOLD, DIM, liveScreen, RED, RESET } from "./loadwatch.ts";
-import { Misused } from "./registry.ts";
+import type { State, Watched } from "./load.ts";
+import { bar, DIM, headOf, RESET, waitingOf, watch } from "./watch.ts";
 
 interface Peer {
   readonly name: string;
@@ -70,6 +67,19 @@ const PEER = Type.Object({
 const STATUS = Type.Object({ Peer: Type.Optional(Type.Record(Type.String(), Type.Unknown())) });
 const UNITS = ["B/s", "kB/s", "MB/s", "GB/s"] as const;
 
+/** A machine's newest report, its first, and its links against the report before, none yet after
+ *  its first. */
+interface Reading {
+  readonly report: Report;
+  readonly first: Report;
+  readonly links: readonly Link[] | null;
+}
+interface Pair {
+  readonly ends: string;
+  readonly now: number;
+  readonly moved: number;
+}
+
 /** One report from a status block, or null for a block that is not one; a peer of another shape is
  *  left out rather than read as idle. */
 export function reportOf(block: string): Report | null {
@@ -93,27 +103,6 @@ export function reportOf(block: string): Report | null {
       : [],
   );
   return { at: Date.now(), peers };
-}
-
-/** Each machine's links from its newest report against the one before and its first, kept per
- *  machine so a refresh between reports keeps the last reading. */
-class Rates {
-  readonly #first = new Map<string, Report>();
-  readonly #last = new Map<string, Report>();
-  readonly #links = new Map<string, Link[]>();
-  peak = 0;
-  readonly since = new Date().toTimeString().slice(0, 8);
-
-  linksOf({ label, state }: Watched<Report>): Link[] | null {
-    if (state === "connecting" || state === "unreachable") return null;
-    const before = this.#last.get(label);
-    if (before !== state) {
-      this.#last.set(label, state);
-      if (!this.#first.has(label)) this.#first.set(label, state);
-      if (before !== undefined) this.#links.set(label, linksBetween(before, state, this.#first.get(label)));
-    }
-    return this.#links.get(label) ?? null;
-  }
 }
 
 /** The links of `now` against the report `before` it and the `first` of the watch. */
@@ -148,94 +137,102 @@ function rate(bytes: number): string {
 }
 const size = (bytes: number): string => rate(bytes).replace("/s", "");
 
-/** Each link once, by its two ends, at the larger of their readings. */
-export function network(read: readonly (readonly [string, readonly Link[]])[]): {
-  now: number;
-  moved: number;
-} {
-  const links = new Map<string, { now: number; moved: number }>();
+/** The next reading of a machine from a status block and the reading before it. */
+function readingOf(block: string, before: State<Reading>): Reading | null {
+  const report = reportOf(block);
+  if (report === null) return null;
+  if (before === "connecting" || before === "unreachable") return { report, first: report, links: null };
+  return { report, first: before.first, links: linksBetween(before.report, report, before.first) };
+}
+
+/** Each machine's links where it has them. */
+const linksOf = (watched: readonly Watched<Reading>[]): (readonly [string, readonly Link[]])[] =>
+  watched.flatMap(({ label, state }) =>
+    state === "connecting" || state === "unreachable" || state.links === null
+      ? []
+      : [[label, state.links] as const],
+  );
+
+/** Each link once, by its two ends, at the larger of their readings, busiest first. */
+export function pairsOf(read: readonly (readonly [string, readonly Link[]])[]): Pair[] {
+  const pairs = new Map<string, Pair>();
   for (const [self, own] of read) {
     for (const link of own) {
-      const key = [self, link.name].toSorted().join(" ");
-      const seen = links.get(key) ?? { now: 0, moved: 0 };
-      links.set(key, {
-        now: Math.max(seen.now, link.down + link.up),
-        moved: Math.max(seen.moved, link.moved),
+      const ends = [self, link.name].toSorted().join("↔");
+      const seen = pairs.get(ends);
+      pairs.set(ends, {
+        ends,
+        now: Math.max(seen?.now ?? 0, link.down + link.up),
+        moved: Math.max(seen?.moved ?? 0, link.moved),
       });
     }
   }
-  return [...links.values()].reduce(
-    (sum, each) => ({ now: sum.now + each.now, moved: sum.moved + each.moved }),
-    {
-      now: 0,
-      moved: 0,
-    },
-  );
+  return [...pairs.values()].toSorted((a, b) => b.now - a.now);
 }
 
-function frame(watched: readonly Watched<Report>[], rates: Rates, seconds: string): string[] {
-  const now = new Date().toTimeString().slice(0, 8);
-  const read = watched.map((each) => [each, rates.linksOf(each)] as const);
-  const busiest = Math.max(
-    1e6,
-    ...read.flatMap(([, links]) => (links ?? []).map((link) => link.down + link.up)),
-  );
-  const blocks = read.flatMap(([{ label, state }, links]) => {
-    const head = `${BOLD}${label.padEnd(20)}${RESET}`;
-    if (links === null) {
-      const said = state === "unreachable" ? `${RED}UNREACHABLE${RESET}` : `${DIM}connecting…${RESET}`;
-      return ["", `${head} ${said}`];
-    }
-    const down = links.reduce((sum, link) => sum + link.down, 0);
-    const up = links.reduce((sum, link) => sum + link.up, 0);
+const sum = (pairs: readonly Pair[], key: "now" | "moved"): number =>
+  pairs.reduce((total, pair) => total + pair[key], 0);
+
+/** The frame below the title, and the intranet's peak since the watch began. */
+function framer(): (watched: readonly Watched<Reading>[]) => string[] {
+  let peak = 0;
+  const since = new Date().toTimeString().slice(0, 8);
+  return (watched) => {
+    const read = linksOf(watched);
+    const busiest = Math.max(1e6, ...read.flatMap(([, links]) => links.map((link) => link.down + link.up)));
+    const blocks = watched.flatMap(({ label, state }) => {
+      // A machine with one report so far has no rate yet, so it is still connecting.
+      if (state === "connecting" || state === "unreachable" || state.links === null) {
+        return ["", waitingOf(label, state === "unreachable" ? state : "connecting")];
+      }
+      const { links } = state;
+      const down = links.reduce((total, link) => total + link.down, 0);
+      const up = links.reduce((total, link) => total + link.up, 0);
+      return [
+        "",
+        `${headOf(label)} ↓ ${rate(down).padStart(9)}  ↑ ${rate(up).padStart(9)}`,
+        ...links.map(
+          (link) =>
+            `  ${link.name.padEnd(14)} ${bar(link.down + link.up, busiest)}  ↓ ${rate(link.down).padStart(9)}  ↑ ${rate(link.up).padStart(9)}  ${DIM}${size(link.moved).padStart(7)} moved; ${link.path}${RESET}`,
+        ),
+        ...(links.length === 0 ? [`  ${DIM}no traffic with any peer${RESET}`] : []),
+      ];
+    });
+    const pairs = pairsOf(read);
+    const now = sum(pairs, "now");
+    peak = Math.max(peak, now);
     return [
+      ...blocks,
       "",
-      `${head} ↓ ${rate(down).padStart(9)}  ↑ ${rate(up).padStart(9)}`,
-      ...links.map(
-        (link) =>
-          `  ${link.name.padEnd(14)} ${bar(link.down + link.up, busiest)}  ↓ ${rate(link.down).padStart(9)}  ↑ ${rate(link.up).padStart(9)}  ${DIM}${size(link.moved).padStart(7)} moved; ${link.path}${RESET}`,
-      ),
-      ...(links.length === 0 ? [`  ${DIM}no traffic with any peer${RESET}`] : []),
+      `${headOf("intranet")} ${bar(now, Math.max(peak, 1e6))}  ${rate(now)} now, peak ${rate(peak)}; ${size(sum(pairs, "moved"))} moved since ${since}`,
+      "",
+      `${DIM}↓ received, ↑ sent by the machine named above, over Tailscale; link bars against the busiest link now (at least 1 MB/s), the intranet's against its peak; the intranet counts each link once, at the larger of its two ends${RESET}`,
     ];
-  });
-  const total = network(
-    read.flatMap(([{ label }, links]) => (links === null ? [] : [[label, links] as const])),
-  );
-  rates.peak = Math.max(rates.peak, total.now);
-  return [
-    `${BOLD}ana net watch${RESET}  ${DIM}${now}  (refresh ${seconds}s, ctrl-c quits)${RESET}`,
-    ...blocks,
-    "",
-    `${BOLD}${"intranet".padEnd(20)}${RESET} ${bar(total.now, Math.max(rates.peak, 1e6))}  ${rate(total.now)} now, peak ${rate(rates.peak)}; ${size(total.moved)} moved since ${rates.since}`,
-    "",
-    `${DIM}↓ received, ↑ sent by the machine named above, over Tailscale; link bars against the busiest link now (at least 1 MB/s), the intranet's against its peak; the intranet counts each link once, at the larger of its two ends${RESET}`,
-  ];
+  };
 }
 
-export async function netwatch(args: readonly string[]): Promise<void> {
-  const { values, positionals } = parseArgs({
-    args: [...args],
-    allowPositionals: true,
-    options: { once: { type: "boolean", default: false } },
-  });
-  const [given = "2", extra] = positionals;
-  const seconds = Number(given);
-  if (extra !== undefined || !Number.isFinite(seconds) || seconds <= 0) throw new Misused();
-  const script = LOOP.replaceAll("@I@", String(Math.max(seconds, 0.5)));
-  const watched = watchersOf<Report>([undefined, ...hostsOf()], script);
-  keepFollowing(watched, reportOf, seconds * 1000);
-  const rates = new Rates();
-  if (!values.once) return await liveScreen(watched, () => frame(watched, rates, given));
-  // Two reports from each machine, or its silence, before the one frame.
-  const deadline = Date.now() + 2000 * seconds + 30_000;
-  while (
-    Date.now() < deadline &&
-    watched.some((each) => each.state !== "unreachable" && rates.linksOf(each) === null)
-  ) {
-    await Bun.sleep(100);
-  }
-  console.log(frame(watched, rates, given).join("\n"));
-  for (const { child } of watched) if (child !== null) killProcessGroup(child, "SIGKILL");
-  // The sampling loops would open each connection again.
-  runtimeProcess.exit(0);
+/** `-s`: the intranet's rate, then each link's, busiest first, and a machine that did not answer last. */
+function short(watched: readonly Watched<Reading>[]): string {
+  const pairs = pairsOf(linksOf(watched));
+  const lost = watched.flatMap(({ label, state }) =>
+    state === "unreachable" ? [`${label} unreachable`] : [],
+  );
+  return [
+    `intranet ${rate(sum(pairs, "now"))}:`,
+    ...pairs.map((pair) => `${pair.ends} ${rate(pair.now)}`),
+    ...lost,
+  ].join("  ");
 }
+
+export const netwatch = (args: readonly string[]): Promise<void> =>
+  watch(args, {
+    name: "net",
+    seconds: "2",
+    script: (seconds) => LOOP.replaceAll("@I@", String(Math.max(seconds, 0.5))),
+    parse: readingOf,
+    ready: (reading) => reading.links !== null,
+    frame: framer(),
+    once: () => [],
+    short,
+    windows: [],
+  });

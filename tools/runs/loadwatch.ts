@@ -13,42 +13,21 @@
  * load before placing a run. It ports the operator's own `ana-loadwatch`, whose host
  * list was written into the script, to the host list every other verb reads.
  *
- * Each machine runs one sampling loop for the whole watch (`load.ts`), so a refresh costs no
- * connection, and a loop that closes or falls silent is opened again. A screen update is one write
- * of the lines that changed, inside synchronised output (DEC 2026), so the terminal paints it at once.
+ * The driver, its options and the screen are `watch.ts`'s; this file says what a load frame shows.
  */
-import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
-import { killProcessGroup } from "#src/meta/subprocess.ts";
-import { hostsOf } from "./host-config.ts";
-import { byLoad, firstSamples, keepSampling, watchedOf, WINDOWS, type Watched, type Window } from "./load.ts";
-import { Misused } from "./registry.ts";
+import { byLoad, sampleOf, watchedScript, WINDOWS, type Watched } from "./load.ts";
+import { BAR, bar, DIM, headOf, RED, RESET, waitingOf, watch } from "./watch.ts";
 
-const TICK_MS = 200;
-const BAR = 40;
-const ESC = "\u001B";
-export const [RESET, DIM, BOLD] = [`${ESC}[0m`, `${ESC}[2m`, `${ESC}[1m`];
-export const [GREEN, YELLOW, RED] = [`${ESC}[32m`, `${ESC}[33m`, `${ESC}[31m`];
 const ROWS = ["cpu now ", "load 1m ", "load 5m ", "load 15m"] as const;
 
-export function bar(value: number, most: number): string {
-  // A load above the core count shows as processes waiting beside the bar, never above 100%.
-  const share = most > 0 ? value / most : 0;
-  const filled = Math.min(BAR, Math.floor(share * BAR));
-  const percent = Math.min(100, Math.floor(share * 100));
-  const colour = percent >= 90 ? RED : percent >= 60 ? YELLOW : GREEN;
-  return `${colour}${"█".repeat(filled)}${DIM}${"·".repeat(BAR - filled)}${RESET} ${String(percent).padStart(3)}%`;
-}
-
 function linesOf({ label, state }: Watched): string[] {
-  const head = `${BOLD}${label.padEnd(20)}${RESET}`;
   if (state === "connecting" || state === "unreachable") {
     // The same skeleton as a sample's, so one arriving fills it in and nothing shifts.
-    const said = state === "unreachable" ? `${RED}UNREACHABLE${RESET}` : `${DIM}connecting…${RESET}`;
-    return [`${head} ${said}`, ...ROWS.map((row) => `  ${DIM}${row} ${"·".repeat(BAR)}     –${RESET}`)];
+    return [waitingOf(label, state), ...ROWS.map((row) => `  ${DIM}${row} ${"·".repeat(BAR)}     –${RESET}`)];
   }
   const { cores, loads, busy } = state;
   return [
-    `${head} ${DIM}${String(cores)} cores${RESET}`,
+    `${headOf(label)} ${DIM}${String(cores)} cores${RESET}`,
     `  ${DIM}${ROWS[0]}${RESET} ${bar(busy, 100)}`,
     ...loads.map(
       (load, at) =>
@@ -62,10 +41,8 @@ function queuedOf(load: number, cores: number): string {
   return load - cores < 0.5 ? "" : ` +${(load - cores).toFixed(0)} waiting`;
 }
 
-function frame(watched: readonly Watched[], seconds: string): string[] {
-  const now = new Date().toTimeString().slice(0, 8);
+function frame(watched: readonly Watched[]): string[] {
   return [
-    `${BOLD}ana load watch${RESET}  ${DIM}${now}  (refresh ${seconds}s, ctrl-c quits)${RESET}`,
     ...watched.flatMap((each) => ["", ...linesOf(each)]),
     "",
     `${DIM}cpu: % busy now; load: the load average against the cores, capped at 100%; +N waiting: the queue beyond them${RESET}`,
@@ -74,8 +51,11 @@ function frame(watched: readonly Watched[], seconds: string): string[] {
 
 /** `-s`: the window named first, then each machine's load a core over it out of 100, least loaded
  *  first, the queue beyond its cores as the frame says it, and a machine that did not answer last. */
-function short(watched: readonly Watched[], window: string, at: Window): string {
-  const read = byLoad(watched, at).map(({ label, load, cores }) => {
+function short(watched: readonly Watched[], window = "5m"): string {
+  const read = byLoad(
+    watched,
+    Object.entries(WINDOWS).find(([name]) => name === window)?.[1] ?? WINDOWS["5m"],
+  ).map(({ label, load, cores }) => {
     const percent = Math.min(100, Math.round((100 * load) / cores));
     return `${label} ${String(percent)}/100${queuedOf(load, cores)}`;
   });
@@ -85,74 +65,20 @@ function short(watched: readonly Watched[], window: string, at: Window): string 
   return [`last ${window}:`, ...read, ...lost].join("  ");
 }
 
-/** Repaint the lines that changed since `before`, all of them after a resize, in one write. */
-function paint(lines: readonly string[], before: readonly string[]): void {
-  const changed = lines.flatMap((line, row) =>
-    before[row] === line ? [] : [`${ESC}[${String(row + 1)};1H${line}${ESC}[K`],
-  );
-  const cleared = before.length > lines.length ? [`${ESC}[${String(lines.length + 1)};1H${ESC}[J`] : [];
-  const reset = before.length === 0 ? [`${ESC}[H${ESC}[2J`] : [];
-  const out = [...reset, ...changed, ...cleared];
-  if (out.length > 0) runtimeProcess.stdout.write(`${ESC}[?2026h${out.join("")}${ESC}[?2026l`);
-}
-
-/** Draw `draw()` on the alternate screen until ctrl-c, which ends every watched connection and gives
- *  the shell's screen back untouched. */
-export async function liveScreen(
-  watched: readonly { child: Bun.Subprocess | null }[],
-  draw: () => string[],
-): Promise<never> {
-  let before: string[] = [];
-  const quit = () => {
-    for (const { child } of watched) if (child !== null) killProcessGroup(child, "SIGKILL");
-    runtimeProcess.stdout.write(`${ESC}[?25h${ESC}[?1049l`);
-    runtimeProcess.exit(0);
-  };
-  runtimeProcess.on("SIGINT", quit);
-  runtimeProcess.on("SIGTERM", quit);
-  runtimeProcess.on("SIGWINCH", () => {
-    before = [];
-  });
-  runtimeProcess.stdout.write(`${ESC}[?1049h${ESC}[?25l`);
-  for (;;) {
-    const lines = draw();
-    paint(lines, before);
-    before = lines;
-    await Bun.sleep(TICK_MS);
-  }
-}
-
-export async function loadwatch(args: readonly string[]): Promise<void> {
-  const { values, positionals } = parseArgs({
-    args: [...args],
-    allowPositionals: true,
-    options: {
-      once: { type: "boolean", default: false },
-      short: { type: "boolean", short: "s", default: false },
-      window: { type: "string", short: "w", default: "5m" },
-    },
-  });
-  const [given = "5", extra] = positionals;
-  const seconds = Number(given);
-  const at = Object.entries(WINDOWS).find(([name]) => name === values.window)?.[1];
-  if (extra !== undefined || !Number.isFinite(seconds) || seconds <= 0 || at === undefined) {
-    throw new Misused();
-  }
-  const watched = watchedOf([undefined, ...hostsOf()], seconds);
-  const intervalMs = seconds * 1000;
-  if (values.once || values.short) {
-    await firstSamples(watched, intervalMs);
-    if (values.short) {
-      console.log(short(watched, values.window, at));
-      return;
-    }
+export const loadwatch = (args: readonly string[]): Promise<void> =>
+  watch(args, {
+    name: "load",
+    seconds: "5",
+    script: watchedScript,
+    parse: sampleOf,
+    ready: () => true,
+    frame,
     // The one-minute ranking: the queue a solve started now would join.
-    const order = byLoad(watched, 0).map(({ label, load, cores }) => `${label} ${(load / cores).toFixed(2)}`);
-    console.log(
-      [...frame(watched, given), `least loaded first, 1m load a core: ${order.join(", ")}`].join("\n"),
-    );
-    return;
-  }
-  keepSampling(watched, intervalMs);
-  await liveScreen(watched, () => frame(watched, given));
-}
+    once: (watched) => [
+      `least loaded first, 1m load a core: ${byLoad(watched, WINDOWS["1m"])
+        .map(({ label, load, cores }) => `${label} ${(load / cores).toFixed(2)}`)
+        .join(", ")}`,
+    ],
+    short,
+    windows: Object.keys(WINDOWS),
+  });

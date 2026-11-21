@@ -861,7 +861,7 @@ describe("a Builder session", () => {
 
   it("is told a measure to four significant digits, in a result, a record and an author's answer", async () => {
     // A measure may depend on a practice task's hidden values, and a comparison ties two valid
-    // answers within 1% (`ROOM`). Until 19 November each was printed whole, up to 17 digits.
+    // answers within 1% (`GAP_FLOOR`). Until 19 November each was printed whole, up to 17 digits.
     // 0.1234567901234568 and 1234.567901234568, then a whole number of three digits and one of six.
     const measures = [1 / 8.1, 10_000 / 8.1, 100, 123_456];
     const s = await setup(

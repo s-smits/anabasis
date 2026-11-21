@@ -21,7 +21,7 @@
  * `try_reference` calls and the harness each try was solved under,
  * the tasks the gate admitted, and the comparisons that later tallied them, starter reads named
  * apart. The table gives, per writer and harness, the valid solves, how many reached the author's
- * best within the floor (`gapAgainst`, `ROOM`), and the median of measure over best where both are
+ * best within the floor (`gapAgainst`, `GAP_FLOOR`), and the median of measure over best where both are
  * positive. It prints counts and digest prefixes, never a measure, an answer or a task, and no
  * column says what a session aimed at: that is the lane's reading. A field an older log's code did
  * not write reads `not recorded`.

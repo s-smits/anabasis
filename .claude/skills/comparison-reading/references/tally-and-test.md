@@ -9,7 +9,7 @@ test.
 Every candidate solve is paired with every reference solve of the task, and the task's score is a
 weighted sum of two measures in [-1, 1] (`pointsOf`, `WEIGHTS`, `src/kernel/compare.ts`): validity
 (0.6), the share of pairings where only the candidate is valid less the reverse; and the objective
-(0.3), between two valid answers the gain as a share of the larger measure, zero under `ROOM`
+(0.3), between two valid answers the gain as a share of the larger measure, zero under `GAP_FLOOR`
 (`told`, `gainOver`). The sign makes the task a win, loss or tie, and swapping sides negates it.
 `wholePoints` rounds to thousandths for every reader. Validity dominates: 3 of 4 valid against 4 of
 4 still wins where the valid answers measure more than two thirds better. An older report may carry
@@ -62,7 +62,7 @@ the dated detail are in `7f0add79:docs/plan.md`, "Statistical power and cost", a
   objective was promoted on cost, and the tally a Builder was told diverged from the one tested.
   Over 84 readings of 40 campaigns, dropping it took 7 of 46 steps and added none; cost belongs to
   the closing report (`close.ts`).
-- **`ROOM`.** Without a floor, six tasks won by 0.01% read p = 0.016 and promote; one comparison
+- **`GAP_FLOOR`.** Without a floor, six tasks won by 0.01% read p = 0.016 and promote; one comparison
   read 23-0-1 on gains of 0.01% to 0.65% that the floor reads 3-3-18. A per-campaign `--room` term
   was never used, so one constant serves all. The author's answer counts towards room, otherwise a
   reference repeating one recipe refuses drafts whose author found 3 to 20% better, and the floor

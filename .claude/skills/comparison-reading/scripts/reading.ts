@@ -14,7 +14,7 @@
  * Beside the test it gives what 15 of 20 lane-8 sessions between 3 and 10 November rebuilt by hand:
  * the p read for the reference (a starter comparison confirms on it), a step's wins to spare or a
  * reading's losses short of a step (`clearance.ts`, largest margins first), the wins a step on
- * equal margins needs beside the losses read (`clearing`), whether the A/A tied every task, and
+ * equal margins needs beside the losses read (`smallestSteps`), whether the A/A tied every task, and
  * the comparison's dollar cap against its test at the dollars its counted solves billed.
  *
  * From each report's pairs (`pairsReported`) it adds the zone, the reference's tasks with no, some

@@ -39,7 +39,7 @@ import { failWrongPasses, wrongPasses, wrongPassesIn } from "./history.ts";
 import type { LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
 import { passed, ranUnder, rejected, standsOf } from "./solves.ts";
-import { RUNS, spreadOf } from "./size.ts";
+import { READINGS_IN_A_ROW, howOftenValid } from "./size.ts";
 import { taskSets } from "./task.ts";
 import { tracesIn } from "./trace.ts";
 
@@ -89,7 +89,7 @@ interface TalliedIn {
   /** The measure that carried the win (`carriedBy`), null for a tie. */
   readonly by: keyof Measures | null;
   /** Whether the reference harness's answers left an objective gap there, against its own and its
-   *  author's (`gapAgainst`); false under the floor (`ROOM`), and where it stood on neither side. */
+   *  author's (`gapAgainst`); false under the floor (`GAP_FLOOR`), and where it stood on neither side. */
   readonly room: boolean;
 }
 
@@ -323,9 +323,9 @@ function placed(records: readonly TaskRecord[], place: (record: TaskRecord) => n
     .map(([version]) => version);
 }
 
-/** Where `RUNS.unsolved` or more of `runs` first stood, or undefined where they are fewer. */
+/** Where `READINGS_IN_A_ROW.unsolved` or more of `runs` first stood, or undefined where they are fewer. */
 function runOf(runs: readonly TalliedIn[]): number | undefined {
-  return runs.length >= RUNS.unsolved ? runs[0]?.order : undefined;
+  return runs.length >= READINGS_IN_A_ROW.unsolved ? runs[0]?.order : undefined;
 }
 
 /** Every task a log holds a state, a solve or a report of, each as `TaskRecord` reads it, and the
@@ -523,7 +523,7 @@ function tallyReports(
  * move with which held-out task the other harness failed (rule 3). From 29 to 30 October the other
  * side's solves were pooled in, and two campaigns of equal tallies told the Builder different sizes
  * (the v0.9.0 review); a task a later harness breaks still scores as a retained task. A task is
- * easy once its newest `RUNS.easy` readings in a row were each valid in every solve, with no
+ * easy once its newest `READINGS_IN_A_ROW.easy` readings in a row were each valid in every solve, with no
  * room by the objective, where a better answer would be there for the next harness to reach: room
  * from the reference's own measures or its author's (`gapAgainst`, `compare.ts`), never the other
  * harness's, which until the v0.9.0 review moved the size with which task it bettered. The words are every, some and none, as its author hears them, so the
@@ -594,12 +594,14 @@ export function poolOf(events: readonly LogEvent[]) {
       tallied.filter(({ index, cut }) => validAnswer !== "independent" && index >= keptAt && cut === "none"),
     ),
   );
-  // Easy: the newest `RUNS.easy` readings in a row valid in every solve of the reference, with no
+  // Easy: the newest `READINGS_IN_A_ROW.easy` readings in a row valid in every solve of the reference, with no
   // room by the objective.
   const spent = placed(heldRecords, ({ tallied }) => {
     const readings = tallied.filter(({ reference, cut }) => reference !== null && cut !== "reference");
-    const open = readings.findLastIndex((reading) => spreadOf(ownOf(reading)) !== "every" || reading.room);
-    return readings.length - 1 - open >= RUNS.easy ? readings.at(-1)?.order : undefined;
+    const open = readings.findLastIndex(
+      (reading) => howOftenValid(ownOf(reading)) !== "every" || reading.room,
+    );
+    return readings.length - 1 - open >= READINGS_IN_A_ROW.easy ? readings.at(-1)?.order : undefined;
   });
   const doubted = placed(heldRecords, ({ doubtedAt, keptAt, tallied }) =>
     doubtedAt > keptAt && doubtedAt > (tallied.at(-1)?.index ?? -1) ? doubtedAt : undefined,
@@ -656,7 +658,7 @@ function ownOf({ reference, old, fresh }: TalliedIn): readonly boolean[] {
 
 /** The reference's side of one comparison of a task, as its outcome reads it. */
 function sideOf(tallied: TalliedIn): "every" | "some" | "none" | null {
-  return tallied.reference === null ? null : spreadOf(ownOf(tallied));
+  return tallied.reference === null ? null : howOftenValid(ownOf(tallied));
 }
 
 /** What a task's author hears of it (`poolOf`, outcomes), or nothing where no report read it. */
@@ -706,7 +708,7 @@ function standingOf(record: TaskRecord): [string, Standing][] {
  * domain every solve is valid (seven buffer campaigns, 21 October). The other harness's answers stay out of `room`, so which held-out task it won moves no release (rule 3).
  *
  * The tasks the reference never answered are the held-out ones it gave no valid answer in
- * `RUNS.unsolved` or more comparisons it stood in, cut at a limit or not, unlike `poolOf`'s `awaiting`:
+ * `READINGS_IN_A_ROW.unsolved` or more comparisons it stood in, cut at a limit or not, unlike `poolOf`'s `awaiting`:
  * on 10 October one campaign held four to five of ten while its Builder passed every practice task.
  * Until 26 October any harness's valid answer took a task off this list, so a release told the
  * Builder which held-out task its harness won (rule 3). A task only the other harness answered now

@@ -21,7 +21,7 @@
  */
 import { epochsOf as epochsRead, ORIGINS, type Origin, starterReads } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
-import { differenceOf, flipP, gainOver, pointsOf, ROOM, scoresIn, testOf } from "#src/kernel/compare.ts";
+import { differenceOf, flipP, gainOver, pointsOf, GAP_FLOOR, scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Call, Seat } from "#src/kernel/trace.ts";
 import { billedBetween } from "#src/kernel/meter.ts";
@@ -522,7 +522,8 @@ function marginTrigger(log: Index): Trigger[] {
     const steady = inside.filter(
       ({ task, objective: rule }) =>
         candidate.get(task) === 0 &&
-        rule?.fresh.every((one) => rule.old.every((other) => gainOver(rule, one, other) > -ROOM)) === true,
+        rule?.fresh.every((one) => rule.old.every((other) => gainOver(rule, one, other) > -GAP_FLOOR)) ===
+          true,
     ).length;
     const apart =
       steady === 0

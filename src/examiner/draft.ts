@@ -30,7 +30,7 @@
  * operator, 16 October).
  *
  * The prompt is built around the comparison's two ways of telling harnesses apart, validity and
- * the objective (`ROOM`, `src/kernel/compare.ts`), since the draft fixes which a campaign can ever
+ * the objective (`GAP_FLOOR`, `src/kernel/compare.ts`), since the draft fixes which a campaign can ever
  * use. On 4 November every exam drafted since 1 November with an objective had untied most of its
  * compared tasks (buffer 305 of 381, truss 20 of 21) and every one without had tied nearly all
  * (esp32 0 of 62, jobstat 7 of 180, 0 promotions). The business-records exams, also work products,
@@ -98,7 +98,7 @@
 import { type Static, Type } from "typebox";
 import { answerFormatFault, type Objective } from "../kernel/contract.ts";
 import { type ControlFile, DELIVERABLES } from "../kernel/answer-files.ts";
-import { ROOM } from "../kernel/compare.ts";
+import { GAP_FLOOR } from "../kernel/compare.ts";
 import { PER_CHECK_MS } from "../kernel/verify.ts";
 import { REACH } from "./ladder.ts";
 import { budgetLine, FAIR, type SolveBudget, TASK, UNHELD } from "./prompt.ts";
@@ -286,7 +286,7 @@ const DRAFT_PARAMETERS = Type.Object({
 
 /** How far apart two valid answers are on the objective before one is the better: the
  *  comparison's own floor. */
-const FLOOR = `${String(ROOM * 100)}%`;
+const FLOOR = `${String(GAP_FLOOR * 100)}%`;
 
 /** The system prompt. */
 const SYSTEM = [

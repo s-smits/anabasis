@@ -350,8 +350,10 @@ async function main(args: CommandArgs): Promise<number> {
     // something else fails when it is called, naming the file.
     ((await import(resolve(named))) as { readonly default?: Scenario }).default ??
     args.die(`${named} is no example and default-exports no scenario`);
-  const { SIZE, RUNS } = readers.size;
-  console.log(`tree ${tree}: SIZE ${JSON.stringify(SIZE)}, RUNS ${JSON.stringify(RUNS)}`);
+  const { SIZE, READINGS_IN_A_ROW } = readers.size;
+  console.log(
+    `tree ${tree}: SIZE ${JSON.stringify(SIZE)}, READINGS_IN_A_ROW ${JSON.stringify(READINGS_IN_A_ROW)}`,
+  );
   await scenario({
     tree,
     readers,

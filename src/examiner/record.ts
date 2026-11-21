@@ -54,7 +54,7 @@ import {
   type Reported,
   type Standing,
 } from "../kernel/reports.ts";
-import { spreadOf } from "../kernel/size.ts";
+import { howOftenValid } from "../kernel/size.ts";
 import { solvesIn, standsOf, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import { objectiveOf, type Task } from "../kernel/verify.ts";
@@ -265,7 +265,7 @@ function stoodLine(
 ): string {
   const side = report.data.fresh === reference ? "fresh" : "old";
   const pairs = pairsReported(events, report);
-  const spreads = pairs.map((pair) => spreadOf(pair[side]));
+  const spreads = pairs.map((pair) => howOftenValid(pair[side]));
   const largest =
     familySizes(
       events,

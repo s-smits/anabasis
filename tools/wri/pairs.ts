@@ -25,7 +25,7 @@
  * in a comparison with no report: those rows give each side's counted solves and no score. A tie's
  * kind is a fact of its solves: `both-invalid` (no valid answer on either side), `exact-repeat`
  * (every answer valid, one measure throughout), `within-room` (every answer valid and every pairing
- * of a solve of each within the floor, `ROOM`), `both-valid` (every answer valid, the objective
+ * of a solve of each within the floor, `GAP_FLOOR`), `both-valid` (every answer valid, the objective
  * not measured on each), and `cancelling` (gains of the two sides cancelling over the pairings).
  * The origin a starter read gives each task is `starter-reads.ts --tasks`'s column
  * (`comparison-reading`), so no column here repeats it. `x_best` gives each side's median ratio to
@@ -41,7 +41,7 @@ import {
   gapAgainst,
   type Paired,
   pointsOf,
-  ROOM,
+  GAP_FLOOR,
   scoresIn,
   testOf,
   unsolved,
@@ -169,7 +169,7 @@ function repeatOf(pair: Paired, side: "old" | "fresh"): string {
 }
 
 /** The spread of every measure of a task over both sides, as a share of the larger magnitude. */
-function spreadOf(pair: Paired): string {
+function howOftenValid(pair: Paired): string {
   const known = measuresOf(pair).filter(isNumber);
   if (known.length < 2) return NONE;
   const [low, high] = [Math.min(...known), Math.max(...known)];
@@ -228,7 +228,7 @@ function pairRow(context: Context, pair: Paired): string {
     self === undefined ? NONE : String(differenceOf(self)),
     `${flipped(pair.old) ? "1" : "0"}/${flipped(pair.fresh) ? "1" : "0"}`,
     `${repeatOf(pair, "old")}/${repeatOf(pair, "fresh")}`,
-    spreadOf(pair),
+    howOftenValid(pair),
     `${best("old")}/${best("fresh")}`,
     billedOf([...(pair.used?.old ?? []), ...(pair.used?.fresh ?? [])].map(({ billed }) => billed)),
     tieKind(pair) ?? NONE,
@@ -510,7 +510,7 @@ export function sideGap(
   }
   return {
     ratio: median(ratios),
-    atBest: ratios.filter((ratio) => ratio <= 1 + ROOM).length,
+    atBest: ratios.filter((ratio) => ratio <= 1 + GAP_FLOOR).length,
     read: ratios.length,
     unread,
   };

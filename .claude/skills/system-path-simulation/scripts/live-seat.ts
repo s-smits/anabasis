@@ -71,7 +71,7 @@ import type { writing as Writing } from "#src/examiner/write.ts";
 import type { examineCommand as ExamineCommand } from "#tools/d1b/examine.ts";
 import type { solved as Solved } from "#tools/d2/round.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
-import { ROOM } from "#src/kernel/compare.ts";
+import { GAP_FLOOR } from "#src/kernel/compare.ts";
 import { type Call, callsOf, tracesIn } from "#src/kernel/trace.ts";
 import { billedBetween } from "#src/kernel/meter.ts";
 import { heldAtGate } from "#src/kernel/task.ts";
@@ -134,7 +134,7 @@ const OPTIONS = {
 const TICK_MS = 30_000;
 const QUIET_TICKS = 10;
 /** The task admissions where the author's answer beat the reference's best by at least the objective gap floor. */
-const GAP = `gap >= ${String(ROOM * 100)}%`;
+const GAP = `gap >= ${String(GAP_FLOOR * 100)}%`;
 /** A line of a failed call's text that names its error. */
 const ERROR_LINE = /error|denied|not found|no such|not permitted|timed out|refused|invalid|cannot|failed/iu;
 /** The flags that say who sits in an Examiner seat: a pair is read only within one of them. */
@@ -175,7 +175,7 @@ interface Reading {
 }
 
 /** How many of a reading's task admissions measured the author's answer at least the objective gap floor ahead. */
-const objectiveGaps = (gaps: readonly number[]) => gaps.filter((gap) => gap >= ROOM).length;
+const objectiveGaps = (gaps: readonly number[]) => gaps.filter((gap) => gap >= GAP_FLOOR).length;
 
 /** What a pair is read on, each a count where the arm doing more is the Examiner doing better: drafts
  *  held, task admissions whose draft the reference answered in some solves or in none while its author's answer

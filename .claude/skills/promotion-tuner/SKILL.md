@@ -22,7 +22,7 @@ live improvement**.
 | Weights of validity and the objective | `WEIGHTS`, `src/kernel/compare.ts`, in steps of five | `validity=`, `objective=` |
 | A resource as a gain | none in production | `bill=`, `turns=`, `seconds=`, with `when=`, `side=`, `lead=`, `floor=` |
 | A resource as a guard | none in production | `mostBill=`, `mostTurns=`, `mostSeconds=` |
-| The gap floor and form of a gain | `ROOM`, `pointsOf` | `room=`, `gain=` |
+| The gap floor and form of a gain | `GAP_FLOOR`, `pointsOf` | `room=`, `gain=` |
 | The test | `flipP`, `readsStep` | `test=`, `untied=`, `level=` |
 | What the test counts once | each task (`pairsOf`) | `unit=` (`family`, `first`) |
 | Which tasks enter | `scoredSet` | `retained=` |

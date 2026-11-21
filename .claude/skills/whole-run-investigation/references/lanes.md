@@ -219,7 +219,7 @@ Starts from `TIES BETWEEN VALID ANSWERS (lane 3)` and
 Which measure carried each reading: validity, the objective or the bill (`pointsOf`,
 `src/kernel/compare.ts`)? Give each comparison's tally and p as scored, without the bill
 (`readsStep`, `unbilled`) and on validity alone. `TIES BETWEEN VALID ANSWERS` means only the
-objective (floor `ROOM`) and the bill separate most tasks; `SAFEGUARD-9` names a promotion that
+objective (floor `GAP_FLOOR`) and the bill separate most tasks; `SAFEGUARD-9` names a promotion that
 fails on validity alone, so count the tasks each measure won (`replay.txt`; `scores.txt` gives each
 comparison's tally on validity alone and on the objective alone, beside the A/A halves). The check
 program stands at `<campaign folder>/exams/<exam hash>/checks/`. Say whether a step rests on answers
@@ -440,7 +440,7 @@ quantity whose measurement moves from solve to solve. Size the remedy as solves 
 A/A's spread and the margins won, how many solves of each task would bring a typical margin outside
 the noise (`.claude/skills/comparison-reading/scripts/size.ts --scores <s,s,...>`, which takes each
 task's score as `pairs.txt` prints it under `diff`, all in that one unit, and reads no log), and
-what that costs at the campaign's price a solve. Never propose raising the gap floor (`ROOM`): it
+what that costs at the campaign's price a solve. Never propose raising the gap floor (`GAP_FLOOR`): it
 would hide these margins and the reference's alike, and the operator has ruled it out. The decision:
 whether these steps are reported as effects, and whether comparisons on objective-only tasks are
 enlarged or tasks written where validity can separate. Routes to `host` (`src/kernel/compare.ts`,
@@ -483,7 +483,7 @@ tasks written after it. Four parts, kept apart:
    (`starter-reads.ts` splits each origin by whether validity differed; lane 11), since an
    objective-only read rests on margins.
 
-Never propose a lower level or a higher gap floor (`ROOM`). Say how many reads the counts rest on,
+Never propose a lower level or a higher gap floor (`GAP_FLOOR`). Say how many reads the counts rest on,
 and that a read of few tasks is one draw. The decision: whether `confirmed` is reported as a
 transferred gain or as a read that selection alone could produce, and what the climb bar of
 `AGENTS.md` section 1 should count. Routes to `host` (`src/campaign/climb.ts`) and `operator` (the
@@ -779,7 +779,7 @@ drift explains a trend as well as any cause above. Say how many tasks of each or
 since a sum over few is one draw. A neutral set, tasks written blind to both harnesses (another
 campaign's held-out set read with [compare-systems](../../compare-systems/SKILL.md)), would settle
 the first two against the third; it is paid, so propose it with its size and leave it to the
-operator. Never propose raising the gap floor (`ROOM`): it hides small margins on both sides alike
+operator. Never propose raising the gap floor (`GAP_FLOOR`): it hides small margins on both sides alike
 and decides nothing about which cause holds. The decision: whether the campaign's promotions are
 reported as a climb, and whether a neutral comparison is asked for. Routes to `host`
 (`src/campaign/decide.ts`, `src/campaign/climb.ts`), `examiner-prompt` and `operator`.
@@ -865,7 +865,7 @@ difficulty, so their outcomes move together. Five parts:
    ([compare-systems](../../compare-systems/SKILL.md)); it is paid, so propose it with its size and
    leave it to the operator.
 
-Never propose a higher gap floor (`ROOM`); it moves the noise to the next margin. The decision:
+Never propose a higher gap floor (`GAP_FLOOR`); it moves the noise to the next margin. The decision:
 whether each campaign's climb is reported with its batch counts beside the tallies, and whether a
 neutral comparison is asked for. Routes to `host` (`src/campaign/climb.ts`, the report),
 `examiner-prompt` (batches written where the reference has not closed) and `operator`.

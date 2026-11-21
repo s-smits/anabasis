@@ -426,7 +426,7 @@ describe("which host runs a task", () => {
     expect(calls(home)).toEqual([]);
   });
 
-  it("sends no check to a host a benchmark's arm holds: refused by name with nothing started there, left out of auto though it is the least loaded, and taken again once its sitting says idle", () => {
+  it("leaves a host held by a benchmark's arm out of auto while still running there with a warning when named explicitly", () => {
     const EVAL_RUNNER = JSON.stringify([
       { name: "bench", host: "zbook", store: "store", sitting: "sitting.sh", packs: ["pack"] },
     ]);
@@ -435,10 +435,6 @@ describe("which host runs a task", () => {
     try {
       fresh();
       says("an arm holds the lock: pid 1");
-      const refused = run(["test"], { ANA_CHECK_HOST: "zbook", EVAL_RUNNER });
-      expect(refused.status, refused.stderr).toBe(69);
-      expect(refused.stderr).toContain("runner: a benchmark's arm holds zbook");
-      expect(calls(hostHome("fake-linux"))).toEqual([]);
       // The held host idles and the other is loaded, so loads alone would send the task to it.
       loaded("fake-linux", 4, 0);
       loaded("fake-mac", 2, 400);
@@ -447,11 +443,26 @@ describe("which host runs a task", () => {
       expect(spread.stderr).toContain("runner: a benchmark's arm holds zbook");
       expect(spread.stderr).not.toMatch(/1m load a core[^\n]*zbook/u);
       expect(calls(hostHome("fake-linux"))).toEqual([]);
-      // A sitting that cannot be asked is no idle one, and an idle one takes the task as before.
+      // Naming the host explicitly warns and runs there anyway.
+      const named = run(["test"], { ANA_CHECK_HOST: "zbook", EVAL_RUNNER });
+      expect(named.status, named.stderr).toBe(0);
+      expect(named.stderr).toContain(
+        "runner: a benchmark's arm holds zbook: running there because ANA_CHECK_HOST named it",
+      );
+      expect(ran("fake-linux")).toBe(true);
+      // A sitting that cannot be asked is no idle one: skipped in auto, warned when named.
+      fresh();
       rmSync(sitting);
-      expect(run(["test"], { ANA_CHECK_HOST: "zbook", EVAL_RUNNER }).status).toBe(69);
-      says("idle");
+      const silentAuto = run(["test"], { ANA_CHECK_HOST: "auto", EVAL_RUNNER });
+      expect(silentAuto.status, silentAuto.stderr).toBe(0);
+      expect(calls(hostHome("fake-linux"))).toEqual([]);
       expect(run(["test"], { ANA_CHECK_HOST: "zbook", EVAL_RUNNER }).status).toBe(0);
+      expect(ran("fake-linux")).toBe(true);
+      // An idle sitting takes the task without the arm-holds warning.
+      says("idle");
+      const idle = run(["test"], { ANA_CHECK_HOST: "zbook", EVAL_RUNNER });
+      expect(idle.status, idle.stderr).toBe(0);
+      expect(idle.stderr).not.toContain("arm holds");
       expect(ran("fake-linux")).toBe(true);
       // A benchmark list that cannot be read refuses the task that would have gone to a host.
       expect(run(["test"], { ANA_CHECK_HOST: "zbook", EVAL_RUNNER: "not a list" }).status).toBe(2);

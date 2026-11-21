@@ -125,14 +125,14 @@ function listed(choice: string): { hosts: readonly Host[]; benches: readonly Ben
  * sitting whose `status` does not answer `idle` on its first line (`bench.ts`) holds it, a silent
  * one too.
  */
-async function armHolds({ name, ssh }: Host, benches: readonly Bench[]): Promise<boolean> {
+async function armHolds({ name, ssh }: Host, benches: readonly Bench[], announce = true): Promise<boolean> {
   const asked = benches
     .filter((bench) => bench.host?.name === name)
     .map(({ sitting }) => runCaptured(["ssh", ...sshOptions(ssh), ssh, `${shellPath(sitting)} status`]));
   const holds = (await Promise.all(asked)).some(
     ({ exitCode, stdout }) => exitCode !== 0 || stdout.split("\n")[0] !== "idle",
   );
-  if (holds) say(`a benchmark's arm holds ${name}: no check goes there now`);
+  if (holds && announce) say(`a benchmark's arm holds ${name}: no check goes there now`);
   return holds;
 }
 
@@ -142,7 +142,7 @@ async function armHolds({ name, ssh }: Host, benches: readonly Bench[]): Promise
  * `checks` by one-minute load a core, least loaded first (`minuteLoads`, as `runs loadwatch` orders
  * them). A machine that has not answered within `ANA_RUNNER_PICK_WAIT` is left out, never read as
  * idle, and where none answers the task runs here. A host a benchmark's arm holds (`armHolds`) is
- * left out of `auto` and refused by name.
+ * left out of `auto` and warned of when named explicitly.
  */
 async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean }> {
   const choice = checkHost() ?? "";
@@ -172,11 +172,8 @@ async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean 
   }
   const host = taking.find((each) => each.name === choice || each.ssh === choice);
   if (host !== undefined) {
-    if (await armHolds(host, benches)) {
-      throw new Refusal(
-        `no task started on ${host.name}; ANA_CHECK_HOST=here runs it here`,
-        EXIT.unavailable,
-      );
+    if (await armHolds(host, benches, false)) {
+      say(`a benchmark's arm holds ${host.name}: running there because ANA_CHECK_HOST named it`);
     }
     return { places: [host], picked: false };
   }

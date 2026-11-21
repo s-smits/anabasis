@@ -29,9 +29,11 @@ branch.
   it fixes, simplifies, completes or supersedes that pull request's own lines; a shared file is no
   evidence. Compare the change with each diff (`git diff --name-only <base> <head>`). Where the
   pull request has no children, fold the change into its commit and rewrite its title and body.
-  Where it has children, a rewrite would move them, so commit `fixup! <subject>` (or `amend!`) in a
-  pull request of your own on the top whose body opens "Absorbs into #N at the next
-  consolidation"; section 10 folds it down. Remove what the change makes dead in the same commit.
+  Where it has children, a follow-up to the same problem is appended to it as a commit of its own,
+  and everything above it, other sessions' pull requests included, is restacked onto the new head
+  (`git rebase --onto`, or `land --sanitize`) and pushed with `--no-verify` under leases, instead of
+  opening a `fixup!` pull request on the top (operator, 21 November 2026). Remove what the change
+  makes dead in the same commit.
 - **Otherwise open a new pull request on the cycle's top**, whether or not it depends on what is
   below. The cycle's file names the stack; failing that, it is the one `bun run follow` follows,
   the stack of two or more that holds the oldest open pull request. The first change after a release starts the stack on
@@ -223,6 +225,7 @@ GitHub (`tools/runtime/land.ts`), so each pull request ends as Merged:
 bun run land -- <top>                 # prove it here; nothing is written to GitHub
 bun run land -- <top> --sanitize      # and post each commit's verdict as ana/commit
 bun run land -- <top> --sanitize --watch # and again each time the stack moves, until Ctrl-C
+bun run land -- <top> --sanitize --from <pr> # only the commits from <pr> up, on the operator's word
 bun run land -- <top> --merge         # and wait for ci.yml, post ana/stack-gate, and merge
 bun run land -- <pr> --auto --merge   # land the top above <pr>, following a new top stacked meanwhile
 bun run land -- --merge               # the same, for the stack holding the oldest stacked pull request
@@ -230,6 +233,12 @@ bun run land -- latest --sanitize     # prove the highest-numbered top of the op
 bun run land -- <top> --merge --alone # merge beside another chain on main, on the operator's word
 bun run land -- <top> --merge --tag v0.9.0 # and cut that release at the merge
 ```
+
+A sanitize is plain by default: it proves the whole first-parent line from `main`, and a commit whose
+exact bytes passed before costs nothing, so lower pull requests already proved are skipped anyway.
+`--from <pr>` takes the head beneath `<pr>` as known and proves only what lies above it; it posts
+each commit's verdict but no `mergeable`, since no head then has every commit beneath it proved. Use
+it only when the operator asks, as for a long unproved stack whose upper part should be read first.
 
 A landing lands once and ends. With `--watch` it follows its stack: once it ends it lands again each
 time an open pull request moves, until the one named closes or Ctrl-C ends it; every pass is

@@ -374,15 +374,19 @@ PRs stack, and a release lands one chain: **small** (`0.x.y+1`) for any chain wh
 against the last big release's runs by more than the spread between runs. Which runs compare is
 read from each run's commit (`bun run runs source`), never from the version.
 
-Read `stack-pr` and the stack (`bun .claude/skills/stack-pr/scripts/stack.ts`) before you branch
-and again before you push, since other sessions move it. Expand the open PR a change belongs to, or
-put a new one on the top: push its branch, open it with `gh pr create --draft --base <top's
-branch>` and run `bun run land -- <new top> --sanitize`, which links the whole chain into GitHub's
-native stack (`gh stack link`), the unit `land --merge` merges. A base alone leaves a PR outside
-that stack, and a base in the middle of one forks it. Moving your own PR onto the top is yours;
-another session's PR, worktree or run changes only on the operator's word. One worktree per PR, no
-`git stash` by hand, and every commit passes alone. Each PR carries a category (`CATEGORIES`,
-`tools/runtime/land.ts`) and the highest importance label whose test it meets:
+Read `stack-pr` and the stack (`bun .claude/skills/stack-pr/scripts/stack.ts`) before you branch and
+again before you push, since other sessions move it. Expand the open PR a change belongs to (a
+follow-up to the same problem is a commit appended to that PR, with what sits above it restacked and
+pushed with `--no-verify`, other sessions' PRs included), or put a new one on the top: push its
+branch, open it with `gh pr create --draft --base <top's branch>` and run `bun run land -- <new top>
+--sanitize`, which links the whole chain into GitHub's native stack (`gh stack link`), the unit
+`land --merge` merges. A base alone leaves a PR outside that stack, and a base in the middle of one
+forks it. A sanitize proves the whole chain from `main`, reusing every remembered pass; `--from
+<pull request>`, which proves only the commits from that PR up and turns no head mergeable, is used
+on the operator's word. Moving your own PR onto the top is yours; another session's PR, worktree or
+run changes only on the operator's word. One worktree per PR, no `git stash` by hand, and every
+commit passes alone. Each PR carries a category (`CATEGORIES`, `tools/runtime/land.ts`) and the
+highest importance label whose test it meets:
 
 - `I0`: results are already wrong or unsafe (a reading or promotion computed wrong, the wall
   crossed, answers lost, a credential exposed, spend past its cap, `main` failing its gate); live

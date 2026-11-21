@@ -412,6 +412,7 @@ describe("bun run land", () => {
     expect(result.status).toBe(0);
     expect(gatesRun(gateLog)).toEqual([`${upper} suite`]);
     expect(statuses(COMMIT)).toEqual([`pending ${upper}`, `success ${upper}`]);
+    expect(result.stdout).toContain(`1 of 1, pr12 ${short(upper)}: passed.`);
     expect(statuses("mergeable")).toEqual([]);
     expect(runLand(["12", "--sanitize", "--from", "13"]).stderr).toContain("#13 is not in #11, #12.");
     expect(runLand(["12", "--merge", "--from", "12"]).status).toBe(2);

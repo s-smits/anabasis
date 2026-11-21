@@ -11,7 +11,7 @@ and which owner each next change belongs to. It only reads and proposes; the hos
 every verdict, and `AGENTS.md` sections 1 to 8 own the rules it reads against.
 
 A deterministic fold of the log gives six rows (the identities every finding binds to) and a set of
-triggers. Each trigger opens one of thirty-one lanes in [the catalogue](references/lanes.md), each
+triggers. Each trigger opens one of twenty-three lanes in [the catalogue](references/lanes.md), each
 lane is one question answered by an independent session, one session merges the reports, and the
 primary vets the result.
 
@@ -59,17 +59,17 @@ under `.ana/wri/<date>-<campaign>/` on the central host.
    the shared instructions, the rows and triggers, what is already counted and the report's form,
    read once a session) and a manifest: `<dir>/launch.json` the first time, and
    `launch-NN[-NN...].json` by the lanes it built every later time, which the verb names. Without `--lanes` it opens every triggered lane
-   and the seven standing lanes, and names, without building, each isolated lane whose trigger fired.
-   The lanes go to `--agents N` sessions, 4 by default, each lane in exactly one; labels stay whole
-   unless the lightest session would weigh under three quarters of the heaviest by summed
+   and the six standing lanes, and names, without building, the isolated lane where its trigger
+   fired. The lanes go to `--agents N` sessions, 4 by default, each lane in exactly one; labels stay
+   whole unless the lightest session would weigh under three quarters of the heaviest by summed
    `Importance:`, and the verb prints each session's weight. A prompt built before is kept and left
    out of the new manifest. When the operator changes the number of groups, stop the sessions still
    working and run `lanes --agents N --regroup`, which packs the lanes with no report yet into a new
    manifest, their prompts unchanged. `--high K` gives the K heaviest sessions `"effort": "high"`
    and the rest `"medium"`, which the launcher takes over its `--reasoning-effort`: on Sol, give
    high to the groups that carry the verdicts, the comparison and the climb, about a quarter to a
-   half of them (operator, 9 November). *Check:* exit 0; the sessions this call built are the count to
-   authorise, and if it built none, launch nothing.
+   half of them (operator, 9 November). *Check:* exit 0; the sessions this call built are the count
+   to authorise, and if it built none, launch nothing.
 4. **Launch.** Each manifest is a [codex-gpt-swarm](../codex-gpt-swarm/SKILL.md) manifest
    (`gpt-sessions.ts --manifest <dir>/launch.json --output-dir <new dir> ...`, on the operator's
    model). A Claude session runs as the `wri-lane` agent type (`.claude/agents/wri-lane.md`,
@@ -82,7 +82,7 @@ under `.ana/wri/<date>-<campaign>/` on the central host.
    promotions under the tree's rule, the ledger of every investigation's vetted findings), each
    under its command in `<dir>/record.md` with when it ran, how many lane reports stood written and
    its exit code. A read made is kept, so a second call makes only what failed; the vetting recounts
-   against the file, and in an iteration `wri2p2.ts next` owes each read before the isolated lanes.
+   against the file, and in an iteration `wri2p2.ts next` owes each read before the isolated lane.
    *Check:* each transcript's model, that each lane ran as `wri-lane`, and that `record` exits 0
    with `read at` lines that count fewer reports than the manifest holds.
 5. **Collect.** `wri.ts collect --out <dir>` checks each report's shape and writes `<dir>/reports.md`,
@@ -90,11 +90,10 @@ under `.ana/wri/<date>-<campaign>/` on the central host.
    (`confirmed`, `plausible`, or `unmarked` where it wrote none) on the observation and on the
    cause, the owner and the title. The file ends, where the prior state holds a prediction table,
    with each prediction as the lanes resolved it and the lanes that owed a line and wrote none.
-   Read lane 3, then decide lane 4; read lanes 10 and 12, then decide lane 15. Its trigger opens
-   lane 4 only where lane 3 left a check undecided, and `WIN AT A SMALL WALL SHARE` opens lane 15
-   only where lane 10 or 12 names a shortcut; an iteration records the reason for leaving one out.
-   Build an isolated lane with `wri.ts lanes --out <dir> --lanes 4` (or
-   `15`), launch it alone from its own `launch-NN.json`, and collect again. *Check:* `collect`
+   Read lane 5, then decide lane 6: its trigger opens it only where lane 5 left a check
+   undecided, and an iteration records the reason for leaving it out. Build it with
+   `wri.ts lanes --out <dir> --lanes 6`, launch it alone from its own `launch-06.json`, and
+   collect again. *Check:* `collect`
    exits 0 (1 while a report is missing or invalid, or none is expected). A valid shape is not a
    sound finding.
 6. **Synthesise.** `wri.ts synthesis --out <dir>` renders `<dir>/synthesis-prompt.md`; one session
@@ -117,7 +116,7 @@ source.
 | 5 | `collect --out <dir>` | `reports.md` |
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
 | vetting | `findings [--root <dir>] [--window 7] [--until <date>]` | nothing: every investigation's vetted findings, the newest window beside the one before, by verdict, standing key, importance, fate and lane |
-| lanes 1, 3, 4 | `grade --log <log> [--bundle <pack>] (--task <taskId> --answer <file> \| --solve <id> \| --answers <dir>) [--set <path>=<json>]...` | nothing: one verdict line an answer, the recorded verdict beside a regraded solve, and with `--set` the same answer with one field changed (`--bundle` only for a stored pack) |
+| lanes 1, 5 and 6 | `grade --log <log> [--bundle <pack>] (--task <taskId> --answer <file> \| --solve <id> \| --answers <dir>) [--set <path>=<json>]...` | nothing: one verdict line an answer, the recorded verdict beside a regraded solve, and with `--set` the same answer with one field changed (`--bundle` only for a stored pack) |
 | any | `derive (--log <log>[,<log>...] \| --all) [--verbose] [--force] [--no-embed]` | `data/derived/<campaign>@<path>/` (one folder a log): one file a reader and `manifest.json` |
 | any | `reader <name> --log <log>` | nothing: one reader's text, as `derive` writes it to its file |
 
@@ -163,13 +162,13 @@ the largest campaign, and keep a session to about eight lanes: on 10 November tw
 any report kept 6 of the 14 findings a five-session reading of the same log held, against 15 of 23
 in the one that wrote each report before the next lane. With a smaller budget, read groups in dependency order:
 
-1. **Verdicts (1 to 6)**, lane 3 first: until refusals read sound, a win may be a check refusing the
+1. **Validity (1 to 7)**, lane 5 first: until refusals read sound, a win may be a check refusing the
    parent's right answer.
-2. **Comparison (17 to 20, 29)**, lane 18 first.
-3. **Harness (12 to 16)**, lane 12 first.
-4. **Supply (7 to 11), solve (24), economy (25), runs (26).**
-5. **Climb (21 to 23, 27, 28, 30, 31)**: open it before anyone is told a campaign improved a harness. Lane 27
-   runs from the start. In a jobstat run's iteration its grade also decides whether the newest
+2. **Comparison (8 to 11)**, lane 8 first.
+3. **Harness (15, 16)**, lane 15 first.
+4. **Supply (20, 21), solve and runs (22), economy (23).**
+5. **Climb (12 to 14, 17 to 19)**: open it before anyone is told a campaign improved a harness. Lane
+   14 runs from the start. In a jobstat run's iteration its grade also decides whether the newest
    promoted reference is read on the outside benchmark, and the iteration's `outside` gate asks
    whether that read has a row yet (run-improvement-campaign, "The outside aim").
 
@@ -206,10 +205,10 @@ them unless the primary deletes them.
 ### For the primary
 
 - **Settle rows A to F yourself.**
-- **Isolated lanes run alone.** Lanes 4 and 15 freeze a result before reading anything that could
-  lead it, so neither gets the orientation, the moved variable or another lane's trigger.
+- **The isolated lane runs alone.** Lane 6 freezes a result before reading anything that could
+  lead it, so it gets neither the orientation, the moved variable nor another lane's trigger.
 - **No report reaches a Builder, an Examiner or a Referee.** Lanes read hidden values and scored
-  traces; a finding handed to a seat that writes the harness or the tasks is the leak lane 12 looks
+  traces; a finding handed to a seat that writes the harness or the tasks is the leak lane 15 looks
   for.
 - **A `pack/` finding is a decision, never a patch.** It goes to the checker's owner, and a repair is
   another campaign (`accept.ts --freeze`).
@@ -239,7 +238,8 @@ run's `predictions-<run>.md` (in `.ana/wri/<date>-cycle-<release>/`, run-improve
 with its pull request, area labels ("Labels" in [the catalogue](references/lanes.md)), lanes, claim
 and falsifier, but not its resolution in `outcomes-<run>.md`, plus the ids the parent iteration did
 not hold and its plan's "Intentionally opposed" trade-offs, as the still-missing view of
-`wri2p2.ts ledger <dir>` prints them. Step 3 opens every lane a row names with `--lanes`; lanes 4 and 15 get no row.
+`wri2p2.ts ledger <dir>` prints them. Step 3 opens every lane a row names with `--lanes`; lane 6
+gets no row.
 
 ## Vetting
 
@@ -294,7 +294,7 @@ Then vet the synthesis's own findings:
 - **Read the instrument before the tally.** An unruled rejection sets its task aside, and `counted`
   gives the tally were all to stand; only a person's labels (`tools/d2/settle.ts`) settle it.
 - **Read `not-scored` and an empty `no-step` as no test.**
-- **Keep observation apart from cause**; lane 4 separates a strict check from an incapable solver.
+- **Keep observation apart from cause**; lane 6 separates a strict check from an incapable solver.
 - **Recount** every "N of M" from the log, and **say whose reading a count is**.
 - **Confirm against current source** before a `patch` row becomes work (`AGENTS.md` section 11,
   `stack-pr`).
@@ -303,7 +303,7 @@ Then vet the synthesis's own findings:
 
 | file | owns |
 | --- | --- |
-| [references/lanes.md](references/lanes.md) | the stance, the owner table, the labels, rows A to F and lanes 1 to 31 |
+| [references/lanes.md](references/lanes.md) | the stance, the owner table, the labels, rows A to F and lanes 1 to 23 |
 | [references/from-v1.md](references/from-v1.md) | where each of v1's rows and lanes went |
 | [references/shared-instructions.template.md](references/shared-instructions.template.md) | the preset every open lane carries |
 | [references/synthesis.template.md](references/synthesis.template.md) | the synthesis session's prompt |

@@ -1,12 +1,12 @@
 /**
- * The public side of a campaign's exam, for lane 4 to write its alternatives from before it reads
+ * The public side of a campaign's exam, for lane 6 to write its alternatives from before it reads
  * anything that could lead it: the contract as the Builder is given it (`contractOf`, the stand-in
  * `openCampaign` builds its seats' contract with), and each released task's public input with the
  * answers its practice solves passed with, which a Builder reads in their traces.
  *
  *   bun tools/wri/public-exam.ts <log | campaign folder | name> [--bundle <pack>]
  *
- * Between 3 and 10 November all 7 lane 4 sessions pulled the released tasks and their practice
+ * Between 3 and 10 November all 7 lane 6 sessions pulled the released tasks and their practice
  * passes out of the log by hand, about 70 calls, and `exam.drafted`, the one event that holds the
  * public rules whole, holds the evaluator's source beside them, which a session reading it to stay
  * blind had to strip by hand.

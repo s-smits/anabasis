@@ -1,5 +1,5 @@
 /**
- * What each comparison's reading rests on, a block a comparison, for lanes 8 and 17:
+ * What each comparison's reading rests on, a block a comparison, for lanes 3 and 9:
  *
  *   bun tools/wri/wri.ts reader scores --log <log>
  *
@@ -21,8 +21,8 @@
  * family, is `pairs.ts`'s; a step read on one task a family is the replay's (`promotion-tuner`,
  * `unit=first`).
  *
- * Evidence: 9 of 12 lane-17 sessions between 3 and 10 November recomputed a step's p by hand without
- * one win and then without two. 4 of 7 lane-8 sessions split a tally by measure in their own
+ * Evidence: 9 of 12 lane-9 sessions between 3 and 10 November recomputed a step's p by hand without
+ * one win and then without two. 4 of 7 lane-3 sessions split a tally by measure in their own
  * scripts, and two of those disagreed on one comparison: one counted the objective where both
  * answers were valid, the other everywhere.
  */
@@ -215,7 +215,7 @@ export function scoreRows(events: readonly LogEvent[]): string[] {
   ];
   if (sessions.length === 0) return ["scores: no comparison on record"];
   return [
-    "scores (lanes 8, 17): each comparison's task scores recounted by this tree's differenceOf and matched to the report's by task; tallies are wins-losses-ties and the one-sided sign-flip p.",
+    "scores (lanes 3 and 9): each comparison's task scores recounted by this tree's differenceOf and matched to the report's by task; tallies are wins-losses-ties and the one-sided sign-flip p.",
     ...sessions.flatMap((session) => {
       const report = reports.get(session);
       return report === undefined || asRecord(report.data) === null

@@ -5,13 +5,14 @@
  *
  *   bun tools/wri/wri.ts reader aim --log <log>
  *
- * Lanes 11, 28 and 31 ask whether the tasks written after a promotion were written against the
+ * Lanes 17, 19 and 20 ask whether the tasks written after a promotion were written against the
  * reference in force, and a starter read pools them with the rest. Between 3 and 10 November 14 of
- * 18 lane-11 sessions joined each session's tasks to the comparisons' solves by hand, about 30 calls,
- * and the three best reports of 9 and 10 November each built the measure against the author's best
- * by writing session and harness in a scratch script, since validity read every solve valid there.
- * One esp32 report took the writer from `task.feasible.session`, which a later session's
- * `try_answer` on an earlier task also writes; the writer here is the proposal's (`proposalsOf`).
+ * 18 lane-20 sessions joined each session's tasks to the comparisons' solves by hand, about 30
+ * calls, and the three best reports of 9 and 10 November each built the measure against the
+ * author's best by writing session and harness in a scratch script, since validity read every solve
+ * valid there. One esp32 report took the writer from `task.feasible.session`, which a later
+ * session's `try_answer` on an earlier task also writes; the writer here is the proposal's
+ * (`proposalsOf`).
  *
  * A session's block gives its span against each promotion: the reference at its start and at its
  * end, since a continued conversation can span one, the last comparison reported before it, the

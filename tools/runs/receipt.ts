@@ -157,8 +157,8 @@ function shown(name: string, value: string | true): string {
 
 /**
  * The line `source` says of how a launch's flags and login differ from the launch before it, or the
- * first launch's flag names. Until 10 November it printed no flag, and 12 of 13 lane 26 sessions read
- * the receipts by hand for them, five dropping the env file's path with `jq` first.
+ * first launch's flag names. Until 10 November it printed no flag, and 12 of 13 lane 22 sessions
+ * read the receipts by hand for them, five dropping the env file's path with `jq` first.
  */
 function flagLines(launch: Receipt, before: Receipt | undefined): string[] {
   const now = flagsOf(launch);

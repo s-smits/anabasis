@@ -13,18 +13,18 @@
  * a wrapper (`bash -lc "..."`, `python3 -B path`, `timeout 30 prog`, a pipe's later stage) counts once,
  * under the program (`programsOf`, `programs.ts`), and a segment whose program the text does not name
  * (`$RUN x`, `..`) counts as not attributed instead of being dropped. Imports are not traced: a
- * library a script imports (`lib/*.js`) runs under the script's name and reads 0 here. Between 3 and 10 November 12 of 16 lane 13
- * sessions built this table by hand, and lane 12 sessions counted the solves whose command or output
- * reached a changed path; vet-12's finding that a version's change sat on a path no g-2 solve took
- * came from such a count.
+ * library a script imports (`lib/*.js`) runs under the script's name and reads 0 here. Between 3
+ * and 10 November 12 of 16 lane 15 sessions built this table by hand, and lane 15 sessions counted
+ * the solves whose command or output reached a changed path; vet-12's finding that a version's
+ * change sat on a path no g-2 solve took came from such a count.
  *
  * `--list` prints one row a matching call (its solve, side, harness, tool and whether it erred) and
- * never the call's text: lane 22 reads which calls named a shared temporary folder. `--sequences`
+ * never the call's text: lane 18 reads which calls named a shared temporary folder. `--sequences`
  * prints, for each family and harness, the test-side passes' distinct program sequences, the
- * commonest one's share and the passes' median seconds (lane 10's recipes).
+ * commonest one's share and the passes' median seconds (lane 7's recipes).
  *
  * The output holds what the log holds of a solver's own calls and stays on the exam side. It names
- * outcomes, so lane 27 reads it only after it has graded; lanes 4 and 15 only after their freeze.
+ * outcomes, so lane 14 reads it only after it has graded; lanes 6 and 16 only after their freeze.
  * It decides nothing: a count of calls says what ran, not whether it helped.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
@@ -230,7 +230,7 @@ function sequenceOf(calls: readonly { readonly ran: CallPrograms }[]): string {
   return runs.map(({ name, times }) => (times === 1 ? name : `${name}*${String(times)}`)).join(" > ");
 }
 
-/** Lane 10's recipes: the test-side passes of each family and harness, their distinct sequences of
+/** Lane 7's recipes: the test-side passes of each family and harness, their distinct sequences of
  *  programs, the commonest one's share and their median seconds. */
 export function sequenceRows(events: readonly LogEvent[], filters: Filters): string[] {
   const index = indexOf(events);

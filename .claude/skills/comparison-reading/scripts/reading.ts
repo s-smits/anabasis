@@ -11,7 +11,7 @@
  * with readsStepEitherWay, marking any disagreement with the recorded reading. Older reports may
  * lack the scores required by the current rule. --level uses the requested level for the test.
  *
- * Beside the test it gives what 15 of 20 lane-18 sessions between 3 and 10 November rebuilt by hand:
+ * Beside the test it gives what 15 of 20 lane-8 sessions between 3 and 10 November rebuilt by hand:
  * the p read for the reference (a starter comparison confirms on it), a step's wins to spare or a
  * reading's losses short of a step (`clearance.ts`, largest margins first), the wins a step on
  * equal margins needs beside the losses read (`clearing`), whether the A/A tied every task, and

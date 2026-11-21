@@ -1,6 +1,6 @@
 /**
  * The lanes of a whole-run investigation that read the clock: the solver's deadlines, limits and load
- * (lane 24), and where the campaign's hours, dollars and silences went (lane 25).
+ * (lane 22), and where the campaign's hours, dollars and silences went (lane 23).
  * Role hours are elapsed open spans and can overlap. Every recorded wait, a provider's reset
  * (its grace minute included), a network wait and a solve-queue wait, joins one union, and the hours
  * a promotion stand with and without it. Until 25 October only provider waits were read, then load
@@ -106,7 +106,7 @@ const limitOf = (solve: Solve) => (AT_A_LIMIT.has(solve.kind) ? solve.kind : sol
 
 /** A comparison's solves of the tasks it tallied. A task set aside, short or withdrawn stands in no
  *  pair, and read with them main0_5_1's g-1 had 5 of 20 misses at a limit and a 52.3% deadline share,
- *  where its tallied solves held 4 of 16 and 54.2% (lane 26, 15 October). */
+ *  where its tallied solves held 4 of 16 and 54.2% (lane 22, 15 October). */
 const tallied = ({ own, scoring }: Compared) => {
   const versions = new Set(strings(own.versions));
   return scoring.filter((solve) => versions.has(solve.version));
@@ -189,13 +189,13 @@ function servedTriggers(log: Index, results: ReturnType<typeof scoredOf>): Trigg
 const scoredOf = (log: Index) =>
   log.compared.map((each) => ({ ...each, scoring: tallied(each).filter(measured) }));
 
-/** Lane 24: the misses at a limit, and over the solves each comparison measured, not the non-results
+/** Lane 22: the misses at a limit, and over the solves each comparison measured, not the non-results
  *  it reran, the share of the deadline each harness used and the host's load when they started. */
 export function deadlineTriggers(log: Index): Trigger[] {
   const results = scoredOf(log);
   const deadlineShares = results.flatMap(({ session, own, scoring }) => {
     // The median share of its deadline a harness's solves used, or null for none under a deadline. v1 read
-    // this share as the measure that moves on every task set and leads a fail (lane 24).
+    // this share as the measure that moves on every task set and leads a fail (lane 22).
     const under = (harness: JsonValue | undefined) =>
       median(
         scoring.flatMap((solve) =>
@@ -425,7 +425,7 @@ function causeOf(log: Index, spans: readonly Span[], index: number, gap: number)
   return open ? `before ${log.events[index]?.kind ?? ""}` : BETWEEN_MOVES;
 }
 
-/** Lane 25: the longest silences, each by what ran through it, and a role that took most of the
+/** Lane 23: the longest silences, each by what ran through it, and a role that took most of the
  *  dollars. A silence is read against the campaign's own median solve: at a fixed twenty minutes it
  *  read nothing on buffer on 10 October, whose longest gap was 19.5 minutes, and gave recode's two
  *  longer ones as a count and the time of the first, with nothing of what ran. */
@@ -446,7 +446,8 @@ export function costTriggers(log: Index): Trigger[] {
     .toSorted((a, b) => b.gap - a.gap);
   const spans = spansOf(log.events);
   const named = gaps.slice(0, SILENCES_NAMED).map(
-    // The log's lines either side, from 1 as `sed -n` counts: 11 of 13 lane 25 sessions to 10 November found them again.
+    // The log's lines either side, from 1 as `sed -n` counts: 11 of 13 lane 23 sessions to 10
+    // November found them again.
     ({ index, gap }) =>
       `${(gap / MINUTE_MS).toFixed(1)} min ${causeOf(log, spans, index, gap)} (lines ${String(index)}-${String(index + 1)})`,
   );

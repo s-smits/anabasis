@@ -239,7 +239,7 @@ left and continue in order; the window never justifies skipping a step.
    the rest `unreached`.
 
 Steps 5 to 8 investigate, vet, plan and implement the stopped runs as equals, as in the iteration's
-steps 2 to 4, with the isolated lanes 4 and 15 of
+steps 2 to 4, with the isolated lane 6 of
 [whole-run-investigation](../whole-run-investigation/SKILL.md) where called for.
 
 9. **Consolidate** the stack by subject before it lands: review in groups, fix confirmed findings,
@@ -389,13 +389,13 @@ moments:
 
 - **Each pause from its second promotion on**, once the run rests there: the read starts without
   a question (operator, 17 November 2026: "automatic ablation") and waits neither for the
-  investigation nor for lane 27's audit, whose grade and weight join the row when the lane reports.
+  investigation nor for lane 14's audit, whose grade and weight join the row when the lane reports.
   A reference the audit then grades inferior is still scored, which is how the record shows whether
   the grade predicts the benchmark. A run read at two and kept on to three or four is read again
   at the pause it next rests at, on its then newest reference under a new label; its row is
   rewritten for that digest and keeps the earlier read's sums, since the gate finds a row by the
   run's name alone.
-- **Its stop at another trigger with one promotion.** The audit comes first: where lane 27 puts the
+- **Its stop at another trigger with one promotion.** The audit comes first: where lane 14 puts the
   reference's soundness at 2 or below (broken, fitted or churn) or reads it as bloat, the read is
   skipped, and otherwise its grade and weight go into the prediction file before any rollout.
 
@@ -434,8 +434,9 @@ the part of it the table cannot test.
 The benchmark set is 20 of JobBench's 65 tasks, in the professions nearest the query (the
 backlog's item 17). A read uses eight of them: three were taken from the pilot's eight on
 9 November 2026 with their stored scores in view, and five were added on 10 November by rule, with
-no score read. `score.ts` calls another set "the pilot's eight" and takes it where `--tasks` is
-missing, so every command names its tasks.
+no score read. `score.ts score` calls another set "the pilot's eight" and rolls it where `--tasks`
+is missing, so every rolling command names its tasks; `score.ts table` without `--tasks` reads the
+tasks its arms' records hold.
 
 | Part | Tasks | What it can read |
 | --- | --- | --- |
@@ -625,7 +626,7 @@ Read each milestone the hour it lands, with the next prediction on record. Room 
 | M3 first reading | first `comparison.reported` | `valid.informative.old`, untied and tied, `scored.detectable`, A/A, load | only on a `read` trigger |
 | M4 step | `reading: step` against the reference | tested margins, retained tally apart, A/A | none |
 | M5 promotion | `harness.promoted` | supporting reading, untied tasks, A/A, campaign risk; `wri.ts climb --log <log>,<peer>` | first promotion, after M6's first Examiner session |
-| M6 next epoch | first Examiner session and comparison after M5 | drafts held and refused, frontier and retained sizes | lane 22, when owed at M5 |
+| M6 next epoch | first Examiner session and comparison after M5 | drafts held and refused, frontier and retained sizes | lane 18, when owed at M5 |
 | M7 ending | `campaign.ended` | ending kind, closing report, every open prediction | full, where it promoted or an early ending leaves a question |
 
 For an ending other than improvement patience, report "reached N promotions; further improvement unresolved".
@@ -638,7 +639,7 @@ the fix.
 ## The walk: which link holds the next promotion
 
 Enter from the milestone (M1 at link 2; M2 or no room at 1 and 3; a retained loss at 7; a near miss
-at 5; a promotion at 8) and stop at the first link that fails. Lane 21 of
+at 5; a promotion at 8) and stop at the first link that fails. Lane 13 of
 [whole-run-investigation](../whole-run-investigation/SKILL.md) reads the chain; the walk acts on it.
 
 | # | Link | Point | Holds when | Fails as | Owner |

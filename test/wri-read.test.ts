@@ -168,7 +168,8 @@ describe("the whole-run investigation's reader", () => {
     const flips = triggers.find(({ name }) => name === "FLIPS")?.detail;
     expect(flips).toContain("b-1: 1 of 8 task and harness pairs");
     // The flip is the new harness's, and a pass beside the reference's late solve is the reference's:
-    // lane 20 reads each side's noise apart, and a count that put both under one side hid whose it was.
+    // lane 10 reads each side's noise apart, and a count that put both under one side hid whose it
+    // was.
     expect(flips).toContain("0 under the reference harness and 1 under the other");
     const sided = overview([
       ...events.slice(0, done),
@@ -360,9 +361,9 @@ function comparedFromAnotherParent() {
 describe("the reader of a round compared with another harness than its session started from", () => {
   const log = comparedFromAnotherParent();
 
-  // Until 11 October lane 30 opened on every live campaign's running Examiner session, and row F's
+  // Until 11 October lane 12 opened on every live campaign's running Examiner session, and row F's
   // moves left out the move being made, whose `campaign.move` is written when it ends.
-  it("names a session open at the log's end in row F, with what it did so far, and says it apart in lane 24", () => {
+  it("names a session open at the log's end in row F, with what it did so far, and says it apart in lane 22", () => {
     const live = [...log];
     const more = appendTo(live);
     more(EXAM_STARTED, { session: "x-10" });
@@ -402,7 +403,7 @@ describe("the reader of a round compared with another harness than its session s
     expect(thin(1, 3, 2)).toBe("1 of 4 decided tasks passed task admission");
   });
 
-  // buffer-main's g-1 had four solves in flight on 11 October, and lane 27 read them as killed.
+  // buffer-main's g-1 had four solves in flight on 11 October, and lane 14 read them as killed.
   it("reads a solve with no end as open while its comparison is, and as never finished once the campaign ended", () => {
     const live = [...log];
     const more = appendTo(live);
@@ -761,12 +762,12 @@ describe("the reader of the load a comparison's solves started under", () => {
     const { triggers } = overview(log);
     expect(triggers.filter(({ name }) => name === "WALL SHARE" || name === "HOST LOADED")).toEqual([
       {
-        lane: 24,
+        lane: 22,
         name: "WALL SHARE",
         detail: "g-1: median 50.0% under the reference harness, 50.0% under the new",
       },
       {
-        lane: 24,
+        lane: 22,
         name: "HOST LOADED",
         detail: "g-1: load 30.0 at the median and 30.0 at most when its solves started, on 12 cores",
       },
@@ -936,7 +937,7 @@ describe("the reader of comparisons the campaign command named apart from its Bu
     const quick = (read: readonly LogEvent[]) => detailOf(read, "WIN AT A SMALL WALL SHARE");
     expect(quick(onObjective)).toContain("b-1: 2 passed solves of tasks the new harness won");
     // A led session is still open when its comparisons report: until 2 November its quick wins were
-    // keyed on the harness it finished with, and seven led campaigns read none (WRI lane 19).
+    // keyed on the harness it finished with, and seven led campaigns read none (WRI lane 17).
     const open = onObjective.map(
       (event): LogEvent =>
         event.kind === BUILD_FINISHED

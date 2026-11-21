@@ -1,5 +1,5 @@
 /**
- * Where each leaf of a submitted answer first appears, one row a solve, for lane 15's frozen table:
+ * Where each leaf of a submitted answer first appears, one row a solve, for lane 16's frozen table:
  *
  *   bun tools/wri/provenance.ts --log <log> --wins g-3 [--leaves]
  *   bun tools/wri/provenance.ts --log <log> --solves <id>,<id> [--leaves]
@@ -13,9 +13,9 @@
  * its output, and the solver's turn text). The task's hidden values are a column of their own, on the
  * exam side. `--wins` reads the tasks a comparison's new harness won and the reference's solves of
  * them as the control; `--leaves` adds one line a leaf. It prints positions, sources and counts, never
- * a value, and reads no reading, score or other lane's file, so lane 15 stays isolated.
+ * a value, and reads no reading, score or other lane's file.
  *
- * 10 of 15 lane-15 sessions between 3 and 10 November wrote this search by hand (`trace.py` in six
+ * 10 of 15 lane-16 sessions between 3 and 10 November wrote this search by hand (`trace.py` in six
  * versions, `literal.py`, `writer.py`), at a median of 44 calls a session, and 6 of the 9 calls the
  * lane guard refused there were greps of the kept states this opens itself.
  */
@@ -140,7 +140,7 @@ const SOLVE_SEAT = "solve";
 const USAGE =
   "usage: bun tools/wri/provenance.ts --log <log> (--wins <comparison> | --solves <id,id>) [--leaves]";
 const LEGEND = [
-  "provenance (lane 15): where each leaf of a solve's judged answer first appears, verbatim. A number",
+  "provenance (lane 16): where each leaf of a solve's judged answer first appears, verbatim. A number",
   `matches at the significant digits shown (as written, or rounded down to ${String(MIN_PRECISION)}), a string exactly;`,
   '"nowhere" is not found verbatim at any precision tried, which says nothing of what computed it.',
   "first: the task's public input, else the solve's first call-args, call-output or turn-text in log",

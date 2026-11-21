@@ -12,8 +12,8 @@ const bash = (command: string) => refusalOf("Bash", { command });
 describe("the lane guard", () => {
   it("lets a lane write its own report, the synthesis and scratch, and nothing else", () => {
     expect(refusalOf("Write", { file_path: `${WRI}/lanes/07-report.md` })).toBeNull();
-    expect(refusalOf("Write", { file_path: `${WRI}/lanes/34a-report.md` })).toBeNull();
-    expect(refusalOf("Write", { file_path: `${WRI}/lanes/34-prompt.md` })).not.toBeNull();
+    expect(refusalOf("Write", { file_path: `${WRI}/lanes/14a-report.md` })).toBeNull();
+    expect(refusalOf("Write", { file_path: `${WRI}/lanes/14-prompt.md` })).not.toBeNull();
     expect(refusalOf("Edit", { file_path: `${WRI}/synthesis.md` })).toBeNull();
     expect(refusalOf("Write", { file_path: join(tmpdir(), "lane-07", "counts.txt") })).toBeNull();
     expect(
@@ -66,7 +66,7 @@ describe("the lane guard", () => {
       "S=/tmp/lane; mkdir -p $S/eng; cp /a/.ana/d2/run/exams/x/checks/evaluator.ts $S/eng/",
       "jq -r .data /a/data/runs/h/run/log.jsonl > /tmp/lane/out.txt 2>&1",
       String.raw`grep -n '\.env' src/meta/env.ts`,
-      `cd ${WRI}; sed -i '' 's/a/b/' lanes/34-report.md`,
+      `cd ${WRI}; sed -i '' 's/a/b/' lanes/14-report.md`,
     ]) {
       expect(bash(ok)).toBeNull();
     }
@@ -200,7 +200,7 @@ describe("the lane guard", () => {
       expect(bash(ok)).toBeNull();
     }
     for (const refused of [
-      `cd /a/.ana/d2/run/states; sed -i '' 's/a/b/' ${WRI}/lanes/34-report.md`,
+      `cd /a/.ana/d2/run/states; sed -i '' 's/a/b/' ${WRI}/lanes/14-report.md`,
       "cd /a/.ana/d2/r/states/h && python3 -B run.py",
       "cd /a/.ana/d2/r && ls",
       "tar -C /a/.ana/d2/r/states -xf /tmp/x.tar",

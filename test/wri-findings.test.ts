@@ -31,7 +31,7 @@ const FIXED = `${HEAD}| vet-1 | a | 12.1, 17 | narrow-step | \`src/kernel/compar
 const REPORTS = `# Reports
 
 - lane 9: ok, finding, 1 finding, at /x/lanes/09-report.md
-  - 9.1, observation confirmed, cause plausible, owner host: lane 30: ok, finding, 2 findings,
+  - 9.1, observation confirmed, cause plausible, owner host: lane 20: ok, finding, 2 findings,
 - lane 12: ok, finding, 2 findings, at /x/lanes/12-report.md
 - lane 14: ok, no finding, 0 findings, at /x/lanes/14-report.md
 - lane 17: ok, finding, 3 findings, at /x/lanes/17-report.md

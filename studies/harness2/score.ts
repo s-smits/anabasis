@@ -29,7 +29,8 @@
  * 12 November 2026 so did this; the operator's word that day), and a judgement's dollars are the
  * shim log's rows inside its window. One record a task lands in
  * `<out>/judged/<name>/`, and `table` prints the pilot's arms table from them: every arm over all
- * the tasks (the pilot's eight unless named) and over those that are not a profession's first.
+ * the tasks (unless named, those its records hold, since a sitting's eight are not the pilot's) and
+ * over those that are not a profession's first.
  * A record also names the files judge.py's reader cut at 200,000 characters before the judge read
  * them (`cut`: each file with its length, or null where that reader did not run), since a score on
  * a cut file partly reads how long the file ran. `table` marks such a cell `CUT <n>` and prints a
@@ -693,7 +694,7 @@ export async function score(values: Values): Promise<void> {
 }
 
 /** The pilot's arms table (`final.py`) from the records under `<out>/judged/`. */
-function table(out: string, tasks: readonly string[], shown: readonly string[] | undefined): void {
+function table(out: string, named: string | undefined, shown: readonly string[] | undefined): void {
   const root = join(out, "judged");
   // A name with no folder throws on its path, as the sister readers refuse one.
   const records = (shown ?? (existsSync(root) ? readdirSync(root) : [])).flatMap((arm) =>
@@ -703,6 +704,9 @@ function table(out: string, tasks: readonly string[], shown: readonly string[] |
     }),
   );
   const arms = [...new Set(records.map((record) => text(record.arm)))].toSorted();
+  // Unnamed, the tasks are those the records hold: until 20 November 2026 the pilot's eight, of
+  // which every sitting rolls six, so each arm read "6 of 8" over a fair five no sitting chose.
+  const tasks = tasksOf(named, [...new Set(records.map((record) => text(record.task)))].toSorted());
   const money = (value: number | null): string => (value === null ? "?" : value.toFixed(2));
   const width = Math.max(10, ...arms.map((arm) => arm.length));
   const cuts = (record: JsonObject | undefined): number =>
@@ -785,7 +789,7 @@ async function main(args: readonly string[]): Promise<void> {
     await score(values);
   } else if (verb === "table" && values.out !== undefined) {
     const shown = values.name?.split(",").map((name) => name.trim());
-    table(resolve(values.out), tasksOf(values.tasks, PILOT_TASKS), shown);
+    table(resolve(values.out), values.tasks, shown);
   } else if (verb === "tree" && values.out !== undefined && values.for !== undefined) {
     if (values.python !== undefined && !/^3\.\d+$/u.test(values.python)) {
       throw new Error("--python takes a minor, as 3.12");

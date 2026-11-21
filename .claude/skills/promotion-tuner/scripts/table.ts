@@ -7,7 +7,7 @@
  * `--runs <dir>` reads the campaigns under one folder (an archive such as `data/runs`, one host's
  * folder of it, or a folder of worktrees) instead of every campaign the registry reaches across the
  * hosts, so it needs no env file and runs under the lane guard, which refuses one: on 9 November a
- * lane-19 session could not set a run's starter against the previous release's for that reason. A
+ * lane-17 session could not set a run's starter against the previous release's for that reason. A
  * campaign two folders below `<dir>` is placed on the host its first folder names.
  *
  * The default view is `recent`: every run still going, whatever it has promoted, then the latest

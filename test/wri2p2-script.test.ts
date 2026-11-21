@@ -323,10 +323,10 @@ describe("the next step of an investigation", () => {
           () => ({ exitCode: 0, text: "rows" }),
         ).text,
       );
-      lone(4, "launch.json");
+      lone(6, "launch.json");
       ledger(PREDICTIONS_R, table(["P1"]));
       ledger(OUTCOMES_R, table(["P1"], "held"));
-      write("reports.md", "- lane 4: ok, finding, 1 finding, at x\n");
+      write("reports.md", "- lane 6: ok, finding, 1 finding, at x\n");
       write(VETTING_FILE, older);
       return { write, step };
     };
@@ -337,8 +337,8 @@ describe("the next step of an investigation", () => {
     const head =
       "| id | finding | lanes | standing | owner | importance | verdict | fate |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n";
     write(VETTING_FILE, `${head}| vet-1 | P1 held | primary | new | o | I2 | confirmed | repair |\n`);
-    expect(step()[0]).toContain("no row names the lane findings 4.1");
-    write(VETTING_FILE, `${head}| vet-1 | P1 held | 4.1 | new | o | I2 | confirmed | repair |\n`);
+    expect(step()[0]).toContain("no row names the lane findings 6.1");
+    write(VETTING_FILE, `${head}| vet-1 | P1 held | 6.1 | new | o | I2 | confirmed | repair |\n`);
     expect(step()[0]).toStartWith("step: across");
   });
 
@@ -346,7 +346,7 @@ describe("the next step of an investigation", () => {
     // Until 17 November a table not headed `#`, or a verdict in bold, left the plan owing no finding.
     for (const first of ["#", "id", "vet", "row"]) {
       const { write, ledger, step, lone } = folder(`answers-${first === "#" ? "hash" : first}`, "r", true);
-      lone(4, "launch.json");
+      lone(6, "launch.json");
       ledger(PREDICTIONS_R, table(["P1"]));
       ledger(OUTCOMES_R, table(["P1"], "held"));
       write(
@@ -383,12 +383,12 @@ describe("the next step of an investigation", () => {
 
   it("passes the isolated gate on a lone lane's report in this folder only, never on one of that name elsewhere", () => {
     const { write, step } = folder("lone-elsewhere", "r", true);
-    const elsewhere = join(base, "lone-elsewhere", "other", "lanes", "04-report.md");
+    const elsewhere = join(base, "lone-elsewhere", "other", "lanes", "06-report.md");
     mkdirSync(dirname(elsewhere), { recursive: true });
     writeFileSync(elsewhere, "# Lane\n");
     write(
-      "launch-04.json",
-      JSON.stringify({ sessions: [{ name: "lane_4", task: "Read.", ownedPaths: [elsewhere] }] }),
+      "launch-06.json",
+      JSON.stringify({ sessions: [{ name: "lane_6", task: "Read.", ownedPaths: [elsewhere] }] }),
     );
     expect(step()[0]).toStartWith("step: isolated");
   });
@@ -396,7 +396,7 @@ describe("the next step of an investigation", () => {
   it("owes a stopped jobstat run its row in outside-reads.md, scored, skipped or owed, and no other domain one", () => {
     const run = "jobstat-fresh-opus-forkedPR600";
     const { ledger, write, step, lone } = folder("outside", run, true);
-    lone(4, "launch.json");
+    lone(6, "launch.json");
     ledger(`predictions-${run}.md`, table(["P1"]));
     ledger(`outcomes-${run}.md`, table(["P1"], "held"));
     expect(step()[0]).toStartWith(`step: outside · ${run} has no row in outside-reads.md`);
@@ -413,7 +413,7 @@ describe("the next step of an investigation", () => {
     // The same folder for a run of another domain never meets the gate.
     const buffer = "buffer-fresh-opus-forkedPR600";
     const other = folder("outside-other", buffer, true);
-    other.lone(4, "launch.json");
+    other.lone(6, "launch.json");
     other.ledger(`predictions-${buffer}.md`, table(["P1"]));
     other.ledger(`outcomes-${buffer}.md`, table(["P1"], "held"));
     expect(other.step()[0]).toStartWith("step: vet");
@@ -422,11 +422,11 @@ describe("the next step of an investigation", () => {
   it("walks an iteration through its isolated lanes, each run's ledgers, the read across and a fork's carry", () => {
     const { root, dir, cycle, write, ledger, step, lone } = folder("iteration", "r", true);
     expect(step()[0]).toStartWith("step: isolated");
-    // A manifest counts by the lanes its sessions own, never by its name: one named for lane 4 that
-    // holds lane 3 passes nothing, and lane 4 in the first manifest passes the gate.
-    lone(3, "launch-04.json");
+    // A manifest counts by the lanes its sessions own, never by its name: one named for lane 6 that
+    // holds lane 5 passes nothing, and lane 6 in the first manifest passes the gate.
+    lone(5, "launch-06.json");
     expect(step()[0]).toStartWith("step: isolated");
-    lone(4, "launch.json");
+    lone(6, "launch.json");
     expect(step()[0]).toStartWith("step: predictions · r has no predictions-r.md");
     ledger(PREDICTIONS_R, "# Predictions\n\nprose, not a table\n");
     expect(step()[0]).toStartWith("step: predictions · ");
@@ -510,7 +510,7 @@ describe("the next step of an investigation", () => {
   it("keeps a prediction of the group outside pending until its run's outside read is scored or skipped, whatever the log does", () => {
     const run = "jobstat-fresh-opus-forkedPR601";
     const { root, dir, ledger, step, lone } = folder("outside-row", run, true);
-    lone(4);
+    lone(6);
     const rule = "| --- | --- | --- |\n";
     ledger(
       `predictions-${run}.md`,
@@ -556,7 +556,7 @@ describe("the next step of an investigation", () => {
 
   it("owes each row a run carries one outcome of its own, under its carried name, and shows it in the views", () => {
     const { root, dir, write, ledger, step, lone, section } = folder("carried-outcomes", "r", true);
-    lone(4);
+    lone(6);
     // The prose of the section, a time and a bare id among it, owes nothing.
     ledger(
       PREDICTIONS_R,
@@ -574,11 +574,14 @@ describe("the next step of an investigation", () => {
     expect(section("# Dropped")).toEqual(["- r: q-forkedPR601:E3 (falsified)"]);
     ledger("predictions-s.md", `${table(["S1"])}\n## Carried\n\n- q-forkedPR601:E3\n`);
     expect(section("# Dropped")).toEqual(["- none"]);
+    // An id with a hyphen is carried whole, each its own row, and a hyphen after one ends it.
+    ledger(PREDICTIONS_R, `${table(["P1"])}\n## Carried\n\n- q-forkedPR601:TR-1, q-forkedPR601:TR-2-, too\n`);
+    expect(step()[0]).toContain("resolve q-forkedPR601:TR-1, q-forkedPR601:TR-2 from the log");
   });
 
   it("reopens a row left unreached or pending once the log grows past its count, and keeps it while the log stands", () => {
     const { root, ledger, lone, step } = folder("stale", "r", true);
-    lone(4);
+    lone(6);
     ledger(PREDICTIONS_R, table(["P1", "P2", "P3"]));
     const resolved = `${table(["P1"], "held")}| P2 | unreached |\n| P3 | pending |\n`;
     const first = (events: number | null) => step([], events)[0] ?? "";
@@ -609,7 +612,7 @@ describe("the next step of an investigation", () => {
 
   it("refuses to choose between two copies of one ledger", () => {
     const { ledger, write, step, lone } = folder("twice", "r", true);
-    lone(15);
+    lone(6);
     ledger(PREDICTIONS_R, table(["P1"]));
     write(PREDICTIONS_R, table(["P1"]));
     expect(step()[0]).toContain("keep one");
@@ -626,7 +629,7 @@ describe("the next step of an investigation", () => {
       "investigation.json",
       JSON.stringify({ logs: ["/x/.ana/d2/a/log.jsonl", "/x/.ana/d2/b/log.jsonl"] }),
     );
-    lone(4);
+    lone(6);
     for (const run of ["a", "b"]) {
       ledger(`predictions-${run}.md`, table(["P1", `Q${run}`]));
       ledger(`outcomes-${run}.md`, table(["P1", `Q${run}`], "held"));
@@ -754,7 +757,7 @@ describe("the next step of an investigation", () => {
 
   it("passes every gate of the forks on one reason under `forks`, but not the plan's own predictions", () => {
     const { dir, write, ledger, step, lone } = folder("forks-deviated", "p", true);
-    lone(4);
+    lone(6);
     ledger("predictions-p.md", table(["P1"]));
     ledger("outcomes-p.md", table(["P1"], "falsified"));
     write(VETTING_FILE, "| # | finding |\n| --- | --- |\n| 1 | P1 |\n");
@@ -786,7 +789,7 @@ describe("the next step of an investigation", () => {
     expect(forkOf("esp32-fresh-opus-forkedPR60-host")).toBe(60);
     expect(forkOf("esp32-fresh-opus")).toBeNull();
     const { write, ledger, step, lone } = folder("parent", "p", true);
-    lone(4);
+    lone(6);
     ledger("predictions-p.md", table(["P1"]));
     ledger("outcomes-p.md", table(["P1"], "falsified"));
     // A run that kept its opposed trade-offs in a still-missing file before 8 November has said them.

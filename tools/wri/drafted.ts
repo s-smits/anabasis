@@ -1,5 +1,5 @@
 /**
- * The drafted exam's structure and how it came to stand, for lane 6 (the drafted exam against its
+ * The drafted exam's structure and how it came to stand, for lane 2 (the drafted exam against its
  * prompt):
  *
  *   bun tools/wri/drafted.ts <log> [--siblings]
@@ -8,7 +8,7 @@
  * how the host read it, one for the standing draft (`draftOf`, `src/examiner/draft.ts`) with the
  * shape faults `draftFaults` finds in it, one for its checks (those their author decides,
  * `unadmitted`, and those `contract.frozen` admitted), and one for the drafting calls that failed.
- * Between 3 and 10 November 13 of 17 lane-6 sessions read `exam.drafted` with jq for these fields,
+ * Between 3 and 10 November 13 of 17 lane-2 sessions read `exam.drafted` with jq for these fields,
  * 12 read `draft.started` and `draft.finished` beside it, and 7 read `draft.call` for a failed
  * import or write.
  *

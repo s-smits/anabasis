@@ -6,8 +6,8 @@
  *
  *   bun tools/wri/wri.ts reader checks --log <log | campaign folder | name>
  *
- * Lanes 1, 3 and 5 read it first. Between 3 and 10 November all 18 lane 1 sessions found the exam's
- * files by hand and set each `checker.read` row beside its `brief.json` entry, and 5 of 8 lane 3
+ * Lanes 1 and 5 read it first. Between 3 and 10 November all 18 lane 1 sessions found the exam's
+ * files by hand and set each `checker.read` row beside its `brief.json` entry, and 5 of 8 lane 5
  * sessions built the same table, about 130 calls between them. `REFUSALS BY CHECK` gave one count a
  * check and no split by side, by who asked or by version.
  *

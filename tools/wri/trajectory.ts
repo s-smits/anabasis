@@ -21,9 +21,9 @@
  *   installed interpreter, package or binary is left out (`ownPrograms`): a harness's first 3,526
  *   files of 6 November were 6 programs and one Python.
  * - **Exam load**: each comparison's clock, tally, and each side's turns and valid share.
- * - **Task grade**, only with `--grades`: the median of lane 27's task grades in each comparison, from
- *   `task<TAB>run<TAB>id<TAB>grade` rows in any report. It changes no reading and no seat is told it
- *   (`AGENTS.md`, rules 1 and 3).
+ * - **Task grade**, only with `--grades`: the median of lane 14's task grades in each comparison,
+ *   from `task<TAB>run<TAB>id<TAB>grade` rows in any report. It changes no reading and no seat is
+ *   told it (`AGENTS.md`, rules 1 and 3).
  *
  * A first version read quality off the grades, the mean of a version's soundness and the highest
  * grade it held, by the hour and up to horizons. A second reading of sixteen runs on 6 November found
@@ -399,7 +399,7 @@ export function diffOf(
 }
 
 /** How the campaign came to hold `digest`, and the parent the log records for it: the one reader of
- *  a version's parent, which `harness-versions.ts` and the lane 27 packets both call (moved from
+ *  a version's parent, which `harness-versions.ts` and the lane 14 packets both call (moved from
  *  `harness-versions.ts` on 10 November, when the packets read `harness.version` alone and gave a led
  *  session's checkpoints the starter for a parent). */
 export function madeOf(events: readonly LogEvent[], digest: string, starter: string) {
@@ -431,7 +431,7 @@ export function madeOf(events: readonly LogEvent[], digest: string, starter: str
     return { made: `checkpoint of session ${unrecorded(session)} from ${parent.slice(0, 8)}`, parent };
   }
   // A led session practises states it never freezes: until 2 November each read as made by no
-  // record, 28 of them in seven campaigns (lane 15), though the log's practice solves name each.
+  // record, 28 of them in seven campaigns (lane 16), though the log's practice solves name each.
   if (digest === starter) {
     return { made: "the Starter Built Harness as this checkout writes it", parent: null };
   }
@@ -455,7 +455,7 @@ export function weightOf(state: string): Weight | null {
   return { guide: nonblank(text(`${AGENT_DIR}${GUIDE_FILE}`)), files: paths.length, lines };
 }
 
-/** The task grades of a lane 27 report: its `task` rows, anything else passed over. */
+/** The task grades of a lane 14 report: its `task` rows, anything else passed over. */
 export function gradesIn(text: string): Grades {
   const tasks = new Map<string, number>();
   for (const line of text.split("\n")) {

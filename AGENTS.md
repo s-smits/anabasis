@@ -373,8 +373,9 @@ handover (`zip-run`, `oracle-handover`). `bun run runs` lists the run CLI's verb
    main worktree or one holding `ana-followed` (`treeFault`).
 2. **Prove the path first without a model** (`--dry-run`, `runs replay`, `runs rehearse`).
 3. **Record one prediction, settled by a count that can fall either way, before the first solve.**
-4. **One or two rounds at a time on one host**, since load shifts deadlines; before placing a run,
-   read `bun run runs loadwatch --once`, whose last line orders the machines least loaded first.
+4. **One or two rounds at a time on one host**, since load shifts deadlines: `runs fresh` without
+   `--host` places a run where the login runs least, then on the lowest one-minute load a core,
+   halved on a machine with no live run (`leastOccupied`); `runs loadwatch -s` shows the loads.
 5. **Never open, print or copy the file passed as `--env-file`.**
 6. **Do not stop a run to fix it**; the fix goes on the stack and reaches the next fresh runs.
 7. **Read the log's events and the report before any agent's prose**, your own earlier account too.
@@ -414,8 +415,9 @@ idle session only on a line worth reading. A timer is for a judgement no event a
 
 Use Bun 1.4.4 and no Node, npm or npx. Run owning tests with `bun run test -- <paths>` while editing
 and `bun run gate`, the CI gate, once at the change's final top, at most one full suite per host,
-away from a live comparison where another host is free. Keep hooks enabled. GitHub Actions runs only
-`ci.yml`, so prefer local checks (`local-checks`). A check counts once it ran over the whole change
+away from a live comparison where another host is free; where hosts take checks, each check goes to
+the free slot with the lowest one-minute load a core (`local-checks`). Keep hooks enabled. GitHub
+Actions runs only `ci.yml`, so prefer local checks. A check counts once it ran over the whole change
 and its exit code was read, which a pipe hides; a failure that passes alone is a lead to rerun under
 load, not yet noise. Report wall-test failures from unavailable user namespaces as failures.
 
@@ -444,12 +446,17 @@ confirmed findings go on the stack before `--sanitize` runs again.
 
 **Commands that run the first time.** A shell command runs only where its effect can be read before
 it runs, so write it plainly, and where a guard refuses one, write the form it names, never a
-variant that slips past. Write a file with the file-editing tools instead of `>` or
-`cat > <file> <<EOF`, keeping `>` for a new scratch file under the temporary directory at a literal
-path. Put a script longer than a line in a file and run it (`python3 -I <file>`, `bun <file>`)
-instead of piping text to an interpreter; a short heredoc quotes its delimiter (`<<'EOF'`) and holds
-no `$(...)`, backtick or `${...}`. Quote every expansion and glob, and give `mv` and `git -C`
-literal paths. Read an older file with `git show <ref>:<path>` instead of
+variant that slips past; the command inside `ssh <host> '...'` or `sh -c` is read the same way.
+Write a file with the file-editing tools instead of `>` or `cat > <file> <<EOF`, keeping `>` for a
+new file in the session's scratch or temporary folder, named by a literal path or by a variable
+assigned one literal path once in the same command (`S=<path>; ... > "$S/out"`). A guard refuses a
+`>` target ending in a loop's variable (`> "$S/out-$n"`) or taken from `$(...)`, and any file under
+the home folder outside the scratch folder: write those with the editing tools or print the output.
+Put a script longer than a line in a file and run it (`python3 -I <file>`, `bun <file>`) instead of
+feeding text to an interpreter (`python3 - <<'EOF'`, `python3 -c "$(...)"`, `... | python3`), since
+code, TypeScript above all, holds the `${...}`, `$(...)` and backticks a guard cannot parse; a short
+heredoc of data quotes its delimiter (`<<'EOF'`). Quote every expansion and glob, and give `mv` and
+`git -C` literal paths. Read an older file with `git show <ref>:<path>` instead of
 `git checkout <ref> -- <path>`, `git restore` or `git reset --hard`; deleting branches is the
 operator's. Move what is unwanted to the Trash by explicit paths instead of `rm -r`, and leave shell
 profiles, ssh configuration and env files alone.

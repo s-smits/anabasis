@@ -223,7 +223,7 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
     const within = (at: number) => at >= from && (to === null || at < to);
     const tasks = byEpoch[nth] ?? [];
     // A led session spans epochs and finishes in none, so until 2 November counting the sessions
-    // that finished read 0 in every epoch of a led campaign (WRI lane 31).
+    // that finished read 0 in every epoch of a led campaign (WRI lane 19).
     const built = events.filter(({ kind }, at) => within(at) && kind.startsWith("build."));
     // An old ladder's readings are no comparison of the epoch's (`lastReports`).
     const comparisons = reports

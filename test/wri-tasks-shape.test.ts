@@ -1,5 +1,5 @@
 // The three blind views of the tasks: one line a task of its public input's structure, one task's
-// input whole up to `VALUE_BYTES`, and the skeleton of lane 27's grade rows. None may print an
+// input whole up to `VALUE_BYTES`, and the skeleton of lane 14's grade rows. None may print an
 // outcome, a tally, a reading or a hidden value.
 import { afterAll, describe, expect, it } from "bun:test";
 import { append } from "../src/kernel/log.ts";

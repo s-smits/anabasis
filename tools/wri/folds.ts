@@ -7,10 +7,10 @@
  * each comparison with the solves it could count, and the last verdict and ruling of each solve.
  * A solve reached its turn bound where its end records as many turns as its start allowed.
  * `TRIGGERS` names only the triggers a live reader can print and the lane each starts, and
- * `fired` makes one. Lanes 1 to 4 read the exam's instrument, which is the pack author's, and
- * lanes 7 to 11 the tasks, which are the Examiner's and the pack's; both sit here, below the
- * lanes of the build side and the host, which `read.ts` keeps with the rows and the overview, and
- * the lanes that read the clock, which are `time.ts`.
+ * `fired` makes one. Lanes 1 and 4 to 6 read the exam's instrument, which is the pack author's, and
+ * lanes 3, 7, 8, 20 and 21 the tasks, which are the Examiner's and the pack's; both sit here, below
+ * the lanes of the build side and the host, which `read.ts` keeps with the rows and the overview,
+ * and the lanes that read the clock, which are `time.ts`.
  *
  * Split from `read.ts` on 10 October, when that file stood at 1,227 nonblank lines against the
  * size policy's ceiling of 800 (`tools/loc/source-policy.ts`, `7f0add79:docs/plan.md` row F34). The lanes
@@ -172,72 +172,72 @@ export const TRIGGERS = {
   "PASSES UNREAD": 1,
   "REFUSALS BY CHECK": 1,
   "VERIFIER TOOLS MOVED": 1,
-  "TOOL MISSING": 24,
+  "TOOL MISSING": 22,
   "NO CHECKER READING": 1,
   "CHECKER READ WITH FAULTS": 1,
   "CONTROL COVERAGE": 1,
-  "REFUSED UNREAD": 3,
-  "CHECK DEFECT RULED": 3,
-  "RULED UNCLEAR": 3,
-  "FAILS ON ONE CHECK": 4,
-  "DEFECT RULED BESIDE PASSES": 4,
+  "REFUSED UNREAD": 5,
+  "CHECK DEFECT RULED": 5,
+  "RULED UNCLEAR": 5,
+  "FAILS ON ONE CHECK": 6,
+  "DEFECT RULED BESIDE PASSES": 6,
   "CHECKER NOT FROZEN": 1,
   "FROZEN DESPITE FAULTS": 1,
   "READ AT ANOTHER VERSION": 1,
   "TASKS CARRIED": 1,
-  "SUPPLY THIN": 7,
-  "GATE REFUSED": 7,
-  "SCORED AFTER RELEASE": 7,
-  "NO VALID ANSWER": 9,
-  "AWAITING A LABEL": 9,
-  "TIES BETWEEN VALID ANSWERS": 8,
-  "TIED TASKS": 9,
-  "PASSES AT A SMALL WALL SHARE": 10,
-  "OUTCOMES BY SESSION": 11,
-  "HARNESS CHANGED": 12,
-  "BROKEN AT END": 12,
-  "MEASURED AN EARLIER STATE": 12,
-  "NEVER CHECKED": 13,
-  "TOOLS CALLED": 13,
-  "TOOL CALLS ERRED": 13,
-  "TOOLS EDITED": 12,
-  "NO PRACTICE": 14,
-  "FINAL BYTES NEVER PRACTISED": 14,
-  "SESSION ENDED": 14,
-  "PRACTICE FAILS": 14,
-  "PRACTISED TASK MEASURED": 12,
-  "WIN AT A SMALL WALL SHARE": 15,
+  "SUPPLY THIN": 21,
+  "GATE REFUSED": 21,
+  "SCORED AFTER RELEASE": 21,
+  "NO VALID ANSWER": 8,
+  "AWAITING A LABEL": 8,
+  "TIES BETWEEN VALID ANSWERS": 3,
+  "TIED TASKS": 8,
+  "PASSES AT A SMALL WALL SHARE": 7,
+  "OUTCOMES BY SESSION": 20,
+  "HARNESS CHANGED": 15,
+  "BROKEN AT END": 15,
+  "MEASURED AN EARLIER STATE": 15,
+  "NEVER CHECKED": 15,
+  "TOOLS CALLED": 15,
+  "TOOL CALLS ERRED": 15,
+  "TOOLS EDITED": 15,
+  "NO PRACTICE": 13,
+  "FINAL BYTES NEVER PRACTISED": 13,
+  "SESSION ENDED": 13,
+  "PRACTICE FAILS": 13,
+  "PRACTISED TASK MEASURED": 15,
+  "WIN AT A SMALL WALL SHARE": 16,
   WINS: 16,
-  "ANSWER FROM A PROGRAM": 15,
+  "ANSWER FROM A PROGRAM": 16,
   "SCORED SET MOVED": 5,
-  "NOTHING SCORED": 18,
-  "CUT BY ITS CAP": 18,
-  "SET SHORT": 18,
-  "VALID BY HARNESS": 19,
-  "PROMOTION UNCONFIRMED": 19,
-  "CHAIN AGAINST THE STARTER": 28,
-  "MARGINS INSIDE THE NOISE": 29,
-  "STEP CARRIERS": 17,
-  "FLIPS": 20,
-  "REFERENCE AGAINST ITSELF": 20,
-  "HOST CODE MOVED": 26,
-  "STARTS OUT OF TURN": 24,
-  "SERVED ANOTHER MODEL": 24,
-  "CHAIN": 21,
-  "NO TASK HELD OUT": 21,
-  "WALL SHARE": 24,
-  "HOST LOADED": 24,
-  "LOAD MOVED": 24,
-  "MISSES AT A LIMIT": 24,
-  "NON-RESULTS": 24,
-  "SOLVE NEVER FINISHED": 24,
-  "EXAMINER NEVER FINISHED": 24,
-  "MISSES WITHOUT A VERDICT": 24,
-  "SESSION CRASHED": 24,
-  "LONG SILENCES": 25,
-  "SPEND LED BY A ROLE": 25,
-  "FIRST COMPARISON HELD OFF": 25,
-  "REPLAY MOVED THE VERDICT": 3,
+  "NOTHING SCORED": 8,
+  "CUT BY ITS CAP": 8,
+  "SET SHORT": 8,
+  "VALID BY HARNESS": 17,
+  "PROMOTION UNCONFIRMED": 17,
+  "CHAIN AGAINST THE STARTER": 17,
+  "MARGINS INSIDE THE NOISE": 11,
+  "STEP CARRIERS": 9,
+  "FLIPS": 10,
+  "REFERENCE AGAINST ITSELF": 10,
+  "HOST CODE MOVED": 22,
+  "STARTS OUT OF TURN": 22,
+  "SERVED ANOTHER MODEL": 22,
+  "CHAIN": 13,
+  "NO TASK HELD OUT": 13,
+  "WALL SHARE": 22,
+  "HOST LOADED": 22,
+  "LOAD MOVED": 22,
+  "MISSES AT A LIMIT": 22,
+  "NON-RESULTS": 22,
+  "SOLVE NEVER FINISHED": 22,
+  "EXAMINER NEVER FINISHED": 22,
+  "MISSES WITHOUT A VERDICT": 22,
+  "SESSION CRASHED": 22,
+  "LONG SILENCES": 23,
+  "SPEND LED BY A ROLE": 23,
+  "FIRST COMPARISON HELD OFF": 23,
+  "REPLAY MOVED THE VERDICT": 5,
   "SET ASIDE AND UNSETTLED": 5,
   "READING MOVES WITH THE SET-ASIDE": 5,
   "SET ASIDE BY SIDE": 5,
@@ -245,24 +245,24 @@ export const TRIGGERS = {
   "REVIEW FAULTS": 5,
   "EARNED WITHOUT A PROBE": 5,
   "RULINGS REFUSED": 5,
-  "PROMOTED": 22,
-  "STARTER BARE": 22,
-  "AFTER THE PROMOTION": 22,
-  "SHARED TEMPORARY FOLDER": 22,
-  "ENDED AND WENT ON": 23,
-  "OPERATOR WORDS": 23,
-  "BUILDER COMPACTED": 25,
-  "EXAM DRAFTED": 6,
-  "LAUNCHES": 26,
-  "NO LAUNCH RECEIPT": 26,
-  "LOG OUT OF ORDER": 26,
-  "SAFEGUARD-9 PROMOTION BEYOND VALIDITY": 8,
+  "PROMOTED": 18,
+  "STARTER BARE": 18,
+  "AFTER THE PROMOTION": 18,
+  "SHARED TEMPORARY FOLDER": 18,
+  "ENDED AND WENT ON": 13,
+  "OPERATOR WORDS": 13,
+  "BUILDER COMPACTED": 23,
+  "EXAM DRAFTED": 2,
+  "LAUNCHES": 22,
+  "NO LAUNCH RECEIPT": 22,
+  "LOG OUT OF ORDER": 22,
+  "SAFEGUARD-9 PROMOTION BEYOND VALIDITY": 3,
 } as const;
 
 export const text = (value: JsonValue | undefined): string => (isString(value) ? value : "");
 export const count = (value: JsonValue | undefined): number => (isNumber(value) ? value : 0);
 /** A test's tally as its step is read: on its scores without the bill where the report holds them
- *  (since 26 October), else as tallied. On 1 November lane 11 found the ties trigger silent on g-3,
+ *  (since 26 October), else as tallied. On 1 November lane 20 found the ties trigger silent on g-3,
  *  9 of 18 tied with the bill and 14 of 18 without it. */
 export function tallyOf(tested: JsonValue | undefined) {
   const record = asRecord(tested);
@@ -543,7 +543,7 @@ export function practiceOf(log: Index, build: Build): Solve[] {
   );
 }
 
-/** Lanes 1 to 5: the exam's instrument, which is the pack author's. */
+/** Lanes 1 and 4 to 6: the exam's instrument, which is the pack author's. */
 export function instrumentTriggers(log: Index): Trigger[] {
   const reading = log.of("checker.read").at(-1);
   const frozen = log.of("contract.frozen").at(-1);
@@ -558,7 +558,8 @@ export function instrumentTriggers(log: Index): Trigger[] {
   const faults = strings(reading?.faults);
   const lost = faults.filter((fault) => fault.includes("not on the verifier's tool path")).length;
   // The objective measures valid answers and refuses none, so the two counts of refusals leave it
-  // out: buffer-r3's lane 3 on 20 October read its row of zeros as a check that missed its control answers.
+  // out: buffer-r3's lane 5 on 20 October read its row of zeros as a check that missed its control
+  // answers.
   const checks = rows.filter((row) => row.id !== OBJECTIVE.id);
   const uncaught = checks.filter((row) => count(row.named) === 0 || count(row.caught) < count(row.named));
   const refused = refusals(log);
@@ -639,8 +640,8 @@ export function instrumentTriggers(log: Index): Trigger[] {
 }
 
 /** The tallies of each comparison that scored a task, as the task lanes read them: the ties and the
- *  spread of the budget (lane 8), the ties (lane 9), and each harness by itself
- *  (`VALID BY HARNESS`, lane 19). A report written before 2026-10-11 also holds the same test
+ *  spread of the budget (lane 3), the ties (lane 8), and each harness by itself
+ *  (`VALID BY HARNESS`, lane 17). A report written before 2026-10-11 also holds the same test
  *  read at shorter budgets (`budgets`), which no trigger reads: the reading was of a solver told
  *  the longer budget (`7f0add79:docs/simplify.md`, A2). */
 function tallyTriggers(compared: readonly Compared[]): Trigger[] {
@@ -697,7 +698,7 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
   ];
 }
 
-/** Lanes 9 to 14: the tasks, which are the Examiner's and the pack's. */
+/** Lanes 7, 8, 13, 15 and 20: the tasks, which are the Examiner's and the pack's. */
 export function taskTriggers(log: Index): Trigger[] {
   const proposed = log.of("task.proposed").filter((data) => isString(data.session));
   const written = new Set(proposed.map((data) => text(data.version)));

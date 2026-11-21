@@ -24,11 +24,11 @@ edit no source.
 
 Read each report marked `ok`, including the `## Checked` section behind each `no finding`; an empty
 one leaves its lane unsubstantiated, since the collector checks shape only. List each `omitted` lane
-with its reason, those whose trigger fired first. Name each `missing` or `invalid` report as a gap and
-never fill it from memory. Under each lane the list gives every finding its id and the lane's own
-mark on its observation and its cause. A report is a lead: run the command a confirmed observation
-ends in before you carry its count, and carry a cause the lane left plausible or unmarked as
-plausible, with what would settle it, unless you read the owner's line yourself.
+with its reason, those whose trigger fired first. Name each `missing` or `invalid` report as a gap
+and never fill it from memory. Under each lane the list gives every finding its id and the lane's
+own mark on its observation and its cause. A report is a lead: run the command a confirmed
+observation ends in before you carry its count, and carry a cause the lane left plausible or
+unmarked as plausible, with what would settle it, unless you read the owner's line yourself.
 
 {reports}
 
@@ -42,13 +42,13 @@ No lane was shown this list.
 ## What the note owes, in this order
 
 1. **Whether the reading may be believed.** One row per `comparison.reported` of each campaign, with
-   four links, each `holds`, `does not hold` or `undeterminable` with its event kind and count:
-   (a) the exam measured: the checker was frozen and read, and the refusals in the tally read sound
-   (lanes 1 to 4); (b) the tasks bracketed: the scored set was held out and fixed before the first
-   solve, chosen by no result of that comparison (lanes 5 and 7 to 11); (c) the pair differed in the
-   harness alone, and the harness could not know the exam (lanes 12, 16 and 24); (d) the reading
-   follows from the pairs at their number (lanes 18 to 20). Then one sentence a row: believed as
-   written, believed with a named limit, or not believed.
+   four links, each `holds`, `does not hold` or `undeterminable` with its event kind and count: (a)
+   the exam measured: the checker was frozen and read, and the refusals in the tally read sound
+   (lanes 1 and 4 to 6); (b) the tasks bracketed: the scored set was held out and fixed before the
+   first solve, chosen by no result of that comparison (lanes 3, 5, 7, 8, 20 and 21); (c) the pair
+   differed in the harness alone, and the harness could not know the exam (lanes 15, 16 and 22); (d)
+   the reading follows from the pairs at their number (lanes 8, 10 and 17). Then one sentence a row:
+   believed as written, believed with a named limit, or not believed.
 2. **The binding constraint.** The one mechanism that most limits the next round, and why it
    outranks the rest.
 3. **One merged findings table:** `finding | lanes | standing | campaigns | owner | evidence |

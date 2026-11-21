@@ -228,7 +228,8 @@ describe("what starter-reads prints of a read's make-up", () => {
     expect(out).toContain("with every one tied, the other tasks alone confirm");
     expect(out).toMatch(/written after, by x-1: 2-0-0; by majority the reference/);
     expect(out).toMatch(/written after, by x-2: 0-1-1; by majority the starter/);
-    // The slices are one conversation's batches, so no p across them is printed (lane 31's question).
+    // The slices are one conversation's batches, so no p across them is printed (lane 19's
+    // question).
     expect(out).not.toMatch(/chi-square|\bp 0\.\d/);
   });
 

@@ -33,6 +33,7 @@ export const RUNNER_SOURCE = [
   "tools/runtime/router",
   "tools/runs/host-config.ts",
   "tools/runs/host-command.ts",
+  "tools/runs/load.ts",
   "src/meta",
 ];
 

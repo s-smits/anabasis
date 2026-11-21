@@ -40,7 +40,7 @@ import { isString, type JsonValue } from "../meta/json-shape.ts";
 
 /** Who cancelled a piece of work. `admission` was the gate's own cut of the room solves still
  *  running once a reading left room, from 31 October until the gate stopped solving on 1 November;
- *  it stays for the logs that hold it. Until 31 October it was `caller`, and lane 30's
+ *  it stays for the logs that hold it. Until 31 October it was `caller`, and lane 12's
  *  `NON-RESULTS` counted each such designed cut as a kill. */
 export type CancellationOrigin = "session-wall" | "campaign-budget" | "caller" | "invocation" | "admission";
 

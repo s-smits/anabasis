@@ -9,8 +9,8 @@
  *
  *   bun tools/wri/table-timeline.ts <log>
  *
- * For lanes 21 and 23, and 22 and 26 for time. Lane 23 wrote this replay twice by hand (6 and
- * 10 November), and 1 of 18 lane-21 sessions rebuilt it from copies of the log's prefixes; that one
+ * For lanes 13, 18 and 22 for time. Lane 13 wrote this replay twice by hand (6 and
+ * 10 November), and 1 of 18 lane-13 sessions rebuilt it from copies of the log's prefixes; that one
  * found an owed starter comparison the table named for 4.7 hours while the Builder sat in a `wait`.
  *
  * The replay is this tree's `decide` on an old log. Where the rule changed since the run, the

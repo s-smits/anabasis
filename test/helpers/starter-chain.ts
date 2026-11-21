@@ -1,4 +1,4 @@
-// Logs for the readers of what a climb rests on (lanes 28 and 29): two promotions, each read
+// Logs for the readers of what a climb rests on (lanes 11 and 17): two promotions, each read
 // against the starter on the tasks that chose it and on tasks written after it, and a step carried
 // by the objective alone beside its own A/A.
 import type { EventKind, LogEvent } from "../../src/kernel/log.ts";

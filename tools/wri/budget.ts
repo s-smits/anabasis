@@ -1,5 +1,5 @@
 /**
- * Whether a solve's budget bound, one block a comparison and side (lane 24):
+ * Whether a solve's budget bound, one block a comparison and side (lane 22):
  *
  *   bun tools/wri/wri.ts reader budget --log <log>
  *
@@ -10,7 +10,7 @@
  * their starts. `WALL SHARE` gives the median share alone, which hides a side whose few long solves
  * met the deadline.
  *
- * Every one of the 7 lane 24 sessions between 3 and 10 November built this table by hand, in three
+ * Every one of the 7 lane 22 sessions between 3 and 10 November built this table by hand, in three
  * scripts, one of which placed each solve by the last comparison to start and so misplaced every solve
  * of two comparisons that overlapped. It counts and decides nothing: a solve at its bound may have
  * been near an answer or far from one.

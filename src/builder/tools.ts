@@ -438,7 +438,7 @@ export function practiceLeft({ request, spent }: Bench, events: readonly LogEven
  *  and under an objective each valid answer's measure. Until 27 October it named harness/ and the
  *  parent whatever ran, so 129 of 852 practice calls under the reference (8 to 26 October) were told
  *  nothing of its record; until 3 November it counted passes alone, and 283 of 285 buffer record
- *  clauses from v0.9.1 read "passed N of N" (lane 17); until 4 November it named no author's answer
+ *  clauses from v0.9.1 read "passed N of N" (lane 9); until 4 November it named no author's answer
  *  (`task.feasible`), and buffer592's Builder read a task 18% dearer than its author's as nothing to
  *  gain; until 19 November a solve under harness/ named no record under the reference, which a
  *  promotion moves off the parent. Only practice solves of released tasks are read (`record`). */

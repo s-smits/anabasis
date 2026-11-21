@@ -18,7 +18,6 @@
  * after a state file that cannot be read, records the present and fires on no history.
  */
 import { type Static, Type } from "typebox";
-import { pauseSince } from "#src/campaign/word.ts";
 import { existsSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { join } from "#src/meta/path.ts";
@@ -27,7 +26,7 @@ import { plural } from "#src/meta/text.ts";
 import { asked, answerOf } from "./hosts.ts";
 import { keeperActed } from "./keep.ts";
 import { keepsItself } from "./manage.ts";
-import { launchedIn, type RunState, runState } from "./state.ts";
+import { type RunState, runState } from "./state.ts";
 import { onStatus } from "./pulse.ts";
 import { remember } from "./pulse-readers.ts";
 import { lastLaunch } from "./receipt.ts";
@@ -56,7 +55,7 @@ export interface Row {
   readonly lastAt: string | null;
   /** What its keeper said it did, oldest first. */
   readonly kept: readonly string[];
-  /** Whether its current launch was left a pause (`pauseSince`). */
+  /** Whether a pause stopped it (`stateOf`), kept apart on the wire, which a peer on an older tree sends. */
   readonly paused: boolean;
   /** Each ending on its log, oldest first. */
   readonly endings: readonly string[];
@@ -136,14 +135,15 @@ function rowOf(run: Run, running: readonly Running[], now: number): Row {
   const events = logEvents(run.path);
   const last = events.at(-1);
   const file = keptFile(run);
+  const state = runState(run, events, running, now);
   return {
     name: run.name,
     promotions: promotionsOf(events),
-    state: runState(run, events, running, now),
+    state,
     owed: keepsItself(runtimeProcess.env, lastLaunch(run.path)?.login),
     lastAt: last?.at ?? null,
     kept: existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(keeperActed) : [],
-    paused: pauseSince(events, launchedIn(run, events)) !== undefined,
+    paused: state.kind === "stopped" && state.pause !== undefined,
     endings: events.flatMap(({ kind, data }) => (kind === ENDED ? [word(data.ending)] : [])),
   };
 }

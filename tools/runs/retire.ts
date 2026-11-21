@@ -40,6 +40,9 @@
  * what a live process holds by its claim. What a run's log names as open goes as the archive takes
  * the run.
  *
+ * A check runner's slot in this machine's home that no check has used for `TREE_DAYS` goes to the
+ * Trash with the files beside it (`trashIdleSlots`), never deleted outright.
+ *
  * Only the repository's worktrees are swept, so a separate clone is never read. Every host sweeps
  * its own originals with its own daily job, and this one then refreshes each configured host's
  * records through snapshots.ts and brings every campaign no process writes there whole but for
@@ -52,6 +55,7 @@
 import { DAY_MS } from "#src/meta/clock.ts";
 import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync } from "#src/meta/filesystem.ts";
 import { gitMaybe, gitText, mainTree, type Worktree as Tree, worktreeList } from "#src/meta/git.ts";
+import { homedir } from "#src/meta/os.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess, warn } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -59,7 +63,7 @@ import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.
 import { SCRATCH_ROOTS, SUITE_SCRATCH_ROOT } from "#src/wall/policy.ts";
 import { claimed, releaseLeft } from "#src/wall/seat-root.ts";
 import { controllersOf } from "./code.ts";
-import { benchesOf, hostsOf } from "./host-config.ts";
+import { benchesOf, hostsOf, RUNNER_SLOTS } from "./host-config.ts";
 import { takeRetired, syncRuns } from "./snapshots.ts";
 import { stillRunning } from "./diagnosis.ts";
 import { unlaunchedSeed } from "./receipt.ts";
@@ -285,6 +289,44 @@ export function retireUnused(sweep: Sweep, archiving: ReadonlySet<string>): void
   if (sweep.yes && names.length > 0) gitText(sweep.main, "branch", "-D", ...names);
 }
 
+/**
+ * The check runner's slots in this machine's home (`RUNNER_SLOTS`) that no task has used for
+ * `TREE_DAYS`, each with the files beside it (`<slot>.status`, `.run.sh`, `.task.sh`), moved to the
+ * Trash, from which the operator empties it. A slot is a clone and its packages kept warm for the
+ * next check, so one a machine no longer sends checks to stayed for good: on 20 November the Linux
+ * host, which stopped taking checks on 12 November, held three, 2.0 GB. Returns what goes, or would.
+ */
+export function trashIdleSlots(sweep: Sweep, home = homedir()): string[] {
+  const folder = join(home, RUNNER_SLOTS);
+  const entries = existsSync(folder) ? readdirSync(folder) : [];
+  const seen = users();
+  const doomed = entries
+    .filter((entry) => /-slot-\d+$/u.test(entry))
+    .map((slot) =>
+      [slot, ...entries.filter((entry) => entry.startsWith(`${slot}.`))].map((entry) => join(folder, entry)),
+    )
+    .filter(([slot = "", ...beside]) => {
+      const idle = daysSince(sweep, Math.max(...[slot, ...beside].map((path) => lstatSync(path).mtimeMs)));
+      if (idle < TREE_DAYS || seen.some((line) => line.includes(slot))) return false;
+      say(sweep, `${slot}: no check for ${idle.toFixed(1)} days, to the Trash`);
+      return true;
+    })
+    .flat();
+  if (!sweep.yes || doomed.length === 0) return doomed;
+  const trash = runtimeProcess.platform === "darwin" ? ["/usr/bin/trash"] : ["gio", "trash"];
+  try {
+    const moved = runSync([...trash, ...doomed]);
+    if (moved.exitCode !== 0) {
+      throw new Error(decodeOutput(moved.stderr).trim() || `exit ${String(moved.exitCode)}`);
+    }
+  } catch (error) {
+    // Nothing is deleted outright: a slot the Trash does not take stays for the next sweep.
+    console.error(`${trash.join(" ")} left the idle slots where they are: ${errorMessage(error)}`);
+    runtimeProcess.exitCode = 1;
+  }
+  return doomed;
+}
+
 /** `bun run runs retire`. */
 export async function retire(args: readonly string[]): Promise<void> {
   const { values } = parseArgs({
@@ -302,6 +344,7 @@ export async function retire(args: readonly string[]): Promise<void> {
   );
   const open = await releaseScratch(sweep, [...SCRATCH_ROOTS, SUITE_SCRATCH_ROOT]);
   retireUnused(sweep, await archiveIdle(sweep, open));
+  trashIdleSlots(sweep);
   for (const host of hostsOf()) {
     try {
       say(

@@ -3,9 +3,9 @@
  * wins to spare, a reading without one's losses short of a step, and the tally on equal margins
  * that its losses would need.
  *
- * Between 3 and 10 November, 15 of 20 lane-18 sessions rebuilt the sign-flip test by hand to say how
+ * Between 3 and 10 November, 15 of 20 lane-8 sessions rebuilt the sign-flip test by hand to say how
  * near a reading came, and two counted "short" in two ways on one comparison (its largest losses
- * flipped first, 2; its smallest first, 4). Lane 17's `STEP CARRIERS` (`promotion.ts`) counted the
+ * flipped first, 2; its smallest first, 4). Lane 9's `STEP CARRIERS` (`promotion.ts`) counted the
  * spare wins inline. Here each count takes the largest margins first, on the kernel's own test
  * (`readsStep`, `src/kernel/compare.ts`) and its equal-margin tallies (`clearing`,
  * `src/kernel/size.ts`). These are facts of the scores and decide nothing.

@@ -26,16 +26,17 @@
  *
  * `--blind` takes from each version how it was measured (`blinded`: every comparison, session,
  * promotion and role but the starter's) and prints its diff against a kept parent in their place.
- * Lane 27 grades soundness from it before it reads a result; on 30 October its first session (then
- * lane 34) read the list's comparisons first.
+ * Lane 14 grades soundness from it before it reads a result; on 30 October its first session
+ * read the list's comparisons first.
  *
  * `--files` adds a line for each written file that moved (the guide, the spec, `tools.ts` and the
  * programs the harness wrote, `writtenIn` in `tools/wri/trajectory.ts`), and `--lines` prints the
  * moved lines themselves; `--chain` reads every kept version against its kept parent at either depth,
- * blind as `--blind` is. Between 3 and 10 November about 29 of 35 sessions of lanes 12 and 27 rebuilt
- * these by hand, and 13 of their 21 refusals were a diff loop given a campaign's `states/` path,
- * which a lane guard refuses and this command, taking the log, does not need. A digest prefix of eight
- * characters names a version where it names one; lane 16 sessions typed the prefixes the readers print.
+ * blind as `--blind` is. Between 3 and 10 November about 29 of 35 sessions of lanes 14 and 15
+ * rebuilt these by hand, and 13 of their 21 refusals were a diff loop given a campaign's `states/`
+ * path, which a lane guard refuses and this command, taking the log, does not need. A digest prefix
+ * of eight characters names a version where it names one; lane 16 sessions typed the prefixes the
+ * readers print.
  *
  * `--diff` reads a kept state where it sits, as `--chain` does, and says in a line where one opens
  * as another harness. A copy of a campaign from another host leaves out what its harness installed
@@ -228,8 +229,9 @@ function measured(steps: readonly Handover[], digest: string) {
 }
 
 /** The Builder turns between a version's making and the session's previous making (or its start), as
- *  a `slice.ts` selector: a checkpoint carries no turn, so on 10 November lane 12 sessions found the
- *  Builder's words for one delta by reading the session whole. Null where the log holds no such turn. */
+ *  a `slice.ts` selector: a checkpoint carries no turn, so on 10 November lane 15 sessions found
+ *  the Builder's words for one delta by reading the session whole. Null where the log holds no such
+ *  turn. */
 function turnsOf(events: readonly LogEvent[], digest: string): string | null {
   const at = events.findIndex(
     ({ kind, data }) =>

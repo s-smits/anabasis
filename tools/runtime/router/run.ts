@@ -1,9 +1,13 @@
 /**
  * The check runner: `run.js <tree> <bun pin> <test|typecheck|lint|secrets|gate> [arguments...]`,
  * which the bun router (`bun` in this folder) calls for a tree's check tasks. `RUN_REMOTE` says
- * where the task runs: unset, empty, `here` or the older `0` on this machine, without reading the
- * host list; a host's name or ssh destination on that one of the hosts `ANA_HOSTS` lists with
- * `checks`. Any other value is refused with the names to write. Wherever it runs, the task is
+ * where the task runs: `auto` on the first with a free slot of this machine and the hosts
+ * `ANA_HOSTS` lists with `checks`, least loaded first by one-minute load a core (`placesFor`), which
+ * costs about a second's sample before each task; unset or empty as `auto` where some host takes
+ * checks, and otherwise here without a sample, as where the host list cannot be read; `here` or the
+ * older `0` on this machine, without reading the host list; a host's name or ssh destination on
+ * that host. Any other value is refused with the names to write. Until 20 November 2026 unset meant
+ * `here`, so no check left this machine unless a session asked. Wherever it runs, the task is
  * `task.sh` over the working tree as it stands, uncommitted bytes included, and its exit status is
  * this command's.
  *
@@ -23,7 +27,8 @@
  * Settings, each optional, in seconds unless said: `ANA_RUNNER_WALL` (a task's deadline, 3600),
  * `ANA_RUNNER_QUEUE_WAIT` (the wait for a slot, 2400; exit 75 past it), `ANA_RUNNER_MIN_FREE_GB`
  * (free space a host must have, 3; exit 69 below it or where it does not answer),
- * `ANA_RUNNER_RETRY_DELAY` (5). A host needs only ssh, bash, git, curl and unzip, and gets the
+ * `ANA_RUNNER_RETRY_DELAY` (5), `ANA_RUNNER_PICK_WAIT` (how long `auto` waits for each machine's
+ * load, 5). A host needs only ssh, bash, git, curl and unzip, and gets the
  * tree's pinned Bun on its first task. `install.ts` bundles this file as the installed `run.js`.
  */
 import {
@@ -44,7 +49,8 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { sshOptions } from "#src/meta/ssh.ts";
 import { killProcessGroup, runCaptured, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { quoted, shellPath, sshCommand } from "../../runs/host-command.ts";
-import { hostsOf, ownName, type Host } from "../../runs/host-config.ts";
+import { hostsOf, ownName, RUNNER_SLOTS, type Host } from "../../runs/host-config.ts";
+import { minuteLoads } from "../../runs/load.ts";
 
 const TASKS = ["test", "typecheck", "lint", "secrets", "gate"];
 /** What a check reads from its caller, sent by name since ssh carries no environment. */
@@ -68,6 +74,9 @@ interface Slot {
   readonly number: number;
 }
 
+/** A place a task may run: a host, or undefined for this machine. */
+type Place = Host | undefined;
+
 class Refusal extends Error {
   readonly code: number;
   constructor(message: string, code: number) {
@@ -88,25 +97,54 @@ function setting(name: string, fallback: number): number {
   return Number(text);
 }
 
-/** `ANA_HOSTS`, refused in the runner's own words where it cannot be read. */
-function listedHosts(): readonly Host[] {
+/** `ANA_HOSTS` for the `RUN_REMOTE` value `choice`, refused in the runner's own words where it
+ *  cannot be read and the value asked for a host. */
+function listedHosts(choice: string): readonly Host[] {
   try {
     return hostsOf();
   } catch (error) {
+    // Unset asked for no host, so a list it cannot read leaves the task here instead of refusing it.
+    if (choice === "") {
+      say(`${errorMessage(error)}; runs here`);
+      return [];
+    }
     throw new Refusal(`${errorMessage(error)}; RUN_REMOTE=here runs the task here`, EXIT.usage);
   }
 }
 
-/** The host `RUN_REMOTE` names, or undefined for this machine. */
-function chosenHost(): Host | undefined {
+/**
+ * Where `RUN_REMOTE` lets the task run, in the order its slots are tried, and whether loads chose
+ * it: this machine alone, the one host it names, or for `auto` this machine and every host with
+ * `checks` by one-minute load a core, least loaded first (`minuteLoads`, as `runs loadwatch` orders
+ * them). A machine that has not answered within `ANA_RUNNER_PICK_WAIT` is left out, never read as
+ * idle, and where none answers the task runs here.
+ */
+async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean }> {
   const choice = runtimeProcess.env.RUN_REMOTE ?? "";
-  if (["", "here", "0"].includes(choice)) return undefined;
-  const taking = listedHosts().filter((each) => each.checks !== undefined);
+  const here = { places: [undefined], picked: false };
+  if (["here", "0"].includes(choice)) return here;
+  const taking = listedHosts(choice).filter((each) => each.checks !== undefined);
+  if (choice === "" && taking.length === 0) return here;
+  if (choice === "" || choice === "auto") {
+    const started = performance.now();
+    const { order, silent } = await minuteLoads(
+      [undefined, ...taking],
+      setting("ANA_RUNNER_PICK_WAIT", 5) * 1000,
+    );
+    const read = order.map(({ label, share }) => `${label} ${share.toFixed(2)}`);
+    const took = ((performance.now() - started) / 1000).toFixed(1);
+    say(
+      `auto: 1m load a core ${read.join(", ") || "from none"}${
+        silent.length === 0 ? "" : `; no answer from ${silent.join(", ")}`
+      } (read in ${took}s)`,
+    );
+    return { places: order.length === 0 ? [undefined] : order.map(({ host }) => host), picked: true };
+  }
   const host = taking.find((each) => each.name === choice || each.ssh === choice);
-  if (host !== undefined) return host;
+  if (host !== undefined) return { places: [host], picked: false };
   const names = taking.map((each) => each.name).join(", ");
   throw new Refusal(
-    `RUN_REMOTE=${choice} names no host that takes checks; write here or one of: ${
+    `RUN_REMOTE=${choice} names no host that takes checks; write here, auto or one of: ${
       names === "" ? "none, since ANA_HOSTS sets checks for no host" : names
     }`,
     EXIT.usage,
@@ -151,18 +189,26 @@ function takeSlot(folder: string, count: number): Slot | null {
   return null;
 }
 
-/** Waits for a slot at `place`, saying so every fifteen seconds, at most the configured wait. */
-async function slotAt(place: string, count: number): Promise<Slot> {
-  const folder = join(tmpdir(), "ana-runner", place);
-  mkdirSync(folder, { recursive: true });
+/** Waits for the first free slot among `places`, in their order, so tasks that read the same order
+ *  at once spread over the places instead of queueing at the first; says so every fifteen seconds,
+ *  at most the configured wait. */
+async function slotAmong(places: readonly Place[]): Promise<{ place: Place; slot: Slot }> {
+  const queues = places.map((place) => {
+    const folder = join(tmpdir(), "ana-runner", place?.ssh ?? "local");
+    mkdirSync(folder, { recursive: true });
+    return { place, folder, count: place?.checks ?? 1 };
+  });
+  const named = queues.map(({ place }) => place?.ssh ?? "local").join(" or ");
   const limit = setting("ANA_RUNNER_QUEUE_WAIT", 2400);
   for (let waited = 0; ; waited++) {
-    const slot = takeSlot(folder, count);
-    if (slot !== null) return slot;
-    if (waited >= limit) {
-      throw new Refusal(`waited ${String(limit)}s for a slot on ${place}; no task started`, EXIT.noSlot);
+    for (const { place, folder, count } of queues) {
+      const slot = takeSlot(folder, count);
+      if (slot !== null) return { place, slot };
     }
-    if (waited % 15 === 14) say(`waiting for a slot on ${place} (${String(waited + 1)}s)`);
+    if (waited >= limit) {
+      throw new Refusal(`waited ${String(limit)}s for a slot on ${named}; no task started`, EXIT.noSlot);
+    }
+    if (waited % 15 === 14) say(`waiting for a slot on ${named} (${String(waited + 1)}s)`);
     await Bun.sleep(1000);
   }
 }
@@ -275,7 +321,7 @@ function carried(root: string): string[] {
 async function onHost(host: Host, slot: number, job: Job, release: () => void): Promise<number> {
   const { root, pin } = job;
   if (pin === "") throw new Refusal(`${root} pins no Bun in package.json's packageManager`, EXIT.usage);
-  const dir = `.cache/ana-runner/${ownName()}-slot-${String(slot)}`;
+  const dir = `${RUNNER_SLOTS}/${ownName()}-slot-${String(slot)}`;
   const ssh = (...words: string[]): string[] => ["ssh", ...sshOptions(host.ssh), ...words];
   const free = await retried("the slot's set-up", () => answer(ssh(host.ssh, setUp(host, dir))));
   if (free === null) throw new Refusal(`${host.ssh} does not answer; no task started`, EXIT.unavailable);
@@ -330,8 +376,11 @@ async function main(argv: readonly string[]): Promise<number> {
     throw new Refusal(`usage: run.js <tree> <bun pin> {${TASKS.join("|")}} [arguments...]`, EXIT.usage);
   }
   const job: Job = { root, pin, task, wall: setting("ANA_RUNNER_WALL", 3600) || 3600 };
-  const host = chosenHost();
-  const slot = await slotAt(host?.ssh ?? "local", host?.checks ?? 1);
+  const { places, picked } = await placesFor();
+  const { place: host, slot } = await slotAmong(places);
+  if (picked) {
+    say(`auto: runs on ${host?.name ?? `${ownName()}, this machine`}`);
+  }
   const release = (): void => rmSync(slot.path, { recursive: true, force: true });
   try {
     if (host !== undefined) return await onHost(host, slot.number, job, release);

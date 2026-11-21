@@ -213,7 +213,8 @@ function faultedOf(events: readonly LogEvent[]): Map<string, Set<string>> {
 
 /** Who won a task in the last comparison that scored it and on which measure. Until 5 November
  *  the line also gave the objective gap the reference's answers left, which in a truss campaign of
- *  #588 came from its own two solves on all five such lines (WRI lane 14); its measures say that now. */
+ *  #588 came from its own two solves on all five such lines (WRI lane 13); its measures say that
+ *  now. */
 function standingOf(standing: Standing | undefined): string[] {
   if (standing === undefined) return [];
   return [

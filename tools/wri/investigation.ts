@@ -13,11 +13,11 @@
  * deterministic rows, its own triggers, the lane and the reporting rules: it is told neither the
  * operator's question nor what any other lane was started by, because it freezes its result before
  * it reads anything that could lead it. A blind lane's carries the campaigns' rows and the hard rules
- * alone: on 8 November lane 27 was handed the orientation, row F's readings and every trigger, and
+ * alone: on 8 November lane 14 was handed the orientation, row F's readings and every trigger, and
  * said its grades were sighted.
  *
  * An investigation reads one campaign or several as equals, and each lane reads every one of them.
- * Until 21 October one campaign was under review and the others were peers that only lane 27 read
+ * Until 21 October one campaign was under review and the others were peers that only lane 14 read
  * beside it: the final investigation of four stopped Opus campaigns then ran 40 sessions, ten lanes
  * a campaign, and found the crashed Examiner session after a promotion four times over, while a
  * defect one campaign held alone was read by the ten sessions of that campaign only. Now every
@@ -399,7 +399,7 @@ function form(
           "Where a lane's evidence leads past its question, follow it to the code or the text that let it through, and write what you find in that lane's report with the same fields. Where a lane matters less for these campaigns, at the point their logs have reached, than the other lanes your session was given, you may leave it unread: write only the heading and `Verdict: omitted`, then one sentence why (its question does not arise here, the primary's section already settles it, or another of your lanes covers it).",
         ]
       : []),
-    `Each of the ${several ? "six" : "five"} fields starts a line of its own, as above: the collector counts them by the line's first word, and a finding written as one paragraph is refused (abl175-new's lane 11, 13 October).`,
+    `Each of the ${several ? "six" : "five"} fields starts a line of its own, as above: the collector counts them by the line's first word, and a finding written as one paragraph is refused (abl175-new's lane 20, 13 October).`,
     `An owner is one of: ${owners.map((owner) => `\`${owner}\``).join(", ")}. Name the file beside \`host\` and a prompt owner.`,
     "You read and you report. Write no file but your report, and scratch in a temporary directory of your own, never under the campaign's folder or the checkout. Start no solve, no session, no round and no check run; `wri.ts grade` is the one exception, and only where your lane names it. Reply with the report's path and one line per finding.",
   ];
@@ -492,7 +492,7 @@ function climbSection(climb: string): string[] {
 /**
  * Which of the triggers a lane starts from fired, and on which campaign. The lane's body names every
  * one it can start from, and a session read a name there as a trigger the log had fired: buffer-a's
- * lane 14 on 11 October reported `NEVER CHECKED` false, which the reader had never fired. `rows`
+ * lane 13 on 11 October reported `NEVER CHECKED` false, which the reader had never fired. `rows`
  * names the derived file behind a trigger (`ROWS`), and is empty for a lane handed no derived file.
  */
 function firedLine(
@@ -692,14 +692,14 @@ export function reportOf(
     // against and may not leave its lane unread (release review, 3 November).
     ...(verdict === "omitted" && lane.isolated ? ["an isolated lane may not be omitted"] : []),
     // A session opens its report before it reads, as the hard rules ask; on 4 November buffer583's
-    // lane 32 stood as "could not read, provisional" and `collect` read it as a final verdict.
+    // lane 22 stood as "could not read, provisional" and `collect` read it as a final verdict.
     ...(unfinished === undefined ? [] : [`the verdict is ${unfinished}: the session is still writing`]),
     ...(unresolved.length > 0
       ? [
           `no \`${PREDICTION} <id>: ${RESOLUTIONS.join(" | ")}\` line for ${unresolved.join(", ")}, which the prior state hands this lane`,
         ]
       : []),
-    // Recode's lane 15 on 10 October said no finding over two written findings, and was accepted.
+    // Recode's lane 16 on 10 October said no finding over two written findings, and was accepted.
     ...((verdict === "no finding" || verdict === "omitted") && findings > 0
       ? [`the verdict is ${verdict} and the report writes ${plural(findings, "finding")}`]
       : []),

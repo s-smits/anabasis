@@ -40,7 +40,8 @@ const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-router-")));
 const SSH = `#!/bin/bash
 # The ssh client and every host it reaches. Host state, a file in its home: down refuses every
 # connection, drops drops a session with a terminal before it runs, zero reports 0 for every session
-# as Tailscale SSH does, flaky holds which connection from now drops once. A master is its socket.
+# as Tailscale SSH does, flaky holds which connection from now drops once, load is the sample the
+# host gives the load sampler, which silent withholds. A master is its socket.
 args=("$@") options=() tty=0
 while [[ "\${args[0]}" == -* ]]; do
   case "\${args[0]}" in
@@ -61,6 +62,13 @@ if [[ -n "$control" ]] && ((\${#control} + 17 >= 104)); then said too-long; exit
 host="\${args[0]}" home="$FAKE_HOMES/\${args[0]}"
 said() { printf '%s %s %s %s\\n' "$host" "$1" "\${control:-none}" "\${options[*]}" >>"$FAKE_LOG"; }
 if [[ -e "$home/down" ]]; then said refused; exit 255; fi
+# A host's load, for the load sampler (tools/runs/load.ts) alone; silent never answers it.
+if [[ -e "$home/load" && "\${args[*]:1}" == *proc/loadavg* ]]; then
+  said sampled
+  [[ ! -e "$home/silent" ]] || sleep 30
+  cat "$home/load"
+  exit 0
+fi
 if [[ -e "$home/flaky" ]]; then
   left="$(cat "$home/flaky")"
   if ((left <= 1)); then rm -f "$home/flaky"; said dropped; exit 255; fi
@@ -258,11 +266,37 @@ const hostHome = (host: string): string => join(homes, host);
 const ran = (host: string): boolean =>
   calls(hostHome(host)).some((call) => call.args?.startsWith("run test") === true);
 
+/** Gives `host` the load sampler's answer: `load` on `cores`, the same in every window. */
+function loaded(host: string, cores: number, load: number): void {
+  const each = load.toFixed(2);
+  writeFileSync(join(hostHome(host), "load"), `${String(cores)}\n${each} ${each} ${each}\n50\n---\n`);
+}
+
+/** The loads the auto cases read: m1 idle, zbook with 100 waiting a core, and peer, which takes no
+ *  checks, idle too. This machine's own load is real, and above 0 while the suite runs. */
+function spreadLoads(): void {
+  loaded("fake-mac", 2, 0);
+  loaded("fake-linux", 4, 400);
+  loaded("fake-peer", 1, 0);
+}
+
 /** Clears every record and host state a case may have left. */
 function fresh(): void {
   writeFileSync(log, "");
   for (const host of ["fake-mac", "fake-linux", "fake-peer"]) {
-    for (const state of ["down", "drops", "zero", "flaky", "garbled", "perf", "bun.log", "install.log"]) {
+    const states = [
+      "down",
+      "drops",
+      "zero",
+      "flaky",
+      "garbled",
+      "perf",
+      "load",
+      "silent",
+      "bun.log",
+      "install.log",
+    ];
+    for (const state of states) {
       rmSync(join(hostHome(host), state), { force: true });
     }
   }
@@ -359,19 +393,19 @@ describe("which host runs a task", () => {
       const refused = run(["test"], { RUN_REMOTE: choice });
       expect(refused.status, choice).toBe(2);
       expect(refused.stderr, choice).toContain(`RUN_REMOTE=${choice} names no host`);
-      expect(refused.stderr, choice).toContain("here or one of: m1, zbook");
+      expect(refused.stderr, choice).toContain("here, auto or one of: m1, zbook");
       expect(connections()).toEqual([]);
       expect(calls(home)).toEqual([]);
     }
   });
 
-  it("runs a task here when RUN_REMOTE is unset, empty, here or 0, asking no host and reading no host list", () => {
-    for (const choice of [undefined, "", "here", "0"]) {
+  it("runs a task here when RUN_REMOTE is here or 0, asking no host and reading no host list", () => {
+    for (const choice of ["here", "0"]) {
       fresh();
       // A list that cannot be read refuses a task that reads it, as the last lines show.
       const local = run(["test"], { RUN_REMOTE: choice, ANA_HOSTS: "not a list" });
-      expect(local.status, `${String(choice)}: ${local.stderr}`).toBe(0);
-      expect(lastCall(home), String(choice)).toMatchObject({ args: "run test", bun: pinned, active: "1" });
+      expect(local.status, `${choice}: ${local.stderr}`).toBe(0);
+      expect(lastCall(home), choice).toMatchObject({ args: "run test", bun: pinned, active: "1" });
       expect(connections()).toEqual([]);
     }
     fresh();
@@ -380,6 +414,61 @@ describe("which host runs a task", () => {
     expect(none.status).toBe(2);
     expect(none.stderr).toContain("ANA_HOSTS sets checks for no host");
     expect(calls(home)).toEqual([]);
+  });
+
+  it("runs RUN_REMOTE=auto on the least loaded place by 1m load a core, never on a host without checks, reading the hosts from .env.runs", () => {
+    fresh();
+    spreadLoads();
+    writeFileSync(join(source, ".env.runs"), `ANA_HOSTS='${HOSTS}'\n`);
+    try {
+      const sent = run(["test"], { RUN_REMOTE: "auto", ANA_HOSTS: undefined });
+      expect(sent.status, sent.stderr).toBe(0);
+      expect(["fake-mac", "fake-linux", "fake-peer"].filter(ran)).toEqual(["fake-mac"]);
+      expect(calls(home)).toEqual([]);
+      expect(sent.stderr).toMatch(
+        /runner: auto: 1m load a core m1 0\.00, \S+ \d+\.\d\d, zbook 100\.00 \(read in/u,
+      );
+      expect(sent.stderr).toContain("runner: auto: runs on m1");
+      // The idle host that takes no checks is never asked for its load.
+      expect(connections().map(({ host }) => host)).not.toContain("fake-peer");
+    } finally {
+      unlinkSync(join(source, ".env.runs"));
+    }
+  });
+
+  it("reads an unset or empty RUN_REMOTE as auto where a host takes checks, and runs here unsampled where none does or the list cannot be read", () => {
+    for (const choice of [undefined, ""]) {
+      fresh();
+      spreadLoads();
+      const sent = run(["test"], { RUN_REMOTE: choice });
+      expect(sent.status, `${String(choice)}: ${sent.stderr}`).toBe(0);
+      expect(["fake-mac", "fake-linux", "fake-peer"].filter(ran), String(choice)).toEqual(["fake-mac"]);
+      expect(sent.stderr).toContain("runner: auto: runs on m1");
+    }
+    for (const hosts of [JSON.stringify([PEER]), "not a list"]) {
+      fresh();
+      const local = run(["test"], { RUN_REMOTE: undefined, ANA_HOSTS: hosts });
+      expect(local.status, `${hosts}: ${local.stderr}`).toBe(0);
+      expect(lastCall(home), hosts).toMatchObject({ args: "run test", bun: pinned, active: "1" });
+      expect(local.stderr, hosts).not.toContain("auto:");
+      expect(connections()).toEqual([]);
+    }
+  });
+
+  it("leaves out under RUN_REMOTE=auto a host that does not answer in time, and runs here where none does", () => {
+    fresh();
+    spreadLoads();
+    writeFileSync(join(hostHome("fake-mac"), "silent"), "");
+    writeFileSync(join(hostHome("fake-linux"), "down"), "");
+    const started = performance.now();
+    const local = run(["test"], { RUN_REMOTE: "auto", ANA_RUNNER_PICK_WAIT: "2" });
+    expect(local.status, local.stderr).toBe(0);
+    // The silent host holds the pick for its wait and no longer.
+    expect(performance.now() - started).toBeLessThan(15_000);
+    expect(local.stderr).toContain("no answer from m1, zbook");
+    expect(local.stderr).toContain(", this machine\n");
+    expect(lastCall(home)).toMatchObject({ args: "run test", active: "1" });
+    expect(["fake-mac", "fake-linux"].filter(ran)).toEqual([]);
   });
 
   it("reads the hosts from the main worktree's .env.runs where the caller sets none", () => {
@@ -665,8 +754,28 @@ describe("the slots", () => {
       writeFileSync(`${job}.release`, "");
       await child.exited;
     }
-    rmSync(queue, { recursive: true, force: true });
+    for (const each of [queue, queueOf("fake-linux"), queueOf("local")]) {
+      rmSync(each, { recursive: true, force: true });
+    }
   }
+
+  it("spreads RUN_REMOTE=auto tasks that read one order over its free slots, least loaded first", async () => {
+    fresh();
+    spreadLoads();
+    try {
+      // m1 is the least loaded and has two slots, this machine one, and zbook, the most loaded, one.
+      await started("auto-1", { RUN_REMOTE: "auto" });
+      await started("auto-2", { RUN_REMOTE: "auto" });
+      expect(heldIn(queue).length).toBe(2);
+      await started("auto-3", { RUN_REMOTE: "auto" });
+      expect(heldIn(queueOf("local")).length).toBe(1);
+      await started("auto-4", { RUN_REMOTE: "auto" });
+      expect(heldIn(queueOf("fake-linux")).length).toBe(1);
+      expect(run(["test"], { RUN_REMOTE: "auto", ANA_RUNNER_QUEUE_WAIT: "0" }).status).toBe(75);
+    } finally {
+      await released();
+    }
+  });
 
   it("gives each task of a host its own slot up to the host's count, another host unhindered, and a dead or older runner's slot to the next task", async () => {
     fresh();

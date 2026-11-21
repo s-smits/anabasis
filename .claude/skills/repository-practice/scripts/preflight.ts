@@ -10,7 +10,8 @@
  * test graph. For old commits, suggested tests therefore approximate the original static pass.
  *
  * Ask existing owners for the documentation set, nearby tests, UI setup paths, hook guidance,
- * source-size findings, hook configuration, worktree eligibility and optional stack position.
+ * source-size findings, the exports no other file names (the gate's source policy, over the working
+ * tree), hook configuration, worktree eligibility and optional stack position.
  * Scan Markdown for a limited set of writing patterns, excluding code, quoted text, links and paths.
  * Suggest importance and category labels from changed paths, validating categories against land's
  * set. The operator and AGENTS.md section 11 decide whether those suggestions apply.
@@ -28,7 +29,7 @@ import { join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { gitMaybe, gitOutput, gitText } from "#src/meta/git.ts";
 import { treeFault } from "#tools/d2/campaign.ts";
-import { AUTHORED_ROOTS, sourceTextFindings } from "#tools/loc/source-policy.ts";
+import { AUTHORED_ROOTS, sourceTextFindings, unreadExports } from "#tools/loc/source-policy.ts";
 import {
   changedSince,
   DOCUMENTATION,
@@ -72,6 +73,8 @@ export interface Owed {
   readonly ui: readonly string[];
   readonly areas: readonly Area[];
   readonly size: readonly string[];
+  /** The exports no other file names, over the working tree whatever the diff, as the gate reads them. */
+  readonly exports: readonly string[];
   readonly prose: readonly ProseFinding[];
   readonly category: { readonly label: string; readonly counts: Readonly<Record<string, number>> };
   readonly importance: { readonly label: string; readonly why: string };
@@ -237,6 +240,7 @@ export function owedOf(root: string, change: Change): Owed {
       const text = textOf(root, change.at, file);
       return text === null ? [] : sourceTextFindings(file, text).map((found) => `${file}: ${found.detail}`);
     }),
+    exports: unreadExports(root).map((found) => `${found.path}: ${found.detail}`),
     prose: markdown.flatMap((file) => {
       const text = textOf(root, change.at, file);
       return text === null ? [] : proseFindings(file, text);
@@ -272,6 +276,9 @@ export function told(owed: Owed): string[] {
     owed.size.length === 0
       ? "size: no changed authored file over a ceiling"
       : `size: ${owed.size.join("; ")}`,
+    owed.exports.length === 0
+      ? "exports: every export is named by another file"
+      : `exports: ${owed.exports.join("; ")}`,
     ...(owed.prose.length === 0 ? ["prose: no section 13 slip a pattern can see"] : proseLines(owed.prose)),
     `labels (a suggestion): ${owed.importance.label} (${owed.importance.why}); ${owed.category.label} (by changed files: ${counts})`,
   ];

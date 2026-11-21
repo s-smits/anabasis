@@ -100,6 +100,14 @@ describe("what a change owes", () => {
     expect(size[0]).toStartWith("src/kernel/compare.ts: 801 ");
   });
 
+  it("names an export no other file names, by its path in the tree, and not one a test reads", () => {
+    const repo = repository();
+    write(repo, { "src/kernel/compare.ts": "export const a = 1;\nexport const unread = 2;\n" });
+    const exports = owedOf(repo, changeOf(repo, { base: "HEAD" })).exports;
+    expect(exports).toHaveLength(1);
+    expect(exports[0]).toStartWith("src/kernel/compare.ts: `unread` is exported and no other file names it");
+  });
+
   it("prints one line a fact, the suggested labels marked as a suggestion", () => {
     const repo = repository();
     write(repo, { "src/kernel/compare.ts": "export const a = 5;\n" });

@@ -25,17 +25,24 @@ as a commit status, one API call instead of a runner.
 ## On which machine
 
 `bun run test|typecheck|lint|secrets|gate` and `bun test` go through the bun router
-(`tools/runtime/router/`, installed with `bun tools/runtime/router/install.ts`). They run on this
-machine unless `RUN_REMOTE` names a host that `ANA_HOSTS` lists with `checks`; the operator's
-`CLAUDE.md` names theirs. A landing alone reads an unset `RUN_REMOTE` otherwise (`whereToProve`,
+(`tools/runtime/router/`, installed with `bun tools/runtime/router/install.ts`). Where `ANA_HOSTS`
+lists a host with `checks` (the operator's `CLAUDE.md` names theirs), an unset `RUN_REMOTE`, like
+`RUN_REMOTE=auto`, reads the one-minute load a core of this machine and of each such host
+(`tools/runs/load.ts`, the sample `runs loadwatch` draws), about a second, and runs the task in the
+first free slot, least loaded first, so checks started together spread over the slots; a machine
+that does not answer within `ANA_RUNNER_PICK_WAIT` (5 s) is left out. Where no host takes checks, or
+the list cannot be read, an unset one runs the task here without a sample. `RUN_REMOTE=here` keeps a
+task on this machine and a host's name sends it there. A landing alone reads an unset `RUN_REMOTE` otherwise (`whereToProve`,
 `tools/runtime/landing.ts`): it spreads its commits' passes over every such host, each taking as many
 at once as its `checks`, sends the whole gate on the top to the first listed, and proves again on
 another host a pass whose host gave no verdict; with no such host, or with `RUN_REMOTE` set, as in
-`RUN_REMOTE=here bun run land -- <top> --sanitize`, it proves at that one place. Git
+`RUN_REMOTE=here bun run land -- <top> --sanitize`, it proves as at one place, each pass where the
+runner sends it, so under `auto` each picks the least loaded slot for itself. Git
 carries the working tree there, uncommitted bytes included, as one commit in `HEAD`'s place, so only
 what the host lacks travels and a static gate reads the same change. The dependencies never travel:
 a slot installs them from the lockfiles it was sent, and again only once a lockfile or the pinned
-Bun moves. Exits 255, 75 and 69 say nothing about the tree (`NO_VERDICT`, `tools/runtime/gate.ts`).
+Bun moves. A slot no check has used for a week goes to the Trash at the host's own daily
+`runs retire` (`trashIdleSlots`), so a machine that stops taking checks keeps no clones. Exits 255, 75 and 69 say nothing about the tree (`NO_VERDICT`, `tools/runtime/gate.ts`).
 
 ## Placing a new check
 

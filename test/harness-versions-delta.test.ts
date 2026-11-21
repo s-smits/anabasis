@@ -177,7 +177,7 @@ describe("what an installer wrote, beside what the harness wrote", () => {
   });
 });
 
-describe("the lane 27 packets", () => {
+describe("the lane 14 packets", () => {
   it("diff a checkpoint against the parent the log records, not the starter", () => {
     const other = join(root, "other");
     cpSync(camp, other, { recursive: true });

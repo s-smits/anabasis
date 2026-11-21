@@ -20,7 +20,7 @@
  *   graded, so a lane's frozen digests can be set against what was graded.
  *
  * Between 3 and 10 November 16 of 18 lane 1 sessions pulled answers out of verdicts by hand, 4 wrote
- * their own one-field mutation, and 6 of 7 lane 4 sessions graded a corpus in a shell loop; the one
+ * their own one-field mutation, and 6 of 7 lane 6 sessions graded a corpus in a shell loop; the one
  * rounding defect three lanes of one investigation found was vetted plausible only, since no session
  * printed a repeatable grade of it.
  *

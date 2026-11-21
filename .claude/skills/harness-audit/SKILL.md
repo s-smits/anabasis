@@ -62,7 +62,7 @@ A campaign promotes by itself unless `--hitl` is set. For a manual one, show the
    records nothing; `--yes` records, `--despite "<why>"` records an exception.
 2. **The state**: it opens as kept, its line to the starter, and each comparison it rests on names it.
 3. **The change**: `--diff <digest> --against promoted` and the lines above.
-4. **What it measured**: lanes 22 and 12 to 14 of
+4. **What it measured**: lanes 13, 15 and 18 of
    [whole-run-investigation](../whole-run-investigation/SKILL.md), when a reading is in doubt.
 
 ## At a handover
@@ -78,7 +78,7 @@ review, which is advisory only.
 
 ## Whether a part earns its place
 
-Read a part from the `solve.call` rows of solves under it (lane 13), over solves where the need
+Read a part from the `solve.call` rows of solves under it (lane 15), over solves where the need
 arose and the part was there; a missing record is unknown, never zero, and a successful call is no
 valid answer.
 

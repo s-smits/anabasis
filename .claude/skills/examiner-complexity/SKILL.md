@@ -10,7 +10,7 @@ never, carries no gradient. The Examiner chooses each task (`AGENTS.md`, section
 tunes only what it is told about difficulty: a reach scale, worked examples from fields no campaign
 examines, and facts about the reference. It edits text, never a task or check (rule 2), and states
 facts rather than a share to reach. Paired seats are `system-path-simulation`'s
-(`cases/optimize.md`) and the scale is lane 27 of `whole-run-investigation`.
+(`cases/optimize.md`) and the scale is lane 14 of `whole-run-investigation`.
 
 ## 1. Calibrate the record
 
@@ -51,7 +51,7 @@ examples again.
 | how hard an exam can be, how rules are stated | `src/examiner/draft.ts` |
 | writing above the reference's grade | `src/examiner/prompt.ts`, "How hard" |
 
-`test/examiner-ladder.test.ts` holds the scale to lane 27, keeps examined domains out of the
+`test/examiner-ladder.test.ts` holds the scale to lane 14, keeps examined domains out of the
 examples and checks both modes see the ladder. Rewrite rather than add (rule 13), with each edit's
 reason in the module's head comment.
 

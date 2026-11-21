@@ -233,13 +233,28 @@ function staleCopyLimits(read: (path: string) => string | null): SourcePolicyFin
   return findings;
 }
 
+/** The exports no other file names in the tree at `base`, the working directory where it is empty,
+ *  each path relative to it: the gate's check, which preflight also reads before a commit. */
+export function unreadExports(base = ""): SourcePolicyFinding[] {
+  const read = (roots: readonly string[], suffixes: readonly string[]) => {
+    const files = corpus(
+      roots.map((top) => join(base, top)),
+      suffixes,
+    );
+    return base === ""
+      ? files
+      : new Map([...files].map(([path, text]) => [path.slice(base.length + 1), text]));
+  };
+  return unusedExports(read(AUTHORED_ROOTS, [".ts", ".tsx", ".mts"]), read(READER_ROOTS, READ_AS_SOURCE));
+}
+
 function sourcePolicyFindings(): SourcePolicyFinding[] {
   const paths = SOURCE_ROOTS.flatMap((root) => walkFiles(root));
   const onDisk = new Set(paths);
   return [
     ...paths.flatMap((path) => sourceTextFindings(path, readFileSync(path, "utf8"))),
     ...staleCopyLimits((path) => (onDisk.has(path) ? readFileSync(path, "utf8") : null)),
-    ...unusedExports(corpus(AUTHORED_ROOTS, [".ts", ".tsx", ".mts"]), corpus(READER_ROOTS, READ_AS_SOURCE)),
+    ...unreadExports(),
   ];
 }
 

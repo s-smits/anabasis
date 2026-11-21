@@ -97,6 +97,25 @@ describe("where a run stands, in one fold every reader shares", () => {
     });
   });
 
+  it("reads a stop as a pause only where this launch was left one", () => {
+    const closed = { writing: false, kept: false };
+    const log = [
+      event(3, "campaign.word", { word: "pause", why: "runs pause --after reported" }),
+      event(2, "build.started"),
+    ];
+    expect(stateOf(log, closed, NOW)).toEqual({
+      kind: "stopped",
+      pause: { at: at(3), why: "runs pause --after reported" },
+    });
+    // A pause left before the launch that went on from it says nothing of how that launch stopped.
+    expect(stateOf(log, closed, NOW, 1)).toEqual({ kind: "stopped" });
+    // A campaign that ended on its own terms reads as its ending, whatever pause was left.
+    expect(stateOf([...log, event(1, "campaign.ended", { ending: "stop" })], closed, NOW)).toEqual({
+      kind: "ended",
+      ending: "stop",
+    });
+  });
+
   it("reads a wait as standing through calls and failed turns, until its bound, within the current launch", () => {
     const calls = [event(4, "exam.call"), event(3, "exam.turn", { stopReason: "error" })];
     expect(stateOf([provider(5, 90), ...calls], writing, NOW)).toMatchObject({

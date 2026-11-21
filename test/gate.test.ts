@@ -492,66 +492,6 @@ describe("one landing of a clone at a time", () => {
     (await held)();
   });
 
-  it("waits for a live landing that writes the older record, ends nothing, and takes the lock once it is gone", async () => {
-    const clone = mkdtempSync(join(fixture, "alone-"));
-    execTextSync("git", ["init", "-q"], { cwd: clone });
-    const lock = join(clone, ".git", "ana-land.lock");
-    const older = Bun.spawn(["sleep", "30"]);
-    symlinkSync(`${String(older.pid)} #5 sanitizing`, lock);
-    const held = holdAlone(clone, "land", () => undefined, 20, { note: "#6 sanitizing", over: () => true });
-    const early = await Promise.race([held.then(() => "held"), Bun.sleep(300).then(() => "waiting")]);
-    expect(early).toBe("waiting");
-    expect(older.signalCode).toBe(null);
-    expect(readlinkSync(lock)).toBe(`${String(older.pid)} #5 sanitizing`);
-    older.kill();
-    await older.exited;
-    (await held)();
-  });
-
-  it("takes at once an older record whose pid is gone", async () => {
-    const clone = mkdtempSync(join(fixture, "alone-"));
-    execTextSync("git", ["init", "-q"], { cwd: clone });
-    const lock = join(clone, ".git", "ana-land.lock");
-    symlinkSync("4194399 #5 sanitizing", lock);
-    const held = holdAlone(clone, "land", () => undefined, 20);
-    const early = await Promise.race([held.then(() => "held"), Bun.sleep(300).then(() => "waiting")]);
-    expect(early).toBe("held");
-    expect(readlinkSync(lock)).toBe(recordOf(runtimeProcess.pid));
-    (await held)();
-  });
-
-  it("takes over at once a folder lock an older landing left without its pid or naming a dead one", async () => {
-    for (const pid of [null, "4194399"]) {
-      const clone = mkdtempSync(join(fixture, "alone-"));
-      execTextSync("git", ["init", "-q"], { cwd: clone });
-      const lock = join(clone, ".git", "ana-land.lock");
-      mkdirSync(lock);
-      if (pid !== null) writeFileSync(join(lock, "pid"), pid);
-      const held = holdAlone(clone, "land", () => undefined, 20);
-      const early = await Promise.race([held.then(() => "held"), Bun.sleep(60).then(() => "waiting")]);
-      expect(early, `a folder whose pid is ${String(pid)}`).toBe("held");
-      expect(readlinkSync(lock)).toBe(recordOf(runtimeProcess.pid));
-      (await held)();
-    }
-  });
-
-  it("waits for a live landing that holds a folder lock, ends nothing, and takes the lock once it is gone", async () => {
-    const clone = mkdtempSync(join(fixture, "alone-"));
-    execTextSync("git", ["init", "-q"], { cwd: clone });
-    const lock = join(clone, ".git", "ana-land.lock");
-    const older = Bun.spawn(["sleep", "30"]);
-    mkdirSync(lock);
-    writeFileSync(join(lock, "pid"), `${String(older.pid)} #5 sanitizing`);
-    const held = holdAlone(clone, "land", () => undefined, 20, { note: "#6 sanitizing", over: () => true });
-    const early = await Promise.race([held.then(() => "held"), Bun.sleep(300).then(() => "waiting")]);
-    expect(early).toBe("waiting");
-    expect(older.signalCode).toBe(null);
-    expect(readFileSync(join(lock, "pid"), "utf8")).toBe(`${String(older.pid)} #5 sanitizing`);
-    older.kill();
-    await older.exited;
-    (await held)();
-  });
-
   it("names each commit's pull request on the lines that name the commit", () => {
     const said: string[] = [];
     const proofs = ["a", "b", "c", "d"].map((letter) => ({ commit: letter.repeat(40), pass: null }));

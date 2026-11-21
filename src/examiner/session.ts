@@ -175,7 +175,9 @@ function finishTool(mode: Mode, said: Said, rest: Rest): SeatTool {
         return text(mode.declined);
       }
       said.note = boundText(args.note, 700).shown;
-      const woken = await rest("finished");
+      // An ask that held nothing closes the conversation rather than resting it, so the next ask
+      // opens afresh from the log instead of waking one that gave up.
+      const woken = mode.result().held.length === 0 ? null : await rest("finished");
       return woken === null ? ending(text("Finished.")) : text(woken);
     },
   });

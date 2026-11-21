@@ -150,6 +150,9 @@ export function traceSink(log: string, of: SeatKind, id: string | (() => string)
     afterTool: (call: ToolHookCall, result: ToolExecutionResult) => {
       const started = calls.get(call.id);
       calls.delete(call.id);
+      // A call that rested its ask and woke in the next (`finish`) spent the rest parked, not running,
+      // so its own time is unknown rather than the hours it waited.
+      const woke = started !== undefined && started.whose[whose(of)] !== named()[whose(of)];
       append(log, traceKind(of, "call"), {
         ...(started?.whose ?? named()),
         toolCallId: call.id,
@@ -161,7 +164,7 @@ export function traceSink(log: string, of: SeatKind, id: string | (() => string)
           ...(result.output ?? []),
           ...(result.diagnostics ?? []).map(({ message }) => ({ type: "text", text: message })),
         ]),
-        ms: started === undefined ? null : performance.now() - started.at,
+        ms: started === undefined || woke ? null : performance.now() - started.at,
       });
     },
     turn: (message: AssistantMessage, retried: readonly string[] = []) => {

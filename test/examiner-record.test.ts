@@ -489,6 +489,24 @@ describe("a wake", () => {
   });
 });
 
+describe("a resumed comparison at a wake", () => {
+  it("tells no task of a comparison first reported before the conversation was last told, as it tells no reading", () => {
+    const log = logged();
+    log.hold(["run"]);
+    log.solved("b-1", "run", "h1", [true, true]);
+    log.solved("b-1", "run", "h2", [false, false]);
+    log.reported("b-1", ["h1", "h2"], ["run"]);
+    const since = log.events.length;
+    log.reported("b-1", ["h1", "h2"], ["run"]);
+    expect(heard(log.events, [fixture("run")], since)).toEqual({
+      stood: null,
+      groups: [],
+      promoted: null,
+      refused: [],
+    });
+  });
+});
+
 describe("the largest family of a comparison the reference stood in", () => {
   it("is counted over the tasks that comparison scored, whatever else the exam holds", () => {
     const log = logged();

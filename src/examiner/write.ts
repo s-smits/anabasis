@@ -513,7 +513,7 @@ function roomLine(contract: Contract, author: number | null, valid: readonly num
  * id, and any other under one its content names. Each solve's turns and measure are read back from
  * the log under the id the probe returns.
  */
-function tryReferenceTool(desk: Desk, first: NonNullable<Terms["probe"]>, within: Within): SeatTool {
+function tryReferenceTool(desk: Desk, within: Within): SeatTool {
   return tool(
     fromHome(desk.home, {
       name: "try_reference",
@@ -526,9 +526,13 @@ function tryReferenceTool(desk: Desk, first: NonNullable<Terms["probe"]>, within
         context.abortSignal?.throwIfAborted();
         // The ask's own: its solves' starts name the ask (`probing`, `tools/d1b/examine.ts`).
         const { request } = desk;
-        const probe = request.probe ?? first;
+        // An ask without a probe has no try: the first ask's would solve under its reference, which a
+        // promotion since may have replaced.
+        const { probe } = request;
         const left = capped(probe) - desk.tried;
-        if (left <= 0) throw new Error("This session has no try of the reference harness left.");
+        if (probe === null || left <= 0) {
+          throw new Error("This session has no try of the reference harness left.");
+        }
         const given =
           "reference" in args.task ? desk.checked.get(args.task.reference) : instanceOf("", args.task);
         if (given === undefined) throw new Error("Unknown instance reference. try_answer returns one.");
@@ -652,7 +656,7 @@ export function writing(
       proposeTool(desk),
       exampleTool(() => [...writtenTasks(read(desk.request.log)), ...desk.request.tasks]),
       ...(verify === null ? [] : [tryTool(desk, verify)]),
-      ...(probe === null ? [] : [tryReferenceTool(desk, probe, within)]),
+      ...(probe === null ? [] : [tryReferenceTool(desk, within)]),
     ],
     enters: "a task enters it through propose_tasks alone",
     nudge: "Propose further tasks",

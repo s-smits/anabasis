@@ -73,7 +73,7 @@ import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
 import type { Limits } from "../kernel/condition.ts";
-import type { NetworkReach } from "../tools/command.ts";
+import { INSTALLER_TOLD, type NetworkReach } from "../tools/command.ts";
 import { CONTEXT_OUTPUT_LIMIT } from "../../vendor/claude-mem/ContextBudget.ts";
 import { MEMORY_FILE } from "./memory.ts";
 
@@ -217,9 +217,9 @@ function tried(harness: string | Error, practice: "counted" | "uncounted"): stri
  *  (`networkReach`): the shell is the solver's `bash`, started in the home. */
 export const shellWalls = (network: NetworkReach): string =>
   ` Runs in your home directory (holding harness/, practice/, resources.json, HARNESS.md, notes, and kept/ copies of earlier harnesses; only harness/ is frozen). ${
-    network === "reached"
-      ? "Network is reachable, so packages and programs can be installed under harness/.toolchain."
-      : "No network access, so a program the solver runs is one written here or already on the host."
+    network === "unreached"
+      ? "No network access, so a program the solver runs is one written here or already on the host."
+      : `Network is reachable, so packages and programs can be installed under harness/.toolchain.${INSTALLER_TOLD[network]}`
   } Writable: your home and $TMPDIR, which persists for the session; a write under /tmp is refused or does not outlive the command. Readable: host toolchains and public runtime roots, never the repository or private data. Background jobs are killed when a command returns, so one is waited for in the command that started it.`;
 
 export function systemPrompt(said: Said): string {

@@ -522,15 +522,15 @@ describe("a wall's network reach", () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-reach-")));
       try {
         await inSeat(repoRoot, async (wall) => {
-          const readings: NetworkReach[] = ["unreached", "reached", "unreached"];
+          const readings: NetworkReach[] = ["unreached", "uv", "unreached"];
           let probes = 0;
           const probe = async (): Promise<NetworkReach> => readings[probes++] ?? "unreached";
           const at = (now: number) => networkReach(wall, { now, probe });
           expect(await at(0)).toBe("unreached");
           expect(await at(UNREACHED_MS - 1)).toBe("unreached");
           expect(probes).toBe(1);
-          expect(await at(UNREACHED_MS)).toBe("reached");
-          expect(await at(10 * UNREACHED_MS)).toBe("reached");
+          expect(await at(UNREACHED_MS)).toBe("uv");
+          expect(await at(10 * UNREACHED_MS)).toBe("uv");
           expect(probes).toBe(2);
         });
       } finally {
@@ -546,12 +546,12 @@ describe("a wall's network reach", () => {
       try {
         await inSeat(repoRoot, async (wall) => {
           let probes = 0;
-          const probe = async (): Promise<NetworkReach> => (probes++ === 0 ? "unreached" : "reached");
+          const probe = async (): Promise<NetworkReach> => (probes++ === 0 ? "unreached" : "pip");
           expect(await networkReach(wall, { now: 0, probe })).toBe("unreached");
           const batch = await Promise.all(
             [1, 2, 3, 4].map(() => networkReach(wall, { now: UNREACHED_MS, probe })),
           );
-          expect(batch).toEqual(["reached", "reached", "reached", "reached"]);
+          expect(batch).toEqual(["pip", "pip", "pip", "pip"]);
           expect(probes).toBe(2);
         });
       } finally {

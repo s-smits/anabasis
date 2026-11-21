@@ -4,9 +4,9 @@ import { inlineFunctionArgument } from "../shared/statements.ts";
 
 /**
  * `await new Promise((resolve) => setTimeout(resolve, 50))` is a guess about how long something
- * else takes. It is the shape the working contract argues with in two separate places — "start
+ * else takes. It is the shape the working contract argues with in two separate places ("start
  * one background monitor that exits on the real condition" for a watch, and the test wrapper's
- * output-idle wall rather than a fixed pause for a suite — and the shape a simplify pass cut
+ * output-idle wall rather than a fixed pause for a suite) and the shape a simplify pass cut
  * out of a test in `1acfef45`.
  *
  * Three replacements, in the order to try them. A test waiting for its own producer wants
@@ -35,7 +35,7 @@ import { inlineFunctionArgument } from "../shared/statements.ts";
  * because neither is a wait.
  *
  * There is no fix. Every one of the three answers needs to know what the site is
- * waiting for, and that is not in the expression — though all eleven sites it kept took the
+ * waiting for, and that is not in the expression, though all eleven sites it kept took the
  * third. Six simulated latency inside a stub, two were a retry backoff, and three asserted that
  * a poller had *not* read again within 25 ms. The first two answers need a condition to wait on,
  * and an assertion about absence has none: a real clock is what those tests measure.

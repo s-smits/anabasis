@@ -4,8 +4,8 @@ import type { RuleExample } from "../../rule-examples.ts";
 /**
  * Four levels of nesting inside one function means the reader has to hold four conditions at
  * once to know why the innermost line runs. The count is not a style preference: each level is
- * a fact that stays true for everything below it, and the working contract's own habit —
- * `if (…) continue;`, `if (…) return null;` — exists because holding one fact is cheaper than
+ * a fact that stays true for everything below it, and the working contract's own habit,
+ * `if (…) continue;`, `if (…) return null;`, exists because holding one fact is cheaper than
  * holding four.
  *
  * The three answers, in the order to try them. A guard that ends the iteration or the call
@@ -21,7 +21,7 @@ import type { RuleExample } from "../../rule-examples.ts";
  *
  * A `catch` counts and a `try` block does not. Entering a `try` is unconditional: every
  * statement in it runs on the same path as the statement above the `try`, so the reader holds
- * no extra fact about why the line runs, only where control goes if it fails — one fact for the
+ * no extra fact about why the line runs, only where control goes if it fails: one fact for the
  * whole function rather than one per level. A `catch` is the other way round: a reader is there
  * because something threw. Counting the `try` block reported four shapes that are the
  * repository's ordinary "do the work, clean up on failure" body: `cleanStaleTempRootScratch`
@@ -37,7 +37,7 @@ import type { RuleExample } from "../../rule-examples.ts";
  * remedy as the defect: control leaves, so nothing below it is inside it and the next line is one
  * level shallower rather than deeper. `caseGroundingClauses` was reported on
  * `if (executedTriples.has(…)) continue;` and `openWorkshopCell` on
- * `if (canary.status === 255) throw unavailable(…);` — both of them the shape a reader wants.
+ * `if (canary.status === 255) throw unavailable(…);`: both of them the shape a reader wants.
  * Nine of 14 sites.
  *
  * A guard has no `else`, ends in `return`, `continue`, `break` or `throw`, holds at most three
@@ -45,7 +45,7 @@ import type { RuleExample } from "../../rule-examples.ts";
  * needs: `safeguardUsageReport` counts a malformed line and continues, which is a guard with a
  * side effect and not a branch. The no-branching clause is what keeps
  * `authoringContractFiles` reported, where the `continue` sits under a nested `if` that decides
- * whether the type-only edge still joins the contract — that body is doing two things, which is
+ * whether the type-only edge still joins the contract: that body is doing two things, which is
  * the second answer this rule offers.
  *
  * There is no fix. Which of the three answers a site wants is the whole decision.

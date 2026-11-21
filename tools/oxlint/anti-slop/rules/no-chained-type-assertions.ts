@@ -58,8 +58,8 @@ function isForbiddenAssertionChain(node: TypeAssertionExpression): boolean {
  * One assertion says the author knows something the checker does not. Two say the first one was
  * not accepted either, and the usual second one is `as unknown`, whose entire job is to widen far
  * enough that the assertion after it stops being an error. What reaches the reader is a value
- * carrying a name and no evidence, and the type it started from — the one piece of real
- * information in the expression — has been discarded on the way.
+ * carrying a name and no evidence, and the type it started from (the one piece of real
+ * information in the expression) has been discarded on the way.
  *
  * A chain of nothing but `as const` is admitted, because `as const` narrows rather than widens
  * and adds evidence rather than replacing it. `isForbiddenAssertionChain` therefore counts the

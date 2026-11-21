@@ -141,7 +141,7 @@ function isOwnedPrimitivePredicate(
  * all, so `isExistenceProbe` passes it. The primitive predicates a decoder is built out of are
  * admitted in the module that owns them and nowhere else, by `isOwnedPrimitivePredicate`, which
  * requires the whole function body to be the check and the declared predicate to name exactly
- * what the answer establishes — `value is number` over a `"string"` test is still reported, and
+ * what the answer establishes: `value is number` over a `"string"` test is still reported, and
  * `"object"` must exclude null as well, since `typeof null` is `"object"`. The message names that
  * owning module, so a report tells the reader where the check they wanted already lives.
  *

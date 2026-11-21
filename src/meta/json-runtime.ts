@@ -58,7 +58,7 @@ export function parseJsonAs<T>(text: string): T {
 
 /** SHA-256 of native compact JSON bytes. Object insertion order is deliberately part of this
  *  identity. The parameter is `unknown` because callers hash shapes this module cannot prove are
- *  JSON — a vendored TypeBox schema keyed by symbols, a provider message list — and declaring
+ *  JSON (a vendored TypeBox schema keyed by symbols, a provider message list) and declaring
  *  `JsonValue` would put a runtime proof on a live digest path that throws on exactly those values.
  *  The identity is therefore over whatever the captured stringify wrote. */
 export function hashJsonBytes(value: unknown): string {

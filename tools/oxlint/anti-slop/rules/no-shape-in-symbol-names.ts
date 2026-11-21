@@ -34,7 +34,7 @@ function isPassedOverKey(node: ESTree.Node): boolean {
 }
 
 /**
- * The word "shape" in a symbol name — `taskShape`, `ShapeOf`, `SHAPE_KEYS`, `jsonShaped` — read
+ * The word "shape" in a symbol name (`taskShape`, `ShapeOf`, `SHAPE_KEYS`, `jsonShaped`) read
  * off every identifier, every `#private` name and every JSX name in the file.
  *
  * A name is where a value says what it is for, and "shape" says only that it has fields. It reads
@@ -57,7 +57,7 @@ function isPassedOverKey(node: ESTree.Node): boolean {
  * `{ taskShape: buildTask() }`, still reports: there the key is the only place the name is chosen.
  *
  * A property read off another value is exempt, through `isBorrowedMemberName`. `parsed.shape` is
- * not this file naming anything — the name belongs to whatever declared it, the rename would have
+ * not this file naming anything: the name belongs to whatever declared it, the rename would have
  * to happen there, and reporting it here would report the same name once per reader. A computed
  * read is not exempt, because it is an expression rather than a borrowed name.
  *

@@ -68,7 +68,7 @@ describe("the runtime prefix a wall reopens", () => {
     try {
       // The controller launches `capturedExecPath`, captured before any generated module ran. Read
       // from the live global instead, the reopened roots lose the runtime's own prefix and a walled
-      // command cannot start it — the substitution test/trusted-runtime.test.ts exists to refuse.
+      // command cannot start it: the substitution test/trusted-runtime.test.ts exists to refuse.
       expect(nodeRuntimeReadRoots()).toEqual(honest);
     } finally {
       if (descriptor) Object.defineProperty(runtimeProcess, "execPath", descriptor);

@@ -20,14 +20,14 @@ import { isConstDeclaration, isNamedMember } from "../shared/statements.ts";
  * is a primitive written as a constant, so the table closes over nothing and module scope can hold
  * it exactly as written. And the binding never escapes the declaration: in this whole file the
  * name appears only as the object of a property read. That second one is what makes the hoist safe
- * rather than merely legal — at module scope one object is shared by every call, where an inline
+ * rather than merely legal: at module scope one object is shared by every call, where an inline
  * one was fresh each time, so anything that could write to it withdraws the report.
  *
  * Primitive is stricter than constant, and the difference is the entry a property read hands out.
  * A nested `{ a: [1, 2], b: [3], c: [4] }` is constant throughout and still has `t.a.push(5)` in
  * it, and a `use(t.a)` that no rule can follow; hoisted, one call's array would be every call's.
  * A flat table has nothing to hand out but a string or a number, which no caller can write to. It
- * costs nothing measurable here — all five sites are flat, and of the six fixtures it withdraws
+ * costs nothing measurable here: all five sites are flat, and of the six fixtures it withdraws
  * one, `const authored: CorrectnessModelResult = { ok: false, issues: [], ... }`, whose empty
  * nested array is the thing there is no rule for. It removes the class rather than the spellings
  * of it somebody thought of.
@@ -35,7 +35,7 @@ import { isConstDeclaration, isNamedMember } from "../shared/statements.ts";
  * It is the escape rule that does the work, and it was written after reading what a weaker one
  * reported. Withdrawing only on a bare call argument still reported `segment-actor.mts`'s
  * `const state: BuilderTurnState = { accepted: null, attempts: 0, ... }`, six constants that the
- * turn loop then writes to, handed on as the shorthand `{ session, state, ... }` — a property
+ * turn loop then writes to, handed on as the shorthand `{ session, state, ... }`: a property
  * value, not an argument. Hoisting it would have shared one actor's turn state with every other
  * actor. A rule in the gate has to be wrong in the other direction, so every use that is not a
  * property read now withdraws: passed, returned, assigned, spread, destructured or iterated.
@@ -45,7 +45,7 @@ import { isConstDeclaration, isNamedMember } from "../shared/statements.ts";
  *
  * Test files are exempt, and the reason is what a fixture is rather than how many there are. The
  * five sites the test tree holds are each a made-up input standing next to the assertion that
- * explains it — `const scratchpad = ["a", "b", "a", "c"]` under a comment reading `A → B → A → C`,
+ * explains it: `const scratchpad = ["a", "b", "a", "c"]` under a comment reading `A → B → A → C`,
  * a ten-label shortlist, a four-commit history. Moved to the top of the file they would be read
  * before the case that gives them meaning, which is the opposite of what this rule is for.
  *
@@ -54,7 +54,7 @@ import { isConstDeclaration, isNamedMember } from "../shared/statements.ts";
  * `gpt-sessions.ts`'s five quick-launch option names, `policy.ts`'s three run-data
  * directory names, `prose-classify.ts`'s three case kinds and `archive-scaffold.ts`'s
  * lane-state lookup. Each of those five files already carried module constants of exactly this
- * shape — `BACKENDS`, `EFFECT_STATES` — so the rule found the exception
+ * shape (`BACKENDS`, `EFFECT_STATES`) so the rule found the exception
  * rather than a new style, and all five were hoisted. The launcher's table has since gone with
  * its quick-launch options, in the 2026-09-30 rewrite. It enters the gate at zero, where it
  * costs nothing and keeps the shape from arriving.

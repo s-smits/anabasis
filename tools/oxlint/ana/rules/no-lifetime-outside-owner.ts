@@ -12,8 +12,8 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
  *
  * The rule was written in v1, where a second launch owner stood beside `stageCommandIsolation`
  * for the Builder's isolated commands, and the record it keeps is v1's.
- * On 2026-09-15 an `AbortSignal` threaded into the Builder's command runner was refused twice —
- * "why do we even need to kill", then "one layer higher" — because the spawner already killed
+ * On 2026-09-15 an `AbortSignal` threaded into the Builder's command runner was refused twice
+ * ("why do we even need to kill", then "one layer higher") because the spawner already killed
  * the group on timeout and in `finally`, and the leak was the controller recording its terminal
  * before its session had stopped. The repair that landed (v1's `c4bd09b88`) put the reaping of
  * the group on exit inside `stageCommandIsolation`, on the Darwin launch only, at a net cost of
@@ -36,7 +36,7 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
  * A signal sent through the process object is not that shape. `process.kill(pid, signal)` ends
  * an identity the file was handed, which is what `src/meta/subprocess.ts` itself does, what
  * `src/wall/seat-root.ts` does to the pids libproc lists in a seat's root, and what the test runner
- * does to the descendants a group kill could not reach — they left their session, so the runner
+ * does to the descendants a group kill could not reach: they left their session, so the runner
  * finds them in `ps` and signals each one. A second launch owner is a file that kills the child
  * it holds, and that is written `child.kill()`.
  *

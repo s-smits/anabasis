@@ -12,7 +12,7 @@
  * Paths arrive absolute; compare on the repository-relative tail so a worktree name cannot matter.
  *
  * The earliest root wins, not the first one named. `packages/ui/src/server/api.ts` contains both
- * `/packages/` and `/src/`, and taking `/src/` made the UI package read as controller source —
+ * `/packages/` and `/src/`, and taking `/src/` made the UI package read as controller source,
  * which is how eleven of its files first came back as isolation defects.
  */
 export function repoRelative(filename: string): string {

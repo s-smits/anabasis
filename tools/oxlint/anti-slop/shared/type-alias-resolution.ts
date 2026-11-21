@@ -113,7 +113,7 @@ function collectTypeBindings(
  * be answered from the file's own declarations. That is what this collects: the aliases, so a
  * name can be followed to the type it stands for, and the interfaces, enums, classes and imports
  * beside them, so a name that is declared but not followable is still known to be taken. Both
- * halves matter — the second is how `hasVisibleTypeBinding` tells a local `Record` from the
+ * halves matter: the second is how `hasVisibleTypeBinding` tells a local `Record` from the
  * built-in one.
  *
  * The result is cached per `Program` in a `WeakMap`, because several rules ask for it on the same
@@ -171,7 +171,7 @@ function nearestTypeBindings(
  * Null in three cases, and each is a refusal rather than a miss. A name a type parameter is
  * binding is that parameter's, whatever the module declares. A name nothing declares is a
  * built-in or an ambient, which this environment cannot see into. And a name whose nearest
- * declarations tie — two bindings at the same scope distance — stands for no single thing here,
+ * declarations tie (two bindings at the same scope distance) stands for no single thing here,
  * so resolving it would pick one of them by collection order.
  */
 export function visibleTypeAlias(
@@ -185,7 +185,7 @@ export function visibleTypeAlias(
 }
 
 /**
- * Whether the name is taken where it is used — which is how a rule tells a local `Record` or
+ * Whether the name is taken where it is used, which is how a rule tells a local `Record` or
  * `Array` from the built-in of the same name.
  *
  * Any binding counts and it need not be followable: an interface, an enum, a class or an import
@@ -204,7 +204,7 @@ export function hasVisibleTypeBinding(
   );
 }
 
-/** The identifier a type reference names, or null where it is qualified — `A.B` names no
+/** The identifier a type reference names, or null where it is qualified: `A.B` names no
  *  single binding this environment can look up. Three modules ask it. */
 export function typeReferenceName(type: ESTree.TSTypeReference): string | null {
   return type.typeName.type === "Identifier" ? type.typeName.name : null;
@@ -241,7 +241,7 @@ function aliasSubstitutions(
  * the arguments each use supplies.
  *
  * The matcher decides the leaves and the walk decides everything else, which is why the three
- * rules that use it — `no-unknown-returns`, `no-unknown-type-aliases`, `no-object-parameters` —
+ * rules that use it (`no-unknown-returns`, `no-unknown-type-aliases`, `no-object-parameters`)
  * differ only in what they recognise once they get there. Each one is handed the resolved type
  * and a `matches` callback, so it can recurse into a union or an array without knowing anything
  * about substitutions.

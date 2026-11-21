@@ -4,7 +4,7 @@
  * What is pinned here beside the report is the fixer's table, because that is where it can be
  * wrong. It moves the seven builtins exactly
  * one module under `src/meta` wraps and nothing else: `node:util` has two owners there, `node:crypto`
- * has none, and a shape whose repair is a decision — a type import, a namespace import, a re-export —
+ * has none, and a shape whose repair is a decision (a type import, a namespace import, a re-export)
  * keeps its report and gets no edit. The fixture holds one of each so the admitted half is as
  * visible as the moved half.
  */

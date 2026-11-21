@@ -51,8 +51,8 @@ if [ -n "$staged" ]; then
     exit 1
   }
   # The slop report: the whole-tree simplify scans, narrowed to the lines this commit changes, with
-  # an id per site for the not-slop ledger. It prints and never refuses — its scans are heuristics
-  # (tools/oxlint/staged-slop.ts says why) — so a scan that fails to finish costs one line here.
+  # an id per site for the not-slop ledger. It prints and never refuses: its scans are heuristics
+  # (tools/oxlint/staged-slop.ts says why), so a scan that fails to finish costs one line here.
   bun tools/oxlint/staged-slop.ts || echo "commit-check: the slop report did not finish; the commit goes ahead." >&2
 fi
 

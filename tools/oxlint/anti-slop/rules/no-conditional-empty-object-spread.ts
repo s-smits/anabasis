@@ -18,7 +18,7 @@ function isConditionalEmptyObjectSpread(node: ESTree.Expression): boolean {
 }
 
 /**
- * `{...(present ? { key: value } : {})}` — a spread inside an object literal whose argument is a
+ * `{...(present ? { key: value } : {})}`: a spread inside an object literal whose argument is a
  * conditional with an empty object in one arm.
  *
  * It is the shortest way to make a key sometimes exist, which is why it is written, and that is
@@ -29,7 +29,7 @@ function isConditionalEmptyObjectSpread(node: ESTree.Expression): boolean {
  * condition costs two more lines and says which fields are optional.
  *
  * Only the spread argument is read, and only where the spread sits directly in an object literal,
- * so the same ternary as a value, an argument or an initialiser is left alone — there it produces
+ * so the same ternary as a value, an argument or an initialiser is left alone: there it produces
  * a value rather than deciding whether a key exists. Either arm may be the empty one, since
  * `{...(absent ? {} : { key })}` is the same construction written the other way round, and
  * parentheses around the conditional are unwrapped first.

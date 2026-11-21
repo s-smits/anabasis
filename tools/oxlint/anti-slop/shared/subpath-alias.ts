@@ -67,7 +67,7 @@ function scopeOf(directory: string): Scope | null {
  *
  * Null for a specifier that climbs fewer than three levels, one that climbs out of the package
  * (a subpath import resolves inside its own package only), one that lands in no aliased tree, and
- * any file under a `relativeOnly` tree — a directory, relative to the package root, whose files
+ * any file under a `relativeOnly` tree: a directory, relative to the package root, whose files
  * are also resolved some other way the alias would not survive.
  */
 export function subpathAlias(

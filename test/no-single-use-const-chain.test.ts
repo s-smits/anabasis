@@ -1,13 +1,13 @@
 /**
  * The rule that reads a run of `const`s threading one value, each read once, into the statement
- * below it — the twenty-lines-to-four shape stated so a scan can find it.
+ * below it: the twenty-lines-to-four shape stated so a scan can find it.
  *
  * What needs pinning is where the run stops, because every exemption is a way a `const` earns its
  * line and each one has to end the run rather than be skipped over. So each admitted case here is
  * four steps long with its exemption on the second, which means the run is only short because that
  * one guard held: remove the guard and a four-link chain reports. A three-step fixture would have
  * been admitted by the link count instead, and would have asked the guard nothing. Mutating each
- * guard in turn confirmed it — five of the six break this fixture, and the sixth, an explicit test
+ * guard in turn confirmed it: five of the six break this fixture, and the sixth, an explicit test
  * for a type annotation, could not be made to break it at all and was deleted as a restatement of
  * what the read count already decides. The annotated case is the one that asserts a line rather
  * than a silence: the run has to start *below* it.
@@ -18,7 +18,7 @@
  * fixture is such a trailing comment, so the whole file is that half of the test.
  *
  * The link count is the other half. At three links this tree has no site and at two it has 80, and
- * twelve of the twenty outside `test/` were read one by one and are all a name doing work — so the
+ * twelve of the twenty outside `test/` were read one by one and are all a name doing work, so the
  * dial is not a preference: two threaded steps are ordinary and three are the shape.
  */
 import { describe, expect, it } from "bun:test";

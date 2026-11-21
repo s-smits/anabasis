@@ -40,7 +40,7 @@ function memberType(member: ESTree.TSSignature): ESTree.TSType | null {
  *
  * `object` says the value is not a primitive and stops there. A parameter declared that way
  * accepts anything any caller has, so the signature rejects nothing, and the narrowing the
- * function needs before it can read a field happens inside it instead — and then again inside the
+ * function needs before it can read a field happens inside it instead, and then again inside the
  * next function it passes the value to. A parameter is where a type earns the most, because it is
  * the one declaration both sides read.
  *
@@ -53,8 +53,8 @@ function memberType(member: ESTree.TSSignature): ESTree.TSType | null {
  *
  * Only a written annotation is read, because a plugin rule never asks the checker, so an
  * unannotated parameter is invisible here however wide its inferred type comes out. The ten
- * visitor kinds cover declarations and contracts alike — the arrow, the function, the method
- * signature, the call and construct signatures, the bare `TSFunctionType` — so an interface asking
+ * visitor kinds cover declarations and contracts alike (the arrow, the function, the method
+ * signature, the call and construct signatures, the bare `TSFunctionType`) so an interface asking
  * for `object` is reported where it is written rather than at each implementation of it.
  *
  * There is no fix: the repair is an owner-provided type parsed at its boundary, so the edit is a

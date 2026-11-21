@@ -4,7 +4,7 @@
  * also records have their own files.
  *
  * Each of these has a right answer, which is why they are worth catching deterministically, and
- * all of them gate as of 2026-09-20. What a test pins is the edge — the site the platform feature
+ * all of them gate as of 2026-09-20. What a test pins is the edge: the site the platform feature
  * would not actually reach, which is where a confident rewrite goes wrong, and which now refuses
  * a push rather than printing a line somebody skips.
  */

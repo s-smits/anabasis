@@ -1,5 +1,5 @@
 // Token-level source facts built on TypeScript 7's scanner. The 7.0.2 native port exports no
-// stable parser API — its "." entry is version-only and the AST contract is behind unstable/ — so
+// stable parser API (its "." entry is version-only and the AST contract is behind unstable/) so
 // source policy and analysis tools read tokens rather than trees. The scanner skips trivia, so a
 // refused word inside a comment never triggers a source-policy finding.
 

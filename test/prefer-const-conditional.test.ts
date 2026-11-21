@@ -2,8 +2,8 @@
  * The rule that reads a `let` the next `if` decides, and the one of its two shapes it rewrites.
  *
  * With both arms written out there is nothing to choose: the condition and both values are on
- * the page, so the rewrite is the same program. With a default there is — `c ? b : a` and
- * `a ?? b` part company the moment the default is falsy — so that shape keeps its two
+ * the page, so the rewrite is the same program. With a default there is (`c ? b : a` and
+ * `a ?? b` part company the moment the default is falsy) so that shape keeps its two
  * statements and its report. What is pinned below is that split, and the annotation travelling
  * with the binding so the arms stay contextually typed. The report boundary is pinned with the
  * other simplify catchers in `simplify-catchers-shape`.

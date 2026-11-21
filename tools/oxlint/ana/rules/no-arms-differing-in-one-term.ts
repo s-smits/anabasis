@@ -20,7 +20,7 @@ import { blockBody, onlyStatement } from "../shared/statements.ts";
  * The comparison is over tokens rather than characters or an AST shape, and it is deliberately
  * strict: the two arms must produce the same token sequence at the same length and differ at
  * exactly one position. A difference of two tokens is two decisions, and merging those reads
- * worse than the branch. That strictness is the admission test — at every site this reports,
+ * worse than the branch. That strictness is the admission test: at every site this reports,
  * one conditional expression at the differing token is legal and shorter, so the catcher never
  * asks for something another rule or ceiling refuses.
  *
@@ -35,7 +35,7 @@ import { blockBody, onlyStatement } from "../shared/statements.ts";
  *
  * Each of those reads worse than the two arms it replaces, and the second loses the static
  * property access a rename can follow. The `labelled` case below already states this for a
- * string — two named outcomes are not one outcome with a hole — and a name in dispatch position
+ * string (two named outcomes are not one outcome with a hole) and a name in dispatch position
  * is the same thing spelled in code. So `linkSync` against `symlinkSync` is two system calls,
  * `reject` against `resolve` is two outcomes, and `completed += 1` against `open += 1` is two
  * counters.
@@ -55,8 +55,8 @@ import { blockBody, onlyStatement } from "../shared/statements.ts";
  * finding was dispatch, not a hole in one arm.
  *
  * There is no fix: the conditional goes where the token was, and only a reader can
- * place it well. It gates, because the class where the merged form is the worse spelling — two
- * named outcomes rather than one outcome with a hole — is exactly what the exemptions above now
+ * place it well. It gates, because the class where the merged form is the worse spelling (two
+ * named outcomes rather than one outcome with a hole) is exactly what the exemptions above now
  * hold back.
  */
 
@@ -71,7 +71,7 @@ const ARM_LIMIT = 200;
  *  choice. `linux ? bwrap : seatbelt` names one a side and `args[1]` names two, which is what a
  *  conditional is for; there is no second spelling and nothing to compare. The saving starts
  *  where the arms are expressions a reader has to scan to find the word that differs, and
- *  `spawnUnder(bwrapProfile, command)` — the shape this rule is named for — names three. */
+ *  `spawnUnder(bwrapProfile, command)` (the shape this rule is named for) names three. */
 const ARM_WORD_FLOOR = 3;
 
 /** Tokens before the differing one that put it in dispatch position, and those after it. */

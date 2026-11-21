@@ -2,7 +2,7 @@
  * Every committed test file sits where a gate step runs it.
  *
  * Bun discovers a `*.test` or `*.spec` file in any of the eight JavaScript and TypeScript
- * suffixes — `.mjs`, `.cjs`, `.mts` and `.cts` included, measured on 1.4.2 with one file per
+ * suffixes: `.mjs`, `.cjs`, `.mts` and `.cts` included, measured on 1.4.2 with one file per
  * suffix and eight passes. What it never does is descend into a directory whose name begins with
  * a dot, and a positional path is a filter over the files it already found rather than a root to
  * add: `bun test .claude`, and naming the file itself, both match nothing and say so in the same
@@ -22,7 +22,7 @@
  *
  * The subject is the candidate tree: tracked files that still exist plus untracked, non-ignored
  * ones. Reading that set through Git includes a suite added before staging while excluding the
- * ignored scratch directories a filesystem walk would enter — and it reaches into dot-directories,
+ * ignored scratch directories a filesystem walk would enter, and it reaches into dot-directories,
  * which the corpus walk in `tools/loc/source-policy.ts` deliberately does not.
  */
 import { existsSync, readFileSync } from "../src/meta/filesystem.ts";
@@ -93,7 +93,7 @@ describe("repository test discovery", () => {
   it("keeps every in-repo scratch directory inside the one ignored family", () => {
     // A fixture whose modules must resolve against this repository's `node_modules` cannot use
     // the system temp directory, so it makes its scratch inside the checkout. `.gitignore` is
-    // the only thing keeping that scratch away from the two readers who walk the tree — the case
+    // the only thing keeping that scratch away from the two readers who walk the tree: the case
     // above, which lists untracked files, and oxlint, which honours the same file. It used to
     // carry one pattern per fixture prefix and the list drifted: of the thirty-two live prefixes
     // eighteen had no entry, `.ana-candidate-*` failed a push while a sibling worker held one,

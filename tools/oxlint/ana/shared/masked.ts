@@ -5,7 +5,7 @@
  * `getText` returns source, so a rule looking for a binding by spelling is also reading prose.
  * `ana/prefer-const-conditional`'s one two-arm site, `base.ts`, builds a Seatbelt
  * profile whose array carries the comment *where that bypass is measured against this profile
- * without these lines* — the word `profile` in a sentence, suppressing the finding about the
+ * without these lines*: the word `profile` in a sentence, suppressing the finding about the
  * binding called `profile`. `ana/no-renaming-temporary` needs the same answer to place a fix
  * rather than to suppress one, and there the cost of reading prose is an edit inside a string
  * literal.
@@ -58,8 +58,8 @@ function withoutTemplateWords(text: string): string {
     } else if (words) {
       // Inside the words, `${` is the only way out, so a brace here is a character in a sentence
       // and counting it opens a hole: `` `a {b} ${name}` `` stood at depth 1 from the `{`, which
-      // is not the depth the literal opened at, so `b` — and everything up to the matching brace
-      // — read as code. A rule searching the masked text then found a name inside prose, which
+      // is not the depth the literal opened at, so `b` (and everything up to the matching brace)
+      // read as code. A rule searching the masked text then found a name inside prose, which
       // is the one thing this module exists to stop.
       if (character !== "\n") out[at] = " ";
     } else if (character === "{") depth += 1;

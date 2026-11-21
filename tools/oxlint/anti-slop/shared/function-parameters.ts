@@ -2,7 +2,7 @@ import type { ESTree, SourceCode } from "@oxlint/plugins";
 
 type FunctionParameter = ESTree.ParamPattern;
 
-/** Whether a type is `unknown`, or a union holding it — the one place `unknown` absorbs its
+/** Whether a type is `unknown`, or a union holding it: the one place `unknown` absorbs its
  *  neighbours. Containers and intersections are not followed. */
 export function containsUnknownType(type: ESTree.TSType): boolean {
   if (type.type === "TSUnknownKeyword") return true;
@@ -38,7 +38,7 @@ export function functionParameterTypeAnnotation(
  * What to call a parameter: its name where it has one, and otherwise the source text of the
  * pattern it was written as, with the annotation cut off.
  *
- * A destructured parameter has no single name, and the two callers both need one anyway — the
+ * A destructured parameter has no single name, and the two callers both need one anyway: the
  * rules use it to say which parameter a message is about, and `no-known-value-widening` matches a
  * type predicate's subject to the parameter it names. The pattern's own text is the closest thing
  * to an identity such a parameter has, and cutting the annotation off keeps the answer to what

@@ -12,14 +12,14 @@ import { ownedElsewhere } from "../shared/literal-owner.ts";
  *
  * The first version of this rule reported every repeat that carried meaning, and it was wrong
  * about most of them. Measured over the whole tree on 2026-09-20: 158 sites, of which 138 across
- * 98 distinct values were bare tags — `"non-result"`, `"completed"`, `"blocking"`, `"Identifier"`.
+ * 98 distinct values were bare tags: `"non-result"`, `"completed"`, `"blocking"`, `"Identifier"`.
  * Those are union members. A typo in one is a build failure rather than a branch that quietly
  * never runs, so the risk this rule exists to remove is already removed there, by a mechanism
  * stronger than a local `const`. The repair the old message asked for did not exist either: the
  * union is a type, so there is no member to import and the `const` beside the four uses would
  * only move the characters.
  *
- * The 20 that remain are the strings nothing checks — a file this repository writes and reads
+ * The 20 that remain are the strings nothing checks: a file this repository writes and reads
  * (`opening.json`, `battery.json`, `agent/tools.ts`), a flag handed to a sandbox (`--ro-bind`,
  * `--tmpfs`), an identifier crossing a process boundary (`verifier_workshop`), a sentence a
  * reader will grep for. `generated-tool-worker-child.ts` spells its wire form `non_result` while
@@ -33,11 +33,11 @@ import { ownedElsewhere } from "../shared/literal-owner.ts";
  * `turn_permit_request` are declared members of the worker protocol union in
  * `5bc9988:src/solve/generated-tool-worker-protocol.ts`, so the rule reports a repeat the compiler already
  * owns. Widening the tag to admit `_` would also admit the wire identifiers the same file crosses a
- * process boundary with, which is the one class this rule exists to catch — `non_result` against
+ * process boundary with, which is the one class this rule exists to catch: `non_result` against
  * `non-result` is the recorded instance. The mismatch is left in the narrower direction on purpose. It admits a leading digit, which it did not until 2026-09-20: `"2-digit"` is a
  * member of `Intl.DateTimeFormatOptions`, spelled six times in one formatter and five in
  * another, and the five `introduced: "2026-09-15"` rows of the safeguard inventory are a
- * hyphenated word by the same reading — naming either is not a repair.
+ * hyphenated word by the same reading: naming either is not a repair.
  *
  * The bare-tag test reads a union member from its characters, and a member with a space or a comma
  * in it fails that test: `"no value"` beside `"moved, better"` in one verdict union. Where the file
@@ -59,8 +59,8 @@ import { ownedElsewhere } from "../shared/literal-owner.ts";
  * fixer would answer it with a local one every time. In a test file a local one is the answer: the
  * fixture belongs to the suite that spells it, and importing the producer's constant instead would
  * cost the test the rename it exists to catch. So the fixer runs there and nowhere else. It
- * declines a value it cannot turn into a plain identifier — a leading digit, an escape, a name the
- * file already uses — and a file with no import to insert after, because inserting before the
+ * declines a value it cannot turn into a plain identifier (a leading digit, an escape, a name the
+ * file already uses) and a file with no import to insert after, because inserting before the
  * first declaration lands between a doc comment and the declaration it documents.
  *
  * Import sources and re-export names are skipped because the module system owns them, and object
@@ -87,7 +87,7 @@ import { ownedElsewhere } from "../shared/literal-owner.ts";
  */
 const REPEAT_FLOOR = { source: 4, test: 10 };
 
-/** String length below which a repeat is a word — `"id"`, `"json"` — rather than a value. */
+/** String length below which a repeat is a word (`"id"`, `"json"`) rather than a value. */
 const LENGTH_FLOOR = 6;
 
 /** Whitespace, which in a test file makes a string prose rather than a fixture's name. */

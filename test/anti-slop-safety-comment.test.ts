@@ -4,8 +4,8 @@ import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
 /**
  * `require-safety-comment-for-type-assertion` asks for the invariant immediately before the
  * assertion or its containing statement, and a parenthesis is not a place. `getCommentsBefore`
- * stops at one, so `/* SAFETY *\/ (x as T)` and `(/* SAFETY *\/ x as T)` used to read differently
- * — which mattered the day `biome format` moved the comment out of the parentheses at five sites
+ * stops at one, so `/* SAFETY *\/ (x as T)` and `(/* SAFETY *\/ x as T)` used to read differently,
+ * which mattered the day `biome format` moved the comment out of the parentheses at five sites
  * in one pass. Adjacency is the whole guarantee, so the fixture also holds a sentence the
  * assertion beside it may not borrow.
  */

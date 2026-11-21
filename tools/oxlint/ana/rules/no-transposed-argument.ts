@@ -7,14 +7,14 @@ import { bindingName, identifierName, propertyName } from "../shared/statements.
  * A call that passes two arguments the wrong way round, where the compiler cannot say so.
  *
  * `eslint/max-params` is registered at 5 as a proxy for this: a long parameter list is easy to
- * pass wrongly. It is the wrong instrument, and the tree says so — the transposable shape, two
+ * pass wrongly. It is the wrong instrument, and the tree says so: the transposable shape, two
  * parameters of one function declaring one type, stands at 963 pairs, of which 274 are in
  * two-parameter functions, 298 in three, 262 in four and 129 in five. A parameter ceiling moves a
  * function between those buckets; it removes nothing. What can be decided is the call itself.
  *
  * The evidence is the caller's own names. `writeRound(runId, campaignId)` against
- * `writeRound(campaignId: string, runId: string)` states the mistake twice — the argument names
- * are the parameter names, in the other order — and the compiler accepts it because both are
+ * `writeRound(campaignId: string, runId: string)` states the mistake twice (the argument names
+ * are the parameter names, in the other order) and the compiler accepts it because both are
  * `string`. Nothing else in the tree reports it: the types match, both bindings are read, and a
  * test written from the same misreading passes.
  *

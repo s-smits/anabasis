@@ -5,8 +5,8 @@ import { lintRules } from "./helpers/lint-rule.ts";
  * The `anti-slop` rules no other fixture makes report.
  *
  * `test/oxlint-rule-contract.test.ts` reads every rule's declaration and none of their behaviour,
- * so a rule that has quietly stopped matching — an AST field renamed under it, a node type an
- * oxlint upgrade no longer hands it — passes that test, reports nothing, and leaves a gate that
+ * so a rule that has quietly stopped matching (an AST field renamed under it, a node type an
+ * oxlint upgrade no longer hands it) passes that test, reports nothing, and leaves a gate that
  * reads exactly like a clean tree. Every one of these is `error` in `.oxlintrc.json` and
  * fails a push here, so whether they still report is a fact about this repository's gate.
  *

@@ -19,8 +19,8 @@ import type { RuleExample } from "../../rule-examples.ts";
  * of those resolvers looks, so a package with a manifest of its own is judged by its own `imports`
  * and never handed its parent's. One and two levels stay relative: a sibling or a parent's
  * neighbour is local, and spelling it from the root would hide that. `relativeOnly` names trees,
- * relative to the package root, whose files are also loaded some other way — copied under a
- * manifest without `imports`, or resolved as plain paths — where an alias would not resolve.
+ * relative to the package root, whose files are also loaded some other way (copied under a
+ * manifest without `imports`, or resolved as plain paths) where an alias would not resolve.
  *
  * The fix is the alias itself, in the quote the line already used. The target is the same file by
  * construction: the alias is read off the manifest that resolves it, and a key the manifest does

@@ -238,7 +238,7 @@ function bwrapIsolationArgs(options: { network: boolean }): string[] {
     "--unshare-uts",
     "--unshare-cgroup",
     // A private pid namespace, which buys four things. The confined command dies with bwrap's init,
-    // so ending the wrapper ends the command, and procfs — mounted after this flag — shows no host
+    // so ending the wrapper ends the command, and procfs (mounted after this flag) shows no host
     // process. Without it, `--new-session` leaves the command outside the wrapper's process group,
     // and a group kill orphans it with its pipes still open. The init also keeps the inherited stdio
     // open, so a command that closes its own stdin never breaks the host's pipe; the request wall

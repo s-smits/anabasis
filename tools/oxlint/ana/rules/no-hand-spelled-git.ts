@@ -39,7 +39,7 @@ function calleeName(call: ESTree.CallExpression): string | null {
 
 /**
  * A command array reaches a process from a call argument, an options property such as `cmd:`, or a
- * binding that is then passed on. An array that is the object of a member call — `[…].join(" ")` —
+ * binding that is then passed on. An array that is the object of a member call, `[…].join(" ")`,
  * is a string being built, which is how a guard spells the command it refuses.
  */
 function isCommandPosition(array: ESTree.ArrayExpression): boolean {
@@ -67,8 +67,8 @@ function isCommandPosition(array: ESTree.ArrayExpression): boolean {
  * string a guard builds with `["git", "reset"].join(" ")` is not a subprocess and passes. Tests are
  * outside the scope: a fixture builds the repository it then reads.
  *
- * There is no fix. The owner offers three answers — exact bytes, trimmed text, or null where "no"
- * is an answer — and a call that also reads the exit status or passes `cwd` instead of `-C` needs a
+ * There is no fix. The owner offers three answers (exact bytes, trimmed text, or null where "no"
+ * is an answer) and a call that also reads the exit status or passes `cwd` instead of `-C` needs a
  * reading of what it wanted.
  */
 export const noHandSpelledGitRule = defineRule({

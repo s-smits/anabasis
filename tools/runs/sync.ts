@@ -11,8 +11,8 @@
  * says what travels and no peer holds a copy to drift. Three things do live on a machine:
  * - **Tools.** `ANA_TOOLS` is one table of each tool's version (`.env.runs.example`). A row with no
  *   `install` leaves drift to report. Its `run` makes the tool do its job, and failing reads as drift
- *   at any version: on 5 November a guard copied to another host named the
- *   first host's home and exited 2 on every command, though its version read right. A host's `exclude`
+ *   at any version, since a guard copied to another host can name the first host's home and fail
+ *   every command while its version reads right. A host's `exclude`
  *   lists tools it keeps outside the table, reported and never changed. Until then each tool was by
  *   hand on each machine: git at three versions, and a guard installed on one of three.
  * - **Python.** `ANA_PYTHON` pins a version under `pinnedPythonDir` through `uv`, which refuses in its
@@ -22,8 +22,8 @@
  * A change a seat would find (a Python, and a table row unless it says `"seats":false`) is refused on
  * a host with a live or uncountable campaign unless `--force`: changing what a solver is given is the
  * operator's (AGENTS.md section 3). One probe runs here and over ssh, reading in the wall's order of
- * folders, since a login shell's PATH can miss what a machine holds or find another copy: on 5 November
- * one host's wall found node 26.10.0 and its login shell 24.22.1. A row no seat finds falls back on the
+ * folders, since a login shell's PATH can miss what a machine holds or find another copy, so that a
+ * wall and a login shell may find different versions. A row no seat finds falls back on the
  * login shell's PATH as well.
  *
  * What it gives up: a verb a peer's own job starts sees no shared setting (`retire` reads none), and
@@ -273,9 +273,9 @@ function pythonFinding(machine: Machine, facts: Facts, pin: Pin | null): Finding
 }
 
 /** Whether the runner a receipt's `commit` installed differs from `tree`'s; a commit git cannot
- *  read, a dirty one among them, does. One installed from a descendant of `tree`'s head does not: on
- *  20 November the main checkout could not follow the stack for a day, and its hourly sync would
- *  have put its older runner back over one installed from the top. */
+ *  read, a dirty one among them, does. One installed from a descendant of `tree`'s head does not, so
+ *  that a main checkout left behind the stack does not put its older runner back over one installed
+ *  from the top. */
 export function runnerLags(tree: string, commit: string): boolean {
   if (gitMaybe(tree, "merge-base", "--is-ancestor", "HEAD", commit) !== null) return false;
   const same = ["diff", "--quiet", "--end-of-options", commit, "HEAD", "--", ...RUNNER_SOURCE];

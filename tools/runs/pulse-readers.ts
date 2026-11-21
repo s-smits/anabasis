@@ -4,9 +4,8 @@
  * ending. Each reader names the moments its answer serves (`at`), a pass runs it on a log only once
  * one lies past what it read (`tools/wri/pass.ts`), and a look says, under the event, the lines of its
  * text that name the moment's session or harness (or its `gist` where none does). A reader's answer
- * between moments repeats what a look said with another count: until 10 November every reader ran on
- * every log that moved, and on the largest closed log the 27 readers without the embedding model took
- * 277 s against a pass of 30 s.
+ * between moments repeats what a look said with another count, and running every reader on every log
+ * that moved would take many times as long as a pass on the largest logs.
  *
  * Three limits shape it, and each is measured or tested rather than assumed.
  *
@@ -164,10 +163,10 @@ const textOf = (store: string, log: string, reader: string) =>
   readFileSync(join(folderOf(store, log), `${reader}.txt`), "utf8");
 
 /** Written beside its place and renamed, through a file of this process's own, so a reader, a kill
- *  or a second writer never finds half of it: until 9 November a look's state went through one
- *  shared file, and two looks renamed each other's half-written one into place. */
+ *  or a second writer never finds half of it, as two looks sharing one file would rename each
+ *  other's half-written one into place. */
 export function remember(file: string, text: string): void {
-  // A checkout no campaign ran in has no `.ana/`, as the Linux runner's had none on 20 October.
+  // A checkout no campaign ran in has no `.ana/`, as a check runner's may not.
   mkdirSync(dirname(file), { recursive: true });
   const beside = `${file}.${String(runtimeProcess.pid)}.tmp`;
   writeFileSync(beside, text);
@@ -341,8 +340,8 @@ export async function startPass(
 /** Why a moment's readers are behind, in the terms of what a look can see now. */
 function whyNot(store: string): string {
   // What a pass printed on stderr is what is left of one that could not run, until a later pass
-  // ends: a pass that prints nothing leaves the file as it was, so on 6 November a look called the
-  // pass of 08:19 the last one for hours after others had ended.
+  // ends: a pass that prints nothing leaves the file as it was, so that a look does not name an
+  // old pass the last one for hours after others have ended.
   const errors = join(store, ERRORS);
   const last = lastPass(store);
   const standing = existsSync(errors) && statSync(errors).mtimeMs > (last?.at ?? 0);
@@ -448,7 +447,7 @@ export function readersSaid(asked: ReadersAsked) {
   const earlier = (asked.owed ?? []).map((moment) => ({ moment, at: null }));
   const moments = [...momentsIn(asked.fresh, size, listed), ...earlier];
   // A gist picks from what a reader read last, which is the log as the newest moment of a kind
-  // left it: on 15 November an owed `comparison.started` said the next comparison's draw as its own.
+  // left it, so an owed `comparison.started` could otherwise say the next comparison's draw as its own.
   const plain = listed.map(({ name, at }) => ({ name, ...keyIfDefined("at", at) }));
   const overtaken = (one: Moment) =>
     moments.some(({ moment }) => moment.kind === one.kind && moment.size > one.size);
@@ -478,7 +477,7 @@ export function readersSaid(asked: ReadersAsked) {
     (moment) => `${moment.left === undefined ? "the readers" : moment.left.join(", ")} of ${labelOf(moment)}`,
   );
   // A moment waiting for its pass is routine, and a pass that failed is the one reason to look:
-  // until 10 November every unread moment warned, at each report of every run on every host.
+  // a warning for every unread moment would repeat at each report of every run on every host.
   const why = missing.length > 0 ? whyNot(store) : "";
   const lines = [
     ...late,

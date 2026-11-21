@@ -23,8 +23,8 @@
  * `bench.ts`). Flags after `--` stand for the kept ones. A campaign's folder moves by `runs copy` and `runs move` (`move.ts`).
  *
  * A run `launch` or `continue` starts on a numbered login gets a keeper (`keep.ts`) where another login
- * is allowed, so that it goes on elsewhere at a limit with nobody there (operator, 5 November: "bring
- * over to other account that still has room if 5hr limit or full limit is reached"). `ANA_KEEP=off`
+ * is allowed, so that it goes on elsewhere at a limit with nobody there (the operator's choice: move
+ * to another account with room at a five-hour or weekly limit). `ANA_KEEP=off`
  * leaves every run the environment starts without one (`keepsItself`).
  *
  * Without `--yes` a verb says what it would do and does nothing. With it, a start refuses a run a
@@ -44,7 +44,7 @@
  * the account that pays is the operator's. Which login a run takes is chosen by `fresh` and `keep`
  * (`billsLogin`, `logins.ts`). The verb never opens the env file: Bun's own `--env-file` loads it.
  *
- * These verbs ask no admission of a move (`7f0add79:docs/simplify.md`, D2): the command refuses
+ * These verbs ask no admission of a move: the command refuses
  * what it refuses.
  */
 import { SEATS, traceKind, unfinished } from "#src/kernel/trace.ts";
@@ -175,7 +175,7 @@ export function solvesMs(events: readonly LogEvent[]): number {
 /** Stop `run` at the point `after` names, first leaving the word that starts no further solve, once
  *  `ready`, asked there, neither refused nor said false; `next` asks nothing, its word left at once.
  *  The word says which verb left it (`by`) and at which point, since a log read later cannot tell a
- *  pause from a move to another login: two readers of one run named two writers (16 November 2026). */
+ *  pause from a move to another login, and two readers of one run would name two writers. */
 async function pauseAt(run: Run, after: string, by: string, ready = async () => true): Promise<void> {
   const kinds = kindsOf(after);
   const word = { word: PAUSE, why: `${by} --after ${after}` };
@@ -219,8 +219,8 @@ async function pauseAt(run: Run, after: string, by: string, ready = async () => 
     size = grown;
     await Bun.sleep(after === "next" ? STEP_MS : LOOK_MS);
   }
-  // A keeper starts a run no process writes again: until 30 October it outlived the pause, and
-  // could go on with the run at its source while a move copied it away.
+  // A keeper starts a run no process writes again, so it must not outlive the pause and go on with
+  // the run at its source while a move copies it away.
   if (keepers(run.name).length > 0) return stop([run.name, "--yes"]);
   console.log(`${run.name} is not running`);
 }

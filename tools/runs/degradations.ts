@@ -6,11 +6,10 @@
  * of this machine's worktrees written in the last hour, and says a campaign's line whenever its
  * record changes.
  *
- * Seats that asked for claude-opus-5-5 were answered by another model on 7,542 recorded turns from
- * 20 to 31 October, nearly all of them recode's. An investigation named it on 23 October, but only
- * an investigation compared the two, so the campaigns went on and their readings were set beside
- * other domains' as Opus 5.5's. The operator asked on 31 October for a record kept without anyone
- * watching. A file per campaign holds no log in a folder of its own, so the archive's readers
+ * A seat that asked for one model can be answered by another for thousands of turns, and where only
+ * an investigation compares the two, the campaigns go on and their readings are set beside other
+ * domains' as the model asked for. So the record is kept without anyone watching (the operator's
+ * choice). A file per campaign holds no log in a folder of its own, so the archive's readers
  * (`campaignsIn`) never take the folder for a host's campaigns.
  *
  *   bun tools/runs/degradations.ts <log or campaign name>...

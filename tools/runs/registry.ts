@@ -5,19 +5,18 @@
  * A run is a log in one of the repository's worktrees: a campaign's `.ana/d2/<name>/log.jsonl`, or
  * a live solve's `.ana/live/<name>.jsonl`. It is open while a process that writes it runs in that
  * worktree, and a name is a campaign's whole name: two campaigns have run under one name in two
- * worktrees (13 October), so a verb that acts on one refuses a name that is two (`runNamed`).
+ * worktrees, so a verb that acts on one refuses a name that is two (`runNamed`).
  *
- * Until 15 October this was the head of `pulse.ts`, and each verb that acted on one run matched
- * names its own way: `stop` by every tree's campaign of the name, `view` by this worktree's, and
- * `zip` and the pulse by what a name holds, which is a reader's convenience and no way to choose a
+ * Every verb that acts on one run matches names here rather than its own way, since matching by
+ * what a name holds, as `zip` and the pulse do, is a reader's convenience and no way to choose a
  * run to stop.
  *
  * A campaign that has left its worktree is in the archive, `data/runs/` of the main worktree
  * (`ARCHIVE`): this machine's own under `here/`, put there by `runs retire`, and a copy of one a
  * host holds under that host's name, put there by `runs fetch` and by `runs retire`. No verb acts
  * on an archived campaign, which no process writes, and the readers read it (`readable`,
- * `readNamed`): until 20 October a retired campaign went to the main worktree's `.ana/d2`, where
- * every verb took it for a run, and was deleted 14 days after it closed.
+ * `readNamed`), rather than a retired campaign going to the main worktree's `.ana/d2`, where
+ * every verb would take it for a run.
  */
 import { EXAMINE } from "#src/campaign/admission.ts";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
@@ -52,15 +51,15 @@ export interface Running {
 /** The command a whole campaign runs as, which runs each of its moves in its own process. */
 export const BUILDER = "tools/d2/harness-builder.ts";
 /** The command the session that drafts an exam runs as. It holds a root as an Examiner session
- *  does since 11 October, and run by itself it was read as closed while it ran: a stop would have
- *  released its root and left it running. */
+ *  does, so that run by itself it is not read as closed while it runs, where a stop would release
+ *  its root and leave it running. */
 export const DRAFT = "tools/d1b/draft.ts";
 /** The file beside a log that says its campaign is a seed, and of what. */
 export const SEED_FILE = "seed.json";
 /** The command that runs one round of a campaign by hand. */
 export const ROUND = "tools/d2/round.ts";
 /** The commands that write a campaign's log by hand, each naming it with `--name`: a round, an
- *  Examiner session (read as closed while it ran, the first time one did: exam-1, 2026-10-08), a
+ *  Examiner session (which would otherwise read as closed while it ran), a
  *  standalone comparison and a Builder session alone. */
 const BY_HAND = [ROUND, EXAMINE, "tools/d2/checkpoint.ts", "tools/d2/session.ts", DRAFT];
 /** This CLI, whose verbs start, read and stop runs; `rehearse` alone writes a log. */
@@ -78,15 +77,15 @@ export const ARCHIVE = join("data", "runs");
 export const HERE = "here";
 
 /** The harnesses campaigns hand over, one folder each, under the main worktree, which git ignores:
- *  `runs fresh` names a campaign's own there, and `close.ts` writes there by hand (27 October). */
+ *  `runs fresh` names a campaign's own there, and `close.ts` writes there by hand. */
 export const harnessesOf = (repo: string, ...parts: readonly string[]) =>
   join(mainTree(repo), "data", "harnesses", ...parts);
 /** A path in the archive of the repository `repo` lies in. */
 export const archiveOf = (repo: string, ...parts: readonly string[]) =>
   join(mainTree(repo), ARCHIVE, ...parts);
 
-/** A folder's names in one order on every host: Linux's file systems list them unsorted, and on 20
- *  October the archive's campaigns read in another order there than on macOS. */
+/** A folder's names in one order on every host: Linux's file systems list them unsorted, so the
+ *  archive's campaigns would read in another order there than on macOS. */
 const listed = (dir: string) => (existsSync(dir) ? readdirSync(dir).toSorted() : []);
 /** The campaign `name` whose folder lies in `dir`, read as `tree`'s. */
 const campaignIn = (dir: string, name: string, tree: string): Run => ({
@@ -118,9 +117,8 @@ export function packOf(name: string): string {
 }
 /**
  * The script a process runs: Bun's first argument that is no option of its own, under `nice` where
- * `start` started it niced, and after `run` where it was named so. Until 20 October any argument
- * ending in a script's path counted, so a shell whose command line merely named the campaign
- * command read as its writer.
+ * `start` started it niced, and after `run` where it was named so, so that a shell whose command
+ * line merely names the campaign command does not read as its writer.
  */
 function scriptOf(args: readonly string[]): string | undefined {
   const [bun, ...rest] = args[0] === "nice" ? args.slice(3) : args;
@@ -136,13 +134,13 @@ export const runsAs = (args: readonly string[], tools: readonly string[]) => {
 /**
  * Whether a process writes a campaign's log: the campaign command, a command run by hand, or a
  * rehearsal (`rehearse.ts`), a round on a seed run as a verb of this CLI. A stop releases what a
- * run nobody writes left mounted, so a writer missed here would lose its roots: unlisted, two
- * campaign commands read as closed, `runs stop` answered "none of these is running" and counted a
- * live session's root as left behind (2026-10-10).
+ * run nobody writes left mounted, so a writer missed here would lose its roots: unlisted, a
+ * campaign command reads as closed, and `runs stop` answers "none of these is running" and counts
+ * a live session's root as left behind.
  *
- * Any other verb of this CLI is none, whatever its command line carries: on 10 October a launch of
- * a round into the tree that held its log was refused as "already being written here" by the one
- * process that matched, the launcher itself.
+ * Any other verb of this CLI is none, whatever its command line carries, since a launch would
+ * otherwise be refused as "already being written here" by the one process that matched, the
+ * launcher itself.
  */
 function writesCampaign(args: readonly string[]): boolean {
   if (runsAs(args, [CLI])) return args.includes("rehearse");
@@ -269,7 +267,7 @@ export function processes(table = runTextSyncOrThrow(["ps", "-axo", "pid=,args="
   });
   if (found.length === 0) return [];
   // Linux names each cwd in /proc. Its lsof walks every descriptor up to the open-file limit Bun
-  // raises for its children, which took 0.77 s on the Linux runner against 0.04 s (30 October).
+  // raises for its children, which takes far longer than reading /proc.
   if (existsSync("/proc/self/cwd")) {
     return found.map(({ pid: id, args }) => ({ pid: Number(id), cwd: cwdOf(id), args }));
   }
@@ -285,8 +283,8 @@ export function processes(table = runTextSyncOrThrow(["ps", "-axo", "pid=,args="
 }
 
 /** The value of the flag `name` on a command line, in either form `parseArgs` takes (`--name x` and
- *  `--name=x`), or undefined where it is absent. Until 20 October a campaign started by hand with
- *  `--name=r1` read as closed while it wrote, and until 10 November an absent flag read as `args[0]`. */
+ *  `--name=x`), or undefined where it is absent, so that a campaign started by hand with
+ *  `--name=r1` does not read as closed while it writes. */
 export function flagOf(args: readonly string[], name: string): string | undefined {
   const joined = args.find((arg) => arg.startsWith(`${name}=`));
   if (joined !== undefined) return joined.slice(name.length + 1);
@@ -307,15 +305,15 @@ export function writers(run: Run, running: readonly Running[]): Running[] {
       : runsAs(args, [LIVE]) &&
         run.name.startsWith(`${String(flagOf(args, "--task"))}-${String(flagOf(args, "--cycle"))}-`);
   // The worktree is the script's, as the campaign command places its log by its own checkout
-  // (`campaignLog`): until 20 October it was the working directory, and a script of another
-  // checkout run from this one was read as this one's writer. Every script is `tools/<dir>/<file>`.
+  // (`campaignLog`), not the working directory, which would read a script of another checkout run
+  // from this one as this one's writer. Every script is `tools/<dir>/<file>`.
   const treeOf = (cwd: string, args: readonly string[]) =>
     dirname(dirname(dirname(resolve(cwd, scriptOf(args) ?? ""))));
   return running.filter(({ cwd, args }) => treeOf(cwd, args) === run.tree && writes(args));
 }
 
 /** The comparisons of `events` that began and have not reported. An old ladder's reading is none:
- *  no move goes on with one since the ladder was retired on 16 October, so one left open would
+ *  no move goes on with one since the ladder was retired, so one left open would
  *  keep a run from resting and from moving to another commit for good. */
 export function openComparisons(events: readonly LogEvent[]): string[] {
   const reported = new Set(lastReports(events).map(({ session }) => session));

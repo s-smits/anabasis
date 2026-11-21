@@ -20,14 +20,12 @@ interface Wait {
 /**
  * Where a run stands. A process that writes the log outranks the log, since an ending is its last
  * line before it exits; with none, a keeper outranks no ending or the environment's, since it starts
- * the run again, and an ending of the campaign's own outranks a keeper, which leaves it. Until 10
- * November a keeper outranked every ending, so two keepers of one run each read the other's and
- * went on past `budget` or `stop`.
+ * the run again, and an ending of the campaign's own outranks a keeper, which leaves it, so that two
+ * keepers of one run do not each read the other's and go on past `budget` or `stop`.
  * A run written on is waiting, quiet or live; one nothing writes is kept, ended or stopped: by a
  * pause where this launch was left one (`pauseSince`), which every reader then says instead of a lost
- * process, and otherwise killed or dead, which the log does not tell apart. Until 20 November only
- * `alerts` read the pause, so pulse warned that a run another session paused on purpose had lost its
- * process before its comparison reported. A kept run names the environment's ending where
+ * process, so that pulse does not warn that a run paused on purpose has lost its process, and
+ * otherwise killed or dead, which the log does not tell apart. A kept run names the environment's ending where
  * its log ends on one, so that `alerts` says it once.
  */
 export type RunState =
@@ -63,9 +61,8 @@ function waitOf({ at, kind, data }: LogEvent): Wait | null {
  * after a wait is recorded writes its call and its failed turn, and any other event ends it. Quiet
  * counts from the last event or the end of a wait of this launch, whichever is later.
  *
- * Until 9 November pulse, view, alerts and the keeper each read this their own way: the keeper took a
- * wait from before the current launch, so it could move a run it had just moved again; view called a
- * finished load wait current; and two readers held their own `QUIET_MS`.
+ * Pulse, view, alerts and the keeper all read this here rather than each its own way, which would
+ * let a keeper take a wait from before the current launch and move a run it had just moved again.
  */
 export function stateOf(events: readonly LogEvent[], life: Life, now: number, launched = 0): RunState {
   if (!life.writing) {

@@ -10,9 +10,8 @@
  * A keeper looks at the run once a minute and takes one of four turns (`turnOf`). While the run's
  * process lives and its log ends on a provider wait (`campaign.waited`, `for: "provider"`), whichever
  * limit named it, the week's or the five hours', and more than `--wait-hours` of it is left, it stops
- * the run and goes on with it on another login (operator, 5 November). Less than that is left to the
- * login's own reset, since a move cuts the Builder's conversation: until 5 November the bound was an
- * hour, so a five-hour limit met in its window's last hour was sat out. Where the process
+ * the run and goes on with it on another login (the operator's choice). Less than that is left to the
+ * login's own reset, since a move cuts the Builder's conversation. Where the process
  * is gone it goes on with the run on the same login, unless that login carries its cap of live
  * runs: after an ending on the environment, as the operator asked of every such run, and after no
  * ending at all, a process that died. Any other
@@ -31,8 +30,7 @@
  *
  * With `--yes` the verb leaves a keeper running by itself, its output in `keep.out` beside the log,
  * and ends: one keeper a run, and `runs stop`, `pause` or `continue --after` of the run end it. That
- * keeper is this verb under `--here` (`KEEPING`), which keeps the run in this process. Until
- * 15 October this was three shell loops of the operator's and a wrapper a login, each moving one run.
+ * keeper is this verb under `--here` (`KEEPING`), which keeps the run in this process.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
@@ -86,10 +84,8 @@ const BARREN = 3;
 /**
  * The model turns `events` record that the provider answered, of any seat: what a going-on has to
  * add to count as work. A launch into a failure still writes its moves, its ending and a turn of
- * each seat it opened, stopped on `error`, so the log grows however little was done: on 20 October
- * esp32-fresh-opus-r2 went on 15 times in a row, every 13 minutes, into one DNS failure, four
- * failed turns each time, and its keeper, which counted the log's bytes, never left (lane 22 of the
- * investigation of 27 October).
+ * each seat it opened, stopped on `error`, so the log grows however little was done, and a keeper
+ * that counted the log's bytes would go on into one DNS failure again and again and never leave.
  */
 export const turnsIn = (events: readonly LogEvent[]): number =>
   events.filter(({ kind, data }) => kind.endsWith(".turn") && data.stopReason !== "error").length;
@@ -108,12 +104,11 @@ export function turnOf(state: RunState, now: number, waitMs: number): Turn {
 /**
  * The login a run goes on with after `turn`: none for a run that bills no login, else its own on a
  * continue, unless this keeper saw it spent or it is `full`, else the first of `roomy`, those with
- * capacity, or null to wait. On 20 October two Codex runs kept on the M1 would have waited for one of
- * three spent logins none of their seats used; until 26 October such a run went on as a login all
- * the same, and `runs usage` counted it against that login's most. A dead run is not live, so until
- * 26 October its own login could fill its live-run cap elsewhere and the keeper went on above it.
- * A run that bills no login has nowhere to move and sits out its wait: until 5 November its keeper
- * stopped and restarted it on the same account every look, into the same limit.
+ * capacity, or null to wait. A Codex run waits for no Claude login its seats never use, and is
+ * counted against none. A dead run is not live, so its own login can fill its live-run cap
+ * elsewhere, and the keeper does not go on above it. A run that bills no login has nowhere to move
+ * and sits out its wait, rather than being stopped and restarted on the same account every look,
+ * into the same limit.
  */
 export async function nextLogin(
   turn: Turn,
@@ -131,8 +126,8 @@ export async function nextLogin(
 /** The logins of `logins` a run may move to: those with capacity, less those this keeper saw `spent`,
  *  those at their live-run cap across the fleet (`atCap`) and those whose five hours run out or could
  *  not be read with this run added (`fiveHourWith`), or none while a host goes uncounted; and why any
- *  was left for its five hours. Until 26 October a keeper moved a run onto a login with capacity
- *  whatever runs it carried already, which `fresh` refuses. */
+ *  was left for its five hours, so that a keeper does not move a run onto a login that already
+ *  carries its cap, which `fresh` refuses. */
 export async function roomFor(
   logins: readonly string[],
   spent: ReadonlySet<string>,
@@ -253,8 +248,8 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
  * The logins a keeper started without `--logins` may move its run to: those `ANA_LOGINS` names in
  * `file`, its host's `.env.runs`, at each call, where the pool it started with is the one that file
  * named; otherwise the pool it started with. So an edit of the pool reaches a running keeper, and a
- * pool carried from another host stays as carried. On 7 November the operator narrowed the pool to
- * one login, and a running keeper went on choosing from the logins it had been started with.
+ * pool carried from another host stays as carried, where a running keeper would otherwise go on
+ * choosing from the logins it had been started with after the operator narrowed the pool.
  */
 export function poolOf(file: string, env: Env): () => Promise<readonly string[]> {
   const named = async () =>
@@ -304,7 +299,7 @@ export async function keep(args: readonly string[]): Promise<void> {
     },
   });
   const [name] = positionals;
-  // An empty `--logins` names none, which until 28 October came back as the one login "".
+  // An empty `--logins` names none, rather than the one login "".
   const named = values.logins?.split(",").filter((login) => login !== "");
   const logins = named ?? allowedLogins(runtimeProcess.env);
   if (name === undefined) {

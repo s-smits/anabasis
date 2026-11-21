@@ -1,4 +1,4 @@
-/** A continuation that names another revision uses that revisions launcher (22 October 2026). */
+/** A continuation that names another revision uses that revision's launcher. */
 import { runtimeProcess } from "#src/meta/process.ts";
 import { hasText } from "#src/meta/text.ts";
 import type { Host } from "./host-config.ts";

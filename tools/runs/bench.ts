@@ -180,7 +180,7 @@ export function stepsOf(plan: Plan): Step[] {
     on(`dry run of ${starter}`, `${bare} --dry-run`),
     // One process of their own rolls the arms in turn, so the Starter waits behind the reference on
     // the sitting's lock and the read waits for neither. What they print is kept beside the store's
-    // records: until 19 November 2026 it went nowhere, and an arm that never started said nothing.
+    // records, so that an arm that never started says so.
     on(
       `roll ${label}, then ${starter}, on login ${login}`,
       `nohup sh -c ${quoted(`${reference} --yes; ${bare} --yes`)} >> ${rolled} 2>&1 < /dev/null & echo "rolling in process $!, which writes ${rolled}; the sitting's status names the arm"`,
@@ -190,8 +190,8 @@ export function stepsOf(plan: Plan): Step[] {
 
 /** What the benchmark's machine says of itself before a plan: its platform, the minor of the
  *  sitting's interpreter, then each tree's harness. A machine or a sitting that does not answer ends
- *  the probe with its own exit: until 19 November 2026 a closing `true` passed that silence on, and
- *  the next line stood in for the minor an export builds for. A store with no tree yet is no fault. */
+ *  the probe with its own exit, rather than a closing `true` passing that silence on and the next
+ *  line standing in for the minor an export builds for. A store with no tree yet is no fault. */
 export const probed = ({ sitting, store }: Pick<Plan, "sitting" | "store">): string =>
   `uname -sm && ${sitting} python || exit; grep -H '"harness"' ${store}/trees/*/export.json; true`;
 

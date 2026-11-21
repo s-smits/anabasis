@@ -10,7 +10,7 @@
  * A deadline counts elapsed time, so a solve on a loaded host has less of the machine than one on a
  * quiet host under the same setting (`AGENTS.md`, section 10, item 4), and the solve queue only
  * holds a solve back for half an hour (`tools/d2/host.ts`). This is where an operator sees that
- * load before placing a run. It ports the operator's own `ana-loadwatch` (30 October), whose host
+ * load before placing a run. It ports the operator's own `ana-loadwatch`, whose host
  * list was written into the script, to the host list every other verb reads.
  *
  * Each machine runs one sampling loop for the whole watch (`load.ts`), so a refresh costs no

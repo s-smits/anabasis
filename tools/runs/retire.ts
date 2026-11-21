@@ -13,26 +13,26 @@
  *
  * A seed (`seed.json` beside its log) is deleted instead, in a worktree or in the archive, once its
  * log has not grown for `--days`: it is a copy of a cut log made to rehearse on, and its source keeps
- * the record. On 20 October a sweep would have archived 563 of them, 547 left by the suite.
+ * the record, and the suite leaves hundreds of them.
  *
  * A worktree other than the main one is then deleted once nothing has used it for `TREE_DAYS`: no
  * process works in it or names it on its command line, it holds no run log, and its last commit and
  * its top entries are older. One with a change no commit names stays for `DIRTY_DAYS`. Its
  * campaigns leave for the archive after `--days`, so the traces gather in one place within a day
- * while the tree waits a week for a session to come back to it (operator, 21 October). The
+ * while the tree waits a week for a session to come back to it (the operator's choice). The
  * controllers a host prepares are worktrees too, and pruning them is `code.ts`'s alone
  * (`controllersOf`).
  *
  * A local branch no worktree holds goes once nothing has used it for `TREE_DAYS`: its last commit
- * and its reflog are older. Every land, restack, park and Codex lane leaves one, and until
- * 28 October nothing removed them: 1,243 had piled up here, 597 of them `claude/*`. A branch of an
- * open pull request lives on the remote, so the local copy is only a cache of it.
+ * and its reflog are older. Every land, restack, park and Codex lane leaves one, so without this
+ * they pile up by the thousand. A branch of an open pull request lives on the remote, so the local
+ * copy is only a cache of it.
  *
  * A commit that a deleted tree or branch held, and that nothing else keeps reachable, keeps a local
  * tag `retired/<sha9>` (the repository is public, so the tag is not pushed). One rev-list decides
  * every such commit of a sweep, and the sweep reads the process table, the worktree listing and
- * every head's commit time once: until 28 October it asked `ps`, `lsof` and `git log` once per tree
- * and `branch --contains` once per deleted tree, 4.7 s for a dry run over 224 trees.
+ * every head's commit time once, rather than asking `ps`, `lsof` and `git log` once per tree and
+ * `branch --contains` once per deleted tree, which took seconds for a dry run.
  *
  * First of all, the seats' roots and the host's scratch folders that nobody will release go
  * (`releaseScratch`): what a killed campaign's solves, sessions, verifier cells and model homes left
@@ -82,7 +82,7 @@ export interface Sweep {
 type Open = Map<string, ReturnType<typeof leftOpen>>;
 
 /** A worktree or branch nothing uses stays this long, and a tree with a change no commit names twice
- *  as long: past it the system has moved too far for the change to apply (operator, 26 September). */
+ *  as long: past it the system has moved too far for the change to apply (the operator's choice). */
 const TREE_DAYS = 7;
 const DIRTY_DAYS = 14;
 
@@ -139,12 +139,11 @@ export async function archiveIdle(sweep: Sweep, open: Open): Promise<Set<string>
  * until then. The rest go by their claims: a dead claimant's at once, an unclaimed one after
  * `TREE_DAYS` without a write, their count said before they go, as every line of the sweep is.
  *
- * Until 16 November no sweep read these folders, and only a stop released any: a campaign that was
- * killed, or continued after a kill, left its roots for good, and so did every verifier cell and
- * model home a killed process held, with the check programs and hidden values in them. On
- * 17 November the first sweep that did took the three roots of a rehearsal's seed three hours after
- * its last event, since it asked only whether a process wrote the run, and its one line for the
- * 12,053 folders nobody held was to come only after their release.
+ * Without this sweep only a stop releases any: a campaign that was killed, or continued after a
+ * kill, would leave its roots for good, and so would every verifier cell and model home a killed
+ * process held, with the check programs and hidden values in them. A run's own roots are spared
+ * while it names them open, not merely while a process writes it, so a rehearsal's seed keeps its
+ * roots, and the count of folders nobody holds is said before they go.
  */
 export async function releaseScratch(sweep: Sweep, parents: readonly string[]): Promise<Open> {
   const open: Open = new Map();
@@ -293,8 +292,8 @@ export function retireUnused(sweep: Sweep, archiving: ReadonlySet<string>): void
  * The check runner's slots in this machine's home (`RUNNER_SLOTS`) that no task has used for
  * `TREE_DAYS`, each with the files beside it (`<slot>.status`, `.run.sh`, `.task.sh`), moved to the
  * Trash, from which the operator empties it. A slot is a clone and its packages kept warm for the
- * next check, so one a machine no longer sends checks to stayed for good: on 20 November the Linux
- * host, which stopped taking checks on 12 November, held three, 2.0 GB. Returns what goes, or would.
+ * next check, so one a machine no longer sends checks to would otherwise stay for good, at gigabytes
+ * a slot. Returns what goes, or would.
  */
 export function trashIdleSlots(sweep: Sweep, home = homedir()): string[] {
   const folder = join(home, RUNNER_SLOTS);

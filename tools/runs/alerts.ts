@@ -100,8 +100,8 @@ const ALERT_STATE = Type.Object({
   runs: Type.Record(Type.String(), SEEN),
 });
 /** The looks after which a host still down is said again while a run last seen open is there: an
- *  hour of the job's ten-minute looks. On 15 November every peer was unread for 3.4 hours beside
- *  two live runs, and the one line of the first look was all that said so. */
+ *  hour of the job's ten-minute looks, so that peers unread for hours beside live runs are said more
+ *  than once. */
 const SAID_AGAIN = 6;
 export type AlertState = Static<typeof ALERT_STATE>;
 
@@ -151,9 +151,8 @@ function rowOf(run: Run, running: readonly Running[], now: number): Row {
 /**
  * Whether a look reads a run: as `status` shows it, where a launch with a model in every seat kept
  * its receipt (`keepReceipt`). A rehearsal's seed and a test's campaign run scripted seats and keep
- * none, and `status` shows both: on 6 November two seeds reached the operator's notifications as
- * "first seen with 6 promotions" beside a real second promotion, and on 15 November the campaigns
- * of one check were 21 of the alerts log's last 30 lines.
+ * none, and `status` shows both, so that neither a seed's promotions nor a check's campaigns reach
+ * the operator's notifications beside real ones.
  */
 export const onAlerts = (run: Run, writing: "open" | "closed", age: number): boolean =>
   lastLaunch(run.path) !== undefined && onStatus(run, writing, age);
@@ -163,8 +162,8 @@ function rowsHere(now: number): HostRows {
   const running = processes();
   const held = runs().filter(isCampaign);
   const rows = held.flatMap((run) => {
-    // A log can go between the listing and this read: on 20 November a test's `afterAll` deleted
-    // its campaign then, and the look failed whole.
+    // A log can go between the listing and this read, as a test's `afterAll` may delete its
+    // campaign, and the look must not fail whole.
     const log = statSync(run.path, { throwIfNoEntry: false });
     if (log === undefined) return [];
     const writing = writers(run, running).length > 0 ? "open" : "closed";

@@ -8,16 +8,15 @@
  *     [--here] [--no-readers] [--ack <token>]
  *   bun run runs status [--all]
  *
- * One look and out, unless `--every <seconds>` asks it to keep looking. Until 5 November a bare pulse
- * watched for ever, so a session reading one run through a pipe waited 80 minutes for an end that never
- * came.
+ * One look and out, unless `--every <seconds>` asks it to keep looking, so that a session reading one
+ * run through a pipe does not wait for an end that never comes.
  *
  * With no names a look covers the open runs and those open at the last look, so a run's ending is
  * said once; an observer's first look of a run also covers one stopped in the last day without an
- * ending (until 29 October every look did, and an hourly look repeated each stopped run's "process
- * gone" and its stderr for a day). A name matches every run whose name holds it. Quiet, no event for 20 minutes in an
+ * ending, and later looks do not, which would repeat each stopped run's "process gone" and its
+ * stderr for a day. A name matches every run whose name holds it. Quiet, no event for 20 minutes in an
  * open run, counted from a named reset it waits out where that is later, is said when it starts and
- * when it ends. Since 22 October each look also polls every configured host once, with a cursor for
+ * when it ends. Each look also polls every configured host once, with a cursor for
  * this observer, unless --here is named. A missing peer is a warning and exit 0, since the anti-stall
  * hook reads any other exit as a failed look. No local state path is sent to another machine.
  *
@@ -114,7 +113,7 @@ interface Seen {
   /** The hashes of the readers' lines this observer has said. */
   readonly said?: readonly string[];
   /** Whether an investigation was due at the last look, so that it is said at the look that finds
-   *  it so; a state from before 10 November holds none, and its first look only remembers. */
+   *  it so; an older state holds none, and its first look only remembers. */
   readonly due?: boolean;
   /** The run's state at the last look (`RunState`), whose reason is said when it changes. */
   readonly state?: string;
@@ -168,9 +167,9 @@ const STARTS: ReadonlySet<string> = new Set(["build.started", "exam.started", BE
 /**
  * The investigation's triggers a watch says, by the factor each bears on (`AGENTS.md`, section 1).
  * An alarm is read at every look where the `rows` reader moved and said where it fired or its key
- * moved (`keyOf`); a reading moves with each solve, so it is said only after a milestone. On
- * 1 November an unconfirmed promotion in a live buffer campaign was found only by running `wri.ts
- * read` on it by hand. A trigger the pulse reads itself is left out (a model served, an unfinished
+ * moved (`keyOf`); a reading moves with each solve, so it is said only after a milestone. Without
+ * it an unconfirmed promotion in a live campaign would be found only by running `wri.ts read` on it
+ * by hand. A trigger the pulse reads itself is left out (a model served, an unfinished
  * session), and one left out is said once by the `rows` reader's own lines (`readersSaid`), unless
  * the look says it in its event's own line (`OWN`).
  */
@@ -194,7 +193,7 @@ const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
   ["MEASURED AN EARLIER STATE", ["honesty", "alarm"]],
   ["STARTS OUT OF TURN", ["honesty", "alarm"]],
   ["LOG OUT OF ORDER", ["honesty", "alarm"]],
-  // A reading: it names most promotions under this score (171 of 195 on record, 15 November).
+  // A reading: it names most promotions on record under this score.
   ["SAFEGUARD-9 PROMOTION BEYOND VALIDITY", ["honesty", "reading"]],
   ["CHECK DEFECT RULED", ["verdicts", "alarm"]],
   ["RULED UNCLEAR", ["verdicts", "alarm"]],
@@ -226,9 +225,8 @@ const count = (log: readonly LogEvent[], kind: EventKind) =>
 /**
  * What a trigger's detail is about: the comparisons and sessions it names, else its first count,
  * so a detail is said again when it names another or its count moves, and not when only its
- * wording does. Until 1 November a whole detail was compared, and over 57 recorded logs 757 of 784
- * lines of `SUPPLY THIN`, whose detail moves with each solve, said again what had been said; it is
- * now said once.
+ * wording does. Comparing a whole detail would say `SUPPLY THIN`, whose detail moves with each
+ * solve, again at nearly every look; it is said once.
  */
 function keyOf(name: string, detail: string): string {
   if (name === "SUPPLY THIN") return "";
@@ -239,9 +237,8 @@ function keyOf(name: string, detail: string): string {
 /** The watched triggers as they read now, and a line for each detail whose key (`keyOf`) is new; the
  *  first reading of a run only remembers them, and `null` is no newer reading than the last, which a
  *  look passes unless the readers' rows moved. A trigger
- *  fires once for each comparison or session it names, so each name keeps every key: until a fix of
- *  1 November it kept one, and gate-free-r2's two comparisons with a task set aside said the first
- *  again at every look. */
+ *  fires once for each comparison or session it names, so each name keeps every key, where keeping
+ *  one would say the first of two comparisons with a task set aside again at every look. */
 function triggersSaid(
   kept: Seen["triggers"],
   found: readonly Alarm[] | null,
@@ -278,23 +275,21 @@ function triggersSaid(
  * Where the process that writes `log` stands now, read once for the status line and the look.
  *
  * Its launch begins at the first event at or after its launch receipt, or the start where none is
- * kept, and a solve or a wait before it belongs to a process that is gone. On 29 October the Linux
- * runner's truss campaign was continued after a provider wait until 1 November, and the pulse read
- * its two cut solves as running and its new invocation as waiting out that reset, so a stall after
- * it would not have read quiet until the reset.
+ * kept, and a solve or a wait before it belongs to a process that is gone. Otherwise a campaign
+ * continued after a provider wait would read its cut solves as running and its new invocation as
+ * waiting out that reset, so a stall after it would not read quiet until the reset.
  *
  * A run stands where the last thing it started does (a Builder session, an Examiner session or a
  * comparison), or at its last solve where that is later: a comparison gone on from its log writes no
  * second start, so the solves it makes after another comparison's report say it has not reported.
  * That work ends in its run's end, or `exam.finished` after an Examiner session: an Examiner session
- * writes no report, and the second on exam-1 (8 October) ended whole and was said to be gone before
- * one. A campaign that wrote its ending is done whatever it was doing: until 27 October one that
- * ended while drafting its exam, which none of these starts covers, was said to be gone before a
- * report.
+ * writes no report, and one that ended whole would otherwise be said to be gone before one. A
+ * campaign that wrote its ending is done whatever it was doing, even one that ended while drafting
+ * its exam, which none of these starts covers.
  *
- * A run waiting out a named reset is silent by design, so its quiet is counted from the reset: until
- * 23 October such a run was called quiet, and until 25 October it was again for the minute between
- * the reset and its next event, or while other seats wrote after the wait.
+ * A run waiting out a named reset is silent by design, so its quiet is counted from the reset, and
+ * neither the minute between the reset and its next event nor other seats writing after the wait
+ * makes it quiet.
  */
 function standing(run: Run, log: readonly LogEvent[]) {
   const solves = solvesIn(log);
@@ -303,8 +298,8 @@ function standing(run: Run, log: readonly LogEvent[]) {
   const solved = log.findLastIndex(({ kind }) => kind === "solve.started");
   const start = Math.max(0, opened);
   const work = log.slice(Math.max(start, solved));
-  // A campaign the Builder leads ends only in its ending: until 1 November one whose process died
-  // after an Examiner session or a report was taken as done, 4 of the 42 closes on record.
+  // A campaign the Builder leads ends only in its ending, so one whose process died after an
+  // Examiner session or a report is not taken as done.
   const led = log.some(({ kind }) => kind === "campaign.opened");
   const end: EventKind = led ? ENDED : log[start]?.kind === "exam.started" ? "exam.finished" : run.end;
   const running = solves.filter(({ finished, started }) => finished === null && started >= begun).length;
@@ -314,8 +309,8 @@ function standing(run: Run, log: readonly LogEvent[]) {
 
 /** Where a run stands: reported, closed, inside a Builder or Examiner session, or solving. A report
  *  counts when it follows the last work: a standalone comparison solving after an earlier
- *  comparison's report has not reported. Closed is said first: until 20 October a run whose process
- *  died after a report read as that report for hours, with its unfinished solves called running. */
+ *  comparison's report has not reported. Closed is said first, so that a run whose process died
+ *  after a report does not read as that report for hours, with its unfinished solves called running. */
 function stage(log: readonly LogEvent[], { start, work, running }: Standing, open: boolean): string {
   const report = work.findLast(({ kind }) => kind === REPORTED);
   if (report !== undefined) return `${open ? "" : "closed, "}reported ${word(report.data.reading)}`;
@@ -450,8 +445,8 @@ function standsSaid(
  *
  * A campaign's look also says the step it has come to owe, once, at the look that finds it so: an
  * investigation at its trigger (`triggerOf`), with the command that opens one on a stopped run and
- * the driver's `due` for a live one. Until 10 November only the loop's driver read the trigger, so
- * a session that watched the pulse alone ran a campaign past twelve hours unread.
+ * the driver's `due` for a live one, so that a session that watches the pulse alone does not run a
+ * campaign past twelve hours unread.
  */
 export function pulse(
   run: Run,
@@ -482,7 +477,7 @@ export function pulse(
     lines.push(`⚠ investigation due, ${due}: ${live ? `bun ${DRIVER} due` : openingCommand(run.name, live)}`);
   }
   // A first comparison admission would begin and none has, said once where a look finds it long:
-  // on 15 November one stood so for 2.6 hours and no look said it.
+  // otherwise one can stand so for hours and no look says it.
   const waits = read && open && before?.heldOff !== true && !log.some(({ kind }) => kind === BEGAN);
   const held = waits ? heldOff(log) : null;
   // A wait still open is not in the log yet, so the line leaves out the hours inside waits.
@@ -548,9 +543,8 @@ function readersOf(
 /**
  * One look over the chosen runs: the lines it says, none where nothing moved, and what to remember once
  * they are said. A run's row is said on its first look and with something new, and the host's line
- * above any row. Until 1 November every look said every row and each closed run's reason again, so a
- * watch of three hosts printed some twenty lines every five minutes with nothing in them a reader had
- * not seen.
+ * above any row, so that a watch of several hosts does not print every row and each closed run's
+ * reason again at every look.
  */
 async function look(
   state: string,
@@ -560,8 +554,8 @@ async function look(
 ): Promise<{ lines: string[]; memory: Memory }> {
   const running = processes();
   const all = runs().map((run) => ({ run, life: lifeOf(run, running), before: memory.logs[run.path] }));
-  // Only a log the look reports is read: until 2 November every look parsed every run's whole log,
-  // closed ones included, which was 0.55 s of a 2.5 s look on the Linux runner.
+  // Only a log the look reports is read, since parsing every run's whole log, closed ones included,
+  // costs a fifth of a look.
   const chosen: Chosen[] = all
     .filter(({ run, life, before }) =>
       names.length > 0
@@ -623,7 +617,7 @@ function settle(state: string, ack: string): void {
     const { token, memory } = parseJsonAs<{ token: string; memory: Memory }>(readFileSync(pending, "utf8"));
     if (token === ack) remember(state, capturedJsonStringify(memory));
   } catch {
-    // One a kill cut part way, as the write in place before 9 November could leave, is not read.
+    // One a kill cut part way, as an older write in place could leave, is not read.
   }
   rmSync(pending, { force: true });
 }
@@ -756,7 +750,7 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
     const open = writers(run, running).length > 0;
     const age = now - statSync(run.path).mtimeMs;
     // A seed no launch went on from is a rehearsal's copy, and its promotions are its source's, shown
-    // while a process writes it (16 October: fork-ladder-buffer-opus was not shown).
+    // while a process writes it.
     if (!values.all && !onStatus(run, open ? "open" : "closed", age)) {
       if (!unlaunchedSeed(run)) quiet += 1;
       continue;
@@ -800,9 +794,9 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
 /**
  * What `status` leaves out, said under its rows, so that a reader who sees only the rows still knows
  * what ran: the closed runs quiet for over a day, still in their worktrees and continued from there,
- * and the archive `runs retire` moves them to after a day, with its newest campaigns. Until
- * 22 October a run fell off the rows after a day without a word, and an agent reading `status`
- * alone took the campaigns it had stopped for gone (operator, 22 October).
+ * and the archive `runs retire` moves them to after a day, with its newest campaigns, since a run
+ * that fell off the rows without a word would read as gone to an agent reading `status` alone (the
+ * operator's choice).
  */
 export function leftOut(
   quiet: number,

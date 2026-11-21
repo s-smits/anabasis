@@ -6,10 +6,9 @@
  *     --target 8 --cap 437
  *
  * With no `--reference` and no `--new` it compares the latest harness a Builder session left with
- * the Starter Built Harness, which is the plan's standalone comparison: several sessions, then one comparison
- * on fresh solves (`7f0add79:docs/plan.md`, Phase 5). While no session has left a harness there is nothing
- * to compare, and the command says so. The plan's first experiment is no standalone comparison: it is the
- * first round (`round.ts`).
+ * the Starter Built Harness, which is the standalone comparison: several sessions, then one comparison
+ * on fresh solves. While no session has left a harness there is nothing to compare, and the command
+ * says so. A campaign's first comparison is no standalone one: it is the first round (`round.ts`).
  *
  * `--reference` and `--new` each name a harness the campaign keeps (`campaign.ts`, `keptAs`):
  * `starter`, `latest`, or the whole digest of one a session froze. So the same command compares a
@@ -22,21 +21,20 @@
  * guide and the tools add to them. A step is the whole harness's until those two are read.
  *
  * The report also reads the reference harness against itself,
- * the plan's A/A comparison, on halves of its own solves mirrored in time (`comparison.ts`). With
- * the starter as the reference and a fixed budget, this command reads the plan's starter A/A comparison (G2).
+ * an A/A comparison, on halves of its own solves mirrored in time (`comparison.ts`). With
+ * the starter as the reference and a fixed budget, this command reads the starter's A/A comparison.
  * The A/A comparison
  * should read no step, and its tie share is the noise every later comparison has to exceed.
  *
  * The scored set and the solver's setting are the campaign's, read from its log as a round reads
  * them (`setting.ts`): `--target`, and the solver's flags, name them only where the
- * campaign has recorded none. Until 19 October a repeat, the comparison that followed one of the
- * same two harnesses whose reading cleared `--trigger`, scored that one's untied tasks again; one
- * reading promotes since. The solves a side, the level, the Referee and the cap are a round's, with a round's defaults
+ * campaign has recorded none. One reading promotes, with no repeat over the same two harnesses'
+ * untied tasks. The solves a side, the level, the Referee and the cap are a round's, with a round's defaults
  * (`round.ts`), and `--cap` is required as it is there. With no `--reviewer`, every rejection
  * waits for a person and sets its task aside until `tools/d2/settle.ts` has its labels.
  *
  * Before its first event it asks whether the comparison may start, as a round does
- * (`src/campaign/admission.ts`). `--past-stop "<why>"` goes on past the plan's
+ * (`src/campaign/admission.ts`). `--past-stop "<why>"` goes on past the
  * stop rule, and the reason is logged.
  *
  * Run again with the same `--id`, it goes on from its log, and once it has reported it says what
@@ -114,7 +112,7 @@ export async function checkpointCommand(
     own,
   });
   for (const note of notes) console.log(`· ${note}`);
-  // What the caller records of the comparison once it is admitted: a led Builder's move (14 October).
+  // What the caller records of the comparison once it is admitted: a led Builder's move.
   admitted?.();
   keepSetting(campaign.log, setting);
   stayAwake();

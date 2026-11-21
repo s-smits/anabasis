@@ -5,25 +5,23 @@
  *   bun tools/d2/prepare.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --practice 6
  *
- * Run it before a comparison. What it finds already in place it leaves. It is the plan's set-up of
- * the first round (`7f0add79:docs/plan.md`, Phase 0).
+ * Run it before a comparison. What it finds already in place it leaves. It is the set-up of the
+ * first round.
  *
  * Each task of the pack that the log does not hold is proposed and put to the shape check
  * of its package (`src/kernel/task.ts`). A task that passes is a held-out task. No solve and no
- * stored answer has a say: until 2026-10-09 a pack's task entered a log through four admission checks, on a
- * stored cycle's answer and v1's control answers for it (`fdafb372a:tools/m1/admit-sweep.ts`, removed).
+ * stored answer has a say, neither a stored cycle's answer nor v1's control answers for it.
  *
  * A stored answer does say whether a task has a known valid answer. Each held-out task the
  * stored sweep accepted an answer to is rechecked under today's checks, until one passes, and a
  * pass is logged as `task.feasible`, as an author's answer is: such a task is never read as
  * possibly infeasible (`poolOf`). A recheck that fails establishes nothing and is said nowhere.
- * Until 14 October a pack's task had no answer on record until a solve of a comparison gave one.
  *
  * Practice is what the Builder learns from, and a practice task is never scored. `--practice` is
  * the number of released tasks the campaign is brought to. What is missing is released from the
  * held-out tasks by the contract's draw, and no solve chooses which. One release takes at most
- * half of what is held, so that a comparison is left tasks to score: on 2026-10-08 an anchor drawn
- * over nearly the whole pack left eight rounds no task to score. A task the reference's own rejection
+ * half of what is held, so that a comparison is left tasks to score: a release drawn over nearly
+ * the whole pack would leave round after round no task to score. A task the reference's own rejection
  * left in doubt is neither drawn nor counted (`practicePool`). Each release is said by its task.
  * A task that a comparison scored before its release keeps that comparison's solves on the exam
  * side: a Builder is shown its practice solves only (`practiceRan`, `src/kernel/solves.ts`).
@@ -78,9 +76,9 @@ export function ungated(campaign: Pick<Campaign, "tasks" | "pack">, events: read
 
 /**
  * `bun tools/d2/prepare.ts`. `heldBack`, the host's own release (`releaseOwed`), is read on the events
- * the release takes its tasks from, with no wait between that read and its appends: until 5 November
- * it was read before this awaited the campaign's opening, so a comparison that started meanwhile could
- * lose a task it had just drawn, after its terms were fixed (rule 4).
+ * the release takes its tasks from, with no wait between that read and its appends: read before
+ * this awaited the campaign's opening, a comparison that started meanwhile could lose a task it had
+ * just drawn, after its terms were fixed (rule 4).
  */
 export async function prepareCommand(
   args: readonly string[],

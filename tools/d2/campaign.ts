@@ -12,9 +12,8 @@
  *   bun tools/d1b/examine.ts   ... --name <name> --session x-1       an Examiner session, which writes further tasks
  *
  * Its code identity includes `tools/d2`, `tools/c` and `tools/d1b`, which execute the campaign.
- * On 26 October the regression test showed a changed `tools/d2` file kept the same identity,
- * allowing a comparison to continue under changed execution code. Readers and development tools
- * stay outside that identity.
+ * Without them a changed `tools/d2` file would keep the same identity, allowing a comparison to
+ * continue under changed execution code. Readers and development tools stay outside that identity.
  *
  * The campaign folder is inside the repository, which every solve's and every Builder's wall denies,
  * as `live-solve.ts` keeps its check program: the log holds hidden values and the checks' verdicts.
@@ -23,11 +22,9 @@
  * with the answer format the sweep's record tool took, and the limits are the sweep's `config.yaml`
  * without its disk cap. The test condition's model and effort are the stored cycle's. The cycle's own
  * harness is not used: it comes from v1's runs, and a campaign starts from the Starter Built
- * Harness, which is also its first reference harness (`src/harness/starter.ts`, `7f0add79:docs/plan.md`,
- * Phase 0). Until 2026-10-09 the stored harness was both.
+ * Harness, which is also its first reference harness (`src/harness/starter.ts`).
  *
- * It first ran against a model on 8 October, in a round with a Claude Builder (issue #1). It needs
- * the Mac's command wall, the pack and the sweep on disk, and a model login.
+ * It needs the Mac's command wall, the pack and the sweep on disk, and a model login.
  */
 import type { Api, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { type BackendOptions, backends, compactionMode } from "#src/agent/backends/models.ts";
@@ -157,16 +154,12 @@ const PROGRAMS_OF = "programs-of:";
  *  sweep's. Concurrency is part of a condition, so
  *  a campaign's solves and a parity solve (`live-solve.ts`) are not under the same one.
  *
- *  Until 19 October a campaign's default was the sweep's 120 minutes with the model's turns
- *  unlimited, while `bun run runs fresh` named 8 or 30 minutes and 16 turns by model. Of the 1,145
- *  solves of three Opus fresh runs that day at 8 minutes, none ended on its deadline; the turns bound.
- *  So one budget stands for every solver, with the turns at 20 (the operator, 19 October).
+ *  One budget stands for every solver, with the turns at 20 (the operator's choice): at a short
+ *  deadline, the turns bound and the clock almost never does.
  *
- *  The model turn limit is what leaves a task room. Until 17 October fresh runs solved at 120 minutes
- *  with the model turn limit unlimited, and task admission held out 6 of 78 buffer drafts and 3 of 24
- *  truss drafts; the three
- *  buffer runs at 16 turns held out 74 of 146, and a truss run 4 of its first 4. A harness's programs
- *  and guide show as an answer reached within the budget, which an unlimited solver reaches anyway.
+ *  The model turn limit is what leaves a task room: with it unlimited, task admission held out
+ *  very few drafts, and at a turn limit about half. A harness's programs and guide show as an
+ *  answer reached within the budget, which an unlimited solver reaches anyway.
  *  A turn is also the same on a loaded host, where a second is not. */
 export const LIMITS = {
   wallSeconds: 1800,
@@ -201,7 +194,7 @@ export const CODE_TREES = ["src", "vendor", "tools/d2", "tools/c", "tools/d1b"] 
 /**
  * The repository's other worktrees, which every wall of this command denies with the one it runs
  * in. A campaign is run from a worktree kept for it, and its log, every hidden value in it, lies
- * under `.ana` there; a shell in a sibling worktree read it on 10 October. A worktree that is
+ * under `.ana` there, which a shell in a sibling worktree could otherwise read. A worktree that is
  * gone is left out, since a denied root has to exist for the wall to mount over it.
  */
 export function worktreesOf(repo: string): string[] {
@@ -214,9 +207,9 @@ export function worktreesOf(repo: string): string[] {
 /**
  * Why `tree` runs no paid seat, or null. A seat executes the source of the tree it started in for
  * hours, so a tree that is checked out again under it runs the seat on two commits, and a tree
- * holding a live seat cannot be moved. On 28 October a live solve of a candidate harness ran from
- * the main checkout, and the job that keeps that checkout at the stack's top skipped twice on its
- * uncommitted files. A repository's main worktree, and a worktree that job marked, are such trees.
+ * holding a live seat cannot be moved, so a live solve run from the main checkout would hold the
+ * job that keeps that checkout at the stack's top. A repository's main worktree, and a worktree
+ * that job marked, are such trees.
  */
 export function treeFault(tree: string): string | null {
   const own = gitMaybe(tree, "rev-parse", "--path-format=absolute", "--git-dir");
@@ -246,8 +239,8 @@ export const campaignLog = (name: string): string => join(REPO, ".ana", "d2", na
 /**
  * The campaign a command's flags name, and the pack it opens over: the stored one that `--root`,
  * `--sweep`, `--cycle` and `--bundle` name together, or, where none of the four is given, the exam
- * the campaign's own log drafted. Ten commands each held their own copy of this check until
- * 2026-10-09, when a campaign could only open over a stored pack. `also` is what else the command
+ * the campaign's own log drafted, one check for every command rather than a copy in each. `also`
+ * is what else the command
  * needs, for the sentence that says what is missing.
  */
 export function packNamed(
@@ -305,11 +298,9 @@ function packOpened(dir: string, log: string, args: CampaignArgs) {
 /**
  * The code a solve runs, as its condition records it (`src/kernel/condition.ts`): the agent
  * runtime's pins by name with the Bun that runs this command, and the host's `CODE_TREES` as they
- * stand with every production package its lockfile resolves. Until 12 October the host was the two source trees alone, and a package such as
- * `typebox`, which builds the solver's bash
- * schema, could change under one setting id (the stack review at 658a933b, finding 6). Until 24
- * October the Bun was left out, though the verifier runs every check under it: one campaign read
- * comparison g-1 under Bun 1.4.3 and g-2 under 1.4.4 with one setting id.
+ * stand with every production package its lockfile resolves, since a package such as `typebox`,
+ * which builds the solver's bash schema, could otherwise change under one setting id, and so could
+ * the Bun the verifier runs every check under.
  */
 export function codeOf(tree: string) {
   const pins = parseJsonAs<{ dependencies: Record<string, string> }>(
@@ -548,9 +539,9 @@ export async function starter(campaign: { readonly states: string }): Promise<Ke
  * which is the starter while none has; or the whole digest of one a session froze, which is the
  * name of its folder under the campaign's `states/`. `programs-of:` before any of those names its
  * programs ablation, the starter with that harness's installed programs alone (`programsAblation`).
- * Any other name is answered with the ones there are: on
- * 2026-10-08 a digest cut to its first eight characters, as every reader prints one, ended a
- * simulated round in a bare `ENOENT`. A state that opens as another harness is refused here: one
+ * Any other name is answered with the ones there are, since a digest cut to its first eight
+ * characters, as every reader prints one, would otherwise end in a bare `ENOENT`. A state that
+ * opens as another harness is refused here: one
  * that lost its tool tree when its campaign was moved had two solves paid for under its name.
  */
 export async function keptAs(campaign: Keeping, flag: string, asked: string): Promise<Kept> {
@@ -563,7 +554,7 @@ export async function keptAs(campaign: Keeping, flag: string, asked: string): Pr
     return await starter(campaign);
   }
   // A letter the view and the closing report print names one kept digest (`namesOf`); one that
-  // names two, as A can, falls through to the refusal with the digests there are (14 October).
+  // names two, as A can, falls through to the refusal with the digests there are.
   const lettered = [...namesOf(events)].flatMap(([each, letter]) => (letter === asked ? [each] : []));
   const digest = built ?? (lettered.length === 1 ? (lettered[0] ?? asked) : asked);
   // `states/` also holds the tool trees the states link to (`tree-*`), which name no harness.
@@ -593,11 +584,9 @@ export async function keptAs(campaign: Keeping, flag: string, asked: string): Pr
  * starter it reads what the installed programs are worth by themselves, and compared with the
  * harness it was taken from, what the guide and the tools add to them.
  *
- * Buffer's first step, on 9 October, is why. Its harness installed the field's engine, a checker
- * and an optimiser in its guide, and won 5 tasks to 0 at an eight-minute deadline, where 2 of the
- * starter's 20 solves had fetched anything; at two hours, that morning, the starter installed the
- * engine itself and was valid on 18 solves of 18. Which part of the harness the step was could not
- * be read from one comparison of the whole.
+ * A harness that installs the field's engine and names a checker and an optimiser in its guide can
+ * win a step at a short deadline that the starter matches at a long one, by installing the engine
+ * itself. Which part of the harness a step was cannot be read from one comparison of the whole.
  */
 async function programsAblation(campaign: Keeping, source: Kept): Promise<Kept> {
   const tree = join(source.dir, ".toolchain");
@@ -647,11 +636,10 @@ export function awaitingLines(campaign: {
  * since the trace holds the host's tools alone. A solver's backends are the sweep's as they stand
  * (`solveOnce`), with the search.
  *
- * A Builder's and an Examiner's cache lives an hour, since they waited on practice solves and,
- * until 1 November, the gate's room solves: over the recorded turns of 20 October, 8.4% of a
- * Builder's and 5.0% of an Examiner's came more than five minutes after the one before, and
- * five-minute writes would have billed 48% and 28% more. An Examiner's own computing in its shell
- * still runs that long between turns, and no record since measures it, so its hour stays. A
+ * A Builder's and an Examiner's cache lives an hour, since they wait on practice solves: a few in a
+ * hundred of their turns have come more than five minutes after the one before, and five-minute
+ * writes would bill far more. An Examiner's own computing in its shell can run that long between
+ * turns, so its hour stays. A
  * reviewer's ruling takes minutes, so its cache lives five.
  */
 function hostSession(seat: { readonly webSearch: boolean; readonly cacheTtl: "5m" | "1h" }) {
@@ -672,7 +660,7 @@ export function stayAwake(): void {
 }
 
 /**
- * The project a campaign's opening names (the operator, 12 October): `named`, the campaign
+ * The project a campaign's opening names (the operator's choice): `named`, the campaign
  * command's `--project`, or the one its opening holds where the flag names none. Every campaign
  * belongs to one, as every v1 run joined one, and is named as v1's were. The opening is not written
  * without one, so a campaign opened, or continued from an opening that names none, takes the flag

@@ -14,7 +14,8 @@ import {
 import { Type } from "typebox";
 import { crashedRun } from "../src/campaign/ground.ts";
 import { type BuildRequest, build, type PracticeTask, session } from "../src/builder/session.ts";
-import { type Bench, HOME_TOOL_TREE, practiceLeft, record, snapshot } from "../src/builder/tools.ts";
+import { HOME_TOOL_TREE, snapshot } from "../src/builder/kept.ts";
+import { type Bench, practiceLeft, record } from "../src/builder/tools.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";

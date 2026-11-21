@@ -19,13 +19,6 @@
  * `openHarness` reads the guide and the spec alone, refusing either where it links out of the
  * harness, so nothing here asks that again.
  *
- * The installed programs are the session's own. `harness/.toolchain` starts as a copy of the
- * parent's tool tree, which the wall puts first on PATH. A frozen harness links to a copy of that
- * tree kept beside the states, made again only when the tree has changed since. A harness is frozen,
- * and its solves run, away from the home it was built in, which is gone once the session ends; so a
- * snapshot naming that home in a link or script is refused, with how to write it instead. A compiled
- * program is not read for it: a path built into one is as often a build's record as the place it runs from.
- *
  * `practice` is where the Referee meets the Builder. A rejected answer goes to it, as in a
  * comparison; a check defect's task leaves the session, and an unclear or unread rejection is not
  * shown as a failure. What comes back names the ending and the
@@ -55,63 +48,34 @@ import {
 import { objectiveOf } from "../kernel/verify.ts";
 import { poolOf, referenceOf } from "../kernel/reports.ts";
 import { taskStates } from "../kernel/task.ts";
-import {
-  cpSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  readlinkSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  symlinkSync,
-} from "../meta/filesystem.ts";
-import { TOOL_TREE_DIR } from "../meta/bundle-layout.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isFunction, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
-import { containsPath } from "../meta/path-containment.ts";
-import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import { ending as endSession, openDesk, text, tool } from "../tools/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../tools/coding.ts";
 import { type CommandWall, type NetworkReach, networkReach } from "../tools/command.ts";
-import { type Harness, openHarness, pathsUnder, treeStamp } from "../harness/open.ts";
+import { type Harness, openHarness } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
 import { homeHolds, systemPrompt } from "../solver/prompt.ts";
 import { clockText, solverTools } from "../solver/run.ts";
 import { STARTED as COMPARISON_STARTED } from "../campaign/comparison.ts";
 import { budgetLeft } from "../campaign/opening.ts";
+import { type Freezing, frozen, harnessNow, type HarnessSnapshot, snapshot } from "./kept.ts";
 import { type Said, shellWalls } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
 
-/** `harness/` frozen: a copy kept under its digest, and what a solve would open it as. */
-export interface HarnessSnapshot {
-  readonly dir: string;
-  readonly harness: Harness;
-}
-
 /** What a session's tools share. */
-export interface Bench {
+export interface Bench extends Freezing {
   readonly request: BuildRequest;
   /** The texts of this session that differ by who makes its campaign's moves (`SAID`). */
   readonly said: Said;
   /** Released tasks and the reference, refreshed by campaign tools while the conversation stays open. */
   tasks: readonly PracticeTask[];
   reference: string;
-  /** The Builder's home, which holds `harness/` and `practice/`. */
-  readonly home: string;
   /** The digest of the harness the session started from. */
   readonly parent: string;
-  /** The last copy kept of `harness/.toolchain`, and the stamp the tree had when it was copied. */
-  tree: { readonly stamp: string; readonly dir: string } | null;
-  /** The last harness snapshot this session kept, including one made for a comparison.
-   *  Null until a state is kept; freezing establishes no practice result. */
-  opened: HarnessSnapshot | null;
   /** Practice solves spent. */
   spent: number;
   /** Task versions whose own check could not run on a practice answer. */
@@ -137,9 +101,6 @@ type Unmeasured = (digest: string) => Promise<string | null>;
 
 /** What a preview names the solve's home, which only a solve has. */
 const SOLVE_HOME = "(the solve's own home directory)";
-/** The harness's tool tree, as a path in the Builder's home. */
-export const HOME_TOOL_TREE = `harness/${TOOL_TREE_DIR}`;
-
 /** A measure as the Builder is told it, with the zeros or the exponent that show the rounding. Four
  *  digits show 0.1%, under the 1% tie floor (`GAP_FLOOR`), and bound no leak, since they can still
  *  determine a hidden value. The log keeps every digit. */
@@ -185,166 +146,6 @@ export function hasPractice(
   harness: string,
 ): boolean {
   return bench.tasks.some(({ version }) => record(events, version, harness).solves.length > 0);
-}
-
-/** The parent's tool tree, where it really is; null when the parent has none. Every caller copies
- *  it as the host, outside every wall, into a seat's home or a handover, so the tree lies in the
- *  harness or beside it, as a kept state's does: a link to anywhere would let an imported
- *  harness's `.toolchain` hand any folder the host reads to the next Builder. */
-export function parentToolTree(parent: string): string | null {
-  const tree = join(parent, TOOL_TREE_DIR);
-  if (!existsSync(tree)) return null;
-  const real = realpathSync(tree);
-  if (!containsPath(real, realpathSync(dirname(parent)))) {
-    throw new Error(`${parent}: its ${TOOL_TREE_DIR} links outside the folder it lies in`);
-  }
-  return real;
-}
-
-/** Refuses the links and scripts in a copy of `harness/<under>` that name the session's home, where
- *  the copy is not: a launcher an install wrote with its own absolute path, a console script's
- *  interpreter, a link into the tree. Each would break where the harness is run. */
-function refuseNamingHome(dir: string, home: string, under: string): void {
-  const forms = [...new Set([home, realpathSync(home)])];
-  const named = pathsUnder(dir).filter((path) => {
-    const full = join(dir, path);
-    const stat = lstatSync(full);
-    if (stat.isSymbolicLink()) return forms.some((form) => readlinkSync(full).includes(form));
-    if (!stat.isFile() || (stat.mode & 0o111) === 0) return false;
-    const bytes = readFileSync(full);
-    return bytes.subarray(0, 2).toString() === "#!" && forms.some((form) => bytes.includes(form));
-  });
-  if (named.length > 0) {
-    throw new Error(
-      `${named.map((path) => join(under, path)).join(", ")} name your home, and a harness runs from elsewhere: a launcher finds its files from its own path, as "$(dirname "$0")" does, and a link names its target relatively`,
-    );
-  }
-}
-
-/** Remove a tree copy no kept state's `.toolchain` names, which is what the last copy becomes once
- *  the tree has changed and nothing was frozen under it. A `check_harness` call keeps nothing and
- *  makes one all the same, and a domain's tree can run to hundreds of megabytes, so a check after
- *  each tree edit would leave one each. */
-function dropUnlinked(states: string, dir: string): void {
-  const named = join("..", basename(dir));
-  const links = readdirSync(states).map((name) => join(states, name, TOOL_TREE_DIR));
-  const linked = (link: string) =>
-    lstatSync(link, { throwIfNoEntry: false })?.isSymbolicLink() === true && readlinkSync(link) === named;
-  if (!links.some(linked)) rmSync(dir, { recursive: true, force: true });
-}
-
-/** A copy of `harness/.toolchain` beside the states, for a frozen harness to link to; the last one
- *  kept while the tree's stamp holds. One domain's tree is 316 MB, which a copy at every freeze
- *  would spend again on each check and practice. Null when the harness has no tree.
- *
- *  The tree is the directory itself, inside the home. A link there is refused: the freeze would
- *  copy what the link named, the repository with its logs among what it could name, into the tree
- *  every later solve reads. */
-function keptTree(bench: Bench): string | null {
-  const own = join(bench.home, HOME_TOOL_TREE);
-  const found = lstatSync(own, { throwIfNoEntry: false });
-  if (found === undefined) return null;
-  const real = found.isSymbolicLink() ? null : realpathSync(own);
-  if (real === null || !containsPath(real, realpathSync(bench.home))) {
-    throw new Error(
-      `${HOME_TOOL_TREE} is a link, or lies outside your home: the programs are installed in the directory itself, which is copied whole when the harness is frozen`,
-    );
-  }
-  const stamp = treeStamp(real);
-  if (bench.tree?.stamp === stamp) return bench.tree.dir;
-  if (bench.tree !== null) dropUnlinked(bench.request.states, bench.tree.dir);
-  const dir = realpathSync(mkdtempSync(join(bench.request.states, "tree-")));
-  try {
-    cpSync(real, dir, { recursive: true, verbatimSymlinks: true });
-    refuseNamingHome(dir, bench.home, HOME_TOOL_TREE);
-  } catch (error) {
-    rmSync(dir, { recursive: true, force: true });
-    throw error;
-  }
-  bench.tree = { stamp, dir };
-  return dir;
-}
-
-/**
- * `source`, a harness directory, copied into a fresh folder among `states` as a state is kept:
- * its files less its own `.toolchain`, links as they are, and its programs named by a link to
- * `tree` beside it, so both go where the campaign's folder goes. The caller opens the copy and
- * keeps it or removes it. Shared with the import of a harness built elsewhere
- * (`tools/d2/import.ts`), which keeps one the same way.
- */
-export function stagedState(source: string, states: string, tree: string | null, prefix: string): string {
-  mkdirSync(states, { recursive: true });
-  const dir = realpathSync(mkdtempSync(join(states, prefix)));
-  try {
-    const own = resolve(source, TOOL_TREE_DIR);
-    cpSync(source, dir, { recursive: true, verbatimSymlinks: true, filter: (each) => resolve(each) !== own });
-    if (!lstatSync(dir).isDirectory()) throw new Error("harness/ is not a directory");
-    if (tree !== null) symlinkSync(join("..", basename(tree)), join(dir, TOOL_TREE_DIR));
-    return dir;
-  } catch (error) {
-    rmSync(dir, { recursive: true, force: true });
-    throw error;
-  }
-}
-
-/**
- * `harness/` as it stands, copied beside the kept states and opened as a solve would open it, then
- * handed to `use`. Throws, with the harness's own error, when a solve could not: a harness that
- * does not open fails every task before its first turn, and one frozen so would be scored at a
- * full round's cost to say only that. Links are
- * copied as they are: a stored state carries links that resolve to nothing, and following one would
- * copy what it points at. The copy is removed once `use` returns or throws, unless `use` moved it
- * away: only a state a solve ran with, or the session's last, is kept (`snapshot`).
- *
- * Every question is asked of the copy, which no command of the Builder's can reach, and none of
- * `harness/` itself, which a process a command left behind could still be changing.
- */
-async function frozen<T>(bench: Bench, use: (kept: HarnessSnapshot) => T | Promise<T>): Promise<T> {
-  const { states } = bench.request;
-  mkdirSync(states, { recursive: true });
-  let dir: string | null = null;
-  let opened = false;
-  try {
-    dir = stagedState(join(bench.home, "harness"), states, keptTree(bench), "freezing-");
-    refuseNamingHome(dir, bench.home, "harness");
-    const harness = await openHarness(dir);
-    // A preset no solve serves fails every solve, and is refused here before one is spent on it.
-    selectedCodingTools(harness.presets);
-    opened = true;
-    return await use({ dir, harness });
-  } catch (error) {
-    if (opened) throw error;
-    // The copy's own path is the host's, and says where the states and the log beside them are.
-    const why = errorMessage(error).replaceAll(dir ?? states, "harness");
-    throw new Error(`the harness does not open: ${why}`, { cause: error });
-  } finally {
-    if (dir !== null) rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-/**
- * Freeze `harness/` and keep the copy under its digest in the caller's `states`, so every harness a
- * practice solve ran with can be opened again.
- *
- * The copy is not kept in the session's own scratch. The command wall closes the parent of every
- * solve's scratch after it reopens a harness's tool tree, so a state kept there is one no practice
- * solve could run a program from.
- */
-export async function snapshot(bench: Bench): Promise<HarnessSnapshot> {
-  return await frozen(bench, ({ dir, harness }) => {
-    const kept = join(dirname(dir), harness.digest);
-    try {
-      renameSync(dir, kept);
-    } catch (error) {
-      // A state already kept under this digest, by this session or one beside it, is the same harness.
-      if (!existsSync(kept)) throw error;
-    }
-    bench.opened = {
-      dir: kept,
-      harness: { ...harness, toolTree: harness.toolTree === null ? null : join(kept, TOOL_TREE_DIR) },
-    };
-    return bench.opened;
-  });
 }
 
 /** How much of its limits a finished solve used, as a sentence after its ending: the seconds from
@@ -643,11 +444,6 @@ async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<stri
     return `harness/ has changed since your last practice solve, so no solve has run it as it stands. ${plural(left, "practice solve")} ${left === 1 ? "is" : "are"} left. Practise it, ${again} ${bench.said.untried}.${unread === null ? "" : ` ${unread}`}`;
   }
   return unread === null ? null : `${unread} Call finish again to end the conversation as it is.`;
-}
-
-/** The digest of `harness/` as it stands, or why it does not open: frozen once, the copy removed. */
-export async function harnessNow(bench: Bench): Promise<string | Error> {
-  return await frozen(bench, ({ harness }) => harness.digest).catch(asError);
 }
 
 /**

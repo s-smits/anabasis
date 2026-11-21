@@ -11,7 +11,7 @@
  * same campaign. What another campaign handed over (`close.ts`, `harness/`), or a harness written
  * by hand, is imported here instead.
  *
- * It is kept as a session keeps one (`snapshot`, `src/builder/tools.ts`): the files under their
+ * It is kept as a session keeps one (`snapshot`, `src/builder/kept.ts`): the files under their
  * digest, the programs copied into a tree beside the state and named by the link `.toolchain`,
  * links copied as they are. It is opened there before anything is recorded and refused where it
  * does not open as the harness it was read as, so that no solve is paid for under a name that is
@@ -27,7 +27,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
-import { parentToolTree, stagedState } from "#src/builder/tools.ts";
+import { parentToolTree, stagedState } from "#src/builder/kept.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { campaignLog } from "./campaign.ts";
 

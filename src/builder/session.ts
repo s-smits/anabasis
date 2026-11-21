@@ -72,7 +72,7 @@ import { type SolveRequest, solve } from "../solver/run.ts";
 import { type Sat, type SeatTool, sessionClock, sit } from "../agent/session.ts";
 import { claimRoot } from "../wall/seat-root.ts";
 import { campaignOf } from "../campaign/handover.ts";
-import { copyHarness, seedKept } from "./kept.ts";
+import { copyHarness, harnessNow, type HarnessSnapshot, HOME_TOOL_TREE, seedKept, snapshot } from "./kept.ts";
 import { builderMemoryBlock, keepMemory } from "./memory.ts";
 import { comparisonsTold, failsTold, startTold } from "./past.ts";
 import {
@@ -88,15 +88,11 @@ import {
   type Bench,
   endingWith,
   finishTool,
-  harnessNow,
   hasPractice,
-  HOME_TOOL_TREE,
   openingTool,
   practiceLeft,
   practiceTool,
   record,
-  type HarnessSnapshot,
-  snapshot,
   traceTool,
   walledTools,
 } from "./tools.ts";

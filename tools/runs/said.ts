@@ -12,7 +12,7 @@
  */
 import { comparisonFloor } from "#src/campaign/admission.ts";
 import { BARS, epochsOf, starterReads } from "#src/campaign/climb.ts";
-import { readsStepEitherWay, scoresIn, type Tally, testOf } from "#src/kernel/compare.ts";
+import { readsStep, readsStepEitherWay, scoresIn, type Tally, testOf } from "#src/kernel/compare.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { endingOf } from "#src/kernel/reports.ts";
 import { clearing, sizeLines } from "#src/kernel/size.ts";
@@ -85,6 +85,8 @@ function factorsOf(data: JsonObject): { said: string; look: boolean } {
   const scores = Array.isArray(noise?.differences) ? scoresIn(noise) : undefined;
   const aa = scores === undefined ? null : testOf(scores);
   const clears = scores !== undefined && readsStepEitherWay(scores, level);
+  // Only a one-sided clearance is the A/A step the view counts (`readOf`, `climb.ts`); name the other.
+  const reversed = scores !== undefined && clears && !readsStep(scores, level);
   const worth = asRecord(data.worth);
   const spent = asRecord(worth?.cost);
   const attempts = spent?.attempts;
@@ -97,7 +99,7 @@ function factorsOf(data: JsonObject): { said: string; look: boolean } {
       : "",
     aa === null
       ? ""
-      : `A/A ${String(aa.wins)}-${String(aa.losses)}-${String(aa.ties)}${clears ? " cleared the level" : ""}`,
+      : `A/A ${String(aa.wins)}-${String(aa.losses)}-${String(aa.ties)}${clears ? ` cleared the level${reversed ? " reversed" : ""}` : ""}`,
     isNumber(attempts) ? `attempt ${String(attempts)} of ${String(BARS.cost)} this epoch` : "",
   ].filter((part) => part !== "");
   return { said: parts.map((part) => ` · ${part}`).join(""), look: clears || dear || scant };

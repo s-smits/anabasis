@@ -328,9 +328,8 @@ export function bwrapTmpfsDenies(paths: readonly string[]): string[] {
   //
   // A path that no longer exists takes no mount. The root is bound read-only, so Bubblewrap cannot
   // make the mountpoint ("Can't mkdir <path>: Read-only file system") and refuses the whole launch.
-  // The policy names the repository's other worktrees, read once when the campaign opens, and on
-  // 10 October two of them were removed while a simulated campaign ran: from the next policy on
-  // every solve ended `sandbox-crash`, 12 in a row, with the wall test's own-folder read refused. A
+  // The policy names the repository's other worktrees, read once when the campaign opens, and one
+  // removed while a campaign runs would otherwise end every later solve `sandbox-crash`. A
   // path that does not exist cannot be read, so leaving it unmounted denies nothing; it stays in
   // the policy's identity, which says what was denied by name.
   return paths.flatMap((path) => {

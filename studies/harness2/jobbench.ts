@@ -122,7 +122,7 @@ const OPTIONS = {
 /**
  * The fork's `os.environ` less `drop`: this process's environment with what the fork's Python
  * adds before it starts anything, `config.py`'s Vertex region and PEP 538's UTF-8 locale where the
- * inherited one is C (both seen in `test/studies-harness2-parity.test.ts`).
+ * inherited one is C, both seen when the port was checked against the fork.
  */
 export function envOf(drop: readonly string[]): Record<string, string> {
   const own = runtimeProcess.env;

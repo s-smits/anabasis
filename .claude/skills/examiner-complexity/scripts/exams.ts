@@ -1,30 +1,14 @@
 /**
- * Every draft an Examiner wrote, beside what the gate measured on it, as a CSV a person can read:
+ * Tabulates Examiner task proposals alongside their admission gate readings as CSV.
  *
  *   bun .claude/skills/examiner-complexity/scripts/exams.ts <log or campaign folder>... > exams.csv
  *   bun .claude/skills/examiner-complexity/scripts/exams.ts --every <log or campaign folder>...
  *
- * `ambition.ts` says how far a campaign got and how each session fared. It does not say what the
- * drafts themselves were, so whether a ladder's words reached the content was read by hand, one log
- * at a time. This reads the content: one row a group of drafts, in the campaign's own order, so
- * reading the file downwards reads the exam forwards and a later session's drafts stand against an
- * earlier one's, as the operator asked: the question "is this getting harder than five sessions
- * ago" needs the drafts themselves, and needs them without the Examiner's repetitions in the way.
- * It also sharpens the gate's count, since some of the readings it holds can be the drafted exam's
- * own examples rather than the sessions' drafts.
- *
- * By default the rows are grouped: one a family a session, since an Examiner writes many instances
- * of one family and they vary in size alone: a session can write most of its drafts from one
- * family, so a row a draft is mostly repetition. `--every` prints a row a draft for a close read of
- * one session.
- *
- * `chars`, the public input's length, is the one domain-free measure of a draft's content a reader
- * can have without grading it. It says how much a draft holds, never how hard it is, which
- * `grades.ts` grades blind. A longest-list count and a field count were tried and dropped: in
- * buffer the longest list is the exam's fixed reagent catalogue of 25 whatever the
- * draft, and the field count was constant within every exam on record. A ladder that raises `chars`
- * and leaves `noroom` where it was has reached the drafts' size and not their method, which is what
- * the esp32 arms showed. Read-only: no event is written and no hidden value is read.
+ * By default, groups proposals by `(session, family)` in campaign order (or prints one row per
+ * proposal under `--every`), reporting proposal count, held and refused counts, ceiling refusals
+ * where every reference room solve was valid (`noroom`), zero-valid drafts (`none`), proved author
+ * answers (`proved`), median JSON public-input length (`chars`), and the first draft's title.
+ * Read-only and public-side: writes no events and reads no hidden values.
  */
 import { proposalsOf } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";

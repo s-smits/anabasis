@@ -1,12 +1,11 @@
 /**
- * The record a mechanism is tried on: every reported comparison of the campaigns opened since a
- * release, reduced to what a score or a test can read of a solve (validity, the objective's measure,
- * dollars, turns, seconds), through this checkout's readers of the log. A fork carries its parent's
- * comparisons, so each counts once, in the campaign that opened first: counted once for each copy,
- * jobstat's solves read 1,800 where they were 1,400.
+ * Comparison archive for decision-rule replays: every reported comparison from campaigns opened
+ * since a release tag or date, reduced to per-solve evaluation fields (validity, objective measure,
+ * billed dollars, turns, and wall-clock seconds). Forked campaigns inherit parent comparisons, so
+ * `once` deduplicates comparisons to the earliest campaign that recorded them.
  *
- * It holds objective measures, which are exam-side, so a file written by `--record` goes under the
- * ignored `data/derived/` and out of every prompt, pull request and paste.
+ * Because this record includes exam-side objective measures, any `--record` cache file must live
+ * under git-ignored `data/derived/` and never enter prompts, pull requests, or transcripts.
  */
 import { epochsOf } from "#src/campaign/climb.ts";
 import { startOf } from "#src/campaign/comparison.ts";

@@ -15,8 +15,8 @@ export function trialTerms(args: CommandArgs) {
   return { solves, count, level, cap };
 }
 
-/** A trial name can be reused only for the system its log actually measured. A historical read
- *  can use the original host setting. Further solves must also match the current seat. */
+/** A trial name may be reused only for the system its log recorded. Historical reads use the
+ *  original host setting; additional solves must also match the current seat configuration. */
 export function checkTrial(
   events: readonly LogEvent[],
   expected: {

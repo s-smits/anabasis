@@ -1,17 +1,13 @@
 /**
- * `bun run runs netwatch [<seconds>] [--once | -s|--short]`: the traffic between the machines, live
- * beside `loadwatch` and through the same driver (`watch.ts`), refreshed every `<seconds>` (2 by
- * default). Each machine reports the bytes it has sent to and received from each Tailscale peer
- * (`tailscale status --json`), and each reading holds every link's rate from that report against the
- * one before, whether it is direct or relayed, and the bytes moved since the watch reached the
- * machine. The intranet is every link counted once, at the larger of its two ends' readings, with
- * its peak since the watch began. `--once` prints one frame once every machine has two reports, and
- * `-s` one line: the intranet's rate and each link's, busiest first.
+ * `bun run runs netwatch [<seconds>] [--once | -s|--short]`: live Tailscale traffic monitor across
+ * configured hosts, driven by `watch.ts` and refreshed every `<seconds>` (default 2).
  *
- * Traffic that does not cross Tailscale (a Thunderbolt link, the LAN by address) is not counted.
- * Each machine's Tailscale CLI is the first that answers of the one on its path, Homebrew's,
- * `/usr/bin`'s and the macOS app's, and where `tailscaled` runs in userspace with a socket of its
- * own, that socket.
+ * Each host streams `tailscale status --json`, computing per-peer rx/tx byte rates between
+ * successive samples, direct-vs-relay routing, and cumulative bytes transferred since the watch
+ * started. The aggregate intranet line counts each peer pair once at the higher of its two
+ * endpoints' readings and tracks peak throughput. `--once` prints a single frame after two samples
+ * per host; `-s` prints a single summary line ordered by link throughput. Non-Tailscale traffic
+ * (e.g. direct LAN or Thunderbolt) is not included.
  */
 import { Type } from "typebox";
 import { Value } from "typebox/value";

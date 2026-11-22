@@ -1,44 +1,24 @@
 #!/usr/bin/env bun
 /**
- * Split each promotion's starter read by what its tasks had been through, from the reference's side.
+ * Decomposes each promotion's starter comparison by task origin from the reference harness's perspective.
  *
  *   bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | campaign folder | name> [--tasks]
  *   bun .claude/skills/comparison-reading/scripts/starter-reads.ts --log <log> [--log <log> ...] [--tasks]
  *   bun .claude/skills/comparison-reading/scripts/starter-reads.ts --all [--since <date>] [--name <part>] [--tasks]
  *
- * A promotion is confirmed by one tally over three kinds of task: those of the comparison that chose
- * the harness, which it is read on again; those written before the promotion and not drawn then; and
- * those written after it. Only the last two can say anything about tasks that did not choose it, and
- * the tally does not tell them apart. The middle group is no neutral one: its tasks can all have
- * been scored in a step that chose an earlier promotion. So each read also says
- * what the tasks written after read alone, the one origin no step selected. A read also has the
- * reference on the old side, where the promoting comparison had it on the new, and a table printed
- * with no sides is easily read backwards. So each read names its sides, and
- * each origin gives its whole tally, its tasks on which validity differed, and the rest. `epochsOf`
- * gives no split of this tally since it decides no move; this decides none either, and is read
- * beside the climb.
- * A count over the gathered record alone misses campaigns not yet retired.
- * An origin can hold several writing sessions, and one writer's tally can stand nearer the tasks
- * written after the promotion than the rest of its own group. So each read also gives one line a
- * writer.
+ * A starter read scores three task origins: tasks from the comparison that promoted the reference
+ * (`read at the promotion`), tasks held before the promotion but not drawn then (`written before,
+ * not chosen on`, which may still have been selected by an ancestor promotion), and tasks authored
+ * after the promotion (`written after`, the only origin free of selection bias). Because the
+ * reference stands on the `old` side in a starter comparison, all tallies and margins here are
+ * oriented from the reference's side (`reference - starter`), with each origin split into total,
+ * validity-differed, and objective-only tallies.
  *
- * Each read also gives what lane 12 and 19 sessions would otherwise count by hand: the summed
- * margin of each origin and its share of the
- * read's; how many of the sign draws of the untied tasks written after, every other task as scored,
- * read a step (`stepCount`, `selection.ts`); and the tasks written after, slice by writing session,
- * each by majority and alone, with no test across the slices. The sums over reads give the
- * confirmations those draws expect beside those read, and where the slices went. `--tasks` gives
- * one row a task of each read (lanes 17 and 18): its origin, writer, each solve's ending on both
- * sides, the reference's score against the starter and each side's ratio to the author's best. A
- * row's task is the 8-character prefix `tools/wri/pairs.ts` prints, and its writer the proposal's
- * session (`proposalsOf`), as `tools/wri/aim.ts` names it. Use this for a task's origin and ratios
- * to best, and `pairs.ts` for its A/A, flips, repeats, tie kind and the tasks set aside: there
- * `diff` is the starter's score over the reference's, the opposite sign of the margin here.
- *
- * The tally `epochsOf` stored and read is printed as it is. The split is scored under this tree's
- * rule (`differenceOf`), so on an older log the two can differ. `--all` counts copies of one
- * comparison once, by its harnesses and tasks. Output holds session ids, harness letters and counts;
- * with `--tasks` it also holds task versions and ratios read from hidden values, so it stays exam-side.
+ * Also reports WRI lane 12 and 19 diagnostics: each origin's point sum and share, exact post-promotion
+ * sign-draw confirmation counts (`stepCount`, `selection.ts`), and per-Examiner-session slices of
+ * post-promotion tasks. With `--tasks` (lanes 17 and 18), prints one row per scored task with its
+ * origin, authoring session, solve outcomes, reference margin, and each arm's ratio to `author best`
+ * (exam-side only).
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { sideGap } from "#tools/wri/pairs.ts";

@@ -1,16 +1,14 @@
 /**
- * Puts the bun router on this machine.
+ * Install the local Bun router (`~/.local/bin/bun`) and check-runner bundle (`~/.local/share/ana-runner/`).
  *
  *   bun tools/runtime/router/install.ts
  *
- * The router is `bun` in this folder, installed as `~/.local/bin/bun`, with `run.js` (this folder's
- * `run.ts`, bundled) and `task.sh` in `~/.local/share/ana-runner/`: it runs the Bun a tree pins and
- * runs the tree's check tasks here or on a host `ANA_HOSTS` lists (`run.ts` says how). One installed
- * runner serves every tree, whatever its commit. The folder is renamed over the old one, since a
- * running task still reads its own, and only the receipt changes when every installed byte already matches. The first install
- * over something it did not write moves that aside as `<path>.before-router-<time>`. `INSTALLED` keeps
- * the commit it came from, dirty only where `RUNNER_SOURCE` is, which `bun run runs sync` reads. It edits no shell startup file, since
- * where PATH is set is the operator's, and says so where a login shell's `bun` is not the router.
+ * The router dispatches to the Bun version pinned by the active worktree and routes check tasks
+ * locally or across `ANA_HOSTS` (`run.ts`). A single installation serves all worktrees regardless
+ * of commit. Installation is atomic via directory rename so active tasks are not disrupted; when
+ * all installed bytes already match, only the `INSTALLED` receipt is refreshed. Pre-existing
+ * unmanaged files are backed up as `<path>.before-router-<time>`. Does not modify shell startup
+ * files, and warns if a login shell resolves `bun` to a different path.
  */
 import { runtimeProcess } from "#src/meta/process.ts";
 import {

@@ -1,14 +1,13 @@
 /**
- * The live watches of every machine `ANA_HOSTS` lists, this one included (`loadwatch`, `netwatch`):
- * one driver, given what a watch reads and draws (`Watch`).
+ * Shared terminal driver for live multi-host monitors (`loadwatch`, `netwatch`) over `ANA_HOSTS`
+ * plus the local machine (`Watch`).
  *
  *   bun run runs <watch> [<seconds>] [--once | -s|--short [-w|--window <window>]]
  *
- * Live, the frame is redrawn on the alternate screen until ctrl-c, each machine read by one loop for
- * the whole watch (`keepFollowing`, `load.ts`), so a refresh costs no connection. `--once` prints one
- * frame once every machine has a reading or is lost, and `-s` one line from the same readings, over
- * the window `-w` names where the watch has windows. A screen update is one write of the lines that
- * changed, inside synchronised output (DEC 2026), so the terminal paints it at once.
+ * In live mode, redraws on the alternate screen until interrupted, maintaining one persistent
+ * streaming shell loop per host (`keepFollowing`, `load.ts`) and emitting differential line updates
+ * inside DEC 2026 synchronised-output blocks. `--once` prints a single frame once every host has
+ * reported or timed out; `-s` prints a one-line summary for the selected `-w` window.
  */
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { killProcessGroup } from "#src/meta/subprocess.ts";

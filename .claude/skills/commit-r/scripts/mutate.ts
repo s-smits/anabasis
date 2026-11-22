@@ -1,15 +1,16 @@
 #!/usr/bin/env bun
 /**
- * The mutant oracle of a commit-r pass (step 8): syntactic mutants of the owner's files, each run
- * against named suites, and which suites killed it. A test pass deletes or replaces tests only where
- * the mutants the old suite killed are still killed by the new one or the kept suite.
+ * Mutation oracle for a commit-r pass (step 8): generates syntactic mutants of the owner's files,
+ * executes each against named test suites, and records which suites kill it. A test pass deletes or
+ * replaces tests only when every mutant killed by the old suite is still killed by the new or
+ * retained suite.
  *
- * `list` counts the mutants of each file. `run` writes one JSON line a mutant to `--out` and skips
- * the mutants it holds, so a stopped run goes on; each job mutates its own copy of the worktree
- * (`<out>.clone-<k>`), and each suite's `bun test` goes through the check runner, which places it
- * where `ANA_CHECK_HOST` says. A run that prints no pass or fail count gave no verdict and records
- * `null`, never a kill. `report` prints, by file, how many mutants the `--old` suite and the others
- * killed, and with `--survivors` the ids only the old suite killed.
+ * `list` counts the mutants of each file. `run` appends one JSON line per mutant to `--out` and
+ * skips mutants already recorded, allowing an interrupted run to resume; each worker mutates its own
+ * worktree clone (`<out>.clone-<k>`), and each suite's `bun test` runs through the check runner on
+ * `ANA_CHECK_HOST`. A run that outputs no pass or fail count records `null` rather than a kill.
+ * `report` tabulates per-file kills across the `--old` suite and the remaining suites, or prints the
+ * IDs killed solely by the old suite when `--survivors` is passed.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { appendFileSync, cpSync, existsSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";

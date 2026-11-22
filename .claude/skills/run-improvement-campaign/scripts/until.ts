@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 /**
- * Wait in the background until a run's log holds `count` events of the `--at` kind (1 by default),
- * ends, or is `--hours` raw hours past its opening, then print one line that says which and wakes
- * the session; `--say` appends the session's own words, which grant nothing.
+ * Background log waiter: polls a campaign log until it records `count` events of kind `--at`
+ * (default 1), reaches `campaign.ended`, or exceeds `--hours` wall-clock hours since opening, then
+ * prints a single status line to wake the calling session. `--say` appends a note for context
+ * without conferring operator authority.
  */
 import { lastAt } from "#skills/main/logs.ts";
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";

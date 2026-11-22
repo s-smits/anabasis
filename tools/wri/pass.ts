@@ -1,19 +1,15 @@
 /**
- * One pass of the readers that name a moment over the logs a look names, for
- * `tools/runs/pulse-readers.ts`, which starts it by this command, since production imports no helper.
- * It calls no paid model, writes no event and decides nothing: each reader's output goes to the host's
- * store, for every observer of the host to read.
+ * Incremental background runner for event-triggered WRI log readers, invoked by
+ * `tools/runs/pulse-readers.ts`. Calls no model, writes no log events, and makes no campaign
+ * decisions; reader outputs are cached under `--store` for observer commands.
  *
  *   bun tools/wri/pass.ts --store <dir> --budget <ms> <log> [<log> ...]
  *
- * A reader runs on a log only where an event of one of its kinds (`at`, `derive.ts`) lies in the
- * bytes past what it last read, found by a scan of those bytes for the kind's text instead of a parse:
- * the largest closed log is 96 MB, which a parse would read at every pass. It takes the logs as given
- * and each log's due readers in the list's order, one reader at a time, those of this process on one
- * parse of the log. A reader whose last run would
- * not fit what is left waits for a later pass, one of its own process the limit cuts keeps its last result, and the pass
- * stops where the load leaves no room. A second pass that finds the lock held leaves at once, which is
- * what settles several looks that started one at one moment.
+ * For each log, scans only the byte range appended since the least-advanced reader's last offset
+ * for matching `"kind":"<kind>"` substrings (`at`, `derive.ts`), avoiding full parses of large
+ * closed logs when no relevant event occurred. Due readers execute sequentially within `--budget`
+ * while host load permits (`room`), sharing a single parsed `Source` per log for in-process
+ * readers. If another pass already holds the store lock, exits immediately.
  */
 import { closeSync, openSync, readSync, statSync } from "#src/meta/filesystem.ts";
 import { resolve } from "#src/meta/path.ts";

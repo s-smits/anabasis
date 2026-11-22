@@ -1,31 +1,20 @@
 #!/usr/bin/env bun
 /**
- * Then and now: the runs that opened in the newest window of days set against those of the windows
- * before it, pack by pack, over one list of measures, with each difference tested against the
- * spread between runs. It answers "is the system doing better than a week and two weeks ago" from
- * the record, and whether a faster climb is one that holds. It starts no solve, calls no model and
- * writes nothing; no reading here is a step or a comparison of harnesses, and a pattern is a lead
- * for an investigation (`AGENTS.md` section 1, "Deciding sooner against reporting first").
+ * Windowed campaign trend report: compares runs opened in the most recent window of days against
+ * preceding windows, pack by pack, across supply, climb, holding, honesty, and economy metrics.
+ * Read-only diagnostic tool (`AGENTS.md` section 1); it launches no solves and makes no decisions.
  *
- * A row is the fold of `.claude/skills/main/runs.ts`, placed by the day the run opened. Results are
- * never read across settings (section 9), so an earlier window keeps only the runs under a setting
- * the newest window of that pack holds, and a window that spans a minor release says so. The newest
- * runs are younger and are paused at their trigger, so a block reads every run as it stood at one
- * age, its horizon: the least that a newest run cut short (live, paused, killed or stopped by the
- * operator) has lasted past `FLOOR` hours. A run cut short sooner is left out and counted, and one
- * that ended on its own terms is read as it ended, so no run is read younger than another and no
- * measure can favour a window by its youth. `--until` reads every log only to that moment, so a
- * reading repeats however the logs have grown since. One campaign is one
- * draw: a difference is put to a permutation test with the campaign as the unit (`main/stats.ts`),
- * and reads `moved` at p <= 0.05, `inside the spread` above it, and `too few runs` where no deal
- * of the same runs into the two windows could read a difference at that level. The closing line
- * counts the packs' own tests once, leaving out the pooled block, which reads their runs again.
+ * Each campaign is folded via `.claude/skills/main/runs.ts` and bucketed by opening timestamp.
+ * Earlier windows retain only settings present in the newest window for that pack (unless
+ * `--any-setting` is passed), and every run in a block is truncated to a common elapsed-hour
+ * horizon (`atHorizon`, floored at `FLOOR` hours) so incomplete recent runs do not bias comparisons
+ * against older completed runs. Differences between windows are evaluated with a campaign-level
+ * permutation test (`shiftOf`, `main/stats.ts`) at `LEVEL` (0.05).
  *
- * A campaign selects on its own comparisons, so more promotions an hour is a gain only where they
- * hold: one line a window sets the speed beside the promotions the starter confirmed and the tasks
- * written after a promotion that the reference still won (`guardOf`), and `--bench` adds the
- * outside scores of the promoted harnesses (`outside.ts`). It prints counts and pack names, never a
- * task, an answer or a check.
+ * To check whether faster promotion rates reflect genuine improvement rather than overfitting to
+ * comparison draws, `guardOf` pairs promotion speed against starter confirmation rates and
+ * post-promotion task win rates, and `--bench` appends external benchmark transfer scores
+ * (`outside.ts`). Output contains aggregate counts and pack names only.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { formatOf, MISSING, printed } from "#skills/main/print.ts";

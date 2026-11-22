@@ -1,14 +1,13 @@
 /**
- * The load of this machine and of hosts, sampled, and the connection that reads any watch's loop
- * (`watchersOf`, `keepFollowing`, `firstReadings`): what `runs loadwatch` draws and what the check
- * runner's `ANA_CHECK_HOST=auto` chooses by, so both read the one sample and the one order.
+ * Host CPU and load-average sampling and streaming watcher primitives (`watchersOf`,
+ * `keepFollowing`, `firstReadings`, `minuteLoads`). Powers both `bun run runs loadwatch` and
+ * `ANA_CHECK_HOST=auto` host selection so interactive monitoring and automated task placement read
+ * identical metrics.
  *
- * Each machine runs one sampling loop, through `shellOn`: on a host that is `sshScript`, whose
- * control socket (`sshOptions`) the other verbs and the check runner share, so a reconnect after a
- * drop reuses the connection that is already open. The loop picks its source by what the machine
- * has: `/proc/stat` deltas on Linux, and on macOS a streaming `iostat`, whose tick deltas see
- * short-lived processes that `ps %cpu`, a decaying average, misses. A stream silent for longer than
- * its interval and `SILENT_MS` reads as unreachable.
+ * Each host runs a single sampling loop over `shellOn` (sharing the SSH control socket from
+ * `sshOptions`). Linux hosts sample `/proc/stat` and `/proc/loadavg` deltas; macOS hosts stream
+ * `iostat` tick deltas, which capture short-lived processes missed by decaying `ps %cpu` averages.
+ * Streams silent for longer than their interval plus `SILENT_MS` transition to `"unreachable"`.
  */
 import { capturedSpawn } from "#src/meta/process.ts";
 import { killProcessGroup } from "#src/meta/subprocess.ts";

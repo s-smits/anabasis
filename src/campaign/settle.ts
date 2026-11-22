@@ -1,6 +1,7 @@
 /**
- * Settling a comparison on a person's labels: its reading is read again from the same solves
- * (`settleReading`), and the result is logged as the comparison's last report. No solve is made.
+ * Settle a comparison reading using blind operator labels (`settleReading`): recomputes the
+ * comparison outcome from the existing solves and appends an updated `comparison.reported` event
+ * without launching new solves.
  */
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { ranUnder } from "../kernel/solves.ts";

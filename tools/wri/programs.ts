@@ -1,14 +1,13 @@
 /**
- * Which programs one solve's call ran (`programsOf`): the one reader of it, for the calls table
- * (`calls.ts`), a harness's parts (`parts.ts`), provenance and each solve's fold (`Solve.programs`,
- * `folds.ts`). It sits apart from `calls.ts` because the fold reads it and `calls.ts` reads the fold.
+ * Static command-to-program attribution for solve tool calls (`programsOf`). Shared by the calls
+ * table (`calls.ts`), harness component attribution (`parts.ts`), provenance checks, and the solve
+ * fold (`Solve.programs`, `folds.ts`).
  *
- * A bash command splits into segments at a line, a list, a pipe, a subshell or a substitution; each
- * segment runs the program its first word names past assignments, shell words, redirections and
- * prefixes (`timeout 30`, `env -i`), into a shell's `-c` text and an interpreter's script or module.
- * A heredoc's body is data and never a command. A segment whose first word is a variable, a quoted
- * word or no program's name (`..`, the `i+1` of `$((i+1))`) counts as not attributed. A library a
- * script imports is not traced: it runs under the script's name.
+ * Splits `bash` commands into pipeline/list/subshell segments, strips heredoc bodies, redirections,
+ * variable assignments, shell keywords, and wrapper prefixes (`env`, `timeout`, `sudo`, etc.), and
+ * extracts the invoked executable name (recursing into `sh -c` strings and resolving script/module
+ * arguments for interpreters such as `python`, `bun`, and `node`). Segments whose command token is
+ * dynamically expanded or unrecognised increment `unattributed`.
  */
 import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 

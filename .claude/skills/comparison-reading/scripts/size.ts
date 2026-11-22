@@ -1,23 +1,18 @@
 #!/usr/bin/env bun
 /**
- * Report sample-size figures from the production comparison test.
+ * Reports sample-size, power, and false-positive figures from the production comparison test.
  *
  *   bun .claude/skills/comparison-reading/scripts/size.ts [--level <n>] [--untied <n>]
  *     [--scores <s,s,...> [--unbilled <s,s,...>]]
  *
- * Without scores, print the smallest all-win set, comparison admission floor and sizeLines: the
- * smallest tallies that read a step, the detectable win share and the false-positive rate. Defaults
- * are level 0.02 and 24 untied tasks. The readers are sweepOf, comparisonFloor, power, detectable and sizeLines;
- * the script does not implement a second statistical rule.
+ * Without `--scores`, prints the minimum all-win sweep size (`sweepOf`), the comparison admission
+ * floor (`comparisonFloor`), `sizeLines` (smallest clearing tallies, 80%-power detectable win share,
+ * and equal-harness false-positive rate), and all equal-margin clearing tallies (`smallestSteps`)
+ * for `--level` (default `0.02`) and `--untied` (default `24`).
  *
- * --scores evaluates comma-separated task scores, with ties as zero. It reports the tally, p,
- * false-positive rate and detectable share at those margins. --unbilled supplies the same tasks
- * in the same order, allowing readsStep to read the step on them. Without scores it also lists every
- * equal-margin tally that clears within --untied tasks (smallestSteps), beyond the three sizeLines
- * names.
- *
- * It checks the figures AGENTS.md section 7 gives: 6-0 through 12-3 at level 0.02, and
- * false-positive rates of 1.1% and 7.6% on 24 untied equal-margin tasks.
+ * With `--scores`, evaluates a comma-separated vector of task scores (ties as `0`) and reports its
+ * tally, p-value, false-positive rate, and detectable win share at those margins (plus `readsStep`
+ * when `--unbilled` is supplied).
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { comparisonFloor } from "#src/campaign/admission.ts";

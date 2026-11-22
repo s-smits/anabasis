@@ -5,9 +5,15 @@
 # bundled as run.js), which runs them here or on the host ANA_CHECK_HOST names. A Bun called by its full
 # path bypasses both, so call plain `bun`. `bun tools/runtime/router/install.ts` installs a change.
 #
-# A tree is Anabasis's when it holds tools/runtime/gate.ts, the script of `bun run gate`.
+# A tree is Anabasis's when it holds tools/runtime/gate.ts, the script of `bun run gate`. A folder
+# with a package.json of its own beneath it, such as packages/ui, runs its own scripts: its
+# `bun run typecheck` checks that package, where the root's would check other files.
 set -euo pipefail
 top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+here="$(pwd -P)"
+while [[ -n "$top" && "$here" != "$top" && "$here" != / && ! -f "$here/package.json" ]]; do
+  here="$(dirname "$here")"
+done
 package="${top:-$PWD}/package.json"
 pin=""
 if [[ -f "$package" ]]; then
@@ -21,7 +27,7 @@ if [[ ! -x "$bun" ]]; then
 fi
 
 task=""
-if [[ -z "${ANA_RUNNER_ACTIVE:-}" && -n "$top" && -f "$top/tools/runtime/gate.ts" ]]; then
+if [[ -z "${ANA_RUNNER_ACTIVE:-}" && -n "$top" && "$here" == "$top" && -f "$top/tools/runtime/gate.ts" ]]; then
   case "${1-}:${2-}" in
     test:*)
       task=test

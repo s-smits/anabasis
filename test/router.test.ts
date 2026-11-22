@@ -293,10 +293,10 @@ async function waitFor(check: () => boolean, seconds = 20): Promise<void> {
 
 describe("the router on the command line", () => {
   /** What `bun <args>` ran: whether the runner took a slot here, and the Bun that was called with what. */
-  function routed(args: readonly string[]) {
+  function routed(args: readonly string[], cwd = source) {
     const scratch = mkdtempSync(join(root, "route-"));
     rmSync(join(home, "bun.log"), { force: true });
-    const result = run(args, { TMPDIR: scratch, ANA_TEST_TMPDIR: scratch });
+    const result = run(args, { TMPDIR: scratch, ANA_TEST_TMPDIR: scratch }, cwd);
     expect(result.status, result.stderr).toBe(0);
     return { queued: existsSync(join(scratch, "ana-runner", "local")), ...lastCall(home) };
   }
@@ -320,6 +320,24 @@ describe("the router on the command line", () => {
         bun: pinned,
         active: queued ? "1" : "",
       });
+    }
+  });
+
+  it("runs a nested package's own scripts, and routes from a folder of the root's package", () => {
+    const nested = join(source, "packages", "nested");
+    mkdirSync(nested, { recursive: true });
+    writeFileSync(join(nested, "package.json"), '{\n  "name": "nested"\n}\n');
+    try {
+      for (const [cwd, queued] of [
+        [nested, false],
+        [join(nested, "src"), false],
+        [join(source, "tools", "runs"), true],
+      ] as const) {
+        mkdirSync(cwd, { recursive: true });
+        expect(routed(["run", "typecheck"], cwd), cwd).toMatchObject({ queued, args: "run typecheck" });
+      }
+    } finally {
+      rmSync(join(source, "packages"), { recursive: true, force: true });
     }
   });
 

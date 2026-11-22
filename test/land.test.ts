@@ -84,7 +84,10 @@ fi ;;
   printf 'pending\t%s\t\t\n' "$ANA_FAKE_STACK_UUID" ;;
 "api repos/{owner}/{repo}/pulls/"*"/merge-async/"*) printf '%s\t\t%s\t%s\n' "$ANA_FAKE_STACK_END" "$ANA_FAKE_STACK_SHA" "$ANA_FAKE_STACK_END" ;;
 "api repos/{owner}/{repo}/stacks"*) [ "$ANA_FAKE_STACK" != down ] || { echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1; }
-  if [ -n "$ANA_FAKE_LINKED" ] && grep -q '^stack link' "$ANA_GH_LOG"; then printf '%s\n' "$ANA_FAKE_LINKED"
+  asked=$(printf '%s' "$ANA_FAKE_TOP_STACK" | cut -d' ' -f1)
+  if [ -n "$ANA_FAKE_TOP_STACK" ] && case "$*" in *"pull_request=$asked "*) true ;; *) false ;; esac; then
+    printf '%s\n' "$ANA_FAKE_TOP_STACK" | cut -d' ' -f2-
+  elif [ -n "$ANA_FAKE_LINKED" ] && grep -q '^stack link' "$ANA_GH_LOG"; then printf '%s\n' "$ANA_FAKE_LINKED"
   else printf '%s\n' "$ANA_FAKE_STACK"; fi ;;
 "stack link"*) ;;
 "api -X"*) case "$*" in *"state=success -f context=mergeable"*)
@@ -673,6 +676,27 @@ describe("bun run land", () => {
         "reorders a stack: run gh stack unstack 7, then gh stack link 11 12, and land again. Nothing was merged.",
     );
     expect(linkCalls()).toEqual([]);
+    expect(gatesRun(gateLog)).toEqual([]);
+    expect(writes()).toEqual([]);
+  });
+
+  /** `bun run split` left #15 in a native stack of its own, above stack 7 of #11 and #12. */
+  const divided = { ...opened, ANA_FAKE_TOP_STACK: "15 8 15" };
+
+  it("proves only the native stack that holds the top where the chain is divided, and links nothing", () => {
+    const result = runLand(["15", "--sanitize"], divided);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("land: GitHub's stack holding #15 starts at #15; proving from it.");
+    expect(linkCalls()).toEqual([]);
+    expect(gatesRun(gateLog).filter((line) => !line.startsWith(stacked))).toEqual([]);
+  });
+
+  it("refuses to merge the upper of divided stacks before the lower, gating nothing", () => {
+    const result = runLand(["15", "--merge"], divided);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "GitHub's stack holding #15 starts at #15: land the stacks beneath first.",
+    );
     expect(gatesRun(gateLog)).toEqual([]);
     expect(writes()).toEqual([]);
   });

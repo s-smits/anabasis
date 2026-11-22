@@ -41,34 +41,21 @@
  * ready (`gh pr ready <number>`): the check alone says a head is proved, and `--merge` refuses a
  * draft, so a change that waits on the operator (`AGENTS.md`, section 3) waits as one. `--merge`
  * posts the same, and also wants `ci.yml` passed on the top's head, since only it proves the Linux
- * isolation on a clean runner. No pull request push starts that run; when none exists and `ci.yml`
- * takes `workflow_dispatch`, `--merge` dispatches one before gating, so it runs meanwhile, and
- * waits for it after. A failed run is not dispatched again, since nothing about its head changed,
- * unless no runner ever took the jobs that did not pass, as GitHub has cancelled jobs untaken, so
- * `land` reruns those jobs once and waits for them. The run dispatched on the top's head is
- * `ci-fixes` wherever no wall or install changed since the last full run or the trunk: the files
- * that failed there and the tests near the change alone (`fixesFor`, `tools/runtime/ci-runs.ts`).
+ * isolation on a clean runner. Where no run exists it dispatches one before gating and waits for it
+ * after, rerunning once the jobs no runner took (`tools/runtime/ci-runs.ts` says which run).
  * Then, on heads read again, it posts `ana/stack-gate` on every head and merges through GitHub, so
  * each pull request ends Merged. The merge is GitHub's asynchronous merge of the top, pinned to the
  * top's gated head, which merges everything beneath it in the native stack all or nothing: GitHub
  * refuses the pull request's own merge for a stack's member (HTTP 403), so a landing of several
- * pull requests is one native stack. Before anything is gated, `--sanitize` and `--merge` run `gh
- * stack link` over the whole chain where the stack holds only its lower part or several are in
- * none, so a pull request opened on the top joins at its first landing; without a flag the link is
- * only said, and a stack in another order is refused (`stackOf`). A merge that does not go through
- * sets the status of every head back to pending.
+ * pull requests is one native stack, linked before anything is gated where it is not (`stackOf`);
+ * where `bun run split` divided the chain, a sanitize proves the stack holding the top (`ownStack`).
+ * A merge that does not go through sets the status of every head back to pending.
  *
- * A merge is refused before anything is gated where another open chain starts on main, a pull
- * request based there with another above it: the merge would leave that chain short of main's new
- * head, and every pull request on it would have to be replayed, some commits by hand, before it
- * could land. A lone pull request beside the landing is cheap to replay and is left alone.
- * `--alone` merges anyway, on the operator's word, and that chain is replayed after.
+ * A merge is refused where another chain of two or more starts on main, which it would leave to be
+ * replayed by hand; `--alone` merges anyway, on the operator's word.
  *
- * Every pull request of the landing carries exactly one importance label, `importance:I0` to
- * `importance:I3`, which the operator ranks the stack by. It also carries at least one category
- * label, the subject the operator files it under (`CATEGORIES`). A landing in which any lacks
- * either, or carries two importance labels, is refused before anything is gated, in every mode, so
- * `--sanitize` too shows a stack that is not ready, naming each such pull request (`checkLabels`).
+ * Every pull request of the landing carries one importance label (`importance:I0` to `I3`), which the
+ * operator ranks the stack by, and a category (`CATEGORIES`); `checkLabels` refuses it in every mode.
  *
  * A failure names the commit and the pull request it sits on. Its fix goes into that commit, the
  * pull requests above it are replayed on it (stack-pr, section 8), and a second landing runs only
@@ -120,6 +107,7 @@ import {
   statusBoard,
   type Board,
   STACK_MEMBERS,
+  stackStart,
   type StatusState,
   trunkOf,
 } from "./pulls.ts";
@@ -415,6 +403,18 @@ function stackOf(root: string, landing: Landing, unlinked: "link" | "say"): numb
   }
 }
 
+/** Reads the landing's native stack (`stackOf`) from the bottom of the one holding the top, where
+ *  `bun run split` divided the chain (`stackStart`), and gives that index; such an upper stack is
+ *  not merged, since GitHub would merge it onto the branch beneath instead of the trunk. */
+function ownStack(root: string, landing: Landing, mode: Mode): number {
+  const own = stackStart(root, landing.pulls);
+  const starts = `GitHub's stack holding #${String(landing.top.number)} starts at #${String(landing.pulls[own]?.number)}`;
+  if (own > 0 && mode.kind === "merging") throw new Refusal(`${starts}: land the stacks beneath first.`);
+  if (own > 0) say(`${starts}; proving from it.`);
+  stackOf(root, { ...landing, pulls: landing.pulls.slice(own) }, mode.kind === "proving" ? "say" : "link");
+  return own;
+}
+
 /** Merges the top, with the stack beneath it, as GitHub's asynchronous merge does, all or nothing,
  *  pinned to the top's gated head, and reads it back until it ends. `refused` means nothing merged;
  *  `unsure` that something may have, went into a merge queue (a merge request ends there), or merged
@@ -634,12 +634,12 @@ async function landTo(root: string, target: number, mode: Mode, board: Board): P
   const landing = restack(root, target, read, mode);
   checkChain(root, landing);
   const { top } = landing;
-  stackOf(root, landing, mode.kind === "proving" ? "say" : "link");
+  const own = ownStack(root, landing, mode);
   if (mode.kind === "merging") startCi(root, top);
   // Each landing head's own line, including a lower head reached through a merge's other parent.
   const heads = landing.pulls.map((pull) => pull.headRefOid);
   const whole = mode.topPass === "whole" ? top.headRefOid : null;
-  const lowest = mode.from === null ? 0 : landing.pulls.findIndex(({ number }) => number === mode.from);
+  const lowest = mode.from === null ? own : landing.pulls.findIndex(({ number }) => number === mode.from);
   if (lowest < 0) throw new Refusal(`#${String(mode.from)} is not in ${numbers(landing.pulls)}.`);
   const proofs = addedLine(root, heads, [landing.pulls[lowest - 1]?.headRefOid ?? landing.trunkSha], say).map(
     (commit): Proof => ({

@@ -559,7 +559,8 @@ import { flagsOf, opened } from ${JSON.stringify(terms)};
 const log = ${JSON.stringify(log)};
 if (process.argv.includes("--dry-run")) opened(log, flagsOf(process.argv.slice(2)), "scripted");
 else {
-  for (let look = 0; look < 100 && !readFileSync(log, "utf8").includes("campaign.word"); look += 1) await Bun.sleep(100);
+  // It finishes a solve only once paused by a word, however long a loaded host takes to write one.
+  while (!readFileSync(log, "utf8").includes("campaign.word")) await Bun.sleep(100);
   appendFileSync(log, JSON.stringify({ at: new Date().toISOString(), kind: "solve.finished", data: { solve: "s-1" } }) + "\\n");
   await Bun.sleep(3000);
 }

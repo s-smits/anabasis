@@ -1,6 +1,6 @@
 ---
 name: consolidate-stack
-description: "Consolidate an open stack of Anabasis pull requests into fewer, simpler ones: read each pull request as the problem its body states, group by type and mechanism, then rethink each group with simplify's shapes until it is the least change that still answers every stated problem; trial the new order on a scratch worktree (conflicts, ordered files, gates above their sites, tree equality, checks at each group head) before anything moves; review, fix in lanes, regroup and publish with `republish.ts`. Use when the operator asks to consolidate, regroup, fold, shrink or overhaul the stack, to merge related pull requests, or names a percentage of pull requests to remove. Placing one change is stack-pr's; rewriting one compartment is commit-r's."
+description: "Consolidate an open stack of Anabasis pull requests into fewer, simpler ones: read each pull request as the problem its body states, group by type and mechanism, then read each group's combined surface (every name its members add, the problem each answers) and rethink it with simplify's shapes until it is the least change that still answers every stated problem; trial the new order on a scratch worktree (conflicts, ordered files, gates above their sites, tree equality, checks at each group head) before anything moves; review, fix in lanes, regroup and publish with `republish.ts`. Use when the operator asks to consolidate, regroup, fold, shrink or overhaul the stack, to merge related pull requests, or names a percentage of pull requests to remove. Placing one change is stack-pr's; rewriting one compartment is commit-r's."
 ---
 
 # Consolidate the stack
@@ -78,6 +78,34 @@ Take one group at a time with its problems listed. Forget the order the pull req
 in, and ask what the least change would be that answers every problem, as if you were writing it
 today. Read [simplify](../simplify/SKILL.md) first: its shapes and its ladder are the questions, and
 its disagreement test decides what stays.
+
+**Read the group as one surface first.** Each member was written against the code as it stood, so
+the group's combined change carries every intermediate shape; seen whole, it shows where the same
+outcome needs less. Measure the members side by side, a column each, with the files they moved most:
+
+```sh
+python3 .claude/skills/reduce-complexity/scripts/stack-complexity.py --per-file '#<base>' '#<member>' ...
+```
+
+Then list the surface the group adds, one row per name a reader must learn: an exported symbol, a
+function, an option or flag, an event kind, a verb, a prompt or skill paragraph, a test file. Give
+each row the problem from step 1 it answers and the member that added it. Start with the files two
+or more members changed, since a stack grown by review patches there. The table settles three
+things at once:
+
+- a row no problem needs is a cut;
+- two rows that answer one problem keep the one in the deeper owner, and the other goes;
+- a row a later member reshaped is written once in its final shape, with nothing of the first.
+
+**The outcome to keep** is the problem list plus the members' behavioural tests: the leaner form
+passes every test that states an outcome, and only a test that pins removed machinery or wording
+goes with it (commit-r, step 8). Efficient here means fewer decisions, import edges, exports and
+nonblank lines for those same outcomes, read from the same script after the change, never fewer
+pull requests alone.
+
+The surface table is written for every group, even when the consolidation stops at a regroup (the
+operator's word, a live landing, reviewers unavailable): it then goes into the survivor's body
+under "Not done" as the rethink still owed, row by row, so the next pass starts from it.
 
 Ask in this order, largest removals first:
 
@@ -238,5 +266,5 @@ passes its old bytes had, so a regroup is proved again in full.
 Lead with the cut: pull requests before and after, as counts and a share, and what got simpler
 beyond the count (each group's `git complexity` and source lines before and after, or "regroup
 only"). Then, a group a row: its pull requests, its survivor, the verdict from step 3 with its
-sentence, each problem and what answers it, the trial's checks at its head, the reviews and their
+sentence, each problem and what answers it, its surface table's cuts, the trial's checks at its head, the reviews and their
 confirmed findings. Then the hazards met, and what waits for the operator.

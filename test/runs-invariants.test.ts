@@ -174,10 +174,11 @@ describe("the machine a fresh campaign is placed on", () => {
       [
         "a load did not come",
         [
-          { host: a, live: 1, capacity: 2, load: 0.1 },
-          { host: b, live: 0, capacity: 2, familiar: true },
+          // Read as idle, b's missing load would beat a's 0.9; unread, a's familiar pack decides.
+          { host: a, live: 1, capacity: 2, load: 0.9, familiar: true },
+          { host: b, live: 1, capacity: 2 },
         ],
-        b,
+        a,
       ],
     ];
     for (const [why, given, chosen] of rows) expect([why, leastOccupied(given)]).toEqual([why, chosen]);

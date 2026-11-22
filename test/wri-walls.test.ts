@@ -18,6 +18,13 @@ import { wriCampaign } from "./helpers/wri-campaign.ts";
 type Secret = (tag: string) => string;
 /** The one quote allowed: `tasks.txt` prints each task's public input, which the Builder is shown too. */
 const PUBLIC = /^ {2}public: .*$/gmu;
+/** `drafted.txt` tells prompts apart by a digest, which names a text without quoting it. */
+const DIGEST = /digest [0-9a-f]{12}/gu;
+/** What each reader may print that differs with the secrets, put back to one form. */
+const ALLOWED = new Map([
+  ["tasks", (text: string) => text.replaceAll(PUBLIC, "  public: <input>")],
+  ["drafted", (text: string) => text.replaceAll(DIGEST, "digest <digest>")],
+]);
 
 const REPO = join(import.meta.dir, "..");
 const base = mkdtempSync(join(tmpdir(), "wri-walls-"));
@@ -89,9 +96,10 @@ describe("the no-quote wall", () => {
     // The nearest hostile case: the statement the tasks reader quotes is one the perturbation reaches.
     expect(one.tasks).toContain("CANARY statement");
     expect(two.tasks).not.toEqual(one.tasks);
+    expect(new Set(one.tasks?.match(/CANARY \w+/gu))).toEqual(new Set(["CANARY statement"]));
     for (const name of Object.keys(one)) {
       const [first, second] = [one[name], two[name]].map((text) =>
-        text?.replaceAll(PUBLIC, "  public: <input>"),
+        text === undefined ? text : (ALLOWED.get(name)?.(text) ?? text),
       );
       expect({ name, text: second }).toEqual({ name, text: first });
       expect(first).not.toContain("CANARY");
@@ -171,16 +179,17 @@ describe("the isolated-lane wall", () => {
   });
 
   it("opens an isolated lane only on its trigger, and never among the lanes a build opens by default", () => {
-    const [isolated] = ISOLATED;
-    if (isolated === undefined) throw new Error("no isolated lane");
-    const fired: Trigger[] = [{ lane: isolated.number, name: "FAILS ON ONE CHECK", detail: "2 of 2" }];
-    expect(() => selected(lanes, [], [isolated.number])).toThrow(
-      `lane ${String(isolated.number)} runs only on its trigger, and the log fired none`,
-    );
-    expect(selected(lanes, fired, [isolated.number]).isolated).toEqual([isolated]);
-    const opened = selected(lanes, fired, null);
-    expect(opened.open.some(({ isolated: alone }) => alone)).toBe(false);
-    expect(opened.isolated).toEqual([]);
-    expect(opened.waiting).toEqual([isolated]);
+    expect(ISOLATED.length).toBeGreaterThan(0);
+    for (const isolated of ISOLATED) {
+      const fired: Trigger[] = [{ lane: isolated.number, name: "FAILS ON ONE CHECK", detail: "2 of 2" }];
+      expect(() => selected(lanes, [], [isolated.number])).toThrow(
+        `lane ${String(isolated.number)} runs only on its trigger, and the log fired none`,
+      );
+      expect(selected(lanes, fired, [isolated.number]).isolated).toEqual([isolated]);
+      const opened = selected(lanes, fired, null);
+      expect(opened.open.some(({ isolated: alone }) => alone)).toBe(false);
+      expect(opened.isolated).toEqual([]);
+      expect(opened.waiting).toEqual([isolated]);
+    }
   });
 });

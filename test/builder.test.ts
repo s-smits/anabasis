@@ -1325,7 +1325,8 @@ describe("what crosses to the Builder", () => {
    *  reason, the hidden value of a held-out task and of a practice task (a practice solve's measure,
    *  which may depend on it, crosses; the value does not), which held-out task the
    *  comparison's new harness won, what the Examiner said of each task when it put it, and how the
-   *  reference did on a held-out task the Examiner tried it on (`try_reference`). */
+   *  reference did on a held-out task the Examiner tried it on (`try_reference`), and what the
+   *  verifier measured of a held-out answer under the objective (a practice answer's measure crosses). */
   interface Kept {
     readonly check: string;
     readonly reason: string;
@@ -1333,6 +1334,9 @@ describe("what crosses to the Builder", () => {
     readonly won: "h1" | "h2";
     readonly claim: string;
     readonly tried: "pass" | "fail";
+    readonly family: string;
+    readonly base: number;
+    readonly measure: number;
   }
   const ONE: Kept = {
     check: "check-one-7a1",
@@ -1341,18 +1345,26 @@ describe("what crosses to the Builder", () => {
     won: "h1",
     claim: "claim-one-7a1",
     tried: "pass",
+    family: "family-one",
+    base: 3,
+    measure: 731.0625,
   };
+  // Every string a different length from its twin, so that a count or a length that leaks shows.
   const OTHER: Kept = {
-    check: "check-two-c4e",
-    reason: "reason-two-c4e",
-    hidden: "hidden-two-c4e",
+    check: "check-other-c4e9",
+    reason: "reason-other-longer-c4e9",
+    hidden: "hidden-other-c4e9-value",
     won: "h2",
-    claim: "claim-two-c4e",
+    claim: "claim-other-c4e9-stops-here",
     tried: "fail",
+    family: "family-other-held",
+    base: 4096,
+    measure: 98_765.4321,
   };
   /** The solve the Examiner session x-1 asked of the reference harness. */
   const TRIED = "x-1-tried";
   const FRESH = "f".repeat(64);
+  const OBJECTIVE = { quantity: "cost", direction: "lower" } as const;
 
   /**
    * Everything a Builder reads in one session over a campaign that keeps `kept` from it: every
@@ -1380,6 +1392,7 @@ describe("what crosses to the Builder", () => {
       [{ outcome: "fail", kind: "rejected" }, { outcome: "pass" }, { outcome: "pass" }],
       false,
       kept.check,
+      { ...CONTRACT, objective: OBJECTIVE },
     );
     const { log } = s.request;
     // The exam side of the campaign: two held-out tasks with hidden values, and one comparison in
@@ -1388,8 +1401,8 @@ describe("what crosses to the Builder", () => {
     for (const version of ["h1", "h2"]) {
       const task = {
         taskId: `x-${version}`,
-        family: "fixture",
-        publicInput: { base: 3 },
+        family: kept.family,
+        publicInput: { base: kept.base },
         hidden: kept.hidden,
       };
       append(log, "task.proposed", {
@@ -1400,7 +1413,12 @@ describe("what crosses to the Builder", () => {
         claim: { grade: 3, stops: kept.claim },
       });
       append(log, "task.gate", { version, gate: 1, outcome: "passed" });
-      append(log, "task.feasible", { version, session: "x-1", answer: kept.hidden });
+      append(log, "task.feasible", {
+        version,
+        session: "x-1",
+        answer: kept.hidden,
+        objective: { ...OBJECTIVE, measure: kept.measure },
+      });
     }
     for (const version of ["h1", "h2"]) {
       for (const side of [s.digest, FRESH]) {
@@ -1437,6 +1455,13 @@ describe("what crosses to the Builder", () => {
             why: `a check-defect names one of the refusing checks: ${kept.check}`,
           });
           append(log, "referee.finding", { solve, ruling: "earned", check: kept.check, reason: kept.reason });
+        } else {
+          append(log, "verdict", {
+            solve,
+            answer: { answer: kept.hidden },
+            kind: "pass",
+            objective: kept.measure,
+          });
         }
         append(log, "solve.finished", {
           solve,
@@ -1465,7 +1490,7 @@ describe("what crosses to the Builder", () => {
       log,
       "verdict",
       kept.tried === "pass"
-        ? { solve: TRIED, answer: { answer: kept.hidden }, kind: "pass" }
+        ? { solve: TRIED, answer: { answer: kept.hidden }, kind: "pass", objective: kept.measure }
         : { solve: TRIED, answer: { answer: kept.hidden }, kind: "fail", blocking: [kept.check] },
     );
     append(log, "solve.finished", {
@@ -1549,12 +1574,16 @@ describe("what crosses to the Builder", () => {
     );
     expect(one).toContain("You have not called finish");
     expect(one).toContain("practice/t-1.json");
+    // Under the objective, a practice answer's measure crosses, so the held-out ones are kept back by the wall.
+    expect(one).toContain(", the objective ");
     for (const kept of [ONE, OTHER]) {
       for (const canary of [
         kept.check,
         kept.reason,
         kept.hidden,
         kept.claim,
+        kept.family,
+        String(kept.measure),
         SETUP_CLAIM,
         "x-h1",
         "x-h2",

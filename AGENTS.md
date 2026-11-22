@@ -45,7 +45,7 @@ Additional trade-offs live in `design-and-seats`:
 - **Objective signal vs variance**: how much gradient validity carries differs by domain. Hard-constraint domains (physical feasibility, compilers, simulators) separate harnesses on binary validity, whereas open-ended analytical domains saturate binary validity as a feasibility floor so the noisier objective governs. Report which measure carried a step and inspect the starter's A/A noise floor; raising `GAP_FLOOR` shifts noise while starving supply.
 - **Promotion vs confirmation**: the owed starter comparison runs on the Builder's next `compare` (`heldSince`); letting a Builder comparison read ahead leaves the promotion unconfirmed (`test/decide-explore.test.ts`).
 - **Practice exposure vs held-out supply**: practice releases take at most half the held-out pool; watch the frontier near `comparisonFloor` and treat untransferred practice gains as overfitting.
-- **Gate strictness vs capability**: refuse only actions that break measurement validity or guarantee wasted compute; pass other observations as factual notes.
+- **Gate strictness vs capability**: refuse only actions that break measurement validity or guarantee wasted compute; pass other observations as factual notes. When in doubt about strictness, err toward more lenient sandboxing (hiding only hidden values, credentials and other seats' private files) and greater agent freedom in harness building.
 - **External benchmarks vs test-set fitting**: external benchmarks measure out-of-distribution transfer rather than gating promotions; keep campaign queries naturally scoped.
 
 ### Two sides and one wall

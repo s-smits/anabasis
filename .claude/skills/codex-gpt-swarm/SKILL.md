@@ -1,6 +1,6 @@
 ---
 name: codex-gpt-swarm
-description: "Launch and collect independent Codex sessions (`gpt-6-luna` at `high`, `xhigh`, or `max`; `gpt-6.1-sol` at `low` to `xhigh`) for bounded parallel work using a single manifest, one detached launcher, one report per session, incremental draining, and targeted retries. Owns the Codex execution transport whenever another skill (such as whole-run-investigation) defines the questions. Use when asked for Luna or Sol sessions, a swarm, parallel subagents, specific reasoning efforts, a Codex subagent from Claude Code, or later report collection. Distinguish requests to launch from requests to wait and collect."
+description: "Launch and collect independent Codex sessions (`gpt-6-luna` at `high`, `xhigh`, or `max`; `gpt-6.1-sol` and `gpt-6.2-sol` at `low` to `xhigh`) for bounded parallel work using a single manifest, one detached launcher, one report per session, incremental draining, and targeted retries. Owns the Codex execution transport whenever another skill (such as whole-run-investigation) defines the questions. Use when asked for Luna or Sol sessions, a swarm, parallel subagents, specific reasoning efforts, a Codex subagent from Claude Code, or later report collection. Distinguish requests to launch from requests to wait and collect."
 ---
 
 # Codex GPT swarm
@@ -41,6 +41,7 @@ pass explicit flags because the launcher defaults to `gpt-6-luna` at `max`.
 | --- | --- | --- |
 | `gpt-6-luna` | `high`, `xhigh`, `max` | `max` |
 | `gpt-6.1-sol` | `low`, `medium`, `high`, `xhigh` | `medium` |
+| `gpt-6.2-sol` | `low`, `medium`, `high`, `xhigh` | `medium` |
 
 All launches run on the `priority` service tier (`SERVICE_TIER`).
 

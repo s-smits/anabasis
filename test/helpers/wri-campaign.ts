@@ -1,6 +1,7 @@
-// A synthetic campaign for the investigation's tests: each task's statement and hidden values, every
-// answer, the check's failure text, the Examiner's prompt and every seat's prose, call and result
-// (Examiner, Builder, solver, Referee) is `secret(tag)`, so two secrets give two logs that differ
+// A synthetic campaign for the investigation's tests: the campaign's prompt, each task's statement,
+// hidden values, claim and author's answer, every answer, the check's failure text on a fault and a
+// rejection, the Examiner's prompt and note, a Builder's note, a refused ruling's reason and every
+// seat's prose, call and result (Examiner, Builder, solver, Referee) is `secret(tag)`, so two secrets give two logs that differ
 // only in what may never be quoted. Two rounds: the first reads no step over a ruled check defect and
 // two answers cut at the wall, the second reads a promoted step beside an unclear ruling, a
 // provider's non-result and a check's fault.
@@ -25,7 +26,7 @@ const ENDINGS: Record<Outcome, (failure: string) => JsonObject> = {
 };
 const VERDICTS: Record<Outcome, (failure: string) => JsonObject | null> = {
   pass: () => ({ kind: "pass" }),
-  rejected: () => ({ kind: "fail", blocking: ["check-a"] }),
+  rejected: (failure) => ({ kind: "fail", blocking: ["check-a"], reasons: { "check-a": failure } }),
   late: () => null,
   provider: () => null,
   faulty: (failure) => ({ kind: "faulty", check: "check-a", reason: failure }),
@@ -121,7 +122,14 @@ export function wriCampaign(secret: (tag: string) => string): LogEvent[] {
       ms: 1,
     });
     solve("t1", practice, "rejected");
-    put("build.finished", { session, ended: "finished", harness, changed: true, billed: 2 });
+    put("build.finished", {
+      session,
+      ended: "finished",
+      harness,
+      changed: true,
+      billed: 2,
+      note: secret(`builder note ${session}`),
+    });
   };
   const report = (
     round: JsonObject,
@@ -141,6 +149,7 @@ export function wriCampaign(secret: (tag: string) => string): LogEvent[] {
       reading,
     });
 
+  put("campaign.opened", { prompt: secret("campaign prompt"), domain: "buffers" });
   put("exam.started", { session: "x-1", examples: [], prompt: secret("examiner prompt") });
   put("exam.turn", { session: "x-1", turn: 1, text: secret("examiner"), usage: { cost: { total: 0.2 } } });
   const proposal = { note: secret("examiner args") };
@@ -158,10 +167,17 @@ export function wriCampaign(secret: (tag: string) => string): LogEvent[] {
     const hidden = { target: secret(`hidden ${taskId}`) };
     const publicInput = { volume_L: 1, systems: ["Tris"], statement: secret(`statement ${taskId}`) };
     const task = { taskId, family: "buffers", publicInput, hidden };
-    put("task.proposed", { version, taskId, session: "x-1", task });
+    put("task.proposed", {
+      version,
+      taskId,
+      session: "x-1",
+      task,
+      claim: { stops: secret(`claim ${taskId}`) },
+    });
     put("task.gate", { version, gate: 1, outcome: "passed" });
+    put("task.feasible", { version, session: "x-1", answer: secret(`author answer ${taskId}`) });
   }
-  put("exam.finished", { session: "x-1", ended: "supplied" });
+  put("exam.finished", { session: "x-1", ended: "supplied", note: secret("examiner note") });
   put("task.state", { version: "t1", state: "released" });
 
   // Round one: the old harness's answers are a ruled defect, an earned rejection and two cut at the wall.
@@ -186,6 +202,12 @@ export function wriCampaign(secret: (tag: string) => string): LogEvent[] {
     text: secret("probe result"),
     isError: false,
     ms: 3,
+  });
+  put("referee.refused", {
+    solve: defect,
+    task: "v1",
+    asked: { ruling: "earned", check: "check-a", reason: secret(`refused reason ${defect}`), probes: [] },
+    why: secret(`refused why ${defect}`),
   });
   ruling(defect, "v1", "r-1", "check-defect");
   ruling(earned, "v2", "r-2", "earned");

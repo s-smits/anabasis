@@ -64,6 +64,10 @@ test("in the default tier shows and receives nothing of the exam side on any pan
   const texts: string[] = [];
   for (const query of queries) texts.push(await shown(page, query));
   expect(read.length).toBeGreaterThan(queries.length);
+  // The nearest hostile case: the pages drew the fixture's solves rather than an empty shell, and
+  // every marker is one the exam tier answers with (`readings.test.ts`, "the wall between the tiers").
+  const pages = texts.join("\n");
+  expect([fixture.practiceSolve, fixture.heldOutSolve].filter((solve) => !pages.includes(solve))).toEqual([]);
   for (const marker of Object.values(MARKERS)) {
     expect(texts.filter((text) => text.includes(marker))).toEqual([]);
     expect(read.filter((body) => body.includes(marker))).toEqual([]);

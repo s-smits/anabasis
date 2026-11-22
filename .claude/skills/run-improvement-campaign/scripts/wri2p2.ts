@@ -92,7 +92,7 @@ import {
 } from "#tools/runs/said.ts";
 import { catalogueText, lanesOf } from "#tools/wri/catalogue.ts";
 import { confirmedIn, vettingFaults } from "#tools/wri/findings.ts";
-import { INVESTIGATION, REPORTS, SHARED, SYNTHESIS, VETTING } from "#tools/wri/index.ts";
+import { INVESTIGATION, REPORTS, SHARED, SYNTHESIS, VETTING, WRI } from "#tools/wri/index.ts";
 import { blankSections, reportPath } from "#tools/wri/investigation.ts";
 import {
   carriedIn,
@@ -130,7 +130,6 @@ const FORKS = "forks";
 const LEVERS = join(import.meta.dir, "..", "references", "levers.md");
 const USAGE = `usage: bun ${DRIVER} [due] [<part> ...] [--days 2] | open <name>[,<name>] [--out <dir>] | next <dir> | ledger <dir>`;
 const OPTIONS = { days: "int", out: "abs" } as const;
-const WRI = "tools/wri/wri.ts";
 /** The first line of a step as `nextOf` prints it: its gate, then what the gate owes. */
 const STEP = /^step: (?<name>[a-z]+)(?: · (?<rest>.*))?$/u;
 /** The steps that owe nobody anything: a run that runs on, is kept past its trigger, waits for its

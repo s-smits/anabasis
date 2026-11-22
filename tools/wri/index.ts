@@ -108,6 +108,8 @@ export interface Beyond {
 }
 
 export const SYNTHESIS = "synthesis.md";
+/** The investigation command every verb and step names. */
+export const WRI = "tools/wri/wri.ts";
 /** What stands in for a synthesis in folders older than the template, best first. */
 const STAND_INS = [/^ab-synthesis\.md$/u, /^review.*\.md$/u];
 /** A cycle folder's or a ledger's files, by their lower-cased names. */

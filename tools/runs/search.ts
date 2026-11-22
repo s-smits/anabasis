@@ -14,6 +14,7 @@ import { homedir, tmpdir } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { runCaptured } from "#src/meta/subprocess.ts";
+import { CODEX_AUTH } from "#src/agent/backends/models.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { type Host, hostsOf } from "./host-config.ts";
 import { askedScript } from "./hosts.ts";
@@ -57,7 +58,7 @@ const EXCLUDED = [
   "*password*",
   "*passwd*",
   "*oauth*",
-  "auth.json",
+  CODEX_AUTH,
   "id_*",
   "*.pem",
   "*.key",

@@ -21,6 +21,9 @@ import { readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
+import { hasText } from "#src/meta/text.ts";
+import type { Host } from "./host-config.ts";
+import { preparedHost, publishedAt } from "./code.ts";
 import { alerts } from "./alerts.ts";
 import { fresh } from "./fresh.ts";
 import { holds, NAMING, on, routed, verbOn } from "./hosts.ts";
@@ -43,7 +46,6 @@ import { stop } from "./stop.ts";
 import { view } from "./view.ts";
 import { zipRuns } from "./zip.ts";
 import { catalogue } from "./snapshots.ts";
-import { continueOn } from "./continuation.ts";
 import { search } from "./search.ts";
 import { sync } from "./sync.ts";
 
@@ -238,6 +240,26 @@ const verbNamed = (word: string | undefined): Verb | undefined =>
 /** Names in one column and what each is in the next. */
 const columns = (lines: readonly (readonly [string, string])[]): string =>
   lines.map(([name, says]) => `  ${name.padEnd(WIDTH)}  ${says}`).join("\n");
+
+/** A remote continuation at another revision runs that revision's launcher too. Flags after --
+ *  belong to the campaign, and cannot request a controller checkout or grant launch authority. */
+async function continueOn(host: Host, args: readonly string[]): Promise<number> {
+  const own = ownArgs(args);
+  const at = own.flatMap((arg, index) => (arg === "--at" || arg.startsWith("--at=") ? [index] : []));
+  const [index] = at;
+  if (index === undefined) return await verbOn(host, args);
+  if (at.length !== 1) throw new Error("name --at once");
+  const joined = own[index]?.startsWith("--at=") === true;
+  const revision = joined ? own[index]?.slice(5) : own[index + 1];
+  if (!hasText(revision) || revision.startsWith("--")) {
+    throw new Error("name --at <commit>");
+  }
+  const commit = publishedAt(runtimeProcess.cwd(), revision);
+  const forwarded = own.filter((_, n) => n !== index && (joined || n !== index + 1));
+  const command = [...forwarded, "--at", commit, ...args.slice(own.length)];
+  console.log(`${host.name}: prepare a detached controller at ${commit.slice(0, 9)} before continuing`);
+  return await verbOn(own.includes("--yes") ? await preparedHost(host, commit) : host, command);
+}
 
 /** Every verb, grouped, with what it does, and what holds of them all. */
 function list(): string {

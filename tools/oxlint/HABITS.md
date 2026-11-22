@@ -38,7 +38,7 @@ is an error. A rule still being settled sits in `tools/oxlint/staged-rules.json`
   Oxlint's own rules and counts the rest. Work in strict mode: CI's lint step is strict, and a
   strict run at `main` reports nothing on 11 October. The 11 findings that stood from PR #80 were
   cleared on 10 October, one answered in the ledger; the merge of #189 to #220 brought three
-  more (two assertions in `test/wri-read.test.ts`, `.toolchain` spelled five times in
+  more (two assertions in `b99597a8fest/wri-read.test.ts`, `.toolchain` spelled five times in
   `src/builder/tools.ts`), fixed on 11 October. Add none, and say in your pull request that the
   strict run is clean.
 - Extra arguments go to Oxlint. Ten rules carry a fixer, marked [fix] below, which Oxlint's
@@ -361,8 +361,9 @@ change, as 12.2 allows.
 ## 12.9 The whole-tree scans
 
 `bun run simplify` prints shapes that span files (`tools/oxlint/tree-findings.ts`, with the identity,
-copied-block, stale-reference and fact scans beside it). They report and
-never block; `bun run commit:check` prints the ones on your changed lines. Treat each row as a
+copied-block, stale-reference and fact scans beside it). The gate fails while any unanswered site
+of a listed shape stands, so every commit of a landing passes them; `bun run commit:check` prints
+the ones on your changed lines. Treat each row as a
 question, repair the true ones, and answer a false one in the ledger as `tree/<kind>`.
 
 | Kind | Repair |
@@ -460,7 +461,7 @@ one owner: a union, one record of a process's phase, the holder itself for a loc
 
 Both tiers gate as errors in `.oxlintrc.json` and, like `ana` and `anti-slop`, fail only a strict
 run. The `tree/` rows of the two tables below span files, so they are whole-tree scans (12.9) that
-`bun run simplify` reports and no lint gates on. A site whose state has no other place to live, such
+`bun run simplify` reports and the gate holds at zero. A site whose state has no other place to live, such
 as a ported serialisation format or a fact kept only in a name a person types, is answered in the
 not-slop ledger.
 

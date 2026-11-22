@@ -97,7 +97,7 @@ Starter or to what a Builder is told, on the operator's word.
 
 | What | Owner | Test |
 | --- | --- | --- |
-| what opens as a harness, its digest | `openHarness`, `src/harness/open.ts` | `test/harness-tools.test.ts` |
+| what opens as a harness, its digest | `openHarness`, `src/harness/open.ts` | `test/harness-open.test.ts` |
 | the Starter and generated `HARNESS.md` | `writeStarter`, `HARNESS_ACCOUNT`, `src/harness/starter.ts`; `src/builder/session.ts` | `test/starter.test.ts` |
 | installed programs | `installedPrograms`, `programsOf`, `src/harness/programs.ts` | `test/programs.test.ts` |
 | what a Builder is told | `src/builder/prompt.ts` | `test/builder.test.ts` |

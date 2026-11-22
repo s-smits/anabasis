@@ -1,6 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./app.tsx";
+import { useCampaign, useCampaigns } from "./live.ts";
+import { useRoute } from "./route.ts";
+import { selectionOf, Shell } from "./shell.tsx";
 /*
  * Bundle the four fonts the design uses.
  *
@@ -47,6 +49,16 @@ try {
   );
 } catch {
   // Closed storage keeps no position, and the page opens at its top.
+}
+
+/** The page's data: the campaign list and the selected campaign, both polled; the panes and the
+ *  inspector read their own details through the hooks of `live.ts`. */
+function App() {
+  const navigation = useRoute();
+  const campaigns = useCampaigns();
+  const { campaign: key } = selectionOf(campaigns.data, navigation.route);
+  const reading = useCampaign(key);
+  return <Shell navigation={navigation} campaigns={campaigns} reading={reading} />;
 }
 
 const root = document.querySelector("#root");

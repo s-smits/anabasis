@@ -11,6 +11,7 @@
  * lanes' hours.
  */
 import { packOf } from "../runs/registry.ts";
+import { WRI } from "./index.ts";
 
 /** One command's ending and what it printed. */
 export interface Ran {
@@ -20,7 +21,7 @@ export interface Ran {
 
 export const RECORD = "record.md";
 /** The command that writes it, as the words after `bun` and before `--out <dir>`. */
-export const RECORD_VERB = "tools/wri/wri.ts record";
+export const RECORD_VERB = `${WRI} record`;
 const TUNER = ".claude/skills/promotion-tuner/scripts";
 const READING = ".claude/skills/comparison-reading/scripts";
 
@@ -39,7 +40,7 @@ export function readsOf(names: readonly string[]): string[][] {
       [`${READING}/starter-reads.ts`, "--all", "--name", pack],
     ]),
     ...names.map((name) => [`${TUNER}/replay.ts`, "--name", name, "--totals"]),
-    ["tools/wri/wri.ts", "findings"],
+    [WRI, "findings"],
   ];
 }
 

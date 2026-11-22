@@ -46,6 +46,7 @@ import { join } from "#src/meta/path.ts";
 import { withReplacedField } from "#src/referee/probe.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { readPack } from "../m0/stored-sweep.ts";
+import { WRI } from "./index.ts";
 
 interface GradeOptions {
   readonly log: string;
@@ -126,7 +127,7 @@ function withSet(answer: JsonValue, sets: readonly string[]): { answer: JsonValu
 
 /** The answers to grade: one recorded or given, or every file of a folder. */
 function answersOf(options: GradeOptions, events: ReturnType<typeof read>): Graded[] {
-  const base = ["bun", "tools/wri/wri.ts", "grade", "--log", quoted(options.log)];
+  const base = ["bun", WRI, "grade", "--log", quoted(options.log)];
   if (options.answers !== undefined) {
     const dir = options.answers;
     return readdirSync(dir)

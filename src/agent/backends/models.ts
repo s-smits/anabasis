@@ -41,6 +41,8 @@ import { durableCompactionMode } from "./compaction.ts";
 import type { ConversationRetryPolicy } from "@earendil-works/pi-durable";
 
 const CODEX = "openai-codex";
+/** The file Codex keeps its login in, under `CODEX_HOME`; a snapshot or a search never copies one. */
+export const CODEX_AUTH = "auth.json";
 
 /** DeepSeek V4.1 Flash as DeepInfra serves it at fp8, on either route: its list price
  *  per million tokens and its output limit. */
@@ -217,7 +219,7 @@ export function compactionMode(
 }
 
 function codexAuthFile(): string {
-  return join(Bun.env.CODEX_HOME ?? join(homedir(), ".codex"), "auth.json");
+  return join(Bun.env.CODEX_HOME ?? join(homedir(), ".codex"), CODEX_AUTH);
 }
 
 function codexCredential(): OAuthCredential {

@@ -3,23 +3,24 @@
  * commit a landing would publish, or over a pushed head, in a checkout of its own.
  *
  *   bun run gate                 install, the UI's own CI gate as far as it is due, format, the secret scan,
- *                                typecheck, strict lint, the suite
+ *                                typecheck, strict lint, the size policy, the simplify census, the suite
  *   bun run gate -- --static     the same, with the suite replaced by the tests near what HEAD changed
  *
- * The steps are `ci.yml`'s two Darwin jobs. The install, the format check, the secret scan and the
- * UI's install run first, one after another, so a format slip fails in a second; then the UI's gate,
- * the typecheck, the strict lint and the tests run side by side, since none reads what another
- * writes once the UI's dependencies are in place; run one after another, the UI's browser tests
- * would leave a four-core runner mostly idle for minutes before the suite began. A step run beside
- * others holds its output until it ends, so each
- * prints whole; the tests stream theirs, which the pulse reads. A failed step no longer keeps the
- * rest from starting, so the gate ends once all have. The strict lint fails on everything a plain
- * one does, so it runs once. Every step fails in one spelling, `gate: step <name> failed (exit <n>)`, which the pre-push
- * hook and `bun run land` repeat without knowing each tool's wording. A step whose runner said
- * nothing about the commit (a dropped connection, no slot in time, or a host that does not answer or
- * lacks the disk; `NO_VERDICT`) runs once more, and a second such exit reads `gave no verdict`: the
- * landing then marks the commit with an error rather than a failure and prints no fix, since nothing
- * was learnt about the commit. Each exit is read once, by `verdictOf`.
+ * The steps are `ci.yml`'s two Darwin jobs, with the size policy and the simplify census beside
+ * them. The install, the format check, the secret scan and the UI's install run first, one after
+ * another, so a format slip fails in a second; then the UI's gate, the typecheck, the strict lint
+ * and the tests run side by side, since none reads what another writes once the UI's dependencies
+ * are in place; run one after another, the UI's browser tests would leave a four-core runner mostly
+ * idle for minutes before the suite began. A step run beside others holds its output until it ends,
+ * so each prints whole; the tests stream theirs, which the pulse reads. A failed step no longer
+ * keeps the rest from starting, so the gate ends once all have. The strict lint fails on everything
+ * a plain one does, so it runs once. Every step fails in one spelling, `gate: step <name> failed
+ * (exit <n>)`, which the pre-push hook and `bun run land` repeat without knowing each tool's
+ * wording. A step whose runner said nothing about the commit (a dropped connection, no slot in
+ * time, or a host that does not answer or lacks the disk; `NO_VERDICT`) runs once more, and a
+ * second such exit reads `gave no verdict`: the landing then marks the commit with an error rather
+ * than a failure and prints no fix, since nothing was learnt about the commit. Each exit is read
+ * once, by `verdictOf`.
  *
  * `--static` is what the pre-push hook runs over a pushed head where the push asks (`ANA_PUSH_VERIFY=1`,
  * `tools/runtime/pre-push.ts`), and
@@ -165,6 +166,7 @@ const BESIDE = [
   // The size rules are off in the lint because this script owns them (`rules-off.tsv`), so a step
   // has to run it, or a file past the ceiling stands unseen.
   ["source-policy", ["tools/loc/source-policy.ts"]],
+  ["simplify", ["run", "simplify", "--", "--gate"]],
 ] as const;
 export const TEST_FILE = /^test\/[^/]+\.test\.ts$/u;
 const GATE = join(import.meta.dir, "gate.ts");

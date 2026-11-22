@@ -146,6 +146,7 @@ describe("proveCommits", () => {
     expect(ran.slice(0, 3)).toEqual(["install --frozen-lockfile", "run format:check", "run secrets"]);
     expect(ran.slice(3).toSorted((one, other) => one.localeCompare(other))).toEqual([
       "run lint -- --strict",
+      "run simplify -- --gate",
       "run test -- test/owner.test.ts",
       "run typecheck",
       "tools/loc/source-policy.ts",

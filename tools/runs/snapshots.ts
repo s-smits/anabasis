@@ -11,6 +11,7 @@
  *   bun run runs catalogue
  */
 import { Type } from "typebox";
+import { CODEX_AUTH } from "#src/agent/backends/models.ts";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
 import { DELIVERABLES } from "#src/kernel/answer-files.ts";
 import { openingOf } from "#src/campaign/opening.ts";
@@ -67,7 +68,7 @@ const PROGRAMS_ONLY = [
   "--include=/trees/*/scripts/toolchain/bin/***",
   "--exclude=/trees/**",
 ];
-export const PRIVATE_NAMES = [".env", ".env.*", "*.env", "auth.json"];
+export const PRIVATE_NAMES = [".env", ".env.*", "*.env", CODEX_AUTH];
 const EXCLUDED = PRIVATE_NAMES.map((name) => `--exclude=${name}`);
 /** Folders of installed packages, caches and built bundles, by name. */
 export const DERIVED: ReadonlySet<string> = new Set([

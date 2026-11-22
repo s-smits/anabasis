@@ -413,6 +413,32 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
       incapable: 1,
     });
   });
+
+  it("splits able A/A controls and steps by whether the reference's own validity flipped", () => {
+    const valStep = event(REPORTED, {
+      ...attempt("g-val", "S", "h2", [1, 1, 1, 1]).data,
+      points: { validity: 120, objective: 10 },
+      valid: { old: [1, 1, 2], fresh: [0, 0, 4] },
+    });
+    // Candidate fails validity while the reference passed every solve: its A/A is objective-only.
+    const freshOnlyFail = event(REPORTED, {
+      ...attempt("g-fresh-fail", "S", "h2", [1, 1, 1, 1]).data,
+      noise: { differences: [1, 1, 1, 1], flips: 0 },
+      points: { validity: -80, objective: 25 },
+      valid: { old: [0, 0, 4], fresh: [1, 1, 2] },
+    });
+    // Reference has only all-fail and all-pass tasks (no partial validity): its A/A is objective-only.
+    const allOrNoneOld = event(REPORTED, {
+      ...attempt("g-obj", "S", "h2", [1, -1, 1, -1]).data,
+      points: { validity: 0, objective: 25 },
+      valid: { old: [2, 0, 2], fresh: [0, 0, 4] },
+    });
+    const log = [started, valStep, freshOnlyFail, allOrNoneOld];
+    expect(epochsOf(log)[0]?.falsePromotion.byMeasure).toEqual({
+      validity: { controls: 1, errors: 1 },
+      objective: { controls: 2, errors: 1 },
+    });
+  });
 });
 
 describe("the starter comparison in an epoch's row", () => {

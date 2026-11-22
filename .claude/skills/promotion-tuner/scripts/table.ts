@@ -48,6 +48,8 @@ const COUNTED = [
   MEASURES.room,
   MEASURES.onValidity,
   MEASURES.aa,
+  MEASURES.aaValidity,
+  MEASURES.aaObjective,
 ];
 const RUN_HEAD = [
   "run",

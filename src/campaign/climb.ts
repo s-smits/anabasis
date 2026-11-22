@@ -23,10 +23,16 @@ import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
 import { billedBetween } from "../kernel/meter.ts";
 import { heldAtGate } from "../kernel/task.ts";
-import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
 import { short } from "./move.ts";
 import type { Called } from "./names.ts";
+
+/** Able A/A control and one-sided step counts for one comparison slice (`validity` or `objective`). */
+interface ControlSlice {
+  readonly controls: number;
+  readonly errors: number;
+}
 
 /**
  * Estimated probability that an epoch's promotion attempts include at least one false positive.
@@ -50,6 +56,9 @@ interface FalsePromotion {
   /** Subset of incapable controls that tied on every task: a reference that produces identical
    *  outcomes on every solve matches itself and cannot register a step at any level. */
   readonly tied: number;
+  /** Able A/A controls and steps split by whether the reference's own validity varied (`validity`)
+   *  or only the objective separated mirrored halves (`objective`). */
+  readonly byMeasure: Readonly<Record<"validity" | "objective", ControlSlice>>;
   /** `min(1, sum of attempt rates)`: union-bound form that avoids assuming independence across
    *  attempts; because it sums estimates, the result is an estimate rather than a formal bound. */
   readonly union: number;
@@ -271,15 +280,26 @@ function againstStarter(
   };
 }
 
+/** Whether an A/A control had any validity flips on the reference (`validity`) or every reference
+ *  task was all-valid or all-invalid so only the objective could separate mirrored halves (`objective`). */
+function measureSliceOf(data: JsonObject, noise?: JsonObject): "validity" | "objective" {
+  if (isNumber(noise?.flips)) return noise.flips > 0 ? "validity" : "objective";
+  const old = asRecord(data.valid)?.old;
+  return Array.isArray(old) && old.slice(1, -1).some((count) => isNumber(count) && count > 0)
+    ? "validity"
+    : "objective";
+}
+
 /** Summarise a single A/A control at `level`: whether it had enough untied tasks to be capable of
  *  reading a step, whether it read one (one-sided or two-sided), and whether every task tied. */
-function controlOf(index: number, level: number, scores: readonly number[]) {
+function controlOf(index: number, level: number, scores: readonly number[], slice: "validity" | "objective") {
   const able = readsStep(scores.map(Math.abs), level);
   const tied = scores.length > 0 && scores.every((one) => one === 0);
   return {
     index,
     level,
     scores,
+    slice,
     able,
     tied,
     step: readsStep(scores, level),
@@ -292,7 +312,7 @@ function controlsIn(reports: readonly Reported[]) {
   return reports.flatMap((each) => {
     const noise = asRecord(each.data.noise);
     if (!Array.isArray(noise?.differences)) return [];
-    return [controlOf(each.index, levelOf(each), scoresIn(noise))];
+    return [controlOf(each.index, levelOf(each), scoresIn(noise), measureSliceOf(each.data, noise))];
   });
 }
 
@@ -320,6 +340,13 @@ function falsePromotionOf(
   };
   const read = controlsIn(reports);
   const controls = read.filter(({ able }) => able).length;
+  const sliceCount = (slice: "validity" | "objective"): ControlSlice => {
+    const own = read.filter((one) => one.slice === slice);
+    return {
+      controls: own.filter(({ able }) => able).length,
+      errors: own.filter(({ step }) => step).length,
+    };
+  };
   const rates = attempts.map(rateOf);
   return {
     attempts: attempts.length,
@@ -328,6 +355,7 @@ function falsePromotionOf(
     controls,
     incapable: read.length - controls,
     tied: read.filter(({ tied }) => tied).length,
+    byMeasure: { validity: sliceCount("validity"), objective: sliceCount("objective") },
     union: Math.min(
       1,
       rates.reduce((sum, rate) => sum + rate, 0),
@@ -652,7 +680,9 @@ function starterNoiseLine(events: readonly LogEvent[]): string {
   const read = lastReports(events).flatMap((report) => {
     if (starter === null || report.data.fresh !== starter || report.data.old === starter) return [];
     const pairs = pairsReported(events, report, "fresh");
-    return pairs.length === 0 ? [] : [controlOf(report.index, levelOf(report), pairs.map(differenceOf))];
+    return pairs.length === 0
+      ? []
+      : [controlOf(report.index, levelOf(report), pairs.map(differenceOf), measureSliceOf(report.data))];
   });
   const head = "- Starter against itself:";
   if (read.length === 0) {

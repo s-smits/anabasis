@@ -12,15 +12,8 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import {
-  fixedIn,
-  overlapOf,
-  type PassLabel,
-  passesIn,
-  predicted,
-  swapped,
-  toLabel,
-} from "../src/campaign/comparison.ts";
+import { fixedIn, overlapOf, passesIn, predicted, swapped, toLabel } from "../src/campaign/comparison.ts";
+import type { PassLabel } from "../src/referee/agreement.ts";
 import { type CheckpointRequest, checkpoint, refuseTerms, scoredSet } from "../src/campaign/round.ts";
 import { settleReading } from "../src/campaign/settle.ts";
 import {

@@ -508,7 +508,7 @@ function noRoom(ground: Ground): Move | null {
       ? `comparison ${last.id} read no step, and neither harness gave a valid answer: other tasks are written`
       : side === "old"
         ? `comparison ${last.id} read no step, and no task was informative for the reference harness: the tasks have to change`
-        : `harness ${short(reference ?? "")} is the reference, and comparison ${last.id} found no task informative for it: the tasks have to change, to ones it fails on some solves`;
+        : `harness ${short(reference ?? "")} is the reference, and comparison ${last.id} found no task informative for it: the tasks have to change, to ones that leave it room to improve`;
   return outOfPatience(ground, "room", why) ?? { move: "examine", why };
 }
 

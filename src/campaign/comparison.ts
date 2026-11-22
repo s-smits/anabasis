@@ -30,6 +30,7 @@ import { taskSets, taskStates } from "../kernel/task.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { median } from "../meta/tally.ts";
+import type { PassLabel } from "../referee/agreement.ts";
 import type { Ruling } from "../referee/referee.ts";
 import { type Worth, worthOf } from "./climb.ts";
 
@@ -188,10 +189,6 @@ export const STARTED = "comparison.started";
 export const REPORTED = "comparison.reported";
 /** Sentinel stored in `Report.settled` until human settlement completes. */
 export const UNSETTLED = "unsettled";
-/** Human review labels for passing answers: `sound` (valid), `wrong` (invalid answer that slipped
- *  past checks, treated as a side failure via `wrongAsFailed`), or `unclear`. */
-export const PASS_LABELS = ["sound", "wrong", "unclear"] as const;
-export type PassLabel = (typeof PASS_LABELS)[number];
 const NOTHING_TO_LABEL: ToLabel = { aside: [], others: [] };
 export const DEFECT = "check-defect";
 export const EARNED = "earned";

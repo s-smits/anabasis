@@ -81,6 +81,22 @@ describe("the shape of a draft", () => {
     }
   });
 
+  it("tells the drafting Examiner to author original tasks without public benchmarks and distinguishes domain validity from multi-criteria objectives", () => {
+    const system = drafting(
+      {
+        limits: { wallSeconds: 60, turns: 5, puts: 2 },
+        id: "d-1",
+        log: join(root, "prompt-check.jsonl"),
+        prompt: "domain",
+        budget: { modelTurns: 20, minutes: 30, solves: 2 },
+        reading: async () => [],
+      },
+      (action) => action(),
+    ).system;
+    expect(system).toContain("never search for, fetch, or copy tasks from public benchmarks");
+    expect(system).toContain("penalising wrong or hedged claims");
+  });
+
   it("holds a draft to one decision on the objective: a quantity with its direction, or why there is none", () => {
     expect(draftFaults(SOUND)).toEqual([]);
     expect(draftFaults(MEASURED)).toEqual([]);

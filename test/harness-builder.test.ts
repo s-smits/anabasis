@@ -609,6 +609,7 @@ describe("a campaign run by its log", () => {
     expect(lines).toContain(
       "the Referee against 0 labelled rejections, 0 of them unruled: agreement of each kind earned none, check-defect none, unclear none; over all three none, PABAK none beside kappa none",
     );
+    expect(lines).toContain("3 labelled passes: sound 2, wrong 1, unclear 0; wrong rate 0.33 (1/3 decided)");
     expect(lines.find((line) => line.startsWith("g-1: "))).toMatch(
       /^g-1: decided step, and step at 8-0-0 .*: it holds$/,
     );

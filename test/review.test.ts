@@ -17,7 +17,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/files
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { agreement, clears } from "../src/referee/agreement.ts";
+import { agreement, clears, passAgreement, settledPassLabels } from "../src/referee/agreement.ts";
 import { type ProbeRow, probeTool } from "../src/referee/probe.ts";
 import { keepAnswerFiles, shownFiles, type AnswerFile } from "../src/kernel/answer-files.ts";
 import { type Reader, referee } from "../src/referee/referee.ts";
@@ -836,5 +836,66 @@ describe("agreement with hand labels", () => {
     const noDefects = agreement(many, new Map([...thirty].filter(([, label]) => label === "earned")));
     expect(noDefects.caught).toBeNull();
     expect(clears(noDefects, { caught: 0, voided: 1 })).toBe(false);
+  });
+
+  it("pass agreement counts settled pass labels and clears at twenty labels with at most one in ten wrong", () => {
+    const settled = [
+      {
+        at: "2026-11-22T00:00:00Z",
+        kind: "comparison.reported" as const,
+        data: {
+          session: "g-1",
+          settled: { passes: { p1: "sound", p2: "wrong", p3: "unclear", p4: "ignored" } },
+        },
+      },
+    ];
+    const parsed = settledPassLabels(settled);
+    expect([...parsed.entries()]).toEqual([
+      ["p1", "sound"],
+      ["p2", "wrong"],
+      ["p3", "unclear"],
+    ]);
+    expect(passAgreement(parsed)).toEqual({
+      counts: { sound: 1, wrong: 1, unclear: 1 },
+      total: 3,
+      decided: 2,
+      wrongRate: 0.5,
+      clears: false,
+    });
+    expect(passAgreement(new Map())).toEqual({
+      counts: { sound: 0, wrong: 0, unclear: 0 },
+      total: 0,
+      decided: 0,
+      wrongRate: null,
+      clears: false,
+    });
+    const nineteen = new Map(Array.from({ length: 19 }, (_, i) => [`s-${String(i)}`, "sound" as const]));
+    expect(passAgreement(nineteen).clears).toBe(false);
+    // Unclear passes neither inflate the 20-decided sample bar nor dilute the wrong-pass rate.
+    const diluted = new Map([
+      ...Array.from({ length: 8 }, (_, i) => [`s-${String(i)}`, "sound" as const] as const),
+      ["w-1", "wrong" as const],
+      ["w-2", "wrong" as const],
+      ...Array.from({ length: 10 }, (_, i) => [`u-${String(i)}`, "unclear" as const] as const),
+    ]);
+    expect(passAgreement(diluted)).toMatchObject({ total: 20, decided: 10, wrongRate: 0.2, clears: false });
+    const twentyTwoWrong = new Map([
+      ...Array.from({ length: 18 }, (_, i) => [`s-${String(i)}`, "sound" as const] as const),
+      ["w-1", "wrong" as const],
+      ["w-2", "wrong" as const],
+    ]);
+    expect(passAgreement(twentyTwoWrong)).toMatchObject({
+      total: 20,
+      decided: 20,
+      wrongRate: 0.1,
+      clears: true,
+    });
+    const twentyThreeWrong = new Map([...twentyTwoWrong, ["s-0", "wrong" as const]]);
+    expect(passAgreement(twentyThreeWrong)).toMatchObject({
+      total: 20,
+      decided: 20,
+      wrongRate: 0.15,
+      clears: false,
+    });
   });
 });

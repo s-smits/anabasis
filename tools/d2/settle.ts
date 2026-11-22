@@ -3,7 +3,7 @@
  *
  *   bun tools/d2/settle.ts --name truss --session g-1
  */
-import { PASS_LABELS, passesIn, reported, swapped, toLabel, UNSETTLED } from "#src/campaign/comparison.ts";
+import { passesIn, reported, swapped, toLabel, UNSETTLED } from "#src/campaign/comparison.ts";
 import { settleReading } from "#src/campaign/settle.ts";
 import { draw } from "#src/kernel/compare.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
@@ -20,7 +20,15 @@ import { asRecord, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
-import { agreement, RULINGS, settledLabels, unclearReport } from "#src/referee/agreement.ts";
+import {
+  agreement,
+  PASS_LABELS,
+  passAgreement,
+  RULINGS,
+  settledLabels,
+  settledPassLabels,
+  unclearReport,
+} from "#src/referee/agreement.ts";
 import { labelled } from "#src/referee/rejections.ts";
 import { openCampaign, PACK_OPTIONS, packNamed } from "./campaign.ts";
 import { type Campaign, reportLines } from "./round.ts";
@@ -99,11 +107,17 @@ function labelsIn<Word extends string>(
 export function labelLines(events: readonly LogEvent[]): string[] {
   const labels = settledLabels(events);
   const measured = agreement(events, labels);
+  const passed = passAgreement(settledPassLabels(events));
   const rate = (value: number | null) => (value === null ? "none" : value.toFixed(2));
   const each = RULINGS.map((kind) => `${kind} ${rate(measured.specific[kind])}`).join(", ");
   const unclear = unclearReport(measured);
+  const passLine =
+    passed.total === 0
+      ? null
+      : `${passed.total === 1 ? "1 labelled pass" : `${String(passed.total)} labelled passes`}: sound ${String(passed.counts.sound)}, wrong ${String(passed.counts.wrong)}, unclear ${String(passed.counts.unclear)}; wrong rate ${rate(passed.wrongRate)} (${String(passed.counts.wrong)}/${String(passed.decided)} decided)`;
   return [
     `the Referee against ${plural(labels.size, "labelled rejection")}, ${String(measured.unruled.length)} of them unruled: agreement of each kind ${each}; over all three ${rate(measured.observed)}, PABAK ${rate(measured.pabak)} beside kappa ${rate(measured.kappa)}`,
+    ...(passLine === null ? [] : [passLine]),
     ...(unclear === null ? [] : [unclear]),
     ...lastReports(events, "all").flatMap(({ session: id }) => {
       const again = swapped(events, id);

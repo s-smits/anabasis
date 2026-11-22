@@ -18,9 +18,16 @@ import type { Ruling } from "./referee.ts";
 
 /** The Referee's three rulings, which are a person's three labels too. */
 export const RULINGS = ["earned", "check-defect", "unclear"] as const;
+/** Human review labels for passing answers: `sound` (valid), `wrong` (invalid answer that slipped
+ *  past checks, treated as a side failure via `wrongAsFailed`), or `unclear`. */
+export const PASS_LABELS = ["sound", "wrong", "unclear"] as const;
+export type PassLabel = (typeof PASS_LABELS)[number];
 
 /** The fewest labelled fails any bar is read on. */
 const LEAST_LABELS = 30;
+/** The fewest labelled passes, and highest wrong-pass share, for the pass-soundness bar. */
+const LEAST_PASS_LABELS = 20;
+const MAX_WRONG_PASS = 0.1;
 /** The share of `unclear` rulings labelled earned past which the report speaks. */
 const UNCLEAR_EARNED = 1 / 4;
 
@@ -128,4 +135,34 @@ export function unclearReport({ table, unclearEarned }: Agreement): string | nul
   if (unclearEarned === null || unclearEarned <= UNCLEAR_EARNED) return null;
   const ruled = RULINGS.reduce((sum, label) => sum + table[label].unclear, 0);
   return `a person labelled earned ${String(table.earned.unclear)} of the Referee's ${String(ruled)} unclear rulings, more than one in four: an unclear ruling sets aside a task a person reads as a real limit`;
+}
+
+/** A person's label of each sampled passing answer on record (`labelsIn`), where it is one of
+ *  `PASS_LABELS`. */
+export function settledPassLabels(events: readonly LogEvent[]): Map<string, PassLabel> {
+  return new Map(
+    [...labelsIn(events, "passes")].flatMap(([solve, label]) => {
+      const known = PASS_LABELS.find((word) => word === label);
+      return known === undefined ? [] : [[solve, known] as const];
+    }),
+  );
+}
+
+/** Pass-soundness summary over blind pass labels (from one campaign or pooled across several):
+ *  counts by label, total and decided (`sound` + `wrong`) labelled passes, wrong-pass share among
+ *  decided passes, and whether the set clears the pass bar (at least 20 decided passes and at most
+ *  1 in 10 wrong, so `unclear` passes neither inflate the sample nor dilute the wrong-pass rate). */
+export function passAgreement(labels: ReadonlyMap<string, PassLabel>) {
+  const counts: Record<PassLabel, number> = { sound: 0, wrong: 0, unclear: 0 };
+  for (const label of labels.values()) counts[label] += 1;
+  const total = labels.size;
+  const decided = counts.sound + counts.wrong;
+  const wrongRate = decided === 0 ? null : counts.wrong / decided;
+  return {
+    counts,
+    total,
+    decided,
+    wrongRate,
+    clears: decided >= LEAST_PASS_LABELS && wrongRate !== null && wrongRate <= MAX_WRONG_PASS,
+  };
 }

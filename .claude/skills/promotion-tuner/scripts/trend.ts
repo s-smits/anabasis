@@ -184,6 +184,22 @@ export const MEASURES = {
       (run) => run.controls,
     ),
   ),
+  aaValidity: lower(
+    rate(
+      "honesty",
+      "A/A steps where reference validity varied",
+      (run) => run.aaValiditySteps,
+      (run) => run.aaValidityControls,
+    ),
+  ),
+  aaObjective: lower(
+    rate(
+      "honesty",
+      "A/A steps on objective alone",
+      (run) => run.aaObjectiveSteps,
+      (run) => run.aaObjectiveControls,
+    ),
+  ),
   rungDollars: middle("economy", "dollars a rung", (run) => rungsOf(run).map((rung) => rung.dollars)),
   perPromotion: lower(rate("economy", "dollars a promotion", (run) => run.dollars, promoted)),
   // On one meter across the windows, over the runs whose every turn it priced.

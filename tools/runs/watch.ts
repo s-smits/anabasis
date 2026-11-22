@@ -110,13 +110,18 @@ export async function watch<S>(args: readonly string[], spec: Watch<S>): Promise
   const [given = spec.seconds, extra] = positionals;
   const seconds = Number(given);
   const window = values.window;
-  if (
-    extra !== undefined ||
-    !Number.isFinite(seconds) ||
-    seconds <= 0 ||
-    (window !== undefined && !spec.windows.includes(window))
-  ) {
-    throw new Misused();
+  if (extra !== undefined) {
+    throw new Misused(`${spec.name}watch takes one number of seconds, not \`${extra}\``);
+  }
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    throw new Misused(`\`${given}\` is not a positive number of seconds`);
+  }
+  if (window !== undefined && !spec.windows.includes(window)) {
+    throw new Misused(
+      spec.windows.length === 0
+        ? `${spec.name}watch takes no -w`
+        : `-w takes ${spec.windows.join(", ")}, not \`${window}\``,
+    );
   }
   const watched = watchersOf([undefined, ...hostsOf()], spec.script(seconds), spec.parse);
   const title = () =>

@@ -101,7 +101,7 @@ export async function checkpointCommand(
         `--reference ${values.reference} and --new ${values.new} name one harness, ${old.digest}: there is nothing to compare${values.new === "latest" ? " until a Builder session has left a harness" : ""}. A harness is read against itself beside every comparison`,
       );
     }
-    refuseTerms(request, { log: campaign.log, id, practised: new Set() });
+    refuseTerms(request, { log: campaign.log, id });
   };
   // Every refusal comes before anything is recorded, as in a round: the admission's, then the
   // comparison's own terms, and only then the campaign's setting.

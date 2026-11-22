@@ -21,14 +21,7 @@ import {
   swapped,
   toLabel,
 } from "../src/campaign/comparison.ts";
-import {
-  type CheckpointRequest,
-  checkpoint,
-  type RoundRequest,
-  refuseTerms,
-  round,
-  scoredSet,
-} from "../src/campaign/round.ts";
+import { type CheckpointRequest, checkpoint, refuseTerms, scoredSet } from "../src/campaign/round.ts";
 import { settleReading } from "../src/campaign/settle.ts";
 import {
   type BuildRequest,
@@ -284,7 +277,12 @@ async function setup(responses: FauxResponseStep[], table: Table, from?: string)
     mkdirSync(host);
     return await session(request, { home, host }, walled);
   };
-  const request: RoundRequest = {
+  /** The comparison's terms, with the session that comes before it and the reference it is read against. */
+  const request: Omit<CheckpointRequest, "log" | "id" | "old" | "fresh"> & {
+    readonly session: BuildRequest;
+    readonly builder: (request: BuildRequest) => Promise<Built>;
+    readonly reference: CheckpointRequest["old"];
+  } = {
     session: build,
     builder,
     reference: { dir: parent, digest: old },
@@ -1590,10 +1588,6 @@ describe("a round", () => {
   it("refuses, before any solve, a set it could not score", async () => {
     const s = await setup([edit, finish], step);
     append(s.log, TASK_STATE, { version: "s5", state: "released" });
-    await expect(round({ ...s.request, tasks: [...HELD, "p1"] })).rejects.toThrow(
-      "task p1 is a practice task, and a round scores no task its session saw",
-    );
-    expect(s.sessions()).toBe(0);
     for (const [more, refused] of [
       [{ tasks: [...HELD, "s1"] }, "task s1 is listed twice"],
       [{ tasks: ["s5"] }, "task s5 is released, and only a held-out task is scored"],
@@ -1614,7 +1608,7 @@ describe("a round", () => {
     expect(s.of(COMPARISON_STARTED)).toEqual([]);
     // A task another comparison set aside is no refusal: the comparison leaves it out and names it.
     append(s.log, TASK_STATE, { version: "s2", state: "disputed" });
-    expect(() => refuseTerms(s.request, { log: s.log, id: "b-9", practised: new Set() })).not.toThrow();
+    expect(() => refuseTerms(s.request, { log: s.log, id: "b-9" })).not.toThrow();
   });
 });
 

@@ -1,6 +1,5 @@
 /**
- * A standalone comparison: one comparison of a new harness with the reference harness, on held-out tasks. And
- * a round: a Builder session, then the comparison of the harness it left.
+ * A comparison: one comparison of a new harness with the reference harness, on held-out tasks.
  *
  * A comparison is three steps over one log.
  * 1. Solving. Each task of the scored set is solved `solves` times under each of the two
@@ -38,16 +37,13 @@
  * first of each task against the second. It should read no step, and decides nothing here.
  *
  * `cap` is the comparison's dollar cap. Before each solve the dollars the log holds as billed for
- * the comparison are summed (`billedFor`): its own solves and their rulings, and in a round the
- * session's spend as well; a solve of the comparison with no end on record, killed in an earlier
+ * the comparison are summed (`billedFor`): its own solves and their rulings; a solve of the comparison with no end on record, killed in an earlier
  * run or still running, by what its turns and compactions have metered. The solve is not started
  * when a reserve for it and for each solve still running would take the sum past the cap. A lane
  * that cannot start a solve while others are in flight steps aside, since what they bill may be
  * under their reserve; when none is in flight and the next solve still cannot start, the cap is
  * reached. A comparison the cap cuts short of its test reads `not-scored` and is finished: its
- * tally would be of the tasks that happened to come first. The round's session is held to the same
- * cap by its own part of the sum, its practice solves before each starts (`practiceLeft`,
- * `tools.ts`) and its own turns before each request (`halted`, `session.ts`).
+ * tally would be of the tasks that happened to come first.
  *
  * Rejections. A rejected answer counts as not valid only once the rejection is ruled a true fail
  * (`earned`), by the Referee where the caller seats one. One ruled a check defect or unclear, and
@@ -71,14 +67,6 @@
  * look at the data. It also stops, to go on the same way, when the provider has stopped answering:
  * `SILENT` tasks in a row whose solve ended, after its reruns, with nothing written for it. A login
  * at its session limit does that to every solve in seconds; named resets wait inside `solve`.
- *
- * A round's session starts from the harness the caller names, which need not be the reference
- * harness: a Builder goes on from its latest harness, and the comparison is against the reference
- * one. The session is run once and read from the log whether it ran now or in an earlier run
- * (`sessionOnce`, `session.ts`), which is also how a session runs with no comparison after it. A
- * session cut at its deadline or its session turn limit is a whole session and is compared. One that left the
- * harness it started from, the reference harness itself, or one no solve can open, is reported as
- * no change.
  *
  * A held-out task's trace is never shown: it would carry the task to the Builder.
  *
@@ -120,7 +108,7 @@ import {
   startOf,
   UNSETTLED,
 } from "./comparison.ts";
-import { type BuildRequest, type Built, type Practised, sessionOnce } from "../builder/session.ts";
+import type { Practised } from "../builder/session.ts";
 
 /** A harness as a solve is handed it. */
 interface Kept {
@@ -183,16 +171,6 @@ export interface CheckpointRequest extends Terms {
   readonly fresh: Kept;
   /** Aborts when the run is killed. */
   readonly kill?: AbortSignal | undefined;
-}
-
-export interface RoundRequest extends Terms {
-  /** The session, as `build` takes it. Its id names the round in the log, and its parent is the
-   *  harness the Builder starts from. */
-  readonly session: BuildRequest;
-  /** The harness the one the session leaves is compared with. */
-  readonly reference: Kept;
-  /** Runs the session: `build`, unless a caller without a command wall stands in for it. */
-  readonly builder?: ((request: BuildRequest) => Promise<Built>) | undefined;
 }
 
 /** One solve still to run: a task version under one of the harnesses, and whether it is asked for
@@ -312,7 +290,7 @@ function counts(value: number, least: number): boolean {
 /** Refuse, before a session or a solve is spent, tasks that could not be scored. A comparison gone
  *  on from its log is not asked again: its tasks were fixed at its start, and a person may have
  *  released or refused one since, which then leaves it (`withdrawn`). */
-function refuseUnscorable({ tasks, retained }: Terms, log: string, practised: ReadonlySet<string>): void {
+function refuseUnscorable({ tasks, retained }: Terms, log: string): void {
   if (tasks.length === 0) {
     throw new Error(
       "no task to score: a comparison is asked for with at least one held-out task that waits for no label (tools/d2/prepare.ts)",
@@ -322,10 +300,6 @@ function refuseUnscorable({ tasks, retained }: Terms, log: string, practised: Re
   if (twice !== undefined) throw new Error(`task ${twice} is listed twice among the tasks to score`);
   const stray = retained.find((version) => !tasks.includes(version));
   if (stray !== undefined) throw new Error(`retained task ${stray} is not among the tasks to score`);
-  const seen = tasks.find((version) => practised.has(version));
-  if (seen !== undefined) {
-    throw new Error(`task ${seen} is a practice task, and a round scores no task its session saw`);
-  }
   const events = read(log);
   // The draw leaves such a task out (`scoredSet`), and a name was the one way past that.
   const waiting = poolOf(events).awaiting.find((version) => tasks.includes(version));
@@ -361,22 +335,18 @@ function refuseUnreadable(terms: Terms): void {
 
 /**
  * Refuse the terms a comparison is asked for on: terms no comparison could be read on, and, for
- * one that has not begun, tasks that could not be scored. `practised` is what its session may
- * practise on, and empty for a standalone comparison. A comparison that reported is asked nothing.
+ * one that has not begun, tasks that could not be scored. A comparison that reported is asked nothing.
  *
  * A comparison asks this of itself before its first event. A command asks it before it records
- * anything, so that a refused command leaves the log as it was: a round refused for a mistyped
+ * anything, so that a refused command leaves the log as it was: a comparison refused for a mistyped
  * task after it had recorded the campaign's setting would have the corrected command refused as
  * another setting.
  */
-export function refuseTerms(
-  terms: Terms,
-  of: { readonly log: string; readonly id: string; readonly practised: ReadonlySet<string> },
-): void {
+export function refuseTerms(terms: Terms, of: { readonly log: string; readonly id: string }): void {
   const events = read(of.log);
   if (reported(events, of.id) !== null) return;
   refuseUnreadable(terms);
-  if (startOf(events, of.id) === undefined) refuseUnscorable(terms, of.log, of.practised);
+  if (startOf(events, of.id) === undefined) refuseUnscorable(terms, of.log);
 }
 
 /**
@@ -678,7 +648,7 @@ export async function checkpoint(request: CheckpointRequest): Promise<Report> {
       `a comparison sets two harnesses against each other, and both sides are ${old.digest}; the reference harness is read against itself beside every comparison`,
     );
   }
-  refuseTerms(request, { log, id, practised: new Set() });
+  refuseTerms(request, { log, id });
   const fixed = begin(request);
   const work = floor(request, fixed);
   await work.ruleLeft();
@@ -711,32 +681,4 @@ function stopped(events: readonly LogEvent[], fixed: Fixed, reading: "not-scored
     settled: UNSETTLED,
     reading,
   } as const;
-}
-
-/**
- * A Builder session, then the comparison of the harness it left with the reference harness. The
- * campaign's first round is one, from the Starter Built Harness and against it.
- */
-export async function round(request: RoundRequest): Promise<Report> {
-  const { session, builder, reference, ...terms } = request;
-  const { log, id } = session;
-  // A round that reported is finished, and run again it says what it said: a second pass over a
-  // finished comparison, topping up a set a dispute thinned, would be a second look at its data.
-  const before = reported(read(log), id);
-  if (before !== null) return before;
-  refuseTerms(terms, { log, id, practised: new Set(session.tasks.map(({ version }) => version)) });
-  // The session is read from the log whether it ran now or in an earlier run of this round.
-  const built = await sessionOnce({ ...session, cap: request.cap }, builder);
-  const asked = { ...terms, log, id, kill: session.kill };
-  if (built.kept === null || built.kept.digest === reference.digest) {
-    const unchanged: Report = {
-      old: reference.digest,
-      fresh: null,
-      starter: terms.starter.digest,
-      ...NOTHING,
-      reading: "no-change",
-    };
-    return write(asked, unchanged, { broken: built.broken, reviewFaults: [] });
-  }
-  return await checkpoint({ ...asked, old: reference, fresh: built.kept });
 }

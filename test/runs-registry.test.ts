@@ -24,7 +24,6 @@ describe("a run's writers", () => {
       ["/wt", ["bun", "tools/d1b/examine.ts", "--name", "r1", "--session", "x-1"]],
       ["/wt", ["bun", "tools/d2/round.ts", "--name", "r10"]],
       ["/other", ["bun", "tools/d2/round.ts", "--name", "r1"]],
-      ["/wt", ["bun", "tools/m0/live-solve.ts", "--task", "r1", "--cycle", "c01"]],
       ["/wt", ["bun", "tools/runs/cli.ts", "rehearse", "--name", "r1"]],
       ["/wt", ["bun", "run", "runs", "rehearse", "--name", "r1"]],
       ["/wt", ["bun", "tools/runs/cli.ts", "pulse", "--name", "r1"]],
@@ -42,9 +41,9 @@ describe("a run's writers", () => {
       ["/wt", ["bun", "/other/tools/d2/harness-builder.ts", "--name", "r1"]],
     ];
     const running = rows.map(([cwd, args], index) => ({ pid: index + 1, cwd, args }));
-    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 6, 12, 14, 15, 16, 19]);
+    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 5, 11, 13, 14, 15, 18]);
     const solve: Run = { ...round, name: "r1-c01-opus-1234", end: "solve.finished" };
-    expect(writers(solve, running).map(({ pid }) => pid)).toEqual([5]);
+    expect(writers(solve, running)).toEqual([]);
   });
 });
 

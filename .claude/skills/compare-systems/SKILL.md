@@ -26,16 +26,14 @@ system (`rejectionAside`).
 
 ## The procedure
 
-1. **Seed**: `bun run runs seed --from <campaign> --name cmp-<what>`, with `--events N` to cut a
-   stored pack before its first release or at a `comparison.started`. The script refuses a folder
+1. **Seed**: `bun run runs seed --from <campaign> --name cmp-<what>`, with `--events N` to cut the
+   log before its first release or at a `comparison.started`. The script refuses a folder
    without `seed.json`. The starter is `starter` or `A`; import the built harness with
    `bun tools/d2/import.ts --name cmp-<what> --harness <data/harnesses/<run>/harness>`.
 2. **Predict** the winner and its settling count in `.ana/compare/cmp-<what>/prediction.md`.
-3. **Read for free**: `--read` draws the tasks and solves nothing. A stored pack's seed takes its
-   receipt's four flags:
+3. **Read for free**: `--read` draws the tasks and solves nothing:
    ```sh
    bun .claude/skills/compare-systems/scripts/systems.ts --seed cmp-truss \
-     --root <root> --sweep <sweep> --cycle <cycle> --bundle <bundle> \
      --baseline bare-opus=claude/claude-opus-5-5:medium@A \
      --candidate built-terra=openai-codex/gpt-6.1-terra:high@<digest of the truss harness> --read
    ```

@@ -115,7 +115,6 @@ export async function draftCommand(
   if (stood && last !== undefined) {
     const unattended = openingOf(after)?.attended !== true;
     keepReading(log, last.checker, last.reading, {
-      stored: 0,
       admitted: new Set(),
       authored: unattended,
       freeze: unattended,

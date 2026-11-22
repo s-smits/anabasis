@@ -65,7 +65,6 @@ const JOB_SCRATCH = /\/\.claude[^/]*\/jobs\/[^/]+\/tmp\//u;
 const CAMPAIGN = new Set([
   "harness-builder.ts",
   "live-seat.ts",
-  "live-solve.ts",
   "word.ts",
   "promote.ts",
   "settle.ts",
@@ -79,12 +78,6 @@ const CAMPAIGN = new Set([
   "checkpoint.ts",
   "republish.ts",
 ]);
-
-/**
- * `tools/c/rejections.ts` appends `verdict` events to a campaign's log and writes label packets, so it
- * is matched by its folder: a name alone would also refuse the read-only `tools/wri/rejections.ts`.
- */
-const LOGS_VERDICTS = "/tools/c/rejections.ts";
 
 /** The verbs of the run CLI that change a run's life, and the investigation's steps the primary owns. */
 const LIFE = new Set([
@@ -169,10 +162,6 @@ const INSTEAD = new Map([
   [
     "a program kept in a campaign",
     "read its source by path with `cat`, `grep` or `sed -n`; it runs only in a solve",
-  ],
-  [
-    "a command that logs verdicts",
-    "read each rejection with `bun tools/wri/rejections.ts <log>`, which writes nothing",
   ],
   ["a write under a campaign", "write scratch under a temporary directory of the lane's own"],
   ["a write to the primary's files", "write scratch under a temporary directory of the lane's own"],
@@ -464,9 +453,6 @@ function commandRefusal(words: readonly string[], scope: Scope): string | null {
   if (tool === "bun") {
     // A flag's value, as `--cwd <dir>`, may stand before the script, so every plain word is read.
     if (plain.some((word) => CAMPAIGN.has(basename(word)))) return "a campaign command";
-    if (plain.some((word) => pathOf(word, scope.cwd).endsWith(LOGS_VERDICTS))) {
-      return "a command that logs verdicts";
-    }
     if (plain.some((word) => word.includes("compare-systems") || basename(word) === "gpt-sessions.ts")) {
       return "a paid session";
     }

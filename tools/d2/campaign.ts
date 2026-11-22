@@ -1,6 +1,6 @@
 /**
  * A campaign: one log, one staged check program and one folder of harness states under
- * `.ana/d2/<name>`, over a stored sweep's pack. It is what the commands share, so that each builds
+ * `.ana/d2/<name>`, over the exam its own log drafted. It is what the commands share, so that each builds
  * its conditions, its solves and its reviewers the same way:
  *
  *   bun tools/c/accept.ts      ... --name <name> [--freeze]          what the check program has been seen to do; the operator's word that it stands
@@ -14,16 +14,12 @@
  * Without them a changed `tools/d2` file would keep the same identity, allowing a comparison to
  * continue under changed execution code. Readers and development tools stay outside that identity.
  *
- * The campaign folder is inside the repository, which every solve's and every Builder's wall denies,
- * as `live-solve.ts` keeps its check program: the log holds hidden values and the checks' verdicts.
+ * The campaign folder is inside the repository, which every solve's and every Builder's wall denies:
+ * the log holds hidden values and the checks' verdicts. The contract is the drafted exam's, and a
+ * campaign starts from the Starter Built Harness, which is also its first reference harness
+ * (`src/harness/starter.ts`).
  *
- * What is stood in for is what `live-solve.ts` stands in: the contract is the check program's brief
- * with the answer format the sweep's record tool took, and the limits are the sweep's `config.yaml`
- * without its disk cap. The test condition's model and effort are the stored cycle's. The cycle's own
- * harness is not used: it comes from v1's runs, and a campaign starts from the Starter Built
- * Harness, which is also its first reference harness (`src/harness/starter.ts`).
- *
- * It needs the Mac's command wall, the pack and the sweep on disk, and a model login.
+ * It needs the command wall and a model login.
  */
 import type { Api, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { type BackendOptions, backends, compactionMode } from "#src/agent/backends/models.ts";
@@ -74,29 +70,17 @@ import type { NamedSolver } from "./setting.ts";
 import { openHarness, treeContent } from "#src/harness/open.ts";
 import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/wall/base.ts";
 import {
-  checkProgram,
   contractOf,
   packageOf,
   readPack,
-  recordedAnswerFormat,
   modelNamed,
-  rowModel,
-  storedRuntime,
   sweepOptions,
   sweepResources,
-  sweepRows,
 } from "../m0/stored-sweep.ts";
 
 interface CampaignArgs {
-  /** The stored pack a campaign opens over, which the four name together. A campaign that
-   *  opened from a prompt names none: its exam is the one its own log drafted (`exam.ts`). */
-  readonly root?: string | undefined;
-  readonly sweep?: string | undefined;
-  /** The cycle whose model and effort the test condition takes. */
-  readonly cycle?: string | undefined;
-  readonly bundle?: string | undefined;
   readonly name: string;
-  /** The model and effort that solve in the cycle's place, when not its own: a command's `--solver`
+  /** The model and effort that solve in the opening's place, when not its own: a command's `--solver`
    *  and `--solver-effort`, and the window `--solver-window` names (`setting.ts`). */
   readonly solver?: NamedSolver | undefined;
   /** What every solve of this command is held to, when not `LIMITS`: a command's `--solve-minutes`
@@ -149,8 +133,7 @@ const PROGRAMS_OF = "programs-of:";
  *  of 30 minutes, which stops a solve whose provider stalls. A command names another deadline or
  *  model turn limit (`setting.ts`), and another is another campaign. The prompt limit, `turns`, is every
  *  solve's (v1's cap on nudges); the shell's timeouts and four solves at a time are the stored
- *  sweep's. Concurrency is part of a condition, so
- *  a campaign's solves and a parity solve (`live-solve.ts`) are not under the same one.
+ *  sweep's. Concurrency is part of a condition.
  *
  *  One budget stands for every solver, with the turns at 20 (the operator's choice): at a short
  *  deadline, the turns bound and the clock almost never does.
@@ -173,16 +156,8 @@ export const REPO = resolve(import.meta.dir, "..", "..");
  *  the open stack (`bun run follow`), so that no paid seat runs from it (`treeFault`). */
 export const FOLLOWED = "ana-followed";
 
-/** The flags that name a stored pack together. */
-const PACK_FLAGS = 4;
-/** The flags that name a campaign and the stored pack it opens over (`packNamed`). */
-export const PACK_OPTIONS = {
-  root: { type: "string" },
-  sweep: { type: "string" },
-  cycle: { type: "string" },
-  bundle: { type: "string" },
-  name: { type: "string" },
-} as const;
+/** The flag that names a campaign, whose pack is the exam its log drafted (`packNamed`). */
+export const PACK_OPTIONS = { name: { type: "string" } } as const;
 /** The agent runtime's packages, pinned in `package.json`; the SDK pins the Claude Code binary. */
 const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-ai", "@earendil-works/pi-durable"];
 /** The trees of the host's code a solve runs (`codeOf`), beside the production packages that
@@ -235,48 +210,29 @@ export function seatBackends(options: BackendOptions): ReturnType<typeof backend
 export const campaignLog = (name: string): string => join(REPO, ".ana", "d2", name, LOG_FILE);
 
 /**
- * The campaign a command's flags name, and the pack it opens over: the stored one that `--root`,
- * `--sweep`, `--cycle` and `--bundle` name together, or, where none of the four is given, the exam
- * the campaign's own log drafted, one check for every command rather than a copy in each. `also`
- * is what else the command
- * needs, for the sentence that says what is missing.
+ * The campaign a command's flags name, refused where its log drafted no exam, one check for every
+ * command rather than a copy in each. `also` is what else the command needs, for the sentence that
+ * says what is missing.
  */
-export function packNamed(
-  flags: Pick<CampaignArgs, "root" | "sweep" | "cycle" | "bundle"> & { readonly name?: string | undefined },
-  also = "",
-): CampaignArgs {
-  const { root, sweep, cycle, bundle, name } = flags;
-  const stored = [root, sweep, cycle, bundle].filter((each) => each !== undefined).length;
-  if (name === undefined || (stored > 0 && stored < PACK_FLAGS)) {
-    throw new Error(`name --root, --sweep, --cycle, --bundle, --name${also}`);
-  }
-  if (stored === 0 && draftOf(read(campaignLog(name))) === null) {
+export function packNamed(flags: { readonly name?: string | undefined }, also = ""): CampaignArgs {
+  const { name } = flags;
+  if (name === undefined) throw new Error(`name --name${also}`);
+  if (draftOf(read(campaignLog(name))) === null) {
     throw new Error(
-      `name --root, --sweep, --cycle and --bundle: campaign ${name} holds no exam of its own, which only a campaign that opened from a prompt drafts (tools/d2/harness-builder.ts --prompt)`,
+      `campaign ${name} holds no exam of its own, which only a campaign that opened from a prompt drafts (tools/d2/harness-builder.ts --prompt)`,
     );
   }
-  return { root, sweep, cycle, bundle, name };
+  return { name };
 }
 
 /**
- * What a campaign's pack gives it: the pack's directory, its check program as a verifier opens
- * it, the answer format, and who solves where no flag and no record says. A stored pack's format
- * and solver are its cycle's; a drafted exam's format is the draft's, and its solver the one the
- * campaign's opening names.
+ * What a campaign's drafted exam gives it: the pack's directory, its check program as a verifier
+ * opens it, the answer format, and who solves where no flag says: the one the opening names.
  */
 function packOpened(dir: string, log: string, args: CampaignArgs) {
-  const { root, sweep, cycle, bundle } = args;
-  if (root !== undefined && sweep !== undefined && cycle !== undefined && bundle !== undefined) {
-    const checks = join(dir, "checks");
-    if (!existsSync(checks)) checkProgram(bundle, checks);
-    const row = sweepRows(root, sweep).find((each) => each.cycle === cycle);
-    if (row === undefined) throw new Error(`${sweep} graded no solve in ${cycle}`);
-    const stored = { model: rowModel(row), effort: storedRuntime(row).modelWorker.modelSelection.effort };
-    return { bundle, checks, format: recordedAnswerFormat(row), solver: () => stored };
-  }
   const events = read(log);
   const draft = draftOf(events);
-  if (draft === null) throw new Error(`${log} holds no drafted exam, and no stored pack was named`);
+  if (draft === null) throw new Error(`${log} holds no drafted exam`);
   const named = openingOf(events)?.solver ?? null;
   return {
     ...stageExam(dir, draft),
@@ -416,10 +372,8 @@ export async function openCampaign(args: CampaignArgs) {
   const resources = sweepResources(brief);
   const tools = join(bundle, ".toolchain");
   const trees = worktreesOf(REPO);
-  // A stored pack's root and bundle, closed to every command and every check as the repository is.
-  // A campaign opened from a prompt drafted its exam under `.ana` here, inside the repository.
-  const packRoots = args.root === undefined ? [] : [args.root, bundle];
-  const verify = openVerifier({ checks, tools, otherTrees: trees, packRoots });
+  // The drafted exam is staged under `.ana` here, closed with the repository.
+  const verify = openVerifier({ checks, tools, otherTrees: trees });
   const limits = args.limits ?? LIMITS;
   const { conditionOf, setting } = recordedUnder({ contract, tools, limits });
   const pack = (task: Task): TaskPackage => packageOf(checks, task);
@@ -455,7 +409,6 @@ export async function openCampaign(args: CampaignArgs) {
       log: written,
       repoRoot: REPO,
       otherTrees: trees,
-      packRoots,
       ...keyIfDefined("kill", kill),
       ...keyIfDefined("comparison", comparison),
     });
@@ -464,7 +417,6 @@ export async function openCampaign(args: CampaignArgs) {
   return {
     repo: REPO,
     trees,
-    packRoots,
     log,
     states: join(dir, "states"),
     memory: join(dir, "memory"),

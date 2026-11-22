@@ -53,8 +53,7 @@ differs in the one variable, or at one commit with the variable as a flag.
 
 A backend can be probed with no campaign through its provider (`claudeProvider`,
 `src/agent/backends/claude.ts`) in a script outside the tree; what it shows goes into
-`test/claude-backend.test.ts`. `live-solve.ts --live` runs under a stored sweep's limits, which differ
-from a campaign's `LIMITS` (`tools/d2/campaign.ts`).
+`test/claude-backend.test.ts`.
 
 ## Rules of this case
 

@@ -471,7 +471,7 @@ describe("a campaign's drafts", () => {
       const events = read(campaignLog(name));
       const readings = events.filter(({ kind }) => kind === "checker.read");
       expect(readings).toHaveLength(1);
-      expect(readings[0]?.data).toMatchObject({ admitted: attended ? [] : ["check-product"], stored: 0 });
+      expect(readings[0]?.data).toMatchObject({ admitted: attended ? [] : ["check-product"] });
       expect(readings[0]?.data.faults).toEqual(
         attended ? [expect.stringContaining("--admit check-product")] : [],
       );

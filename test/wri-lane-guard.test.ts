@@ -116,25 +116,6 @@ describe("the lane guard", () => {
     expect(refusalOf("Grep", { path: "/Users/x/anabasis/src" })).toBeNull();
   });
 
-  it("refuses the rejections command that logs verdicts by its folder, and lets the lane's reader of the same name run", () => {
-    for (const refused of [
-      "bun tools/c/rejections.ts --log /a/.ana/d2/r/log.jsonl",
-      "bun run tools/c/rejections.ts /a/.ana/d2/r/log.jsonl",
-      "cd tools/c && bun rejections.ts /a/.ana/d2/r/log.jsonl",
-      "cd tools/c && bun run rejections.ts /a/.ana/d2/r/log.jsonl",
-    ]) {
-      expect(bash(refused)).toBe("a command that logs verdicts");
-    }
-    for (const ok of [
-      "bun tools/wri/rejections.ts /a/.ana/d2/r/log.jsonl",
-      "bun run tools/wri/rejections.ts /a/.ana/d2/r/log.jsonl --solve s-1",
-      "cd tools/wri && bun rejections.ts /a/.ana/d2/r/log.jsonl",
-      "sed -n 120,135p tools/c/rejections.ts",
-    ]) {
-      expect(bash(ok)).toBeNull();
-    }
-  });
-
   it("reads the command a wrapper, a flag or a find runs, and the line after a here-string", () => {
     for (const ok of ["timeout 30 grep -rn solve src", "sed -n 1,40p tools/d2/word.ts"]) {
       expect(bash(ok)).toBeNull();

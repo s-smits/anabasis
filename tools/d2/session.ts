@@ -1,9 +1,7 @@
 /**
  * One Builder session over a campaign, with no comparison after it.
  *
- *   bun tools/d2/session.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
- *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session b-2 \
- *     --builder claude/claude-opus-5-5 --cap 150
+ *   bun tools/d2/session.ts --name truss --session b-2 --builder claude/claude-opus-5-5 --cap 150
  *
  * A standalone comparison is several sessions and then one comparison. A round compares what it
  * leaves, so several rounds cost several paid comparisons. This is the session by itself: it forks the

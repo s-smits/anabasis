@@ -3,13 +3,9 @@
  * Launches, dry runs and continuations require the executing Bun to match this tree's exact
  * packageManager pin and engines.bun, before opening a campaign, keeping a receipt or recovery.
  *
- *   bun tools/d2/harness-builder.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
- *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss \
- *     --budget 400 --builder claude/claude-opus-5-5 --examiner claude/claude-opus-5-5 \
- *     --reviewer claude/claude-opus-5-5 --solve-model-turns 40 [--moves 1] [--dry-run] [--hitl]
- *
  *   bun tools/d2/harness-builder.ts --name queues --prompt "<the domain, in the operator's words>" \
- *     --solver claude/claude-sonnet-5-5 --budget 60 --builder ... --examiner ... --reviewer ...
+ *     --solver claude/claude-sonnet-5-5 --budget 60 --builder claude/claude-opus-5-5 \
+ *     --examiner claude/claude-opus-5-5 --reviewer claude/claude-opus-5-5 [--moves 1] [--dry-run] [--hitl]
  *
  * A campaign is a loop of moves over one log. Rather than a session carrying each one by hand,
  * reading the view, choosing a move by a skill's walk and typing the command with its flags, this
@@ -29,21 +25,18 @@
  * buy an Examiner session past its supply patience. An older log whose host made every move
  * (`--no-builder-led`) runs led like any other.
  *
- * **A campaign opens over a stored pack, which four flags name, or from a prompt.**
- * The prompt and who solves are then part of what it runs by, its first move is the Examiner's
- * draft of the exam, and from there every command opens the campaign by its name alone, over the
- * exam its log holds. Every check of a drafted exam is its author's own computation, and the
- * launch is the operator's word for each: the exam is read with every check its author
- * decides admitted, the objective among them, in a drafted exam or a stored pack
- * (`--admit-authored`), and frozen where nothing else is at fault. Under `--hitl` they wait for
- * `--admit`.
+ * **A campaign opens from a prompt.** The prompt and who solves are part of what it runs by, its
+ * first move is the Examiner's draft of the exam, and from there every command opens the campaign
+ * by its name alone, over the exam its log holds. Every check of a drafted exam is its author's
+ * own computation, and the launch is the operator's word for each: the exam is read with every
+ * check its author decides admitted, the objective among them (`--admit-authored`), and frozen
+ * where nothing else is at fault. Under `--hitl` they wait for `--admit`.
  *
  * What it runs each move as:
  *
  *   draft the exam      tools/d1b/draft.ts, under `d-N`, for a campaign that opened from a prompt;
  *                       a draft that stands keeps its reading, and is frozen unless `--hitl`
- *   read the exam       tools/c/accept.ts, with `--freeze --admit-authored` unless `--hitl`, over
- *                       a stored pack, and for the checks a reading under `--hitl` left
+ *   read the exam       tools/c/accept.ts, for the checks a reading under `--hitl` left
  *                       unadmitted (`planOf`, `opening.ts`)
  *   set the tasks apart tools/d2/prepare.ts
  *   a conversation      tools/d2/session.ts with the campaign's tools, under `b-N`, where the
@@ -147,7 +140,6 @@ import {
   moved,
   nextId,
   opened,
-  packed,
   packOf,
   prepared,
   promoteMade,
@@ -161,7 +153,7 @@ import {
 import { checkpointCommand } from "./checkpoint.ts";
 import { closeCommand } from "./close.ts";
 import { gated as queued, HOST, waitCrashed } from "./host.ts";
-import { solved } from "./round.ts";
+import { type Campaign, solved } from "./round.ts";
 import { sessionCommand } from "./session.ts";
 import { type AskedSetting, firstRecord, keepSetting, recordedSetting, settingAsked } from "./setting.ts";
 
@@ -259,8 +251,6 @@ function examLines(
     ...(authored.length === 0
       ? []
       : [
-          // With the flags that name the campaign's pack, where it has one: a line that named the
-          // campaign alone would throw, run over a stored pack.
           `to admit the checks their author's own computation decides, which is the operator's word for each: bun tools/d2/harness-builder.ts ${packOf(values).join(" ")} --admit ${authored.join(",")}`,
         ]),
   ];
@@ -462,7 +452,6 @@ async function served(opening: Opening, paid: "paid" | "scripted", named?: strin
   if (paid === "scripted") return opening;
   const { seats, solver } = opening;
   const models = backends(sweepOptions());
-  // A stored pack's opening keeps no solver: its `--solver` solves, or its cycle's own model.
   const roles = [
     ...SEATS.map((name) => [name, seats[name]?.model] as const),
     ["solver", named ?? solver?.model] as const,
@@ -515,9 +504,9 @@ export async function harnessBuilder(
     throw new Error(`--moves ${String(given.moves)}: the moves to make are a number`);
   }
   const log = campaignLog(name);
-  // Opening a campaign stages its check program, and refuses one the log froze otherwise. One that
-  // opens from a prompt has no exam to open over until its first draft stands.
-  let campaign = packed(given) ? await openCampaign(packNamed(given)) : null;
+  // Opening a campaign stages its check program, and refuses one the log froze otherwise; it has no
+  // exam to open over until its first draft stands.
+  let campaign: Campaign | null = null;
   const setting = settingOf(log, given);
   let opening = await served(opened(log, given, paid), paid, given.solver);
   if (paid === "paid" && !given["dry-run"]) keepReceipt(log, args);

@@ -4,7 +4,7 @@
  * `openCampaign` builds its seats' contract with), and each released task's public input with the
  * answers its practice solves passed with, which a Builder reads in their traces.
  *
- *   bun tools/wri/public-exam.ts <log | campaign folder | name> [--bundle <pack>]
+ *   bun tools/wri/public-exam.ts <log | campaign folder | name>
  *
  * Without it a lane 6 session pulls the released tasks and their practice passes out of the log by
  * hand, in dozens of calls, and `exam.drafted`, the one event that holds the public rules whole,
@@ -15,8 +15,7 @@
  * conventions, the scope, the objective and the answer format; each released task's public input;
  * and the answers of practice solves (`practiceRan`), never a comparison's or an Examiner's. It
  * reads no check, evaluator, control answer, hidden value, Referee finding or held-out task's input,
- * so none can reach its output, and a held-out task is counted only. A stored pack's answer format
- * is its sweep's, which the log does not hold, and the view says so.
+ * so none can reach its output, and a held-out task is counted only.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { draftOf } from "#src/examiner/draft.ts";
@@ -33,7 +32,7 @@ import { logAcross } from "#tools/runs/snapshots.ts";
 import { NO_TRACES } from "./folds.ts";
 import { proposedTasks } from "./tasks.ts";
 
-const USAGE = "usage: bun tools/wri/public-exam.ts <log | campaign folder | name> [--bundle <pack>]";
+const USAGE = "usage: bun tools/wri/public-exam.ts <log | campaign folder | name>";
 
 /** The released tasks, each with its public input and the distinct answers its practice solves
  *  passed with, by digest, with how many solves gave each. */
@@ -87,24 +86,22 @@ function publicExam(events: readonly LogEvent[], bundle: string): string[] {
     `conventions: ${contract.conventions || "none"}`,
     `scope: ${contract.scope}`,
     `objective: ${contract.objective === undefined ? "none declared" : objectiveLine(contract.objective)}`,
-    `answer format: ${format === undefined ? "not in the log (a stored pack's is its sweep's)" : capturedJsonStringify(format)}`,
+    `answer format: ${capturedJsonStringify(format ?? null)}`,
     ...releasedLines(events, bundle),
   ];
 }
 
 async function main(args: CommandArgs): Promise<number> {
   const log = await logAcross(args.positionals[0] ?? args.required("log"), "record");
-  const bundle = args.value("bundle") ?? stagedExamOf(log)?.bundle;
-  if (bundle === undefined) {
-    throw new Error("name --bundle: the campaign drafted no exam, so its pack is a stored one");
-  }
+  const bundle = stagedExamOf(log)?.bundle;
+  if (bundle === undefined) throw new Error("the campaign drafted no exam of its own");
   console.log(publicExam(read(log, NO_TRACES), bundle).join("\n"));
   return 0;
 }
 
 if (import.meta.main) {
   await runCommand(
-    { name: "public-exam", usage: USAGE, options: { log: "text", bundle: "text" }, positionals: [0, 1] },
+    { name: "public-exam", usage: USAGE, options: { log: "text" }, positionals: [0, 1] },
     main,
   );
 }

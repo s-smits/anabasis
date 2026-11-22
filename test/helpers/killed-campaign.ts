@@ -10,12 +10,13 @@
 
 import { examine } from "../../src/examiner/session.ts";
 import { existsSync } from "../../src/meta/filesystem.ts";
-import { join } from "../../src/meta/path.ts";
+import { dirname, join } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
+import { campaignLog } from "../../tools/d2/campaign.ts";
 import type { Seats } from "../../tools/d2/campaign-terms.ts";
 import { harnessBuilder } from "../../tools/d2/harness-builder.ts";
 import { scriptedSeats } from "../../tools/runs/rehearse.ts";
-import { fixtureTasks, gradedOf, scriptedModel } from "./fixture-pack.ts";
+import { fixtureTasks, gradedOf, layOutPack, OPENED_FROM, scriptedModel } from "./fixture-pack.ts";
 
 /** The pack's tasks: fourteen held once two are released, as `test/harness-builder.test.ts` holds. */
 export const PACK_TASKS = fixtureTasks(16);
@@ -35,6 +36,8 @@ const written = Array.from({ length: 12 * WRITTEN }, (_, index) => {
 });
 if (import.meta.main) {
   const [root = "", name = "", moves = ""] = runtimeProcess.argv.slice(2);
+  // The first run finds the campaign's exam drafted; a run after a kill finds it there already.
+  if (!existsSync(campaignLog(name))) layOutPack(dirname(campaignLog(name)), PACK_TASKS);
   const strayed: string[] = [];
   const seats: Seats = {
     seated: scriptedSeats(
@@ -66,18 +69,11 @@ if (import.meta.main) {
   };
   await harnessBuilder(
     [
-      "--root",
-      root,
-      "--sweep",
-      "s",
-      "--cycle",
-      "c01",
-      "--bundle",
-      `${root}/bundle`,
       "--name",
       name,
       "--project",
       "fixture-products",
+      ...OPENED_FROM,
       "--admit",
       "check-product",
       "--practice",

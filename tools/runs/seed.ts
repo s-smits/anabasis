@@ -178,9 +178,9 @@ export function seedCampaign(from: string, to: string, cut: Cut) {
         cpSync(join(from, part), join(to, part), { recursive: true, verbatimSymlinks: true });
       }
     };
-    // A campaign over a stored pack stages its checks beside the log; one that drafted its exam
-    // stages the exam under `exams/<digest>/` (`tools/d2/exam.ts`), which a seed of it needs too.
-    for (const part of ["checks", "exams", "states"]) copy(part);
+    // A campaign stages the exam it drafted under `exams/<digest>/` (`tools/d2/exam.ts`), which a
+    // seed of it needs too.
+    for (const part of ["exams", "states"]) copy(part);
     // Read as this tree reads a log: an event kind it does not know is refused here, not mid-round.
     const events = read(join(to, LOG_FILE));
     for (const { kind, data } of events) {

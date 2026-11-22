@@ -50,9 +50,7 @@ function examStaged(dir: string, draft: Draft): Staged {
 /**
  * The exam a campaign's log drafted, where the campaign staged it, for a reader that may write
  * nothing under the campaign's folder (`tools/wri/wri.ts grade`): null where the log drafted no
- * exam, so the campaign's pack is a stored one, and refused where the draft was never staged.
- * A reader given `<campaign>/checks`, which only a campaign over a stored pack has, would
- * otherwise stop on ENOENT.
+ * exam, as an old campaign over a stored pack did, and refused where the draft was never staged.
  */
 export function stagedExamOf(log: string): Staged | null {
   const draft = draftOf(read(log));
@@ -152,7 +150,6 @@ export async function draftReading(
       contract,
       tasks: pack.tasks,
       controls: packControls(bundle),
-      stored: [],
       found: toolOnPath(bundle),
       width,
     });

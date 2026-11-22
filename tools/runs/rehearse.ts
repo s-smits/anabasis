@@ -1,6 +1,6 @@
 /**
  *   bun run runs rehearse --name <seed> <the flags of tools/d2/harness-builder.ts> [--supply N]
- *     [--held none:pass] [--starter none] [--root <folder> --sweep <sweep> --bundle <folder>]
+ *     [--held none:pass] [--starter none]
  *   bun run runs rehearse --name <seed> --id <comparison> <the flags of tools/d2/checkpoint.ts> ...
  *   bun run runs rehearse --name <seed> --no-comparison <the flags of tools/d2/session.ts> ...
  *
@@ -11,9 +11,7 @@
  * Builder session with no comparison after it (`tools/d2/session.ts`). Otherwise the flags are the
  * Harness Builder's (`tools/d2/harness-builder.ts`), and the live Builder is rehearsed: its script
  * edits the guide and finishes each conversation, until it ends or
- * `--moves` are made. Over a stored pack no script sits in the Examiner's seat, so a rehearsal
- * that needs tasks written finishes when its Examiner tool is unavailable; over a drafted exam
- * the Examiner is scripted from the seed's source campaign, and proposes the tasks its sessions wrote after the
+ * `--moves` are made. The Examiner is scripted from the seed's source campaign, and proposes the tasks its sessions wrote after the
  * cut, in their order, until none is left; with `--supply N` it then proposes up to N further
  * instances copied from the source's answered tasks, each with a copy mark in its public input so
  * that it is another instance, which the script answers as it answers the task it copies. That is
@@ -27,9 +25,8 @@
  * the command wall and its freeze, each solve's deadline and root, the answer file and `submit`,
  * the verifier, the comparison and the report. Its flags and defaults are those of the command it
  * runs, except that it needs no `--cap`: a script is paid nothing. The three flags that name a model
- * are refused. The answers the script writes are a
- * stored pack's graded passes and control answers where `--root --sweep --bundle` name one, and otherwise
- * the drafted exam's control answers and every answer the seed's source campaign passed (`draftedGraded`).
+ * are refused. The answers the script writes are the drafted exam's control answers and every
+ * answer the seed's source campaign passed (`draftedSource`).
  *
  * The Builder's script edits the guide through its walled shell. In a campaign it compares its
  * edit itself; in an isolated session it finishes after the edit.
@@ -69,7 +66,6 @@ import { type Examined, examine, type Session } from "#src/examiner/session.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isFunction, isString, type JsonObject } from "#src/meta/json-shape.ts";
-import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
@@ -83,7 +79,7 @@ import { checkpointCommand } from "../d2/checkpoint.ts";
 import { harnessBuilder } from "../d2/harness-builder.ts";
 import type { Seated } from "../d2/round.ts";
 import { sessionCommand } from "../d2/session.ts";
-import { packControls, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
+import { packControls } from "../m0/stored-sweep.ts";
 import { Misused, SEED_FILE } from "./registry.ts";
 import { codeLine } from "./seed.ts";
 
@@ -115,8 +111,6 @@ const COPY = "rehearsal_copy";
 
 const OWN = new Set(["held", "starter", "supply", "no-comparison"]);
 
-/** The flags that name a stored pack together (`packNamed`). */
-const PACK_FLAGS = 3;
 const TOOL_USE = { stopReason: "toolUse" } as const;
 /** A list price for the scripted model, which the meter refuses to run without: what a rehearsal
  *  meters is the script's own words at this price, and is no cost. */
@@ -368,26 +362,17 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
   };
 }
 
-/** The answers a stored sweep graded as passes, for the script to write. */
-function storedPasses(root: string, sweep: string): Control[] {
-  return sweepRows(root, sweep).flatMap((row) => {
-    const answer = row.ending.outcome === "pass" ? storedAnswer(row) : undefined;
-    return answer === undefined ? [] : [{ taskId: row.taskId, answer, refusedBy: null }];
-  });
-}
-
 /**
  * The answers a seed of a campaign that drafted its exam gives the script: the draft's control answers,
  * from where the campaign staged them, and every answer the source campaign's checks passed, which
- * a seed cut before those solves no longer holds. A rehearsal takes a drafted exam as well as a
- * stored pack, since a campaign that drafted its exam has no pack.
+ * a seed cut before those solves no longer holds.
  */
 function draftedSource(name: string): DraftedSource {
   const log = campaignLog(name);
   const staged = stagedExamOf(log);
   if (staged === null) {
     throw new Error(
-      `name --root, --sweep and --bundle: campaign ${name} holds no exam of its own, and a rehearsal scripts answers from a stored pack or a drafted exam`,
+      `campaign ${name} holds no exam of its own, and a rehearsal scripts answers from a drafted exam`,
     );
   }
   const seed = asRecord(capturedJsonParse(readFileSync(join(dirname(log), SEED_FILE), "utf8")));
@@ -512,62 +497,39 @@ export async function rehearse(args: readonly string[]): Promise<void> {
       supply: { type: "string", default: "0" },
       "no-comparison": { type: "boolean", default: false },
       id: { type: "string" },
-      root: { type: "string" },
-      sweep: { type: "string" },
-      bundle: { type: "string" },
       name: { type: "string" },
       builder: { type: "string" },
       solver: { type: "string" },
       reviewer: { type: "string" },
     },
   });
-  const { held, root, sweep, bundle } = values;
+  const { held } = values;
   const least = isString(values.starter) ? endOf(values.starter) : undefined;
   const seated = (["builder", "solver", "reviewer"] as const).filter((seat) => values[seat] !== undefined);
   if (seated.length > 0) {
     // A reviewer named here would be a live one, reading scripted fails for money.
     throw new Error(`a rehearsal seats no model: drop --${seated.join(", --")}`);
   }
-  const named = [root, sweep, bundle].filter(isString).length;
-  if (
-    !isString(held) ||
-    least === undefined ||
-    (named !== 0 && named !== PACK_FLAGS) ||
-    !isString(values.name)
-  ) {
-    throw new Misused();
-  }
-  const stored = isString(root) && isString(sweep) && isString(bundle) ? { root, sweep, bundle } : null;
-  const drafted = stored === null ? draftedSource(values.name) : null;
+  if (!isString(held) || least === undefined || !isString(values.name)) throw new Misused();
+  const drafted = draftedSource(values.name);
   const seeded = dirname(campaignLog(values.name));
   // The code the seed's source ran at its cut, against this tree's: a line that refuses nothing.
   if (existsSync(join(seeded, SEED_FILE))) {
     console.log(codeLine(resolve(import.meta.dir, "..", ".."), seeded));
   }
-  const graded =
-    stored === null
-      ? (drafted?.graded ?? [])
-      : [...storedPasses(stored.root, stored.sweep), ...packControls(stored.bundle)];
+  const { graded } = drafted;
   const strayed: string[] = [];
   const seats = scriptedSeats({ held: sidesOf(held), starter: least }, graded, strayed);
   const flags = passedOn(args, tokens, OWN);
   // A standalone comparison is named by its `--id` and runs no session, so no Builder's script can stray, and
-  // a campaign's sessions are its own to count. A campaign over a drafted exam seats an Examiner
-  // scripted from its source; one over a stored pack seats none, and stops where it needs one,
-  // having named what strayed before, so that such a stop hides no solve of a task with no answer
-  // on record read as a tie.
+  // a campaign's sessions are its own to count. A campaign seats an Examiner scripted from its source.
   try {
     if (values["no-comparison"] !== true && !isString(values.id)) {
       await harnessBuilder(flags, {
         seated: seats,
         // The opening a seed copied names its source's reviewer, a live model.
         unreviewed: true,
-        ...keyIfDefined(
-          "examine",
-          drafted === null
-            ? undefined
-            : scriptedExaminer(drafted.later, drafted.answered, Number(values.supply), graded),
-        ),
+        examine: scriptedExaminer(drafted.later, drafted.answered, Number(values.supply), graded),
       });
     } else if (isString(values.id)) await checkpointCommand(flags, seats);
     else if ((await sessionCommand(flags, seats)) === null) {

@@ -13,7 +13,7 @@ import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import { sizeLines } from "../src/kernel/size.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import {
-  mkdirSync,
+  existsSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -34,11 +34,18 @@ import type { Seated } from "../tools/d2/round.ts";
 import { settleCommand } from "../tools/d2/settle.ts";
 import { wordCommand } from "../tools/d2/word.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
-import { fixtureTasks, gradedOf, layOutPack, type Step, scriptedModel } from "./helpers/fixture-pack.ts";
+import {
+  type FixtureTask,
+  fixtureTasks,
+  gradedOf,
+  layOutPack,
+  OPENED_FROM,
+  type Step,
+  scriptedModel,
+} from "./helpers/fixture-pack.ts";
 import { containing } from "./helpers/matchers.ts";
 
 const REPO = resolve(import.meta.dir, "..");
-const FIXTURE = join(REPO, "test", "fixtures", "harness-min");
 // Not `harness-builder.test.ts`'s stem: the suite's workers run files without isolation, so both
 // files can share a process id, and both open a campaign named `-limit`.
 const STEM = `test-bl-${String(runtimeProcess.pid)}`;
@@ -83,7 +90,10 @@ const IDLE: readonly Step[] = [FINISH_IDLE, FINISH_IDLE];
 const LEVEL = ["--level", "0.125", "--patience", "3"];
 const FLAGS = ["--practice", "2", "--target", "5", ...LEVEL];
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-hb-")));
-const bundle = join(root, "bundle");
+/** The tasks the next seeded campaign drafted its exam over, and how many of the first of them its
+ *  draft gives an accepted answer: every one unless a case says otherwise. */
+let drafted: readonly FixtureTask[] = TASKS;
+let accepting: number | undefined;
 const names: string[] = [];
 
 setDefaultTimeout(600_000);
@@ -93,14 +103,14 @@ afterAll(() => {
   for (const name of names) rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
 });
 
-/** A campaign's folder marked as a seed, and the flags that name its stored pack. */
-function seeded(name: string, under = root): string[] {
+/** A campaign's folder marked as a seed, holding the exam its log drafted over `drafted`, and the
+ *  flags that open it. */
+function seeded(name: string): string[] {
   names.push(name);
   const folder = join(REPO, ".ana", "d2", name);
-  mkdirSync(folder, { recursive: true });
+  if (!existsSync(join(folder, LOG_FILE))) layOutPack(folder, drafted, accepting);
   writeFileSync(join(folder, "seed.json"), `${JSON.stringify({ from: null, events: 0 })}\n`);
-  const pack = ["--root", under, "--sweep", "s", "--cycle", "c01", "--bundle", join(under, "bundle")];
-  return [...pack, "--name", name, "--project", PROJECT, "--admit", "check-product"];
+  return ["--name", name, "--project", PROJECT, ...OPENED_FROM, "--admit", "check-product"];
 }
 
 /** A campaign's log, every event in order. */
@@ -157,7 +167,7 @@ const proposing = (count: number, from = 0): readonly [string, JsonObject] => [
   {
     tasks: Array.from({ length: count }, (_, n) => ({
       family: "fixture",
-      public_input: { base: 2, rehearsal_copy: { of: "t-1", n: n + from } },
+      public_input: { base: 2, rehearsal_copy: { of: "ex-001", n: n + from } },
       hidden: null,
     })),
   },
@@ -196,7 +206,7 @@ describe("the host's practice release", () => {
   const released = ({ log }: CampaignContext) => taskSets(read(log)).released.length;
 
   it("takes no task where a comparison starts while it opens the campaign, since that comparison has drawn", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
+    drafted = MANY;
     const raced = await owing(`${STEM}-release-raced`);
     const releasing = releaseOwed(raced, "the race under test");
     // The guard has passed and the release waits on the campaign's opening.
@@ -211,7 +221,7 @@ describe("the host's practice release", () => {
   });
 
   it("releases once where two causes ask at the same moment", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
+    drafted = MANY;
     const name = `${STEM}-release-twice`;
     const twice = await owing(name);
     const asked = await Promise.all([
@@ -227,7 +237,7 @@ describe("the host's practice release", () => {
 
 describe("a campaign run by its live Builder", () => {
   it("lets the Builder ask the Examiner, and keeps the handover filtered", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
+    drafted = TASKS;
     const name = `${STEM}-examiner`;
     const asked: { tasks: number; minutes: number | undefined; turns: number; proposals: number }[] = [];
     const seats: Seats = {
@@ -291,7 +301,7 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("wakes one Examiner conversation at each examine, and opens another from the log once it crashed", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
+    drafted = TASKS;
     const name = `${STEM}-conversing`;
     const sessions: { id: string; tasks: string[] }[] = [];
     const asked: Step[] = [
@@ -346,7 +356,7 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("wakes the resting Examiner conversation at the first ask after a promotion and tells it of the promotion", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
+    drafted = MANY;
     const name = `${STEM}-conversing-promoted`;
     let conversations = 0;
     const seats: Seats = {
@@ -386,7 +396,7 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("makes no second draw of a pair whose reading had room, even on tasks written since", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
+    drafted = MANY;
     const name = `${STEM}-tabled`;
     const tied = scriptedSeats({ held: { old: "pass", fresh: "pass" }, starter: "pass" }, GRADED, []);
     const seats: Seats = {
@@ -408,7 +418,7 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("makes no second draw of a pair nothing changed in, and records no move for an action it refused", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
+    drafted = MANY;
     const name = `${STEM}-unchanged`;
     const tied = scriptedSeats({ held: { old: "pass", fresh: "pass" }, starter: "pass" }, GRADED, []);
     const seats: Seats = {
@@ -442,7 +452,7 @@ describe("a campaign run by its live Builder", () => {
   it("requires a Referee for a paid opening, keeps its recorded seat, and permits scripted openings without one", () => {
     const log = join(root, "terms", "reviewer", LOG_FILE);
     const flags = (...more: string[]) =>
-      flagsOf(["--root", root, "--name", "terms", "--project", PROJECT, "--budget", "100", ...more]);
+      flagsOf(["--name", "terms", "--project", PROJECT, ...OPENED_FROM, "--budget", "100", ...more]);
     expect(() => opened(log, flags(), "paid")).toThrow("--reviewer");
     expect(read(log)).toEqual([]);
     expect(opened(log, flags(), "scripted")).toMatchObject({ seats: { reviewer: null } });
@@ -459,7 +469,7 @@ describe("a campaign run by its live Builder", () => {
   // would lose to the `--budget` the command was started with, which is older.
   it("takes an operator's total over the --budget the command was started with, and answers it once", () => {
     const log = join(root, "terms", "budget", LOG_FILE);
-    const flags = flagsOf(["--root", root, "--name", "terms", "--project", PROJECT, "--budget", "300"]);
+    const flags = flagsOf(["--name", "terms", "--project", PROJECT, ...OPENED_FROM, "--budget", "300"]);
     expect(opened(log, flags, "scripted").budget?.dollars).toBe(300);
     append(log, "campaign.word", { word: "budget", dollars: 50 });
     const totals = pendingWords(read(log));
@@ -469,7 +479,7 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("starts the campaign's first Examiner session as the conversation opens, where the table names one", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
+    drafted = TASKS;
     const name = `${STEM}-first-examiner`;
     const seats: Seats = {
       seated: builderScript(winning(), [["finish", { note: "The Examiner writes; nothing to build yet." }]]),
@@ -494,7 +504,7 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("lets the Builder practise while the Examiner writes, refuses a second session, and ends the Examiner's first", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
+    drafted = TASKS;
     const name = `${STEM}-beside`;
     const log = join(REPO, ".ana", "d2", name, LOG_FILE);
     // The Examiner writes until the Builder has practised and finished.
@@ -558,7 +568,7 @@ describe("a campaign run by its live Builder", () => {
     };
 
     it("into the workspace of a Builder in wait, and none while the session writes", async () => {
-      layOutPack(root, bundle, TASKS, FIXTURE);
+      drafted = TASKS;
       const name = `${STEM}-on-hold`;
       // The Examiner proposes once the Builder waits, holding six, and finishes.
       const waiting = Promise.withResolvers<void>();
@@ -608,7 +618,7 @@ describe("a campaign run by its live Builder", () => {
     });
 
     it("but none that would leave the frontier short of a sweep at the level", async () => {
-      layOutPack(root, bundle, TASKS, FIXTURE);
+      drafted = TASKS;
       const name = `${STEM}-on-hold-sweep`;
       const waiting = Promise.withResolvers<void>();
       const seats: Seats = {
@@ -650,7 +660,7 @@ describe("a campaign run by its live Builder", () => {
     });
 
     it("after a promotion with the default ask, without changing the final practice count", async () => {
-      layOutPack(root, bundle, MANY, FIXTURE);
+      drafted = MANY;
       const name = `${STEM}-on-hold-promoted`;
       const log = join(REPO, ".ana", "d2", name, LOG_FILE);
       const waiting = Promise.withResolvers<void>();
@@ -708,7 +718,7 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("tells a Builder finishing on a harness no comparison read so once, with the Examiner session still writing", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
+    drafted = TASKS;
     const name = `${STEM}-unread`;
     // The guide changed, an Examiner session asked for, and finish called while it wrote, as one
     // recorded run did. The Examiner writes until the Builder's second finish.
@@ -755,7 +765,7 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("stops the Examiner writing beside the conversation when the operator's stop halts it", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
+    drafted = TASKS;
     const name = `${STEM}-beside-stop`;
     const stopped = Promise.withResolvers<void>();
     const seats: Seats = {
@@ -792,7 +802,7 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("honours a task word during the conversation before allowing another action", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
+    drafted = TASKS;
     const name = `${STEM}-live-tasks`;
     let calls = 0;
     const seats: Seats = {
@@ -825,7 +835,7 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("uses the last permitted move and refreshes practice without following a Builder's link", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
+    drafted = TASKS;
     const name = `${STEM}-last-move`;
     const seats: Seats = {
       seated: builderScript(winning(), [
@@ -858,7 +868,7 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("keeps one Builder conversation from A to B and then from B to C", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
+    drafted = MANY;
     const name = `${STEM}-promote`;
     const strayed: string[] = [];
     const seats: Seats = {
@@ -935,11 +945,11 @@ describe("a campaign run by its live Builder", () => {
       ["compare", "promote"].includes(isString(tool) ? tool : ""),
     );
     expect(campaignCalls.every(({ text }) => !isString(text) || !text.includes("check-product"))).toBe(true);
-    expect(campaignCalls.every(({ text }) => !isString(text) || !text.includes("t-1"))).toBe(true);
+    expect(campaignCalls.every(({ text }) => !isString(text) || !text.includes("ex-001"))).toBe(true);
   });
 
   it("resumes an interrupted comparison on its original terms before another conversation opens", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
+    drafted = TASKS;
     const name = `${STEM}-resume`;
     const base = winning();
     let cut = true;
@@ -992,13 +1002,13 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("keeps admission decisions in the host and leaves dry-run as an advisory reader", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
+    drafted = TASKS;
     const name = `${STEM}-dry-run`;
     const seats: Seats = {
       seated: builderScript(winning(), [["finish", { note: "not reached" }]]),
     };
     expect(await harnessBuilder([...seeded(name), "--dry-run"], seats)).toMatchObject({ move: "accept" });
-    expect(of(name, OPENED)).toEqual([]);
+    expect(of(name, OPENED)).toHaveLength(1);
     expect(await harnessBuilder([...seeded(name), "--moves", "0"], seats)).toMatchObject({ move: "accept" });
     expect(of(name, "build.started")).toEqual([]);
     expect(of(name, "checker.read")).toEqual([]);
@@ -1010,7 +1020,7 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("returns a filtered refusal before an Examiner action starts and lets the Builder finish", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
+    drafted = TASKS;
     const name = `${STEM}-examiner-error`;
     const seats: Seats = {
       seated: builderScript(winning(), [
@@ -1027,7 +1037,7 @@ describe("a campaign run by its live Builder", () => {
     const call = of(name, CALLED).find(({ tool }) => tool === "examine");
     expect(call?.text).not.toContain("private examiner failure");
     expect(call?.text).not.toContain("check-product");
-    expect(call?.text).not.toContain("t-1");
+    expect(call?.text).not.toContain("ex-001");
     // The move is on record as it began, as a host's is; nothing of a session follows it.
     expect(of(name, MOVED).find(({ move }) => move === "examine")).toMatchObject({ session: "x-1" });
     expect(of(name, EXAM_STARTED)).toEqual([]);
@@ -1035,7 +1045,7 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("waits out a provider limit that ended an action before its first event, and has the Builder ask again", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
+    drafted = TASKS;
     const name = `${STEM}-limit`;
     const reset = Math.floor(Date.now() / 1000) + 60;
     // The first session is the host's, as the conversation opens; the limit ends the Builder's.
@@ -1073,10 +1083,10 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("writes blind labels for rejected comparison answers", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
+    drafted = TASKS;
     const name = `${STEM}-settle`;
     const args = seeded(name);
-    const pack = args.slice(0, -4);
+    const pack = args.slice(0, 2);
     const seats: Seats = {
       seated: builderScript(
         scriptedSeats({ held: { old: "fail", fresh: "pass" }, starter: "none" }, GRADED, []),
@@ -1110,7 +1120,7 @@ describe("a campaign tool where the table names more than the action", () => {
   const passing = () => winning(GRADED_MANY);
 
   it("reads the starter against a promoted reference while harness/ is that reference", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
+    drafted = MANY;
     const name = `${STEM}-control`;
     const seats: Seats = {
       seated: builderScript(passing(), [
@@ -1157,7 +1167,7 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 
   it("ends the campaign on the operator's cap at its first promotion, and tells the Builder no count", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
+    drafted = MANY;
     const name = `${STEM}-capped`;
     const seats: Seats = {
       seated: builderScript(passing(), [CHANGE_GUIDE, ["compare", {}], ["examine", {}], FINISH_IDLE]),
@@ -1178,7 +1188,7 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 
   it("hears a stop word left while a step's promotion waits for the Examiner writing beside it", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
+    drafted = MANY;
     const name = `${STEM}-stop-waiting`;
     const seats: Seats = {
       seated: builderScript(passing(), [
@@ -1218,7 +1228,7 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 
   it("promotes a waiting step before it answers a word for other tasks, so they are written against the new reference", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
+    drafted = MANY;
     const name = `${STEM}-word-waiting`;
     const seats: Seats = {
       seated: builderScript(passing(), [
@@ -1264,7 +1274,7 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 
   it("promotes the harness each step froze as it reports, whatever harness/ holds since, and runs the table's starter comparison before the Builder's comparison of a changed harness/", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
+    drafted = MANY;
     const name = `${STEM}-asked`;
     const seats: Seats = {
       seated: builderScript(passing(), [
@@ -1333,7 +1343,7 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 
   it("waits at a compare right after a promotion for the session writing for the new reference, and runs the starter comparison on its tasks", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
+    drafted = MANY;
     const name = `${STEM}-after-promotion`;
     const seats: Seats = {
       seated: builderScript(passing(), [
@@ -1374,7 +1384,7 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 
   it("tells the Builder at examine whether a compare will wait for the session, as the compare then does", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
+    drafted = MANY;
     const name = `${STEM}-examine-says`;
     // The session the promotion starts holds nothing, so no release ends the Builder's wait before
     // the session does; each later one writes for a second and a half, long enough to read a
@@ -1433,7 +1443,7 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 
   it("reads a changed harness/ at the Builder's compare once the epoch's starter comparison has tallied, though tasks were held since", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
+    drafted = MANY;
     const name = `${STEM}-owed-once`;
     let sessions = 0;
     const seats: Seats = {
@@ -1550,7 +1560,7 @@ describe("a campaign tool where the table names more than the action", () => {
   };
 
   it("tells the Builder the same whichever held-out task was won", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
+    drafted = MANY;
     // The two campaigns tie other tasks in each comparison, and the tallies are the same. A status
     // that counted the tasks waiting for a label and the exhausted ones would read two such
     // campaigns differently (rule 3).
@@ -1564,7 +1574,7 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 
   it("tells the Builder the same whichever held-out task was won where the cap is short of the next test", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
+    drafted = MANY;
     // What is left after g-1 is below the price of g-2's test at what the campaign's solves billed
     // each, a rate read from every finished solve's bill, so `cap-short` holds and the campaign ends
     // on its budget before a second comparison. Its refusal's own text, which carries that rate,
@@ -1588,28 +1598,35 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 
   it("tells the Builder the same whichever held-out task was won where the frontier falls below the target", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
+    drafted = MANY;
     // A task no side answered in two comparisons waits for a label and leaves the frontier. Here
     // the candidate's g-2 win takes the first task out of that wait or leaves it in, so the count a
     // comparison would score differs unless no harness but the reference decides it (rule 3).
-    // The stored sweep accepted no answer, so no held-out task holds a valid answer on record
-    // before a comparison gives it one.
-    const grades = join(root, "grades", "s", "grades.tsv");
-    writeFileSync(grades, readFileSync(grades, "utf8").replaceAll("verified-pass", "verified-fail"));
+    // The draft accepts an answer to ex-001 alone, so no other held-out task holds a valid answer
+    // on record before a comparison gives it one.
+    accepting = 1;
     const flags = [...FLAGS.slice(0, -LEVEL.length - 2), "--target", "8", ...LEVEL];
-    // The comparisons draw t-2, t-4, t-6, t-8 to t-12. Each ties six and the candidate wins two; in
-    // the second campaign g-2 wins t-2 in place of t-11. No task is held out between them, so g-1's
-    // report releases one, the most a reading with nothing held out since the last release is owed.
-    const tied = ["t-2", "t-4", "t-6", "t-8", "t-9", "t-10"];
-    const same = await everythingRead(`${STEM}-short-one`, { "g-1": tied, "g-2": tied }, flags);
+    // g-1 draws ex-002 to ex-004, ex-006 and ex-009 to ex-012, and g-2 the same less ex-009 and
+    // with ex-001, the retained task. Each ties six and the candidate wins two; in the second
+    // campaign g-2 wins ex-002, which g-1 tied, in place of ex-012. No task is held out between
+    // them, so g-1's report releases one, the most a reading with nothing held out since the last
+    // release is owed.
+    const tied = ["ex-002", "ex-003", "ex-004", "ex-006", "ex-009", "ex-010"];
+    const again = ["ex-003", "ex-004", "ex-006", "ex-010", "ex-011"];
+    const same = await everythingRead(
+      `${STEM}-short-one`,
+      { "g-1": tied, "g-2": ["ex-002", ...again] },
+      flags,
+    );
     const moved = await everythingRead(
       `${STEM}-short-two`,
-      { "g-1": tied, "g-2": [...tied.slice(1), "t-11"] },
+      { "g-1": tied, "g-2": [...again, "ex-012"] },
       flags,
     );
     const awaiting = ["one", "two"].map((world) => supplyOf(logOf(`${STEM}-short-${world}`)).awaiting);
     // A candidate's pass takes no task out of the wait, since otherwise 6 and 5 would wait, and the
     // first campaign's Builder would be told to examine where the second's was told to build.
+    accepting = undefined;
     expect(awaiting).toEqual([7, 7]);
     expect(same).toContain("2 won, 0 lost, 6 tied");
     expect(moved).toBe(same);
@@ -1632,7 +1649,7 @@ describe("a campaign's endings", () => {
   });
 
   it("ends on its supply patience of readings with no room inside a live conversation", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
+    drafted = TASKS;
     const name = `${STEM}-roomless-live`;
     const asking: Step[] = [
       ["examine", {}],
@@ -1655,7 +1672,7 @@ describe("a campaign's endings", () => {
   });
 
   it("opens a new conversation where one ended at its turns, and goes on to a typed ending", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
+    drafted = TASKS;
     const name = `${STEM}-turns`;
     const seats: Seats = {
       seated: builderScripts(passing(), [
@@ -1711,7 +1728,7 @@ describe("a campaign's endings", () => {
   });
 
   it("opens a new conversation where the provider failed one, and ends on the environment where they fail in a row", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
+    drafted = TASKS;
     const name = `${STEM}-crashed`;
     // A script with no further call is a turn the provider fails: the session is on record as
     // crashed, and read back it is refused (`spent`).
@@ -1758,7 +1775,7 @@ describe("a campaign's endings", () => {
   });
 
   it("ends on the environment, on record, where three Examiner sessions crash while the Builder lives", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
+    drafted = TASKS;
     const name = `${STEM}-halted`;
     // The Builder waits for the Examiner writing beside it, so each examine starts a session.
     const waits: Step = ["wait", {}];

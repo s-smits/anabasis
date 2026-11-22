@@ -7,7 +7,7 @@ prints is named in the `Starts from` paragraph of the lane it starts.
 
 ## Who holds which pen
 
-The Examiner writes the exam (drafted from the operator's prompt, or imported as a stored pack),
+The Examiner writes the exam, drafted from the operator's prompt;
 the Builder writes the harness, the host's verifier decides validity and the Referee rules each
 rejection. `AGENTS.md` sections 1 to 8 own the seats, their views, the wall and the promotion rule;
 apply them to the conditions the log records. No seat repairs the check program during a campaign,
@@ -90,8 +90,7 @@ the host's own reading, and a report's line can end in the command.
 A script of the lane's own lives in its temporary directory and never in a campaign's folder. The
 lane guard passes `jq` over a log, a Bun script given the log's path (`bun <tmp>/x.ts <log>`) and a
 Python script that reads the log on standard input (`python3 -B <tmp>/x.py < <log>`); it refuses
-Python given the log's path or run without `-B`, any program kept in a campaign, and
-`tools/c/rejections.ts`, which writes verdicts (`tools/wri/rejections.ts` is the reader).
+Python given the log's path or run without `-B`, and any program kept in a campaign.
 
 ## Labels
 

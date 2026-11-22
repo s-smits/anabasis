@@ -116,7 +116,7 @@ source.
 | 5 | `collect --out <dir>` | `reports.md` |
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
 | vetting | `findings [--root <dir>] [--window 7] [--until <date>]` | nothing: every investigation's vetted findings, the newest window beside the one before, by verdict, standing key, importance, fate and lane |
-| lanes 1, 5 and 6 | `grade --log <log> [--bundle <pack>] (--task <taskId> --answer <file> \| --solve <id> \| --answers <dir>) [--set <path>=<json>]...` | nothing: one verdict line an answer, the recorded verdict beside a regraded solve, and with `--set` the same answer with one field changed (`--bundle` only for a stored pack) |
+| lanes 1, 5 and 6 | `grade --log <log> (--task <taskId> --answer <file> \| --solve <id> \| --answers <dir>) [--set <path>=<json>]...` | nothing: one verdict line an answer, the recorded verdict beside a regraded solve, and with `--set` the same answer with one field changed |
 | any | `derive (--log <log>[,<log>...] \| --all) [--verbose] [--force] [--no-embed]` | `data/derived/<campaign>@<path>/` (one folder a log): one file a reader and `manifest.json` |
 | any | `reader <name> --log <log>` | nothing: one reader's text, as `derive` writes it to its file |
 
@@ -138,7 +138,7 @@ its file says so in one line. Left out are tools that read no run
 `system-audit/scripts/recent.ts`), that need more than a campaign
 (`examiner-complexity/scripts/grades.ts`, `oracle-handover/scripts/slice.ts`,
 `tools/runs/search.ts`, `wri.ts grade`), that write (`wri.ts start`, `lanes`, `collect`, `synthesis`,
-`index` and `derive`, `wri2p2.ts open`, `tools/c/rejections.ts`, `tools/d2/close.ts`) or that call a
+`index` and `derive`, `wri2p2.ts open`, `tools/d2/close.ts`) or that call a
 paid model (`system-path-simulation/scripts/live-seat.ts`,
 `compare-systems/scripts/systems.ts`).
 `derive` writes `data/derived/<campaign>@<path>/<reader>.txt` in the main worktree, one folder a

@@ -4,7 +4,6 @@
  *
  *   bun tools/d2/close.ts --name queues --to ~/handover/queues [--harness <letter|digest>]
  *     [--solve <task id>[,<task id>...] [--solver <model> --solver-effort <level> ...]]
- *   bun tools/d2/close.ts --root ... --sweep ... --cycle c01 --bundle ... --name truss --to ../truss-handover
  *
  * Without this a campaign hands nothing over: a kept harness stays a folder among the campaign's
  * states, with its programs behind a link into a tree beside it, and what the campaign has read

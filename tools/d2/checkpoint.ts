@@ -1,9 +1,7 @@
 /**
  * One comparison of two harnesses a campaign keeps, on its held-out tasks, with no Builder session.
  *
- *   bun tools/d2/checkpoint.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
- *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --id g2 \
- *     --target 8 --cap 437
+ *   bun tools/d2/checkpoint.ts --name truss --id g-2 --target 8 --cap 437
  *
  * With no `--reference` and no `--new` it compares the latest harness a Builder session left with
  * the Starter Built Harness, which is the standalone comparison: several sessions, then one comparison

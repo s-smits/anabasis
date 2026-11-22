@@ -215,7 +215,7 @@ never run.
 
 ## 6. A campaign's commands
 
-`bun tools/d2/harness-builder.ts` opens a campaign from a prompt or a stored pack and runs it
+`bun tools/d2/harness-builder.ts` opens a campaign from a prompt and runs it
 unattended to one of seven endings: `budget`, `stop`, `exam`, `no-room`, `environment`, `operator`
 or `finished` (three Builder conversations in a row made no campaign move). The operator steers it
 with `tools/d2/word.ts`, which no seat reads. The setting fixes the solver, its limits, `--target`

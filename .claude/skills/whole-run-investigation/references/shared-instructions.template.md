@@ -31,7 +31,7 @@ lane is free to follow it. Write "nothing" when you read nothing yet. -->
 {campaigns}
 
 Each log is its campaign's whole append-only record, one event a line. Its folder also holds the
-staged check program (`checks/` for a stored pack, `exams/<digest>/checks/` for a drafted exam),
+staged check program (`exams/<digest>/checks/`; `checks/` in an old campaign over a stored pack),
 `states/` with every harness state by digest, and each launch's `launch-run-<n>.json` (an older round
 left `launch-<session>.json`): flags, commit and load. Read all of them; write to none.
 

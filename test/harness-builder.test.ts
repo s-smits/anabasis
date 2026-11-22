@@ -39,7 +39,14 @@ import { packetOf, settleCommand } from "../tools/d2/settle.ts";
 import { wordCommand } from "../tools/d2/word.ts";
 import { harnessesOf } from "../tools/runs/registry.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
-import { FORMAT, fixtureTasks, gradedOf, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";
+import {
+  FORMAT,
+  fixtureTasks,
+  gradedOf,
+  layOutPack,
+  OPENED_FROM,
+  scriptedModel,
+} from "./helpers/fixture-pack.ts";
 import { anyOf, arrayWith, containing, objectWith } from "./helpers/matchers.ts";
 
 const REPO = resolve(import.meta.dir, "..");
@@ -56,7 +63,6 @@ const TASKS = fixtureTasks(16);
 const scripted = scriptedModel;
 const GRADED = gradedOf(TASKS);
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-hb-")));
-const bundle = join(root, "bundle");
 const names: string[] = [];
 
 setDefaultTimeout(600_000);
@@ -126,15 +132,13 @@ function draftedOf(tasks: typeof TASKS) {
 
 /** A campaign's folder marked as a seed, which is where a scripted solve may be written, and the
  *  flags that name it. */
-function seeded(name: string, under = root): string[] {
+function seeded(name: string): string[] {
   names.push(name);
   const folder = join(REPO, ".ana", "d2", name);
-  mkdirSync(folder, { recursive: true });
+  if (!existsSync(join(folder, LOG_FILE))) layOutPack(folder, TASKS);
   writeFileSync(join(folder, "seed.json"), `${JSON.stringify({ from: null, events: 0 })}\n`);
   // The fixture's one check is its author's own arithmetic, which stands on the operator's word.
-  const admitted = ["--admit", "check-product"];
-  const pack = ["--root", under, "--sweep", "s", "--cycle", "c01", "--bundle", join(under, "bundle")];
-  return [...pack, "--name", name, "--project", PROJECT, ...admitted];
+  return ["--name", name, "--project", PROJECT, ...OPENED_FROM, "--admit", "check-product"];
 }
 
 /** What a campaign's log holds of one kind, in order. */
@@ -172,7 +176,7 @@ describe("a campaign run by its log", () => {
     const name = `${STEM}-led-term`;
     const log = join(REPO, ".ana", "d2", name, LOG_FILE);
     names.push(name);
-    const flags = flagsOf(["--root", root, "--name", name, "--project", PROJECT]);
+    const flags = flagsOf(["--name", name, "--project", PROJECT, ...OPENED_FROM]);
     opened(log, flags, "scripted");
     // An older opening kept `led`, and an older one still kept no such term.
     const [first] = read(log);
@@ -181,7 +185,6 @@ describe("a campaign run by its log", () => {
     expect(read(log)).toHaveLength(2);
   });
   it("waits out a provider limit that names its reset, on record, and makes the move again", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-limit`;
     // A level whose floor (16) is above the 13 tasks held, so the first comparison waits for tasks.
     const terms = ["--patience", "1", "--target", "20", "--level", "0.0001", "--practice", "3"];
@@ -229,7 +232,6 @@ describe("a campaign run by its log", () => {
     expect(asked).toBe(2);
   });
   it("ends on its environment where a move it began changed nothing, so the run is never left without an ending", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-empty-move`;
     // The move that takes the pack's tasks in writes nothing, since a release there would find the
     // draw holding no task and the process would exit with no ending on record.
@@ -241,7 +243,7 @@ describe("a campaign run by its log", () => {
 
   it("leaves no ending where a first run's move is refused before it begins, though the run kept its setting", async () => {
     const name = `${STEM}-refused-first`;
-    seeded(name);
+    names.push(name);
     const opening = ["--name", name, "--project", PROJECT, "--solver", "claude/claude-opus-5-5"];
     await expect(
       harnessBuilder([...opening, "--prompt", "Multiply a base by six."], { seated: answering() }),
@@ -252,7 +254,6 @@ describe("a campaign run by its log", () => {
   });
 
   it("refuses a paid campaign whose target is too small to read a step, before any move", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-small`;
     // At the default level of 0.02 a step takes six tasks, all won, and a paid comparison eight.
     const model = "claude/claude-opus-5-5";
@@ -285,7 +286,6 @@ describe("a campaign run by its log", () => {
   });
 
   it("ends as killed, before its first move, each session a stopped run left open, and none that ended", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-cut`;
     const flags = [...seeded(name), "--patience", "1", "--target", "10", "--practice", "3"];
     const seats: Seats = { seated: answering(), examine: idle };
@@ -323,7 +323,6 @@ describe("a campaign run by its log", () => {
   // Three idle conversations end it, rather than a count of sessions a comparison follows.
   it("runs from set-up to an ending on one command, with every move on record: 3 conversations with nothing to work on end it finished", async () => {
     const ended = 3;
-    layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-idle`;
     // A patience of two; a target of
     // eight, the fewest a paid comparison at the default level starts on, which the pack's held-out tasks hold, so
@@ -355,7 +354,7 @@ describe("a campaign run by its log", () => {
     };
     // A dry run names the first move and writes nothing.
     expect(await harnessBuilder([...flags, "--dry-run"], seats)).toMatchObject({ move: "accept" });
-    expect(of(name, OPENED)).toEqual([]);
+    expect(of(name, OPENED)).toHaveLength(1);
     expect(of(name, "campaign.setting")).toEqual([]);
 
     const ending = await harnessBuilder([...flags, "--practice", "2"], { ...seats, host });
@@ -386,13 +385,15 @@ describe("a campaign run by its log", () => {
     );
     expect(of(name, "solve.started")).toEqual([]);
     // It runs by what it was opened with: no budget under a rehearsal's seats, no limit named, and
-    // the patience it was given.
-    expect(of(name, OPENED)).toEqual([
+    // the patience it was given, after the opening its exam was drafted under.
+    expect(of(name, OPENED).slice(1)).toEqual([
       {
         project: PROJECT,
         budget: null,
         patience: 2,
+        prompt: OPENED_FROM[1],
         seats: { builder: null, examiner: null, reviewer: null },
+        solver: { model: OPENED_FROM[3], effort: "medium" },
         // The level is pinned whether or not a command named it: this tree's default.
         terms: { level: "0.02", practice: "2" },
       },
@@ -413,7 +414,6 @@ describe("a campaign run by its log", () => {
   });
 
   it("waits under --hitl to promote a step, still waits when reopened without the flag, promotes it given the word back, and then has tasks written", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-climb`;
     // The seed holds fourteen tasks to score once two are released, and a comparison scores eight:
     // the row that writes tasks up to the target is searched in `test/decide-explore.test.ts`.
@@ -570,7 +570,7 @@ describe("a campaign run by its log", () => {
     // its rejected answers, and it has none, since the reference answered nothing, and three of
     // the eight answers that passed, the new harness's. The labels are recorded once a
     // label stands on each, and once only.
-    const pack = ["--root", root, "--sweep", "s", "--cycle", "c01", "--bundle", bundle, "--name", name];
+    const pack = ["--name", name];
     const folder = join(REPO, ".ana", "d2", name, "settle-g-1");
     const file = join(folder, "labels.json");
     const packet = () =>
@@ -699,7 +699,7 @@ describe("a campaign run by its log", () => {
     expect(report).not.toContain("Diagnos");
     expect(report).toContain("The campaign's log names no ending: its last event is `");
     // No task is named in it, and no check.
-    expect(report).not.toContain("t-1");
+    expect(report).not.toContain("ex-001");
     expect(report).not.toContain("check-product");
 
     // The harness solves a task from where it was handed over, outside the campaign's folder: the
@@ -710,7 +710,7 @@ describe("a campaign run by its log", () => {
       "--solve no-such-task: the campaign holds no task by that id",
     );
     rmSync(trial, { recursive: true, force: true });
-    const solved = await closeCommand([...pack, "--to", trial, "--solve", "t-1"], answering(strayed));
+    const solved = await closeCommand([...pack, "--to", trial, "--solve", "ex-001"], answering(strayed));
     expect(solved).toMatchObject({ harness: handed.harness, solved: ["pass"] });
     const trialled = read(join(REPO, ".ana", "d2", name, "handover", LOG_FILE));
     expect(trialled.filter(({ kind }) => kind === "solve.finished")).toMatchObject([
@@ -721,7 +721,6 @@ describe("a campaign run by its log", () => {
   });
 
   it("reads a word the operator left during a comparison at the next move, and changes nothing in the comparison", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-word`;
     // The seed holds fourteen tasks to score once two are released, and a comparison scores eight:
     // the row that writes tasks up to the target is searched in `test/decide-explore.test.ts`.
@@ -801,8 +800,10 @@ describe("a campaign run by its log", () => {
   });
   it("opens from a prompt: drafts its exam, waits under --hitl for the operator's word on its checks, takes its launch as that word without it, and reaches a comparison with no file written by hand", async () => {
     const name = `${STEM}-prompt`;
-    seeded(name);
+    names.push(name);
     const folder = join(REPO, ".ana", "d2", name);
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, "seed.json"), `${JSON.stringify({ from: null, events: 0 })}\n`);
     const prompt = "Multiplying a base by six, as a fixture.";
     const solver = ["--solver", "claude/claude-opus-5-5"];
     const terms = ["--practice", "2", "--solve-minutes", "8"];
@@ -827,7 +828,9 @@ describe("a campaign run by its log", () => {
         }),
     };
     // With no prompt and no pack there is nothing to open, and nothing is written.
-    await expect(harnessBuilder(["--name", name], seats)).rejects.toThrow("give the prompt it opens from");
+    await expect(harnessBuilder(["--name", name], seats)).rejects.toThrow(
+      "give the prompt the campaign opens from",
+    );
     expect(await harnessBuilder([...flags, "--prompt", prompt, "--dry-run"], seats)).toMatchObject({
       move: "draft",
     });
@@ -936,10 +939,10 @@ describe("a campaign run by its log", () => {
     // The handover is not copied with every link followed, since a link among a kept harness's
     // programs to a host file would come out as that file's bytes, in a folder written to leave the
     // host, and a copy that then did not open as the harness would stay where it was written.
-    layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-links`;
     // The pack and the campaign's name, which is what the handover takes: no project, no admission.
-    const pack = seeded(name).slice(0, -4);
+    seeded(name);
+    const pack = ["--name", name];
     const host = join(root, "host-file.txt");
     writeFileSync(host, "HOST-FILE-CANARY\n");
     const built = join(root, "linked", "harness");

@@ -1,19 +1,17 @@
 /**
- * A v1 cycle sweep as its run left it on disk: `grades/<sweep>/grades.tsv` for the verdicts,
- * `runs/<sweep>/cNN/<task>/result.json` for the solve, and the case's `trace.json` for its turns.
- * The milestone tools test the new host on these stored solves, so no model session is needed.
+ * A check program's pack as a campaign stages it (`tools/d2/exam.ts`): its brief, tasks and
+ * controls, the contract and public resources it gives a solve, and the backends a seat runs on.
  */
-import type { Api, Model, ThinkingLevel } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "#src/agent/backends/claude.ts";
 import { type BackendOptions, backends } from "#src/agent/backends/models.ts";
 import type { Control } from "#src/kernel/acceptance.ts";
 import { type Contract, type Objective, objectiveLine } from "#src/kernel/contract.ts";
-import type { Ending } from "#src/kernel/solve.ts";
 import type { TaskPackage } from "#src/kernel/task.ts";
-import { applicableTruthChecks, readBrief, type Task, type Verdict } from "#src/kernel/verify.ts";
+import { applicableTruthChecks, readBrief, type Task } from "#src/kernel/verify.ts";
 import { BRIEF_FILE, CONTROLS_FILE, TASKS_FILE } from "#src/meta/bundle-layout.ts";
-import { cpSync, existsSync, readFileSync, renameSync, rmSync } from "#src/meta/filesystem.ts";
-import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
+import { cpSync, readFileSync, renameSync, rmSync } from "#src/meta/filesystem.ts";
+import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { type ControlFile, textFiles } from "#src/kernel/answer-files.ts";
@@ -21,38 +19,6 @@ import { homedir } from "#src/meta/os.ts";
 import { basename, join } from "#src/meta/path.ts";
 import { type PublicResource, publicResource } from "#src/tools/answer.ts";
 import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
-
-/** The fields of v1's `cycle-solve/v1` result read here. */
-interface StoredSolve {
-  readonly provider: string;
-  readonly model: string;
-  /** Whether the outer timeout ended the run. The harness's own wall, inside it, leaves a turn open. */
-  readonly timedOut: boolean;
-  readonly answerPresent: boolean;
-  readonly answerParses: boolean;
-}
-
-/** The field of v1's `case-trace/v3` trace read here: a turn the wall cut is left `open`. */
-interface StoredTurn {
-  readonly status: "ended" | "open";
-}
-
-interface StoredTrace {
-  readonly turns: readonly StoredTurn[];
-}
-
-export interface Row extends StoredSolve {
-  readonly sweep: string;
-  /** `cNN`, as the sweep names the cycle's directory. */
-  readonly cycle: string;
-  readonly taskId: string;
-  /** The solve's directory under `runs/`. */
-  readonly solve: string;
-  /** v1's verdict, as the new verifier would spell it; null when v1's verifier did not decide. */
-  readonly expected: Verdict | null;
-  /** How the solve ended, as this host types it. */
-  readonly ending: Ending;
-}
 
 /** The parts of v1's `brief.json` read here. */
 interface PackBrief {
@@ -82,102 +48,14 @@ interface PackControls {
   }[];
 }
 
-/** What v1 recorded of a stored solve's starting state (`built-runtime.json`). */
-export interface StoredRuntime {
-  readonly modelWorker: { modelSelection: { effort: ThinkingLevel } };
-  readonly contractCondition: {
-    systemPrompt: string;
-    tools: StoredTool[];
-    firstTurnTemplateDigest: string;
-    nudgeDigest: string;
-    maxTurns: number;
-  };
-}
-
-/** One tool as v1 sent it to the model (`BuiltAgentInterfaceTool`, built-starter.ts:83-86). */
-interface StoredTool {
-  readonly name: string;
-  readonly label: string;
-  readonly description: string;
-  readonly parameters: JsonValue;
-  readonly executionMode?: string;
-}
-
-/** v1's non-result kinds (the sweep's `grade.py`, `solver_kind`), as this host types them. */
-const NON_RESULTS = new Map<string, Extract<Ending, { outcome: "non-result" }>["kind"]>([
-  ["non-result:provider", "provider"],
-  ["non-result:provider-stall", "provider"],
-  ["non-result:built", "sandbox-crash"],
-  ["non-result:grader", "verifier"],
-]);
-
 /** The files of a v1 `correctness-model` that are its battery rather than its check program. */
 const BATTERY_FILES = new Set(["tasks.json", "controls.json"]);
 
 /**
- * Every solve the sweep graded, each typed. v1's verifier decided only some: the rest it graded
- * `unaccepted`, `wall-timeout` or a `non-result:<kind>`, and those are fails and non-results a count
- * by kind must not miss.
- */
-export function sweepRows(root: string, sweep: string): Row[] {
-  const lines = readFileSync(join(root, "grades", sweep, "grades.tsv"), "utf8")
-    .trim()
-    .split("\n")
-    .slice(1);
-  const rows: Row[] = [];
-  for (const line of lines) {
-    const [number = "", taskId = "", kind = "", blocking = ""] = line.split("\t");
-    const expected: Verdict | null =
-      kind === "verified-pass"
-        ? { kind: "pass" }
-        : kind === "verified-fail"
-          ? { kind: "fail", blocking: blocking.split(",").filter(Boolean) }
-          : null;
-    const cycle = `c${number.padStart(2, "0")}`;
-    const solve = join(root, "runs", sweep, cycle, taskId);
-    const stored = parseJsonAs<StoredSolve>(readFileSync(join(solve, "result.json"), "utf8"));
-    const { turns } = parseJsonAs<StoredTrace>(
-      readFileSync(join(solve, "harness", "cases", taskId, "trace.json"), "utf8"),
-    );
-    rows.push({
-      ...stored,
-      sweep,
-      cycle,
-      taskId,
-      solve,
-      expected,
-      ending: endingOf(stored, turns, kind, expected),
-    });
-  }
-  return rows;
-}
-
-/** A stored solve's ending. v1 recorded no fail kinds, so they are read back from what the solve left. */
-function endingOf(
-  stored: StoredSolve,
-  turns: readonly StoredTurn[],
-  kind: string,
-  expected: Verdict | null,
-): Ending {
-  if (kind.startsWith("non-result:")) {
-    const typed = NON_RESULTS.get(kind);
-    if (typed === undefined) throw new Error(`v1 graded a solve ${kind}, which this reader does not know`);
-    return { outcome: "non-result", kind: typed, reason: kind };
-  }
-  if (expected?.kind === "pass") return { outcome: "pass" };
-  if (stored.timedOut || turns.some((turn) => turn.status === "open")) {
-    return { outcome: "fail", kind: "wall-ended" };
-  }
-  if (!stored.answerPresent || !stored.answerParses) return { outcome: "fail", kind: "no-answer" };
-  return { outcome: "fail", kind: "rejected" };
-}
-
-/**
  * A v1 bundle's check program, copied to `to` without its battery: the verifier hands a check its
  * whole program, and `tasks.json` and `controls.json` hold every task's hidden values and every
- * control. Returns `to`. The copy is made beside it and renamed into place once whole: a campaign
- * stages its checks where none are (`packOpened`, `campaign.ts`), so a copy cut short in place
- * would leave a folder there that every later run took for the whole program.
+ * control. Returns `to`. The copy is made beside it and renamed into place once whole, so a copy
+ * cut short in place leaves no folder that a later run takes for the whole program.
  */
 export function checkProgram(bundle: string, to: string): string {
   const filter = (path: string) => !BATTERY_FILES.has(basename(path));
@@ -186,38 +64,6 @@ export function checkProgram(bundle: string, to: string): string {
   cpSync(join(bundle, "correctness-model"), partial, { recursive: true, filter });
   renameSync(partial, to);
   return to;
-}
-
-/**
- * The answer format a solve's record tool took, as v1 recorded it byte for byte in the solve's
- * `built-runtime.json`: the artifact-writer's parameters, which v1 compiled from the brief's prose
- * `artifactSchema` rows (H public-artifact-writer.ts:57-64) and which a v2 contract holds as its
- * answer format.
- */
-export function recordedAnswerFormat(row: Row): JsonValue {
-  const writer = storedRuntime(row).contractCondition.tools.find((tool) =>
-    tool.description.startsWith("Role: artifact-writer."),
-  );
-  if (writer === undefined) throw new Error(`${row.solve} records no artifact-writer`);
-  return writer.parameters;
-}
-
-/** What v1 recorded of the solve's starting state. */
-export function storedRuntime(row: Row): StoredRuntime {
-  return parseJsonAs<StoredRuntime>(
-    readFileSync(join(row.solve, "harness", "cases", row.taskId, "built-runtime.json"), "utf8"),
-  );
-}
-
-/** The answer the solve left, or none when it left no file or one that does not read as JSON. */
-export function storedAnswer(row: Row): JsonValue | undefined {
-  const path = join(row.solve, "work", "answer.json");
-  if (!existsSync(path)) return undefined;
-  try {
-    return capturedJsonParse(readFileSync(path, "utf8"));
-  } catch {
-    return undefined;
-  }
 }
 
 /** The backends set as the sweep ran its Claude solves, for a model process keeping its state in
@@ -233,11 +79,6 @@ export function sweepOptions(
   return {
     claude: { executable: claudeExecutable(), compaction: { window }, home, cacheTtl: "5m", shutdown },
   };
-}
-
-/** The model a row ran, from the backends this system runs on. */
-export function rowModel(row: Row): Model<Api> {
-  return modelNamed(`${row.provider}/${row.model}`);
 }
 
 /** `provider/model`, as a condition names a model, resolved on this host's backends. */
@@ -280,8 +121,7 @@ export function packControls(bundle: string): Control[] {
   ];
 }
 
-/** The stand-in contract: the brief's public rule decisions are its rules, and its answer format is
- *  the schema the sweep's record tool took (`recordedAnswerFormat`). */
+/** The contract: the brief's public rule decisions are its rules, and the answer format the draft's. */
 export function contractOf(brief: PackBrief, answerFormat: JsonValue): Contract {
   return {
     answerFormat,

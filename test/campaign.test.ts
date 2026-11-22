@@ -1,14 +1,14 @@
-// A campaign over a sweep laid out as v1's left one, as far as it goes without a model or a wall: it
-// opens, `prepare.ts`, run in this process as the operator runs it, takes the pack's tasks in, releases the practice
-// tasks once and takes a person's label of a task, a task a session wrote stands beside the pack's
-// own, and the campaign keeps its harnesses by name: the one it started with, the starter
-// and the latest a session left.
+// A campaign over the exam its log drafted, as far as it goes without a model or a wall: it opens,
+// `prepare.ts`, run in this process as the operator runs it, takes the draft's tasks in, releases the
+// practice tasks once and takes a person's label of a task, a task a session wrote stands beside the
+// draft's own, and the campaign keeps its harnesses by name: the starter and the latest a session left.
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
 import { append, read } from "../src/kernel/log.ts";
 import { latestBuilt, PATIENCE, promoted } from "../src/kernel/reports.ts";
 import { sizeLines } from "../src/kernel/size.ts";
 import { taskSets, taskVersion } from "../src/kernel/task.ts";
 import { TOOL_TREE_DIR } from "../src/meta/bundle-layout.ts";
+import { fixtureDraft, fixtureTasks, layOutDraft, layOutPack } from "./helpers/fixture-pack.ts";
 import {
   cpSync,
   lstatSync,
@@ -41,29 +41,23 @@ const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 const NAME = `test-${String(runtimeProcess.pid)}`;
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-campaign-")));
-const bundle = join(root, "bundle");
-const ARGS = { root, sweep: "s", cycle: "c01", bundle, name: NAME };
+const ARGS = { name: NAME };
 /** A Builder a backend serves, for a command that is to get as far as its admission: a model no
  *  backend serves is refused with the command's other flags, before the log is asked anything. */
 const SERVED = "claude/claude-opus-5-5";
 /** A campaign opened and given a harness before it keeps any. */
 const FRESH = `${NAME}-fresh`;
-/** Campaigns whose checks pass, and reject, the stored sweep's accepted answer. */
+/** Campaigns whose checks pass, and reject, the draft's accepted answer. */
 const PROVEN = `${NAME}-proven`;
 const UNPROVEN = `${NAME}-unproven`;
 /** A campaign whose log holds solves and no setting. */
 const UNRECORDED = `${NAME}-unrecorded`;
 const ASKED = { level: 0.02, patience: PATIENCE };
-const TASKS = Array.from({ length: 7 }, (_, index) => ({
-  taskId: `t-${String(index + 1)}`,
-  family: "fixture",
-  publicInput: { base: index + 2 },
-  hidden: null,
-}));
-/** The flags that name the campaign and its pack, as a command line carries them. */
-const flagsOf = (named: Record<string, string>) =>
-  Object.entries(named).flatMap(([flag, value]) => [`--${flag}`, value]);
-const PACK = flagsOf(ARGS);
+const TASKS = fixtureTasks(7);
+const PACK = ["--name", NAME];
+const folderOf = (name: string) => join(REPO, ".ana", "d2", name);
+// One accept control, so that `prepare` says one task's answer is on record.
+for (const name of [NAME, FRESH, UNRECORDED]) layOutPack(folderOf(name), TASKS, 1);
 
 // A test here runs a campaign's commands as the operator does, in this process, and each start
 // reads the host's source tree whole: over a second, so three of them pass Bun's own five.
@@ -96,61 +90,9 @@ const rehearsal =
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
   for (const name of [NAME, FRESH, PROVEN, UNPROVEN, UNRECORDED]) {
-    rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
+    rmSync(folderOf(name), { recursive: true, force: true });
   }
 });
-
-/** The sweep, its one graded solve, the cycle's harness state and the pack, as v1 lays them out. */
-function layOut(): void {
-  mkdirSync(join(root, "grades", "s"), { recursive: true });
-  writeFileSync(join(root, "grades", "s", "grades.tsv"), "cycle\ttaskId\tkind\n1\tt-1\tverified-pass\n");
-  const solve = join(root, "runs", "s", "c01", "t-1");
-  const caseDir = join(solve, "harness", "cases", "t-1");
-  mkdirSync(caseDir, { recursive: true });
-  writeFileSync(
-    join(solve, "result.json"),
-    JSON.stringify({
-      provider: "claude",
-      model: "claude-opus-5-5",
-      timedOut: false,
-      answerPresent: true,
-      answerParses: true,
-    }),
-  );
-  const ended = { status: "ended", inputTokens: 1, outputTokens: 1, costUsd: 0.01 };
-  writeFileSync(join(caseDir, "trace.json"), JSON.stringify({ turns: [ended] }));
-  const format = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
-  writeFileSync(
-    join(caseDir, "built-runtime.json"),
-    JSON.stringify({
-      modelWorker: { modelSelection: { effort: "medium" } },
-      contractCondition: { tools: [{ description: "Role: artifact-writer. Records.", parameters: format }] },
-    }),
-  );
-  cpSync(FIXTURE, join(root, "hb-bundles", "s-c01"), { recursive: true });
-  mkdirSync(join(bundle, "correctness-model"), { recursive: true });
-  mkdirSync(join(bundle, TOOL_TREE_DIR, "bin"), { recursive: true });
-  const execution = {
-    families: "all",
-    artifactPaths: ["$.answer"],
-    publicInputPaths: ["$.base"],
-    hidden: "none",
-    evidence: { kind: "authored" },
-  };
-  writeFileSync(
-    join(bundle, "correctness-model", "brief.json"),
-    JSON.stringify({
-      correctnessContract: "check-program/v1",
-      domain: "Fixture",
-      ruleDecisions: [{ id: "R1", statement: "The answer is the base times six.", visibility: "public" }],
-      truthChecks: [{ id: "check-product", assertion: "Six times.", citedDecisionIds: ["R1"], execution }],
-      artifactSchema: [],
-      designRuleConstants: [],
-    }),
-  );
-  writeFileSync(join(bundle, "correctness-model", "evaluator.ts"), "export const checks = {};\n");
-  writeFileSync(join(bundle, "correctness-model", "tasks.json"), JSON.stringify(TASKS));
-}
 
 describe("the code a solve's condition records", () => {
   // The stack review at 658a933b (finding 6): the host was `src` and `vendor` alone, and `typebox`,
@@ -242,8 +184,7 @@ describe("a campaign", () => {
   /** `prepare.ts` as the operator runs it, with whatever flags `more` adds, and what it printed. */
   const prepare = async (...more: string[]) => said(prepareCommand, [...PACK, "--practice", "2", ...more]);
 
-  it("opens over a stored sweep, takes the pack's tasks in at their gate, and releases practice once", async () => {
-    layOut();
+  it("opens over its drafted exam, takes the draft's tasks in at their gate, and releases practice once", async () => {
     const campaign = await openCampaign(ARGS);
     expect(campaign.contract.rules).toMatchObject([
       { id: "R1", statement: "The answer is the base times six." },
@@ -252,7 +193,7 @@ describe("a campaign", () => {
     expect(campaign.test.model.id).toBe("claude-opus-5-5");
     // The log, the staged check program and the states are inside the repository, which every wall denies.
     expect(campaign.log.startsWith(join(REPO, ".ana", "d2", NAME))).toBe(true);
-    expect(read(campaign.log)).toEqual([]);
+    expect(read(campaign.log).map(({ kind }) => kind)).toEqual(["campaign.opened", "exam.drafted"]);
     // Where a Node program of a kept tree ends its walk for its module type, short of the
     // checkout's manifest (`commandReadAllows`, `test/solve-sandbox.test.ts`).
     expect(readFileSync(join(dirname(campaign.log), "package.json"), "utf8")).toBe("{}\n");
@@ -270,7 +211,7 @@ describe("a campaign", () => {
     });
     append(campaign.log, "task.gate", { version: extra, gate: 1, outcome: "passed" });
 
-    // The pack's seven tasks are proposed and put to their one gate, with no solve and no stored
+    // The draft's seven tasks are proposed and put to their one gate, with no solve and no stored
     // answer. Two of the eight held out are then released for practice, by the contract's draw.
     const versions = TASKS.map((task) => taskVersion(campaign.pack(task)));
     // One of them as a command killed between its two appends leaves it, proposed and never put to
@@ -287,10 +228,13 @@ describe("a campaign", () => {
     // Each release is said by its task: a release cannot be taken back.
     const [proposed, ...lines] = (await prepare()).split("\n");
     expect(proposed).toBe("7 of the pack's tasks proposed: 7 held out, 0 refused");
+    expect(lines[0]).toBe(
+      `${TASKS[0]?.taskId ?? ""}: an accepted answer passes today's verifier, so a valid answer to it is on record`,
+    );
     expect(
-      lines.slice(0, 2).every((line) => line.endsWith(": released for practice, and never scored")),
+      lines.slice(1, 3).every((line) => line.endsWith(": released for practice, and never scored")),
     ).toBe(true);
-    expect(lines.slice(2).join("\n")).toBe(summary);
+    expect(lines.slice(3).join("\n")).toBe(summary);
     const sets = taskSets(read(campaign.log));
     expect([sets.held.length, sets.released.length]).toEqual([6, 2]);
     expect([...sets.held, ...sets.released].toSorted()).toEqual([...versions, extra].toSorted());
@@ -379,7 +323,7 @@ describe("a campaign", () => {
     expect(COMPARISON_OPTIONS.reference.default).toBe("promoted");
     expect(await keptAs(campaign, "--reference", "promoted")).toEqual(least);
     expect(SESSION_OPTIONS.parent.default).toBe("latest");
-    // The stored cycle's own harness is none the campaign keeps: it comes from v1's runs.
+    // A name the campaign gave no harness is refused.
     await expect(keptAs(campaign, "--reference", "start")).rejects.toThrow(
       "--reference start is no harness this campaign keeps",
     );
@@ -426,7 +370,6 @@ describe("a campaign", () => {
   });
 
   it("imports a harness built elsewhere, kept as a session keeps one, and records where it came from", async () => {
-    layOut();
     const campaign = await openCampaign(ARGS);
     const least = await starter(campaign);
     // A harness as a campaign hands one over (`close.ts`): a folder that stands by itself, with
@@ -476,7 +419,6 @@ describe("a campaign", () => {
   it("refuses a harness whose programs link outside the folder it lies in", async () => {
     // The import copies the programs from where the link resolves, as the host and outside every
     // wall; a link to the operator's home would hand that home to the next Builder.
-    layOut();
     await openCampaign({ ...ARGS, name: FRESH });
     const handed = join(root, "linked", "harness");
     cpSync(FIXTURE, handed, { recursive: true });
@@ -682,7 +624,7 @@ describe("a campaign", () => {
     append(campaign.log, "condition.recorded", { id: "c-1", condition });
     append(campaign.log, "solve.started", { condition: "c-1" });
     const before = read(campaign.log).length;
-    const flags = [...flagsOf({ ...ARGS, name: UNRECORDED }), "--cap", "100", "--reviewer", SERVED];
+    const flags = ["--name", UNRECORDED, "--cap", "100", "--reviewer", SERVED];
     // The command's own refusal, no longer the admission's, which a led Builder would read.
     const refusal = await sessionCommand([...flags, "--session", "u-1", "--builder", SERVED]).catch(
       (error: unknown) => (error instanceof Refused ? "the admission's" : errorMessage(error)),
@@ -699,38 +641,34 @@ describe("a campaign", () => {
       ),
     ).rejects.toThrow("name --builder");
   });
-  // A pack's stored accepted answer says nothing of a task's feasibility, so a task only a stored
-  // solve had answered must not go to a person as infeasible.
-  it("logs a held-out task feasible where a stored accepted answer passes today's checks, and no other", async () => {
-    const work = join(root, "runs", "s", "c01", "t-1", "work");
-    mkdirSync(work, { recursive: true });
-    writeFileSync(join(work, "answer.json"), JSON.stringify({ answer: "12" }));
+  // A task an accept control answers is feasible only once that answer passes today's checks, so a
+  // task the checks reject it on must not count as answered.
+  it("logs a held-out task feasible where its accepted answer passes today's checks, and no other", async () => {
     const preparedUnder = async (name: string, check: string) => {
-      const under = join(root, `bundle-${name}`);
-      cpSync(bundle, under, { recursive: true });
-      writeFileSync(
-        join(under, "correctness-model", "evaluator.ts"),
-        `export const checks = { "check-product": ${check} };\n`,
-      );
-      const args = { ...ARGS, bundle: under, name };
-      const flags = flagsOf({ ...args, practice: "0" });
-      const campaign = await openCampaign(args);
+      layOutDraft(folderOf(name), {
+        ...fixtureDraft(TASKS, 1),
+        evaluator: `export const checks = { "check-product": ${check} };\n`,
+      });
+      const flags = ["--name", name, "--practice", "0"];
+      const campaign = await openCampaign({ name });
       const first = await said(prepareCommand, flags);
       return { first, again: await said(prepareCommand, flags), campaign };
     };
     const right = "(req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6)";
     const passed = await preparedUnder(PROVEN, right);
-    const [version = ""] = TASKS.slice(0, 1).map((task) => taskVersion(passed.campaign.pack(task)));
+    const [first] = TASKS;
     expect(passed.first).toContain(
-      "t-1: an accepted answer passes today's verifier, so a valid answer to it is on record",
+      `${first?.taskId ?? ""}: an accepted answer passes today's verifier, so a valid answer to it is on record`,
     );
     // Once on record it is not rechecked.
-    expect(passed.again).not.toContain("t-1:");
+    expect(passed.again).not.toContain(`${first?.taskId ?? ""}:`);
     const feasible = read(passed.campaign.log).filter(({ kind }) => kind === "task.feasible");
-    expect(feasible.map(({ data }) => data)).toEqual([{ version, sweep: "s", answer: { answer: "12" } }]);
+    expect(feasible.map(({ data }) => data.version)).toEqual(
+      TASKS.slice(0, 1).map((task) => taskVersion(passed.campaign.pack(task))),
+    );
     // A recheck the checks reject establishes nothing, and says nothing.
     const rejected = await preparedUnder(UNPROVEN, "() => false");
-    expect(rejected.first).not.toContain("t-1:");
+    expect(rejected.first).not.toContain(`${first?.taskId ?? ""}:`);
     expect(read(rejected.campaign.log).filter(({ kind }) => kind === "task.feasible")).toEqual([]);
   });
 });

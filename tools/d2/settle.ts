@@ -1,8 +1,7 @@
 /**
  * Settle a comparison's reading by hand: a person in the loop, with a record.
  *
- *   bun tools/d2/settle.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
- *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session g0
+ *   bun tools/d2/settle.ts --name truss --session g-1
  *
  * After every comparison a person answers one packet, the operator's one standing duty. Until it
  * is answered the comparison's report says `unsettled`, and no promotion waits for it: a campaign
@@ -49,8 +48,7 @@
  * Where a task itself looks infeasible, say so with `prepare.ts --infeasible <task id> --note`,
  * which refuses the task and logs the note. A task disputed here on a check's fault is a repair
  * owed to the check program's owner, and a repaired checker takes a campaign of its own. Labels made beside a log that holds the Referee's rulings measure the Referee only as far
- * as a packet keeps them from the person: its bar is cleared on labels drawn before it reads
- * (`tools/c/rejections.ts`).
+ * as a packet keeps them from the person: its bar is cleared on labels drawn before it reads.
  *
  * It starts no solve and calls no model. Not run here: see `campaign.ts`.
  */

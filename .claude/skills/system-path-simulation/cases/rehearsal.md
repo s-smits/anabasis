@@ -62,7 +62,7 @@ session takes another `--session` and builds on the first's harness.
   verdicts (`answersOf`), or for a drafted exam from the source campaign (`draftedSource`); a missing
   one is a stray with exit 1.
 - **Examiner**: with `--campaign` over a drafted-exam seed, `scriptedExaminer` proposes the source's
-  later tasks, then up to `--supply N` copies of answered ones; over a stored pack there is none.
+  later tasks, then up to `--supply N` copies of answered ones.
 
 A scripted `fail` sets its task aside until `tools/d2/settle.ts` labels it. Admission is bypassed,
 so a rehearsal says nothing of whether a paid start would be admitted.

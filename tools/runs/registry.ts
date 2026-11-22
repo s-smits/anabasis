@@ -64,7 +64,6 @@ export const ROUND = "tools/d2/round.ts";
 const BY_HAND = [ROUND, EXAMINE, "tools/d2/checkpoint.ts", "tools/d2/session.ts", DRAFT];
 /** This CLI, whose verbs start, read and stop runs; `rehearse` alone writes a log. */
 export const CLI = "tools/runs/cli.ts";
-const LIVE = "tools/m0/live-solve.ts";
 export const SEAT = "system-path-simulation/scripts/live-seat.ts";
 /** The flag a keeper runs under once it has left the verb that started it (`keep.ts`). */
 export const KEEPING = "--here";
@@ -273,7 +272,7 @@ export function processes(table = runTextSyncOrThrow(["ps", "-axo", "pid=,args="
   const found = table.flatMap((row) => {
     const [pid = "", ...args] = row.trim().split(/\s+/);
     // Every verb of this CLI, so that a keeper and a pause waiting on a run are seen beside its writers.
-    const kept = writesCampaign(args) || runsAs(args, [LIVE, CLI]);
+    const kept = writesCampaign(args) || runsAs(args, [CLI]);
     return kept || args.some((arg) => arg.endsWith(SEAT)) ? [{ pid, args }] : [];
   });
   if (found.length === 0) return [];
@@ -307,14 +306,11 @@ export function flagOf(args: readonly string[], name: string): string | undefine
 export const ownArgs = (args: readonly string[]) =>
   args.slice(0, args.includes("--") ? args.indexOf("--") : args.length);
 
-/** The processes in `running` that write `run`'s log: a campaign's by its name, a live solve's by
- *  the task and cycle its name begins with. */
+/** The processes in `running` that write `run`'s log: a campaign's by its name. A recorded live
+ *  solve's log has no writer left, as no command writes one any more. */
 export function writers(run: Run, running: readonly Running[]): Running[] {
   const writes = (args: readonly string[]) =>
-    run.end === CAMPAIGN_END
-      ? writesCampaign(args) && flagOf(args, "--name") === run.name
-      : runsAs(args, [LIVE]) &&
-        run.name.startsWith(`${String(flagOf(args, "--task"))}-${String(flagOf(args, "--cycle"))}-`);
+    isCampaign(run) && writesCampaign(args) && flagOf(args, "--name") === run.name;
   // The worktree is the script's, as the campaign command places its log by its own checkout
   // (`campaignLog`), not the working directory, which would read a script of another checkout run
   // from this one as this one's writer. Every script is `tools/<dir>/<file>`.

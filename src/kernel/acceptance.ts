@@ -9,8 +9,6 @@
  * the verdict its author labelled it with, whether a second run agrees, whether every check has
  * been seen both to refuse an answer and to let one pass, and whether every instrument a check
  * names is there to run.
- * The opening's current faults and counts rest on fresh control answers alone; stored verdicts are
- * reported apart, without rerunning them, and cannot clear a current fault.
  *
  * Two readings ask what no control answer of the pack's does. The do-nothing answer, the smallest
  * the answer format allows, must be rejected on every
@@ -20,9 +18,8 @@
  * admits it by name: all 32 verified firmware fails in v1 ran on task sets whose instrument a Builder
  * had written, and 24 of them were that stand-in rejecting valid code. A check's instrument is named
  * by the tool it runs, never by a label its author writes, since an author's label can call a
- * check `authored` that runs the pack's engine. An exam with no engine behind any check, as every
- * drafted one is (only a stored
- * pack's tool tree installs one), stands only once the operator admits each check by name.
+ * check `authored` that runs the pack's engine. An exam with no engine behind any check stands only
+ * once the operator admits each check by name.
  *
  * This reads and decides nothing: a fault is a sentence for the checker's owner, and what share of
  * faults a checker may carry is the operator's. One thing is not read here. A control answer tests the
@@ -70,8 +67,8 @@ interface ControlAnswerRun extends Control {
   readonly verdicts: readonly [Verdict, Verdict];
 }
 
-/** An answer whose verdict is on record: a control answer's first run, or a stored solve's. */
-export interface Graded {
+/** An answer whose verdict is on record: a control answer's first run. */
+interface Graded {
   readonly task: Task;
   readonly verdict: Verdict;
 }
@@ -90,7 +87,7 @@ interface CheckReading {
   readonly instrument: string;
   /** Declared tools the verifier's tool path does not hold. */
   readonly missing: readonly string[];
-  /** Answers it applied to and let pass, and answers it refused, control answers and stored answers alike. */
+  /** Control answers it applied to and let pass, and those it refused. */
   readonly passed: number;
   readonly refused: number;
   /** Reject control answers that name it, and how many of those it refused. */
@@ -110,20 +107,19 @@ export interface Checker {
   readonly checks: string;
 }
 
-/** What a checker is read on: its verifier and brief, the tasks and control answers put to it, answers
- *  graded elsewhere, and whether the verifier's tool path holds a tool. */
+/** What a checker is read on: its verifier and brief, the tasks and control answers put to it, and
+ *  whether the verifier's tool path holds a tool. */
 export interface Read {
   readonly verify: Verifier;
   readonly brief: Brief;
   readonly contract: Contract;
   readonly tasks: readonly Task[];
   readonly controls: readonly Control[];
-  readonly stored: readonly Graded[];
   readonly found: (toolId: string) => boolean;
   /** Verifier runs in flight at once. */
   readonly width: number;
-  /** False for a stored pack, whose reading runs no probe of its tasks (`probeFaults`): they are not
-   *  a draft's few examples, and the swap probe runs every task's control on every other. */
+  /** False where the reading runs no probe of its tasks (`probeFaults`): the acceptance command's,
+   *  over an exam whose draft was probed when it stood. */
   readonly probes?: false;
 }
 
@@ -305,26 +301,21 @@ export function toolFaults(brief: Brief, found: (toolId: string) => boolean): st
 }
 
 /**
- * The reading: each check's tallies over the control answers and the stored answers, and the faults.
- * `stored` are answers graded elsewhere, a sweep's solves say, and add to what a check has been
- * seen to do without being rerun. `found` says whether the verifier's tool path holds a tool. A
- * verdict that decided nothing, a faulty check's or a non-result, tallies for no check.
+ * The reading: each check's tallies over the control answers, and the faults. `found` says whether
+ * the verifier's tool path holds a tool. A verdict that decided nothing, a faulty check's or a
+ * non-result, tallies for no check.
  */
 function acceptance(
   brief: Brief,
   tasks: readonly Task[],
   runs: readonly ControlAnswerRun[],
-  stored: readonly Graded[],
   found: (toolId: string) => boolean,
 ): Acceptance {
   const byId = new Map(tasks.map((task) => [task.taskId, task]));
-  const graded = [
-    ...runs.flatMap(({ taskId, verdicts: [verdict] }) => {
-      const task = byId.get(taskId);
-      return task === undefined ? [] : [{ task, verdict }];
-    }),
-    ...stored,
-  ];
+  const graded: Graded[] = runs.flatMap(({ taskId, verdicts: [verdict] }) => {
+    const task = byId.get(taskId);
+    return task === undefined ? [] : [{ task, verdict }];
+  });
   // The objective is read as a check is: its author's own computation, which the operator admits
   // by name, and seen to measure every valid answer or none.
   const measured: CheckReading[] =
@@ -411,13 +402,11 @@ export async function readChecker(given: Read) {
   const idle = doNothingAnswer(given.contract.answerFormat);
   const unformed = answerFormatFault(given.contract.answerFormat, idle);
   const rejected = unformed === null ? await runDoNothing(verify, tasks, idle, width) : [];
-  const { checks, faults } = acceptance(brief, tasks, runs, [], given.found);
-  const { checks: historical } = acceptance(brief, tasks, [], given.stored, given.found);
+  const { checks, faults } = acceptance(brief, tasks, runs, given.found);
   const probed = given.probes === false ? [] : await probeFaults(given, runs);
   return {
     runs,
     checks,
-    historical,
     faults: [...faults, ...(unformed === null ? doNothingFaults(rejected) : []), ...probed],
     notes:
       unformed === null

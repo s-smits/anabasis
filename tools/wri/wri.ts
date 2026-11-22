@@ -13,9 +13,9 @@
  *   bun tools/wri/wri.ts record --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts synthesis --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts findings [--root <dir>] [--window 7] [--until <date>]
- *   bun tools/wri/wri.ts grade --log .ana/d2/truss/log.jsonl [--bundle <pack>] --task <taskId> --answer <file> [--set <path>=<json>]...
- *   bun tools/wri/wri.ts grade --log <log> [--bundle <pack>] --solve <id> [--set <path>=<json>]...
- *   bun tools/wri/wri.ts grade --log <log> [--bundle <pack>] --answers <dir>
+ *   bun tools/wri/wri.ts grade --log .ana/d2/truss/log.jsonl --task <taskId> --answer <file> [--set <path>=<json>]...
+ *   bun tools/wri/wri.ts grade --log <log> --solve <id> [--set <path>=<json>]...
+ *   bun tools/wri/wri.ts grade --log <log> --answers <dir>
  *   bun tools/wri/wri.ts derive (--log <log>[,<log>...] | --all) [--verbose] [--force] [--no-embed]
  *   bun tools/wri/wri.ts reader <name> --log <log>
  *   bun tools/wri/wri.ts index [--root <dir>] [--out <file>]
@@ -160,7 +160,6 @@ const { values, positionals } = parseArgs({
     agents: { type: "string" },
     high: { type: "string" },
     regroup: { type: "boolean" },
-    bundle: { type: "string" },
     task: { type: "string" },
     answer: { type: "string" },
     solve: { type: "string" },
@@ -568,8 +567,8 @@ async function main(): Promise<number> {
   }
   if (verb === "reader") return await oneReader(positionals[1]);
   if (verb === "grade") {
-    const { bundle, task, answer, solve, set = [], answers } = values;
-    return grade({ log: oneLog(), bundle, task, answer, solve, set, answers });
+    const { task, answer, solve, set = [], answers } = values;
+    return grade({ log: oneLog(), task, answer, solve, set, answers });
   }
   if (verb === "derive") return deriveStep();
   if (verb === "findings") {

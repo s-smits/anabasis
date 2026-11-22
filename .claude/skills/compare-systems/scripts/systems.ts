@@ -72,7 +72,7 @@ const USAGE = `compare-systems: solve a campaign's held-out tasks under two or m
 
   bun .claude/skills/compare-systems/scripts/systems.ts --seed <seed> \\
     --baseline <name>=<model>:<effort>@<harness> --candidate <name>=<model>:<effort>@<harness> \\
-    [--candidate ...] [--root <dir> --sweep <id> --cycle <id> --bundle <dir>] [--tasks <all>] [--solves 1] [--level 0.02] [--login N] [--read | --cap <dollars> --reviewer <model>]
+    [--candidate ...] [--tasks <all>] [--solves 1] [--level 0.02] [--login N] [--read | --cap <dollars> --reviewer <model>]
 
 <seed> is a seed of a campaign that opened from a prompt (bun run runs seed), never the campaign
 itself; a seed of a campaign over a stored pack names that pack by its four flags. <harness> is starter, promoted, or a whole digest or a letter the seed keeps; import a harness
@@ -353,17 +353,10 @@ async function main(args: CommandArgs): Promise<number> {
       "name --cap, the dollars every system's solves may bill together, and --reviewer, the Referee",
     );
   }
-  // A seed of a campaign over a stored pack names the pack as the campaign's commands do (`packNamed`).
   const flag = (name: string) => args.value(name) ?? undefined;
   const login = flag("login");
   if (login !== undefined) Object.assign(Bun.env, loginEnv(Bun.env, login));
-  const stored = packNamed({
-    name: seed,
-    root: flag("root"),
-    sweep: flag("sweep"),
-    cycle: flag("cycle"),
-    bundle: flag("bundle"),
-  });
+  const stored = packNamed({ name: seed });
   const source = await openCampaign(stored);
   if (!existsSync(join(source.log, "..", SEED_FILE))) {
     return args.die(`${seed} is no seed: copy the campaign first with bun run runs seed`);
@@ -458,10 +451,6 @@ if (import.meta.main) {
         cap: "text",
         level: "text",
         read: "flag",
-        root: "text",
-        sweep: "text",
-        cycle: "text",
-        bundle: "text",
         reviewer: "text",
         "reviewer-effort": "text",
         login: "text",

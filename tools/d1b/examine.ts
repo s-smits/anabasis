@@ -1,9 +1,7 @@
 /**
  * One Examiner session over a campaign:
  *
- *   bun tools/d1b/examine.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
- *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session x-1 \
- *     --examiner claude/claude-opus-5-5
+ *   bun tools/d1b/examine.ts --name truss --session x-1 --examiner claude/claude-opus-5-5
  *
  * The Examiner writes task instances against the pack's contract and check program. Each is put to
  * the gate, which holds it out on its package's shape check (`propose_tasks`,
@@ -181,7 +179,6 @@ export async function examineCommand(
     {
       repoRoot: REPO,
       otherTrees: campaign.trees,
-      packRoots: campaign.packRoots,
       // The engines the campaign's checks run, installed in the Examiner's shell from the tree the
       // verifier runs them from (`pinnedEngines`, `src/examiner/shell.ts`).
       engines: { checks: campaign.checks, tools: join(campaign.bundle, ".toolchain") },

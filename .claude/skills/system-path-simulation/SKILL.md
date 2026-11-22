@@ -12,8 +12,7 @@ the cheapest option that can decide the question, and stop there.
 A campaign's log is its whole state. A **seed** copies it cut at one event, with the checks or
 drafted exam, kept harnesses, Builder notes and Examiner home the cut still names (`seedCampaign`,
 `tools/runs/seed.ts`), so any recorded position can be restored and run forward. Keep the source: a
-drafted-exam rehearsal reads later tasks from it (`draftedSource`), and a stored pack needs its pack
-and sweep on disk.
+rehearsal reads later tasks from it (`draftedSource`).
 
 ## Three options
 
@@ -116,7 +115,6 @@ size stated first: the seats, each seat's cap and minutes, and the total. Each s
 | An Examiner session | where it should start | `tools/d1b/examine.ts --session x-<n> --examiner <model> --examiner-effort <e> ...` | `live-seat.ts read`, `pairs` |
 | A comparison's solves alone | right after a recorded `build.finished` (`--events`) | `tools/d2/checkpoint.ts --id g-<n> --new latest` | its report |
 | A campaign stretch | before `build.started`, or at rest | `harness-builder.ts`, every seat's model named | the log's readers |
-| One solve of a stored sweep | none | `bun tools/m0/live-solve.ts <pack flags> --task <id> --live` | its verdict |
 
 - **The env file is a path**, passed on and never opened, printed or copied.
 - **Size the cap from the record**: the dollars per admission (an Examiner) or per solve (a round)

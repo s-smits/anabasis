@@ -3,9 +3,9 @@
  * the command that repeats it. It writes nothing and logs nothing. It needs the pack and its tool
  * tree, and the Mac's verifier wall.
  *
- *   bun tools/wri/wri.ts grade --log <log> [--bundle <pack>] --task <taskId> --answer <file> [--set <path>=<json>]...
- *   bun tools/wri/wri.ts grade --log <log> [--bundle <pack>] --solve <id> [--set <path>=<json>]...
- *   bun tools/wri/wri.ts grade --log <log> [--bundle <pack>] --answers <dir>
+ *   bun tools/wri/wri.ts grade --log <log> --task <taskId> --answer <file> [--set <path>=<json>]...
+ *   bun tools/wri/wri.ts grade --log <log> --solve <id> [--set <path>=<json>]...
+ *   bun tools/wri/wri.ts grade --log <log> --answers <dir>
  *
  * - `--answer` grades one file against `--task`.
  * - `--solve` grades the answer the log's last verdict of that solve holds (`verdictsOf`), against the
@@ -27,12 +27,8 @@
  * and no check reads it (`src/solver/run.ts`). The format is the draft's, which the campaign's
  * contract holds (`packOpened`, `tools/d2/campaign.ts`). Putting every answer to the checks alone
  * would let a lane read the evaluator's leniency on keys the format refuses as a gap of the exam,
- * where the host refuses such an answer before any check. A stored pack's format is read from its
- * sweep, which grade is not given, so its answers are
- * put to the checks alone, and grade says so. A campaign over a stored pack names it with `--bundle`,
- * and its checks stand beside the log; a campaign that drafted its exam names none, and its exam is
- * read where the campaign staged it (`exams/<digest>/`, `tools/d2/exam.ts`), not under
- * `<campaign>/checks`, which a drafted exam does not hold.
+ * where the host refuses such an answer before any check. The exam is read where the campaign
+ * staged it (`exams/<digest>/`, `tools/d2/exam.ts`).
  */
 import { draftOf } from "#src/examiner/draft.ts";
 import { type AnswerFile, readAnswerFiles } from "#src/kernel/answer-files.ts";
@@ -46,14 +42,13 @@ import { readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { resolveJsonPath } from "#src/meta/json-evidence.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
-import { dirname, join } from "#src/meta/path.ts";
+import { join } from "#src/meta/path.ts";
 import { withReplacedField } from "#src/referee/probe.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { readPack } from "../m0/stored-sweep.ts";
 
 interface GradeOptions {
   readonly log: string;
-  readonly bundle: string | undefined;
   readonly task: string | undefined;
   readonly answer: string | undefined;
   readonly solve: string | undefined;
@@ -132,7 +127,6 @@ function withSet(answer: JsonValue, sets: readonly string[]): { answer: JsonValu
 /** The answers to grade: one recorded or given, or every file of a folder. */
 function answersOf(options: GradeOptions, events: ReturnType<typeof read>): Graded[] {
   const base = ["bun", "tools/wri/wri.ts", "grade", "--log", quoted(options.log)];
-  const bundle = options.bundle === undefined ? [] : ["--bundle", quoted(options.bundle)];
   if (options.answers !== undefined) {
     const dir = options.answers;
     return readdirSync(dir)
@@ -145,7 +139,7 @@ function answersOf(options: GradeOptions, events: ReturnType<typeof read>): Grad
           answer: capturedJsonParse(bytes),
           label: `${file}  ${sha256(bytes).slice(0, 8)}`,
           recorded: null,
-          repeat: [...base, ...bundle, "--answers", quoted(dir)],
+          repeat: [...base, "--answers", quoted(dir)],
         };
       });
   }
@@ -170,7 +164,7 @@ function answersOf(options: GradeOptions, events: ReturnType<typeof read>): Grad
         files: readAnswerFiles(options.log, verdict.files ?? []),
         label: null,
         recorded: held,
-        repeat: [...base, ...bundle, "--solve", verdict.solve, ...sets],
+        repeat: [...base, "--solve", verdict.solve, ...sets],
       },
     ];
   }
@@ -183,28 +177,17 @@ function answersOf(options: GradeOptions, events: ReturnType<typeof read>): Grad
       answer: capturedJsonParse(readFileSync(options.answer, "utf8")),
       label: null,
       recorded: null,
-      repeat: [
-        ...base,
-        ...bundle,
-        "--task",
-        quoted(options.task),
-        "--answer",
-        quoted(options.answer),
-        ...sets,
-      ],
+      repeat: [...base, "--task", quoted(options.task), "--answer", quoted(options.answer), ...sets],
     },
   ];
 }
 
 export async function grade(options: GradeOptions): Promise<number> {
   const { log } = options;
-  // The pack and the check program: the stored pack `--bundle` names, whose checks the campaign
-  // staged beside its log, or the exam the log drafted, where the campaign staged it.
-  const staged = options.bundle === undefined ? stagedExamOf(log) : null;
-  if (options.bundle === undefined && staged === null) {
-    throw new Error("name --bundle: the campaign drafted no exam of its own, so its pack is a stored one");
-  }
-  const { bundle, checks } = staged ?? { bundle: options.bundle ?? "", checks: join(dirname(log), "checks") };
+  // The pack and the check program: the exam the log drafted, where the campaign staged it.
+  const staged = stagedExamOf(log);
+  if (staged === null) throw new Error("the campaign drafted no exam of its own");
+  const { bundle, checks } = staged;
   if (options.answers !== undefined && options.set.length > 0) {
     throw new Error("--set changes one answer, not a folder");
   }
@@ -215,12 +198,7 @@ export async function grade(options: GradeOptions): Promise<number> {
   );
   // The format first, as the host holds a solver's answer to it before any check reads it (`judge`).
   const answerFormat = draftOf(events)?.answerFormat;
-  if (answerFormat === undefined) {
-    console.error(
-      "the answer format of a stored pack is read from its sweep, which grade is not given: not held to it",
-    );
-  }
-  const verify = openVerifier({ checks, tools: join(bundle, ".toolchain"), packRoots: [bundle] });
+  const verify = openVerifier({ checks, tools: join(bundle, ".toolchain") });
   const judged = async (task: Task, answer: JsonValue, files?: readonly AnswerFile[]) => {
     const fault = answerFormat === undefined ? null : answerFormatFault(answerFormat, answer);
     return fault === null ? spelled(await verify(task, answer, undefined, files)) : `fail format: ${fault}`;

@@ -3,9 +3,8 @@ expands the first half of `AGENTS.md` section 6; terms and refusals are in `term
 
 ## 6. A campaign's commands
 
-Each command names the campaign (`--name`) and its pack: a stored pack by
-`--root --sweep --cycle --bundle`, or none where the log drafted its own exam (`packNamed`,
-`tools/d2/campaign.ts`). Each runs as `bun <file>`, and its head comment is its manual.
+Each command names the campaign (`--name`) alone and opens it over the exam its log drafted
+(`packNamed`, `tools/d2/campaign.ts`). Each runs as `bun <file>`, and its head comment is its manual.
 
 | Order | Command | What it records |
 | --- | --- | --- |

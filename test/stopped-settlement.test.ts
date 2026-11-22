@@ -47,16 +47,16 @@ const ENDINGS = new Map<string, Ending>(
   } satisfies Record<string, Ending>),
 );
 const PREFIX = {
-  "t-1": ["PPLL", "PPPP"],
-  "t-2": ["PPPL", "PPPP"],
-  "t-3": ["PPPL", "PPPP"],
-  "t-4": ["DDRL", "DDDD"],
-  "t-5": ["DDRL", "DDDD"],
-  "t-6": ["PLL", "PPP"],
-  "t-7": ["RLL", "DP"],
-  "t-8": ["", ""],
-  "t-9": ["L", ""],
-  "t-10": ["", "D"],
+  "ex-001": ["PPLL", "PPPP"],
+  "ex-002": ["PPPL", "PPPP"],
+  "ex-003": ["PPPL", "PPPP"],
+  "ex-004": ["DDRL", "DDDD"],
+  "ex-005": ["DDRL", "DDDD"],
+  "ex-006": ["PLL", "PPP"],
+  "ex-007": ["RLL", "DP"],
+  "ex-008": ["", ""],
+  "ex-009": ["L", ""],
+  "ex-010": ["", "D"],
 } satisfies Outcomes;
 const REPO = resolve(import.meta.dir, "..");
 const scratches: string[] = [];
@@ -161,15 +161,15 @@ it("reviews a stopped draw with five short tasks and seventeen rejected answers 
   const s = fixture();
   const report = await checkpoint(s.request);
   unscored(report);
-  expect(report.short).toEqual(["t-6", "t-7", "t-8", "t-9", "t-10"]);
-  expect(report.aside).toEqual(["t-4", "t-5", "t-7", "t-10"]);
+  expect(report.short).toEqual(["ex-006", "ex-007", "ex-008", "ex-009", "ex-010"]);
+  expect(report.aside).toEqual(["ex-004", "ex-005", "ex-007", "ex-010"]);
   expect(report.short.filter((task) => report.aside.includes(task))).toHaveLength(2);
   expect(report).toMatchObject({ settled: comparison.UNSETTLED, disputed: [], withdrawn: [] });
   const events = read(s.log);
   const fixed = present(comparison.fixedIn(events, ID));
   const covered = comparison.coverageOf(events, fixed);
   expect(fixed.tasks).toHaveLength(10);
-  expect(covered.pairs.map(({ task }) => task)).toEqual(["t-1", "t-2", "t-3", "t-4", "t-5"]);
+  expect(covered.pairs.map(({ task }) => task)).toEqual(["ex-001", "ex-002", "ex-003", "ex-004", "ex-005"]);
   const observed = comparison.solvesUnder(events, fixed);
   expect(observed).toHaveLength(53);
   expect(observed.every(({ counts }) => counts)).toBe(true);
@@ -204,7 +204,7 @@ it("reviews a stopped draw with five short tasks and seventeen rejected answers 
     restored: [],
     passes: Object.fromEntries(passes),
   });
-  expect(taskStates(read(s.log)).get("t-7")).toBe("disputed");
+  expect(taskStates(read(s.log)).get("ex-007")).toBe("disputed");
   const labels = settledLabels(read(s.log));
   expect(labels.size).toBe(17);
   const measured = agreement(read(s.log), labels);
@@ -221,7 +221,7 @@ it("reviews a stopped draw with five short tasks and seventeen rejected answers 
   // Another comparison's solves cannot change the first report's coverage.
   append(s.log, "solve.started", {
     solve: "later",
-    condition: recordCondition(s.log, conditionOf("t-8", "old")),
+    condition: recordCondition(s.log, conditionOf("ex-008", "old")),
     comparison: "g-2",
   });
   append(s.log, "solve.finished", { solve: "later", ending: { outcome: "pass" } });
@@ -252,13 +252,13 @@ it("recovers completion omitted by an older stopped report at its original cutof
     fresh: "fresh",
     starter: "old",
     ...comparison.NOTHING,
-    aside: ["t-4", "t-5", "t-7", "t-10"],
+    aside: ["ex-004", "ex-005", "ex-007", "ex-010"],
     reading: STOPPED,
   });
   const fixed = present(comparison.fixedIn(read(s.log), ID));
   const original = comparison.coverageOf(read(s.log), fixed);
   expect(original.short).toHaveLength(5);
-  const condition = recordCondition(s.log, conditionOf("t-8", "old"));
+  const condition = recordCondition(s.log, conditionOf("ex-008", "old"));
   append(s.log, "solve.started", { solve: "after-report", condition, comparison: ID });
   append(s.log, "solve.finished", { solve: "after-report", ending: present(ENDINGS.get("D")) });
   expect(comparison.toLabel(read(s.log), ID).aside).toHaveLength(14);
@@ -395,23 +395,9 @@ it("draws and settles the stopped comparison through the blind packet command", 
   const folder = join(REPO, ".ana", "d2", name);
   scratches.push(root, folder);
   mkdirSync(folder, { recursive: true });
-  const bundle = join(root, "bundle");
-  layOutPack(root, bundle, fixtureTasks(10), join(REPO, "test", "fixtures", "harness-min"));
   cpSync(s.log, join(folder, "log.jsonl"));
-  const args = [
-    "--name",
-    name,
-    "--root",
-    root,
-    "--sweep",
-    "s",
-    "--cycle",
-    "c01",
-    "--bundle",
-    bundle,
-    "--session",
-    ID,
-  ];
+  layOutPack(folder, fixtureTasks(10));
+  const args = ["--name", name, "--session", ID];
   const said = spyOn(console, "log");
   const run = async () => {
     said.mockClear();

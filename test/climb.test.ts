@@ -21,7 +21,6 @@ import { type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { GUIDE_FILE } from "../src/meta/bundle-layout.ts";
 import {
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -37,7 +36,7 @@ import { ANSWER_FILE } from "../src/tools/answer.ts";
 import type { Seats } from "../tools/d2/campaign-terms.ts";
 import { validityOf } from "../tools/d2/close.ts";
 import { harnessBuilder } from "../tools/d2/harness-builder.ts";
-import { fixtureTasks, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";
+import { fixtureTasks, layOutPack, OPENED_FROM, scriptedModel } from "./helpers/fixture-pack.ts";
 import { present } from "./helpers/matchers.ts";
 import { objectiveLog } from "./helpers/starter-chain.ts";
 
@@ -62,7 +61,6 @@ const IDLE: readonly [string, JsonObject] = ["finish", { note: "Nothing further.
  *  answers a task one past its strength on every other solve. */
 const tried = new Map<string, number>();
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-climb-")));
-const bundle = join(root, "bundle");
 const folder = join(REPO, ".ana", "d2", NAME);
 
 // A log written here as `test/wall-practice.test.ts` writes one, for the epochs' reading.
@@ -122,22 +120,14 @@ describe("the climb", () => {
   it.skipIf(runtimeProcess.env.ANA_CLIMB === undefined)(
     "promotes a harness, has harder tasks written, and promotes a harder one on them, epoch after epoch",
     async () => {
-      layOutPack(root, bundle, TASKS, FIXTURE);
-      mkdirSync(folder, { recursive: true });
+      layOutPack(folder, TASKS);
       writeFileSync(join(folder, "seed.json"), `${JSON.stringify({ from: null, events: 0 })}\n`);
       const flags = [
-        "--root",
-        root,
-        "--sweep",
-        "s",
-        "--cycle",
-        "c01",
-        "--bundle",
-        bundle,
         "--name",
         NAME,
         "--project",
         "climb",
+        ...OPENED_FROM,
         "--admit",
         "check-product",
         "--practice",

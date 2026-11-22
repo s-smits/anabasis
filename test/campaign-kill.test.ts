@@ -34,7 +34,6 @@ import { isString } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
-import { layOutPack } from "./helpers/fixture-pack.ts";
 import { PACK_TASKS } from "./helpers/killed-campaign.ts";
 
 /** Where the kill lands: once the log holds `count` events of `kind`. */
@@ -51,7 +50,6 @@ const names: string[] = [];
 const TORN = `{"at":"2026-11-13T00:00:00.000Z","kind":"solve.call","data":{"text":"caf`;
 
 setDefaultTimeout(600_000);
-layOutPack(root, join(root, "bundle"), PACK_TASKS, join(REPO, "test", "fixtures", "harness-min"));
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });

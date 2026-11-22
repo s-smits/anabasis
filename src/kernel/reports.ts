@@ -563,8 +563,7 @@ export function poolOf(events: readonly LogEvent[]) {
     doubtedAt > keptAt && doubtedAt > (tallied.at(-1)?.index ?? -1) ? doubtedAt : undefined,
   );
   const leftOut = new Set([...awaiting, ...doubted]);
-  const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
-  const heldBeforePromotion = new Set(taskSets(events.slice(0, Math.max(0, promotedAt))).held);
+  const heldBeforePromotion = new Set(beforePromotion(events).held);
   const exhausted = easy.filter((task) => !leftOut.has(task));
   const inherited = held.filter((task) => heldBeforePromotion.has(task) && !leftOut.has(task));
   const retained = [...new Set([...exhausted, ...inherited])];
@@ -576,9 +575,11 @@ export function poolOf(events: readonly LogEvent[]) {
     scorable,
     frontier: scorable.filter((task) => !retained.includes(task)),
     practiceFrontier: held.filter((task) => !heldBeforePromotion.has(task) && !practiceOut.has(task)),
-    // What a practice release draws from. Doubt is read from the reference's own solves alone, so
-    // which task another harness won moves nothing here (rule 3).
-    practicePool: held.filter((task) => !doubted.includes(task)),
+    // What a practice release draws from: current-epoch held tasks not in doubt. Tasks held
+    // before the latest promotion stay held for regression scoring rather than filling post-promotion
+    // practice. Doubt is read from the reference's own solves alone, so which task another harness
+    // won moves nothing here (rule 3).
+    practicePool: held.filter((task) => !heldBeforePromotion.has(task) && !doubted.includes(task)),
     awaiting,
     doubted,
     exhausted,
@@ -623,22 +624,29 @@ function standingOf(record: TaskRecord): [string, Standing][] {
   return [[record.version, { won: won === null ? null : won === reference ? "reference" : "other", by }]];
 }
 
+/** Task sets held and released just before the latest promotion, or empty before any promotion. */
+function beforePromotion(events: readonly LogEvent[]) {
+  const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
+  return taskSets(events.slice(0, Math.max(0, promotedAt)));
+}
+
 /**
  * The `count` tasks of `pool` a practice release takes, each with the reason, in the order taken.
  *
- * First come the tasks the reference never answered: held-out tasks it gave no valid answer in
- * `READINGS_IN_A_ROW.unsolved` or more comparisons it stood in, whether or not a limit cut them
- * short. They are what a Builder session has to work on, when every released task already passes.
- * A task only another harness answered goes too, since letting another harness's answer keep it
- * off the list would tell the Builder which held-out task its harness won (rule 3).
+ * First come the tasks the reference never answered: current-epoch held-out tasks it gave no valid
+ * answer in `READINGS_IN_A_ROW.unsolved` or more comparisons it stood in, whether or not a limit
+ * cut them short. They are what a Builder session has to work on, when every released task already
+ * passes. A task only another harness answered goes too, since letting another harness's answer
+ * keep it off the list would tell the Builder which held-out task its harness won (rule 3).
  *
- * Next, half (rounded down) of the tasks the reference failed or left room on in its last reading:
- * a task whose last scored result has a failed reference solve, or where an answer of its own or
- * its author's on record beats it by at least the gap floor (`room`). In an objective domain every
- * solve is valid, so room is the only way such a task reaches this list. Half are kept back so the
- * comparison keeps tasks it can untie; rounding up once released the only failed task of one. The
- * half is drawn from the whole reading, released tasks included, so repeated one-task releases
- * keep the same half held. Disputed and refused tasks have no place in it.
+ * Next, half (rounded down) of the current-epoch tasks the reference failed or left room on in its
+ * last reading: a task whose last scored result has a failed reference solve, or where an answer
+ * of its own or its author's on record beats it by at least the gap floor (`room`). In an
+ * objective domain every solve is valid, so room is the only way such a task reaches this list.
+ * Half are kept back so the comparison keeps tasks it can untie; rounding up once released the
+ * only failed task of one. The half is drawn from the current epoch's reading, released tasks
+ * included, so repeated one-task releases keep the same half held and prior-epoch tasks never
+ * crowd current-epoch tasks out of practice. Disputed and refused tasks have no place in it.
  *
  * The rest is the contract's seeded draw over every task neither list holds, those the reference
  * answers every time included, since a practice pass still reports the objective's measure. Room
@@ -654,7 +662,11 @@ export function releaseOrder(
 ): [string, string][] {
   const { records } = taskRecords(events);
   const { released } = taskSets(events);
-  const eligible = records.filter(({ held, version }) => held || released.includes(version));
+  const prior = beforePromotion(events);
+  const priorEpoch = new Set([...prior.held, ...prior.released]);
+  const eligible = records.filter(
+    ({ held, version }) => !priorEpoch.has(version) && (held || released.includes(version)),
+  );
   const inPool = (versions: readonly string[]) => versions.filter((version) => pool.includes(version));
   const unanswered = orderedBy(eligible, ({ tallied }) => {
     const own = tallied.filter(({ reference }) => reference !== null);

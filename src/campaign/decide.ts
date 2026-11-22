@@ -661,8 +661,15 @@ export function practiceDue(
     ({ kind, data }, at) =>
       at <= since && (kind === PROMOTED || (kind === "task.state" && data.state === "released")),
   );
-  const newTasksLimit =
-    heldOutAfter(events, last) > 0 ? Infinity : events[last]?.kind === PROMOTED ? 0 : Math.max(0, 1 - count);
+  // Tasks written after `last` that remain held or released cap practice to at most half the new
+  // batch, so a small Examiner session does not lose all its frontier tasks on release.
+  const written = tasksByEpoch(events.slice(last + 1))
+    .flat()
+    .filter(
+      (version) => sets.states.get(version) === "held" || sets.states.get(version) === "released",
+    ).length;
+  const baseline = events[last]?.kind === PROMOTED ? 0 : 1;
+  const newTasksLimit = Math.max(0, Math.max(baseline, Math.floor(written / 2)) - count);
   const owed = Math.min(Math.max(0, practice - count), allowance, newTasksLimit);
   if (owed === 0) return null;
   return {

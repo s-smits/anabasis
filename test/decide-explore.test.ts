@@ -40,6 +40,8 @@ interface State {
 
 const AT = "2026-11-21T00:00:00.000Z";
 const STARTER = "start";
+const PROMOTED_EVENT = "harness.promoted";
+const REPORTED_EVENT = "comparison.reported";
 const PLAN: Plan = {
   patience: 2,
   unprepared: false,
@@ -98,7 +100,7 @@ function compared(
     move.id === undefined ? [event("comparison.started", { session, old, fresh, starter: STARTER })] : [];
   return readings.map(({ reading, tally, old: oldValid, fresh: freshValid }) => [
     ...started,
-    event("comparison.reported", {
+    event(REPORTED_EVENT, {
       session,
       old,
       fresh,
@@ -167,7 +169,7 @@ function answers(events: readonly LogEvent[], move: Decided, plan: Plan): LogEve
       return compared(events, move);
     }
     case "promote": {
-      return [[event("harness.promoted", { harness: move.harness })]];
+      return [[event(PROMOTED_EVENT, { harness: move.harness })]];
     }
     case "prepare": {
       return [[event("task.state", { version: heldVersions(events)[0] ?? "none", state: "released" })]];
@@ -183,7 +185,7 @@ function answers(events: readonly LogEvent[], move: Decided, plan: Plan): LogEve
 
 const reportsOf = (events: readonly LogEvent[]) =>
   events.flatMap(({ kind, data }, at) =>
-    kind === "comparison.reported" && isString(data.old) && isString(data.fresh)
+    kind === REPORTED_EVENT && isString(data.old) && isString(data.fresh)
       ? [{ at, old: data.old, fresh: data.fresh, reading: data.reading, room: roomFor(data) }]
       : [],
   );
@@ -196,7 +198,7 @@ const roomFor = (data: JsonObject) => {
 function broken(events: readonly LogEvent[], plan: Plan, decided: Decided): string | null {
   const reference = referenceOf(events) ?? STARTER;
   const reports = reportsOf(events);
-  const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+  const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED_EVENT);
   // Safety: the operator's stop holds over every row, and the budget's reserve over every move that
   // bills; reading the exam and promoting a step already read bill nothing.
   const stopped = events.some(({ kind, data }) => kind === "campaign.word" && data.word === "stop");
@@ -279,7 +281,7 @@ const PROMOTED = [
   ...OPENED,
   built("h1"),
   ...firstReading(READINGS[0]),
-  event("harness.promoted", { harness: "h1" }),
+  event(PROMOTED_EVENT, { harness: "h1" }),
 ];
 const ROOM_LEFT = [...OPENED, built("h1"), ...firstReading(READINGS[1])];
 const NO_ROOM = [...OPENED, built("h1"), ...firstReading(READINGS[2])];
@@ -364,14 +366,14 @@ describe("the folds the table and the operator read", () => {
       [undefined, "base"].flatMap((old) => [undefined, "step"].map((reading) => ({ fresh, old, reading }))),
     );
     const log = readings.map(({ fresh, old, reading }, at) =>
-      event("comparison.reported", {
+      event(REPORTED_EVENT, {
         session: `b-${String(at)}`,
         fresh,
         ...keyIfDefined("old", old),
         ...keyIfDefined("reading", reading),
       }),
     );
-    const reread = event("comparison.reported", {
+    const reread = event(REPORTED_EVENT, {
       session: "b-0",
       fresh: "h2",
       old: "base",
@@ -399,7 +401,7 @@ describe("the folds the table and the operator read", () => {
     const restored = [finished("b-0", "P", true), frozen, finished("b-1", "P", false)];
     expect(latestBuilt(restored)).toBe("P");
     expect(
-      latestBuilt(restored.toSpliced(2, 0, event("harness.promoted", { harness: "B", from: STARTER }))),
+      latestBuilt(restored.toSpliced(2, 0, event(PROMOTED_EVENT, { harness: "B", from: STARTER }))),
     ).toBe("B");
   });
 });
@@ -441,13 +443,15 @@ describe("the decision table, searched", () => {
       const pool = poolOf(events);
       seen.retained += Math.sign(pool.retained.length);
       seen.practiceFrontier += Math.sign(pool.practiceFrontier.length);
-      const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+      const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED_EVENT);
       const inherited = new Set(taskSets(events.slice(0, Math.max(0, promotedAt))).held);
       const leftOut = new Set([...pool.awaiting, ...pool.doubted]);
       expect([...pool.scorable, ...leftOut].toSorted()).toEqual(held.toSorted());
       expect([...pool.frontier, ...pool.retained].toSorted()).toEqual(pool.scorable.toSorted());
       expect(pool.practiceFrontier.filter((task) => inherited.has(task) || leftOut.has(task))).toEqual([]);
-      expect(pool.practicePool).toEqual(held.filter((task) => !pool.doubted.includes(task)));
+      expect(pool.practicePool).toEqual(
+        held.filter((task) => !inherited.has(task) && !pool.doubted.includes(task)),
+      );
       const order = releaseOrder(events, pool.practicePool, held.length, "seed").map(([task]) => task);
       seen.longOrder += order.length >= 2 ? 1 : 0;
       expect(new Set(order).size).toBe(order.length);
@@ -497,7 +501,7 @@ describe("the decision table, searched", () => {
       const due = practiceDue(events, 1000, PLAN.wanted.level);
       const { held } = taskSets(events);
       if (due === null) continue;
-      const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+      const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED_EVENT);
       for (const version of new Set([held[0], held.at(-1)])) {
         if (version === undefined) continue;
         const released = [...events, event("task.state", { version, state: "released" })];
@@ -514,7 +518,7 @@ describe("the decision table, searched", () => {
 
   it("owes a promotion its starter comparison, which the table asks for once tasks are held out for the new reference", () => {
     const confirmed = ALL.some(({ events, decided }) => {
-      const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+      const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED_EVENT);
       return promotedAt !== -1 && decided.move === "compare" && decided.fresh === "starter";
     });
     expect(confirmed).toBe(true);
@@ -522,7 +526,7 @@ describe("the decision table, searched", () => {
 
   it("lets a Builder's own comparison read first and promote, leaving the last promotion unconfirmed for good", () => {
     const unconfirmed = ALL.some(({ events, decided }) => {
-      const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+      const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED_EVENT);
       const epoch = reportsOf(events).filter(({ at }) => at > promotedAt);
       return promotedAt !== -1 && decided.move === "promote" && !epoch.some(({ fresh }) => fresh === STARTER);
     });
@@ -573,7 +577,7 @@ describe("the decision table, searched", () => {
       cNew.recorded,
       ...pass("s-1", cOld.id, "g-1"),
       ...pass("s-2", cNew.id, "g-1"),
-      event("comparison.reported", {
+      event(REPORTED_EVENT, {
         session: "g-1",
         old: STARTER,
         fresh: "h1",
@@ -588,7 +592,7 @@ describe("the decision table, searched", () => {
       }),
       ...pass("s-3", cOld.id, "g-2"),
       ...pass("s-4", cNew.id, "g-2"),
-      event("comparison.reported", {
+      event(REPORTED_EVENT, {
         session: "g-2",
         old: STARTER,
         fresh: "h1",
@@ -613,7 +617,7 @@ describe("the decision table, searched", () => {
       event("checker.read", { contract: "c", checks: "k", faults: [] }),
       event("contract.frozen", { contract: "c", checks: "k" }),
       ...held("t-old"),
-      event("harness.promoted", { harness: "h1", from: STARTER, rests: [] }),
+      event(PROMOTED_EVENT, { harness: "h1", from: STARTER, rests: [] }),
     ];
     const move = decide(inheritedOnly, { ...PLAN, practice: 0 });
     expect(move.why).not.toContain("the campaign holds no task");
@@ -621,7 +625,7 @@ describe("the decision table, searched", () => {
     // 3. A second no-room report on the same (fresh, old) pair keeps counts:true from its earlier roomful report.
     const sticky: LogEvent[] = [
       event("build.checkpoint", { session: "b-1", harness: "h1" }),
-      event("comparison.reported", {
+      event(REPORTED_EVENT, {
         session: "g-1",
         old: STARTER,
         fresh: "h1",
@@ -632,7 +636,7 @@ describe("the decision table, searched", () => {
         valid: { old: [1, 1, 0], fresh: [1, 1, 0] },
         aside: [],
       }),
-      event("comparison.reported", {
+      event(REPORTED_EVENT, {
         session: "g-2",
         old: STARTER,
         fresh: "h1",
@@ -645,5 +649,133 @@ describe("the decision table, searched", () => {
       }),
     ];
     expect(stopRule(sticky)).toMatchObject({ checkpoints: 1, sinceStep: 1 });
+  });
+
+  it("keeps prior-epoch tasks out of practicePool and releaseOrder's failed half, and caps small batches at half", () => {
+    const cond = (task: string, harness: string) => {
+      const condition = {
+        contract: "c",
+        harness,
+        task,
+        model: "m",
+        effort: "high",
+        prices: { m: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 } },
+        runtime: {},
+        compaction: "off" as const,
+        solverTools: "s",
+        verifierTools: "v",
+        sandbox: "p",
+        limits: { wallSeconds: 60, turns: 10, shellDefaultSeconds: 10, shellMaxSeconds: 20, concurrency: 1 },
+        host: "h",
+        side: "test" as const,
+      };
+      const id = conditionId(condition);
+      return { id, setting: settingId(condition), recorded: event("condition.recorded", { id, condition }) };
+    };
+    const solve = (id: string, condition: string, comparison: string, outcome: "pass" | "fail") => [
+      event("solve.started", { solve: id, condition, comparison }),
+      event("solve.finished", {
+        solve: id,
+        ending: outcome === "pass" ? { outcome: "pass" } : { outcome: "fail", kind: "no-answer" },
+      }),
+    ];
+
+    // 1. Prior-epoch failed tasks (held and released, earlier comparison order) must neither enter
+    // practicePool nor crowd current-epoch failed tasks out of releaseOrder's first half.
+    const priorTasks = ["old-1", "old-2", "old-3", "old-4"];
+    const epochTasks = ["cur-1", "cur-2", "cur-3", "cur-4"];
+    const g1Solves = priorTasks.flatMap((task, index) => {
+      const cOld = cond(task, STARTER);
+      const cFresh = cond(task, "h1");
+      return [
+        cOld.recorded,
+        cFresh.recorded,
+        ...solve(`g1-o-${String(index)}`, cOld.id, "g-1", "fail"),
+        ...solve(`g1-f-${String(index)}`, cFresh.id, "g-1", "fail"),
+      ];
+    });
+    const g2Solves = epochTasks.flatMap((task, index) => {
+      const cOld = cond(task, "h1");
+      const cFresh = cond(task, STARTER);
+      return [
+        cOld.recorded,
+        cFresh.recorded,
+        ...solve(`g2-o-${String(index)}`, cOld.id, "g-2", "fail"),
+        ...solve(`g2-f-${String(index)}`, cFresh.id, "g-2", "fail"),
+      ];
+    });
+    const setting = cond("old-1", "h1").setting;
+    const crossEpoch: LogEvent[] = [
+      ...priorTasks.flatMap(heldOut),
+      ...g1Solves,
+      event(REPORTED_EVENT, {
+        session: "g-1",
+        old: STARTER,
+        fresh: "h1",
+        starter: STARTER,
+        setting,
+        solves: 1,
+        versions: priorTasks,
+        reading: "step",
+        scored: { wins: 4, losses: 0, ties: 0, p: 0.06, unsolved: 0 },
+        valid: { old: [4, 0], fresh: [4, 0] },
+        aside: [],
+      }),
+      event("task.state", { version: "old-1", state: "released" }),
+      event(PROMOTED_EVENT, { harness: "h1", from: STARTER, rests: [] }),
+      ...epochTasks.flatMap(heldOut),
+      ...g2Solves,
+      event(REPORTED_EVENT, {
+        session: "g-2",
+        old: "h1",
+        fresh: STARTER,
+        starter: STARTER,
+        setting,
+        solves: 1,
+        versions: epochTasks,
+        reading: "no-step",
+        scored: { wins: 0, losses: 0, ties: 4, p: 1, unsolved: 4 },
+        valid: { old: [4, 0], fresh: [4, 0] },
+        aside: [],
+      }),
+    ];
+    const pool = poolOf(crossEpoch);
+    expect(pool.practicePool).toEqual(epochTasks);
+    const chosen = releaseOrder(crossEpoch, pool.practicePool, 2, "seed").map(([version]) => version);
+    expect(chosen).toEqual(["cur-1", "cur-2"]);
+
+    // 2. Small Examiner batches after a comparison release at most half (rounded down) instead of
+    // flipping newTasksLimit to Infinity; a 16-task post-promotion batch still releases full practice.
+    const report = (session: string, versions: string[]) =>
+      event(REPORTED_EVENT, {
+        session,
+        old: STARTER,
+        fresh: "h1",
+        starter: STARTER,
+        setting,
+        solves: 1,
+        versions,
+        reading: "no-step",
+        scored: { wins: 0, losses: 0, ties: versions.length, p: 1, unsolved: 0 },
+        valid: { old: [0, versions.length], fresh: [0, versions.length] },
+        aside: [],
+      });
+    const baseTasks = Array.from({ length: 12 }, (_, index) => `b-${String(index + 1)}`);
+    const afterReport: LogEvent[] = [
+      ...baseTasks.flatMap(heldOut),
+      event("task.state", { version: "b-1", state: "released" }),
+      report("g-1", ["b-2"]),
+      event("task.state", { version: "b-2", state: "released" }),
+    ];
+    const plusFive = [...afterReport, ...["n-1", "n-2", "n-3", "n-4", "n-5"].flatMap(heldOut)];
+    expect(practiceDue(plusFive, 6, 0.02)?.to).toBe(3);
+    const plusSeven = [...plusFive, ...["n-6", "n-7"].flatMap(heldOut)];
+    expect(practiceDue(plusSeven, 6, 0.02)?.to).toBe(4);
+    const afterPromo: LogEvent[] = [
+      ...afterReport,
+      event(PROMOTED_EVENT, { harness: "h1", from: STARTER, rests: [] }),
+      ...Array.from({ length: 16 }, (_, index) => `p-${String(index + 1)}`).flatMap(heldOut),
+    ];
+    expect(practiceDue(afterPromo, 6, 0.02)?.to).toBe(8);
   });
 });

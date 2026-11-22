@@ -597,12 +597,13 @@ describe("a Builder session", () => {
     const moved = "The reference harness has changed since this conversation began.";
     expect(before).not.toContain(moved);
     expect(before).not.toContain("Under the reference harness (ffffffff)");
-    expect(before).toContain("interval width 2.500. Solves: s-1.");
-    expect(before).toContain("An answer on record that no harness gave measures 1.250.");
+    // 2.5 against the author's 1.25 is a gain of -0.5, and 1.5 one of -1/6 (`gainOver`).
+    expect(before).toContain("interval width against the author's answer: 50 to 90% worse. Solves: s-1.");
+    expect(before).not.toContain("1.25");
     expect(after).toContain("The reference harness is harness ffffffff.");
     expect(after).toContain(moved);
     expect(after).toContain(
-      "Under the reference harness (ffffffff): passed 1 of 1, the objective 1.500. Solves: s-ref.",
+      "Under the reference harness (ffffffff): passed 1 of 1, the objective against the author's answer: 10 to 50% worse. Solves: s-ref.",
     );
   });
 
@@ -953,7 +954,7 @@ describe("a Builder session", () => {
     expect(s.ran).toHaveLength(3);
   });
 
-  it("is told each valid practice answer's measure in the task's record under an objective, and none without one", async () => {
+  it("is told each valid practice answer's band in the task's record under an objective, and none without one", async () => {
     // Under an objective every harness may pass every task, so a count of passes cannot tell two
     // harnesses apart: on the buffer runs from v0.9.1, 283 of 285 record clauses read "passed N of N".
     const steps = [edit, call("practice", { tasks: ["t-1", "t-1"] }), finish];
@@ -961,17 +962,26 @@ describe("a Builder session", () => {
       ...CONTRACT,
       objective: { quantity: "cost", direction: "lower" },
     });
+    append(measured.request.log, "task.feasible", {
+      version: "v1",
+      session: "x-1",
+      answer: { answer: "1" },
+      objective: { quantity: "cost", direction: "lower", measure: 30 },
+    });
     await session(measured.request, measured, measured.walled);
-    expect(measured.sent[2]).toContain("passed 2 of 2, the objective 30.00, 40.00.");
+    // The solves measure 30 and 40: level with the author's 30, then a gain of -0.25.
+    expect(measured.sent[2]).toContain(
+      "passed 2 of 2, the objective against the author's answer: level, 10 to 50% worse.",
+    );
     const plain = await setup(steps);
     await session(plain.request, plain, plain.walled);
     expect(plain.sent[2]).toContain("passed 2 of 2.");
   });
 
-  it("is told a measure to four significant digits, in a result, a record and an author's answer", async () => {
-    // A measure may depend on a practice task's hidden values, and a comparison ties two valid
-    // answers within 1% (`GAP_FLOOR`), so neither is printed whole, up to 17 digits.
-    // 0.1234567901234568 and 1234.567901234568, then a whole number of three digits and one of six.
+  it("is told a band and never a measure, in a result and a record, and none where no author's answer is on record", async () => {
+    // A measure may depend on a practice task's hidden values, and a few of them to four digits let
+    // a Builder solve for those values, so no digit of a measure or of the author's reaches it.
+    // 0.1234567901234568 and 1234.567901234568 on v1, then a whole number of three digits and one of six on v2.
     const measures = [1 / 8.1, 10_000 / 8.1, 100, 123_456];
     const s = await setup(
       [
@@ -1025,14 +1035,29 @@ describe("a Builder session", () => {
     const [first, second] = s
       .of(BUILD_CALL)
       .flatMap(({ tool: name, text: told }) => (name === "practice" && isString(told) ? [told] : []));
-    expect(first).toContain("Measured cost: 0.1235 (lower is better).");
-    expect(first).toContain("Measured the objective: 1235 (lower is better).");
-    expect(first).toContain("passed 2 of 2, the objective 0.1235, 1235.");
-    expect(first).toContain("An answer on record that no harness gave measures 0.09877.");
-    // A whole number shows its four digits, and one of six shows that it was rounded.
-    expect(second).toContain("passed 2 of 2, the objective 100.0, 1.235e+5.");
-    // No digit past the fourth is in any message the Builder was sent.
-    for (const digits of ["0.12345", "1234.5", "0.098765", "123456", "123500"]) {
+    // Against the author's 0.8/8.1 the gains are -0.2 and about -0.9999 (`gainOver`).
+    expect(first).toContain("Measured cost against the author's answer on record: 10 to 50% worse.");
+    expect(first).toContain(
+      "Measured the objective against the author's answer on record: 90% or more worse.",
+    );
+    expect(first).toContain(
+      "passed 2 of 2, the objective against the author's answer: 10 to 50% worse, 90% or more worse.",
+    );
+    // v2 has no author's answer on record, so its measures have nothing to be told against.
+    expect(second).toContain("passed 2 of 2.");
+    expect(second).not.toContain("against the author's answer");
+    for (const digits of [
+      "0.1234",
+      "0.1235",
+      "1234.5",
+      "1235.",
+      "0.09876",
+      "0.09877",
+      "100.0",
+      "1.235e+5",
+      "123456",
+      "8888.5",
+    ]) {
       expect(s.sent.join("\n")).not.toContain(digits);
     }
     // The log keeps each measure whole, which is what a comparison reads.
@@ -1053,12 +1078,61 @@ describe("a Builder session", () => {
       ...CONTRACT,
       objective: { quantity, direction: "lower" },
     });
+    append(s.request.log, "task.feasible", {
+      version: "v1",
+      session: "x-1",
+      answer: { answer: "1" },
+      objective: { quantity, direction: "lower", measure: 30 },
+    });
     await session(s.request, s, s.walled);
     const results = [...(s.sent[3] ?? "").matchAll(/"toolName":"practice","content":(.*?),"details"/g)];
     const last = results.at(-1)?.[1] ?? "";
-    expect(last).toContain("Under the harness you started from: 1 of 2, the objective 30.00.");
-    expect(last).toContain("Measured the objective:");
+    expect(last).toContain(
+      "Under the harness you started from: 1 of 2, the objective against the author's answer: level.",
+    );
+    expect(last).toContain("Measured the objective against the author's answer on record:");
     expect(last.split(quantity)).toHaveLength(2);
+  });
+
+  it("names each valid answer's band by the gain a comparison reads, at every band and either way", async () => {
+    // The band is `gainOver` against the author's answer, a share of the larger measure: level under
+    // the 1% floor (`GAP_FLOOR`), then edged at 10%, 50% and 90%, better or worse.
+    const gains = [-0.95, -0.7, -0.3, -0.05, -0.005, 0.005, 0.05, 0.3, 0.7, 0.95];
+    const bands = ["90% or more worse", "50 to 90% worse", "10 to 50% worse", "1 to 10% worse", "level"];
+    const expected = [...bands, ...bands.toReversed().map((band) => band.replace("worse", "better"))];
+    const author = 0.8 / 8.1;
+    // The measure `gain` better than the author's, as a share of the larger of the two: the measure is
+    // the larger where it is worse and lower is better, or better and higher is.
+    const measureAt = (direction: "lower" | "higher", gain: number) =>
+      (direction === "lower") === gain < 0 ? author / (1 - Math.abs(gain)) : author * (1 - Math.abs(gain));
+    for (const direction of ["lower", "higher"] as const) {
+      const s = await setup([finish], [], false, CHECK, {
+        ...CONTRACT,
+        objective: { quantity: "cost", direction },
+      });
+      const { log } = s.request;
+      append(log, "task.feasible", {
+        version: "v1",
+        session: "x-1",
+        answer: { answer: "1" },
+        objective: { quantity: "cost", direction, measure: author },
+      });
+      const measures = gains.map((gain) => measureAt(direction, gain));
+      for (const [at, objective] of measures.entries()) {
+        const solve = `s-band-${String(at)}`;
+        append(log, SOLVE_STARTED, {
+          solve,
+          condition: recordCondition(log, s.condition("v1", s.digest)),
+          task: "t",
+        });
+        append(log, "verdict", { solve, answer: { answer: "42" }, kind: "pass", objective });
+        append(log, SOLVE_FINISHED, { solve, ending: { outcome: "pass" } });
+      }
+      await session(s.request, s, s.walled);
+      const opening = s.sent[0] ?? "";
+      expect(opening).toContain(`cost against the author's answer: ${expected.join(", ")}. Solves:`);
+      for (const measure of [author, ...measures]) expect(opening).not.toContain(measure.toPrecision(4));
+    }
   });
 
   it("states the objective's quantity once in the opening, however long and whatever word it begins with", async () => {
@@ -1075,9 +1149,9 @@ describe("a Builder session", () => {
     }
   });
 
-  it("is told an author's better answer on a released task under an objective, and nothing of a held-out one's", async () => {
+  it("is told where its answers stand against a released task's author's answer, and nothing of a held-out one's", async () => {
     // A harness that answers alike in every solve still leaves room where its author's answer is
-    // better, so the Builder is told the author's measure beside its own.
+    // better, so the Builder is told each of its answers against the author's.
     const objective = { ...CONTRACT, objective: { quantity: "cost", direction: "lower" as const } };
     const steps = [edit, call("practice", { tasks: ["t-1"] }), finish];
     const told = async (authored: readonly (readonly [string, number])[]) => {
@@ -1094,10 +1168,13 @@ describe("a Builder session", () => {
       // The practice result's text alone, since a context also carries durations.
       return clockless(/"toolName":"practice","content":(.*?),"details"/.exec(s.sent[2] ?? "")?.[1] ?? "");
     };
-    expect(await told([["v1", 12]])).toContain("An answer on record that no harness gave measures 12.00.");
+    // The solve measures 30 against the author's 12, a gain of -0.6.
+    expect(await told([["v1", 12]])).toContain(
+      "Measured cost against the author's answer on record: 50 to 90% worse.",
+    );
     // v3 is held out: its author's measure, whatever it is, changes nothing the Builder reads.
     const none = await told([]);
-    expect(none).not.toContain("no harness gave");
+    expect(none).not.toContain("against the author's answer");
     expect(await told([["v3", 5]])).toBe(none);
     expect(await told([["v3", 7]])).toBe(none);
   });
@@ -1504,6 +1581,14 @@ describe("what crosses to the Builder", () => {
         objective: { ...OBJECTIVE, measure: kept.measure },
       });
     }
+    // A released task's author's answer, which a practice answer's band is told against; alike in
+    // both campaigns, unlike the held-out ones above.
+    append(log, "task.feasible", {
+      version: "v1",
+      session: "x-1",
+      answer: { answer: "1" },
+      objective: { ...OBJECTIVE, measure: 25 },
+    });
     for (const version of ["h1", "h2"]) {
       for (const side of [s.digest, FRESH]) {
         const solve = `g-1-${version}-${side.slice(0, 4)}`;
@@ -1658,8 +1743,8 @@ describe("what crosses to the Builder", () => {
     );
     expect(one).toContain("You have not called finish");
     expect(one).toContain("practice/t-1.json");
-    // Under the objective, a practice answer's measure crosses, so the held-out ones are kept back by the wall.
-    expect(one).toContain(", the objective ");
+    // Under the objective, a practice answer's band crosses, so the held-out ones are kept back by the wall.
+    expect(one).toContain(", the objective against the author's answer: ");
     for (const kept of [ONE, OTHER]) {
       for (const canary of [
         kept.check,

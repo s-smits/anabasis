@@ -46,6 +46,7 @@ import {
   verdictsOf,
 } from "../kernel/solves.ts";
 import { objectiveOf } from "../kernel/verify.ts";
+import { GAP_FLOOR, gainOver, type ObjectiveRule } from "../kernel/compare.ts";
 import { poolOf, referenceOf } from "../kernel/reports.ts";
 import { taskStates } from "../kernel/task.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -64,7 +65,7 @@ import { clockText, solverTools } from "../solver/run.ts";
 import { STARTED as COMPARISON_STARTED } from "../campaign/comparison.ts";
 import { budgetLeft } from "../campaign/opening.ts";
 import { type Freezing, frozen, harnessNow, type HarnessSnapshot, snapshot } from "./kept.ts";
-import { type Listed, type Said, shellWalls } from "./prompt.ts";
+import { type Listed, measuredClause, type Said, shellWalls } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
 
 /** What a session's tools share. */
@@ -101,13 +102,54 @@ export interface Bench extends Freezing {
  *  `digest` against the reference, or null (`BuildRequest.campaign`). */
 type Unmeasured = (digest: string) => Promise<string | null>;
 
+/** What a task's valid answers are told against: the objective, and the author's answer on record. */
+interface Against {
+  readonly rule: ObjectiveRule;
+  readonly author: number;
+}
+
 /** What a preview names the solve's home, which only a solve has. */
 const SOLVE_HOME = "(the solve's own home directory)";
-/** A measure as the Builder is told it, with the zeros or the exponent that show the rounding. Four
- *  digits show 0.1%, under the 1% tie floor (`GAP_FLOOR`), and bound no leak, since they can still
- *  determine a hidden value. The log keeps every digit. */
-const MEASURE_DIGITS = 4;
-const rounded = (measure: number): string => measure.toPrecision(MEASURE_DIGITS);
+/** Where a band of the gain over the author's answer begins, after the tie floor. */
+const BAND_EDGES = [GAP_FLOOR, 0.1, 0.5, 0.9] as const;
+const percent = (share: number): string => String(Math.round(share * 100));
+
+/**
+ * A valid practice answer as the Builder is told it under an objective: the band of the gain a
+ * comparison would read between it and the task author's answer on record (`gainOver`), never
+ * either number. A measure may depend on the task's hidden values, and four digits of a few answers
+ * to one task let a Builder solve for them: one jobstat Builder wrote such a solver and kept "solve
+ * for the truth" in its memory. A band says whether a change closed on the author's answer and
+ * roughly by how much, about three bits an answer where four digits gave thirteen. Two crafted
+ * answers straddling one band's edge could still bracket a hidden value, at a solve each and only
+ * through a harness that names the task. The log keeps every digit.
+ */
+function bandOf({ rule, author }: Against, measure: number): string {
+  const gain = gainOver(rule, measure, author);
+  const at = BAND_EDGES.findLastIndex((edge) => Math.abs(gain) >= edge);
+  return at === -1 ? "level" : `${bandSize(at)} ${gain > 0 ? "better" : "worse"}`;
+}
+
+/** The size of the band that begins at `BAND_EDGES[at]`. */
+function bandSize(at: number): string {
+  const [lower, upper] = [BAND_EDGES[at] ?? GAP_FLOOR, BAND_EDGES[at + 1]];
+  return upper === undefined ? `${percent(lower)}% or more` : `${percent(lower)} to ${percent(upper)}%`;
+}
+
+/** The bands as the practice tool's description states them once. */
+const BANDS_TOLD = `level (within ${percent(GAP_FLOOR)}%), or better or worse by ${BAND_EDGES.map((_, at) => bandSize(at)).join(", ")}, each a share of the larger of the two measures, as a comparison reads a gap`;
+
+/** For each task, what its valid answers are told against (`poolOf`), or nothing where the contract
+ *  has no objective or the task no author's answer on record. */
+function againstOf(events: readonly LogEvent[], contract: Contract): (version: string) => Against | null {
+  const rule = contract.objective;
+  if (rule === undefined) return () => null;
+  const { bests } = poolOf(events);
+  return (version) => {
+    const author = bests.get(version);
+    return author === undefined ? null : { rule, author };
+  };
+}
 
 /** An ending as the Builder is shown it: the outcome and its kind. A non-result's reason can name a
  *  check, so only a broken harness's reason, which is the harness's own, is shown. */
@@ -120,12 +162,18 @@ function endingText(ending: Ending): string {
     : `fail (${ending.kind})`;
 }
 
-/** What the verifier measured of a valid practice answer under an objective, which the Builder reads
- *  of its own practice only; `name` gives the quantity in full once a result, then "the objective". */
-function measuredText(events: readonly LogEvent[], solve: string, contract: Contract, name: () => string) {
+/** Where a valid practice answer stands against the author's answer (`bandOf`), which the Builder
+ *  reads of its own practice only; `name` gives the quantity in full once a result, then "the
+ *  objective". */
+function measuredText(
+  events: readonly LogEvent[],
+  solve: string,
+  against: Against | null,
+  name: () => string,
+) {
   const measure = objectiveOf(verdictsOf(events).get(solve)?.checker);
-  return contract.objective !== undefined && measure !== null
-    ? ` Measured ${name()}: ${rounded(measure)} (${contract.objective.direction} is better).`
+  return against !== null && measure !== null
+    ? ` Measured ${name()} against the author's answer on record: ${bandOf(against, measure)}.`
     : "";
 }
 
@@ -227,19 +275,21 @@ export function practiceLeft({ request, spent }: Bench, events: readonly LogEven
   return Math.max(0, Math.min(counted, afforded));
 }
 
-/** Objective measures of `solves`'s valid answers, rounded to `MEASURE_DIGITS`. */
+/** The band of each of `solves`'s valid answers against the author's answer on record (`bandOf`). */
 function measuresOf(
   verdicts: ReturnType<typeof verdictsOf>,
   solves: readonly string[],
-  contract: Contract,
+  against: Against | null,
 ): string[] {
-  return contract.objective === undefined
+  return against === null
     ? []
-    : solves.flatMap((id) => objectiveOf(verdicts.get(id)?.checker) ?? []).map(rounded);
+    : solves
+        .flatMap((id) => objectiveOf(verdicts.get(id)?.checker) ?? [])
+        .map((measure) => bandOf(against, measure));
 }
 
 /** Practice tasks with their counted records under `parent` and, when distinct and solved, under the
- *  current reference harness, plus rounded objective measures and the author's best on record. */
+ *  current reference harness, each valid answer as its band against the author's answer. */
 export function listedPractice(
   events: readonly LogEvent[],
   tasks: readonly PracticeTask[],
@@ -249,11 +299,11 @@ export function listedPractice(
   const states = taskStates(events);
   const verdicts = verdictsOf(events);
   const reference = referenceOf(events);
-  const bests = contract.objective === undefined ? null : poolOf(events).bests;
+  const againstFor = againstOf(events, contract);
   return tasks.map(({ version, task }) => {
     const kept = record(events, version, parent);
-    const measures = measuresOf(verdicts, kept.solves, contract);
-    const best = bests?.get(version);
+    const against = againstFor(version);
+    const measures = measuresOf(verdicts, kept.solves, against);
     const ref = reference !== null && reference !== parent ? record(events, version, reference) : null;
     return {
       taskId: task.taskId,
@@ -264,27 +314,25 @@ export function listedPractice(
       ...keyIfDefined(
         "reference",
         ref !== null && reference !== null && ref.solves.length > 0
-          ? { digest: reference, ...ref, measures: measuresOf(verdicts, ref.solves, contract) }
+          ? { digest: reference, ...ref, measures: measuresOf(verdicts, ref.solves, against) }
           : undefined,
       ),
-      ...keyIfDefined("best", best === undefined ? undefined : rounded(best)),
     };
   });
 }
 
 /** A task's practice record under each harness `roles` names, each digest once with all its roles,
- *  and under an objective each valid answer's measure and the author's answer (`task.feasible`), so
- *  that a pass that costs more than the author's still reads as room to gain. A solve under
+ *  and under an objective each valid answer's band against the author's answer (`task.feasible`),
+ *  so that a pass that costs more than the author's still reads as room to gain. A solve under
  *  harness/ also names the record under the reference, which a promotion moves off the parent.
  *  Only practice solves of released tasks are read (`record`). */
 function recordText(
   events: readonly LogEvent[],
   version: string,
   roles: readonly (readonly [string | null, string])[],
-  contract: Contract,
+  against: Against | null,
   name: () => string,
 ) {
-  const best = contract.objective === undefined ? undefined : poolOf(events).bests.get(version);
   const named = new Map<string, string[]>();
   for (const [digest, role] of roles) {
     if (digest !== null) named.set(digest, [...(named.get(digest) ?? []), role]);
@@ -294,19 +342,17 @@ function recordText(
     .map(([digest, [role, ...also]], index) => {
       const kept = record(events, version, digest);
       const which = `${role ?? ""}${also.length > 0 ? `, which is also ${also.join(" and ")}` : ""}`;
-      const measures = measuresOf(verdicts, kept.solves, contract);
-      const measured = measures.length === 0 ? "" : `, ${name()} ${measures.join(", ")}`;
+      const measured = measuredClause(name, measuresOf(verdicts, kept.solves, against));
       return `${index === 0 ? "Record under" : "Under"} ${which}: ${index === 0 ? "passed " : ""}${String(kept.passed)} of ${String(kept.solves.length)}${measured}.`;
     })
-    .join(" ")
-    .concat(best === undefined ? "" : ` An answer on record that no harness gave measures ${rounded(best)}.`);
+    .join(" ");
 }
 
 export function practiceTool(bench: Bench): SeatTool {
   const { request } = bench;
   return tool({
     name: "practice",
-    description: `Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits: a practice solve takes as long as any solve. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, what the solve used of its limits and the tokens it read and wrote, the task's record of practice solves under each harness the result names, the reference harness among them, the solve's id for read_trace and, for a rejection the Referee set aside, that it was set aside; never which check refused an answer. Under an objective a valid answer's measure is given to ${String(MEASURE_DIGITS)} significant digits. A harness that does not open spends no solve. \`under: "reference"\` costs the same solves and shows what your change is measured against.`,
+    description: `Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits: a practice solve takes as long as any solve. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, what the solve used of its limits and the tokens it read and wrote, the task's record of practice solves under each harness the result names, the reference harness among them, the solve's id for read_trace and, for a rejection the Referee set aside, that it was set aside; never which check refused an answer. Under an objective a valid answer's measure is given as a band against the task author's answer on record: ${BANDS_TOLD}; a task with no author's answer on record shows none. A harness that does not open spends no solve. \`under: "reference"\` costs the same solves and shows what your change is measured against.`,
     parameters: Type.Object({
       tasks: Type.Array(Type.String(), {
         minItems: 1,
@@ -390,13 +436,15 @@ export function practiceTool(bench: Bench): SeatTool {
       ] as const;
       const names = [request.contract.objective?.quantity ?? ""];
       const name = () => names.shift() ?? "the objective";
+      const againstFor = againstOf(events, request.contract);
       const said = solved.flat().map(({ task, solve, ending, lines }) => {
         const shown = rejectionAside(events, { id: solve, ending })
           ? "rejection set aside"
           : endingText(ending);
+        const against = againstFor(task.version);
         return [
-          `${task.task.taskId}${under === "reference" ? " under the reference harness" : ""}: ${shown}. Solve ${solve}.${usedText(events, solve)}${measuredText(events, solve, request.contract, name)}`,
-          recordText(events, task.version, roles, request.contract, name),
+          `${task.task.taskId}${under === "reference" ? " under the reference harness" : ""}: ${shown}. Solve ${solve}.${usedText(events, solve)}${measuredText(events, solve, against, name)}`,
+          recordText(events, task.version, roles, against, name),
           ...lines,
         ].join("\n");
       });

@@ -106,9 +106,9 @@ outcomes and each task's winning harness. Only this crosses to the build side:
 - the contract's public rules, scope and conventions, the answer format and any declared objective
   (the quantity and its direction);
 - the public part of each released (practice) task;
-- for a practice solve: its outcome and kind, the solver's trace and, under an objective, the
-  verifier's measure of a valid answer and of the task author's best answer on record, which may
-  depend on that task's hidden values;
+- for a practice solve: its outcome and kind, the solver's trace and, under an objective, a coarse
+  band of how far a valid answer's measure stands from the task author's best answer on record,
+  which may depend on that task's hidden values, and neither number;
 - for each comparison: the tally and the reading, naming no task;
 - host limits, the remaining budget and the counts of held-out and practice tasks.
 

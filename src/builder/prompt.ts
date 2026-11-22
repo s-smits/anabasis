@@ -82,7 +82,8 @@ import { MEMORY_FILE } from "./memory.ts";
 interface TaskPractice {
   readonly solves: readonly string[];
   readonly passed: number;
-  /** Objective measures of valid answers in solve order, rounded (`tools.ts`). */
+  /** Each valid answer's band against the author's answer on record, in solve order (`bandOf`,
+   *  `tools.ts`). */
   readonly measures?: readonly string[];
 }
 
@@ -95,8 +96,6 @@ export interface Listed extends TaskPractice {
   /** Counted practice under the current reference harness, when distinct from the starting harness
    *  and solved at least once. */
   readonly reference?: TaskPractice & { readonly digest: string };
-  /** The task author's best valid measure on record under an objective, rounded (`tools.ts`). */
-  readonly best?: string;
 }
 
 /** What a session is told of the sessions before it (`memory.ts`). */
@@ -305,32 +304,33 @@ export function continuation(
   ].join("\n\n");
 }
 
+/** A record's clause of its valid answers' bands (`bandOf`, `tools.ts`), none where there are none;
+ *  `name` gives the quantity in full once a message, then "the objective". */
+export function measuredClause(name: () => string, measures: readonly string[] = []): string {
+  return measures.length === 0 ? "" : `, ${name()} against the author's answer: ${measures.join(", ")}`;
+}
+
 /** The opening message: the domain's public contract, the practice tasks with their record under the
  *  harness the session starts from (and under the current reference harness when distinct, with
- *  objective measures and the author's best on record), what the campaign's log holds of the
- *  sessions before this one, and the session's limits. A task's public part is a file in the home,
- *  since a pack's inputs run long. */
+ *  each valid answer's band against the author's answer on record), what the campaign's log holds
+ *  of the sessions before this one, and the session's limits. A task's public part is a file in the
+ *  home, since a pack's inputs run long. */
 export function firstMessage(contract: Contract, tasks: readonly Listed[], told: Told, past: Past): string {
   const names = [contract.objective?.quantity ?? ""];
   const name = () => names.shift() ?? "the objective";
-  const measured = (measures: readonly string[] | undefined) =>
-    contract.objective === undefined || (measures?.length ?? 0) === 0
-      ? ""
-      : `, ${name()} ${(measures ?? []).join(", ")}`;
-  const listed = tasks.map(({ taskId, family, solves, passed, measures, left, reference, best }) => {
+  const listed = tasks.map(({ taskId, family, solves, passed, measures, left, reference }) => {
     if (left) {
       return `- ${taskId} (family ${family}): no longer a practice task, since the Referee ruled a check defect on a practice answer to it; read_trace still opens its solves.`;
     }
     const start =
       solves.length === 0
         ? "not yet solved under the harness you start from."
-        : `passed ${String(passed)} of ${String(solves.length)} under the harness you start from${measured(measures)}. Solves: ${solves.join(", ")}.`;
+        : `passed ${String(passed)} of ${String(solves.length)} under the harness you start from${measuredClause(name, measures)}. Solves: ${solves.join(", ")}.`;
     const ref =
       reference === undefined || reference.solves.length === 0
         ? ""
-        : ` Under the reference harness (${short(reference.digest)}): passed ${String(reference.passed)} of ${String(reference.solves.length)}${measured(reference.measures)}. Solves: ${reference.solves.join(", ")}.`;
-    const author = best === undefined ? "" : ` An answer on record that no harness gave measures ${best}.`;
-    return `- ${taskId} (family ${family}): ${start}${ref}${author}`;
+        : ` Under the reference harness (${short(reference.digest)}): passed ${String(reference.passed)} of ${String(reference.solves.length)}${measuredClause(name, reference.measures)}. Solves: ${reference.solves.join(", ")}.`;
+    return `- ${taskId} (family ${family}): ${start}${ref}`;
   });
   return [
     // First, and not last: it is the Builder's own prose and may predate what stands below it.

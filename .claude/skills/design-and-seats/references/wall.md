@@ -6,9 +6,12 @@ one wall" in `AGENTS.md` section 1; `scripts/seat-view.ts` names the wall tests 
 ### Two sides and one wall
 
 The wall is what makes a step mean generalisation. Practice tasks are the Builder's training set,
-read whole, measures that depend on hidden values included, each measure told to four digits
-(`MEASURE_DIGITS`, `src/builder/tools.ts`) so that differences under the 1% tie floor do not
-read as signal; the rounding is no part of the wall. Held-out tasks are its test set. A
+read whole but for the verifier's measures, which may depend on hidden values: a valid answer's
+measure is told only as a band of the gain a comparison would read over the author's answer on
+record (`bandOf`, `src/builder/tools.ts`), since a few measures to four digits let one jobstat
+Builder solve for a task's hidden values and build its harness on them. Two answers crafted to
+straddle a band's edge can still bracket a hidden value, at a solve each and only through a harness
+that names the task, which `AGENTS.md` section 2, item 3, forbids. Held-out tasks are its test set. A
 Builder that learned anything of a held-out task, even which one its harness won, could fit the test
 set, and a step would then measure that fit.
 

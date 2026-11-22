@@ -490,17 +490,18 @@ const capped = (probe: Terms["probe"]): number => Math.min(probe?.tries ?? 0, TR
 /** What a tool that takes JSON values tells of `from_file`, where the session has a home to read. */
 const filed = (desk: Desk): string => (desk.home === undefined ? "" : ` ${FROM_FILE}`);
 
-/** Where the contract declares an objective, the author's `try_answer` measure of the instance and
- *  this call's valid solves measured, whether the best of those leaves the author's answer better
- *  by the comparison's floor (`GAP_FLOOR`): one line, or none. A fact for the author; the gate reads none
- *  of it. */
+/** Where the contract declares an objective, the author's `try_answer` measure of the instance, the
+ *  best of this call's valid solves with their count, and the author's lead over it as a share of the
+ *  larger measure beside the comparison's floor (`GAP_FLOOR`): one line, or none. Facts, not a verdict
+ *  on room, since one or two solves show little of the reference's spread; the gate reads none of it. */
 function roomLine(contract: Contract, author: number | null, valid: readonly number[]): string[] {
   const declared = contract.objective;
   if (declared === undefined || author === null || valid.length === 0) return [];
   const best = valid.reduce((kept, next) => (gainOver(declared, next, kept) > 0 ? next : kept));
-  const ahead = gainOver(declared, author, best) >= GAP_FLOOR;
+  const lead = gainOver(declared, author, best);
+  const share = `${String(Number((Math.abs(lead) * 100).toPrecision(3)))}%`;
   return [
-    `Your answer that passed try_answer on this instance measures ${measured(author)}, and the best valid solve here ${measured(best)}: ${ahead ? `yours is better by at least the comparison's floor (${String(GAP_FLOOR * 100)}%), so the task leaves the reference room on the objective` : `yours is not better by the comparison's floor (${String(GAP_FLOOR * 100)}%), so on the objective the task leaves the reference no room above your answer`}.`,
+    `Your answer that passed try_answer on this instance measures ${measured(author)}; valid solves here: ${String(valid.length)}, the best measuring ${measured(best)}; yours ${lead >= 0 ? "leads" : "trails"} it by ${share} of the larger measure, against the comparison's floor of ${String(GAP_FLOOR * 100)}%.`,
   ];
 }
 

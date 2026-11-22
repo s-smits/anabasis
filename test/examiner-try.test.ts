@@ -202,7 +202,7 @@ describe("trying the reference at writing", () => {
     expect(made.handed).toHaveLength(TRIES);
   });
 
-  it("says whether the reference's best valid solve leaves the author's checked answer room on the objective", async () => {
+  it("states the author's checked measure beside the reference's best valid solve, with the lead and the floor and no verdict", async () => {
     // The probe's valid solves measure 2.5, and lower is better.
     const told = async (author: number) => {
       const s = seat("write", []);
@@ -225,10 +225,14 @@ describe("trying the reference at writing", () => {
     };
     const [unchecked = "", roomy = ""] = await told(2);
     expect(unchecked).not.toContain("try_answer");
-    expect(roomy).toContain("measures 2, and the best valid solve here 2.5: yours is better by at least");
-    expect(roomy).toContain("leaves the reference room");
+    expect(roomy).toContain(
+      "measures 2; valid solves here: 1, the best measuring 2.5; yours leads it by 20% of the larger measure, against the comparison's floor of 1%.",
+    );
     const [, tied = ""] = await told(2.5);
-    expect(tied).toContain("yours is not better by the comparison's floor (1%)");
+    expect(tied).toContain("yours leads it by 0% of the larger measure");
+    const [, behind = ""] = await told(3);
+    expect(behind).toContain("yours trails it by 16.7% of the larger measure");
+    for (const line of [roomy, tied, behind]) expect(line).not.toMatch(/room|leaves the reference/);
     expect(tied).not.toContain(CANARY);
   });
 });

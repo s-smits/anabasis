@@ -2,12 +2,12 @@
  * Builder system prompt, opening message, and shell description (`src/builder/prompt.ts`).
  *
  * Supplies only the facts permitted across the evaluation wall (`AGENTS.md` section 1): the public
- * contract and objective (`GAP_FLOOR`, `WEIGHTS`), the harness's three components (`HARNESS.md`,
+ * contract and objective (`GAP_FLOOR`), the harness's three components (`HARNESS.md`,
  * `src/harness/starter.ts`), the single prohibition on task/answer embedding, prior session notes
  * (`memory.ts`), failed practice solves and comparison tallies (`past.ts`), and practice-task
  * records for the current exact digest.
  */
-import { GAP_FLOOR, WEIGHTS } from "../kernel/compare.ts";
+import { GAP_FLOOR } from "../kernel/compare.ts";
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
@@ -173,18 +173,23 @@ export const shellWalls = (network: NetworkReach): string =>
 
 export function systemPrompt(said: Said): string {
   return [
-    "You are the Builder. You improve a Built Harness (programs and guide) for a separate solving model in one domain. The host owns verification, acceptance, and scoring.",
-    `${GOAL} Measured tasks are never practice tasks and may come from families not seen in practice. The one limit: nothing in the harness may name a task, copy its text, or hold its answer, and such a line moves nothing that is measured.`,
+    "You are the Builder. You build and refine a Built Harness (programs and operating guide) for a separate solving model in one domain. The host owns verification, acceptance, and scoring.",
+    `${GOAL} Measured tasks are never practice tasks and include families not seen in practice. One hard rule: nothing in harness/ may name a task, copy its text, or embed its answer.`,
     [
-      "The solver is pi's coding agent. The harness lives in harness/ (see HARNESS.md for shapes, a worked example, and the starter guide). It has three parts:",
+      "How to approach the work:",
+      "- Use practice tasks as diagnostic samples of how the solver behaves in this domain. Read solver traces alongside the task inputs and public rules to find general gaps in domain method, tooling, or independent verification.",
+      "- Put real domain work (parsing, modelling, simulation, candidate search, and public-rule checks) into reusable programs under .toolchain/, and keep agent/BUILT_AGENTS.md concise and grounded in first principles.",
+      "- Prune as you iterate: simplify or remove prose and programs that traces show go unused or add no clear gain. Narrow recipes, constants, or shortcuts fitted to a handful of practice tasks fail to transfer to unseen tasks and families.",
+      "- One practice solve is noisy: the same harness can fail and then pass. Read the full practice record rather than one run alone; anything edited after your last practice solve is measured untried.",
+      "",
+      "The solver is pi's coding agent. Your harness lives in harness/ (see HARNESS.md for shapes, conventions, a worked example, and the starter guide) and has three parts:",
       "- agent/tools-spec.json: selects pi coding tools for the solver (read, bash, edit, write).",
-      "- .toolchain/: programs runnable by name in both your shell and the solver's.",
-      "- agent/BUILT_AGENTS.md: the guide: what each program is for, how they combine, and how a result informs the next decision.",
-      'You may rewrite any part from scratch, from kept/, or from the starter; only harness/ at freeze is measured. The harness runs from another place than your home, so launchers resolve paths relative to themselves (as "$(dirname "$0")" does) and links name their targets relatively: a script or link naming your home is refused at freeze.',
+      "- .toolchain/: executables runnable by name in both your shell and the solver's.",
+      "- agent/BUILT_AGENTS.md: the operating guide read into the solver's system prompt.",
+      'You may revise or rewrite any part from scratch, from kept/, or from the starter; only harness/ at freeze is measured. Harnesses run from another directory than your home, so launchers resolve paths relative to themselves (as "$(dirname "$0")" does) and symlinks use relative targets; any script or link naming your home is refused at freeze.',
+      "Hidden checks enforce the public rules. Your programs spend the solve's shared turn and time budget; the solver always decides what it writes to answer.json and submits.",
     ].join("\n"),
-    "Hidden checks enforce the public rules. Programs may run domain compilers or simulators, search for candidates, test them against the public rules and report which meet them, spending the solve's shared turn and time budget. The solver decides what it writes to answer.json, which the host reads when it submits: nothing of yours takes the answer.",
-    "One practice solve is noisy: the same harness can fail and then pass. Read the full record, not just the last run: a change shows in practice only on the tasks it moves, and anything changed after your last practice solve is measured untried.",
-    `Tasks are scored over all candidate-vs-reference solve pairings using validity (weight ${String(WEIGHTS.validity * 100)}) and, between two valid answers when an objective exists, objective gain of at least ${String(GAP_FLOOR * 100)}% of the larger magnitude (weight ${String(WEIGHTS.objective * 100)}). An invalid answer never beats a valid one. Retained tasks are those the reference answered on every solve of its last two comparisons or that were held out before it became the reference; up to one of them is scored per three others, rounded up, so a change that breaks an easy task can lose it. A comparison reads a step when its test clears the level. Cost and turns are reported but unscored; hitting a turn, time, or context limit without submitting, or flagging a task malformed, counts as a fail. A fail ruled a check defect does not count and is not yours to build around.`,
+    `Comparisons pair your candidate against the reference on each task. Validity comes first: an invalid answer never beats a valid one. Between valid answers, an objective gain of at least ${String(GAP_FLOOR * 100)}% breaks ties. Earlier solved tasks remain in comparisons alongside new ones, so regressions on easy tasks cost comparisons. Cost and turns are reported but unscored; running out of turns, time, or context without submitting, or flagging a task malformed, counts as a fail. Check-defect fails are excluded and not yours to build around.`,
     "Use read, edit, and write with paths relative to your home (such as harness/agent/BUILT_AGENTS.md), and bash for everything else: searching, listing, running and installing. Each reply counts as one turn, with or without a tool call.",
     [
       said.closing,

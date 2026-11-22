@@ -132,23 +132,19 @@ A rota that leaves a shift of the task unassigned is not valid.
  */
 export const HARNESS_ACCOUNT = `# The Built Harness
 
-A solver is pi's coding agent behind a command wall. A harness is what you add to it. The host
-reads three things under harness/ and nothing else there, and a section below gives the shape of
-each. Code in the guide for the solver to paste is no program: a trace then shows the pasted
-code and no name.
+A solver is pi's coding agent behind a command wall. Your harness is what you add under harness/.
+The host reads three paths there and nothing else. Put reusable computation in .toolchain/ rather
+than pasting code snippets into the guide: pasted code runs anonymously in traces and adds clutter
+to every solve.
 
-## What every solver has, whatever the harness
+## What every solver receives
 
-- One working directory, its home, kept for the whole task. It holds the task as public/task.json,
-  each file the task's public input lists under files as that file under public/files/, the
-  domain's public rules as files under public/resources/, and the answer's format as
-  public/answer-format.json.
-- The answer as a file: the solver writes answer.json in its working directory, and submit sends
-  it. The host checks the file against the answer format and refuses one that does not follow it,
-  with the reason. An accepted submit ends the task and returns no verdict.
-- A system prompt in pi's own sections: the tool list and the tools' rules, the duty and the solve
-  time, the working directory, and the wall's facts: what a command may write and reach, the size of
-  the volume, the command time limits, and the programs you installed, by name.
+- One persistent working directory (its home) containing public/task.json, task files under
+  public/files/, public domain rules under public/resources/, and public/answer-format.json.
+- Submission via answer.json and submit: the host checks answer.json against the schema and
+  refuses mismatches with the reason. An accepted submit ends the solve and returns no verdict.
+- A host system prompt giving its tools, duty, time and turn limits, working directory, wall
+  facts, command timeouts, and the names of installed harness programs.
 
 ## agent/tools-spec.json
 
@@ -156,36 +152,34 @@ code and no name.
 ${capturedJsonStringify(EXAMPLE.spec, null, 2)}
 \`\`\`
 
-- presets selects pi's coding tools: any of ${CODING_TOOLS.join(", ")}. A solver does not have one you leave out.
-- tools is an empty list. The host refuses a harness that lists a tool there: what a harness
-  computes is a program.
+- presets selects from ${CODING_TOOLS.join(", ")}. Any omitted tool is unavailable to the solver.
+- tools must remain an empty list; executable capabilities belong in .toolchain/.
 
 ## .toolchain/
 
-Programs for the solver. Every executable in .toolchain/bin, and in a bin, shims or sbin directory
-below it, runs by name in the solver's commands, with .toolchain/bin first on PATH. The tree is
-read-only to the solver. What you install for a program to use, an engine or a package, goes in
-the tree too. So does a package the solver's own commands import: its python3 is this machine's
-unless the tree holds one, and a package that interpreter lacks costs each solve a command to
-install before its first use. Outside this host only the tree goes with the harness: an
-interpreter or a package the tree names by a path on this machine is not there.
+Executables in .toolchain/bin (and any nested bin, shims, or sbin directory) run by name in the
+solver's commands, with .toolchain/bin first on PATH. The tree is read-only to the solver. Install
+any interpreter, engine, or package your programs or the solver's commands need inside .toolchain/
+so solves do not waste turns installing them and external exports stay self-contained without
+naming host paths.
 
-A program of your own keeps to one convention, so that a solver meets the same thing under every
-harness:
+Build programs around general, high-leverage domain operations (parsing inputs, modelling or
+searching candidates, and checking public rules) that work cleanly on any well-formed task input.
+If practice traces show a program is rarely used or does not address a real bottleneck, simplify or
+remove it instead of carrying dead tooling in PATH and the guide.
 
-- Its name says what it does, verb first, in lower case with hyphens: ${CHECKER}, simulate-mix.
-- It takes every input as a file named in its arguments, by a path relative to the solver's
-  working directory, and opens no file it was not named.
-- One that computes also takes what it computes on in a plain form, a CSV file or JSON of the
-  values alone, so that it runs on any data of that kind, a task's or not.
-- It prints its result to standard output, in lines a solver can read, and what went wrong to
-  standard error.
-- It exits 0 when it ran and what it tested holds, 1 when it ran and something does not hold, and
-  2 when it could not run: a missing file, a bad argument. With --help it prints its usage and
-  exits 0.
-- It keeps nothing between runs outside the solver's working directory.
+Keep every program to one predictable CLI convention:
 
-.toolchain/bin/${CHECKER}, made executable:
+- Verb-first lower-case name with hyphens: ${CHECKER}, simulate-mix.
+- Every input passed as a relative file argument; open no unnamed files.
+- Programs that compute also accept plain data (CSV or JSON of the values alone) so they work on
+  ordinary domain inputs outside this host.
+- Readable result lines on stdout; diagnostics on stderr.
+- Exit 0 when what was tested holds, 1 when something fails, and 2 when the command could not run
+  (missing file, bad arguments). Support --help (prints usage and exits 0).
+- Stateless outside the solver's working directory.
+
+Worked program at .toolchain/bin/${CHECKER} (executable):
 
 \`\`\`js
 ${EXAMPLE.programs[CHECKER].trimEnd()}
@@ -193,27 +187,38 @@ ${EXAMPLE.programs[CHECKER].trimEnd()}
 
 ## agent/BUILT_AGENTS.md
 
-The operating guide, in words. The solver reads it whole in its system prompt, once per task, as
-its project's instructions, under one sentence saying that it cannot override the public task,
-tool authority, runtime limits or submission rules. Without the file the solver reads no guide.
+The operating guide, read whole into the solver's system prompt once per task under a host line
+stating that it cannot override the public task, tool authority, runtime limits, or submission
+rules. Without this file the solver reads no guide.
 
-Every campaign's first harness, the Starter, carries the starter instructions as this file:
+Design the guide to sharpen how the solver works on unseen tasks:
+
+- Start from the task itself: orient the solver to read the task's own files and public/resources/
+  (never tell it to skip public documents), choose and run your programs, reason through domain
+  trade-offs from first principles, and verify its finished answer independently before submitting.
+- Keep it short and prune as you iterate: every paragraph sits in the system prompt of every solve.
+  Accumulating long checklists or narrow recipes for individual practice families crowds out the
+  solver's reading of new tasks and breaks down when an unseen task brings different inputs or
+  structure. Cut stale, redundant, or unused instructions when revising.
+- Let the host manage time and turn budgets: the host states the solve's limits and appends usage
+  to executed tool results. Guides that create urgency or prescribe a tight turn target push
+  solvers to submit under-verified answers with most of their budget still unused.
+
+Every campaign begins from the Starter guide:
 
 \`\`\`markdown
 ${STARTER.guide.trimEnd()}
 \`\`\`
 
-They are yours to revise, replace or remove, the file included.
+You may revise, replace, or remove it, including the file itself.
 
-A kept harness is also written out and run outside this host, on work that comes as a prompt and
-ordinary files: no public/task.json, answer.json or submit is there, and no check or score of this
-exam. The guide goes with it as far as the heading "${HOST_ONLY.slice(3)}", under which belongs what
-holds only here: what makes an answer to these tasks valid, and what the objective rewards. A guide
-without that heading goes whole, under a line that says such things do not hold there.
+A kept harness is also exported and run outside this host on ordinary prompts and files, where
+public/task.json, answer.json, submit, and exam scoring do not exist. Export keeps the guide up to
+the heading "${HOST_ONLY.slice(3)}", where host-specific notes belong: what makes an answer valid
+here and how the declared objective is measured under the public rules. A guide without that
+heading is exported whole under a host disclaimer.
 
-The host tells the solver its limits and appends how much of them is used to results of tools
-that execute. Solvers told in their guide that time was short have submitted answers their own check refused, with most of their time
-left. An example guide, with one entry for a program:
+Worked guide with one program entry:
 
 \`\`\`markdown
 ${EXAMPLE.guide.trimEnd()}

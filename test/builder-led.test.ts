@@ -90,10 +90,6 @@ const IDLE: readonly Step[] = [FINISH_IDLE, FINISH_IDLE];
 const LEVEL = ["--level", "0.125", "--patience", "3"];
 const FLAGS = ["--practice", "2", "--target", "5", ...LEVEL];
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-hb-")));
-/** The tasks the next seeded campaign drafted its exam over, and how many of the first of them its
- *  draft gives an accepted answer: every one unless a case says otherwise. */
-let drafted: readonly FixtureTask[] = TASKS;
-let accepting: number | undefined;
 const names: string[] = [];
 
 setDefaultTimeout(600_000);
@@ -103,12 +99,13 @@ afterAll(() => {
   for (const name of names) rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
 });
 
-/** A campaign's folder marked as a seed, holding the exam its log drafted over `drafted`, and the
- *  flags that open it. */
-function seeded(name: string): string[] {
+/** A campaign's folder marked as a seed, holding the exam its log drafted over `tasks`, with an
+ *  accepted answer to the first `answered` of them (every one unless given), and the flags that
+ *  open it. */
+function seeded(name: string, tasks: readonly FixtureTask[] = TASKS, answered?: number): string[] {
   names.push(name);
   const folder = join(REPO, ".ana", "d2", name);
-  if (!existsSync(join(folder, LOG_FILE))) layOutPack(folder, drafted, accepting);
+  if (!existsSync(join(folder, LOG_FILE))) layOutPack(folder, tasks, answered);
   writeFileSync(join(folder, "seed.json"), `${JSON.stringify({ from: null, events: 0 })}\n`);
   return ["--name", name, "--project", PROJECT, ...OPENED_FROM, "--admit", "check-product"];
 }
@@ -185,7 +182,7 @@ const unwritten: NonNullable<Seats["examine"]> = (request) =>
 describe("the host's practice release", () => {
   /** A campaign set up by its first two moves, with two tasks more of practice owed. */
   const owing = async (name: string): Promise<CampaignContext> => {
-    const flags = [...seeded(name), ...FLAGS];
+    const flags = [...seeded(name, MANY), ...FLAGS];
     const seats: Seats = { seated: winning(GRADED_MANY) };
     await harnessBuilder([...flags, "--moves", "2"], seats);
     const log = join(REPO, ".ana", "d2", name, LOG_FILE);
@@ -206,7 +203,6 @@ describe("the host's practice release", () => {
   const released = ({ log }: CampaignContext) => taskSets(read(log)).released.length;
 
   it("takes no task where a comparison starts while it opens the campaign, since that comparison has drawn", async () => {
-    drafted = MANY;
     const raced = await owing(`${STEM}-release-raced`);
     const releasing = releaseOwed(raced, "the race under test");
     // The guard has passed and the release waits on the campaign's opening.
@@ -221,7 +217,6 @@ describe("the host's practice release", () => {
   });
 
   it("releases once where two causes ask at the same moment", async () => {
-    drafted = MANY;
     const name = `${STEM}-release-twice`;
     const twice = await owing(name);
     const asked = await Promise.all([
@@ -237,7 +232,6 @@ describe("the host's practice release", () => {
 
 describe("a campaign run by its live Builder", () => {
   it("lets the Builder ask the Examiner, and keeps the handover filtered", async () => {
-    drafted = TASKS;
     const name = `${STEM}-examiner`;
     const asked: { tasks: number; minutes: number | undefined; turns: number; proposals: number }[] = [];
     const seats: Seats = {
@@ -301,7 +295,6 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("wakes one Examiner conversation at each examine, and opens another from the log once it crashed", async () => {
-    drafted = TASKS;
     const name = `${STEM}-conversing`;
     const sessions: { id: string; tasks: string[] }[] = [];
     const asked: Step[] = [
@@ -356,7 +349,6 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("wakes the resting Examiner conversation at the first ask after a promotion and tells it of the promotion", async () => {
-    drafted = MANY;
     const name = `${STEM}-conversing-promoted`;
     let conversations = 0;
     const seats: Seats = {
@@ -382,7 +374,7 @@ describe("a campaign run by its live Builder", () => {
     // Eight moves reach the session the host starts on the promotion: accept, prepare, the Builder's
     // session, two asks, the comparison, the promotion and that session.
     const terms = ["--practice", "2", "--target", "5", "--level", "0.125", "--moves", "8"];
-    await harnessBuilder([...seeded(name), ...terms], seats);
+    await harnessBuilder([...seeded(name, MANY), ...terms], seats);
     expect(of(name, "harness.promoted")).toHaveLength(1);
     // x-3 continues x-1's conversation rather than opening one of its own.
     expect(
@@ -396,7 +388,6 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("makes no second draw of a pair whose reading had room, even on tasks written since", async () => {
-    drafted = MANY;
     const name = `${STEM}-tabled`;
     const tied = scriptedSeats({ held: { old: "pass", fresh: "pass" }, starter: "pass" }, GRADED, []);
     const seats: Seats = {
@@ -410,7 +401,7 @@ describe("a campaign run by its live Builder", () => {
       ]),
       examine: writer,
     };
-    await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "10"], seats);
+    await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--moves", "10"], seats);
     // The first comparison read the changed harness with room and no step. The table does not draw
     // the same harness again on the tasks written since; the Builder changes it.
     expect(of(name, COMPARED)).toHaveLength(1);
@@ -418,7 +409,6 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("makes no second draw of a pair nothing changed in, and records no move for an action it refused", async () => {
-    drafted = MANY;
     const name = `${STEM}-unchanged`;
     const tied = scriptedSeats({ held: { old: "pass", fresh: "pass" }, starter: "pass" }, GRADED, []);
     const seats: Seats = {
@@ -430,7 +420,9 @@ describe("a campaign run by its live Builder", () => {
         ["finish", { note: "Nothing new to compare." }],
       ]),
     };
-    expect(await harnessBuilder([...seeded(name), ...FLAGS], seats)).toMatchObject({ ending: "finished" });
+    expect(await harnessBuilder([...seeded(name, MANY), ...FLAGS], seats)).toMatchObject({
+      ending: "finished",
+    });
     const [untouched, , again] = said(name, "compare");
     expect(untouched).toContain("harness/ is the reference harness: there is nothing to compare");
     expect(again).toContain("nothing in it has changed since: there is nothing new to compare");
@@ -479,7 +471,6 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("starts the campaign's first Examiner session as the conversation opens, where the table names one", async () => {
-    drafted = TASKS;
     const name = `${STEM}-first-examiner`;
     const seats: Seats = {
       seated: builderScript(winning(), [["finish", { note: "The Examiner writes; nothing to build yet." }]]),
@@ -504,7 +495,6 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("lets the Builder practise while the Examiner writes, refuses a second session, and ends the Examiner's first", async () => {
-    drafted = TASKS;
     const name = `${STEM}-beside`;
     const log = join(REPO, ".ana", "d2", name, LOG_FILE);
     // The Examiner writes until the Builder has practised and finished.
@@ -568,7 +558,6 @@ describe("a campaign run by its live Builder", () => {
     };
 
     it("into the workspace of a Builder in wait, and none while the session writes", async () => {
-      drafted = TASKS;
       const name = `${STEM}-on-hold`;
       // The Examiner proposes once the Builder waits, holding six, and finishes.
       const waiting = Promise.withResolvers<void>();
@@ -618,7 +607,6 @@ describe("a campaign run by its live Builder", () => {
     });
 
     it("but none that would leave the frontier short of a sweep at the level", async () => {
-      drafted = TASKS;
       const name = `${STEM}-on-hold-sweep`;
       const waiting = Promise.withResolvers<void>();
       const seats: Seats = {
@@ -660,7 +648,6 @@ describe("a campaign run by its live Builder", () => {
     });
 
     it("after a promotion with the default ask, without changing the final practice count", async () => {
-      drafted = MANY;
       const name = `${STEM}-on-hold-promoted`;
       const log = join(REPO, ".ana", "d2", name, LOG_FILE);
       const waiting = Promise.withResolvers<void>();
@@ -698,7 +685,7 @@ describe("a campaign run by its live Builder", () => {
           });
         },
       };
-      await harnessBuilder([...seeded(name), ...FLAGS, "--target", "7", "--moves", "7"], seats);
+      await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--target", "7", "--moves", "7"], seats);
       const at = positions(name);
       const events = read(log);
       const starterComparison = events.findIndex(
@@ -718,7 +705,6 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("tells a Builder finishing on a harness no comparison read so once, with the Examiner session still writing", async () => {
-    drafted = TASKS;
     const name = `${STEM}-unread`;
     // The guide changed, an Examiner session asked for, and finish called while it wrote, as one
     // recorded run did. The Examiner writes until the Builder's second finish.
@@ -765,7 +751,6 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("stops the Examiner writing beside the conversation when the operator's stop halts it", async () => {
-    drafted = TASKS;
     const name = `${STEM}-beside-stop`;
     const stopped = Promise.withResolvers<void>();
     const seats: Seats = {
@@ -802,7 +787,6 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("honours a task word during the conversation before allowing another action", async () => {
-    drafted = TASKS;
     const name = `${STEM}-live-tasks`;
     let calls = 0;
     const seats: Seats = {
@@ -835,7 +819,6 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("uses the last permitted move and refreshes practice without following a Builder's link", async () => {
-    drafted = TASKS;
     const name = `${STEM}-last-move`;
     const seats: Seats = {
       seated: builderScript(winning(), [
@@ -868,7 +851,6 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("keeps one Builder conversation from A to B and then from B to C", async () => {
-    drafted = MANY;
     const name = `${STEM}-promote`;
     const strayed: string[] = [];
     const seats: Seats = {
@@ -898,7 +880,7 @@ describe("a campaign run by its live Builder", () => {
     // Each comparison reads five tasks, every one won, which 0.125 admits and calls a step. A
     // campaign opens at 0.125 where it bears one attempt without a gain, and no more.
     const terms = ["--practice", "2", "--target", "5", "--level", "0.125"];
-    const ending = await harnessBuilder([...seeded(name), ...terms, "--patience", "1"], seats);
+    const ending = await harnessBuilder([...seeded(name, MANY), ...terms, "--patience", "1"], seats);
     // The second promotion is followed by the Examiner session the table names for the new
     // reference, started by the host in the same conversation, and that session holds none, which
     // ends the campaign at its patience of one.
@@ -949,7 +931,6 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("resumes an interrupted comparison on its original terms before another conversation opens", async () => {
-    drafted = TASKS;
     const name = `${STEM}-resume`;
     const base = winning();
     let cut = true;
@@ -1002,7 +983,6 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("keeps admission decisions in the host and leaves dry-run as an advisory reader", async () => {
-    drafted = TASKS;
     const name = `${STEM}-dry-run`;
     const seats: Seats = {
       seated: builderScript(winning(), [["finish", { note: "not reached" }]]),
@@ -1020,7 +1000,6 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("returns a filtered refusal before an Examiner action starts and lets the Builder finish", async () => {
-    drafted = TASKS;
     const name = `${STEM}-examiner-error`;
     const seats: Seats = {
       seated: builderScript(winning(), [
@@ -1045,7 +1024,6 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("waits out a provider limit that ended an action before its first event, and has the Builder ask again", async () => {
-    drafted = TASKS;
     const name = `${STEM}-limit`;
     const reset = Math.floor(Date.now() / 1000) + 60;
     // The first session is the host's, as the conversation opens; the limit ends the Builder's.
@@ -1083,7 +1061,6 @@ describe("a campaign run by its live Builder", () => {
   });
 
   it("writes blind labels for rejected comparison answers", async () => {
-    drafted = TASKS;
     const name = `${STEM}-settle`;
     const args = seeded(name);
     const pack = args.slice(0, 2);
@@ -1120,7 +1097,6 @@ describe("a campaign tool where the table names more than the action", () => {
   const passing = () => winning(GRADED_MANY);
 
   it("reads the starter against a promoted reference while harness/ is that reference", async () => {
-    drafted = MANY;
     const name = `${STEM}-control`;
     const seats: Seats = {
       seated: builderScript(passing(), [
@@ -1137,7 +1113,7 @@ describe("a campaign tool where the table names more than the action", () => {
     };
     // The starter comparison reads the tasks x-1 wrote beside retained ones; the promoted harness answers
     // none of them while a valid answer to each is on record, which is room, so the table builds.
-    await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "9"], seats);
+    await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--moves", "9"], seats);
     const [first, starterComparison] = of(name, REPORTED);
     // The table's starter comparison, as it names it, not a freeze of harness/, which is the
     // reference, so that the comparison is not refused with the advice left the same.
@@ -1167,13 +1143,12 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 
   it("ends the campaign on the operator's cap at its first promotion, and tells the Builder no count", async () => {
-    drafted = MANY;
     const name = `${STEM}-capped`;
     const seats: Seats = {
       seated: builderScript(passing(), [CHANGE_GUIDE, ["compare", {}], ["examine", {}], FINISH_IDLE]),
       examine: writer,
     };
-    const ending = await harnessBuilder([...seeded(name), ...FLAGS, "--promotions", "1"], seats);
+    const ending = await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--promotions", "1"], seats);
     expect(ending).toMatchObject({ move: "end", ending: "operator", code: "stop" });
     expect(of(name, "harness.promoted")).toHaveLength(1);
     expect(of(name, COMPARED)).toHaveLength(1);
@@ -1182,13 +1157,12 @@ describe("a campaign tool where the table names more than the action", () => {
       .flatMap(({ text }) => (isString(text) ? [text] : []))
       .join("\n");
     expect(told).not.toMatch(/\bcap\b|promotions?\b.*\b1\b/u);
-    await expect(harnessBuilder([...seeded(name), ...FLAGS, "--promotions", "0"], seats)).rejects.toThrow(
-      "--promotions 0",
-    );
+    await expect(
+      harnessBuilder([...seeded(name, MANY), ...FLAGS, "--promotions", "0"], seats),
+    ).rejects.toThrow("--promotions 0");
   });
 
   it("hears a stop word left while a step's promotion waits for the Examiner writing beside it", async () => {
-    drafted = MANY;
     const name = `${STEM}-stop-waiting`;
     const seats: Seats = {
       seated: builderScript(passing(), [
@@ -1217,7 +1191,7 @@ describe("a campaign tool where the table names more than the action", () => {
           ]),
         }),
     };
-    await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "12"], seats);
+    await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--moves", "12"], seats);
     expect(of(name, REPORTED)).toMatchObject([{ reading: "step" }]);
     expect(of(name, "harness.promoted")).toEqual([]);
     // Practice owed after the reading is the old reference's, and the stop leaves none to release.
@@ -1228,7 +1202,6 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 
   it("promotes a waiting step before it answers a word for other tasks, so they are written against the new reference", async () => {
-    drafted = MANY;
     const name = `${STEM}-word-waiting`;
     const seats: Seats = {
       seated: builderScript(passing(), [
@@ -1259,7 +1232,7 @@ describe("a campaign tool where the table names more than the action", () => {
           ]),
         }),
     };
-    await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "12"], seats);
+    await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--moves", "12"], seats);
     const events = logOf(name);
     const word = events.findIndex(({ kind }) => kind === "campaign.word");
     const promoted = events.findIndex(({ kind }) => kind === "harness.promoted");
@@ -1274,7 +1247,6 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 
   it("promotes the harness each step froze as it reports, whatever harness/ holds since, and runs the table's starter comparison before the Builder's comparison of a changed harness/", async () => {
-    drafted = MANY;
     const name = `${STEM}-asked`;
     const seats: Seats = {
       seated: builderScript(passing(), [
@@ -1293,7 +1265,7 @@ describe("a campaign tool where the table names more than the action", () => {
       ]),
       examine: writer,
     };
-    await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "12"], seats);
+    await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--moves", "12"], seats);
     const [first, starterComparison, second] = of(name, REPORTED);
     expect(starterComparison).toMatchObject({ fresh: first?.old, old: first?.fresh });
     expect(said(name, "compare")[1]).toContain("The table's comparison of the starter ran first");
@@ -1343,7 +1315,6 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 
   it("waits at a compare right after a promotion for the session writing for the new reference, and runs the starter comparison on its tasks", async () => {
-    drafted = MANY;
     const name = `${STEM}-after-promotion`;
     const seats: Seats = {
       seated: builderScript(passing(), [
@@ -1369,7 +1340,7 @@ describe("a campaign tool where the table names more than the action", () => {
           ]),
         }),
     };
-    await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "12"], seats);
+    await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--moves", "12"], seats);
     const [first, second] = of(name, REPORTED);
     expect(first).toMatchObject({ reading: "step" });
     // Without the wait the changed harness/ was read against the new reference on the old one's
@@ -1384,7 +1355,6 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 
   it("tells the Builder at examine whether a compare will wait for the session, as the compare then does", async () => {
-    drafted = MANY;
     const name = `${STEM}-examine-says`;
     // The session the promotion starts holds nothing, so no release ends the Builder's wait before
     // the session does; each later one writes for a second and a half, long enough to read a
@@ -1423,7 +1393,7 @@ describe("a campaign tool where the table names more than the action", () => {
       ]),
       examine: slow,
     };
-    await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "12"], seats);
+    await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--moves", "12"], seats);
     const events = logOf(name);
     const index = (kind: string, session: string) =>
       events.findIndex((event) => event.kind === kind && event.data.session === session);
@@ -1443,7 +1413,6 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 
   it("reads a changed harness/ at the Builder's compare once the epoch's starter comparison has tallied, though tasks were held since", async () => {
-    drafted = MANY;
     const name = `${STEM}-owed-once`;
     let sessions = 0;
     const seats: Seats = {
@@ -1468,7 +1437,7 @@ describe("a campaign tool where the table names more than the action", () => {
       // Each session holds six instances the last did not.
       examine: (request) => examine({ ...request, ...scripted([proposing(6, 6 * sessions++)]) }),
     };
-    await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "12"], seats);
+    await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--moves", "12"], seats);
     const [first, starterComparison, second] = of(name, REPORTED);
     expect(starterComparison).toMatchObject({ fresh: first?.old, old: first?.fresh });
     const snapshots = of(name, "build.checkpoint");
@@ -1491,6 +1460,7 @@ describe("a campaign tool where the table names more than the action", () => {
     ties: Readonly<Record<string, readonly (number | string)[]>>,
     flags: readonly string[] = FLAGS,
     ended: { readonly ending: string; readonly why?: string } = { ending: "finished" },
+    answered?: number,
   ): Promise<string> => {
     const whole = ended.ending === "finished";
     const answering = passing();
@@ -1527,7 +1497,7 @@ describe("a campaign tool where the table names more than the action", () => {
         ["finish", { note: "Read two harnesses." }],
       ]),
     };
-    expect(await harnessBuilder([...seeded(name), ...flags], seats)).toMatchObject(ended);
+    expect(await harnessBuilder([...seeded(name, MANY, answered), ...flags], seats)).toMatchObject(ended);
     expect(of(name, REPORTED).map(({ scored }) => scored)).toMatchObject(
       ["g-1", "g-2"]
         .slice(0, whole ? 2 : 1)
@@ -1560,7 +1530,6 @@ describe("a campaign tool where the table names more than the action", () => {
   };
 
   it("tells the Builder the same whichever held-out task was won", async () => {
-    drafted = MANY;
     // The two campaigns tie other tasks in each comparison, and the tallies are the same. A status
     // that counted the tasks waiting for a label and the exhausted ones would read two such
     // campaigns differently (rule 3).
@@ -1574,7 +1543,6 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 
   it("tells the Builder the same whichever held-out task was won where the cap is short of the next test", async () => {
-    drafted = MANY;
     // What is left after g-1 is below the price of g-2's test at what the campaign's solves billed
     // each, a rate read from every finished solve's bill, so `cap-short` holds and the campaign ends
     // on its budget before a second comparison. Its refusal's own text, which carries that rate,
@@ -1598,13 +1566,11 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 
   it("tells the Builder the same whichever held-out task was won where the frontier falls below the target", async () => {
-    drafted = MANY;
     // A task no side answered in two comparisons waits for a label and leaves the frontier. Here
     // the candidate's g-2 win takes the first task out of that wait or leaves it in, so the count a
     // comparison would score differs unless no harness but the reference decides it (rule 3).
     // The draft accepts an answer to ex-001 alone, so no other held-out task holds a valid answer
     // on record before a comparison gives it one.
-    accepting = 1;
     const flags = [...FLAGS.slice(0, -LEVEL.length - 2), "--target", "8", ...LEVEL];
     // g-1 draws ex-002 to ex-004, ex-006 and ex-009 to ex-012, and g-2 the same less ex-009 and
     // with ex-001, the retained task. Each ties six and the candidate wins two; in the second
@@ -1617,16 +1583,19 @@ describe("a campaign tool where the table names more than the action", () => {
       `${STEM}-short-one`,
       { "g-1": tied, "g-2": ["ex-002", ...again] },
       flags,
+      { ending: "finished" },
+      1,
     );
     const moved = await everythingRead(
       `${STEM}-short-two`,
       { "g-1": tied, "g-2": [...again, "ex-012"] },
       flags,
+      { ending: "finished" },
+      1,
     );
     const awaiting = ["one", "two"].map((world) => supplyOf(logOf(`${STEM}-short-${world}`)).awaiting);
     // A candidate's pass takes no task out of the wait, since otherwise 6 and 5 would wait, and the
     // first campaign's Builder would be told to examine where the second's was told to build.
-    accepting = undefined;
     expect(awaiting).toEqual([7, 7]);
     expect(same).toContain("2 won, 0 lost, 6 tied");
     expect(moved).toBe(same);
@@ -1649,7 +1618,6 @@ describe("a campaign's endings", () => {
   });
 
   it("ends on its supply patience of readings with no room inside a live conversation", async () => {
-    drafted = TASKS;
     const name = `${STEM}-roomless-live`;
     const asking: Step[] = [
       ["examine", {}],
@@ -1672,7 +1640,6 @@ describe("a campaign's endings", () => {
   });
 
   it("opens a new conversation where one ended at its turns, and goes on to a typed ending", async () => {
-    drafted = TASKS;
     const name = `${STEM}-turns`;
     const seats: Seats = {
       seated: builderScripts(passing(), [
@@ -1728,7 +1695,6 @@ describe("a campaign's endings", () => {
   });
 
   it("opens a new conversation where the provider failed one, and ends on the environment where they fail in a row", async () => {
-    drafted = TASKS;
     const name = `${STEM}-crashed`;
     // A script with no further call is a turn the provider fails: the session is on record as
     // crashed, and read back it is refused (`spent`).
@@ -1775,7 +1741,6 @@ describe("a campaign's endings", () => {
   });
 
   it("ends on the environment, on record, where three Examiner sessions crash while the Builder lives", async () => {
-    drafted = TASKS;
     const name = `${STEM}-halted`;
     // The Builder waits for the Examiner writing beside it, so each examine starts a session.
     const waits: Step = ["wait", {}];

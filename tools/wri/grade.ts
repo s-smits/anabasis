@@ -198,7 +198,9 @@ export async function grade(options: GradeOptions): Promise<number> {
   );
   // The format first, as the host holds a solver's answer to it before any check reads it (`judge`).
   const answerFormat = draftOf(events)?.answerFormat;
-  const verify = openVerifier({ checks, tools: join(bundle, ".toolchain") });
+  // The bundle holds the battery (`tasks.json`, `controls.json`). A log read where it lies outside
+  // the repository has a bundle the repository's denial does not cover, so it is denied by path.
+  const verify = openVerifier({ checks, tools: join(bundle, ".toolchain"), packRoots: [bundle] });
   const judged = async (task: Task, answer: JsonValue, files?: readonly AnswerFile[]) => {
     const fault = answerFormat === undefined ? null : answerFormatFault(answerFormat, answer);
     return fault === null ? spelled(await verify(task, answer, undefined, files)) : `fail format: ${fault}`;

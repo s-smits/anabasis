@@ -486,6 +486,14 @@ describe("a campaign", () => {
     await expect(
       checkpointCommand(["--id", "z-5", "--new", "starter", ...flags.slice(0, -2)]),
     ).rejects.toThrow(unread);
+    // A rehearsal's seats are scripts, and it is exempt: it gets as far as the comparison's own
+    // terms, which refuse a harness read against itself.
+    await expect(
+      checkpointCommand(
+        ["--id", "z-5", "--new", "starter", ...flags.slice(0, -2)],
+        rehearsal(() => undefined),
+      ),
+    ).rejects.toThrow("there is nothing to compare");
     expect(read(campaign.log).some(({ data }) => data.session === "z-5")).toBe(false);
   });
 
@@ -570,7 +578,10 @@ describe("a campaign", () => {
       against.push(given.reference);
     });
     await expect(sessionCommand(flags, seats)).rejects.toThrow("name --builder");
-    expect(against).toEqual([join(campaign.states, digest)]);
+    // A comparison that names --reference starter is made against the starter all the same.
+    const named = ["--id", "z-3", "--reference", "starter", "--new", "starter", ...flags.slice(0, -4)];
+    await expect(checkpointCommand(named, seats)).rejects.toThrow("there is nothing to compare");
+    expect(against).toEqual([join(campaign.states, digest), least.dir]);
     // The starter named again returns the campaign to it.
     await promote("--harness", "starter", "--yes");
     expect(await keptAs(campaign, "--reference", "promoted")).toEqual(least);

@@ -41,15 +41,15 @@ before the first release and run `bun tools/d2/prepare.ts <pack flags> --name si
 
 ```sh
 # sessions, then a standalone comparison of the latest harness against the reference
-bun run runs rehearse <pack flags> --name sim-<what> --session b-2 --no-comparison
-bun run runs rehearse <pack flags> --name sim-<what> --id g2 --new latest [--held pass:pass]
+bun run runs rehearse --name sim-<what> --session b-2 --no-comparison
+bun run runs rehearse --name sim-<what> --id g2 --new latest [--held pass:pass]
 # a campaign
 bun run runs rehearse --name sim-<what> [--held old:new] [--starter pass|fail|none] [--supply N]
 ```
 
 `rehearse` dispatches to the session (`--no-comparison`), the standalone comparison (`--id`) or,
 by default, the campaign command, and takes their flags less the three that name a model and with
-no `--cap`. Pack flags are omitted for a drafted exam, and a recorded setting still binds. A second
+no `--cap`. A recorded setting still binds. A second
 session takes another `--session` and builds on the first's harness.
 
 ## The scripts
@@ -58,11 +58,11 @@ session takes another `--session` and builds on the first's harness.
   latest`, so one edit from one parent gives one digest.
 - **Solver**: `pass` submits an answer the checks accepted on record, `fail` one they rejected, and
   `none` no answer. `--held old:new` sets this for the reference and the new harness; `--starter` for
-  the starter where it is neither side. Answers come from the sweep, pack controls and the seed's
-  verdicts (`answersOf`), or for a drafted exam from the source campaign (`draftedSource`); a missing
-  one is a stray with exit 1.
-- **Examiner**: with `--campaign` over a drafted-exam seed, `scriptedExaminer` proposes the source's
-  later tasks, then up to `--supply N` copies of answered ones.
+  the starter where it is neither side. Answers come from the drafted exam's controls, the seed's
+  verdicts (`answersOf`) and the source campaign (`draftedSource`); a missing one is a stray with
+  exit 1.
+- **Examiner**: in a campaign, `scriptedExaminer` proposes the source's later tasks, then up to
+  `--supply N` copies of answered ones.
 
 A scripted `fail` sets its task aside until `tools/d2/settle.ts` labels it. Admission is bypassed,
 so a rehearsal says nothing of whether a paid start would be admitted.
@@ -80,7 +80,7 @@ With four frontier tasks, two solves a side, `--level 0.10` and no objective dif
 | `--held none:none` | `no-step`, `unsolved` 4 | after two comparisons each task waits for a label (`poolOf`) |
 | `--held fail:pass` | `not-scored`, `aside` 4 tasks, `counted` 4-0; `step` once `settle.ts` labels each `earned` | rejections nobody ruled |
 | a Builder edit that does not land | `no-change` | the harness froze to its parent's digest |
-| `--campaign --held none:pass --starter pass --supply 40`, drafted-exam seed | repeated promotions | a `step` promotes outside `--hitl` |
+| a campaign with `--held none:pass --starter pass --supply 40` | repeated promotions | a `step` promotes outside `--hitl` |
 
 `valid` counts tasks at zero, one and two valid solves (`Valid`, `src/campaign/comparison.ts`).
 `check-defects` needs a Referee and is out of reach. A hand-run round writes no `harness.promoted`.

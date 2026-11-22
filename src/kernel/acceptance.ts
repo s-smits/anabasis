@@ -289,17 +289,6 @@ function controlFault({ taskId, refusedBy, verdicts: [first, second] }: ControlA
     : `${named} names ${refusedBy}, which did not refuse it: ${spelled(first)}`;
 }
 
-/** The tools a check names that the verifier's tool path does not hold, a sentence each. A check
- *  whose tool is missing decides nothing, so a caller asks this before it runs a control answer: put to
- *  the verifier first, such a check stops the run and the missing tool is never named. */
-export function toolFaults(brief: Brief, found: (toolId: string) => boolean): string[] {
-  return brief.truthChecks.flatMap(({ id, execution }) =>
-    requiredToolsOf(execution)
-      .filter((tool) => !found(tool))
-      .map((tool) => `${id} names ${tool}, which is not on the verifier's tool path`),
-  );
-}
-
 /**
  * The reading: each check's tallies over the control answers, and the faults. `found` says whether
  * the verifier's tool path holds a tool. A verdict that decided nothing, a faulty check's or a

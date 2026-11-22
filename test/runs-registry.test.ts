@@ -18,12 +18,12 @@ const campaign = (name: string, tree: string): Run => ({
 const round = campaign("r1", "/wt");
 
 describe("a run's writers", () => {
-  it("knows a campaign's log is written by its campaign command, a round, an Examiner session or a drafting session of its name, in its worktree", () => {
+  it("knows a campaign's log is written by its campaign command, a standalone comparison, an Examiner session or a drafting session of its name, in its worktree", () => {
     const rows: [string, string[]][] = [
-      ["/wt", ["bun", "tools/d2/round.ts", "--name", "r1", "--session", "b-1"]],
+      ["/wt", ["bun", "tools/d2/checkpoint.ts", "--name", "r1", "--session", "b-1"]],
       ["/wt", ["bun", "tools/d1b/examine.ts", "--name", "r1", "--session", "x-1"]],
-      ["/wt", ["bun", "tools/d2/round.ts", "--name", "r10"]],
-      ["/other", ["bun", "tools/d2/round.ts", "--name", "r1"]],
+      ["/wt", ["bun", "tools/d2/checkpoint.ts", "--name", "r10"]],
+      ["/other", ["bun", "tools/d2/checkpoint.ts", "--name", "r1"]],
       ["/wt", ["bun", "tools/runs/cli.ts", "rehearse", "--name", "r1"]],
       ["/wt", ["bun", "run", "runs", "rehearse", "--name", "r1"]],
       ["/wt", ["bun", "tools/runs/cli.ts", "pulse", "--name", "r1"]],

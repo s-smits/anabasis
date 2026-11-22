@@ -50,7 +50,7 @@ export function solveIsolationPolicy(input: {
    *  denied, a shell in one worktree read a sibling's `.ana` log, every hidden value of that
    *  campaign in it, on the Linux container (an Examiner's shell, by hand). */
   otherTrees?: readonly string[];
-  /** A stored pack's root and bundle, denied with it by path. */
+  /** An exam's bundle where it lies outside the repository, denied with it by path. */
   packRoots?: readonly string[];
   runtime?: OsIsolationRuntime;
   readAllowRoots?: readonly string[];

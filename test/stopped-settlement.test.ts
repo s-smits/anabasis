@@ -13,14 +13,7 @@ import { stopRule } from "../src/campaign/admission.ts";
 import { lastReports, pairsReported } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { taskStates } from "../src/kernel/task.ts";
-import {
-  cpSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "../src/meta/filesystem.ts";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -394,9 +387,9 @@ it("draws and settles the stopped comparison through the blind packet command", 
   const name = `test-stopped-settle-${String(runtimeProcess.pid)}`;
   const folder = join(REPO, ".ana", "d2", name);
   scratches.push(root, folder);
-  mkdirSync(folder, { recursive: true });
-  cpSync(s.log, join(folder, "log.jsonl"));
+  // The opening and its draft first, then the stopped comparison, in the order a campaign logs them.
   layOutPack(folder, fixtureTasks(10));
+  appendFileSync(join(folder, "log.jsonl"), readFileSync(s.log));
   const args = ["--name", name, "--session", ID];
   const said = spyOn(console, "log");
   const run = async () => {

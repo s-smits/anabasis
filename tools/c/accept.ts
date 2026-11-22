@@ -34,7 +34,6 @@ import {
   doNothingFaults,
   frozenChecker,
   readChecker,
-  toolFaults,
 } from "#src/kernel/acceptance.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { OBJECTIVE, readBrief } from "#src/kernel/verify.ts";
@@ -129,15 +128,6 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
   );
   if (unknown.length > 0) {
     throw new Error(`--admit names ${unknown.join(", ")}, and the check program holds no such check`);
-  }
-  // A tool a check names and the path lacks is named before any control runs: the verifier cannot
-  // decide such a check, and a run that stopped on it never reached the fault that says why.
-  const lost = toolFaults(brief, toolOnPath(bundle));
-  if (lost.length > 0) {
-    append(log, "checker.read", { ...checker, controls: 0, rows: [], faults: lost });
-    for (const fault of lost) console.log(`fault: ${fault}`);
-    console.log("no control was run: a check whose tool is missing decides nothing");
-    return 1;
   }
   const reading = await readChecker({
     verify: campaign.verify,

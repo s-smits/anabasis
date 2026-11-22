@@ -84,6 +84,8 @@ interface Built extends SoFar {
   readonly id: string;
   readonly parent: string | null;
   readonly harness: string | null;
+  /** On an interrupted session that saved edits past its last handover, the digest kept in `states/`. */
+  readonly unfinished: string | null;
   readonly changed: boolean;
   readonly practiceSolves: number;
   /** Where its window ends in the log, for a reader of what ran inside it (`soFar`). */
@@ -359,6 +361,7 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
       );
       const named = INTERRUPTED.has(end?.ended) ? null : text(end?.harness);
       const harness = named ?? text(frozen?.data.harness);
+      const unfinished = INTERRUPTED.has(end?.ended) && end?.changed === true ? text(end?.harness) : null;
       return [
         {
           step: "builder",
@@ -366,6 +369,7 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
           ...read,
           parent: text(data.parent),
           harness,
+          unfinished,
           changed: named === null ? harness !== null && harness !== text(data.parent) : end?.changed === true,
           // Each attempt of one solve is logged as `<id>-<attempt>`, and the session charged the
           // solve once, so attempts are folded into their solve before counting.

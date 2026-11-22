@@ -89,10 +89,10 @@ import {
   endingWith,
   finishTool,
   hasPractice,
+  listedPractice,
   openingTool,
   practiceLeft,
   practiceTool,
-  record,
   traceTool,
   walledTools,
 } from "./tools.ts";
@@ -345,7 +345,7 @@ export async function session(
     parent: parent.digest,
     tree: null,
     opened: null,
-    told: new Set(),
+    told: new Map(),
     spent: 0,
     faulty: new Set(),
     faults: [],
@@ -362,21 +362,15 @@ function openingFor(bench: Bench): string {
   const { request } = bench;
   const recorded = read(request.log);
   const campaign = campaignOf(recorded);
-  // A promotion inside the conversation moves the reference, and never the records listed here.
   const began = recorded.findLastIndex(
     ({ kind, data }) => kind === BUILD_STARTED && data.session === request.id,
   );
   const moved = recorded.slice(began).some(({ kind }) => kind === "harness.promoted")
-    ? " The reference harness has changed since this conversation began; the practice records above are still those under the harness you start from."
+    ? " The reference harness has changed since this conversation began."
     : "";
   return firstMessage(
     request.contract,
-    bench.tasks.map(({ version, task }) => ({
-      taskId: task.taskId,
-      family: task.family,
-      left: taskStates(recorded).get(version) === "disputed",
-      ...record(recorded, version, bench.parent),
-    })),
+    listedPractice(recorded, bench.tasks, bench.parent, request.contract),
     // The count it opens with is the one `practice` holds it to (`practiceLeft`).
     {
       ...request.limits,

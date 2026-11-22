@@ -73,19 +73,30 @@ import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
 import type { Limits } from "../kernel/condition.ts";
+import { short } from "../campaign/move.ts";
 import { INSTALLER_TOLD, type NetworkReach } from "../tools/command.ts";
 import { CONTEXT_OUTPUT_LIMIT } from "../../vendor/claude-mem/ContextBudget.ts";
 import { MEMORY_FILE } from "./memory.ts";
 
-/** A practice task as the opening message lists it. */
-interface Listed {
-  readonly taskId: string;
-  readonly family: string;
-  /** Its counted solves under the harness the session starts from, from the log. */
+/** One harness's counted practice record on a task, as the opening lists it. */
+interface TaskPractice {
   readonly solves: readonly string[];
   readonly passed: number;
+  /** Objective measures of valid answers in solve order, rounded (`tools.ts`). */
+  readonly measures?: readonly string[];
+}
+
+/** A practice task as the opening message lists it. */
+export interface Listed extends TaskPractice {
+  readonly taskId: string;
+  readonly family: string;
   /** Whether it left practice on a check defect the Referee ruled on a practice answer to it. */
   readonly left: boolean;
+  /** Counted practice under the current reference harness, when distinct from the starting harness
+   *  and solved at least once. */
+  readonly reference?: TaskPractice & { readonly digest: string };
+  /** The task author's best valid measure on record under an objective, rounded (`tools.ts`). */
+  readonly best?: string;
 }
 
 /** What a session is told of the sessions before it (`memory.ts`). */
@@ -295,17 +306,32 @@ export function continuation(
 }
 
 /** The opening message: the domain's public contract, the practice tasks with their record under the
- *  harness the session starts from, what the campaign's log holds of the sessions before this one,
- *  and the session's limits. A task's public part is a file in the home, since a pack's inputs run
- *  long. */
+ *  harness the session starts from (and under the current reference harness when distinct, with
+ *  objective measures and the author's best on record), what the campaign's log holds of the
+ *  sessions before this one, and the session's limits. A task's public part is a file in the home,
+ *  since a pack's inputs run long. */
 export function firstMessage(contract: Contract, tasks: readonly Listed[], told: Told, past: Past): string {
-  const listed = tasks.map(({ taskId, family, solves, passed, left }) =>
-    left
-      ? `- ${taskId} (family ${family}): no longer a practice task, since the Referee ruled a check defect on a practice answer to it; read_trace still opens its solves.`
-      : solves.length === 0
-        ? `- ${taskId} (family ${family}): not yet solved under the harness you start from.`
-        : `- ${taskId} (family ${family}): passed ${String(passed)} of ${String(solves.length)} under the harness you start from. Solves: ${solves.join(", ")}.`,
-  );
+  const names = [contract.objective?.quantity ?? ""];
+  const name = () => names.shift() ?? "the objective";
+  const measured = (measures: readonly string[] | undefined) =>
+    contract.objective === undefined || (measures?.length ?? 0) === 0
+      ? ""
+      : `, ${name()} ${(measures ?? []).join(", ")}`;
+  const listed = tasks.map(({ taskId, family, solves, passed, measures, left, reference, best }) => {
+    if (left) {
+      return `- ${taskId} (family ${family}): no longer a practice task, since the Referee ruled a check defect on a practice answer to it; read_trace still opens its solves.`;
+    }
+    const start =
+      solves.length === 0
+        ? "not yet solved under the harness you start from."
+        : `passed ${String(passed)} of ${String(solves.length)} under the harness you start from${measured(measures)}. Solves: ${solves.join(", ")}.`;
+    const ref =
+      reference === undefined || reference.solves.length === 0
+        ? ""
+        : ` Under the reference harness (${short(reference.digest)}): passed ${String(reference.passed)} of ${String(reference.solves.length)}${measured(reference.measures)}. Solves: ${reference.solves.join(", ")}.`;
+    const author = best === undefined ? "" : ` An answer on record that no harness gave measures ${best}.`;
+    return `- ${taskId} (family ${family}): ${start}${ref}${author}`;
+  });
   return [
     // First, and not last: it is the Builder's own prose and may predate what stands below it.
     ...(past.memory === "" ? [] : [past.memory]),

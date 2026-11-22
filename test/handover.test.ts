@@ -192,6 +192,7 @@ describe("a campaign's reading", () => {
         last: anyOf(String),
         parent: STARTER,
         harness: HA,
+        unfinished: null,
         changed: true,
         practiceSolves: 2,
         until: 21,
@@ -433,6 +434,7 @@ describe("the Builder's filter over that reading", () => {
     c.record("build.finished", { session: "b-2", ended: "crashed", harness: HB, changed: true });
     const crashed = startTold(campaignOf(c.events()), HA, "b-3");
     expect(crashed).toMatch(/\baaaaaaaa\b.*\bb-1\b.*\bb-2\b.*\bcrashed\b/su);
+    expect(crashed).toContain("Its unfinished tree is in kept/bbbbbbbb/.");
     expect(crashed).not.toContain("reference");
     c.record("harness.promoted", { harness: HA, from: STARTER, rests: [] });
     // The session's own start is not the last session before it.
@@ -440,6 +442,9 @@ describe("the Builder's filter over that reading", () => {
     const promoted = startTold(campaignOf(c.events()), HA, "b-3");
     expect(promoted).toMatch(/\bb-1\b.*\breference harness\b.*\bb-2\b.*\bcrashed\b/su);
     expect(promoted).not.toContain("b-3");
+    // Starting from a non-reference harness names the current reference harness explicitly.
+    const behind = startTold(campaignOf(c.events()), HB, "b-4");
+    expect(behind).toContain("The reference harness is harness aaaaaaaa.");
   });
 
   it("names a session cut before its end as the one that left what it last froze", () => {
@@ -467,6 +472,7 @@ describe("the Builder's filter over that reading", () => {
     expect(latestBuilt(crash.events())).toBe(HA);
     const opened = startTold(campaignOf(crash.events()), HA, "b-2");
     expect(opened).toMatch(/\baaaaaaaa\b.*\bb-1\b.*\bcrashed\b/su);
+    expect(opened).toContain("Its unfinished tree is in kept/bbbbbbbb/.");
     expect(opened).not.toContain("no Builder session");
     // A checkpoint of the parent itself changed nothing, so no session left the starter.
     const same = campaign();

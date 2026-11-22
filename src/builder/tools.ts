@@ -50,6 +50,7 @@ import { poolOf, referenceOf } from "../kernel/reports.ts";
 import { taskStates } from "../kernel/task.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isFunction, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
@@ -63,7 +64,7 @@ import { clockText, solverTools } from "../solver/run.ts";
 import { STARTED as COMPARISON_STARTED } from "../campaign/comparison.ts";
 import { budgetLeft } from "../campaign/opening.ts";
 import { type Freezing, frozen, harnessNow, type HarnessSnapshot, snapshot } from "./kept.ts";
-import { type Said, shellWalls } from "./prompt.ts";
+import { type Listed, type Said, shellWalls } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
 
 /** What a session's tools share. */
@@ -91,8 +92,9 @@ export interface Bench extends Freezing {
   fatal: Error | null;
   /** `finish`'s note; null until it is called. */
   note: string | null;
-  /** What `finish` has told the Builder of the harness as it stood, each once (`finishNotice`). */
-  readonly told: Set<"broken" | "untried" | "unread">;
+  /** What `finish` has told the Builder for each notice kind, keyed by the state it applied to
+   *  (`finishNotice`), so editing `harness/` or promoting a new reference re-arms the notice. */
+  readonly told: Map<"broken" | "untried" | "unread", string>;
 }
 
 /** What a Builder that leads its campaign is told at `finish` where no comparison has read harness
@@ -225,6 +227,51 @@ export function practiceLeft({ request, spent }: Bench, events: readonly LogEven
   return Math.max(0, Math.min(counted, afforded));
 }
 
+/** Objective measures of `solves`'s valid answers, rounded to `MEASURE_DIGITS`. */
+function measuresOf(
+  verdicts: ReturnType<typeof verdictsOf>,
+  solves: readonly string[],
+  contract: Contract,
+): string[] {
+  return contract.objective === undefined
+    ? []
+    : solves.flatMap((id) => objectiveOf(verdicts.get(id)?.checker) ?? []).map(rounded);
+}
+
+/** Practice tasks with their counted records under `parent` and, when distinct and solved, under the
+ *  current reference harness, plus rounded objective measures and the author's best on record. */
+export function listedPractice(
+  events: readonly LogEvent[],
+  tasks: readonly PracticeTask[],
+  parent: string,
+  contract: Contract,
+): Listed[] {
+  const states = taskStates(events);
+  const verdicts = verdictsOf(events);
+  const reference = referenceOf(events);
+  const bests = contract.objective === undefined ? null : poolOf(events).bests;
+  return tasks.map(({ version, task }) => {
+    const kept = record(events, version, parent);
+    const measures = measuresOf(verdicts, kept.solves, contract);
+    const best = bests?.get(version);
+    const ref = reference !== null && reference !== parent ? record(events, version, reference) : null;
+    return {
+      taskId: task.taskId,
+      family: task.family,
+      left: states.get(version) === "disputed",
+      ...kept,
+      ...keyIfDefined("measures", measures.length > 0 ? measures : undefined),
+      ...keyIfDefined(
+        "reference",
+        ref !== null && reference !== null && ref.solves.length > 0
+          ? { digest: reference, ...ref, measures: measuresOf(verdicts, ref.solves, contract) }
+          : undefined,
+      ),
+      ...keyIfDefined("best", best === undefined ? undefined : rounded(best)),
+    };
+  });
+}
+
 /** A task's practice record under each harness `roles` names, each digest once with all its roles,
  *  and under an objective each valid answer's measure and the author's answer (`task.feasible`), so
  *  that a pass that costs more than the author's still reads as room to gain. A solve under
@@ -247,9 +294,8 @@ function recordText(
     .map(([digest, [role, ...also]], index) => {
       const kept = record(events, version, digest);
       const which = `${role ?? ""}${also.length > 0 ? `, which is also ${also.join(" and ")}` : ""}`;
-      const measures = kept.solves.flatMap((id) => objectiveOf(verdicts.get(id)?.checker) ?? []).map(rounded);
-      const measured =
-        contract.objective === undefined || measures.length === 0 ? "" : `, ${name()} ${measures.join(", ")}`;
+      const measures = measuresOf(verdicts, kept.solves, contract);
+      const measured = measures.length === 0 ? "" : `, ${name()} ${measures.join(", ")}`;
       return `${index === 0 ? "Record under" : "Under"} ${which}: ${index === 0 ? "passed " : ""}${String(kept.passed)} of ${String(kept.solves.length)}${measured}.`;
     })
     .join(" ")
@@ -381,7 +427,16 @@ export function traceTool(bench: Bench): SeatTool {
       const versions = new Set(bench.tasks.map(({ version }) => version));
       const events = read(bench.request.log);
       const ran = practiceRan(events).find(({ id }) => id === args.solve);
-      if (ran === undefined || !versions.has(ran.under.task)) {
+      // A practice task disputed after a check defect leaves `bench.tasks` on refresh, yet its
+      // prior practice solves remain on the build side (`firstMessage` promises `read_trace` opens them).
+      const released =
+        ran !== undefined &&
+        (versions.has(ran.under.task) ||
+          events.some(
+            ({ kind, data }) =>
+              kind === "task.state" && data.state === "released" && data.version === ran.under.task,
+          ));
+      if (ran === undefined || !released) {
         throw new Error(`${args.solve} is not a solve of one of this session's practice tasks`);
       }
       const { turns, calls } = traceOf(events, "solve", args.solve);
@@ -423,10 +478,11 @@ async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<stri
   const again = "or call finish again to end the session as it is";
   const now = await harnessNow(bench);
   if (!isString(now)) {
-    if (told.has("broken")) return null;
-    told.add("broken");
+    const why = errorMessage(now);
+    if (told.get("broken") === why) return null;
+    told.set("broken", why);
     const { unpractised, practised } = bench.said.broken;
-    return `${errorMessage(now)}. Left so, ${bench.opened === null ? unpractised : practised}. Mend it and call finish again, ${again}.`;
+    return `${why}. Left so, ${bench.opened === null ? unpractised : practised}. Mend it and call finish again, ${again}.`;
   }
   const events = read(request.log);
   const left = practiceLeft(bench, events);
@@ -436,11 +492,12 @@ async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<stri
     now === bench.parent ||
     hasPractice(bench, events, now) ||
     events.some(({ kind, data }) => kind === COMPARISON_STARTED && (data.old === now || data.fresh === now));
-  const untried = !tried && left > 0 && !told.has("untried");
-  const unread = told.has("unread") ? null : ((await unmeasured?.(now)) ?? null);
-  if (unread !== null) told.add("unread");
+  const untried = !tried && left > 0 && told.get("untried") !== now;
+  const unreadKey = `${now}@${referenceOf(events) ?? ""}`;
+  const unread = told.get("unread") === unreadKey ? null : ((await unmeasured?.(now)) ?? null);
+  if (unread !== null) told.set("unread", unreadKey);
   if (untried) {
-    told.add("untried");
+    told.set("untried", now);
     return `harness/ has changed since your last practice solve, so no solve has run it as it stands. ${plural(left, "practice solve")} ${left === 1 ? "is" : "are"} left. Practise it, ${again} ${bench.said.untried}.${unread === null ? "" : ` ${unread}`}`;
   }
   return unread === null ? null : `${unread} Call finish again to end the conversation as it is.`;

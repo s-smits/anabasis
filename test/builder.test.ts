@@ -52,6 +52,9 @@ import { endCut } from "../tools/d2/harness-builder.ts";
 
 const BUILD_CALL = "build.call";
 const BUILD_FINISHED = "build.finished";
+const SOLVE_STARTED = "solve.started";
+const SOLVE_FINISHED = "solve.finished";
+const READ_TRACE = "read_trace";
 const WRITE_FILE = "write";
 const GUIDE_PATH = "harness/agent/BUILT_AGENTS.md";
 
@@ -151,7 +154,7 @@ async function setup(
   const solved = (version: string, harness: string, ending: Ending) => {
     solves += 1;
     const solve = `s-${String(solves)}`;
-    add("solve.started", {
+    add(SOLVE_STARTED, {
       solve,
       condition: recordCondition(log, condition(version, harness)),
       task: "t",
@@ -171,7 +174,7 @@ async function setup(
     if (ending.outcome === "pass" && contract.objective !== undefined) {
       add("verdict", { solve, answer: { answer: "42" }, kind: "pass", objective: solves * 10 });
     }
-    add("solve.finished", { solve, ending });
+    add(SOLVE_FINISHED, { solve, ending });
     return solve;
   };
   // Solves on record before the session: v1 failed once, and v3 is a held-out task's.
@@ -398,8 +401,8 @@ describe("a Builder session", () => {
       [
         edit,
         call("practice", { tasks: ["t-1", "t-2"] }),
-        call("read_trace", { solve: "s-3" }),
-        call("read_trace", { solve: "s-3", call: 1 }),
+        call(READ_TRACE, { solve: "s-3" }),
+        call(READ_TRACE, { solve: "s-3", call: 1 }),
         finish,
       ],
       [{ outcome: "fail", kind: "rejected" }, { outcome: "pass" }],
@@ -471,8 +474,8 @@ describe("a Builder session", () => {
     expect(s.of(BUILD_CALL).map(({ tool: name }) => name)).toEqual([
       WRITE_FILE,
       "practice",
-      "read_trace",
-      "read_trace",
+      READ_TRACE,
+      READ_TRACE,
       "finish",
     ]);
     expect(record(s.events(), "v1", built.harness ?? "")).toEqual({ solves: ["s-3"], passed: 0 });
@@ -553,28 +556,109 @@ describe("a Builder session", () => {
     expect(opening).not.toContain(note);
   });
 
-  it("says the re-served practice records stay under the harness it started from once a promotion moves the reference, and nothing before", async () => {
-    // 16 openings on record came after a promotion inside their session, and listed the records
-    // under the harness the conversation started from as though it were still the reference.
+  it("shows objective measures, author best and current reference practice records in openings and after a promotion", async () => {
+    const promoted = "f".repeat(64);
     const s = await setup([call("read_opening", {}), call("promote", {}), call("read_opening", {}), finish]);
+    const contract = {
+      ...s.request.contract,
+      objective: { quantity: "interval width", direction: "lower" as const },
+    };
+    const { log } = s.request;
+    // Parent solve s-1 already ran in setup(); attach an objective measure, a reference practice solve,
+    // and an author proof on v1 so both starting and promoted reference records appear on read_opening.
+    append(log, "verdict", { solve: "s-1", kind: "pass", answer: { answer: 6 }, objective: 2.5 });
+    append(log, "task.feasible", {
+      version: "v1",
+      session: "x-1",
+      answer: { answer: 6 },
+      objective: { quantity: "interval width", direction: "lower", measure: 1.25 },
+    });
+    const refCond = recordCondition(log, s.condition("v1", promoted));
+    append(log, SOLVE_STARTED, { solve: "s-ref", condition: refCond, task: "t-1" });
+    append(log, "verdict", { solve: "s-ref", kind: "pass", answer: { answer: 6 }, objective: 1.5 });
+    append(log, SOLVE_FINISHED, { solve: "s-ref", ending: { outcome: "pass" } });
     const promote = tool({
       name: "promote",
       description: "Promote another harness.",
       parameters: Type.Object({}),
       execute: async () => {
-        append(s.request.log, "harness.promoted", { harness: "f".repeat(64) });
+        append(log, "harness.promoted", { harness: promoted });
         return text("Promoted.");
       },
     });
-    await session({ ...s.request, campaign: () => ({ hook: () => "", tools: [promote] }) }, s, s.walled);
+    await session(
+      { ...s.request, contract, campaign: () => ({ hook: () => "", tools: [promote] }) },
+      s,
+      s.walled,
+    );
     const [before, after] = s
       .of(BUILD_CALL)
       .flatMap(({ tool: name, text: told }) => (name === "read_opening" && isString(told) ? [told] : []));
-    const moved = "The reference harness has changed since this conversation began";
+    const moved = "The reference harness has changed since this conversation began.";
     expect(before).not.toContain(moved);
+    expect(before).not.toContain("Under the reference harness (ffffffff)");
+    expect(before).toContain("interval width 2.500. Solves: s-1.");
+    expect(before).toContain("An answer on record that no harness gave measures 1.250.");
+    expect(after).toContain("The reference harness is harness ffffffff.");
+    expect(after).toContain(moved);
     expect(after).toContain(
-      `${moved}; the practice records above are still those under the harness you start from.`,
+      "Under the reference harness (ffffffff): passed 1 of 1, the objective 1.500. Solves: s-ref.",
     );
+  });
+
+  it("re-arms finish notices when harness/ changes to a new digest and opens read_trace on a disputed practice task removed from bench.tasks", async () => {
+    const editTwo = call(WRITE_FILE, { path: GUIDE_PATH, content: `${GUIDE}Second variant.\n` });
+    const s = await setup([
+      call("practice", { tasks: ["t-1"] }),
+      edit,
+      finish,
+      editTwo,
+      finish,
+      call("drop_v2", {}),
+      call(READ_TRACE, { solve: "s-disputed" }),
+      finish,
+    ]);
+    const { log } = s.request;
+    const cond = recordCondition(log, s.condition("v2", s.digest));
+    append(log, SOLVE_STARTED, { solve: "s-disputed", condition: cond, task: "t-2" });
+    append(log, SOLVE_FINISHED, { solve: "s-disputed", ending: { outcome: "fail", kind: "rejected" } });
+    const built = await session(
+      {
+        ...s.request,
+        campaign: (bench) => ({
+          hook: () => "",
+          tools: [
+            tool({
+              name: "drop_v2",
+              description: "Simulate refreshPractice dropping a disputed task from bench.tasks.",
+              parameters: Type.Object({}),
+              execute: async () => {
+                append(log, "task.state", {
+                  version: "v2",
+                  state: "disputed",
+                  session: "b-1",
+                  solve: "s-disputed",
+                });
+                bench.tasks = bench.tasks.filter(({ version }) => version !== "v2");
+                return text("Dropped.");
+              },
+            }),
+          ],
+        }),
+      },
+      s,
+      s.walled,
+    );
+    const finishes = s.of(BUILD_CALL).filter(({ tool: name }) => name === "finish");
+    // Both distinct untried digests receive the notice; the third finish on the same digest ends the session.
+    expect(finishes).toHaveLength(3);
+    expect(finishes[0]?.text).toContain("harness/ has changed since your last practice solve");
+    expect(finishes[1]?.text).toContain("harness/ has changed since your last practice solve");
+    expect(finishes[2]?.text).toContain("Finished.");
+    const traced = s.of(BUILD_CALL).find(({ tool: name }) => name === READ_TRACE);
+    expect(traced?.isError).toBe(false);
+    expect(traced?.text).toContain("ending: rejection set aside");
+    expect(built.ended).toBe("finished");
   });
 
   it("sets aside unestablished practice rejections in results, traces and later records, and takes a check defect's task out of practice", async () => {
@@ -582,7 +666,7 @@ describe("a Builder session", () => {
       const s = await setup(
         [
           call("practice", { tasks: ["t-2"] }),
-          call("read_trace", { solve: "s-3" }),
+          call(READ_TRACE, { solve: "s-3" }),
           call("read_opening", {}),
           call("practice", { tasks: ["t-2"] }),
           finish,
@@ -676,7 +760,7 @@ describe("a Builder session", () => {
 
   it("refuses a trace of any solve but its practice tasks', and a practice past its budget", async () => {
     const s = await setup([
-      call("read_trace", { solve: "s-2" }),
+      call(READ_TRACE, { solve: "s-2" }),
       call("practice", { tasks: ["t-1", "t-1", "t-2", "t-2"] }),
       call("practice", { tasks: ["t-9"] }),
       finish,
@@ -690,18 +774,18 @@ describe("a Builder session", () => {
   });
 
   it("is shown no solve that a comparison made of a task released afterwards", async () => {
-    const s = await setup([call("read_trace", { solve: "g-1-v0" }), finish]);
+    const s = await setup([call(READ_TRACE, { solve: "g-1-v0" }), finish]);
     const { log } = s.request;
     // v0 was held out, a comparison solved it under the harness this session starts from, and it
     // was released for practice afterwards. That solve is the comparison's, and which task it
     // failed is the exam's to keep, whatever became of the task.
-    append(log, "solve.started", {
+    append(log, SOLVE_STARTED, {
       solve: "g-1-v0",
       comparison: "g-1",
       condition: recordCondition(log, s.condition("v0", s.digest)),
       task: "t",
     });
-    append(log, "solve.finished", { solve: "g-1-v0", ending: { outcome: "fail", kind: "rejected" } });
+    append(log, SOLVE_FINISHED, { solve: "g-1-v0", ending: { outcome: "fail", kind: "rejected" } });
     append(log, "task.state", { version: "v0", state: "released" });
     const late = { version: "v0", task: { taskId: "t-0", family: "fixture", publicInput: { base: 5 } } };
     await session({ ...s.request, tasks: [...TASKS, late] }, s, s.walled);
@@ -834,13 +918,13 @@ describe("a Builder session", () => {
             const { dir, harness } = await snapshot(bench);
             // The comparison's own solve of the released task under the harness it promotes, a fail:
             // it is the exam's, and no record the Builder reads counts it (`practiceRan`).
-            append(log, "solve.started", {
+            append(log, SOLVE_STARTED, {
               solve: "g-1-v1",
               comparison: "g-1",
               condition: recordCondition(log, s.condition("v1", harness.digest)),
               task: "t",
             });
-            append(log, "solve.finished", {
+            append(log, SOLVE_FINISHED, {
               solve: "g-1-v1",
               ending: { outcome: "fail", kind: "no-answer" },
             });
@@ -919,19 +1003,19 @@ describe("a Builder session", () => {
           if (queue.length === measures.length) {
             // A comparison's own solve of this task under this harness, valid and measured: it is
             // the exam's, and the record below counts two solves and names two measures without it.
-            append(log, "solve.started", { solve: "g-1-v1", comparison: "g-1", condition, task: "t" });
+            append(log, SOLVE_STARTED, { solve: "g-1-v1", comparison: "g-1", condition, task: "t" });
             append(log, "verdict", {
               solve: "g-1-v1",
               answer: { answer: "42" },
               kind: "pass",
               objective: 8888.5,
             });
-            append(log, "solve.finished", { solve: "g-1-v1", ending: { outcome: "pass" } });
+            append(log, SOLVE_FINISHED, { solve: "g-1-v1", ending: { outcome: "pass" } });
           }
-          append(log, "solve.started", { solve, condition, task: "t" });
+          append(log, SOLVE_STARTED, { solve, condition, task: "t" });
           const objective = queue.shift() ?? 0;
           append(log, "verdict", { solve, answer: { answer: "42" }, kind: "pass", objective });
-          append(log, "solve.finished", { solve, ending: { outcome: "pass" } });
+          append(log, SOLVE_FINISHED, { solve, ending: { outcome: "pass" } });
           return { solve, ending: { outcome: "pass" } };
         },
       },
@@ -1382,9 +1466,9 @@ describe("what crosses to the Builder", () => {
         call("practice", { tasks: ["t-1", "t-2"] }),
         // Under the reference harness too: what that reads is the wall's to keep.
         call("practice", { tasks: ["t-1"], under: "reference" }),
-        call("read_trace", { solve: "s-3" }),
+        call(READ_TRACE, { solve: "s-3" }),
         // The leaking case pages the call the leak put the check into.
-        call("read_trace", { solve: "s-3", call: leak === "leaking" ? 2 : 1 }),
+        call(READ_TRACE, { solve: "s-3", call: leak === "leaking" ? 2 : 1 }),
         call("read_opening", {}),
         stop,
         finish,
@@ -1427,7 +1511,7 @@ describe("what crosses to the Builder", () => {
         // Under a recorded condition, as a comparison's solves are, so that what keeps them from
         // the Builder is the wall's filter and not a malformed event; and with a trace that names
         // the hidden value, which no Builder may page.
-        append(log, "solve.started", {
+        append(log, SOLVE_STARTED, {
           solve,
           comparison: "g-1",
           condition: recordCondition(log, s.condition(version, side)),
@@ -1463,7 +1547,7 @@ describe("what crosses to the Builder", () => {
             objective: kept.measure,
           });
         }
-        append(log, "solve.finished", {
+        append(log, SOLVE_FINISHED, {
           solve,
           ending: lost ? { outcome: "fail", kind: "rejected" } : { outcome: "pass" },
         });
@@ -1472,7 +1556,7 @@ describe("what crosses to the Builder", () => {
     // The Examiner session x-1 tried the reference on h1: a pass in one campaign and a rejection after
     // more turns in the other, billed alike, with its answer and trace naming the hidden value.
     append(log, "exam.started", { session: "x-1" });
-    append(log, "solve.started", {
+    append(log, SOLVE_STARTED, {
       solve: TRIED,
       comparison: "x-1",
       condition: recordCondition(log, s.condition("h1", s.digest)),
@@ -1493,7 +1577,7 @@ describe("what crosses to the Builder", () => {
         ? { solve: TRIED, answer: { answer: kept.hidden }, kind: "pass", objective: kept.measure }
         : { solve: TRIED, answer: { answer: kept.hidden }, kind: "fail", blocking: [kept.check] },
     );
-    append(log, "solve.finished", {
+    append(log, SOLVE_FINISHED, {
       solve: TRIED,
       ending: kept.tried === "pass" ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" },
       turns: kept.tried === "pass" ? 4 : 9,
@@ -1634,8 +1718,8 @@ describe("what a practice solve used", () => {
           n += 1;
           const solve = `s-used-${String(n)}`;
           const condition = recordCondition(s.request.log, s.condition(task.version, harness));
-          append(s.request.log, "solve.started", { solve, condition, task: "t", ...started });
-          append(s.request.log, "solve.finished", { solve, ending: { outcome: "pass" }, ...finished });
+          append(s.request.log, SOLVE_STARTED, { solve, condition, task: "t", ...started });
+          append(s.request.log, SOLVE_FINISHED, { solve, ending: { outcome: "pass" }, ...finished });
           return { solve, ending: { outcome: "pass" } };
         },
       },

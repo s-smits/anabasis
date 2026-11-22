@@ -124,7 +124,15 @@ export function startTold({ steps, reference }: Campaign, digest: string, id: st
       ? named ||
         ", which no Builder session of this campaign left: the Starter Built Harness unless the operator named another"
       : `, which session ${left.id} left${named}`;
+  const otherRef =
+    reference === null || reference === digest
+      ? ""
+      : ` The reference harness is harness ${short(reference)}.`;
   const last = builders.at(-1);
   const ended = last?.ended == null ? "has no ending on record" : (ENDED.get(last.ended) ?? last.ended);
-  return `You start from harness ${short(digest)}${origin}.${last === undefined ? "" : ` The last Builder session, ${last.id}, ${ended}.`}`;
+  const kept =
+    last?.ended === "crashed" && last.unfinished !== null && last.unfinished !== digest
+      ? ` Its unfinished tree is in kept/${short(last.unfinished)}/.`
+      : "";
+  return `You start from harness ${short(digest)}${origin}.${otherRef}${last === undefined ? "" : ` The last Builder session, ${last.id}, ${ended}.${kept}`}`;
 }

@@ -1,15 +1,5 @@
 /**
  * Supplies area-specific guidance before a coding tool call, once per area per session.
- *
- * Claude Code and Codex invoke this hook through their repository configuration. Each `ROUTES` entry
- * matches a shell command or edited file path and injects invariants and documentation links via
- * `hookSpecificOutput.additionalContext`. The hook is purely informative: it never blocks a tool
- * call and exits 0 on malformed input.
- *
- * `AGENTS.md` states the core invariants and delegates detailed mechanisms to four numbered skills,
- * so this hook surfaces the owning skill when an area is first entered. Sessions that never touch
- * an area receive none of its context. Add a route when introducing a new area and keep pointers
- * aligned when owners move.
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "../../src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "../../src/meta/json-runtime.ts";
@@ -17,14 +7,14 @@ import { isRecord, isString } from "../../src/meta/json-shape.ts";
 import { tmpdir } from "../../src/meta/os.ts";
 import { join } from "../../src/meta/path.ts";
 
-/** One repository area: its command/path matchers and the guidance delivered upon first entry. */
+/** One repository area: matchers, core invariants, primary skill, and related skills by trigger. */
 interface Route {
   readonly id: string;
   readonly command?: RegExp;
   readonly path?: RegExp;
   readonly said: string;
-  /** The owning skill that the session is instructed to read first, or `null` when none applies. */
   readonly skill: string | null;
+  readonly also?: readonly (readonly [string, string])[];
 }
 
 /** Hook input fields: a shell command (string or argv list) and edited file paths. */
@@ -44,101 +34,164 @@ const ROUTES: readonly Route[] = [
   {
     id: "stack",
     command:
-      /\b(git (worktree add|push|rebase|commit)|gh (pr (create|edit|ready)|stack)|bun run (land|follow))\b/u,
-    said: "Stack and pull requests (AGENTS.md section 11): inspect the current stack (`bun .claude/skills/stack-pr/scripts/stack.ts`). A new PR goes on the top of the cycle's stack, even one that does not build on the PR below, opened with `gh pr create --draft --base <top's branch>` and linked into GitHub's native stack by `bun run land -- <new top> --sanitize`; a chain of its own on `main` suits a change that must land first, worth a word with the operator. A fix to an open PR's own code belongs to that PR. Run `/simplify` before a code commit. Each PR needs one `importance:I0`-`I3` label and a category; claims follow `attribution-and-proof`. `bun .claude/skills/repository-practice/scripts/preflight.ts` lists suggested tests, UI checks, size and prose findings, and labels.",
+      /\b(git (worktree add|push|rebase|commit)|gh (pr (create|edit|ready)|stack)|bun run (land|follow|split)|republish\.ts)\b/u,
+    said: "Stack & PRs (AGENTS.md §11): inspect `bun .claude/skills/stack-pr/scripts/stack.ts` first. Stack new draft PRs on the cycle's top (`gh pr create --draft --base <top>`, linked via `bun run land -- <new top> --sanitize`); extend an open PR for fixes to its own code. Label with `importance:I0`–`I3` + category; run `bun .claude/skills/repository-practice/scripts/preflight.ts`.",
     skill: "stack-pr",
+    also: [
+      ["whole-stack regrouping", "consolidate-stack"],
+      ["source cleanup", "simplify"],
+      ["compartment rewrite", "commit-r"],
+      ["complexity deltas", "reduce-complexity"],
+      ["evidence claims", "attribution-and-proof"],
+    ],
   },
   {
     id: "run",
     command:
-      /\bbun run runs (fresh|launch|continue|keep|move|pause|stop|copy|retire)\b|tools\/d2\/(harness-builder|round|session|checkpoint|promote|import|word)\.ts|live-seat/u,
-    said: "Paid runs (AGENTS.md section 10; `run-management`): obtain authorisation for the named run. Use a clean, dedicated worktree rather than the main checkout. Prove the path without a model and record one prediction before solving. Never print a `--env-file`. Account limits follow rule 15 and are expected operating conditions.",
+      /\bbun run runs (fresh|launch|continue|keep|move|pause|stop|copy|retire|bench)\b|tools\/d2\/(harness-builder|round|session|checkpoint|promote|import|word|close)\.ts|live-seat/u,
+    said: "Paid runs (AGENTS.md §10): obtain authorisation for the named run, launch in a dedicated clean worktree (never main), prove the path model-free and record one falsifiable prediction before solving. Never print `--env-file`; account limits follow rule 15.",
     skill: "run-management",
+    also: [
+      ["pausing, evicting or forking", "decision-points"],
+      ["WRI2P2 cycles or runs bench", "run-improvement-campaign"],
+      ["kept-harness audit or handover", "harness-audit"],
+    ],
   },
   {
     id: "reading",
-    command: /\bbun run runs (view|replay|source|status|pulse|active)\b|tools\/wri\//u,
-    said: "Run evidence (AGENTS.md section 9; `whole-run-investigation`): a run supports claims about its own code (`bun run runs source --has <text>`). Read log events and reports before agent summaries. Separate outcome counts and follow `attribution-and-proof` when making claims.",
+    command:
+      /\bbun run runs (view|replay|source|status|pulse|active|zip)\b|tools\/wri\/|wri2p2\.ts|studies\/harness2\/(score|compare)\.ts/u,
+    said: "Run evidence (AGENTS.md §9): a run proves only its own commit (`bun run runs source --has <text>`). Read log events and folds before prose; separate outcome counts with denominators.",
     skill: "whole-run-investigation",
+    also: [
+      ["claims", "attribution-and-proof"],
+      ["WRI2P2 steps", "run-improvement-campaign"],
+      ["pause or eviction thresholds", "decision-points"],
+      ["comparison or external-bench diagnosis", "comparison-review"],
+      ["cross-solver evaluation", "compare-systems"],
+      ["archiving a run", "zip-run"],
+      ["external review bundle", "oracle-handover"],
+    ],
   },
   {
     id: "rehearsal",
     command: /\bbun run runs (rehearse|seed)\b|--dry-run\b/u,
-    said: "Rehearsals (`system-path-simulation`) establish that a path runs and writes its events. They do not establish model behaviour. The Referee seat is empty, so scripted rejections remain unruled.",
+    said: "Rehearsals prove code paths and log events, not model behaviour (Referee is empty, so scripted rejections remain unruled).",
     skill: "system-path-simulation",
+    also: [
+      ["archive scoring or decision replay", "promotion-tuner"],
+      ["cross-solver seed comparison", "compare-systems"],
+    ],
   },
   {
     id: "suite",
     command: /\bbun (run (test|gate)|test)\b/u,
-    said: "Checks (AGENTS.md section 11): use `bun run test -- <paths>` for the owning tests while editing. Avoid bare `bun test`; the check runner places each run. `bun run gate` runs the CI gate. Report wall-test failures caused by missing user namespaces; such a suite has not passed.",
-    skill: null,
+    said: "Checks (AGENTS.md §11): run owning tests via `bun run test -- <paths>` (not bare `bun test`, so the router places runs) and `bun run gate` at the top. Missing-userns wall failures count as real failures.",
+    skill: "local-checks",
   },
   {
     id: "credentials",
     command: /(^|[\s'"/=])\.env\b|--env-file/u,
     path: /(^|\/)\.env(\.[^/]*)?$/u,
-    said: "Credentials (AGENTS.md sections 10 and 11): never open, print or copy `.env` or a `--env-file`. Never copy one into another checkout to make a command start.",
+    said: "Credentials (AGENTS.md §10–11): never open, print or copy `.env` or `--env-file`, and never copy one into another checkout to unblock a command.",
     skill: null,
   },
   {
     id: "seats",
     path: /(^|\/)src\/(builder|examiner|solver|referee|harness)\/|(^|\/)tools\/d2\/(campaign-actions|harness-builder)\.ts$/u,
-    said: "Seat information (rule 3; `design-and-seats`, sections 2 and 3): changing hidden values, checks or which held-out task was won must leave Builder and solver messages byte-identical (`test/builder.test.ts`, `test/builder-led.test.ts`). A PR changing these messages states how it checked this. `bun .claude/skills/design-and-seats/scripts/seat-view.ts` traces imports and identifies wall tests; `builder-view.ts <name>` prints what a Builder opening is told of the past. Give models facts rather than a prescribed course.",
+    said: "Seat wall (rule 3; AGENTS.md §2–3): perturbing hidden values, checks or held-out winners must leave Builder and solver messages byte-identical (`test/builder.test.ts`, `test/builder-led.test.ts`). Verify with `bun .claude/skills/design-and-seats/scripts/seat-view.ts` (`builder-view.ts <name>` inspects Builder openings). Give models facts, not directives.",
     skill: "design-and-seats",
+    also: [
+      ["Examiner difficulty calibration", "examiner-complexity"],
+      ["harness layout or HARNESS.md audit", "harness-audit"],
+      ["path rehearsal", "system-path-simulation"],
+    ],
   },
   {
     id: "measurement",
     path: /(^|\/)src\/kernel\/(compare|reports|size|solve)\.ts$|(^|\/)src\/campaign\/(comparison|round|decide|admission|climb|ground)\.ts$/u,
-    said: "Evaluation (`comparison-reading`, section 7; rules 1, 4, 5 and 12): fix terms before solving, solve both sides afresh and keep one owner per decision. Preserve measurement honesty when simplifying. Check changed readers with `bun run runs replay`. `bun .claude/skills/comparison-reading/scripts/size.ts` reports sample-size figures; `reading.ts <log|name>` compares recorded readings; `draw.ts <log|name>` shows what the next comparison would score.",
+    said: "Evaluation (AGENTS.md §7; rules 1, 4, 5, 12): pre-register terms, solve both arms afresh, keep one owner per decision. Verify reader changes with `bun run runs replay` and replay decision-rule changes over `data/runs/` before editing (`size.ts`, `reading.ts`, `draw.ts`, `starter-reads.ts`).",
     skill: "comparison-reading",
+    also: [
+      ["archive decision or scoring replay", "promotion-tuner"],
+      ["comparison diagnosis", "comparison-review"],
+      ["evidence claims", "attribution-and-proof"],
+    ],
   },
   {
     id: "campaign",
     path: /(^|\/)src\/campaign\/|(^|\/)tools\/d2\//u,
-    said: "Campaign control (`campaign-mechanics`, section 6) covers endings, admissions, settings and practice release. Check a changed round or campaign path with `bun run runs rehearse` on a seed. `bun .claude/skills/campaign-mechanics/scripts/ending.ts <name>` lists recorded endings and current stopping conditions.",
+    said: "Campaign control (AGENTS.md §6): endings, admissions, settings and practice release. Rehearse changed round or campaign paths with `bun run runs rehearse` (`ending.ts <name>` shows endings and stop state).",
     skill: "campaign-mechanics",
+    also: [
+      ["model-free rehearsal", "system-path-simulation"],
+      ["live fleet ops", "run-management"],
+      ["pause or eviction thresholds", "decision-points"],
+    ],
   },
   {
     id: "wall",
     path: /(^|\/)src\/wall\/|(^|\/)src\/tools\/command\.ts$/u,
-    said: "OS isolation (`repository-practice`, section 10) uses Seatbelt on macOS and Bubblewrap on Linux. A suite passing on one platform supplies no evidence about the other platform's wall. Grant whole folders. An unavailable wall produces a typed non-result.",
+    said: "OS isolation (AGENTS.md §10): Seatbelt on macOS, Bubblewrap on Linux. One platform's suite proves nothing on the other; grant whole folders; an unavailable wall yields a typed non-result.",
     skill: "repository-practice",
   },
   {
     id: "log",
     path: /(^|\/)src\/kernel\/(log|task|condition|trace)\.ts$/u,
-    said: "Campaign log (`campaign-mechanics`, section 5): keep one store and one reader per fact. Preserve old event kinds in `EVENT_KINDS`. Reuse the existing folds and `bun run runs` readers. `bun .claude/skills/campaign-mechanics/scripts/conditions.ts <name>` shows the settings a log's solves ran under.",
+    said: "Campaign log (AGENTS.md §5): one store, one reader per fact, preserve historical `EVENT_KINDS` (`conditions.ts <name>` lists solve settings).",
     skill: "campaign-mechanics",
+  },
+  {
+    id: "lint",
+    path: /(^|\/)(tools\/oxlint\/|\.oxlintrc\.json$)/u,
+    said: "Lint rules (`tools/oxlint/HABITS.md` §12.13): register in `tools/oxlint/plugins.ts` and `.oxlintrc.json` (or `staged-rules.json`), include `meta.docs.examples`, state `no fix` when report-only, update `FIXER-DECISIONS.md`, and verify with `test/lint-registry.test.ts` and `test/rule-examples.test.ts`.",
+    skill: "simplify",
+  },
+  {
+    id: "outside",
+    path: /(^|\/)studies\/harness2\//u,
+    said: "External benchmarks (AGENTS.md §1 & §10): measure out-of-distribution transfer rather than gating promotions; verify experimental conditions and Starter rollout variance before attributing deficits to a harness.",
+    skill: "comparison-review",
+    also: [
+      ["WRI2P2 external evaluation", "run-improvement-campaign"],
+      ["cross-solver comparison", "compare-systems"],
+    ],
   },
   {
     id: "code",
     path: /(^|\/)(src|tools|test|packages)\/.*\.tsx?$/u,
-    said: "Code (AGENTS.md section 12): read `tools/oxlint/HABITS.md` before editing. Add no strict-lint findings. Production imports `node:` through `src/meta` only, and never helper code (`bun .claude/skills/repository-practice/scripts/direction.ts`). Tests check facts rather than wording. Run `/simplify` on the diff before committing.",
+    said: "Code (AGENTS.md §12): read `tools/oxlint/HABITS.md`; keep strict lint, `bun run simplify -- --gate` and `tools/loc/source-policy.ts` at zero. Import `node:` only through `src/meta`, never import helpers from production (`direction.ts`), and test observable behaviour.",
     skill: "repository-practice",
+    also: [
+      ["cleanup", "simplify"],
+      ["complexity deltas", "reduce-complexity"],
+      ["compartment rewrite", "commit-r"],
+      ["full repo audit", "system-audit"],
+    ],
   },
   {
     id: "untouched",
     // An investigation's and a cycle's folders under `.ana/wri/` are their sessions' to write.
     path: /(^|\/)(\.ana\/(?!wri\/)|data\/runs\/|vendor\/|node_modules\/|\.accounts\/)/u,
-    said: "Protected files (AGENTS.md section 11, rule 2): do not edit a campaign's record under `.ana/`, `data/runs/`, packs, check programs, kept harnesses, credentials or installed dependencies. `vendor/` changes only through a documented sed of upstream.",
+    said: "Protected files (AGENTS.md §11, rule 2): never edit campaign records under `.ana/`, `data/runs/`, packs, check programs, kept harnesses, credentials or dependencies (`vendor/` changes only via documented upstream provenance).",
     skill: null,
   },
   {
     id: "prose",
     path: /(^|\/)(AGENTS\.md|docs\/.*\.md|\.claude\/skills\/.*\.md)$/u,
-    said: "Writing (AGENTS.md section 13): use plain British English, inline code for identifiers and absolute dates. Avoid em dashes. Keep invariants in AGENTS.md, mechanisms in the corresponding numbered skill references, and procedures in their owning skills.",
+    said: "Writing (AGENTS.md §13): keep invariants in AGENTS.md, mechanisms in numbered skill refs and procedures in owning skills; use §14 canonical terms and inline backticks.",
     skill: "repository-practice",
   },
   {
     id: "checks",
     path: /(^|\/)(\.github\/|\.githooks\/)/u,
-    said: "Checks and CI (AGENTS.md section 11): GitHub Actions runs only `ci.yml`, which `land --merge` dispatches, because its tests need a machine independent of this one. Keep any other check here (the pre-push hook, `stack.ts` or `land`) and post its status through the API. Count Actions runs before and after with `bun .claude/skills/local-checks/scripts/actions.ts`.",
+    said: "Checks & CI (AGENTS.md §11): GitHub Actions runs only `ci.yml` (dispatched by `land --merge`). Keep other checks local and count Actions runs with `bun .claude/skills/local-checks/scripts/actions.ts`.",
     skill: "local-checks",
   },
   {
     id: "ui",
     path: /(^|\/)packages\/ui\//u,
-    said: "UI (`packages/ui/DESIGN.md`): render production folds rather than deriving a second interpretation. Validate with `bun run ui:gate`.",
+    said: "UI (`packages/ui/DESIGN.md`): render production folds rather than re-deriving state; validate with `bun run ui:gate`.",
     skill: null,
   },
 ];
@@ -186,9 +239,14 @@ function main(text: string): string {
     appendFileSync(file, routes.map((route) => `${route.id}\n`).join(""));
   }
   const additionalContext = routes
-    .map(({ said, skill }) =>
-      skill === null ? said : `${said} Before acting, read \`.claude/skills/${skill}/SKILL.md\`.`,
-    )
+    .map(({ said, skill, also }) => {
+      const read = skill === null ? "" : ` Before acting, read \`.claude/skills/${skill}/SKILL.md\`.`;
+      const related =
+        also === undefined || also.length === 0
+          ? ""
+          : ` Related: ${also.map(([when, name]) => `${when} -> \`.claude/skills/${name}/SKILL.md\``).join("; ")}.`;
+      return `${said}${read}${related}`;
+    })
     .join("\n\n");
   return capturedJsonStringify({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext } });
 }

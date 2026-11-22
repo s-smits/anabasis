@@ -16,8 +16,8 @@ the source code is authoritative and the reference must be updated in the same c
 | 6. A campaign's commands | `references/campaign-command.md` | Manual commands, opening from a prompt, campaign endings (`idleOf`, `crashedRun`), and operator words |
 | 6, continued | `references/terms-and-refusals.md` | Opening terms and settings, practice release, admission refusals, and defaults |
 
-The decision table that determines the next move is documented in `comparison-reading` (section 7);
-launching, moving, or stopping runs belongs to `run-management`.
+The decision table that determines the next move is documented in [comparison-reading](../comparison-reading/SKILL.md) (section 7);
+launching, moving, or stopping runs belongs to [run-management](../run-management/SKILL.md) (with lifecycle thresholds in [decision-points](../decision-points/SKILL.md)); rehearsing or simulating a changed campaign path on a seed belongs to [system-path-simulation](../system-path-simulation/SKILL.md); and diagnosing a finished or stalled run belongs to [whole-run-investigation](../whole-run-investigation/SKILL.md).
 
 ## Scripts
 

@@ -20,8 +20,8 @@ the source code is authoritative and the reference must be updated in the same c
 Before modifying anything a Builder or solver can read, consult `wall.md` and `seats.md`, then run
 `seat-view.ts`. Before introducing a new limit, classifier, or narrower permission grant, verify it
 against `stance.md` (consequences 3, 4, and 6). Changes to a factor's reader or threshold belong
-under `question-and-factors.md`. Changes to harness components or the starter are described in
-`operator-and-harness.md` and audited through `harness-audit`.
+under `question-and-factors.md` (and are audited across the system via [system-audit](../system-audit/SKILL.md)). When calibrating Examiner task difficulty (`src/examiner/ladder.ts`, `draft.ts`, `prompt.ts`), use [examiner-complexity](../examiner-complexity/SKILL.md) and paired live-seat rounds in [system-path-simulation](../system-path-simulation/cases/optimize.md). Changes to harness components or the starter are described in
+`operator-and-harness.md` and audited through [harness-audit](../harness-audit/SKILL.md).
 
 ## Scripts
 

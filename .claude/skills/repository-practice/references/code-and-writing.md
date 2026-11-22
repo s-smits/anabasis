@@ -27,20 +27,18 @@ policy, and test design; changes that do not touch code may skip it.
 
 ## 13. Writing
 
-Write in plain, understated academic prose: a clear question, a concrete mechanism, empirical
-evidence with its limitations, and standard machine-learning terminology where it clarifies
-(practice tasks as training exposure, held-out comparisons as out-of-sample evaluation). Additional
-conventions for section 13:
+Write clearly and concisely: state the question, the mechanism, and the empirical evidence with its
+limitations (`AGENTS.md`, section 13).
 
-- Prefer direct contrasts such as "one owner instead of five" rather than negations followed by a
-  correction; infrastructure work describes what it enables without implying an empirical gain.
-- A single simulation is one observation, and an estimated saving is not a measured reduction.
-  Preserve counts, baselines, and stated limits when revising text, and attribute prior check
-  results to their commit and runner.
+- Prefer direct contrasts ("one owner instead of five") over negations; infrastructure changes state
+  what they enable without implying an empirical gain.
+- Keep single simulations, live observations, and cost estimates distinct. Preserve counts,
+  baselines, and stated limits when revising text, and attribute check results to their commit and
+  runner.
 - Omit authorship labels and boilerplate closing claims; `stack-pr` section 7 governs pull request
   descriptions.
 - A file's head comment serves as the module manual: it states why the code is structured as it is,
-  the defect or design requirement it addresses, the evidence that motivated it, and the date of
-  any empirical measurement, updated whenever the code changes.
-- Each prompt fact lives on a single surface (system prompt, opening message, or tool result),
-  because duplicating a fact across surfaces causes them to drift apart.
+  the defect or design requirement it addresses, and any empirical measurement, updated when the
+  code changes.
+- Keep each prompt fact on a single surface (system prompt, opening message, or tool result) so
+  surfaces do not drift apart.

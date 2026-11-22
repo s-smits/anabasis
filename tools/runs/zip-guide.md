@@ -1,26 +1,25 @@
 ## How to read this bundle
 
-A campaign run is fully defined by its log. `log.jsonl` records one JSON event per line (`{at, kind, data}`) in chronological order, capturing every task admission, session, turn, tool call, verifier verdict and statistical reading. A log lacking a terminal ending indicates either that the run was still active when archived or that its run type emits no terminal event; in such cases the final line may be truncated. When `NOTES.md` is present, treat it as the sender's informal summary and verify every claim against `log.jsonl` before citing it.
+A campaign run is defined by `log.jsonl` (chronological `{at, kind, data}` events). Missing terminal events indicate an active run or a run type without endings (the last line may be truncated). Treat `NOTES.md` as informal and verify claims against `log.jsonl`.
 
-**Choose a bundle level according to the diagnostic question.** `Light` captures campaign behaviour and statistical readings, making it the preferred format for an automated reviewer under a context-size budget. `Medium` adds verifier source code and installed harness artefacts so you can diagnose why a specific submission was rejected. `Verbose` adds the exact repository source at each worktree's commit so you can inspect model prompts, which are rendered dynamically by `src/builder/prompt.ts` and `src/solver/prompt.ts` rather than stored in the log.
+**Bundle levels**:
+- `Light`: behaviour and statistical readings (best for context-bounded review).
+- `Medium`: adds check source (`checks/`) and installed harness artefacts to diagnose rejections.
+- `Verbose`: adds repo source at each worktree commit (prompts render dynamically in `src/builder/prompt.ts` and `src/solver/prompt.ts`).
 
-**Recommended reading order.**
+**Reading order**:
+1. `MANIFEST.json` (`runs`): worktree, commit SHA, terminal ending (different commits differ in code first).
+2. `task.proposed`, `task.gate`, `task.state`, `task.feasible`: task versions, feasibility and optional objective metadata. Legacy logs use numeric gates (`1` structure, `2` stronger solve/`too-hard`, `3` replay, `4` negative controls, `5` screening → `admitted` held-out vs `released` practice).
+3. `build.started`–`build.finished`: Builder session from `parent` harness (`build.turn`, `build.call`, ending, whether changed or `broken`).
+4. `solve.started`–`solve.finished`: rollout outcome (`pass`, `fail` + kind, `non-result` + kind/reason) and `verdict` (answer + rejecting checks). Map `condition` to harness via `condition.recorded.condition.harness`.
+5. `comparison.reported`: pre-registered test parameters and statistical reading.
+6. `states/<digest>/agent/`: frozen harness (`BUILT_AGENTS.md`, `tools-spec.json`; older logs may contain unused `tools.ts`).
+7. `memory/<session>/`: Builder private notes (`MEMORY.md`, legacy `SCRATCHPAD.md`/`scratch/`), not part of the harness.
 
-1. `MANIFEST.json` (`runs`): records each run's worktree, commit SHA and terminal ending. Two runs at different commits differ in source code before they differ in model behaviour.
-2. `task.proposed`, `task.gate`, `task.state` and `task.feasible`: trace which task versions entered the exam and have a verified valid answer on record. `task.feasible` stores the task version, session, recorded answer where available and, when the contract declares an objective, an optional `objective` object containing its quantity, optimisation direction and measured value. Older archived logs use numbered `gate` fields: `1` for structural validation, `2` for a pass under the stronger condition (failure recorded as `too-hard`), `3` for check replay on that pass, `4` for the three negative control answers and `5` for screening, logged as the resulting task state (`admitted` tasks enter the held-out scored pool; `released` tasks enter the Builder's unscored practice set).
-3. `build.started` through `build.finished`: trace a single Builder session starting from the `parent` harness. `build.turn` records model messages, `build.call` records every tool invocation with arguments and results, and `build.finished` records the session ending (`finished` or a limit such as `wall`), whether the harness changed and whether the resulting harness is marked `broken`.
-4. `solve.started` through `solve.finished`: trace an individual solve rollout. Look up the solve's harness via `condition.recorded.condition.harness` for the solve's `condition` (the session's `parent` is the reference harness; `build.finished.harness` is the candidate). Each `ending` is classified as `pass`, `fail` (with its failure kind) or `non-result` (with its kind and reason). `verdict` holds the submitted answer and the checks that rejected it.
-5. `comparison.reported`: records the comparison's statistical test parameters and final reading.
-6. `states/<digest>/agent/`: contains the frozen harness exactly as supplied to the solver. `BUILT_AGENTS.md` is the operating guide and `tools-spec.json` selects pi's built-in tools; older archived harnesses may also contain custom tools in `tools.ts`, which current solves no longer serve.
-7. `memory/<session>/`: holds the Builder's persistent notes (`MEMORY.md`; older archived runs may also contain `SCRATCHPAD.md` and helper files under `scratch/`). These notes are the Builder's private scratchpad rather than part of any harness.
-
-**Limitations of a bundle.** A bundle does not contain the starting harness of a session unless an earlier session in the same run saved it; infer Builder edits from `build.call` events instead. Below `medium`, check implementation logic is absent: `verdict` lists only the names of rejecting checks. Below `verbose`, exact rendered prompts are absent.
-
-**Common misinterpretations to avoid.**
-
-- **Do not infer that a harness showed no improvement solely from a `no-step` reading.** A step requires statistical significance on the held-out scored set, while anchor tasks serve only as a guard. A report whose `scored` wins, losses and ties are all zero evaluated no scored tasks and could not have registered a step. Check `target` for the requested sample size: `0` indicates a round never intended to score held-out tasks, and an absent `target` field indicates an older log schema. Inspect `launch-<session>.json` alongside the log for the exact launch flags.
-- **Do not attribute universal `no-answer` failures under a harness to solver weakness without checking `tools-spec.json`.** In older archived runs, `submit` accepted only an answer prepared by an `artifact-writer`; in current runs, the answer is read directly from `answer.json`.
-- **Do not draw capability conclusions from a `non-result`.** Non-results are excluded from evaluation: always separate passes, fails and non-results, computing pass rates solely over passes and fails.
-- **Do not treat wall-clock durations across solves as directly comparable without checking host load.** `solve.started.load` records host load at solve start, and `cores` (where present) records the host CPU core count. A timeout reached under heavy load is not equivalent to one reached on an idle host.
-
-At `medium` and above, `checks/` contains the verifier's own source code and reference material; keep it strictly out of any prompt shown to a Builder or solver. If a harness contains a `correctness-model/` directory, that run's Builder had access to a copy of it, so runs that differ in this respect differ in Builder information exposure.
+**Limits & pitfalls**:
+- Starting harnesses are omitted unless saved earlier in the run (infer edits from `build.call`). Below `medium`, check logic is absent; below `verbose`, prompts are absent.
+- **`no-step` ≠ no improvement**: zero `scored` wins/losses/ties means no held-out tasks were scored (check `target` and `launch-<session>.json`).
+- **Universal `no-answer`**: check `tools-spec.json` (older runs required `artifact-writer`; current runs read `answer.json`).
+- **Non-results**: exclude from pass-rate denominators and capability claims.
+- **Wall-clock durations**: check `solve.started.load` and `cores` before comparing timeouts across runs.
+- **Wall safety**: `checks/` (`medium`+) contains verifier source—never show it to a Builder or solver. Runs containing `correctness-model/` in a harness had different Builder exposure.

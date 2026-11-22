@@ -5,136 +5,36 @@ description: "Simplify Anabasis code using the whole-tree census method: run det
 
 # Simplify
 
-This skill is the repository's `/simplify` workflow;
-[reduce-complexity](../reduce-complexity/SKILL.md) owns the complexity measurements and
-[commit-r](../commit-r/SKILL.md) handles structural rewrites. Automated linters flag syntactic
-patterns; this pass evaluates why code exists, whether campaigns actually exercise it, and whether
-an existing owner already performs its job. Fix and report separately any bug uncovered along the
-way.
-
-## Read the invocation
-
-Scope defaults to the named arguments or your current working diff. Match the procedure to the
-operator's request:
-
-| The operator wrote | Do this |
-| --- | --- |
-| "remove X", "sloppy, find another way" | Deletion is decided: trace and remove the entire strand (step 4) rather than shrinking X |
-| a rewrite, "overkill", or edits leaving branch count unchanged | Use [commit-r](../commit-r/SKILL.md) |
-| "why do we even need X?" | Name the existing owner that covers it, or the root cause it patches, before touching code |
-| "one layer higher" | Revert the leaf patch and fix the single owning abstraction every path traverses |
-| "so the bug cannot happen again" | H4: fix the defect class in its owner, then delete the per-instance patch |
-| a list of declined simplifications | Apply the disagreement test (step 3) to every row |
-| "is it simple enough?" | State the verdict first; if no, show the simplified form |
-| "what looks most bloated?" | Rank by concepts a reader must learn (`measure.py` and the census) |
-
-Work inline. Named external boundaries hold (renaming a shim breaks them); if a boundary blocks the
-only clean cut, note that once. Never edit another session's pull request
-([stack-pr](../stack-pr/SKILL.md)).
+Repository `/simplify` workflow ([reduce-complexity](../reduce-complexity/SKILL.md) owns complexity metrics; [commit-r](../commit-r/SKILL.md) handles compartment rewrites; [stack-pr](../stack-pr/SKILL.md) places and proves commits on the stack). Work inline without touching other sessions' PRs or violating `AGENTS.md` sections 2, 5, 8, 11, or 13.
 
 ## 1. Run deterministic checks first
 
-Never audit manually what a static tool already reports:
+- `bun run lint -- --strict` (`tools/oxlint/HABITS.md` 12.4, 12.5, 12.14): fix the site or refine the rule; never add disable comments.
+- `bun run simplify -- --gate`: runs the whole-tree scans (`HABITS` 12.9) and exits 1 if any unanswered site stands (`-- <kind>` filters one shape; `-- --all` lists every site).
+- `bun tools/loc/source-policy.ts`: enforces 800 nonblank lines/file, 115 lines/function, and zero unread exports.
+- `.claude/skills/reduce-complexity/scripts/scope.sh` and `measure.py` before and after (`repeats` flags 3-line windows duplicating an existing owner).
 
-- `bun run lint -- --strict` (`tools/oxlint/HABITS.md`, 12.4 and 12.5): fix the offending site or
-  tune the rule; never suppress it with a disable comment.
-- `bun run simplify`: runs the whole-tree scans (`HABITS` 12.9); pass `-- <kind>` for one shape or
-  `-- --all` for every site.
-- `bun tools/loc/source-policy.ts`: enforces 800 nonblank lines per file, 115 per function, and
-  zero unread exports.
-- Run `reduce-complexity`'s `scope.sh` and `measure.py` before and after; any **repeat** finding
-  signals calling the existing owner and deleting the duplicate.
-
-Resolve each group completely: either fix every site, or record a justified answer with
-`bun run not-slop -- answer <id> "<reason>"` under step 3's test (`-- prune` removes answers whose
-sites vanished; auto-fixable rules reject answers per `HABITS` 12.2).
+Fix every site in a group or record a verifiable answer with `bun run not-slop -- answer <id> "<reason>"` (`-- prune` removes stale rows; fixable rules reject ledger answers).
 
 ## 2. Inspect structural shapes static scans miss
 
-Read the target code alongside its callers, tests, and head comment, then evaluate each shape in
-order, prioritising the largest removals first:
+Evaluate in order from largest removal to smallest:
 
-| # | Shape | Settle it with |
+| # | Shape | Resolution |
 | --- | --- | --- |
-| H1 | **Unused in practice**: an option whose value never varies or a branch no log reaches | Count occurrences across all relevant logs and receipts; a single invariant value everywhere means delete it |
-| H2 | **Duplicate reading of one fact** | Call the authoritative fold that already computes it (`AGENTS.md`, section 5, habit 2) |
-| H3 | **Guard for an unreachable state** | Cite the upstream refusal or type invariant and its hostile test, then remove the guard |
-| H4 | **Instance-level patch**: fixes one trigger while leaving the defect class open | Fix the owning abstraction every instance passes through and delete the site patch |
-| H5 | **Single-caller helper inside one module** (the census inspects module boundaries only) | Inline it unless its name clarifies a non-trivial branch |
-| H6 | **Fact stated twice in prose** | Keep it in the authoritative location and cross-reference it elsewhere |
-| H7 | **Duplicate computation** | Retain the first computed result and pass it forward |
-| H8 | **Hand-rolled code where the platform provides it** (Bun, an existing dependency, `src/meta`, `HABITS` 12.8) | Cite the platform primitive and integrate it in the owner; never add a new dependency for a few lines |
+| H1 | **Unused in practice** (option never varies or branch never reached in logs) | Count across logs/receipts; delete if invariant |
+| H2 | **Duplicate reader of one fact** | Call the authoritative production fold (`AGENTS.md` section 5, rule 12) |
+| H3 | **Guard for an unreachable state** | Cite the upstream refusal/type invariant and hostile test, then delete the guard |
+| H4 | **Instance-level patch** | Fix the owning abstraction every path traverses and delete the site patch |
+| H5 | **Single-caller helper inside one module** | Inline unless its name clarifies a non-trivial branch |
+| H6 | **Fact stated twice in prose** | Keep in the single authoritative owner and cross-reference elsewhere |
+| H7 | **Duplicate computation** | Compute once at the common caller and pass forward |
+| H8 | **Hand-rolled platform primitive** | Use Bun, `src/meta`, or an existing dependency (`HABITS` 12.8) |
 
-For each site, stop at the first rung of the simplification ladder that applies: (1) it does not
-need to exist because its rule 13 chain (`owner → live reader → decision it changes → evidence →
-hostile test`) has a missing link; (2) a higher layer already handles it; (3) the repository
-already implements it; (4) the runtime or platform provides it; (5) it collapses into one
-expression (two branches differing in one term, `ana/no-arms-differing-in-one-term`; a literal
-repeated three times, `HABITS` 12.3); (6) only then write the minimal implementation inside its
-owner. Prefer half the machinery for nearly all of the outcome, verifying both cost and outcome.
+Stop at the first applicable rung of the ladder: (1) missing link in `owner → live reader → decision it changes → evidence → hostile test` (rule 13: delete); (2) handled one layer higher; (3) already implemented in the repo; (4) provided by the runtime; (5) collapses into one expression; (6) minimal implementation in its owner. When removing X, remove its fields, guards, tests, and callers in the same pass.
 
-## 3. Apply the disagreement test
+## 3. Disagreement test, budgets, and report
 
-Operational heuristic: if you find yourself arguing against simplifying a site, it is usually too
-complex. A site may remain only on **one sentence a reviewer can verify** against a file, test, or
-log. Excuses such as "a test pins it" or "the fix touches many files" fail this test, and any
-argument that a fix is inconvenient rather than wrong confirms the site as a finding. Valid
-justifications include:
-
-- a `null` representing an unknown value, or a re-read measuring a distinct point in time;
-- two readers of the same file exposing distinct error contracts (for example, returning `null`
-  versus throwing a refusal);
-- a single-caller helper whose name clarifies a complex branch;
-- an explicit rule in `AGENTS.md`, cited by number.
-
-Record every retained scan site in the not-slop ledger with its justifying sentence, and every
-retained manual site in the report.
-
-## 4. Fix by group and follow the entire strand
-
-When removing X, remove or simplify its fields, guards (H3), tests, and callers in the same pass;
-any reader left without a producer becomes the next finding. If X patched an underlying bug, fix
-the bug in its owner (H4) or report it as open. Inlining a helper's body into three callers removes
-no complexity.
-
-## 5. Verify and measure
-
-- Re-run `measure.py` (net lines, new functions, imported names) and, for a commit or stack,
-  `git complexity <base> HEAD` (decision points, import edges, exports, optional fields); edits
-  that shift none of these metrics merely relocate code.
-- Replay any modified log producer or reader (`bun run runs replay`), counting outputs with the
-  owning reader and naming the logs checked; any unverified count is an estimate.
-- Run `bun run test -- <paths>` during editing, `bun run commit:check` before committing, and the
-  full CI gate once before delivery.
-
-## Budgets
-
-- A bug fix adds at most five production lines, one new function, and zero new modules; a pure
-  simplification nets zero or fewer production lines unless the operator specifies otherwise.
-- Each file preserves its count of imports from `src/meta/filesystem.ts`, adding at most one
-  (`max-filesystem-imports`, `HABITS` 12.9).
-- Satisfy file and function length ceilings by reducing branches first, then using a local closure,
-  then extracting a function; never split into a sibling module (`copiedFileLimits` in
-  `tools/loc/source-policy.json` remains empty). A `measure.py` branch count above 21 is a
-  diagnostic lead rather than a hard refusal.
-
-No simplification may violate `AGENTS.md`'s section 2 boundary, section 5 log invariants, section 8
-rules, section 11 protected files, or section 13 head-comment conventions, and `null` for unknown
-must stay distinct from zero.
-
-## Report in census format
-
-Lead with what became simpler and the commit SHA. Then report: (1) each site grouped by shape
-(largest first), marked `removed`, `folded into <owner>`, `kept: <sentence>`, or `open: <why>`;
-(2) budget and structural complexity rows before and after; (3) what the simpler form gives up,
-with replay and test counts; and (4) **For the census** (or `none`). If a pass yields no findings,
-name the site that came closest along with its justifying sentence.
-
-## Feed the census
-
-Whenever manual inspection reveals a pattern at three or more sites that a lint catcher (`HABITS`
-12.4, 12.5) or a `tree-*.ts` scan (12.9) could detect automatically, list it under **For the
-census**. New checks start in report-only mode (a strict-lint warning or a `tree-findings.ts` scan)
-and graduate into `.oxlintrc.json` only at zero remaining sites once every site has a clean
-alternative accepted by all other rules; heuristic checks never block. When the operator corrects a
-simplification pass, refine or replace the misleading rule rather than stacking another rule on top.
+- **Disagreement test**: a site stays only on **one sentence a reviewer can verify** against a file, test, or log (e.g. `null` for unknown vs `0`, distinct error contracts, a clarifying helper name, or an `AGENTS.md` rule). "A test pins it" or "touches many files" is not a valid reason.
+- **Budgets**: a bug fix adds at most ~5 production lines, 1 function, and 0 modules; a simplification nets <=0 production lines; each file adds at most one `src/meta/filesystem.ts` import (`max-filesystem-imports`). Meet size ceilings by reducing branches first, then local closures, then helper functions (never split into a sibling module).
+- **Verify and report**: run `measure.py`, `git complexity <base> HEAD`, `bun run runs replay` (for any touched log producer/reader), owning tests, and `bun run commit:check`. Report commit SHA, sites by shape (`removed`, `folded into <owner>`, `kept: <sentence>`, `open: <why>`), before/after complexity metrics, and any pattern recurring at >=3 sites under **For the census**.

@@ -1,69 +1,48 @@
 # From a finding back to the system
 
-A comparison shows what happened on one evaluation set; what may enter the system is only a domain-general mechanism that holds beyond it. A shape card strips away the specific comparison, a causal chain locates the responsible owner, and an eight-question gate tests whether the system actually warrants the change.
+Only domain-general mechanisms may enter the system. Strip benchmark specifics into a **shape card**, trace to the first domain-general owner, and pass the 8-question gate.
 
-## The shape card
+## Shape card & causal chain
 
 ```text
-Shape:           the mechanism, stated in the canonical terms of AGENTS.md section 14
-Where:           the suspected owner (a repository path), or "unknown"
-Observable:      what the system's own record shows when it recurs (an event, field, or count)
-Would look like: a concrete instance in any domain
+Shape:           mechanism in AGENTS.md §14 terms (no benchmark, task, rubric, arm or score)
+Where:           suspected owner path, or "unknown"
+Observable:      system record event/field/count when it recurs
+Would look like: concrete instance in any domain
 ```
 
-A shape card names no benchmark, task, rubric, or arm, reveals neither direction nor score, and never mentions what would have raised a metric. For example, "a guide's statement about resource limits persists into a runtime with different limits" is a valid card, whereas "the harness lost points on JobBench because it wrote less" is not. The mapping from comparison result to shape card stays in the ledger; any finding that cannot be expressed as a general shape remains a fact about that comparison alone.
+Trace backwards (deliverable → trace → solver prompt/tools → export → Builder signal → exam) to the first evidenced domain-general owner:
 
-## The causal chain
-
-Trace backwards from the observed score difference through the deliverable, the solve trace, what the solver was told and could execute, how the harness was exported, what the Builder wrote and was rewarded for, and what the exam demanded. Advance one evidenced link at a time and stop at the first owner whose behaviour applies across all domains. Any link lacking direct evidence terminates the chain and specifies the test required to extend it. Code owns conditions and evaluation boundaries; models own content (section 2, `design-and-seats`).
-
-| Where the chain ends | Owner | Permitted action |
+| Chain stops at | Owner | Action |
 | --- | --- | --- |
-| The grader's view | the external benchmark | none; record as an instrument fact |
-| Harness export / carrying | `studies/shared/`, the study | make exported instructions accurate and tools runnable |
-| Execution conditions | the host or the study arm | equalise conditions, or document the confound |
-| Harness content | the Builder | never hand-edit (section 2, consequence 3) |
-| Builder visibility | `src/builder/`, section 1's closed list | expose a missing public fact within rule 3 |
-| Comparison reward signal | `src/kernel/compare.ts`, the operator | operator decision after `promotion-tuner` replay |
-| Exam scope and difficulty | `src/examiner/`, `examiner-complexity` | revise ladder, prompts, or domain prompt |
-| Solver conditions | the operator (section 3) | operator decision |
-| Base model capability | nobody | none; report as a model limitation |
+| Grader view | external benchmark | none (instrument fact) |
+| Export / carrying | `studies/shared/`, study | fix exported guide/tool accuracy |
+| Conditions | host or study arm | equalise or document confound |
+| Harness content | Builder | never hand-edit (`AGENTS.md` §2) |
+| Builder visibility | `src/builder/`, §1 list | expose public fact within rule 3 |
+| Reward signal | `src/kernel/compare.ts`, operator | operator decision after `promotion-tuner` replay |
+| Exam scope/difficulty | `src/examiner/`, `examiner-complexity` | revise ladder, prompts or query |
+| Solver conditions | operator (§3) | operator decision |
+| Base model capability | nobody | report as model limit |
 
-## Counting recurrence in the record
+## Recurrence & 8-question gate
 
-A fresh session blinded to the comparison counts each shape across archived campaigns, domains, and kept harnesses using existing readers (`bun run runs replay`, `promotion-tuner/scripts/table.ts`, `harness-audit/scripts/harness-versions.ts`, `examiner-complexity/scripts/grades.ts`, `bun run runs source --has <text>`). Report every count with its denominator and commit range, treat multiple runs on the same pack as a single context, collect counts before making any code change, and report zero occurrences plainly.
+A fresh blinded session counts each shape across archived campaigns/domains/harnesses (`runs replay`, `table.ts`, `harness-versions.ts`, `grades.ts`, `runs source --has`; multiple runs on one pack = 1 context). Advance only if all 8 pass:
+1. Stated without referencing the comparison?
+2. **Mirror test**: still proposed if the outcome flipped?
+3. Recurs across ≥2 independent contexts (exempt for clear implementation defects)?
+4. Zero external benchmark vocabulary/rubrics/shapes in the fix?
+5. Upholds `AGENTS.md` §2 (facts not directives/targets; Builder unconstrained; Starter domain-free)?
+6. Satisfies rule 13 (simplify/rewrite owner before adding machinery)?
+7. Names the `AGENTS.md` §1 trade-off moved and warning sign to watch?
+8. Falsifiable on internal metrics via one pre-registered count before re-touching the external benchmark?
 
-## The eight questions
+## Dispositions & examples
 
-A shape card advances to action only by passing all eight questions, with an explicit written justification for every "no":
-
-1. **Can it be stated without referencing the comparison?**
-2. **Would it still be proposed if the comparison outcome had reversed?** A false statement in a guide is defective regardless of who won; "write more" is proposed only after a loss and fails this mirror test.
-3. **Does it recur across at least two independent contexts, verified by count?** A single context yields a lead for investigation rather than a code change; unambiguous implementation defects require no recurrence.
-4. **Is the external benchmark completely absent from the proposed change?** None of the benchmark's vocabulary, rubrics, thresholds, deliverable types, or task shapes may enter code, prompts, checks, or exams; a change justified only by its benchmark score is overfitting.
-5. **Does it uphold the stance of `AGENTS.md` section 2?** Supply facts rather than strategies or targets, add no secondary constraint on the Builder, keep domain knowledge out of the Starter, and avoid scaffolding a capable model does not need.
-6. **Does it satisfy rule 13's design map**, favouring simplification or rewriting of an existing owner over adding new machinery?
-7. **Which trade-off in `AGENTS.md` section 1 does it move, and what warning sign should be monitored?** A change claimed to have zero cost has not been properly analysed.
-8. **Can it be falsified using the system's own evaluation metrics** via a single pre-registered count observed before touching the external benchmark?
-
-## Dispositions
-
-- **Defect**: objectively wrong regardless of outcome direction; repaired at its owner (or escalated if it alters what a solver is told), without claiming a performance gain.
-- **Instrument fact**: reported alongside the benchmark score to qualify interpretation.
-- **Limit of the claim**: incorporated into every public claim about the comparison.
-- **Lead**: recorded as a single row in the measuring run's `predictions-<run>.md`, settled in `outcomes-<run>.md` or carried forward under a fork's `## Carried`.
-- **Domain choice**: escalated to the operator with supporting evidence.
-- **Dropped**: retained in the report together with the gate question it failed, keeping the denominator of considered ideas transparent.
-
-## Worked examples
-
-The examples below come from the initial JobBench review of a promoted jobstat harness. Because they were categorised by a sighted author and not tested forward, they illustrate the gate mechanics rather than validated findings.
-
-| Finding | Shape card | Disposition |
-| --- | --- | --- |
-| The guide stated "20 turns and 30 minutes" in a runtime without those limits | A guide's statement about resource limits persists into a runtime with different limits | Defect in export (`studies/shared/claude-export.ts`) |
-| 7 symlinks dangled, including `bin/python` | Absolute symlinks created inside a temporary directory break once the directory moves | Defect in export |
-| A tool failed on a path present only inside a campaign workspace | A harness program assumes paths specific to its build workspace | Lead, counted across kept harnesses; no new restriction on the Builder |
-| A character cap truncated spreadsheets; 7 criteria collapsed into 32 points | none: specific to the external benchmark | Instrument facts and a limit of the claim |
-| The built arm wrote less and lost points on omitted statements | A harness selected on one metric invests less effort in unrewarded outputs | "Write more" dropped by question 2 (mirror test); the selection question remains a lead |
-| Tied with the pilot's Starter on 4 of 8 tasks | none: rubric weighting makes ties frequent | Dropped |
+Classify each card as **Defect**, **Instrument fact**, **Limit of the claim**, **Lead** (`predictions-<run>.md`), **Domain choice** (operator), or **Dropped** (citing failed gate #):
+- *"Guide stated 20 turns / 30 min outside campaign"* → Defect (`studies/shared/claude-export.ts`).
+- *"7 dangling symlinks in moved export"* → Defect in export.
+- *"Tool assumed build-workspace path"* → Lead (counted across kept harnesses).
+- *"200k char cap / 7-criteria rubric"* → Instrument fact / claim limit.
+- *"Built arm wrote less on unrewarded fields"* → `"Write more"` dropped by Q2; selection question = Lead.
+- *"4/8 ties with pilot Starter"* → Dropped.

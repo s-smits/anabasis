@@ -17,10 +17,7 @@ code, the source code is authoritative and the reference must be updated in the 
 | 13. Writing | `references/code-and-writing.md` | Complete prose and comment style rules |
 | 14. Terms and map | `references/terms-and-map.md` | Canonical terminology, the definition of a sed, and directory ownership |
 
-Operational procedures live in separate skills: branching, pushing, and landing in `stack-pr`;
-launching and managing runs in `run-management`; phrasing experimental claims in
-`attribution-and-proof`; coding conventions in `tools/oxlint/HABITS.md` (read in full before writing
-code); and seat reachability analysis in `design-and-seats` (`seat-view.ts`).
+Operational procedures live in separate skills: branching, pushing, and landing in [stack-pr](../stack-pr/SKILL.md) (whole-stack consolidation in [consolidate-stack](../consolidate-stack/SKILL.md)); launching and managing runs in [run-management](../run-management/SKILL.md); phrasing experimental claims in [attribution-and-proof](../attribution-and-proof/SKILL.md); code simplification and compartment rewrites in [simplify](../simplify/SKILL.md) and [commit-r](../commit-r/SKILL.md); coding conventions in `tools/oxlint/HABITS.md` (read in full before writing code); and seat reachability analysis in [design-and-seats](../design-and-seats/SKILL.md) (`seat-view.ts`).
 
 ## What a change requires: `scripts/preflight.ts`
 
@@ -39,10 +36,9 @@ determine what the diff requires:
 - each area of `tools/runtime/moments.ts` touched by the diff and its associated obligation (rule 3
   wall tests for `seats`, historical replay for `measurement`, rehearsal for `campaign`, and
   cross-platform verification for `wall`);
-- source files exceeding 800 nonblank lines or functions exceeding 115 lines
-  (`tools/loc/source-policy.ts`);
-- `AGENTS.md` section 13 style violations in changed Markdown prose: em dashes, banned hype words,
-  relative dates, exclamation marks, and American spellings;
+- source files exceeding 800 nonblank lines, functions exceeding 115 lines, or unused exports across
+  authored roots (`tools/loc/source-policy.ts`);
+- `AGENTS.md` section 13 prose findings in changed Markdown (`PROSE` in `scripts/preflight.ts`);
 - whether Git hooks are enabled, whether a paid run may launch from the current worktree
   (`treeFault`), and with `--stack`, where the branch sits on the open stack
   (`stack-pr/scripts/stack.ts`);

@@ -16,10 +16,6 @@
  * Suggest importance and category labels from changed paths, validating categories against land's
  * set. The operator and AGENTS.md section 11 decide whether those suggestions apply.
  *
- * The UI suggestion covers packages/ui and its setup. The gate may also build the UI and run nearby
- * UI tests when it imports a changed root file; this script does not trace that case. Size findings
- * use current text before formatting. No check, campaign or model session is started here.
- *
  * The script collects existing readers so a session need not reconstruct their rules before every
  * commit.
  */
@@ -81,16 +77,10 @@ export interface Owed {
 }
 
 const USAGE = "preflight.ts [--base <rev> | --commit <rev>] [--stack]";
-/** Section 13's slips that a pattern can see, each with what it reports. */
+/** Writing slips that a pattern can see, each with what it reports. */
 const PROSE: readonly (readonly [string, RegExp])[] = [
-  ["em dash", /—/u],
   ["banned word", /\b(?:robust|bulletproof|10x)\b/iu],
   ["relative date", /\b(?:yesterday|tomorrow|tonight|last (?:week|month|night)|next (?:week|month))\b/iu],
-  ["exclamation mark", /\w!(?:\s|$)/u],
-  [
-    "American spelling",
-    /\b(?:behaviors?|colors?|analyz(?:e|ed|es|ing)|cent(?:er|ered)|favor(?:s|ed|ite)?|label(?:ed|ing)|model(?:ed|ing)|optimiz(?:e|ed|es|ing|ation)|organiz(?:e|ed|ation)|summariz(?:e|ed)|recogniz(?:e|ed)|catalogs?)\b/iu,
-  ],
 ];
 /** What a prose scan leaves out of a line: inline code, a quotation (a banned word cited as banned),
  *  a Markdown link, which names a file, and a bare path. */

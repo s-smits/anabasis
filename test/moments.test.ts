@@ -77,6 +77,12 @@ describe("the areas a call enters", () => {
     expect(ids({ file_path: "/w/anabasis/.githooks/pre-push" })).toEqual(["checks"]);
     expect(ids({ file_path: "/w/anabasis/notes/github-workflows.txt" })).toEqual([]);
   });
+
+  it("matches lint config/rules and external benchmark paths to their dedicated routes", () => {
+    expect(ids({ file_path: "/w/anabasis/.oxlintrc.json" })).toEqual(["lint"]);
+    expect(ids({ file_path: "/w/anabasis/tools/oxlint/ana/index.ts" })).toEqual(["lint", "code"]);
+    expect(ids({ file_path: "/w/anabasis/studies/harness2/score.ts" })).toEqual(["outside"]);
+  });
 });
 
 describe("the hook", () => {
@@ -85,6 +91,8 @@ describe("the hook", () => {
     const first = hook(call);
     expect(first.status).toBe(0);
     expect(first.said).toContain("stack-pr");
+    expect(first.said).toContain("Related:");
+    expect(first.said).toContain(".claude/skills/consolidate-stack/SKILL.md");
     expect(hook(call)).toEqual({ status: 0, said: "" });
     expect(hook({ ...call, session_id: "s-2" }).said).toContain("stack-pr");
   });

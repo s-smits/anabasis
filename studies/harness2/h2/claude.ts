@@ -62,8 +62,8 @@ export interface Reply {
 /**
  * The subtype a rollout's log line gives a result the API ended in error, a usage or session limit
  * or a provider failure, where `error_max_budget` and `error_max_turns` are the arm's own limits.
- * Scoring reads it as a non-result (`rolloutLog`, `score.ts`), never as the arm's zero: until 9
- * November such a rollout was tried again and then judged as a 0 (backlog item 8).
+ * Scoring reads it as a non-result (`rolloutLog`, `score.ts`), never as the arm's zero, rather
+ * than trying it again and then judging it as a 0.
  */
 export const REFUSED = "refused";
 

@@ -4,12 +4,11 @@
  * one unified diff a file (the root package's `diff`).
  *
  * The listing is whatever the folder holds, so that a part the page has no name for is shown all
- * the same. Until 19 October it read `agent/` alone and left out `.toolchain/`, a link into the
- * host's store: but a Builder's programs are there, beside `states/` in a `tree-*` folder, and
- * the guide only names them. 0 of the 193 harnesses kept in this repository's worktrees from
- * 11 to 19 October declared a tool of its own in `agent/tools.ts`; each put its computation in
- * `.toolchain/bin/`, so the page showed a template with an empty list as the harness's tools, and
- * esp32-fresh-opus's E, which differs from its parent in one program, compared as unchanged.
+ * the same. It reads `.toolchain/`, a link into the host's store, beside `agent/`, since a
+ * Builder's programs are there, beside `states/` in a `tree-*` folder, and the guide only names
+ * them. A harness puts its computation in `.toolchain/bin/` rather than in `agent/tools.ts`, so
+ * reading `agent/` alone would show a template with an empty list as the harness's tools, and a
+ * harness that differs from its parent in one program would compare as unchanged.
  *
  * One name is closed wherever it stands: `correctness-model`, the exam side's copy that a harness
  * imported from v1 carries beside `agent/` and in each `.bundle-snapshots/` entry. Every other
@@ -18,15 +17,15 @@
  * and one to the host's own toolchains, or into the exam side's copy by another name, is not and
  * is said. A digest is one the log names as a harness and a path segment with no separator, and
  * `states/<digest>` must resolve to itself: a link there would serve whatever it points at in the
- * default tier, `correctness-model/` beside it for one (found by review, 11 October). A listing
+ * default tier, `correctness-model/` beside it for one. A listing
  * enters no folder twice, so a link back up ends there. A file is read up to `FILE_BYTES`, and
  * one whose head holds a NUL byte, an engine's binary, is listed and sent with no value. A
  * refused or missing path is an issue the answer carries.
  *
  * A diff is bounded in time as well as in bytes (`FILE_DIFF_MS`, `DIFF_MS`): its work grows with
  * how far apart two texts are and not with their size alone, and it runs on the thread that
- * answers every request. Two files of 8,000 one-character lines that share none took about 11
- * seconds in one call, well inside `FILE_BYTES` (the stack review of 12 October, finding 4). A file
+ * answers every request. Two files of 8,000 one-character lines that share none take about 11
+ * seconds in one call, well inside `FILE_BYTES`. A file
  * the bound cuts is listed with no diff, and an issue names it. A path both harnesses reach as the
  * same file is not read.
  *

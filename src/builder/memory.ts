@@ -1,23 +1,15 @@
 /**
- * The Builder's notes across the sessions of one campaign, on claude-mem's base
- * (github.com/thedotmack/claude-mem, `vendor/claude-mem/`): each session's notes are one item of
- * the campaign's own store, kept when the session ends, and a session opens on the items of the
- * sessions before it, newest first, as many as fit in claude-mem's context limit. The Builder writes
- * the notes in its own session, so no model turn is spent on them, and they are no part of the
- * harness that is frozen and measured.
+ * Cross-session Builder memory backed by `vendor/claude-mem/` (`fitContextToBudget`,
+ * `retainTextHeadTail`). At the end of each Builder session, `MEMORY.md` (and legacy
+ * `SCRATCHPAD.md`) from the session home is saved under `<campaign>/memory/<session>/MEMORY.md`.
+ * The next session's opening message renders prior session notes newest-first within
+ * `CONTEXT_OUTPUT_LIMIT`, dropping oldest sessions first and truncating an oversized single item
+ * via head-and-tail retention.
  *
- * A campaign is claude-mem's project. Its store is the folder `memory/` beside its log, one folder a
- * session holding that session's `MEMORY.md`, and a session reads only the folders of sessions its
- * own campaign's log started before it. Upstream names a project from the working directory's git
- * root and keeps every project in one SQLite database, with a worker that writes observations a
- * model distils from each tool call; none of that is taken. What is taken is how the store reaches
- * a session: claude-mem's fitter (`fitContextToBudget`), which renders the block, measures it and
- * gives up whole items from the end of the list until it fits, and its head-and-tail excerpt
- * (`retainTextHeadTail`) for one item too long to fit whole.
- *
- * The host is outside the Builder's wall, and what it reads here reaches the next opening message:
- * a notes file is read only where it is a plain file, never through a link, which would carry a
- * file the wall denies. A failed keep or read leaves a session without notes and never fails it.
+ * Notes are written by the Builder inside its own session without extra model turns and are not
+ * part of the frozen harness. To preserve the evaluation wall, `keepMemory` and `keptOf` read only
+ * regular files (`lstatSync(...).isFile()`), ignoring symlinks, and any read or write error fails
+ * open without aborting the session.
  */
 import { CONTEXT_OUTPUT_LIMIT, fitContextToBudget } from "../../vendor/claude-mem/ContextBudget.ts";
 import { retainTextHeadTail } from "../../vendor/claude-mem/text-truncation.ts";

@@ -1,93 +1,82 @@
 /**
- * The size of a comparison: how many tasks and how many solves a side it buys where nothing names
- * another (`SIZE`), and what one of so many tasks can show and risks, said before it runs
- * (`sizeLines`).
+ * How big a comparison is: how many held-out tasks it scores and how many times each side solves
+ * each one (`SIZE`), and what a comparison of that size can and cannot show, printed before it runs
+ * (`sizeLines`). Nothing here decides anything.
  *
- * The plan fixes the sample size before each round and never changes it once results are visible
- * (`7f0add79:docs/plan.md`, principle 7), so the size is a choice made on arithmetic, and the arithmetic is
- * the comparison's own test (`flipP`, `power` and `detectable`, `compare.ts`): exact, with no
- * normal approximation, since the sizes in question are the ones where an approximation is worst.
- * Nothing here decides.
+ * The size is fixed before a comparison starts and never changed once results are visible, since
+ * adding tasks until a result clears the bar would make the test meaningless. So the size is chosen
+ * on arithmetic alone, and the arithmetic is the comparison's own exact test (`flipP`, `power` and
+ * `detectable` in `compare.ts`), with no normal approximation: the small sizes used here are where
+ * an approximation is worst.
  *
- * Two solves a side by default, in every domain (operator, 29 October); a campaign's setting may
- * name another count once, with `--solves` (`tools/d2/setting.ts`), and every reader of the pool
- * reads its every, some or none at that count (`spreadOf`). From 12 October a side had four, so
- * that a task the two harnesses split was won or lost by four pairs for each valid answer that
- * parted them. Four bought about a sixth more of a campaign's dollars and more of its hours, which
- * the Builder spends waiting on comparisons, and one reading of four solves still could not call a
- * task easy without a second (`poolOf`, `reports.ts`). Two keep a split task visible, and the
- * readings pool. At level 0.02, twenty-four untied tasks detect a harness that wins 80% of them
- * four times in five, where twelve need 87%. A comparison buys tasks and the power is in untied ones: the tie share between them is
- * what the reference read against itself measures (`comparison.ts`, `noise`), and until it has been
- * read the size is said as if no task tied, which is the best case.
+ * Each side solves each task twice by default, in every domain (the operator's choice), and a
+ * campaign may set another count once with `--solves`. Four solves a side cost about a sixth more of
+ * a campaign's budget and more of its hours, and one reading of four still could not call a task
+ * easy without a second. Two solves still show a task the harnesses split, and readings add up
+ * across comparisons.
  *
- * Until 12 October this file also held a model of tasks alike, each a win, a loss or a tie by fixed
- * chances (`chanceOfStep`, `taskChances`, `chanceOfPromotion`), which printed a worked case at a
- * launch; the measured tie share replaces the modelled one.
+ * Statistical power comes from untied tasks alone. At level 0.02, 24 untied tasks detect a harness
+ * that wins 80% of them four times in five, where 12 need 87%. How many tasks tie is measured by the
+ * reference compared with itself (`noise`, `comparison.ts`); until that is read, the size is
+ * described as if no task tied, which is the best case.
  *
- * One reading promotes since 19 October, so an attempt is one reading at the level and its rate
- * is the test's own (`power` at a share of a half). Until then a step was read again on fresh
- * solves past a trigger, and this file named the smallest results of both stages.
- *
- * The level is a per-comparison level. Until 20 October an opening was refused where one reading's
- * rate at `target` untied tasks, summed over the improvement patience, passed 10% (`openingLines`).
- * That sum described no campaign: readings run on fewer untied tasks than the target (at 12 of 24 the
- * same sum is 11.6%), tied tasks raised the target and passed comparison admission without
- * strengthening the test, and the improvement patience restarts at a promotion while every repeat is
- * another attempt. What a campaign's attempts risk together is the climb's running sum over the
- * readings made (`falsePromotion`, `climb.ts`).
+ * One reading that clears the level promotes, so the level is a per-comparison rate. What a
+ * campaign's attempts risk together is the running sum over its readings (`falsePromotion`,
+ * `climb.ts`).
  */
 import { plural } from "../meta/text.ts";
 import { detectable, flipP, power, sweepOf } from "./compare.ts";
 
-/** A scored set's result: so many tasks won beside so many lost. */
+/** A comparison's result in tasks: so many won beside so many lost. */
 interface Result {
   readonly wins: number;
   readonly losses: number;
 }
 
-/** A comparison's size where nothing names another: the scored tasks and the solves a side. */
+/** A comparison's size unless the campaign names another: the scored tasks and the solves a side. */
 export const SIZE = { tasks: 24, solves: 2 } as const;
-/** How many comparisons of a task each rule over its readings reads (`poolOf`, `reports.ts`), one
- *  place to tune them beside the solves: `easy` in a row, newest first, valid in every solve with no
- *  room by the objective, call it easy; `unsolved` with no valid answer send it to a person. Each
- *  reading is a side's every, some or none (`spreadOf`), so the rules read the same at any count of
- *  solves (operator, 29 October). */
-export const RUNS = { easy: 2, unsolved: 2 } as const;
 
-/** How many of the smallest clearing results a line names. */
-const NAMED = 3;
+/** How many comparisons of one task in a row it takes to call it easy or unsolved (`poolOf`,
+ *  `reports.ts`). Easy: the reference was valid in every solve and left no room on the objective.
+ *  Unsolved: no solve gave a valid answer, so the task goes to a person as possibly infeasible. Each
+ *  comparison is read as every, some or no solve valid (`howOftenValid`), so the counts mean the
+ *  same at any number of solves. */
+export const READINGS_IN_A_ROW = { easy: 2, unsolved: 2 } as const;
 
-/** How a side did on a task in one comparison: valid in every solve, in some, or in none. */
-export function spreadOf(valid: readonly boolean[]): "every" | "some" | "none" {
+/** How many of the smallest results that read a step a launch's notes show. */
+const RESULTS_SHOWN = 3;
+
+/** Whether a side was valid in every solve of a task, in some, or in none. */
+export function howOftenValid(valid: readonly boolean[]): "every" | "some" | "none" {
   return valid.every(Boolean) ? "every" : valid.includes(true) ? "some" : "none";
 }
 
-/** `wins` tasks won and `losses` lost, each by one pair. */
-function units(wins: number, losses: number): number[] {
+/** The task scores of `wins` tasks won and `losses` lost, each by the same margin. */
+function equalMargins(wins: number, losses: number): number[] {
   return [...Array.from({ length: wins }, () => 1), ...Array.from({ length: losses }, () => -1)];
 }
 
-/** Minimum wins for each loss count that clear level within the task limit, using equal margins.
- *  Examples at 0.02: 6-0, 8-1, 10-2, 12-3; at 0.10: 4-0, 6-1, 7-2, 9-3.
- *  sizeLines prints the first three; the comparison-reading size script prints every result. */
-export function clearing(tasks: number, level: number): Result[] {
+/** For each number of losses, the fewest wins that read a step at `level` within `tasks` tasks,
+ *  every task won or lost by the same margin. At 0.02 that is 6-0, 8-1, 10-2, 12-3; at 0.10, 4-0,
+ *  6-1, 7-2, 9-3. `sizeLines` prints the first three, and the comparison-reading size script all. */
+export function smallestSteps(tasks: number, level: number): Result[] {
   const results: Result[] = [];
   let wins = 0;
   for (let losses = 0; wins + losses <= tasks; losses += 1) {
-    while (wins + losses <= tasks && flipP(units(wins, losses)) > level) wins += 1;
+    while (wins + losses <= tasks && flipP(equalMargins(wins, losses)) > level) wins += 1;
     if (wins + losses <= tasks) results.push({ wins, losses });
   }
   return results;
 }
 
 /**
- * What a comparison of `tasks` scored tasks can show and risks, in lines for a launch's notes and
- * `prepare.ts`'s output: the smallest results that read a step, the least share of the tasks won
- * that one reading detects four times in five, were none to tie, and one reading's rate.
+ * What a comparison of `tasks` scored tasks can show and what it risks, as lines for a launch's
+ * notes and `prepare.ts`'s output: the smallest results that read a step, the smallest share of
+ * tasks won that one reading detects four times in five if no task ties, and how often one reading
+ * finds a step between equal harnesses.
  */
 export function sizeLines(tasks: number, level: number): string[] {
-  const results = clearing(tasks, level);
+  const results = smallestSteps(tasks, level);
   const scored = `${tasks === 0 ? "no held-out task" : plural(tasks, "held-out task")} can be scored`;
   if (results.length === 0) {
     return [
@@ -95,14 +84,14 @@ export function sizeLines(tasks: number, level: number): string[] {
     ];
   }
   const said = results
-    .slice(0, NAMED)
+    .slice(0, RESULTS_SHOWN)
     .map(({ wins, losses }) => `${String(wins)}-${String(losses)}`)
     .join(", ");
-  // A task set that can clear the level at all clears it at a share of one, so a share is found.
-  const share = detectable(units(tasks, 0), level) ?? 1;
-  // The test's own rate at these margins, never over the level, to a tenth of a percent, and one
-  // under that said as under it, never as none.
-  const rate = power(units(tasks, 0), 0.5, level);
+  // A set of tasks that can read a step at all reads one when every task is won, so a share exists.
+  const share = detectable(equalMargins(tasks, 0), level) ?? 1;
+  // The test's false-step rate at these margins, never above the level, to a tenth of a percent. A
+  // rate below that is printed as "under 0.1%", never as none.
+  const rate = power(equalMargins(tasks, 0), 0.5, level);
   const rated = rate > 0 && rate < 0.0005 ? "under 0.1%" : `${String(Math.round(1000 * rate) / 10)}%`;
   return [
     `${scored}; at --level ${String(level)} the smallest results that read a step are ${said}, each task won or lost by as many pairs`,

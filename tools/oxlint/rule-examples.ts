@@ -2,8 +2,8 @@
  * The before-and-after pairs a lint run shows once for each rule that fired, after its findings.
  *
  * A finding names a shape in a sentence, and the sentence is read by an agent that has to write
- * the repair in the next commit. On 20 October the operator asked for the shape itself beside
- * the sentence: one or two short pairs a rule owns, the code it reports and the code that passes
+ * the repair in the next commit, so the shape itself stands beside the sentence, on the
+ * operator's word: one or two short pairs a rule owns, the code it reports and the code that passes
  * it. Each rule keeps its pairs in its own `meta.docs.examples`, and each tree scan in
  * `TREE_FINDING_EXAMPLES` beside its argument, so a pair changes in the change that changes the
  * rule. `test/rule-examples.test.ts` lints every pair: a `before` its own rule reports, and an

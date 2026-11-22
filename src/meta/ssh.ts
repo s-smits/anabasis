@@ -1,8 +1,8 @@
 /**
  * Every ssh connection to a host the runs verbs or the check runner make, with a private, reusable
  * control socket for each destination. BatchMode keeps a connection that would ask for a password from
- * waiting for an answer nobody gives. The check runner reads these through its `hosts.js` since
- * 29 October, when it dropped a list of its own.
+ * waiting for an answer nobody gives. The check runner reads these through its `hosts.js` rather
+ * than keeping a list of its own.
  */
 import { lstatSync, mkdirSync } from "./filesystem.ts";
 import { tmpdir } from "./os.ts";
@@ -21,8 +21,8 @@ export function sshOptions(destination: string): string[] {
   }
   const socket = join(directory, sha256(destination).slice(0, 16));
   // ssh refuses a control socket of 104 bytes or more and adds 17 while it makes one, so under a deeper
-  // temp root each connection goes alone rather than failing: the check runner's oracle run of
-  // 29 October refused every connection under a scratch root.
+  // temp root each connection goes alone rather than failing, as every connection under a deep
+  // scratch root would.
   const control =
     new TextEncoder().encode(socket).length + 17 < 104
       ? ["-o", "ControlMaster=auto", "-o", "ControlPersist=300", "-o", `ControlPath=${socket}`]

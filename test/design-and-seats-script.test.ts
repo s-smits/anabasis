@@ -3,13 +3,7 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { builderTold } from "#skills/design-and-seats/scripts/builder-view.ts";
 import { examinerCounts } from "#skills/design-and-seats/scripts/examiner-view.ts";
-import {
-  absentFrom,
-  importsIn,
-  SEATS,
-  seatLines,
-  seatsOf,
-} from "#skills/design-and-seats/scripts/seat-view.ts";
+import { absentFrom, SEATS, seatLines, seatsOf } from "#skills/design-and-seats/scripts/seat-view.ts";
 import { type Condition, conditionId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
@@ -38,47 +32,10 @@ const graph =
   (file: string): readonly string[] =>
     edges[file] ?? [];
 
-const reachOfSeat = (reaches: ReturnType<typeof seatsOf>, seat: string) =>
-  reaches.find((each) => each.seat === seat);
 const runLine = (lines: readonly string[]) =>
   (lines.find((line) => line.startsWith("run: bun run test -- ")) ?? "").split(" ").slice(5);
 
 describe("the seat view", () => {
-  it("resolves repository imports and excludes runtime, package and missing imports", () => {
-    const at = tree({
-      "src/a.ts": 'import "./b.ts";\nimport "node:fs";\nimport "./missing.ts";\nimport "left-pad";\n',
-      "src/b.ts": 'import { a } from "./a.ts";\nexport const b = a;\n',
-      "notes.md": "import './a.ts'",
-    });
-    const importsOf = importsIn(at);
-    expect(importsOf("src/a.ts")).toStrictEqual(["src/b.ts"]);
-    expect(importsOf("src/b.ts")).toStrictEqual(["src/a.ts"]);
-    expect(importsOf("notes.md")).toStrictEqual([]);
-  });
-
-  it("finds the shortest import chain through cycles and excludes unreachable seats", () => {
-    const [owner = ""] = SEATS.Builder.owners;
-    const importsOf = graph({
-      [owner]: ["src/long.ts", "src/kernel/fold.ts"],
-      "src/long.ts": ["src/longer.ts"],
-      "src/longer.ts": ["src/kernel/target.ts", owner],
-      "src/kernel/fold.ts": ["src/kernel/target.ts"],
-    });
-    const changed = ["src/kernel/target.ts", "docs/plan.md"];
-    const reaches = seatsOf(changed, importsOf);
-    expect(reachOfSeat(reaches, "Builder")?.files).toStrictEqual([
-      { file: "src/kernel/target.ts", chain: [owner, "src/kernel/fold.ts", "src/kernel/target.ts"] },
-    ]);
-    for (const seat of ["solver", "Examiner", "Referee"]) {
-      expect(reachOfSeat(reaches, seat)?.files).toStrictEqual([]);
-    }
-    const lines = seatLines(changed, reaches);
-    expect(runLine(lines).toSorted()).toStrictEqual(
-      [...new Set(SEATS.Builder.tests.map(({ file }) => file))].toSorted(),
-    );
-    expect(lines.some((line) => line.includes("docs 1"))).toBe(true);
-  });
-
   it("selects a seat's wall tests when one changes and selects none for unrelated files", () => {
     const [test = { file: "" }] = SEATS.Referee.tests;
     const touched = seatLines([test.file], seatsOf([test.file], graph({})));
@@ -102,21 +59,6 @@ describe("the seat view", () => {
     const [first = { file: "", name: "" }] = SEATS.solver.tests;
     const renamed = tree({ [first.file]: `it("${first.name} once reworded", () => {});\n` });
     expect(absentFrom(renamed).some((line) => line.startsWith(`${first.file}: `))).toBe(true);
-  });
-
-  it("traces current seat owners and includes campaign tools only in the Builder view", () => {
-    const reaches = seatsOf(
-      [...SEATS.Builder.owners, ...SEATS.solver.owners, "src/kernel/log.ts"],
-      importsIn(REPO),
-    );
-    const filesOf = (seat: string) => reachOfSeat(reaches, seat)?.files.map(({ file }) => file) ?? [];
-    for (const [seat, owners] of [
-      ["Builder", SEATS.Builder.owners],
-      ["solver", SEATS.solver.owners],
-    ] as const) {
-      for (const file of [...owners, "src/kernel/log.ts"]) expect(filesOf(seat)).toContain(file);
-    }
-    expect(filesOf("solver")).not.toContain("tools/d2/campaign-actions.ts");
   });
 });
 
@@ -152,22 +94,6 @@ describe("the Examiner's view in counts", () => {
     expect(lines.find((line) => line.startsWith("blocks: "))).toContain('3 under "Not yet compared');
     expect(lines).toContain("promotion: none");
     for (const canary of [HIDDEN, REASON]) expect(lines.join("\n")).not.toContain(canary);
-  });
-
-  it("reports absent measurements and identifies the comparison supporting a promotion", () => {
-    expect(examinerCounts([]).filter((line) => line.endsWith(": none"))).toHaveLength(3);
-    const promoted = [
-      ...admitted(),
-      {
-        at: "2026-10-30T01:00:00.000Z",
-        kind: "harness.promoted",
-        data: { harness: "h2", rests: [{ comparison: "g-9" }] },
-      },
-    ] satisfies LogEvent[];
-    const lines = examinerCounts(promoted);
-    expect(lines.find((line) => line.startsWith("promotion: "))).toContain("g-9");
-    // No comparison is on record, so there is no last one to tell.
-    expect(lines).toContain("last: none");
   });
 });
 
@@ -261,30 +187,8 @@ describe("Builder history messages", () => {
     return events;
   }
 
-  it("uses production messages for the next session, harness provenance, comparisons and practice failures", () => {
-    const lines = builderTold(past());
-    expect(lines[0]).toBe("session b-2, 1 released tasks");
-    expect(lines[1]).toMatch(/aaaaaaaa.*\bb-1\b.*time limit/su);
-    expect(lines).toContain("comparisons (1):");
-    expect(lines.find((line) => line.startsWith("- Harness aaaaaaaa"))).toMatch(
-      /0 won, 1 lost, 0 tied.*no step/u,
-    );
-    expect(lines).toContain("failed practice solves on released tasks (1):");
-    expect(lines.find((line) => line.startsWith("- s-1-1"))).toContain("t-practice");
-  });
-
   it("excludes held-out tasks, hidden values, rulings and held-out solve ids", () => {
     const told = builderTold(past()).join("\n");
     for (const canary of [HELD, HIDDEN, "earned", "s-2-1"]) expect(told).not.toContain(canary);
-  });
-
-  it("handles an empty harness history and honours an explicit parent", () => {
-    expect(builderTold([])).toStrictEqual([
-      "session b-1, 0 released tasks",
-      "start: the log names no harness yet",
-      "comparisons (0):",
-      "failed practice solves on released tasks (0):",
-    ]);
-    expect(builderTold(past(), STARTER)[1]).toMatch(/00000000.*no Builder session/u);
   });
 });

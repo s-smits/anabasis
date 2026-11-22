@@ -12,8 +12,8 @@ import {
  * What a written type denotes, for the three anti-slop rules that ask whether a type
  * still carries evidence.
  *
- * Every question here — is this value type an escape hatch, is this target an open
- * container, is this certainly an object — is the same walk over a written type:
+ * Every question here (is this value type an escape hatch, is this target an open
+ * container, is this certainly an object) is the same walk over a written type:
  * unwrap the parentheses and `readonly`, substitute a bound type parameter, pass
  * through a transparent wrapper, recognise a built-in, follow the visible alias with
  * its arguments bound, and stop at a cycle. `resolveReference` is that walk, so the
@@ -208,8 +208,8 @@ function aliasSubstitution(
 
 /**
  * One step past a type reference: to the type it stands for, or to the reason the walk
- * stops there. A reference the walk cannot see through — an unapplied parameter, a
- * wrong-arity application, a name nothing in scope declares, a cycle — is `opaque`.
+ * stops there. A reference the walk cannot see through (an unapplied parameter, a
+ * wrong-arity application, a name nothing in scope declares, a cycle) is `opaque`.
  */
 function resolveReference(
   reference: ESTree.TSTypeReference,
@@ -421,7 +421,7 @@ export function classifyUnsafeDictionary(
  * target, and it is produced before the walk follows a name and never after: the same members
  * behind an alias are that alias's contract.
  *
- * Until 19 October any unnamed shape with members was reported. Of the findings on record that
+ * An unnamed shape with members is not reported on that alone: of the findings on record that
  * were judged, the anonymous-object ones were false at nearly every site: a function's declared
  * return type stating exactly the literal it returns, answered by deleting the annotation or by a
  * one-use interface that `no-alias-restating-return` would then ask to remove.

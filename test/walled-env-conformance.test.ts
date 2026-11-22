@@ -22,7 +22,7 @@ const runner = {
 registerEnvConformance(runner, "the walled environment", async (use) => {
   const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-conformance-repo-")));
   const dirs = solveDirs(`conformance-${crypto.randomUUID()}`);
-  const release = claimRoot(dirs.root);
+  const release = await claimRoot(dirs.root);
   const base = await walledBase(dirs, { repoRoot }, "the conformance suite");
   const env = walledEnv({
     base,

@@ -20,7 +20,7 @@ import { type Checker, readChecker } from "#src/kernel/acceptance.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
 import { CHECK_PROGRAM_CONTRACT, checkProgramVersion, openVerifier, readBrief } from "#src/kernel/verify.ts";
-import { EVALUATOR_FILE } from "#src/meta/bundle-layout.ts";
+import { CHECK_BRIEF, EVALUATOR_FILE } from "#src/meta/bundle-layout.ts";
 import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -50,9 +50,7 @@ function examStaged(dir: string, draft: Draft): Staged {
 /**
  * The exam a campaign's log drafted, where the campaign staged it, for a reader that may write
  * nothing under the campaign's folder (`tools/wri/wri.ts grade`): null where the log drafted no
- * exam, so the campaign's pack is a stored one, and refused where the draft was never staged.
- * On 10 October a lane of t-10's investigation was given `<campaign>/checks`, which only a
- * campaign over a stored pack has, and stopped on ENOENT.
+ * exam, as an old campaign over a stored pack did, and refused where the draft was never staged.
  */
 export function stagedExamOf(log: string): Staged | null {
   const draft = draftOf(read(log));
@@ -117,7 +115,7 @@ export function stageExam(dir: string, draft: Draft): Staged {
   };
   const tasks = draft.tasks.map((task, index) => ({ taskId: exampleId(index), ...task }));
   for (const [file, value] of [
-    ["brief.json", brief],
+    [CHECK_BRIEF, brief],
     ["tasks.json", tasks],
     ["controls.json", controls],
   ] as const) {
@@ -135,8 +133,7 @@ export function stageExam(dir: string, draft: Draft): Staged {
  * check program that does not load or a wall that is not there stops a verifier, and here that is
  * told as a fault too: the draft's author is in the session and can mend the first. The session
  * reads the draft's shape before it calls this (`draftFaults`), and the reading's notes are left
- * out: until 4 November they rode on the reply that ends the session, and none of 250 results on
- * record carried them to a model.
+ * out, since on the reply that ends the session they would carry nothing to a model.
  */
 export async function draftReading(
   dir: string,
@@ -153,7 +150,6 @@ export async function draftReading(
       contract,
       tasks: pack.tasks,
       controls: packControls(bundle),
-      stored: [],
       found: toolOnPath(bundle),
       width,
     });

@@ -3,8 +3,8 @@
  * files seeded into its home.
  *
  * The host renders the role, each durable tool's own name and description, the coding rules and the
- * working directory. On 22 October the durable migration removed the vendor prompt builder; the
- * duty, environment and guide keep the same facts and sections:
+ * working directory, with no vendor prompt builder; the duty, environment and guide keep the same
+ * facts and sections:
  * - The addendum holds what a solver cannot find out for itself and no harness may change: what it
  *   must deliver, where the published requirements are, which file is its answer, the solve deadline
  *   and what the deadline does. The duty and the minutes are v1's `BUILT_SOLVE_DUTY` and `solveTime`;
@@ -28,9 +28,8 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { dirname, join } from "../meta/path.ts";
 import { plural } from "../meta/text.ts";
-import type { NetworkReach } from "../tools/command.ts";
 import { ANSWER_FILE, ANSWER_FORMAT_FILE, type PublicResource } from "../tools/answer.ts";
-import { reserveSeconds } from "../tools/command.ts";
+import { INSTALLER_TOLD, type NetworkReach, reserveSeconds } from "../tools/command.ts";
 import type { CODING_TOOLS } from "../tools/coding.ts";
 
 export interface PublicTask {
@@ -70,9 +69,9 @@ export const NUDGE = "Finish the task with the available tools, then submit your
 
 /** Installed program names the prompt lists before it elides the rest, as v1 had it. */
 const LISTED_PROGRAMS = 20;
-/** The coding rules retain the facts of the former prompt, selected with their tools. Since
- *  4 November 2026 the edit rules leave out what pi's edit description already states: an exact,
- *  unique, non-overlapping match, nearby changes merged, and no padding with unchanged regions. */
+/** The coding rules retain the facts of the former prompt, selected with their tools. The edit
+ *  rules leave out what pi's edit description already states: an exact, unique, non-overlapping
+ *  match, nearby changes merged, and no padding with unchanged regions. */
 const TOOL_RULES = new Map<string, readonly string[]>(
   Object.entries({
     bash: ["Use bash for file operations like ls, rg, find"],
@@ -116,16 +115,16 @@ function duty({ wallSeconds, limits, resources, files, guide }: Told): string {
 }
 
 /** What the command wall is, as facts: each one something a solver would otherwise find out by
- *  running into it. The reserve claim omitted commands begun inside it, found by the whole-run
- *  investigations of six campaigns on 20 October 2026; heldSeconds' rule is stated here alone. */
+ *  running into it. The reserve claim covers commands begun inside it too; heldSeconds' rule is
+ *  stated here alone. */
 function environment({ limits, programs, wallSeconds, network }: Told): string {
   const rest = programs.length - LISTED_PROGRAMS;
   const listed =
     programs.slice(0, LISTED_PROGRAMS).join(", ") + (rest > 0 ? `, and ${String(rest)} more on PATH` : "");
   const reach =
-    network === "reached"
-      ? "Commands have network access: a package index was reached from inside the command wall when this process started, so a toolchain or package can be installed into the home directory."
-      : "Commands have no network access: a package index could not be reached from inside the command wall when this process started, so nothing can be installed, and what the host and this harness hold is all there is.";
+    network === "unreached"
+      ? "Commands have no network access: a package index could not be reached from inside the command wall when this process started, so nothing can be installed, and what the host and this harness hold is all there is."
+      : `Commands have network access: a package index was reached from inside the command wall when this process started, so a toolchain or package can be installed into the home directory.${INSTALLER_TOLD[network]}`;
   return [
     "The working directory is your home directory, $HOME. Commands and the file tools can write it and $TMPDIR, both kept for the whole task; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. They can read the host's toolchains and public runtime roots, but no repository or private data.",
     `${reach} sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host.`,
@@ -197,9 +196,9 @@ function opened(publicInput: JsonValue): JsonValue {
 /**
  * The files a task's public input lists under `files`, as rows of `{ path, text }`, by path: what a
  * practitioner is handed as a file, which the home then holds as one, so that a harness's program
- * reads it from a path as it would outside a campaign. While a task was JSON alone, 51 of the 62
- * jobstat harnesses kept by the forks from #936 to #960 carried a program of their own that wrote
- * such rows out, which has no use where work comes as files. A row of another shape, or one whose
+ * reads it from a path as it would outside a campaign. While a task was JSON alone, most harnesses
+ * of one domain carried a program of their own that wrote such rows out, which has no use where
+ * work comes as files. A row of another shape, or one whose
  * path names a root or a parent, or cannot stand beside an earlier row's, is no file here and stays
  * in the JSON alone: nothing is refused, since the gate never read the key.
  */

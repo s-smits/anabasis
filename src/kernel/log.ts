@@ -11,8 +11,8 @@
  * An append refuses, writing nothing, an event the task states read when folding it onto the log so
  * far throws (a probe's second `task.proposed` made every later read throw); only those events can
  * break the fold, so the frequent ones skip the read. One exclusive descriptor lock covers that
- * validation, the whole line's write and its sync, as two processes once left an unreadable history
- * (26 October). A short write throws and is cut back, and so is a dead writer's tail without its
+ * validation, the whole line's write and its sync, since two processes writing at once can leave an
+ * unreadable history. A short write throws and is cut back, and so is a dead writer's tail without its
  * newline, since under the lock no other append is in flight.
  */
 import {
@@ -71,10 +71,9 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  passed or in a `try_answer` after that, by version and never the answer, or one a stored pack's
  *  accepted answer passes today's checks on (`tools/d2/prepare.ts`), by version and sweep. An
  *  optional `objective` holds the contract's quantity, its direction and the answer's measure: the
- *  Examiner's two paths write it where the contract declares an objective (since 19 October,
- *  `measureOf`, `src/examiner/write.ts`), and `prepare.ts` never does. `referee.refused` is a
- *  ruling the host refused the Referee for want of its evidence, with why (`src/referee/referee.ts`),
- *  written since 19 October. */
+ *  Examiner's two paths write it where the contract declares an objective (`measureOf`,
+ *  `src/examiner/write.ts`), and `prepare.ts` never does. `referee.refused` is a ruling the host
+ *  refused the Referee for want of its evidence, with why (`src/referee/referee.ts`). */
 const EVENT_KINDS = [
   "campaign.opened",
   "campaign.setting",
@@ -185,9 +184,9 @@ function wholeSize(fd: number): number {
 }
 
 /** Every event in append order. A missing log is an empty history. A reader that reads no event of
- *  some kinds names them in `without`, and their lines are passed over unparsed: on 30 October the
- *  calls of solves and sessions were 72% of the bytes of 145 campaign logs, and reading the table of
- *  runs without them took 0.9 s instead of 2.6 s. `append` writes `at` first, a fixed 24 characters,
+ *  some kinds names them in `without`, and their lines are passed over unparsed: the calls of
+ *  solves and sessions are most of a campaign log's bytes, and the table of runs reads about three
+ *  times faster without them. `append` writes `at` first, a fixed 24 characters,
  *  and `kind` next, so the kind is read at its place. */
 export function read(path: string, without?: ReadonlySet<EventKind>): LogEvent[] {
   if (!existsSync(path)) return [];

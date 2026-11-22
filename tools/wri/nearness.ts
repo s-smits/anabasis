@@ -9,7 +9,7 @@
  * (`final-harness-audit/scripts/harness-task-facts.mjs`), by word counts. Changed from both: by Examiner
  * session and by comparison, on the local model, with groups in place of a number.
  *
- * What the record says, over 103 logs with a comparison, 5 November. It reads differently from run to
+ * What the record says, over the logs with a comparison. It reads differently from run to
  * run: a task stood at 0.98 or above to an earlier one in 2,303 of 5,931, a session's median ran from
  * 0.85 to 1.00 (p10 to p90 of 354), and the groups a comparison's scored tasks fell in, per task, from
  * 0.15 to 1.00 (of 237). It says how alike an exam's words are, and little else. Within a log, steps were
@@ -83,7 +83,7 @@ function comparisonRows(events: readonly LogEvent[], written: readonly Written[]
 }
 
 /** One read of `log`: a head line, a row a session and a comparison, or one line where there is nothing. */
-export async function nearnessOf(log: string, ways: EmbedWays): Promise<string[]> {
+async function nearnessOf(log: string, ways: EmbedWays): Promise<string[]> {
   const events = read(log, NO_TRACES);
   const tasks = proposalsOf(events).flatMap(({ version, session, task }) => {
     const input = task?.publicInput ?? null;

@@ -1,9 +1,8 @@
 /**
- * What a look says of one event of a run, and the step that event leaves owed. One owner for the
- * three readers that said these apart until 10 November: the pulse (`pulse.ts`), whose promotion line
- * named no starter comparison; the alerts (`alerts.ts`), which alone said that a run was ready to
- * pause; and the loop's driver (`wri2p2.ts`), which alone read the investigation's trigger. A session
- * that watched the pulse learned of a pause or an investigation owed only from another command.
+ * What a look says of one event of a run, and the step that event leaves owed. One owner for three
+ * readers, the pulse (`pulse.ts`), the alerts (`alerts.ts`) and the loop's driver (`wri2p2.ts`), so
+ * that a session watching any one of them learns of a starter comparison, a pause or an
+ * investigation owed without another command.
  *
  * An event's line is read from the event alone (`SAID`), in counts and ids: no line carries a task's
  * text, a check's or a reason the exam side wrote beyond what the pulse already said. The climb's
@@ -12,10 +11,10 @@
  */
 import { comparisonFloor } from "#src/campaign/admission.ts";
 import { BARS, epochsOf, starterReads } from "#src/campaign/climb.ts";
-import { readsStepEitherWay, scoresIn, type Tally, testOf } from "#src/kernel/compare.ts";
+import { readsStep, readsStepEitherWay, scoresIn, type Tally, testOf } from "#src/kernel/compare.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { endingOf } from "#src/kernel/reports.ts";
-import { clearing, sizeLines } from "#src/kernel/size.ts";
+import { smallestSteps, sizeLines } from "#src/kernel/size.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -72,9 +71,9 @@ const cost = (data: JsonObject) =>
 /**
  * A report in the four factors and supply (`AGENTS.md`, section 1), from the event alone: the tasks
  * the reference left room on against the admission floor, the reference against itself, and the
- * attempt this epoch against the economy's bar. Until 1 November the line said only the reading,
- * and a watch learned that buffer's promoted harness left 0 of 8 tasks informative by reading the
- * log by hand. An A/A that clears the level, a floor not met or a bar passed is one to look at.
+ * attempt this epoch against the economy's bar, so that a watch learns a promoted harness left no
+ * task informative without reading the log by hand. An A/A that clears the level, a floor not met
+ * or a bar passed is one to look at.
  */
 function factorsOf(data: JsonObject): { said: string; look: boolean } {
   const informative = asRecord(asRecord(data.valid)?.informative)?.old;
@@ -85,6 +84,8 @@ function factorsOf(data: JsonObject): { said: string; look: boolean } {
   const scores = Array.isArray(noise?.differences) ? scoresIn(noise) : undefined;
   const aa = scores === undefined ? null : testOf(scores);
   const clears = scores !== undefined && readsStepEitherWay(scores, level);
+  // Only a one-sided clearance is the A/A step the view counts (`readOf`, `climb.ts`); name the other.
+  const reversed = scores !== undefined && clears && !readsStep(scores, level);
   const worth = asRecord(data.worth);
   const spent = asRecord(worth?.cost);
   const attempts = spent?.attempts;
@@ -97,7 +98,7 @@ function factorsOf(data: JsonObject): { said: string; look: boolean } {
       : "",
     aa === null
       ? ""
-      : `A/A ${String(aa.wins)}-${String(aa.losses)}-${String(aa.ties)}${clears ? " cleared the level" : ""}`,
+      : `A/A ${String(aa.wins)}-${String(aa.losses)}-${String(aa.ties)}${clears ? ` cleared the level${reversed ? " reversed" : ""}` : ""}`,
     isNumber(attempts) ? `attempt ${String(attempts)} of ${String(BARS.cost)} this epoch` : "",
   ].filter((part) => part !== "");
   return { said: parts.map((part) => ` · ${part}`).join(""), look: clears || dear || scant };
@@ -129,8 +130,7 @@ function reportLine(data: JsonObject): string {
 
 /** What a comparison can read, said as it starts and before a solve is paid for: its solves a side,
  *  the tasks it carries over, and the smallest results that clear its level (`sizeLines`). One that
- *  holds too few tasks to read a step is one to look at. Until 10 November a start had no line, and
- *  a watch learned what a comparison could show from its report. */
+ *  holds too few tasks to read a step is one to look at, before its report rather than after. */
 function startLine(data: JsonObject): string {
   const head = `comparison ${word(data.session)} started`;
   if (!isNumber(data.level) || !isNumber(data.solves)) return `· ${head}`;
@@ -141,15 +141,15 @@ function startLine(data: JsonObject): string {
     `${plural(data.solves, "solve")} a side`,
     ...(retained > 0 ? [`${plural(retained, "task")} retained`] : []),
   ];
-  const mark = clearing(tasks, data.level).length === 0 ? "⚠" : "·";
+  const mark = smallestSteps(tasks, data.level).length === 0 ? "⚠" : "·";
   return `${mark} ${terms.join(", ")}: ${sizeLines(tasks, data.level)[0] ?? ""}`;
 }
 
 /** The line each event a reader wants earns; a kind not here is a trace, and null is one of its
  *  kind left unsaid. A promotion's line is the climb's (`climbAt`). */
 export const SAID: Partial<Record<EventKind, (data: JsonObject) => string | null>> = {
-  // The exam's milestones in counts. Until 10 November a draft, a checker read and a freeze had no
-  // line, and the two with a fault were said only by the `rows` reader's triggers, a pass later.
+  // The exam's milestones in counts: a draft, a checker read and a freeze each have a line, rather
+  // than a fault being said only by the `rows` reader's triggers, a pass later.
   "exam.drafted": (data) => {
     const draft = asRecord(data.draft);
     return `◆ the exam is drafted: ${plural(sized(draft?.checks), "check")}, ${plural(sized(draft?.tasks), "task")}`;
@@ -188,13 +188,13 @@ export const SAID: Partial<Record<EventKind, (data: JsonObject) => string | null
   // logs, became the most said line, and printed the row the status line already counts.
   "solve.finished": (data) => {
     const ending = asRecord(data.ending);
-    // The gate cut a room solve once another settled the task's room, from 31 October until it
-    // stopped solving on 1 November; until 31 October each cut warned as a solve with no result.
+    // An older gate cut a room solve once another settled the task's room, and such a cut is no
+    // solve without a result.
     if (ending?.outcome !== "non-result" || ending.cancelledBy === "admission") return null;
     return `⚠ a solve ended without a result, ${word(ending.kind)}: ${short(ending.reason)}`;
   },
-  // A campaign's ending, and a wait for the provider or the network: until 15 October the pulse
-  // said neither, and a run waiting out a limit read as quiet. A wait on the load is one a solve.
+  // A campaign's ending, and a wait for the provider or the network, so that a run waiting out a
+  // limit does not read as quiet. A wait on the load is one a solve.
   [ENDED]: (data) => `◆ the campaign ended ${word(data.ending)}: ${short(data.why)}`,
   "campaign.waited": (data) =>
     isString(data.for)
@@ -332,8 +332,8 @@ export const clockTurns = (row: Pick<Progress, "hours">, now: number): string =>
     .toISOString()
     .replace(".000Z", "Z");
 
-/** The command that takes the step a trigger leaves owed on the run `name`: a live run pauses after
- *  its next comparison, so that its investigation reads it, and a stopped one opens; `on` is the run
- *  CLI's prefix that reaches the run's host. */
-export const openingCommand = (name: string, live: boolean, on = ""): string =>
-  live ? `bun run runs ${on}pause ${name} --after reported --yes` : `bun ${DRIVER} open ${name}`;
+/** The command that takes the step a trigger leaves owed on a run: a live run pauses after its next
+ *  comparison, so that its investigation reads it, and a stopped one opens; `on` is the run CLI's
+ *  prefix that reaches the run's host. */
+export const openingCommand = (run: { readonly name: string; readonly live: boolean }, on = ""): string =>
+  run.live ? `bun run runs ${on}pause ${run.name} --after reported --yes` : `bun ${DRIVER} open ${run.name}`;

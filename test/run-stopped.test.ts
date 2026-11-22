@@ -1,4 +1,4 @@
-// An investigation refuses a campaign that may still write its log (operator, 3 November). A peer's
+// An investigation refuses a campaign that may still write its log (the operator's rule). A peer's
 // copy is read by the observation its last fetch kept; this machine's by its own processes, never
 // by a stale observation file beside its log.
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";

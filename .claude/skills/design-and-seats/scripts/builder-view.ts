@@ -1,22 +1,16 @@
 #!/usr/bin/env bun
 /**
- * Print the campaign-history messages a Builder opening would receive.
+ * Prints the campaign-history sections that a Builder session opening now would receive.
  *
  *   bun .claude/skills/design-and-seats/scripts/builder-view.ts <log.jsonl | campaign name>
  *     [--parent <digest>]
  *
- * The opening includes three history readers from src/builder/past.ts: startTold gives harness
- * provenance and the previous session's ending; comparisonsTold gives tallies and readings;
- * failsTold gives failed practice solves on released tasks. Call them over campaignOf so a changed
- * message can be inspected using the same readers as firstMessage. Held-out tasks, checks or rulings
- * in the output would breach rule 3 and require a fix in past.ts or handover.ts.
+ * Calls `startTold`, `comparisonsTold`, and `failsTold` (`src/builder/past.ts`) over `campaignOf`
+ * so changes to the Builder's opening view can be inspected through the exact production readers.
+ * Any held-out task id, check name, or Referee reason in this output would violate Rule 3.
  *
- * --parent selects the starting harness. Otherwise use latestBuilt, falling back to the starter
- * named A by namesOf. nextId selects the next Builder session id. Released tasks use their recorded
- * task ids, or a short version digest for stored-pack tasks absent from proposals. Practice task
- * content, limits and notes require the pack and home, so this script omits them.
- *
- * Written on 30 October alongside examiner-view.ts, which summarises the exam-side view in counts.
+ * `--parent` selects the starting harness (defaulting to `latestBuilt`, or the starter `A` from
+ * `namesOf`). Counterpart to `examiner-view.ts` on the exam side.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { comparisonsTold, failsTold, startTold } from "#src/builder/past.ts";

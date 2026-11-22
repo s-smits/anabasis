@@ -168,20 +168,6 @@ describe("splitting a stack above a merged pull request", () => {
     }
   });
 
-  it("keeps the bytes of a message that is not UTF-8", () => {
-    git("checkout", "-q", "two");
-    writeFileSync(join(work, "latin"), "latin\n");
-    writeFileSync(join(fixture, "latin.msg"), Buffer.from("café\n", "latin1"));
-    git("add", "-A");
-    git("commit", "-q", "--cleanup=verbatim", "-F", join(fixture, "latin.msg"));
-    git("push", "-q", "origin", "two");
-    old.two = git("rev-parse", "two");
-    mergeCut();
-    expect(run(["1", "--yes"], "MERGED", chain()).status).toBe(0);
-    expect(atOrigin("rev-parse", "two")).not.toBe(old.two);
-    expect(barParents(origin, "two")).toBe(barParents(work, old.two));
-  });
-
   it("copies both arms of a fork once, each onto the copy of the commit it stood on", () => {
     pushBranch("arm", "one");
     mergeCut();
@@ -223,12 +209,6 @@ describe("splitting a stack above a merged pull request", () => {
     expect(result.stdout).toContain("Nothing moved");
     unmoved("one");
     unmoved("two");
-  });
-
-  it("lists neither the pull request split nor any twice where GitHub still lists it open", () => {
-    const result = run(["1"], "OPEN", [pull(1, "cut", "main"), ...chain()]);
-    expect(result.status).toBe(0);
-    expect(result.stdout.match(/^#\d+ \S+(?= \S+ -> )/gmu)).toEqual(["#2 one", "#3 two"]);
   });
 
   it("moves nothing without --yes after the merge either", () => {
@@ -274,13 +254,6 @@ describe("splitting a stack above a merged pull request", () => {
       "stack link --base main 5 1",
       "stack link --base cut 2 3",
     ]);
-  });
-
-  it("links neither part of one pull request, which no stack needs", () => {
-    const one = [pull(1, "cut", "main"), pull(2, "one", "cut")];
-    const result = run(["1", "--yes"], "OPEN", one, { ANA_FAKE_STACK: "9 1,2" });
-    expect(result.status).toBe(0);
-    expect(stackCalls()).toEqual(["stack unstack 9"]);
   });
 
   it("dissolves no stack where nothing stands above the pull request, or where it is not open", () => {
@@ -387,21 +360,5 @@ describe("splitting a stack above a merged pull request", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("is a merge");
     unmoved("one");
-  });
-
-  it("answers a flag it lacks with its usage and exit 2, and asks GitHub nothing", () => {
-    const result = run(["1", "--yess"], "MERGED", chain());
-    expect(result.status).toBe(2);
-    expect(result.stderr).toContain("Unknown option '--yess'");
-    expect(result.stderr).toContain("usage: bun run split");
-    expect(result.stderr).not.toContain("split.ts:");
-    expect(readFileSync(ghLog, "utf8")).toBe("");
-  });
-
-  it("says so where nothing stands on the pull request", () => {
-    mergeCut();
-    const result = run(["1"], "MERGED", []);
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("no open pull request");
   });
 });

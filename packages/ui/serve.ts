@@ -6,31 +6,31 @@ import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "../.
 import { terminateAndReapProcessGroupId } from "../../src/meta/subprocess.ts";
 
 /**
- * The page and its API, on the loopback alone. Bun bundles `index.html` when serving it and
- * reloads the page on an edit; the API reads the logs on every request, so a step that lands in a
- * log is on the next poll.
+ * Serves the front-end page and its API on loopback only. Bun bundles `index.html` on demand and
+ * reloads the page on edits; the API reads campaign logs on each request so newly appended events
+ * appear on the next poll.
  *
  *   bun serve.ts [--exam-side] [--repo <dir>]        PORT changes the port (5173)
  *
- * Every API request needs the token printed here: on macOS a Builder's or a solver's shell can
- * reach a loopback port. It is drawn once and kept in `.token` beside this file, which Git ignores
- * and every seat's wall closes with the rest of the repository, so that a restart leaves the open
- * tabs working: drawn at each start, every restart refused them all (30 October). `--exam-side` answers in the exam tier,
- * which shows task text, hidden values, answers and rulings: start it where no Builder or solver
- * runs. `--repo <dir>` reads the campaigns under that one directory, `<dir>/.ana/d2/<name>/log.jsonl`,
- * in place of every worktree of this repository: a fixture's (`test/fixture-campaign.ts`) or another
- * checkout's.
+ * Every API request requires the bearer token printed at startup, because on macOS a Builder or
+ * solver shell can reach loopback ports. The token is generated once and persisted in `.token`
+ * beside this file (ignored by Git and excluded by each seat's sandbox alongside the repository)
+ * so that server restarts keep open browser tabs authenticated instead of invalidating them.
+ * Passing `--exam-side` enables the exam tier, which exposes task text, hidden values, answers,
+ * and Referee rulings; run it only where no Builder or solver is active. Passing `--repo <dir>`
+ * reads campaigns from `<dir>/.ana/d2/<name>/log.jsonl` (such as a fixture from
+ * `test/fixture-campaign.ts` or another checkout) instead of scanning all worktrees of this
+ * repository.
  *
- * It serves from a child of this process and starts a new child whenever the tree's commit moves.
- * Bun's watcher follows each file it bundled, and a rebase rewrites many in one burst: on
- * 31 October, after one, the server went on serving a `moves-list.tsx` that imported a component
- * the rebase had removed, through every reload, until the process was started again (operator).
+ * The entry process supervises a serving child and restarts it whenever `HEAD` moves. A rebase can
+ * rewrite many files in a single burst, leaving Bun's file watcher serving a stale module that
+ * imports a removed component until the server process is restarted.
  */
-/** Marks the child that serves, in its environment. */
+/** Environment variable marking the supervised child process that serves HTTP requests. */
 const SERVING = "ANA_UI_SERVING";
 const MOVED_MS = 2000;
 
-/** The commit the tree stands on, or "" where Git cannot say. */
+/** Returns the current `HEAD` commit hash, or an empty string if Git cannot resolve it. */
 async function headOf(): Promise<string> {
   const git = capturedSpawn(["git", "rev-parse", "HEAD"], { cwd: import.meta.dir, stderr: "ignore" });
   return (await new Response(git.stdout).text()).trim();
@@ -61,7 +61,7 @@ if (Bun.env[SERVING] === undefined) {
     child = start();
   }
 }
-// The child ends with its parent, whose end closes the child's input.
+// Exits the serving child when its parent terminates and closes stdin.
 Bun.stdin.text().then(leave, leave);
 
 const { values } = parseArgs({

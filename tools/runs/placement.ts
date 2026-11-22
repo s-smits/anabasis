@@ -1,30 +1,28 @@
 /**
- * One host choice for a fresh campaign (22 October 2026). The scheduled fork used to parse status
- * prose and keep its own caps. Read the same live records as usage, and choose the least occupied
+ * One host choice for a fresh campaign, rather than the scheduled fork parsing status prose and
+ * keeping its own caps. Read the same live records as usage, and choose the least occupied
  * machine below its configured capacity, preferring one that has run the pack before. Login
  * admission shares the keeper's provider reader and capacity rule. Missing readings refuse placement.
  *
- * A login's runs are spread over the machines before anything else decides (26 October 2026). On
- * that day one login paid for both runs on one runner, and when it met its five-hour limit at 15:34Z
- * that runner stood idle for two hours while two other logins had capacity. The host chosen is the one where
- * the run's login has the fewest live runs, so one login's limit leaves every machine working.
+ * A login's runs are spread over the machines before anything else decides, since a login paying for
+ * every run on one machine would leave that machine idle at its five-hour limit while other logins
+ * have capacity. The host chosen is the one where the run's login has the fewest live runs, so one
+ * login's limit leaves every machine working.
  *
- * A machine may be kept for some packs (`packs` in `ANA_HOSTS`, 27 October 2026). The operator kept
- * the M1 for one truss campaign, and an automatic choice put a buffer campaign there the same day,
- * because only a session's memory held the rule. A machine that lists packs takes no other pack, and
+ * A machine may be kept for some packs (`packs` in `ANA_HOSTS`), so that the rule lives in
+ * configuration rather than a session's memory. A machine that lists packs takes no other pack, and
  * a pack some machine lists goes to no machine that does not, whether chosen here or named by `--host`.
  *
- * Among those, the least busy machine comes next (20 November 2026; operator: "smart mix between
- * load and how many active runs, no run discounts load with 50%"): its one-minute load a core, read
- * by the sampler `runs loadwatch` and the check runner use (`minuteLoads`), halved where it carries
- * no live run. Until then the count of live runs alone decided, so a machine busy with its own work
- * could take a run beside an idle one. Where a machine with room gives no load in time, load decides
- * nothing for that placement.
+ * Among those, the least busy machine comes next (the operator's choice: a mix of load and live
+ * runs): its one-minute load a core, read by the sampler `runs loadwatch` and the check runner use
+ * (`minuteLoads`), halved where it carries no live run, so that a machine busy with its own work
+ * does not take a run beside an idle one. Where a machine with room gives no load in time, load
+ * decides nothing for that placement.
  *
  * A GPT run is paid by the Codex CLI's login of its machine (`CODEX`, `live.ts`), at most one a
- * machine unless `ANA_LOGIN_RUNS` names `codex:N` (29 October 2026). A machine that carries as many
- * takes no other GPT run, chosen here or named by `--host` (`fullOn`): until then the operator's
- * rule of one a machine was kept by hand, and only GPT runs' names showed which they were.
+ * machine unless `ANA_LOGIN_RUNS` names `codex:N`. A machine that carries as many takes no other GPT
+ * run, chosen here or named by `--host` (`fullOn`), so that the operator's rule of one a machine is
+ * kept by code rather than by hand.
  */
 import { runtimeProcess } from "#src/meta/process.ts";
 import { asked } from "./hosts.ts";
@@ -40,6 +38,7 @@ import {
   type readLogins,
   readNotClosed,
   room,
+  tokenOf,
 } from "./logins.ts";
 import { minuteLoads } from "./load.ts";
 import { localCatalogue, remoteRuns } from "./snapshots.ts";
@@ -67,7 +66,7 @@ interface FreshHost {
 const LOAD_WAIT_MS = 5000;
 
 /** A host's load for placement: its one-minute load a core, halved where it carries no live run,
- *  since a run already there will take more of it than its load shows yet (operator, 20 November). */
+ *  since a run already there will take more of it than its load shows yet (the operator's choice). */
 const busyness = ({ load = 0, live }: Occupancy): number => (live === 0 ? load / 2 : load);
 
 /** A batch may narrow the configured pool, but cannot silently add another payer. */
@@ -185,6 +184,12 @@ export async function freshLogin(
   if (requested !== undefined) {
     if (atCap(env, [requested], live).size > 0) {
       throw new Error(`login ${requested} is at its live-run cap across the fleet`);
+    }
+    // A login the provider refuses outright (a revoked or narrowed token) would fail every seat; a
+    // closed window is a wait (rule 15) and still starts.
+    const [reading] = tokenOf(env, requested) === undefined ? [] : await read([requested], env);
+    if (reading !== undefined && "error" in reading && /messages HTTP 40[13]/.test(reading.error)) {
+      throw new Error(`login ${requested} is refused by the provider: ${reading.error}`);
     }
     return requested;
   }

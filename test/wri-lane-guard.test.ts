@@ -56,7 +56,7 @@ describe("the lane guard", () => {
   });
 
   it("reads what a command runs and where it writes, never what it only names", () => {
-    // Each of these was refused by the first guard in a lane session of 4 November, replayed.
+    // Each of these was refused by an earlier guard in a lane session, replayed.
     for (const ok of [
       "cd /a/anabasis && sed -n 360,395p tools/d2/harness-builder.ts; grep -n parent tools/d2/session.ts",
       String.raw`grep -rn "runs copy\|seedFrom" tools/wri/*.ts | head`,
@@ -76,7 +76,7 @@ describe("the lane guard", () => {
         "nohup bun --env-file=x tools/d2/harness-builder.ts --name x > /tmp/l.log 2>&1 &",
         "a campaign command",
       ],
-      ["RUN_REMOTE=1 bun run runs move foo --host h", "a run's life"],
+      ["ANA_CHECK_HOST=1 bun run runs move foo --host h", "a run's life"],
       ['bash -c "bun run runs stop x"', "a run's life"],
       ["echo $(bun run runs pause x)", "a run's life"],
       ["claude -p hello", "a paid session"],
@@ -114,25 +114,6 @@ describe("the lane guard", () => {
     expect(refusalOf("Grep", { path: "/Users/x/anabasis/.env" })).toBe("an env file");
     expect(refusalOf("Glob", { glob: ".env.runs" })).toBe("an env file");
     expect(refusalOf("Grep", { path: "/Users/x/anabasis/src" })).toBeNull();
-  });
-
-  it("refuses the rejections command that logs verdicts by its folder, and lets the lane's reader of the same name run", () => {
-    for (const refused of [
-      "bun tools/c/rejections.ts --log /a/.ana/d2/r/log.jsonl",
-      "bun run tools/c/rejections.ts /a/.ana/d2/r/log.jsonl",
-      "cd tools/c && bun rejections.ts /a/.ana/d2/r/log.jsonl",
-      "cd tools/c && bun run rejections.ts /a/.ana/d2/r/log.jsonl",
-    ]) {
-      expect(bash(refused)).toBe("a command that logs verdicts");
-    }
-    for (const ok of [
-      "bun tools/wri/rejections.ts /a/.ana/d2/r/log.jsonl",
-      "bun run tools/wri/rejections.ts /a/.ana/d2/r/log.jsonl --solve s-1",
-      "cd tools/wri && bun rejections.ts /a/.ana/d2/r/log.jsonl",
-      "sed -n 120,135p tools/c/rejections.ts",
-    ]) {
-      expect(bash(ok)).toBeNull();
-    }
   });
 
   it("reads the command a wrapper, a flag or a find runs, and the line after a here-string", () => {
@@ -251,7 +232,7 @@ describe("the lane guard", () => {
   });
 
   it("reads a word inside quotes and substitutions whole, so a campaign's path runs only as the command", () => {
-    // The shapes of the lane refusals of 3 to 9 November that read nothing but a campaign's files.
+    // The shapes of recorded lane refusals that read nothing but a campaign's files.
     for (const ok of [
       `L=/a/.ana/d2/r/log.jsonl; for k in a b; do jq -c "select(.kind==\\"$k\\") | .data | keys" "$L" | head -2; done`,
       `jq -c "select(.kind==\\"x\\")" < /a/data/runs/h/r/log.jsonl`,

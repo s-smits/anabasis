@@ -8,7 +8,7 @@
  * how many differ. It then gives three tallies: as scored, on validity alone and on the objective
  * alone, each beside the same three of the reference's A/A halves. It counts the tasks on which every
  * new solve beat every reference solve: valid against invalid, or by the objective by at least the
- * gap floor (`gainOver`, `ROOM`). Two last tallies split the scores by whether a task of the same
+ * gap floor (`gainOver`, `GAP_FLOOR`). Two last tallies split the scores by whether a task of the same
  * family was practice before the comparison began, over every tested task and over those no
  * earlier comparison tested (`practisedLines`).
  *
@@ -21,10 +21,9 @@
  * family, is `pairs.ts`'s; a step read on one task a family is the replay's (`promotion-tuner`,
  * `unit=first`).
  *
- * Evidence: 9 of 12 lane-9 sessions between 3 and 10 November recomputed a step's p by hand without
- * one win and then without two. 4 of 7 lane-3 sessions split a tally by measure in their own
- * scripts, and two of those disagreed on one comparison: one counted the objective where both
- * answers were valid, the other everywhere.
+ * Without it lane sessions recompute a step's p by hand without one win and then without two, and
+ * split a tally by measure in their own scripts, which can disagree on one comparison: one counting
+ * the objective where both answers were valid, the other everywhere.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import {
@@ -33,13 +32,13 @@ import {
   gainOver,
   type Paired,
   pointsOf,
-  ROOM,
+  GAP_FLOOR,
   readsStep,
   testOf,
   wholePoints,
 } from "#src/kernel/compare.ts";
 import { familiesOf } from "#src/kernel/history.ts";
-import { lastReports, pairsReported, type Reported } from "#src/kernel/reports.ts";
+import { lastReports, pairsReported, type Reported, startedComparisons } from "#src/kernel/reports.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
@@ -65,18 +64,18 @@ function tallied(scores: readonly number[]): string {
 
 /** Whether every new solve of `pair` beat every reference solve: valid against invalid, or both
  *  valid and the new answer better by the objective by the gap floor at least. */
-export function beatsAll(pair: Paired): boolean {
+function beatsAll(pair: Paired): boolean {
   const rule = pair.objective;
   return pair.fresh.every((freshValid, f) =>
     pair.old.every((oldValid, o) => {
       if (freshValid !== oldValid) return freshValid;
-      return freshValid && rule !== undefined && gainOver(rule, rule.fresh[f], rule.old[o]) >= ROOM;
+      return freshValid && rule !== undefined && gainOver(rule, rule.fresh[f], rule.old[o]) >= GAP_FLOOR;
     }),
   );
 }
 
 /** The recount against the record: the pairs on the tested tasks, and how many scores differ. */
-export function recountOf(
+function recountOf(
   report: JsonObject,
   pairs: readonly Paired[],
 ): { tested: Paired[]; recorded: number[]; unmatched: number; differing: number } {
@@ -205,14 +204,7 @@ function absentLines(events: readonly LogEvent[], session: string): string[] {
 /** Each comparison's block, in the order the log began them. */
 export function scoreRows(events: readonly LogEvent[]): string[] {
   const reports = new Map(lastReports(events).map((report) => [report.session, report]));
-  const sessions = [
-    ...new Set([
-      ...events.flatMap(({ kind, data }) =>
-        kind === STARTED && isString(data.session) ? [data.session] : [],
-      ),
-      ...reports.keys(),
-    ]),
-  ];
+  const sessions = [...new Set([...startedComparisons(events), ...reports.keys()])];
   if (sessions.length === 0) return ["scores: no comparison on record"];
   return [
     "scores (lanes 3 and 9): each comparison's task scores recounted by this tree's differenceOf and matched to the report's by task; tallies are wins-losses-ties and the one-sided sign-flip p.",

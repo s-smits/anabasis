@@ -10,19 +10,18 @@
  * A task-writing session has one because, without it, its notes estimated by hand
  * whether a task had a valid answer. A drafting session has one so that it can look up the source it names
  * for each rule, and run its own check program on its own controls before it puts a draft
- * (`7f0add79:docs/plan.md`, row F57). One wall and one sentence serve every mode, so that their walls
+ * One wall and one sentence serve every mode, so that their walls
  * cannot drift apart, and the wall says when the seat began to be set up: a session's time is
  * counted from then, so the claim of its root and the wall test are inside its limit in every mode.
  *
  * A session with a campaign's exam before it also has the field's engines: the programs the
  * campaign's check program names (`requiredToolsOf`), each as the verifier's tool tree resolves it,
  * run by name, and no other program of that tree (`pinnedEngines`, `src/kernel/verify.ts`, which
- * names each by its digest). The operator ruled on 12 October that the Examiner may have them, as
- * the exam's side and never the agent under test, from a pinned list; the tree a campaign's checks
- * run under is that list, its content in every solve's setting (`verifierTools`). With the host's
- * toolchains alone, buffer's two sessions of 11 October each spent their first minutes fetching
- * and compiling an engine, and the overhaul plan counts esp32's six sessions writing 40 tasks with
- * no instrument to tell a hard task from a large one. A stored pack's tool tree can hold more than
+ * names each by its digest). The operator ruled that the Examiner may have them, as the exam's side
+ * and never the agent under test, from a pinned list; the tree a campaign's checks run under is that
+ * list, its content in every solve's setting (`verifierTools`). With the host's toolchains alone, a
+ * session spends its first minutes fetching and compiling an engine, and has no instrument to tell
+ * a hard task from a large one. A stored pack's tool tree can hold more than
  * its checks run, since a v1 Builder installed its own tools beside them, so a program no check
  * names stays off the path: the Examiner computes with the instruments, and is never given a
  * solver. The tree itself is open to read, since an engine runs from it, so such a program is off
@@ -51,6 +50,7 @@ import { containsPath } from "../meta/path-containment.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import {
   type CommandWall,
+  INSTALLER_TOLD,
   networkReach,
   type SolveDirs,
   solveDirs,
@@ -62,12 +62,13 @@ import { installedPrograms } from "../harness/programs.ts";
 import { claimRoot } from "../wall/seat-root.ts";
 import { shellQuote } from "../wall/isolation.ts";
 
-/** The most bytes a file named by `from_file` may hold: twenty times a large task instance of 50 KB. */
-const FILE_BYTES = 1_000_000;
+/** The most bytes a file named by `from_file` may hold: eighty times a large task instance of 50 KB,
+ *  since a draft may name a dataset of a few megabytes. */
+const FILE_BYTES = 4_000_000;
 
 /** What a tool that takes JSON values tells a session with a home of `from_file` (`fromHome`). */
 export const FROM_FILE =
-  'Any JSON value this tool takes, such as a public input, hidden values, an answer or a format, may instead be given as { "from_file": "<path>" }: a JSON file in your home, by its path relative to the home, which the host reads and takes as if the value had been written here.';
+  'Any JSON value this tool takes, such as a public input, hidden values, an answer, a format or a check program, may instead be given as { "from_file": "<path>" }: a file in your home, by its path relative to the home, which the host reads and takes as if the value had been written here, a .json file as the JSON it holds and any other file as its text.';
 
 /** Where an Examiner session's shell runs: what the wall denies, and what only a
  *  session with a campaign's exam before it is given. Without a wall a session has no shell. */
@@ -108,7 +109,7 @@ export async function examinerShell(shell: CommandWall | undefined, enters: stri
   if (shell === undefined) return [];
   const network = await networkReach(shell);
   const engines = installedPrograms(shell.toolTree);
-  const walls = ` The command runs in your home directory, which holds what earlier Examiner sessions of this campaign left there and is kept for the next. It can write there and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. ${network === "reached" ? "It has network access: a package index was reached from inside the wall when this process started." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be installed."}${engines.length === 0 ? "" : ` The engines the exam's checks run are installed, and run by name: ${engines.join(", ")}. They compute; try_answer alone runs the checks on an answer.`} Nothing a command starts runs on after it returns. Nothing in your home enters the exam: ${enters}.`;
+  const walls = ` The command runs in your home directory, which holds what earlier Examiner sessions of this campaign left there and is kept for the next. It can write there and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. ${network === "unreached" ? "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be installed." : `It has network access: a package index was reached from inside the wall when this process started.${INSTALLER_TOLD[network]}`}${engines.length === 0 ? "" : ` The engines the exam's checks run are installed, and run by name: ${engines.join(", ")}. They compute; try_answer alone runs the checks on an answer.`} Nothing a command starts runs on after it returns. Nothing in your home enters the exam: ${enters}.`;
   return codingTools(shell, ["bash", "read", "write"]).map((each) =>
     each.name === "bash" ? { ...each, description: `${each.description}${walls}` } : each,
   );
@@ -134,7 +135,7 @@ export async function inExaminerWall<T>(
   const pinned = engines === undefined ? [] : pinnedEngines(engines);
   const reopened = engines === undefined || pinned.length === 0 ? [] : [engines.tools];
   const tree = join(dirs.kept, "engines");
-  const release = claimRoot(dirs.root);
+  const release = await claimRoot(dirs.root);
   try {
     const base = await walledBase(dirs, { ...wall, readAllowRoots: reopened }, "an Examiner");
     for (const { name, path } of pinned) {
@@ -160,14 +161,12 @@ export async function inExaminerWall<T>(
     const result = await run({ shell, pinned, began, keep: kept });
     // The campaign's copy of a session's home, made whole when the session ends and replacing the
     // one before: it is the exam side's, under the campaign's folder beside the log, which every
-    // wall closes. Each link is carried as it stands, as the Builder's carry does: until 28 October
-    // a relative one was read through the session's root, removed with it, so every kept venv's
-    // `python` dangled in the next home. Not a session that crashed with a command running, whose
-    // home is as no command left it, as its last event says. Until 12 October every crashed
-    // session's home replaced the kept one, and on buffer the next session opened in the working
-    // files of one whose turn the provider failed; from then until 14 October none did, and a
-    // crashed Examiner's work was lost to the provider. A drafting session ends in `draft.finished`,
-    // which this read missed until 5 November, so a draft that crashed mid-command was carried on.
+    // wall closes. Each link is carried as it stands, as the Builder's carry does, since a relative
+    // one read through the session's root, removed with it, would leave every kept venv's `python`
+    // dangling in the next home. Not a session that crashed with a command running, whose home is as
+    // no command left it, as its last event says; a session that crashed between commands, as when
+    // the provider failed its turn, is carried on, so its work is not lost to the provider. A
+    // drafting session ends in `draft.finished`, which this read takes too.
     // The conversation's last ask, whose id is its own (`examining`, `session.ts`).
     const ended = read(log).findLast(
       ({ kind }) => kind === "exam.finished" || kind === "draft.finished",
@@ -186,8 +185,8 @@ export async function inExaminerWall<T>(
  * sees the same bytes as for the value written inline, and the log the call as written. A file's own
  * content is not expanded for `from_file` again. The files are read before pi checks the arguments
  * against the tool's schema (`prepareArguments`), so a file may stand for any value, a whole list or
- * object included: until 20 November the check came first and refused a file in place of one (6 of
- * the 33 calls that gave a file in a pair of runs that day). A refusal names its faults and not the
+ * object included, rather than refused where a schema asks for a list or object. A refusal names
+ * its faults and not the
  * arguments the files filled.
  */
 export function fromHome<Parameters extends TSchema>(
@@ -196,8 +195,8 @@ export function fromHome<Parameters extends TSchema>(
 ): ToolRegistration<Parameters> {
   const expand = (value: JsonValue): JsonValue => {
     if (Array.isArray(value)) return value.map(expand);
-    // A text field given a file as the text of `{ "from_file": ... }`, as the first draft of each of 4
-    // runs on 20 November gave the check program, which the gate then loaded as the program.
+    // A text field given a file as the text of `{ "from_file": ... }`, as a draft may give its check
+    // program, which the gate would otherwise load as the program.
     if (isString(value) && /^\s*\{\s*"from_file"\s*:\s*"[^"\\]+"\s*\}\s*$/u.test(value)) {
       return expand(parseJsonAs<JsonValue>(value));
     }
@@ -230,7 +229,8 @@ export function fromHome<Parameters extends TSchema>(
   };
 }
 
-/** The JSON a file in `home` holds, by its path under it, or a refusal. */
+/** What a file in `home` holds, by its path under it, or a refusal: a `.json` file's JSON and any
+ *  other file's text, so a check program is named by its own source file. */
 function homeFile(home: string | undefined, path: string): JsonValue {
   if (home === undefined) {
     throw new Error(`from_file names ${path}, and this session has no home: give the value inline`);
@@ -258,8 +258,10 @@ function homeFile(home: string | undefined, path: string): JsonValue {
       `from_file names ${path} (${String(stat.size)} bytes), over the ${String(FILE_BYTES)}-byte limit`,
     );
   }
+  const text = readFileSync(real, "utf8");
+  if (!/\.json$/iu.test(real)) return text;
   try {
-    return parseJsonAs<JsonValue>(readFileSync(real, "utf8"));
+    return parseJsonAs<JsonValue>(text);
   } catch (error) {
     throw new Error(`from_file names ${path}, which is not valid JSON: ${errorMessage(error)}`, {
       cause: error,

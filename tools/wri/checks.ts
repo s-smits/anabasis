@@ -6,10 +6,9 @@
  *
  *   bun tools/wri/wri.ts reader checks --log <log | campaign folder | name>
  *
- * Lanes 1 and 5 read it first. Between 3 and 10 November all 18 lane 1 sessions found the exam's
- * files by hand and set each `checker.read` row beside its `brief.json` entry, and 5 of 8 lane 5
- * sessions built the same table, about 130 calls between them. `REFUSALS BY CHECK` gave one count a
- * check and no split by side, by who asked or by version.
+ * Lanes 1 and 5 read it first. Without it a session finds the exam's files by hand and sets each
+ * `checker.read` row beside its `brief.json` entry, in many calls, and `REFUSALS BY CHECK` gives one
+ * count a check and no split by side, by who asked or by version.
  *
  * The rows are the last `checker.read` at the frozen check program (`frozenChecker`), or the last
  * reading where none is frozen. A solve is counted under the program of the last reading before it
@@ -23,6 +22,7 @@ import { frozenChecker } from "#src/kernel/acceptance.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { labelsIn } from "#src/kernel/solves.ts";
 import { blockingOf, type Brief, checkProgramVersion, OBJECTIVE, readBrief } from "#src/kernel/verify.ts";
+import { CHECK_BRIEF } from "#src/meta/bundle-layout.ts";
 import { existsSync } from "#src/meta/filesystem.ts";
 import { asRecord, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
@@ -53,7 +53,7 @@ export function programOnDisk(log: string): OnDisk {
   } catch (error) {
     return { where: errorMessage(error), version: null, brief: null };
   }
-  if (!existsSync(join(checks, "brief.json"))) {
+  if (!existsSync(join(checks, CHECK_BRIEF))) {
     return { where: `${checks} (not on disk)`, version: null, brief: null };
   }
   return { where: checks, version: hashJsonValue(checkProgramVersion(checks)), brief: readBrief(checks) };

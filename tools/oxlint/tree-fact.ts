@@ -5,9 +5,8 @@
  *
  * Recorded case: "what the checker measured of a valid answer", `checker?.kind === "pass" ?
  * checker.objective ?? null : null` and its variants, stood in src/kernel/compare.ts,
- * src/builder/tools.ts (twice) and tools/wri/gate-era.ts until commit 073acaa7c (5 November 2026)
- * gave it one owner, `measureOf` in src/kernel/solves.ts (now `objectiveOf` in
- * src/kernel/verify.ts, beside the type). `tree/no-duplicate-block` missed it: each copy was one
+ * src/builder/tools.ts (twice) and tools/wri/gate-era.ts until it was given one owner, now
+ * `objectiveOf` in src/kernel/verify.ts, beside the type. `tree/no-duplicate-block` missed it: each copy was one
  * expression, not consecutive statements, and the spellings differed.
  *
  * A unit is an outermost condition or derivation: a `?:`, `&&`, `||` or `??` expression whose
@@ -20,7 +19,7 @@
  * spell one fact. A root's fact is its set of tests and reads, and it counts only where it holds a
  * test and a read of another field: two fields of one value, one of them a discriminant.
  *
- * Precision over recall, as a heuristic reports and never blocks (operator, 1 October). Tests,
+ * Precision over recall, as a heuristic reports and never blocks (the operator's choice). Tests,
  * vendored and generated files are not read, and only src/ and tools/ count as production.
  */
 import * as ts from "typescript5";
@@ -47,7 +46,7 @@ const JOINS = new Set([
   ts.SyntaxKind.QuestionQuestionToken,
 ]);
 /** A value's own identifier names the value, so reading it beside a test is a filter, not a fact
- *  (`row.seat === "solve" ? row.id : null`, three files of tools/ on 5 November). */
+ *  (`row.seat === "solve" ? row.id : null`, as several files of tools/ have written it). */
 const IDENTITY = "id";
 
 interface Site {

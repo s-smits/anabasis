@@ -1,20 +1,19 @@
-// What may not enter git history, v1's tools/secrets/rules.ts. v1 had two narrower vocabularies
-// beside it, an env scrub and a log redactor; v2 builds each child's environment from an allowlist
-// instead, so this is its only one.
+// Credential patterns forbidden from entering Git history (ported from v1's
+// `tools/secrets/rules.ts`). Because v2 constructs child process environments from an explicit
+// allowlist rather than scrubbing inherited environments, this is the sole credential rule set.
 //
-// The rules read VALUE SHAPES, not names. A name-only rule ("a line mentioning PASSWORD") fires on
-// the prose and the tests that discuss credentials. Repeated false alarms make it harder to
-// distinguish a real credential from a harmless reference to one.
+// Rules match value shapes rather than variable names alone: name-only rules trigger false
+// positives on documentation and tests discussing credentials, eroding signal-to-noise ratio.
 
 import { boundText } from "../../src/meta/bounded-text.ts";
 
 interface SecretRule {
   id: string;
-  /** What the operator is told the match is, in one noun phrase. */
+  /** Short noun phrase describing the matched credential class for operator output. */
   what: string;
-  /** Global, so one line can carry several hits. */
+  /** Global regular expression so multiple hits on a single line are all reported. */
   pattern: RegExp;
-  /** Which capture carries the credential; the whole match when absent. */
+  /** Capture group containing the secret value; defaults to the full match when omitted. */
   valueGroup?: number;
 }
 
@@ -22,7 +21,7 @@ const RULES: readonly SecretRule[] = [
   {
     id: "url-credentials",
     what: "credentials embedded in a URL",
-    // The password segment only; a 1-2 char stand-in like postgres://u:p@host is not a credential.
+    // Capture only the password segment, ignoring 1-3 character placeholders such as `postgres://u:p@host`.
     pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^/\s:@"']+:([^/\s@"']{4,})@/gi,
     valueGroup: 1,
   },
@@ -60,18 +59,17 @@ const RULES: readonly SecretRule[] = [
   },
 ] as const;
 
-// Recognise the placeholder words used by fixtures. This is a heuristic: a real credential can
-// contain one of these strings too. Fixtures deliberately include a marker so their purpose is
-// visible. `hunter2` is this repository's fixture password; it stays in this list so the scanner
-// does not repeatedly report that known example.
+// Heuristic filter for common fixture placeholders (including the repository's example password
+// `hunter2`). Real credentials may occasionally match these tokens, so fixtures should still use
+// obvious synthetic markers.
 const PLACEHOLDER =
   /fake|dummy|example|sample|placeholder|redacted|scrubbed|changeme|change-me|secret|password|passwd|hunter2|deadbeef|foo|bar|baz|todo|xxx|1234|test|\bnone\b|\bnull\b|\byour\b|your[-_]|\.\.\.|\$\{|\{\{|<[A-Za-z]/i;
 
-/** A run of one repeated character (`aaaaaaaa`, `00000000`) is a stand-in, whatever it spells. */
+/** Matches runs of six or more identical characters (such as `aaaaaaaa` or `00000000`), treated as placeholders. */
 const REPEATED = /(.)\1{5,}/;
 
-/** Any line may waive the scan for itself. Kept deliberately verbose so it reads as a decision in
- *  a diff rather than as noise, and so `git grep` finds every waiver in one query. */
+/** Inline waiver token that suppresses secret scanning on the containing line. Kept verbose so
+ *  waivers stand out in diffs and are easy to audit with `git grep`. */
 export const WAIVER = "secret-scan-allow";
 
 export interface SecretHit {
@@ -79,13 +77,13 @@ export interface SecretHit {
   line: number;
   rule: string;
   what: string;
-  /** The source line with the credential itself replaced — the report never echoes the secret. */
+  /** Redacted excerpt of the source line; the matched credential itself is never echoed. */
   masked: string;
 }
 
-/** Treat single-case words with letters and separators but no digits as likely names, such as
- *  env vars, markers or English phrases. This is a heuristic. The length floor keeps a
- *  separator-free passphrase (`correcthorsebatterystaple`) on the reporting side of the line. */
+/** Heuristic filter treating single-case alphabetic strings (with optional separators and no
+ *  digits) as identifiers or prose rather than secrets. The 16-character length floor ensures
+ *  separator-free passphrases such as `correcthorsebatterystaple` are still reported. */
 function isWordy(value: string): boolean {
   if (!/^[A-Za-z][A-Za-z_\-. ]*$/.test(value)) return false;
   if (value !== value.toLowerCase() && value !== value.toUpperCase()) return false;
@@ -99,7 +97,7 @@ function scanLine(path: string, line: number, text: string): SecretHit[] {
     for (const match of text.matchAll(rule.pattern)) {
       const value = match[rule.valueGroup ?? 0] ?? "";
       if (PLACEHOLDER.test(value) || REPEATED.test(value) || isWordy(value)) continue;
-      // Redacted before it is bounded, so the cut cannot split a value the redaction would then miss.
+      // Redact before truncating so truncation cannot split the matched value and leave part of it visible.
       const redacted = value ? text.split(value).join(`[redacted ${value.length} chars]`) : text;
       hits.push({ path, line, rule: rule.id, what: rule.what, masked: boundText(redacted, 200).shown });
     }

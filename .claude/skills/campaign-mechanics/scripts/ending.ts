@@ -1,30 +1,28 @@
 #!/usr/bin/env bun
 /**
- * Explain recorded campaign endings and show the current stopping conditions.
+ * Explains recorded campaign endings and reports current stopping-condition counts.
  *
  *   bun .claude/skills/campaign-mechanics/scripts/ending.ts <name | path/to/log.jsonl> [--at <line | ISO time>]
  *
- * `--at` reads the log up to that line, or up to the last event at or before that time, as the table
- * would have read it then under this tree's code: one lane-13 session of 9 November copied ten
- * prefixes of a log by hand to ask this. `tools/wri/table-timeline.ts` asks it at every change point.
+ * The `--at` option evaluates a prefix of the log (up to the given 1-based line or the last event
+ * at or before the given ISO timestamp) under the current tree's decision table, avoiding manual
+ * log slicing; `tools/wri/table-timeline.ts` invokes this across every transition point.
  *
- * The existing run view lists the climb and next move, but omits ending history and counts against
- * stopping thresholds. This script lists campaign.ended events with the preceding campaign.move
- * counts. It then shows the current budget,
- * improvement and supply patience, consecutive crashes, idle conversations, admission refusals,
- * pending operator instructions and next move.
+ * Whereas the standard run view reports only the climb and next move, this script lists each
+ * `campaign.ended` event alongside its preceding `campaign.move` counts, followed by current
+ * budget, improvement and supply patience, consecutive crashes, idle conversations, admission
+ * refusals, pending operator instructions, and the move `decide` would choose.
  *
- * Each condition comes from its production reader under planOn, the same plan used by the run view.
- * Current counts describe a restart from the log, rather than the state at each historical ending.
- * logEvents ignores an incomplete final append. Names resolve locally or in the archive; absolute
- * paths can also read archived copies no longer listed on their source host. --host runs remotely.
- * Output contains ids, codes, counts and host reasons, but no tasks or checks; it remains exam-side.
- *
- * Written on 30 October: the archive then held 158 logs whose endings had no reader.
+ * Every quantity is computed by its production fold under `planOn`, matching the run view. Current
+ * counts reflect a restart from the log rather than historical state at earlier endings.
+ * `logEvents` ignores an incomplete trailing append. Campaign names resolve locally or in the
+ * archive, while absolute paths can read archived copies no longer registered on their source
+ * host; `--host` runs remotely. Output contains IDs, codes, counts, and host reasons only, never
+ * tasks or checks, though it remains exam-side.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { refusals, stopRule, supplyOf } from "#src/campaign/admission.ts";
-import { CRASHES, decide, supplyRun } from "#src/campaign/decide.ts";
+import { CRASHES_IN_A_ROW, decide, supplyRun } from "#src/campaign/decide.ts";
 import { askedOf, crashedRun } from "#src/campaign/ground.ts";
 import { decidedLine } from "#src/campaign/move.ts";
 import { pendingWords } from "#src/campaign/word.ts";
@@ -45,8 +43,7 @@ const USAGE = `usage: ending.ts <name | path/to/log.jsonl> [--at <line | ISO tim
 Each ending on record with the moves before it, and the counts the table's endings are read on.
 --at  read the log up to this line (1 is the first), or up to the last event at or before this time`;
 
-/** The `campaign.move` events of `events`: how many, and each `move·code` counted (`countBy`) in the
- *  order it first appears. A Builder's own move reads `led`, and `asked` in a log before 5 November. */
+/** Tallies `campaign.move` events by `move·code` in order of first appearance (`led` for Builder moves, or `asked` in older logs). */
 function movesOf(events: readonly LogEvent[]) {
   const moves = events.flatMap(({ kind, data }) => (kind === MOVED ? [data] : []));
   const counts = countBy(
@@ -56,8 +53,7 @@ function movesOf(events: readonly LogEvent[]) {
   return { total: moves.length, counts };
 }
 
-/** The counts the table's endings are read on now, each beside its bound, and the move the table
- *  names under the same plan as the view (`planOn`, `decide`). */
+/** Evaluates all current stopping-rule counters against their bounds and computes the table's next move (`planOn`, `decide`). */
 function standingOf(events: readonly LogEvent[]) {
   const plan = planOn(events);
   const stop = stopRule(events);
@@ -66,7 +62,7 @@ function standingOf(events: readonly LogEvent[]) {
     left: plan.left,
     patience: { since: stop.sinceStep, of: plan.patience, counted: stop.checkpoints, spent: stop.stop },
     supply: { count: supplyRun(events, plan), of: plan.patience },
-    crashes: { count: crashes.count, of: CRASHES, last: crashes.crash },
+    crashes: { count: crashes.count, of: CRASHES_IN_A_ROW, last: crashes.crash },
     idle: { count: idleOf(events), of: IDLE },
     refused: refusals(supplyOf(events), askedOf(plan)).map(({ code }) => code),
     words: pendingWords(events).map(({ word, why }) => (why === "" ? word : `${word} (${why})`)),
@@ -74,8 +70,7 @@ function standingOf(events: readonly LogEvent[]) {
   };
 }
 
-/** A campaign's endings, each with the moves since the one before; what came after the last; and
- *  how the table reads the log now. */
+/** Summarises each recorded ending with its preceding moves, activity since the last ending, and current standing. */
 export function campaignEnding(events: readonly LogEvent[]) {
   const ends = events.flatMap((event, at) => (event.kind === "campaign.ended" ? [{ at, event }] : []));
   const endings = ends.map(({ at, event: { data, at: when } }, index) => ({

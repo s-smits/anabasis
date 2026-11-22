@@ -2,8 +2,8 @@
  * The repository's folds of one log, each computed once for the log as it was read and then kept
  * with it, so that every endpoint and the poll of the campaign list share one reading.
  *
- * Every fact the page shows is one of these folds' output, or computed from one, as the brief of
- * 11 October holds it (decision 7: one reader a fact, `AGENTS.md` section 5, habit 2). A log read
+ * Every fact the page shows is one of these folds' output, or computed from one (one reader a
+ * fact, `AGENTS.md` section 5, habit 2). A log read
  * again after it changed is another `Log`, and the folds kept for the old one go with it.
  */
 import { epochsOf } from "../../../../src/campaign/climb.ts";

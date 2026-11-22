@@ -6,11 +6,10 @@
  *
  * `bun run land -- <pull request> --merge` merges a stack up to the one named, through GitHub's
  * partial stack merge, and leaves those above it open. It merges with a merge commit, so none of
- * them holds the trunk's new head and `land` refuses them until they are replayed. On 22 October
- * #343 merged beside a chain that then needed 26 commits replayed, three by hand, and a rebase moves
- * branches that other worktrees have checked out. On 5 November the operator asked to land #616 to
- * #631 ahead of the 12 pull requests above them with the passes those had earned intact, and #643
- * and #644 were divided by hand, since a landing's members must be its native stack's.
+ * them holds the trunk's new head and `land` refuses them until they are replayed. A replay by
+ * rebase can need commits redone by hand, moves branches that other worktrees have checked out,
+ * and loses the passes the pull requests above had earned; and a landing's members must be its
+ * native stack's, so dividing one by hand is slow.
  *
  * So this copies each commit above the merged head with only its parents changed: the same tree,
  * author, dates and message, written as objects, touching no worktree and with no conflict possible.
@@ -33,12 +32,12 @@
  * With `--yes` after the merge, every branch moves in one atomic push under a lease on the head GitHub
  * listed, a pull request still based on the merged branch moves to the trunk, and the stack above is
  * linked again on the trunk. The push skips the pre-push hook, since every tree was checked before and
- * a copy changes none (operator, 5 November); `land --sanitize` shows the passes on the new heads.
+ * a copy changes none (the operator's choice); `land --sanitize` shows the passes on the new heads.
  *
  * Both read the members of each native stack they link from the chain of bases rather than from the
  * native stack they dissolve, so a second run finishes what the first could not: a commit already on
- * the trunk's head copies to itself, and a stack unstacked before its link failed is linked. Until
- * 9 November both read the old native stack, and a run cut short after its unstack left none to read.
+ * the trunk's head copies to itself, and a stack unstacked before its link failed is linked, where
+ * reading the old native stack would leave a run cut short after its unstack nothing to read.
  */
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
@@ -111,7 +110,7 @@ function divide(root: string, number: number): void {
   if (cut === undefined || above.length === 0) {
     throw new Error(`no open pull request is based on #${String(number)}'s head.`);
   }
-  relink(root, [...beneath(open, cut).toReversed(), cut], trunkOf(root));
+  relink(root, [...beneath(open, cut), cut], trunkOf(root));
   relink(root, above, cut.headRefName);
 }
 

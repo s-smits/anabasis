@@ -160,9 +160,9 @@ function memberReplacementCall(
  * `vi.mock`, `vi.doMock`, `jest.mock` and `unstable_mockModule`: replacing a module at the
  * loader rather than substituting a dependency the code under test accepts. This repository
  * tests with `bun:test`, whose spelling is `mock.module(…)`, and the upstream rule did not read
- * it; this copy reads a `mock` imported from `bun:test` too (20 October).
+ * it; this copy reads a `mock` imported from `bun:test` too.
  *
- * This copy also reads the other ways of replacing what every caller shares (8 November): `spyOn`
+ * This copy also reads the other ways of replacing what every caller shares: `spyOn`
  * over a member of any import or of a steering global (`spyOn(prepare, "prepareCommand")`,
  * `spyOn(Date, "now")`); in a test, an assignment, `Object.defineProperty` or `Object.assign`
  * over one (`fs.readFileSync = …`, `globalThis.fetch = …`); and a faked clock
@@ -176,7 +176,7 @@ function memberReplacementCall(
  *
  * A mocked module is a test that passes against a description of the dependency instead of the
  * dependency. The description is written once and then drifts, so the module can change its
- * signature, its errors or its side effects and the suite keeps reporting green — and it keeps
+ * signature, its errors or its side effects and the suite keeps reporting green, and it keeps
  * reporting green about a call that no longer exists. It also decides the test can only run one
  * way, because the substitution happens above the code rather than inside it, which is why a
  * mocked suite so often cannot be asked the second question.

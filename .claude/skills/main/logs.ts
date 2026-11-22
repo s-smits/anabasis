@@ -1,16 +1,13 @@
 /**
- * The campaign logs a skill script reads across the record, found one way for every skill: the
- * replay and its panel, the tables and the trend of promotion-tuner and the starter reads of
- * comparison-reading each list them here (until 11 November the list lived in promotion-tuner's
- * `tree.ts`, and comparison-reading reached into that skill for it).
+ * Shared campaign log discovery across the archive and worktrees for skill scripts (`replay.ts`,
+ * `table.ts`, `trend.ts`, `starter-reads.ts`).
  *
- * Default discovery uses the production registry and refreshed records on every configured host
- * (22 October 2026). An explicit home keeps the offline layouts the registry's `campaignsIn` reads:
- * a folder of worktrees, an archive (`data/runs`, a folder a host) or one host's folder of
- * campaigns, with the largest copy of each name there. Left out: a seed (`seed.json` beside its
- * log) unless named, as an investigation's snapshot is (until 4 November its derived replay read
- * none), a name that starts `sim-`, `rh-` or `test-`, and a rehearsal, whose seats are
- * `faux/script` (`rehearsed`, which a caller asks once it has read the log).
+ * By default, discovery queries the production registry and refreshed peer records across all
+ * configured hosts. Passing an explicit `home` directory scans offline layouts via `campaignsIn`
+ * (a directory of worktrees, a `data/runs` archive, or a single host's campaign folder), keeping
+ * the largest copy of each campaign name. Excludes seeds (`seed.json`, unless explicitly named),
+ * scratch prefixes (`sim-`, `rh-`, `test-`), and scripted rehearsals (`faux/` models, checked via
+ * `rehearsed`).
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { closeSync, fstatSync, openSync, readdirSync, readSync, statSync } from "#src/meta/filesystem.ts";
@@ -22,12 +19,12 @@ import { readableAcross } from "#tools/runs/snapshots.ts";
 
 export type Found = Pick<Run, "name" | "path" | "archived">;
 
-/** Enough of a log's end to hold its last whole event; a longer one is read whole. */
+/** Tail byte window read to extract a log's final event timestamp without reading the entire file. */
 const TAIL = 65_536;
 const LEFT_OUT = ["sim-", "rh-", "test-"] as const;
 
-/** When the last whole event of the log at `path` was appended, read from its tail, or from the
- *  whole log where one event is longer than the tail; empty for a log with no whole event. */
+/** Returns the `at` timestamp of the last complete event in `path` (reading from the tail when
+ *  possible, or the full file if the final event exceeds `TAIL`), or `""` if empty. */
 export function lastAt(path: string): string {
   const fd = openSync(path, "r");
   try {
@@ -42,11 +39,8 @@ export function lastAt(path: string): string {
   }
 }
 
-/** Every campaign log under `home`, one a name, the largest where copies exist; seeds and the
- *  names of `LEFT_OUT` are not listed. `home` may be a folder of worktrees, an archive
- *  (`data/runs`, a folder a host) or one host's folder of campaigns: the registry's `campaignsIn`
- *  reads each layout. Until 30 October this walked worktrees alone, so a replay of the archive read
- *  no campaign. */
+/** Discovers all campaign logs under `home` (keeping the largest file per campaign name and
+ *  excluding unnamed seeds and `LEFT_OUT` prefixes). */
 function everyLog(home: string, names: readonly string[]): Found[] {
   const largest = new Map<string, { path: string; size: number }>();
   const found = [home, ...readdirSync(home).map((entry) => join(home, entry))].flatMap((dir) => [
@@ -65,8 +59,7 @@ function everyLog(home: string, names: readonly string[]): Found[] {
     .toSorted((a, b) => (a.name < b.name ? -1 : 1));
 }
 
-/** The logs a reader takes: those `names` lists where it lists any, else those whose last event is
- *  at or after `since`. */
+/** Returns discovered campaign logs filtered by explicit `names` (when non-empty) or `lastAt >= since`. */
 export async function campaignLogs(
   home: string | null,
   names: readonly string[],
@@ -83,7 +76,7 @@ export async function campaignLogs(
   return all.filter(({ name, path }) => (names.length > 0 ? names.includes(name) : lastAt(path) >= since));
 }
 
-/** Whether a log is a rehearsal's: a seat or its solver is `faux/script`. */
+/** Returns `true` when `events` came from a scripted rehearsal (`faux/` seat or solver model). */
 export function rehearsed(events: readonly LogEvent[]): boolean {
   const models = events.flatMap(({ kind, data }) => {
     if (kind === "campaign.setting") return [asRecord(data.solver)?.model];

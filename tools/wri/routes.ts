@@ -5,11 +5,9 @@
  *   bun tools/wri/wri.ts reader routes --log <log>
  *
  * `TOOLS CALLED` counts tools over a harness's solves, and `ANSWER FROM A PROGRAM` opens on a won task
- * reached quickly, so nothing sets a side's passes beside the other's. New on 5 November: no script of v1
- * or before read a solve's calls as a route. Over the largest copy of each of the 237 recorded campaigns,
- * within the 28 logs holding a step and another reading with at least 12 passes a side, the new harness's
- * median calls stood further under the reference's at the steps in 21, less far in 4 and level in 3. The
- * median gap was 3 calls over 168 comparisons that read a step and 1 over 114 others. One log's comparisons
+ * reached quickly, so nothing sets a side's passes beside the other's. Over the recorded campaigns, the
+ * new harness's median calls stand further under the reference's at a step than at another reading
+ * in most logs that hold both. One log's comparisons
  * are not independent, so each log counts once. It is a lead and decides nothing: fewer calls can be a
  * program that closed a search or a solver that stopped looking.
  */

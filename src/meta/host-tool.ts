@@ -12,7 +12,7 @@
  * the binary under the directory `xcode-select -p` reports, and only when that binary exists:
  * Command Line Tools keep every tool in `usr/bin`, while a full Xcode keeps `git` there and `otool`
  * and `install_name_tool` in its default toolchain. A developer directory holding neither keeps the
- * shim — on a GitHub macOS runner, which selects a full Xcode, the unchecked `usr/bin/otool` did not
+ * shim: on a GitHub macOS runner, which selects a full Xcode, the unchecked `usr/bin/otool` did not
  * exist.
  *
  * The developer directory and each tool's resolved path are cached for the life of the process, so a

@@ -1,15 +1,15 @@
 #!/usr/bin/env bun
 /**
- * Close an Oracle bundle: scan it, zip it, test the zip, and say its size.
+ * Package an Oracle bundle: scan for credentials, compress, verify the archive, and print its size.
  *
  *   bun .claude/skills/oracle-handover/scripts/bundle.ts <bundle folder> [--max-mb 20]
  *
- * The folder must hold `REVIEW.md`, the task document, at its root. Every file in it that is not
- * itself a zip is put to the repository's secret rules (`tools/secrets/rules.ts`), and a hit
- * refuses the bundle: a note or a patch copied in by hand is where a credential would ride. The
- * runs zip inside was made by `bun run runs zip`, which leaves out a file named like a secret. The
- * zip lands beside the folder under its name, with no resource-fork sidecar. `open-pulls.ts` closes
- * its folder the same way (`zipped`), before any task document is in it.
+ * The directory must contain `REVIEW.md` (the task document) at its root. Every non-zip file is
+ * checked against the repository's secret rules (`tools/secrets/rules.ts`), and any match aborts
+ * bundling so hand-copied notes or patches cannot leak credentials. Embedded run archives come from
+ * `bun run runs zip`, which already excludes secret-like paths. The output zip is written alongside
+ * the directory without resource-fork sidecars. `open-pulls.ts` uses `zipped` before a task document
+ * is added.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { existsSync, lstatSync, readdirSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";

@@ -20,8 +20,7 @@ import { join } from "../src/meta/path.ts";
 import { agreement, clears } from "../src/referee/agreement.ts";
 import { type ProbeRow, probeTool } from "../src/referee/probe.ts";
 import { keepAnswerFiles, shownFiles, type AnswerFile } from "../src/kernel/answer-files.ts";
-import type { Reader } from "../src/referee/reader.ts";
-import { referee } from "../src/referee/referee.ts";
+import { type Reader, referee } from "../src/referee/referee.ts";
 import { containing, copies, objectWith } from "./helpers/matchers.ts";
 import { zipOf } from "./helpers/zip.ts";
 
@@ -632,7 +631,7 @@ describe("earned evidence", () => {
   });
 
   it("the Referee records the ruling it gives after a turn with no call", async () => {
-    // On 27 October two esp32 readers answered in prose and were set aside as unruled.
+    // A reader that answers in prose is set aside as unruled.
     const s = setup([fauxAssistantMessage("The rejection looks earned."), ruling(UNSETTLED)]);
     expect(await referee(s.reader, fail(s))).toMatchObject({ ruling: "unclear", reason: "Not settled." });
     expect(s.calls()).toBe(2);

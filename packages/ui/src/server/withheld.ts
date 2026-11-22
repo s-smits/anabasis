@@ -1,12 +1,12 @@
 /**
- * Which rulings are withheld from both tiers, so that a person's label is made blind (the brief of
- * 11 October, section 8: a label made beside the ruling measures nothing).
+ * Which rulings are withheld from both tiers, so that a person's label is made blind, since a label
+ * made beside the ruling measures nothing.
  *
  * A solve's ruling is withheld where a label of its rejection is still to come: its task waits for
  * a label as possibly infeasible (`poolOf`, as the supply counts it), or the rejection set
  * its task aside in a comparison nobody has settled (`toLabel`). And it is withheld where its
  * comparison has not reported: until the report lands nothing has said which rejections set a task
- * aside, so nothing has said what a person will be asked to label (review of 11 October).
+ * aside, so nothing has said what a person will be asked to label.
  *
  * A comparison's rulings by kind are withheld while any one of its rulings is: only a ruling that is
  * not `earned` sets a task aside, so the kinds beside the outcome split would give a withheld ruling

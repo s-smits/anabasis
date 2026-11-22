@@ -6,7 +6,7 @@
  *     [--yes] [-- <flags>]
  *
  * Each end is a host `ANA_HOSTS` lists or this machine, named by its own short host name or `here`
- * and the default source (27 October: the operator names every machine by its name); between two
+ * and the default source (the operator names every machine by its name); between two
  * hosts the folder passes through this machine, since rsync takes one remote side. The verb pauses
  * the campaign where it runs, at the next `--after` event with nothing but the Builder's
  * conversation open (`runs pause`; one no process writes is taken as it is, and without
@@ -22,15 +22,13 @@
  * left untouched, with instructions to preserve its campaign before removing the worktree and
  * retrying, or to continue there if the source was already set aside. Without `--yes` the verb
  * reads where each end stands and moves nothing.
- * Remote receipts are read here, since the source worktree may predate the receipt reader
- * (26 October 2026).
+ * Remote receipts are read here, since the source worktree may predate the receipt reader.
  *
- * A log is never copied by hand (operator, 15 October), and until 19 October a campaign went to
- * another host only so: `runs copy` moves a folder between worktrees of one machine and said that
- * another host takes it with rsync. On 19 October a fresh Opus campaign was moved from one host to
- * another and back by stopping it and launching a new one each time, which left two campaigns
- * that ended in their draft, for $0.72, where its own log could have gone on. A change of login on
- * one machine needs no move: `runs continue --after <event> --login N`.
+ * A log is never copied by hand (the operator's rule), and `runs copy` moves a folder only between
+ * worktrees of one machine, so this verb is the way to another host: stopping a campaign and
+ * launching a new one there instead would leave a second campaign that ends in its draft, where
+ * its own log could have gone on. A change of login on one machine needs no move:
+ * `runs continue --after <event> --login N`.
  *
  * The run's states link their programs by relative paths, which hold in the new folder. A kept
  * harness is its digest and is never rebuilt, so a move to another system or processor is refused
@@ -48,7 +46,7 @@
  * repository, from a worktree or from this machine's archive (`runs retire`), and sets the folder it
  * leaves aside under `.ana/moved/` of the tree it was in, so that one worktree holds the name;
  * `continue` then goes on with it there. It is the one way a campaign's folder moves on one machine
- * (operator, 15 October), since a log is never copied by hand.
+ * (the operator's rule), since a log is never copied by hand.
  *
  *   bun --env-file=.env.runs run runs fetch [<name>] [--from <host>] [--whole]
  *
@@ -56,8 +54,8 @@
  * the archive as `data/runs/<host>/<name>/` of the main worktree (`ARCHIVE`), where the readers read
  * it and no verb acts on it, so the name stays one run. It asks every host which holds the name
  * unless `--from` names one, prints the copy's log, and run again brings the copy level with its
- * source. The run is left as it is. On 20 October a whole-run investigation of three runs on another
- * host read copies made by hand; until then a copy went to `.ana/fetched/`, which no reader read.
+ * source. The run is left as it is. A copy goes where the readers read it, so that an investigation
+ * of runs on another host need make no copy by hand.
  * With no name it brings the record of every campaign whose log grew, and with `--whole` their
  * folders too, as a named campaign always comes; it then records where another model served a seat
  * than it asked for (`degradations.ts`) and copies each benchmark's score store from the machine
@@ -333,8 +331,8 @@ export async function fetch(args: readonly string[]): Promise<void> {
   if (rest.length > 0) throw new Misused();
   const from = keyIfDefined("from", values.from);
   // A reader takes a copy as it stands where no host can be asked (`syncRuns`), so a campaign asked
-  // for by name is refused before the read: until 16 November a fetch from a tree that held no
-  // host list printed the stale copy's path and exited 0.
+  // for by name is refused before the read, rather than a fetch from a tree that holds no host list
+  // printing the stale copy's path and exiting 0.
   if (name !== undefined && hostsOf().length === 0) {
     throw new Error(`ANA_HOSTS lists no host, so there is nowhere to fetch ${name} from`);
   }

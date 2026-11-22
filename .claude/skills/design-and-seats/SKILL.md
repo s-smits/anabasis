@@ -1,31 +1,31 @@
 ---
 name: design-and-seats
-description: "Use before editing src/{builder,examiner,solver,referee,harness}/, a seat's prompt, tool description, tool result or home files, HARNESS.md or the starter. Explains what the evaluation measures (supply, climb, honesty, verdicts, economy), the wall (rule 3), code versus model decisions, what each seat reads and the operator's decisions (AGENTS.md sections 1–3). seat-view.ts names the wall tests a diff owes; examiner-view.ts and builder-view.ts print what the next opening would be told."
+description: "Use before editing src/{builder,examiner,solver,referee,harness}/, a seat's prompt, tool description, tool result, or home files, HARNESS.md, or the starter. Explains what the evaluation measures (supply, climb, honesty, verdicts, economy), the information wall (rule 3), code versus model authority, what each seat may read, and the operator's decisions (AGENTS.md sections 1 to 3). seat-view.ts identifies the wall tests required by a diff; examiner-view.ts and builder-view.ts print what the next session opening would receive."
 ---
 
 # Design and seats
 
-This skill expands `AGENTS.md` sections 1 to 3, which state the invariants; the references hold the
-mechanisms behind them. Where a reference disagrees with the source, the source wins and the
-reference is corrected in the same change.
+This skill expands `AGENTS.md` sections 1 to 3, which state the system invariants; the reference
+files below document the underlying mechanisms. Whenever a reference disagrees with the source code,
+the source code is authoritative and the reference must be updated in the same change.
 
 | Section | Reference |
 | --- | --- |
-| 1. The question and the four factors; v1's vocabulary | `references/question-and-factors.md` |
+| 1. The question and the four factors; v1 vocabulary | `references/question-and-factors.md` |
 | 1. Two sides and one wall | `references/wall.md` |
 | 2. Code owns the conditions, models own the content | `references/stance.md` |
 | 3. Each seat's view and tools | `references/seats.md` |
 | 3. The operator's decisions and the harness | `references/operator-and-harness.md` |
 
-A change to anything a Builder or solver reads starts with `wall.md` and `seats.md`, then
-`seat-view.ts`. A new limit, classifier or narrower grant first answers `stance.md`, consequences 3,
-4 and 6. A change to a factor's reader or bar goes through `question-and-factors.md`. Changing the
-harness's parts or the starter is described in `operator-and-harness.md` and done through
-`harness-audit`.
+Before modifying anything a Builder or solver can read, consult `wall.md` and `seats.md`, then run
+`seat-view.ts`. Before introducing a new limit, classifier, or narrower permission grant, verify it
+against `stance.md` (consequences 3, 4, and 6). Changes to a factor's reader or threshold belong
+under `question-and-factors.md`. Changes to harness components or the starter are described in
+`operator-and-harness.md` and audited through `harness-audit`.
 
 ## Scripts
 
-Each reads the tree or a log through production readers.
+Each script inspects the repository or a campaign log through the production readers.
 
 ```text
 bun .claude/skills/design-and-seats/scripts/seat-view.ts [--base <rev>] [--file <path>]...
@@ -33,16 +33,19 @@ bun .claude/skills/design-and-seats/scripts/examiner-view.ts <log.jsonl | campai
 bun .claude/skills/design-and-seats/scripts/builder-view.ts <log.jsonl | campaign name> [--parent <digest>]
 ```
 
-- `seat-view.ts` takes the changed files (the working tree against `--base`, by default the merge
-  base with upstream, or each `--file`) and, for each seat, names the changed files its owners
-  import with the shortest import chain, its wall tests and the `bun run test -- ...` line that runs
-  them. Import reach over-states message reach, so read the chain before concluding. For one commit,
-  pass `$(git diff-tree --no-commit-id --name-only -r <commit> | sed 's/^/--file=/')`.
-- `examiner-view.ts` prints, as counts, what an Examiner session opening now would be told
-  (`heard`, `src/examiner/record.ts`). It finds a campaign by name on any host.
-- `builder-view.ts` prints the next Builder session's history messages (`src/builder/past.ts`),
-  starting from `--parent` or from `--parent latest`. A held-out task, check or ruling in its output
-  is a breach of rule 3, fixed in `past.ts` or `src/campaign/handover.ts`.
+- `seat-view.ts` inspects the changed files (either the working tree against `--base`, defaulting to
+  the merge base with upstream, or each `--file` argument) and, for each seat, lists the changed
+  files imported by its owners together with the shortest import chain, the relevant wall tests, and
+  the `bun run test -- ...` command to run them. Import reachability is a conservative
+  over-approximation of message reachability, so inspect the import chain before drawing
+  conclusions. To inspect a single commit, pass
+  `$(git diff-tree --no-commit-id --name-only -r <commit> | sed 's/^/--file=/')`.
+- `examiner-view.ts` prints, as summary counts, what an Examiner session opening now would receive
+  (`heard`, `src/examiner/record.ts`). It locates a campaign by name across hosts.
+- `builder-view.ts` prints the history messages for the next Builder session (`src/builder/past.ts`),
+  starting from `--parent` or from `--parent latest`. Any held-out task, check, or Referee ruling
+  appearing in its output is a violation of rule 3 and must be fixed in `past.ts` or
+  `src/campaign/handover.ts`.
 
-The first two print ids, paths and counts, never a check, hidden value or task text; the third
-prints build-side text by construction.
+The first two scripts emit identifiers, paths, and counts without exposing checks, hidden values, or
+task text; the third prints build-side text by construction.

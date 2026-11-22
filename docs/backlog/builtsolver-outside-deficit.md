@@ -95,7 +95,7 @@ level and the size, and what an exam may ask for.
 - The query names no task or profession of the benchmark, and no rubric line. Each clause the
   seventh version adds traces to a sentence of the query's origin; the map is in that run's
   prediction file, and one added clause that traced to none was struck before any run.
-- The gap floor (`ROOM`) and the objective sentence are unchanged, so the seventh query's run
+- The gap floor (`GAP_FLOOR`) and the objective sentence are unchanged, so the seventh query's run
   differs from the sixth's in the validity sentence alone.
 - No confirmation rule decides anything until the pair of item 2 has been read.
 

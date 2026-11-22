@@ -1,25 +1,31 @@
-Read this for what a launch authorises and how a harness is made. It expands `AGENTS.md` section 3.
+Read this reference to understand what a campaign launch authorises and how a harness is constructed.
+It expands `AGENTS.md` section 3.
 
 ## 3. The seats
 
 ### What waits for the operator
 
-The seven decisions stay with the operator because someone outside the loop must fix the exam, pay
-for it and own what cannot be undone; the operator writes none of the exam. A launch gives three of
-them for its campaign, so that it can run unattended to a typed ending: freeze a fault-free exam
-(`accept.ts --freeze`), admit every check computed by its author (`--admit-authored`), and promote
-the harness the rule names. The owners are `make` in `tools/d2/harness-builder.ts` and `planOf` in
-`src/campaign/opening.ts`. `--hitl` hands all three back until `--no-hitl`; any other fault, and
-going past the stop rule, take the operator's word each time (`--despite`, `--past-stop`).
+Seven decisions remain with the operator because an external authority outside the optimisation loop
+must fix the evaluation exam, authorise expenditure, and own irreversible actions; the operator
+never authors the exam itself. Launching a campaign pre-authorises three of these decisions for that
+campaign so it can run unattended to a typed ending: freezing a fault-free exam
+(`accept.ts --freeze`), admitting checks computed by their author (`--admit-authored`), and
+promoting the harness selected by the promotion rule. These grants are owned by `make` in
+`tools/d2/harness-builder.ts` and `planOf` in `src/campaign/opening.ts`. Passing `--hitl` revokes
+all three grants until `--no-hitl` is passed. Any other fault, as well as continuing past the stop
+rule, requires explicit operator approval on each occasion (`--despite`, `--past-stop`).
 
 ### The harness
 
-The three parts are listed in section 3; `HARNESS.md`, given to a Builder, shows each with a worked
-example. Programs in `.toolchain/` run by name from the solver's shell, and a harness whose spec
-declares a tool of its own does not open (`openHarness`). The digest leaves out `__pycache__` and bytecode
-(`src/meta/bundle-layout.ts`), so any other change makes a new harness, and solves under the old one
-do not count for it. The starter (`src/harness/starter.ts`) is pi's coding agent as released with a
-few revisable guide lines and no domain program.
+The three components of a harness are listed in `AGENTS.md` section 3, and `HARNESS.md` (provided to
+the Builder) illustrates each with a worked example. Executables placed in `.toolchain/` are invoked
+by name from the solver's shell, and a harness whose specification declares a custom tool fails to
+open (`openHarness`). The harness digest excludes `__pycache__` and compiled bytecode
+(`src/meta/bundle-layout.ts`); any other modification produces a distinct harness identity, so
+solves recorded under a previous digest do not carry over. The starter (`src/harness/starter.ts`) is
+pi's coding agent as released, paired with a few revisable guide lines and no domain-specific
+programs.
 
-A larger solve budget narrows the gap a better harness can show, since the solver inside the starter
-works out more of the programs itself (section 7, "The budget").
+Increasing the per-solve compute budget narrows the measurable gap between a built harness and the
+starter, because the solver under the starter has more turns to reconstruct domain tooling on its
+own (section 7, "The budget").

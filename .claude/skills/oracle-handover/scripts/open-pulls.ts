@@ -1,25 +1,18 @@
 #!/usr/bin/env bun
 /**
- * Zip the open pull requests for an outside reader: each one's title, body and diff, and the code
- * one import from what they change.
+ * Package all open pull requests for external review: each pull request's title, body, and diff,
+ * together with source files and tests within one import hop of the changed files.
  *
  *   bun .claude/skills/oracle-handover/scripts/open-pulls.ts <folder> [--diffs] [--max-mb 20]
  *
- * It writes `<folder>/pulls/`: a `README.md` that lists each chain of pull requests bottom first
- * (`chains`), and for each pull request a `.md` with what an Oracle document's `pr` part holds
- * (`pullTold`) and a `.diff` against the head beneath it, so that a stack's diffs read in order
- * amount to its top against the trunk. Beside them `code/<top>/` holds, as they stand at each
- * chain's top, the files the chain changed, the files one of those imports and the tests near them:
- * the gate's reading of one import (`importsOf`, `testsNear`, `tools/runtime/gate.ts`) over a scratch
- * checkout, as `ci-fixes` chooses its tests. A reviewer of a diff alone cannot see what a changed
- * line calls or which test holds it, and asks for both. `--diffs` leaves the code out.
+ * Writes `<folder>/pulls/`: a `README.md` indexing each pull-request chain bottom-first (`chains`),
+ * and per pull request a `.md` summary (`pullTold`) plus a `.diff` against the preceding head in the
+ * stack (so reading the diffs in order reconstructs the stack top against trunk). Unless `--diffs`
+ * is passed, `code/<top>/` also snapshots the changed files, their direct imports, and nearby tests
+ * (`importsOf`, `testsNear`, `tools/runtime/gate.ts`) at each chain's top commit.
  *
- * The folder is then closed as a bundle is (`zipped`, `bundle.ts`): scanned, zipped beside itself
- * and tested. Beside the zip, `<folder>.md` holds the same files as one text to paste (`pasted`):
- * the index, then each pull request under its title with its diff a heading a file, then each
- * chain's code a heading a file. A `REVIEW.md` and runs added afterwards close whole through `bundle.ts`. The
- * stack is GitHub's at this moment and other sessions move it, so make the zip after the last push
- * the question concerns.
+ * The folder is then scanned, compressed, and verified via `zipped` (`bundle.ts`), and `<folder>.md`
+ * is written alongside the archive as a single pasteable Markdown document (`pasted`).
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import {
@@ -96,7 +89,7 @@ function chainTold(repo: string, into: string, open: readonly Pull[], line: read
   const code = new Set<string>();
   const rows = line.map((pull) => {
     const text = how.told(String(pull.number));
-    const range = `${beneath(open, pull)[0]?.headRefOid ?? `origin/${pull.baseRefName}`}...${pull.headRefOid}`;
+    const range = `${beneath(open, pull).at(-1)?.headRefOid ?? `origin/${pull.baseRefName}`}...${pull.headRefOid}`;
     for (const file of lines(gitText(repo, "diff", "--name-only", range))) changed.add(file);
     for (const file of lines(gitText(repo, "diff", "--name-only", range, "--", ".", ...DOCUMENTATION))) {
       code.add(file);

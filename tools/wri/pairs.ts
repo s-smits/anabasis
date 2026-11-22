@@ -5,10 +5,9 @@
  *
  *   bun tools/wri/wri.ts reader pairs --log <log>
  *
- * Lanes 8, 9, 10 and 11 read a comparison task by task. Between 3 and 10 November 11 of 17
- * lane-8 sessions built this table by hand (`ties.py`, `tiecost.py`, `rep.py`), 4 of 4 lane-11
- * sessions set each win beside its own task's A/A, and one tie script paired the tasks with the
- * report's scores by position, which misaligns once retained tasks are tallied. Here every number is
+ * Lanes 8, 9, 10 and 11 read a comparison task by task. Without it a session builds this table by
+ * hand and sets each win beside its own task's A/A, and a script that pairs the tasks with the
+ * report's scores by position misaligns once retained tasks are tallied. Here every number is
  * the production fold's on one pair (`pairsReported`, `differenceOf`, `pointsOf`, `carriedBy`,
  * `gapAgainst`, `src/kernel/`), and a pair is never matched to a score by its place in a list.
  *
@@ -25,13 +24,13 @@
  * in a comparison with no report: those rows give each side's counted solves and no score. A tie's
  * kind is a fact of its solves: `both-invalid` (no valid answer on either side), `exact-repeat`
  * (every answer valid, one measure throughout), `within-room` (every answer valid and every pairing
- * of a solve of each within the floor, `ROOM`), `both-valid` (every answer valid, the objective
+ * of a solve of each within the floor, `GAP_FLOOR`), `both-valid` (every answer valid, the objective
  * not measured on each), and `cancelling` (gains of the two sides cancelling over the pairings).
  * The origin a starter read gives each task is `starter-reads.ts --tasks`'s column
  * (`comparison-reading`), so no column here repeats it. `x_best` gives each side's median ratio to
  * the best answer on record for the task, reference then new (1.00 is the best; `sideGap`, `reading.ts`'s gap line,
- * which prints the same per comparison): half of lane 20's sessions of 3 to 10 November set it
- * beside each task's writer by hand. It comes from hidden values, so the output stays on the exam
+ * which prints the same per comparison), so that lane 20 need not set it beside each task's writer
+ * by hand. It comes from hidden values, so the output stays on the exam
  * side: it names task versions and families and no task text, answer or measure.
  */
 import {
@@ -41,7 +40,7 @@ import {
   gapAgainst,
   type Paired,
   pointsOf,
-  ROOM,
+  GAP_FLOOR,
   scoresIn,
   testOf,
   unsolved,
@@ -142,7 +141,7 @@ function measuresOf(pair: Paired): (number | null)[] {
 
 /** Of a task its score ties (`differenceOf`), the kind of tie its solves make; null for one it
  *  does not tie. */
-export function tieKind(pair: Paired): TieKind | null {
+function tieKind(pair: Paired): TieKind | null {
   if (differenceOf(pair) !== 0) return null;
   if (unsolved(pair)) return "both-invalid";
   if (![...pair.old, ...pair.fresh].every(Boolean)) return "cancelling";
@@ -169,7 +168,7 @@ function repeatOf(pair: Paired, side: "old" | "fresh"): string {
 }
 
 /** The spread of every measure of a task over both sides, as a share of the larger magnitude. */
-function spreadOf(pair: Paired): string {
+function howOftenValid(pair: Paired): string {
   const known = measuresOf(pair).filter(isNumber);
   if (known.length < 2) return NONE;
   const [low, high] = [Math.min(...known), Math.max(...known)];
@@ -228,7 +227,7 @@ function pairRow(context: Context, pair: Paired): string {
     self === undefined ? NONE : String(differenceOf(self)),
     `${flipped(pair.old) ? "1" : "0"}/${flipped(pair.fresh) ? "1" : "0"}`,
     `${repeatOf(pair, "old")}/${repeatOf(pair, "fresh")}`,
-    spreadOf(pair),
+    howOftenValid(pair),
     `${best("old")}/${best("fresh")}`,
     billedOf([...(pair.used?.old ?? []), ...(pair.used?.fresh ?? [])].map(({ billed }) => billed)),
     tieKind(pair) ?? NONE,
@@ -510,7 +509,7 @@ export function sideGap(
   }
   return {
     ratio: median(ratios),
-    atBest: ratios.filter((ratio) => ratio <= 1 + ROOM).length,
+    atBest: ratios.filter((ratio) => ratio <= 1 + GAP_FLOOR).length,
     read: ratios.length,
     unread,
   };

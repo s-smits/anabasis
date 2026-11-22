@@ -7,14 +7,14 @@ import { bindingName, identifierName, propertyName } from "../shared/statements.
  * A call that passes two arguments the wrong way round, where the compiler cannot say so.
  *
  * `eslint/max-params` is registered at 5 as a proxy for this: a long parameter list is easy to
- * pass wrongly. It is the wrong instrument, and the tree says so — the transposable shape, two
+ * pass wrongly. It is the wrong instrument, and the tree says so: the transposable shape, two
  * parameters of one function declaring one type, stands at 963 pairs, of which 274 are in
  * two-parameter functions, 298 in three, 262 in four and 129 in five. A parameter ceiling moves a
  * function between those buckets; it removes nothing. What can be decided is the call itself.
  *
  * The evidence is the caller's own names. `writeRound(runId, campaignId)` against
- * `writeRound(campaignId: string, runId: string)` states the mistake twice — the argument names
- * are the parameter names, in the other order — and the compiler accepts it because both are
+ * `writeRound(campaignId: string, runId: string)` states the mistake twice (the argument names
+ * are the parameter names, in the other order) and the compiler accepts it because both are
  * `string`. Nothing else in the tree reports it: the types match, both bindings are read, and a
  * test written from the same misreading passes.
  *
@@ -30,12 +30,11 @@ import { bindingName, identifierName, propertyName } from "../shared/statements.
  *
  * An oxlint rule sees one file, and its plugin API offers no other module's declarations, so a
  * call into another file is read by the whole-tree scan `tree/no-transposed-argument`
- * (`tools/oxlint/tree-crossed-argument.ts`) with the same reading. On 8 November that scan resolved
- * 9,989 calls into other files, with 7,742 argument pairs, and found no crossing.
+ * (`tools/oxlint/tree-crossed-argument.ts`) with the same reading.
  *
  * One argument that carries another parameter's name is a coincidence, and the rule does not
- * report it. Measured on 8 November across today's tree and seven trees from 12 October to 5
- * November, that shape gave 6 to 10 findings a tree, every one a correct call (`flag("name",
+ * report it. Measured across eight trees, that shape gave 6 to 10 findings a tree, every one a
+ * correct call (`flag("name",
  * name)`, `addUsage(turn.usage, usage)`); requiring the caller to hold the displaced parameter's
  * name as well left only calls inside the callee itself. A chain of such pointers that never
  * closes is the same coincidence twice. The crossed shape, with every widening above, reported

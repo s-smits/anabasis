@@ -5,30 +5,28 @@
  * Every applicable check runs in a fresh cell, as its own process with only its declared projection
  * of the answer and the task, under the wall a seat's commands run under with the network closed. A
  * check's tools run in that same wall. No wall of the verifier's own is needed, as v1's was while
- * its Builder wrote the checks: here an answer is data and a check is the exam side's code
- * (`7f0add79:docs/simplify.md`, W6).
+ * its Builder wrote the checks: here an answer is data and a check is the exam side's code.
  *
  * The verdict is a pass, a fail naming the checks that refused the answer, faulty when a check
  * itself failed on the request (it threw, returned no boolean, or is missing), or a non-result when
  * the wall, a tool or the program's loading could not decide. No answer is a fail. A faulty check is
  * the task's defect and drops the task; a non-result is the verifier's and stops the run.
- * On 20 October triage found that the reader deadline aborted the model loop while an executing answer probe
- * ignored it, and a detached check child could hold stderr open. The verifier now accepts the
- * reader's abort signal, races a check's result against it, reaps the check group and its cell's
- * holders, and returns a non-result.
+ * The verifier accepts the reader's abort signal, races a check's result against it, reaps the
+ * check group and its cell's holders, and returns a non-result, so a reader's deadline also ends
+ * an answer probe and a detached check child cannot hold stderr open.
  *
  * The contract is v1's check-program/v1, the format of the experiment's stored answers: a
  * `brief.json` declaring the checks and an `evaluator.ts` exporting them as `checks`. A check
- * program is its whole directory, nested directories included, and each check's cell gets a copy:
- * both check programs v1 wrote on 7 October import `./reference/model.ts`, which a copy of
- * `evaluator.ts` alone left behind. The hidden values are the task's, not the program's, so they
+ * program is its whole directory, nested directories included, and each check's cell gets a copy,
+ * since a check program may import a helper beside `evaluator.ts`, which a copy of that file alone
+ * would leave behind. The hidden values are the task's, not the program's, so they
  * reach a check only as its request carries them; a directory that keeps them, as a v1 bundle's
  * `tasks.json` does, hands every task's to every check, and the caller leaves such files out.
  *
  * A check's tools resolve only from the verifier's tool tree. The condition pins that tree's digest,
  * and a tool missing from it once ran the host's copy off the search path's later directories.
  */
-import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
+import { CHECK_BRIEF, EVALUATOR_FILE } from "../meta/bundle-layout.ts";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "../meta/filesystem.ts";
 import { sha256OfFile } from "../meta/digest.ts";
 import { jsonPathTokens } from "../meta/json-evidence.ts";
@@ -67,9 +65,9 @@ interface CheckExecution {
   /** Relative deliverable paths, or `$` for all files. Omitted grants no files. */
   filePaths?: string[];
   /** `whole`: the task's hidden values as their author wrote them, the form a drafted exam's
-   *  checks are told they read (`src/examiner/draft.ts`). Until 31 October a drafted exam with hidden
-   *  values declared `required`, whose rows by check id no draft writes, so all 6 such drafts on
-   *  record, in 3 campaigns, stopped on `check-hidden-operand-missing` before any check ran. */
+   *  checks are told they read (`src/examiner/draft.ts`), rather than `required`, whose rows by
+   *  check id no draft writes, and which stopped every such draft on `check-hidden-operand-missing`
+   *  before any check ran. */
   hidden: "none" | "required" | "whole";
   requiredToolIds?: [string, ...string[]];
   evidence: { kind: "authored" } | { kind: "external"; requiredToolIds: [string, ...string[]] };
@@ -162,13 +160,12 @@ interface Wall {
 
 /** The objective, run as a check is, in the verdict's cell: the evaluator's `objective` export,
  *  given the whole answer, its files, the whole public task and the task's hidden values, with no
- *  tool. Until 20 November 2026 it was given no file, so a work product the prompt asks for, such
- *  as a workbook, could be checked and never measured. It is
+ *  tool. Its files let it measure a work product the prompt asks for, such as a workbook. It is
  *  the author's own computation, so `accept.ts` lists it as a fault until the operator admits it by
- *  name (rule 10). Until 4 November 2026 it was given no hidden value, so an objective could only
- *  recompute from the public input what the solver could recompute too: jobstath2's g-1 tied 0-0-8
- *  with 53 of 55 measures at 1.0. Measured against what the task was built from, such as the
- *  parameters that generated its data, it has a best value no recomputation reaches. */
+ *  name (rule 10). Its hidden values let it measure against what the task was built from, such as
+ *  the parameters that generated its data, so it has a best value no recomputation reaches; an
+ *  objective that could only recompute from the public input what the solver could recompute too
+ *  ties nearly every task at its best. */
 export const OBJECTIVE: BriefTruthCheck = {
   id: "objective",
   citedDecisionIds: [],
@@ -192,17 +189,15 @@ const REPO = resolve(import.meta.dir, "..", "..");
 const TOOL_CEILING_MS = 300_000;
 
 /**
- * The checks a cell runs at once. When each check had a walled process of its own, one after
- * another the 14 checks of an esp32 exam took 658 ms of a verdict on the operator's macOS host at a
- * load of 9 (22 October): 208 ms four at a time, 138 ms eight at a time, and no less fourteen at
- * a time. Four keeps the tools one verdict runs at once within the Linux runner's four cores, where
- * several solves are judged together.
+ * The checks a cell runs at once. Running fourteen checks four at a time took about a third of the
+ * time of one after another, and eight at a time little less than four. Four keeps the tools one
+ * verdict runs at once within a four-core Linux host, where several solves are judged together.
  */
 const CHECKS_AT_ONCE = 4;
 
 /** One check's whole run, its tools included; past it the check is at fault, and the task is set
- *  aside as the check's defect instead of stopping the run (operator, 20 November 2026). Until then
- *  it was twice the tool ceiling, ten minutes, which a tool may still ask for and no check reaches. */
+ *  aside as the check's defect instead of stopping the run (the operator's choice). It is well
+ *  under the tool ceiling of ten minutes, which a tool may still ask for and no check reaches. */
 export const PER_CHECK_MS = 120_000;
 
 /** What the checker measured of a valid answer; null for any verdict but a pass with a measure.
@@ -399,7 +394,7 @@ export function checkProgramVersion(checks: string): Record<string, string> {
 
 /** A check program's declaration of its checks, as its author wrote it. */
 export function readBrief(checks: string): Brief {
-  const brief = parseJsonAs<Brief>(readFileSync(join(checks, "brief.json"), "utf8"));
+  const brief = parseJsonAs<Brief>(readFileSync(join(checks, CHECK_BRIEF), "utf8"));
   if (brief.truthChecks.some((check) => check.id === OBJECTIVE.id)) {
     throw new Error(`a check is named ${OBJECTIVE.id}, which names the objective`);
   }
@@ -459,7 +454,8 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
 }
 
 /**
- * A verdict that decides, for the host to act on. A non-result stops the run instead: it comes from
+ * A verdict that decides, for the host to act on. A non-result is thrown instead, and each caller decides
+ * what it ends (a run, a draft's reading, a Referee's replay): it comes from
  * the verifier, never the task, and a non-result is never counted, so a run on a broken verifier, one
  * that returns one for every check, would count nothing and look clean.
  */
@@ -471,7 +467,7 @@ export async function decided(
 ) {
   const verdict = await verify(task, answer, undefined, files);
   if (verdict.kind === "non-result") {
-    throw new Error(`the verifier could not decide ${task.taskId}, so the run stops: ${verdict.reason}`);
+    throw new Error(`the verifier could not decide ${task.taskId}: ${verdict.reason}`);
   }
   return verdict;
 }
@@ -482,6 +478,32 @@ const inputOf = (check: BriefTruthCheck, request: EvaluationRequest): CheckInput
   request: checkEvaluationRequest(check, request),
   tools: requiredToolsOf(check.execution),
 });
+
+/** The check that last marked itself active among those still running in `runningDir`, or null. */
+function heldCheck(runningDir: string): string | null {
+  if (!existsSync(runningDir)) return null;
+  let held: { readonly seq: number; readonly checkId: string } | null = null;
+  for (const name of readdirSync(runningDir)) {
+    if (!name.endsWith(".run")) continue;
+    let content: string;
+    try {
+      content = readFileSync(join(runningDir, name), "utf8");
+    } catch {
+      continue;
+    }
+    const [rawSeq, checkId] = content.split("\n");
+    const seq = Number(rawSeq);
+    if (
+      Number.isFinite(seq) &&
+      checkId !== undefined &&
+      checkId !== "" &&
+      (held === null || seq > held.seq)
+    ) {
+      held = { seq, checkId };
+    }
+  }
+  return held?.checkId ?? null;
+}
 
 /**
  * One verdict's cell: a walled process that runs every check, and the objective where the answer
@@ -518,6 +540,8 @@ async function runCell(
   let abort: (() => void) | null = null;
   try {
     for (const dir of [dirs.home, dirs.temp, dirs.host]) mkdirSync(dir, { recursive: true });
+    const runningDir = join(dirs.temp, ".ana-running");
+    mkdirSync(runningDir, { recursive: true });
     // The program goes below the host's folder, so no file of it can stand as `result.json`.
     const copy = join(dirs.kept, "program");
     for (const file of wall.program) {
@@ -532,7 +556,7 @@ async function runCell(
       width: CHECKS_AT_ONCE,
       checks: checks.map((check) => inputOf(check, request)),
       objective: objective === null ? null : inputOf(objective, request),
-      running: join(root, "running"),
+      running: runningDir,
     };
     const policy = commandIsolationPolicy(base, { ...dirs, toolTree: wall.tree.tools });
     // The wall a seat's command takes, without its shell: the cell leads its own group, and the
@@ -557,7 +581,7 @@ async function runCell(
     timer = setTimeout(() => {
       // A check that never yields holds the cell past every check's own time: it is at fault, as
       // one that runs out its time is. A cell that started no check could not run, and decides nothing.
-      const held = existsSync(input.running) ? readFileSync(input.running, "utf8") : null;
+      const held = heldCheck(input.running);
       if (held === null) return stop(`the cell ran past ${String(cellMs)} ms`);
       killProcessGroupId(process.pid, "SIGKILL");
       stopped.resolve({ held, reason: `the check timed out, holding the cell past ${String(cellMs)} ms` });

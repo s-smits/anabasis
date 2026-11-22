@@ -10,7 +10,7 @@
  * every comparison of the log is read.
  */
 import type { LogEvent } from "../kernel/log.ts";
-import { CUT, lastReports, latestBuilt, referenceOf } from "../kernel/reports.ts";
+import { INTERRUPTED, lastReports, latestBuilt, referenceOf } from "../kernel/reports.ts";
 import { isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { refusals, supplyOf, type Wanted } from "./admission.ts";
 
@@ -78,8 +78,8 @@ export function comparisonsOf(events: readonly LogEvent[]): Compared[] {
 }
 
 /** A session's ending, whatever its seat: each writes `<seat>.finished` with its id, which a
- *  solve's does not name. Until 16 October the crash rule named the Builder's and
- *  the Examiner's, and three drafts that crashed on a named reset ended three fresh campaigns. */
+ *  solve's does not name. Reading every seat's ending keeps a crashed draft, or any other seat,
+ *  inside the crash rule. */
 export const sessionEnded = ({ kind, data }: LogEvent) =>
   kind.endsWith(".finished") && isString(data.session);
 
@@ -91,12 +91,12 @@ export const heldOut = (data: JsonObject) => Array.isArray(data.held) && data.he
  *  out no task. The table's want of room passes it over (`roomless`), and so does the count of
  *  conversations that made no move (`idleOf`). */
 export const cutShort = (event: LogEvent) =>
-  sessionEnded(event) && CUT.has(event.data.ended) && !heldOut(event.data);
+  sessionEnded(event) && INTERRUPTED.has(event.data.ended) && !heldOut(event.data);
 
 /** The sessions in a row, to the log's end and since the campaign last ended, that the provider
  *  failed before they held out a task or changed a harness, with the last one's crash. The table
- *  ends a campaign on its environment after `CRASHES` of them (`decide.ts`) instead of `no-room`
- *  (six on a session limit, 11 October), and the count starts again after that ending. */
+ *  ends a campaign on its environment after `CRASHES_IN_A_ROW` of them (`decide.ts`) instead of
+ *  `no-room`, and the count starts again after that ending. */
 export function crashedRun(events: readonly LogEvent[]) {
   // A wait for the provider's named reset starts the count again as an ending does (`waitOut`).
   const since = events.findLastIndex(

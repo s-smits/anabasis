@@ -8,8 +8,7 @@
  * or comparison its start names. A session open across a promotion bills each epoch what its turns
  * metered there.
  *
- * Written on 19 October, when a promotion in buffer-fresh-opus-forkedPR223_v0_5_4-r2 and -r3 was
- * seen to take six to seven hours and no reader said where they went.
+ * A promotion can take several hours, and without it no reader says where they went.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
@@ -23,9 +22,8 @@ const hours = (ms: number) => (ms / HOUR_MS).toFixed(1);
 /**
  * The dollars each part billed between two events, and the tree's own sum over them. Each part is
  * billed through the tree's own fold over its events alone, so an open session or solve counts
- * what its turns metered (`unfinished`), as the total does. Until 1 November the parts summed the
- * ending records alone, and an Examiner session open at the log's end read $0.00 where the view
- * read $4.53 (buffer-fresh-opus-gate-supply-r2, x-2).
+ * what its turns metered (`unfinished`), as the total does. Summing the ending records alone would
+ * read an Examiner session open at the log's end as $0.00 where the view reads what it billed.
  */
 function billedOf(tree: Tree, events: readonly LogEvent[], from: number, to: number) {
   const owners = new Map<string, string>();

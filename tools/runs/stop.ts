@@ -66,11 +66,11 @@ export function family(table: string, pid: number): number[] {
  * would have let them go. A seed's log begins as its source's, and what that run has open is the source's to hold.
  *
  * An Examiner session has a root as a Builder's: left out here, the root of the one a stop cut
- * stayed and had to be released by hand (buffer x-1, 2026-10-10). A session that drafts
- * an exam has had one since 11 October. Every Examiner session is named, finished or not: the
+ * would stay and have to be released by hand. A session that drafts an exam has one too. Every
+ * Examiner session is named, finished or not: the
  * root is its conversation's first ask's, which stands through each rest with that ask finished
  * and goes only when the conversation ends, so one that stands was left. A run stopped at a rest
- * kept 517 MB under x-1 after x-3 had finished (forkedPR629, 5 November).
+ * can keep hundreds of megabytes under an early session after a later one has finished.
  */
 export function leftOpen(run: Pick<Run, "path" | "seed">): (SolveDirs & { build?: string })[] {
   const events = logEvents(run.path).slice(run.seed === true ? seedCut(dirname(run.path)) : 0);
@@ -88,7 +88,7 @@ export function leftOpen(run: Pick<Run, "path" | "seed">): (SolveDirs & { build?
 /** What a stopped process's run may go on with, by the command it ran. A round has no ending to
  *  write when it is stopped, so a stop inside a Builder session spends that session's id; the
  *  session is the stopped process's own, by its flags, since a log's last session may be another
- *  run's. Both campaigns stopped by signal on 10 October lost a session that was running. */
+ *  run's, and a campaign stopped by signal would otherwise lose a session that was running. */
 function after(run: Run, ran: readonly string[]): string {
   if (runsAs(ran, [EXAMINE, DRAFT])) {
     return "An Examiner session's id names one session: the next takes another --session";
@@ -124,8 +124,8 @@ async function end(run: Run, running: readonly Running[], yes: boolean): Promise
 
 /** Release the roots `run` left (`open`, its `leftOpen`), where no process in `running` writes it any
  *  more, a cut Builder session's notes kept first. A root its release could not remove is named, and
- *  the stop goes on to the next. A root an earlier tree mounted a disk image at, before 19 October,
- *  is one: `hdiutil detach` it first. The daily sweep does the same for every run nobody stopped,
+ *  the stop goes on to the next. A root an older tree mounted a disk image at is one: `hdiutil
+ *  detach` it first. The daily sweep does the same for every run nobody stopped,
  *  as its archive takes the run (`archiveIdle`, `retire.ts`). */
 export async function release(
   run: Run,

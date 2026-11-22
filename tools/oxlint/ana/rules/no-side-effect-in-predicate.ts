@@ -13,8 +13,8 @@ import { identifierName, inlineFunctionArgument, isNamedMember } from "../shared
  * structure does the job the closure was doing by side effect, and the array method goes back to
  * answering a question rather than building state while it walks.
  *
- * The rule reads the six positions that take a predicate — `filter`, `find`, `findLast`,
- * `findIndex`, `some` and `every` — and reports a callback whose body calls one of six mutating
+ * The rule reads the six positions that take a predicate (`filter`, `find`, `findLast`,
+ * `findIndex`, `some` and `every`) and reports a callback whose body calls one of six mutating
  * methods. Each changes a receiver that outlives the walk, which is what makes the number of walks
  * observable, and a call that merely reads is invisible here. Reading the text rather than the tree
  * keeps it to one line per name: the dot is required, so a free `add(x)` says nothing about a
@@ -25,8 +25,8 @@ import { identifierName, inlineFunctionArgument, isNamedMember } from "../shared
  * a `map` that also records what it saw is a different finding with a different answer, and
  * `reduce` carries its accumulator by contract.
  *
- * There is no fix: which structure replaces the set — a `Map` by key, a
- * `Object.groupBy`, or a plain loop when the walk really does build two things — is the decision
+ * There is no fix: which structure replaces the set (a `Map` by key, a
+ * `Object.groupBy`, or a plain loop when the walk really does build two things) is the decision
  * the author has to make, and it is not readable off the predicate.
  */
 

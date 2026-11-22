@@ -1,4 +1,4 @@
-/** Machine identities and capacities come only from ANA_HOSTS (22 October 2026). */
+/** Machine identities and capacities come only from ANA_HOSTS. */
 import { existsSync } from "#src/meta/filesystem.ts";
 import { mainTree } from "#src/meta/git.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
@@ -28,7 +28,7 @@ export interface Host {
   readonly envFiles?: readonly string[];
   /** Live campaigns or simulation seats this machine may carry. */
   readonly capacity?: number;
-  /** The check tasks this machine runs at once for the runner; unset, the runner sends it none. */
+  /** The check tasks this machine runs at once for the runner; unset, two. */
   readonly checks?: number;
   /** The packs this machine is kept for: it takes no other, and no other machine takes them. */
   readonly packs?: readonly string[];
@@ -84,11 +84,18 @@ function listed(text: string, name = "ANA_HOSTS"): readonly JsonValue[] {
 
 /** Whether this verb is kept to this machine: one another host sent here (`ANA_HOP`, set by
  *  `scriptCommand` in hosts.ts), or one asked for here alone (`cli.ts`). It reaches no further
- *  host, so two machines that list each other do not ask each other in a loop. Until 28 October
- *  the sender emptied `ANA_HOSTS` instead, and a keeper started that way inherited the empty
- *  list and counted no other machine's runs against a login's cap. */
+ *  host, so two machines that list each other do not ask each other in a loop, rather than the
+ *  sender emptying `ANA_HOSTS`, which a keeper would inherit and so count no other machine's runs
+ *  against a login's cap. */
 export const keptHere = (env: Readonly<Record<string, string | undefined>> = runtimeProcess.env): boolean =>
   env.ANA_HOP === "1";
+
+/** Where a check runs (`auto`, `here` or a host's name), as `ANA_CHECK_HOST` says; undefined where it
+ *  is unset. */
+export const checkHost = (): string | undefined => runtimeProcess.env.ANA_CHECK_HOST;
+
+/** The check tasks `host` takes at once from the check runner and a landing: its `checks`, or two. */
+export const checkSlots = (host: Host): number => host.checks ?? 2;
 
 /** The hosts `text` lists, by default the environment's `ANA_HOSTS`: none for a verb kept here. */
 export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Host[] {
@@ -181,10 +188,10 @@ export function configuredRuntime(host: Host) {
  *  here, and what `move` reads as `here`. */
 export const ownName = (): string => hostname().replace(/\..*$/u, "");
 
-/** The benchmarks `EVAL_RUNNER` lists (`.env.runs.example`), none where unset. Until 17 November
- *  2026 it, and `ABLATION_HOST` before it, named one machine alone, which is refused as not JSON.
- *  A verb kept to this machine (`keptHere`) reads the benchmarks rolled here alone: until
- *  19 November 2026 it found no host for one rolled elsewhere and refused the whole verb. */
+/** The benchmarks `EVAL_RUNNER` lists (`.env.runs.example`), none where unset. An older value that
+ *  names one machine alone, as `ABLATION_HOST` did, is refused as not JSON. A verb kept to this
+ *  machine (`keptHere`) reads the benchmarks rolled here alone, rather than finding no host for one
+ *  rolled elsewhere and refusing the whole verb. */
 export function benchesOf(env: Readonly<Record<string, string | undefined>> = runtimeProcess.env): Bench[] {
   const value = listed(env.EVAL_RUNNER ?? "", "EVAL_RUNNER");
   const known = hostsOf(env.ANA_HOSTS ?? "");

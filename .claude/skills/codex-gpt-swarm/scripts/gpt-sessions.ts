@@ -12,12 +12,12 @@
  * it is read back, is `gpt-receipts.ts`'s.
  *
  * Each session runs with Codex's live web search (`codex --search`) unless its manifest says
- * `"search": false`, as a whole-run investigation's does: until 27 October no session could search,
- * and a literature question was answered from memory.
+ * `"search": false`, as a whole-run investigation's does, so that a literature question is not
+ * answered from memory.
  *
  * v1's launcher also held a parent Codex task open through a stop hook, and took a bare task list
- * beside a manifest. v2 registers no Codex hook and a manifest holds a task list whole, so both
- * went when the skill came over on 11 October.
+ * beside a manifest. v2 registers no Codex hook and a manifest holds a task list whole, so it has
+ * neither.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { sha256 } from "#src/meta/digest.ts";
@@ -321,7 +321,7 @@ function sessionEnvironment(outputDir: string): SessionEnvironment {
 /** Whether a session can write only what it owns: it is read-only, or an owned path is its workdir.
  *  Codex starts only inside a Git work tree, where Git can undo what a session wrote, and such a
  *  session has nothing of anyone else's to undo. A lane run in a scratch folder outside every work
- *  tree died in 38 ms on 2026-09-30, "Not inside a trusted directory". */
+ *  tree dies at once with "Not inside a trusted directory". */
 function ownsAllItCanWrite({ sandbox, workdir, ownedPaths }: Session): boolean {
   if (sandbox === READ_ONLY) return true;
   return ownedPaths.some((path) => {
@@ -523,7 +523,7 @@ function recordedSession(outputDir: string, row: SessionRecord): Session {
   if (sha256(prompt) !== row.promptSha256) {
     throw new Error(`${promptPath} is absent or differs from the prompt launch.json records`);
   }
-  // A launch recorded before 9 November names no effort a row; its launch's effort then holds.
+  // An older launch names no effort a row; its launch's effort then holds.
   const { name, workdir, sandbox, ownedPaths, effort = null } = row;
   return { name, prompt, workdir, sandbox, ownedPaths, effort };
 }

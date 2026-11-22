@@ -13,7 +13,7 @@ const JWT = [b64url('{"alg":"HS256","typ":"JWT"}'), b64url('{"sub":"1234"}'), b6
   ".",
 );
 const GITHUB_PAT = ["ghp", "16C7e42F292c6912E7710c838347Ae178B4a"].join("_");
-// Short stand-in (u:p) — our rules and remote scanners treat it as non-credential.
+// Short stand-in (u:p): our rules and remote scanners treat it as non-credential.
 const SHORT_URL = join("post", "gres", "://", "u", ":", "p", "@", "example.test/db");
 
 const MUST_FIRE: readonly (readonly [string, string])[] = [

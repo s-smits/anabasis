@@ -1,15 +1,15 @@
 /**
- * Supply area-specific guidance before a coding tool call, once per area per session.
+ * Supplies area-specific guidance before a coding tool call, once per area per session.
  *
- * Claude Code and Codex invoke this hook through their repository configuration. Each ROUTES entry
- * matches a command or edited path and supplies invariants and documentation links through
- * hookSpecificOutput.additionalContext. The hook informs; it never blocks and exits 0 on bad input.
+ * Claude Code and Codex invoke this hook through their repository configuration. Each `ROUTES` entry
+ * matches a shell command or edited file path and injects invariants and documentation links via
+ * `hookSpecificOutput.additionalContext`. The hook is purely informative: it never blocks a tool
+ * call and exits 0 on malformed input.
  *
- * On 30 October, AGENTS.md was reduced from 34,150 tokens to about 8,600 by moving detail into four
- * skills with the same section numbers. About 4,400 tokens had already been repeated in skills.
- * This hook points to the relevant guidance when an area is first used. Sessions that never enter
- * an area receive none of its hook text. Add a row for a new area and update stale pointers when
- * their owners change.
+ * `AGENTS.md` states the core invariants and delegates detailed mechanisms to four numbered skills,
+ * so this hook surfaces the owning skill when an area is first entered. Sessions that never touch
+ * an area receive none of its context. Add a route when introducing a new area and keep pointers
+ * aligned when owners move.
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "../../src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "../../src/meta/json-runtime.ts";
@@ -17,24 +17,24 @@ import { isRecord, isString } from "../../src/meta/json-shape.ts";
 import { tmpdir } from "../../src/meta/os.ts";
 import { join } from "../../src/meta/path.ts";
 
-/** One area: what it matches, and what a session is told on entering it. */
+/** One repository area: its command/path matchers and the guidance delivered upon first entry. */
 interface Route {
   readonly id: string;
   readonly command?: RegExp;
   readonly path?: RegExp;
   readonly said: string;
-  /** The skill that owns the area, which the session is told to read first; null where none does. */
+  /** The owning skill that the session is instructed to read first, or `null` when none applies. */
   readonly skill: string | null;
 }
 
-/** Hook input fields: a shell command, possibly an argument list, and edited file paths. */
+/** Hook input fields: a shell command (string or argv list) and edited file paths. */
 export interface ToolInput {
   readonly command?: string | readonly string[];
   readonly file_path?: string;
   readonly notebook_path?: string;
 }
 
-/** A tool call as the hook reads it: the shell command it runs, and the paths it edits. */
+/** Normalised tool call extracted from hook input: the shell command string and target file paths. */
 interface Call {
   readonly command: string;
   readonly paths: readonly string[];
@@ -45,7 +45,7 @@ const ROUTES: readonly Route[] = [
     id: "stack",
     command:
       /\b(git (worktree add|push|rebase|commit)|gh (pr (create|edit|ready)|stack)|bun run (land|follow))\b/u,
-    said: "Stack and pull requests (AGENTS.md section 11): inspect the current stack (`bun .claude/skills/stack-pr/scripts/stack.ts`). A new PR goes on the top of the cycle's stack, even one that does not build on the PR below; a chain of its own on `main` suits a change that must land first, worth a word with the operator. A fix to an open PR's own code belongs to that PR. Run `/simplify` before a code commit. Each PR needs one `importance:I0`-`I3` label and a category; claims follow `attribution-and-proof`. `bun .claude/skills/repository-practice/scripts/preflight.ts` lists suggested tests, UI checks, size and prose findings, and labels.",
+    said: "Stack and pull requests (AGENTS.md section 11): inspect the current stack (`bun .claude/skills/stack-pr/scripts/stack.ts`). A new PR goes on the top of the cycle's stack, even one that does not build on the PR below, opened with `gh pr create --draft --base <top's branch>` and linked into GitHub's native stack by `bun run land -- <new top> --sanitize`; a chain of its own on `main` suits a change that must land first, worth a word with the operator. A fix to an open PR's own code belongs to that PR. Run `/simplify` before a code commit. Each PR needs one `importance:I0`-`I3` label and a category; claims follow `attribution-and-proof`. `bun .claude/skills/repository-practice/scripts/preflight.ts` lists suggested tests, UI checks, size and prose findings, and labels.",
     skill: "stack-pr",
   },
   {
@@ -70,7 +70,7 @@ const ROUTES: readonly Route[] = [
   {
     id: "suite",
     command: /\bbun (run (test|gate)|test)\b/u,
-    said: "Checks (AGENTS.md section 11): use `bun run test -- <paths>` for the owning tests while editing. Avoid bare `bun test`. Run at most one full suite per host. `bun run gate` runs the CI gate. Report wall-test failures caused by missing user namespaces; such a suite has not passed.",
+    said: "Checks (AGENTS.md section 11): use `bun run test -- <paths>` for the owning tests while editing. Avoid bare `bun test`; the check runner places each run. `bun run gate` runs the CI gate. Report wall-test failures caused by missing user namespaces; such a suite has not passed.",
     skill: null,
   },
   {
@@ -143,10 +143,10 @@ const ROUTES: readonly Route[] = [
   },
 ];
 
-/** A patch names each file it touches on a line of its own (`*** Update File: <path>`). */
+/** Matches file headers inside a Codex patch (`*** Add|Update|Delete File: <path>`). */
 const PATCHED = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gmu;
 
-/** The command and the edited paths of a hook's `tool_input`, whichever agent sent it. */
+/** Extracts the shell command and edited file paths from a hook's `tool_input` payload. */
 function callOf(input: unknown): Call {
   if (!isRecord(input)) return { command: "", paths: [] };
   const { command, file_path: file, notebook_path: notebook } = input;
@@ -161,7 +161,7 @@ function callOf(input: unknown): Call {
   return { command: shell, paths: [file, notebook, ...patched].filter(isString) };
 }
 
-/** The routes a call enters that `seen` does not hold yet, in table order. */
+/** Returns the routes entered by `input` that are not yet present in `seen`, in table order. */
 export function momentsOf(input: unknown, seen: ReadonlySet<string>): Route[] {
   const { command, paths } = callOf(input);
   return ROUTES.filter(

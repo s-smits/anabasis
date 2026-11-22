@@ -25,7 +25,7 @@ import { containsUnknownType } from "../shared/unknown-type.ts";
  * admitted; `writeCompleted(path, value: unknown)` handed its value to `JSON.stringify` and was
  * reported until it declared `JsonValue`.
  *
- * A signature with no body — `TSFunctionType`, `TSMethodSignature`, an overload — can prove
+ * A signature with no body (`TSFunctionType`, `TSMethodSignature`, an overload) can prove
  * nothing and is reported exactly as the upstream rule reports it. The one exception is a return
  * type that is itself the proof: `(value: unknown) => value is T` narrows the parameter it names,
  * which is the same evidence the body form is admitted for, so the two spellings of one contract
@@ -45,7 +45,7 @@ const PROVING_NAME = /^(is|as|has|assert|ensure|require|validate|parse)[A-Z0-9]/
  *  next line is the proof. `errorMessage` and `errorCode` in `src/meta/runtime-values.ts` are
  *  total on `unknown`: they are the one place a caught value is turned into text or a code, and
  *  handing the parameter to that owner is the whole treatment it needs. A call that merely
- *  consumes the value without either property — `String(value)`, `JSON.stringify(value)` — is
+ *  consumes the value without either property, `String(value)`, `JSON.stringify(value)`, is
  *  the slop this rule exists to report and must not be added. */
 const PROVING_CALLS = new Set(["trustedJson", "errorMessage", "errorCode"]);
 

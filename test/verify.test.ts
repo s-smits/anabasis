@@ -71,7 +71,12 @@ export const checks = {
   hangs: () => new Promise(() => {}),
   lingers: async (req) => (await req.runtime.tools.run({ toolId: "${LINGER}" }), true),
   answers: () => true,
+  fast: () => true,
   spins: () => { for (;;) {} },
+  spinsAfterFast: async () => {
+    await Bun.sleep(40);
+    for (;;) {}
+  },
   exits: () => process.exit(0),
   detaches: async () => {
     const child = Bun.spawn([process.execPath, "-e", "await new Promise(() => {})", "${DETACHED}"], {
@@ -151,6 +156,8 @@ const BRIEF = {
     check("answers", "hang"),
     check("lingers", "linger", { tools: [LINGER] }),
     check("spins", "spin"),
+    check("spinsAfterFast", "spinRace"),
+    check("fast", "spinRace"),
     check("exits", "exit"),
     check("detaches", "detach"),
   ],
@@ -200,7 +207,7 @@ beforeAll(() => {
   mkdirSync(join(tools, "bin"), { recursive: true });
   writeFileSync(join(checks, "brief.json"), JSON.stringify(BRIEF));
   writeFileSync(join(checks, "evaluator.ts"), PROGRAM);
-  // As both check programs v1 wrote on 7 October do, the program imports a module of its own.
+  // As v1's check programs do, the program imports a module of its own.
   writeFileSync(join(checks, "reference", "model.ts"), "export const same = (a, b) => a === b;\n");
   writeFileSync(secret, "another answer");
   tool("double", "read n; echo $((n * 2))");
@@ -296,6 +303,13 @@ describe.skipIf(!osIsolationSupport().ok)("a verdict's checks", () => {
     expect(await within(brief(task("spin"), {}), 5000)).toEqual({
       kind: "faulty",
       check: "spins",
+      reason: "the check timed out, holding the cell past 900 ms",
+    });
+    // When a sibling check runs and finishes while another check later spins synchronously, the
+    // cell timeout blames the still-running spinner, not the finished sibling.
+    expect(await within(brief(task("spinRace"), {}), 5000)).toEqual({
+      kind: "faulty",
+      check: "spinsAfterFast",
       reason: "the check timed out, holding the cell past 900 ms",
     });
     expect(await verify(task("exit"), {})).toMatchObject({ kind: "non-result" });

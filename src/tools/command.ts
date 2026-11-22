@@ -88,15 +88,21 @@ const WALL_TEST_MARK = "ANA-WALL-PROBE";
 const WALL_TEST_LIMITS = { shellDefaultSeconds: 20, shellMaxSeconds: 20 };
 
 /**
- * Whether a package index is reached from inside the wall: `reached` where a command run as a
- * solver's fetched one, `unreached` where it did not. A prompt that
- * said "commands have network access" whatever the host did was false on the Linux host of
- * 10 October, where the wall's commands had an empty environment and no resolver: 0 of 143 solves
- * of one campaign installed anything, and 26 of the 34 that ran out of turns had spent one on a pip
- * install. A sentence a host makes false is the host's to make true, so the prompt says what the
+ * Whether a package index is reached from inside the wall, and what installs from it: `uv` where a
+ * command run as a solver's fetched one and found `uv` on its path, `pip` where it fetched one
+ * without, `unreached` where it did not. A prompt that
+ * said "commands have network access" whatever the host did would be false on a host whose wall
+ * gives commands an empty environment and no resolver, and solves there would spend turns on pip
+ * installs that cannot succeed. A sentence a host makes false is the host's to make true, so the prompt says what the
  * probe found.
  */
-export type NetworkReach = "reached" | "unreached";
+export type NetworkReach = "uv" | "pip" | "unreached";
+/** What every seat is told installs Python packages where the index is reached (operator,
+ *  21 November 2026: "use uv if present with uv add remove etc and otherwise pip"). */
+export const INSTALLER_TOLD: Readonly<Record<Exclude<NetworkReach, "unreached">, string>> = {
+  uv: " uv is installed, so use it for Python packages (`uv init`, `uv add`, `uv remove`, `uv run`, `uv tree`) rather than pip.",
+  pip: " uv is not installed, so use pip for Python packages.",
+};
 /** How long an `unreached` reading stands before the next asker probes again. A reached one stands
  *  for the process's life. */
 export const UNREACHED_MS = 10 * 60_000;
@@ -105,7 +111,8 @@ export const UNREACHED_MS = 10 * 60_000;
 const REACH = new Map<string, { readonly at: number; readonly probe: Promise<NetworkReach> }>();
 const REACH_MARK = "ANA-NETWORK-REACHED";
 /** The index pip reads; curl first, and the resolver pip itself uses where curl is not on the host. */
-const REACH_COMMAND = `(curl -fsS -m 10 -o /dev/null https://pypi.org/simple/pip/ 2>/dev/null || python3 -c 'import urllib.request; urllib.request.urlopen("https://pypi.org/simple/pip/", timeout=10)' 2>/dev/null) && echo ${REACH_MARK}`;
+const UV_MARK = "ANA-UV-FOUND";
+const REACH_COMMAND = `(curl -fsS -m 10 -o /dev/null https://pypi.org/simple/pip/ 2>/dev/null || python3 -c 'import urllib.request; urllib.request.urlopen("https://pypi.org/simple/pip/", timeout=10)' 2>/dev/null) && echo ${REACH_MARK} && command -v uv >/dev/null 2>&1 && echo ${UV_MARK}`;
 
 /** A solve's time: when its first turn started, null until it has, and how long the solve may be. */
 export interface SolveClock {
@@ -119,6 +126,8 @@ interface WalledOptions {
   /** Seconds asked for, held to the limits by `heldSeconds`; pi's backend throws
    *  `timeout:<seconds>` when the command runs past what it was given. */
   readonly timeout?: number | undefined;
+  /** Seconds its caller already held (`heldSeconds`), taken as given instead of `timeout`. */
+  readonly bound?: number | undefined;
   /** Writes what the command brings into `into`, a fresh folder under the seat's `kept`, before it
    *  starts. */
   readonly stage?: ((into: string) => void) | undefined;
@@ -149,9 +158,8 @@ export function usedSeconds(clock: SolveClock | undefined, now = performance.now
  * it: at a five-minute deadline 12 of 46 Starter solves ended at it, 11 of them inside a command, with
  * nothing sent. So a command returns while there is time to act on it. One started inside
  * the reserve is left to its own limits: the solver is told the time used with every result, and
- * what it starts then is its own to judge. Until 15 October one started under five seconds before
- * the reserve kept its own limits too, while the solver is told such a command is cut (lane 13 of
- * main0_5_1's investigation).
+ * what it starts then is its own to judge, and one started just before the reserve is cut as the
+ * solver is told it is.
  */
 export function heldSeconds(
   timeout: number | undefined,
@@ -192,8 +200,8 @@ export function makeSeatDirs(dirs: SolveDirs): void {
  *
  * The wall is a test and no convention (`AGENTS.md`, rule 3): before its first use in a process
  * each policy runs its wall test (`probeWall`), and a failed test refuses the start with its own
- * lines. While the wall test ran in the test suite alone, a sibling worktree's log was readable in
- * every live run (10 October).
+ * lines, since a wall test run in the test suite alone would not catch a live policy that leaves a
+ * sibling worktree's log readable.
  */
 export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Promise<SolveIsolationPolicy> {
   makeSeatDirs(dirs);
@@ -225,8 +233,8 @@ export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Pr
  * all four held, and otherwise the command's output, a line a step. The last step tests its own
  * write and read: a launch that refuses everything fails it, as one that refuses nothing fails the first.
  *
- * Nothing is written in the sibling, which another user may own: a rehearsal as the campaign user refused
- * every solve on EACCES in the root-owned main tree when the wall test wrote a canary there (10 October).
+ * Nothing is written in the sibling, which another user may own, so a rehearsal as another user
+ * does not refuse every solve on EACCES when the wall test would write a canary there.
  */
 export async function probeWall(
   wall: CommandWall,
@@ -275,8 +283,8 @@ export async function probeWall(
   }
 }
 
-/** Whether a command run on `wall` fetched the package index. A probe that fails to run reads as
- *  unreached. */
+/** Whether a command run on `wall` fetched the package index, and found `uv`. A probe that fails to
+ *  run reads as unreached. */
 async function probeReach(wall: CommandWall): Promise<NetworkReach> {
   let out = "";
   await runWalled(wall, REACH_COMMAND, {
@@ -285,19 +293,20 @@ async function probeReach(wall: CommandWall): Promise<NetworkReach> {
     },
     timeout: 30,
   }).catch(() => undefined);
-  return out.includes(REACH_MARK) ? "reached" : "unreached";
+  if (!out.includes(REACH_MARK)) return "unreached";
+  return out.includes(UV_MARK) ? "uv" : "pip";
 }
 
 /** The reach of the wall `wall` stands for (`NetworkReach`), as this process last probed it at
  *  `now`: a reached reading stands, and an unreached one is probed again once `UNREACHED_MS` old.
- *  Until 9 November one unreached probe stood for the process's life, a Builder session's 24 hours. */
+ *  An unreached probe that stood for the process's life would hold for a whole Builder session. */
 export async function networkReach(
   wall: CommandWall,
   { now = Date.now(), probe = probeReach }: { now?: number; probe?: typeof probeReach } = {},
 ): Promise<NetworkReach> {
   const key = wall.base.policyHash;
   const known = REACH.get(key);
-  if (known !== undefined && (now - known.at < UNREACHED_MS || (await known.probe) === "reached")) {
+  if (known !== undefined && (now - known.at < UNREACHED_MS || (await known.probe) !== "unreached")) {
     return known.probe;
   }
   // Callers that waited on the same stale reading share the one probe the first of them started.
@@ -311,9 +320,9 @@ export async function networkReach(
 /**
  * Runs `command` on `wall`, in the seat's home, or beside a copy of what it brings (`stage`).
  *
- * A command that brings nothing makes nothing to start. One solve filled its 2 GiB disk cap on
- * 9 October and was then refused `rm -rf ~/w` fourteen times running, each before it started, when
- * every command made a folder of its own first. One that brings files has nowhere to stage them on
+ * A command that brings nothing makes nothing to start, so a seat that fills its disk can still run
+ * the `rm` that frees it, which a command that made a folder of its own first could not. One that
+ * brings files has nowhere to stage them on
  * a full disk, and fails as the full disk it is.
  */
 export async function runWalled(
@@ -347,7 +356,7 @@ export async function runWalled(
         : `w=$(mktemp -d "$TMPDIR/in.XXXXXX") || exit\ncp -R ${shellQuote(into)}/. "$w" && cd "$w" && {\n${command}\n}\ns=$?\ncd / && rm -rf "$w"\nexit $s`;
     // One seat's commands run one at a time, so they share one profile file and one leader file.
     const staged = stageCommandIsolation(policy, join(dirs.host, "command.sb"), line);
-    const seconds = heldSeconds(options.timeout, wall).seconds;
+    const seconds = options.bound ?? heldSeconds(options.timeout, wall).seconds;
     const result = await SHELL.exec(
       `echo $$ > ${shellQuote(leader)}\n${staged}`,
       {

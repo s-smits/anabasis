@@ -1,5 +1,5 @@
-/** A run's life and bounded stderr, shared by the run state (`state.ts`), view, pulse and remote
- *  record snapshots. */
+/** Process-liveness inspection and bounded stderr tailing shared by `state.ts`, `view`, `pulse`,
+ *  and remote record snapshots. */
 import { existsSync, lstatSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { dirname, join } from "#src/meta/path.ts";
@@ -9,20 +9,22 @@ import { HERE, keepers, type Run, type Running, writers } from "./registry.ts";
 
 interface Observation {
   readonly open: boolean;
-  /** Whether a keeper held the run there; absent in an observation an older tree kept. */
+  /** Whether a keeper was attached on the remote host; omitted in observations written by older checkouts. */
   readonly kept?: boolean;
   readonly stderr: string | null;
 }
 const OBSERVATION = "observation.json";
 
-/** Whether a process writes a run's log, and whether a `runs keep` would start one again: a peer's
- *  by its last fetch, which sees no keeper, and this machine's by the processes in `running`. */
+/** Liveness of a run: whether a writer process is active and whether a `runs keep` supervisor is
+ *  attached. Derived from the latest fetched observation for remote snapshots and from `running`
+ *  for local runs. */
 export interface Life {
   readonly writing: boolean;
   readonly kept: boolean;
 }
 
-/** Read only the tail of the newest regular launch stderr, never a link or a whole growing file. */
+/** Reads only the bounded tail of the most recent regular `launch-*.err` file, ignoring symlinks
+ *  and avoiding reading an entire growing log into memory. */
 export async function stderrTail(log: string): Promise<string | null> {
   const folder = dirname(log);
   const newest = readdirSync(folder)
@@ -37,19 +39,19 @@ export async function stderrTail(log: string): Promise<string | null> {
   return boundText(tail, 2048, "tail", 20).shown;
 }
 
-/** Publish observation metadata with a new inode, preserving any previous hardlinked snapshot. */
+/** Atomically writes observation metadata to a new inode, preserving any earlier hardlinked snapshot. */
 export const keepObservation = (folder: string, observation: Observation) =>
   remember(join(folder, OBSERVATION), capturedJsonStringify(observation));
 
-/** What the last fetch of a peer's campaign saw there, or null for this machine's own: a snapshot
- *  carries remote liveness, and local pids never decide whether a remote campaign lives. */
+/** Reads the cached remote liveness observation for a fetched peer campaign, or returns null for
+ *  local runs so local PIDs are never confused with remote liveness. */
 export function observationOf(run: Run): Observation | null {
   const stored = join(dirname(run.path), OBSERVATION);
   const remote = run.archived !== undefined && run.archived !== HERE;
   return remote && existsSync(stored) ? parseJsonAs<Observation>(readFileSync(stored, "utf8")) : null;
 }
 
-/** Where `run` writes and is kept from, among the processes `running`. */
+/** Determines whether `run` currently has a live writer or keeper process. */
 export function lifeOf(run: Run, running: readonly Running[]): Life {
   const seen = observationOf(run);
   return seen === null
@@ -57,8 +59,8 @@ export function lifeOf(run: Run, running: readonly Running[]): Life {
     : { writing: seen.open, kept: seen.kept === true };
 }
 
-/** Whether `run` may still write its log. It is the one reading of a run's life that capacity,
- *  retire, copy and the investigations share. */
+/** Returns true if `run` may still append to its log. Shared authoritative liveness predicate used
+ *  by capacity checks, `retire`, `copy`, and investigations. */
 export const stillRunning = (run: Run, running: readonly Running[]): boolean => {
   const { writing, kept } = lifeOf(run, running);
   return writing || kept;

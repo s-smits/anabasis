@@ -14,10 +14,10 @@
  * since the gather job and `retire` rewrite an archive copy whose campaign ended days before. The
  * order reads each log's tail only (`lastAt`, `main/logs.ts`), as 176 logs hold 1.7 GB.
  *
- * On 29 October two audit batches each wrote this inventory by hand: 213 candidates with copies of
- * one campaign under several paths, and a note telling every session to deduplicate them and to
- * record each log's event count, last time and hash itself, because live logs grow while they are
- * read. This prints those identities once, so every session cites the same snapshot.
+ * Written by hand, this inventory holds copies of one campaign under several paths, and every
+ * session must deduplicate them and record each log's event count, last time and hash itself,
+ * because live logs grow while they are read. This prints those identities once, so every session
+ * cites the same snapshot.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { lastAt } from "#skills/main/logs.ts";

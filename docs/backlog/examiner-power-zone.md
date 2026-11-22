@@ -137,7 +137,7 @@ one reading. They are listed by how much of jobstat's ceiling each can explain.
    (`src/kernel/solves.ts`) keeps every Examiner-asked solve out of a task's record by design.
    Owner: `src/kernel/reports.ts`, `src/campaign/admission.ts`.
 5. **Exhaustion takes two comparisons** (confirmed). A task leaves the frontier once the reference
-   answers it in every solve of its last two comparisons (`RUNS.easy`), so each ceiling task fills
+   answers it in every solve of its last two comparisons (`READINGS_IN_A_ROW.easy`), so each ceiling task fills
    two draws before it goes. Owner: `poolOf`.
 6. **A tighter budget did not make room** (one reading). The jobstat run at PR600 with a turn limit
    of 6 model turns had both sides valid in every solve of its 8 tasks; its solves took 2 to 6

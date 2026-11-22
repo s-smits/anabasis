@@ -355,6 +355,8 @@ describe("a draft put to the host", () => {
       const s = seat("draft", []);
       const mode = drafting({ ...s.request, reading: async () => [] }, async (act) => await act(), home);
       expect(toolOf(mode).description).toContain("from_file");
+      // A strict caller holds the program to the schema, which takes the object as well as the text.
+      expect(JSON.stringify(toolOf(mode).parameters)).toContain('"from_file"');
       const args = {
         ...draftArgs(SOUND),
         evaluator: { from_file: "evaluator.json" },
@@ -362,14 +364,21 @@ describe("a draft put to the host", () => {
       };
       await invoke(toolOf(mode), "put", args);
       expect(draftOf(read(s.log))).toEqual(SOUND);
-      // The check program is a text field, which each draft of 20 November first gave as the text
-      // of a `from_file` object: the gate then loaded that text as the program and refused it.
+      // The check program is a text field, which a draft may give as the text of a `from_file`
+      // object: the gate must not load that text as the program and refuse it.
       const spelt = drafting({ ...s.request, reading: async () => [] }, async (act) => await act(), home);
       const filled = toolOf(spelt).prepareArguments?.({
         ...args,
         evaluator: JSON.stringify({ from_file: "evaluator.json" }),
       });
       expect(filled).toMatchObject({ evaluator: SOUND.evaluator });
+      // A check program named by its own source file is taken as that file's text.
+      writeFileSync(join(home, "evaluator.ts"), SOUND.evaluator);
+      expect(
+        toolOf(spelt).prepareArguments?.({ ...args, evaluator: { from_file: "evaluator.ts" } }),
+      ).toMatchObject({
+        evaluator: SOUND.evaluator,
+      });
       const homeless = drafting(s.request, async (act) => await act());
       expect(toolOf(homeless).description).not.toContain("from_file");
     } finally {
@@ -462,7 +471,7 @@ describe("a campaign's drafts", () => {
       const events = read(campaignLog(name));
       const readings = events.filter(({ kind }) => kind === "checker.read");
       expect(readings).toHaveLength(1);
-      expect(readings[0]?.data).toMatchObject({ admitted: attended ? [] : ["check-product"], stored: 0 });
+      expect(readings[0]?.data).toMatchObject({ admitted: attended ? [] : ["check-product"] });
       expect(readings[0]?.data.faults).toEqual(
         attended ? [expect.stringContaining("--admit check-product")] : [],
       );

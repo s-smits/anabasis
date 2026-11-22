@@ -7,7 +7,7 @@ import { isOneArgumentCall } from "../shared/statements.ts";
 
 /**
  * `cause instanceof Error ? cause.message : String(cause)` was written 88 times in this tree, and
- * `src/meta/runtime-values.ts` has held `errorMessage` — the same three terms, once — the whole
+ * `src/meta/runtime-values.ts` has held `errorMessage` (the same three terms, once) the whole
  * time. Ninety-one copies of one decision is not a style question: the decision is what a caught
  * value looks like to an operator, and a repository that spells it in 63 files cannot change it.
  * A non-Error cause that should read as `unreadable value` rather than `[object Object]` is one
@@ -19,7 +19,7 @@ import { isOneArgumentCall } from "../shared/statements.ts";
  *
  * It fixes both, and the reason it once did not has gone: the fix needs an import, and
  * `shared/import-fix.ts` places one. That the expression and the import land together is the
- * whole of it — a rewrite that left the name undefined would be worse than the report — so the
+ * whole of it (a rewrite that left the name undefined would be worse than the report) so the
  * import edit rides on every diagnostic rather than the first, because oxlint drops a fix
  * overlapping one it has already applied and a single carrier is lost exactly when it is the
  * one dropped.

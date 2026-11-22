@@ -1,33 +1,35 @@
 # Synthetic logs
 
-A recorded log holds only the patterns its run happened to produce. To ask what a reader does with
-another, build it in memory and pass it to the reader: unit testing on constructed inputs, with no
-model, nothing written, in seconds.
+Recorded campaign logs contain only the event sequences that past runs happened to encounter. To
+test how a reader handles an arbitrary or rare event pattern, construct the log in memory and pass
+it directly to the reader: deterministic unit testing on synthetic inputs, with no model calls and
+no disk writes, completing in seconds.
 
 ```sh
 S=.claude/skills/system-path-simulation/scripts/synthetic.ts
-bun $S --list                          # the examples
-bun $S pool                            # run one by name
-bun $S <scratchpad>/my-scenario.ts     # run your own
-bun $S pool --tree <another worktree>  # under another tree's readers
+bun $S --list                          # list built-in example scenarios
+bun $S pool                            # run a built-in scenario by name
+bun $S <scratchpad>/my-scenario.ts     # run a custom scenario file
+bun $S pool --tree <another worktree>  # evaluate under another worktree's readers
 ```
 
 ## The kit
 
-A scenario default-exports one function of the `Kit` that `scripts/synthetic.ts` provides:
+Each scenario default-exports a function accepting the `Kit` supplied by `scripts/synthetic.ts`:
 
-- `log()` appends events in the shapes the writers produce: `hold(task, {valid, solves}?)`,
+- `log()` builds an event stream matching production writer schemas: `hold(task, {valid, solves}?)`,
   `refuse(task, valid)`, `release(task)`, `feasible(task)`, `compare(session, {old, fresh,
   starter?}, tasks, {terms?, reported?})`, `promote(harness, from, comparison)`, and `add(kind,
-  data)` for anything else. Solves are letters, `P` valid, `F` rejected and ruled earned, `W` cut by
-  the deadline, `N` no answer, so a task reads `"PP/PF"`, or `{ solves: "PP/PP", objective: [10, 10,
-  5, 5] }` with lower measures better.
-- `compare` writes the start, the solves and the report the tree computes from them (`compared`,
-  `src/campaign/comparison.ts`), so tally, reading, `valid` and room are the tree's own. `terms`
-  overrides the level or objective; `reported` overlays fields to plant a contradiction no writer
-  would produce.
-- `readers` holds the tree's `reports`, `size`, `record`, `decide`, `move` and `comparison`; any other
-  module is `await import(join(kit.tree, "src/..."))`. `table(header, rows)` prints rows.
+  data)` for any other event kind. Solves are encoded as single characters (`P` valid, `F` rejected
+  and ruled earned, `W` cut by deadline, `N` no answer), so a task entry looks like `"PP/PF"` or
+  `{ solves: "PP/PP", objective: [10, 10, 5, 5] }` where lower objective values are better.
+- `compare` emits the comparison start, solve events, and the report computed by the tree's own
+  logic (`compared`, `src/campaign/comparison.ts`), ensuring tallies, readings, `valid` counts, and
+  headroom match production calculations. `terms` overrides the significance level or objective;
+  `reported` overlays fields to inject contradictions that no real writer would emit.
+- `readers` exposes the tree's `reports`, `size`, `record`, `decide`, `move`, and `comparison`
+  modules; load any other module via `await import(join(kit.tree, "src/..."))`. `table(header,
+  rows)` formats tabular output.
 
 ```ts
 import type { Scenario } from "<repo>/.claude/skills/system-path-simulation/scripts/synthetic.ts";
@@ -39,27 +41,35 @@ const scenario: Scenario = ({ log, readers }) => {
 export default scenario;
 ```
 
-Start from the nearest example (`pool`, `examiner` or `decision`) and change its constants. For an
-event the kit lacks, copy its writer's shape from `src/` or from `test/decide.test.ts` and
-`test/reports.test.ts`, and add a method if it will be needed again.
+Start from the closest built-in example (`pool`, `examiner`, or `decision`) and modify its
+parameters. For an event kind not yet wrapped by the kit, copy the writer's shape from `src/` or
+from `test/decide-explore.test.ts` and `test/wall-practice.test.ts`, and add a helper method if it
+will be reused.
 
-## What to try
+## What to test
 
-Write the outcomes first (rule 1), then build the smallest log that tells them apart.
+Pre-register the rival outcomes first (rule 1), then construct the minimal synthetic log that
+discriminates among them:
 
-- **One constant changed** (`RUNS` or `SIZE` in `src/kernel/size.ts`, a floor, a weight) in a copied
-  tree, one scenario under both with `--tree`: a reader that does not move holds its own copy.
-- **Threshold edges**: below, at and above; a streak broken by one fail; ties at the gap floor.
-- **Two readers of one fact** should agree (rule 12), and two logs differing only in what a seat must
-  not learn should give byte-identical seat messages (rule 3).
-- **Sides that switch** across a promotion: does a reader follow the reference or the column?
-- **What a seat is told** (`record.heard`, the Builder's opening, `move.decidedLine`), the next move
-  and endings (`decide` after each state), old event kinds (section 5, habit 4), and scale.
+- **Single-constant perturbations**: modify one constant (`READINGS_IN_A_ROW` or `SIZE` in
+  `src/kernel/size.ts`, a floor, or a weight) in a second worktree and run the same scenario under
+  both trees with `--tree`; any reader whose output does not shift is holding a duplicate constant.
+- **Boundary conditions**: test immediately below, at, and above thresholds, streaks broken by a
+  single failure, and ties at the gap floor.
+- **Single-owner and wall invariants**: verify that two readers of the same fact agree (`AGENTS.md`,
+  rule 12), and that two logs differing only in hidden exam-side data produce byte-identical seat
+  messages (rule 3).
+- **Role swaps across promotions**: verify whether a reader tracks the reference harness by digest
+  rather than assuming a fixed column position.
+- **Seat views and backward compatibility**: inspect rendered seat messages (`record.heard`, the
+  Builder opening, `move.decidedLine`), decision-table transitions (`decide`), legacy event kinds
+  (`AGENTS.md`, section 5, habit 4), and scaling behaviour.
 
 ## Limits
 
-Only the readers you call run, so command joins are a [rehearsal](rehearsal.md) and model behaviour
-a [live seat](live-seat.md). The events are hand-built, so they prove what a reader does with these
-shapes; when a reading surprises you, check the writer before the reader. The events never reach a
-seed or campaign folder (rule 3), and a pattern that matters to a change goes into its owning test
-(rule 9).
+Synthetic logs exercise only the readers invoked by the scenario; command joins require a
+[rehearsal](rehearsal.md) and model behaviour requires a [live seat](live-seat.md). Because events
+are constructed by hand, they verify reader behaviour on those exact shapes; when a reading looks
+unexpected, check the production writer schema before faulting the reader. Synthetic events never
+touch a seed or campaign directory (rule 3), and any pattern relevant to a production change must
+be codified in its owning test under `test/` (rule 9).

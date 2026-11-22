@@ -13,92 +13,72 @@
  * check reads: without that, "earned" was the ruling that needed nothing, and it is the one that lets
  * a broken check count. And it must cite an answer probe that changed that field and moved a refusing check
  * that cites the rule off its refusal. A ruling that restates the check adds nothing its verdict did
- * not say: truss-141-m3's rulings of 12 October cited an answer probe that moved nothing on `mass-budget` in
- * 8 of 8, and one of the 12 cited none. Without such an answer probe the ruling is unclear, and the task
- * waits for a person's label. Coupled changes and parent fields are admissible (20 October): three
- * older unclear rulings could not clear the deciding check one part at a time.
+ * not say, and rulings without such a probe cited one that moved nothing or none at all. Without
+ * such an answer probe the ruling is unclear, and the task waits for a person's label. Coupled
+ * changes and parent fields are admissible, since some checks cannot be cleared one part at a time.
  *
  * A `check-defect` ruling names one of the refusing checks and cites a conclusive answer probe that
  * moved it off its refusal, the evidence an `earned` ruling carries, so neither ruling is the cheaper.
- * Until 5 November it had to cite a probe that changed a field the check reads and supplied no
- * accepted answer instead. In jobstat-fresh-opus-forkedPR607-r2 that test passed 10 of 10 rulings
- * on a probe that moved no check, and refused each time the one probe that moved the check off its
- * refusal, which it read as supplying an accepted answer; where a check reads `$`, as every jobstat
- * check does, its field test is empty. Blind labels (`settle.ts`) remain the measure of
- * these rulings (overhaul of 5 November, report 14).
+ * A weaker test, a probe that changed a field the check reads and supplied no accepted answer,
+ * passed rulings on probes that moved no check and refused the one probe that did, and where a check
+ * reads `$` its field test is empty. Blind labels (`settle.ts`) remain the measure of these rulings.
  *
  * The checks are replayed on the logged answer before any reading. A replay that gives another
  * verdict than the log holds is a check that does not repeat, and the host rules it a check-defect
- * itself; one that reaches no verdict leaves the fail unruled for the caller to retry. Nothing else
- * runs a check twice on one answer, so a rejected answer is where a check that does not repeat first
- * shows. On 20 October source triage found that calling a replay non-result `unclear` made rule 7's
- * retryable non-result a permanent set-aside: `src/campaign/round.ts:410-418` retries only null rulings.
+ * itself; one that reaches no verdict leaves the fail unruled for the caller to retry, rather than
+ * `unclear`, which would make rule 7's retryable non-result a permanent set-aside
+ * (`src/campaign/round.ts` retries only null rulings). Nothing else runs a check twice on one
+ * answer, so a rejected answer is where a check that does not repeat first shows.
  *
- * The packet carries the whole public contract and a known valid answer, from a solve or the author.
- * The review of 20 October found scope, answer format and objective missing, and 36 recent
- * readings had a passing solve available but could obtain an accepted answer only from the author.
+ * The packet carries the whole public contract (scope, answer format and objective included) and a
+ * known valid answer, from a passing solve where one is on record or else from the author.
  *
  * What a ruling does to the task, and how an `unclear` fail counts, is the caller's: this module
- * rules and logs, one `referee.finding` per fail. A reader whose session the provider or a kill
- * ended before it ruled gives no answer, and its finding holds no ruling, so that it is asked again.
- * Until 28 October a kill between two turns left no error and was logged `unclear`, as two
- * admission reviews of esp32-fresh-opus-terra were.
- * A replay that reaches no verdict follows the same path. On 12 October, one Referee call that met
- * the provider's session limit was logged `unclear`; because no caller retried it, a task needed for
- * a step was set aside for good. One that reads to its own deadline, or stops without a ruling, leaves
- * the fail unclear.
+ * rules and logs, one `referee.finding` per fail. A reader whose session the provider, a session
+ * limit or a kill ended before it ruled gives no answer, and its finding holds no ruling, so that it
+ * is asked again rather than set aside for good, a kill between two turns included. A replay that
+ * reaches no verdict follows the same path. One that reads to its own deadline, or stops without a
+ * ruling, leaves the fail unclear.
  *
  * A ruling the host refuses for want of its evidence is logged too, one `referee.refused` a refusal,
- * as it happens: the ruling asked for, as the reader sent it, and why the host refused it. Until
- * 19 October a refusal went back to the reader alone and left no event, so the log held the ruling
- * that stood and nothing of the ones before it: how often a model's rulings fail their evidence,
- * which the Referee's measure against a person's labels needs, and what the final ruling followed,
- * could not be read. No reader acts on it yet; the whole-run investigation reads it by kind
- * (`of`, `tools/wri/folds.ts`), and agreement with hand labels (`agreement.ts`) is where a count
- * of refused rulings would sit. It carries the reader's reason, so like `referee.finding` it is
- * the exam side's: no Builder reader reads it (`test/builder.test.ts`, "what crosses to the
- * Builder").
+ * as it happens: the ruling asked for, as the reader sent it, and why the host refused it, so that
+ * how often a model's rulings fail their evidence, which the Referee's measure against a person's
+ * labels needs, and what the final ruling followed, can be read. No reader acts on it yet; the
+ * whole-run investigation reads it by kind (`of`, `tools/wri/folds.ts`), and agreement with hand
+ * labels (`agreement.ts`) is where a count of refused rulings would sit. It carries the reader's
+ * reason, so like `referee.finding` it is the exam side's: no Builder reader reads it
+ * (`test/builder.test.ts`, "what crosses to the Builder").
  *
- * The session runs here since 28 October, with its sole-caller wrapper folded in. Its deadline
- * and the run's kill reach tools through `sit`, so an answer probe cannot keep verifier work alive
- * after the session ends (triage, 20 October). An accepted ruling also sets `over`: pi-durable
- * otherwise continues when another call in the same round does not ask to terminate.
+ * The session runs here. Its deadline and the run's kill reach tools through `sit`, so an answer
+ * probe cannot keep verifier work alive after the session ends. An accepted ruling also sets
+ * `over`: pi-durable otherwise continues when another call in the same round does not ask to
+ * terminate.
  *
- * On 2 November the prompt was read for a model that follows it literally (Opus 5.5). The host's
- * evidence test had refused no ruling in 41 logs: the Referee builds exactly the probe it is told
- * of, and 336 of 438 earned rulings rested on one. But that probe passes for a too-strict check as
- * well (`test/review.test.ts`, a 12 m rule checked at 10 m), and in 389 of the 438 no probe tried a
- * value the rule allows near the answer. Code cannot say which value a rule allows, so the prompt
- * states what tells the two apart, and that the host's test is necessary, not sufficient. It also
- * says that unclear sets the task aside as check-defect does, and drops "a requirement of the public
- * task", which no earned ruling can name since it must cite a rule a refusing check cites.
+ * The prompt is written for a model that follows it literally. The Referee builds exactly the probe
+ * it is told of, and that probe passes for a too-strict check as well (`test/review.test.ts`, a 12 m
+ * rule checked at 10 m), while few probes try a value the rule allows near the answer. Code cannot
+ * say which value a rule allows, so the prompt states what tells the two apart, and that the host's
+ * test is necessary, not sufficient. It says that a probe that leaves the check refusing supports
+ * neither ruling, and that a probe may replace a whole field with an accepted answer's value, which
+ * is usually on record where a check looks faithful and no probe moved it. It says what the code
+ * records: `$` stands as an earned ruling's field, a session that runs out of turns or time is
+ * unclear (a kill or a provider error is ruled again), and unclear sets the task aside in a
+ * comparison, as check-defect does, but leaves it in practice. It names no "requirement of the
+ * public task", since an earned ruling must cite a rule a refusing check cites.
  *
- * On 5 November the prompt was made true at the head again (Referee audit). Since e591f2bd7 a
- * check-defect cites a probe that moved its check, so the 2 November sentence that called a check
- * defective for refusing the allowed value nearest the answer's described a probe the host refuses
- * as evidence; 32 of 98 check-defect rulings since 20 October cited no probe that moved their check.
- * It now says that a probe that leaves the check refusing supports neither ruling, and that a probe
- * may replace a whole field with an accepted answer's value: in 15 of 16 unclear rulings that found
- * the check faithful and no probe that moved it, an accepted answer to the task was on record. It
- * also says what the code records: `$` stands as an earned ruling's field, a session that runs out
- * of turns or time is unclear (a kill or a provider error is ruled again), and unclear sets the task
- * aside in a comparison but leaves it in practice.
- *
- * On 19 November the Referee was given each answer file whole, and a field for a file the answer
- * lacks. The first message shows the head of a file's text (`shownFiles`), and until then no tool
- * returned the rest, while a probe could replace the file's whole text and an `earned` ruling stand
- * on the check it moved: a ruling on rows its reader never saw. `read_answer_file` returns the texts
- * the replay read (`fileTexts`) through the window that reads the check program. A rejection for a
- * file the answer omitted could be ruled `unclear` only: `earned` names a field the answer holds and
- * a probe that changed it, and a probe named a submitted file alone. A probe now adds such a file,
- * and the ruling names its path. No rule refuses a probe that drops most of a file: a file that
- * breaks a rule as a whole, by its row count or its format, is repaired by a shorter or another one,
- * so no size tells a repair from a stub, and the test that refused a probe for supplying an accepted
- * answer refused the one conclusive probe 10 times in 10 (5 November, above). Each probe row states
- * the lines and bytes its file held before and after instead, to the reader and in the finding, and
- * the prompt says what a shorter file's probe leaves open.
+ * The Referee is given each answer file whole, and a field for a file the answer lacks. The first
+ * message shows the head of a file's text (`shownFiles`), and `read_answer_file` returns the texts
+ * the replay read (`fileTexts`) through the window that reads the check program, so a probe that
+ * replaces a file's whole text is not a ruling on rows its reader never saw. A probe may add a file
+ * the answer omitted, and the ruling names its path, so such a rejection can be ruled `earned` and
+ * not only `unclear`. No rule refuses a probe that drops most of a file: a file that breaks a rule
+ * as a whole, by its row count or its format, is repaired by a shorter or another one, so no size
+ * tells a repair from a stub, and a test that refused a probe for supplying an accepted answer
+ * refused the one conclusive probe every time. Each probe row states the lines and bytes its file
+ * held before and after instead, to the reader and in the finding, and the prompt says what a
+ * shorter file's probe leaves open.
  */
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { type Static, Type } from "typebox";
 import { sit } from "../agent/session.ts";
 import type { Contract } from "../kernel/contract.ts";
@@ -126,7 +106,18 @@ import { keyIfDefined, keyIfNotNull, keysIf } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import { ending, RESULT, text, tool } from "../tools/answer.ts";
 import { conclusive, FILE, fileTexts, inFile, type ProbeRow, probeTool, reaches } from "./probe.ts";
-import type { Reader } from "./reader.ts";
+
+/** Who reads, and on what. */
+export interface Reader {
+  readonly model: Model<Api>;
+  readonly effort: ThinkingLevel;
+  /** The backends, built for one session on the home its model process keeps its state in. */
+  readonly models: (home: string, shutdown: AbortSignal) => Models;
+  /** Seconds one session may run; half an hour when the caller names none. */
+  readonly wallSeconds?: number;
+  /** Aborts when the run is killed. */
+  readonly kill?: AbortSignal;
+}
 
 export type Ruling = "earned" | "check-defect" | "unclear";
 
@@ -447,10 +438,8 @@ function rulingTool(
  *
  *  A solve with no answer on record is refused before anything is written: a ruling is a reading
  *  of a rejected answer, and the Referee is asked of no other solve (`src/campaign/round.ts`,
- *  `src/builder/tools.ts`, `tools/d1b/examine.ts`). Until 15 October such a solve was ruled
- *  `earned` with "no answer reached a check", a finding with no evidence behind it: ten
- *  `turns-ended` practice solves in five campaigns read so, through a caller that sent every
- *  fail. */
+ *  `src/builder/tools.ts`, `tools/d1b/examine.ts`), rather than ruled `earned` with "no answer
+ *  reached a check", a finding with no evidence behind it. */
 export async function referee(reader: Reader, fail: RefereeCase): Promise<RefereeFinding> {
   const events = read(fail.log);
   const verdict = loggedVerdict(events, fail.solve, fail.log);

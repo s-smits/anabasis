@@ -30,14 +30,13 @@ import {
  * the two helpers, `keyIfDefined` and `keyIfNotNull`, and 290 call sites already spell the fold
  * through them. The guarded assignment is the same decision made after the literal instead of in
  * it, with the object's shape spread over as many statements as it has optional keys. Two
- * simplify passes made exactly this fold by hand, `743608504` and `421533e8f`, and the tree held
- * 26 more of them on 2026-09-20.
+ * simplify passes made exactly this fold by hand, and the tree held 26 more of them on 2026-09-20.
  *
  * The shape is read strictly, because the fold moves an evaluation. A run of guards directly
  * below a `const` whose initialiser is an object literal; each guard has no `else`, tests one
  * expression against `undefined` or `null`, and assigns that same expression to one static key
- * of that same `const`. The expression must be a read — a name, a member chain, `this.x`, a
- * non-null or `as` over one of those — so that evaluating it inside the literal rather than after
+ * of that same `const`. The expression must be a read (a name, a member chain, `this.x`, a
+ * non-null or `as` over one of those) so that evaluating it inside the literal rather than after
  * it changes nothing, and it must not read the object it is folded into, since the binding is
  * not initialised yet inside its own literal. A `const x = …;` between the literal and a guard
  * over `x` is inlined when nothing else reads `x`; the literal's own properties have already
@@ -46,9 +45,9 @@ import {
  *
  * Which helper is which: `!== undefined` is `keyIfDefined`, which omits undefined alone; `!==
  * null`, `!= null` and `!= undefined` are `keyIfNotNull`, which omits both. A `!== null` guard
- * over a value that may also be undefined assigned that undefined, and the fold does not. The
- * head comment used to call that a program that did not compile; on 20 October a key declared
- * `k?: string | null | undefined` compiled with `if (w !== null) o.k = w`, and the fold dropped a
+ * over a value that may also be undefined assigned that undefined, and the fold does not, and the
+ * program still compiles: a key declared
+ * `k?: string | null | undefined` compiles with `if (w !== null) o.k = w`, and the fold drops a
  * key the original set to `undefined`. A plugin rule cannot see whether the value admits
  * undefined, so a run holding a strict `!== null` guard is reported without a fix.
  *

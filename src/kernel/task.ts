@@ -5,26 +5,26 @@
  * the check enforces, which the shape check holds it to. The check is a program the solver never sees,
  * with hidden values only the check's own runs receive.
  *
- * A draft is held out when its shape check passes; until 1 November its room solves had to leave room too.
+ * A draft is held out when its shape check passes.
  * Every comparison may score it (`compare.ts`). It leaves that set three ways. It is
  * released to a Builder as practice, and a practice task is never scored. It is disputed when a
  * check is found at fault on an answer to it, from either set, and is then neither scored nor
  * practised on. Or task admission refuses the draft, and it never was one. Each task version's
  * state is a view over the log.
  *
- * A log of 14 to 16 October may hold a draft held for the ladder by task admission, a fixed set read only
- * after a promotion: its admission outcome and its state are `ladder`. The ladder was retired on
- * 16 October (`src/examiner/write.ts`), and such a task is read as held out.
+ * An old log may hold a draft held for the ladder by task admission, a fixed set read only after a
+ * promotion: its admission outcome and its state are `ladder`. The ladder is retired
+ * (`src/examiner/write.ts`), and such a task is read as held out.
  *
  * Room solves use the campaign's solver, never a stronger one. v1's solver matched whatever its
- * author's side found, and the first live sessions here lost 14 of 25 tasks at an admission test
- * of one stronger solve (`7f0add79:docs/plan.md`, Phase 2; `docs/v1.md`). Up to three reference
- * solves now refuse a draft that leaves no room: it needs variation in validity, a known valid
+ * author's side found, and an admission test of one stronger solve lost more than half the tasks
+ * of the first live sessions (`docs/v1.md`). Up to three reference solves refuse a draft that
+ * leaves no room: it needs variation in validity, a known valid
  * answer where the reference never answers, or an objective gap. Both harnesses later solve the
  * same scored tasks under one compute budget. Reject control answers belong to the check program
  * and are read once for it (`tools/c/accept.ts`), rather than written per task.
  *
- * A log written before 9 October holds four later admission tests (a stronger solve, the checks run again
+ * The oldest logs hold four later admission tests (a stronger solve, the checks run again
  * on its answer, three reject control answers, and a screening under two harnesses) and the states
  * screening moved a task through: `too-hard`, `admitted`, `too-easy`, `wall-bound`, and the
  * anchor's draw. They are read here as history. A later admission test says nothing of a task's shape, and
@@ -36,7 +36,7 @@
  * without a reader; the version covers the family, which the solver reads, and the rule ids, which
  * the shape check holds the check to.
  */
-import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
+import { CHECK_BRIEF, EVALUATOR_FILE } from "../meta/bundle-layout.ts";
 import { existsSync } from "../meta/filesystem.ts";
 import { type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
@@ -86,7 +86,7 @@ interface TaskSets {
   readonly released: readonly string[];
 }
 
-/** The task admission's outcome, and the state, of a task held for the ladder until 16 October. */
+/** The task admission's outcome, and the state, of a task held for the retired ladder. */
 const LADDER = "ladder";
 const TASK_STATES = ["held", "refused", "released", "disputed"] as const;
 
@@ -137,7 +137,7 @@ function packageFault(contract: Contract, task: TaskPackage): string | null {
       ["family", task.family.trim() === ""],
       ["inputs", task.publicInput === null],
       ["rule ids", task.ruleIds.length === 0],
-      ["brief.json", !existsSync(join(task.checks, "brief.json"))],
+      [CHECK_BRIEF, !existsSync(join(task.checks, CHECK_BRIEF))],
       [EVALUATOR_FILE, !existsSync(join(task.checks, EVALUATOR_FILE))],
     ] as const
   ).find(([, missing]) => missing);
@@ -181,8 +181,8 @@ function packageFault(contract: Contract, task: TaskPackage): string | null {
 /**
  * The task version, taken when the package is proposed and its task admission runs: its five parts,
  * with the check program as the sha256 of each of its files by its path under the directory. Every
- * file counts, since the verifier copies them all into each check's cell: both check programs v1 wrote
- * on 7 October import `./reference/model.ts`, and a version over `evaluator.ts` alone missed it. A
+ * file counts, since the verifier copies them all into each check's cell: a check program may import
+ * a helper beside `evaluator.ts`, which a version over that file alone would miss. A
  * program that does not read, a symlink in it among the reasons, is versioned by why, so task
  * admission's refusal is logged against what was proposed.
  */
@@ -242,10 +242,9 @@ function step(tasks: Map<string, Folded>, { at, kind, data }: LogEvent): void {
   if (fault !== null) throw new Error(`${at}: task ${version} ${fault}`);
 }
 
-/** Whether a task admission's outcome held its task out: `passed`, or `ladder` in a log of 14 to
- *  16 October. Every reader of a task admission's outcome asks this, so that an old ladder task is held out
- *  to each of them alike (16 October: the draw, the epochs and the Examiner's counts read `passed`
- *  alone, and such a task was held and never drawn). */
+/** Whether a task admission's outcome held its task out: `passed`, or `ladder` in an old log. Every
+ *  reader of a task admission's outcome asks this, so that an old ladder task is held out to each
+ *  of them alike, and never held by one reader and left undrawn by another. */
 export function heldAtGate(outcome: JsonValue | undefined): boolean {
   return outcome === "passed" || outcome === LADDER;
 }

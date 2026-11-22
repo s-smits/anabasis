@@ -18,8 +18,8 @@ import { identifierName, isNamedMember } from "../shared/statements.ts";
  * The loop is shorter, needs no type argument to tell TypeScript what the seed is, and the
  * accumulator is a name in the enclosing scope where every other local lives.
  *
- * A reducer that is a *name* — `rows.reduce(addTurnUsage)`, `iterations.reduce(countUnchanged,
- * seed)` — is not read here. There the fold is one word and the step has its own doc comment,
+ * A reducer that is a *name*, `rows.reduce(addTurnUsage)`, `iterations.reduce(countUnchanged,
+ * seed)`, is not read here. There the fold is one word and the step has its own doc comment,
  * which is the readable form of the same operation; `unicorn/no-array-reduce` condemns both and
  * is off in this repository for that reason. An expression-bodied arrow is not read here either:
  * `(total, row) => total + row.count` is an operator, not a procedure.
@@ -28,7 +28,7 @@ import { identifierName, isNamedMember } from "../shared/statements.ts";
  * where it lives, and a reducer that returns early in three places is not one loop body.
  *
  * Read again on 2026-09-20, because a rule that gates at zero has to say why it is still here.
- * The tree performs this operation 105 times across `src`, `tools`, `test` and `.claude` — 98
+ * The tree performs this operation 105 times across `src`, `tools`, `test` and `.claude`: 98
  * expression-bodied arrows and 6 named reducers, both of which this rule exempts, and 0 block
  * bodies outside its own example and fixture. So the gate is at zero because the spelling is
  * absent, not because the operation is: `.claude` alone folds 52 times and is the tree most

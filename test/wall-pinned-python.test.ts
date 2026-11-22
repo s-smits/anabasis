@@ -1,7 +1,7 @@
 // The Python `bun run runs sync` keeps on a host is the first `python3` a seat's command finds, on the
 // operating system this suite runs on, and the home it lies in stays closed. Each case is a child with
 // a home of its own, since the wall reads the home as a process starts. The pin is a stand-in, as the
-// test holds no download: a real one was run by hand on 5 November, and the PR says on which system.
+// test holds no download.
 import { afterAll, describe, expect, test } from "bun:test";
 import {
   chmodSync,

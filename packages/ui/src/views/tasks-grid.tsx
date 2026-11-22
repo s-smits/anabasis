@@ -24,13 +24,12 @@ import { OUTCOMES } from "./outcome.ts";
  * says its outcome in a word, so that the grid reads without colour; one the comparison fixed and
  * left out of its tally says why, untinted, as no outcome; one it did not fix says why from the
  * task's state: a practice task is never scored, a refused draft never entered the exam, and a held
- * task the comparison did not draw was not scored. Until 19 October all three read "not scored", and
- * esp32-fresh-opus's grid showed 153 of its 177 rows so, every one a refused draft or a practice
- * task, while each of its 24 held tasks had been scored. Since 30 October such a cell is left blank
- * to the eye and says why to a screen reader only, since the row's own note already names its
- * state and most cells of a long campaign's grid are of this kind. The first column and the head
- * stay in place while the grid scrolls inside its card, so a campaign of twenty comparisons and
- * sixty tasks stays readable.
+ * task the comparison did not draw was not scored. Read alike as "not scored", the three would fill
+ * most rows of a grid with refused drafts and practice tasks while each held task had been scored.
+ * Such a cell is left blank to the eye and says why to a screen reader only, since the row's own
+ * note already names its state and most cells of a long campaign's grid are of this kind. The first
+ * column and the head stay in place while the grid scrolls inside its card, so a campaign of twenty
+ * comparisons and sixty tasks stays readable.
  */
 
 /** The word of a task out of the draw waiting for a person's label. */

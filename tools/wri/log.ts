@@ -15,14 +15,11 @@
  * never the comparison that started last, and its `--where` and `--count-by` name its columns. `trace` names the `slice.ts` command (oracle-handover)
  * that prints a solve's or a session's turns and calls.
  *
- * Between 3 and 10 November, 104 of 107 lane sessions listed an event kind's keys by hand (829
- * commands), 103 selected a kind (2,472), and 78 joined each solve to its comparison's side in 61
- * scripts of their own, one of which took the last `comparison.started` for a solve's comparison.
- * A timeline of several kinds at once was written by hand in 68 of those sessions, 7 of lane 23's
- * 13. A numeric bound on a field (`ms > 400000`) was written by hand in 24, 3 of lane 22's 7, and
- * 11 of lane 7's 26 grouped the passes under a tenth of the deadline by harness with `awk` over
- * `solves`. Of 40 `jq` commands sampled from the 35 lane sessions of 12 to 17 November, 5 cut a
- * range of lines out of the log to see what stood around one event, so `--lines` reads a range, of
+ * Without it nearly every lane session lists an event kind's keys and selects a kind by hand, joins
+ * each solve to its comparison's side in a script of its own (which can take the last
+ * `comparison.started` for a solve's comparison), writes a timeline of several kinds at once or a
+ * numeric bound on a field (`ms > 400000`), groups passes by harness with `awk` over `solves`, and
+ * cuts a range of lines out of the log to see what stood around one event, so `--lines` reads a range, of
  * every kind where no `--kind` is named. `events` prints what the log holds, hidden values among
  * them, which is the exam side's to read and never a seat's. It is no query language: a question
  * these flags cannot ask is `jq`'s.
@@ -46,7 +43,7 @@ import { countBy } from "#src/meta/tally.ts";
 import { indexOf, type Solve } from "./folds.ts";
 
 /** A string printed whole only under `--full`: one task statement or call result fills a screen. */
-const CUT = 80;
+const CELL_CHARS = 80;
 const DIGEST = /^[0-9a-f]{64}$/u;
 const NOT_RECORDED = "n/r";
 const SLICE = ".claude/skills/oracle-handover/scripts/slice.ts";
@@ -135,7 +132,7 @@ function span(lines: readonly number[]): string {
 }
 
 /** Each kind and each of its `data` keys: the types each held and the lines it stood on. */
-export function kindRows(events: readonly LogEvent[], only?: ReadonlySet<string>): string[] {
+function kindRows(events: readonly LogEvent[], only?: ReadonlySet<string>): string[] {
   const kinds = new Map<string, KindHeld>();
   for (const [index, { kind, data }] of events.entries()) {
     const entry: KindHeld = kinds.get(kind) ?? { lines: [], keys: new Map() };
@@ -175,12 +172,14 @@ function fieldOf(data: JsonValue, path: string): JsonValue | undefined {
 const whole = (value: JsonValue | undefined): string =>
   value === undefined ? "-" : isString(value) ? value : JSON.stringify(value);
 
-/** A cell cut to `CUT` characters, with the count cut, and a digest to its first eight. */
+/** A cell cut to `CELL_CHARS` characters, with the count cut, and a digest to its first eight. */
 function cell(value: JsonValue | undefined, full: boolean): string {
   const said = whole(value).replaceAll("\n", String.raw`\n`);
   if (full) return said;
   if (DIGEST.test(said)) return said.slice(0, 8);
-  return said.length > CUT ? `${said.slice(0, CUT)}[+${String(said.length - CUT)} chars]` : said;
+  return said.length > CELL_CHARS
+    ? `${said.slice(0, CELL_CHARS)}[+${String(said.length - CELL_CHARS)} chars]`
+    : said;
 }
 
 /**
@@ -215,7 +214,7 @@ function filtered<T>(items: readonly T[], dataOf: (item: T) => JsonValue, where:
 }
 
 /** One kind's events a row each, or several kinds' with the kind named, or one field's counts. */
-export function eventRows(events: readonly LogEvent[], query: EventQuery): string[] {
+function eventRows(events: readonly LogEvent[], query: EventQuery): string[] {
   const range = /^(\d+)(?:-(\d+))?$/u.exec(query.lines ?? "");
   const from = Number(range?.[1] ?? 1);
   const to = Number(range?.[2] ?? range?.[1] ?? events.length);
@@ -256,7 +255,7 @@ export function eventRows(events: readonly LogEvent[], query: EventQuery): strin
   }
   const cut = query.full
     ? ""
-    : `, strings cut at ${String(CUT)} characters and digests at 8 (--full lifts both)`;
+    : `, strings cut at ${String(CELL_CHARS)} characters and digests at 8 (--full lifts both)`;
   return [
     `events: ${String(chosen.length)} ${asked}${filters}, a row each: log line, time, ${several ? "kind, " : ""}then ${query.fields.length === 0 ? "every data field" : query.fields.join(", ")}${cut}`,
     ...chosen.map(({ line, event }) => {
@@ -349,7 +348,7 @@ export function solveRows(events: readonly LogEvent[], only: SolveQuery): string
 }
 
 /** The `slice.ts` command for each seat's trace or solve whose id is `id`, or ends or begins so. */
-export function traceRows(events: readonly LogEvent[], id: string, log: string): string[] {
+function traceRows(events: readonly LogEvent[], id: string, log: string): string[] {
   const owners = new Map<string, string>();
   for (const { seat, id: owner } of tracesIn(events)) owners.set(`${seat} ${owner}`, owner);
   for (const { kind, data } of events) {

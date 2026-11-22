@@ -1,6 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./app.tsx";
+import { useCampaign, useCampaigns } from "./live.ts";
+import { useRoute } from "./route.ts";
+import { selectionOf, Shell } from "./shell.tsx";
 /*
  * Bundle the four fonts the design uses.
  *
@@ -24,8 +26,8 @@ import "./panes.css";
 
 /*
  * A reload comes back where it was scrolled. The browser restores the position as the document
- * loads, before the panes have drawn their rows, so on 31 October a reload put the Log pane back at
- * its top (operator). The page keeps the position as it is left, and scrolls back to it once the
+ * loads, before the panes have drawn their rows, so a reload would put the Log pane back at its
+ * top. The page keeps the position as it is left, and scrolls back to it once the
  * document is tall enough, for at most two seconds. The browser's own restoring stays on, since a
  * step back inside the page (a detail's "Back to moves") is restored by it alone.
  */
@@ -47,6 +49,16 @@ try {
   );
 } catch {
   // Closed storage keeps no position, and the page opens at its top.
+}
+
+/** The page's data: the campaign list and the selected campaign, both polled; the panes and the
+ *  inspector read their own details through the hooks of `live.ts`. */
+function App() {
+  const navigation = useRoute();
+  const campaigns = useCampaigns();
+  const { campaign: key } = selectionOf(campaigns.data, navigation.route);
+  const reading = useCampaign(key);
+  return <Shell navigation={navigation} campaigns={campaigns} reading={reading} />;
 }
 
 const root = document.querySelector("#root");

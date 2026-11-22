@@ -33,8 +33,8 @@
  * shell, asks the job's proxy for its `/health` from inside the container, and writes all four to the
  * result, so the study's check stage proves the path in the container for free.
  *
- * Until 2 November a harness that declared tools of its own was refused, so a learned harness that
- * wrote any could not be scored.
+ * A harness that declares tools of its own is not refused, so a learned harness that writes any can
+ * be scored.
  */
 import { type AssistantMessage, createModels, type ThinkingLevel } from "@earendil-works/pi-ai";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";

@@ -1,107 +1,57 @@
 # The levels
 
-Read them in order, one ledger row a level with its count or what could not be read. Each rests on
-those before it: a tally read before its identities is a tally of unknown things. Levels 0 to 6 need
-no score and cover every task, the sealed half included; levels 7 to 11 read outcomes and cover the
-open half until the unsealing. **Inside** names the owner for a campaign comparison, where most of
-this is already a fold; **outside** is what a study on another runtime reads by hand.
+Inspect levels 0 to 12 in strict order, recording one ledger row per level with its supporting count or noting why it could not be read. Each level rests on those beneath it: a score tally read before verifying arm identities is a tally of unknown policies. Levels 0 to 6 require no outcome scores and cover every task (including the sealed half); levels 7 to 11 inspect outcomes and remain restricted to the open half until unsealing. **Inside** identifies the authoritative fold for an internal campaign comparison; **outside** specifies what an external benchmark study must verify directly.
 
 ## 0. Who ran
 
-Which harness digest is each arm, proved by the arm's own record against the kept harness? Which
-model and effort answered every turn, read from the trace? Did any turn fall back, any session end
-early, any label swap or folder come from an earlier batch? **Inside:** `condition.recorded`, `bun
-tools/runs/degradations.ts <name>`. **Outside:** each trace's model field and ending, `export.json`.
+Verify the exact harness digest executed by each arm from its own record against the kept harness store. Confirm from solve traces which model and reasoning effort answered every turn. Check for model fallbacks, truncated sessions, swapped labels, or stale directories carried over from an earlier batch. **Inside:** `condition.recorded`, `bun tools/runs/degradations.ts <name>`. **Outside:** each trace's model field and termination status, plus `export.json`.
 
 ## 1. Coverage
 
-What share of the benchmark ran (tasks, categories, rollouts)? Who chose the tasks, by what rule,
-before or after a look, and are they typical or near the campaign's domain? How many attempts
-started, were retried or were left out? **Inside:** `draw <name>`, `reading <name>`, the admission
-line. **Outside:** the study's record and the benchmark's task list.
+Determine what fraction of the benchmark ran (tasks, categories, and rollouts per task). Record how tasks were selected, by whom, whether before or after inspecting outcomes, and whether they reflect the campaign's domain. Tabulate attempts started, retried, and excluded. **Inside:** `draw <name>`, `reading <name>`, and the admission line. **Outside:** the study manifest and the full benchmark task list.
 
 ## 2. Conditions
 
-Did each differ, with evidence: time and order (interleaved or days apart); interpreter, packages and
-`PATH`, tried from inside each arm; executor, tools, system prompt and what the executor adds;
-budget and what each arm was told; network; host load; the grader's model and conversion.
-**Inside:** `conditions <name>`, `HOST LOADED`, `LOAD MOVED`. **Outside:** by hand.
+Verify whether execution conditions differed across arms, citing direct evidence: execution timing and order (interleaved versus separated by days); Python interpreter, installed packages, and `PATH` tested inside each arm; executor, available tools, system prompt, and executor-injected wrappers; resource budgets and budget instructions shown to each arm; network access; host load; and the grader's model and document conversion pipeline. **Inside:** `conditions <name>`, `HOST LOADED`, `LOAD MOVED`. **Outside:** manual inspection of runtime logs and manifests.
 
 ## 3. What was carried
 
-Byte identity first, then whether each part works where it landed: diff guide and toolchain against
-the kept ones (an export made for another platform than the harness's replaces its interpreter and
-compiled distributions at their versions, and `export.json` names them under `rebuilt`), check that
-links resolve and programs start from the solver's place and `PATH`, what the export dropped (`agent/tools-spec.json`), and whether the solver loaded the guide. **Inside:** the digest proves
-it. **Outside:** `studies/shared/claude-export.ts` and its tree.
+Verify byte-level identity first, then verify functional execution in the target runtime. Diff the exported guide and toolchain against the kept harness (an export targeting a different platform replaces its interpreter and compiled distributions at pinned versions, listed under `rebuilt` in `export.json`). Confirm that symlinks resolve, tools execute cleanly under the solver's working directory and `PATH`, note any files omitted by export (such as `agent/tools-spec.json`), and check whether the solver actually loaded the guide. **Inside:** the harness digest guarantees byte identity. **Outside:** inspect `studies/shared/claude-export.ts` and the exported directory tree.
 
 ## 4. What was told
 
-Perfect copying can still deliver a false guide. Read it in the solver's workspace and sort every
-factual statement (limits, interface, scoring, workflow, what each program expects) as true, false
-or meaningless there, noting which the export corrected. Then ask whether a solver cited one and
-acted on it; absent citations prove little where thinking is unrecorded.
+Even an exact byte copy can deliver a guide that is false in a new runtime. Read the guide inside the solver's workspace and classify every factual claim (limits, interfaces, scoring rules, workflow steps, and tool expectations) as true, false, or inapplicable in that environment, noting any claims rewritten during export. Then check whether traces show a solver citing or acting on a false claim, keeping in mind that absent citations are inconclusive when chain-of-thought is unrecorded.
 
 ## 5. What it was selected on
 
-Could the gain that promoted this harness show here at all? Read which measure carried the promotion
-(`reading`, `replay`, `carriedBy`) and whether it was confirmed, and set what the exam's checks
-rewarded against what this grader rewards. Count refusals and limits met ("Was it too strict?" in
-`SKILL.md`), and state what the study already expected (`studies/harness2/README.md`, "Read every
-result against how uneven the comparison is").
+Assess whether the capability that promoted the harness in its home campaign can even register on this benchmark. Identify which measure carried the promotion (`reading`, `replay`, `carriedBy`) and whether it was confirmed on fresh tasks, then compare what the campaign's checks rewarded against what the external grader rewards. Count refusals and limit hits ("Was it too strict?" in `SKILL.md`), and note the pre-existing structural asymmetries documented in `studies/harness2/README.md` ("Read every result against how uneven the comparison is").
 
 ## 6. What the grader could see
 
-The grader's view is not the deliverable. Reproduce it with the grader's own conversion and no model
-call: caps and what falls past them by arm, embedded images that consume the cap, lost figures or
-notebook outputs, order inside a file, and which file counts. A "not found" past the cap is an
-artefact; absent, it is a miss. Report the reproduction beside the official score. **Inside:** the
-verifier reads the whole answer and the Referee rules with evidence (lanes 1, 2 and 4 to 6).
+The grader's input often differs substantially from the raw deliverable. Reproduce the grader's exact document conversion locally without calling a model: inspect character truncation caps and how much content each arm lost past them, embedded images consuming token or character budgets, dropped figures or notebook outputs, section ordering, and which output file the grader selected. A criterion marked "not found" past a truncation cap is an instrument artefact; one absent from the full deliverable is a genuine miss. Report the local reproduction alongside the official score. **Inside:** the verifier inspects the complete answer and the Referee rules with probes (lanes 1, 2, and 4 to 6).
 
 ## 7. How the score is formed
 
-Is scoring all-or-nothing or partial? Read the difference at each grain (points, rubrics, criteria),
-since a small gap in criteria can become a large one in points, keeping the frozen measure primary.
-Count rubrics one criterion short and the share of the gap one task or rubric holds, drop each task
-in turn to see whether the sign holds, and read the paired test on the task differences (`testOf`,
-`src/kernel/compare.ts`).
+Determine whether grading is binary all-or-nothing or partial credit. Inspect the score gap at every granularity (points, rubrics, and individual criteria), since a narrow gap in criteria can amplify into a wide gap in points, while keeping the pre-registered primary measure authoritative. Count rubrics missed by a single criterion, calculate the fraction of the total gap concentrated in one task or rubric, run leave-one-out checks to test whether the sign holds, and evaluate the paired test on per-task differences (`testOf`, `src/kernel/compare.ts`).
 
 ## 8. Each split, both directions
 
-List every rubric or task where the arms split, won and lost, without selecting by size. Classify
-each miss, blind where possible, as **wrong** (refuted by the grader), **absent**, **unseen** (stated
-past what the grader read) or **disputed** (the grader's reason does not hold). List shared misses
-apart: they speak of the task, grader or solver, never the harness. Ask of every win as of every
-loss whether the favoured explanation predicts it. **Inside:** the wall holds, so per-task reading
-stays in the investigation's lanes and the report names ids and counts.
+List every task or rubric on which the two arms disagreed, covering both wins and losses without filtering by magnitude. Classify every miss (blindly where possible) as **wrong** (refuted by the grader), **absent**, **unseen** (present in the deliverable but truncated before the grader saw it), or **disputed** (the grader's stated rationale does not hold). Tabulate shared misses separately, as they reflect task difficulty, grader quirks, or base-solver limits rather than harness differences. Test whether the preferred explanation accounts for wins as accurately as losses. **Inside:** the evaluation wall remains in force, so per-task inspection stays within investigation lanes and reports cite only ids and counts.
 
 ## 9. Behaviour
 
-Turns, duration and output tokens, with turns sorted by kind (work, recovery, reading, polishing),
-since fewer turns can be a harness's virtue or the other arm repairing its environment; programs and
-tools used or failed; where and how each stopped. On a few tasks an association is description.
-On a benchmark, `compare.ts levels` prints for each arm how many shell commands name the exported
-harness's program folder or start one of its programs by name, by the names the arm's tree in the
-store lists, and how many of those only look at it. It counts references, not use: a harness whose
-programs no rollout ran still reached the solver as its guide.
-**Inside:** `solve.call`, the lanes on solves, `chain`, `tasks`.
+Compare turn counts, wall duration, and output tokens across arms, stratifying turns by activity type (substantive work, environment recovery, file reading, and polishing), because a shorter trajectory can reflect either genuine efficiency or the other arm spending turns repairing its environment. Record which tools and harness programs were invoked or failed, and how each rollout terminated. On small task sets, behavioural correlations are descriptive only.
+
+On external benchmarks, `compare.ts levels` counts how many shell commands reference the exported harness's program directory or invoke one of its programs by name (matched against the arm's stored tree), separating active execution from read-only inspection. These counts measure references rather than total harness influence: even a harness whose programs are never invoked still shapes behaviour through its guide. **Inside:** inspect `solve.call`, solve lanes, `chain`, and `tasks`.
 
 ## 10. Noise
 
-Say how far one harness moves against itself and how that was measured, or say it is unmeasured. A
-clean A/A is one harness, one condition, one period, rollouts interleaved; anything else is a
-description. Rollout noise and grader noise are separate, and grading one deliverable twice measures
-the second. Give the test's p beside what this size could detect (`bun
-.claude/skills/comparison-reading/scripts/size.ts`), never "within the noise" without a measured
-noise. **Inside:** the A/A beside each comparison (`noise`), `falseRate`, `incapable`.
+Quantify intra-harness rollout variance and state how it was measured, or mark it explicitly as unmeasured. A clean A/A control tests a single harness under identical conditions in the same period with interleaved rollouts; anything else is descriptive only. Keep rollout variance separate from grader variance (measured by regrading identical deliverables). Report the test's p-value beside the minimum detectable effect at this sample size (`bun .claude/skills/comparison-reading/scripts/size.ts`), and never claim a difference is "within the noise" without a measured noise floor. **Inside:** inspect the paired A/A (`noise`), `falseRate`, and `incapable`.
 
 ## 11. Economy
 
-Each arm's dollars and hours beside its score on one meter (`billOf`), grader dollars apart, and
-whether one arm's cost hides a saving elsewhere. An estimate names the rate it used.
+Place each arm's billed dollars and wall hours alongside its score on a single consistent meter (`billOf`), keeping grader spend separate, and note whether higher cost on one arm conceals savings elsewhere. State the pricing rate behind any estimate.
 
 ## 12. What this could not read
 
-Close with what is absent: unrecorded thinking, a trace not kept, a condition nobody logged, a task
-not run. A level with no evidence says so, and absence never reads as a clean result (`AGENTS.md`,
-section 9).
+Conclude by listing everything unobserved: unrecorded reasoning traces, missing logs, unlogged runtime conditions, or unrun tasks. State explicitly when a level lacks evidence; absence of evidence never reads as a clean bill of health (`AGENTS.md` section 9).

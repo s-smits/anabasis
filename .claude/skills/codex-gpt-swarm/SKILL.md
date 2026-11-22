@@ -1,12 +1,13 @@
 ---
 name: codex-gpt-swarm
-description: "Launch and collect independent Codex sessions (gpt-6-luna at high, xhigh or max; gpt-6.1-sol at low to xhigh) for bounded parallel work: one manifest, one detached launcher, one report a session, a drain and a retry. Owns the Codex transport when another skill, such as whole-run-investigation, sets the questions. Use when the operator asks for Luna or Sol sessions, a swarm, many sessions, a reasoning effort, a Codex subagent from Claude Code, or a later collection of reports. Distinguish a request to launch from one to wait and collect."
+description: "Launch and collect independent Codex sessions (`gpt-6-luna` at `high`, `xhigh`, or `max`; `gpt-6.1-sol` at `low` to `xhigh`) for bounded parallel work using a single manifest, one detached launcher, one report per session, incremental draining, and targeted retries. Owns the Codex execution transport whenever another skill (such as whole-run-investigation) defines the questions. Use when asked for Luna or Sol sessions, a swarm, parallel subagents, specific reasoning efforts, a Codex subagent from Claude Code, or later report collection. Distinguish requests to launch from requests to wait and collect."
 ---
 
 # Codex GPT swarm
 
-One independent Codex session per bounded question, orchestrated by the launcher's session. The
-script's head lists every flag; it reads no `.env`, so no login's key reaches a session.
+Run one independent Codex session per bounded question, coordinated by the launching session. The
+launcher script's header documents all CLI flags; it never loads `.env`, ensuring no login
+credentials leak into child sessions.
 
 ```sh
 bun .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --manifest <json> --output-dir <new dir> [options]
@@ -14,49 +15,55 @@ bun .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --drain <output dir>
 bun .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --retry <output dir> [--max-active N] [--start-interval-ms N]
 ```
 
-## The author before the report
+## Verify execution before reading reports
 
-A failed session is missing work, never work done by something else. Read who ran before what was
-claimed: a report with no result in `summary.json` is not a Codex session's. Exhausted credits are
-a typed non-result, retried later (rule 15).
+A failed session represents missing work rather than work that another agent can silently absorb.
+Check execution receipts before trusting any report: any text without a corresponding completion
+entry in `summary.json` is not a verified Codex session output. Exhausted credits constitute a
+typed non-result to be retried once quota resets (`AGENTS.md`, rule 15).
 
-## Model, effort and count
+## Model, effort, and batch size
 
-With no model named, the batch policy decides:
+When no model is explicitly specified, apply the default batch policy:
 
 | independent questions | model and effort |
 | --- | --- |
 | 2 to 5 | `--model gpt-6.1-sol --reasoning-effort medium` |
 | 6 or more | `--model gpt-6-luna --reasoning-effort xhigh`, all in one launch |
 
-An explicit choice replaces the table; keep a named effort exactly (Luna named alone runs at `max`).
-One launch is one model, at one effort unless a row names its own. The count follows the unsettled questions, never split to
-reach a Luna batch. Always pass the flags: the launcher defaults to `gpt-6-luna` at `max`.
+An explicit operator choice overrides the table; preserve any requested effort verbatim (`gpt-6-luna`
+named without an effort defaults to `max`). Each launch uses one model and one default effort
+(individual manifest rows may override effort). Size the batch strictly to the number of genuine
+unsettled questions rather than splitting questions artificially to reach a Luna threshold. Always
+pass explicit flags because the launcher defaults to `gpt-6-luna` at `max`.
 
 | model (`MODELS`) | efforts | default |
 | --- | --- | --- |
 | `gpt-6-luna` | `high`, `xhigh`, `max` | `max` |
 | `gpt-6.1-sol` | `low`, `medium`, `high`, `xhigh` | `medium` |
 
-Every launch uses the `priority` tier (`SERVICE_TIER`).
+All launches run on the `priority` service tier (`SERVICE_TIER`).
 
-## Where to stop
+## Stopping criteria
 
-"Launch" or "spawn" means start every session and return the start line; "wait", "collect" or
-"summarise" means drain every report and return the synthesis. Say `launched` only after
-`gpt_sessions.started`. When the brief is clear, launch in the same turn.
+When asked to "launch" or "spawn", start the detached batch and return as soon as
+`gpt_sessions.started` appears in the log. When asked to "wait", "collect", or "summarise", drain
+all completed reports and return the synthesis. Report `launched` only after confirming
+`gpt_sessions.started`. If the brief is already complete, launch within the same turn.
 
-## The sessions and the manifest
+## Sessions and manifest structure
 
-Shared material (commit, evidence rules, limits, report form, any command all would rediscover)
-goes once in the instructions file. Each row needs one question with
-its limits, where to start, its authority and the outcome to return. A causal question tests at
-least three hypotheses, one innocent, and proposes a fix only for a proved defect. Sessions are
-read-only by default; a write session owns named paths and is told others may be editing, and no
-session starts another. Reports stay within the seat's view (`AGENTS.md`, sections 1 and 3), carry
-no private details, and are research to check before acting on (section 11).
+Place shared context (pinned commit, evidence standards, scope limits, report format, and common
+inspection commands) once in the shared instructions file. Give each manifest row a single bounded
+question with explicit scope limits, starting pointers, authority level, and required deliverable.
+Causal questions must evaluate at least three competing hypotheses (including an innocent
+explanation) and propose fixes only for demonstrated defects. Sessions default to read-only;
+write sessions must declare `ownedPaths`, be informed that peer sessions may edit concurrently,
+and never spawn child sessions. All reports must respect seat-view boundaries (`AGENTS.md`,
+sections 1 and 3), omit private host or account details, and be verified before acting on them
+(section 11).
 
-Write the manifest with a file-writing tool:
+Create the manifest with a file-writing tool:
 
 ```json
 {
@@ -64,20 +71,21 @@ Write the manifest with a file-writing tool:
   "instructionsFile": "/absolute/shared-instructions.md",
   "sessions": [
     { "name": "readers", "task": "List every reader of comparison.reported and any two that disagree." },
-    { "name": "fixture", "task": "Write the hostile case named in the instructions.", "sandbox": "workspace-write", "ownedPaths": ["test/compare.test.ts"] }
+    { "name": "fixture", "task": "Write the hostile case named in the instructions.", "sandbox": "workspace-write", "ownedPaths": ["test/compare-exhaustive.test.ts"] }
   ]
 }
 ```
 
-A row takes only `name` (`^[a-z][a-z0-9_]{0,47}$`), a distinct `task`, `workdir`, `sandbox`,
-`ownedPaths` (required by `workspace-write`) and `effort`, which runs that row at another of the
-model's efforts than `--reasoning-effort` and is recorded in `launch.json` for `--retry`. Web search is on unless `"search": false`, which a
-session reading campaign logs needs; a searching session queries only public concepts and cites URLs.
+Valid row fields are `name` (`^[a-z][a-z0-9_]{0,47}$`), a distinct `task`, `workdir`, `sandbox`,
+`ownedPaths` (mandatory for `workspace-write`), and `effort` (overriding `--reasoning-effort` for
+that row and persisted in `launch.json` for `--retry`). Web search is enabled unless `"search":
+false`, which must be set for any session inspecting campaign logs; sessions with web search
+enabled may query only public concepts and must cite URLs.
 
 ## Launch
 
-Start the batch detached, so neither a tool timeout nor the turn's end kills it, into a new output
-directory outside any campaign folder:
+Start the batch detached so neither tool timeouts nor turn completion terminate it, targeting a
+fresh output directory outside any campaign directory:
 
 ```sh
 nohup bun .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts \
@@ -86,30 +94,31 @@ nohup bun .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts \
   > <scratch>/gpt.log 2>&1 &
 ```
 
-Once the log opens with `gpt_sessions.started`, report directory, count, model, effort and pace.
-`--codex-bin` overrides where Codex is found.
+Once the log prints `gpt_sessions.started`, report the output directory, session count, model,
+reasoning effort, and concurrency settings. Pass `--codex-bin` to override the Codex binary path.
 
-## Watch, drain, retry
+## Watch, drain, and retry
 
-The log gains a `gpt_session.finished` line per session, then `gpt_sessions.completed`. Drain while
-it runs: `--drain` prints what `reports.md` gained, and `reports.md` survives the launcher's death.
-At the end, drain again and read `summary.json` (an incomplete session's `failureKind` is `spawn`,
-`rate-limit` or `null`). Where the bound model
-carries a claim, read the session's own event log.
+The launcher appends a `gpt_session.finished` line as each session ends, followed by
+`gpt_sessions.completed`. Drain incrementally while the batch runs: `--drain` outputs newly
+appended sections of `reports.md`, and `reports.md` persists even if the launcher dies. After
+completion, run a final drain and inspect `summary.json` (incomplete sessions record `failureKind`
+as `spawn`, `rate-limit`, or `null`). Whenever a claim depends on the exact model that ran, verify
+it directly in that session's event log.
 
-A session completes when its last attempt exits 0 and writes a report (`settle`,
-`gpt-receipts.ts`), with `--retries` further attempts (default 1, at most 5). Where every session
-failed `rate-limit` at once and spent nothing, the Codex window itself is spent, often for days, so
-plan no further work on Codex until it resets and move what cannot wait to a Claude agent (for lanes,
-the `wri-lane` type). After scattered rate limits, let the launch settle and rerun only what is
-missing under the recorded settings:
+A session counts as complete when its final attempt exits 0 and writes a report (`settle`,
+`gpt-receipts.ts`), with `--retries` controlling per-session retries (default 1, maximum 5). If
+every session fails immediately with `rate-limit` and zero spend, the Codex quota window is
+exhausted (often for several days): halt further Codex scheduling until reset and route urgent
+work to Claude agents (for WRI lanes, use the `wri-lane` agent type). After sporadic rate limits,
+let the current batch settle and retry only incomplete sessions under the saved settings:
 
 ```sh
 bun .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --retry <output dir> --max-active 4 --start-interval-ms 5000
 ```
 
-## Lanes of a whole-run investigation
+## Whole-run investigation lanes
 
-[whole-run-investigation](../whole-run-investigation/SKILL.md) writes `<dir>/launch.json`; launch it
-as it stands. A lone lane (4 and 15) launches after the reports it waits on from
-`<dir>/launch-NN.json`, and `wri.ts collect` reads the reports.
+[whole-run-investigation](../whole-run-investigation/SKILL.md) generates `<dir>/launch.json`;
+launch it unmodified. Dependent single lanes (lanes 4 and 15) launch after their prerequisite
+reports arrive using `<dir>/launch-NN.json`, and `wri.ts collect` gathers the finished reports.

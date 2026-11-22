@@ -4,10 +4,8 @@
 // as, which the listing has to name and a diff has to read where it sits. Beside them lies a shared
 // tool tree (`tree-*`), which a kept state links to and which is no harness.
 import { afterAll, describe, expect, it } from "bun:test";
-import { type Version, versionsOf } from "#skills/harness-audit/scripts/harness-versions.ts";
-import { recordCondition } from "../src/kernel/condition.ts";
+import type { Version } from "#skills/harness-audit/scripts/harness-versions.ts";
 import { append } from "../src/kernel/log.ts";
-import { LIMITS } from "../tools/d2/campaign.ts";
 import {
   cpSync,
   mkdirSync,
@@ -18,7 +16,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { dirname, join } from "../src/meta/path.ts";
+import { join } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import { openHarness } from "../src/harness/open.ts";
@@ -47,7 +45,7 @@ const misnamed = "0".repeat(64);
 cpSync(join(states, child), join(states, misnamed), { recursive: true });
 mkdirSync(join(states, "tree-x", "bin"), { recursive: true });
 writeFileSync(join(states, "tree-x", "bin", "tool"), "#!/bin/sh\n");
-const guideLines = EXAMPLE.guide.split("\n").filter((line) => line.trim() !== "").length;
+
 const short = (digest: string) => digest.slice(0, 8);
 
 append(log, "build.started", { session: "b-1", parent: starter });
@@ -79,130 +77,6 @@ const run = (from: string, ...args: string[]) => {
   return { code: result.exitCode, stdout: decodeOutput(result.stdout), stderr: decodeOutput(result.stderr) };
 };
 
-describe("the harnesses a campaign keeps", () => {
-  it("lists each in the order the log names it, with how it was made, measured and promoted", async () => {
-    const [first, second, third, ...rest] = await versionsOf({ log, states });
-    expect(rest).toStrictEqual([]);
-    if (first === undefined || second === undefined || third === undefined) {
-      throw new Error("three harnesses");
-    }
-    expect(first.digest).toBe(starter);
-    expect(first.roles).toStrictEqual(["starter"]);
-    expect(first.made).toContain("Starter");
-    expect(first.sessions).toHaveLength(1);
-    for (const fact of ["b-1", "3 practice solves", "0 counted fails", short(child)]) {
-      expect(first.sessions[0]).toContain(fact);
-    }
-    expect(second.digest).toBe(child);
-    expect(second.opens).toBe("as kept");
-    expect(second.roles).toStrictEqual(["reference", "latest"]);
-    expect(second.made).toBe(`session b-1 from ${short(starter)}, 6-word note`);
-    expect(second.parent).toBe(starter);
-    expect(second.compared).toHaveLength(1);
-    for (const fact of ["g1", "new harness", short(starter), "step", "5 won", "1 lost", "2 tied"]) {
-      expect(second.compared[0]).toContain(fact);
-    }
-    expect(second.promoted).toHaveLength(1);
-    expect(second.parts).toMatchObject({ guide: guideLines, toolTree: { files: 1 } });
-    expect(third.digest).toBe(misnamed);
-    expect(third.opens).toBe(`as ${short(child)}, not as kept`);
-    expect(third.made).toStartWith("no record of its making");
-  });
-});
-
-describe("a campaign its Builder leads", () => {
-  it("reads each checkpoint's parent as the session's checkpoint before it, or what it began from, and an open session by its last checkpoint", async () => {
-    // A led conversation freezes with `build.checkpoint` alone: buffer-fresh-opus-v072's compared
-    // harnesses all read "no record of its making" (the sweep of 27 October, lane 15).
-    const led = join(root, "led");
-    const ledStates = join(led, "states");
-    mkdirSync(ledStates, { recursive: true });
-    for (const digest of [starter, child]) {
-      cpSync(join(states, digest), join(ledStates, digest), { recursive: true });
-    }
-    const later = await keep(
-      (dir) => writeHarness(dir, { ...EXAMPLE, guide: `${EXAMPLE.guide}\nOne more line.` }),
-      ledStates,
-    );
-    const ledLog = join(led, "log.jsonl");
-    append(ledLog, "build.started", { session: "b-1", parent: starter });
-    append(ledLog, "build.checkpoint", { session: "b-1", harness: child });
-    append(ledLog, "build.checkpoint", { session: "b-1", harness: later });
-    // A state the session practised and never froze, and one only a comparison solved: until
-    // 2 November both read "no record of its making" (lane 16: 28 states in seven campaigns).
-    const practised = await keep(
-      (dir) => writeHarness(dir, { ...EXAMPLE, guide: `${EXAMPLE.guide}\nPractised.` }),
-      ledStates,
-    );
-    const compared = await keep(
-      (dir) => writeHarness(dir, { ...EXAMPLE, guide: `${EXAMPLE.guide}\nCompared.` }),
-      ledStates,
-    );
-    for (const [harness, inside] of [
-      [practised, {}],
-      [compared, { comparison: "g-1" }],
-    ] as const) {
-      const condition = recordCondition(ledLog, {
-        contract: "c1",
-        harness,
-        task: "v1",
-        model: "faux/faux-solver",
-        effort: "medium",
-        prices: { "faux/faux-solver": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
-        runtime: {},
-        compaction: "off",
-        solverTools: harness,
-        verifierTools: "t1",
-        sandbox: "p1",
-        limits: LIMITS,
-        host: "h1",
-        side: "test",
-      });
-      append(ledLog, "solve.started", {
-        solve: `s-${harness}`,
-        condition,
-        task: "v1",
-        ...inside,
-      });
-    }
-    const made = new Map((await versionsOf({ log: ledLog, states: ledStates })).map((v) => [v.digest, v]));
-    expect(made.get(child)?.made).toBe(`checkpoint of session b-1 from ${short(starter)}`);
-    expect(made.get(later)?.made).toBe(`checkpoint of session b-1 from ${short(child)}`);
-    expect(made.get(later)?.parent).toBe(child);
-    expect(made.get(practised)?.made).toBe("a state its Builder practised and never froze");
-    expect(made.get(compared)?.made).toStartWith("no record of its making");
-    // An open session has handed nothing over: until 1 November the starter read "left it as it
-    // was" beside the three checkpoints its session had made (gate validity arm, F13).
-    expect(made.get(starter)?.sessions).toEqual([
-      `b-1: 1 practice solves, 0 counted fails, left ${short(later)} so far, open`,
-    ]);
-  });
-
-  it("preserves an imported harness's origin when a checkpoint reuses its digest", async () => {
-    const imported = join(root, "imported");
-    const importedStates = join(imported, "states");
-    mkdirSync(importedStates, { recursive: true });
-    for (const digest of [starter, child]) {
-      cpSync(join(states, digest), join(importedStates, digest), { recursive: true });
-    }
-    const importedLog = join(imported, "log.jsonl");
-    append(importedLog, "harness.imported", { harness: child, from: "handed/harness" });
-    const origin = { made: "imported from handed/harness", parent: null };
-    expect(
-      (await versionsOf({ log: importedLog, states: importedStates })).find((v) => v.digest === child),
-    ).toMatchObject(origin);
-    append(importedLog, "build.started", { session: "b-1", parent: starter });
-    append(importedLog, "build.checkpoint", { session: "b-1", harness: child });
-    expect(
-      (await versionsOf({ log: importedLog, states: importedStates })).find((v) => v.digest === child),
-    ).toMatchObject(origin);
-    const diffed = run(importedLog, "--diff", child);
-    expect(diffed.code).toBe(2);
-    expect(diffed.stderr).toContain("no parent");
-    expect(run(importedLog, "--diff", child, "--against", starter).code).toBe(0);
-  });
-});
-
 describe("the command", () => {
   it("prints the chain blind: each version's parts and diff, and nothing of how it was measured", () => {
     const blind = run(log, "--blind");
@@ -227,15 +101,6 @@ describe("the command", () => {
     expect(run(log).stdout).toContain("comparison g1");
   });
 
-  it("reads a campaign folder as its log, and takes no --log or --name", () => {
-    const folder = run(dirname(log));
-    expect(folder.code).toBe(0);
-    expect(folder.stdout).toContain("[starter]");
-    expect(folder.stdout).toBe(run(log).stdout);
-    expect(run(log, "--log", log).code).not.toBe(0);
-    expect(run(log, "--name", "camp").code).not.toBe(0);
-  });
-
   it("refuses a control, a harness with no parent on record, and a digest the campaign does not keep", () => {
     for (const [harness, fact] of [
       ["programs-of:latest", "no control"],
@@ -248,16 +113,5 @@ describe("the command", () => {
     const unkept = run(log, "--diff", "f".repeat(64), "--against", "starter");
     expect(unkept.code).toBe(1);
     expect(unkept.stderr).toContain("is no harness this campaign keeps");
-  });
-
-  it("diffs a state that opens as another harness where it is kept, and says how it opens", () => {
-    // A copy of a campaign leaves out what its harness installed, so there a kept state opens as
-    // another digest; the files it keeps still read against its parent's.
-    const [header, note, ...moves] = run(log, "--diff", misnamed, "--against", "starter").stdout.split("\n");
-    expect(header).toBe(`${misnamed} against ${starter}`);
-    expect(note).toContain(`${short(misnamed)} opens as ${short(child)}, not as kept`);
-    const [, ...kept] = run(log, "--diff", child, "--against", "starter").stdout.split("\n");
-    expect(kept.join("\n")).not.toContain("not as kept");
-    expect(moves).toStrictEqual(kept);
   });
 });

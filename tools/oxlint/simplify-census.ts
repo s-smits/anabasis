@@ -1,7 +1,9 @@
 // The simplify census: the whole-tree scans of `tree-findings.ts`, the shapes `/simplify` kept
 // finding that relate two files and so no per-file rule can see, grouped by shape and largest
-// first, each argument printed once above its sites. Nothing here gates: a person reads a group,
-// decides it as a group, and fixes it in one go.
+// first, each argument printed once above its sites. A person reads a group, decides it as a group,
+// and fixes it in one go; the gate runs it with `--gate`, which fails while any unanswered site of a
+// listed shape stands (operator, 22 November 2026: "we need to fix bun run simplify on each commit").
+// The registers and the staged rules print beside it and never fail it.
 //
 // It also runs the per-file rules that report and never gate, `staged-rules.json`, over the
 // authored roots: a rule starts there and moves to `.oxlintrc.json`, as an error, once no site of
@@ -122,7 +124,8 @@ await Bun.write(
     limit === DEFAULT_SITES
       ? "Every site: bun run simplify -- --all. One kind: bun run simplify -- <name>."
       : "Every site is listed.",
-    "Nothing here gates. Read a group, decide it as a group, then fix.",
+    "The gate fails while a site above stands. Read a group, decide it as a group, then fix or answer it.",
     "",
   ].join("\n"),
 );
+if (argv.includes("--gate") && total > 0) runtimeProcess.exitCode = 1;

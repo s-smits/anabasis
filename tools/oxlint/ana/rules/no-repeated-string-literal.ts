@@ -12,14 +12,14 @@ import { ownedElsewhere } from "../shared/literal-owner.ts";
  *
  * The first version of this rule reported every repeat that carried meaning, and it was wrong
  * about most of them. Measured over the whole tree on 2026-09-20: 158 sites, of which 138 across
- * 98 distinct values were bare tags — `"non-result"`, `"completed"`, `"blocking"`, `"Identifier"`.
+ * 98 distinct values were bare tags: `"non-result"`, `"completed"`, `"blocking"`, `"Identifier"`.
  * Those are union members. A typo in one is a build failure rather than a branch that quietly
  * never runs, so the risk this rule exists to remove is already removed there, by a mechanism
  * stronger than a local `const`. The repair the old message asked for did not exist either: the
  * union is a type, so there is no member to import and the `const` beside the four uses would
  * only move the characters.
  *
- * The 20 that remain are the strings nothing checks — a file this repository writes and reads
+ * The 20 that remain are the strings nothing checks: a file this repository writes and reads
  * (`opening.json`, `battery.json`, `agent/tools.ts`), a flag handed to a sandbox (`--ro-bind`,
  * `--tmpfs`), an identifier crossing a process boundary (`verifier_workshop`), a sentence a
  * reader will grep for. `generated-tool-worker-child.ts` spells its wire form `non_result` while
@@ -33,18 +33,18 @@ import { ownedElsewhere } from "../shared/literal-owner.ts";
  * `turn_permit_request` are declared members of the worker protocol union in
  * `5bc9988:src/solve/generated-tool-worker-protocol.ts`, so the rule reports a repeat the compiler already
  * owns. Widening the tag to admit `_` would also admit the wire identifiers the same file crosses a
- * process boundary with, which is the one class this rule exists to catch — `non_result` against
+ * process boundary with, which is the one class this rule exists to catch: `non_result` against
  * `non-result` is the recorded instance. The mismatch is left in the narrower direction on purpose. It admits a leading digit, which it did not until 2026-09-20: `"2-digit"` is a
  * member of `Intl.DateTimeFormatOptions`, spelled six times in one formatter and five in
  * another, and the five `introduced: "2026-09-15"` rows of the safeguard inventory are a
- * hyphenated word by the same reading — naming either is not a repair.
+ * hyphenated word by the same reading: naming either is not a repair.
  *
  * The bare-tag test reads a union member from its characters, and a member with a space or a comma
  * in it fails that test: `"no value"` beside `"moved, better"` in one verdict union. Where the file
  * itself writes the spelling as a literal type, the union is in view, and the copies in value
  * position are the ones the compiler holds to it: a returned `{ verdict: "no valeu" }` and a
- * comparison `verdict === "no valeu"` are both build failures. On 11 November 2026 the rule asked
- * for a constant for four such copies, and the constant then had to be read back into the union as
+ * comparison `verdict === "no valeu"` are both build failures. Asking for a constant for such
+ * copies would leave the constant to be read back into the union as
  * `typeof NO_VALUE`, which is the declaration bent around the rule. So a spelling this file
  * declares as a literal type is not counted. It is still a proxy: a copy handed to an untyped
  * place is not checked, and a union another file declares is out of view, where the report stands.
@@ -59,8 +59,8 @@ import { ownedElsewhere } from "../shared/literal-owner.ts";
  * fixer would answer it with a local one every time. In a test file a local one is the answer: the
  * fixture belongs to the suite that spells it, and importing the producer's constant instead would
  * cost the test the rename it exists to catch. So the fixer runs there and nowhere else. It
- * declines a value it cannot turn into a plain identifier — a leading digit, an escape, a name the
- * file already uses — and a file with no import to insert after, because inserting before the
+ * declines a value it cannot turn into a plain identifier (a leading digit, an escape, a name the
+ * file already uses) and a file with no import to insert after, because inserting before the
  * first declaration lands between a doc comment and the declaration it documents.
  *
  * Import sources and re-export names are skipped because the module system owns them, and object
@@ -73,21 +73,21 @@ import { ownedElsewhere } from "../shared/literal-owner.ts";
 /**
  * Spellings of one string in a file below which repetition is ordinary, by the file's job.
  *
- * A suite naming one fixture in twenty cases is doing its job, which is why this rule skipped
- * test files entirely until 2026-09-20. Skipping them also skipped the case the floor exists for:
+ * A suite naming one fixture in twenty cases is doing its job, which is why test files take a
+ * higher floor rather than being skipped. Skipping them would skip the case the floor exists for:
  * `5bc9988:test/run-triage.test.ts` spells one campaign directory 23 times, and when the fixture moved,
  * 23 lines had to move with it. Measured over the whole test corpus at a floor of 12, the rule
  * finds the files where the repetition is a fixture nobody named and nothing else.
  *
  * A suite's prose is not held to it at all. A string with whitespace in a test is a note no reader
  * compares, such as a scripted Builder's `finish` note, or the sentence an assertion reads, and a
- * constant hides from the case what it asserts. On 14 October the rule asked for a local constant
- * for ten copies of "Nothing to add." in `test/builder-led.test.ts`, a note whose copies never need
- * to agree. A directory or a file name has no whitespace, and stays counted.
+ * constant hides from the case what it asserts: a repeated note such as "Nothing to add." in
+ * `test/builder-led.test.ts` never needs its copies to agree. A directory or a file name has no
+ * whitespace, and stays counted.
  */
 const REPEAT_FLOOR = { source: 4, test: 10 };
 
-/** String length below which a repeat is a word — `"id"`, `"json"` — rather than a value. */
+/** String length below which a repeat is a word (`"id"`, `"json"`) rather than a value. */
 const LENGTH_FLOOR = 6;
 
 /** Whitespace, which in a test file makes a string prose rather than a fixture's name. */

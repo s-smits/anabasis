@@ -11,10 +11,10 @@
 set -eu
 
 # An email under an RFC 2606 reserved domain can never resolve to a GitHub account, so the commit
-# lands as an unlinked user. In v1 a stale `user.email = pin@example.test` in .git/config recorded
-# 139 such commits between 31 July and 2 August 2026 before anyone noticed; none of them are attributed
-# and none can be re-attributed without rewriting 16 open pull requests. `git var` resolves the
-# same precedence `git commit` uses, so this checks the value that will actually be recorded.
+# lands as an unlinked user, and a stale email in .git/config can record many such commits before
+# anyone notices, none of which can be re-attributed without rewriting the open pull requests.
+# `git var` resolves the same precedence `git commit` uses, so this checks the value that will
+# actually be recorded.
 author_email=$(git var GIT_AUTHOR_IDENT)
 author_email=${author_email#*<}
 author_email=${author_email%%>*}
@@ -51,8 +51,8 @@ if [ -n "$staged" ]; then
     exit 1
   }
   # The slop report: the whole-tree simplify scans, narrowed to the lines this commit changes, with
-  # an id per site for the not-slop ledger. It prints and never refuses — its scans are heuristics
-  # (tools/oxlint/staged-slop.ts says why) — so a scan that fails to finish costs one line here.
+  # an id per site for the not-slop ledger. It prints and never refuses: its scans are heuristics
+  # (tools/oxlint/staged-slop.ts says why), so a scan that fails to finish costs one line here.
   bun tools/oxlint/staged-slop.ts || echo "commit-check: the slop report did not finish; the commit goes ahead." >&2
 fi
 

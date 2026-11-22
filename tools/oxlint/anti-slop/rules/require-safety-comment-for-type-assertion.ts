@@ -56,7 +56,7 @@ function hasSafetyJustificationBefore(
  * `(/* SAFETY *\/ x as T)` and `/* SAFETY *\/ (x as T)` put the justification in the same place and
  * say the same thing; only the parenthesis falls on the other side of it. `getCommentsBefore` stops
  * at that parenthesis, so the second spelling reads as an unjustified assertion unless this walk
- * allows it — and the second spelling is what `biome format` produces, by moving the comment out of
+ * allows it, and the second spelling is what `biome format` produces, by moving the comment out of
  * parentheses nobody asked it to keep. Nothing but whitespace and opening parentheses may
  * separate the comment from the assertion, so no neighbouring expression can borrow the sentence.
  */
@@ -96,7 +96,7 @@ function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion, pattern: 
 
 /**
  * Every type assertion but `as const` has to carry a marked sentence saying what the author
- * checked that the compiler could not — the word `SAFETY`, a colon, and the reason.
+ * checked that the compiler could not: the word `SAFETY`, a colon, and the reason.
  *
  * An assertion is the one construct where the type system stops arguing and takes the author's
  * word, so the word is the whole of the evidence and it is normally not written down. A reader

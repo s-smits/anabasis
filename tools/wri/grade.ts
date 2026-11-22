@@ -3,9 +3,9 @@
  * the command that repeats it. It writes nothing and logs nothing. It needs the pack and its tool
  * tree, and the Mac's verifier wall.
  *
- *   bun tools/wri/wri.ts grade --log <log> [--bundle <pack>] --task <taskId> --answer <file> [--set <path>=<json>]...
- *   bun tools/wri/wri.ts grade --log <log> [--bundle <pack>] --solve <id> [--set <path>=<json>]...
- *   bun tools/wri/wri.ts grade --log <log> [--bundle <pack>] --answers <dir>
+ *   bun tools/wri/wri.ts grade --log <log> --task <taskId> --answer <file> [--set <path>=<json>]...
+ *   bun tools/wri/wri.ts grade --log <log> --solve <id> [--set <path>=<json>]...
+ *   bun tools/wri/wri.ts grade --log <log> --answers <dir>
  *
  * - `--answer` grades one file against `--task`.
  * - `--solve` grades the answer the log's last verdict of that solve holds (`verdictsOf`), against the
@@ -19,22 +19,16 @@
  *   begins with (`<taskId>.json` or `<taskId>--<label>.json`), and prints the sha256 of the bytes it
  *   graded, so a lane's frozen digests can be set against what was graded.
  *
- * Between 3 and 10 November 16 of 18 lane 1 sessions pulled answers out of verdicts by hand, 4 wrote
- * their own one-field mutation, and 6 of 7 lane 6 sessions graded a corpus in a shell loop; the one
- * rounding defect three lanes of one investigation found was vetted plausible only, since no session
- * printed a repeatable grade of it.
+ * Without it lane sessions pull answers out of verdicts by hand, write their own one-field
+ * mutations and grade a corpus in a shell loop, and a defect several lanes find is vetted plausible
+ * only, since no session prints a repeatable grade of it.
  *
  * An answer outside a drafted exam's answer format is refused first, as `judge` refuses a solver's,
  * and no check reads it (`src/solver/run.ts`). The format is the draft's, which the campaign's
- * contract holds (`packOpened`, `tools/d2/campaign.ts`). Until 20 October grade put every answer to
- * the checks alone, and a lane of buffer-fresh-opus-forkedPR223_v0_5_4-r3's investigation, probing
- * through it, read the evaluator's leniency on keys the format refuses as a gap of the exam, where the
- * host refuses such an answer before any check: none of the campaign's 2,480 verdicts held a format
- * fault. A stored pack's format is read from its sweep, which grade is not given, so its answers are
- * put to the checks alone, and grade says so. A campaign over a stored pack names it with `--bundle`,
- * and its checks stand beside the log; a campaign that drafted its exam names none, and its exam is
- * read where the campaign staged it (`exams/<digest>/`, `tools/d2/exam.ts`). On 10 October t-10's
- * lane 1 was given `<campaign>/checks` for a drafted exam and stopped on ENOENT.
+ * contract holds (`packOpened`, `tools/d2/campaign.ts`). Putting every answer to the checks alone
+ * would let a lane read the evaluator's leniency on keys the format refuses as a gap of the exam,
+ * where the host refuses such an answer before any check. The exam is read where the campaign
+ * staged it (`exams/<digest>/`, `tools/d2/exam.ts`).
  */
 import { draftOf } from "#src/examiner/draft.ts";
 import { type AnswerFile, readAnswerFiles } from "#src/kernel/answer-files.ts";
@@ -48,14 +42,14 @@ import { readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { resolveJsonPath } from "#src/meta/json-evidence.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
-import { dirname, join } from "#src/meta/path.ts";
+import { join } from "#src/meta/path.ts";
 import { withReplacedField } from "#src/referee/probe.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { readPack } from "../m0/stored-sweep.ts";
+import { WRI } from "./index.ts";
 
 interface GradeOptions {
   readonly log: string;
-  readonly bundle: string | undefined;
   readonly task: string | undefined;
   readonly answer: string | undefined;
   readonly solve: string | undefined;
@@ -98,7 +92,7 @@ const clipped = (value: JsonValue | undefined) => {
  * not resolve in the answer or a value would change the field's JSON type. A scalar answer's root
  * `$` can be replaced; an object or array root cannot, as a Referee's probe cannot.
  */
-export function withSet(answer: JsonValue, sets: readonly string[]): { answer: JsonValue; said: string[] } {
+function withSet(answer: JsonValue, sets: readonly string[]): { answer: JsonValue; said: string[] } {
   let changed = answer;
   const said = sets.map((each) => {
     const at = each.indexOf("=");
@@ -133,8 +127,7 @@ export function withSet(answer: JsonValue, sets: readonly string[]): { answer: J
 
 /** The answers to grade: one recorded or given, or every file of a folder. */
 function answersOf(options: GradeOptions, events: ReturnType<typeof read>): Graded[] {
-  const base = ["bun", "tools/wri/wri.ts", "grade", "--log", quoted(options.log)];
-  const bundle = options.bundle === undefined ? [] : ["--bundle", quoted(options.bundle)];
+  const base = ["bun", WRI, "grade", "--log", quoted(options.log)];
   if (options.answers !== undefined) {
     const dir = options.answers;
     return readdirSync(dir)
@@ -147,7 +140,7 @@ function answersOf(options: GradeOptions, events: ReturnType<typeof read>): Grad
           answer: capturedJsonParse(bytes),
           label: `${file}  ${sha256(bytes).slice(0, 8)}`,
           recorded: null,
-          repeat: [...base, ...bundle, "--answers", quoted(dir)],
+          repeat: [...base, "--answers", quoted(dir)],
         };
       });
   }
@@ -172,7 +165,7 @@ function answersOf(options: GradeOptions, events: ReturnType<typeof read>): Grad
         files: readAnswerFiles(options.log, verdict.files ?? []),
         label: null,
         recorded: held,
-        repeat: [...base, ...bundle, "--solve", verdict.solve, ...sets],
+        repeat: [...base, "--solve", verdict.solve, ...sets],
       },
     ];
   }
@@ -185,28 +178,17 @@ function answersOf(options: GradeOptions, events: ReturnType<typeof read>): Grad
       answer: capturedJsonParse(readFileSync(options.answer, "utf8")),
       label: null,
       recorded: null,
-      repeat: [
-        ...base,
-        ...bundle,
-        "--task",
-        quoted(options.task),
-        "--answer",
-        quoted(options.answer),
-        ...sets,
-      ],
+      repeat: [...base, "--task", quoted(options.task), "--answer", quoted(options.answer), ...sets],
     },
   ];
 }
 
 export async function grade(options: GradeOptions): Promise<number> {
   const { log } = options;
-  // The pack and the check program: the stored pack `--bundle` names, whose checks the campaign
-  // staged beside its log, or the exam the log drafted, where the campaign staged it.
-  const staged = options.bundle === undefined ? stagedExamOf(log) : null;
-  if (options.bundle === undefined && staged === null) {
-    throw new Error("name --bundle: the campaign drafted no exam of its own, so its pack is a stored one");
-  }
-  const { bundle, checks } = staged ?? { bundle: options.bundle ?? "", checks: join(dirname(log), "checks") };
+  // The pack and the check program: the exam the log drafted, where the campaign staged it.
+  const staged = stagedExamOf(log);
+  if (staged === null) throw new Error("the campaign drafted no exam of its own");
+  const { bundle, checks } = staged;
   if (options.answers !== undefined && options.set.length > 0) {
     throw new Error("--set changes one answer, not a folder");
   }
@@ -217,11 +199,8 @@ export async function grade(options: GradeOptions): Promise<number> {
   );
   // The format first, as the host holds a solver's answer to it before any check reads it (`judge`).
   const answerFormat = draftOf(events)?.answerFormat;
-  if (answerFormat === undefined) {
-    console.error(
-      "the answer format of a stored pack is read from its sweep, which grade is not given: not held to it",
-    );
-  }
+  // The bundle holds the battery (`tasks.json`, `controls.json`). A log read where it lies outside
+  // the repository has a bundle the repository's denial does not cover, so it is denied by path.
   const verify = openVerifier({ checks, tools: join(bundle, ".toolchain"), packRoots: [bundle] });
   const judged = async (task: Task, answer: JsonValue, files?: readonly AnswerFile[]) => {
     const fault = answerFormat === undefined ? null : answerFormatFault(answerFormat, answer);

@@ -21,19 +21,20 @@
  * every grain, with a sealed half withheld (`levelLines`, `levels.ts`). `read`, `agree`, `derive` and `levels` start nothing and call no
  * model, and what they print holds ids, weights and counts, never a rubric's text or a judge's reasons.
  *
- * Why. The first promoted jobstat harness scored 310 against the Starter's 342 of 550 on 5 November
- * 2026, and the reading could not say what that meant, for four reasons this owns in turn:
+ * Why. A promoted jobstat harness can score below the Starter with the reading unable to say what
+ * that means, for four reasons this owns in turn:
  * - The eight tasks had been read to explain the result, so an arm built from that reading would be
  *   scored on the tasks it was fitted to, and 8 of 65 tasks in 3 of 35 professions are few. `plan`
  *   draws from the professions nobody read, at least 30% of the benchmark rounded up to a multiple of
- *   five, so 20 of 65 (operator, 5 November: "we need to benchmark at least 30% round off to good
+ *   five, so 20 of 65 (the operator's words: "we need to benchmark at least 30% round off to good
  *   number"). It takes whole professions of two tasks or more, as Harness² runs each profession as one
  *   stream with its own library, so its held-out arm, which solves task N under the harness of task
  *   N-1, stands on the same tasks. A harness built for another domain read on these measures transfer
  *   out of its domain. So the first comparison names its tasks instead (`--tasks`, `--burned ""`): the
  *   professions closest to the campaign's prompt, ranked on their public instructions alone before any
- *   rollout (operator, 5 November: "the 20 queries in the domain groups that the prompt is most adhered
- *   to"). Tasks read to explain a result stay burned only for an arm derived from that reading.
+ *   rollout (the operator's words: "the 20 queries in the domain groups that the prompt is most
+ *   adhered to"). Tasks read to explain a result stay burned only for an arm derived from that
+ *   reading.
  * - The same Starter digest had read 298 and 342 across a change of interpreter, so no clean A/A
  *   existed. `--repeats 2` gives every arm two sides, solved alike, and `read` prints their A/A beside
  *   the comparison.

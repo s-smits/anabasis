@@ -198,8 +198,8 @@ describe("retiring", () => {
     ]);
   });
 
-  // A campaign that was killed, and one continued after a kill, left the roots of what it had open
-  // for good: nothing but a stop released any (111 roots on one host on 16 November).
+  // A campaign that was killed, and one continued after a kill, would leave the roots of what it
+  // had open for good if nothing but a stop released any.
   it("releases what an idle run left open, its cut Builder's notes kept first, and nothing of a young run or a live claim", async () => {
     // Named apart from every other run of this suite: a session's root is named for its campaign.
     const suffix = crypto.randomUUID().slice(0, 8);
@@ -217,7 +217,7 @@ describe("retiring", () => {
     writeFileSync(join(dirsOf(cut).home, MEMORY_FILE), "Next: widen the sweep.\n");
     // A root its run's log names as open and a live process claims: read as unwritten by the
     // process table, as a writer this sweep cannot name would be, and held by its claim.
-    const releaseHeld = claimRoot(dirsOf(held).root);
+    const releaseHeld = await claimRoot(dirsOf(held).root);
     // A verifier's cell whose claimant is gone, under a parent of this test's own.
     const parent = join(root, "scratch");
     mkdirSync(join(parent, "cell-left"), { recursive: true });
@@ -237,8 +237,8 @@ describe("retiring", () => {
         true,
       ]);
       // A run whose log grew within the day keeps what it left, as it keeps its place in its
-      // worktree: on 17 November a seed three hours old lost its roots to the sweep. A dead
-      // claimant's cell waits for no run.
+      // worktree, so a seed a few hours old does not lose its roots to the sweep. A dead claimant's
+      // cell waits for no run.
       await sweeping(0, true);
       expect([dirsOf(cut).root, join(parent, "cell-left")].map((path) => existsSync(path))).toEqual([
         true,

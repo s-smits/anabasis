@@ -2,21 +2,22 @@
  * The `ci.yml` runs a landing reads, and the `ci-fixes` run it dispatches after a failed one.
  *
  * A full run of `ci.yml` takes about 17 runner-minutes over its three jobs and ten to fifteen
- * minutes of a landing's wall clock. When one failed in its tests and the fix is pushed, the next
- * landing used to dispatch the whole run again although most of its files had just passed on a tree
- * that differs from the new one only by the fix. Of 60 runs from 20 October to 7 November, 7
- * failed, and each fix paid the whole run again (the operator, 7 November: "we only need to rerun
- * 'ci-fixes' which is only the maxdepth1 of all the fixed tests").
+ * minutes of a landing's wall clock. When one failed in its tests and the fix is pushed, running the
+ * whole of it again would pay for files that had just passed on a tree that differs from the new one
+ * only by the fix (on the operator's word: "we only need to rerun 'ci-fixes' which is only the
+ * maxdepth1 of all the fixed tests").
  *
- * So where the newest full run on the top's branch failed and only in its test steps, the run on the
- * new head is `ci-fixes`: the same workflow, dispatched with the test files to run in place of the
- * suite. Those are the files that failed there, and the tests near what changed between the failed
- * run's tree and the new head's, by the rule the gate's static pass uses (`testsNear`, one import
- * for the root's tests, and `uiTestsNear`, three for the UI's). The diff is of trees, not of commits, since a fix here
- * goes into the commit that broke and the pull requests above are replayed, so the failed head is
- * seldom an ancestor of the new one. A test neither near the change nor failed there passed on the
- * failed run's tree. The landing's own whole gate still runs the full suite on the new head, on a
- * runner host, before anything merges.
+ * So the run on a new head is `ci-fixes` by default: the same workflow, dispatched with the test
+ * files to run in place of the suite. Its base is the newest full run on the top's branch, or, where
+ * the branch has none, the trunk's head, whose tree a full run passed before `land` merged it, since
+ * a release's top is a branch no run has seen and would otherwise run the whole suite at every
+ * landing. The files are those the base run failed, where it failed only in its test steps, and the
+ * tests near what changed between the base's tree and the new head's, by the rule the gate's static
+ * pass uses (`testsNear`, one import for the root's tests, and `uiTestsNear`, three for the UI's).
+ * The diff is of trees, not of commits, since a fix goes into the commit that broke and the pull
+ * requests above are replayed, so the base is seldom an ancestor of the new head. A test neither
+ * near the change nor failed there passed on the base's tree. The landing's own whole gate still
+ * runs the full suite on the new head, on a runner host, before anything merges.
  *
  * A full run is dispatched instead wherever that argument does not hold: a failed step other than
  * the suite (the typecheck, the lint, the format, the secret scan, the UI's build, the climb
@@ -116,6 +117,27 @@ export function failedFiles(log: string): string[] {
   return [...found];
 }
 
+/** The trunk's head at the remote, or undefined where it could not be read. */
+const trunkHead = (root: string): string | undefined => {
+  const read = gh(root, ["api", "repos/{owner}/{repo}/commits/HEAD", "--jq", ".sha"]);
+  return read.ok && read.out !== "" ? read.out : undefined;
+};
+
+/** The test files run `id` on `sha` failed, or null where it failed beyond its tests, which a full
+ *  run must then repeat (`full` says why). */
+function failedOf(root: string, id: string, sha: string, full: (why: string) => null): string[] | null {
+  const other = gh(root, ["run", "view", id, "--json", "jobs", "--jq", NOT_TESTS]);
+  const outside = other.ok
+    ? other.out.split(", ").filter((step) => step !== "" && !TEST_STEP.test(step))
+    : [];
+  if (!other.ok || outside.length > 0) {
+    return full(`run ${id} on ${short(sha)} failed beyond its tests (${outside.join(", ") || other.err})`);
+  }
+  const log = gh(root, ["run", "view", id, "--log-failed"]);
+  const failed = log.ok ? failedFiles(log.out) : [];
+  return failed.length === 0 ? full(`run ${id}'s failed log names no test file`) : failed;
+}
+
 /** The `ci-fixes` run for `top`'s head, or null where a full run is due; `say` names why not. */
 export function fixesFor(root: string, top: Pull, say: (line: string) => void): Fixes | null {
   const read = gh(root, [
@@ -130,42 +152,45 @@ export function fixesFor(root: string, top: Pull, say: (line: string) => void): 
     "--jq",
     String.raw`[.[] | select(.conclusion != "cancelled" and .displayTitle != "${FIXES}")] | first // empty | [.headSha, .conclusion, .databaseId] | map(tostring) | join("\t")`,
   ]);
-  const [sha = "", conclusion = "", id = ""] = read.ok ? read.out.split("\t") : [];
-  if (conclusion !== "failure" || sha === top.headRefOid) return null;
+  if (!read.ok) return null;
+  const [ran = "", conclusion = "", ranId = ""] = read.out.split("\t");
   const full = (why: string): null => {
     say(`${CI_WORKFLOW} runs in full: ${why}.`);
     return null;
   };
-  const other = gh(root, ["run", "view", id, "--json", "jobs", "--jq", NOT_TESTS]);
-  const outside = other.ok
-    ? other.out.split(", ").filter((step) => step !== "" && !TEST_STEP.test(step))
-    : [];
-  if (!other.ok || outside.length > 0) {
-    return full(`run ${id} on ${short(sha)} failed beyond its tests (${outside.join(", ") || other.err})`);
+  if (ran === top.headRefOid) return full(`its last full run was on this head`);
+  // With no full run on the branch, the trunk's head stands for one: `land` merges only a tree
+  // whose full run passed, so the trunk holds that tree (on the operator's word: "only test the
+  // things we need").
+  const trunk = ran === "" ? trunkHead(root) : undefined;
+  if (ran === "" && trunk === undefined) return full("the trunk's head could not be read");
+  const sha = trunk ?? ran;
+  const since = trunk === undefined ? `run ${ranId}` : "the trunk's head";
+  if (trunk === undefined && conclusion !== "success" && conclusion !== "failure") {
+    return full(`run ${ranId} ended ${conclusion || "without a conclusion"}`);
   }
-  const log = gh(root, ["run", "view", id, "--log-failed"]);
-  const failed = log.ok ? failedFiles(log.out) : [];
-  if (failed.length === 0) return full(`run ${id}'s failed log names no test file`);
+  const failed = conclusion === "failure" ? failedOf(root, ranId, sha, full) : [];
+  if (failed === null) return null;
   if (
     !gitSays(root, ["cat-file", "-e", `${sha}^{commit}`]) &&
     !gitSays(root, ["fetch", "-q", "origin", sha])
   ) {
-    return full(`${short(sha)}, where run ${id} failed, is not on origin`);
+    return full(`${short(sha)}, the tree ${since} tested, is not on origin`);
   }
   const changed = new Set(lines(git(root, ["diff", "--name-only", sha, top.headRefOid])));
   const wide = [...changed].find((file) => FULL.some((path) => file === path || file.startsWith(path)));
-  if (wide !== undefined) return full(`${wide} changed since run ${id}`);
+  if (wide !== undefined) return full(`${wide} changed since ${since}`);
   const { near, wall } = nearOn(root, top.headRefOid, changed);
-  if (wall !== undefined) return full(`${wall}, which the wall imports, changed since run ${id}`);
+  if (wall !== undefined) return full(`${wall}, which the wall imports, changed since ${since}`);
   const present = new Set(lines(git(root, ["ls-tree", "-r", "--name-only", top.headRefOid])));
   const tests = [...new Set([...failed, ...near])].filter((file) => present.has(file)).toSorted();
-  if (tests.length === 0) return full(`no test file run ${id} failed is still there`);
+  if (tests.length === 0) return full(`no test file is near what changed since ${since}`);
   const ui = (file: string): boolean => file.startsWith(`${UI_ROOT}/`);
   // A run of UI tests alone skips the linux job, and with it the climb simulation.
   const beyond = tests.every(ui) ? [...changed].find((file) => !ui(file)) : undefined;
-  if (beyond !== undefined) return full(`${beyond} changed since run ${id}, and only UI tests are near it`);
+  if (beyond !== undefined) return full(`${beyond} changed since ${since}, and only UI tests are near it`);
   return {
-    since: `run ${id} on ${short(sha)}`,
+    since: `${since} on ${short(sha)}`,
     tests: tests.filter((file) => !ui(file)).join(" "),
     uiTests: tests.filter(ui).join(" "),
     count: tests.length,

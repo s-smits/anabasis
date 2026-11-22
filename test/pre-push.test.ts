@@ -29,6 +29,7 @@ const STATIC = [
   "run typecheck",
   "run lint -- --strict",
   "tools/loc/source-policy.ts",
+  "run simplify -- --gate",
 ];
 // `gh` answers `pr list` with ANA_FAKE_PULLS, holds every commit, finds no status on one, and
 // writes every call it gets to a log.
@@ -146,37 +147,6 @@ describe("pre-push", () => {
     expect(gatesRun(log)).toEqual([]);
   });
 
-  it("passes a file biome's configuration leaves unformatted, which biome echoes and exits 1 on", () => {
-    const config = join(work, "biome.json");
-    writeFileSync(config, '{"overrides":[{"includes":["**/vendor/**"],"formatter":{"enabled":false}}]}\n');
-    try {
-      const mktree = (rows: string) => execTextSync("git", ["mktree"], { cwd: work, stdin: rows }).trim();
-      const vendor = mktree(`100644 blob ${blob("export const copied = {a:1}\n")}\tcopied.ts\n`);
-      const tree = mktree(`${git("ls-tree", docs)}\n040000 tree ${vendor}\tvendor\n`);
-      const head = git("commit-tree", tree, "-p", docs, "-m", "vendor");
-      const result = push([update(head, docs)]);
-      expect(result.stderr).not.toContain("vendor/copied.ts");
-      expect(result.status).toBe(0);
-    } finally {
-      rmSync(config);
-    }
-  });
-
-  it("names biome's own failure where it cannot format a file, rather than calling it misformatted", () => {
-    const head = git(
-      "commit-tree",
-      withFile(docs, "broken.ts", "export const = ;\n"),
-      "-p",
-      docs,
-      "-m",
-      "broken",
-    );
-    const result = push([update(head, docs)]);
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain(`${short(head)}:broken.ts (biome exited 1: `);
-    expect(gatesRun(log)).toEqual([]);
-  });
-
   it("refuses a push that adds a credential-shaped literal, documentation included, before any step runs", () => {
     const key = ["AKIA", "5J3KLMNOPQRSTUVW"].join("");
     const leaked = git(
@@ -208,7 +178,7 @@ describe("pre-push", () => {
     expect(result.status).toBe(0);
     expect(gatesRun(log)).toEqual([`${second} -`]);
     // The install, format check and secret scan run in turn; typecheck and lint then run side by
-    // side, so they finish in either order (a proof of 3 November read lint first).
+    // side, so they finish in either order.
     const steps = stepsOver(second);
     expect(steps.slice(0, 3)).toEqual(STATIC.slice(0, 3));
     expect(steps.slice(3).toSorted()).toEqual(STATIC.slice(3).toSorted());

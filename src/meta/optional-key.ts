@@ -3,7 +3,7 @@
  *
  * `exactOptionalPropertyTypes` is on, so `{ model: undefined }` and `{}` are different values: an
  * optional property declared without undefined must be omitted when it has no value. Said in place
- * that is a conditional spread at every site — `...(value === undefined ? {} : { model: value })`,
+ * that is a conditional spread at every site: `...(value === undefined ? {} : { model: value })`,
  * a few hundred of them. These helpers name the condition for inclusion directly and keep the
  * computed-key construction, and the assertion it needs, in one place.
  *
@@ -37,18 +37,18 @@ export function keyIfDefined<K extends string, V>(key: K, value: V): Key<K, V> {
   return value === undefined ? {} : keyed(key, value);
 }
 
-/** Omit the key when the value is `null` or `undefined` — the JSON-boundary spelling. */
+/** Omit the key when the value is `null` or `undefined`: the JSON-boundary spelling. */
 export function keyIfNotNull<K extends string, V>(key: K, value: V): Key<K, V> {
   return value === null || value === undefined ? {} : keyed(key, value);
 }
 
 /**
  * Include a group of keys only when a condition holds. The keys arrive in a callback so that work
- * belonging to the present case — a lookup, a filesystem probe, a throwing resolver — does not run
+ * belonging to the present case (a lookup, a filesystem probe, a throwing resolver) does not run
  * in the absent case, which is what the spread of a ternary gave for free.
  *
  * The boolean is the datum here, not a mode of the callee. Callers pass a predicate they have just
- * evaluated — `this.files.size > 0`, `existsSync(rustup)`, `readings.length > 0` — rather than a
+ * evaluated, `this.files.size > 0`, `existsSync(rustup)`, `readings.length > 0`, rather than a
  * literal. A two-word enum in its place would make every one of them spell `? "include" : "omit"`
  * around a condition they already hold.
  */

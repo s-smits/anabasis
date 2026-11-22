@@ -7,7 +7,7 @@
  * log by construction.
  *
  * A campaign's project is the one its opening names (`Opening.project`, `--project` on the campaign
- * command since 12 October). An opening written before then names none, and a campaign run by the
+ * command). An older opening names none, and a campaign run by the
  * hand commands alone has no opening: both stand under `NO_PROJECT`, and no project is guessed for
  * them from a prompt or a name.
  *
@@ -212,7 +212,7 @@ const coreIn = once((log) => {
         ({ noise, level }) => noise !== null && readsStepEitherWay(noise.scores, level),
       ).length,
       // What the promotion attempts under the current reference risk together (`falsePromotion`,
-      // `climb.ts`). Until 16 October the table held the next attempt past a quarter of it.
+      // `climb.ts`).
       risk: epochsIn(log).at(-1)?.falsePromotion ?? null,
       runway: runwayIn(log),
     },

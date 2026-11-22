@@ -6,8 +6,8 @@
  *
  * `--runs <dir>` reads the campaigns under one folder (an archive such as `data/runs`, one host's
  * folder of it, or a folder of worktrees) instead of every campaign the registry reaches across the
- * hosts, so it needs no env file and runs under the lane guard, which refuses one: on 9 November a
- * lane-17 session could not set a run's starter against the previous release's for that reason. A
+ * hosts, so it needs no env file and runs under the lane guard, which refuses one; without it a
+ * lane session could not set a run's starter against the previous release's. A
  * campaign two folders below `<dir>` is placed on the host its first folder names.
  *
  * The default view is `recent`: every run still going, whatever it has promoted, then the latest
@@ -25,11 +25,11 @@
  * module's head comment says what places a run and what the hours, the room on validity and a
  * confirmed promotion are. `--has` and `--holds` keep the runs whose every launch ran with a
  * mechanism (`ranWith`). A run's own counts are those of `trend.ts`'s measures, and setting groups
- * of runs against each other is that script's: until 11 November this one also pooled runs by
- * release, pack and setting, a second comparison of groups with no test of the spread between runs.
+ * of runs against each other is that script's, so this one pools no runs by release, pack or
+ * setting, which would be a second comparison of groups with no test of the spread between runs.
  *
- * Written on 29 October, when the operator asked for one place to compare the runs of one cycle
- * with those of the last and no reader assembled them across campaigns.
+ * It is the one place to compare the runs of one cycle with those of the last, assembled across
+ * campaigns.
  *
  * It prints counts, short digests and campaign names, and never a task, an answer or a check.
  */

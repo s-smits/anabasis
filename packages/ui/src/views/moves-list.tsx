@@ -26,8 +26,8 @@ const FILTER_LABELS = new Map([
 ]);
 /** Why a move was made, in words, by the code of the table's row that named it (`ROWS`,
  *  `src/campaign/decide.ts`), or of who chose it: a Builder that leads its campaign asked for it,
- *  or it is that Builder's conversation. Until 30 October the list printed "row" and the code, a
- *  name only the table's source explains; the code stays in the row's title. */
+ *  or it is that Builder's conversation, rather than "row" and the code, a name only the table's
+ *  source explains; the code stays in the row's title. */
 const ROW_WORD = new Map([
   ["stop", "the operator stopped it"],
   ["exam", "the exam does not stand"],
@@ -53,8 +53,8 @@ const READING_TONES = new Map<string, Toned["tone"]>([
   ["no-change", "neutral"],
 ]);
 
-/** The session endings that broke off. Until 30 October every ending but `finished` read as a
- *  warning, so an Examiner session that `supplied` its tasks, its ordinary end, read as a fault. */
+/** The session endings that broke off, so that not every ending but `finished` reads as a warning:
+ *  an Examiner session that `supplied` its tasks has reached its ordinary end, not a fault. */
 const BROKE: ReadonlySet<string> = new Set(["crashed", "killed"]);
 
 /** How a move stands: its ending or reading; cut, where the campaign went past it; or open. */

@@ -12,7 +12,7 @@ const PROPERTY_FLOOR = 3;
  * the literal is usually the case being read, and a reader who has to resolve a name to know
  * what a case was given has lost more than the three edits cost. Measured 2026-09-20: 47 of the
  * 48 sites were in tests, 30 of them at exactly three spellings. At five the file is no longer
- * showing a case — it is repeating a fixture, and `draft-authority.test.ts` spells one eight
+ * showing a case: it is repeating a fixture, and `draft-authority.test.ts` spells one eight
  * times. Ten sites survive both floors, every one of them a test.
  */
 const SPELLING_FLOOR = { source: 3, test: 5 };
@@ -21,9 +21,8 @@ const SPELLING_FLOOR = { source: 3, test: 5 };
  * Rung 5 of the simplify skill's ladder, second clause: "three spellings of one object literal
  * are one small function (one owner, even when the line count is equal)."
  *
- * The commit lane found this in five of the 138 net-negative commits the recorded simplify
- * passes produced — `66a1ba978`, `23086a056`, `c273c01a7`, `32950a6fb`, `602397c8d`. The shape
- * is always the same: a row, a finding, a fixture or an options bag written out in full at
+ * Five of the 138 net-negative commits the recorded simplify passes produced made this cut. The
+ * shape is always the same: a row, a finding, a fixture or an options bag written out in full at
  * three or more places in one file, so that changing what the shape means is three edits and
  * forgetting one of them is a silent drift.
  *
@@ -53,7 +52,7 @@ const SPELLING_FLOOR = { source: 3, test: 5 };
  * `{ recursive: true, force: true }` is 16 of this shape's 168 sites and the largest single
  * spelling in it, and it is not this repository's shape to redefine: Node owns it, so "changing
  * what the shape means" is not a change anybody here can make. `{ answered: false, refusal: null }`
- * and `{ done: true, value: undefined }` are the same case written locally — a state, already
+ * and `{ done: true, value: undefined }` are the same case written locally: a state, already
  * named by the union type the function returns. Naming a flag set again buys a second name for
  * one state and an object three call sites now share.
  */
@@ -77,7 +76,7 @@ function assertionRoot(node: ESTree.Node): boolean {
  * `expect(slots.review).toMatchObject({ enabled: true, kind: "claude", source: "operator" })`
  * spelled three times is three expectations, not one shape. Naming it once means a reader of any
  * one assertion can no longer see what it asserts, and changing what one of them expects changes
- * the other two — which is the coupling a test exists not to have. Ten of 48 sites.
+ * the other two, which is the coupling a test exists not to have. Ten of 48 sites.
  */
 function asserted(node: ESTree.ObjectExpression): boolean {
   // Only the Program has no parent, and it answers `null`, so one spelling ends the walk.

@@ -11,18 +11,19 @@ export type Ending =
   | "no-room"
   | "environment"
   | "operator"
-  /** An older log's: until 20 October an epoch's first A/A that read a step ended the campaign. */
+  /** An older log's ending, from a retired rule under which an A/A control that read a step ended
+   *  the campaign. */
   | "control"
   | "finished";
 
 /** The one move a campaign's log leads to, with its reason, or its ending. */
 export type Decided =
-  /** An Examiner session that drafts the exam of a campaign opened from a prompt (row F53). */
+  /** An Examiner session that drafts the exam of a campaign opened from a prompt. */
   (
     | { readonly move: "draft"; readonly why: string }
     | { readonly move: "accept"; readonly why: string }
     | { readonly move: "prepare"; readonly why: string }
-    /** An Examiner session, which is always asked for tasks the reference harness fails (row F52).
+    /** An Examiner session, which is always asked for tasks the reference harness fails.
      *  `answers` names the operator's word it follows, where it follows one (`pendingWords`). */
     | { readonly move: "examine"; readonly why: string; readonly answers?: readonly number[] }
     | { readonly move: "build"; readonly why: string }

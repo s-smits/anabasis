@@ -9,40 +9,37 @@
  *                                       a 200K context, such as claude-haiku-5-5, cannot hold
  *   --solve-minutes 30                  the deadline of one solve; 30 where not named
  *   --solve-model-turns 20              the model's own turns a solve is given, told to the solver; 20 where not
- *                                       named, and `unlimited` for none, as campaigns recorded before
- *                                       19 October read back
+ *                                       named, and `unlimited` for none, as older campaigns' records
+ *                                       read back
  *   --target 12                         so many of the held-out tasks, by the contract's draw
  *   --solves 4                          solves a side of each scored task; `SIZE.solves`, 2, where
- *                                       not named. A record from before 29 October names none, and
+ *                                       not named. An older record names none, and
  *                                       reads the count its last comparison began at, or 2
  *
  * The first command of a campaign that compares records what its flags name, with the defaults for
  * what they leave out: the stored cycle's own solver, the one budget every solver is held to
  * (`campaign.ts`, `LIMITS`) and `SIZE.tasks`, 24, by the draw. From then on a command that names nothing runs under the
- * record, one that names the same is the same, and one that names another is refused. Until
- * 2026-10-09 the same flags were typed again on every command of a campaign, and a command that
- * differed was told so in a note and went on: a forgotten flag changed the comparison without a
- * word.
+ * record, one that names the same is the same, and one that names another is refused, since a
+ * command that differed and went on with a note would let a forgotten flag change the comparison
+ * without a word.
  *
- * A campaign's setting does not change. Until 2026-10-11 `--new-setting` changed it, as when the
- * budget was set anew, and every fold then read the log by setting: the stop rule, the tasks
- * both harnesses exhausted, the outcome an Examiner hears, the size of the next comparison. The
- * ladder went (`7f0add79:docs/simplify.md`, A1), and the flag and the filters with it (A4): another solver,
- * another deadline or model turn limit is another campaign.
+ * A campaign's setting does not change, so no fold reads the log by setting (the stop rule, the
+ * tasks both harnesses exhausted, the outcome an Examiner hears, the size of the next comparison):
+ * another solver, another deadline or model turn limit is another campaign.
  *
  * A record is written as a command begins its comparison and not before, so a command that is
  * refused records nothing (`keepSetting`).
  *
- * A campaign whose solves were made before a setting was recorded, as every campaign's were until
- * 2026-10-09, has a setting all the same: the one its last test-side solves ran under. The first
- * command to record one names that setting (`firstRecord`), and is refused otherwise. Recode ran on 9 October with its solver
- * held to 15 of its own turns; a first command there that left the flag out would have recorded a
- * campaign with no such limit, and solved under it, without a word.
+ * A campaign whose solves were made before a setting was recorded, as the oldest campaigns' were,
+ * has a setting all the same: the one its last test-side solves ran under. The first command to
+ * record one names that setting (`firstRecord`), and is refused otherwise, since a first command
+ * that left out a turn limit its solves ran under would record a campaign with no such limit, and
+ * solve under it, without a word.
  *
  * The prompts a solver is given before a solve stops without an answer are v1's cap on nudges,
  * `LIMITS.turns`, the same for every solve: every finished solve of the first rounds was given
- * one, so the cap bound no solve, and until 2026-10-11 `--solve-turns` named it and the record
- * held it (`7f0add79:docs/simplify.md`, A3). A record that holds another count is refused. The model's own
+ * one, so the cap bound no solve, and no flag names it. A record that holds another count is
+ * refused. The model's own
  * turns are the budget told to the solver and enforced, which seconds cannot be on a loaded host.
  *
  * What does not follow the setting is the campaign's own: a task's state and the harnesses it
@@ -51,9 +48,8 @@
  * where the solver sits and refuses `--solver`; its limits and its scored set are these.
  *
  * The shell's two timeouts are the sweep's as far as the deadline allows
- * (`commandSeconds`). They ignored the deadline until 2026-10-09: under the five-minute deadline of the one
- * comparison that read a step, a command was allowed 300 s by default and 900 s at most, so none a
- * solver started could be cut and handed back to it before the solve itself ended.
+ * (`commandSeconds`), since under a short deadline a command allowed 300 s by default and 900 s at
+ * most could never be cut and handed back to the solver before the solve itself ended.
  */
 import { clampThinkingLevel, type ThinkingLevel } from "@earendil-works/pi-ai";
 import { THINKING_LEVELS } from "@earendil-works/pi-ai/providers/model-schema";
@@ -139,7 +135,7 @@ const SETTING_DEFAULTS = {
   "solve-minutes": String(LIMITS.wallSeconds / 60),
   "solve-model-turns": String(budgeted),
 } as const;
-/** The model's turns of a setting that limits none, as a record from before 19 October holds it. */
+/** The model's turns of a setting that limits none, as an older record holds it. */
 const UNLIMITED = "unlimited";
 
 /** The parts of a record, each with how a refusal says it as flags, or null where the record holds
@@ -211,7 +207,7 @@ export function settingNamed(values: SettingFlags): NamedSetting {
   }
   // pi sends an effort it does not know as the model's lowest level, so that one is refused. It sends
   // a level the model does not serve as the next it does (`clampThinkingLevel`), and the setting
-  // records that one (DeepSeek's `medium` as `high`, 21 October). A model with no reasoning gets none.
+  // records that one (DeepSeek's `medium` as `high`). A model with no reasoning gets none.
   const asked = THINKING_LEVELS.find((level) => level === given["solver-effort"]);
   if (asked === undefined) {
     throw new Error(`--solver-effort ${given["solver-effort"]}: one of ${THINKING_LEVELS.join(", ")}`);
@@ -271,7 +267,7 @@ export function recordedSetting(events: readonly LogEvent[]): Recorded | null {
   const { solver, minutes, turns, modelTurns, target, solves } =
     events.findLast(({ kind }) => kind === KIND)?.data ?? {};
   const by = asRecord(solver);
-  // A record written before 2026-10-11 holds the prompts a solve was given, which every solve is
+  // An older record holds the prompts a solve was given, which every solve is
   // given alike since (`LIMITS.turns`); one that held another count ran under another setting.
   if (isNumber(turns) && turns !== LIMITS.turns) {
     throw new Error(
@@ -301,7 +297,7 @@ export function recordedSetting(events: readonly LogEvent[]): Recorded | null {
   };
 }
 
-/** The solves a side a record from before 29 October holds, which named none: the count its last
+/** The solves a side an older record holds, which named none: the count its last
  *  comparison began at, since another count is another campaign, and the default where none began. */
 function ranAt(events: readonly LogEvent[]): number {
   const solves = events.findLast(({ kind }) => kind === STARTED)?.data.solves;

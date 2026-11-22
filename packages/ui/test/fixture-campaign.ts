@@ -1,6 +1,6 @@
 /**
  * Three campaign logs written from typed events, as the repository's own tests build theirs
- * (`test/handover.test.ts`, `test/reports.test.ts`, `test/climb.test.ts`): the one sample the page's
+ * (`test/handover.test.ts`, `test/wall-practice.test.ts`, `test/climb.test.ts`): the one sample the page's
  * tests render from, through the server's handlers and so through the repository's folds, and the
  * one the page is started on to be looked at. There is no real campaign log in a container: they
  * live on the operator's host and are private.
@@ -31,7 +31,7 @@
  */
 import { setSystemTime } from "bun:test";
 import { compared, fixedIn, NO_LABELS } from "../../../src/campaign/comparison.ts";
-import { settleReading } from "../../../src/campaign/round.ts";
+import { settleReading } from "../../../src/campaign/settle.ts";
 import { recordCondition, settingId } from "../../../src/kernel/condition.ts";
 import { append, type EventKind, LOG_FILE, read } from "../../../src/kernel/log.ts";
 import { comparedAs } from "../../../src/kernel/reports.ts";
@@ -169,11 +169,11 @@ const UNITS = {
   b: sha256("units harness b"),
 };
 const CAP = { dollars: 12, reserve: 0.5 };
-/** The held-out tasks the reference's room solves answered at the gate, as `try_task` recorded them until 1 November
- *  (`reference`, `task.gate`), as an Examiner's held task carries one. In the comparisons only
- *  harnesses other than the campaign's last reference, the starter, answer them, and since
- *  31 October a candidate's valid answer keeps no task out of the wait for a person's label
- *  (`poolOf`), so without this each would wait as `word-06` does. */
+/** The held-out tasks the reference's room solves answered at the gate, as an older `try_task`
+ *  recorded them (`reference`, `task.gate`), as an Examiner's held task carries one. In the
+ *  comparisons only harnesses other than the campaign's last reference, the starter, answer them,
+ *  and a candidate's valid answer keeps no task out of the wait for a person's label (`poolOf`), so
+ *  without this each would wait as `word-06` does. */
 const ROOM_ANSWERED = new Set(["word-02", "word-07", "word-08", "word-10", "word-11", "word-12", "word-16"]);
 const range = (prefix: string, from: number, to: number): string[] =>
   Array.from({ length: to - from + 1 }, (_, at) => `${prefix}-${String(from + at).padStart(2, "0")}`);
@@ -822,7 +822,7 @@ function secondPart(w: Writer): string {
   return cut.get("word-17 old 0") ?? "";
 }
 
-/** A campaign in the same project with no comparison yet, opened `--attended`: its exam, its tasks
+/** A campaign in the same project with no comparison yet, opened `--hitl`: its exam, its tasks
  *  and its practice. */
 function earlyCampaign(root: string, name: string): void {
   const dir = folderOf(root, name);

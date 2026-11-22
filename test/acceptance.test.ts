@@ -6,7 +6,6 @@ import {
   authoredFaults,
   type Control,
   departure,
-  type Graded,
   type Read,
   readChecker,
   unadmitted,
@@ -70,14 +69,12 @@ const verify: Verifier = async (task, answer) => {
   return blocking.length === 0 ? { kind: "pass" } : { kind: "fail", blocking };
 };
 const ignored: Verifier = async () => ({ kind: "pass" });
-/** A reading as the acceptance command makes one: the controls put to the checks, nothing stored,
- *  and no probe of a drafted exam's examples, which `test/draft.test.ts` holds. */
+/** A reading as the acceptance command makes one: the controls put to the checks, and no probe of a drafted exam's examples, which `test/draft.test.ts` holds. */
 const reading = (given: Partial<Read> & Pick<Read, "tasks" | "controls">) =>
   readChecker({
     brief,
     contract: HEAVY,
     verify,
-    stored: [],
     found: () => true,
     width: 2,
     probes: false,
@@ -131,23 +128,11 @@ describe("a checker's acceptance", () => {
       matching(/mass.*refused nothing/u),
       matching(/span.*refused nothing/u),
     ]);
-    // A stored answer a check refused shows it can refuse, read apart from this reading's controls,
-    // whose faults it does not clear; a verdict that decided nothing shows nothing of any check.
-    const stored: Graded[] = [
-      { task: roof, verdict: { kind: "fail", blocking: ["mass", "span"] } },
-      { task: roof, verdict: { kind: "non-result", reason: "the wall" } },
-    ];
-    const seen = await reading({ ...accepted, stored });
-    expect(seen.historical.map(({ id, passed, refused }) => [id, passed, refused])).toEqual([
-      ["mass", 0, 1],
-      ["span", 0, 1],
-    ]);
-    expect(seen.faults).toEqual([matching(/mass.*refused nothing/u), matching(/span.*refused nothing/u)]);
   });
 
   it("names a check's instrument by the tool it runs, whatever its brief labels it, and refuses an exam no engine decides until every check is admitted", async () => {
-    // buffer-141-m3 (12 October): checks labelled `authored` that ran the pack's engine read as
-    // their author's own computation. esp32-141-m3b's draft: nine checks, no tool behind any.
+    // Checks labelled `authored` that run the pack's engine are not their author's own computation,
+    // and a draft of nine checks with no tool behind any is.
     const engined: Brief = {
       ...brief,
       truthChecks: brief.truthChecks.map((check) =>

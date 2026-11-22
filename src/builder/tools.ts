@@ -19,16 +19,9 @@
  * `openHarness` reads the guide and the spec alone, refusing either where it links out of the
  * harness, so nothing here asks that again.
  *
- * The installed programs are the session's own. `harness/.toolchain` starts as a copy of the
- * parent's tool tree, which the wall puts first on PATH. A frozen harness links to a copy of that
- * tree kept beside the states, made again only when the tree has changed since. A harness is frozen,
- * and its solves run, away from the home it was built in, which is gone once the session ends; so a
- * snapshot naming that home in a link or script is refused, with how to write it instead. A compiled
- * program is not read for it: a path built into one is as often a build's record as the place it runs from.
- *
  * `practice` is where the Referee meets the Builder. A rejected answer goes to it, as in a
- * comparison; a check defect's task leaves the session. The triage of 20 October found unclear and
- * unread rejections still shown as failures. What comes back names the ending and the
+ * comparison; a check defect's task leaves the session, and an unclear or unread rejection is not
+ * shown as a failure. What comes back names the ending and the
  * task's record, and never a check, a verdict's detail or the Referee's reasons. A practice solve
  * that could not be run at all, the verifier failing to decide for one, ends the session: its
  * error can name a check, so it is kept for the host and the Builder is told only that the session ends.
@@ -53,65 +46,40 @@ import {
   verdictsOf,
 } from "../kernel/solves.ts";
 import { objectiveOf } from "../kernel/verify.ts";
-import { poolOf, referenceOf } from "../kernel/reports.ts";
+import { GAP_FLOOR, gainOver, type ObjectiveRule } from "../kernel/compare.ts";
+import { poolOf } from "../kernel/reports.ts";
 import { taskStates } from "../kernel/task.ts";
-import {
-  cpSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  readlinkSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  symlinkSync,
-} from "../meta/filesystem.ts";
-import { TOOL_TREE_DIR } from "../meta/bundle-layout.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isFunction, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
-import { containsPath } from "../meta/path-containment.ts";
-import { basename, dirname, join, resolve } from "../meta/path.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import { ending as endSession, openDesk, text, tool } from "../tools/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../tools/coding.ts";
 import { type CommandWall, type NetworkReach, networkReach } from "../tools/command.ts";
-import { type Harness, openHarness, pathsUnder, treeStamp } from "../harness/open.ts";
+import type { Harness } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
 import { homeHolds, systemPrompt } from "../solver/prompt.ts";
 import { clockText, solverTools } from "../solver/run.ts";
 import { STARTED as COMPARISON_STARTED } from "../campaign/comparison.ts";
 import { budgetLeft } from "../campaign/opening.ts";
-import { type Said, shellWalls } from "./prompt.ts";
+import { type Freezing, frozen, harnessNow, type HarnessSnapshot, snapshot } from "./kept.ts";
+import { type Listed, measuredClause, type Said, shellWalls } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
 
-/** `harness/` frozen: a copy kept under its digest, and what a solve would open it as. */
-export interface HarnessSnapshot {
-  readonly dir: string;
-  readonly harness: Harness;
-}
-
 /** What a session's tools share. */
-export interface Bench {
+export interface Bench extends Freezing {
   readonly request: BuildRequest;
   /** The texts of this session that differ by who makes its campaign's moves (`SAID`). */
   readonly said: Said;
-  /** Released tasks and the reference, refreshed by campaign tools while the conversation stays open. */
+  /** Released tasks and the reference, refreshed by campaign tools while the conversation stays open.
+   *  The reference is the one the session was handed, held opened, which every record names from
+   *  the first session on; the log names none until a comparison reports (`referenceOf`). */
   tasks: readonly PracticeTask[];
-  reference: string;
-  /** The Builder's home, which holds `harness/` and `practice/`. */
-  readonly home: string;
+  reference: HarnessSnapshot;
   /** The digest of the harness the session started from. */
   readonly parent: string;
-  /** The last copy kept of `harness/.toolchain`, and the stamp the tree had when it was copied. */
-  tree: { readonly stamp: string; readonly dir: string } | null;
-  /** The last harness snapshot this session kept, including one made for a comparison.
-   *  Null until a state is kept; freezing establishes no practice result. */
-  opened: HarnessSnapshot | null;
   /** Practice solves spent. */
   spent: number;
   /** Task versions whose own check could not run on a practice answer. */
@@ -120,32 +88,70 @@ export interface Bench {
   readonly faults: string[];
   /** Aborted when the host stops the session at a bound or a campaign action fails. */
   readonly halt: AbortController;
-  /** Run a campaign action without charging its elapsed time to the session's deadline.
-   *  Until 13 October the clock included actions, and a led Builder had 45 of its 240 minutes to build and
-   *  ended one second after the comparison it bought reported, which it never read. */
+  /** Run a campaign action without charging its elapsed time to the session's deadline, so that a
+   *  led Builder is not left minutes to build and cut off before reading the comparison it bought. */
   readonly within: <T>(action: () => Promise<T>) => Promise<T>;
   /** What that practice solve threw; the session throws it again once its record is written. */
   fatal: Error | null;
   /** `finish`'s note; null until it is called. */
   note: string | null;
-  /** What `finish` has told the Builder of the harness as it stood, each once (`finishNotice`). */
-  readonly told: Set<"broken" | "untried" | "unread">;
+  /** What `finish` has told the Builder for each notice kind, keyed by the state it applied to
+   *  (`finishNotice`), so editing `harness/` or promoting a new reference re-arms the notice. */
+  readonly told: Map<"broken" | "untried" | "unread", string>;
 }
 
 /** What a Builder that leads its campaign is told at `finish` where no comparison has read harness
  *  `digest` against the reference, or null (`BuildRequest.campaign`). */
 type Unmeasured = (digest: string) => Promise<string | null>;
 
+/** What a task's valid answers are told against: the objective, and the author's answer on record. */
+interface Against {
+  readonly rule: ObjectiveRule;
+  readonly author: number;
+}
+
 /** What a preview names the solve's home, which only a solve has. */
 const SOLVE_HOME = "(the solve's own home directory)";
-/** The harness's tool tree, as a path in the Builder's home. */
-export const HOME_TOOL_TREE = `harness/${TOOL_TREE_DIR}`;
+/** Where a band of the gain over the author's answer begins, after the tie floor. */
+const BAND_EDGES = [GAP_FLOOR, 0.1, 0.5, 0.9] as const;
+const percent = (share: number): string => String(Math.round(share * 100));
 
-/** A measure as the Builder is told it, with the zeros or the exponent that show the rounding. Four
- *  digits show 0.1%, under the 1% tie floor (`ROOM`), and bound no leak, since they can still
- *  determine a hidden value. The log keeps every digit. */
-const MEASURE_DIGITS = 4;
-const rounded = (measure: number): string => measure.toPrecision(MEASURE_DIGITS);
+/**
+ * A valid practice answer as the Builder is told it under an objective: the band of the gain a
+ * comparison would read between it and the task author's answer on record (`gainOver`), never
+ * either number. A measure may depend on the task's hidden values, and four digits of a few answers
+ * to one task let a Builder solve for them: one jobstat Builder wrote such a solver and kept "solve
+ * for the truth" in its memory. A band says whether a change closed on the author's answer and
+ * roughly by how much, about three bits an answer where four digits gave thirteen. Two crafted
+ * answers straddling one band's edge could still bracket a hidden value, at a solve each and only
+ * through a harness that names the task. The log keeps every digit.
+ */
+function bandOf({ rule, author }: Against, measure: number): string {
+  const gain = gainOver(rule, measure, author);
+  const at = BAND_EDGES.findLastIndex((edge) => Math.abs(gain) >= edge);
+  return at === -1 ? "level" : `${bandSize(at)} ${gain > 0 ? "better" : "worse"}`;
+}
+
+/** The size of the band that begins at `BAND_EDGES[at]`. */
+function bandSize(at: number): string {
+  const [lower, upper] = [BAND_EDGES[at] ?? GAP_FLOOR, BAND_EDGES[at + 1]];
+  return upper === undefined ? `${percent(lower)}% or more` : `${percent(lower)} to ${percent(upper)}%`;
+}
+
+/** The bands as the practice tool's description states them once. */
+const BANDS_TOLD = `level (within ${percent(GAP_FLOOR)}%), or better or worse by ${BAND_EDGES.map((_, at) => bandSize(at)).join(", ")}, each a share of the larger of the two measures, as a comparison reads a gap`;
+
+/** For each task, what its valid answers are told against (`poolOf`), or nothing where the contract
+ *  has no objective or the task no author's answer on record. */
+function againstOf(events: readonly LogEvent[], contract: Contract): (version: string) => Against | null {
+  const rule = contract.objective;
+  if (rule === undefined) return () => null;
+  const { bests } = poolOf(events);
+  return (version) => {
+    const author = bests.get(version);
+    return author === undefined ? null : { rule, author };
+  };
+}
 
 /** An ending as the Builder is shown it: the outcome and its kind. A non-result's reason can name a
  *  check, so only a broken harness's reason, which is the harness's own, is shown. */
@@ -158,12 +164,18 @@ function endingText(ending: Ending): string {
     : `fail (${ending.kind})`;
 }
 
-/** What the verifier measured of a valid practice answer under an objective, which the Builder reads
- *  of its own practice only; `name` gives the quantity in full once a result, then "the objective". */
-function measuredText(events: readonly LogEvent[], solve: string, contract: Contract, name: () => string) {
+/** Where a valid practice answer stands against the author's answer (`bandOf`), which the Builder
+ *  reads of its own practice only; `name` gives the quantity in full once a result, in brackets
+ *  after "the objective", since a contract's quantity can run to a sentence, then "the objective". */
+function measuredText(
+  events: readonly LogEvent[],
+  solve: string,
+  against: Against | null,
+  name: () => string,
+) {
   const measure = objectiveOf(verdictsOf(events).get(solve)?.checker);
-  return contract.objective !== undefined && measure !== null
-    ? ` Measured ${name()}: ${rounded(measure)} (${contract.objective.direction} is better).`
+  return against !== null && measure !== null
+    ? ` Measured ${name()} against the author's answer on record: ${bandOf(against, measure)}.`
     : "";
 }
 
@@ -188,174 +200,13 @@ export function hasPractice(
   return bench.tasks.some(({ version }) => record(events, version, harness).solves.length > 0);
 }
 
-/** The parent's tool tree, where it really is; null when the parent has none. Every caller copies
- *  it as the host, outside every wall, into a seat's home or a handover, so the tree lies in the
- *  harness or beside it, as a kept state's does. Until 26 October a link to anywhere was followed,
- *  and an imported harness's `.toolchain` could hand any folder the host reads to the next Builder. */
-export function parentToolTree(parent: string): string | null {
-  const tree = join(parent, TOOL_TREE_DIR);
-  if (!existsSync(tree)) return null;
-  const real = realpathSync(tree);
-  if (!containsPath(real, realpathSync(dirname(parent)))) {
-    throw new Error(`${parent}: its ${TOOL_TREE_DIR} links outside the folder it lies in`);
-  }
-  return real;
-}
-
-/** Refuses the links and scripts in a copy of `harness/<under>` that name the session's home, where
- *  the copy is not: a launcher an install wrote with its own absolute path, a console script's
- *  interpreter, a link into the tree. Each would break where the harness is run. */
-function refuseNamingHome(dir: string, home: string, under: string): void {
-  const forms = [...new Set([home, realpathSync(home)])];
-  const named = pathsUnder(dir).filter((path) => {
-    const full = join(dir, path);
-    const stat = lstatSync(full);
-    if (stat.isSymbolicLink()) return forms.some((form) => readlinkSync(full).includes(form));
-    if (!stat.isFile() || (stat.mode & 0o111) === 0) return false;
-    const bytes = readFileSync(full);
-    return bytes.subarray(0, 2).toString() === "#!" && forms.some((form) => bytes.includes(form));
-  });
-  if (named.length > 0) {
-    throw new Error(
-      `${named.map((path) => join(under, path)).join(", ")} name your home, and a harness runs from elsewhere: a launcher finds its files from its own path, as "$(dirname "$0")" does, and a link names its target relatively`,
-    );
-  }
-}
-
-/** Remove a tree copy no kept state's `.toolchain` names, which is what the last copy becomes once
- *  the tree has changed and nothing was frozen under it. A `check_harness` call keeps nothing and
- *  makes one all the same: on 10 October a first session left a 6.4 MB copy linked by no state,
- *  and one domain's tree is 316 MB, so a check after each tree edit would leave one each. */
-function dropUnlinked(states: string, dir: string): void {
-  const named = join("..", basename(dir));
-  const links = readdirSync(states).map((name) => join(states, name, TOOL_TREE_DIR));
-  const linked = (link: string) =>
-    lstatSync(link, { throwIfNoEntry: false })?.isSymbolicLink() === true && readlinkSync(link) === named;
-  if (!links.some(linked)) rmSync(dir, { recursive: true, force: true });
-}
-
-/** A copy of `harness/.toolchain` beside the states, for a frozen harness to link to; the last one
- *  kept while the tree's stamp holds. One domain's tree is 316 MB, which a copy at every freeze
- *  would spend again on each check and practice. Null when the harness has no tree.
- *
- *  The tree is the directory itself, inside the home. A link there is refused: the freeze would
- *  copy what the link named, the repository with its logs among what it could name, into the tree
- *  every later solve reads. */
-function keptTree(bench: Bench): string | null {
-  const own = join(bench.home, HOME_TOOL_TREE);
-  const found = lstatSync(own, { throwIfNoEntry: false });
-  if (found === undefined) return null;
-  const real = found.isSymbolicLink() ? null : realpathSync(own);
-  if (real === null || !containsPath(real, realpathSync(bench.home))) {
-    throw new Error(
-      `${HOME_TOOL_TREE} is a link, or lies outside your home: the programs are installed in the directory itself, which is copied whole when the harness is frozen`,
-    );
-  }
-  const stamp = treeStamp(real);
-  if (bench.tree?.stamp === stamp) return bench.tree.dir;
-  if (bench.tree !== null) dropUnlinked(bench.request.states, bench.tree.dir);
-  const dir = realpathSync(mkdtempSync(join(bench.request.states, "tree-")));
-  try {
-    cpSync(real, dir, { recursive: true, verbatimSymlinks: true });
-    refuseNamingHome(dir, bench.home, HOME_TOOL_TREE);
-  } catch (error) {
-    rmSync(dir, { recursive: true, force: true });
-    throw error;
-  }
-  bench.tree = { stamp, dir };
-  return dir;
-}
-
-/**
- * `source`, a harness directory, copied into a fresh folder among `states` as a state is kept:
- * its files less its own `.toolchain`, links as they are, and its programs named by a link to
- * `tree` beside it, so both go where the campaign's folder goes. The caller opens the copy and
- * keeps it or removes it. Shared with the import of a harness built elsewhere
- * (`tools/d2/import.ts`), which keeps one the same way.
- */
-export function stagedState(source: string, states: string, tree: string | null, prefix: string): string {
-  mkdirSync(states, { recursive: true });
-  const dir = realpathSync(mkdtempSync(join(states, prefix)));
-  try {
-    const own = resolve(source, TOOL_TREE_DIR);
-    cpSync(source, dir, { recursive: true, verbatimSymlinks: true, filter: (each) => resolve(each) !== own });
-    if (!lstatSync(dir).isDirectory()) throw new Error("harness/ is not a directory");
-    if (tree !== null) symlinkSync(join("..", basename(tree)), join(dir, TOOL_TREE_DIR));
-    return dir;
-  } catch (error) {
-    rmSync(dir, { recursive: true, force: true });
-    throw error;
-  }
-}
-
-/**
- * `harness/` as it stands, copied beside the kept states and opened as a solve would open it, then
- * handed to `use`. Throws, with the harness's own error, when a solve could not: a harness that
- * does not open fails every task before its first turn, and one frozen so would be scored at a
- * full round's cost to say only that. Links are
- * copied as they are: a stored state carries links that resolve to nothing, and following one would
- * copy what it points at. The copy is removed once `use` returns or throws, unless `use` moved it
- * away: only a state a solve ran with, or the session's last, is kept (`snapshot`).
- *
- * Every question is asked of the copy, which no command of the Builder's can reach, and none of
- * `harness/` itself, which a process a command left behind could still be changing.
- */
-async function frozen<T>(bench: Bench, use: (kept: HarnessSnapshot) => T | Promise<T>): Promise<T> {
-  const { states } = bench.request;
-  mkdirSync(states, { recursive: true });
-  let dir: string | null = null;
-  let opened = false;
-  try {
-    dir = stagedState(join(bench.home, "harness"), states, keptTree(bench), "freezing-");
-    refuseNamingHome(dir, bench.home, "harness");
-    const harness = await openHarness(dir);
-    // A preset no solve serves fails every solve, and is refused here before one is spent on it.
-    selectedCodingTools(harness.presets);
-    opened = true;
-    return await use({ dir, harness });
-  } catch (error) {
-    if (opened) throw error;
-    // The copy's own path is the host's, and says where the states and the log beside them are.
-    const why = errorMessage(error).replaceAll(dir ?? states, "harness");
-    throw new Error(`the harness does not open: ${why}`, { cause: error });
-  } finally {
-    if (dir !== null) rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-/**
- * Freeze `harness/` and keep the copy under its digest in the caller's `states`, so every harness a
- * practice solve ran with can be opened again.
- *
- * The copy is not kept in the session's own scratch. The command wall closes the parent of every
- * solve's scratch after it reopens a harness's tool tree, so a state kept there is one no practice
- * solve could run a program from.
- */
-export async function snapshot(bench: Bench): Promise<HarnessSnapshot> {
-  return await frozen(bench, ({ dir, harness }) => {
-    const kept = join(dirname(dir), harness.digest);
-    try {
-      renameSync(dir, kept);
-    } catch (error) {
-      // A state already kept under this digest, by this session or one beside it, is the same harness.
-      if (!existsSync(kept)) throw error;
-    }
-    bench.opened = {
-      dir: kept,
-      harness: { ...harness, toolTree: harness.toolTree === null ? null : join(kept, TOOL_TREE_DIR) },
-    };
-    return bench.opened;
-  });
-}
-
 /** How much of its limits a finished solve used, as a sentence after its ending: the seconds from
  *  its start to its end, the verifier's among them, of its time limit, the model's own turns, and
  *  the tokens the model read and wrote over them. Empty where the log holds no end for the solve.
  *  A Builder that is not told this cannot tell a harness that passes with a minute to spare from
- *  one that passes at the limit (`7f0add79:docs/plan.md`, Phase 2). The tokens are the one measure of what
- *  a tool or a program costs a solve that the Builder can act on: on 10 October a promoted
- *  harness's solve read 8,600 to 13,200 tokens over two turns in three campaigns, nearly all of it
- *  the prompt read twice. */
+ *  one that passes at the limit. The tokens are the one measure of what a tool or a program costs a
+ *  solve that the Builder can act on, since most of a short solve's tokens are its prompt read
+ *  again each turn. */
 function usedText(events: readonly LogEvent[], solve: string): string {
   const { start, end } = solvesIn(events).find(({ id }) => id === solve) ?? {};
   const limits = limitsIn(start?.limits);
@@ -382,15 +233,14 @@ async function practise(bench: Bench, task: PracticeTask, kept: HarnessSnapshot,
     lines.push("The task's own check could not run on this answer: the task leaves this session's practice.");
   }
   // Only a rejected answer has anything to recompute: a solve its limits ended, or one that gave no
-  // answer, is not valid with no ruling (`src/campaign/round.ts`). Until 15 October each went to the
-  // Referee and was logged earned, unread: seven of them in three campaigns.
+  // answer, is not valid with no ruling (`src/campaign/round.ts`), and the Referee is not asked of
+  // it.
   if (rejected(ending) && request.referee !== undefined) {
     try {
       const finding = await request.referee(solve, task, kill);
       // The log holds the dispute, as a comparison's does (`dispute`, `src/campaign/round.ts`), so
-      // every reader of the practice set sees it. Until 5 November only the session's memory did:
-      // the campaign still counted the task as practice, owed no other in its place, and the next
-      // session paid to learn it again.
+      // every reader of the practice set sees it, and the campaign owes another practice task in
+      // its place rather than leaving the next session to pay to learn it again.
       if (finding.ruling === "check-defect") {
         if (taskStates(read(request.log)).get(task.version) === "released") {
           append(request.log, "task.state", {
@@ -411,8 +261,8 @@ async function practise(bench: Bench, task: PracticeTask, kept: HarnessSnapshot,
 
 /**
  * The practice solves a session may still start. A Builder that leads its campaign has as many as
- * what is left of the campaign's total holds a reserve for, and no count of its own: r3's b-1 ran
- * out of its 24 at turn 161 with $560 left (deep dive, 20 October). A session by hand keeps
+ * what is left of the campaign's total holds a reserve for, and no count of its own, since a fixed
+ * count can run out with most of the budget left. A session by hand keeps
  * its count, and no more than its own part of the log leaves its cap a reserve for (`billedParts`).
  * The Builder is told a count and never a sum.
  */
@@ -427,22 +277,63 @@ export function practiceLeft({ request, spent }: Bench, events: readonly LogEven
   return Math.max(0, Math.min(counted, afforded));
 }
 
+/** The band of each of `solves`'s valid answers against the author's answer on record (`bandOf`). */
+function measuresOf(
+  verdicts: ReturnType<typeof verdictsOf>,
+  solves: readonly string[],
+  against: Against | null,
+): string[] {
+  return against === null
+    ? []
+    : solves
+        .flatMap((id) => objectiveOf(verdicts.get(id)?.checker) ?? [])
+        .map((measure) => bandOf(against, measure));
+}
+
+/** Practice tasks with their counted records under `parent` and, when distinct and solved, under the
+ *  `reference` harness, each valid answer as its band against the author's answer. */
+export function listedPractice(
+  events: readonly LogEvent[],
+  tasks: readonly PracticeTask[],
+  { parent, reference }: { readonly parent: string; readonly reference: string },
+  contract: Contract,
+): Listed[] {
+  const states = taskStates(events);
+  const verdicts = verdictsOf(events);
+  const againstFor = againstOf(events, contract);
+  return tasks.map(({ version, task }) => {
+    const kept = record(events, version, parent);
+    const against = againstFor(version);
+    const measures = measuresOf(verdicts, kept.solves, against);
+    const ref = reference === parent ? null : record(events, version, reference);
+    return {
+      taskId: task.taskId,
+      family: task.family,
+      left: states.get(version) === "disputed",
+      ...kept,
+      ...keyIfDefined("measures", measures.length > 0 ? measures : undefined),
+      ...keyIfDefined(
+        "reference",
+        ref !== null && ref.solves.length > 0
+          ? { digest: reference, ...ref, measures: measuresOf(verdicts, ref.solves, against) }
+          : undefined,
+      ),
+    };
+  });
+}
+
 /** A task's practice record under each harness `roles` names, each digest once with all its roles,
- *  and under an objective each valid answer's measure. Until 27 October it named harness/ and the
- *  parent whatever ran, so 129 of 852 practice calls under the reference (8 to 26 October) were told
- *  nothing of its record; until 3 November it counted passes alone, and 283 of 285 buffer record
- *  clauses from v0.9.1 read "passed N of N" (lane 9); until 4 November it named no author's answer
- *  (`task.feasible`), and buffer592's Builder read a task 18% dearer than its author's as nothing to
- *  gain; until 19 November a solve under harness/ named no record under the reference, which a
- *  promotion moves off the parent. Only practice solves of released tasks are read (`record`). */
+ *  and under an objective each valid answer's band against the author's answer (`task.feasible`),
+ *  so that a pass that costs more than the author's still reads as room to gain. A solve under
+ *  harness/ also names the record under the reference, which a promotion moves off the parent.
+ *  Only practice solves of released tasks are read (`record`). */
 function recordText(
   events: readonly LogEvent[],
   version: string,
   roles: readonly (readonly [string | null, string])[],
-  contract: Contract,
+  against: Against | null,
   name: () => string,
 ) {
-  const best = contract.objective === undefined ? undefined : poolOf(events).bests.get(version);
   const named = new Map<string, string[]>();
   for (const [digest, role] of roles) {
     if (digest !== null) named.set(digest, [...(named.get(digest) ?? []), role]);
@@ -452,20 +343,17 @@ function recordText(
     .map(([digest, [role, ...also]], index) => {
       const kept = record(events, version, digest);
       const which = `${role ?? ""}${also.length > 0 ? `, which is also ${also.join(" and ")}` : ""}`;
-      const measures = kept.solves.flatMap((id) => objectiveOf(verdicts.get(id)?.checker) ?? []).map(rounded);
-      const measured =
-        contract.objective === undefined || measures.length === 0 ? "" : `, ${name()} ${measures.join(", ")}`;
+      const measured = measuredClause(name, measuresOf(verdicts, kept.solves, against));
       return `${index === 0 ? "Record under" : "Under"} ${which}: ${index === 0 ? "passed " : ""}${String(kept.passed)} of ${String(kept.solves.length)}${measured}.`;
     })
-    .join(" ")
-    .concat(best === undefined ? "" : ` An answer on record that no harness gave measures ${rounded(best)}.`);
+    .join(" ");
 }
 
 export function practiceTool(bench: Bench): SeatTool {
   const { request } = bench;
   return tool({
     name: "practice",
-    description: `Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits: a practice solve takes as long as any solve. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, what the solve used of its limits and the tokens it read and wrote, the task's record of practice solves under each harness the result names, the reference harness among them, the solve's id for read_trace and, for a rejection the Referee set aside, that it was set aside; never which check refused an answer. Under an objective a valid answer's measure is given to ${String(MEASURE_DIGITS)} significant digits. A harness that does not open spends no solve. \`under: "reference"\` costs the same solves and shows what your change is measured against.`,
+    description: `Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits: a practice solve takes as long as any solve. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, what the solve used of its limits and the tokens it read and wrote, the task's record of practice solves under each harness the result names, the reference harness among them, the solve's id for read_trace and, for a rejection the Referee set aside, that it was set aside; never which check refused an answer. Under an objective a valid answer's measure is given as a band against the task author's answer on record: ${BANDS_TOLD}; a task with no author's answer on record shows none. A harness that does not open spends no solve. \`under: "reference"\` costs the same solves and shows what your change is measured against.`,
     parameters: Type.Object({
       tasks: Type.Array(Type.String(), {
         minItems: 1,
@@ -505,12 +393,9 @@ export function practiceTool(bench: Bench): SeatTool {
       const kill = AbortSignal.any([context.abortSignal ?? bench.halt.signal, failed.signal]);
       // Under the reference the solve runs the harness the session's is compared with, and harness/
       // as it stands need not open. What the reference does on a task is the Builder's to buy with
-      // its own solve, and each result's record names what such solves found. `under: "parent"`
-      // went on 27 October: 4 of 852 practice calls on record named it.
-      const ran: HarnessSnapshot =
-        args.under === "reference"
-          ? { dir: bench.reference, harness: await openHarness(bench.reference) }
-          : await snapshot(bench);
+      // its own solve, and each result's record names what such solves found. There is no
+      // `under: "parent"`, since Builders hardly ever named it.
+      const ran = args.under === "reference" ? bench.reference : await snapshot(bench);
       if (kill.aborted) throw new Error("The session has ended.");
       bench.spent += chosen.length;
       let unstarted = 0;
@@ -540,22 +425,26 @@ export function practiceTool(bench: Bench): SeatTool {
       }
       const events = read(request.log);
       const under = args.under ?? "harness";
-      const reference = under === "reference" ? ran.harness.digest : referenceOf(events);
       const roles = [
         [under === "reference" ? null : ran.harness.digest, "this harness"],
-        [reference, "the reference harness"],
+        [bench.reference.harness.digest, "the reference harness"],
         [under === "reference" ? (bench.opened?.harness.digest ?? null) : null, "harness/ as last practised"],
         [bench.parent, "the harness you started from"],
       ] as const;
-      const names = [request.contract.objective?.quantity ?? ""];
+      const names = [`the objective (${request.contract.objective?.quantity ?? ""})`];
       const name = () => names.shift() ?? "the objective";
-      const said = solved.flat().map(({ task, solve, ending, lines }) => {
+      const againstFor = againstOf(events, request.contract);
+      // A task's record is read once all its solves finished, so it follows its last solve alone.
+      const flat = solved.flat();
+      const last = new Map(flat.map(({ task }, at) => [task.version, at]));
+      const said = flat.map(({ task, solve, ending, lines }, at) => {
         const shown = rejectionAside(events, { id: solve, ending })
           ? "rejection set aside"
           : endingText(ending);
+        const against = againstFor(task.version);
         return [
-          `${task.task.taskId}${under === "reference" ? " under the reference harness" : ""}: ${shown}. Solve ${solve}.${usedText(events, solve)}${measuredText(events, solve, request.contract, name)}`,
-          recordText(events, task.version, roles, request.contract, name),
+          `${task.task.taskId}${under === "reference" ? " under the reference harness" : ""}: ${shown}. Solve ${solve}.${usedText(events, solve)}${measuredText(events, solve, against, name)}`,
+          ...(last.get(task.version) === at ? [recordText(events, task.version, roles, against, name)] : []),
           ...lines,
         ].join("\n");
       });
@@ -586,7 +475,16 @@ export function traceTool(bench: Bench): SeatTool {
       const versions = new Set(bench.tasks.map(({ version }) => version));
       const events = read(bench.request.log);
       const ran = practiceRan(events).find(({ id }) => id === args.solve);
-      if (ran === undefined || !versions.has(ran.under.task)) {
+      // A practice task disputed after a check defect leaves `bench.tasks` on refresh, yet its
+      // prior practice solves remain on the build side (`firstMessage` promises `read_trace` opens them).
+      const released =
+        ran !== undefined &&
+        (versions.has(ran.under.task) ||
+          events.some(
+            ({ kind, data }) =>
+              kind === "task.state" && data.state === "released" && data.version === ran.under.task,
+          ));
+      if (ran === undefined || !released) {
         throw new Error(`${args.solve} is not a solve of one of this session's practice tasks`);
       }
       const { turns, calls } = traceOf(events, "solve", args.solve);
@@ -613,26 +511,26 @@ export function traceTool(bench: Bench): SeatTool {
  *
  * These are finish notices. v1's submit refused a round that then measured nothing, 13 firmware
  * rounds by its own count, and a session here is frozen whatever it holds (`session.ts`). A Builder that
- * finishes is the one reader who can still act. In two sessions of 9 October the harness that
- * went to the comparison was one no practice solve had run: the six solves were spent on earlier
- * versions, which is why `practice` says when the last one is gone. A session that never
+ * finishes is the one reader who can still act. A harness can go to the comparison with no
+ * practice solve run on it, the solves spent on earlier versions, which is why `practice` says when
+ * the last one is gone. A session that never
  * practised chose so and is told nothing here. A second `finish` ends the session as it is.
  *
  * A Builder that leads its campaign is also told that no comparison has read the harness it would
- * leave: on 13 October buffer-151-haiku's Builder finished while an Examiner session wrote, and the
- * campaign ended `finished` with no comparison.
- * One that would finish on the harness last promoted is told the move the table names next, since on
- * 14 October buffer-149's Builder finished on the harness just promoted and the climb stopped there.
+ * leave, since a Builder that finishes while an Examiner session writes can end the campaign
+ * `finished` with no comparison. One that would finish on the harness last promoted is told the
+ * move the table names next, since finishing there stops the climb.
  */
 async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<string | null> {
   const { request, told } = bench;
   const again = "or call finish again to end the session as it is";
   const now = await harnessNow(bench);
   if (!isString(now)) {
-    if (told.has("broken")) return null;
-    told.add("broken");
+    const why = errorMessage(now);
+    if (told.get("broken") === why) return null;
+    told.set("broken", why);
     const { unpractised, practised } = bench.said.broken;
-    return `${errorMessage(now)}. Left so, ${bench.opened === null ? unpractised : practised}. Mend it and call finish again, ${again}.`;
+    return `${why}. Left so, ${bench.opened === null ? unpractised : practised}. Mend it and call finish again, ${again}.`;
   }
   const events = read(request.log);
   const left = practiceLeft(bench, events);
@@ -642,19 +540,15 @@ async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<stri
     now === bench.parent ||
     hasPractice(bench, events, now) ||
     events.some(({ kind, data }) => kind === COMPARISON_STARTED && (data.old === now || data.fresh === now));
-  const untried = !tried && left > 0 && !told.has("untried");
-  const unread = told.has("unread") ? null : ((await unmeasured?.(now)) ?? null);
-  if (unread !== null) told.add("unread");
+  const untried = !tried && left > 0 && told.get("untried") !== now;
+  const unreadKey = `${now}@${bench.reference.harness.digest}`;
+  const unread = told.get("unread") === unreadKey ? null : ((await unmeasured?.(now)) ?? null);
+  if (unread !== null) told.set("unread", unreadKey);
   if (untried) {
-    told.add("untried");
+    told.set("untried", now);
     return `harness/ has changed since your last practice solve, so no solve has run it as it stands. ${plural(left, "practice solve")} ${left === 1 ? "is" : "are"} left. Practise it, ${again} ${bench.said.untried}.${unread === null ? "" : ` ${unread}`}`;
   }
   return unread === null ? null : `${unread} Call finish again to end the conversation as it is.`;
-}
-
-/** The digest of `harness/` as it stands, or why it does not open: frozen once, the copy removed. */
-export async function harnessNow(bench: Bench): Promise<string | Error> {
-  return await frozen(bench, ({ harness }) => harness.digest).catch(asError);
 }
 
 /**
@@ -662,9 +556,9 @@ export async function harnessNow(bench: Bench): Promise<string | Error> {
  * conversation was compacted, or lost with its process, has the public rules, practice tasks,
  * failed practice solves and comparisons in no other place: the host builds them from the log,
  * and the Builder's own notes are its prose about them. A campaign's conversation rebuilds them; a session
- * by hand keeps the original message. An Examiner's opening holds the record of every task and,
- * since 21 October, serves it again: 65 Examiner sessions on record compacted, and the summary
- * kept what the model chose of that record.
+ * by hand keeps the original message. An Examiner's opening holds the record of every task and
+ * serves it again, since Examiner sessions compact and a summary keeps only what the model chose
+ * of that record.
  */
 export function openingTool(opening: string | (() => string), description: string): SeatTool {
   return tool({
@@ -678,10 +572,8 @@ export function openingTool(opening: string | (() => string), description: strin
 /**
  * `wait`: the next word of work running beside a session, as a call, for a seat whose results come
  * later: an Examiner's task admission, or the Examiner session beside a Builder's conversation.
- * Without one a sleep in the shell was the only call that waits: Builders slept bare 536 times while an
- * Examiner wrote beside them, most for about 900 s, on their own clock, and Examiners 119 times; on
- * 21 October a live Examiner still slept 190 s past its task admission's result at a head whose
- * turn with no call waited for it.
+ * Without one a sleep in the shell is the only call that waits, on the seat's own clock and often
+ * long past the result it waits for.
  */
 export function waitTool(description: string, next: () => Promise<string>): SeatTool {
   return tool({

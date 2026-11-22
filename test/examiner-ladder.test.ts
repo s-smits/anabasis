@@ -1,14 +1,14 @@
 /**
  * The Examiner's difficulty ladder: one scale with lane 14's, shown to both of the Examiner's
  * modes, and drawn from no field a campaign examines, since an example from an exam in use would
- * hand its author a task shape to copy (the operator, 31 October).
+ * hand its author a task shape to copy (the operator's rule).
  */
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "../src/meta/filesystem.ts";
 import { drafting } from "../src/examiner/draft.ts";
 import { FIELDS, GRADES, LADDER, REACH } from "../src/examiner/ladder.ts";
 import { systemPrompt } from "../src/examiner/prompt.ts";
-import { ROOM } from "../src/kernel/compare.ts";
+import { GAP_FLOOR } from "../src/kernel/compare.ts";
 
 /** A drafting session's system prompt. */
 const DRAFTING = drafting(
@@ -23,12 +23,12 @@ const DRAFTING = drafting(
   async (action) => await action(),
 ).system;
 
-/** The domains campaigns examined by 4 November, and the field beside each, by the words that name
- *  them: buffer formulation, business records, statistical work products, trusses, ESP32 pin maps,
+/** The domains campaigns have examined, and the field beside each, by the words that name them:
+ *  buffer formulation, business records, statistical work products, trusses, ESP32 pin maps,
  *  C memory safety and event seating, and structural frames, chemistry, circuit hardware and
- *  timetabling beside them. On the operator's word of 31 October seating replaced codon recoding,
- *  which left with its neighbour molecular biology. Statistics joined on 4 November, so that the
- *  drafting prompt, rebuilt that day after the jobstat exams, holds no word of that field. */
+ *  timetabling beside them. Seating replaced codon recoding, which left with its neighbour
+ *  molecular biology, and statistics is listed so that the drafting prompt holds no word of that
+ *  field. */
 const EXAMINED =
   /buffer|ledger|invoice|reconcil|statist|regress|cohort|survey|codebook|truss|beam|column|esp32|gpio|pin map|microcontroller|kernel|memory.safety|overflow|double.free|C11|chemi|reaction|circuit|impedance|seating|guest|timetabl|roster/i;
 
@@ -56,7 +56,7 @@ describe("the Examiner's ladder", () => {
   });
 
   it("tells a drafting session the floor two valid answers are compared at, and the export that measures them", () => {
-    expect(DRAFTING).toContain(`${String(ROOM * 100)}%`);
+    expect(DRAFTING).toContain(`${String(GAP_FLOOR * 100)}%`);
     expect(DRAFTING).toContain("`objective`");
   });
 });

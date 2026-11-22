@@ -18,9 +18,8 @@
  * to read it (`zip-guide.md`), `--note` as NOTES.md and a MANIFEST.json of every file with its size
  * and group, the commit each run's starts ran at (its receipts, `receipt.ts`) beside the one its
  * worktree stands at when zipped, its last reading and its ending, and what was left where it was.
- * Until 10 October the README gave the worktree's commit as the run's, and the last comparison's
- * reading as its ending: the five test-host campaigns zipped on 9 October ran at four commits and
- * were all given one. Light is refused over
+ * The README never gives the worktree's commit as the run's, or the last comparison's reading as
+ * its ending, since campaigns zipped together can have run at several commits. Light is refused over
  * 2 MB a run, any level over `--max-mb`. Unnamed, the zip is `<names>-<level>.zip` where the command
  * runs.
  *
@@ -35,15 +34,15 @@
  *
  * Never held: installed packages, caches and built bundles, a link out of the run's folder, a file
  * named like a secret. A relative link inside it is held as a link, in the group of what it names:
- * a kept state's `.toolchain` names its `../tree-*`, and on 19 October a medium zip of r3 lost all
- * eight, so two investigation lanes matched each harness to its programs by digest by hand.
+ * a kept state's `.toolchain` names its `../tree-*`, which a zip would otherwise lose, leaving a
+ * reader to match each harness to its programs by digest by hand.
  *
  * A log is held to its last whole line, since a live run's may end in the append it is writing. An
- * exam a campaign drafted is its brief and its checker as `checks/` is a stored pack's: until
- * 19 October the groups named `checks/` alone, and a drafted exam's `exams/<digest>/` went to
- * verbose's rest. `--from` makes the zip on a host `ANA_HOSTS` names, by that host's reading of its
- * own runs, and brings the zip back to `--out`: on 19 October three live campaigns on two other
- * hosts were wanted here for an investigation, and the files a level holds are chosen in one place.
+ * exam a campaign drafted is its brief and its checker as `checks/` is a stored pack's, so a drafted
+ * exam's `exams/<digest>/` goes with the checker rather than verbose's rest. `--from` makes the zip
+ * on a host `ANA_HOSTS` names, by that host's reading of its own runs, and brings the zip back to
+ * `--out`, so that live campaigns on other hosts can be investigated here, and the files a level
+ * holds are chosen in one place.
  */
 import {
   cpSync,
@@ -110,8 +109,8 @@ interface Choice {
 }
 
 /** A run folder's groups, the first match first, each with the level that starts to hold it. A
- *  harness's `correctness-model/` is the checker wherever it lies: six of the twenty runs zipped on
- *  2026-10-08 kept one, and it was 5.4 of the 6.3 MB their harnesses came to. */
+ *  harness's `correctness-model/` is the checker wherever it lies, and where a harness keeps one it
+ *  is most of the harness's bytes. */
 const GROUPS: readonly (readonly [name: string, holds: string, level: Level, paths: RegExp])[] = [
   [
     "log",
@@ -335,7 +334,7 @@ export function zip(
 }
 
 /** `2h`, `90m`, `45s` or `1.5d` as seconds. */
-export function secondsOf(text: string): number {
+function secondsOf(text: string): number {
   const found = /^(\d+(?:\.\d+)?)([smhd])$/.exec(text);
   const per = SECONDS.get(found?.[2] ?? "");
   if (found === null || per === undefined) {
@@ -353,7 +352,7 @@ const countOf = (flag: string, text: string, least: number) => {
 };
 
 /** A date, a date with a time and a zone, or how long ago (`36h`), as milliseconds since the epoch. */
-export function momentOf(flag: string, text: string, now = Date.now()): number {
+function momentOf(flag: string, text: string, now = Date.now()): number {
   if (AGO.test(text)) return now - secondsOf(text) * 1000;
   const at = MOMENT.test(text) ? Date.parse(text) : Number.NaN;
   if (Number.isNaN(at)) {
@@ -368,7 +367,7 @@ const timeOf = (event: LogEvent | undefined) => (event === undefined ? Number.Na
 
 /** The campaigns of `runs` that pass `choice`, the newest last event first. A seed or a live solve
  *  is no campaign, and a log with no event passes nothing. Reading every archived log whole takes
- *  4 seconds (251 logs, 2.1 GB, 8 November 2026). */
+ *  a few seconds. */
 export function newest(runs: readonly Run[], choice: Choice): Run[] {
   const read = runs
     .filter((run) => isCampaign(run) && run.seed !== true)

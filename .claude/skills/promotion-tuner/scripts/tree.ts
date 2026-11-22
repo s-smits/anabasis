@@ -2,12 +2,12 @@
  * The tree whose score reads the record in a promotion replay. A tree is any worktree of the
  * repository, `main`'s or a candidate's, and the replay reaches its kernel only through its own
  * modules, so one script reads the same record under two scores and the tables differ in what the
- * trees differ in (19 October: the margin, level and repeat prototypes each imported a tree by
- * hand). The logs a replay reads are listed by `campaignLogs` (`.claude/skills/main/logs.ts`).
+ * trees differ in, rather than each prototype importing a tree by hand. The logs a replay reads are
+ * listed by `campaignLogs` (`.claude/skills/main/logs.ts`).
  *
- * A tree scores a task by its weighted measures (`pointsOf`, `WEIGHTS`, since 21 October), and one
- * without them is refused: until 21 October the tuner also read the margin, the trigger and the
- * two-stage rule of older trees, which no candidate branched from `main` can hold.
+ * A tree scores a task by its weighted measures (`pointsOf`, `WEIGHTS`), and one without them is
+ * refused: the margin, the trigger and the two-stage rule of older trees are not read, since no
+ * candidate branched from `main` can hold them.
  */
 import { type Paired, UNMEASURED } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -88,7 +88,7 @@ export async function loadTree(path: string): Promise<Tree> {
     pairsOf: (events, versions, sides, solves) => compare.pairsOf(events, versions, sides, solves).pairs,
     points: (pair) => ({ bill: 0, ...compare.pointsOf(pair) }),
     flipP: (differences) => compare.flipP(differences),
-    // The tree's own rule, whatever it exports beside it: #392's tree read the bill-free test
+    // The tree's own rule, whatever it exports beside it: one tree read the bill-free test
     // inside `stepOf` before `readsStep` existed, a tree before it reads its scores alone, and a tree
     // from 2 November scores no bill, so its scores are the ones it reads. A rule that needs scores
     // without the bill where none can be read refuses them, and reads no step.

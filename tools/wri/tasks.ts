@@ -1,8 +1,8 @@
 /**
  * Every task a campaign's comparisons scored, with its public input and nothing of how it was
- * answered, so lane 14 grades reach before it reads an outcome. On 30 October the first lane 14
- * session spent fifteen calls finding the tasks' text in the log and joining it to the scored sets
- * by hand. It prints no hidden value, no check and no answer, though the file stays on the exam
+ * answered, so lane 14 grades reach before it reads an outcome, rather than finding the tasks' text
+ * in the log and joining it to the scored sets by hand. It prints no hidden value, no check and no
+ * answer, though the file stays on the exam
  * side with the log it reads.
  *
  *   bun tools/wri/tasks.ts <log.jsonl | campaign folder | name> [--shape | --rows]
@@ -12,22 +12,23 @@
  * its kind, a list's length and a text's longest, and no value. `--task` prints one task's public
  * input indented, every text whole up to `VALUE_BYTES`. `--rows` prints the skeleton of lane 14's
  * grade rows (`gradesIn`, `tools/wri/trajectory.ts`) under the campaign's folder name, grades blank.
- * Between 3 and 10 November 13 of 17 lane 14 sessions and 11 of 14 lane 9 sessions parsed the
- * one-line `public:` JSON below by hand, 31 times in lane 9 alone, and lane 14 sessions assembled
- * the grade rows with full digests by hand. None of the three prints an outcome, a tally or a reading.
+ * Without these, lane 14 and lane 9 sessions parse the one-line `public:` JSON below by hand, and
+ * lane 14 sessions assemble the grade rows with full digests by hand. None of the three prints an
+ * outcome, a tally or a reading.
  *
  * The tasks come from `proposalsOf` (`src/kernel/history.ts`) and the scored sets from each
  * `comparison.started`, whose `tasks` hold its retained ones too (`scoredSet`, `src/campaign/round.ts`). A task of the
  * drafted exam is proposed by its id alone, so its input is read from the draft by that id
- * (`exampleId`, `tools/d2/exam.ts`): on 1 November the grading packets of two fresh campaigns
- * went out with 2 of each campaign's 8 scored tasks bare. A stored pack's task carries no public
+ * (`exampleId`, `tools/d2/exam.ts`), so that no grading packet goes out with a scored task bare.
+ * A stored pack's task carries no public
  * input in the log, and says so.
  *
  * A task released and never scored follows, marked, since what a harness practised on is part of what
- * it was built against: on 6 November v5 held 11 such tasks that no reader listed. Lane 14's
+ * it was built against, and a campaign can hold many such tasks. Lane 14's
  * packets read `scoredTasks` alone, as a blind grader's set stays the tasks that were scored.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { starterIn } from "#src/campaign/climb.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -48,8 +49,8 @@ const USAGE = `usage:
   bun tools/wri/tasks.ts <log.jsonl | campaign folder | name> [--shape | --rows]
   bun tools/wri/tasks.ts <log.jsonl | campaign folder | name> --task <id | version prefix>`;
 const OPTIONS = { log: "text", task: "text", shape: "flag", rows: "flag" } as const;
-/** A public text shown whole up to this many characters: every requirement of the sixteen buffer
- *  logs of 6 November fits, a long table does not. The lane 14 packets cut at the same place. */
+/** A public text shown whole up to this many characters: a requirement fits, a long table does not.
+ *  The lane 14 packets cut at the same place. */
 export const VALUE_BYTES = 1500;
 
 /** Every task a log proposed, with what its author wrote. */
@@ -169,11 +170,10 @@ function listed(events: readonly LogEvent[]) {
 /** The skeleton of lane 14's grade rows, as `gradesIn` and `wri.ts trajectory --grades` read them: a
  *  row a scored task and a row a version a comparison measured, grades blank, in the log's order. */
 function gradeRows(events: readonly LogEvent[], campaign: string): string[] {
-  const started = events.filter(({ kind }) => kind === "comparison.started");
-  const starter = started[0]?.data.starter;
-  const versions = [...new Set(started.map(({ data }) => data.fresh))].filter(
-    (digest): digest is string => isString(digest) && digest !== starter,
-  );
+  const starter = starterIn(events);
+  const versions = [
+    ...new Set(events.flatMap(({ kind, data }) => (kind === "comparison.started" ? [data.fresh] : []))),
+  ].filter((digest): digest is string => isString(digest) && digest !== starter);
   return [
     ...scoredTasks(events).map(({ taskId, version }) => `task\t${campaign}\t${taskId ?? version}\t`),
     ...versions.map((digest) => `version\t${campaign}\t${digest}\t`),

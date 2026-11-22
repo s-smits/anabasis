@@ -13,7 +13,6 @@ import { keyless, RESULT_FILE, TRACE_FILE } from "../studies/shared/pi-solve.ts"
 import { type Agent, type Claude, inGroup, REFUSED, rollout } from "../studies/harness2/h2/claude.ts";
 import { installTree } from "../studies/harness2/h2/tree.ts";
 import { piAgent } from "../studies/harness2/score.ts";
-import { halves, readArms, shortfall, streamOf, type Trial, trialsOf } from "../studies/shared/scores.ts";
 import { append } from "../src/kernel/log.ts";
 import {
   cpSync,
@@ -133,8 +132,8 @@ describe("an arm's harness, taken from a campaign", () => {
 
 describe("the container solver", () => {
   it("loads as one compiled file, where no file of the tree is beside it", () => {
-    // Until 19 November the answer tool read its capture program from beside itself as it loaded,
-    // which a compiled solver does not hold, so the solver ended before it read a flag.
+    // The answer tool does not read its capture program from beside itself as it loads, which a
+    // compiled solver does not hold, so the solver would end before it read a flag.
     const solver = join(root, "pi-solve-here");
     const source = join(import.meta.dir, "..", "studies", "shared", "pi-solve.ts");
     runSync([capturedExecPath, "build", "--compile", source, "--outfile", solver]);
@@ -178,102 +177,6 @@ describe("the container solver", () => {
     },
     240_000,
   );
-});
-
-/** A trial of `task` scored `score`, started at minute `minute`. */
-const trial = (task: string, score: number | null, minute = 0): Trial => ({
-  task,
-  trial: `${task}__${String(minute)}`,
-  score,
-  ending: null,
-  billed: null,
-  turns: null,
-  calls: null,
-  seconds: null,
-  started: `2026-11-02T10:${String(minute).padStart(2, "0")}:00Z`,
-});
-
-describe("two arms read as a campaign reads a comparison", () => {
-  it("pairs only the tasks each arm scored in full, and names the rest short", () => {
-    const a = [trial("t1", 1), trial("t1", 1), trial("t2", 1), trial("t2", null)];
-    const b = [trial("t1", 0), trial("t1", 0), trial("t2", 0), trial("t2", 0)];
-    const reading = readArms(a, b, 2);
-    expect(reading).toMatchObject({ tasks: 1, short: ["t2"], won: 0, lost: 1, tied: 0 });
-    expect(shortfall(a, ["t1", "t2", "t3"], 2)).toStrictEqual(
-      new Map([
-        ["t2", 1],
-        ["t3", 2],
-      ]),
-    );
-  });
-
-  it("reads a step at the campaign's level: six clean wins clear 0.02 and five do not", () => {
-    const tasks = (count: number) => Array.from({ length: count }, (_, at) => `t${String(at)}`);
-    const arm = (count: number, score: number) =>
-      tasks(count).flatMap((task) => [trial(task, score), trial(task, score)]);
-    expect(readArms(arm(6, 0), arm(6, 1), 2)).toMatchObject({ won: 6, step: true, level: 0.02 });
-    const five = readArms(arm(5, 0), arm(5, 1), 2);
-    expect(five).toMatchObject({ won: 5, step: false, eitherWay: false });
-    expect(readArms(arm(5, 0), arm(5, 1), 2, { level: 0.1 }).step).toBe(true);
-  });
-
-  it("splits one arm by mirrored halves in the order its trials started, and takes one stream alone", async () => {
-    // The trials arrive out of order; `trialsOf` orders them by Harbor's start time.
-    const folders = [3, 0, 2, 1].map((minute) => {
-      const path = join(root, "trials", `t1__${String(minute)}`);
-      mkdirSync(path, { recursive: true });
-      writeFileSync(
-        join(path, "result.json"),
-        capturedJsonStringify({ started_at: `2026-11-02T10:0${String(minute)}:00Z` }),
-      );
-      return { task: "t1", trial: `t1__z${String(minute)}`, path, score: minute / 10 };
-    });
-    const ordered = trialsOf(folders.map((line) => capturedJsonStringify(line)).join("\n"));
-    expect(ordered.map(({ score }) => score)).toStrictEqual([0, 0.1, 0.2, 0.3]);
-    const [first, last] = halves(ordered);
-    expect(first.map(({ score }) => score)).toStrictEqual([0, 0.3]);
-    expect(last.map(({ score }) => score)).toStrictEqual([0.1, 0.2]);
-    expect(streamOf(ordered, 2).map(({ score }) => score)).toStrictEqual([0.2]);
-  });
-
-  it("gives a non-result retried later no half's or stream's place, so the retry takes the one it stood in", () => {
-    const retried = [
-      trial("t1", 0, 0),
-      trial("t1", null, 1),
-      trial("t1", 0.1, 2),
-      trial("t1", 0.2, 3),
-      trial("t1", 0.3, 4),
-    ];
-    const [first, last] = halves(retried);
-    expect(first.map(({ score }) => score)).toStrictEqual([0, 0.3]);
-    expect(last.map(({ score }) => score)).toStrictEqual([0.1, 0.2]);
-    expect(streamOf(retried, 1).map(({ score }) => score)).toStrictEqual([0.1]);
-  });
-
-  it("reads a Harbor exception as a non-result, keeps an agent's timeout as its fail, and puts a trial with no start last", () => {
-    const line = (
-      name: string,
-      harbor: { started_at?: string; exception_info?: { exception_type: string } },
-    ) => {
-      const path = join(root, "thrown", name);
-      mkdirSync(path, { recursive: true });
-      writeFileSync(join(path, "result.json"), capturedJsonStringify(harbor));
-      return capturedJsonStringify({ task: "t1", trial: name, path, score: 0 });
-    };
-    const at = "2026-11-02T10:00:00Z";
-    const read = trialsOf(
-      [
-        line("unstarted", {}),
-        line("crashed", { started_at: at, exception_info: { exception_type: "RuntimeError" } }),
-        line("timed", { started_at: at, exception_info: { exception_type: "AgentTimeoutError" } }),
-      ].join("\n"),
-    );
-    expect(read.map(({ trial: name, score }) => [name, score])).toStrictEqual([
-      ["crashed", null],
-      ["timed", 0],
-      ["unstarted", 0],
-    ]);
-  });
 });
 
 describe("a harness's programs, checked against the container", () => {

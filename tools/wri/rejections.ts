@@ -5,14 +5,13 @@
  *
  *   bun tools/wri/rejections.ts <log | campaign folder | name> [--solve <id>]
  *
- * Lane 5 reads it, and lane 4 and comparison-review read the same table. Between 3 and 10
- * November all 14 lane 5 sessions joined `condition.recorded`,
- * `solve.started`, `verdict` and `referee.finding` by hand to build it, three of them in pipelines the
- * lane guard refused, and 6 of the 8 looked for a `labels.json` where the labels are in the log.
+ * Lane 5 reads it, and lane 4 and comparison-review read the same table. Without it a session joins
+ * `condition.recorded`, `solve.started`, `verdict` and `referee.finding` by hand, often in pipelines
+ * the lane guard refuses, and looks for a `labels.json` where the labels are in the log.
  *
  * A row is a solve whose ending is a rejection (`rejected`); a refused verdict on a solve that ended
  * otherwise, a crash after the check ran among them, is no rejection and is counted apart. A solve an
- * Examiner session asked for (`examinerSessions`), which a task id of `try-` names since 4 November,
+ * Examiner session asked for (`examinerSessions`), which a task id of `try-` names in newer logs,
  * is marked `examiner` and is never scored. What stands is `standsOf`'s, a label over the ruling
  * (rule 8), and `aside` is `rejectionAside`'s, read for scored rows only. It prints facts and no
  * reading of them: whether a check was right is the lane's question.
@@ -55,7 +54,7 @@ const said = (value: JsonValue | undefined, fallback: string): string => (isStri
 const shown = (value: JsonValue | undefined): string =>
   value === undefined ? NOT_RECORDED : capturedJsonStringify(value);
 
-/** Who asked for each solve. A comparison's solve before 9 October names none in its start, so a
+/** Who asked for each solve. A comparison's solve in an older log names none in its start, so a
  *  solve a comparison counted (`Compared.scoring`) is scored whatever its start names. */
 export function askedOf(log: Index): (solve: Solve) => Asked {
   const examiner = examinerSessions(log.events);
@@ -153,7 +152,7 @@ function verdictText(value: JsonValue | undefined): string {
 }
 
 /** One rejection's finding whole, and each probe row it ran, cited or not. */
-export function probeLines(events: readonly LogEvent[], wanted: string): string[] {
+function probeLines(events: readonly LogEvent[], wanted: string): string[] {
   const log = indexOf(events);
   const solve = log.solves.find(({ id }) => id === wanted || id.endsWith(`-${wanted}`));
   if (solve === undefined) return [`no solve ${wanted} in the log`];

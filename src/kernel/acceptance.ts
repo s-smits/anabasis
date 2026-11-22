@@ -9,20 +9,17 @@
  * the verdict its author labelled it with, whether a second run agrees, whether every check has
  * been seen both to refuse an answer and to let one pass, and whether every instrument a check
  * names is there to run.
- * Since 14 October the opening's current faults and counts rest on fresh control answers alone; stored
- * verdicts are reported apart, without rerunning them, and cannot clear a current fault.
  *
- * Two readings ask what no control answer of the pack's does (`7f0add79:docs/plan.md`, the correctness
- * model). The do-nothing answer, the smallest the answer format allows, must be rejected on every
+ * Two readings ask what no control answer of the pack's does. The do-nothing answer, the smallest
+ * the answer format allows, must be rejected on every
  * task: Anchor tests its generated verifiers so, and cites a benchmark on which an agent that did
  * nothing passed 38% of the tasks, because the verifier accepted an empty response. And a check whose
  * author's own computation decides it, with no installed instrument, is a fault until the operator
  * admits it by name: all 32 verified firmware fails in v1 ran on task sets whose instrument a Builder
  * had written, and 24 of them were that stand-in rejecting valid code. A check's instrument is named
- * by the tool it runs. Until 12 October it was the brief's evidence label, which its author writes:
- * buffer-141-m3's reading gave 7 of 7 checks `authored`, and 5 of them ran the pack's engine on their
- * author's input. An exam with no engine behind any check, as every drafted one is (only a stored
- * pack's tool tree installs one), stands only once the operator admits each check by name.
+ * by the tool it runs, never by a label its author writes, since an author's label can call a
+ * check `authored` that runs the pack's engine. An exam with no engine behind any check stands only
+ * once the operator admits each check by name.
  *
  * This reads and decides nothing: a fault is a sentence for the checker's owner, and what share of
  * faults a checker may carry is the operator's. One thing is not read here. A control answer tests the
@@ -34,7 +31,7 @@ import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { pooled } from "../meta/pool.ts";
 import type { AnswerFile } from "./answer-files.ts";
-import { gainOver, ROOM } from "./compare.ts";
+import { gainOver, GAP_FLOOR } from "./compare.ts";
 import { answerFormatFault, type Contract } from "./contract.ts";
 import type { LogEvent } from "./log.ts";
 import {
@@ -70,8 +67,8 @@ interface ControlAnswerRun extends Control {
   readonly verdicts: readonly [Verdict, Verdict];
 }
 
-/** An answer whose verdict is on record: a control answer's first run, or a stored solve's. */
-export interface Graded {
+/** An answer whose verdict is on record: a control answer's first run. */
+interface Graded {
   readonly task: Task;
   readonly verdict: Verdict;
 }
@@ -90,7 +87,7 @@ interface CheckReading {
   readonly instrument: string;
   /** Declared tools the verifier's tool path does not hold. */
   readonly missing: readonly string[];
-  /** Answers it applied to and let pass, and answers it refused, control answers and stored answers alike. */
+  /** Control answers it applied to and let pass, and those it refused. */
   readonly passed: number;
   readonly refused: number;
   /** Reject control answers that name it, and how many of those it refused. */
@@ -110,20 +107,19 @@ export interface Checker {
   readonly checks: string;
 }
 
-/** What a checker is read on: its verifier and brief, the tasks and control answers put to it, answers
- *  graded elsewhere, and whether the verifier's tool path holds a tool. */
+/** What a checker is read on: its verifier and brief, the tasks and control answers put to it, and
+ *  whether the verifier's tool path holds a tool. */
 export interface Read {
   readonly verify: Verifier;
   readonly brief: Brief;
   readonly contract: Contract;
   readonly tasks: readonly Task[];
   readonly controls: readonly Control[];
-  readonly stored: readonly Graded[];
   readonly found: (toolId: string) => boolean;
   /** Verifier runs in flight at once. */
   readonly width: number;
-  /** False for a stored pack, whose reading runs no probe of its tasks (`probeFaults`): they are not
-   *  a draft's few examples, and the swap probe runs every task's control on every other. */
+  /** False where the reading runs no probe of its tasks (`probeFaults`): the acceptance command's,
+   *  over an exam whose draft was probed when it stood. */
   readonly probes?: false;
 }
 
@@ -153,8 +149,8 @@ function runControls(
  * fewest characters, a number its minimum or zero; an enumeration gives its first value, a choice
  * of schemas its first, and a local reference the schema it points to, or null where it is already
  * being followed. A keyword outside these is not read, so the value may miss the format, which the
- * caller asks (`answerFormatFault`) before it puts the answer to a check. Until 28 October no
- * reference was followed, and Job's two drafts that cited `#/$defs/...` were refused on it.
+ * caller asks (`answerFormatFault`) before it puts the answer to a check. References are followed
+ * so that a draft citing `#/$defs/...` is not refused on it.
  */
 function doNothingAnswer(
   schema: JsonValue | undefined,
@@ -195,9 +191,8 @@ function doNothingAnswer(
  * is run on every other example: a control that every other example's checks also pass answers any
  * task, so no check reads the task. Where every example carries hidden values, each such control is
  * run on its own example with each other example's differing hidden values in place of its own:
- * where no verdict moves and no measure moves by the comparison's floor (`ROOM`), no check and no
- * objective is decided by them. The replay of the 190 distinct drafts on record on 20 November found
- * neither in any of them. A probe the verifier cannot decide is left unread, so a probe never stops
+ * where no verdict moves and no measure moves by the comparison's floor (`GAP_FLOOR`), no check and no
+ * objective is decided by them. A probe the verifier cannot decide is left unread, so a probe never stops
  * the reading its controls make.
  */
 async function probeFaults(
@@ -247,7 +242,7 @@ async function probeFaults(
     moved.every(
       ({ run, verdict }) =>
         verdict.kind === "pass" &&
-        Math.abs(gainOver(rule, objectiveOf(verdict), objectiveOf(run.verdicts[0]))) < ROOM,
+        Math.abs(gainOver(rule, objectiveOf(verdict), objectiveOf(run.verdicts[0]))) < GAP_FLOOR,
     );
   return [
     ...swapped,
@@ -294,38 +289,22 @@ function controlFault({ taskId, refusedBy, verdicts: [first, second] }: ControlA
     : `${named} names ${refusedBy}, which did not refuse it: ${spelled(first)}`;
 }
 
-/** The tools a check names that the verifier's tool path does not hold, a sentence each. A check
- *  whose tool is missing decides nothing, so a caller asks this before it runs a control answer: put to
- *  the verifier first, such a check stops the run and the missing tool is never named. */
-export function toolFaults(brief: Brief, found: (toolId: string) => boolean): string[] {
-  return brief.truthChecks.flatMap(({ id, execution }) =>
-    requiredToolsOf(execution)
-      .filter((tool) => !found(tool))
-      .map((tool) => `${id} names ${tool}, which is not on the verifier's tool path`),
-  );
-}
-
 /**
- * The reading: each check's tallies over the control answers and the stored answers, and the faults.
- * `stored` are answers graded elsewhere, a sweep's solves say, and add to what a check has been
- * seen to do without being rerun. `found` says whether the verifier's tool path holds a tool. A
- * verdict that decided nothing, a faulty check's or a non-result, tallies for no check.
+ * The reading: each check's tallies over the control answers, and the faults. `found` says whether
+ * the verifier's tool path holds a tool. A verdict that decided nothing, a faulty check's or a
+ * non-result, tallies for no check.
  */
 function acceptance(
   brief: Brief,
   tasks: readonly Task[],
   runs: readonly ControlAnswerRun[],
-  stored: readonly Graded[],
   found: (toolId: string) => boolean,
 ): Acceptance {
   const byId = new Map(tasks.map((task) => [task.taskId, task]));
-  const graded = [
-    ...runs.flatMap(({ taskId, verdicts: [verdict] }) => {
-      const task = byId.get(taskId);
-      return task === undefined ? [] : [{ task, verdict }];
-    }),
-    ...stored,
-  ];
+  const graded: Graded[] = runs.flatMap(({ taskId, verdicts: [verdict] }) => {
+    const task = byId.get(taskId);
+    return task === undefined ? [] : [{ task, verdict }];
+  });
   // The objective is read as a check is: its author's own computation, which the operator admits
   // by name, and seen to measure every valid answer or none.
   const measured: CheckReading[] =
@@ -402,9 +381,9 @@ function acceptance(
  * before it stands (`tools/d2/exam.ts`), so an exam is drafted against what it will be read by.
  *
  * A do-nothing answer that does not follow the format is a note, not a fault: the format refuses
- * it before a check reads it, as it refuses a solver's answer. Until 31 October it was a fault,
- * and refused 3 of the 245 drafts on record for a keyword the host's builder does not read; a check
- * that passes everything is still a fault through its reject control.
+ * it before a check reads it, as it refuses a solver's answer. As a fault it refused drafts over a
+ * keyword the host's builder does not read, while a check that passes everything is still a fault
+ * through its reject control.
  */
 export async function readChecker(given: Read) {
   const { verify, brief, tasks, width } = given;
@@ -412,13 +391,11 @@ export async function readChecker(given: Read) {
   const idle = doNothingAnswer(given.contract.answerFormat);
   const unformed = answerFormatFault(given.contract.answerFormat, idle);
   const rejected = unformed === null ? await runDoNothing(verify, tasks, idle, width) : [];
-  const { checks, faults } = acceptance(brief, tasks, runs, [], given.found);
-  const { checks: historical } = acceptance(brief, tasks, [], given.stored, given.found);
+  const { checks, faults } = acceptance(brief, tasks, runs, given.found);
   const probed = given.probes === false ? [] : await probeFaults(given, runs);
   return {
     runs,
     checks,
-    historical,
     faults: [...faults, ...(unformed === null ? doNothingFaults(rejected) : []), ...probed],
     notes:
       unformed === null

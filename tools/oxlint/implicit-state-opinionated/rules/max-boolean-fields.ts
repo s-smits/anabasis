@@ -50,8 +50,8 @@ import { calleeName, isTestPath, objectValues } from "../../implicit-state/share
  * observations, as a membership `marks.has("blind")` beside `marks.has("alone")` records separate
  * tags: two flags compared from one value (`kind === "using"`, `kind === "const"`) still count, and
  * so does a literal of constants (`{ open: false, closed: false }`), which shows nothing. On this
- * repository, 9 November 2026, these were three of the four interfaces the count reported in
- * `tools/` and `src/`; the fourth held projections of one run state and became that state.
+ * repository these were most of the interfaces the count reported in `tools/` and `src/`; the
+ * other held projections of one run state and became that state.
  *
  * Test files and declaration files (`.d.ts`, another package's interface described) are not read:
  * a fixture lists its flags beside each other on purpose.

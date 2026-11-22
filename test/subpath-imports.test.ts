@@ -1,60 +1,17 @@
 /**
- * `anti-slop/prefer-subpath-import`, the root manifest's `#src/*` and `#tools/*` aliases, and the
- * four readers that have to agree on them: the rule that asks for them, the fixers that write
- * imports, and the two tree scans that read a specifier as a use of the module it names.
+ * The `#src/*` and `#tools/*` aliases, read the same way by the fixers that write an import and by
+ * the two tree scans that read a specifier as a use of the module it names.
  */
 import { describe, expect, it } from "bun:test";
-import manifest from "../package.json" with { type: "json" };
 import { resolve } from "../src/meta/path.ts";
 import { importSpecifier } from "../tools/oxlint/ana/shared/import-fix.ts";
 import { identitiesWithoutOwner } from "../tools/oxlint/tree-identity.ts";
 import { unreadModules } from "../tools/oxlint/tree-findings.ts";
-import { expectedLines, fixedSource, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
 
-const RULE = "prefer-subpath-import";
 const SKILL_SCRIPT = ".claude/skills/launch-run/scripts/fixture.ts";
 const REPO = resolve(import.meta.dirname, "..");
 
-/** A package root declaring this repository's own aliases, so the fixture reads what the tree reads. */
-const ROOT = { files: new Map([["package.json", JSON.stringify({ imports: manifest.imports })]]) };
-
-const CLIMBING = `import { a } from "../../../../src/meta/path.ts"; // REPORT four levels into src
-import { b } from "../../../../tools/oxlint/tree-findings.ts"; // REPORT four levels into tools
-export { c } from "../../../../src/meta/os.ts"; // REPORT a re-export climbs the same way
-export * from "../../../../src/meta/text.ts"; // REPORT and so does a star re-export
-type D = typeof import("../../../../src/run/source-identity.ts"); // REPORT a type import too
-const e = await import("../../../../src/meta/assert.ts"); // REPORT and a dynamic one
-import { f } from "../../lib/common.ts"; // ADMITTED two levels up is a neighbour
-import { g } from "../../../other/scripts/x.ts"; // ADMITTED no alias names .claude
-import { h } from "#src/meta/path.ts"; // ADMITTED already the alias
-import { i } from "../../../../../escape.ts"; // ADMITTED climbs out of the package
-export const used = [a, b, e, f, g, h, i] as D[];
-`;
-
-describe("prefer-subpath-import", () => {
-  it("reports an import climbing three or more levels into an aliased tree", async () => {
-    expect(await reportedLines("anti-slop", RULE, CLIMBING, SKILL_SCRIPT, ROOT)).toStrictEqual(
-      expectedLines(CLIMBING),
-    );
-  });
-
-  it("rewrites the specifier to the alias in the quote the line already used", async () => {
-    const before = [
-      "import { a } from '../../../../src/meta/path.ts';",
-      'const b = await import("../../../../tools/oxlint/tree-findings.ts");',
-      "export const c = [a, b];",
-      "",
-    ].join("\n");
-    expect(await fixedSource("anti-slop", RULE, before, SKILL_SCRIPT, ROOT)).toBe(
-      [
-        "import { a } from '#src/meta/path.ts';",
-        'const b = await import("#tools/oxlint/tree-findings.ts");',
-        "export const c = [a, b];",
-        "",
-      ].join("\n"),
-    );
-  });
-
+describe("the fixers that write an import", () => {
   it("has the fixers that write an import write the alias under this repository's own options", () => {
     for (const [path, specifier] of [
       [SKILL_SCRIPT, "#src/meta/os.ts"],

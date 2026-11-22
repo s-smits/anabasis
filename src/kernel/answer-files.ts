@@ -1,4 +1,4 @@
-/** Submission bytes live beside the campaign's digest-addressed states, never in log lines. */
+/** Content-addressed storage and manifest validation for submitted deliverable files (`states/deliverables/`). */
 import { sha256 } from "../meta/digest.ts";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "../meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";

@@ -9,7 +9,7 @@ import { digestText } from "./campaign-data.ts";
 import type { Ending as SolveEnding } from "../../../../src/kernel/solve.ts";
 
 /*
- * The drill-down the Moves and Tasks panes share (the brief of 11 October, section 7): a list whose
+ * The drill-down the Moves and Tasks panes share: a list whose
  * row opens its detail in place, the list hidden rather than pushed above it, and a way back that
  * restores the list and the focus on the row, as v1's task view did (`views/cases.tsx` at 5bc9988).
  *
@@ -61,8 +61,8 @@ function leave(navigation: Navigation, change: RouteChange): void {
  *
  * The turn is a route's, a click's or the browser's back button's alike, so no handler owns it:
  * `marker`, rendered after the list and the detail, is keyed by the turn, and its ref moves focus as
- * it attaches, in the commit and before the frame is painted. Until 14 October a layout effect did
- * this, run after every render that changed `selected`.
+ * it attaches, in the commit and before the frame is painted, rather than in a layout effect run
+ * after every render that changed `selected`.
  */
 export function useDrill(selected: string | null) {
   const list = useRef<HTMLDivElement>(null);

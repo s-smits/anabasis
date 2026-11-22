@@ -1,13 +1,13 @@
 /**
- * The load of this machine and of hosts, sampled: what `runs loadwatch` draws and what the check
- * runner's `RUN_REMOTE=auto` chooses by, so both read the one sample and the one order.
+ * Host CPU and load-average sampling and streaming watcher primitives (`watchersOf`,
+ * `keepFollowing`, `firstReadings`, `minuteLoads`). Powers both `bun run runs loadwatch` and
+ * `ANA_CHECK_HOST=auto` host selection so interactive monitoring and automated task placement read
+ * identical metrics.
  *
- * Each machine runs one sampling loop, through `shellOn`: on a host that is `sshScript`, whose
- * control socket (`sshOptions`) the other verbs and the check runner share, so a reconnect after a
- * drop reuses the connection that is already open. The loop picks its source by what the machine
- * has: `/proc/stat` deltas on Linux, and on macOS a streaming `iostat`, whose tick deltas see
- * short-lived processes that `ps %cpu`, a decaying average, misses. A stream silent for longer than
- * its interval and `SILENT_MS` reads as unreachable.
+ * Each host runs a single sampling loop over `shellOn` (sharing the SSH control socket from
+ * `sshOptions`). Linux hosts sample `/proc/stat` and `/proc/loadavg` deltas; macOS hosts stream
+ * `iostat` tick deltas, which capture short-lived processes missed by decaying `ps %cpu` averages.
+ * Streams silent for longer than their interval plus `SILENT_MS` transition to `"unreachable"`.
  */
 import { capturedSpawn } from "#src/meta/process.ts";
 import { killProcessGroup } from "#src/meta/subprocess.ts";
@@ -22,13 +22,16 @@ interface Sample {
   /** The share of the CPU busy over the last interval, in percent. */
   readonly busy: number;
 }
-export type State = Sample | "connecting" | "unreachable";
-export interface Watched {
+export type State<S = Sample> = S | "connecting" | "unreachable";
+export interface Watched<S = Sample> {
   readonly label: string;
   /** The host sampled, or undefined for this machine. */
   readonly host: Host | undefined;
   readonly argv: readonly string[];
-  state: State;
+  /** One reading from a block of the loop's output and the reading before it, or null for a block
+   *  that is not one. */
+  readonly parse: (block: string, before: State<S>) => S | null;
+  state: State<S>;
   child: Bun.Subprocess | null;
 }
 
@@ -37,6 +40,7 @@ export const WINDOWS = { "1m": 0, "5m": 1, "15m": 2 } as const;
 export type Window = (typeof WINDOWS)[keyof typeof WINDOWS];
 
 const SILENT_MS = 20_000;
+const RETRY_MS = 3000;
 // Each sample is "<cores>\n<1m> <5m> <15m>\n<idle percent>\n---\n". @I@ is the interval in seconds.
 const LOOP = String.raw`
 if [ -r /proc/stat ]; then
@@ -69,7 +73,7 @@ function lapse(ms: number): Promise<null> {
 
 /** One sample from the loop's block, or null for a block that is not one, a count of no cores
  *  among them. */
-function sampleOf(block: string): Sample | null {
+export function sampleOf(block: string): Sample | null {
   const [cores, loads, idle] = block.trim().split("\n");
   const [one, five, fifteen] = (loads ?? "").trim().split(/\s+/u).map(Number);
   const numbers = [Number(cores), one, five, fifteen, Number(idle)];
@@ -78,23 +82,49 @@ function sampleOf(block: string): Sample | null {
   return { cores: Number(cores), loads: [one, five, fifteen], busy: Math.max(0, 100 - Number(idle)) };
 }
 
-/** This machine (`undefined`) and each host, not yet sampled, each sampled every `seconds`. */
-export function watchedOf(hosts: readonly (Host | undefined)[], seconds: number): Watched[] {
-  const script = LOOP.replaceAll("@I@", String(Math.max(seconds, 0.5))).replaceAll(
+/** The sampling loop, a sample every `seconds`. */
+export const watchedScript = (seconds: number): string =>
+  LOOP.replaceAll("@I@", String(Math.max(seconds, 0.5))).replaceAll(
     "@W@",
     String(Math.max(1, Math.round(seconds))),
   );
+
+/** This machine (`undefined`) and each host, each to run the shell loop `script`, whose blocks
+ *  `parse` reads, not yet read. */
+export function watchersOf<S>(
+  hosts: readonly (Host | undefined)[],
+  script: string,
+  parse: (block: string, before: State<S>) => S | null,
+): Watched<S>[] {
   return hosts.map((host) => ({
     label: host?.name ?? ownName(),
     host,
     argv: shellOn(host, script),
+    parse,
     state: "connecting",
     child: null,
   }));
 }
 
-/** Read one connection until it closes or falls silent, or until its first sample. */
-export async function stream(watched: Watched, intervalMs: number, until: "first" | "closed"): Promise<void> {
+/** Follow each connection for good, opening one that closes or falls silent again after a pause. */
+export function keepFollowing<S>(watched: readonly Watched<S>[], intervalMs: number): void {
+  for (const each of watched) {
+    (async () => {
+      for (;;) {
+        await follow(each, intervalMs, null);
+        await Bun.sleep(RETRY_MS);
+      }
+    })().catch(() => undefined);
+  }
+}
+
+/** Read one connection's blocks, each ended by a `---` line, until it closes or falls silent, or
+ *  until a reading is `ready`; each read block in turn is the watched state. */
+async function follow<S>(
+  watched: Watched<S>,
+  intervalMs: number,
+  ready: ((reading: S) => boolean) | null,
+): Promise<void> {
   const child = capturedSpawn([...watched.argv], {
     stdin: "ignore",
     stdout: "pipe",
@@ -113,11 +143,13 @@ export async function stream(watched: Watched, intervalMs: number, until: "first
       buffer += decoder.decode(read.value, { stream: true });
       const blocks = buffer.split("---\n");
       buffer = blocks.pop() ?? "";
-      const sample = blocks.flatMap((block) => sampleOf(block) ?? []).at(-1);
-      if (sample === undefined) continue;
-      watched.state = sample;
-      silentMs = intervalMs + SILENT_MS;
-      if (until === "first") return;
+      for (const block of blocks) {
+        const reading = watched.parse(block, watched.state);
+        if (reading === null) continue;
+        watched.state = reading;
+        silentMs = intervalMs + SILENT_MS;
+        if (ready?.(reading) === true) return;
+      }
     }
     watched.state = "unreachable";
   } finally {
@@ -126,14 +158,15 @@ export async function stream(watched: Watched, intervalMs: number, until: "first
   }
 }
 
-/** The first sample of each, all at once; with `deadlineMs`, a machine that has not answered by
- *  then is stopped and keeps no sample. */
-export async function firstSamples(
-  watched: readonly Watched[],
+/** Each machine's first `ready` reading, all at once; with `deadlineMs`, a machine that has none by
+ *  then is stopped. */
+export async function firstReadings<S>(
+  watched: readonly Watched<S>[],
   intervalMs: number,
+  ready: (reading: S) => boolean,
   deadlineMs?: number,
 ): Promise<void> {
-  const all = Promise.all(watched.map((each) => stream(each, intervalMs, "first")));
+  const all = Promise.all(watched.map((each) => follow(each, intervalMs, ready)));
   if (deadlineMs === undefined) {
     await all;
     return;
@@ -163,8 +196,8 @@ export async function minuteLoads(
   hosts: readonly (Host | undefined)[],
   waitMs: number,
 ): Promise<{ order: { label: string; host: Host | undefined; share: number }[]; silent: string[] }> {
-  const watched = watchedOf(hosts, 1);
-  await firstSamples(watched, 1000, waitMs);
+  const watched = watchersOf(hosts, watchedScript(1), sampleOf);
+  await firstReadings(watched, 1000, () => true, waitMs);
   const order = byLoad(watched, WINDOWS["1m"]).map(({ label, host, load, cores }) => ({
     label,
     host,

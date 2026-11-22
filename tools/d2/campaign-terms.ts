@@ -2,12 +2,11 @@
  * What a campaign's command and a live Builder's campaign tools share (`harness-builder.ts`,
  * `campaign-actions.ts`): the command's flags, what a campaign runs by and keeps in its opening,
  * and the flags of each move's command. Nothing here knows who makes a move.
- * A paid campaign needs a Referee before it opens (20 October), so that no rejection it counts goes
- * unruled: until then source triage found a campaign could omit its reviewer, and 81 rejections at
- * the gate's room solves of that time went unruled.
+ * A paid campaign needs a Referee before it opens, so that no rejection it counts goes unruled, as
+ * every rejection of a campaign that omitted its reviewer would.
  */
 import { STARTED, startOf } from "#src/campaign/comparison.ts";
-import { shortOf } from "#src/campaign/decide.ts";
+import { tasksToAskFor } from "#src/campaign/decide.ts";
 import { cutShort, type Plan } from "#src/campaign/ground.ts";
 import type { Decided } from "#src/campaign/move.ts";
 import { type Opening, openingOf, planOf, SEATS, type Seat, TERMS } from "#src/campaign/opening.ts";
@@ -42,7 +41,7 @@ export interface Seats {
    *  one that writes nothing. */
   readonly prepare?: typeof prepareCommand | undefined;
   /** No reviewer, whatever the opening names: a rehearsal's, whose scripted rejections no model is
-   *  paid to rule. Until 16 October a rehearsal over a seed seated its source's Referee. */
+   *  paid to rule, though its seed's source seats one. */
   readonly unreviewed?: boolean | undefined;
 }
 
@@ -96,10 +95,9 @@ const OPTIONS = {
   "past-stop": COMPARISON_OPTIONS["past-stop"],
 } as const;
 /** What a campaign runs by where neither a flag nor its record says: the reserve of one solve in
- *  dollars and a seat's effort. The reserve was 10 until
- *  3 November, when 44,573 Opus solves under the 20-turn, 30-minute limits had billed at most $2.83
- *  (p99 $0.64), and an $800 campaign's every comparison told its Builder that the cap would cut its
- *  96 solves short at 80. */
+ *  dollars and a seat's effort. Opus solves under the 20-turn, 30-minute limits have billed at most
+ *  about $3 (p99 well under $1), and a larger reserve would tell an $800 campaign's Builder at every
+ *  comparison that the cap would cut its solves short. */
 const DEFAULTS = { reserve: COMPARISON_OPTIONS.reserve.default, effort: "high" } as const;
 /**
  * Every flag of the campaign command with what it does: the one list of them, printed by
@@ -108,10 +106,6 @@ const DEFAULTS = { reserve: COMPARISON_OPTIONS.reserve.default, effort: "high" }
  * run that names nothing runs by the record.
  */
 const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
-  root: "a stored pack's root; with --sweep, --cycle and --bundle names the pack the campaign opens over",
-  sweep: "a stored pack's sweep (see --root)",
-  cycle: "a stored pack's cycle (see --root)",
-  bundle: "a stored pack's directory (see --root)",
   name: "the campaign, and its folder .ana/d2/<name>; required",
   project: "the project the campaign is filed under; required at its opening, kept after",
   prompt: "the operator's prompt, for a campaign whose Examiner drafts its exam",
@@ -205,10 +199,6 @@ export function flagsHelp(): string {
     .join("\n");
 }
 
-/** Whether a command names a stored pack, by any of the four flags that name one together. */
-export const packed = ({ root, sweep, cycle, bundle }: Values): boolean =>
-  [root, sweep, cycle, bundle].some((each) => each !== undefined);
-
 /** The operator's prompt: what this command gives, in a flag or a file, or the record's. */
 function promptOf(values: Values, was: Opening | null): string | null {
   const file = values["prompt-file"];
@@ -248,10 +238,8 @@ export function opened(
     return named === undefined ? null : { model: named, effort: effort ?? kept?.effort ?? DEFAULTS.effort };
   };
   const prompt = promptOf(values, was);
-  if (prompt === null && !packed(values)) {
-    throw new Error(
-      `name the campaign's pack with --root, --sweep, --cycle and --bundle, or give the prompt it opens from with --prompt: ${log} holds neither`,
-    );
+  if (prompt === null) {
+    throw new Error(`give the prompt the campaign opens from with --prompt: ${log} holds none`);
   }
   // The recorded solver takes no effort from a command that does not name its model.
   const solver = seat(
@@ -259,12 +247,12 @@ export function opened(
     values.solver === undefined ? undefined : values["solver-effort"],
     was?.solver,
   );
-  if (prompt !== null && solver === null) {
+  if (solver === null) {
     throw new Error(
-      "name --solver: a campaign that opens from a prompt has no stored cycle to take its solver from",
+      "name --solver: a campaign that opens from a prompt has no record to take its solver from",
     );
   }
-  if (prompt !== null && was !== null && was.prompt !== prompt && draftOf(events) !== null) {
+  if (was !== null && was.prompt !== prompt && draftOf(events) !== null) {
     throw new Error(
       "the campaign's exam was drafted from another prompt than this command gives: a prompt names one campaign, and another takes a name of its own",
     );
@@ -290,7 +278,7 @@ export function opened(
     },
     attended: values.hitl ?? was?.attended ?? false,
     prompt,
-    solver: prompt === null ? null : solver,
+    solver,
     terms: {
       level: COMPARISON_OPTIONS.level.default,
       ...was?.terms,
@@ -325,7 +313,7 @@ export function opened(
     ...keyIfDefined("solver", named.solver === null ? undefined : { ...named.solver }),
     terms: { ...named.terms },
   };
-  // The record as it was written, less the words it answered and who led it (until 3 November).
+  // The record as it was written, less the words it answered and who led it (an older record's field).
   const { answers: _heard, led: _led, ...kept } = events.findLast(({ kind }) => kind === OPENED)?.data ?? {};
   if (!values["dry-run"] && (heard.length > 0 || !sameJsonValue(kept, record))) {
     // A campaign that opens from a prompt has no folder until now.
@@ -341,14 +329,14 @@ export function opened(
 /**
  * The Builder sessions in a row, the latest included, that have made no campaign move since the
  * campaign last ended: the trailing run of its moves that are Builder conversations (`build`), and
- * on a log from before 3 November sessions its host made. Any other move, the host's own among them, is
+ * on an older log sessions its host made. Any other move, the host's own among them, is
  * progress. A run of the command after an ending
  * starts the count afresh, as Codex audits a resumed goal afresh. A conversation the provider
- * crashed or a stop killed chose nothing and is left out: until 15 October finished, crashed,
- * finished counted three. So is
+ * crashed or a stop killed chose nothing and is left out, so finished, crashed, finished counts
+ * two. So is
  * a session of any seat that moved nothing (`cutShort`), and one the host refused before it began.
- * Since 16 October an Examiner session opens beside each conversation the table names one for, and
- * one that crashed, or was refused, every time kept two rehearsed campaigns going past 40 moves.
+ * An Examiner session opens beside each conversation the table names one for, and counting one
+ * that crashed, or was refused, every time would keep a campaign going without end.
  */
 export function idleOf(events: readonly LogEvent[]): number {
   const since = events.slice(events.findLastIndex(({ kind }) => kind === "campaign.ended") + 1);
@@ -384,21 +372,14 @@ function termsOf(events: readonly LogEvent[], id: string): string[] {
   ];
 }
 
-/** The flags that name a campaign's pack and itself, as every command takes them. */
-export function packOf({ root, sweep, cycle, bundle, name }: Values): string[] {
-  return [
-    ...flag("root", root),
-    ...flag("sweep", sweep),
-    ...flag("cycle", cycle),
-    ...flag("bundle", bundle),
-    ...flag("name", name),
-  ];
+/** The flag that names a campaign, as every command takes it. */
+export function packOf({ name }: Values): string[] {
+  return flag("name", name);
 }
 
 /** The flags a move that solves shares with every other: the cap, which is what is left of the
  *  campaign's total; the reviewers; and the word past the stop rule. The setting is the log's
- *  record from the campaign's start (`startSetting`), so no move is given it as flags: until
- *  5 November each was, where none was recorded yet. */
+ *  record from the campaign's start (`startSetting`), so no move is given it as flags. */
 export function sharedOf({ plan, opening, values, seats }: Turn) {
   const reviewer = seats.unreviewed === true ? null : opening.seats.reviewer;
   return {
@@ -416,7 +397,7 @@ export function sharedOf({ plan, opening, values, seats }: Turn) {
  *  for. Each session reads the campaign's setting from the log, where the campaign command
  *  records it as it starts (`startSetting`, `harness-builder.ts`), and runs by its own defaults.
  *
- *  The count is what the campaign is short of, at least a sweep (`shortOf`, `decide.ts`), and none
+ *  The count is what the campaign is short of, at least a sweep (`tasksToAskFor`, `decide.ts`), and none
  *  where it is short of nothing. No flag names another count: an ask above the shortfall had
  *  campaigns examine towards a target for hours before their first comparison. */
 export function examinerRun(turn: Turn, session: string, kind: "draft" | "write") {
@@ -433,7 +414,7 @@ export function examinerRun(turn: Turn, session: string, kind: "draft" | "write"
     "--examiner-effort",
     examiner?.effort ?? DEFAULTS.effort,
   ];
-  const wanting = shortOf(turn.events, turn.plan);
+  const wanting = tasksToAskFor(turn.events, turn.plan);
   const tasks = wanting > 0 ? String(wanting) : undefined;
   return {
     args:

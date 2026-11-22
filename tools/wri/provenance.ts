@@ -15,9 +15,8 @@
  * them as the control; `--leaves` adds one line a leaf. It prints positions, sources and counts, never
  * a value, and reads no reading, score or other lane's file.
  *
- * 10 of 15 lane-16 sessions between 3 and 10 November wrote this search by hand (`trace.py` in six
- * versions, `literal.py`, `writer.py`), at a median of 44 calls a session, and 6 of the 9 calls the
- * lane guard refused there were greps of the kept states this opens itself.
+ * Without it lane 16 sessions write this search by hand, in dozens of calls a session, and the lane
+ * guard refuses their greps of the kept states this opens itself.
  */
 import { draftOf } from "#src/examiner/draft.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
@@ -173,7 +172,7 @@ export function holderOf(text: string): Holder {
 }
 
 /** The precision at which `holder` holds `leaf`, or null: a string by its length, exactly. */
-export function heldAt(holder: Holder, { value, size }: Leaf): number | null {
+function heldAt(holder: Holder, { value, size }: Leaf): number | null {
   if (isString(value)) return holder.text.includes(value) ? size : null;
   const from = Math.min(size, MAX_PRECISION);
   for (let digits = from; digits >= Math.min(from, MIN_PRECISION); digits -= 1) {
@@ -243,7 +242,7 @@ function fileLeaves(path: string, content: string): Leaf[] {
 }
 
 /** Every leaf of a judged answer: its files' where it holds files, else the value walked. */
-export function leavesOf(answer: JsonValue | undefined): Leaf[] {
+function leavesOf(answer: JsonValue | undefined): Leaf[] {
   if (answer === undefined || answer === null) return [];
   const files = asRecord(asRecord(answer)?.files);
   if (files === null) return jsonLeaves(answer, "$");
@@ -381,7 +380,7 @@ function findOf(leaf: Leaf, places: readonly Place[]): Found {
 }
 
 /** Each asked solve's leaves, found. A solve with no judged answer or no recorded task is left out. */
-export function provenanceOf(events: readonly LogEvent[], log: string, asked: readonly Asked[]): Row[] {
+function provenanceOf(events: readonly LogEvent[], log: string, asked: readonly Asked[]): Row[] {
   const verdicts = verdictsOf(events);
   const ran = new Map(ranUnder(events).map((each) => [each.id, each]));
   const tasks = tasksOf(events);
@@ -446,7 +445,7 @@ export function wonPairs(events: readonly LogEvent[], session: string) {
 }
 
 /** The solves of the tasks comparison `session`'s new harness won, each side's (`wonPairs`). */
-export function winsOf(events: readonly LogEvent[], session: string): Asked[] | null {
+function winsOf(events: readonly LogEvent[], session: string): Asked[] | null {
   return (
     wonPairs(events, session)?.won.flatMap(({ solves }) => [
       ...(solves?.fresh ?? []).map((solve) => ({ solve, side: "new" as const })),
@@ -505,7 +504,7 @@ export function sharedPrefix(ids: readonly string[]): string {
 const numbersIn = (found: readonly Found[]) => found.filter(({ leaf }) => isNumber(leaf.value));
 
 /** The printed table: a legend, a row a solve, a total a side, and examples a first source. */
-export function provenanceLines(rows: readonly Row[], leaves: "all" | "examples"): string[] {
+function provenanceLines(rows: readonly Row[], leaves: "all" | "examples"): string[] {
   const unkept = new Set(rows.filter(({ kept }) => !kept).map(({ harness }) => harness.slice(0, 8)));
   const prefix = sharedPrefix(rows.map(({ solve }) => solve));
   const named = (solve: string) => solve.slice(prefix.length);

@@ -508,7 +508,7 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
     expect(done?.data.prompts).toBe(1);
     expect(done?.data.billed).toBeGreaterThan(0);
     expect(done?.data.harness).toMatch(/^[0-9a-f]{64}$/);
-    // A solve's end holds no CPU figure since 2026-10-11: the meter read zero under Bubblewrap.
+    // A solve's end holds no CPU figure: the meter reads zero under Bubblewrap.
     expect(done?.data).not.toHaveProperty("cpu");
     const record = (kind: string) => events().find((event) => event.kind === kind)?.data;
     expect(record("solve.started")?.condition).toBe("c-fixture");
@@ -673,7 +673,7 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
 
   it.concurrent("cuts a command before the solve's end, so the solver can still answer", async () => {
     // A 48-second solve reserves six seconds for an answer after its command is cut. At 24 and
-    // three, a gate at a load of 19 on 20 November 2026 ended it wall-ended before its answer.
+    // three, a gate on a loaded host could end it wall-ended before its answer.
     const long = fauxAssistantMessage(
       fauxToolCall("bash", { command: "echo began; sleep 50", timeout: 60 }),
       toolUse,
@@ -698,6 +698,29 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
     expect(ending).toEqual({ outcome: "non-result", kind: "provider", reason: "WebSocket closed 1000" });
     expect(waits).toEqual([30_000, 60_000, 120_000]);
     expect(finished()).toHaveLength(4);
+  }, 120_000);
+
+  it.concurrent("reruns no solve the provider refused in a way no retry clears, and reruns a bare 403", async () => {
+    const disabled = "Claude Code: Your organization has disabled Claude subscription access for Claude Code";
+    const refused = fauxAssistantMessage("", { stopReason: "error", errorMessage: disabled });
+    const once = setup([refused, refused]);
+    const waits: number[] = [];
+    expect(
+      await solve(once.request, async (ms) => {
+        waits.push(ms);
+      }),
+    ).toEqual({
+      outcome: "non-result",
+      kind: "provider",
+      reason: disabled,
+    });
+    expect([waits, once.finished().length]).toEqual([[], 1]);
+    const cloudflare = "Claude Code: Failed to authenticate. API Error: 403 Attention Required! | Cloudflare";
+    const blocked = setup([
+      fauxAssistantMessage("", { stopReason: "error", errorMessage: cloudflare }),
+      ...answer,
+    ]);
+    expect(await solve(blocked.request, async () => {})).toEqual({ outcome: "pass" });
   }, 120_000);
 
   it.concurrent("waits out repeated named resets without spending a rerun, between ordinary provider failures", async () => {
@@ -780,7 +803,7 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
 
   it.concurrent("reruns a solve that rewrote a harness file under its old size and time", async () => {
     // `cp -p` and `tar` put the modification time back, so the stamp holds each file's change time
-    // too, as a tool tree's does (`treeStamp`); until 9 November this rewrite went unseen.
+    // too, as a tool tree's does (`treeStamp`), or this rewrite would go unseen.
     let harness = "";
     const move: FauxResponseStep = () => {
       const guide = join(harness, "agent", "BUILT_AGENTS.md");

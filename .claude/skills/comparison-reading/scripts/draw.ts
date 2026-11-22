@@ -1,17 +1,16 @@
 #!/usr/bin/env bun
 /**
- * Show the held-out pool and task set a comparison would select now.
+ * Displays the held-out task pool and the scored set that a comparison starting now would draw.
  *
  *   bun .claude/skills/comparison-reading/scripts/draw.ts <log.jsonl | campaign name>
  *     [--target <n>] [--level <n>]
  *
- * Use this to inspect a held-short refusal or a draw below its target. poolOf supplies the pool;
- * scoredSet selects tasks under the frozen contract. tasksByEpoch groups frontier tasks, while
- * comparisonFloor, refusals, supplyOf and sizeLines explain admission and sample size. The default
- * target and level come from planOn, as in the run view; flags override them for this inspection.
- * Two lines say how far the set is independent evidence: its families (the test reads siblings as
- * independent) and how many of its tasks the last comparison scored. It names no task or family.
- * Stored-pack tasks have no admission epoch, so they stay out of the epoch-based draw.
+ * Useful for diagnosing a `held-short` refusal or a draw below `--target`. Calls `poolOf` for the
+ * pool partition, `scoredSet` for task selection under the frozen contract, `tasksByEpoch` for
+ * frontier epoch breakdown, and `comparisonFloor`, `refusals`, `supplyOf`, and `sizeLines` for
+ * admission and statistical power figures. Defaults `--target` and `--level` to `planOn(events)`.
+ * Also reports family concentration (`familySizes`) and overlap with the preceding comparison
+ * without naming individual tasks or families.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { comparisonFloor, refusals, supplyOf } from "#src/campaign/admission.ts";
@@ -35,7 +34,7 @@ const USAGE = `usage: draw.ts <log.jsonl | campaign name> [--target <n>] [--leve
 The held-out pool by its parts, the set the next comparison would score, and admission's reading.`;
 
 /** What a comparison starting now on `events` would score at `target`, and the pool it draws from. */
-export function drawOf(events: readonly LogEvent[], target: number, contract: string) {
+function drawOf(events: readonly LogEvent[], target: number, contract: string) {
   const pool = poolOf(events);
   const { tasks, retained } = scoredSet(events, target, contract);
   const epochs = tasksByEpoch(events);

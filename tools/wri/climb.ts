@@ -4,10 +4,9 @@
  *
  * Campaigns of one pack run side by side on one host, each on its own code. Read one at a time, a
  * promotion's tally says nothing of whether its peer on another tree climbed faster, and a solve
- * that ran a program from `/tmp` says nothing of who put it there: on 10 October abl175-new's
- * reference solve ran the phreeqc buffer-a's Builder had installed under `/tmp/phq-inst` four
- * hours before, and only the two logs together show it. `wri.ts climb` prints this, and the
- * lane 18 prompt carries it beside the peers' overviews.
+ * that ran a program from `/tmp` says nothing of who put it there, since another campaign's Builder
+ * may have installed it hours before, and only the two logs together show it. `wri.ts climb` prints
+ * this, and the lane 18 prompt carries it beside the peers' overviews.
  * Reference validity comes from each report's scored profile; an absent denominator reads
  * unmeasured rather than a measured zero.
  */
@@ -101,8 +100,8 @@ function rowOf({ name, events }: Campaign): string[] {
   );
   const after = epoch === undefined ? [] : log.compared.filter(({ at }) => at > epoch.at);
   const move = log.of("campaign.move").at(-1);
-  // Run again, a campaign goes on past an ending (since 14 October): it ended where its last ending
-  // came after its last move. Until 15 October any ending read so, and two live campaigns did.
+  // Run again, a campaign goes on past an ending, so it ended only where its last ending came after
+  // its last move, and a live campaign continued past an ending does not read as ended.
   const ended = events.findLast(({ kind }) => kind === "campaign.move" || kind === "campaign.ended")?.kind;
   return [
     name,
@@ -121,7 +120,7 @@ function rowOf({ name, events }: Campaign): string[] {
       : after
           .map(({ session, last }) => `${session} ${testSaid(last.scored)} ${text(last.reading)}`)
           .join("; ") || "none",
-    // What the comparisons could win on validity, beside the hours (operator, 1 November).
+    // What the comparisons could win on validity, beside the hours (the operator's choice).
     scored === 0 ? "-" : `${String(room)} of ${String(scored)} scored tasks`,
     `${String(onValidity)} of ${String(stepped)}, ${String(epochsRead(events).filter(({ confirmed }) => confirmed === true).length)} confirmed`,
     spentTo(log, 0, events.length),
@@ -130,7 +129,7 @@ function rowOf({ name, events }: Campaign): string[] {
 }
 
 /** The climb table, one row a campaign, in Markdown. */
-export function climbTable(campaigns: readonly Campaign[]): string {
+function climbTable(campaigns: readonly Campaign[]): string {
   const line = (cells: readonly string[]) =>
     `| ${cells.map((cell) => cell.replaceAll("|", "/")).join(" | ")} |`;
   return [line(COLUMNS), line(COLUMNS.map(() => "---")), ...campaigns.map((each) => line(rowOf(each)))].join(
@@ -143,8 +142,8 @@ export function climbTable(campaigns: readonly Campaign[]): string {
  * frontier on validity alone does not clear the level, so the objective or the bill decided it, the
  * objective being the drafted exam's own computation, which nothing outside it has checked. It is a
  * reading, not an alarm, since under this score it names most promotions; it says which measure
- * carried each, by this tree's score, which can differ from the rule a comparison before 21 October
- * was read by. Printed, never acted on.
+ * carried each, by this tree's score, which can differ from the rule an older comparison was read
+ * by. Printed, never acted on.
  */
 export function safeguardTriggers(log: Index): Trigger[] {
   const reported = new Map(log.compared.map((compared) => [compared.session, compared] as const));

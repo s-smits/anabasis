@@ -268,13 +268,6 @@ describe("the last comparison the reference stood in", () => {
     expect(told.stood).toContain("valid in every solve on 2 of them, in some on 0 and in none on 1");
     expect(told.stood).not.toContain("differed");
   });
-
-  it("is null before any comparison", () => {
-    const log = logged();
-    log.hold(["a"]);
-    expect(heard(log.events, [fixture("a")]).stood).toBeNull();
-    expect(heard([], []).stood).toBeNull();
-  });
 });
 
 describe("the reference's measures on a task", () => {
@@ -289,6 +282,7 @@ describe("the reference's measures on a task", () => {
     const told = heard(log.events, ["capped", "spread"].map(fixture));
     expect(block(told, "every solve").capped).toContain("in 6, 6 turns; measured 1, 1");
     expect(block(told, "some solves").spread).toContain("in 4 turns; measured 0.875");
+    expect(block(told, "every solve").capped).not.toContain("author");
     // The other harness's measures, and a target, are told nowhere.
     for (const unsaid of ["0.25", "0.5", "0.125", "0.375", "harder"]) {
       expect(JSON.stringify(told)).not.toContain(unsaid);
@@ -367,10 +361,12 @@ describe("after a promotion", () => {
       ["old", "new"].map(fixture),
     );
     expect(unpromoted.promoted).toBeNull();
-    // No wake tells it: the host opens afresh at the first ask after a promotion.
+    // A conversation that last heard before the promotion is told it at its wake, and one that
+    // heard after it is not told it again.
     const at = log.events.findIndex(({ kind }) => kind === "harness.promoted");
-    const woken = heard(log.events, ["old", "new"].map(fixture), at);
-    expect(woken.promoted).toBeNull();
+    const woken = heard(log.events, ["old", "new"].map(fixture), at - 1);
+    expect(woken.promoted).toContain("g-9");
+    expect(heard(log.events, ["old", "new"].map(fixture), at).promoted).toBeNull();
     // A conversation still open heard each refusal from the gate.
     expect(woken.refused).toEqual([]);
   });
@@ -425,8 +421,10 @@ describe("a wake", () => {
     const [first, second] = wakes;
     expect(first).toContain("b-2");
     expect(first).toContain("run (fixture)");
-    // The promotion beside the first ask is an opening's to tell, as the host opens one after it.
-    expect(first).not.toContain(heard(read(s.log), [fixture("run")]).promoted ?? "no promotion line");
+    // The promotion beside the first ask is told at the wake after it, and only there.
+    const promotion = heard(read(s.log), [fixture("run")]).promoted ?? "no promotion line";
+    expect(first).toContain(promotion);
+    expect(second).not.toContain(promotion);
     // What the opening told stays out of the wake, and the next wake repeats nothing.
     expect(first).not.toContain("mixed (fixture)");
     expect(second).not.toContain("b-2");
@@ -484,6 +482,24 @@ describe("a wake", () => {
   });
 });
 
+describe("a resumed comparison at a wake", () => {
+  it("tells no task of a comparison first reported before the conversation was last told, as it tells no reading", () => {
+    const log = logged();
+    log.hold(["run"]);
+    log.solved("b-1", "run", "h1", [true, true]);
+    log.solved("b-1", "run", "h2", [false, false]);
+    log.reported("b-1", ["h1", "h2"], ["run"]);
+    const since = log.events.length;
+    log.reported("b-1", ["h1", "h2"], ["run"]);
+    expect(heard(log.events, [fixture("run")], since)).toEqual({
+      stood: null,
+      groups: [],
+      promoted: null,
+      refused: [],
+    });
+  });
+});
+
 describe("the largest family of a comparison the reference stood in", () => {
   it("is counted over the tasks that comparison scored, whatever else the exam holds", () => {
     const log = logged();
@@ -501,11 +517,48 @@ describe("the largest family of a comparison the reference stood in", () => {
     log.hold(["later"], "wide");
     expect(heard(log.events, []).stood).toBe(told);
   });
+});
 
-  it("is 0 where the comparison scored no task", () => {
+describe("the author's answer to a task", () => {
+  it("is told by its best measure beside the reference's, so that a closed gap reads as a fact", () => {
     const log = logged();
-    log.hold(["a"]);
-    log.reported("c-1", ["h1", "h2"], ["a"]);
-    expect(heard(log.events, []).stood).toContain("The largest family among them held 0.");
+    log.hold(["closed", "open"]);
+    for (const [version, measure] of [
+      ["v-closed", 0.9],
+      ["v-closed", 0.95],
+      ["v-open", 0.5],
+    ] as const) {
+      log.add("task.feasible", { version, session: "x-1", objective: { measure, direction: "higher" } });
+    }
+    log.solved("c-1", "closed", "h1", [0.94, 0.94]);
+    log.solved("c-1", "closed", "h2", [0.25, 0.25]);
+    log.solved("c-1", "open", "h1", [false, false]);
+    log.solved("c-1", "open", "h2", [false, false]);
+    log.reported("c-1", ["h1", "h2"], ["closed", "open"]);
+    const told = heard(log.events, ["closed", "open"].map(fixture));
+    expect(block(told, "every solve").closed).toContain(
+      "measured 0.94, 0.94; the author's answer measured 0.95",
+    );
+    // A task the reference answered in no solve has no measure of its own to set the author's beside.
+    expect(JSON.stringify(told)).not.toContain("measured 0.5");
+  });
+});
+
+describe("a task the reference has closed", () => {
+  it("stands apart from the open ones, its turns told against the solve's budget", () => {
+    const log = logged();
+    log.add("campaign.setting", { modelTurns: 20, minutes: 30, solves: 2 });
+    log.hold(["shut", "open"]);
+    for (const comparison of ["c-1", "c-2"]) {
+      log.solved(comparison, "shut", "h1", [true, true], [6, 7]);
+      log.solved(comparison, "shut", "h2", [true, true]);
+      log.solved(comparison, "open", "h1", [true, false]);
+      log.solved(comparison, "open", "h2", [true, true]);
+      log.reported(comparison, ["h1", "h2"], ["shut", "open"]);
+    }
+    const told = heard(log.events, ["shut", "open"].map(fixture));
+    expect(block(told, "Closed").shut).toContain("in 6, 7 of 20 turns");
+    expect(block(told, "Closed").open).toBeUndefined();
+    expect(block(told, "some solves").open).toBeDefined();
   });
 });

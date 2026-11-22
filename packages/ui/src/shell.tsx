@@ -17,7 +17,7 @@ import { useWaited } from "./waited.ts";
 /*
  * The page around the panes: the sidebar with its campaign picker and the four panes, the line that
  * says which tier the server answers in and which worktree the campaign is in, the selected pane,
- * and the inspector on the right. It holds no data of its own: `app.tsx` reads the campaign list
+ * and the inspector on the right. It holds no data of its own: `App` in `main.tsx` reads the campaign list
  * and the campaign and hands their answers here, so the whole shell renders from plain values; a
  * pane's own name stands in its header, not here.
  *
@@ -25,9 +25,9 @@ import { useWaited } from "./waited.ts";
  * a page of the log or its filters, is asked of the next. While the campaign's answer is the
  * previous campaign's, the previous pane stays on screen as it was drawn, inert and marked busy, so
  * that no click acts on the old campaign under the new name; past the page's patience (`waited.ts`) it gives way to the
- * placeholder that says the campaign is being read. Until 14 October the placeholder replaced the
- * whole pane at once, and a switch of project or campaign painted it for about 130 ms (four frames
- * of the operator's recording) before the new campaign drew: DESIGN.md keeps the previous content
+ * placeholder that says the campaign is being read. Replacing the whole
+ * pane at once instead, a switch of project or campaign would paint it for a few frames before the
+ * new campaign drew: DESIGN.md keeps the previous content
  * until its replacement is ready.
  */
 
@@ -44,7 +44,7 @@ interface Drawn {
 }
 
 /** The issues this browser dismissed, one `source: message` a line. The warning that the server runs
- *  in another checkout stood over every pane until it was (operator, 30 October); an issue of another
+ *  in another checkout would otherwise stand over every pane; an issue of another
  *  worktree names another source, so it shows. */
 const DISMISSED = "ana.dismissed";
 
@@ -60,7 +60,7 @@ const TIER_LABEL = { default: "default tier", exam: "exam side" } as const;
 /** The selection a route names, or the newest where it names none the list holds. The route's
  *  campaign decides the project; a route that names a project alone selects its newest campaign.
  *  Before the list is read the route's campaign stands as it is, so the campaign a link names is
- *  read at once rather than after the whole list (176 campaigns on 30 October). */
+ *  read at once rather than after the whole list, which can hold hundreds of campaigns. */
 export function selectionOf(list: CampaignList | null, route: Route): Selection {
   if (list === null) return { project: route.project, campaign: route.campaign };
   const rows = list.campaigns;

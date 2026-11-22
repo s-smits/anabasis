@@ -1,8 +1,9 @@
 # Before and after
 
-A passing test shows a change works under the test's conditions. Only the same input run at the
-commit without the change and at the commit with it shows that the change alone moved the result and
-that nothing else moved: an ablation with the commit as the one variable (rule 5), around any case.
+A passing test demonstrates only that a change satisfies the test's own conditions. Running the
+exact same input at the commit without the change and at the commit with it establishes that the
+change itself caused the observed shift and left unrelated behaviour intact: a controlled ablation
+with the commit as the single variable (rule 5), applicable to any simulation case.
 
 ## The two commits
 
@@ -12,7 +13,8 @@ that nothing else moved: an ablation with the commit as the one variable (rule 5
 | A whole pull request | the head of the pull request beneath it | its head |
 | A fix to something a run showed | the run's commit (`bun run runs source <name>`) | the fixing commit |
 
-A pair that spans several pull requests mixes their changes: say so, or split it.
+A pair spanning multiple pull requests confounds their individual effects: either state the
+confounding explicitly or split the comparison.
 
 ## The two arms
 
@@ -22,50 +24,54 @@ git worktree add --detach ../anabasis-after-<what> <after>
 # in each: bun install --frozen-lockfile
 ```
 
-Readers take the same logs by name. A seed is cut in each fork from the same source and cut, as
-`sim-<what>-before` and `sim-<what>-after`, since the registry refuses one name in two worktrees.
+Log readers accept the same logs by campaign name. When seeding, cut one seed in each worktree from
+the same source campaign and cut event, named `sim-<what>-before` and `sim-<what>-after` (the
+registry forbids duplicate campaign names across worktrees).
 
 | Layer | Run in both arms | Read |
 | --- | --- | --- |
-| A test | the after commit's hostile test, also in the before worktree (write it there from `git show <after>:<test path>`), so the test file is the same and only the production files differ | it fails before and passes after, for a reason other than a missing import |
-| A reader | `runs view`, `wri.ts read --log`, `runs pulse`, `runs replay`, `close.ts --to <dir>` | the moved lines, counted, over how many logs |
-| A decision | `bun tools/d2/harness-builder.ts --name <seed> --dry-run` | the row, the move and the facts it read |
-| A path | `bun run runs rehearse` with one script | readings, endings, event counts by kind |
-| The command wall | `scripts/wall-probe.ts <before> <after>`, one battery of shell commands under each tree's wall, no model | the commands whose exit code or words moved: what the change refuses a seat and what it newly allows |
-| A model seat | `scripts/live-seat.ts start` on each seed, on the operator's word for both | one draw an arm; a difference is a lead unless the change forces it. Repeated rounds are [optimize](optimize.md) |
+| A test | the after commit's hostile test, also copied into the before worktree (`git show <after>:<test path>`), so the test file is identical and only production code differs | fails before and passes after for a reason other than a missing import |
+| A reader | `runs view`, `wri.ts read --log`, `runs pulse`, `runs replay`, `close.ts --to <dir>` | count of changed output lines across how many logs |
+| A decision | `bun tools/d2/harness-builder.ts --name <seed> --dry-run` | the decision row, chosen move, and input facts |
+| A path | `bun run runs rehearse` with one script | readings, campaign endings, and event counts by kind |
+| The command wall | `scripts/wall-probe.ts <before> <after>`, running one battery of shell commands under each tree's sandbox wall without a model | commands whose exit code or output changed: newly refused or newly permitted operations |
+| A model seat | `scripts/live-seat.ts start` on each seed, with operator authorisation for both | one sample per arm; a difference is only a lead unless forced by the change. For repeated rounds, use [optimize](optimize.md) |
 
-Run each reader twice per arm before diffing, since time, load and process state differ from run to
-run, and leave the line that names the tree's host code out of the diff, since it differs by
-construction. A change to code a solve runs moves the condition's `host` digest and leaves `sandbox`
-alone, which digests the wall's profile and platform (`codeOf`, `tools/d2/campaign.ts`). Where the source run's recording already stands at the before commit, it is the before arm and
-only the after arm is seated: seed from the newest run that stood there, cut right before the session
-or ruling in question, and name every other difference, such as effort or login.
+Run each reader twice per arm before diffing to filter out jitter from wall-clock time, host load,
+or transient process state, and exclude the line reporting the tree's host code digest (which
+differs by construction). Modifying code executed during a solve changes the condition's `host`
+digest while leaving `sandbox` unchanged, since `sandbox` hashes the sandbox profile and platform
+(`codeOf`, `tools/d2/campaign.ts`). When the source run already executed at the `before` commit,
+its existing recording can serve as the baseline arm so only the `after` arm needs seating: seed
+from the most recent run at that commit, cut immediately before the session or ruling of interest,
+and document any remaining differences such as effort level or login.
 
-Cut a pair where no Examiner session is open, or report it as confounded where the arms' counts of
-`task.state` and `campaign.waited` events since the cut differ, since an Examiner's admissions and
-the host's load then move one arm alone.
+Cut a paired comparison at a point where no Examiner session is open; otherwise, report the pair as
+confounded whenever the arms' counts of `task.state` or `campaign.waited` events after the cut
+diverge, because asynchronous Examiner admissions and host load then perturb one arm independently.
 
 ## Reading the difference
 
-Write the intent and the outcomes that could each happen before either arm runs (rule 1): the named
-effect, no effect, and a side effect the pull request does not mention. Read every moved line
-against them; a side effect is a finding, and a line that should have moved and did not means the
-change never reached its link (`unreached`, run-improvement-campaign, "The pass"). The pull
-request's "Validation and limits" names both commits, the layer, the input, and which outcome the
-result matched.
+Pre-register the intended effect and rival outcomes before either arm runs (rule 1): the target
+effect, a null effect, and potential unmentioned side effects. Evaluate every changed output line
+against those outcomes. Any unmentioned side effect is a finding, and an expected line that failed
+to move indicates the change never reached its execution path (`unreached`; see
+`run-improvement-campaign`, "The pass"). In the pull request's **Validation and limits** section,
+record both commits, the layer tested, the input, and which pre-registered outcome matched.
 
 ## Before a landing
 
-The operator may ask for the open stack's most important changes to be simulated, two by default.
-Read the stack (`bun .claude/skills/stack-pr/scripts/stack.ts`) and rank its changes: first what a
-model seat reads, may do or is held to; then what a comparison counts or refuses; last readers and
-tooling, which a replay or test settles. Simulate only what the pull request left unproved. Each runs as the after arm
-in a detached worktree at the head of the pull request that makes it, never in its own worktree, a
-run's or on its branch, with one file of outcomes for all of them. A defect found in or below a
-simulated pull request is fixed in the commit that brought it, on the operator's word, and the pull
-requests above are replayed (stack-pr, section 8); rerun the seat only if the fix changes
-what it measures. Report one result per change, then one line on whether the stack should land as it
-is.
+The operator may ask to simulate the highest-impact changes on an open stack before landing (two by
+default). Inspect the stack (`bun .claude/skills/stack-pr/scripts/stack.ts`) and prioritise changes
+in descending order of risk: first anything affecting what a model seat reads, may execute, or is
+held to; next anything altering comparison scoring or refusal logic; lastly readers and tooling,
+which replays or unit tests already settle. Simulate only what the pull requests left unproved. Run
+each change as the `after` arm in a detached worktree at that pull request's head (never in its
+working tree, an active run's tree, or on its branch), recording all pre-registered outcomes in a
+single file. If a defect appears in or beneath a simulated pull request, fix it in the introducing
+commit with the operator's authorisation and replay the pull requests above it (`stack-pr`, section
+8); rerun the live seat only if the fix alters what the seat measures. Report one verdict per
+simulated change, followed by a single recommendation on whether the stack is ready to land.
 
-Clean up with `/usr/bin/trash ../anabasis-before-<what> ../anabasis-after-<what>` and `git worktree
-prune`.
+Clean up worktrees with `/usr/bin/trash ../anabasis-before-<what> ../anabasis-after-<what>` and
+`git worktree prune`.

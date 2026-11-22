@@ -4,9 +4,9 @@
  *   bun tools/wri/wri.ts packets --log <log>,<log>[,...] --out <dir> [--graders 2]
  *   bun tools/wri/wri.ts packets --out <dir> --join
  *
- * A grade read across campaigns must not follow a campaign's age or result. On 6 November sixteen
- * buffer campaigns were graded this way from hand-written scripts, which carried two faults into the
- * packets: a long requirement was reduced to its keys, and 19 of 21 diffs were cut at 500 lines. So
+ * A grade read across campaigns must not follow a campaign's age or result. Hand-written grading
+ * scripts carry two faults into the packets: a long requirement reduced to its keys, and diffs cut
+ * at a few hundred lines. So
  * here each campaign gets an opaque label, a grader holds half of them with old and new alternating
  * and tasks shuffled across them, a value is shown whole up to `VALUE_BYTES`, which every requirement
  * in those logs fits and a long table does not, and a diff is cut only past `DIFF_LINES`, which none
@@ -19,6 +19,7 @@
  * (the lane's own rule). Each grade changes no verdict, reading, promotion or move, and no seat is told it.
  * `key.json` names the campaigns, so it stays with the primary.
  */
+import { starterIn } from "#src/campaign/climb.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { passed, solvesIn } from "#src/kernel/solves.ts";
 import { sha256 } from "#src/meta/digest.ts";
@@ -26,6 +27,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/fi
 import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { catalogueText, lanesOf } from "./catalogue.ts";
+import { LAUNCH } from "./index.ts";
 import { scoredTasks, VALUE_BYTES } from "./tasks.ts";
 import { diffOf, madeOf, weightOf } from "./trajectory.ts";
 
@@ -89,17 +91,16 @@ function tasksOf({ events }: Campaign, label: string): Packed[] {
 }
 
 function versionsOf({ log, events }: Campaign, label: string): Packed[] {
-  const started = events.filter(({ kind }) => kind === "comparison.started");
-  const starter = started[0]?.data.starter;
+  const starter = starterIn(events);
   const states = join(dirname(log), "states");
-  const fresh = [...new Set(started.map(({ data }) => data.fresh))].filter(
-    (digest): digest is string => isString(digest) && digest !== starter,
-  );
+  const fresh = [
+    ...new Set(events.flatMap(({ kind, data }) => (kind === "comparison.started" ? [data.fresh] : []))),
+  ].filter((digest): digest is string => isString(digest) && digest !== starter);
   return fresh.flatMap((digest) => {
     const state = join(states, digest);
     if (!existsSync(state)) return [];
-    const parent = madeOf(events, digest, isString(starter) ? starter : "").parent ?? starter;
-    const named = isString(parent) ? parent : "none";
+    const parent = madeOf(events, digest, starter ?? "").parent ?? starter;
+    const named = parent ?? "none";
     const lines = diffOf(join(states, named), state);
     const weight = weightOf(state);
     const cut =
@@ -263,7 +264,7 @@ export function buildPackets(campaigns: readonly Campaign[], outDir: string, cou
   writeFileSync(join(out, "key.json"), `${JSON.stringify(key, null, 1)}\n`);
   launch(
     out,
-    "launch.json",
+    LAUNCH,
     graders.map((grader) => ({ grader, prompt: join(out, `grader-${grader}.md`) })),
   );
   return lines;
@@ -282,7 +283,7 @@ function rowsIn(text: string, kind: string): Map<string, number> {
 
 /** Tasks whose every solve under the Starter was valid, by id, at least two solves. */
 function starterAnswers(events: readonly LogEvent[]): Set<string> {
-  const starter = events.find(({ kind }) => kind === "comparison.started")?.data.starter;
+  const starter = starterIn(events);
   const tally = new Map<string, { valid: number; results: number }>();
   for (const solve of solvesIn(events)) {
     const task = solve.start.task;

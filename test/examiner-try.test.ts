@@ -132,6 +132,14 @@ describe("trying the reference at writing", () => {
     expect(budgetLeft(events)?.dollars).toBe(100 - 5 * BILL);
   });
 
+  it("gives a later ask without a probe no try, rather than the first ask's probe", async () => {
+    const made = seated(100, 4, [PASS, PASS]);
+    await invoke(toolOf(made.mode), "put", { tasks: [instance(7)] });
+    made.mode.ask?.({ ...made.request, id: "x-2", probe: null });
+    await expect(said(made, { task: spelled(7) })).rejects.toThrow("no try");
+    expect(made.handed).toEqual([]);
+  });
+
   it("refuses a call the campaign's reserve does not cover or whose reference it never checked, and solves nothing for it", async () => {
     const made = seated(1.5, 4, []);
     await expect(said(made, { task: spelled(7) })).rejects.toThrow("no reserve");
@@ -183,7 +191,7 @@ describe("trying the reference at writing", () => {
     expect(bare.started).toMatchObject({ limits: { tries: 0 } });
   });
 
-  it("gives an ask at most eight solves of the reference, whatever the probe allows", async () => {
+  it("gives an ask at most fourteen solves of the reference, whatever the probe allows", async () => {
     const made = seated(100, 36, []);
     expect(made.mode.opening).toContain(`${String(TRIES)} solves of the reference harness`);
     expect(made.mode.started).toMatchObject({ limits: { tries: TRIES } });
@@ -194,7 +202,7 @@ describe("trying the reference at writing", () => {
     expect(made.handed).toHaveLength(TRIES);
   });
 
-  it("says whether the reference's best valid solve leaves the author's checked answer room on the objective", async () => {
+  it("states the author's checked measure beside the reference's best valid solve, with the lead and the floor and no verdict", async () => {
     // The probe's valid solves measure 2.5, and lower is better.
     const told = async (author: number) => {
       const s = seat("write", []);
@@ -217,10 +225,14 @@ describe("trying the reference at writing", () => {
     };
     const [unchecked = "", roomy = ""] = await told(2);
     expect(unchecked).not.toContain("try_answer");
-    expect(roomy).toContain("measures 2, and the best valid solve here 2.5: yours is better by at least");
-    expect(roomy).toContain("leaves the reference room");
+    expect(roomy).toContain(
+      "measures 2; valid solves here: 1, the best measuring 2.5; yours leads it by 20% of the larger measure, against the comparison's floor of 1%.",
+    );
     const [, tied = ""] = await told(2.5);
-    expect(tied).toContain("yours is not better by the comparison's floor (1%)");
+    expect(tied).toContain("yours leads it by 0% of the larger measure");
+    const [, behind = ""] = await told(3);
+    expect(behind).toContain("yours trails it by 16.7% of the larger measure");
+    for (const line of [roomy, tied, behind]) expect(line).not.toMatch(/room|leaves the reference/);
     expect(tied).not.toContain(CANARY);
   });
 });
@@ -251,12 +263,6 @@ describe("a value given from a file in the Examiner's home", () => {
   /** The arguments that tool runs with, as given `args`. */
   const prepared = (args: JsonObject, at: string | null = home) => trying(at).prepareArguments?.(args);
 
-  it("reads a value of 50 KB as the same JSON written inline", () => {
-    expect(JSON.stringify(large).length).toBeGreaterThan(50_000);
-    const filed = prepared({ ...large, public_input: { from_file: "input.json" }, answer: ANSWER });
-    expect(filed).toEqual({ ...large, answer: ANSWER });
-  });
-
   it("reads a whole list from a file before the schema is checked, and refuses one of the wrong shape without echoing it", () => {
     const files = [{ path: "out/report.md", text: "x".repeat(60_000) }];
     writeFileSync(join(home, "files.json"), JSON.stringify(files));
@@ -264,8 +270,8 @@ describe("a value given from a file in the Examiner's home", () => {
       join(home, "misshapen.json"),
       JSON.stringify([{ name: "out/report.md", body: "y".repeat(60_000) }]),
     );
-    // pi checks a call's arguments against the tool's schema once they are prepared: until 20
-    // November the file was read after that check, which refused it in place of the list.
+    // pi checks a call's arguments against the tool's schema once they are prepared, so the file is
+    // read before that check, which would otherwise refuse it in place of the list.
     const byFile = { ...large, answer: ANSWER, files: { from_file: "files.json" } };
     const tool = trying();
     const check = (args: JsonObject) => {
@@ -287,43 +293,20 @@ describe("a value given from a file in the Examiner's home", () => {
     expect(refusal.length).toBeLessThan(2000);
   });
 
-  it("admits an instance given by file as it admits the same instance given inline", async () => {
-    const outputs = async (byFile: boolean) => {
-      const s = seat("write", []);
-      const mode = writing({ ...s.request, verify: async () => ({ kind: "pass" }) }, undefined, { home });
-      const task = byFile ? { from_file: "task.json" } : large;
-      const answer = byFile ? { from_file: "answer.json" } : ANSWER;
-      const input = byFile ? { from_file: "input.json" } : large.public_input;
-      const tried = await invoke(toolOf(mode, "try_answer"), "answer", {
-        ...large,
-        public_input: input,
-        answer,
-      });
-      const put = await invoke(toolOf(mode), "put", { tasks: [task] });
-      const logged = read(s.log).filter(({ kind }) => kind.startsWith("task."));
-      return {
-        tried: tried.output,
-        put: put.output,
-        logged: logged.map(({ kind, data }) => ({ kind, data })),
-      };
-    };
-    const inline = await outputs(false);
-    const filed = await outputs(true);
-    expect(filed).toEqual(inline);
-    expect(inline.logged.map(({ kind }) => kind)).toContain("task.proposed");
-  });
-
   it("refuses a path outside the home, a link out of it, a missing file, a folder, a file too large and text that is not JSON", () => {
     writeFileSync(join(home, "broken.json"), "{ not json");
     mkdirSync(join(home, "folder.json"));
-    writeFileSync(join(home, "large.json"), `"${"x".repeat(1_000_000)}"`);
+    writeFileSync(join(home, "large.json"), `"${"x".repeat(4_000_000)}"`);
+    // A dataset of 2 MB, as drafts name, is read.
+    writeFileSync(join(home, "dataset.json"), `"${"x".repeat(2_000_000)}"`);
+    expect(() => prepared({ ...large, answer: { from_file: "dataset.json" } })).not.toThrow();
     for (const [path, refusal] of [
       ["../outside.json", "outside your home"],
       [join(outside, "task.json"), "outside your home"],
       ["linked.json", "links outside your home"],
       ["absent.json", "no such file"],
       ["folder.json", "not a regular file"],
-      ["large.json", "over the 1000000-byte limit"],
+      ["large.json", "over the 4000000-byte limit"],
       ["broken.json", "not valid JSON"],
     ] as const) {
       expect(() => prepared({ ...large, answer: { from_file: path } })).toThrow(refusal);

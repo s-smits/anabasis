@@ -115,11 +115,10 @@ const USAGE_MS = 5000;
 /**
  * How long a turn waits for Claude Code's next message before it reads the query as hung. A turn
  * streams partial messages while the model writes, and Claude Code's own retries and compactions take
- * minutes at most. On 24 October the Builder b-2 of buffer-fresh-opus-v065-b had its tool results due
- * at 00:24Z and heard nothing after: its Claude Code idle, with no connection open and nothing queued
- * on either side of its pipes. Of 558 recorded turns whose calls ran over 10 minutes, it is the one
- * that never continued, and the session's 24-hour deadline, which stops while host actions run, would
- * have ended it 22 hours later.
+ * minutes at most. A Builder's Claude Code has been seen idle after its tool results were due, with
+ * no connection open and nothing queued on either side of its pipes, and never continued; the
+ * session's 24-hour deadline, which stops while host actions run, would end such a turn only hours
+ * later.
  */
 const QUIET_MS = 30 * 60_000;
 /** The bridge's table, for a level the model's own map does not name. */
@@ -171,8 +170,8 @@ const FINAL_STOPS: ReadonlyMap<string, TurnEnd> = new Map([
  * The models the sweep asked Claude Code for by their long-context id, which is what gives them a
  * million-token window on a subscription token; the CLI serves a bare id at its own default window,
  * under which a 300K compaction window is clamped. v1 measured each of the first five; every other
- * model went bare. Opus 5.5 and Sonnet 5.5 came after; on 8 October the CLI served each a million
- * tokens under its `[1m]` id.
+ * model went bare. Opus 5.5 and Sonnet 5.5 came after, and the CLI serves each a million tokens
+ * under its `[1m]` id.
  */
 const LONG_CONTEXT = new Set([
   "claude-opus-5",
@@ -666,10 +665,9 @@ function take(message: SDKAssistantMessage, model: Model<Api>, turn: AssistantMe
  *
  * The turn is interrupted before the query is aborted. An abort alone closes Claude Code's stdin and
  * gives it two seconds before a signal, and Claude Code spends them on its turn: with a call still
- * parked it asks the model again, and no meter reads that request. On 8 October a query closed on a
- * parked `submit` called it again 975 ms and 1,812 ms after, and Claude Code's own logs of that
- * day's solves hold such a call after 14 of 35. Interrupted first, it called nothing and was gone
- * inside a second. The timer is for a child that never answers the interrupt.
+ * parked it asks the model again, and no meter reads that request: a query closed on a parked
+ * `submit` has been seen calling it again within two seconds. Interrupted first, it calls nothing
+ * and is gone inside a second. The timer is for a child that never answers the interrupt.
  *
  * A query no turn is reading is read on to the result the interrupt brings, which carries the
  * ledger, and ends there (`claudeLedger`); a turn being read takes that result itself.
@@ -705,8 +703,8 @@ function close(key: string, session: Session): void {
  * and its calls on other models included, which no turn shows. Null where no query of this process
  * served the session. A session that ended on a call of its own, `finish` or `submit`, leaves Claude
  * Code waiting on that call's result, and the query's `result` comes only after the host's close
- * interrupts it: this waits on that close. Until 12 October the cost was read from the turns alone,
- * and on buffer 10.19 of 13.35 billed dollars had no figure of Claude Code's beside them.
+ * interrupts it: this waits on that close, since a cost read from the turns alone leaves most
+ * billed dollars without a figure of Claude Code's beside them.
  */
 export async function claudeLedger(key: string): Promise<BackendSpend | null> {
   const read = (await reads.get(key)) ?? null;
@@ -777,8 +775,8 @@ function emptyUsage(): Usage {
  * When the provider limit `said` names its reset, as the next such instant after `now`, or on the
  * date it names, or null where it names none or is no limit. Two spellings: a clock time after
  * "reset", with a date before it, am or pm and the zone in parentheses where given ("resets 3:50pm
- * (Europe/Amsterdam)", "resets Oct 15 at 9pm (Europe/Amsterdam)"; the host's zone where none is;
- * until 15 October a date read as the hour 15, host-local), and a
+ * (Europe/Amsterdam)", "resets Oct 15 at 9pm (Europe/Amsterdam)"; the host's zone where none is; a
+ * date is never read as an hour), and a
  * message ending in the instant's Unix seconds ("limit reached|1760276400"), which this backend
  * adds to a turn the provider refused on a limit it reported with its reset (`readMessages`).
  */
@@ -797,7 +795,7 @@ export function resetOf(said: string, now: Date): Date | null {
   const dated = named === undefined ? undefined : MONTHS.indexOf(named.toLowerCase());
   if (dated === -1 || hour > 23 || Number(m) > 59) return null;
   try {
-    const dateParts = new Intl.DateTimeFormat("en-US", {
+    const format = new Intl.DateTimeFormat("en-US", {
       ...keyIfDefined("timeZone", zone),
       hourCycle: "h23",
       year: "numeric",
@@ -805,13 +803,28 @@ export function resetOf(said: string, now: Date): Date | null {
       day: "numeric",
       hour: "numeric",
       minute: "numeric",
-    }).formatToParts(now);
-    const part = (type: string) => Number(dateParts.find((one) => one.type === type)?.value);
-    const [year, month, day] = [part("year"), part("month") - 1, part("day")];
-    const offset =
-      Date.UTC(year, month, day, part("hour"), part("minute")) - Math.floor(now.getTime() / 60_000) * 60_000;
-    const at =
-      Date.UTC(year, dated ?? month, dated === undefined ? day : Number(date), hour, Number(m)) - offset;
+    });
+    const wall = (instant: number) => {
+      const parts = format.formatToParts(instant);
+      const part = (type: string) => Number(parts.find((one) => one.type === type)?.value);
+      const [year, month, day] = [part("year"), part("month") - 1, part("day")];
+      const offset =
+        Date.UTC(year, month, day, part("hour"), part("minute")) - Math.floor(instant / 60_000) * 60_000;
+      return { year, month, day, offset };
+    };
+    const { year, month, day, offset } = wall(now.getTime());
+    // A named month over half a year behind the zone's today is next year's ("resets Jan 4" on
+    // 28 December); a date just behind is a reset that has passed, never a year's wait.
+    const wraps = dated !== undefined && month - dated > 6;
+    const local = Date.UTC(
+      wraps ? year + 1 : year,
+      dated ?? month,
+      dated === undefined ? day : Number(date),
+      hour,
+      Number(m),
+    );
+    // The zone's offset on the reset's own day, which differs from today's across a change of clocks.
+    const at = local - wall(local - offset).offset;
     return new Date(at > now.getTime() || dated !== undefined ? at : at + 86_400_000);
   } catch {
     // A zone the host does not know names no instant it can wait for.

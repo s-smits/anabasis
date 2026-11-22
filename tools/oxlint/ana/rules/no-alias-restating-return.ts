@@ -17,8 +17,8 @@ import { identifierName } from "../shared/statements.ts";
  *
  * A simplify pass made exactly this cut twice inside one review (`8c162e5f`): `FindingArgs`
  * became `ReturnType<typeof findingArgs>` and `ProbeArgs` was deleted outright. The same pass
- * recorded the trap that goes with it — dropping the `satisfies` beside the annotation widened
- * a narrowed `severity` back to `string` — which is why this reports and does not fix.
+ * recorded the trap that goes with it (dropping the `satisfies` beside the annotation widened
+ * a narrowed `severity` back to `string`) which is why this reports and does not fix.
  *
  * Only a module-local alias is read. An exported one has readers this rule cannot see, and
  * `unusedExports` in `tools/loc/source-policy.ts` is the scan that can. An alias named twice
@@ -31,20 +31,20 @@ import { identifierName } from "../shared/statements.ts";
  * of answers, and naming a set of answers is the job a name is for: `LockFile` spells out
  * absent, unreadable and read, and hiding all three behind the function that produces them
  * reads worse at every call site. An object shape written out is a declaration with its fields,
- * often a doc comment on each — `SlotChoice` explains at its `model` field why a defaulted model
- * is still recorded — and it is also the one case `anti-slop/no-known-value-widening` refuses: an
+ * often a doc comment on each (`SlotChoice` explains at its `model` field why a defaulted model
+ * is still recorded) and it is also the one case `anti-slop/no-known-value-widening` refuses: an
  * anonymous object type on a return value discards the evidence a named contract carries, and
  * that rule gates. A body too wide for the signature is the same failure at one line; inlining
  * `Pick<CaseRecord, "acceptedSubmit" | "truthOk" | "pass" | …>` produced a 160-character
  * signature, which is not the smaller form.
  *
- * What is left is a short alias over a contract that is already named —
+ * What is left is a short alias over a contract that is already named,
  * `Omit<OutcomeMetrics["tools"], "byName">`, `GeneratedToolWorkerEvidence["termination"]`,
- * `Map<string, Set<string>>` — where the name states nothing the annotation would not.
+ * `Map<string, Set<string>>`, where the name states nothing the annotation would not.
  * Measured 2026-09-20: 30 sites, 19 with unions excluded, 9 with wide bodies excluded, 5 once
  * object shapes were excluded too.
  *
- * Until 20 October the message asked for `ReturnType<typeof findingArgs>`, which cannot be
+ * The message does not ask for `ReturnType<typeof findingArgs>`, which cannot be
  * written as `findingArgs`'s own annotation, since that is circular; the only edit left was to
  * delete the alias and the annotation and let the return infer, and an inferred return is not
  * the annotated one: that is the `satisfies` trap the same pass recorded, where dropping the

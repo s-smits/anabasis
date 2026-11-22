@@ -1,12 +1,11 @@
 /**
  * The open pull requests, as GitHub lists them, and the `gh` runner that reads them: one reader for
- * `land`, `doubled.ts` and the stack scripts. They left `land.ts` on 30 October 2026 so that
- * `doubled.ts`, which `land` calls, could read them without importing `land` back. A commit status
- * is posted here too (`postStatus`), for `land` and the pre-push hook, which spelled the same
- * `gh api` call apart until 5 November 2026, and a landing's statuses go through one board of what
- * GitHub shows (`statusBoard`). The chains of bases they form are read here as well
- * (`chains`, `firstStack`): until 9 November `land`, `follow`, `stack.ts` and `republish.ts` each
- * read the stack's top their own way.
+ * `land`, `doubled.ts` and the stack scripts. They live outside `land.ts` so that `doubled.ts`,
+ * which `land` calls, can read them without importing `land` back. A commit status is posted here
+ * too (`postStatus`), for `land` and the pre-push hook, so the `gh api` call is spelled once, and a
+ * landing's statuses go through one board of what GitHub shows (`statusBoard`). The chains of bases
+ * they form are read here as well (`chains`, `firstStack`), so `land`, `follow`, `stack.ts` and
+ * `republish.ts` read the stack's top one way.
  */
 import { gitMaybe } from "../../src/meta/git.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
@@ -16,10 +15,11 @@ import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
  *  passed, and the pre-push hook turns pending on each head stacked above a pushed branch. */
 export const MERGEABLE_CONTEXT = "mergeable";
 
-/** `gh api`'s filter over the stacks a pull request is in: the open one's number and its members still
- *  open, bottom first. A stack keeps the members a partial merge took, listed closed, and until
- *  5 November they read as part of the next landing, which `stackOf` then refused. */
-export const STACK_MEMBERS = String.raw`map(select(.open)) | first // empty | "\(.number) \(.pull_requests | map(select(.state == "open") | .number) | join(","))"`;
+/** `gh api`'s filter over the stacks a pull request is in: the open one's number, its members still
+ *  open and then those closed, each bottom first. A stack keeps the members a partial merge took,
+ *  listed closed: they are no part of the next landing, but `gh stack link` refuses a list that
+ *  leaves them out, so a link names them below the chain. */
+export const STACK_MEMBERS = String.raw`map(select(.open)) | first // empty | "\(.number) \(.pull_requests | map(select(.state == "open") | .number) | join(",")) \(.pull_requests | map(select(.state != "open") | .number) | join(","))"`;
 
 /** Each status a GraphQL reading of commits finds, as `statusBoard` spells a status it posts. */
 const SHOWN = String.raw`.data.repository[] | select(. != null) | .oid as $sha | (.status.contexts // [])[] | [$sha, .context, (.state | ascii_downcase), .description] | join("\t")`;
@@ -98,6 +98,26 @@ export const form = (fields: Readonly<Record<string, string | undefined>>): stri
 // `{owner}/{repo}` is gh's own placeholder for the repository the working directory's remote names.
 export const api = (path: string): string => `repos/{owner}/{repo}/${path}`;
 
+/** Where `bun run split` divided a chain of pull requests into native stacks, the index in `pulls` of
+ *  the lowest member of the one GitHub holds the chain's top in, or, for a top opened above it in no
+ *  stack yet, the one holding the nearest pull request beneath the top, read from its members up to
+ *  that one; 0 where that stack is the whole chain, holds a pull request beneath that index, or no
+ *  read answers. */
+export function stackStart(root: string, pulls: readonly { readonly number: number }[]): number {
+  const chain = pulls.map((pull) => String(pull.number));
+  for (let at = chain.length - 1; at > 0; at -= 1) {
+    const number = chain[at] ?? "";
+    const read = gh(root, ["api", api(`stacks?pull_request=${number}`), "--jq", STACK_MEMBERS]);
+    if (!read.ok) return 0;
+    const members = read.out.split(" ")[1]?.split(",") ?? [];
+    if (!members.includes(number)) continue;
+    const upTo = members.slice(0, members.indexOf(number) + 1).join(",");
+    const start = chain.findIndex((_, index) => index > 0 && chain.slice(index, at + 1).join(",") === upTo);
+    return start > 0 && !chain.slice(0, start).some((held) => members.includes(held)) ? start : 0;
+  }
+  return 0;
+}
+
 /** Posts a commit status on `sha`, and says whether GitHub took it. */
 export function postStatus(
   root: string,
@@ -110,11 +130,11 @@ export function postStatus(
 }
 
 /** The statuses a landing posts, as one board of what each commit and context shows. Each commit's
- *  statuses are read in one GraphQL call (`read`): on 30 October a landing over remembered passes
- *  posted 81 statuses one by one, about 0.6 s each, every one shown already, where one reading of
- *  the 64 commits took 0.9 s. A status is posted only where it changes what its commit shows; until
- *  9 November a set of rows seen decided it, so a verdict GitHub showed before the landing turned it
- *  pending was never posted again, and stayed pending. `settle` turns each status the landing left
+ *  statuses are read in one GraphQL call (`read`), which takes about as long as posting one or two
+ *  statuses, where a landing over remembered passes would otherwise post dozens one by one, every
+ *  one shown already. A status is posted only where it changes what its commit shows, rather than
+ *  by a set of rows seen, which would never post again a verdict GitHub showed before the landing
+ *  turned it pending, and leave it pending. `settle` turns each status the landing left
  *  pending into an error, however the landing ended. Unread, every status is posted. */
 export function statusBoard(root: string): Board {
   const shown = new Map<string, string>();
@@ -170,14 +190,14 @@ function longest(pool: readonly Pull[], bases: readonly string[], seen: Readonly
   return found;
 }
 
-/** The open pull requests beneath `pull`, nearest first: each the one whose head the one above it is
- *  based on. */
+/** The open pull requests beneath `pull`, bottom first, as a chain is landed: each the one whose head
+ *  the one above it is based on. */
 export function beneath(open: readonly Pull[], pull: Pull): Pull[] {
   const byHead = new Map(open.map((each) => [each.headRefName, each]));
   const found: Pull[] = [];
   for (let below = byHead.get(pull.baseRefName); below !== undefined && below.number !== pull.number; ) {
     if (found.includes(below)) break;
-    found.push(below);
+    found.unshift(below);
     below = byHead.get(below.baseRefName);
   }
   return found;
@@ -216,9 +236,8 @@ export const stackHolding = (open: readonly Pull[], number: number): Pull[] | un
 
 /** The stack `bun run land` lands and `bun run follow` follows first, bottom first: of the stacks of
  *  two or more, else of the lone pull requests, the one that holds the oldest open pull request
- *  (operator, 27 October 2026); empty where none is open. Until 9 November `land` took the lowest
- *  bottom on the trunk and `follow` GitHub's native stack, with its own chain where GitHub held
- *  none, so a lone older pull request or a reordered stack sent them to different tops. */
+ *  (the operator's choice); empty where none is open. `land` and `follow` both read it, so a lone
+ *  older pull request or a reordered stack cannot send them to different tops. */
 export function firstStack(open: readonly Pull[]): Pull[] {
   const { stacks } = chains(open);
   const stacked = stacks.filter((line) => line.length > 1);
@@ -292,8 +311,8 @@ export function stackTold(pulls: readonly Pull[], branch: string | null): string
 }
 
 /** A line for each stack whose bottom stands on a branch that is not the trunk, or misses its head,
- *  naming the one command that replays it. On 6 November #632 stood on a branch that had merged,
- *  and `land` found it only when asked to land. */
+ *  naming the one command that replays it, so a pull request standing on a branch that has merged
+ *  is seen before `land` is asked to land it. */
 export function offMain(root: string, pulls: readonly Pull[], trunk: string): string[] {
   const head = gitMaybe(root, "rev-parse", "--verify", "-q", trunkHead(trunk));
   if (head === null) return [];

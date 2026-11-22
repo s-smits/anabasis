@@ -11,15 +11,13 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
  * second owner.
  *
  * The rule was written in v1, where a second launch owner stood beside `stageCommandIsolation`
- * for the Builder's isolated commands, and the record it keeps is v1's.
- * On 2026-09-15 an `AbortSignal` threaded into the Builder's command runner was refused twice —
- * "why do we even need to kill", then "one layer higher" — because the spawner already killed
- * the group on timeout and in `finally`, and the leak was the controller recording its terminal
- * before its session had stopped. The repair that landed (v1's `c4bd09b88`) put the reaping of
- * the group on exit inside `stageCommandIsolation`, on the Darwin launch only, at a net cost of
- * −1 production line.
- * v2 copied `stageCommandIsolation` and `src/meta/subprocess.ts` and left the Builder's spawner
- * behind, so the owner list below names two files and the message one owner.
+ * for the Builder's isolated commands. There an `AbortSignal` threaded into the Builder's command
+ * runner was refused, because the spawner already killed the group on timeout and in `finally`,
+ * and the leak was the controller recording its terminal before its session had stopped. The
+ * repair put the reaping of the group on exit inside `stageCommandIsolation`, on the Darwin
+ * launch only, for one production line fewer. v2 copied `stageCommandIsolation` and
+ * `src/meta/subprocess.ts` and left the Builder's spawner behind, so the owner list below names
+ * two files and the message one owner.
  *
  * Every hand-rolled kill pays the same three costs. It races the owner's own teardown, so two
  * signals arrive and the second one's failure means nothing. It kills the process and not its
@@ -31,13 +29,12 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
  * shape, because the cost is the second owner existing, not any one line of it. The owner and
  * its reader are exempt by path. Tests are exempt: a test that starts a process has to be able to
  * stop it. `capturedSpawn` (`src/meta/process.ts`) is `Bun.spawn` taken at import, and the
- * launch paths that start a confined child call it; until 20 October the rule did not read it as
- * a spawn.
+ * launch paths that start a confined child call it, so the rule reads it as a spawn too.
  *
  * A signal sent through the process object is not that shape. `process.kill(pid, signal)` ends
  * an identity the file was handed, which is what `src/meta/subprocess.ts` itself does, what
  * `src/wall/seat-root.ts` does to the pids libproc lists in a seat's root, and what the test runner
- * does to the descendants a group kill could not reach — they left their session, so the runner
+ * does to the descendants a group kill could not reach: they left their session, so the runner
  * finds them in `ps` and signals each one. A second launch owner is a file that kills the child
  * it holds, and that is written `child.kill()`.
  *

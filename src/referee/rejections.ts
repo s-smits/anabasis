@@ -1,21 +1,14 @@
 /**
- * A reading of the answers a checker refused: what the Referee ruled of each, and the order in which
- * a person's labels and the Referee's rulings are made.
+ * Rejected-solve tallying and blind operator sample drawing (`rejections`, `drawn`, `labelled`).
  *
- * A checker's control answers test the faults their author thought of (`src/kernel/acceptance.ts`). Whether
- * its rejections are sound shows only on answers it refused that nobody wrote to be refused, and a
- * stored sweep holds those: every rejected answer, with the checks that refused it. In v1 that share
- * was never taken for a pack before the pack was used, and when it was taken afterwards the check
- * was the stricter side on 17 of the 22 fails counted as limits (v1 `AGENTS.md`, "Open gaps").
+ * Control answers verify only the failure modes anticipated when a check was authored
+ * (`src/kernel/acceptance.ts`); empirical check accuracy is measured on organic rejections from
+ * real solves. To guarantee blind operator labelling, `drawn` refuses to sample from any log that
+ * already contains a `referee.finding` event, and callers must collect all operator labels before
+ * invoking the Referee. Sampling uses a deterministic seed (`draw`, `src/kernel/compare.ts`).
  *
- * The labels come first. A person labels a drawn sample with the Referee's three rulings before the
- * Referee reads anything, since the log shows a ruling to whoever opens it and a label made after
- * that was not made blind. So the draw refuses a log that holds a ruling, and the caller starts no
- * reading while a drawn fail is unlabelled. The sample is drawn by a seed fixed before the fails
- * were known, as the scored set's is (`compare.ts`, `draw`).
- *
- * This counts and decides nothing. What share of check defects a checker may carry, and the bar the
- * Referee must clear against the labels (`agreement.ts`), are the operator's.
+ * This module tallies findings and validates label files; agreement thresholds are evaluated in
+ * `src/referee/agreement.ts`.
  */
 import { draw } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";

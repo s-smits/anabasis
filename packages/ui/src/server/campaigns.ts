@@ -7,8 +7,8 @@
  * read is an issue beside the rows, never a missing row without a word.
  *
  * The list keeps each log's facts (`factsIn`), never its events, at the log's size and time
- * (`stampOf`), and forgets a log the listing no longer finds, a retired campaign's: until
- * 4 November the list kept every log's events, 3.7 GB in a server up four days (`logs.ts`).
+ * (`stampOf`), and forgets a log the listing no longer finds, a retired campaign's, since every
+ * log's events kept would grow to gigabytes in a server up a few days (`logs.ts`).
  */
 import type { CampaignList, CampaignRow, Issue, Query } from "../models.ts";
 import { errorMessage } from "../../../../src/meta/runtime-values.ts";
@@ -46,9 +46,9 @@ function factsOf(found: Found): { readonly read: boolean; readonly listing: List
 }
 
 /** Every log's facts, read as `factsOf` reads them, with a turn of the event loop after each log
- *  it read again. A cold list read 1.7 GB of 176 logs in 4.4 s on 30 October, and a handler holds
- *  the one thread it runs on, so the selected campaign, asked beside the list, waited for all of
- *  it; between two logs it is answered at once. */
+ *  it read again. A cold list reads gigabytes of logs over seconds, and a handler holds the one
+ *  thread it runs on, so the selected campaign, asked beside the list, would wait for all of it;
+ *  between two logs it is answered at once. */
 export async function readAll(reading: Pick<Reading, "repo" | "trees" | "now">): Promise<void> {
   for (const each of campaignsFound(reading).found) {
     if (factsOf(each).read) await Bun.sleep(0);

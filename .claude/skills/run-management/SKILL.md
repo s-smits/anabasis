@@ -1,51 +1,41 @@
 ---
 name: run-management
-description: "Start, continue, keep, pause, copy, move, watch and stop authorised Anabasis campaigns through `bun run runs`: launch a campaign under a name, continue one from its log on another login or commit, keep one going across logins until it ends on its own terms, pause one at a clean point, copy a stopped one to another worktree, move one to another host, read each run's status and each login's capacity, reach the other hosts, and stop one and release what it held. Use when the operator asks to start, launch, resume, continue, move, keep, pause, copy or stop a campaign or a run, which logins have room, how the runs stand on any host, whether a campaign is ready for its next move, or why a move was refused. Owns the run's life on the host; run-improvement-campaign reads the table, and whole-run-investigation reads what a run did."
+description: "Start, continue, keep, pause, copy, move, monitor, and stop authorised Anabasis campaigns via `bun run runs`: launch named campaigns, resume from logs on another login or commit, keep runs alive across provider waits, pause cleanly, copy stopped runs between worktrees, migrate runs across hosts, inspect run status and login capacity, reach remote hosts, and terminate runs cleanly. Use when asked to manage campaign lifecycles, check login capacity or fleet status, verify move readiness, or diagnose move refusals. Owns host-level run lifecycle; `run-improvement-campaign` owns experimental decisions, and `whole-run-investigation` analyses run logs."
 ---
 
 # Run management
 
-A campaign is one process over one log (`tools/d2/harness-builder.ts`): it prepares the exam and
-holds one Builder conversation, which edits the harness and calls campaign tools for the Examiner,
-practice, comparison and promotion. Its life on the host is managed by one CLI, `bun run runs`
-(`tools/runs/cli.ts`), over every run log in the repository's worktrees (`tools/runs/registry.ts`).
-A bare `bun run runs` lists the verbs, `<verb> --help` gives every option its parser takes and
-`help all` every verb's; a verb given words it cannot act on answers with the same usage. Run
-authority and the conditions of a measured campaign are in `AGENTS.md`, section 10.
+Each campaign runs as a single process writing to one append-only log (`tools/d2/harness-builder.ts`): it prepares the exam and conducts a single Builder conversation that edits the harness and invokes campaign tools for the Examiner, practice release, comparisons, and promotions. Host-level lifecycle operations are handled through one CLI, `bun run runs` (`tools/runs/cli.ts`), which discovers every campaign log across the repository's worktrees (`tools/runs/registry.ts`). Running `bun run runs` with no arguments lists all verbs, `<verb> --help` prints the options for a verb, and `help all` prints every verb's usage; invalid arguments print the same usage text. Run authorisation and measured-campaign conditions are defined in `AGENTS.md`, section 10.
 
-Verbs that name a run route to the machine that holds it, and refuse where the host is missing or
-more than one holds the name. Reading verbs refresh copies of remote records first; `pulse` polls
-without copying logs. The archive is `data/runs/` of the main worktree: `here/<name>/` for this
-machine's retired campaigns and `<host>/<name>/` for copies of a peer's. No verb acts on an archived
-campaign; `copy <name> --to <worktree>` brings one back.
+Verbs that take a run name route automatically to the host holding that run, refusing if no host holds it or if multiple hosts hold the same name. Read-only verbs refresh cached copies of remote logs first, whereas `pulse` polls without copying logs. The central archive resides in `data/runs/` of the main worktree: `here/<name>/` stores locally retired campaigns and `<host>/<name>/` stores copies fetched from peers. Lifecycle verbs refuse to act on archived campaigns; use `copy <name> --to <worktree>` to restore one first.
 
-| verb | what it does | file |
+| verb | purpose | file |
 | --- | --- | --- |
-| `fresh <pack> [<pack> ...] [--logins <list>] [--model opus\|sonnet\|gpt\|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800] [--as <suffix>] [--at <c>] [--host <host>] [--yes] [-- <flags>]` | names a campaign, makes its worktree at a published commit and launches it there | `fresh.ts` |
-| `launch <name> [--login N] [--yes] -- <flags>` | starts the campaign command under a new name in this worktree | `manage.ts` |
-| `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]` | runs a campaign again from its log | `manage.ts` |
-| `pause <name> [--after <event>] [--eval] [--yes]` | stops a campaign at a clean point; `--eval` then reads its newest promotion outside (`runs outside --wait`) | `manage.ts` |
-| `keep <name> [--logins <list>] [--wait-hours 0.25] [--yes]` | keeps a campaign going across provider waits and deaths | `keep.ts` |
-| `copy <name> --to <worktree> [--yes]` | copies a stopped campaign to another worktree | `move.ts` |
-| `move <name> --to <host> [--from <host>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign and continues it on another machine at the same commit | `move.ts` |
-| `stop <name> ... [--yes]` | ends each run's process and keeper and releases what it held | `stop.ts` |
-| `status [--all]` | one row a run, here and on each host `ANA_HOSTS` lists | `pulse.ts` |
-| `usage [N ...] [--json]` | each login's five-hour and weekly use and live runs, with a full report refreshing each configured host's login cache | `logins.ts` |
-| `active` | the runs and seats live on each login, by name | `logins.ts` |
-| `sync [--yes \| --check] [--force]` | aligns tools and Python across hosts | `sync.ts` |
-| `search <pattern> [--regex] [--ignore-case] [--here] [--in logs\|notes\|all] [--max <chars>]` | searches campaign folders, notes and docs on all hosts | `search.ts` |
-| `fetch [<name>] [--from <host>]` | copies a peer's campaign, or every peer's records, into the archive; a copy leaves installed packages and caches on its host, so it is read and never run. With no name it also copies each benchmark's score store from the peer that rolls it (`EVAL_RUNNER`) into `data/bench/<benchmark>` | `move.ts` |
-| `outside <run> [--bench <name>] [--as <label>] [--harness <kept>] [--login N] [--wait] [--yes]` | a run's outside read in one command, on the benchmark that reads its pack: writes the run's reference for the benchmark's machine on the host that holds the run, carries it into the score store, dry-runs both arms and rolls the reference with a Starter queued behind it; without `--yes` it prints the plan (run-improvement-campaign, "The outside aim") | `outside.ts` |
-| `retire [--days 1] [--yes]` | releases the seats' roots and host scratch folders nobody holds, archives idle campaigns, deletes seeds and stale worktrees, refreshes peers' records, and takes over what a benchmark's machine has archived | `retire.ts` |
-| `on <host> <verb ...>`, `hosts [--all] [--health]` | a verb on another host; each host's status or health | `hosts.ts` |
-| `loadwatch [<seconds>] [--once \| -s [-w 1m\|5m\|15m]]` | each machine's CPU and load, live; `--once` prints one frame and ends it with the machines in order, least loaded first; `-s` prints one line, `last 5m:` and each machine's load a core over that window out of 100, least loaded first (`-w` picks the window) | `loadwatch.ts` |
-| `pulse [<part> ...] [--every 290] [--state <file>] [--no-readers]` | what each run gained since the last look | `pulse.ts` |
-| `alerts [--state <file>]` | the same for cron, one line per new event | `alerts.ts` |
-| `view <name>` | one campaign as its log reads, and the table's next move | `view.ts` |
-| `source <name> [--holds <c>]...` | each launch's commit and tree, and whether it holds a fix | `receipt.ts` |
-| `zip`, `replay`, `seed`, `rehearse` | handover, readers over every log, a seed, a rehearsal | zip-run, system-path-simulation |
+| `fresh <pack> [<pack> ...] [--logins <list>] [--model opus\|sonnet\|gpt\|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800] [--as <suffix>] [--at <c>] [--host <host>] [--yes] [-- <flags>]` | names a campaign, creates a detached worktree at a published commit, and launches it | `fresh.ts` |
+| `launch <name> [--login N] [--yes] -- <flags>` | starts the campaign command under a new name in the current worktree | `manage.ts` |
+| `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]` | resumes a stopped campaign from its log | `manage.ts` |
+| `pause <name> [--after <event>] [--eval] [--yes]` | pauses a campaign at a clean boundary; `--eval` then runs its external benchmark read (`runs bench <run> --wait`) | `manage.ts` |
+| `keep <name> [--logins <list>] [--wait-hours 0.25] [--yes]` | keeps a campaign running across provider waits and process crashes | `keep.ts` |
+| `copy <name> --to <worktree> [--yes]` | copies a stopped campaign into another worktree | `move.ts` |
+| `move <name> --to <host> [--from <host>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign and resumes it on another host at the same commit | `move.ts` |
+| `stop <name> ... [--yes]` | terminates each run's process and keeper and releases its claimed scratch directories | `stop.ts` |
+| `status [--all]` | prints one summary row per run across this host and all hosts in `ANA_HOSTS` | `pulse.ts` |
+| `usage [N ...] [--json]` | reports five-hour and weekly utilisation and active runs per login, refreshing configured host caches on full reports | `logins.ts` |
+| `active` | lists active runs and seats per login by name | `logins.ts` |
+| `sync [--yes \| --check] [--force]` | aligns system tools and Python environments across hosts | `sync.ts` |
+| `search <pattern> [--regex] [--ignore-case] [--here] [--in logs\|notes\|all] [--max <chars>]` | searches campaign folders, notes, and docs across all hosts | `search.ts` |
+| `fetch [<name>] [--from <host>]` | copies a peer's campaign (or all peer records) into the local archive; fetched copies omit installed packages and caches, so they are read-only. Without a name, also syncs benchmark score stores from `EVAL_RUNNER` peers into `data/bench/<benchmark>` | `move.ts` |
+| `bench [<run>] [--bench <name>] [--host <name>] [--store <dir>] [--as <label>] [--harness <kept>] [--login N] [--wait] [--yes]` | executes a run's external benchmark read end-to-end: exports the promoted reference on the host holding the run, copies it into the score store, dry-runs both arms, and queues the reference followed by a Starter (prints the plan without `--yes`; see `run-improvement-campaign`, "The outside aim"). Without a run name, scores each completed reference-Starter pair once into `scored/<label>.txt`, locally or on `--host <name>` | `bench.ts` |
+| `retire [--days 1] [--yes]` | releases orphaned seat roots and host scratch directories, archives idle campaigns, removes seeds and stale worktrees, refreshes peer records, and collects archives from benchmark hosts | `retire.ts` |
+| `on <host> <verb ...>`, `hosts [--all] [--health]` | executes a verb on a remote host, or prints host status and health | `hosts.ts` |
+| `loadwatch [<seconds>] [--once \| -s [-w 1m\|5m\|15m]]` | monitors CPU and load across hosts; `--once` prints one snapshot ending with hosts ordered least loaded first; `-s` prints a single line (`last 5m:`) of per-core load out of 100 (`-w` selects the window) | `loadwatch.ts` |
+| `pulse [<part> ...] [--every 290] [--state <file>] [--no-readers]` | reports new events per run since the previous check | `pulse.ts` |
+| `alerts [--state <file>]` | cron-oriented alert stream emitting one line per new milestone event | `alerts.ts` |
+| `view <name>` | summarises a campaign's log state and the move table's recommended action | `view.ts` |
+| `source <name> [--holds <c>]...` | reports each launch's commit and tree cleanliness, and checks whether specified fixes are ancestors | `receipt.ts` |
+| `zip`, `replay`, `seed`, `rehearse` | handover packaging, log replay, seed creation, and scripted rehearsal | `zip-run`, `system-path-simulation` |
 
-Every verb that launches, stops or transfers prints its plan and does nothing without `--yes`.
+Every mutating verb prints its execution plan and makes no changes unless `--yes` is supplied.
 
 ## Start
 
@@ -54,43 +44,15 @@ bun --env-file=<file> run runs fresh <pack> [--model sonnet] [--login N] [--as <
 bun --env-file=<file> run runs fresh <pack> --host <host> ... --yes   # on another host
 ```
 
-`fresh` reads the operator's prompt, `<pack>-prompt.txt` in `ANA_PROMPTS` (default
-`anabasis-prompts` beside the main worktree), and refuses a pack without one, since the prompt is the
-operator's. It names the run `<pack>-fresh-<model>[-<suffix>]-<host>[-r<n>]` in project
-`<pack>-fresh`, seats one model in all four seats (Opus by default), takes 800 dollars unless
-`--budget`, and launches in a new worktree `anabasis-<name>` detached at `--at` (default: this
-checkout's commit). `--effort` gives one letter of `lmhx` for each of Builder, Examiner, Referee and
-solver (`hhmm` for Opus, `xxhh` for Sonnet, `hhhh` otherwise). `gpt` seats
-`openai-codex/gpt-6.1-sol` through the Codex CLI's login, which `--login` does not select; another
-model goes as `<provider>/<id>` and is named by its id. Claude is seated unless the operator names
-another model, and DeepSeek through DeepInfra only where the operator names DeepSeek. Solves default
-to 20 model turns and 30 minutes (`LIMITS`, `tools/d2/campaign.ts`).
+`fresh` reads the operator's domain prompt `<pack>-prompt.txt` from `ANA_PROMPTS` (defaulting to `anabasis-prompts` beside the main worktree) and refuses any pack lacking one, because domain prompts require operator authorship. It names the campaign `<pack>-fresh-<model>[-<suffix>]-<host>[-r<n>]` inside project `<pack>-fresh`, assigns one model across all four seats (Opus by default), sets a default budget of 800 dollars unless `--budget` is given, and launches inside a new detached worktree `anabasis-<name>` at `--at` (defaulting to the current checkout's commit). `--effort` takes four characters from `lmhx` for Builder, Examiner, Referee, and Solver respectively (`hhmm` for Opus, `xxhh` for Sonnet, `hhhh` otherwise). `gpt` selects `openai-codex/gpt-6.1-sol` via the Codex CLI login (which `--login` does not affect); arbitrary models use `<provider>/<id>`. Claude is used unless the operator specifies another provider, and DeepSeek via DeepInfra is used only when explicitly requested. Solves default to 20 model turns and 30 minutes (`LIMITS`, `tools/d2/campaign.ts`).
 
-**Placement.** Without `--host`, `fresh` takes, among machines below their cap, the one where the
-run's login pays for the fewest live runs, then one that already ran project `<pack>-fresh`, then the
-fewest live campaigns and seats, ties in configuration order. The caps are `ANA_RUN_CAP` here and
-each peer's `capacity` in `ANA_HOSTS`, both 2 where unset; `--host here` picks this machine. A peer whose entry lists `packs` takes
-only those packs, and they go nowhere else. Counts are observations that reserve nothing, so launch
-one after another. Placement counts runs and never load, and a deadline counts elapsed time, so read
-`bun run runs loadwatch --once` before a launch, a `continue` or a `move`: its last line orders the
-machines that answered by one-minute load a core, least loaded first (a machine that did not answer
-is in no place of it). Where the least loaded machine below its cap is another than the one the dry
-run names, name it with `--host`; with many hosts this line, not the frame above it, is the reading. On a peer, `fresh` prepares a controller at the commit (fetch, a detached worktree
-under Git's `ana-code/`, a frozen install) and leaves the configured checkout alone.
+**Host placement.** When `--host` is omitted, `fresh` selects from hosts below their concurrency cap by prioritising: fewest active runs billed to the selected login, then hosts that have previously run `<pack>-fresh`, then fewest active campaigns and seats, breaking ties by configuration order. Caps are governed by `ANA_RUN_CAP` locally and each peer's `capacity` in `ANA_HOSTS` (defaulting to 2); `--host here` forces local execution. Peers declaring a `packs` list accept only those packs, and those packs are restricted to those peers. Because placement counts are instantaneous observations that do not reserve slots, launch runs sequentially. Placement inspects run counts rather than CPU load, whereas solve deadlines measure wall-clock time; therefore run `bun run runs loadwatch --once` before any launch, `continue`, or `move`. Its final line orders responsive hosts by one-minute load per core, least loaded first (unresponsive hosts are omitted). If the least loaded host under its cap differs from the dry run's selection, specify it explicitly with `--host`; across large fleets, rely on this summary line rather than the frame above it. On remote peers, `fresh` prepares a detached controller worktree under Git's `ana-code/` with a frozen dependency install, leaving the peer's primary checkout untouched.
 
-**Login.** For Claude seats, `fresh` takes `--login` or chooses, from the allowed logins, one with a
-usable window and room under `ANA_LOGIN_RUNS` across the fleet, the week that resets soonest first;
-an explicit login at its cap is refused, and so is a launch whose fleet count is missing. On a peer
-it first checks that the environment holds the numbered key and, if not, asks for the login to be
-carried, by a pipe that never prints it (the operator's `CLAUDE.md` holds the procedure). No verb
-prints or carries a credential. Seats billed by another provider need no Claude login.
+**Login selection.** For Claude seats, `fresh` honours `--login` or selects an eligible login with an open window and remaining capacity under `ANA_LOGIN_RUNS` across the fleet, preferring the account whose weekly window resets soonest. An explicit login at its cap is refused, as is any launch when fleet counts cannot be obtained. On remote peers, `fresh` verifies that the numbered token exists in the remote environment; if absent, transfer it via a pipe that never echoes the credential (see the operator's `CLAUDE.md`). No CLI verb prints or copies credentials. Non-Claude providers require no Claude login.
 
-**Batches.** Several packs make one ordered plan (`fresh <pack> <pack> ... --logins <list>`), printed
-in full without `--yes`. The planner reserves each entry in its own counts, pins one commit, checks
-every remote login first and launches sequentially, stopping at the first failure. `--host` applies
-to a single pack. Write the prediction ledger before `--yes`.
+**Batch launches.** Passing multiple packs (`fresh <pack> <pack> ... --logins <list>`) constructs a single ordered plan, displayed in full without `--yes`. The planner accounts for each queued entry in its capacity estimates, pins a single commit, verifies all remote logins upfront, and launches sequentially, aborting on the first failure. `--host` applies only to single-pack launches. Record the prediction ledger before passing `--yes`.
 
-`launch` is the step underneath, for explicit flags:
+`launch` is the lower-level primitive for explicit campaign flags:
 
 ```sh
 cd <the worktree kept for the run>
@@ -100,37 +62,15 @@ bun --env-file=<file> run runs launch <name> [--login N] --yes -- \
   [--solve-model-turns N] [--minutes N] [--turns N] [--level 0.02]
 ```
 
-The flags after `--` are the campaign command's (`flagsOf`, `tools/d2/campaign-terms.ts`), without
-`--name`. It refuses a name any worktree holds, a log a process writes, an uncommitted change and a
-commit no remote branch holds; then it installs with `bun install --frozen-lockfile`, runs the
-command's `--dry-run`, and only if that passes starts it niced in its own process group, with output
-in `launch-run-<n>.out` and `.err` beside the receipt `launch-run-<n>.json`. Outside `--hitl`, one
-`step` promotes.
+Flags after `--` are forwarded to the campaign command (`flagsOf`, `tools/d2/campaign-terms.ts`), omitting `--name`. `launch` refuses any name already present in any worktree, any log with an active writer, uncommitted working-tree edits, and commits absent from any remote branch. It then runs `bun install --frozen-lockfile`, executes the campaign's `--dry-run`, and only if that succeeds spawns the campaign niced in its own process group, writing logs to `launch-run-<n>.out` and `.err` alongside the receipt `launch-run-<n>.json`. Unless `--hitl` is passed, a single `step` triggers promotion automatically.
 
-- **The env file is Bun's to read.** `bun --env-file=<file> run runs …` loads it into the process; no
-  verb opens it, and you never print, copy or search it. `--login N` passes the login held as
-  `CLAUDE_CODE_OAUTH_TOKEN<N>` on as `CLAUDE_CODE_OAUTH_TOKEN`, and no numbered key reaches the
-  command. Without `--login` a launch guesses no login, so a `claude/` seat's dry run refuses; a machine
-  holding only the plain token uses it (`plainOnly`, `tools/runs/logins.ts`). A `continue` without it
-  stays on the login its last run recorded, and its dry form names that login. `claude/<model>` and
-  `claude-api/<model>` are two providers, so they make two settings.
-- **Machine settings are environment.** `ANA_LOGINS` lists the logins a run may take, and
-  `ANA_HOSTS` the peers as JSON `{name, ssh, tree, bun, envFiles, capacity, checks, packs}`. They live
-  in the ignored `.env.runs`, copied from `.env.runs.example`, and pass as a second `--env-file`.
-- **One or two campaigns a host.** Deadlines count elapsed time, so each solve waits until the
-  one-minute load is at or under the cores, for up to half an hour; `--loaded` skips the wait, the
-  operator's word that its times will not be compared.
+- **Environment files are loaded only by Bun.** Pass `--env-file=<file>` to Bun; no verb opens environment files, and agents must never read, print, copy, or search them. `--login N` maps `CLAUDE_CODE_OAUTH_TOKEN<N>` to `CLAUDE_CODE_OAUTH_TOKEN` for the child process so no numbered key leaks. Omitting `--login` does not guess a numbered login, causing `claude/` dry runs to refuse unless the host holds only the plain unnumbered token (`plainOnly`, `tools/runs/logins.ts`). `continue` without `--login` reuses the login recorded in the previous receipt, which its dry run displays. `claude/<model>` and `claude-api/<model>` are distinct providers and therefore distinct experimental settings.
+- **Fleet configuration.** `ANA_LOGINS` lists permitted logins, and `ANA_HOSTS` defines remote peers as JSON objects (`{name, ssh, tree, bun, envFiles, capacity, checks, packs}`). Store these in the git-ignored `.env.runs` (copied from `.env.runs.example`) and supply it as a second `--env-file`.
+- **Concurrency and host load.** Because solve deadlines measure wall-clock time, each solve waits up to 30 minutes until one-minute load is at or below core count; `--loaded` bypasses this wait, recording the operator's acknowledgement that runtimes are not comparable.
 
-The receipt records flags, commit, dirty state, load and Bun; the log holds code by content, so the
-commit is on record only there. Once the run starts, tag the commit by its own first nine
-characters: `git tag -f run/<nine> <commit> && git push origin run/<nine>`. A tag is published and
-a run's name ends in its machine's, so the tag holds no name; any ref that names the commit at the
-remote publishes it (`publishedAt`), and `runs source <name>` says which commit a run ran.
+Each launch receipt records flags, commit hash, tree cleanliness, load, and Bun version; because the campaign log hashes code by content, the receipt is the sole record of the commit hash. Immediately after launch, tag the commit using its first nine characters (`git tag -f run/<nine> <commit> && git push origin run/<nine>`). Because tags are public and campaign names embed host names, the tag omits the run name; any remote ref containing the commit satisfies `publishedAt`, and `runs source <name>` reports which commit a run executed.
 
-A name is the folder `.ana/d2/<name>/`, chosen once and never reused: letters, digits, `.`, `_`,
-`-`, at most 128 characters, no `..` (`isSafePathSegment`). Every launch appends its machine's name,
-so one pack on two hosts makes two names. Write the name, project and reason into the ledger before
-the launch.
+A campaign name corresponds to `.ana/d2/<name>/`, chosen once and never reused: up to 128 characters from letters, digits, `.`, `_`, and `-`, with no `..` (`isSafePathSegment`). Every launch appends its host name so the same pack on two hosts receives distinct names. Record the name, project, and rationale in the ledger prior to launch.
 
 ## Continue, pause and words
 
@@ -139,49 +79,13 @@ bun --env-file=<file> run runs continue <name> [--at <commit>] [--login N] [--bu
 bun run runs pause <name> [--after <word>[|<word>...]] --yes
 ```
 
-`continue` reruns a stopped campaign in its worktree on the flags of its last receipt, less `--name`
-and `--budget` (the log holds the total; `--budget` names another); flags after `--` replace them
-all, so adding one, such as `--promotions N`, means repeating the kept ones, which `continue`
-without `--yes` prints.
-It refuses as `launch` does, refuses `--at` another commit while a comparison is open
-(`openComparisons`), since that comparison needs its own code, and refuses a login at its fleet cap,
-a second GPT run on one machine, or a fleet it cannot count (`startRefusal`). A measured run continues
-at its opening commit; a fix is measured by a fresh run.
+`continue` resumes a stopped campaign in its worktree using the flags from its most recent receipt, excluding `--name` and `--budget` (the log tracks cumulative budget; pass `--budget` to raise it). Flags after `--` replace all stored flags, so adding an option such as `--promotions N` requires repeating the retained flags shown by a dry run of `continue`. `continue` enforces the same preconditions as `launch`, and additionally refuses `--at` another commit while a comparison is open (`openComparisons`), because an open comparison must finish under consistent code; it also refuses logins at their fleet cap, a second concurrent GPT run on one host, or launches when fleet counts are unavailable (`startRefusal`). A measured run must always continue at its opening commit; code fixes are measured only by fresh runs.
 
-`pause` waits for one more event its word names at a point where nothing but the Builder's
-conversation is open (no comparison, Examiner ask, draft, solve or Referee reading), then stops the
-run. The words are `compacted` (a compaction of any seat: `build`, `exam`, `draft`, `referee` or
-`solve`), `reported` (`comparison.reported`), `promoted` (`harness.promoted`), `examined`
-(`exam.finished`) and `finished` (`build.finished`); words joined by `|`, as `reported|promoted`,
-wait for the first of their events. `reported` alone also waits out a promotion whose starter
-comparison has not tallied; `promoted` rests at the promotion and leaves that comparison unread.
-The count starts where the verb is armed, and without `--yes` it says what it would wait for. No
-seat's conversation outlives its process (pi-durable's in-memory store, and Claude Code without a
-saved session), so a compaction is no better point to pause than another: a
-pause cuts the Builder's conversation and a resting Examiner's. The continued campaign opens a new
-Builder conversation on the cut one's notes, from the last harness it practised or froze, and tells
-it so (`startTold`); the next Examiner ask opens on the whole record and its kept home. Only
-`--after finished` loses nothing of the Builder's. `continue --after <event>`
-pauses and continues, which moves a run to another login or commit cleanly. At the point, before
-the stop, it asks again what its start would refuse (tree, remote, the login's room, the dry run),
-so a refusal leaves the run running; a run that ended or already stands where it would be put is
-said and left (`leftAt`). A waiting `pause` or `continue` is the process that stops the run, and a
-second is refused while it lives: start it with `nohup`, from a detached worktree at a published
-commit whose HEAD stays put until it ends, since what it leaves runs that tree as it then stands.
-`--after next`, the
-default, drains the run to save credit: no further solve starts, and it stops at the next finished
-solve or tool call, or a minute past the solve limit. Sessions spend until then; `runs stop` frees a
-login at once. Its pause word (`campaign.word`, `PAUSE`) is in the log once written and holds every
-new solve of the running process for the solve limit and two minutes, so a pause or `continue
---after next` interrupted after it leaves the run idle that long; only a restarted process ignores
-it, so arm the command once the decision is made. At a named point the word is left only just
-before the stop, so a refusal there leaves none.
+`pause` waits for the next matching event at a clean boundary where only the Builder's conversation is active (no open comparison, Examiner request, draft, solve, or Referee call), then stops the campaign. Supported boundary words are `compacted` (compaction of any seat: `build`, `exam`, `draft`, `referee`, or `solve`), `reported` (`comparison.reported`), `promoted` (`harness.promoted`), `examined` (`exam.finished`), and `finished` (`build.finished`); pipe-separated combinations such as `reported|promoted` trigger on whichever arrives first. `reported` alone also waits out any promotion whose starter confirmation comparison has not yet tallied, whereas `promoted` pauses immediately at promotion and leaves that confirmation unread. Event counting begins when the command is armed; omitting `--yes` displays what it would wait for. Because no seat conversation persists across process exits (pi-durable stores state in memory, and Claude Code runs without saved sessions), compaction offers no advantage over any other boundary: pausing terminates both the Builder conversation and any idle Examiner conversation. On continuation, a new Builder conversation opens with the previous session's notes from the last practised or frozen harness, informed of the restart (`startTold`), while the next Examiner request opens with the full record and its persisted home directory. Only `--after finished` preserves the Builder session intact.
 
-A word (`tools/d2/word.ts --name <name>`) acts at the next move boundary and reaches no seat:
-`--stop "<why>"` ends the campaign `operator`; `--budget N` sets its total; `--tasks "<why>"` asks for
-an Examiner session first. One word per command. `--promotions N` after `--` is a campaign flag
-instead: it ends the campaign `operator` at N promotions, the opening keeps it, and
-`--promotions none` lifts it.
+`continue --after <event>` combines a clean pause with an immediate continuation, enabling clean login or commit switches. Just before stopping, it re-validates all start preconditions (working tree, remote commit, login capacity, dry run) so a refusal leaves the original run uninterrupted; if the run has already ended or already matches the target state, it reports this and exits (`leftAt`). Because a waiting `pause` or `continue` owns the stop action, only one waiter may exist per run at a time: launch it under `nohup` from a detached worktree at a published commit whose `HEAD` will not move until the waiter finishes. The default `--after next` drains the run to conserve credits: no new solve starts, and the process exits after the current solve or tool call completes (or one minute past the solve limit). Active turns continue billing until then; use `runs stop` to free a login immediately. Note that `--after next` writes a `PAUSE` `campaign.word` event to the log that blocks new solves in the running process for the solve limit plus two minutes; interrupting the command after that write leaves the run idle for that window unless restarted. Named boundary events write the pause word only immediately before stopping, so a precondition refusal leaves no lingering pause.
+
+Operator steering words (`tools/d2/word.ts --name <name>`) take effect at the next move boundary and are invisible to all model seats: `--stop "<why>"` ends the campaign with status `operator`; `--budget N` updates the total budget cap; `--tasks "<why>"` requests an Examiner session first. Issue one word per invocation. By contrast, `--promotions N` after `--` is a campaign launch flag: it ends the campaign as `operator` upon reaching `N` promotions, persists across continuations, and is cleared with `--promotions none`.
 
 ## Keep
 
@@ -189,25 +93,9 @@ instead: it ends the campaign `operator` at N promotions, the opening keeps it, 
 bun --env-file=<file> --env-file=<hosts file> run runs keep <name> [--logins <list>] [--wait-hours 0.25] --yes
 ```
 
-`launch`, `continue`, `fresh` and `move` give a run on a numbered login a keeper of its own where
-another login is allowed (`keepsItself`, `tools/runs/manage.ts`); that launch gives the keeper the
-word to spend on another allowed login. `ANA_KEEP=off` gives new runs none. A run with no numbered
-login has nowhere to move and gets none.
+`launch`, `continue`, `fresh`, and `move` automatically attach a keeper process to any run on a numbered login when at least one alternate login is configured (`keepsItself`, `tools/runs/manage.ts`); launching thus grants the keeper standing authority to switch across allowed logins. Set `ANA_KEEP=off` to disable automatic keepers for new launches. Runs without a numbered login cannot switch logins and receive no keeper.
 
-The keeper takes its logins from `--logins`, `ANA_LOGINS`, then the environment, and checks once a
-minute (`turnOf`). On a provider wait longer than `--wait-hours`, it stops the run and continues it
-on the login with room whose week resets soonest and whose five hours are forecast to last
-(`fiveHourWith`); a login at 100% or unreadable is not taken.
-The keeper checks that the restart can proceed (`checkStart`) before stopping the writer; a cached
-closure lapses at its reset or after `CLOSED_CACHE_MS`, and a keeper waiting for room retries every
-`ASK_MS`, asking the provider before it takes the login. Where the process
-died without an ending, or ended `environment`, it continues on the same login if that is ready and under its cap
-(`atCap`), otherwise on one with room. Any other ending is the campaign's own, and the keeper leaves;
-a `budget` ending, even inside a comparison, is one no login can finish, and only a raised total
-(`continue --budget N`, the operator's dollar cap) goes on with it.
-A run with no `claude/` seat restarts after a death but sits out provider waits. Three continues in a
-row without an answered model turn end the keeper. Restarts stay at the worktree's commit; `keep.out`
-holds each move, wait and giving up under its time, and `runs stop <name> --yes` ends run and keeper.
+The keeper draws candidate logins from `--logins`, then `ANA_LOGINS`, then the environment, polling once per minute (`turnOf`). Whenever a provider wait exceeds `--wait-hours`, it stops the run and resumes it on an available login under its cap whose weekly window resets soonest and whose five-hour window is forecast to last (`fiveHourWith`); logins at 100% utilisation or returning unreadable status are skipped. Before stopping the active writer, the keeper verifies that restart preconditions pass (`checkStart`). Cached login closures expire at their reset time or after `CLOSED_CACHE_MS`, and a keeper waiting for capacity retries every `ASK_MS`, querying the provider before claiming a login. If the campaign process dies without logging an ending, or exits with `environment`, the keeper resumes it on the same login if available and under cap (`atCap`), or otherwise on another available login. All other campaign endings are terminal and cause the keeper to exit; a `budget` ending (even mid-comparison) cannot be resolved by switching logins and requires raising the cap (`continue --budget N`) with operator approval. Runs without a `claude/` seat restart after crashes but sit through provider waits. Three consecutive restarts without a completed model turn terminate the keeper. All restarts remain at the worktree's commit; `keep.out` logs every switch, wait, and termination with timestamps, and `runs stop <name> --yes` stops both the campaign and its keeper.
 
 ## Copy and move
 
@@ -216,16 +104,9 @@ bun run runs copy <name> --to <worktree> --yes
 bun --env-file=.env.runs run runs move <name> --from <host> --to <host> [--login N] --yes
 ```
 
-`copy` is the one sanctioned way between worktrees (`AGENTS.md`, section 5). It refuses a live or kept
-run and a target holding the name, copies the folder whole, checks the log's size, and renames the
-source to `.ana/moved/<name>-<stamp>`. Continue there with `continue --at` only while no comparison is
-open, since the target's commit becomes the code it runs.
+`copy` is the sole sanctioned method for transferring a campaign between worktrees (`AGENTS.md`, section 5). It refuses active or kept runs and destinations already holding the campaign name, copies the directory intact, verifies log byte size, and moves the source directory to `.ana/moved/<name>-<stamp>`. Use `continue --at` at the destination only when no comparison is open, because the target worktree's commit becomes the executing codebase.
 
-`move` checks the destination, prepares its code, pauses the run at its `--after` event (`finished`
-by default), makes `anabasis-<name>` there at the source's commit, transfers the folder with rsync
-through this machine, checks the size, sets the source aside and continues on the kept flags.
-`--hold` stops before the continue. The pause ends any keeper. A change of login on one machine needs
-no move: `continue --after <event> --login N`.
+`move` validates the destination host, prepares the controller codebase, pauses the run at `--after` (`finished` by default), creates `anabasis-<name>` on the destination at the source commit, transfers the directory via `rsync` through the local host, verifies byte size, archives the source, and resumes the campaign with its preserved flags. `--hold` stops before resuming, and the pause terminates any attached keeper. Switching logins on the same host does not require `move`; use `continue --after <event> --login N` instead.
 
 ## Logins and hosts
 
@@ -236,59 +117,27 @@ bun --env-file=<file> --env-file=.env.runs run runs on <host> status
 bun --env-file=<file> --env-file=.env.runs run runs hosts [--all]
 ```
 
-`usage` reads each login's windows from the provider (or rate-limit headers where refused), keeps a
-history in `.ana/logins-history.jsonl`, and forecasts when the pool runs out by whichever of the
-model, the week pace and the per-run rate read the last held-out hours best (`modelLines`). Each login
-line shows `open` or `closed until <reset>` and its live runs out of the most it carries: the lower of
-its cap (`capOf`: its `N:most` in `ANA_LOGIN_RUNS`, else its subscription in `ANA_LOGIN_SUBS`, one
-for `max`, two for `ultra` or `pro100` and four for `pro200`, else the bare number) and the runs its
-week can fit (`fitOf`), with more marked `oversubscribed`. The fit is a forecast `usage` alone
-prints, saying so where it is the lower; the verbs refuse at the cap (`atCap`), which `active` counts against.
-`active` names the live runs on each login across hosts, by each run's last launch; count it before a
-launch, continue or move, and add by hand any seat without `--login` or session on a numbered login.
-`active` and `usage` name a host that does not answer as not counted. A start and a keeper's move
-count it as the archive last gathered it (`asGathered`); with no copy there they refuse.
+`usage` queries each login's rate-limit windows from the provider (falling back to response headers when direct queries are refused), appends observations to `.ana/logins-history.jsonl`, and forecasts pool exhaustion using whichever of the fitted model, weekly pace, or per-run burn rate achieved the lowest error over recent held-out hours (`modelLines`). Each login line displays `open` or `closed until <reset>` alongside its active run count against its effective limit: the minimum of its configured cap (`capOf`: `N:most` in `ANA_LOGIN_RUNS`, else its tier in `ANA_LOGIN_SUBS` where `max` = 1, `ultra`/`pro100` = 2, and `pro200` = 4, else a plain integer) and the number of runs its weekly quota can sustain (`fitOf`), flagging excess runs as `oversubscribed`. The weekly fit is an advisory forecast printed only by `usage` (noting when it is the tighter bound); lifecycle verbs enforce the hard cap (`atCap`), which `active` reports against. `active` lists live runs per login across all hosts based on each run's latest launch receipt; inspect it before launching, continuing, or moving a run, and manually account for any unnumbered seats or external sessions sharing a numbered login. Both `active` and `usage` flag unresponsive hosts as uncounted; starts and keeper switches fall back to the most recent archive snapshot (`asGathered`) and refuse if no snapshot exists.
 
-`status` hides stopped runs idle for a day unless `--all`, and names the archive's newest campaigns.
-`hosts --health` reports load against cores, the charger, disk sizes, Bun, controllers, live
-campaigns and the busiest processes with their run; an unanswering machine is not an empty one. End
-an attributed campaign with `stop`; leave unattributed processes, caches and power settings to a
-person.
+`status` hides stopped runs that have been idle for more than a day unless `--all` is passed, and lists the newest archived campaigns. `hosts --health` reports load relative to core count, AC power status, disk usage, Bun version, active controllers, running campaigns, and top processes attributed to runs; never treat an unresponsive host as idle. Terminate attributed campaigns with `stop`, and leave unattributed processes, caches, and host power settings to the operator.
 
-Remote verbs run from a clean detached controller at the nearest published ancestor of HEAD
-(`fresh`, `move` and `continue --at` need their exact commit). A cold controller gets five minutes
-to prepare, then each request 30 seconds; a peer that times out refuses admission instead of counting
-as empty. Env files stay on their own machine. `ANA_HOP=1` prevents recursive fan-out. Skill scripts
-reach peers through `scriptOn` and `askedScript` (`tools/runs/hosts.ts`), and any script parsed by
-`.claude/skills/main/cli.ts` takes `--host <name>`. Direct scripts need the host environment:
-`bun --env-file=.env.runs <script> ...`.
+Remote commands execute from a clean detached controller at the nearest published ancestor of `HEAD` (`fresh`, `move`, and `continue --at` require their exact target commit). Cold controllers are allotted five minutes for setup, and subsequent requests have a 30-second timeout; an unresponsive peer fails closed and refuses admission rather than appearing empty. Environment files remain local to their host, and `ANA_HOP=1` prevents recursive fan-out. Skill scripts invoke peers via `scriptOn` and `askedScript` (`tools/runs/hosts.ts`), and scripts using `.claude/skills/main/cli.ts` accept `--host <name>`. Standalone scripts require loading `.env.runs` via `bun --env-file=.env.runs <script> ...`.
 
 ## Keep the machines' settings in step
 
-Every remote verb carries `ANA_LOGINS`, `ANA_LOGIN_RUNS`, `ANA_LOGIN_SUBS`, `ANA_KEEP` and the host's
-`capacity` with it (`carriedTo`, `tools/runs/hosts.ts`), so no peer holds a copy to drift, and a value
-that looks like a credential is refused. `ANA_HOSTS` stays on the central machine. `bun run runs sync`
-aligns what does live on each machine: `ANA_TOOLS`, a table of tools and versions read in the wall's
-path order, and `ANA_PYTHON` with `ANA_PYTHON_PACKAGES`, one Python through `uv` on every machine
-(what a solve finds is `hostPython`). With no flag it prints the differences; `--yes` applies and
-rechecks; `--check` exits 1 on any difference, for a timer. A change a seat would see is refused on a
-host with a live campaign, or an uncountable one, unless `--force`, because what a solver is given is
-the operator's. Sync uninstalls nothing, never touches a run, and never carries `.env` or an env
-file: logins move between hosts by the operator's hand.
+Every remote invocation forwards `ANA_LOGINS`, `ANA_LOGIN_RUNS`, `ANA_LOGIN_SUBS`, `ANA_KEEP`, and the peer's `capacity` (`carriedTo`, `tools/runs/hosts.ts`) so peers do not maintain drifting local copies; any value resembling a credential is refused. `ANA_HOSTS` remains exclusively on the central host. `bun run runs sync` reconciles host-installed dependencies: `ANA_TOOLS` (tool versions resolved in sandbox path order) and `ANA_PYTHON` with `ANA_PYTHON_PACKAGES` (a uniform `uv`-managed Python environment across hosts, exposed to solves via `hostPython`, pinning shared transitive packages to the central host's exact versions to prevent install-time drift). Without flags, `sync` reports differences; `--yes` applies updates, re-verifies, and flags any installer that exited 0 without changing the observed version; `--check` exits 1 on any drift for automated monitoring. Any change visible to a solver seat is refused on a host with an active campaign (or an uncountable host) unless `--force` is passed, because solver environment changes require operator authority. `sync` never uninstalls software, modifies runs, or copies `.env` files; logins are transferred between hosts manually by the operator.
 
 ## What is refused
 
-`AGENTS.md`, section 6, "What refuses a move", owns the admissions. Read the refusal before choosing
-a remedy. By hand, a comparison first needs:
+Move admission rules are owned by `AGENTS.md`, section 6 ("What refuses a move"). Always read the refusal message before choosing a remedy. When operating manually, a comparison requires these prior steps:
 
-| the log needs | from |
+| Missing precondition | Command |
 | --- | --- |
-| a checker read without faults, or frozen over them | `bun tools/c/accept.ts ... --name <name> [--admit <checks> \| --admit-authored] [--freeze [--despite "<why>"]]` |
-| the pack's tasks held out, practice released | `bun tools/d2/prepare.ts ... --name <name>` |
-| more held-out tasks | `bun tools/d1b/examine.ts ... --name <name> --session x-1` |
+| Clean checker read, or explicit freeze over faults | `bun tools/c/accept.ts ... --name <name> [--admit <checks> \| --admit-authored] [--freeze [--despite "<why>"]]` |
+| Held-out task preparation and initial practice release | `bun tools/d2/prepare.ts ... --name <name>` |
+| Additional held-out frontier tasks | `bun tools/d1b/examine.ts ... --name <name> --session x-1` |
 
-Acceptance is the operator's (`AGENTS.md`, section 3 and rule 10). `--predict "<sentence>"` on a
-comparison or round by hand records what it should read before its first solve.
+Checker acceptance requires operator authority (`AGENTS.md`, section 3 and rule 10). Passing `--predict "<sentence>"` to a manual comparison or round logs the pre-solve hypothesis before execution.
 
 ## Watch
 
@@ -297,44 +146,15 @@ bun run runs pulse [<part of a name> ...]
 bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]
 ```
 
-`pulse` reports what each run gained since the last look, session starts, and a process gone before
-its ending (read its launch `.err`). `view` prints the campaign and, last, the move the table names
-(`decide`), which the Builder may decline; it uses this checkout's code, so check the receipt before
-reading it as a live run's advice. `pulse --here` polls this machine only. Neither starts a run.
+`pulse` summarises new events since the previous check, session starts, and missing processes that died without logging an ending (inspect their `launch-run-*.err`). `view` displays campaign state and concludes with the move table's recommendation (`decide`), which the Builder may choose not to follow; because `view` executes the current checkout's code, check the run's launch receipt before treating its output as a live run's exact decision logic. `pulse --here` restricts polling to the local host. Neither verb starts a run.
 
-A look's lines name the step a run has come to owe, each from one owner (`tools/runs/said.ts`): the
-exam's milestones in counts, what a comparison can read as it starts, a promotion with "a pause
-should wait for its starter comparison", each starter comparison under its report, `ready to pause`
-with its command at the second read, and once, when a campaign reaches it, `⚠ investigation due`
-with the command that names the step: `wri2p2.ts due` while the run lives, which prints its pause
-or the deviation that keeps it, and the investigation's `open` once it has stopped. A live campaign
-whose first comparison has stood admissible for 75 minutes without beginning says so once
-(`⚠ a first comparison admissible`, `heldOff`, `tools/runs/view.ts`); `runs view` then says the move
-the table names, and the line stops nothing. A closed run's reason and a host that stops answering are said
-when they turn, not at every look.
+Status lines announce pending experimental steps from a single authoritative formatter (`tools/runs/said.ts`): exam progress counts, comparison capacity at start, promotion notices ("a pause should wait for its starter comparison"), starter comparison results beneath their reports, `ready to pause` with its exact command upon the second confirmed read, and a one-time `⚠ investigation due` notice pointing to `wri2p2.ts due` (while live) or `wri2p2.ts open` (once stopped). A live campaign whose first comparison has remained admissible for 75 minutes without starting emits a one-time `⚠ a first comparison admissible` notice (`heldOff`, `tools/runs/view.ts`); `runs view` shows the recommended move without interrupting the run. Terminal endings and unresponsive hosts are announced once upon state transition rather than repeated on every poll.
 
-`bun run runs alerts` is the cron watch: one stdout line per new promotion, starter comparison,
-keeper move, missing process, stall or ending (`ended <ending>, and went on` where a keeper went on
-between two looks), nothing otherwise, and exit 0. It prints the `runs pause` command
-once two promotions are read against the starter, and never runs it.
+`bun run runs alerts` is the cron-friendly counterpart: it prints one stdout line per new promotion, starter comparison, keeper login switch, missing process, stall, or ending (reporting `ended <ending>, and went on` when a keeper restarted it between checks), prints nothing otherwise, and exits 0. It prints the `runs pause` command once two promotions have been read against the starter, but never executes it.
 
-A session that waits on a few runs follows the log the local job writes these lines to with one
-`Monitor` (`tail -n 0 -F`), re-armed when it expires, and so wakes at each step a run owes. On a
-machine where no job writes that log, one `Monitor` on `bun run runs pulse --every 290 --state
-<file>` serves instead. Neither pauses or stops anything.
+A session monitoring active runs attaches a single `Monitor` (`tail -n 0 -F`) to the alerts log written by the local cron job, re-arming it upon expiry so the session wakes whenever a step comes due. On hosts without that cron job, attach one `Monitor` to `bun run runs pulse --every 290 --state <file>`. Neither watcher pauses or stops campaigns.
 
-Each look also says, under each moment among a run's new events (the contract's freeze, a
-comparison's start, a report, a promotion, an Examiner's or Builder's end, a campaign's opening or
-ending), what the deterministic readers that
-name that moment (`at`, `READERS`, `tools/wri/derive.ts`) found of it: `◆ <reader>: <line>` for each
-line naming its session or harness, or its `gist` where none does (at most 3 a reader, 12 a run, 30
-a look), with the full text in a named folder. One low-priority pass a host (`tools/wri/pass.ts`)
-runs a reader only once one of its moments lies past what it read, at most 30 s every 4 minutes and
-only with a core free; a look whose new events hold no moment starts none. A moment not yet read is
-named once (`· not read yet: <readers> of <moment>; <why>`, `⚠` where the last pass failed) and its
-lines come at the look that
-finds them. `--no-readers` skips them. Results lie in `.ana/pulse/moments/` and hold hidden values,
-so no seat can read them (`test/runs-pulse-readers.test.ts`).
+Beneath each milestone event (contract freeze, comparison start or report, promotion, Examiner or Builder end, campaign open or end), `pulse` also prints findings from deterministic readers registered for that moment (`at`, `READERS`, `tools/wri/derive.ts`): `◆ <reader>: <line>` for lines matching the session or harness, or the reader's `gist` otherwise (capped at 3 lines per reader, 12 per run, and 30 per poll), referencing the full output directory. A single low-priority background pass per host (`tools/wri/pass.ts`) invokes a reader only when a registered moment is newer than its last run, bounded to 30 seconds every 4 minutes and only when a CPU core is free; polls with no new milestone events trigger no pass. Unprocessed moments are noted once (`· not read yet: <readers> of <moment>; <why>`, or `⚠` if the last pass failed) and appear on the subsequent poll once ready. Pass `--no-readers` to omit reader output. Cached reader outputs live in `.ana/pulse/moments/` and contain hidden exam-side values, so no model seat can access them (`test/runs-pulse-readers.test.ts`).
 
 ## Stop
 
@@ -342,13 +162,4 @@ so no seat can read them (`test/runs-pulse-readers.test.ts`).
 bun run runs stop <name> ... [--yes]
 ```
 
-`stop` ends the process writing each log and the processes it started, then releases the roots of
-every solve, session and draft left open; a dead run is cleaned up the same way, and the daily
-`retire` does it for every run nobody stopped as it archives the run, with each verifier cell and
-model home whose claiming process is gone (`archiveIdle`, `releaseScratch`, `tools/runs/retire.ts`). A stop is abrupt and
-writes no ending. `continue` goes on from the log under the same name; the session the stop cut has
-spent its id, and an Examiner session's held-out tasks stay held. Prefer `pause` or a word where a
-clean point can be waited for. Whether to stop is a reading and the operator's word. Afterwards check
-that `writers(runNamed(name), processes())` (`tools/runs/registry.ts`) is empty, and read any release
-failures; a root from an older Mac runner may need `hdiutil detach` first (`release`,
-`tools/runs/stop.ts`).
+`stop` terminates the process writing each campaign log along with its child processes, then releases scratch roots for all open solves, sessions, and drafts. Dead runs are cleaned up identically, and the daily `retire` job performs the same cleanup when archiving idle runs, including orphaned verifier cells and model home directories (`archiveIdle`, `releaseScratch`, `tools/runs/retire.ts`). Stopping is abrupt and writes no `campaign.ended` event. `continue` resumes from the log under the same name; the interrupted session's identifier is consumed, while any held-out tasks already admitted by an Examiner session remain intact. Prefer `pause` or an operator word whenever a clean boundary can be awaited. Stopping a live run requires operator authority. After stopping, verify that `writers(runNamed(name), processes())` (`tools/runs/registry.ts`) is empty and inspect any cleanup errors; scratch roots from older macOS runners may require `hdiutil detach` first (`release`, `tools/runs/stop.ts`).

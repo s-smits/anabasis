@@ -7,10 +7,10 @@ import { importSpecifier } from "../shared/import-fix.ts";
 /**
  * The meta module that owns each host builtin, read off `src/meta` on 2026-09-20.
  *
- * `node:util` is deliberately absent. Two modules there imported it when this was read —
- * `env-parser.ts` took `parseEnv` and `json-runtime.ts` takes `types` — so the owner depends on
+ * `node:util` is deliberately absent. Two modules there imported it when this was read
+ * (`env-parser.ts` took `parseEnv` and `json-runtime.ts` takes `types`) so the owner depends on
  * the name, which is the one question a table cannot answer. v2 has no caller of the first, and it
- * was removed on 2026-10-09. `node:crypto` and `node:child_process` are absent because no
+ * is gone. `node:crypto` and `node:child_process` are absent because no
  * module under `src/meta` imports them: the wrapper a fix would name does not exist yet.
  */
 const OWNER = new Map([
@@ -30,16 +30,16 @@ const OWNER = new Map([
  * `OWNER` maps both `node:fs` and `node:fs/promises` onto one module, which is true of the module
  * and not of these four names: `rm` from `node:fs` takes a callback and `rm` from the wrapper
  * returns a promise. Rewriting `import { rm } from "node:fs"` onto the wrapper therefore swaps
- * one function for another of the same name. The swap is usually a type error at the call — the
- * callback has nowhere to go — so this is a held line rather than a wrong program, and the fix
+ * one function for another of the same name. The swap is usually a type error at the call (the
+ * callback has nowhere to go) so this is a held line rather than a wrong program, and the fix
  * still steps back: a report a reader closes in one edit beats a round of the loop spent proving
  * the edit wrong.
  */
 const PROMISED = new Set(["mkdir", "mkdtemp", "readdir", "rm"]);
 
 /**
- * `src/meta` owns the runtime surface. Every host capability the product depends on — the file
- * system, temporary roots, the environment, subprocesses, the network, hashing — is re-exported
+ * `src/meta` owns the runtime surface. Every host capability the product depends on (the file
+ * system, temporary roots, the environment, subprocesses, the network, hashing) is re-exported
  * from one module there, so isolation, a private `TMPDIR` or a refusal can be imposed in one
  * place and reach every caller. A `node:` import elsewhere is a second door into the same
  * capability that no wall can see.
@@ -62,8 +62,8 @@ const PROMISED = new Set(["mkdir", "mkdtemp", "readdir", "rm"]);
  * is therefore not in the table, and a name absent from the table is never rewritten. So the
  * module the fix names always resolves, and what can still be missing is one *member* of it.
  *
- * That remainder is the second half of the repair the message already asks for — "add one beside
- * them" — and it arrives as a compile error on the line the fix wrote, naming the member and the
+ * That remainder is the second half of the repair the message already asks for ("add one beside
+ * them") and it arrives as a compile error on the line the fix wrote, naming the member and the
  * module. The alternative is the same work found by reading, later, somewhere else. This is the
  * same trade `require-captured-json-runtime` records: a fix that cannot be silently wrong is worth
  * more than one that covers every site.
@@ -71,8 +71,8 @@ const PROMISED = new Set(["mkdir", "mkdtemp", "readdir", "rm"]);
  * Four shapes keep the report and get no fix, each because the edit would decide something.
  * A **type import** would have to merge into the value import already there, or stay a second
  * declaration; `filesystem.ts` re-exports `Dirent` and `Stats` and nothing else, so the choice is
- * not even usually available. A **default or namespace import** — `import fs from "node:fs"`,
- * `import * as path from "node:path"` — asks for the whole surface, which is what the owner exists
+ * not even usually available. A **default or namespace import** (`import fs from "node:fs"`,
+ * `import * as path from "node:path"`) asks for the whole surface, which is what the owner exists
  * to narrow. A **bare `import "node:x"`** binds nothing to move. And a **re-export**,
  * `export { x } from "node:fs"`, is this file publishing the second door rather than using it,
  * which is a different repair.
@@ -80,7 +80,7 @@ const PROMISED = new Set(["mkdir", "mkdtemp", "readdir", "rm"]);
  * The edit has two forms and no third. Where the file already imports from the owning module, the
  * names join that import and the `node:` line goes, which is the shape the tree is written in.
  * Where it does not, the `node:` declaration is replaced in place by one naming the owner, at the
- * depth `importSpecifier` computes from this file's own path — replaced rather than inserted
+ * depth `importSpecifier` computes from this file's own path: replaced rather than inserted
  * beside, because an insert anchored on the declaration being removed is two edits at one
  * position, and oxlint drops both.
  */

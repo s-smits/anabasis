@@ -6,6 +6,7 @@
  * The host sets every field; the Builder sets none. The model, its effort and every limit are the
  * host's, and nothing a harness declares about them is read.
  */
+import { parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { hashJsonValue, requireJsonValue } from "../meta/stable-json.ts";
@@ -31,7 +32,7 @@ export type Limits = {
    * a solve that reaches it without an answer ends there (`turns-ended`). It is the unit of a
    * budget that does not move with the host's load: the one step on record was read under a time
    * limit on a host loaded at ten times its cores, and `turns` above bound no solve, since every
-   * finished solve was given one prompt (`7f0add79:docs/plan.md`, Phase 2).
+   * finished solve was given one prompt.
    */
   readonly modelTurns?: number;
   /** How long one shell command runs when the solver names no timeout. A timeout it names only
@@ -64,17 +65,16 @@ export interface Condition {
   readonly solverTools: string;
   readonly verifierTools: string;
   /** The digest of the sandbox a solve ran under, as the campaign names it: the isolation
-   * profile's id and the platform (`tools/d2/campaign.ts`); until 19 October the disk cap too. What the
-   * profile lets a
-   *  command read and reach, the network among it, is the profile's and is not recorded apart. */
+   *  profile's id and the platform (`tools/d2/campaign.ts`). What the profile lets a command read
+   *  and reach, the network among it, is the profile's and is not recorded apart. */
   readonly sandbox: string;
   readonly limits: Limits;
   /** The host's code a solve runs through, by content: `src` and `vendor` as the files stand. A
    *  commit that touches neither opens no new condition, and an uncommitted change to either does,
    *  where a commit id did the opposite on both counts. */
   readonly host: string;
-  /** The test condition. `strong` is the stronger condition a log written before 9 October may
-   *  hold a solve under, made to show a task could be done; no comparison counts one
+  /** The test condition. `strong` is the stronger condition the oldest logs may hold a solve
+   *  under, made to show a task could be done; no comparison counts one
    *  (`compare.ts`). */
   readonly side: "test" | "strong";
 }
@@ -162,8 +162,8 @@ export function conditionsOf(events: readonly LogEvent[]): Map<string, Condition
   const conditions = new Map<string, Condition>();
   for (const event of events) {
     if (event.kind === RECORDED) {
-      // SAFETY: only `recordCondition` writes the event, and the hash proves the record whole.
-      const condition = event.data.condition as unknown as Condition;
+      // Only `recordCondition` writes the event, and the hash proves the record whole.
+      const condition = parseJsonAs<Condition>(asRecord(event.data.condition) ?? {});
       const id = conditionId(condition);
       if (id !== event.data.id) throw new Error(`${event.at}: a condition does not hash to its id`);
       conditions.set(id, condition);

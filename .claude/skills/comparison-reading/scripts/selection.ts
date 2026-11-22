@@ -1,25 +1,24 @@
 /**
- * One count over a starter read that lane 12 made by hand, read by the comparison's own test: of
- * every way the signs of the tasks written after the promotion could fall, with every other task as
- * scored, how many read a step (`stepCount`). All 4 lane 12 sessions between 3 and 10 November
- * counted it by hand, three of them with the test written again in Python. It is a fact about a read
- * and decides nothing.
+ * Exact sign-draw enumeration for starter-read confirmation analysis (WRI lane 12).
  *
- * No test of whether the slices the writing sessions left differ stands beside it. 4 of 5 lane 19
- * sessions ran one in scratch, as a chi-square or Fisher test, but the slices are batches of one
- * continuing Examiner conversation, and whether they are independent draws is lane 19's own
- * question: a p printed here would assume the answer. `starter-reads.ts` prints each slice's tally.
+ * Holding pre-promotion tasks fixed at their recorded margins, counts how many of the `2^free`
+ * sign assignments to the untied post-promotion (`written after`) tasks would still register a step
+ * under `readsStep` (`stepCount`).
+ *
+ * Omits cross-session homogeneity tests across Examiner writing sessions (lane 19): because those
+ * sessions are sequential wakes of one Examiner conversation, whether they form independent draws
+ * is the investigative question itself. `starter-reads.ts` reports each session slice's tally directly.
  */
 import { readsStep } from "#src/kernel/compare.ts";
 
-/** Of `draws` sign assignments to the untied `free` tasks, `confirm` read a step at the level. */
+/** Exact count of sign assignments (`confirm` out of `draws = 2^free`) that register a step at `level`. */
 export interface StepCount {
   readonly free: number;
   readonly draws: bigint;
   readonly confirm: bigint;
 }
 
-/** For each plus-total of `sizes`, how many sign assignments reach it, exactly. */
+/** Dynamic-programming table mapping each achievable positive sum over `sizes` to its number of sign assignments. */
 function waysTo(sizes: readonly number[]): bigint[] {
   let ways = [1n];
   for (const size of sizes) {
@@ -33,9 +32,8 @@ function waysTo(sizes: readonly number[]): bigint[] {
   return ways;
 }
 
-/** One sign assignment of `sizes` whose plus-total is `goal`, which `ways` says is reachable. */
+/** Reconstructs one signed margin vector from `sizes` whose positive entries sum to `goal`. */
 function signsFor(sizes: readonly number[], goal: number): number[] {
-  // reach[i] holds the plus-totals the first i sizes can make.
   const reach = [new Set([0])];
   for (const size of sizes) {
     const last = reach.at(-1) ?? new Set<number>();
@@ -53,11 +51,10 @@ function signsFor(sizes: readonly number[], goal: number): number[] {
 }
 
 /**
- * How many of the sign assignments to the untied `free` margins read a step at `level` with `fixed`
- * as scored, under `readsStep` itself. The test reads a task's size whatever its sign, so the sizes
- * are fixed and a step depends on the plus-total alone, and rises with it: the count is the number of
- * draws at or above the least reachable plus-total that reads a step, found by asking `readsStep` of
- * one draw a total. A tie stays a tie in every draw. Margins are whole points, as task scores are.
+ * Counts how many sign assignments to the untied `free` margins register a step at `level` when
+ * combined with `fixed` under `readsStep`. Because `flipP` depends on `free` signs solely through
+ * their positive sum and is monotone in that sum, binary search over reachable positive sums
+ * locates the exact threshold.
  */
 export function stepCount(fixed: readonly number[], free: readonly number[], level: number): StepCount {
   const sizes = free.filter((one) => one !== 0).map(Math.abs);

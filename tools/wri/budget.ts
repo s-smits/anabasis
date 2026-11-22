@@ -10,9 +10,9 @@
  * their starts. `WALL SHARE` gives the median share alone, which hides a side whose few long solves
  * met the deadline.
  *
- * Every one of the 7 lane 22 sessions between 3 and 10 November built this table by hand, in three
- * scripts, one of which placed each solve by the last comparison to start and so misplaced every solve
- * of two comparisons that overlapped. It counts and decides nothing: a solve at its bound may have
+ * Without it a lane 22 session builds this table by hand, and a script that places each solve by
+ * the last comparison to start misplaces every solve of two comparisons that overlap. It counts and
+ * decides nothing: a solve at its bound may have
  * been near an answer or far from one.
  */
 import { AT_A_LIMIT } from "#src/kernel/reports.ts";

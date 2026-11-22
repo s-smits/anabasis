@@ -1,6 +1,6 @@
-// A rejection's standing has one reader, `rulingsOf`: until 5 November a comparison's `rejections`
-// skipped a finding with no ruling, which a killed or failed Referee leaves, and kept the earned
-// ruling before it, while practice's `rejectionAside` read that rejection as unruled.
+// A rejection's standing has one reader, `rulingsOf`, so a comparison's `rejections` and
+// practice's `rejectionAside` cannot disagree over a finding with no ruling, which a killed or
+// failed Referee leaves, behind an earned ruling before it.
 import { describe, expect, it } from "bun:test";
 import { rejections, type Fixed } from "../src/campaign/comparison.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
@@ -60,8 +60,8 @@ describe("a rejection's standing", () => {
   });
 });
 
-// Rule 8: a person's label stands over the Referee's ruling. Until 9 November practice's
-// `rejectionAside` read the ruling alone, while the task table and the Examiner's view read the label.
+// Rule 8: a person's label stands over the Referee's ruling, in practice's `rejectionAside` as in
+// the task table and the Examiner's view.
 describe("a labelled rejection's standing", () => {
   const settled = (session: string, labels: JsonObject): LogEvent => ({
     at,

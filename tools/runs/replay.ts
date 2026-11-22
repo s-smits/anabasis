@@ -5,8 +5,8 @@
  * whose every launch ran with what `--holds` and `--has` name (`ranWith`, `receipt.ts`), through
  * this tree's readers of a log: its events and their kinds (`read`), the task states and the sets a
  * comparison takes (`taskSets`), what its sessions wrote (`writtenTasks`), each recorded condition,
- * the comparisons that reported (`lastReports`) and the moves the plan's stop rule counts of them
- * (`stopRule`), which are fewer: until 27 October the second was printed as the first. It writes nothing. The whole-run
+ * the comparisons that reported (`lastReports`) and the moves the stop rule counts of them
+ * (`stopRule`), which are fewer, each printed as itself. It writes nothing. The whole-run
  * investigation reads a log through its own command (`tools/wri/wri.ts read`), which a production
  * verb does not import.
  *

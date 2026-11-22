@@ -2,11 +2,12 @@
  * Two or more solving systems, each a solver inside a harness, read against each other on one
  * campaign's held-out tasks. A campaign cannot make this reading: its setting fixes the solver, and
  * every comparison it makes sets two harnesses under that one solver (`tools/d2/setting.ts`). The
- * operator asked for it on 27 October: does a built system with a cheap solver reach what a bare
- * system with a dear solver reaches, as `gpt-6.1-terra` at high inside the truss campaign's harness
- * against `claude-opus-5-5` at medium inside the starter? That is the point of building a harness. On the same day a reading of Terra in the starter against Terra in the built
- * harness answered a campaign's question instead, and the operator asked for one solve of every
- * held-out task a system, so a reading is one run per task and system unless `--solves` names more.
+ * operator's question is whether a built system with a cheap solver reaches what a bare system with
+ * a dear solver reaches, as `gpt-6.1-terra` at high inside the truss campaign's harness against
+ * `claude-opus-5-5` at medium inside the starter. That is the point of building a harness; a
+ * reading of one solver in the starter against itself in the built harness answers a campaign's
+ * question instead. The operator asked for one solve of every held-out task a system, so a reading
+ * is one run per task and system unless `--solves` names more.
  * `--login N` puts the login `CLAUDE_CODE_OAUTH_TOKEN<N>` in the plain token's place for a Claude
  * solver, as `runs launch --login` does (`loginEnv`).
  *
@@ -23,7 +24,7 @@
  * aside for every system (`rejectionAside`), as a comparison's does. At two solves or more, an even
  * count, the baseline is read against itself on halves of its solves mirrored in time, the comparison's A/A,
  * so a reading has its own noise beside it. A table sets the systems side by side on averages a solve
- * (cost, wall time, slowest solve, model turns), since the operator asked on 28 October for time
+ * (cost, wall time, slowest solve, model turns), since the operator asked for time
  * beside cost: a built system that costs a fifteenth can still take twice as long. The trial logs hold hidden values, so they stay under
  * `.ana/compare/`, behind the wall and outside `.ana/d2/`, where `runs retire` sweeps idle seeds.
  */
@@ -71,7 +72,7 @@ const USAGE = `compare-systems: solve a campaign's held-out tasks under two or m
 
   bun .claude/skills/compare-systems/scripts/systems.ts --seed <seed> \\
     --baseline <name>=<model>:<effort>@<harness> --candidate <name>=<model>:<effort>@<harness> \\
-    [--candidate ...] [--root <dir> --sweep <id> --cycle <id> --bundle <dir>] [--tasks <all>] [--solves 1] [--level 0.02] [--login N] [--read | --cap <dollars> --reviewer <model>]
+    [--candidate ...] [--tasks <all>] [--solves 1] [--level 0.02] [--login N] [--read | --cap <dollars> --reviewer <model>]
 
 <seed> is a seed of a campaign that opened from a prompt (bun run runs seed), never the campaign
 itself; a seed of a campaign over a stored pack names that pack by its four flags. <harness> is starter, promoted, or a whole digest or a letter the seed keeps; import a harness
@@ -167,7 +168,7 @@ function solvedIn(events: readonly LogEvent[]): Map<string, Solved> {
 /** The systems side by side, each on the average of its counted solves. The cost is the log's whole
  *  bill over those solves, the Referee's rulings included, so it runs a little over the solves' own;
  *  the time is a solve's wall, which a harness's own programs can fill (`improve-truss` searched to
- *  a deadline in all 12 solves of the truss reading of 28 October). */
+ *  a deadline in every solve of one truss reading). */
 function tableLines(
   rows: readonly { system: System; own: Map<string, Solved>; billed: number; count: number }[],
 ): string[] {
@@ -352,17 +353,10 @@ async function main(args: CommandArgs): Promise<number> {
       "name --cap, the dollars every system's solves may bill together, and --reviewer, the Referee",
     );
   }
-  // A seed of a campaign over a stored pack names the pack as the campaign's commands do (`packNamed`).
   const flag = (name: string) => args.value(name) ?? undefined;
   const login = flag("login");
   if (login !== undefined) Object.assign(Bun.env, loginEnv(Bun.env, login));
-  const stored = packNamed({
-    name: seed,
-    root: flag("root"),
-    sweep: flag("sweep"),
-    cycle: flag("cycle"),
-    bundle: flag("bundle"),
-  });
+  const stored = packNamed({ name: seed });
   const source = await openCampaign(stored);
   if (!existsSync(join(source.log, "..", SEED_FILE))) {
     return args.die(`${seed} is no seed: copy the campaign first with bun run runs seed`);
@@ -457,10 +451,6 @@ if (import.meta.main) {
         cap: "text",
         level: "text",
         read: "flag",
-        root: "text",
-        sweep: "text",
-        cycle: "text",
-        bundle: "text",
         reviewer: "text",
         "reviewer-effort": "text",
         login: "text",

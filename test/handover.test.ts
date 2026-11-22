@@ -192,6 +192,7 @@ describe("a campaign's reading", () => {
         last: anyOf(String),
         parent: STARTER,
         harness: HA,
+        unfinished: null,
         changed: true,
         practiceSolves: 2,
         until: 21,
@@ -250,7 +251,7 @@ describe("a led Builder's lifetime and bill", () => {
     c.record("comparison.started", { session: "g-1" });
     c.solved("s1", HA, "pass", "g-1");
     c.record("build.turn", { session: "b-1", turn: 2, usage: { cost: { total: 0.25 } } });
-    // Until 14 October b-1 read as cut at x-1's start, its turns and dollars cut there with it.
+    // b-1 is not read as cut at x-1's start, its turns and dollars cut there with it.
     const live = { id: "b-1", ended: null, cut: false, turns: 2, practiceSolves: 1, billed: 3.5 };
     expect(steps(c, "builder")).toMatchObject([live]);
     expect(openSteps(campaignOf(c.events()).steps)).toContain("b-1");
@@ -258,8 +259,8 @@ describe("a led Builder's lifetime and bill", () => {
     expect(steps(c, "builder")).toMatchObject([{ ...live, cut: true }]);
   });
 
-  // A reading's turns name its reader alone, and only its finding names the solve: until 20 November
-  // an open Builder was billed the readings of every comparison that ran inside its window.
+  // A reading's turns name its reader alone, and only its finding names the solve, so an open
+  // Builder is not billed the readings of every comparison that ran inside its window.
   it("bills an open led Builder the readings of its own practice, and a comparison's to the comparison", () => {
     const c = campaign();
     c.record("campaign.opened", { led: true });
@@ -276,8 +277,8 @@ describe("a led Builder's lifetime and bill", () => {
     expect(steps(c, "builder")).toMatchObject([{ id: "b-1", ended: null, billed: 2 }]);
   });
 
-  // Until 19 October an ended session was billed everything in its span: buffer-fresh-opus's view
-  // put $123.34 on b-4, whose own end billed $1.61, and its steps summed to $362.92 of $199.48.
+  // An ended session is not billed everything in its span, which could put a hundred dollars on a
+  // session whose own end billed one and make its steps sum past the campaign's bill.
   it("bills an ended led Builder its own turns and practice alone, and each dollar of the log to one step", () => {
     const c = campaign();
     c.record("campaign.opened", { led: true });
@@ -301,7 +302,7 @@ describe("a led Builder's lifetime and bill", () => {
 });
 
 describe("unfinished comparisons", () => {
-  // buffer-main's g-1 had four solves in flight on 11 October, and nothing said how far it was.
+  // A comparison with solves in flight says how far it is.
   it("reads a comparison with no report as open, with its solves so far, and as cut once the campaign ended", () => {
     const c = campaign();
     c.compared("g-1", { old: STARTER, fresh: HA }, null);
@@ -312,6 +313,11 @@ describe("unfinished comparisons", () => {
     expect(viewLines("truss", campaignOf(c.events()), Date.now())[2]).toMatch(
       /no report.*open.*1 solve ended.*1 open.*\$1\.50/u,
     );
+    // An Examiner asked beside it starts and ends while it runs, and leaves it open.
+    c.record("exam.started", { session: "x-1" });
+    c.record("exam.finished", { session: "x-1", ended: "finished", billed: 0, held: [] });
+    expect(steps(c, "comparison")).toMatchObject([{ ...open, cut: false }]);
+    expect(openSteps(campaignOf(c.events()).steps)).toContain("g-1");
     c.record("campaign.ended", { ending: "no-room" });
     expect(steps(c, "comparison")).toMatchObject([{ ...open, cut: true }]);
     expect(openSteps(campaignOf(c.events()).steps)).toEqual([]);
@@ -353,8 +359,7 @@ describe("practice repair histories", () => {
   it("tracks established practice failures and tells the Builder only its tasks", () => {
     const c = campaign();
     const [open] = c.built("b-1", STARTER, HA, ["fail"]);
-    // A reading of the fail by a Diagnoser, as a log of before 2026-10-11 holds one, is no part of
-    // the fail since (`7f0add79:docs/simplify.md`, E1).
+    // A reading of the fail by a Diagnoser, as an older log holds one, is no part of the fail.
     c.record("diagnosis.recorded", {
       solve: open ?? "",
       owner: "solver",
@@ -415,8 +420,8 @@ describe("practice repair histories", () => {
 });
 
 describe("the Builder's filter over that reading", () => {
-  // Found in buffer-149, 13 October: b-2 was told only a digest, and found by listing harness/
-  // that b-1's crash had left it the starter.
+  // b-2 is told more than a digest, rather than finding by listing harness/ that b-1's crash had
+  // left it the starter.
   it("tells where the starting harness came from, and how the last Builder session ended", () => {
     const c = campaign();
     // With no session before it, the start names no session at all.
@@ -429,6 +434,7 @@ describe("the Builder's filter over that reading", () => {
     c.record("build.finished", { session: "b-2", ended: "crashed", harness: HB, changed: true });
     const crashed = startTold(campaignOf(c.events()), HA, "b-3");
     expect(crashed).toMatch(/\baaaaaaaa\b.*\bb-1\b.*\bb-2\b.*\bcrashed\b/su);
+    expect(crashed).toContain("Its unfinished tree is in kept/bbbbbbbb/.");
     expect(crashed).not.toContain("reference");
     c.record("harness.promoted", { harness: HA, from: STARTER, rests: [] });
     // The session's own start is not the last session before it.
@@ -436,6 +442,9 @@ describe("the Builder's filter over that reading", () => {
     const promoted = startTold(campaignOf(c.events()), HA, "b-3");
     expect(promoted).toMatch(/\bb-1\b.*\breference harness\b.*\bb-2\b.*\bcrashed\b/su);
     expect(promoted).not.toContain("b-3");
+    // Starting from a non-reference harness names the current reference harness explicitly.
+    const behind = startTold(campaignOf(c.events()), HB, "b-4");
+    expect(behind).toContain("The reference harness is harness aaaaaaaa.");
   });
 
   it("names a session cut before its end as the one that left what it last froze", () => {
@@ -454,8 +463,8 @@ describe("the Builder's filter over that reading", () => {
     expect(killed).toMatch(/\bonly its notes and the harness above remain\b/u);
     expect(killed).not.toContain("no Builder session");
     // A crashed ending names the harness its tree held past its last checkpoint, which no session
-    // starts from (`latestBuilt`): until 20 November b-2 of a fork at #979 was told twice that the
-    // checkpoint it opened on came from no session.
+    // starts from (`latestBuilt`), so b-2 is not told that the checkpoint it opened on came from no
+    // session.
     const crash = campaign();
     crash.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
     crash.record("build.checkpoint", { session: "b-1", harness: HA });
@@ -463,7 +472,16 @@ describe("the Builder's filter over that reading", () => {
     expect(latestBuilt(crash.events())).toBe(HA);
     const opened = startTold(campaignOf(crash.events()), HA, "b-2");
     expect(opened).toMatch(/\baaaaaaaa\b.*\bb-1\b.*\bcrashed\b/su);
+    expect(opened).toContain("Its unfinished tree is in kept/bbbbbbbb/.");
     expect(opened).not.toContain("no Builder session");
+    // A killed session with an unfinished tree surfaces it just as a crashed session does.
+    const cut = campaign();
+    cut.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
+    cut.record("build.checkpoint", { session: "b-1", harness: HA });
+    cut.record("build.finished", { session: "b-1", ended: "killed", harness: HB, changed: true });
+    expect(startTold(campaignOf(cut.events()), HA, "b-2")).toContain(
+      "Its unfinished tree is in kept/bbbbbbbb/.",
+    );
     // A checkpoint of the parent itself changed nothing, so no session left the starter.
     const same = campaign();
     same.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
@@ -520,8 +538,8 @@ describe("the Builder's filter over that reading", () => {
 
   it("tells a report that also scored the bill by the tally its step was read on", () => {
     const c = campaign();
-    // Three tasks won with the bill tie without it (26 October to 2 November), so the line says
-    // 1 won and 3 tied, and nothing of the bill.
+    // Three tasks won with the bill tie without it, as an older report stored them, so the line
+    // says 1 won and 3 tied, and nothing of the bill.
     const billed = tallied("no-step", 4, 0);
     const scored = { wins: 4, losses: 0, ties: 0, p: 0.0625, unsolved: 0, differences: [700, 100, 100, 100] };
     c.compared("g-1", { old: HA, fresh: HB }, { ...billed, scored: { ...scored, unbilled: [600, 0, 0, 0] } });
@@ -530,8 +548,8 @@ describe("the Builder's filter over that reading", () => {
     expect(told).not.toContain("bill");
   });
 
-  // After a no-step of 18 won and 5 lost that one validity loss held (19 November), the Builder was
-  // told the tally alone and practised on, though no practice task could be the one it lost.
+  // After a no-step of 18 won and 5 lost that one validity loss held, a Builder told the tally
+  // alone would practise on, though no practice task could be the one it lost.
   it.each([
     ["fail", "Validity differed on 1 of the 2 tasks"],
     ["pass", "Validity differed on none of the 2 tasks"],

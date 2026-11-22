@@ -8,43 +8,37 @@
  * (`carries`) or whose package fails the shape check (`src/kernel/task.ts`), and holds out the
  * rest. No solver is put to a draft there, and no stronger solver passes a task first
  * (`AGENTS.md`, rule 9): when sessions put each instance to one, the first lost 14 of 25 tasks at
- * that solve and the second spent $48.45. Until 1 November `try_task` also put each draft to up to
- * three fresh solves by the reference harness and held it only where they left the reference
- * room. In the gate ablation on buffer of 31 October, one campaign an arm, the campaign without
- * them and the one with them each promoted on its first comparison, 8 to 0 and 10 to 0, on the
- * objective alone; the room solves admitted the same kind of task 1.1 hours later and for about
- * $24 of reference solves, and across the record since 16 October 5,664 of 6,225 of their readings
- * had the reference valid on every solve. Whether a task leaves the reference room is a
+ * that solve and the second spent $48.45. Nor does the reference harness solve a draft at the gate:
+ * in a paired ablation, campaigns with and without such room solves each promoted on their first
+ * comparison, and the room solves admitted the same kind of task later and at a cost, while finding
+ * the reference valid on nearly every solve. Whether a task leaves the reference room is a
  * comparison's to read.
  *
- * Since 5 November one conversation takes the host's asks in turn (`ask`; `examining`,
- * `session.ts`); one opened afresh, after a crash or a promotion, is told the past from the log (`record.ts`), its
- * home is carried (`Wall.keep`, `shell.ts`), and an instance held or refused is not taken again.
+ * One conversation takes the host's asks in turn (`ask`; `examining`, `session.ts`); one opened
+ * afresh, after a crash or a promotion, is told the past from the log (`record.ts`), its home is
+ * carried (`Wall.keep`, `shell.ts`), and an instance held or refused is not taken again.
  * An instance is logged whole with its proposal, hidden values too, so a later solve needs the log
  * alone. An author's accepted answer is kept for the Referee (`task.feasible`). Only admitted
- * tasks count towards supply.
- * On 26 October, all 64 proposals in one campaign repeated input already sent to try_answer,
- * totalling 1,148,964 characters. A checked instance can now be proposed by its content reference,
- * with the same identity and gate as a full instance, for the rest of this session.
+ * tasks count towards supply. A checked instance can be proposed by its content reference, with
+ * the same identity and gate as a full instance, for the rest of this session, so that a proposal
+ * need not repeat input already sent to try_answer.
  *
- * From 4 to 5 November each draft also had to carry its author's grade on the ladder and one sentence
- * on where a solver falls short (`claim` in `task.proposed`, which `history.ts` no longer reads). No
- * campaign ran with it, and it gave the record a second account of a task beside the reference's
- * outcome on it: a required field that added strictness and no fact (overhaul of 5 November).
+ * A draft carries no grade of its author's or sentence on where a solver falls short (`claim` in
+ * an old `task.proposed`, which `history.ts` no longer reads): it gave the record a second account
+ * of a task beside the reference's outcome on it, a required field that added strictness and no
+ * fact.
  *
  * Where the host gives a probe, `try_reference` puts an instance to fresh solves by the reference
  * harness at the author's asking, at most `tries` of them with a result, and tells of each its
  * validity, its turns, its measure and the kind of a fail, never its answer, trace or check. Its
  * reply is the one place a try is told: the record of a later session tells none, since a held task
- * is compared afresh and its comparison supersedes the tries. The gate reads none of it. Since the gate stopped solving on 1 November, exams that declare no objective
- * have had nothing but a failure of the reference to separate harnesses, and their authors, who
- * could not see one coming, wrote tasks it answered every time: 7 of 242 tallied tasks of six such
- * campaigns were untied, against 58 of 62 under the room-solving gate (4 November; an association
- * across commits and exams, not a controlled result). The solves are
- * the campaign's, billed to it, and counted by no comparison (`countedSolves`, `solves.ts`). Until
- * 5 November they ran on the session's own deadline, so trying a hard task cost its author writing
- * time; the clock now stands still while they run, as a drafting session's does while its draft is
- * read.
+ * is compared afresh and its comparison supersedes the tries. The gate reads none of it. Without a
+ * gate that solves, an exam that declares no objective has nothing but a failure of the reference to
+ * separate harnesses, and an author who cannot see one coming writes tasks it answers every time,
+ * which the tries let it see. The solves are the campaign's, billed to it, and counted by no
+ * comparison (`countedSolves`, `solves.ts`). The session's clock stands still while they run, as a
+ * drafting session's does while its draft is read, so trying a hard task costs its author no
+ * writing time.
  */
 import type { SeatTool } from "../agent/session.ts";
 import { Type } from "typebox";
@@ -52,7 +46,7 @@ import { affords, openingOf } from "../campaign/opening.ts";
 import { type AnswerFile, keepAnswerFiles, textFiles } from "../kernel/answer-files.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, contentOf, proposalsOf, writtenTasks } from "../kernel/history.ts";
-import { gainOver, ROOM } from "../kernel/compare.ts";
+import { gainOver, GAP_FLOOR } from "../kernel/compare.ts";
 import { poolOf } from "../kernel/reports.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
@@ -61,7 +55,7 @@ import { packageGate as checkPackage, type TaskPackage, taskSets, taskVersion } 
 import { objectiveOf, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
-import { keyIfDefined } from "../meta/optional-key.ts";
+import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
@@ -95,9 +89,6 @@ interface Terms {
   /** The campaign's verifier, for `try_answer`: the checks run on an instance with an answer of the
    *  Examiner's own. Null, the tool is not given. */
   readonly verify: Verifier | null;
-  /** Called as the gate holds a task, so the campaign can release practice while the session writes
-   *  (`releaseOwed`, `campaign-actions.ts`). */
-  readonly held?: () => void;
   /** One fresh solve of an instance by the reference harness in force, under the campaign's setting
    *  and through its solve queue, its start naming this session (`probing`, `tools/d1b/examine.ts`),
    *  and the most of them with a result the session may ask for. Null, `try_reference` is not given. */
@@ -157,8 +148,9 @@ interface Lent {
 /** The event a task admission writes of each draft (`admitDraft`). */
 const TASK_ADMISSION = "task.gate";
 /** The most solves of the reference harness with a result one ask may have (`try_reference`),
- *  whatever the host's probe allows. */
-export const TRIES = 8;
+ *  whatever the host's probe allows, enough that a session after a promotion, asked for many
+ *  tasks, is not out of tries with half of them still unwritten. */
+export const TRIES = 14;
 /** An instance as each tool that takes one spells it: its family, its public input and what only the
  *  checks read of it. */
 const SPELLED = {
@@ -189,10 +181,9 @@ type Within = <T>(action: () => Promise<T>) => Promise<T>;
 const PLANTED =
   "it carries, whole, an answer that passed try_answer in this session: a planted answer is for try_answer alone, and no task holds one, in its public input or its hidden values";
 const SUPPLIED = "The host has the tasks it needs. The session ends here.";
-/** What a first `finish` is answered with while the host has not the tasks it needs: every live
- *  Examiner session of 9 and 10 October proposed one batch of one to three tasks in three turns
- *  and finished, of two hundred turns and twelve tasks it had, so a campaign paid a session's
- *  opening six times for what one session could have written. The need, and no count. */
+/** What a first `finish` is answered with while the host has not the tasks it needs, since a
+ *  session that may finish at once proposes one small batch and stops, and a campaign then pays a
+ *  session's opening many times for what one session could have written. The need, and no count. */
 const MORE =
   "Noted. The host would take more tasks from this session. A second finish with nothing proposed since ends it.";
 
@@ -204,8 +195,8 @@ function carries(value: JsonValue, planted: ReadonlySet<string>): boolean {
 }
 
 /** An instance as a tool's arguments carry it, under `taskId`. A hidden value sent as JSON text is
- *  the JSON it encodes, for a try as for a proposal: on 12 October tries sent "null" where their
- *  proposals sent null, and no valid answer was kept for a task. */
+ *  the JSON it encodes, for a try as for a proposal, so a try that sends "null" where its proposal
+ *  sends null still keeps its valid answer for the task. */
 function instanceOf(
   taskId: string,
   given: { readonly family: string; readonly public_input: unknown; readonly hidden: unknown },
@@ -238,10 +229,19 @@ function measureOf(contract: Contract, verdict: Verdict): JsonObject {
   return { objective: { quantity, direction, measure } };
 }
 
-/** The files of the author's valid answer, kept by digest as a solve's are, so that the Referee
- *  reads a known valid answer whole. */
-const keptFiles = (log: string, files: readonly AnswerFile[] = []): JsonObject =>
-  files.length === 0 ? {} : { files: keepAnswerFiles(log, files).map((file) => ({ ...file })) };
+/** What `task.feasible` keeps of a valid answer beside its version: the answer, its files by digest
+ *  as a solve's are, so that the Referee reads it whole, and its measure (`measureOf`). */
+export const feasibleOf = (
+  log: string,
+  contract: Contract,
+  verdict: Verdict,
+  answer: JsonValue,
+  files: readonly AnswerFile[] = [],
+): JsonObject => ({
+  answer,
+  ...keysIf(files.length > 0, () => ({ files: keepAnswerFiles(log, files).map((file) => ({ ...file })) })),
+  ...measureOf(contract, verdict),
+});
 
 /** A verdict as the Examiner reads it. */
 function tried(verdict: Verdict): string {
@@ -287,7 +287,6 @@ async function admitDraft(desk: Desk, instance: Task): Promise<string> {
     return `${taskId}: refused: ${reason}`;
   }
   desk.held.push(version);
-  request.held?.();
   const held = `${taskId}: held out.`;
   if (verify === null || answer === undefined) return held;
   const verdict = await Promise.try(() => verify(instance, answer, undefined, files)).catch(
@@ -299,9 +298,7 @@ async function admitDraft(desk: Desk, instance: Task): Promise<string> {
   append(log, "task.feasible", {
     version,
     session,
-    answer,
-    ...keptFiles(log, files),
-    ...measureOf(request.contract, verdict),
+    ...feasibleOf(log, request.contract, verdict, answer, files),
   });
   return held;
 }
@@ -323,8 +320,7 @@ function proposeTool(desk: Desk): SeatTool {
     if (before === "now") return "An instance proposed before was not taken again.";
     if (before === "earlier") return "An instance an earlier session wrote was not taken again.";
     if (spent(desk)) return "An instance was not taken: this session can propose no further task.";
-    // Until 14 October an instance was still proposed after the deadline: recode-151's x-1 ended with
-    // two batches of room solves killed so.
+    // No instance is proposed after the deadline, when its work would only be killed.
     if (stop.aborted) return "An instance was not taken: the session has ended.";
     desk.seen.set(content, "now");
     desk.proposed += 1;
@@ -350,8 +346,8 @@ function proposeTool(desk: Desk): SeatTool {
             ? `Unknown instance reference ${given.reference}. Known references: ${desk.checked.size === 0 ? "none" : [...desk.checked.keys()].join(", ")}.`
             : taken(checked, signal);
         });
-        // How many of its drafts the session has put: told the limit at the opening alone, esp32-fresh-opus-terra's
-        // x-2 and x-3 met it unawares with a draft still unproposed (27 October).
+        // How many of its drafts the session has put, since a session told the limit at the
+        // opening alone can meet it unawares with a draft still unproposed.
         const used = `${String(desk.proposed)} of ${plural(desk.request.limits.puts, "draft")} put to the gate in this session.`;
         const lines = await Promise.all(
           instances.map(async (instance) => (isString(instance) ? instance : admitDraft(desk, instance))),
@@ -365,8 +361,8 @@ function proposeTool(desk: Desk): SeatTool {
   );
 }
 
-/** `read_example`, over the log as it stands at each call: until 28 October it served what stood at
- *  the session's start, and 31 calls asked in vain for a draft, most of them the session's own. */
+/** `read_example`, over the log as it stands at each call rather than as it stood at the session's
+ *  start, so a session can read its own drafts. */
 function exampleTool(tasks: () => readonly Task[]): SeatTool {
   return tool({
     name: "read_example",
@@ -383,16 +379,15 @@ function exampleTool(tasks: () => readonly Task[]): SeatTool {
       }
       const { taskId, family, publicInput, hidden } = example;
       // Unindented: the CLI keeps a result of 50,000 characters or more outside the seat's wall,
-      // and of 201 recorded jobstat tasks 31 passed that indented and 11 unindented (5 November).
+      // and indenting pushes nearly three times as many tasks past it.
       return text(capturedJsonStringify({ taskId, family, publicInput, hidden }));
     },
   });
 }
 
 /** The checks run on one instance with an answer of the Examiner's: which refuse it, or that none
- *  does. Without it the Examiner wrote tasks it could not know to have a valid answer: on 10 October the
- *  notes of nine sessions said in eight that validity rested on hand estimates, and two of
- *  seven tasks of one session asked for more than their input allowed. Nothing of a try is kept
+ *  does. Without it the Examiner writes tasks it cannot know to have a valid answer, resting
+ *  validity on hand estimates, and some ask for more than their input allows. Nothing of a try is kept
  *  but its trace and, where the checks pass on a task in the exam, the known valid answer.
  *  An instance the campaign already holds is checked under that task's own id, and a pass
  *  records a known valid answer where it is held out, in practice or disputed.
@@ -416,19 +411,16 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
       sets.held.includes(version) ||
       sets.released.includes(version) ||
       sets.states.get(version) === "disputed";
-    const measure = measureOf(contract, verdict);
     if (
       inExam &&
       (!poolOf(events).feasible.has(version) ||
         acceptedAnswers(events, version).length === 0 ||
-        "objective" in measure)
+        "objective" in measureOf(contract, verdict))
     ) {
       append(log, "task.feasible", {
         version,
         session: desk.request.id,
-        answer,
-        ...keptFiles(log, files),
-        ...measure,
+        ...feasibleOf(log, contract, verdict, answer, files),
       });
     }
   };
@@ -498,17 +490,18 @@ const capped = (probe: Terms["probe"]): number => Math.min(probe?.tries ?? 0, TR
 /** What a tool that takes JSON values tells of `from_file`, where the session has a home to read. */
 const filed = (desk: Desk): string => (desk.home === undefined ? "" : ` ${FROM_FILE}`);
 
-/** Where the contract declares an objective, the author's `try_answer` measure of the instance and
- *  this call's valid solves measured, whether the best of those leaves the author's answer better
- *  by the comparison's floor (`ROOM`): one line, or none. A fact for the author; the gate reads none
- *  of it. */
+/** Where the contract declares an objective, the author's `try_answer` measure of the instance, the
+ *  best of this call's valid solves with their count, and the author's lead over it as a share of the
+ *  larger measure beside the comparison's floor (`GAP_FLOOR`): one line, or none. Facts, not a verdict
+ *  on room, since one or two solves show little of the reference's spread; the gate reads none of it. */
 function roomLine(contract: Contract, author: number | null, valid: readonly number[]): string[] {
   const declared = contract.objective;
   if (declared === undefined || author === null || valid.length === 0) return [];
   const best = valid.reduce((kept, next) => (gainOver(declared, next, kept) > 0 ? next : kept));
-  const ahead = gainOver(declared, author, best) >= ROOM;
+  const lead = gainOver(declared, author, best);
+  const share = `${String(Number((Math.abs(lead) * 100).toPrecision(3)))}%`;
   return [
-    `Your answer that passed try_answer on this instance measures ${measured(author)}, and the best valid solve here ${measured(best)}: ${ahead ? `yours is better by at least the comparison's floor (${String(ROOM * 100)}%), so the task leaves the reference room on the objective` : `yours is not better by the comparison's floor (${String(ROOM * 100)}%), so on the objective the task leaves the reference no room above your answer`}.`,
+    `Your answer that passed try_answer on this instance measures ${measured(author)}; valid solves here: ${String(valid.length)}, the best measuring ${measured(best)}; yours ${lead >= 0 ? "leads" : "trails"} it by ${share} of the larger measure, against the comparison's floor of ${String(GAP_FLOOR * 100)}%.`,
   ];
 }
 
@@ -521,7 +514,7 @@ function roomLine(contract: Contract, author: number | null, valid: readonly num
  * id, and any other under one its content names. Each solve's turns and measure are read back from
  * the log under the id the probe returns.
  */
-function tryReferenceTool(desk: Desk, first: NonNullable<Terms["probe"]>, within: Within): SeatTool {
+function tryReferenceTool(desk: Desk, within: Within): SeatTool {
   return tool(
     fromHome(desk.home, {
       name: "try_reference",
@@ -534,9 +527,13 @@ function tryReferenceTool(desk: Desk, first: NonNullable<Terms["probe"]>, within
         context.abortSignal?.throwIfAborted();
         // The ask's own: its solves' starts name the ask (`probing`, `tools/d1b/examine.ts`).
         const { request } = desk;
-        const probe = request.probe ?? first;
+        // An ask without a probe has no try: the first ask's would solve under its reference, which a
+        // promotion since may have replaced.
+        const { probe } = request;
         const left = capped(probe) - desk.tried;
-        if (left <= 0) throw new Error("This session has no try of the reference harness left.");
+        if (probe === null || left <= 0) {
+          throw new Error("This session has no try of the reference harness left.");
+        }
         const given =
           "reference" in args.task ? desk.checked.get(args.task.reference) : instanceOf("", args.task);
         if (given === undefined) throw new Error("Unknown instance reference. try_answer returns one.");
@@ -576,8 +573,7 @@ function tryReferenceTool(desk: Desk, first: NonNullable<Terms["probe"]>, within
 
 /**
  * The instances earlier sessions wrote that a gate read. One whose session was cut before its gate
- * wrote anything is no task of the campaign's, and may be proposed again. Until 4 November so could
- * one an earlier log's room solves refused unmeasured; no gate since 1 November leaves one so.
+ * wrote anything is no task of the campaign's, and may be proposed again.
  */
 function admittedDrafts(events: readonly LogEvent[]): Task[] {
   const admissions = new Set(
@@ -590,8 +586,8 @@ function admittedDrafts(events: readonly LogEvent[]): Task[] {
 
 /**
  * The mode that writes tasks: the exam's own tools, `try_answer` where the host verifies, and
- * `try_reference` where the host gives a probe. The copy of the reference harness its home held
- * from 19 October to 18 November is told in `tools/d1b/examine.ts`.
+ * `try_reference` where the host gives a probe. Its home holds no copy of the reference harness
+ * (`tools/d1b/examine.ts`).
  */
 export function writing(
   request: Terms,
@@ -661,13 +657,13 @@ export function writing(
       proposeTool(desk),
       exampleTool(() => [...writtenTasks(read(desk.request.log)), ...desk.request.tasks]),
       ...(verify === null ? [] : [tryTool(desk, verify)]),
-      ...(probe === null ? [] : [tryReferenceTool(desk, probe, within)]),
+      ...(probe === null ? [] : [tryReferenceTool(desk, within)]),
     ],
     enters: "a task enters it through propose_tasks alone",
     nudge: "Propose further tasks",
     finish: "End the session, with a sentence or two for the log on what you wrote.",
-    // Until 30 October a session with no proposal left was still asked for more: 6 of 206
-    // declined finishes came after the allowance was spent, 20 turns that could propose nothing.
+    // A session with no proposal left is not asked for more, which would spend turns that could
+    // propose nothing.
     get declined() {
       return spent(desk) ? null : MORE;
     },

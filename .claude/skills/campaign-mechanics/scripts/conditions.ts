@@ -1,22 +1,23 @@
 #!/usr/bin/env bun
 /**
- * Inspect solve settings and identify condition differences within comparisons.
+ * Inspects solve settings and identifies condition differences within comparisons.
  *
  *   bun .claude/skills/campaign-mechanics/scripts/conditions.ts <log.jsonl | campaign name>
  *
- * A comparison should differ only by harness and its tool tree, with tasks varying between pairs.
- * Read condition.recorded events through conditionsOf, which verifies each content hash. Group
- * solve.started events by their comparison or Examiner session and report:
+ * Within a valid comparison, solves should differ only in the harness, its tool tree, and the
+ * task. This script reads `condition.recorded` events via `conditionsOf` (verifying each content
+ * hash), groups `solve.started` events by comparison or Examiner session, and reports:
  *
- * - Settings in first-use order, their solve counts and field changes from the previous setting.
- * - Comparison solve, harness and setting counts, with differences beyond harness, tools and task.
- * - Room solves by Examiner session, and practice or other solves without a session id.
+ * - distinct settings in order of first use, with solve counts and field-level changes from the
+ *   preceding setting;
+ * - per-comparison solve, harness, and setting counts, flagging any difference beyond harness,
+ *   tools, and task;
+ * - Examiner room solves grouped by session, plus practice and other solves without a session ID.
  *
- * Print model, effort, compaction and side values; list changed limits and runtime package keys.
- * Represent other changed values by short digests. A changed host identifies a code change between
- * conditions. Output omits tasks, answers and checks, but remains exam-side and must stay untracked.
- *
- * Written on 30 October to make condition differences visible alongside the run view's summary.
+ * Scalar fields (`model`, `effort`, `compaction`, `side`) are printed verbatim; changed keys in
+ * `limits` and `runtime` are listed explicitly; remaining fields are represented by short digests.
+ * A changed `host` digest indicates a host code change between conditions. Output omits tasks,
+ * answers, and checks, but remains exam-side and must stay untracked.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { short } from "#src/campaign/move.ts";
@@ -32,7 +33,7 @@ const USAGE = `usage: conditions.ts <log.jsonl | campaign name>
 
 The settings a campaign's solves ran under, and what each comparison's solves differ in.`;
 
-/** The fields a setting holds (`Setting`, `condition.ts`), in the order `settingId` hashes them. */
+/** Fields included in a `Setting` (`condition.ts`), ordered to match `settingId` hashing. */
 const SETTING = [
   "contract",
   "model",
@@ -46,18 +47,18 @@ const SETTING = [
   "host",
   "side",
 ] as const satisfies readonly (keyof Condition)[];
-/** The fields whose value is a word worth printing whole, beside a digest's head for the others. */
+/** Scalar fields printed in full rather than as short hashes. */
 const WORDS: ReadonlySet<string> = new Set(["model", "effort", "compaction", "side"]);
 
 type Field = (typeof SETTING)[number];
 
-/** One started solve: its condition, and the comparison it counts for, or null outside one. */
+/** Started solve record with its resolved condition and associated session ID, or null if ungrouped. */
 interface Started {
   readonly condition: Condition;
   readonly comparison: string | null;
 }
 
-/** Every started solve whose condition the log records. */
+/** Extracts every started solve whose condition is present in the log. */
 function startedOf(events: readonly LogEvent[]): Started[] {
   const conditions = conditionsOf(events);
   return events.flatMap(({ kind, data }) => {
@@ -68,7 +69,7 @@ function startedOf(events: readonly LogEvent[]): Started[] {
   });
 }
 
-/** A setting's limits or runtime packages, by key. */
+/** Returns a key-value map for the `limits` or `runtime` field of a condition. */
 function keysOf(
   field: "limits" | "runtime",
   side: Condition,
@@ -78,7 +79,7 @@ function keysOf(
     : new Map(Object.entries(side.runtime));
 }
 
-/** How one field moved between two settings, or null where it did not. */
+/** Describes how a single setting field changed between two conditions, or returns null if unchanged. */
 function moved(field: Field, before: Condition, after: Condition): string | null {
   const [was, now] = [before[field], after[field]];
   if (hashJsonValue(was) === hashJsonValue(now)) return null;
@@ -93,12 +94,12 @@ function moved(field: Field, before: Condition, after: Condition): string | null
   return `${field} ${short(hashJsonValue(was))} to ${short(hashJsonValue(now))}`;
 }
 
-/** The fields beyond the harness, its tool tree and the task in which `conditions` differ. */
+/** Returns the setting fields (excluding harness, tool tree, and task) that vary across `conditions`. */
 export function differing(conditions: readonly Condition[]): Field[] {
   return SETTING.filter((field) => new Set(conditions.map((each) => hashJsonValue(each[field]))).size > 1);
 }
 
-/** The lines this script prints for `events`. */
+/** Formats the condition summary lines for `events`. */
 export function conditionLines(events: readonly LogEvent[]): string[] {
   const started = startedOf(events);
   const settings = new Map<string, { condition: Condition; solves: number }>();
@@ -117,7 +118,7 @@ export function conditionLines(events: readonly LogEvent[]): string[] {
     return `setting ${String(at + 1)} (${short(id)}): ${plural(solves, "solve")}; ${from}`;
   });
   const groups = Map.groupBy(started, ({ comparison }) => comparison);
-  // A solve names the session it ran for: a comparison's, or an Examiner session's room solves.
+  // A solve's session ID identifies either a comparison or an Examiner session's room solves.
   const compared = new Set(
     events.flatMap(({ kind, data }) =>
       kind === "comparison.started" && isString(data.session) ? [data.session] : [],

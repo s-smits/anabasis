@@ -9,12 +9,5 @@
     "correctness": "off"
   },
   "ignorePatterns": ["**/vendor/**", "**/node_modules/**", "**/*.d.ts"],
-  "rules": {
-    "ana/no-positional-boolean-parameter": [
-      "warn",
-      {
-        "widen": ["flags", "bindings"]
-      }
-    ]
-  }
+  "rules": {}
 }

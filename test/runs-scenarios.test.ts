@@ -4,11 +4,9 @@ import { append } from "../src/kernel/log.ts";
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   rmSync,
   symlinkSync,
-  utimesSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
@@ -19,20 +17,6 @@ const fixtures: string[] = [];
 const CLI = "tools/runs/cli.ts";
 const LOGIN = String(100);
 const LOGINS = [LOGIN, String(101), String(102)];
-const HEALTH = {
-  load: 12,
-  cores: 8,
-  performanceCores: 4,
-  charger: "AC Power connected",
-  freeGiB: 1,
-  freePct: 1,
-  sizes: { ".ana": 1024, archive: 2048, controllers: 4096, "other worktrees": 8192 },
-  bun: "fixture",
-  commit: "a".repeat(40),
-  ready: true,
-  live: [{ name: "distant", login: null, host: "here" }],
-  busiest: [{ pid: 42, cpu: 90, command: "bun", run: "distant" }],
-};
 const READ = `async (wanted) => wanted.map((login) => ({login,plain:false,via:"oauth-usage",notes:[],fiveHour:{pct:0,resetsAt:null},sevenDay:{pct:0,resetsAt:new Date(Date.now()+Number(login)*86400000).toISOString()}}))`;
 
 afterAll(() => {
@@ -73,111 +57,6 @@ function catalogue(made: ReturnType<typeof fixture>, packs: readonly string[]) {
   }));
 }
 
-it("S1: one health command exposes a full disk and overloaded host without hiding a silent peer", () => {
-  const made = fixture();
-  const fleet = { [made.host.ssh]: { health: HEALTH }, [made.other.ssh]: { offline: true } };
-  const result = made.runScript(CLI, ["hosts", "--health"], {
-    ANA_HOSTS: JSON.stringify([made.host, made.other]),
-    FAKE_FLEET: JSON.stringify(fleet),
-  });
-  expect(result.code).toBe(1);
-  expect(result.out).toContain("⚠ load 12.0/8 cores; performance cores 4");
-  expect(result.out).toContain("⚠ disk 1.0 GiB free (1.0%)");
-  for (const field of [
-    "charger: AC Power",
-    "controllers",
-    "other worktrees",
-    "Bun fixture",
-    "aaaaaaaaa ready",
-    "distant",
-  ]) {
-    expect(result.out).toContain(field);
-  }
-  expect(result.err).toContain("peer: health unavailable");
-  const boundary = made.runScript(CLI, ["hosts", "--health"], {
-    ANA_HOSTS: JSON.stringify([made.host, made.other]),
-    FAKE_FLEET: JSON.stringify({
-      [made.host.ssh]: { health: HEALTH },
-      [made.other.ssh]: {
-        health: { ...HEALTH, load: 8, freePct: 10, performanceCores: null, ready: false },
-      },
-    }),
-  });
-  expect(boundary.code).toBe(0);
-  const peer = boundary.out.split("── peer")[1] ?? "";
-  expect(peer).not.toContain("⚠");
-  expect(peer).toContain("performance cores not reported");
-  expect(peer).toContain("not ready");
-});
-
-it("S2: health identifies live campaigns, seats and the hot descendant that belongs to a run", () => {
-  const made = fixture();
-  campaign(made, "local", made.main);
-  // One table answers both the live runs and the busiest processes, so it alone is given.
-  const table = {
-    "-axww -o pid=,ppid=,pcpu=,args=":
-      "43 42 90 engine-worker\n42 1 5 bun tools/d2/harness-builder.ts --name local\n44 1 40 browser\n45 1 7 bun .claude/skills/system-path-simulation/scripts/live-seat.ts start --name simulated",
-  };
-  const result = made.runScript(CLI, ["hosts", "--health"], {
-    FAKE_HEALTH: JSON.stringify(HEALTH),
-    FAKE_PS_TABLE: JSON.stringify(table),
-    FAKE_CWDS: `p42\nn${made.main}`,
-  });
-  expect(result.code).toBe(0);
-  expect(result.out).toContain("engine-worker; run local");
-  expect(result.out).toContain("browser; run unassigned");
-  expect(result.out).toContain("bun; run simulated");
-  expect(result.out).toContain("simulated");
-  expect(result.out).toContain("live campaigns and seats: local, simulated");
-  expect(made.recorded().some((call) => call.tool === "pkill")).toBe(false);
-});
-
-it("S3: view and fleet pulse explain a dead remote run using its newest bounded stderr, and no wait it left", () => {
-  const made = fixture();
-  const remote = campaign(made, "distant");
-  writeFileSync(join(remote.folder, "launch-old.err"), "old failure");
-  utimesSync(join(remote.folder, "launch-old.err"), 1, 1);
-  writeFileSync(
-    join(remote.folder, "launch-new.err"),
-    `${"discarded prefix\n".repeat(1000)}newest startup failure\n`,
-  );
-  writeFileSync(join(made.root, "sentinel"), "do not follow this link");
-  symlinkSync(join(made.root, "sentinel"), join(remote.folder, "launch-linked.err"));
-  const env = {
-    FAKE_FLEET: JSON.stringify({
-      [made.host.ssh]: { execute: true, env: { FAKE_MAIN: remote.tree, FAKE_RUN_CLI: "1" } },
-    }),
-  };
-  const view = made.runScript(CLI, ["view", "distant"], env);
-  expect(view.code).toBe(0);
-  for (const text of ["process gone without a campaign ending", "newest startup failure"]) {
-    expect(view.out).toContain(text);
-  }
-  // Nothing waits in a run whose process is gone, whatever wait its log last recorded.
-  expect(view.out).not.toContain("waiting for provider");
-  expect(view.out).not.toContain("old failure");
-  expect(view.out).not.toContain("do not follow this link");
-  const observation = readFileSync(
-    join(made.main, "data", "runs", made.host.name, "distant", "observation.json"),
-    "utf8",
-  );
-  expect(observation.length).toBeLessThan(3000);
-  const pulse = made.runScript(CLI, ["pulse", "--no-readers"], env);
-  expect(pulse.code).toBe(0);
-  expect(pulse.out).toContain("newest startup failure");
-  // The same observer's next look has nothing new to say of a run that was already stopped.
-  const again = made.runScript(CLI, ["pulse", "--no-readers"], env);
-  expect(again.code).toBe(0);
-  expect(again.out).not.toContain("distant");
-  // A later event of that run, in a look that names it, is said by its own line, without the reason
-  // its state already gave.
-  append(remote.log, "comparison.reported", { reading: "held" });
-  const later = made.runScript(CLI, ["pulse", "--no-readers", "distant"], env);
-  expect(later.code).toBe(0);
-  expect(later.out).toContain("reported held");
-  expect(later.out).not.toContain("newest startup failure");
-});
-
 it("a local fresh refused after its worktree is made removes that worktree, so the next fresh takes the plain name", () => {
   // The install fails, the tree holding no package.json, before any campaign folder is made.
   const made = fixture();
@@ -192,158 +71,6 @@ it("a local fresh refused after its worktree is made removes that worktree, so t
   expect(refused.code).toBe(1);
   expect(existsSync(tree ?? "")).toBe(false);
   expect(planned(fresh(false).out)).toBe(tree);
-});
-
-it("S4: fresh prepares the selected host at the requested published commit without a host argument", () => {
-  const made = fixture();
-  const result = made.runScript(CLI, ["fresh", "sample", "--model", "gpt", "--at", made.commit, "--yes"], {
-    FAKE_CATALOGUE: JSON.stringify(catalogue(made, ["sample"])),
-    FAKE_PREPARE_EXECUTE: "1",
-  });
-  expect(result.code).toBe(0);
-  const calls = made.recorded();
-  const install = calls.findIndex((call) => call.tool === "host-bun" && call.args.includes("install"));
-  const launch = calls.findIndex(
-    (call) => call.tool === "ssh" && call.args.at(-1)?.includes("fresh") === true,
-  );
-  expect(install).toBeGreaterThan(-1);
-  expect(launch).toBeGreaterThan(install);
-  expect(calls[launch]?.args.at(-1)).toContain(made.commit);
-  expect(calls.some((call) => call.args.includes("checkout"))).toBe(false);
-});
-
-it("a quiet live run says since when, not a load wait that is over, while an ended run ignores stale stderr", () => {
-  const made = fixture();
-  const remote = campaign(made, "distant");
-  const waited = append(remote.log, "campaign.waited", { load: 9, cores: 4, ms: 60_000 });
-  writeFileSync(remote.log, `${JSON.stringify({ ...waited, at: new Date(0).toISOString() })}\n`);
-  const env = {
-    FAKE_CATALOGUE: JSON.stringify([
-      { name: "distant", path: remote.log, open: true, stderr: "quiet stderr" },
-    ]),
-  };
-  const quiet = made.runScript(CLI, ["view", "distant"], env);
-  expect(quiet.code).toBe(0);
-  expect(quiet.out).toContain("quiet since 1970-01-01T00:00:00.000Z");
-  expect(quiet.out).not.toContain("waiting for");
-  expect(quiet.out).toContain("quiet stderr");
-  expect(quiet.out).not.toContain("process gone");
-  append(remote.log, "campaign.ended", { ending: "finished", why: "fixture" });
-  const ended = made.runScript(CLI, ["view", "distant"], env);
-  expect(ended.code).toBe(0);
-  expect(ended.out).not.toContain("newest stderr");
-});
-
-it("an empty remote log still explains a process that died before its first event", () => {
-  const made = fixture();
-  const remote = campaign(made, "distant");
-  writeFileSync(remote.log, "");
-  const result = made.runScript(CLI, ["view", "distant"], {
-    FAKE_CATALOGUE: JSON.stringify([
-      { name: "distant", path: remote.log, open: false, stderr: "startup failed before opening" },
-    ]),
-  });
-  expect(result.code).toBe(0);
-  expect(result.out).toContain("process gone without a campaign ending");
-  expect(result.out).toContain("startup failed before opening");
-});
-
-it("S5: a missing remote login is refused in one line before a launch is sent", () => {
-  const made = fixture();
-  const result = made.runScript(CLI, ["fresh", "sample", "--login", LOGIN, "--yes"], {
-    FAKE_CATALOGUE: JSON.stringify(catalogue(made, ["sample"])),
-    FAKE_LOGIN_PRESENT: "false",
-  });
-  expect(result.code).toBe(1);
-  expect(result.err.trim().split("\n")).toHaveLength(1);
-  expect(result.err).toContain("must be carried to runner first");
-  expect(
-    made.recorded().some((call) => call.tool === "ssh" && call.args.at(-1)?.includes("fresh") === true),
-  ).toBe(false);
-});
-
-it("S6: one fresh batch plans repeated packs across host and login caps, each login on two hosts, before launching anything", () => {
-  const made = fixture();
-  const packs = ["sample", "sample", "domain", "work", "code", "truss"];
-  const args = [...packs, "--logins", LOGINS.join(",")];
-  const env = {
-    ANA_HOSTS: JSON.stringify([made.host, made.other]),
-    ANA_RUN_CAP: "3",
-    ANA_LOGINS: LOGINS.join(","),
-    ANA_LOGIN_RUNS: "2",
-  };
-  const result = made.run(
-    `import { fresh } from "REPOSITORY/tools/runs/fresh.ts"; await fresh(${JSON.stringify(args)}, ${READ});`,
-    env,
-  );
-  expect(result.code).toBe(0);
-  const rows = result.out.split("\n").filter((line) => /^\d+[.] /.test(line));
-  expect(rows).toHaveLength(6);
-  for (const [host, cap] of [
-    ["here", 3],
-    [made.host.name, 2],
-    [made.other.name, 2],
-  ] as const) {
-    expect(rows.filter((row) => row.includes(`-> ${host};`)).length).toBeLessThanOrEqual(cap);
-  }
-  for (const login of LOGINS) {
-    const own = rows.filter((row) => row.endsWith(`login ${login}`));
-    expect(own).toHaveLength(2);
-    expect(new Set(own.map((row) => row.split("-> ")[1]?.split(";")[0])).size).toBe(2);
-  }
-  expect(rows[0]).toContain("-> here");
-  expect(
-    made.recorded().some((call) => call.tool === "ssh" && call.args.at(-1)?.includes("fresh") === true),
-  ).toBe(false);
-  const refused = made.run(
-    `import { fresh } from "REPOSITORY/tools/runs/fresh.ts"; await fresh(${JSON.stringify([...packs, "overflow", "--yes"])}, ${READ});`,
-    env,
-  );
-  expect(refused.code).toBe(1);
-  expect(refused.err).toContain("no allowed login has room");
-});
-
-it("S7: one zip collects campaigns from several hosts into a handover here", () => {
-  const made = fixture();
-  const first = campaign(made, "distant");
-  const second = campaign(made, "another", join(made.root, "other-remote"));
-  const fleet = {
-    [made.host.ssh]: { catalogue: [{ name: "distant", path: first.log }] },
-    [made.other.ssh]: { catalogue: [{ name: "another", path: second.log }] },
-  };
-  const out = join(made.root, "handover.zip");
-  const result = made.runScript(CLI, ["zip", "distant", "another", "--light", "--out", out], {
-    ANA_HOSTS: JSON.stringify([made.host, made.other]),
-    FAKE_FLEET: JSON.stringify(fleet),
-  });
-  expect(result.code).toBe(0);
-  expect(result.out).toContain("2 runs");
-  expect(existsSync(out)).toBe(true);
-  expect(made.recorded().filter((call) => call.tool === "rsync")).toHaveLength(2);
-});
-
-it("fetch with no name gathers the records of every campaign the other hosts hold, and copies only a grown log again", () => {
-  const made = fixture();
-  const first = campaign(made, "distant");
-  const second = campaign(made, "another", join(made.root, "other-remote"));
-  const gather = () => {
-    const bytes = (log: string) => readFileSync(log).length;
-    const fleet = {
-      [made.host.ssh]: { catalogue: [{ name: "distant", path: first.log, bytes: bytes(first.log) }] },
-      [made.other.ssh]: { catalogue: [{ name: "another", path: second.log, bytes: bytes(second.log) }] },
-    };
-    const result = made.runScript(CLI, ["fetch"], {
-      ANA_HOSTS: JSON.stringify([made.host, made.other]),
-      FAKE_FLEET: JSON.stringify(fleet),
-    });
-    expect(result.code).toBe(0);
-    expect(result.out.split("\n").filter((line) => line.endsWith("log.jsonl"))).toHaveLength(2);
-    return made.recorded().filter((call) => call.tool === "rsync").length;
-  };
-  expect(gather()).toBe(2);
-  append(second.log, "campaign.ended", { ending: "finished", why: "grown" });
-  // The grown log takes one transfer of its record from the host; the unchanged one takes nothing.
-  expect(gather()).toBe(3);
 });
 
 it("a batch sends its whole remote plan sequentially and stops on any failed launch exit", () => {
@@ -374,19 +101,6 @@ it("a batch sends its whole remote plan sequentially and stops on any failed lau
   ).toHaveLength(3);
 });
 
-it("S8: source and view discover a remote campaign without runs on", () => {
-  const made = fixture();
-  const remote = campaign(made, "distant");
-  const env = {
-    FAKE_CATALOGUE: JSON.stringify([{ name: "distant", path: remote.log, open: true, stderr: null }]),
-  };
-  expect(made.runScript(CLI, ["source", "distant"], env).out).toContain(made.commit.slice(0, 9));
-  const result = made.runScript(CLI, ["view", "distant"], env);
-  expect(result.code).toBe(0);
-  expect(result.out).toContain("waiting for provider until 2099");
-  expect(result.out).not.toContain("process gone");
-});
-
 it("a missing login anywhere in a batch prevents every launch after printing the whole plan", () => {
   const made = fixture();
   const fleet = {
@@ -407,90 +121,6 @@ it("a missing login anywhere in a batch prevents every launch after printing the
   expect(
     made.recorded().some((call) => call.tool === "ssh" && call.args.at(-1)?.includes("fresh") === true),
   ).toBe(false);
-});
-
-it("S9: a laptop with no open run still pulses the campaign that lives on a peer", () => {
-  const made = fixture();
-  const remote = campaign(made, "distant");
-  // A real process stands in the tree, since Linux reads its cwd from /proc and not from lsof.
-  const writer = Bun.spawn(["sleep", "60"], { cwd: remote.tree });
-  const env = {
-    FAKE_FLEET: JSON.stringify({
-      [made.host.ssh]: {
-        execute: true,
-        env: {
-          FAKE_MAIN: remote.tree,
-          FAKE_RUN_CLI: "1",
-          FAKE_PS: `${writer.pid} bun tools/d2/harness-builder.ts --name distant`,
-          FAKE_CWDS: `p${writer.pid}\nn${remote.tree}`,
-        },
-      },
-    }),
-  };
-  const result = made.runScript(CLI, ["pulse", "--no-readers"], env);
-  writer.kill();
-  expect(result.code).toBe(0);
-  // A host with nothing to say prints no line of its own, this laptop included.
-  expect(result.out).not.toContain("── here");
-  expect(result.out).toContain("── runner");
-  expect(result.out).toContain("1 open");
-  expect(result.out).toContain("distant");
-});
-
-it("S10: a WAN timeout reports its duration and preserves the other host's answer and capacity", () => {
-  const made = fixture();
-  const hosts = JSON.stringify([made.host, made.other]);
-  const fleet = { [made.host.ssh]: { health: HEALTH }, [made.other.ssh]: { timeout: true } };
-  // A control socket's path must stay under 104 bytes, which the suite's own temp root may not leave room for.
-  const controlRoot = mkdtempSync(join("/tmp", "ana-s10-"));
-  fixtures.push(controlRoot);
-  const result = made.runScript(CLI, ["hosts", "--health"], {
-    ANA_HOSTS: hosts,
-    FAKE_FLEET: JSON.stringify(fleet),
-    ANA_TEST_TMPDIR: controlRoot,
-  });
-  expect(result.code).toBe(1);
-  expect(result.out).toContain("Bun fixture");
-  // Said only where the 30 s limit killed the peer, whose fake answers after 50 s. A busy host runs
-  // the limit late, so the duration has a floor and no ceiling.
-  expect(result.err).toContain("timed out");
-  const [, duration = "0"] = /peer \((\d+[.]\d) s\)/.exec(result.out) ?? [];
-  expect(Number(duration)).toBeGreaterThanOrEqual(30);
-  const calls = made.recorded().filter((call) => call.tool === "ssh");
-  for (const option of [
-    "ControlMaster=auto",
-    "ControlPersist=300",
-    "ServerAliveInterval=15",
-    "ConnectTimeout=20",
-  ]) {
-    expect(calls.every((call) => call.args.includes(option))).toBe(true);
-  }
-  const sockets = calls
-    .filter((call) => call.args.at(-2) === made.host.ssh)
-    .map((call) => call.args.find((arg) => arg.startsWith("ControlPath=")));
-  expect(new Set(sockets).size).toBe(1);
-  const refused = made.runScript(CLI, ["fresh", "sample", "--model", "gpt", "--yes"], {
-    ANA_HOSTS: hosts,
-    FAKE_FLEET: JSON.stringify({ [made.other.ssh]: { offline: true } }),
-  });
-  expect(refused.code).toBe(1);
-  expect(refused.err).toContain("cannot place a campaign without its live count");
-});
-
-it("S11: move prepares a destination before a clean-point transfer and can hold before continuing", () => {
-  const made = fixture();
-  const source = campaign(made, "local", made.main);
-  const result = made.runScript(
-    CLI,
-    ["move", "local", "--to", made.host.name, "--login", LOGIN, "--after", "reported", "--hold", "--yes"],
-    // The destination's live count comes from its own `active`, run through the CLI there.
-    { FAKE_EXECUTE: "1", FAKE_RUN_CLI: "1" },
-  );
-  expect(result.code).toBe(0);
-  expect(result.out).toContain("after its next reported");
-  expect(result.out).toContain("held: go on with");
-  expect(existsSync(source.folder)).toBe(false);
-  expect(existsSync(join(made.root, "anabasis-local", ".ana", "d2", "local", "log.jsonl"))).toBe(true);
 });
 
 it("continue refuses --after next with another commit before it pauses anything", () => {

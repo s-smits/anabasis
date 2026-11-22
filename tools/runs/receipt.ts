@@ -6,10 +6,8 @@
  *
  * The campaign command keeps one a run, as `launch-run-<n>.json` (`keepReceipt`,
  * `tools/d2/harness-builder.ts`), and `bun run runs launch` writes its output beside it under the
- * same `n` (`nextRun`). Until 10 October the command kept none; until 11 October the launcher kept
- * one for each round, standalone comparison or session it started, under that session's id, and a campaign of
- * then holds those. Until 15 October two readers numbered the next run, and one reader left the
- * flags out and another read them again from the file.
+ * same `n` (`nextRun`). An older campaign may instead hold one for each round, standalone
+ * comparison or session it started, under that session's id. One reader numbers the next run.
  *
  *   bun run runs source <name> [--holds <commit>]... [--has <text>]...
  *   bun run runs source (--holds <commit> | --has <text>)...
@@ -18,25 +16,25 @@
  * commit is published and whether it holds a named fix: the first two checks of "was the mechanism
  * live in run X" (attribution-and-proof), what an outside reader can open (oracle-handover) and
  * whether a patch can reach a live run (run-improvement-campaign). It prints no flag and no path a
- * receipt holds. Until 15 October it was a skill script that took the campaign's folder.
+ * receipt holds.
  *
  * Without a name it lists every campaign a reader reads whose every launch carries what is asked
  * (`ranWith`), and `runs replay` takes the same flags. A fix is asked for by its commit (`--holds`),
- * or by text its code holds (`--has`, in `src`, `tools` and `packages`), which a restack that rewrote the fix's commits leaves in
- * place: both #306 runs of 21 October ran an earlier head of #306, which no later head holds. The
- * operator asked on 21 October that runs be compared and triaged only with runs that had the
- * mechanism in question, and a run that lacks it is none of its evidence (AGENTS.md, section 9).
- * Named runs use the same predicate before printing their details. The selector regression tests
- * of 26 October showed that this branch ignored `--has` and printed mixed launches for `--holds`.
- * More than one name is refused: otherwise the first name silently discarded the others.
+ * or by text its code holds (`--has`, in `src`, `tools` and `packages`), which a restack that rewrote
+ * the fix's commits leaves in place, where a run of an earlier head of a pull request holds no
+ * commit of its later heads. Runs are compared and triaged only with runs that had the mechanism in
+ * question (the operator's choice), and a run that lacks it is none of its evidence (AGENTS.md,
+ * section 9). Named runs use the same predicate before printing their details, so neither `--has`
+ * is ignored nor mixed launches printed for `--holds`. More than one name is refused: otherwise the
+ * first name would silently discard the others.
  *
  * A solve's `python3` is the host's own, the first on the wall's path (`toolchainPathDirs`), and no
  * condition names it, since a condition that did would set every solve aside when a run moves host.
  * So the receipt keeps what a launch found there (`hostPython`), and `source` prints it, which lets
- * two runs be set side by side knowing whether their solvers had the same libraries to hand. On
- * 5 November two jobstat campaigns differed by a host: 3.14.7 with numpy on one, and 3.15.0 with no
- * numpy on the other, where the reference's solves reported a library missing in 41 of 42 solves of
- * one comparison, and a login shell's Python on that host, which holds numpy, had said otherwise.
+ * two runs be set side by side knowing whether their solvers had the same libraries to hand. Two
+ * campaigns of one domain can differ by a host's Python and its packages, so that one's solves
+ * report a library missing nearly every time, while a login shell's Python on that host, which
+ * holds it, says otherwise.
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { gitMaybe } from "#src/meta/git.ts";
@@ -59,17 +57,17 @@ export interface Receipt {
   readonly at: string;
   readonly pid: number;
   readonly flags: readonly string[];
-  /** The env file's path, which the launcher kept until 11 October; null since. */
+  /** The env file's path, which an older launcher kept; null now. */
   readonly envFile: string | null;
   readonly commit: string;
   readonly dirty: boolean;
   readonly load: number;
   readonly cores: number;
-  /** The Bun that ran it, absent before 15 October: seats ran a global 1.4.2 under a pin of 1.4.3. */
+  /** The Bun that ran it, absent in older receipts, so that a global Bun under another pin shows. */
   readonly bun?: string;
-  /** The login it ran as (`runs launch --login`), absent before 15 October and where none was named. */
+  /** The login it ran as (`runs launch --login`), absent in older receipts and where none was named. */
   readonly login?: string;
-  /** What `python3` a solve would find (`hostPython`), absent before 5 November and null where no
+  /** What `python3` a solve would find (`hostPython`), absent in older receipts and null where no
    *  `python3` on the wall's path answered. */
   readonly python?: HostPython | null;
 }
@@ -94,8 +92,8 @@ const CODE = ["src", "tools", "packages"];
  * Prints a Python's version and packages. Run with `-I`: a solve's home is its own, so the user's
  * site packages and `PYTHONPATH` of the shell that launched a run are none of what a solve finds.
  * Each name appears once, and where stale `dist-info` folders give it several versions, the version is
- * the imported module's own. On 5 November one host's receipt said 17 packages for 12 names, with numpy
- * named at 2.5.3 where an import found 2.5.4, and requirements taken from that could not be satisfied.
+ * the imported module's own, since a receipt that named a package twice, at a version an import does
+ * not find, would give requirements that cannot be satisfied.
  * Only a name with several folders is imported, since an import runs that package's code.
  */
 export const PYTHON_PROBE = `import importlib, importlib.metadata as m, json, re, sys
@@ -157,8 +155,7 @@ function shown(name: string, value: string | true): string {
 
 /**
  * The line `source` says of how a launch's flags and login differ from the launch before it, or the
- * first launch's flag names. Until 10 November it printed no flag, and 12 of 13 lane 22 sessions
- * read the receipts by hand for them, five dropping the env file's path with `jq` first.
+ * first launch's flag names, so that a reader need not open the receipts by hand for them.
  */
 function flagLines(launch: Receipt, before: Receipt | undefined): string[] {
   const now = flagsOf(launch);

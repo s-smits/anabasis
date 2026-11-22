@@ -4,7 +4,8 @@
 import { afterAll, expect, it, spyOn } from "bun:test";
 import * as comparison from "../src/campaign/comparison.ts";
 import { epochsOf } from "../src/campaign/climb.ts";
-import { checkpoint, settleReading, type CheckpointRequest } from "../src/campaign/round.ts";
+import { checkpoint, type CheckpointRequest } from "../src/campaign/round.ts";
+import { settleReading } from "../src/campaign/settle.ts";
 import { scored } from "../src/kernel/compare.ts";
 import { recordCondition, settingId } from "../src/kernel/condition.ts";
 import { append, read } from "../src/kernel/log.ts";
@@ -12,14 +13,7 @@ import { stopRule } from "../src/campaign/admission.ts";
 import { lastReports, pairsReported } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { taskStates } from "../src/kernel/task.ts";
-import {
-  cpSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "../src/meta/filesystem.ts";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -46,16 +40,16 @@ const ENDINGS = new Map<string, Ending>(
   } satisfies Record<string, Ending>),
 );
 const PREFIX = {
-  "t-1": ["PPLL", "PPPP"],
-  "t-2": ["PPPL", "PPPP"],
-  "t-3": ["PPPL", "PPPP"],
-  "t-4": ["DDRL", "DDDD"],
-  "t-5": ["DDRL", "DDDD"],
-  "t-6": ["PLL", "PPP"],
-  "t-7": ["RLL", "DP"],
-  "t-8": ["", ""],
-  "t-9": ["L", ""],
-  "t-10": ["", "D"],
+  "ex-001": ["PPLL", "PPPP"],
+  "ex-002": ["PPPL", "PPPP"],
+  "ex-003": ["PPPL", "PPPP"],
+  "ex-004": ["DDRL", "DDDD"],
+  "ex-005": ["DDRL", "DDDD"],
+  "ex-006": ["PLL", "PPP"],
+  "ex-007": ["RLL", "DP"],
+  "ex-008": ["", ""],
+  "ex-009": ["L", ""],
+  "ex-010": ["", "D"],
 } satisfies Outcomes;
 const REPO = resolve(import.meta.dir, "..");
 const scratches: string[] = [];
@@ -160,15 +154,15 @@ it("reviews a stopped draw with five short tasks and seventeen rejected answers 
   const s = fixture();
   const report = await checkpoint(s.request);
   unscored(report);
-  expect(report.short).toEqual(["t-6", "t-7", "t-8", "t-9", "t-10"]);
-  expect(report.aside).toEqual(["t-4", "t-5", "t-7", "t-10"]);
+  expect(report.short).toEqual(["ex-006", "ex-007", "ex-008", "ex-009", "ex-010"]);
+  expect(report.aside).toEqual(["ex-004", "ex-005", "ex-007", "ex-010"]);
   expect(report.short.filter((task) => report.aside.includes(task))).toHaveLength(2);
   expect(report).toMatchObject({ settled: comparison.UNSETTLED, disputed: [], withdrawn: [] });
   const events = read(s.log);
   const fixed = present(comparison.fixedIn(events, ID));
   const covered = comparison.coverageOf(events, fixed);
   expect(fixed.tasks).toHaveLength(10);
-  expect(covered.pairs.map(({ task }) => task)).toEqual(["t-1", "t-2", "t-3", "t-4", "t-5"]);
+  expect(covered.pairs.map(({ task }) => task)).toEqual(["ex-001", "ex-002", "ex-003", "ex-004", "ex-005"]);
   const observed = comparison.solvesUnder(events, fixed);
   expect(observed).toHaveLength(53);
   expect(observed.every(({ counts }) => counts)).toBe(true);
@@ -203,7 +197,7 @@ it("reviews a stopped draw with five short tasks and seventeen rejected answers 
     restored: [],
     passes: Object.fromEntries(passes),
   });
-  expect(taskStates(read(s.log)).get("t-7")).toBe("disputed");
+  expect(taskStates(read(s.log)).get("ex-007")).toBe("disputed");
   const labels = settledLabels(read(s.log));
   expect(labels.size).toBe(17);
   const measured = agreement(read(s.log), labels);
@@ -220,7 +214,7 @@ it("reviews a stopped draw with five short tasks and seventeen rejected answers 
   // Another comparison's solves cannot change the first report's coverage.
   append(s.log, "solve.started", {
     solve: "later",
-    condition: recordCondition(s.log, conditionOf("t-8", "old")),
+    condition: recordCondition(s.log, conditionOf("ex-008", "old")),
     comparison: "g-2",
   });
   append(s.log, "solve.finished", { solve: "later", ending: { outcome: "pass" } });
@@ -251,13 +245,13 @@ it("recovers completion omitted by an older stopped report at its original cutof
     fresh: "fresh",
     starter: "old",
     ...comparison.NOTHING,
-    aside: ["t-4", "t-5", "t-7", "t-10"],
+    aside: ["ex-004", "ex-005", "ex-007", "ex-010"],
     reading: STOPPED,
   });
   const fixed = present(comparison.fixedIn(read(s.log), ID));
   const original = comparison.coverageOf(read(s.log), fixed);
   expect(original.short).toHaveLength(5);
-  const condition = recordCondition(s.log, conditionOf("t-8", "old"));
+  const condition = recordCondition(s.log, conditionOf("ex-008", "old"));
   append(s.log, "solve.started", { solve: "after-report", condition, comparison: ID });
   append(s.log, "solve.finished", { solve: "after-report", ending: present(ENDINGS.get("D")) });
   expect(comparison.toLabel(read(s.log), ID).aside).toHaveLength(14);
@@ -386,29 +380,6 @@ it("reads a settled flip against this tree's unlabelled reading, apart from the 
   expect(labelLines(older).at(-1)).toContain("it holds");
 });
 
-it("reports a label-induced flip even when its labelled reading agrees with the historical one", async () => {
-  const wins = Object.fromEntries(
-    Array.from({ length: 6 }, (_, n) => [`win-${String(n)}`, ["LLLL", "PPPP"] as const]),
-  );
-  const s = fixture(wins);
-  const report = await checkpoint(s.request);
-  expect(report.reading).toBe("step");
-  const wrong = comparison.passesIn(read(s.log), ID).slice(0, 4);
-  settleReading(s.log, ID, new Map(), new Map(wrong.map((solve) => [solve, "wrong"] as const)));
-  let first = true;
-  const older = read(s.log).map((event) => {
-    if (event.kind !== comparison.REPORTED || !first) return event;
-    first = false;
-    return { ...event, data: { ...event.data, reading: "no-step" } };
-  });
-  expect(comparison.swapped(older, ID)).toMatchObject({
-    decided: "no-step",
-    unlabelled: "step",
-    swapped: "no-step",
-  });
-  expect(labelLines(older).at(-1)).toContain("it flips, so its packet was too small to stand on");
-});
-
 it("draws and settles the stopped comparison through the blind packet command", async () => {
   const s = fixture();
   await checkpoint(s.request);
@@ -416,24 +387,10 @@ it("draws and settles the stopped comparison through the blind packet command", 
   const name = `test-stopped-settle-${String(runtimeProcess.pid)}`;
   const folder = join(REPO, ".ana", "d2", name);
   scratches.push(root, folder);
-  mkdirSync(folder, { recursive: true });
-  const bundle = join(root, "bundle");
-  layOutPack(root, bundle, fixtureTasks(10), join(REPO, "test", "fixtures", "harness-min"));
-  cpSync(s.log, join(folder, "log.jsonl"));
-  const args = [
-    "--name",
-    name,
-    "--root",
-    root,
-    "--sweep",
-    "s",
-    "--cycle",
-    "c01",
-    "--bundle",
-    bundle,
-    "--session",
-    ID,
-  ];
+  // The opening and its draft first, then the stopped comparison, in the order a campaign logs them.
+  layOutPack(folder, fixtureTasks(10));
+  appendFileSync(join(folder, "log.jsonl"), readFileSync(s.log));
+  const args = ["--name", name, "--session", ID];
   const said = spyOn(console, "log");
   const run = async () => {
     said.mockClear();

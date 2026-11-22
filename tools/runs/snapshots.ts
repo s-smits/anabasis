@@ -1,15 +1,17 @@
 /**
- * Read remote campaigns through the local readers (22 October 2026). One catalogue lists each
+ * Read remote campaigns through the local readers. One catalogue lists each
  * machine's originals, including its archive. One transfer owner refreshes copies in the existing
  * archive. Copies never become runnable campaigns. Fetch, WRI, view, source and replay used to
  * disagree on discovery, and an old fetched copy could silently stand for a growing remote log.
  * A failed transfer leaves the previous copy intact and refuses the read. Only whole log lines
  * are published. The catalogue states each log's size, and a record refresh skips a copy that
- * already has it, so the ten-minute gather of 28 October copies only campaigns that moved. No credential file is copied and rsync never follows a link.
+ * already has it, so a frequent gather copies only campaigns that moved. No credential file is
+ * copied and rsync never follows a link.
  *
  *   bun run runs catalogue
  */
 import { Type } from "typebox";
+import { CODEX_AUTH } from "#src/agent/backends/models.ts";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
 import { DELIVERABLES } from "#src/kernel/answer-files.ts";
 import { openingOf } from "#src/campaign/opening.ts";
@@ -22,7 +24,8 @@ import { pooled } from "#src/meta/pool.ts";
 import { runtimeProcess, warn } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { asked, answerOf } from "./hosts.ts";
-import { benchesOf, type Host, hostNamed, hostsOf } from "./host-config.ts";
+import { type Bench, benchesOf, type Host, hostNamed, hostsOf } from "./host-config.ts";
+import { homedir } from "#src/meta/os.ts";
 import { quoted, rsync, sideOf, sshScript } from "./host-command.ts";
 import { runTextOrThrow } from "#src/meta/subprocess.ts";
 import { hold, release } from "#src/meta/holder.ts";
@@ -65,7 +68,7 @@ const PROGRAMS_ONLY = [
   "--include=/trees/*/scripts/toolchain/bin/***",
   "--exclude=/trees/**",
 ];
-export const PRIVATE_NAMES = [".env", ".env.*", "*.env", "auth.json"];
+export const PRIVATE_NAMES = [".env", ".env.*", "*.env", CODEX_AUTH];
 const EXCLUDED = PRIVATE_NAMES.map((name) => `--exclude=${name}`);
 /** Folders of installed packages, caches and built bundles, by name. */
 export const DERIVED: ReadonlySet<string> = new Set([
@@ -83,8 +86,8 @@ export const DERIVED: ReadonlySet<string> = new Set([
 export const PACKAGED = `python3 -I -c ${quoted(PACKAGE_PATHS)}`;
 /** The submitted files, the one part of `states/` a record holds, since readers of a verdict need them. */
 const DELIVERED = join("states", DELIVERABLES.folder);
-// The seed's mark comes too, so a copy of a rehearsal's seed is no paid campaign to a reader: until
-// 29 October the gather left it out, and two compare-systems seeds counted as campaigns in a replay.
+// The seed's mark comes too, so a copy of a rehearsal's seed is no paid campaign to a reader, where
+// without it a seed would count as a campaign in a replay.
 const RECORD = [
   "--include=/log.jsonl",
   "--include=/states/",
@@ -121,7 +124,7 @@ export const packagedOf = (printed: string): Set<string> =>
 
 /** One original campaign's identity and project, as a catalogue lists it. Only the openings are
  *  parsed: every refresh asks each host for its catalogue, and parsing every line of every log for
- *  one project took 3.3 s of a refresh's 5.4 s on the Linux runner on 30 October. */
+ *  one project would take most of a refresh. */
 function entryOf({ name, path }: Run): { name: string; path: string; project: string | null } {
   const openings = wholeLines(path)
     .split("\n")
@@ -210,9 +213,9 @@ function installs(paths: readonly string[], owned: ReadonlySet<string>): { taken
 
 /** The files among `paths` that a disk which folds case cannot hold beside another named the same
  *  but for case: all of each such group but its last in byte order, the most lower-case, to which
- *  `terminfo`'s upper-case aliases link. Until 10 November 4 of 118 whole copies of the Linux host
- *  failed every night: `N/NCR260VT300WPP`, a link to `../n/ncr260vt300wpp`, became a link to itself
- *  here, and an Examiner's `w/t1.py` beside its `w/T1.py` aborted rsync. */
+ *  `terminfo`'s upper-case aliases link. Otherwise a whole copy from a case-sensitive host fails:
+ *  `N/NCR260VT300WPP`, a link to `../n/ncr260vt300wpp`, becomes a link to itself here, and an
+ *  Examiner's `w/t1.py` beside its `w/T1.py` aborts rsync. */
 function caseTwins(paths: readonly string[]): string[] {
   const last = new Map(paths.map((path) => [path.toLowerCase(), path]));
   return paths.filter((path) => last.get(path.toLowerCase()) !== path);
@@ -269,8 +272,8 @@ async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): 
     renameSync(whole, log);
     keepObservation(folder, { open: run.open, kept: run.kept, stderr: run.stderr });
     // A record refresh keeps the artefacts a whole refresh fetched by moving only the record into
-    // the copy, a file at a time, the log last. Copying the folder to keep them took 4.7 s of a
-    // 5.8 s refresh of one live run on 30 October: 6,372 files, most of them its Examiner's home.
+    // the copy, a file at a time, the log last, since copying the folder to keep them would take most
+    // of a refresh of one live run, whose Examiner's home holds thousands of files.
     if (depth === "record" && existsSync(into)) {
       // The stored files are named by digest, so a refresh adds each beside those already kept,
       // before the log that names them.
@@ -304,8 +307,8 @@ async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): 
 /** Refresh matching remote campaigns. Exact discovery is used by one-run readers; collections
  *  use the CLI's substring matching. It returns the copies it refreshed and those a silent host's
  *  were left at. A name two machines hold refuses the read where one run is asked for. A collection leaves out each copy after the first and
- *  says so, since one shared name refused every collection read, the daily retire's among them
- *  (27 October 2026: `sim-truss-live` on two machines refused `runs source --has`). */
+ *  says so, since one shared name would refuse every collection read, the daily retire's among
+ *  them. */
 export async function syncRuns(
   names: readonly string[],
   options: {
@@ -327,7 +330,7 @@ export async function syncRuns(
     names.length === 0 ||
     names.some((part) => (options.match === "exact" ? name === part : name.includes(part)));
   // A host asked alone refuses; among several, one that is silent keeps its copies as they were.
-  // Until 30 October it refused every refresh, and 8 of 99 gather ticks left every copy stale.
+  // Refusing every refresh would leave every copy stale whenever one host is silent.
   const silent = new Set<string>();
   const remote = selected.flatMap(({ host, lines }) => {
     if (lines !== null || options.from !== undefined) {
@@ -351,17 +354,15 @@ export async function syncRuns(
     owners.add(one.run.name);
     kept.push(one);
   }
-  // The archive is named once: asking git for the main worktree for each of 145 copies took 2.6 s
-  // of a 38 s reading of the table of runs on 30 October.
-  // A copy whose host no `ANA_HOSTS` names cannot be refreshed, so it is read as it stands: until
-  // 3 November a reader run without `.env.runs` dropped every peer's copy, and the promotion table
-  // read 0 confirmed promotions where fullrun and v065-b each hold one.
+  // The archive is named once, rather than asking git for the main worktree for each copy.
+  // A copy whose host no `ANA_HOSTS` names cannot be refreshed, so it is read as it stands, where a
+  // reader run without `.env.runs` would drop every peer's copy and miss their promotions.
   const known = new Set(hostsOf().map(({ name }) => name));
   const stale = (from = HERE) => silent.has(from) || (from !== HERE && !known.has(from));
   const archive = archiveOf(repo);
   const left = readable(repo).filter((run) => stale(run.archived) && matches(run.name));
-  // One copy that fails holds up no other, and the read still fails once the rest are in: until 10
-  // November one aborted rsync started no further copy of its host.
+  // One copy that fails holds up no other, and the read still fails once the rest are in, so one
+  // aborted rsync does not stop the further copies of its host.
   const failed: string[] = [];
   const brought = await pooled(kept, AT_ONCE, ({ host, run }) =>
     refresh(run, join(archive, host.name, run.name), host, options.depth ?? "whole").catch(
@@ -377,6 +378,13 @@ export async function syncRuns(
   return [...brought.filter((log) => log !== null), ...left.map((run) => run.path)];
 }
 
+/** Where this machine holds a benchmark's records: its store where it is rolled here, otherwise the
+ *  copy `fetchBenches` keeps in `data/bench/<benchmark>`. */
+export const recordsHere = ({ name, host, store }: Pick<Bench, "name" | "host" | "store">): string =>
+  host === undefined
+    ? store.replace(/^~\//u, `${homedir()}/`)
+    : join(dirname(archiveOf(runtimeProcess.cwd())), "bench", name);
+
 /**
  * Copy each benchmark's score store (`score.ts --out`) from the machine that rolls it into
  * `data/bench/<benchmark>` here: every task's rollout and judgement, which `score.ts table` reads
@@ -389,9 +397,10 @@ export async function syncRuns(
  */
 export async function fetchBenches(): Promise<string[]> {
   const copied: string[] = [];
-  for (const { name, host, store } of benchesOf()) {
+  for (const bench of benchesOf()) {
+    const { name, host, store } = bench;
     if (host === undefined) continue;
-    const into = join(dirname(archiveOf(runtimeProcess.cwd())), "bench", name);
+    const into = recordsHere(bench);
     mkdirSync(into, { recursive: true });
     // rsync reads a relative path from the home folder there, and a quoted `~` as a folder's name.
     const from = `${sideOf(host, store.replace(/^~\//u, ""))}/`;
@@ -499,8 +508,8 @@ export async function readableAcross(names: readonly string[] = [], depth: Depth
 /**
  * The one resolver of a reader's `<log | campaign folder | name>`: a folder reads its log, an
  * explicit path stays explicit, and a campaign's name reaches every host, copied whole or, for a
- * reader of its log alone, as its record. Until 30 October
- * `reading.ts` and `live-seat.ts` each resolved a folder themselves and the other readers refused one.
+ * reader of its log alone, as its record. Every reader resolves a folder here rather than its own
+ * way.
  */
 export async function logAcross(named: string, depth: Depth = "whole"): Promise<string> {
   if (existsSync(join(named, LOG_FILE))) return join(named, LOG_FILE);

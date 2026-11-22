@@ -39,7 +39,7 @@ function calleeName(call: ESTree.CallExpression): string | null {
 
 /**
  * A command array reaches a process from a call argument, an options property such as `cmd:`, or a
- * binding that is then passed on. An array that is the object of a member call — `[…].join(" ")` —
+ * binding that is then passed on. An array that is the object of a member call, `[…].join(" ")`,
  * is a string being built, which is how a guard spells the command it refuses.
  */
 function isCommandPosition(array: ESTree.ArrayExpression): boolean {
@@ -58,8 +58,8 @@ function isCommandPosition(array: ESTree.ArrayExpression): boolean {
  * can, some paying the Darwin xcrun shim on every call by spelling bare `git` where `hostTool`
  * skips it, and some leaving the capture unbounded so that a runaway listing ended as a short read
  * instead of a refusal. A copied helper is caught by the duplicate-block scans; one written again in
- * a different spelling is caught here. Until 15 October the owner was a skill module, which
- * production code cannot import, and `tools/runs` and `tools/d2` spelled git at five sites.
+ * a different spelling is caught here. The owner lives in production, since production code
+ * cannot import a skill module and would otherwise spell git again.
  *
  * Four spellings report: `hostTool("git")` anywhere, since resolving the executable is the first
  * line of every hand-written call; a command array whose first element is `"git"` in a position
@@ -67,8 +67,8 @@ function isCommandPosition(array: ESTree.ArrayExpression): boolean {
  * string a guard builds with `["git", "reset"].join(" ")` is not a subprocess and passes. Tests are
  * outside the scope: a fixture builds the repository it then reads.
  *
- * There is no fix. The owner offers three answers — exact bytes, trimmed text, or null where "no"
- * is an answer — and a call that also reads the exit status or passes `cwd` instead of `-C` needs a
+ * There is no fix. The owner offers three answers (exact bytes, trimmed text, or null where "no"
+ * is an answer) and a call that also reads the exit status or passes `cwd` instead of `-C` needs a
  * reading of what it wanted.
  */
 export const noHandSpelledGitRule = defineRule({

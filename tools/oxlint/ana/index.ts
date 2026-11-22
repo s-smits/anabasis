@@ -50,8 +50,8 @@ import { requireDeclarationsFirstRule } from "./rules/require-declarations-first
  *  Every one of them is registered at `error` in `.oxlintrc.json`, so all of them run
  *  in `bun run lint` and fail it under `--strict` or `ANA_LINT_STRICT=1`; the census runs no rule
  *  of its own. Each was promoted by passing
- *  the admission test — at every site it reports, does a spelling exist that satisfies every
- *  other rule — and a catcher that could not pass it was retuned until it could, or taken out;
+ *  the admission test (at every site it reports, does a spelling exist that satisfies every
+ *  other rule) and a catcher that could not pass it was retuned until it could, or taken out;
  *  none was baselined per file.
  *
  *  Taste is for code this repository authors, and the config draws that line one tree at a time:

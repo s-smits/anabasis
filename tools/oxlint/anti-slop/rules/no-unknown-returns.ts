@@ -37,8 +37,8 @@ type FunctionWithReturnType =
  * `visibleTypeAlias` refuses to resolve a name a type parameter is binding, so a module-scope
  * `type T = unknown` cannot make every `<T>` in the file read as the top type.
  *
- * Declarations and contracts are read alike — the arrow, the function, the method signature, the
- * call and construct signatures, the bare `TSFunctionType` — so an interface promising `unknown`
+ * Declarations and contracts are read alike (the arrow, the function, the method signature, the
+ * call and construct signatures, the bare `TSFunctionType`) so an interface promising `unknown`
  * is caught where it is written rather than at whichever implementation happens to spell it.
  *
  * There is no fix: the repair is the return type, which is the work the `unknown` avoided.

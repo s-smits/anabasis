@@ -1,54 +1,49 @@
 /**
- * A Seatbelt denial names a path string. This file handles two ways that string can fail to
- * protect the intended bytes:
+ * Seatbelt denials match path strings rather than inodes. This module addresses two failure modes
+ * where a path-based denial can fail to protect the intended bytes:
  *
- * 1. Path form. `/var/folders/...` and `/private/var/folders/...` are the same directory, and the kernel
- *    matches the canonical one. A denial naming only the symlink form can miss the protected
- *    read. `canonicalForms` in `policy.ts` returns both.
- * 2. Location. A confined process that can rename an ancestor of a denied path moves the protected
- *    bytes to a path no rule mentions. `moveBlockingRules` denies those renames.
+ * 1. Path aliasing. `/var/folders/...` and `/private/var/folders/...` refer to the same directory,
+ *    and the kernel evaluates rules against the canonical path. A denial naming only the symlink
+ *    form can miss the protected read; `canonicalForms` in `policy.ts` expands both forms.
+ * 2. Ancestor relocation. A confined process that can rename an ancestor of a denied path moves
+ *    the protected bytes to a path outside the denial rule; `moveBlockingRules` denies those
+ *    renames.
  *
- * The rename rules are copied, with the two departures named below, from `generateMoveBlockingRules`
- * in anthropic-experimental/sandbox-runtime, `295f0e1af:src/sandbox/macos-sandbox-utils.ts`,
- * Apache-2.0, pinned at 295f0e1af832131efe40db22f2c65a57f461d849 (@anthropic-ai/sandbox-runtime 0.0.67).
+ * The rename rules are adapted, with the two departures listed below, from
+ * `generateMoveBlockingRules` in `anthropic-experimental/sandbox-runtime`
+ * (`295f0e1af:src/sandbox/macos-sandbox-utils.ts`), Apache-2.0, pinned at
+ * `295f0e1af832131efe40db22f2c65a57f461d849` (`@anthropic-ai/sandbox-runtime` 0.0.67).
  *
- * Why the rules exist. `(deny file-read* (subpath P))` names P as a string, so a confined process
- * that can rename an ancestor of P relocates the protected bytes to a path no rule mentions and
- * reads them there. Measured against a profile without these rules: a direct read of the canary is
- * refused, renaming the denied directory itself is refused, and renaming its parent succeeds and
- * returns the canary at exit 0. These rules refuse that last rename.
+ * Rationale: `(deny file-read* (subpath P))` matches `P` by path string. Without these rules, a
+ * confined process is blocked from reading or renaming `P` directly, yet renaming an ancestor of
+ * `P` moves the protected subtree to an unlisted path where it becomes readable. Although the
+ * command wall denies writes outside the seat root, `userTempRules` permits writes inside
+ * `mktemp`-shaped directories in the per-user temporary directory. A denied root located inside
+ * such a directory (as in rehearsals and tests) would otherwise have a renameable ancestor;
+ * `test/solve-sandbox.test.ts` verifies that this rename is blocked.
  *
- * The command wall refuses a write outside the seat's root, which closes most of that hole, and
- * these rules close the rest: a command may also write in a folder named as `mktemp` names one in
- * the per-user temporary directory (`userTempRules`), so a denied root lying in such a folder, as a
- * rehearsal's or a test's repository does, has an ancestor the command can rename. With the rules
- * left out, `test/solve-sandbox.test.ts`'s rename returned the canary (11 November).
- *
- * Two deliberate departures from upstream:
- * - No `(with message ...)` log tag. Upstream tags its rules so a log stream can attribute
- *   violations, and the tag carries a per-session random suffix. Nothing here reads that stream,
- *   and a random tag would make two launches of one policy differ in their bytes.
- * - Literal paths only. Every path reaching this isolation is an already-canonicalised absolute
- *   root, so upstream's glob branch would be dead code here, carrying its own escaping risk for a
- *   spelling nothing emits.
+ * Deliberate departures from upstream:
+ * - No `(with message ...)` log tag. Upstream appends a per-session random suffix for log-stream
+ *   attribution, which is unused here and would prevent deterministic profile byte output.
+ * - Literal paths only. Every path reaching this module is an already-canonicalised absolute root,
+ *   so upstream's glob branch would be unreachable dead code with unnecessary escaping complexity.
  */
 import { posixContainsPath } from "../meta/path-containment.ts";
 import { ancestorDirectories } from "./policy.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 
-/** Upstream's pair. `file-write-unlink` covers the rename's source and `file-write-create` its
- *  destination, so neither moving a protected path away nor putting a symlink in its place is
- *  available. */
+/** Upstream operation pair: `file-write-unlink` blocks moving a protected path away, and
+ *  `file-write-create` blocks replacing it with a symbolic link. */
 const MOVE_OPS = ["file-write-unlink", "file-write-create"] as const;
 
-/** Whether a deny rooted at `root` reaches `target`. SBPL paths are always "/"-separated. */
+/** Returns whether a denial rooted at `root` covers `target`. SBPL paths are always POSIX-separated. */
 export function covers(root: string, target: string): boolean {
   return posixContainsPath(target, root);
 }
 
-/** One SBPL rule block: a verb and its path filters, or nothing when no path applies. The command
- *  profile's path-list rules emit through here, so they cannot drift apart on quoting or on what an
- *  empty path list means. */
+/** Emits a single SBPL rule block for a verb and path list, or an empty array when `paths` is
+ *  empty. Routing all path-list rules through this helper keeps quoting and empty-list handling
+ *  consistent across the command profile. */
 export function sbRule(verb: string, form: "subpath" | "literal", paths: readonly string[]): string[] {
   return paths.length === 0
     ? []
@@ -56,15 +51,15 @@ export function sbRule(verb: string, form: "subpath" | "literal", paths: readonl
 }
 
 /**
- * Deny rules that keep `protectedRoots` reachable only at the paths the read denies name. Sorted
- * and de-duplicated because these lines are part of the hashed profile: two runs with the same
- * roots must emit the same bytes.
+ * Generates denial rules ensuring `protectedRoots` remain at the paths named by read denials.
+ * Roots and ancestors are sorted and deduplicated so identical inputs produce identical profile
+ * bytes for policy hashing.
  */
 export function moveBlockingRules(protectedRoots: readonly string[]): string[] {
   const roots = [...new Set(protectedRoots)].toSorted();
   if (roots.length === 0) return [];
-  // Every directory a rename could relocate a protected root through. `/` is dropped: it is not
-  // renameable and naming it would deny the root inode itself.
+  // Include every ancestor directory that a rename could move to relocate a protected root.
+  // Exclude `/` because the root inode cannot be renamed and denying it would block root access.
   const ancestors = [...new Set(roots.flatMap((root) => ancestorDirectories(root)))]
     .filter((path) => path !== "/")
     .toSorted();

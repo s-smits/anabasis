@@ -1,30 +1,17 @@
 #!/usr/bin/env bun
 /**
- * Summarise the campaign information an Examiner opening would receive, or with `--each` what each
- * writing session on record was told as it began.
+ * Summarises the campaign record that an Examiner opening would receive, or with `--each` reconstructs
+ * what each recorded Examiner writing session was told when it began.
  *
  *   bun .claude/skills/design-and-seats/scripts/examiner-view.ts <log.jsonl | campaign name> [--each]
  *
- * Call heard, the production composer in src/examiner/record.ts, and report the lines under each
- * block's heading, reference outcomes from poolOf, the last comparison's line and the promotion
- * notice. Print the two aggregate messages in full; omit task text,
- * refusal reasons and hidden values. This helps inspect a view before changing its delivery.
+ * Calls `heard` (`src/examiner/record.ts`) over the drafted examples plus all written tasks and
+ * reports line counts per section heading, reference outcome counts from `poolOf`, the last comparison
+ * summary line, and any promotion notice, omitting task prose, refusal text, and hidden values.
  *
- * The tasks are those the last ask named (`exam.started`'s `examples`) with every task written since,
- * as the next ask is given them; until 10 November they came from proposalsOf alone, which drops a
- * stored pack's tasks and the drafted examples, so the view listed fewer tasks than the session read.
- *
- * `--each` rebuilds each session's view on the log as it stood when that ask began, through the same
- * code: a continued conversation's wake through `wakeOn` (`src/examiner/write.ts`), compared with the
- * wake on record, which the resting call's result carries; an opening's task lines, counted against
- * a `read_opening` result the session received. The contract, the checks and the budget come from the
- * campaign's terms and are not rebuilt. Between 3 and 10 November 18 of 18 lane-4 sessions and 14
- * of 18 lane-20 sessions rebuilt these by hand, cutting the log before each `exam.started`.
- *
- * logAcross resolves names across configured hosts and refreshes their records. logEvents reads
- * through the last complete line, allowing live logs.
- *
- * Written on 30 October alongside seat-view.ts.
+ * `--each` replays the log prefix before each `exam.started` event through `heard` and `wakeOn`
+ * (`src/examiner/write.ts`) and compares the reconstructed wake or `read_opening` output against
+ * the text served in `exam.call` (used by WRI lanes 4 and 20).
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { draftOf } from "#src/examiner/draft.ts";

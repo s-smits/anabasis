@@ -12,7 +12,7 @@ import { claimRoot } from "../../src/wall/seat-root.ts";
 
 const [repoRoot = "", ...commands] = runtimeProcess.argv.slice(2);
 const dirs = solveDirs(`walled-commands-${String(runtimeProcess.pid)}`);
-const release = claimRoot(dirs.root);
+const release = await claimRoot(dirs.root);
 makeSeatDirs(dirs);
 const base = solveIsolationPolicy({ repoRoot });
 if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);

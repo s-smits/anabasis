@@ -1,20 +1,20 @@
-// The policy part of v1's `e7636e472:src/verify/solve-sandbox.ts`. v2 runs the loop in the host process and
-// every command under the command wall, whose wall test uses the launch in use (`walledBase`,
-// `src/tools/command.ts`).
-/** Host-owned OS isolation for a seat's commands: the base every command wall is built on
- *  (`commandIsolationPolicy`, `isolation.ts`).
+// Derived from the policy layer of v1's `e7636e472:src/verify/solve-sandbox.ts`. In v2, the
+// evaluation loop runs in the host process and executes every command inside the command wall,
+// whose isolation probe exercises the active launch mechanism (`walledBase`, `src/tools/command.ts`).
+/** Host-owned OS isolation policy for seat commands: the shared base from which every command wall
+ *  is constructed (`commandIsolationPolicy`, `isolation.ts`).
  *
- * The solver reaches its provider over the network and its commands reach the host's programs, so
- * this wall cannot work by closing the machine and reopening a list of allowed paths. It allows by
- * default and then closes the trees that hold what a command must not read: the repository, which
- * carries the hidden expectations and the evaluator, its other worktrees, a stored pack, and the
- * operator's home.
- * Closing the home also closes a runtime installed there, which is why the exact paths
- * `nodeRuntimeReadRoots` names are reopened read-only and nothing else is.
+ * Because the solver contacts its model provider over the network and invokes host toolchains, the
+ * wall cannot operate by denying the entire filesystem and reopening an explicit allow-list.
+ * Instead, it permits reads by default and denies the subtrees that hold evaluation secrets or
+ * host state: the repository (which contains hidden expectations and the evaluator), its sibling
+ * worktrees, any stored packs, and the operator's home directory.
+ * Denying the home directory also hides runtimes installed there, so the exact paths returned by
+ * `nodeRuntimeReadRoots` are reopened read-only while the rest of the directory remains closed.
  *
- * `policyHash` covers the mechanism's digest along with the denied and allowed roots: it is the
- * policy's name, by which a process probes each policy once (`walledBase`) and reads each one's
- * network reach once (`networkReach`).
+ * `policyHash` hashes the isolation mechanism's digest together with the denied and allowed roots.
+ * It serves as the policy's cache key so each host process probes a given policy once
+ * (`walledBase`) and verifies its network reachability once (`networkReach`).
  */
 import { hashJsonBytes } from "../meta/json-runtime.ts";
 import { nodeRuntimeReadRoots } from "./linux-bwrap.ts";
@@ -23,38 +23,38 @@ import { covers } from "./seatbelt-path-guard.ts";
 import { canonicalRoots, closedHome } from "./policy.ts";
 import { DARWIN_SEATBELT_ID } from "./darwin-seatbelt.ts";
 
-/** The profile a condition's `sandbox` names (`tools/d2/campaign.ts`). */
+/** Isolation profile identifier recorded in a solve condition's `sandbox` field (`tools/d2/campaign.ts`). */
 export const HOST_SOLVE_ISOLATION_PROFILE_ID = "harness-host-solve-isolated";
 
 export interface SolveIsolationPolicy {
   profileId: typeof HOST_SOLVE_ISOLATION_PROFILE_ID;
-  /** sha256 over the policy identity: the mechanism's own digest together with the denied and
-   *  allowed roots. */
+  /** SHA-256 digest of the policy identity, combining the mechanism binary digest with the denied
+   *  and allowed roots. */
   policyHash: string;
   deniedReadRoots: string[];
-  /** Exact runtime paths reopened read-only inside a denied home or repository. */
+  /** Exact runtime paths reopened read-only inside a denied home directory or repository. */
   allowedReadRoots: string[];
   mechanismPath: string;
-  /** `darwin-seatbelt/v1` or `linux-bwrap/v1`: read by the command wall to choose how a command is
-   *  launched. */
+  /** Mechanism identifier (`darwin-seatbelt/v1` or `linux-bwrap/v1`) used by the command wall to
+   *  select the launch strategy. */
   mechanismId: string;
-  /** Whether a command may reach the network: a seat's may, to install what its task needs, and a
-   *  check's may not (`src/kernel/verify.ts`). */
+  /** Whether outbound network access is permitted: enabled for seats so they can install task
+   *  dependencies, and disabled for verification checks (`src/kernel/verify.ts`). */
   network: boolean;
 }
 
-/** Author the solve isolation for one repository. */
+/** Constructs the base solve isolation policy for a repository. */
 export function solveIsolationPolicy(input: {
   repoRoot: string;
-  /** The repository's other worktrees, denied with it. With only the worktree a command ran in
-   *  denied, a shell in one worktree read a sibling's `.ana` log, every hidden value of that
-   *  campaign in it, on the Linux container (an Examiner's shell, by hand). */
+  /** Sibling worktrees of the repository, denied alongside `repoRoot`. Denying only the active
+   *  worktree would allow a confined shell to read another worktree's `.ana` campaign log and
+   *  expose its hidden evaluation values. */
   otherTrees?: readonly string[];
-  /** A stored pack's root and bundle, denied with it by path. */
+  /** An exam's bundle where it lies outside the repository, denied alongside it by path. */
   packRoots?: readonly string[];
   runtime?: OsIsolationRuntime;
   readAllowRoots?: readonly string[];
-  /** Open unless closed, as a seat's is. */
+  /** Whether outbound network access is allowed; defaults to `true`, matching seat posture. */
   network?: boolean;
 }): SolveIsolationPolicy | { unsupported: string } {
   const support = osIsolationSupport(input.runtime);
@@ -78,7 +78,7 @@ export function solveIsolationPolicy(input: {
   const identity = {
     profileId: HOST_SOLVE_ISOLATION_PROFILE_ID,
     mechanism: { path: support.mechanismPath, sha256: support.mechanismDigest },
-    // Darwin's command profile denies by default from sandbox-runtime's base (`seatbelt-base.ts`).
+    // Darwin's command profile starts from a deny-by-default sandbox-runtime base (`seatbelt-base.ts`).
     default: support.mechanismId === DARWIN_SEATBELT_ID ? "deny" : "allow",
     deniedReads: reads,
     deniedWrites: reads,
@@ -86,7 +86,7 @@ export function solveIsolationPolicy(input: {
   };
   return {
     profileId: HOST_SOLVE_ISOLATION_PROFILE_ID,
-    // The network is named only where closed, so a seat's policy keeps the hash it had.
+    // Include `network` in the hash only when disabled so existing seat policy hashes remain stable.
     policyHash: hashJsonBytes(network ? identity : { ...identity, network }),
     deniedReadRoots: reads,
     allowedReadRoots: allowedReads,

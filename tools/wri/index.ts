@@ -1,7 +1,6 @@
 /**
- * One page over every whole-run investigation, `wri.ts index`. By 3 November `.ana/wri/` held 57
- * folders, 26 with a synthesis and 20 with a vetting, and nothing listed them together: the
- * recurring constraint of a domain was read by opening each synthesis in turn. This reads every
+ * One page over every whole-run investigation, `wri.ts index`, so that the recurring constraint of
+ * a domain is not read by opening each synthesis in turn. This reads every
  * folder as it stands and renders one row a folder, newest first, then each campaign group's
  * investigations in time order, so a domain's binding constraints show side by side.
  *
@@ -10,26 +9,26 @@
  * the first sentence of each binding constraint, cut at about 300 characters, and counts, and it
  * belongs under `.ana/` beside them. It copies no lane prose.
  *
- * Reading is lenient because the folders span every shape the procedure has had since 19 October:
+ * Reading is lenient because the folders span every shape the procedure has had:
  * `investigation.json` named one `log` and its `peers` before it named `logs`, a synthesis written
  * before the template has no section 2 or no findings table, an A/B synthesis or a review stands in
  * for one in older folders, some folders hold collected lanes and no synthesis, and some hold notes
  * alone. A part that is missing reads as none and the row says so; nothing here throws on a folder.
  *
- * The operator asked on 3 November to "backtrack the older runs ... from last 2 weeks to centralize
- * the summaries", so two more sections follow the investigations. One lists each cycle folder and
+ * The operator asked to "backtrack the older runs ... from last 2 weeks to centralize the
+ * summaries", so two more sections follow the investigations. One lists each cycle folder and
  * prediction ledger, under `.ana/wri/` and in the main checkout's `notes/`, with its predictions
  * counted by resolution. The other lists every campaign whose log moved in the last fourteen days,
  * from the run registry's local worktrees and archive, with its ending, its promotions through
  * `epochsOf`, and the investigations and ledgers that name it, so a run nobody investigated or
  * predicted shows as such.
  *
- * From 7 November each run keeps its own ledgers in a cycle folder (`predictions-<run>.md` and
- * `outcomes-<run>.md`, read by `tools/wri/ledger.ts`, and until 8 November a hand-written
- * `still-missing-<run>.md`; from then the plan says what is left out on purpose), and an
- * investigation's `plan.md` names its pull request as `Pull request: #N`, measured by the forks
- * named `...forkedPR<N>`. Until then nothing recorded across iterations whether each fix held, so a
- * last section rows each pull request with its forks, their outcomes, the predictions still
+ * Each run keeps its own ledgers in a cycle folder (`predictions-<run>.md` and `outcomes-<run>.md`,
+ * read by `tools/wri/ledger.ts`, and in older folders a hand-written `still-missing-<run>.md`; now
+ * the plan says what is left out on purpose), and an investigation's `plan.md` names its pull
+ * request as `Pull request: #N`, measured by the forks named `...forkedPR<N>`. So that whether each
+ * fix held is recorded across iterations, a last section rows each pull request with its forks,
+ * their outcomes, the predictions still
  * unresolved, what each fork leaves out on purpose, and whether each fork carried the ids its
  * parent's runs did not hold. A fork from before the per-run files reads as "no per-run files".
  */
@@ -109,12 +108,16 @@ export interface Beyond {
 }
 
 export const SYNTHESIS = "synthesis.md";
+/** The investigation command every verb and step names. */
+export const WRI = "tools/wri/wri.ts";
 /** What stands in for a synthesis in folders older than the template, best first. */
 const STAND_INS = [/^ab-synthesis\.md$/u, /^review.*\.md$/u];
 /** A cycle folder's or a ledger's files, by their lower-cased names. */
 const LEDGERS: ReadonlySet<string> = new Set(["cycle.md", "predictions.md"]);
 export const VETTING = "vetting.md";
 export const REPORTS = "reports.md";
+/** The swarm manifest a verb writes into its folder for codex-gpt-swarm to launch. */
+export const LAUNCH = "launch.json";
 /** What `start` writes: the logs an investigation reads, and the instructions every lane carries. */
 export const INVESTIGATION = "investigation.json";
 export const SHARED = "shared-instructions.md";
@@ -204,7 +207,7 @@ const tallied = (words: readonly string[]): Counts | null =>
   words.length === 0 ? null : countBy(words, (word) => word);
 
 /** The lanes `collect` listed (`reportIndex`): with findings, read with none, left unread (omitted,
- *  or not read, with no finding), and every other state. Until 9 November an unread lane counted as
+ *  or not read, with no finding), and every other state, so that an unread lane does not count as
  *  one read with none. */
 function lanesOf(reports: string): Lanes | null {
   const lines = reports.split("\n").filter((line) => line.startsWith("- lane "));
@@ -520,7 +523,7 @@ function pullRows(root: string, entries: readonly Entry[], known: readonly strin
       if (held.length === 0) return [...head, NO_FILES, NO_FILES, NO_FILES, NO_FILES];
       const outcomes = held.flatMap(({ files }) => [...outcomesOf(files.outcomes ?? "").values()]);
       // What a fork leaves out on purpose is the plan's of the iteration that read it; a
-      // `still-missing-<run>.md` written before 8 November held it instead.
+      // `still-missing-<run>.md` in an older folder holds it instead.
       const opposed = held.map(({ name, files }) => {
         const plan = entries
           .filter(({ campaigns }) => campaigns.includes(name))

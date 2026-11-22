@@ -1,22 +1,23 @@
 ---
-description: Continue one explicit objective from workspace evidence; report the requirements, current results and next step
+description: Continue a single explicit objective grounded in workspace evidence; report the requirements, current measured state, and next bounded step
 ---
 
-With an argument, use it exactly as the objective. With none, resume the active goal from session
-state. If session state has no active goal, ask for one explicit objective; do not infer it from a
-plan, checkpoint or status file.
+When an argument is provided, adopt it verbatim as the objective. Without an argument, resume the
+active objective from session state. If session state holds no active objective, ask for an explicit
+one rather than inferring it from a plan, checkpoint, or status file.
 
-Read the workspace, branch, changes, recent commits, current plan or checkpoint, and the last
-executed check. Turn the objective into required results and forbidden actions. Measure each result
-against source, tests, run evidence, Git and PR state; uncertain evidence is missing.
+Inspect the workspace, current branch, working-tree changes, recent commits, active plan or
+checkpoint, and the most recently executed check. Translate the objective into required outcomes and
+forbidden actions. Evaluate each requirement against source code, tests, run evidence, Git state,
+and pull request state; treat uncertain evidence as missing.
 
-Print exactly three things:
+Print exactly three items:
 
-1. **The contract**, as written by the operator.
+1. **The contract**, as stated by the operator.
 2. **The measured position**, with exact evidence and denominators.
-3. **The next bounded step** that can be completed now.
+3. **The next bounded step** that can be completed immediately.
 
-Never report a requirement as met on prose alone. A green unit test proves its exercised boundary
-only; a generated type, prompt, fixture, or source export is not integration; a started run is not
-a completed workflow. Continue until every result has current evidence or one exact action needs
-new authority.
+Never mark a requirement as satisfied on the strength of prose alone. A passing unit test verifies
+only its exercised boundary; a generated type, prompt, fixture, or source export does not establish
+integration; a started run does not constitute a completed workflow. Continue until every
+requirement has current evidence or a single specific action requires additional authority.

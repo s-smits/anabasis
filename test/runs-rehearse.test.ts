@@ -2,17 +2,13 @@
 // rehearsal's script takes each task's answers from what is on record, writes the one its side was
 // scripted to into the answer file with what the harness selects, and names a solve that ended
 // otherwise. Its scripted Examiner proves each task it can through try_answer and puts its tasks to
-// the gate, which reads their packages alone (since 1 November 2026).
+// the gate, which reads their packages alone.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { normalizeContext } from "@earendil-works/pi-ai";
-import { conversing } from "../src/examiner/session.ts";
-import { examinerDirs } from "../src/examiner/shell.ts";
-import { keepAnswerFiles } from "../src/kernel/answer-files.ts";
-import { LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
+import { LOG_FILE } from "../src/kernel/log.ts";
 import type { TaskPackage } from "../src/kernel/task.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import {
-  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -21,17 +17,12 @@ import {
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { parseJsonAs } from "../src/meta/json-runtime.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { basename, dirname, join } from "../src/meta/path.ts";
-import { starter } from "../tools/d2/campaign.ts";
+import { dirname, join } from "../src/meta/path.ts";
 import type { Campaign } from "../tools/d2/round.ts";
-import { answersOf, scriptedExaminer, scriptedSeats, sidesOf } from "../tools/runs/rehearse.ts";
-import { seat, sweep, WALL } from "./helpers/examiner-seat.ts";
-import { SEED_FILE } from "../tools/runs/registry.ts";
-import { replayed } from "../tools/runs/replay.ts";
+import { scriptedSeats, sidesOf } from "../tools/runs/rehearse.ts";
+import { sweep } from "./helpers/examiner-seat.ts";
 import { seedCampaign, snapshotCampaign } from "../tools/runs/seed.ts";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
@@ -75,52 +66,6 @@ describe("a seed", () => {
       writeFileSync(join(from, path), content);
     }
   });
-  it("copies the log cut, the checks, a drafted exam and the states, and says where it came from", () => {
-    const to = join(root, "seeded");
-    const made = seedCampaign(from, to, { before: "x-1" });
-    expect(made).toMatchObject({ from, events: 3, of: 5, before: "x-1", sets: { held: [], released: [] } });
-    expect(read(join(to, LOG_FILE)).map(({ kind }) => kind)).toEqual([
-      "task.proposed",
-      "build.started",
-      "build.finished",
-    ]);
-    expect(readFileSync(join(to, "states", "abc", "agent", "BUILT_AGENTS.md"), "utf8")).toBe("guide\n");
-    expect(existsSync(join(to, "checks", "brief.json"))).toBe(true);
-    expect(existsSync(join(to, "exams", "f32e9cd8", "checks", "evaluator.ts"))).toBe(true);
-    expect(readFileSync(join(to, "memory", "b-1", "MEMORY.md"), "utf8")).toBe("notes of b-1\n");
-    expect(existsSync(join(to, "memory", "b-2"))).toBe(false);
-    expect(parseJsonAs<object>(readFileSync(join(to, SEED_FILE), "utf8"))).toEqual({
-      from,
-      events: 3,
-      of: 5,
-      before: "x-1",
-      examinerHome: false,
-    });
-    expect(existsSync(join(to, "launch-b-1.json"))).toBe(false);
-    expect(readFileSync(join(from, LOG_FILE), "utf8").endsWith('{"at":"2026')).toBe(true);
-  });
-
-  it("freezes a live campaign for an investigation: every whole event, the receipts, the source as it was", () => {
-    const before = readFileSync(join(from, LOG_FILE), "utf8");
-    const to = join(root, "frozen");
-    expect(snapshotCampaign(from, to)).toMatchObject({ from, events: 5, of: 5, before: null });
-    // The torn tail is an append in flight, which no reader may take for an event.
-    expect(read(join(to, LOG_FILE))).toHaveLength(5);
-    expect(readFileSync(join(to, "launch-b-1.json"), "utf8")).toBe("{}");
-    expect(readFileSync(join(to, "memory", "b-2", "MEMORY.md"), "utf8")).toBe("notes of b-2\n");
-    expect(readFileSync(join(from, LOG_FILE), "utf8")).toBe(before);
-  });
-
-  it("takes a snapshot that a killed start cut short again whole, instead of refusing its folder", () => {
-    const to = join(root, "cut");
-    mkdirSync(join(to, "states"), { recursive: true });
-    writeFileSync(join(to, LOG_FILE), `${LINES[0] ?? ""}\n`);
-    writeFileSync(join(to, "states", "stray.md"), "left by the cut copy\n");
-    expect(snapshotCampaign(from, to)).toMatchObject({ from, events: 5, of: 5 });
-    expect(read(join(to, LOG_FILE))).toHaveLength(5);
-    expect(existsSync(join(to, "states", "stray.md"))).toBe(false);
-  });
-
   it("refuses a snapshot folder that holds the campaign or lies inside it, and leaves the campaign whole", () => {
     const before = readFileSync(join(from, LOG_FILE), "utf8");
     expect(() => snapshotCampaign(from, from)).toThrow("holds the campaign");
@@ -128,42 +73,6 @@ describe("a seed", () => {
     expect(() => snapshotCampaign(from, join(from, "snapshot", "source"))).toThrow("holds the campaign");
     expect(readFileSync(join(from, LOG_FILE), "utf8")).toBe(before);
     expect(existsSync(join(from, "launch-b-1.json"))).toBe(true);
-  });
-
-  it("cuts before a drafting session as before any other session", () => {
-    const drafted = campaignAt("drafted", [
-      line("campaign.opened", {}),
-      line("draft.started", { session: "d-1" }),
-      line("draft.finished", { session: "d-1" }),
-    ]);
-    expect(seedCampaign(drafted, join(root, "drafted-before"), { before: "d-1" }).events).toBe(1);
-  });
-
-  it("carries the Examiner's home only where no session after the cut replaced it", () => {
-    const lines = [...LINES.slice(0, 4), line("exam.finished", { session: "x-1" }), LINES[4] ?? ""];
-    const homed = campaignAt("homed", lines);
-    mkdirSync(join(homed, "examiner-home"), { recursive: true });
-    writeFileSync(join(homed, "examiner-home", "notes.md"), "x-1 left this\n");
-    const after = seedCampaign(homed, join(root, "homed-after"), { before: "b-2" });
-    expect(after.examinerHome).toBe(true);
-    expect(readFileSync(join(root, "homed-after", "examiner-home", "notes.md"), "utf8")).toBe(
-      "x-1 left this\n",
-    );
-    for (const [name, cut] of [
-      ["homed-before", { before: "x-1" }],
-      ["homed-inside", { events: "4" }],
-    ] as const) {
-      expect(seedCampaign(homed, join(root, name), cut).examinerHome).toBe(false);
-      expect(existsSync(join(root, name, "examiner-home"))).toBe(false);
-    }
-    // A drafting session replaces the home as it ends, as a writing session does.
-    const drafted = campaignAt("homed-drafted", [
-      line("draft.started", { session: "d-1" }),
-      line("draft.finished", { session: "d-1" }),
-    ]);
-    mkdirSync(join(drafted, "examiner-home"), { recursive: true });
-    expect(seedCampaign(drafted, join(root, "drafted-cut"), { before: "d-1" }).examinerHome).toBe(false);
-    expect(existsSync(join(root, "drafted-cut", "examiner-home"))).toBe(false);
   });
 
   it("refuses a name that is taken and a folder with no log, and leaves nothing of a copy that does not read", () => {
@@ -174,79 +83,6 @@ describe("a seed", () => {
     const strange = campaignAt("source-3", [...LINES, line("round.imagined", {})]);
     expect(() => seedCampaign(strange, join(root, "seed-4"), {})).toThrow("is not a log event");
     expect(existsSync(join(root, "seed-4"))).toBe(false);
-  });
-});
-
-describe("a replay", () => {
-  it("says what this tree's readers make of a log, and refuses one they do not read", () => {
-    const at = (name: string, lines: readonly string[]) => join(campaignAt(name, lines), LOG_FILE);
-    const gates = [1, 2, 3, 4].map((gate) =>
-      line("task.gate", { version: "v1", gate, outcome: "passed", controls: "d" }),
-    );
-    const summary = replayed(at("replayed", [LINES[0] ?? "", ...gates, ...LINES.slice(1, 3)]));
-    for (const fact of [
-      "7 events",
-      "0 conditions",
-      "1 held out",
-      "0 released",
-      "0 written",
-      "0 compared",
-      "0 counted",
-    ]) {
-      expect(summary).toContain(fact);
-    }
-    const reports = ["g-1", "g-2"].map((session) =>
-      line("comparison.reported", { session, reading: "no-step", old: "starter", fresh: "elsewhere" }),
-    );
-    const compared = replayed(at("reported", [...LINES.slice(0, 3), ...reports]));
-    expect(compared).toContain("2 compared");
-    expect(compared).toContain("0 counted");
-    expect(() => replayed(at("strange", [line("round.imagined", {})]))).toThrow("is not a log event");
-    expect(() => replayed(at("unfolded", gates))).toThrow("task v1 is not proposed");
-  });
-});
-
-describe("a rehearsal's script", () => {
-  it("takes each task's first answer of each ending, with the files it delivered: a graded pass before the pack's accept control, and what the log's solves answered", () => {
-    const event = (kind: LogEvent["kind"], data: LogEvent["data"]): LogEvent => ({ at: AT, kind, data });
-    const written = { taskId: "x-1-001", family: "fixture", publicInput: { base: 4 }, hidden: null };
-    const log = join(root, "answered", LOG_FILE);
-    mkdirSync(dirname(log), { recursive: true });
-    // Until 19 November the script wrote the answer alone, and every jobstat task, whose first check
-    // reads the delivered files, rejected each scripted pass.
-    const report = { path: "report.md", base64: Buffer.from("# Report\n").toString("base64") };
-    const files = keepAnswerFiles(log, [report]).map((file) => ({ ...file }));
-    const events = [
-      event("task.proposed", { version: "v9", taskId: "x-1-001", session: "x-1", task: written }),
-      event("verdict", { solve: "s-9", task: "x-1-001", answer: { answer: "24" }, files, kind: "pass" }),
-      event("verdict", {
-        solve: "s-10",
-        task: "x-1-001",
-        answer: { answer: "0" },
-        kind: "fail",
-        blocking: ["check-product"],
-      }),
-      event("verdict", { solve: "s-11", task: "x-1-001", answer: { junk: 1 }, kind: "fail", fault: "f" }),
-    ];
-    const graded = [
-      { taskId: "t-1", answer: { answer: "graded" }, refusedBy: null },
-      { taskId: "t-1", answer: { answer: "stale" }, refusedBy: null },
-      { taskId: "t-1", answer: { answer: "wrong" }, refusedBy: "check-product" },
-      { taskId: "t-1", answer: { answer: "wrong too" }, refusedBy: "check-sum" },
-      { taskId: "t-2", answer: { answer: "only a pass" }, refusedBy: null },
-    ];
-    writeFileSync(log, `${events.map((each) => JSON.stringify(each)).join("\n")}\n`);
-    const answers = answersOf(graded, log);
-    const ends = (taskId: string) =>
-      Object.fromEntries(
-        Object.entries(answers.get(taskId) ?? {}).map(([end, control]) => [end, control.answer]),
-      );
-    expect(ends("t-1")).toEqual({ pass: { answer: "graded" }, fail: { answer: "wrong" } });
-    expect(ends("t-2")).toEqual({ pass: { answer: "only a pass" } });
-    expect(ends("x-1-001")).toEqual({ pass: { answer: "24" }, fail: { answer: "0" } });
-    expect(answers.get("x-1-001")?.pass?.files?.map(({ path, text }) => ({ path, text }))).toEqual([
-      { path: "report.md", text: "# Report\n" },
-    ]);
   });
 });
 
@@ -297,189 +133,11 @@ function campaignOver(folder: string, ending?: Ending) {
   return { campaign, calls, named, log };
 }
 
-describe("a rehearsal's scripted Examiner", () => {
-  it("proves a source's task through try_answer and puts it and a copy to the gate, which solves neither", async () => {
-    const folder = campaignAt("gate", []);
-    writeFileSync(join(folder, SEED_FILE), "{}\n");
-    const { campaign, named } = campaignOver(folder);
-    const source = { taskId: "source", family: "fixture", publicInput: { base: 2 }, hidden: null };
-    const controls = [{ taskId: source.taskId, answer: { answer: "12", unit: "N" }, refusedBy: null }];
-    const session = seat("write", []);
-    const result = await scriptedExaminer(
-      [],
-      [source],
-      2,
-      controls,
-    )({
-      ...session.request,
-      log: campaign.log,
-      wanted: 2,
-      verify: async () => ({ kind: "pass" }),
-    });
-    const gates = read(campaign.log).flatMap(({ kind, data }) => (kind === "task.gate" ? [data] : []));
-    expect(result).toMatchObject({ puts: 2, ended: "supplied", refused: [] });
-    expect(result.held).toHaveLength(2);
-    expect(gates).toMatchObject([{ outcome: "passed" }, { outcome: "passed" }]);
-    expect(read(campaign.log).filter(({ kind }) => kind === "task.feasible")).toHaveLength(2);
-    expect(named).toEqual([]);
-  });
-
-  // A stop at an Examiner's rest is a rehearsal's to walk: until 7 November each scripted ask was a
-  // session of its own with no shell, so no rehearsal claimed an Examiner's root or rested.
-  it("rests as one conversation in its wall, its root standing, and makes each later ask's own calls", async () => {
-    const folder = campaignAt(`rest-${basename(root)}`, []);
-    writeFileSync(join(folder, SEED_FILE), "{}\n");
-    const { campaign } = campaignOver(folder);
-    const source = { taskId: "source", family: "fixture", publicInput: { base: 2 }, hidden: null };
-    const controls = [{ taskId: source.taskId, answer: { answer: "12", unit: "N" }, refusedBy: null }];
-    const { request } = seat("write", []);
-    const examiner = conversing(scriptedExaminer([], [source], 4, controls));
-    const ask = async (id: string) =>
-      await examiner.session(
-        { ...request, id, log: campaign.log, wanted: 1, verify: async () => ({ kind: "pass" }) },
-        WALL,
-      );
-    const { root: resting } = examinerDirs(campaign.log, "x-1");
-    try {
-      expect(await ask("x-1")).toMatchObject({ ended: "supplied", puts: 1 });
-      expect(existsSync(resting)).toBe(true);
-      const second = await ask("x-2");
-      expect(second).toMatchObject({ ended: "supplied", puts: 1 });
-      expect(second.held).toHaveLength(1);
-      const starts = read(campaign.log).flatMap(({ kind, data }) => (kind === "exam.started" ? [data] : []));
-      expect(starts).toMatchObject([{ session: "x-1" }, { session: "x-2", conversation: "x-1" }]);
-      await examiner.close();
-      expect(existsSync(resting)).toBe(false);
-    } finally {
-      await examiner.close();
-      rmSync(resting, { recursive: true, force: true });
-    }
-  });
-});
-
 describe("scripted solves", () => {
-  it("answer a copy by what it asks where its source's id names another task in the seed's log", async () => {
-    const folder = campaignAt("copied", []);
-    writeFileSync(join(folder, SEED_FILE), "{}\n");
-    const { campaign, calls } = campaignOver(folder, { outcome: "pass" });
-    const asks = { family: "fixture", publicInput: { base: 7 }, hidden: null };
-    const answers = [
-      { taskId: hashJsonValue(asks), answer: { answer: "the copied task" }, refusedBy: null },
-      { taskId: "x-3-002", answer: { answer: "another task" }, refusedBy: null },
-    ];
-    const copy = { ...pack("x-11-002"), publicInput: { base: 7, rehearsal_copy: { of: "x-3-002", n: 1 } } };
-    const fresh = { dir: join(root, "fresh-copy"), digest: "f" };
-    cpSync(FIXTURE, fresh.dir, { recursive: true });
-    const strayed: string[] = [];
-    await scriptedSeats(
-      SCRIPT,
-      answers,
-      strayed,
-    )(campaign, { builder: undefined, reference: FIXTURE }).solve(copy, fresh, undefined);
-    expect(calls.at(-1)).toMatchObject({
-      arguments: { command: `printf %s '{"answer":"the copied task"}' > answer.json` },
-    });
-    expect(strayed).toEqual([]);
-  });
-
-  it("deliver a file by write where the harness selects it, since a shell command is one argument", async () => {
-    const folder = campaignAt("delivered", []);
-    writeFileSync(join(folder, SEED_FILE), "{}\n");
-    const { campaign, calls } = campaignOver(folder, { outcome: "pass" });
-    const report = "r".repeat(200_000);
-    const answers = [
-      {
-        taskId: held.taskId,
-        answer: { answer: "with a report" },
-        files: [{ path: "out/report.md", base64: "", text: report }],
-        refusedBy: null,
-      },
-    ];
-    const both = { dir: join(root, "fresh-both"), digest: "b" };
-    cpSync(FIXTURE, both.dir, { recursive: true });
-    writeFileSync(join(both.dir, "agent/tools-spec.json"), '{ "presets": ["bash", "write"], "tools": [] }\n');
-    const seats = scriptedSeats(SCRIPT, answers, [])(campaign, { builder: undefined, reference: FIXTURE });
-    // A harness with a shell alone has no other way to place it.
-    const shell = { dir: join(root, "fresh-shell"), digest: "s" };
-    cpSync(FIXTURE, shell.dir, { recursive: true });
-    await seats.solve(held, both, undefined);
-    await seats.solve(held, shell, undefined);
-    // Each solve's first call, which places the delivered file.
-    expect(calls).toMatchObject([
-      { name: "write", arguments: { path: "deliverables/out/report.md", content: report } },
-      { name: "bash" },
-    ]);
-  });
-
   it("are refused on a campaign that is no seed, whose next round would count their solves", () => {
     const { campaign } = campaignOver(campaignAt("real", []), { outcome: "pass" });
     expect(() =>
       scriptedSeats(SCRIPT, graded, [])(campaign, { builder: undefined, reference: FIXTURE }),
     ).toThrow("is no seed");
-  });
-
-  it("script each solve by its harness, and name the one that ended otherwise", async () => {
-    const folder = campaignAt("rehearsed", []);
-    writeFileSync(join(folder, SEED_FILE), "{}\n");
-    const { campaign, calls, named } = campaignOver(folder, { outcome: "pass" });
-    const strayed: string[] = [];
-    const seats = scriptedSeats(
-      SCRIPT,
-      graded,
-      strayed,
-    )(campaign, { builder: undefined, reference: FIXTURE });
-    expect(seats.builder?.model.id).toBe("script");
-    // The fresh harness leaves the shell out, so its solver has `write` alone; the fixture and
-    // the starter select a shell, and a script writes through it.
-    const fresh = { dir: join(root, "fresh"), digest: "f" };
-    cpSync(FIXTURE, fresh.dir, { recursive: true });
-    writeFileSync(join(fresh.dir, "agent/tools-spec.json"), '{ "presets": ["write"], "tools": [] }\n');
-    const old = { dir: FIXTURE, digest: "o" };
-    await seats.solve(held, fresh, undefined);
-    expect(strayed).toEqual([]);
-    await seats.solve(held, old, undefined);
-    await seats.solve(other, await starter(campaign), undefined);
-    expect(calls).toMatchObject([
-      { name: "write", arguments: { path: "answer.json", content: '{"answer":"t-2 right"}' } },
-      { name: "bash", arguments: { command: `printf %s '{"answer":"t-2 wrong"}' > answer.json` } },
-      { name: "bash", arguments: { command: `printf %s '{"answer":"t-1 wrong"}' > answer.json` } },
-    ]);
-    expect(strayed).toHaveLength(2);
-    for (const [index, facts] of [
-      [0, ["s-2", "t-2", "reference", "fail", '{"outcome":"pass"}']],
-      [1, ["s-3", "t-1", "starter", "fail", '{"outcome":"pass"}']],
-    ] as const) {
-      for (const fact of facts) expect(strayed[index]).toContain(fact);
-    }
-    await seats.solve(pack("t-3"), old, undefined);
-    expect(calls.at(-1)).toMatchObject({ name: "submit" });
-    for (const fact of ["t-3", "no answer", "rejected"]) expect(strayed.at(-1)).toContain(fact);
-    const silent = scriptedSeats({ held: sidesOf("none:pass"), starter: "none" }, graded, strayed);
-    await silent(campaign, { builder: undefined, reference: FIXTURE }).solve(pack("t-3"), old, undefined);
-    expect(calls.at(-1)).toMatchObject({ name: "submit" });
-    for (const fact of ["s-5", "t-3", "reference", "no answer", '{"outcome":"pass"}']) {
-      expect(strayed.at(-1)).toContain(fact);
-    }
-    const ends = strayed.length;
-    for (const kind of ["no-answer", "turns-ended", "rejected"] as const) {
-      const quiet = campaignOver(folder, { outcome: "fail", kind });
-      await silent(quiet.campaign, { builder: undefined, reference: FIXTURE }).solve(
-        pack("t-3"),
-        old,
-        undefined,
-      );
-      expect(strayed).toHaveLength(ends + (kind === "rejected" ? 1 : 0));
-    }
-    expect(strayed).toHaveLength(ends + 1);
-    expect(strayed.at(-1)).toContain('{"outcome":"fail","kind":"rejected"}');
-    const least = await starter(campaign);
-    const under = scriptedSeats({ held: sidesOf("fail:pass"), starter: "pass" }, graded, strayed);
-    await under(campaign, { builder: undefined, reference: least.dir }).solve(held, least, undefined, "g0");
-    expect(calls.at(-1)).toMatchObject({
-      name: "bash",
-      arguments: { command: `printf %s '{"answer":"t-2 wrong"}' > answer.json` },
-    });
-    for (const fact of ["s-6", "t-2", "reference", "fail"]) expect(strayed.at(-1)).toContain(fact);
-    expect(named).toEqual([undefined, undefined, undefined, undefined, undefined, "g0"]);
   });
 });

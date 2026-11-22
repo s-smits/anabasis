@@ -166,10 +166,9 @@ function validShare(counts: readonly number[]): Share {
   return { valid, solves: tasks * Math.max(0, counts.length - 1) };
 }
 
-/** The tally and the test of a set's scores as its step reads them: a report of
- *  26 October to 2 November also scored the bill, and until 1 November the page drew every bar
- *  and tally with it, so a comparison that read no step on 3 won, 0 lost, 13 tied without the
- *  bill showed 13 won, 1 lost, 2 tied. */
+/** The tally and the test of a set's scores as its step reads them: a report of one era also
+ *  scored the bill, and a page that drew every bar and tally with it would show a comparison that
+ *  read no step on 3 won, 0 lost, 13 tied without the bill as 13 won, 1 lost, 2 tied. */
 export function steppedOf(tested: {
   readonly differences: readonly number[];
   readonly unbilled?: readonly number[];

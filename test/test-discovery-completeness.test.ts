@@ -2,27 +2,27 @@
  * Every committed test file sits where a gate step runs it.
  *
  * Bun discovers a `*.test` or `*.spec` file in any of the eight JavaScript and TypeScript
- * suffixes — `.mjs`, `.cjs`, `.mts` and `.cts` included, measured on 1.4.2 with one file per
+ * suffixes: `.mjs`, `.cjs`, `.mts` and `.cts` included, measured on 1.4.2 with one file per
  * suffix and eight passes. What it never does is descend into a directory whose name begins with
  * a dot, and a positional path is a filter over the files it already found rather than a root to
  * add: `bun test .claude`, and naming the file itself, both match nothing and say so in the same
  * words as a typo. So a suite under `.claude/skills/**` is invisible to the runner.
  *
- * Until 2026-09-20 the repository answered that with eleven files in `test/` that did nothing but
- * re-import twenty-four hidden suites, and this guard checked that each hidden suite had one.
- * Two costs. A wrapper is a second place to remember, held together by nothing but this test. And
- * a wrapper is one file to Bun's scheduler: v1's `claude-system-path-runners.test.js` re-imported
- * eight process-spawning suites and was the slowest file in the whole suite at 54.1 s against
- * 18.7 s for the next one, which on a slowest-first schedule is the floor for the entire run;
- * split, its longest member takes 33.4 s and the other seven go wherever there is room. The
- * suites now live in `test/` under their own names, and the wrappers are gone.
+ * One answer is a file in `test/` that does nothing but re-import a hidden suite, with a guard that
+ * checks each hidden suite has one. It has two costs. A wrapper is a second place to remember, held
+ * together by nothing but this test. And a wrapper is one file to Bun's scheduler: v1's
+ * `claude-system-path-runners.test.js` re-imported eight process-spawning suites and was the
+ * slowest file in the whole suite at 54.1 s against 18.7 s for the next one, which on a
+ * slowest-first schedule is the floor for the entire run; split, its longest member takes 33.4 s
+ * and the other seven go wherever there is room. The suites now live in `test/` under their own
+ * names, and the wrappers are gone.
  *
  * What is left is one rule with one owner. The roots below are every place a gate step actually
  * runs, so a suite written anywhere else is named here rather than sitting green and unread.
  *
  * The subject is the candidate tree: tracked files that still exist plus untracked, non-ignored
  * ones. Reading that set through Git includes a suite added before staging while excluding the
- * ignored scratch directories a filesystem walk would enter — and it reaches into dot-directories,
+ * ignored scratch directories a filesystem walk would enter, and it reaches into dot-directories,
  * which the corpus walk in `tools/loc/source-policy.ts` deliberately does not.
  */
 import { existsSync, readFileSync } from "../src/meta/filesystem.ts";
@@ -93,7 +93,7 @@ describe("repository test discovery", () => {
   it("keeps every in-repo scratch directory inside the one ignored family", () => {
     // A fixture whose modules must resolve against this repository's `node_modules` cannot use
     // the system temp directory, so it makes its scratch inside the checkout. `.gitignore` is
-    // the only thing keeping that scratch away from the two readers who walk the tree — the case
+    // the only thing keeping that scratch away from the two readers who walk the tree: the case
     // above, which lists untracked files, and oxlint, which honours the same file. It used to
     // carry one pattern per fixture prefix and the list drifted: of the thirty-two live prefixes
     // eighteen had no entry, `.ana-candidate-*` failed a push while a sibling worker held one,

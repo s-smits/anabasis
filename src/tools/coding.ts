@@ -12,8 +12,8 @@
  * A timeout gains the host's limits, or the solve-end reserve that cut it, as before migration.
  *
  * `read` prepares images with Photon, as pi's coding agent did before the migration: without it,
- * durable refuses a BMP and an image above its size limits instead of converting or resizing it
- * (22 October). One Photon worker is started on the first image and shared by every seat.
+ * durable refuses a BMP and an image above its size limits instead of converting or resizing it.
+ * One Photon worker is started on the first image and shared by every seat.
  */
 import {
   createBashTool,

@@ -5,19 +5,18 @@
  * that comes next. It is the one reading of `src/campaign/handover.ts`, printed whole for the
  * campaign's owner. Nothing here reads the log for itself, and nothing is launched.
  *
- * Its last line is the one move the plan's decision table names on this log (`decide`,
+ * Its last line is the one move the decision table names on this log (`decide`,
  * `src/campaign/decide.ts`), with its reason: what `tools/d2/harness-builder.ts` would make next.
  * The table is asked with the four flags of the campaign command that bear on it, and with the
  * terms its opening keeps for those it does not name (`campaign.opened`, `src/campaign/opening.ts`),
- * so that the view and `tools/d2/harness-builder.ts` name one move on one log. Until 11 October
- * the view also listed every move a launch would be admitted for, and that list named a promotion
- * on one step where the table waits for its repeat; the table's move is the one it prints. The
- * launcher went the same day (`7f0add79:docs/simplify.md`, D2), and the view parses no flag of its own.
+ * so that the view and `tools/d2/harness-builder.ts` name one move on one log. It prints the
+ * table's move alone, not every move a launch would be admitted for, which could name a move the
+ * table does not make, and it parses no flag of its own.
  * The view opens no campaign, so of a log that holds no task it says what holds for a campaign
  * over a pack: that the pack's tasks are taken in first.
  *
  * A step's line holds counts, harnesses, a tally, a reading and a cost. A harness is named by its
- * letter beside its digest's head (`namesOf`, `src/campaign/names.ts`; 14 October), since a run of
+ * letter beside its digest's head (`namesOf`, `src/campaign/names.ts`), since a run of
  * eight hex characters a line was what an operator had to match by eye across the view and the
  * closing report. A comparison's line also says how far its tasks are independent draws: the
  * largest family's share of its frontier, and the tasks the comparison of its kind before it drew.
@@ -47,11 +46,10 @@ import { dollars } from "./said.ts";
 import { lastLaunch } from "./receipt.ts";
 import { runReason, runState } from "./state.ts";
 
-/** How long a first comparison may stand admissible and not begun before it is called long. Over
- *  nine campaigns to 16 November the seven oldest took 7 to 65 minutes and the two newest 82 and
- *  154, the Builder waiting on practice tasks the move table asked for. It is a lead, not a fault:
- *  of the 130 recorded campaigns that reached the position 77 stood this long, many with a Builder
- *  at work, which the hours inside its waits tell apart. */
+/** How long a first comparison may stand admissible and not begun before it is called long: longer
+ *  than this has meant the Builder waiting on practice tasks the move table asked for. It is a
+ *  lead, not a fault: most recorded campaigns that reached the position stood this long, many with
+ *  a Builder at work, which the hours inside its waits tell apart. */
 const HELD_OFF_MS = 75 * MINUTE_MS;
 /** The flags the table is asked with: the campaign command's, with the same names. */
 const VIEW_OPTIONS = {
@@ -189,13 +187,13 @@ export function planOn(events: readonly LogEvent[], values: Asked = {}): Plan {
   return planOf(
     events,
     {
-      unprepared: !events.some(({ kind }) => kind === "task.proposed"),
+      unprepared: opening?.prompt == null && !events.some(({ kind }) => kind === "task.proposed"),
       level: Number(term("level", COMPARISON_OPTIONS.level.default)),
       target: target === undefined ? undefined : Number(target),
       pastStop: values["past-stop"],
       // The practice tasks the campaign is brought to, as the command passes them: without a
-      // count the table releases nothing, and the view said `build` where the command made
-      // `prepare` (found by review, 11 October).
+      // count the table releases nothing, and the view would say `build` where the command makes
+      // `prepare`.
       practice: Number(term("practice", String(PRACTICE))),
     },
     opening,
@@ -273,9 +271,8 @@ export function poolOn(events: readonly LogEvent[], upTo: number) {
 
 /** The line at which admission first refused a first comparison nothing, and what the campaign then
  *  took to begin one (to the log's end where none began): the hours, those of them inside Builder
- *  waits, and whether the hours are long (`HELD_OFF_MS`). Null where none became admissible. On
- *  15 November a campaign held eight tasks at 3.0 hours and compared at 5.6, and its hours to a
- *  first comparison read as the Examiner's. */
+ *  waits, and whether the hours are long (`HELD_OFF_MS`). Null where none became admissible. It
+ *  keeps the hours after admission apart, which would otherwise read as the Examiner's. */
 export function heldOff(events: readonly LogEvent[]) {
   const first = events.findIndex(({ kind }) => kind === "comparison.started");
   const index = events.slice(0, first === -1 ? events.length : first).findIndex(

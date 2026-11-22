@@ -1,21 +1,23 @@
 /**
- * A warning at every promotion of every run and at any sign a run stopped moving, in plain code, from
- * cron, with no model in the loop. No run carries a cap on promotions, so a person or a session has to
- * learn of one to decide on a pause, and the pulse says it only to a session that is looking.
+ * Cron-driven alert monitor that reports every promotion, starter-comparison reading, campaign
+ * ending, and stall across all configured hosts without involving a model. Because campaigns have no
+ * automatic cap on promotions, an operator or controller session needs timely notification to decide
+ * when to pause; `pulse` only reports to an actively polling session.
  *
  *   bun run runs alerts [--state .ana/runs-alerts.json]
  *   bun run runs alerts --rows
  *
- * One look asks every host `ANA_HOSTS` lists for its rows (`--rows`, which each host reads for itself,
- * as only it can see its own processes) and prints one line on stdout for each thing new since the
- * state file's last look, and nothing otherwise. A look remembers only after it has printed, so a kill
- * says a line twice and loses none. It starts and stops nothing: the line that says a run is ready to
- * pause prints the command for a person to run, since a pause is the operator's word.
+ * Each invocation queries every host listed in `ANA_HOSTS` via `--rows` (each host inspects its own
+ * local processes) and prints one line on stdout for every event new since the previous state
+ * snapshot, printing nothing otherwise. State is persisted only after printing so that an
+ * interrupted run may duplicate a line rather than drop one. The command neither starts nor stops
+ * campaigns: when a run is ready to pause, it prints the command for the operator to execute.
  *
- * The state is keyed by a run's name, so a run that `runs move` took to another host is the same run.
- * A run a silent host holds stays as it was last seen, so a host coming back says what it gained, and
- * a run leaves the state only once a host that answered no longer holds it. A first look, or one
- * after a state file that cannot be read, records the present and fires on no history.
+ * State is keyed by campaign name so that a run relocated by `runs move` retains its history. Runs
+ * on unreachable hosts remain in the state as last observed so that reconnecting hosts report what
+ * changed; a run is dropped from state only once a responding host no longer holds it. On a first
+ * run, or when the state file cannot be parsed, the command records the current snapshot without
+ * emitting historical alerts.
  */
 import { type Static, Type } from "typebox";
 import { existsSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
@@ -44,43 +46,43 @@ import {
   writers,
 } from "./registry.ts";
 
-/** One run as the host that holds it reads it now. */
+/** Snapshot of a single run as observed by the host holding it. */
 export interface Row {
   readonly name: string;
   readonly promotions: readonly Promotion[];
-  /** Where the run stands (`runState`): written on, kept, ended or stopped. */
+  /** Current lifecycle state (`runState`): actively written, kept, ended, or stopped. */
   readonly state: RunState;
-  /** Whether this run gets a keeper by itself (`keepsItself`): one that has nowhere to move does not. */
+  /** Whether this run should have an attached keeper (`keepsItself`); runs with no fallback login do not. */
   readonly owed: boolean;
   readonly lastAt: string | null;
-  /** What its keeper said it did, oldest first. */
+  /** Keeper action lines recorded for this run, ordered oldest first. */
   readonly kept: readonly string[];
-  /** Whether a pause stopped it (`stateOf`), kept apart on the wire, which a peer on an older tree sends. */
+  /** Whether a pause stopped the run (`stateOf`), transmitted separately for compatibility with older peers. */
   readonly paused: boolean;
-  /** Each ending on its log, oldest first. */
+  /** All campaign endings recorded in the log, ordered oldest first. */
   readonly endings: readonly string[];
 }
 
-/** What a host answered: its rows, and every campaign it holds, which the rows leave out once they are
- *  closed and a day old. A run named here is no vanished run. */
+/** Response from a single host: its active rows together with every campaign directory it holds
+ *  (including closed runs older than a day that are omitted from `rows`), preventing false vanished-run alerts. */
 export interface HostRows {
   readonly rows: readonly Row[];
   readonly held: readonly string[];
-  /** The campaigns `runs retire` moved into this host's own archive: a run that left the registry for
-   *  it has not vanished. */
+  /** Campaigns moved into this host's local archive by `runs retire`, so leaving the active registry
+   *  does not register as a disappearance. */
   readonly retired: readonly string[];
 }
 
-/** What one host answered a look, null for one that gave no answer the look can read. */
+/** Result of querying one host; `said` is null if the host did not return a readable payload. */
 interface Answer {
   readonly host: string;
   readonly said: HostRows | null;
 }
 
-/** The file's last look, where no `--state` names another. */
+/** Default state file path when `--state` is not supplied. */
 const STATE = join(".ana", "runs-alerts.json");
 const MAYBE_TEXT = Type.Union([Type.String(), Type.Null()]);
-/** What the last look saw of one run; `reads` are the starter comparisons read so far, by id. */
+/** Previously observed state of a single run; `reads` holds the session IDs of starter comparisons already reported. */
 const SEEN = Type.Object({
   host: Type.String(),
   promotions: Type.Number(),
@@ -92,22 +94,19 @@ const SEEN = Type.Object({
   endings: Type.Optional(Type.Number()),
 });
 type Seen = Static<typeof SEEN>;
-/** The state file: the hosts the last look heard nothing from, for how many looks in a row where
- *  the state is new enough to count them, and what it saw of each run. */
+/** Serialised alert state: unreachable hosts, consecutive missed-poll counts per host, and last-seen run records. */
 const ALERT_STATE = Type.Object({
   down: Type.Array(Type.String()),
   looks: Type.Optional(Type.Record(Type.String(), Type.Number())),
   runs: Type.Record(Type.String(), SEEN),
 });
-/** The looks after which a host still down is said again while a run last seen open is there: an
- *  hour of the job's ten-minute looks. On 15 November every peer was unread for 3.4 hours beside
- *  two live runs, and the one line of the first look was all that said so. */
+/** Consecutive missed polls before re-reporting an unreachable host that holds an open run
+ *  (six ten-minute polls equals one hour). */
 const SAID_AGAIN = 6;
 export type AlertState = Static<typeof ALERT_STATE>;
 
-/** A host's answer to `alerts --rows`, checked for the parts a peer on an older tree lacks, such as
- *  `state` or `endings`, so that such a peer reads as a host down. The rest of a row is this tree's
- *  own `Row`. */
+/** Schema for a host's `alerts --rows` payload. Requires fields absent from older checkouts
+ *  (such as `state` and `endings`) so incompatible peers register as unreachable. */
 const HOST_ROWS = Type.Object({
   rows: Type.Array(
     Type.Unsafe<Row>(
@@ -130,7 +129,7 @@ const HOST_ROWS = Type.Object({
   retired: Type.Array(Type.String()),
 });
 
-/** The row of `run`, whose log is read at `now` among the processes `running`. */
+/** Builds the alert row for `run` from its log at timestamp `now` and the live process table `running`. */
 function rowOf(run: Run, running: readonly Running[], now: number): Row {
   const events = logEvents(run.path);
   const last = events.at(-1);
@@ -148,43 +147,37 @@ function rowOf(run: Run, running: readonly Running[], now: number): Row {
   };
 }
 
-/**
- * Whether a look reads a run: as `status` shows it, where a launch with a model in every seat kept
- * its receipt (`keepReceipt`). A rehearsal's seed and a test's campaign run scripted seats and keep
- * none, and `status` shows both: on 6 November two seeds reached the operator's notifications as
- * "first seen with 6 promotions" beside a real second promotion, and on 15 November the campaigns
- * of one check were 21 of the alerts log's last 30 lines.
- */
-export const onAlerts = (run: Run, writing: "open" | "closed", age: number): boolean =>
-  lastLaunch(run.path) !== undefined && onStatus(run, writing, age);
-
-/** This machine's rows, and the name of every campaign its worktrees hold. */
+/** Collects alert rows, held campaign names, and retired archive names for the local host. */
 function rowsHere(now: number): HostRows {
   const running = processes();
   const held = runs().filter(isCampaign);
   const rows = held.flatMap((run) => {
-    // A log can go between the listing and this read: on 20 November a test's `afterAll` deleted
-    // its campaign then, and the look failed whole.
+    // A log may disappear between directory enumeration and stat (for example during test teardown),
+    // so skip missing entries instead of aborting the whole poll.
     const log = statSync(run.path, { throwIfNoEntry: false });
     if (log === undefined) return [];
     const writing = writers(run, running).length > 0 ? "open" : "closed";
-    return onAlerts(run, writing, now - log.mtimeMs) ? [rowOf(run, running, now)] : [];
+    // Filter runs to match `status` while requiring a launch receipt (`keepReceipt`). Rehearsal
+    // seeds and test campaigns use scripted seats and write no receipt, keeping synthetic
+    // promotions out of operator notifications.
+    const read = lastLaunch(run.path) !== undefined && onStatus(run, writing, now - log.mtimeMs);
+    return read ? [rowOf(run, running, now)] : [];
   });
   const retired = archived().flatMap((run) => (run.archived === HERE ? [run.name] : []));
   return { rows, held: held.map(({ name }) => name), retired };
 }
 
-/** Whether a process writes the run's log: a state written on carries whether a keeper lives beside it. */
+/** Type guard indicating whether a process is actively writing the run's log (carrying keeper presence). */
 const written = (state: RunState): state is Extract<RunState, { kept: boolean }> => "kept" in state;
 
-/** The ending a run's log ends on, whether its keeper goes on past it or not. */
+/** Returns the log's terminal ending string, whether or not a keeper continued past it. */
 const endingOf = (state: RunState): string | null => {
   if (state.kind === "kept") return state.ending ?? null;
   return state.kind === "ended" ? state.ending : null;
 };
 
-/** What is wrong with a run that has not ended, in the words a line says it. Each guard narrows the
- *  state, and a kind added to `RunState` fails to compile at the last. */
+/** Describes any liveness or keeper defect for an unfinished run. Narrowing is exhaustive so adding
+ *  a new variant to `RunState` produces a compile error here. */
 function gapOf({ state, owed, paused }: Row): string | null {
   if (written(state)) return owed && !state.kept ? "no keeper" : null;
   if (state.kind === "ended") return null;
@@ -207,20 +200,19 @@ function seenOf(row: Row, host: string): Seen {
   };
 }
 
-/** The lines `row`, which stands at `now`, earns since `seen`, each to be headed by the run's name. A
- *  run first seen says its promotions in one line, since its log may hold a seed's or a run's from
- *  before this state. */
+/** Produces new alert lines for `row` relative to the previous snapshot `seen`. A run observed for
+ *  the first time summarises its existing promotions in a single line rather than replaying history. */
 function newsOf(row: Row, now: Seen, seen: Seen | undefined): string[] {
   const last = row.promotions.at(-1);
   const first =
     last === undefined
       ? []
       : [`first seen with ${plural(row.promotions.length, "promotion")}, the last ${last.digest}`];
-  // What turned since `seen`: the gap where it is new, and whether the log went quiet.
+  // Report newly entered liveness gaps and transitions into the quiet state.
   const gap = now.gap === seen?.gap ? null : now.gap;
   const quiet = now.quiet && seen?.quiet !== true;
-  // Each ending the log gained since `seen`, as a keeper goes on within a look, the last the one it
-  // stands on; where a look lacks the count, the ending it stands on where new.
+  // Emit each ending added since `seen` (including intermediate endings a keeper resumed past); fall
+  // back to the current ending when reading an older state snapshot without `endings` counts.
   const fresh = now.ending === null || now.ending === seen?.ending ? [] : [now.ending];
   const gained = seen?.endings === undefined ? fresh : row.endings.slice(seen.endings);
   const stands = now.ending === null ? -1 : gained.length - 1;
@@ -238,8 +230,8 @@ function newsOf(row: Row, now: Seen, seen: Seen | undefined): string[] {
 }
 
 /**
- * The fold of one look: from what the last look saw (null for none) and what each host answered (null
- * for one that gave no answer) to the lines to print and what to remember.
+ * Pure state-transition fold for one alert poll: combines the prior state (`null` on first poll)
+ * with each host's response (`null` when unreachable) to produce output lines and the next state.
  */
 export function alertsOf(
   before: AlertState | null,
@@ -250,7 +242,7 @@ export function alertsOf(
   const answered = new Set(heard.map(({ host }) => host));
   const held = new Set(heard.flatMap(({ said }) => said.held));
   const retired = new Set(heard.flatMap(({ said }) => said.retired));
-  // A name two hosts or two worktrees hold is the one with a writer, as a run mid-move is.
+  // When a campaign exists on two hosts or worktrees (for example mid-move), prefer the actively written copy.
   const current = new Map(
     heard
       .flatMap(({ host, said }) => said.rows.map((row) => ({ host, row })))
@@ -295,15 +287,15 @@ export function alertsOf(
   return { lines, next: { down, looks, runs: next } };
 }
 
-/** The state file's last look, null where there is none or it could not be read, which `torn` says:
- *  a torn file and JSON of the wrong form read alike. */
+/** Reads the previous alert state from `path`. Returns `before: null` if missing or unreadable;
+ *  `torn` is true when the file exists but fails schema validation. */
 function lastLook(path: string): { before: AlertState | null; torn: boolean } {
   if (!existsSync(path)) return { before: null, torn: false };
   const before = answerOf(ALERT_STATE, [readFileSync(path, "utf8")]);
   return { before, torn: before === null };
 }
 
-/** What this machine and every host `ANA_HOSTS` lists answer one look. */
+/** Polls this host and every peer in `ANA_HOSTS` for their current alert rows. */
 async function looked(): Promise<Answer[]> {
   const away = await asked(["alerts", "--rows"]);
   return [
@@ -315,7 +307,7 @@ async function looked(): Promise<Answer[]> {
   ];
 }
 
-/** `bun run runs alerts`. */
+/** Entry point for `bun run runs alerts`. */
 export async function alerts(args: readonly string[]): Promise<void> {
   const { values } = parseArgs({
     args: [...args],

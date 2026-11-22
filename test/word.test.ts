@@ -1,7 +1,7 @@
 // Each kind of operator word has one lifetime, owned by `src/campaign/word.ts`: a stop, other tasks
 // and a total are pending until the event that acts on one names it, and a pause holds for its wait
-// and is answered by nothing. Until 9 November `pendingWords` listed every pause and every retired
-// `cause` word ever left as pending, and the host spelled the pause's wait out for itself.
+// and is answered by nothing, so `pendingWords` lists no pause and no retired `cause` word left
+// as pending, and the host does not spell the pause's wait out for itself.
 import { describe, expect, it } from "bun:test";
 import { ANSWERED, PAUSE, pauseWaitMs, paused, pendingWords } from "../src/campaign/word.ts";
 import type { LogEvent } from "../src/kernel/log.ts";

@@ -27,21 +27,17 @@ const LIVE = Type.Array(
 
 /** The payer of a run that seats an `openai-codex/` model and names no numbered login: the Codex
  *  CLI's login of the machine it runs on. Each machine signs Codex in on its own, so a cap on it
- *  counts one machine's runs (`fullOn`, `logins.ts`). Until 29 October such a run counted under no
- *  login, and one GPT run a machine was a rule kept by hand. */
+ *  counts one machine's runs (`fullOn`, `logins.ts`), so that one GPT run a machine is kept by code
+ *  rather than by hand. */
 export const CODEX = "codex";
-
-/** Whether `flags`, a launch's, seat a model through the Codex CLI's login. */
-export function seatsCodex(flags: readonly string[]): boolean {
-  return Object.values(looseFlagsOf(flags)).some(
-    (value) => isString(value) && value.startsWith("openai-codex/"),
-  );
-}
 
 /** Who pays a run on `login` with the launch flags `flags`: the login, or the Codex CLI's where it
  *  names none and a seat goes through it. */
 export const payerOf = (login: string | undefined, flags: readonly string[]): string | undefined =>
-  login ?? (seatsCodex(flags) ? CODEX : undefined);
+  login ??
+  (Object.values(looseFlagsOf(flags)).some((value) => isString(value) && value.startsWith("openai-codex/"))
+    ? CODEX
+    : undefined);
 
 /** The live seats of the skill `system-path-simulation` among the processes `table`, each by the seed
  *  and the login its own flags name, since a seat keeps no launch receipt. A shell that started one

@@ -5,13 +5,13 @@
  *
  *   bun tools/d2/import.ts --name r-1 --harness ~/handover/t-4/harness [--note "<why>"]
  *
- * Row C7 of the climb plan (`7f0add79:docs/plan.md`, 10 October): its lever L4 opens a campaign's first epoch
- * from a harness that already installs the field's engine, so that the first epoch stops measuring
+ * This opens a campaign's first epoch from a harness that already installs the field's engine, so
+ * that the first epoch stops measuring
  * a solver's set-up time, and until now that harness had to be built by a Builder session of the
  * same campaign. What another campaign handed over (`close.ts`, `harness/`), or a harness written
  * by hand, is imported here instead.
  *
- * It is kept as a session keeps one (`snapshot`, `src/builder/tools.ts`): the files under their
+ * It is kept as a session keeps one (`snapshot`, `src/builder/kept.ts`): the files under their
  * digest, the programs copied into a tree beside the state and named by the link `.toolchain`,
  * links copied as they are. It is opened there before anything is recorded and refused where it
  * does not open as the harness it was read as, so that no solve is paid for under a name that is
@@ -27,9 +27,9 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
-import { parentToolTree, stagedState } from "#src/builder/tools.ts";
+import { parentToolTree, stagedState } from "#src/builder/kept.ts";
 import { openHarness } from "#src/harness/open.ts";
-import { campaignLog } from "./campaign.ts";
+import { harnessNamed } from "./campaign.ts";
 
 const OPTIONS = {
   name: { type: "string" },
@@ -40,9 +40,7 @@ const OPTIONS = {
 /** `bun tools/d2/import.ts`. Returns the imported harness by its digest and where it is kept. */
 export async function importCommand(args: readonly string[]): Promise<{ digest: string; dir: string }> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
-  const { name, harness } = values;
-  if (name === undefined || harness === undefined) throw new Error("name --name and --harness");
-  const log = campaignLog(name);
+  const { log, harness } = harnessNamed(values);
   if (!existsSync(dirname(log))) {
     throw new Error(`${dirname(log)}: the campaign has no folder yet; open it before a harness is imported`);
   }
@@ -59,7 +57,7 @@ export async function importCommand(args: readonly string[]): Promise<{ digest: 
   }
   // The programs as a session keeps them: in a tree beside the state, named by a link. A link
   // under the source is followed to the tree itself. The states are made first: a campaign opened
-  // and not yet run has none, and until 11 October its import of a harness with programs failed.
+  // and not yet run has none, and its import of a harness with programs would otherwise fail.
   const own = parentToolTree(source);
   mkdirSync(states, { recursive: true });
   const tree = own === null ? null : mkdtempSync(join(states, "tree-"));

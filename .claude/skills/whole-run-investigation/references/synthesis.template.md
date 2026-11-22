@@ -1,14 +1,12 @@
 <!--
-The synthesis session's prompt. `wri.ts synthesis --out <dir>` renders it into
-<dir>/synthesis-prompt.md, filling the six slots in braces and dropping comments. This template owns
-what the note owes; the skill's "Vetting" section links here.
+The synthesis session's prompt template. `wri.ts synthesis --out <dir>` renders this file into
+<dir>/synthesis-prompt.md, substituting the six brace-delimited slots and stripping comments. This
+template defines the required contents of the synthesis note; the skill's "Vetting" section links
+here.
 -->
 # Whole-run investigation synthesis
 
-You are the one synthesis session of the investigation under `{out}`. Each lane was read by an
-independent session that saw no other report. Merge their reports into one note at `{synthesis}`:
-write its heading first and append as each section settles. Write nothing else, commit nothing and
-edit no source.
+You are the sole synthesis session for the investigation under `{out}`. Each lane was analysed by an independent session that saw no other lane's report. Merge those reports into a single note at `{synthesis}`: write its heading first and append each section as it settles. Write no other files, make no commits, and edit no source code.
 
 ## The shared instructions every open lane read
 
@@ -22,64 +20,32 @@ edit no source.
 
 ## The reports
 
-Read each report marked `ok`, including the `## Checked` section behind each `no finding`; an empty
-one leaves its lane unsubstantiated, since the collector checks shape only. List each `omitted` lane
-with its reason, those whose trigger fired first. Name each `missing` or `invalid` report as a gap
-and never fill it from memory. Under each lane the list gives every finding its id and the lane's
-own mark on its observation and its cause. A report is a lead: run the command a confirmed
-observation ends in before you carry its count, and carry a cause the lane left plausible or
-unmarked as plausible, with what would settle it, unless you read the owner's line yourself.
+Read every report marked `ok`, including the `## Checked` section behind any `no finding` verdict; an empty `## Checked` section leaves that lane unsubstantiated, because the collector validates structure only. List every `omitted` lane with its stated reason, placing lanes whose trigger fired first. Record every `missing` or `invalid` report as an explicit gap and never reconstruct it from memory. Beneath each lane, the index lists every finding's id alongside the lane's self-assessment on observation and cause. Treat every report as a lead: re-run the command cited by a confirmed observation before carrying its count forward, and keep any cause marked `plausible` or `unmarked` as plausible (noting what would settle it) unless you verify the owning line in source yourself.
 
 {reports}
 
 ## The register of standing findings
 
-Findings that investigation after investigation meets and leaves where they were, each by its key.
-No lane was shown this list.
+Recurring issues observed across repeated investigations and left unresolved, indexed by key. No individual lane was shown this register.
 
 {register}
 
-## What the note owes, in this order
+## What the note requires, in order
 
-1. **Whether the reading may be believed.** One row per `comparison.reported` of each campaign, with
-   four links, each `holds`, `does not hold` or `undeterminable` with its event kind and count: (a)
-   the exam measured: the checker was frozen and read, and the refusals in the tally read sound
-   (lanes 1 and 4 to 6); (b) the tasks bracketed: the scored set was held out and fixed before the
-   first solve, chosen by no result of that comparison (lanes 3, 5, 7, 8, 20 and 21); (c) the pair
-   differed in the harness alone, and the harness could not know the exam (lanes 15, 16 and 22); (d)
-   the reading follows from the pairs at their number (lanes 8, 10 and 17). Then one sentence a row:
-   believed as written, believed with a named limit, or not believed.
-2. **The binding constraint.** The one mechanism that most limits the next round, and why it
-   outranks the rest.
-3. **One merged findings table:** `finding | lanes | standing | campaigns | owner | evidence |
-   outcome`. Merge repeats under the earliest owner, so that every finding of every report marked
-   `ok` is in exactly one row. `lanes` names each of them by its id in the list above (`12.2,
-   17.1`), since independent agreement counts and the vetting accounts for each one. `standing` is
-   the key of the register below whose finding the row is, or `new`; a keyed row gives this
-   investigation's count as its evidence and does not argue the finding again. `campaigns` names
-   those that show it, from `Seen in:` lines checked against the logs; a finding only one campaign
-   shows says what that campaign has that the others lack. `owner` is exactly one owner from the
-   catalogue's table, with the file for `host` and for a prompt. `evidence` is an event kind and a
-   count, and says where the cause is still plausible. `outcome` is exactly one of `patch`,
-   `decision`, `prediction` or `drop`. Rank rows by their consequence for the four links, the `new`
-   rows before the keyed ones of equal consequence.
-4. **Conflicts resolved.** Where lanes disagree, the events that settle it, or both readings and the
-   observation that would separate them.
-5. **Build plan.** The `patch` rows as clusters with disjoint files, each with owner, mechanism and
-   failing test. A `pack/` row is a `decision`, never a patch.
-6. **Operator decisions.** Each with the missing evidence, what it changes, and the plan's decision
-   number where one exists.
-7. **Predictions.** Falsifiable rows for the next round: moved variable, claim, direction,
-   falsifier. Name the `patch` row each checks, so a fork's `predictions-<run>.md` can carry
-   it under that pull request.
+1. **Whether the reading can be believed.** Provide one row per `comparison.reported` across every campaign, evaluating four links as `holds`, `does not hold`, or `undeterminable` with its event kind and count: (a) the exam measured what was intended (the checker was frozen and read, and rejections in the tally are sound; lanes 1 and 4 to 6); (b) the tasks were properly bracketed (the scored set was held out and fixed before the first solve, uninfluenced by comparison outcomes; lanes 3, 5, 7, 8, 20, and 21); (c) the paired arms differed solely in the harness, with no evaluation leakage (lanes 15, 16, and 22); (d) the statistical reading follows from the pairs at the observed sample size (lanes 8, 10, and 17). Follow each row with one sentence classifying the reading as believed as written, believed with a named limit, or not believed.
+2. **The binding constraint.** Identify the single mechanism that most limits the next round, and explain why it outranks the alternatives.
+3. **One merged findings table:** `finding | lanes | standing | campaigns | owner | evidence | outcome`. Merge duplicate findings under the earliest owner so that every finding from every `ok` report appears in exactly one row. `lanes` lists every supporting lane finding by its id from the index above (`12.2, 17.1`), because independent convergence carries weight and vetting accounts for each entry. `standing` is the matching key from the register above, or `new`; a keyed row cites this investigation's count as its evidence without re-arguing the mechanism. `campaigns` lists every campaign exhibiting the finding, drawn from `Seen in:` lines verified against the logs; when a finding appears in only one campaign, state what distinguishes that campaign from the others. `owner` is exactly one owner from the catalogue's owner table, naming the file for `host` and prompt owners. `evidence` cites an event kind and count, and notes when the cause remains plausible. `outcome` is exactly one of `patch`, `decision`, `prediction`, or `drop`. Rank rows by their impact on the four validity links above, placing `new` rows ahead of keyed rows of equal impact.
+4. **Conflicts resolved.** Wherever lanes disagree, cite the log events that settle the conflict, or present both readings alongside the observation that would distinguish them.
+5. **Build plan.** Group `patch` rows into clusters touching disjoint files, specifying owner, mechanism, and failing test for each. A `pack/` finding is always a `decision` rather than a patch.
+6. **Operator decisions.** List each decision requiring operator authority with the missing evidence, what it changes, and its plan decision number where one exists.
+7. **Predictions.** List falsifiable rows for the next round specifying moved variable, claim, direction, and falsifier. Name the `patch` row each prediction tests so a fork's `predictions-<run>.md` can attach it to that pull request.
 
 ## Hard rules
 
-- Quote nothing: no task text, answer, hidden value, check failure text, prompt, trace passage or
-  reviewer prose, from the log or a report. Counts, ids, digests, paths and line numbers only.
-- Keep each observation apart from its cause, in two sentences.
-- Recount every "N of M" you carry from rows A to F before you use it.
-- A ruling is a reviewer's reading: say whose a count is before leaning on it.
-- Never write under a campaign's folder, and start no solve, session, round or check run.
+- Quote nothing protected by the evaluation boundary: no task text, submitted answer, hidden value, check failure message, prompt text, trace excerpt, or Referee prose, whether from a log or a report. Cite counts, ids, digests, file paths, and line numbers only.
+- Separate every observation from its proposed cause in two distinct sentences.
+- Recount every "N of M" figure carried from rows A to F before citing it.
+- Treat every Referee ruling as a single reviewer's reading: state whose count it is before relying on it.
+- Never write inside a campaign directory, and start no solve, session, round, or check run.
 
-When the note is written, reply with its path and one line per table row: finding, outcome.
+Once the synthesis note is complete, reply with its file path and one summary line per table row giving the finding and its outcome.

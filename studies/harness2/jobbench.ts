@@ -2,7 +2,7 @@
  * Harness²'s k=1 path on JobBench with Claude Code as executor and improver, in TypeScript, so that
  * a sweep of ours can be set beside the pilot's Python one (`h2/`, ported from Harness² at 1cfe254
  * with the fork's Claude Code commits 4a4d271, fabf45e and 0c121fd; Apache-2.0, Google LLC). The
- * operator asked on 3 November 2026 to "propagate the Python harness into TypeScript anabasis
+ * operator asked to "propagate the Python harness into TypeScript anabasis
  * style, keep in the studies/harness2 folder for now".
  *
  *   bun studies/harness2/jobbench.ts sweep --tasks <profession/taskN,...> --out <dir>
@@ -122,7 +122,7 @@ const OPTIONS = {
 /**
  * The fork's `os.environ` less `drop`: this process's environment with what the fork's Python
  * adds before it starts anything, `config.py`'s Vertex region and PEP 538's UTF-8 locale where the
- * inherited one is C (both seen in `test/studies-harness2-parity.test.ts`, 3 November 2026).
+ * inherited one is C, both seen when the port was checked against the fork.
  */
 export function envOf(drop: readonly string[]): Record<string, string> {
   const own = runtimeProcess.env;

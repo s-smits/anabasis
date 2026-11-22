@@ -20,8 +20,8 @@
  * UI tests when it imports a changed root file; this script does not trace that case. Size findings
  * use current text before formatting. No check, campaign or model session is started here.
  *
- * Written on 30 October, when AGENTS.md sections 9 to 14 moved into repository-practice. The script
- * collects existing readers so a session need not reconstruct their rules before every commit.
+ * The script collects existing readers so a session need not reconstruct their rules before every
+ * commit.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
@@ -97,8 +97,8 @@ const PROSE: readonly (readonly [string, RegExp])[] = [
 const QUOTED = /`[^`]*`|"[^"]*"|\[[^\]]*\]\([^)]*\)|\S*\/\S*/gu;
 /** How many lines of one file's slips of one kind are named. */
 const SHOWN = 5;
-/** Paths to the category whose description names them, first match wins (`gh label list`, 30
- *  October). A test file is left out of the vote: it takes the subject of what it tests. */
+/** Paths to the category whose description names them, first match wins (`gh label list`). A test
+ *  file is left out of the vote: it takes the subject of what it tests. */
 const CATEGORY_OF: readonly (readonly [RegExp, string])[] = [
   [/^tools\/wri\/|^\.claude\/skills\/whole-run-investigation\//u, "investigation"],
   [/^(?:AGENTS\.md|README\.md|docs\/)|\.md$/u, "docs"],
@@ -128,8 +128,9 @@ const CATEGORY_OF: readonly (readonly [RegExp, string])[] = [
 /** The category that names a subject only where no other does: prose beside code is the code's,
  *  and a file no rule holds is counted with it. */
 const FALLBACK = new Set(["docs"]);
-/** The categories whose change may bear on comparison validity, so I1 is worth asking about. */
-const VALIDITY = new Set(["comparison", "exam", "verdicts"]);
+/** The categories of the engine: what a campaign decides, measures or shows a seat, where a
+ *  change is I1 unless it fixes no defect (`AGENTS.md` section 11). */
+const ENGINE = new Set(["comparison", "exam", "verdicts", "climb", "supply", "harness", "solve"]);
 
 /** The diff of one commit against its first parent, or of the working tree against `base`. */
 export function changeOf(
@@ -168,7 +169,7 @@ function textOf(root: string, at: string | null, file: string): string | null {
 }
 
 /** Section 13's visible slips in one Markdown text, outside fenced code and what `QUOTED` matches. */
-export function proseFindings(path: string, text: string): ProseFinding[] {
+function proseFindings(path: string, text: string): ProseFinding[] {
   let fenced = false;
   return text.split("\n").flatMap((raw, index) => {
     if (raw.trimStart().startsWith("```")) {
@@ -188,7 +189,7 @@ const inside = (file: string, path: string): boolean => file === path || file.st
 
 /** The suggested labels: the category most changed files fall under, and an importance by the
  *  definitions of `AGENTS.md` section 11, read from the categories alone. */
-export function labelsOf(files: readonly string[]): Pick<Owed, "category" | "importance"> {
+function labelsOf(files: readonly string[]): Pick<Owed, "category" | "importance"> {
   const counts: Record<string, number> = {};
   for (const file of files.filter((each) => !TEST_FILE.test(each))) {
     const kind = CATEGORY_OF.find(([pattern]) => pattern.test(file))?.[1] ?? "docs";
@@ -200,18 +201,18 @@ export function labelsOf(files: readonly string[]): Pick<Owed, "category" | "imp
   );
   const label = ranked[0]?.[0] ?? "docs";
   if (!CATEGORIES.has(label)) throw new CommandFailure(`category ${label} is not one land accepts`);
-  const validity = Object.keys(counts).filter((kind) => VALIDITY.has(kind));
+  const engine = Object.keys(counts).filter((kind) => ENGINE.has(kind));
   const importance =
-    validity.length > 0
+    engine.length > 0
       ? {
           label: "importance:I1",
-          why: `it touches ${validity.join(", ")}: I0 if it corrects a result already wrong or a wall breach, I1 if it protects comparison validity, else I2`,
+          why: `it touches ${engine.join(", ")}: I0 if it corrects a result already wrong or a wall breach, I2 if it fixes no defect there`,
         }
       : subjects.length === 0
         ? { label: "importance:I3", why: "documentation, skills or wording only" }
         : {
             label: "importance:I2",
-            why: "a functional change with bounded impact, unless it blocks a release (I0)",
+            why: "a change to production code or the tools: I1 if it prevents a crash, stall, lost session or wasted spend",
           };
   return { category: { label, counts }, importance };
 }

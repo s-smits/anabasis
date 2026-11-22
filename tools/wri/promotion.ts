@@ -4,24 +4,22 @@
  * Validity percentages require a profile with a task and solve denominator; missing measurements
  * read unmeasured, while a nonempty profile of failed solves reads zero.
  *
- * The first live promotion of the climb was abl175-new's on 10 October (c366a2d6, 23:22Z): two
- * comparisons against a starter that answered none of the solves on 9 of 12 tasks, both 10-0-2.
- * Until then no lane asked whether a promotion was the table's rule followed, what it showed beyond
- * "the starter carries no engine", or whether the room Examiner, the control and the next Builder
- * followed it, and a reader rebuilt each from thousands of events. The same night a reference-side
- * solve of that campaign's repeat found and ran a phreeqc another campaign's Builder had compiled
- * under the Mac's shared `/tmp` (plan defect H1), which no trigger read.
+ * A promotion can rest on comparisons against a starter that answers none of the solves on most
+ * tasks, so these lanes ask whether a promotion was the table's rule followed, what it showed beyond
+ * "the starter carries no engine", and whether the room Examiner, the control and the next Builder
+ * followed it, rather than leaving a reader to rebuild each from thousands of events. They also
+ * read a solve that found and ran a program another campaign's seat had left under a shared
+ * temporary folder.
  *
- * The six-campaign whole-run investigations on 20 October 2026 found private seat paths and
- * denied calls counted as possible shared use. Only successful calls outside the seats' parent
- * (`BUILT_COMMAND_SCRATCH_ROOT`, `src/wall/policy.ts`) count here.
+ * Private seat paths and denied calls are not possible shared use: only successful calls outside
+ * the seats' parent (`BUILT_COMMAND_SCRATCH_ROOT`, `src/wall/policy.ts`) count here.
  *
  * Split from `read.ts`, which stands near the size policy's ceiling, as `time.ts` and `folds.ts`
  * were. Nothing here reads a file beside the log.
  */
 import { epochsOf as epochsRead, ORIGINS, type Origin, starterReads } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
-import { differenceOf, flipP, gainOver, pointsOf, ROOM, scoresIn, testOf } from "#src/kernel/compare.ts";
+import { differenceOf, flipP, gainOver, pointsOf, GAP_FLOOR, scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Call, Seat } from "#src/kernel/trace.ts";
 import { billedBetween } from "#src/kernel/meter.ts";
@@ -59,12 +57,12 @@ const [CHOSEN, BEFORE, AFTER] = ORIGINS;
 /** The units a budget on record may name (`folds.ts`). */
 const UNITS = ["turns", "prompts", "cpu", "seconds"] as const;
 /** The share of tasks a reference answers on none of its solves above which a step is read as an
- *  engine against none: abl175-new's starter answered none on 9 of 12 and 7 of 12 (10 October). */
+ *  engine against none. */
 const BARE = 0.5;
 /** A path under one of the host's temporary folders, `/tmp` or `/var/tmp`, in either spelling, as a
  *  shell command or a tool's argument names it: the two the wall closes (`darwinCommandProfile`).
- *  Until 12 October `/var/tmp` was not read here, where it held a v1 solve of a held task that every
- *  seat could read on buffer. The seats' `ana-built-bash` parent is private even under `/tmp`.
+ *  `/var/tmp` is read as `/tmp` is, since a solve left there can be read by every seat. The seats'
+ *  `ana-built-bash` parent is private even under `/tmp`.
  *  A path ends at the first character a shell or JSON ends a word on. */
 const SHARED_PATH =
   /(?:^|[\s"'=:;(|&>])(\/(?:private\/)?(?:var\/)?tmp\/(?!ana-built-bash\/)[^\s"'\\;)|&<>*]+)/g;
@@ -95,7 +93,7 @@ export function testSaid(tested: JsonValue | undefined): string {
 export const pSaid = (p: number) => (p < 0.001 ? p.toExponential(1) : p.toFixed(3));
 
 /** The differences a report's step was read on, each with its task where named: the frontier's and
- *  the retained tasks' since 20 October, when `scored` holds the test's `falseRate`, else the
+ *  the retained tasks' where `scored` holds the test's `falseRate`, as newer reports do, else the
  *  frontier's alone. */
 export function testedOf(report: JsonObject): { differences: number[]; of: (string | undefined)[] } {
   const pooled = asRecord(report.scored)?.falseRate !== undefined;
@@ -111,9 +109,8 @@ export function testedOf(report: JsonObject): { differences: number[]; of: (stri
 }
 
 /** The differences a promotion's readings tested (`testedOf`) joined, a task more than one scored
- *  counted once with its differences summed. Until 19 October a
- *  promotion read a step and its repeat so (`readTwice`), and a campaign of then is read by that
- *  rule. */
+ *  counted once with its differences summed. An older promotion read a step and its repeat so
+ *  (`readTwice`), and a campaign of that rule is read by it. */
 export function joinedTest(reports: readonly JsonObject[]): number[] {
   const sums = new Map<string, number>();
   const unnamed: number[] = [];
@@ -169,7 +166,7 @@ function ruleOf(log: Index): string {
 }
 
 /** Of a tally, the tasks that did not tie without the bill (`tallyOf`), of all it tallied: `10 of
- *  12`, or "-" where none was made, which until 25 October lane 14 read as "0 of 0". */
+ *  12`, or "-" where none was made, rather than "0 of 0". */
 export function untied(tested: JsonValue | undefined): string {
   const step = tallyOf(tested);
   return step === null ? "-" : share(step.wins + step.losses, step.wins + step.losses + step.ties);
@@ -189,8 +186,8 @@ function restSaid(log: Index, { session, last }: Compared): string {
       ? []
       : [`${unit} ${String(count(record[unit]))} ${testSaid(record)}`];
   });
-  // Over the solves it measured, as lane 22 reads them: buffer's g-1 read 15.3 over its 70 starts
-  // on 12 October and 37.9 over the 48 that were not non-results.
+  // Over the solves it measured, as lane 22 reads them, since non-results can halve a mean read
+  // over every start.
   const solves = log.solves.filter((solve) => solve.comparison === session && measured(solve));
   const loads = solves.flatMap(({ load }) => (load === null ? [] : [load]));
   const cores = solves.find((solve) => solve.cores !== null)?.cores ?? null;
@@ -217,9 +214,9 @@ export function spentTo(log: Index, from: number, to: number): string {
 function restTriggers(log: Index, { at, until, data }: Epoch): Trigger[] {
   const harness = text(data.harness);
   const since = log.events.findLastIndex(({ kind }, index) => index < at && kind === "harness.promoted");
-  // The host's own move is written as it begins, before the promotion it makes (12 October); the
-  // Builder's `promote` writes its move once the promotion is on record, after it, and buffer-149's
-  // read "by the operator" (14 October). So a move naming the harness anywhere in the stretch
+  // The host's own move is written as it begins, before the promotion it makes; the Builder's
+  // `promote` writes its move once the promotion is on record, after it, and reading one side alone
+  // would say "by the operator". So a move naming the harness anywhere in the stretch
   // between the promotions on either side of it is the table's.
   const byTable = log.events.some(
     ({ kind, data: move }, index) =>
@@ -236,8 +233,8 @@ function restTriggers(log: Index, { at, until, data }: Epoch): Trigger[] {
     return compared === undefined ? [] : [compared];
   });
   const said = rests.map((compared) => restSaid(log, compared));
-  // The rule tests the two frontiers joined, a task both scored once (`readTwice`): r3's third
-  // promotion read 5-1 p 0.047 and 9-1 p 0.004 alone, and 8-0 p 0.004 joined (19 October).
+  // The rule tests the two frontiers joined, a task both scored once (`readTwice`), which can read
+  // otherwise than either alone.
   const joined = joinedTest(rests.map(({ last }) => last));
   const [wins, losses] = [joined.filter((one) => one > 0).length, joined.filter((one) => one < 0).length];
   const together =
@@ -283,8 +280,8 @@ function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): 
   );
   const compared = log.compared.filter((each) => within(each.at));
   // A control's tasks drawn before the promotion are mostly those the promoted harness was promoted
-  // on, so its confirmation is read from the reference's side on each age apart: on 3 November
-  // fullrun g-4 read 10-0-0 on the older and 2-6-3 on the newer, last g-2 8-0-6 and 4-1-1.
+  // on, so its confirmation is read from the reference's side on each age apart, since a sweep of the
+  // older tasks can hide a loss on the newer.
   const drawn = new Map<string, number>();
   for (const [index, { kind, data: start }] of log.events.entries()) {
     if (kind !== "comparison.started") continue;
@@ -314,7 +311,7 @@ function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): 
       ? `control ${session}: the promoted harness valid on ${validSaid(old.share)} of its solves of ${plural(old.tasks, "task")}, ${testSaid(last.scored)}${byAge(last)}`
       : `${session} ${short(text(last.fresh))} against ${last.old === promoted ? "the promoted harness" : short(text(last.old))} ${testSaid(last.scored)}, ${text(last.reading)}, valid ${validSaid(validOf(asRecord(last.valid)?.fresh).share)} against ${validSaid(old.share)}`;
   };
-  // Every report, a ladder reading of 14 to 16 October among them, which `compared` leaves out.
+  // Every report, an older ladder reading among them, which `compared` leaves out.
   const reported = new Set(log.of("comparison.reported").map((report) => text(report.session)));
   const running = log.events.flatMap(({ kind, data: start }, index) =>
     within(index) && kind === "comparison.started" && !reported.has(text(start.session))
@@ -364,8 +361,8 @@ function sharedTmpTrigger(log: Index): Trigger[] {
     const solve = solves.get(id);
     if (solve === undefined) return "unknown";
     if (solve.comparison === null) return "practice";
-    // An Examiner's try names its own session there and no comparison starts under it: until
-    // 11 November esp32's 19 tries read as a comparison's new side.
+    // An Examiner's try names its own session there and no comparison starts under it, so it would
+    // otherwise read as a comparison's new side.
     const old = reference.get(solve.comparison);
     if (old === undefined) return `${solve.comparison} try ${short(solve.harness)}`;
     const side = solve.harness === old ? "reference" : "new";
@@ -411,12 +408,11 @@ export function promotionTriggers(log: Index): Trigger[] {
 }
 
 /** `STEP CARRIERS` (lane 9): each step's untied tasks on the scores it is read on (`scoresIn`), and how many of its largest
- *  wins it could lose to a tie and still clear its level (`spareOf`, `clearance.ts`), with its retained tasks' tally where
- *  it lost more of them than it won, and a clause where it tallied tasks of several families and won in one only: of the
- *  49 starter reads on record on 11 November, 0 of the 6 after such a step confirmed its promotion, and 21 of the 33
- *  after a step with under three in four of its wins in one family. On 1 November the gate ablation's g-3 cleared at
- *  6-0 with none to spare, and supply's g-2 lost its step without the 5 tasks priced in yen; lanes
- *  15, 23, 25 and 34 each found a part of that. */
+ *  wins it could lose to a tie and still clear its level (`spareOf`, `clearance.ts`), with its
+ *  retained tasks' tally where it lost more of them than it won, and a clause where it tallied
+ *  tasks of several families and won in one only, since on record a step that won in one family
+ *  alone rarely confirmed its promotion, and one with no win to spare, or one that rests on a few
+ *  tasks of one kind, is where several lanes would each find a part of the same doubt. */
 function carrierTrigger(log: Index): Trigger[] {
   const lines = log.compared.flatMap(({ session, last }) => {
     const unbilled = scoresIn(last.scored);
@@ -438,9 +434,8 @@ function carrierTrigger(log: Index): Trigger[] {
 
 /** `PROMOTION UNCONFIRMED` (lane 17): each promotion whose epoch has no starter comparison, or whose
  *  first one that tallied a task does not read the reference above the starter (`confirmed`,
- *  `src/campaign/climb.ts`; the last one until 2 November).
- *  On 1 November none of the gate ablation's five promotions and the validity arm's one was
- *  confirmed, and lanes 17 and 22 found it by reading the moves. */
+ *  `src/campaign/climb.ts`), so that a campaign whose promotions all stand unconfirmed is said
+ *  here, not found by reading the moves. */
 function unconfirmedTrigger(log: Index): Trigger[] {
   const epochs = epochsRead(log.events);
   const lines = epochs.flatMap(({ nth, reference, to, starter_tally: against, confirmed }) => {
@@ -491,11 +486,10 @@ function chainTrigger(log: Index): Trigger[] {
  *  than half of whose wins are no larger than the wider of the two sides' own differences on the
  *  same task, each side read against itself where its halves tied on validity. A win on a task both
  *  sides repeated exactly is the difference of two repeated answers, where no split of either side
- *  shows noise (`repeatLine`, `src/campaign/climb.ts`), and is not counted inside: until
- *  11 November a win where the A/A alone tied was told as clear of a zero difference only, and 62 of
- *  the 121 objective-only steps on record fired on that count, in 61 of them on tasks the new side
- *  repeated exactly too. The new side's own difference bounds a win as the reference's does, which
- *  the reference's alone left out. A new side that repeats the better of the reference's two answers
+ *  shows noise (`repeatLine`, `src/campaign/climb.ts`), and is not counted inside, since a win
+ *  where the A/A alone tied would otherwise be told as clear of a zero difference only, and would
+ *  fire on most objective-only steps. The new side's own difference bounds a win as the
+ *  reference's does. A new side that repeats the better of the reference's two answers
  *  wins half the reference's own difference, inside by construction; an equal harness that gives
  *  that answer in half its solves repeats it a quarter of the time, so such wins stay counted and the
  *  line names them apart. */
@@ -522,7 +516,8 @@ function marginTrigger(log: Index): Trigger[] {
     const steady = inside.filter(
       ({ task, objective: rule }) =>
         candidate.get(task) === 0 &&
-        rule?.fresh.every((one) => rule.old.every((other) => gainOver(rule, one, other) > -ROOM)) === true,
+        rule?.fresh.every((one) => rule.old.every((other) => gainOver(rule, one, other) > -GAP_FLOOR)) ===
+          true,
     ).length;
     const apart =
       steady === 0

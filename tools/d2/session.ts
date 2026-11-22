@@ -1,14 +1,10 @@
 /**
  * One Builder session over a campaign, with no comparison after it.
  *
- *   bun tools/d2/session.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
- *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session b-2 \
- *     --builder claude/claude-opus-5-5 --cap 150
+ *   bun tools/d2/session.ts --name truss --session b-2 --builder claude/claude-opus-5-5 --cap 150
  *
- * The plan's standalone comparison is several sessions and then one comparison (`7f0add79:docs/plan.md`,
- * Phase 5).
- * Until 2026-10-09 the only command that ran a session was a round, which compares what it leaves,
- * so several sessions cost several paid comparisons. This is the session by itself: it forks the
+ * A standalone comparison is several sessions and then one comparison. A round compares what it
+ * leaves, so several rounds cost several paid comparisons. This is the session by itself: it forks the
  * harness `--parent` names, `latest` by default, practises on the campaign's released tasks and
  * freezes what it leaves, which `tools/d2/checkpoint.ts --new latest` then compares. It scores
  * nothing and reads no held-out task.
@@ -21,10 +17,10 @@
  * starts that a reserve for it (`--reserve`, $10) would take past the cap. The Builder's own turns
  * are billed while the session is live, before another campaign move can spend more; the final
  * session total records them once. They are held by `--turns`, `--minutes` and the cap: no request
- * starts once the session has billed it (19 October).
+ * starts once the session has billed it.
  *
  * Before its first event the session asks whether it may start (`admitSession`,
- * `src/campaign/admission.ts`): on a checker nobody has read, or after the plan's stop rule has
+ * `src/campaign/admission.ts`): on a checker nobody has read, or after the stop rule has
  * stopped the campaign, it starts nothing. `--past-stop "<why>"` goes on past the stop rule.
  *
  * Run again with the same `--session`, it says what the session left, from the log.

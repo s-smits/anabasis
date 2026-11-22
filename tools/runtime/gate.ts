@@ -3,28 +3,29 @@
  * commit a landing would publish, or over a pushed head, in a checkout of its own.
  *
  *   bun run gate                 install, the UI's own CI gate as far as it is due, format, the secret scan,
- *                                typecheck, strict lint, the suite
+ *                                typecheck, strict lint, the size policy, the simplify census, the suite
  *   bun run gate -- --static     the same, with the suite replaced by the tests near what HEAD changed
  *
- * The steps are `ci.yml`'s two Darwin jobs. The install, the format check, the secret scan and the
- * UI's install run first, one after another, so a format slip fails in a second; then the UI's gate,
- * the typecheck, the strict lint and the tests run side by side, since none reads what another
- * writes once the UI's dependencies are in place. Until 2 November they
- * ran one after another too, and the UI's browser tests left a four-core runner 68% idle for seven
- * minutes before the suite began. A step run beside others holds its output until it ends, so each
- * prints whole; the tests stream theirs, which the pulse reads. A failed step no longer keeps the
- * rest from starting, so the gate ends once all have. The strict lint fails on everything a plain
- * one does, so it runs once. Every step fails in one spelling, `gate: step <name> failed (exit <n>)`, which the pre-push
- * hook and `bun run land` repeat without knowing each tool's wording. A step whose runner said
- * nothing about the commit (a dropped connection, no slot in time, or a host that does not answer or
- * lacks the disk; `NO_VERDICT`) runs once more, and a second such exit reads `gave no verdict`: the
- * landing then marks the commit with an error rather than a failure and prints no fix, since nothing
- * was learnt about the commit. Each exit is read once, by `verdictOf`.
+ * The steps are `ci.yml`'s two Darwin jobs, with the size policy and the simplify census beside
+ * them. The install, the format check, the secret scan and the UI's install run first, one after
+ * another, so a format slip fails in a second; then the UI's gate, the typecheck, the strict lint
+ * and the tests run side by side, since none reads what another writes once the UI's dependencies
+ * are in place; run one after another, the UI's browser tests would leave a four-core runner mostly
+ * idle for minutes before the suite began. A step run beside others holds its output until it ends,
+ * so each prints whole; the tests stream theirs, which the pulse reads. A failed step no longer
+ * keeps the rest from starting, so the gate ends once all have. The strict lint fails on everything
+ * a plain one does, so it runs once. Every step fails in one spelling, `gate: step <name> failed
+ * (exit <n>)`, which the pre-push hook and `bun run land` repeat without knowing each tool's
+ * wording. A step whose runner said nothing about the commit (a dropped connection, no slot in
+ * time, or a host that does not answer or lacks the disk; `NO_VERDICT`) runs once more, and a
+ * second such exit reads `gave no verdict`: the landing then marks the commit with an error rather
+ * than a failure and prints no fix, since nothing was learnt about the commit. Each exit is read
+ * once, by `verdictOf`.
  *
  * `--static` is what the pre-push hook runs over a pushed head where the push asks (`ANA_PUSH_VERIFY=1`,
  * `tools/runtime/pre-push.ts`), and
- * what each commit below the one that gets the whole CI gate receives: v1's rule of 24
- * September 2026 that every published commit passes alone, because a session reading the history
+ * what each commit below the one that gets the whole CI gate receives: v1's rule that every
+ * published commit passes alone, because a session reading the history
  * copies a red commit and its repair as the way work is done. "Near" is one import, v1's depth: at
  * three imports, three commits of 11-17 files each selected 62-70 per cent of the suite's recorded
  * time against 14-19 at one, and the top then ran the whole suite again. A test is near when the
@@ -38,13 +39,12 @@
  * CI gate stops at its first failed step, and each pass remembered in `ana-gate-passed` under the common Git directory, so a
  * commit that passed is not run again from any worktree. A pass is remembered by content
  * (`contentKey`): a whole pass by the commit's tree, a static one by its tree and its
- * parent's, each with the checker and the Bun version. The checker is this CI gate and what it imports, read from the
+ * parent's, each with the checker and the Bun the commit pins. The checker is this CI gate and what it imports, read from the
  * caller's checkout (`proveCommits`), since it runs from there over every target: a changed CI gate
- * runs again on trees it passed before. Until 19 October a pass was remembered by commit id, and a
- * restack, which rewrites every id, kept nothing: that day a restack of 13 pull requests onto main,
- * under which only PR #205 had changed a skill script and its test, ran the whole CI gate again on the
- * top for about 20 minutes at a load of 11 on 8 cores, and left `bun run land` to prove all 13 from
- * scratch. A line recorded by commit id is not read: it names no checker, so it would stand for
+ * runs again on trees it passed before. A pass is not remembered by commit id, since a restack
+ * rewrites every id and would keep nothing, leaving the whole CI gate to run again on the top and
+ * `bun run land` to prove every pull request from scratch. A line recorded by commit id is not
+ * read: it names no checker, so it would stand for
  * whatever CI gate runs now, and each such commit is proved once more instead. The key covers the
  * target's tree and the caller's CI gate; it does not see the host: its tools, its environment and its
  * load. `ANA_GATE_FRESH=1` reads no remembered pass, so every commit selected for proof is run
@@ -85,7 +85,7 @@ interface Failure {
   readonly verdict: boolean;
 }
 
-/** Where passes run, and how many at once there: `remote` is the `RUN_REMOTE` each carries to the
+/** Where passes run, and how many at once there: `remote` is the `ANA_CHECK_HOST` each carries to the
  *  check runner, a host's name, and undefined leaves the caller's own as it stands. */
 export interface Place {
   readonly remote?: string;
@@ -128,24 +128,21 @@ export const DOCUMENTATION = [
  *  `bun run land` merges only once `ci.yml`'s `darwin-ui` job has run every UI file (`uiStep`):
  *
  *  - `packages/ui` itself, or what `ui:gate` installs it from and runs it with (`UI_SETUP`): the
- *    whole UI CI gate, as where no base is known. Until 10 November the list held the root's
- *    compiler and lint settings and all of `tools/runtime` and `tools/oxlint`, none of which
- *    `ui:gate` reads but the suite runner: 48 of one stack's 91 commits ran the browser files in
- *    a static pass, 4 of them for a reason, and two landings stopped on browser timeouts at a
- *    commit that changed stack scripts alone. This file only chooses the step, so a change to it
+ *    whole UI CI gate, as where no base is known. The list holds nothing `ui:gate` does not read,
+ *    such as the root's compiler and lint settings or `tools/runtime`, since those would run the
+ *    browser files in static passes for no reason and stop landings on browser timeouts at commits
+ *    that changed stack scripts alone. This file only chooses the step, so a change to it
  *    is no change to what `ui:gate` runs;
  *  - root source that a UI file imports at any depth: the UI's dependencies, its build, which
  *    typechecks it, and its test files within three imports of the change;
  *  - nothing the UI reads: no UI step.
  *
  *  The UI's tests reach the root's folds through the server's handlers and the fixture campaign,
- *  two imports in. Over the 126 root files the UI read on 22 October, a change to one selected on
- *  average 4.2 of its 20 test files at three imports, 0.4 at one and 17.9 with every import
- *  followed; a central fold, `src/kernel/log.ts`, still selects 18. Until then a whole pass ran the
- *  UI's install, build and browser tests over every push, and a static pass every UI test file but
- *  the browser's over every commit. A static pass leaves out the browser files (`BROWSER_FILE`): of
- *  the 35 CI gate logs in this clone on 18 October, the UI step's 16 failing cases were all in browser
- *  files, in 5 static passes of `bun run land` over commits that changed nothing under `packages/ui`. */
+ *  two imports in. Over the root files the UI reads, a change to one selects on average about a
+ *  fifth of its test files at three imports, almost none at one and nearly all with every import
+ *  followed; a central fold, `src/kernel/log.ts`, still selects nearly all. A static pass leaves out
+ *  the browser files (`BROWSER_FILE`): the UI step's failures in static passes over commits that
+ *  changed nothing under `packages/ui` have all been in browser files. */
 const UI_PACKAGE = "packages/ui/package.json";
 export const UI_ROOT = "packages/ui";
 /** The test runner every pass goes through, so a change to it proves nothing narrower than the whole run. */
@@ -166,9 +163,10 @@ const FIRST = [
 const BESIDE = [
   ["typecheck", ["run", "typecheck"]],
   ["lint", ["run", "lint", "--", "--strict"]],
-  // The size rules are off in the lint because this script owns them (`rules-off.tsv`); until
-  // 10 November no step ran it, and a file of 802 lines stood for 64 commits of one stack.
+  // The size rules are off in the lint because this script owns them (`rules-off.tsv`), so a step
+  // has to run it, or a file past the ceiling stands unseen.
   ["source-policy", ["tools/loc/source-policy.ts"]],
+  ["simplify", ["run", "simplify", "--", "--gate"]],
 ] as const;
 export const TEST_FILE = /^test\/[^/]+\.test\.ts$/u;
 const GATE = join(import.meta.dir, "gate.ts");
@@ -193,8 +191,8 @@ const PULSE_MS = (Number(runtimeProcess.env.ANA_GATE_PULSE_SECONDS) || 60) * 100
 const LOG_DAYS = 14;
 /** The check runner's exits that say nothing about the commit (`tools/runtime/router/run.ts`): 255
  *  where ssh dropped or the task left no status, 75 where no slot came free in time, and 69 where the
- *  host does not answer or lacks the disk. Until 9 November only 255 counted, so a queue that timed
- *  out failed the commit, and the landing printed a fix for a commit nothing had read. */
+ *  host does not answer or lacks the disk. Counting 255 alone would fail a commit whose queue timed
+ *  out, and the landing would print a fix for a commit nothing had read. */
 const NO_VERDICT = new Set([255, 75, 69]);
 
 /** What an exit of a step, or of the gate over a commit, says about the commit. */
@@ -249,11 +247,17 @@ export function parentOf(root: string, commit: string): string {
 
 /** The record's key for a pass, by content: the commit's tree, which holds the lockfile, and for a
  *  static pass its first parent's tree too, since the diff between them chooses its tests; with
- *  the checker and the Bun the CI gate ran under. */
+ *  the checker and the Bun the CI gate ran under. That Bun is the one the commit's `package.json`
+ *  pins, since the `bun` router runs a pass under the pin of the tree it runs in, never the
+ *  landing's own; so a landing from a checkout pinning another Bun keeps the passes below it. It is
+ *  read from `"packageManager": "bun@X"` as the router reads it, or is the running Bun where the
+ *  commit pins none. */
 function contentKey(root: string, commit: string, pass: Pass, checker: string): string {
   const tree = git(root, ["rev-parse", `${commit}^{tree}`]);
   const from = pass === "static" ? `${git(root, ["rev-parse", `${parentOf(root, commit)}^{tree}`])}..` : "";
-  return `tree ${from}${tree} ${pass} checker-${checker} bun-${Bun.version}`;
+  const manifest = zeroExitText(runSync(["git", "show", `${commit}:package.json`], { cwd: root })) ?? "";
+  const bun = /"packageManager"\s*:\s*"bun@([^"+]+)/u.exec(manifest)?.[1] ?? Bun.version;
+  return `tree ${from}${tree} ${pass} checker-${checker} bun-${bun}`;
 }
 
 export const changesSource = (root: string, commit: string): boolean =>
@@ -262,9 +266,9 @@ export const changesSource = (root: string, commit: string): boolean =>
 /**
  * The commits a push or a landing adds, oldest first: those along each head's first parents that
  * nothing in `known` reaches. A commit reached only through a merge's other parent belongs to a line
- * made elsewhere, and is only counted: on 11 October 2026 PR #141 added 448 commits to v1's main,
- * 444 of them v2's history through one merge, and v1's hook, which gated every commit new to the
- * remote, would have run its CI gate over each although none of them carried it. The merge is the
+ * made elsewhere, and is only counted: a merge of another line's history can add hundreds of
+ * commits new to the remote, and gating each would run the CI gate over commits none of which
+ * carried it. The merge is the
  * pusher's, and its proof reads the combined tree.
  */
 export function addedLine(
@@ -284,15 +288,18 @@ export function addedLine(
   return line;
 }
 
+/** The transpiler that reads `file`, none for a file that is not a script. */
+const transpilerOf = (file: string): Bun.Transpiler | undefined =>
+  /\.[cm]?[jt]sx$/u.test(file) ? TRANSPILERS.tsx : /\.[cm]?[jt]s$/u.test(file) ? TRANSPILERS.ts : undefined;
+
 /** Resolve file's repository imports relative to root using Bun's resolver. Exclude packages and
  *  runtime modules such as node:fs and bun:test. Files without a supported transpiler have no imports. */
 export function importsOf(root: string, file: string): string[] {
   const known = IMPORTS.get(join(root, file));
   if (known !== undefined) return known;
-  const loader = /\.[cm]?[jt]sx$/u.test(file) ? "tsx" : /\.[cm]?[jt]s$/u.test(file) ? "ts" : null;
-  let found: { path: string }[] = [];
+  let found: { path: string }[];
   try {
-    if (loader !== null) found = TRANSPILERS[loader].scanImports(readFileSync(join(root, file), "utf8"));
+    found = transpilerOf(file)?.scanImports(readFileSync(join(root, file), "utf8")) ?? [];
   } catch {
     found = [];
   }
@@ -321,10 +328,27 @@ function within(root: string, start: string, depth: number): Set<string> {
 }
 
 /** The files the working tree changed since `base`, beyond the documentation set: a commit's own
- *  in a pass's checkout, and its uncommitted and untracked ones too where the CI gate is run by hand. */
+ *  in a pass's checkout, and its uncommitted and untracked ones too where the CI gate is run by hand.
+ *  A script whose transpiled form is the same on both sides changed its comments or layout alone,
+ *  so it chooses no test, as documentation chooses none; the whole pass at the top still runs every
+ *  test. A commit rewriting the comments of 94 test files otherwise chose all 1,573, and its static
+ *  pass failed five landings under the load. */
 export const changedSince = (root: string, base: string): Set<string> =>
   new Set([
-    ...lines(git(root, ["diff", "--name-only", base, "--", ".", ...DOCUMENTATION])),
+    ...lines(git(root, ["diff", "--name-only", base, "--", ".", ...DOCUMENTATION])).filter((file) => {
+      const code = (text: string | null): string | null => {
+        try {
+          return text === null ? null : (transpilerOf(file)?.transformSync(text) ?? null);
+        } catch {
+          return null;
+        }
+      };
+      const after = code(existsSync(join(root, file)) ? readFileSync(join(root, file), "utf8") : null);
+      return (
+        after === null ||
+        after !== code(zeroExitText(runSync(["git", "show", `${base}:${file}`], { cwd: root })))
+      );
+    }),
     ...lines(git(root, ["ls-files", "--others", "--exclude-standard", "--", ".", ...DOCUMENTATION])),
   ]);
 
@@ -406,8 +430,7 @@ async function uiStep(root: string, pass: Pass, base: string | null, changed: Re
 
 /** One step, its output where the caller's goes, whole once it ends where it is piped; its exit code.
  *  A step routed to a runner exits `NO_VERDICT` where the connection dropped, which says nothing
- *  about the commit, so it runs once more: on 28 October a dropped connection after 201 passing
- *  tests failed #502's landing. */
+ *  about the commit, so it runs once more rather than failing a landing on a dropped connection. */
 async function step(root: string, name: string, args: readonly string[], io: "pipe" | "inherit" = "inherit") {
   const run = async (): Promise<number> => {
     const child = Bun.spawn(["bun", ...args], { cwd: root, stdout: io, stderr: io });
@@ -451,7 +474,7 @@ async function gate(argv: readonly string[]): Promise<number> {
   const near = pass === "whole" || changed === null ? [] : testsNear(root, changed);
   if (pass === "static" && near.length === 0) console.log("gate: no test file is near what HEAD changed.");
   // The strict lint reads whether the UI's dependencies are there as it starts, so they are
-  // installed before the steps that run side by side (the release review of 3 November).
+  // installed before the steps that run side by side.
   const ui = existsSync(join(root, UI_PACKAGE));
   const installed = ui ? await step(root, "ui-deps", ["run", "ui:deps"]) : 0;
   if (installed !== 0) return installed;
@@ -487,8 +510,8 @@ function pulse(log: string, started: number): string {
 }
 
 /** Each failed test once, with what it printed and its assertion, so that whoever fixes it reads
- *  them at the failure line. The log's last lines alone can miss them: on 5 November S10's assertion
- *  stood about 6,400 lines above the end of its bailed run, which the other workers' files filled. */
+ *  them at the failure line. The log's last lines alone can miss them: an assertion can stand
+ *  thousands of lines above the end of a bailed run, which the other workers' files filled. */
 function failedTests(output: readonly string[]): string[] {
   const seen = new Set<string>();
   const report: string[] = [];
@@ -514,11 +537,9 @@ export const failedLine = (failure: Failure): string =>
  * The checker that runs every pass, as one digest: this CI gate and the files its imports reach, read
  * from the caller's checkout as it stands, since `GATE` runs from there over each target. Its
  * steps run `bun run …` in the target's checkout (`step`), so the lint plugins and configs, the
- * test wrapper, `package.json` and `bun.lock` they use are the target's, which its tree keys. Until
- * 20 October the digest took every file of `tools/runtime` and `src/meta`, so a caller whose lint
- * or `src/meta/git.ts` had changed proved again what an equal CI gate had passed: along the chain of
- * #267 to #288 it took four values where the CI gate's own files took two, and the chain's bottom
- * commits were proved three times.
+ * test wrapper, `package.json` and `bun.lock` they use are the target's, which its tree keys. The
+ * digest takes the gate's own files rather than every file of `tools/runtime` and `src/meta`, so a
+ * caller whose lint or `src/meta/git.ts` changed does not prove again what an equal CI gate passed.
  */
 function checkerDigest(): string {
   const top = join(import.meta.dir, "..", "..");
@@ -598,9 +619,9 @@ function reported(who: string, commit: string, log: string, verdict: boolean): F
  * starts after a failure, since every commit above a fix changes id with it. A pass whose runner gave
  * no verdict is proved again at another place, and its own takes no more, while one remains: a host
  * that drops or has no slot in time costs its share alone. Passes side by side on this machine share
- * its cores: each suite left to itself takes two fewer workers than the host has, and on 20 October
- * three at once took a host of 12 cores to a load of 42, where their browser files timed out by the
- * dozen. So a static pass at the caller's own place gets its share of the cores, unless the caller's
+ * its cores: each suite left to itself takes two fewer workers than the host has, so three at once
+ * load a host several times over, and their browser files time out by the dozen. So a static pass
+ * at the caller's own place gets its share of the cores, unless the caller's
  * environment names `ANA_TEST_WORKERS`; a host the runner reaches chooses its own (`task.sh`).
  */
 export async function proveCommits(
@@ -640,7 +661,7 @@ export async function proveCommits(
         ...keysIf(pass === "static" && place.remote === undefined, () => ({ ANA_TEST_WORKERS: share })),
         ...runtimeProcess.env,
         ANA_TEST_BAIL: "1",
-        ...keyIfDefined("RUN_REMOTE", place.remote),
+        ...keyIfDefined("ANA_CHECK_HOST", place.remote),
       },
       // Its own group, so a stop reaches the steps and the runner's ssh beneath it.
       detached: stop !== undefined,
@@ -712,7 +733,7 @@ export async function proveCommits(
     await Promise.all(running);
   } finally {
     // A rejected mark (land's `Moved`) leaves other proofs running in their checkouts: each is let
-    // finish, and its pass recorded for the retry, before any checkout is removed (28 October).
+    // finish, and its pass recorded for the retry, before any checkout is removed.
     await Promise.allSettled(running);
     for (const tree of made) runSync(["git", "worktree", "remove", "--force", tree], { cwd: root });
   }

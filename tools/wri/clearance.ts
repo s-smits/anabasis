@@ -7,11 +7,11 @@
  * near a reading came, and two counted "short" in two ways on one comparison (its largest losses
  * flipped first, 2; its smallest first, 4). Lane 9's `STEP CARRIERS` (`promotion.ts`) counted the
  * spare wins inline. Here each count takes the largest margins first, on the kernel's own test
- * (`readsStep`, `src/kernel/compare.ts`) and its equal-margin tallies (`clearing`,
+ * (`readsStep`, `src/kernel/compare.ts`) and its equal-margin tallies (`smallestSteps`,
  * `src/kernel/size.ts`). These are facts of the scores and decide nothing.
  */
 import { readsStep } from "#src/kernel/compare.ts";
-import { clearing } from "#src/kernel/size.ts";
+import { smallestSteps } from "#src/kernel/size.ts";
 
 /** A bound past which no equal-margin tally is looked for: far beyond any comparison on record. */
 const MOST_TASKS = 4096;
@@ -45,10 +45,10 @@ export function shortOf(scores: readonly number[], level: number): number | null
   return null;
 }
 
-/** The wins a step at `level` needs beside `losses` losses on equal margins (`clearing`). */
+/** The wins a step at `level` needs beside `losses` losses on equal margins (`smallestSteps`). */
 export function equalNeed(losses: number, level: number): number | null {
   for (let tasks = losses + 8; tasks <= MOST_TASKS; tasks *= 2) {
-    const found = clearing(tasks, level).find((result) => result.losses === losses);
+    const found = smallestSteps(tasks, level).find((result) => result.losses === losses);
     if (found !== undefined) return found.wins;
   }
   return null;
@@ -57,5 +57,5 @@ export function equalNeed(losses: number, level: number): number | null {
 /** The equal-margin tally with the most losses that `untied` tasks can hold and still read a step
  *  at `level`, as 8-1 for 9 at 0.02; null where even all of them won reads none. */
 export function equalMost(untied: number, level: number): { wins: number; losses: number } | null {
-  return clearing(untied, level).at(-1) ?? null;
+  return smallestSteps(untied, level).at(-1) ?? null;
 }

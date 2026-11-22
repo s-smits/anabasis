@@ -1,10 +1,9 @@
-// The environment block types the OS isolation passes around. The file keeps v1's name; nothing
-// scrubs an environment here, since every child's is built from an allowlist (the wall's
-// `policy.environment`, `claudeEnv`).
+// Environment-map types shared across OS isolation boundaries. Although this file retains its v1
+// name, no scrubbing occurs here because child environments are constructed from explicit
+// allow-lists (`policy.environment`, `claudeEnv`).
 
-/** An environment block. The names come from the host, so the key set cannot be written down here;
- *  the value type can, and that is what callers of these functions actually need to know. */
+/** Environment variable map with string values; keys depend on the host and tool posture. */
 export type EnvValues = Record<string, string>;
 
-/** An environment block as the host hands it over, where a declared name may still hold nothing. */
+/** Environment variable map as supplied by the host process, where declared keys may be `undefined`. */
 export type OptionalEnvValues = Record<string, string | undefined>;

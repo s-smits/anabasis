@@ -1,42 +1,31 @@
 /**
- * Phase C, without a model: what a campaign's check program has been seen to do, on record against
- * the version it was read at.
+ * Evaluates a campaign's check program offline (Phase C) and records its observed behaviour against
+ * the contract and check versions under inspection.
  *
- *   bun tools/c/accept.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc \
- *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss
+ *   bun tools/c/accept.ts --name <campaign> [--admit a,b | --admit-authored] [--freeze]
  *
- * Every control of the pack's `controls.json` is put to the campaign's checks twice, and the sweep's
- * stored verdicts are added to what each check has been seen to do. It prints one row a check: its
- * instrument, the answers it let pass and refused, and how many of the reject controls that name it
- * it refused. Then the faults (`src/kernel/acceptance.ts`): a control that did not get the verdict
- * it is labelled with, or got two; a check never seen to refuse an answer, or to pass one; a tool a
- * check names that the verifier's tool path does not hold; a task on which the do-nothing answer,
- * the smallest the answer format allows, was not rejected; and a check its author's own computation
- * decides, which stands only once the operator admits it by name (`--admit a,b`), or every such
- * check at once (`--admit-authored`, which a campaign without `--hitl` gives). The reading goes into
- * the campaign's log as `checker.read`, under the contract's hash and the check program's digest.
- * Exits 1 on any fault. A format the smallest value its schema yields does not follow is printed as
- * a note, since the format refuses that answer before a check reads it: from 11 to 31 October it
- * was a fault.
+ * Every control of the drafted exam is run through the campaign's checks twice. The command prints
+ * one row per check: its instrument, the counts of accepted and refused answers, and how many of
+ * the reject controls naming it were refused. It then lists any faults (`src/kernel/acceptance.ts`):
+ * controls whose verdict disagrees with their label or varies across runs; checks never observed to
+ * refuse or to accept an answer; tools named by a check that are absent from the verifier's tool
+ * path; tasks on which the minimal do-nothing answer allowed by the schema is not rejected; and
+ * author-computed checks, which remain faults until admitted by the operator individually
+ * (`--admit a,b`) or collectively (`--admit-authored`, implied when a campaign launches without
+ * `--hitl`). The reading is recorded in the campaign log as `checker.read` under the contract hash
+ * and check program digest, and the command exits 1 if any fault remains. If the minimal value
+ * produced by the schema is itself rejected by the format, that outcome is printed as a note rather
+ * than a fault because the format rejects it before any check runs.
  *
- * `--cycle` names the stored cycle the campaign opens over, as every other command of a campaign
- * names it; without it the cycle is the sweep's first graded row's.
+ * `--freeze` records the operator's approval of the checker by writing `contract.frozen` for the
+ * same two hashes when no fault is present. If faults exist, nothing is frozen unless the operator
+ * supplies `--despite "<reason>"`, which is stored alongside the fault count. Because a pack's
+ * controls may become stale even when its checks remain sound, this command reports faults without
+ * deciding whether to proceed; freezing should follow manual inspection of refused answers. Once
+ * frozen, a campaign under the same name refuses to open with a different contract or check program
+ * (`tools/d2/campaign.ts`); a repaired checker requires a new campaign.
  *
- * `--freeze` is the operator's word that this checker stands: with no fault in the reading, it
- * writes `contract.frozen` for the same two hashes. With a fault it writes nothing, unless the
- * operator says why the checker stands all the same: `--despite "<reason>"`, which the event keeps
- * beside the count of faults. A pack's controls can go stale while its checks are sound, as the
- * truss pack's accept controls had by 8 October, and the reading reports that without deciding it. It is to be given once the refused answers have
- * been read too (`rejections.ts`), which this command cannot see. From then on a campaign of this
- * name whose contract or check program is another does not open (`tools/d2/campaign.ts`): a
- * repaired checker takes a campaign of its own.
- *
- * The stored verdicts are v1's, as `grades.tsv` holds them, and are not run again. Since 14 October their rows are reported apart and only fresh
- * controls establish the opening's current faults. The check program is the campaign's staged copy
- * of the bundle's, without its battery, and its tools are the bundle's.
- *
- * It needs the pack and its tool tree on disk, and the verifier's wall: Seatbelt on macOS, Bubblewrap
- * on Linux.
+ * Requires the verifier sandbox (Seatbelt on macOS or Bubblewrap on Linux).
  */
 import {
   AUTHOR,
@@ -45,7 +34,6 @@ import {
   doNothingFaults,
   frozenChecker,
   readChecker,
-  toolFaults,
 } from "#src/kernel/acceptance.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { OBJECTIVE, readBrief } from "#src/kernel/verify.ts";
@@ -54,7 +42,7 @@ import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { openCampaign, PACK_OPTIONS, packNamed } from "../d2/campaign.ts";
-import { packControls, sweepRows, toolOnPath } from "../m0/stored-sweep.ts";
+import { packControls, toolOnPath } from "../m0/stored-sweep.ts";
 
 const OPTIONS = {
   ...PACK_OPTIONS,
@@ -65,31 +53,30 @@ const OPTIONS = {
   despite: { type: "string" },
 } as const;
 
-/** A checker's reading, as `readChecker` makes it. */
+/** Checker acceptance reading produced by `readChecker`. */
 export type Reading = Awaited<ReturnType<typeof readChecker>>;
 
 /**
- * Keep a reading of `checker` in the campaign's log (`checker.read`), with the checks the operator
- * admitted, every check its author decides among them where `authored`, and its faults with those
- * not admitted. With `freeze`, the operator's word, the checker is frozen (`contract.frozen`) where
- * the reading holds no fault, or over its faults for the reason `despite` gives. This command and a
- * draft that stands (`tools/d1b/draft.ts`) keep their readings so, the one record of both.
+ * Records a checker acceptance reading (`checker.read`) in the campaign log, including operator-admitted
+ * checks (plus all author-computed checks when `authored` is true) and any remaining faults. When
+ * `freeze` is set and either no faults remain or `despite` explains why they are accepted, writes
+ * `contract.frozen`. Both this command and accepted drafts (`tools/d1b/draft.ts`) share this helper
+ * so all readings follow one schema.
  */
 export function keepReading(
   log: string,
   checker: Checker,
   reading: Reading,
   word: {
-    readonly stored: number;
     readonly admitted: ReadonlySet<string>;
     readonly authored: boolean;
     readonly freeze: boolean;
     readonly despite: string;
   },
 ): { readonly faults: readonly string[]; readonly frozen: boolean } {
-  const { runs, checks, historical, idle, unformed, rejected } = reading;
-  // A campaign without `--hitl` gives the operator's word for every check its author decides
-  // (the operator, 16 October), the objective among them, whatever the reading finds.
+  const { runs, checks, idle, unformed, rejected } = reading;
+  // Unattended campaigns (without `--hitl`) implicitly admit every author-computed check, including
+  // the objective, regardless of what the reading finds.
   const admitted = new Set([
     ...word.admitted,
     ...(word.authored ? checks.flatMap(({ id, instrument }) => (instrument === AUTHOR ? [id] : [])) : []),
@@ -98,9 +85,7 @@ export function keepReading(
   append(log, "checker.read", {
     ...checker,
     controls: runs.length,
-    stored: word.stored,
     rows: checks.map((row) => ({ ...row, missing: [...row.missing] })),
-    historicalRows: historical.map((row) => ({ ...row, missing: [...row.missing] })),
     doNothing:
       unformed === null
         ? {
@@ -113,9 +98,9 @@ export function keepReading(
     faults: [...faults],
   });
   const frozen = word.freeze && (faults.length === 0 || word.despite !== "");
-  // `openCampaign` has refused a checker the log froze otherwise, so one frozen here is this one.
-  // Frozen over faults, the word carries its reason: a fault is reported and never decided on,
-  // and a pack whose controls have gone stale is no reason to leave its checker unpinned.
+  // `openCampaign` rejects any checker that conflicts with an existing freeze, so freezing here
+  // always pins the current checker. When freezing over faults, `despite` preserves the rationale
+  // so stale pack controls do not prevent pinning a sound checker.
   if (frozen && frozenChecker(read(log)) === null) {
     append(log, "contract.frozen", {
       ...checker,
@@ -126,16 +111,11 @@ export function keepReading(
   return { faults, frozen };
 }
 
-/** `bun tools/c/accept.ts`: the reading, and with `--freeze` the operator's word. It returns the
- *  command's exit code: 1 where the reading holds a fault or a freeze was refused. */
+/** Runs `bun tools/c/accept.ts` to evaluate and optionally freeze a checker. Returns exit code 1 if
+ *  faults remain or a requested freeze is refused. */
 export async function acceptCommand(args: readonly string[]): Promise<number> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
-  const { root, sweep } = values;
-  // A stored pack's verdicts are its sweep's, and its cycle the sweep's first graded row's where
-  // none is named. An exam drafted from a prompt has neither: its controls are all it is read on.
-  const rows = root === undefined || sweep === undefined ? [] : sweepRows(root, sweep);
-  if (sweep !== undefined && rows.length === 0) throw new Error(`${sweep} graded no solve`);
-  const campaign = await openCampaign(packNamed({ ...values, cycle: values.cycle ?? rows[0]?.cycle }));
+  const campaign = await openCampaign(packNamed(values));
   const { tasks, log, checker, contract, bundle } = campaign;
   const brief = readBrief(campaign.checks);
   const admitted = new Set(
@@ -149,56 +129,35 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
   if (unknown.length > 0) {
     throw new Error(`--admit names ${unknown.join(", ")}, and the check program holds no such check`);
   }
-  const byId = new Map(tasks.map((task) => [task.taskId, task]));
-  const stored = rows.flatMap(({ taskId, expected }) => {
-    const task = byId.get(taskId);
-    return task === undefined || expected === null ? [] : [{ task, verdict: expected }];
-  });
-  // A tool a check names and the path lacks is named before any control runs: the verifier cannot
-  // decide such a check, and a run that stopped on it never reached the fault that says why.
-  const lost = toolFaults(brief, toolOnPath(bundle));
-  if (lost.length > 0) {
-    append(log, "checker.read", { ...checker, controls: 0, stored: 0, rows: [], faults: lost });
-    for (const fault of lost) console.log(`fault: ${fault}`);
-    console.log("no control was run: a check whose tool is missing decides nothing");
-    return 1;
-  }
   const reading = await readChecker({
     verify: campaign.verify,
     brief,
     contract,
     tasks,
     controls: packControls(bundle),
-    stored,
     found: toolOnPath(bundle),
     width: Number(values.jobs),
     probes: false,
   });
   const despite = values.despite?.trim() ?? "";
   const { faults, frozen } = keepReading(log, checker, reading, {
-    stored: stored.length,
     admitted,
     authored: values["admit-authored"],
     freeze: values.freeze,
     despite,
   });
-  const { runs, checks, historical, idle, unformed, rejected } = reading;
-  console.log(`${String(runs.length)} controls twice, ${String(stored.length)} stored verdicts`);
+  const { runs, checks, idle, unformed, rejected } = reading;
+  console.log(`${String(runs.length)} controls twice`);
   if (unformed === null) {
     console.log(
       `the do-nothing answer ${capturedJsonStringify(idle)}: rejected on ${String(rejected.length - doNothingFaults(rejected).length)} of ${plural(rejected.length, "task")}`,
     );
   }
-  for (const [source, readings] of [
-    ["Fresh controls", checks],
-    ["Historical verdicts (not rerun)", historical],
-  ] as const) {
-    console.log(`${source}: check\tinstrument\tpassed\trefused\tcontrols refused of those naming it`);
-    for (const row of readings) {
-      console.log(
-        `${row.id}\t${row.instrument}\t${String(row.passed)}\t${String(row.refused)}\t${String(row.caught)} of ${String(row.named)}`,
-      );
-    }
+  console.log("check\tinstrument\tpassed\trefused\tcontrols refused of those naming it");
+  for (const row of checks) {
+    console.log(
+      `${row.id}\t${row.instrument}\t${String(row.passed)}\t${String(row.refused)}\t${String(row.caught)} of ${String(row.named)}`,
+    );
   }
   for (const fault of faults) console.log(`fault: ${fault}`);
   for (const note of reading.notes) console.log(`note: ${note}`);

@@ -4,20 +4,19 @@
  *
  *   bun tools/d2/close.ts --name queues --to ~/handover/queues [--harness <letter|digest>]
  *     [--solve <task id>[,<task id>...] [--solver <model> --solver-effort <level> ...]]
- *   bun tools/d2/close.ts --root ... --sweep ... --cycle c01 --bundle ... --name truss --to ../truss-handover
  *
- * Until 2026-10-09 a campaign handed nothing over: a kept harness stayed a folder among the
- * campaign's states, with its programs behind a link into a tree beside it, and what the campaign
- * had read stood in its log alone (`7f0add79:docs/plan.md`, row F51). This writes, under `--to`:
+ * Without this a campaign hands nothing over: a kept harness stays a folder among the campaign's
+ * states, with its programs behind a link into a tree beside it, and what the campaign has read
+ * stands in its log alone. This writes, under `--to`:
  *
  *   harness/     the reference harness as it then stands, the starter where no step was promoted,
  *                copied whole with its programs, except that under `data/harnesses/` a tool tree over
  *                100 MB is copied once to `.trees/<campaign>/` there and linked to (`copyHarness`).
  *                It is opened there before the command returns,
  *                and has to open as the harness it was kept as; where it does not, nothing is left
- *                under `--to`. Its links are copied as links: until 11 October they were followed,
- *                and a link in its programs to a host file came out as that file's bytes, in a
- *                folder written to leave the host.
+ *                under `--to`. Its links are copied as links, since followed, a link in its
+ *                programs to a host file would come out as that file's bytes, in a folder written
+ *                to leave the host.
  *   RULES.md     the domain's public contract: its scope, conventions, rules and answer format.
  *   REPORT.md    the closing report: how the campaign ended, each promotion and the comparisons
  *                behind it, every comparison's tally and reading, the campaign against the bars of
@@ -31,9 +30,9 @@
  *                Comparison unit costs count scored versions in the last report; a report with
  *                none retains its bill without a unit price.
  *
- * Until 20 October the report said the checker was read and frozen, and not what decides it: in
- * buffer-fresh-opus-forkedPR223_v0_5_4-r3 every one of the 7 checks, the objective among them, was
- * its author's own computation, and a reader of the report could not tell.
+ * The report says what decides the checker, not only that it was read and frozen, since every
+ * check of a campaign, the objective among them, can be its author's own computation, and a reader
+ * of the report could not otherwise tell.
  *
  * The report is a view of the log, and nothing reads it back. A handover written again to its folder
  * replaces the one there, since the campaign command writes one at each ending, a pause's among them. It names no task and
@@ -47,8 +46,8 @@
  * (`harness-builder.ts`), and this command writes it at any time, of an ended campaign or not.
  *
  * With `--solve <task id>[,<task id>...]` it then solves those tasks of the campaign, one after the
- * other, under the harness as handed over, from the folder it was written to: row F51's criterion
- * that the harness runs by itself. The solver is the campaign's, or the one `--solver` and the other
+ * other, under the harness as handed over, from the folder it was written to, which shows that the
+ * harness runs by itself. The solver is the campaign's, or the one `--solver` and the other
  * setting flags name (`settingNamed`), so a harness can be tried under another model with nothing
  * else of the campaign run. The solves are under the campaign's checks, and are recorded in a log of
  * its own under the campaign's folder (`handover/log.jsonl`), which no reading of the campaign
@@ -219,11 +218,9 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
 /** What a campaign's comparisons could win on validity: the scored tasks summed over them, those the
  *  reference did not answer validly in every solve (its room), a candidate's steps read with points
  *  and those that won any point by validity; a step with the Starter as its new side is the
- *  Starter's over the reference and none of the climb's, and until 19 November 2026 was counted
- *  among them. A step the objective carried alone answers no task the reference
- *  failed: of the 100 step readings with points on record since 16 October, 62 won no point by
- *  validity, 41 of buffer's 57 (counted over every log here and gathered, 31 October), and on
- *  1 November buffer's room stood at 7 of 571 scored tasks before v0.9.0. Read by the climb line
+ *  Starter's over the reference and none of the climb's. A step the objective carried alone
+ *  answers no task the reference failed, and most step readings on record have won no point by
+ *  validity, in one domain far more than half. Read by the climb line
  *  here, the Examiner's `ambition.ts`, promotion-tuner's `table.ts` and `wri.ts climb`, which hands
  *  it the reports of a log too thin for `campaignOf`. Only a comparison carries the three fields. */
 export function validityOf(
@@ -264,7 +261,7 @@ function economyLines(events: readonly LogEvent[], steps: readonly Handover[]): 
     0,
   );
   // The climb's velocity first: what a promotion cost in dollars and in hours of the log. The
-  // total is a bound, and the operator reads a campaign by how fast it climbs under it (14 October).
+  // total is a bound, and the operator reads a campaign by how fast it climbs under it.
   const promotions = events.filter(({ kind }) => kind === "harness.promoted").length;
   const hours = (Date.parse(events.at(-1)?.at ?? "") - Date.parse(events[0]?.at ?? "")) / 3_600_000;
   const spent = billedAll(events);

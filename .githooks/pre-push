@@ -1,16 +1,13 @@
 #!/bin/sh
-# Checks what a push adds before anything leaves this clone, and marks each pushed head and the
-# pull requests stacked above it pending once GitHub holds it: bun run land proves the stack.
-# tools/runtime/pre-push.ts holds the method in its head comment. Installed with
-# `bun run hooks:install`, which points this clone's core.hooksPath here once; its worktrees share
-# the setting.
+# Pre-push gate: validates outgoing commits via tools/runtime/pre-push.ts and marks pushed heads
+# and downstream stacked PRs pending until `bun run land` proves the stack.
+# Installed once per clone via `bun run hooks:install`, which sets `core.hooksPath` across worktrees.
 set -eu
 if ! command -v bun >/dev/null 2>&1; then
   echo "pre-push: bun is not on PATH, so the checks could not run. Nothing was pushed." >&2
   exit 1
 fi
-# Git exports repository-local variables to a hook. The checks run Git in a scratch checkout of the
-# pushed head, which would follow an inherited GIT_DIR into this repository instead of its own.
+# Clear repository-local Git environment variables so scratch-worktree checks do not inherit GIT_DIR.
 # shellcheck disable=SC2046
 unset $(git rev-parse --local-env-vars)
 exec bun "$(dirname "$0")/../tools/runtime/pre-push.ts" "$@"

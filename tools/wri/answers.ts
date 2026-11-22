@@ -4,25 +4,22 @@
  *
  *   bun tools/wri/wri.ts reader answers --log <log>
  *
- * A valid answer says a task was answered and nothing of how. Until 5 November no reader looked at two
- * answers together, so a harness whose program prints one answer and a solver that works one out anew
- * read alike. Over the 241 recorded comparisons with at least 6 such tasks a side, the new
- * harness repeated itself more than the reference in 169, less in 34 and as often in 38; in the 28 logs
- * holding both a step and another reading, the gap (new less reference) stood higher at the steps in 23,
- * lower in 4 and level in 1, which a domain cannot carry since each log is its own control. It is a
+ * A valid answer says a task was answered and nothing of how. Read one at a time, a harness whose
+ * program prints one answer and a solver that works one out anew read alike, so this reads two
+ * answers together. Over the recorded comparisons, the new harness mostly repeats itself more than
+ * the reference; in the logs holding both a step and another reading, the gap (new less reference)
+ * mostly stands higher at the steps, which a domain cannot carry since each log is its own control. It is a
  * lead and decides nothing: a repeat can be a harness that closed a task's search or one that no longer searches, and
  * the objective reads the same either way (`ANSWER FROM A PROGRAM`, lane 16, says how it was
  * reached).
  *
- * New on 5 November: no script of v1 or before compared answers. The nearest, `harness-task-facts.mjs`
- * of the fourth repository, compared public inputs. An answer may hold what a task hides, so this
- * prints counts only, and compares digests it never keeps.
+ * An answer may hold what a task hides, so this prints counts only, and compares digests it never
+ * keeps.
  *
  * Under an objective each row also says on how many tasks a side's solves gave one measure, exactly
  * and within the floor (`gapAgainst`, `compare.ts`), since an answer can differ in bytes where the
- * measure the comparison reads does not. On 6 November a harness of v5's read 0 on the whole answer
- * and 10 of 22 on the measure, so its 2 solves a task were fewer than 2 draws, and only a hand count
- * said so.
+ * measure the comparison reads does not, and a harness that repeats no answer whole can repeat its
+ * measure on many tasks, so that its 2 solves a task are fewer than 2 draws.
  */
 import { gapAgainst, type Paired } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";

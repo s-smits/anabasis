@@ -43,8 +43,8 @@
 }
 
 /* A link to evidence is a target in a list of its kind, two pixels from the next: at its text's
-   own height it is under the 24 pixels WCAG 2.2 asks of a target (2.5.8), which axe found against
-   the harness strip's files and the inspector's list of them on 14 October. */
+   own height it is under the 24 pixels WCAG 2.2 asks of a target (2.5.8), which axe finds against
+   the harness strip's files and the inspector's list of them. */
 .ana-evidence-link {
   background: none;
   border: 0;
@@ -81,7 +81,7 @@ dd {
   gap: 12px;
 }
 
-/* One search box everywhere (operator, 30 October): a filter row's, a harness's file list's and the
+/* One search box everywhere (the operator's rule): a filter row's, a harness's file list's and the
    campaign picker's are this rule, not the browser's grey field. */
 .ana-search input,
 .ana-filters .ana-picker-button {
@@ -123,7 +123,7 @@ dd {
 }
 
 /* A select's name stands beside it, so a row of filters is one line high under its section's title:
-   above it, it left 32 px between the title and the search box (operator, 30 October). */
+   above it, it would leave 32 px between the title and the search box. */
 /* A choice in a filter row: its name beside a trigger drawn as the search box, opening the list
    under it (`Choose`, `picker.tsx`). */
 .ana-filters .ana-picker {
@@ -142,7 +142,7 @@ dd {
 }
 
 /* A filter's list ends under its box's right edge and grows leftward, so the last choice in a row
-   opens inside the window (85 px past it on 30 October, when the list began at the box's left). */
+   opens inside the window, where a list begun at the box's left would run past it. */
 .ana-filters .ana-picker-panel {
   left: auto;
   right: 0;

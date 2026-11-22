@@ -1,12 +1,13 @@
 /**
- * The backends as one pi `Models` collection: Codex on the ChatGPT login the Codex CLI keeps,
- * OpenRouter on `OPENROUTER_API_KEY`, each OpenAI-compatible endpoint of `ENDPOINTS` on the key its
- * entry names, and Claude Code on `CLAUDE_CODE_OAUTH_TOKEN`, or, as the provider `claude-api`, on
- * `ANTHROPIC_API_KEY`. The Builder and the Built Harness both resolve their models here.
- * Codex's terminal response names the model that served it, which pi's normalisation drops, so
- * job-fresh-gpt-v071 recorded no served model on any of its 724 turns (26 October). `codexStream`
- * keeps it as `responseModel` for the session recorder and the bill. Pi's Codex usage cost is a
- * catalogue calculation rather than the backend's bill, so these turns report no backend cost.
+ * Unified `pi-ai` `Models` registry combining all supported backends: Codex (using the Codex CLI's
+ * ChatGPT login), OpenRouter (`OPENROUTER_API_KEY`), OpenAI-compatible endpoints declared in
+ * `ENDPOINTS`, and Claude Code via OAuth (`CLAUDE_CODE_OAUTH_TOKEN`) or API key (`claude-api`,
+ * `ANTHROPIC_API_KEY`). Both the Builder and solver seats resolve models here.
+ *
+ * Because `pi-ai`'s normalisation drops the served model identifier from Codex terminal responses,
+ * `codexStream` preserves it as `responseModel` for trace logging and cost accounting. Codex usage
+ * costs are estimated from the catalogue rather than reported by the backend, so Codex turns carry
+ * no backend bill.
  */
 import {
   type Api,
@@ -41,21 +42,20 @@ import { durableCompactionMode } from "./compaction.ts";
 import type { ConversationRetryPolicy } from "@earendil-works/pi-durable";
 
 const CODEX = "openai-codex";
+/** The file Codex keeps its login in, under `CODEX_HOME`; a snapshot or a search never copies one. */
+export const CODEX_AUTH = "auth.json";
 
-/** DeepSeek V4.1 Flash of 17 October as DeepInfra serves it at fp8, on either route: its list price
- *  per million tokens and its output limit. */
+/** DeepSeek V4.1 Flash pricing (USD per million tokens) and output cap as served by DeepInfra at
+ *  FP8 on both OpenRouter and direct DeepInfra routes. */
 const DEEPSEEK_FLASH = {
   cost: { input: 0.098, output: 0.294, cacheRead: 0.00294, cacheWrite: 0 },
   maxTokens: 131_072,
 };
 
 /**
- * OpenAI-compatible endpoints, each served by pi's chat completions API at its `/v1` base with
- * pi's compat for that base, on the key the environment holds under `key`. A campaign names a model
- * `<id>/<model id>`; the prices are the endpoint's own per million tokens, which the meter bills.
- * DeepInfra serves the DeepSeek release that OpenRouter is pinned to (`openrouter`), at the same
- * discounted list price, billed to DeepInfra's own account (29 October: an OpenRouter account out of
- * credit ended a campaign while the DeepInfra account was funded).
+ * Direct OpenAI-compatible endpoints exposed as `<id>/<model id>` providers using `pi-ai`'s chat
+ * completions API. DeepInfra mirrors the DeepSeek release pinned on OpenRouter at the same FP8
+ * list price so a campaign can run against either billing account.
  */
 const ENDPOINTS: readonly {
   readonly id: string;
@@ -74,15 +74,15 @@ const ENDPOINTS: readonly {
   },
 ];
 
-/** What the host decides about the backends a process serves. */
+/** Host-level configuration passed when constructing the backend registry. */
 export interface BackendOptions {
   readonly claude: ClaudeOptions;
 }
 
 /**
- * The Codex CLI's login, read afresh on every request and never refreshed here. Codex rotates the
- * refresh token on use, so a refresh by this process would sign the CLI out. When the access token
- * runs short, running `codex` renews it.
+ * Read-only credential store backed by the Codex CLI's auth file. Tokens are read afresh per
+ * request and never refreshed here because Codex rotates refresh tokens on use, which would sign
+ * out the CLI session.
  */
 const codexLogin: CredentialStore = {
   read: async (providerId) =>
@@ -123,7 +123,8 @@ export function backends(options: BackendOptions): MutableModels {
   return models;
 }
 
-/** Keep the served id on the normalised terminal message; never infer it from the requested id. */
+/** Preserves the served model ID on normalised Codex terminal messages instead of inferring it from
+ *  the requested model ID. */
 function codexStream(
   model: Model<Api>,
   start: (observe: NonNullable<StreamOptions["onProviderStreamEvent"]>) => AssistantMessageEventStream,
@@ -155,14 +156,14 @@ function codexStream(
   });
 }
 
-/** Durable owns retries for the two providers previously wrapped here, with the same backoff. */
+/** Returns `pi-durable`'s retry policy for non-Claude providers that do not retry internally. */
 export function retryPolicy(provider: string): ConversationRetryPolicy {
   const enabled =
     provider === CODEX || provider === "openrouter" || ENDPOINTS.some(({ id }) => id === provider);
   return { enabled, maxRetries: 3, baseDelayMs: 2000 };
 }
 
-/** One endpoint of `ENDPOINTS` as a pi provider of its own: reasoning text models, priced as listed. */
+/** Builds a `pi-ai` provider for a single entry in `ENDPOINTS`. */
 function endpoint({ id, baseUrl, key, models }: (typeof ENDPOINTS)[number]): Provider<"openai-completions"> {
   return createProvider({
     id,
@@ -182,13 +183,10 @@ function endpoint({ id, baseUrl, key, models }: (typeof ENDPOINTS)[number]): Pro
 }
 
 /**
- * OpenRouter as pi serves it, with DeepSeek V4.1 Flash of 17 October held to one endpoint: pi's own
- * entry for the release, with what OpenRouter lists differently for DeepInfra fp8, its prices per
- * million tokens and output limit, and that endpoint alone, with no fallback (operator, 21 October).
- * OpenRouter otherwise picks one of the release's 26 endpoints for each call, at fp4, fp8 or an
- * unnamed quantization, so two solves of one model could run on different weights, and pi's entry
- * prices it at OpenRouter's list price. The study's solver (`studies/shared/pi-solve.ts`) serves its
- * models from here too.
+ * Returns the OpenRouter provider with `deepseek/deepseek-v4.1-flash-1017` pinned exclusively to
+ * DeepInfra FP8 (with fallbacks disabled) and priced at DeepInfra's list rate. Without pinning,
+ * OpenRouter routes calls across heterogeneous quantisations and providers, confounding paired
+ * comparisons. Shared by `studies/shared/pi-solve.ts`.
  */
 export function openrouter(): Provider<"anthropic-messages" | "openai-completions"> {
   const router = openrouterProvider();
@@ -206,7 +204,7 @@ export function openrouter(): Provider<"anthropic-messages" | "openai-completion
   };
 }
 
-/** The compaction a solve on `model` runs under, as the condition pins it. */
+/** Returns the compaction-mode string recorded in a solve condition for `model`. */
 export function compactionMode(
   model: Pick<Model<Api>, "provider" | "id" | "contextWindow">,
   options: BackendOptions,
@@ -217,7 +215,7 @@ export function compactionMode(
 }
 
 function codexAuthFile(): string {
-  return join(Bun.env.CODEX_HOME ?? join(homedir(), ".codex"), "auth.json");
+  return join(Bun.env.CODEX_HOME ?? join(homedir(), ".codex"), CODEX_AUTH);
 }
 
 function codexCredential(): OAuthCredential {
@@ -225,7 +223,7 @@ function codexCredential(): OAuthCredential {
   const access = tokens?.access_token;
   const refresh = tokens?.refresh_token;
   if (!isString(access) || !isString(refresh)) throw new Error(`${codexAuthFile()} holds no ChatGPT login`);
-  // The access token is a JWT; its `exp` claim, in seconds, is when the login lapses.
+  // Decode the JWT payload's `exp` claim (Unix seconds) to determine credential expiry.
   const claims = asRecord(
     capturedJsonParse(Buffer.from(access.split(".")[1] ?? "", "base64url").toString("utf8")),
   );

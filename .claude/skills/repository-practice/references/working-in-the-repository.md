@@ -1,70 +1,100 @@
 # 11. Working in the repository
 
-Read this for commands, hooks, protected files, the stack and reviews (`AGENTS.md` section 11).
-Publication is `stack-pr`'s, and where a check runs `local-checks`'s.
+Read this reference for repository commands, Git hooks, protected files, stacked pull requests, and
+review discipline (`AGENTS.md` section 11). Publication procedures belong to `stack-pr`, and remote
+check placement belongs to `local-checks`.
 
 ## Runtime and commands
 
-Bun as `package.json` pins it, for every task; `src/meta` wraps the few Node surfaces Bun lacks, and
-the campaign command refuses another Bun (`pinFault`, `tools/d2/harness-builder.ts`).
+Use the Bun version pinned in `package.json` for every task. `src/meta` wraps the few Node surfaces
+Bun omits, and the campaign command refuses to run under an unpinned Bun version (`pinFault`,
+`tools/d2/harness-builder.ts`).
 
 | Command | What it does |
 | --- | --- |
-| `bun run typecheck` / `lint` / `format` | `bun check`; Oxlint with two plugins (`-- --strict` fails on findings); Biome |
-| `bun run gate -- --static` | The gate with only the tests one import from HEAD's change |
-| `bun run hooks:install` | Points hooks at `.githooks` and adds `git complexity` |
-| `bun run commit:check` / `simplify` / `not-slop` / `secrets` | Pre-commit check; scans; the answered-findings ledger; secret scan |
-| `bun run ui:dev` / `ui:gate` | The log page (`-- --exam-side` only where no Builder or solver runs); its gate |
-| `bun run follow` | Moves this checkout to the top of the oldest open stack, where commits are not kept |
-| `bun tools/loc/source-policy.ts` | Size and unused-export policy, run by hand only |
+| `bun run typecheck` / `lint` / `format` | `bun check`; Oxlint with two local plugins (`-- --strict` fails on findings); Biome |
+| `bun run gate -- --static` | Runs the gate with only the tests within one import hop of `HEAD`'s changes |
+| `bun run hooks:install` | Points Git hooks at `.githooks` and installs `git complexity` |
+| `bun run commit:check` / `simplify` / `not-slop` / `secrets` | Pre-commit validation; complexity and lint scans; answered-findings ledger; secret scan |
+| `bun run ui:dev` / `ui:gate` | Local log viewer (`-- --exam-side` only when no Builder or solver is running); UI gate |
+| `bun run follow` | Advances this checkout to the top of the oldest open stack, where local commits are not kept |
+| `bun tools/loc/source-policy.ts` | File-size and unused-export policy check, invoked manually |
+
+### Commands checked by the command guard
+
+A command guard inspects every shell command prior to execution, including commands nested inside
+`ssh <host> '...'` or `sh -c`. Write commands plainly; if the guard refuses a command, adopt the
+sanctioned form named in the refusal rather than crafting a workaround.
+
+- Write files using the dedicated file-editing tools instead of `>` or `cat > <file> <<EOF`. Reserve
+  `>` for creating a new file inside the session's scratch or temporary directory, addressed by a
+  literal path or by a variable assigned a single literal path once in the same command
+  (`S=<path>; ... > "$S/out"`). Redirections whose target ends in a loop variable (`> "$S/out-$n"`),
+  comes from `$(...)`, or points under the home directory outside the scratch directory are refused;
+  use the editing tools or print to standard output instead.
+- Place any script longer than a single line in a file and execute it (`python3 -I <file>`,
+  `bun <file>`) rather than piping code to an interpreter (`python3 - <<'EOF'`,
+  `python3 -c "$(...)"`, `... | python3`), because embedded code contains `${...}`, `$(...)`, and
+  backticks that the guard cannot safely parse. When using a short data heredoc, quote its delimiter
+  (`<<'EOF'`).
+- Quote all variable expansions and globs, and pass literal paths to `mv` and `git -C`.
+- Inspect historical file contents with `git show <ref>:<path>` instead of `git checkout <ref> -- <path>`,
+  `git restore`, or `git reset --hard`.
 
 ## Hooks and CI
 
-Without hooks (`git config core.hooksPath`) commits and pushes go unchecked silently, and a pushed
-commit is unproved until `land --sanitize` or `--merge` proves the stack. CI
-(`.github/workflows/ci.yml`) runs on a landing's top in three jobs: `darwin` (typecheck, strict
-lint, format, secrets, suite), `darwin-ui` (the UI's install, typecheck, build and tests) and
-`linux` (Bubblewrap, the suite, the climb simulation). The pre-push hook marks each pushed head and
-the pull requests above it pending (`tools/runtime/pre-push.ts`). In a container without user
-namespaces the wall's tests fail; name them in the pull request as failures.
+With Git hooks disabled (`git config core.hooksPath`), commits and pushes bypass local checks
+silently, and pushed commits remain unverified until `land --sanitize` or `--merge` validates the
+stack. GitHub Actions (`.github/workflows/ci.yml`) runs on the top of a landing chain across three
+jobs: `darwin` (typecheck, strict lint, format, secrets, test suite), `darwin-ui` (UI install,
+typecheck, build, and tests), and `linux` (Bubblewrap isolation, test suite, and climb simulation).
+The pre-push hook marks each pushed head and all dependent pull requests above it as pending
+(`tools/runtime/pre-push.ts`). Inside a container lacking user namespaces, wall tests fail and must
+be reported as failures in the pull request.
 
 ## What you never touch
 
-Beside section 11's list: launch receipts sit in `.ana/` too; a credential is never copied from
-another checkout to make a command start; `vendor/pi-claude-bridge` takes upstream files at a cited
-commit whole, then the few local parts added back, each marked in place (`terms-and-map.md`).
+In addition to the protected list in `AGENTS.md` section 11: launch receipts also live under
+`.ana/`; credentials are never copied from another checkout to make a command start; and
+`vendor/pi-claude-bridge` copies upstream files verbatim at a cited commit before reapplying its
+small, inline-marked local modifications (`terms-and-map.md`).
 
 ## The stack and pull requests
 
-Read `stack-pr` before you branch and before you push. Its rules, briefly:
+Read `stack-pr` before creating a branch or pushing. Its core rules are:
 
-- State no repository fact without the commit you read it at.
-- Expand an open pull request when the change fixes, simplifies, completes or supersedes its own
-  code; a shared file alone does not count.
-- Another session's pull request changes only on the operator's word, and one with children takes
-  new commits only.
-- One worktree per pull request, from the top, pinned by commit, with its own
-  `bun install --frozen-lockfile`; never branch in a worktree a run was launched from. `git stash`
-  is shared between worktrees, hence the ban.
-- Fold a fix into the unpublished commit it corrects; a temporary commit inside one task
-  (`commit-r`) is not published.
-- `land` refuses a pull request without a label or category; no "Ix:" prefix in a title.
-- `--no-verify` only on the operator's word. A stack lands only through `land -- <top> --merge`,
-  which GitHub's ruleset on `main` enforces.
-- A native stack is `gh stack link <pr> <pr> ...`, bottom to top, naming the whole chain, since the
-  short form appends above GitHub's top, which may not be the chain's. `land --sanitize` and
-  `--merge` run that link themselves where the stack holds only the chain's lower part or none of
-  it. `link` never reorders; mend an order with `gh stack unstack <stack>` and link again. `stack.ts` lists, and `land` refuses, a head that
-  holds another open pull request's without standing on it (`tools/runtime/doubled.ts`).
+- Never state a repository fact without naming the commit at which you verified it.
+- Extend an existing open pull request when the change fixes, simplifies, completes, or supersedes
+  that PR's own code; touching a shared file alone does not qualify.
+- Modify another session's pull request only with explicit operator authorisation, and append only
+  new commits to a PR that has dependent children.
+- Use one dedicated worktree per pull request, branched from the stack top at a pinned commit, with
+  its own `bun install --frozen-lockfile`; never branch inside a worktree used to launch a run.
+  `git stash` is forbidden because stash state is shared across worktrees.
+- Fold fixes into the unpublished commit they repair; temporary commits created within a task
+  (`commit-r`) are never published.
+- `land` rejects any pull request lacking an importance label or category; omit "Ix:" prefixes from
+  PR titles.
+- Pass `--no-verify` only with operator authorisation. Stacks land exclusively via
+  `land -- <top> --merge`, enforced by the GitHub ruleset on `main`.
+- Link a native stack with `gh stack link <pr> <pr> ...` ordered bottom to top across the entire
+  chain, because the short form appends above GitHub's current top rather than the chain's own base.
+  `land --sanitize` and `--merge` invoke that link automatically when the stack holds only the
+  chain's lower portion or none of it. Because `link` never reorders existing links, repair a wrong
+  order by running `gh stack unstack <stack>` and relinking. `stack.ts` detects, and `land` refuses,
+  any branch head that includes another open PR's commits without standing directly on it
+  (`tools/runtime/doubled.ts`).
 
-Pull request numbers up to #235 from before v2 moved here are `anabasis-v2#N`. A pull request names
-the affected behaviour, then cites files as evidence, says so when it answers no defect, and
-comments on each pull request it supersedes.
+Pull request numbers up to #235 from before v2 moved into this repository are cited as
+`anabasis-v2#N`. Every pull request states the affected behaviour first, cites source files as
+evidence, notes explicitly when it addresses no defect, and comments on any pull request it
+supersedes.
 
 ## Reviews and subagents
 
-Before acting on a finding, read the owner, callers, tests and head comment; state the observable
-consequence and the event or count that would establish it; then inspect the newest runs holding
-that code (`bun run runs replay` for a reader, `tools/wri/wri.ts` or `runs view` for a campaign, a
-count for an event kind). Name the runs read and left unread. A confirmed finding left in a report
-is dropped work.
+Before acting on any review finding, inspect the owning module, its callers, its tests, and its head
+comment; state the observable consequence and the exact event or count that would confirm it; and
+then inspect the most recent runs containing that code (`bun run runs replay` for a reader,
+`tools/wri/wri.ts` or `runs view` for a campaign, or a direct count for an event kind). List both
+the runs inspected and those left unread. A confirmed finding left only in a report counts as
+unfinished work.

@@ -33,36 +33,34 @@
  * Run `start` under `bun --env-file=<file>` and as one background command: it ends when the seat
  * does, so its end is the one notice to wait for, and the 30-minute monitor a watcher re-arms is not
  * needed. `<prefix>.json` keeps where the seat began, `<prefix>.out` and `.err` its command's output,
- * each emptied at a start: on 22 October a relaunch under one prefix wrote nothing to stderr, and
- * its `.err` still held the error that ended the launch before it.
+ * each emptied at a start, since a relaunch under one prefix that writes nothing to stderr would
+ * otherwise leave the error that ended the launch before it in its `.err`.
  * `--mention` counts the Examiner's calls whose arguments name the text, such as a folder of its home.
  *
- * The supply ablation of 18 October ran its two arms on a Python reader, a shell watcher and a
- * spawner copied for the second arm by sed: the event where each arm began was typed by hand
- * (10757), the watcher summed `billed` by kinds of its own, the reader named one domain's programs,
- * and the second arm's spawner had to name Bun by its path and set `RUN_REMOTE=0`, since the `bun`
- * on the PATH then sent a check task to a remote host unless told otherwise. Each fact here has one
- * owner already: the login (`loginEnv`), the dollars (`billedBetween`), a task admission that read its draft (`measuredGate`) and held
- * it (`heldAtGate`), and the turns of the reference's valid answers at a task admission (`gateAnswers`).
+ * An ablation run on a hand-made reader, watcher and spawner types the event where each arm began
+ * by hand, sums `billed` by kinds of its own, names one domain's programs and must route its checks
+ * itself. Each of those facts has one owner already: the login (`loginEnv`), the dollars
+ * (`billedBetween`), a task admission that read its draft (`measuredGate`) and held it
+ * (`heldAtGate`), and the turns of the reference's valid answers at a task admission
+ * (`gateAnswers`), so this script reads them there.
  *
- * The prompt rewrite of 27 October (#471) ran two rounds of before-and-after arms and improvised the
- * rest: a scratch script composed each arm's prompt, a second watcher counted both arms, a seat was
- * ended by killing its group by hand, and the arms read at different paces were compared by eye.
+ * Before-and-after arms improvised by hand compose each arm's prompt in a scratch script, count
+ * both arms in a second watcher, end a seat by killing its group and compare arms read at different
+ * paces by eye; `prompt`, `read`, `stop` and `pairs` do each of those once.
  *
- * Eight rounds of Examiner tuning (26 to 28 October) read their pairs by hand: round 8's table of
- * five pairs was set together from one `compare` a pair, the sign over pairs counted by eye, and GPT
- * kept apart from Opus by memory. The census of tool calls that found the failed `read_example`
- * calls and the declined first `finish` was a scratch script. A one-off read of a seed's log counted
- * its source campaign's task admissions as the seat's, and a seed copied to another host with its links
- * unresolved crashed its seat twice on a missing file. `pairs`, `calls`, `read --log` on a seed
- * from its cut, and `start`'s refusal of a seed with a broken link answer those four.
+ * A tuning round read by hand sets its table of pairs together from one `compare` a pair, counts
+ * the sign over pairs by eye and keeps GPT apart from Opus by memory, and a census of tool calls
+ * (such as failed `read_example` calls or a declined first `finish`) becomes a scratch script. A
+ * one-off read of a seed's log counts its source campaign's task admissions as the seat's, and a
+ * seed copied to another host with its links unresolved crashes its seat on a missing file.
+ * `pairs`, `calls`, `read --log` on a seed from its cut, and `start`'s refusal of a seed with a
+ * broken link answer those four.
  *
- * Round 8 was decided on its Opus pair at 00:45 on 28 October, and its arms were stopped; a seating
- * script still waiting for load on another host seated a fresh pair of the round 20 minutes later.
- * `stop` on a prefix nothing has seated now leaves its `.stopped` word, and `start` refuses a prefix
- * that holds one. The stopped seats' `start` wrappers were seen alive minutes after their groups
- * ended; `start` now wakes as its group ends rather than at its next tick, keeps its own pid, and
- * `stop` ends it where it outlives its reading.
+ * A round decided and stopped while a seating script still waits for load on another host would
+ * otherwise seat a fresh pair afterwards: `stop` on a prefix nothing has seated leaves its
+ * `.stopped` word, and `start` refuses a prefix that holds one. `start` wakes as its group ends
+ * rather than at its next tick, keeps its own pid, and `stop` ends it where it outlives its
+ * reading, so no `start` wrapper stays alive after its group.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { EXAMINE } from "#src/campaign/admission.ts";
@@ -71,7 +69,7 @@ import type { writing as Writing } from "#src/examiner/write.ts";
 import type { examineCommand as ExamineCommand } from "#tools/d1b/examine.ts";
 import type { solved as Solved } from "#tools/d2/round.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
-import { ROOM } from "#src/kernel/compare.ts";
+import { GAP_FLOOR } from "#src/kernel/compare.ts";
 import { type Call, callsOf, tracesIn } from "#src/kernel/trace.ts";
 import { billedBetween } from "#src/kernel/meter.ts";
 import { heldAtGate } from "#src/kernel/task.ts";
@@ -134,7 +132,7 @@ const OPTIONS = {
 const TICK_MS = 30_000;
 const QUIET_TICKS = 10;
 /** The task admissions where the author's answer beat the reference's best by at least the objective gap floor. */
-const GAP = `gap >= ${String(ROOM * 100)}%`;
+const GAP = `gap >= ${String(GAP_FLOOR * 100)}%`;
 /** A line of a failed call's text that names its error. */
 const ERROR_LINE = /error|denied|not found|no such|not permitted|timed out|refused|invalid|cannot|failed/iu;
 /** The flags that say who sits in an Examiner seat: a pair is read only within one of them. */
@@ -163,7 +161,7 @@ interface Reading {
   readonly gates: Readonly<Record<string, number>>;
   readonly held: number;
   /** The solves the reference ran at each task admission that solved its draft: `ran`, or the solves it read
-   *  where a task admission from before one solve at a time (#280) did not say. */
+   *  where an older task admission, from before one solve at a time, did not say. */
   readonly ran: readonly number[];
   /** The author's gain by the objective over the reference's best valid answer at each task admission that
    *  measured both (`reference.gap`): a graded loss where held drafts are too few to read. */
@@ -175,12 +173,12 @@ interface Reading {
 }
 
 /** How many of a reading's task admissions measured the author's answer at least the objective gap floor ahead. */
-const objectiveGaps = (gaps: readonly number[]) => gaps.filter((gap) => gap >= ROOM).length;
+const objectiveGaps = (gaps: readonly number[]) => gaps.filter((gap) => gap >= GAP_FLOOR).length;
 
 /** What a pair is read on, each a count where the arm doing more is the Examiner doing better: drafts
  *  held, task admissions whose draft the reference answered in some solves or in none while its author's answer
  *  passed, the author ahead of the reference's best by the objective gap floor, and the median turns of the
- *  reference's valid room-solve answers. Round 8 of 27 October read all four by hand. */
+ *  reference's valid room-solve answers, which a round would otherwise read by hand. */
 const MEASURES: readonly (readonly [string, (reading: Reading) => number | null])[] = [
   ["held", ({ held }) => held],
   ["room on validity", ({ gates }) => (gates.some ?? 0) + (gates["none, proved"] ?? 0)],
@@ -338,7 +336,7 @@ function seedLog(tree: string, name: string, die: CommandArgs["die"]): string {
     die(`${folder} is no seed: a seat runs on sim-<what> with ${SEED_FILE} beside its log`);
   }
   // A seed's exam and its kept harnesses' tool trees hold links; copied to another host as links,
-  // they point at nothing, and on 27 October two seats there crashed on the missing file.
+  // they point at nothing, and a seat there crashes on the missing file.
   const broken = ["checks", "exams", "states"].flatMap((part) =>
     existsSync(join(folder, part))
       ? readdirSync(join(folder, part), { recursive: true, withFileTypes: true }).flatMap((entry) => {
@@ -370,8 +368,8 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
   const from = read(log).length;
   const env = {
     ...loginEnv(runtimeProcess.env, args.value("login") ?? undefined),
-    // A RUN_REMOTE the caller set for its own checks would send the seat's check tasks elsewhere.
-    RUN_REMOTE: "here",
+    // An ANA_CHECK_HOST the caller set for its own checks would send the seat's check tasks elsewhere.
+    ANA_CHECK_HOST: "here",
   };
   const child = capturedSpawn(["nice", "-n", "10", capturedExecPath, ...command, "--name", name], {
     cwd: tree,
@@ -688,8 +686,8 @@ function pairs(args: CommandArgs, specs: readonly string[]): number {
 
 /** What the Examiner session of `command` would be told, composed by `tree`'s own code: the session
  *  stands in for `examine`, prints its mode, and exits before any turn, gate or event. The engines
- *  in its shell are left out. Until 1 November it was composed as `try_task`; a tree from before
- *  then composes `propose_tasks` here, as it did where no room solve was seated. */
+ *  in its shell are left out. It is composed as `try_task`; an older tree composes `propose_tasks`
+ *  here, as it did where no room solve was seated. */
 async function prompt(args: CommandArgs, command: readonly string[]): Promise<number> {
   const tree = args.required("tree");
   const name = args.required("name");
@@ -705,14 +703,14 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
   const { examineCommand } = (await import(join(tree, script))) as { examineCommand: typeof ExamineCommand };
   // SAFETY: as above.
   const { writing } = (await import(join(tree, "src/examiner/write.ts"))) as { writing: typeof Writing };
-  // A stand-in session is given no tries unless seats are passed, so until 5 November this printed
+  // A stand-in session is given no tries unless seats are passed, and without them this would print
   // the writing prompt without "Trying the reference", which every campaign's session reads. The
   // tree's own seats are passed and never solve: the session below exits before its first turn.
   // SAFETY: as above.
   const { solved } = (await import(join(tree, ROUND))) as { solved: typeof Solved };
   runtimeProcess.chdir(tree);
   const composed: Parameters<typeof ExamineCommand>[1] = (request) => {
-    // A tree from before 18 November takes a third argument, whether its home holds the
+    // An older tree takes a third argument, whether its home holds the
     // reference's copy, which every campaign of it did; it is printed without the copy here.
     const mode = writing(request, undefined);
     console.log(`=== SYSTEM\n${mode.system}\n\n=== OPENING\n${mode.opening}`);
@@ -734,8 +732,8 @@ async function census(args: CommandArgs, named: readonly string[]): Promise<numb
   for (const each of named) {
     const log = await logAcross(each);
     if (!existsSync(log)) args.die(`${log} does not exist`);
-    // A seed's history before its cut is its source's: on 28 October two seats read 537 and 521
-    // calls, of which they made 59 and 42.
+    // A seed's history before its cut is its source's, and counted whole it would credit the seat
+    // with several times the calls it made.
     logs.push(read(log).slice(cutOf(log) ?? 0));
   }
   const found = censusOf(logs);

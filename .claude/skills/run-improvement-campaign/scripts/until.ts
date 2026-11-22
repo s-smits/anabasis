@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 /**
- * Wait in the background until a run's log holds `count` events of the `--at` kind (1 by default),
- * ends, or is `--hours` raw hours past its opening, then print one line that says which and wakes
- * the session; `--say` appends the session's own words, which grant nothing.
+ * Background log waiter: polls a campaign log until it records `count` events of kind `--at`
+ * (default 1), reaches `campaign.ended`, or exceeds `--hours` wall-clock hours since opening, then
+ * prints a single status line to wake the calling session. `--say` appends a note for context
+ * without conferring operator authority.
  */
 import { lastAt } from "#skills/main/logs.ts";
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
@@ -19,7 +20,7 @@ interface Wait {
 }
 
 /** The `--at` asked; a kind no log holds is refused, since a mistyped one would wait for good. */
-export function boundOf(text: string): NonNullable<Wait["bound"]> {
+function boundOf(text: string): NonNullable<Wait["bound"]> {
   const [kind = "", count = "1"] = text.split(":");
   if (!isKind(kind)) throw new Error(`--at ${text}: ${kind} is no event kind`);
   if (!/^[1-9]\d*$/.test(count)) throw new Error(`--at ${text}: the count is a whole number, at least 1`);
@@ -27,7 +28,7 @@ export function boundOf(text: string): NonNullable<Wait["bound"]> {
 }
 
 /** The line that ends the wait on `events` at `now`, or null while it goes on. */
-export function untilLine(name: string, events: readonly LogEvent[], wait: Wait, now: number): string | null {
+function untilLine(name: string, events: readonly LogEvent[], wait: Wait, now: number): string | null {
   const { bound, hours, say } = wait;
   const count = events.filter(({ kind }) => kind === bound?.kind).length;
   const opened = events.find(({ kind }) => kind === "campaign.opened")?.at;

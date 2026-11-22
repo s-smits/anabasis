@@ -4,9 +4,8 @@ import { useCallback, useState, useSyncExternalStore } from "react";
  * How long a read may run before the page says it is reading, and the one clock that says when it
  * has. Every read keeps what it replaces on screen until its answer comes (DESIGN.md), and says
  * that it is reading only past `PATIENCE_MS`, so a quick answer replaces the last with no frame
- * between, and a slow one is still said. On 14 October the shell, the Campaign pane's detail and
- * the Log and Tasks panes each held a timer of their own for this, in an effect, at 400, 300 and
- * 250 ms. This is the one: a store React reads (`useSyncExternalStore`), whose subscription is the
+ * between, and a slow one is still said. This is the one clock for it, in place of a timer of each
+ * pane's own in an effect: a store React reads (`useSyncExternalStore`), whose subscription is the
  * wait, begun and ended with what is waited on.
  */
 

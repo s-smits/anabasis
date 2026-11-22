@@ -1,13 +1,13 @@
 /*
- * What a page served in the default tier shows where the exam side's content would stand: one quiet
- * line that says where the content is and how to open it (the brief of 11 October, section 8). An
- * absence by design is neither an error nor an empty box, so it is drawn as neither: no callout
- * tone, no border, the faint text of a note.
+ * Placeholder notes shown when exam-side content is withheld by the server tier or blind-labelling
+ * rules. Because deliberate redaction is neither an error nor a missing value, it is styled as a
+ * plain note without a callout tone or border.
  *
- * A ruling is the one exception that holds in both tiers: while its rejection waits for a person's
- * label it stays hidden, since a label made beside the ruling measures nothing (`poolOf`,
- * `src/kernel/reports.ts`), and so does every ruling of a comparison that has not reported yet
- * (`withheld.ts`). Opening the exam side would not show it, so that line says so instead.
+ * Referee rulings are withheld in both tiers under two conditions: while a rejection awaits an
+ * operator's blind label (since exposing the Referee's verdict would contaminate the calibration
+ * pool in `poolOf`, `src/kernel/reports.ts`), and until the enclosing comparison has reported
+ * (`withheld.ts`). Because switching to `--exam-side` will not reveal such a ruling,
+ * `RulingWithheld` explains why it is hidden instead.
  */
 import type { Withheld } from "../models.ts";
 
@@ -16,7 +16,7 @@ const WHY = {
   report: "until its comparison reports",
 } as const satisfies Record<Exclude<Withheld, null>, string>;
 
-/** The line in place of exam-side content: `what` names it as the object of "holds". */
+/** Renders a muted note in place of exam-side content; `what` completes "The exam side holds ...". */
 export function ExamSide({ what }: { what: string }) {
   return (
     <p className="ana-exam-side">
@@ -25,12 +25,12 @@ export function ExamSide({ what }: { what: string }) {
   );
 }
 
-/** Why a ruling is withheld from both tiers, in a few words. */
+/** Returns a short phrase explaining why a Referee ruling is withheld in both tiers. */
 export function withheldWords(why: Exclude<Withheld, null>): string {
   return WHY[why];
 }
 
-/** The line in place of a ruling withheld from both tiers. */
+/** Renders a muted note explaining why a Referee ruling is withheld regardless of server tier. */
 export function RulingWithheld({ why }: { why: Exclude<Withheld, null> }) {
   return <p className="ana-exam-side">The ruling is withheld {WHY[why]}, in either tier.</p>;
 }

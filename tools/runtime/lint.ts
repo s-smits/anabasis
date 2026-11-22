@@ -3,7 +3,7 @@
  *
  * `.oxlintrc.json` sets `options.typeAware`, so oxlint has always run the type-aware rules here.
  * It runs them in a child process, `tsgolint`, which it looks for at
- * `node_modules/.bin/tsgolint` — and that entry is a `#!/usr/bin/env node` shim. So the lint step,
+ * `node_modules/.bin/tsgolint`, and that entry is a `#!/usr/bin/env node` shim. So the lint step,
  * and therefore every push, depended on a Node binary being on PATH. The machine this was written
  * on had one through a shell-scoped version manager; a detached `env -i` launch does not, and
  * there the whole CI gate stops on `env: node: No such file or directory` followed by
@@ -101,7 +101,7 @@ export function tsgolintPath(): string {
  * oxlint's whole JSON report for `args`, read from the root to the end of its output.
  *
  * Read as a stream to its end. `Bun.spawnSync` with a pipe returned 547,240 of a 547,506-byte
- * report once — enough to look like a complete document and fail on the last string.
+ * report once: enough to look like a complete document and fail on the last string.
  */
 export async function oxlintDiagnostics(
   args: readonly string[],
@@ -231,7 +231,7 @@ export function sitesCachePath(): string | null {
  * The ledger's own failures: rows it could not read, rows no finding in this run bears out, and
  * rows naming a register.
  *
- * A lint row is judged where its file was linted under the ordinary rules — not under a one-rule
+ * A lint row is judged where its file was linted under the ordinary rules, not under a one-rule
  * config, where every other row would read as stale. A tree row is judged only after a whole-tree
  * run, which also scans the tree.
  */
@@ -264,8 +264,8 @@ function ledgerProblems(
 /**
  * The roots a whole-tree run lints. `packages/ui` keeps its own lock and `node_modules`; without
  * its React types the type-aware rules read every component as an error type and report findings
- * that are not there, so it waits for `bun run ui:deps` and says so (v1's rule, restored with the
- * UI on 11 October). Its own `tsconfig.json`, with `jsx` and `DOM`, is the one the type-aware rules
+ * that are not there, so it waits for `bun run ui:deps` and says so (v1's rule). Its own
+ * `tsconfig.json`, with `jsx` and `DOM`, is the one the type-aware rules
  * read for its files: without it they fall back to the compiler's defaults, not to the root's.
  */
 function lintRoots(): readonly string[] {

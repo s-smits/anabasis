@@ -11,10 +11,9 @@ import { asSubject, identifierName, onlyStatement, statementBelow } from "../sha
  *     for (const row of rows) if (row.runId === runId) return row;      // rows.find(…)
  *     for (const row of rows) if (!row.settled) return false;           // rows.every(…)
  *
- * The commit lane found four of the recorded simplify passes making this cut — `10cff319e`,
- * `9d05d17d0`, `7a4387da1` and `44213a5ff`, the last of which also turned `filter(p).at(-1)`
- * into `findLast`. `unicorn/prefer-array-find` is on the built-in list and reports a different
- * slice, `xs.filter(p)[0]`; it has nothing to say about a written-out loop.
+ * Four of the recorded simplify passes made this cut by hand, one of which also turned
+ * `filter(p).at(-1)` into `findLast`. `unicorn/prefer-array-find` is on the built-in list and
+ * reports a different slice, `xs.filter(p)[0]`; it has nothing to say about a written-out loop.
  *
  * Five shapes keep their loop, each because the array method cannot express it. A body holding
  * `await` keeps it, because `find` takes no async predicate and `Promise.all` over the whole
@@ -29,21 +28,20 @@ import { asSubject, identifierName, onlyStatement, statementBelow } from "../sha
  * `` `${key} must be a non-empty string` ``, so the rewrite is a `find` *and* a second statement,
  * which is not shorter and is not what the message promised. And a `Set` or a `Map` has no
  * `find` at all, even where the module walks one and asks it `.has(…)` two lines later. The rule
- * reads both from the file — a name declared `new Set(…)` or `new Map(…)`,
- * or asked `.has(…)` anywhere in the same module, or annotated as a `string`, a `Set`, a `Map`,
- * an `Iterable` or an `IterableIterator` (20 October, when a `ReadonlySet` parameter was fixed
- * into a `find` that did not compile), is not an array — so that the admission test
- * holds at every site it reports: the method is legal where the loop was, it is shorter, and no
- * other rule in this tree asks for a loop.
+ * reads both from the file: a name declared `new Set(…)` or `new Map(…)`, or asked `.has(…)`
+ * anywhere in the same module, or annotated as a `string`, a `Set`, a `Map`, an `Iterable` or an
+ * `IterableIterator` (a `ReadonlySet` parameter fixed into a `find` does not compile), is not an
+ * array, so that the admission test holds at every site it reports: the method is legal where the
+ * loop was, it is shorter, and no other rule in this tree asks for a loop.
  *
- * It fixes what it reports, and the reason it once did not — "a fixer that guesses `find` where
- * the author wanted `some` would be rewriting the return type" — was never true of this rule:
- * `method` reads the answer off the `return`, and a loop returning the element cannot be `some`.
+ * It fixes what it reports. A fixer that guessed `find` where the author wanted `some` would be
+ * rewriting the return type, but `method` reads the answer off the `return`, and a loop returning
+ * the element cannot be `some`.
  *
  * What the fix does have to read is the statement the loop falls through to, because that is
  * where the two programs can part. `find` yields `undefined` on no match, `some` yields `false`
  * and `every` yields `true`, so each rewrite stands only where the line below already says the
- * same thing — or, for `find` alone, where the loop ends a function body and falling off it
+ * same thing, or, for `find` alone, where the loop ends a function body and falling off it
  * yields `undefined` anyway. Anything else below the loop keeps it, since a rewrite there would
  * change what the function returns on no match.
  *

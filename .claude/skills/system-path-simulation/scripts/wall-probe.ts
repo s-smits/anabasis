@@ -13,8 +13,8 @@
  * (`ok`, `rc=1`), never a path, a name or a listing of the host, so a table can be pasted, and it
  * does nothing a wall that fails would regret: none opens an application, writes the clipboard or
  * signals by pattern. Add the command to `BATTERY` when a seat is found refused something no row
- * reads: on 15 November 2026 the battery of that day read 68 commands alike or better under the
- * deny-by-default Darwin profile and missed file watchers, which the profile refuses.
+ * reads, as file watchers once were: the deny-by-default Darwin profile refuses them, and a battery
+ * without them read every other command alike or better under it.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { rmSync } from "#src/meta/filesystem.ts";
@@ -161,7 +161,7 @@ async function answers(tree: string, battery: readonly Probe[]): Promise<Answer[
     seat: (await import(join(tree, "src/wall/seat-root.ts"))) as typeof import("#src/wall/seat-root.ts"),
   };
   const dirs = command.solveDirs(`wall-probe-${String(runtimeProcess.pid)}`);
-  const release = seat.claimRoot(dirs.root);
+  const release = await seat.claimRoot(dirs.root);
   try {
     command.makeSeatDirs(dirs);
     const policy = base.solveIsolationPolicy({ repoRoot: tree, otherTrees: [] });

@@ -15,8 +15,8 @@
  * resolves nothing, so a watcher can read a log whose conditions it has no use for; `ranUnder` adds
  * the condition; `ended` puts solves in the order they finished, which is the order every count of
  * "the latest so many" means; `verdictsOf` is the last verdict of each.
- * On 20 October the Referee triage found practice records counting unclear and unread rejections.
- * `rejectionAside` keeps those out of every practice failure reader, under rule 8.
+ * `rejectionAside` keeps unclear and unread rejections out of every practice failure reader,
+ * under rule 8.
  */
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -97,8 +97,8 @@ export function solvesIn(events: readonly LogEvent[]): Solve[] {
 
 /** The Examiner sessions a log holds, writing tasks or drafting the exam: a solve whose start
  *  names one was made at its asking, by a writing session to try an instance on the reference
- *  harness (`try_reference`, since 4 November), or by an earlier log's gate (`try_task`) or drafting
- *  session to try a draft task or a drafted exam's example, until 1 November. */
+ *  harness (`try_reference`), or, in an older log, by the gate (`try_task`) or a drafting session
+ *  to try a draft task or a drafted exam's example. */
 export function examinerSessions(events: readonly LogEvent[]): Set<JsonValue | undefined> {
   return new Set(
     events.flatMap(({ kind, data }) =>
@@ -203,6 +203,19 @@ export function rulingsOf(events: readonly LogEvent[]): Map<string, string | nul
         : [],
     ),
   );
+}
+
+/** The provider's error on the Referee's last session of any of `solves` that recorded one, which a
+ *  comparison's stop carries so that a limit it names is waited out like a solve's (`waitOut`). */
+export function refereeErrorOf(events: readonly LogEvent[], solves: readonly string[]): string | null {
+  const error = events.findLast(
+    ({ kind, data }) =>
+      kind === "referee.finding" &&
+      isString(data.solve) &&
+      solves.includes(data.solve) &&
+      isString(data.error),
+  )?.data.error;
+  return isString(error) ? error : null;
 }
 
 /** A person's label of each rejected answer, by its solve, as its comparison's last report holds it

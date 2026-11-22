@@ -1,14 +1,14 @@
-// A campaign over a sweep laid out as v1's left one, as far as it goes without a model or a wall: it
-// opens, `prepare.ts`, run in this process as the operator runs it, takes the pack's tasks in, releases the practice
-// tasks once and takes a person's label of a task, a task a session wrote stands beside the pack's
-// own, and the campaign keeps its harnesses by name: the one it started with, the starter
-// and the latest a session left.
+// A campaign over the exam its log drafted, as far as it goes without a model or a wall: it opens,
+// `prepare.ts`, run in this process as the operator runs it, takes the draft's tasks in, releases the
+// practice tasks once and takes a person's label of a task, a task a session wrote stands beside the
+// draft's own, and the campaign keeps its harnesses by name: the starter and the latest a session left.
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
 import { append, read } from "../src/kernel/log.ts";
 import { latestBuilt, PATIENCE, promoted } from "../src/kernel/reports.ts";
 import { sizeLines } from "../src/kernel/size.ts";
 import { taskSets, taskVersion } from "../src/kernel/task.ts";
 import { TOOL_TREE_DIR } from "../src/meta/bundle-layout.ts";
+import { fixtureDraft, fixtureTasks, layOutDraft, layOutPack } from "./helpers/fixture-pack.ts";
 import {
   cpSync,
   lstatSync,
@@ -34,43 +34,30 @@ import { checkpointCommand } from "../tools/d2/checkpoint.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import { prepareCommand, ungated } from "../tools/d2/prepare.ts";
 import { promoteCommand } from "../tools/d2/promote.ts";
-import {
-  capNamed,
-  packaged,
-  refereeNamed,
-  ROUND_OPTIONS,
-  roundCommand,
-  reportLines,
-} from "../tools/d2/round.ts";
+import { COMPARISON_OPTIONS, capNamed, packaged, refereeNamed, SESSION_OPTIONS } from "../tools/d2/round.ts";
 import { sessionCommand } from "../tools/d2/session.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 const NAME = `test-${String(runtimeProcess.pid)}`;
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-campaign-")));
-const bundle = join(root, "bundle");
-const ARGS = { root, sweep: "s", cycle: "c01", bundle, name: NAME };
+const ARGS = { name: NAME };
 /** A Builder a backend serves, for a command that is to get as far as its admission: a model no
  *  backend serves is refused with the command's other flags, before the log is asked anything. */
 const SERVED = "claude/claude-opus-5-5";
 /** A campaign opened and given a harness before it keeps any. */
 const FRESH = `${NAME}-fresh`;
-/** Campaigns whose checks pass, and reject, the stored sweep's accepted answer. */
+/** Campaigns whose checks pass, and reject, the draft's accepted answer. */
 const PROVEN = `${NAME}-proven`;
 const UNPROVEN = `${NAME}-unproven`;
 /** A campaign whose log holds solves and no setting. */
 const UNRECORDED = `${NAME}-unrecorded`;
 const ASKED = { level: 0.02, patience: PATIENCE };
-const TASKS = Array.from({ length: 7 }, (_, index) => ({
-  taskId: `t-${String(index + 1)}`,
-  family: "fixture",
-  publicInput: { base: index + 2 },
-  hidden: null,
-}));
-/** The flags that name the campaign and its pack, as a command line carries them. */
-const flagsOf = (named: Record<string, string>) =>
-  Object.entries(named).flatMap(([flag, value]) => [`--${flag}`, value]);
-const PACK = flagsOf(ARGS);
+const TASKS = fixtureTasks(7);
+const PACK = ["--name", NAME];
+const folderOf = (name: string) => join(REPO, ".ana", "d2", name);
+// One accept control, so that `prepare` says one task's answer is on record.
+for (const name of [NAME, FRESH, UNRECORDED]) layOutPack(folderOf(name), TASKS, 1);
 
 // A test here runs a campaign's commands as the operator does, in this process, and each start
 // reads the host's source tree whole: over a second, so three of them pass Bun's own five.
@@ -103,61 +90,9 @@ const rehearsal =
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
   for (const name of [NAME, FRESH, PROVEN, UNPROVEN, UNRECORDED]) {
-    rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
+    rmSync(folderOf(name), { recursive: true, force: true });
   }
 });
-
-/** The sweep, its one graded solve, the cycle's harness state and the pack, as v1 lays them out. */
-function layOut(): void {
-  mkdirSync(join(root, "grades", "s"), { recursive: true });
-  writeFileSync(join(root, "grades", "s", "grades.tsv"), "cycle\ttaskId\tkind\n1\tt-1\tverified-pass\n");
-  const solve = join(root, "runs", "s", "c01", "t-1");
-  const caseDir = join(solve, "harness", "cases", "t-1");
-  mkdirSync(caseDir, { recursive: true });
-  writeFileSync(
-    join(solve, "result.json"),
-    JSON.stringify({
-      provider: "claude",
-      model: "claude-opus-5-5",
-      timedOut: false,
-      answerPresent: true,
-      answerParses: true,
-    }),
-  );
-  const ended = { status: "ended", inputTokens: 1, outputTokens: 1, costUsd: 0.01 };
-  writeFileSync(join(caseDir, "trace.json"), JSON.stringify({ turns: [ended] }));
-  const format = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
-  writeFileSync(
-    join(caseDir, "built-runtime.json"),
-    JSON.stringify({
-      modelWorker: { modelSelection: { effort: "medium" } },
-      contractCondition: { tools: [{ description: "Role: artifact-writer. Records.", parameters: format }] },
-    }),
-  );
-  cpSync(FIXTURE, join(root, "hb-bundles", "s-c01"), { recursive: true });
-  mkdirSync(join(bundle, "correctness-model"), { recursive: true });
-  mkdirSync(join(bundle, TOOL_TREE_DIR, "bin"), { recursive: true });
-  const execution = {
-    families: "all",
-    artifactPaths: ["$.answer"],
-    publicInputPaths: ["$.base"],
-    hidden: "none",
-    evidence: { kind: "authored" },
-  };
-  writeFileSync(
-    join(bundle, "correctness-model", "brief.json"),
-    JSON.stringify({
-      correctnessContract: "check-program/v1",
-      domain: "Fixture",
-      ruleDecisions: [{ id: "R1", statement: "The answer is the base times six.", visibility: "public" }],
-      truthChecks: [{ id: "check-product", assertion: "Six times.", citedDecisionIds: ["R1"], execution }],
-      artifactSchema: [],
-      designRuleConstants: [],
-    }),
-  );
-  writeFileSync(join(bundle, "correctness-model", "evaluator.ts"), "export const checks = {};\n");
-  writeFileSync(join(bundle, "correctness-model", "tasks.json"), JSON.stringify(TASKS));
-}
 
 describe("the code a solve's condition records", () => {
   // The stack review at 658a933b (finding 6): the host was `src` and `vendor` alone, and `typebox`,
@@ -223,7 +158,7 @@ describe("the code a solve's condition records", () => {
 });
 
 describe("the trees a paid seat refuses", () => {
-  // 28 October: a live solve ran from the main checkout, which a job keeps at the stack's top.
+  // A live solve must not run from the main checkout, which a job keeps at the stack's top.
   const trees = realpathSync(mkdtempSync(join(tmpdir(), "ana-tree-fault-")));
   afterAll(() => rmSync(trees, { recursive: true, force: true }));
   const main = join(trees, "main");
@@ -249,8 +184,7 @@ describe("a campaign", () => {
   /** `prepare.ts` as the operator runs it, with whatever flags `more` adds, and what it printed. */
   const prepare = async (...more: string[]) => said(prepareCommand, [...PACK, "--practice", "2", ...more]);
 
-  it("opens over a stored sweep, takes the pack's tasks in at their gate, and releases practice once", async () => {
-    layOut();
+  it("opens over its drafted exam, takes the draft's tasks in at their gate, and releases practice once", async () => {
     const campaign = await openCampaign(ARGS);
     expect(campaign.contract.rules).toMatchObject([
       { id: "R1", statement: "The answer is the base times six." },
@@ -259,7 +193,7 @@ describe("a campaign", () => {
     expect(campaign.test.model.id).toBe("claude-opus-5-5");
     // The log, the staged check program and the states are inside the repository, which every wall denies.
     expect(campaign.log.startsWith(join(REPO, ".ana", "d2", NAME))).toBe(true);
-    expect(read(campaign.log)).toEqual([]);
+    expect(read(campaign.log).map(({ kind }) => kind)).toEqual(["campaign.opened", "exam.drafted"]);
     // Where a Node program of a kept tree ends its walk for its module type, short of the
     // checkout's manifest (`commandReadAllows`, `test/solve-sandbox.test.ts`).
     expect(readFileSync(join(dirname(campaign.log), "package.json"), "utf8")).toBe("{}\n");
@@ -277,12 +211,12 @@ describe("a campaign", () => {
     });
     append(campaign.log, "task.gate", { version: extra, gate: 1, outcome: "passed" });
 
-    // The pack's seven tasks are proposed and put to their one gate, with no solve and no stored
+    // The draft's seven tasks are proposed and put to their one gate, with no solve and no stored
     // answer. Two of the eight held out are then released for practice, by the contract's draw.
     const versions = TASKS.map((task) => taskVersion(campaign.pack(task)));
     // One of them as a command killed between its two appends leaves it, proposed and never put to
-    // its gate: it is still owed the gate. Until 13 November the task states answered for it, and it
-    // was never held out.
+    // its gate: it is still owed the gate, since the task states alone would leave it never held
+    // out.
     for (const cut of TASKS.slice(3, 4)) {
       const { taskId, family } = cut;
       append(campaign.log, "task.proposed", { version: taskVersion(campaign.pack(cut)), taskId, family });
@@ -294,18 +228,21 @@ describe("a campaign", () => {
     // Each release is said by its task: a release cannot be taken back.
     const [proposed, ...lines] = (await prepare()).split("\n");
     expect(proposed).toBe("7 of the pack's tasks proposed: 7 held out, 0 refused");
+    expect(lines[0]).toBe(
+      `${TASKS[0]?.taskId ?? ""}: an accepted answer passes today's verifier, so a valid answer to it is on record`,
+    );
     expect(
-      lines.slice(0, 2).every((line) => line.endsWith(": released for practice, and never scored")),
+      lines.slice(1, 3).every((line) => line.endsWith(": released for practice, and never scored")),
     ).toBe(true);
-    expect(lines.slice(2).join("\n")).toBe(summary);
+    expect(lines.slice(3).join("\n")).toBe(summary);
     const sets = taskSets(read(campaign.log));
     expect([sets.held.length, sets.released.length]).toEqual([6, 2]);
     expect([...sets.held, ...sets.released].toSorted()).toEqual([...versions, extra].toSorted());
     const packages = campaign.packages();
     expect(packages.get(extra)).toMatchObject({ taskId: "x-1-001", hidden: { seed: 1 }, ruleIds: ["R1"] });
     expect(versions.every((version) => packages.has(version))).toBe(true);
-    // Until 18 October the lookup held the map of its start, and a practice solve of this task ended
-    // the Builder's conversation crashed in three campaigns on 17 October.
+    // The lookup does not hold the map of its start, since a practice solve of this task would then
+    // end the Builder's conversation crashed.
     expect(packageOf(extra)).toMatchObject({ taskId: "x-1-001" });
     // A second run proposes and releases nothing.
     const events = read(campaign.log).length;
@@ -383,10 +320,10 @@ describe("a campaign", () => {
     expect(await keptAs(campaign, "--parent", "latest")).toEqual(least);
     // A comparison is made against the campaign's reference harness, which is the starter until
     // the operator promotes another.
-    expect(ROUND_OPTIONS.reference.default).toBe("promoted");
+    expect(COMPARISON_OPTIONS.reference.default).toBe("promoted");
     expect(await keptAs(campaign, "--reference", "promoted")).toEqual(least);
-    expect(ROUND_OPTIONS.parent.default).toBe("latest");
-    // The stored cycle's own harness is none the campaign keeps: it comes from v1's runs.
+    expect(SESSION_OPTIONS.parent.default).toBe("latest");
+    // A name the campaign gave no harness is refused.
     await expect(keptAs(campaign, "--reference", "start")).rejects.toThrow(
       "--reference start is no harness this campaign keeps",
     );
@@ -433,7 +370,6 @@ describe("a campaign", () => {
   });
 
   it("imports a harness built elsewhere, kept as a session keeps one, and records where it came from", async () => {
-    layOut();
     const campaign = await openCampaign(ARGS);
     const least = await starter(campaign);
     // A harness as a campaign hands one over (`close.ts`): a folder that stands by itself, with
@@ -483,7 +419,6 @@ describe("a campaign", () => {
   it("refuses a harness whose programs link outside the folder it lies in", async () => {
     // The import copies the programs from where the link resolves, as the host and outside every
     // wall; a link to the operator's home would hand that home to the next Builder.
-    layOut();
     await openCampaign({ ...ARGS, name: FRESH });
     const handed = join(root, "linked", "harness");
     cpSync(FIXTURE, handed, { recursive: true });
@@ -507,13 +442,12 @@ describe("a campaign", () => {
 
   it("starts no paid comparison without a dollar cap or a Referee", async () => {
     const flags = PACK;
-    await expect(roundCommand([...flags, "--session", "z-8", "--builder", "faux/none"])).rejects.toThrow(
+    await expect(checkpointCommand(["--id", "z-8", ...flags])).rejects.toThrow(
       "name --cap, the billed dollars this comparison may hold",
     );
-    await expect(checkpointCommand(["--id", "z-8", ...flags])).rejects.toThrow("name --cap");
     expect(capNamed({ cap: "375", reserve: "10" }, "paid")).toEqual({ dollars: 375, reserve: 10 });
     // Fix row F43: a cap that is no number above nothing held nothing, and is refused wherever a
-    // cap is read: by a round, a checkpoint, a session by itself and the launcher.
+    // cap is read: by a checkpoint, a session by itself and the launcher.
     for (const [cap, reserve] of [
       ["$40", "10"],
       ["0", "10"],
@@ -532,134 +466,34 @@ describe("a campaign", () => {
     expect(capNamed({ cap: "40", reserve: "5" }, "scripted")).toEqual({ dollars: 40, reserve: 5 });
     // Nor does a paid comparison start without a Referee, whose ruling a rejection waits for; a
     // simulation may name none.
-    await expect(
-      roundCommand([...flags, "--session", "z-8", "--builder", "faux/none", "--cap", "40"]),
-    ).rejects.toThrow("name --reviewer, the Referee that rules each rejection");
     await expect(checkpointCommand(["--id", "z-8", "--cap", "40", ...flags])).rejects.toThrow(
-      "name --reviewer",
+      "name --reviewer, the Referee that rules each rejection",
     );
     expect(() => refereeNamed({ reviewer: SERVED }, "paid")).not.toThrow();
     expect(() => refereeNamed({}, "scripted")).not.toThrow();
-    // Until 2026-10-11 the same solves were also read at each shorter `--budget`; the flag is
-    // refused since.
-    expect(ROUND_OPTIONS).not.toHaveProperty("budget");
+    // The same solves are not read again at each shorter `--budget`, and the flag is refused.
+    expect({ ...SESSION_OPTIONS, ...COMPARISON_OPTIONS }).not.toHaveProperty("budget");
     const campaign = await openCampaign(ARGS);
     expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);
-  });
-
-  it("prints in a report's lines the counts, shares and points it holds, and what each test is read on", () => {
-    // Each harness by itself: the tasks by how many of their solves were valid. For the first round
-    // the reference harness is the starter, and these are what its gate reads.
-    const alone = reportLines({
-      valid: { old: [2, 1, 5], fresh: [0, 1, 7], informative: { old: 0, fresh: 0 } },
-      objective: null,
-      frontier: null,
-      noise: null,
-    }).join("\n");
-    expect(alone).toContain("in 2 solves");
-    expect(alone).toMatch(/reference 2\/1\/5\b.*new 0\/1\/7\b/su);
-    expect(reportLines({ valid: null, objective: null, frontier: null, noise: null })).toEqual([]);
-    // The turns of a valid answer are said over the tasks both harnesses answered, and in no test.
-    const turns = { s1: { old: null, fresh: 3 }, s2: { old: 12, fresh: 4 }, s3: { old: 10, fresh: 6 } };
-    const took = reportLines({
-      valid: { old: [0, 0, 3], fresh: [0, 0, 3], informative: { old: 0, fresh: 0 } },
-      objective: null,
-      frontier: null,
-      noise: null,
-      turns,
-    }).at(-1);
-    expect(took).toMatch(/\b2 tasks\b.*reference 11, new 5\b.*in no test/u);
-    // Every reading says how many of its tallied tasks, frontier and retained together, were untied,
-    // the least share of them it detects four times in five, its false rate, and, since 26 October,
-    // and, since 26 October, the same tasks' tally with the bill beside the test without it, which
-    // alone reads the step (31 October).
-    const scored = {
-      unsolved: 0,
-      wins: 4,
-      losses: 0,
-      ties: 4,
-      p: 0.0625,
-      differences: [2, 2, 2, 2, 0, 0, 0, 0],
-      unbilled: [-2, -2, -2, -2, 0, 0, 0, 0],
-      detectable: 0.95,
-      falseRate: 0.01953125,
-    };
-    const valid = { old: [8, 0, 0], fresh: [4, 0, 4], informative: { old: 0, fresh: 0 } };
-    const frontier = { ...scored, tasks: ["v1", "v2", "v3", "v4", "v5", "v6", "v7"], aside: [] };
-    const [size, rate, , bill] = reportLines({ valid, objective: null, scored, frontier, noise: null });
-    for (const fact of ["the bill", "8 tallied", "4 of them untied", "95%"]) expect(size).toContain(fact);
-    expect(rate).toContain("2%");
-    expect(bill).toContain("4-0-4, p 0.063, which decides nothing by itself");
-    // A report written before 20 October read its step, and these, on its frontier alone.
-    expect(reportLines({ valid, objective: null, frontier, noise: null }).at(0)).toContain("8 tallied");
-    const none = reportLines({
-      valid,
-      objective: null,
-      scored: { ...scored, detectable: null },
-      frontier,
-      noise: null,
-    }).at(0);
-    expect(none).toContain("no share");
-    expect(none).not.toMatch(/\d%/u);
-    // The p beside it is the test's, which weighs margins; where every untied task is won it is the
-    // count's alone (the plan's 7.5).
-    const two = { ...scored, wins: 2, ties: 0, p: 0.25, differences: [4, 1], unbilled: [4, 1] };
-    const p = reportLines({ valid, objective: null, scored: two, frontier: null, noise: null }).at(2);
-    expect(p).toMatch(/p is 0\.25\b.*\b2 won read 0\.25\b/u);
-    // The A/A beside every reading that carries one: its tie share, flip rate and least detectable
-    // shift, and what the tally drew, by what became of each task (the plan's 7.2 and 7.3).
-    const aa = { wins: 1, losses: 1, ties: 6, p: 0.75, differences: [1, -1, 0, 0, 0, 0, 0, 0], flips: 0.125 };
-    const lines = (detectable: number | null) =>
-      reportLines({
-        valid,
-        objective: null,
-        frontier: null,
-        noise: { ...aa, detectable },
-        versions: ["v1", "v2", "v3", "v4", "v5", "v6"],
-        aside: ["v7"],
-        short: [],
-        disputed: ["v8"],
-        withdrawn: [],
-      }).slice(0, 5);
-    const [count, ties, flips, shift, drew] = lines(null);
-    for (const fact of ["8 tallied", "2 of them untied"]) expect(count).toContain(fact);
-    expect(ties).toContain("75%");
-    expect(flips).toContain("13%");
-    expect(shift).toMatch(/least detectable shift: none\b/u);
-    expect(lines(0.9)[3]).toContain("90%");
-    for (const fact of ["8 tasks", "6 were tallied", "1 set aside", "1 disputed"]) {
-      expect(drew).toContain(fact);
-    }
-    // Where the report carries points, the weights and the points each measure gave are said beside.
-    const [points, objective] = reportLines({
-      valid: { old: [0, 0, 2], fresh: [0, 0, 2], informative: { old: 0, fresh: 0 } },
-      frontier: null,
-      objective: { direction: "lower" },
-      points: { validity: -150, objective: 225 },
-      noise: null,
-    }).slice(-2);
-    expect(points).toMatch(/validity 0\.6\b.*objective 0\.3\b.*-150 and \+225\b/u);
-    expect(objective).toContain("lower");
   });
 
   it("refuses a paid comparison started by hand where a launch of it would be refused", async () => {
     const campaign = await openCampaign(ARGS);
     // From the starter: an earlier case left the latest kept state one that no longer opens.
     const flags = [...PACK, "--cap", "100", "--reviewer", SERVED, "--parent", "starter"];
-    // The campaign's checker has never been read, which only the launcher refused until 2026-10-09.
+    // The campaign's checker has never been read, which every command refuses, the launcher too.
     const unread = "the campaign's checker has never been read: run tools/c/accept.ts";
-    await expect(roundCommand([...flags, "--session", "z-5", "--builder", SERVED])).rejects.toThrow(unread);
     await expect(
       checkpointCommand(["--id", "z-5", "--new", "starter", ...flags.slice(0, -2)]),
     ).rejects.toThrow(unread);
-    // A rehearsal's seats are scripts, and it is exempt: it gets as far as its Builder's seat.
+    // A rehearsal's seats are scripts, and it is exempt: it gets as far as the comparison's own
+    // terms, which refuse a harness read against itself.
     await expect(
-      roundCommand([...flags, "--session", "z-5"], () => ({
-        builder: null,
-        setting: "s",
-        solve: () => Promise.reject(new Error("no solve is asked for")),
-      })),
-    ).rejects.toThrow("name --builder");
+      checkpointCommand(
+        ["--id", "z-5", "--new", "starter", ...flags.slice(0, -2)],
+        rehearsal(() => undefined),
+      ),
+    ).rejects.toThrow("there is nothing to compare");
     expect(read(campaign.log).some(({ data }) => data.session === "z-5")).toBe(false);
   });
 
@@ -736,15 +570,17 @@ describe("a campaign", () => {
       new RegExp(`^[A-Z]+ ${digest} is the campaign's reference harness already`, "mu"),
     );
     expect(promotions()).toHaveLength(1);
-    // A round that names no --reference is made against it, where it was made against the starter.
+    // A practice solve is seated against it, where it was seated against the starter.
     const against: string[] = [];
     const flags = [...PACK, "--cap", "100", "--reviewer", SERVED, "--parent", "starter", "--session", "z-3"];
     const seats = rehearsal((opened, given) => {
       expect(opened.log).toBe(campaign.log);
       against.push(given.reference);
     });
-    await expect(roundCommand(flags, seats)).rejects.toThrow("name --builder");
-    await expect(roundCommand([...flags, "--reference", "starter"], seats)).rejects.toThrow("name --builder");
+    await expect(sessionCommand(flags, seats)).rejects.toThrow("name --builder");
+    // A comparison that names --reference starter is made against the starter all the same.
+    const named = ["--id", "z-3", "--reference", "starter", "--new", "starter", ...flags.slice(0, -4)];
+    await expect(checkpointCommand(named, seats)).rejects.toThrow("there is nothing to compare");
     expect(against).toEqual([join(campaign.states, digest), least.dir]);
     // The starter named again returns the campaign to it.
     await promote("--harness", "starter", "--yes");
@@ -756,7 +592,7 @@ describe("a campaign", () => {
     const flags = [...PACK, "--cap", "100", "--reviewer", SERVED, "--parent", "starter", "--session", "z-4"];
     // A wall the owner refuses is refused by each command before a campaign is opened.
     const refused = "--solve-minutes 0: a solve's wall is a whole number of minutes";
-    await expect(roundCommand([...flags, "--solve-minutes", "0"])).rejects.toThrow(refused);
+    await expect(sessionCommand([...flags, "--solve-minutes", "0"])).rejects.toThrow(refused);
     const checkpoint = async (...more: string[]) =>
       checkpointCommand(["--id", "z-4", ...flags.slice(0, -4), ...more]);
     await expect(checkpoint("--solve-minutes", "0")).rejects.toThrow(refused);
@@ -774,16 +610,15 @@ describe("a campaign", () => {
     const seats = rehearsal((opened) => {
       seen.push(opened.limits.wallSeconds, opened.limits.modelTurns ?? 0);
     });
-    await expect(roundCommand(flags, seats)).rejects.toThrow("name --builder");
+    await expect(sessionCommand(flags, seats)).rejects.toThrow("name --builder");
     expect(seen).toEqual([480, 40]);
     // A flag that names another is refused by every command, before anything is opened or logged.
     const other =
       "--solve-minutes 5 names another setting than the campaign's, which was recorded as --solve-minutes 8";
-    await expect(roundCommand([...flags, "--solve-minutes", "5"], seats)).rejects.toThrow(other);
+    await expect(sessionCommand([...flags, "--solve-minutes", "5"], seats)).rejects.toThrow(other);
     await expect(checkpoint("--solve-minutes", "5")).rejects.toThrow(other);
-    // No word changes it: `--new-setting` is no flag since 2026-10-11, and another setting is
-    // another campaign.
-    await expect(roundCommand([...flags, "--solve-minutes", "5", "--new-setting"], seats)).rejects.toThrow(
+    // No word changes it: `--new-setting` is no flag, and another setting is another campaign.
+    await expect(sessionCommand([...flags, "--solve-minutes", "5", "--new-setting"], seats)).rejects.toThrow(
       "--new-setting",
     );
     expect(seen).toEqual([480, 40]);
@@ -800,9 +635,9 @@ describe("a campaign", () => {
     append(campaign.log, "condition.recorded", { id: "c-1", condition });
     append(campaign.log, "solve.started", { condition: "c-1" });
     const before = read(campaign.log).length;
-    const flags = [...flagsOf({ ...ARGS, name: UNRECORDED }), "--cap", "100", "--reviewer", SERVED];
+    const flags = ["--name", UNRECORDED, "--cap", "100", "--reviewer", SERVED];
     // The command's own refusal, no longer the admission's, which a led Builder would read.
-    const refusal = await roundCommand([...flags, "--session", "u-1", "--builder", SERVED]).catch(
+    const refusal = await sessionCommand([...flags, "--session", "u-1", "--builder", SERVED]).catch(
       (error: unknown) => (error instanceof Refused ? "the admission's" : errorMessage(error)),
     );
     expect(refusal).toContain("records no setting yet, and this command names another");
@@ -811,44 +646,40 @@ describe("a campaign", () => {
     expect(read(campaign.log)).toHaveLength(before);
     // A rehearsal walks the seed as it stands: it goes on to the Builder's seat.
     await expect(
-      roundCommand(
+      sessionCommand(
         [...flags, "--session", "u-1"],
         rehearsal(() => undefined),
       ),
     ).rejects.toThrow("name --builder");
   });
-  // Plan item 5.3 (14 October): a pack's stored accepted answer said nothing of a task's
-  // feasibility, so a task only a stored solve had answered could go to a person as infeasible.
-  it("logs a held-out task feasible where a stored accepted answer passes today's checks, and no other", async () => {
-    const work = join(root, "runs", "s", "c01", "t-1", "work");
-    mkdirSync(work, { recursive: true });
-    writeFileSync(join(work, "answer.json"), JSON.stringify({ answer: "12" }));
+  // A task an accept control answers is feasible only once that answer passes today's checks, so a
+  // task the checks reject it on must not count as answered.
+  it("logs a held-out task feasible where its accepted answer passes today's checks, and no other", async () => {
     const preparedUnder = async (name: string, check: string) => {
-      const under = join(root, `bundle-${name}`);
-      cpSync(bundle, under, { recursive: true });
-      writeFileSync(
-        join(under, "correctness-model", "evaluator.ts"),
-        `export const checks = { "check-product": ${check} };\n`,
-      );
-      const args = { ...ARGS, bundle: under, name };
-      const flags = flagsOf({ ...args, practice: "0" });
-      const campaign = await openCampaign(args);
+      layOutDraft(folderOf(name), {
+        ...fixtureDraft(TASKS, 1),
+        evaluator: `export const checks = { "check-product": ${check} };\n`,
+      });
+      const flags = ["--name", name, "--practice", "0"];
+      const campaign = await openCampaign({ name });
       const first = await said(prepareCommand, flags);
       return { first, again: await said(prepareCommand, flags), campaign };
     };
     const right = "(req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6)";
     const passed = await preparedUnder(PROVEN, right);
-    const [version = ""] = TASKS.slice(0, 1).map((task) => taskVersion(passed.campaign.pack(task)));
+    const [first] = TASKS;
     expect(passed.first).toContain(
-      "t-1: a stored accepted answer passes today's verifier, so a valid answer to it is on record",
+      `${first?.taskId ?? ""}: an accepted answer passes today's verifier, so a valid answer to it is on record`,
     );
     // Once on record it is not rechecked.
-    expect(passed.again).not.toContain("t-1:");
+    expect(passed.again).not.toContain(`${first?.taskId ?? ""}:`);
     const feasible = read(passed.campaign.log).filter(({ kind }) => kind === "task.feasible");
-    expect(feasible.map(({ data }) => data)).toEqual([{ version, sweep: "s" }]);
+    expect(feasible.map(({ data }) => data.version)).toEqual(
+      TASKS.slice(0, 1).map((task) => taskVersion(passed.campaign.pack(task))),
+    );
     // A recheck the checks reject establishes nothing, and says nothing.
     const rejected = await preparedUnder(UNPROVEN, "() => false");
-    expect(rejected.first).not.toContain("t-1:");
+    expect(rejected.first).not.toContain(`${first?.taskId ?? ""}:`);
     expect(read(rejected.campaign.log).filter(({ kind }) => kind === "task.feasible")).toEqual([]);
   });
 });

@@ -1,10 +1,10 @@
 /**
- * Where a program runs, and which programs of a tool tree a machine cannot run: another system's or
- * processor's binary, a link out of the tree, or in a container a script on a host interpreter.
- * The outside read refuses such a tree before it rolls (`foreignPrograms`, `studies/shared/bundle.ts`)
- * and rebuilds its Python for the machine (`studies/shared/foreign-python.ts`); a move refuses a
- * campaign whose kept harnesses hold one for its destination (`tools/runs/move.ts`), since a kept
- * harness is its digest and is never rebuilt.
+ * Target execution environment (`Place`) and foreign-binary detection for harness `.toolchain/`
+ * trees (`foreignPrograms`, `foreignFiles`, `foreignHead`). Detects binaries compiled for a
+ * different OS or CPU architecture, symlinks escaping the tree, and container scripts whose
+ * shebang points to a host-only interpreter path. Used by external benchmark evaluation
+ * (`studies/shared/bundle.ts`, `studies/shared/foreign-python.ts`) and cross-host campaign moves
+ * (`tools/runs/move.ts`).
  */
 import { existsSync } from "#src/meta/filesystem.ts";
 import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";

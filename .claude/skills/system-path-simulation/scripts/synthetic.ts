@@ -16,8 +16,8 @@
  * change between them does to the reader.
  *
  * The events stay in memory: rule 3 of the skill keeps hand-built events out of every seed and
- * campaign folder. Written on 29 October, when two solves a side and the counts of #516 had to be
- * read on patterns (0/2 twice, 2/2 then 1/2, a promotion between readings) that no log held yet.
+ * campaign folder. It reads a change on patterns no log holds yet (0/2 twice, 2/2 then 1/2, a
+ * promotion between readings), such as a new size of a side or a new count.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import type { Plan } from "#src/campaign/ground.ts";
@@ -350,8 +350,10 @@ async function main(args: CommandArgs): Promise<number> {
     // something else fails when it is called, naming the file.
     ((await import(resolve(named))) as { readonly default?: Scenario }).default ??
     args.die(`${named} is no example and default-exports no scenario`);
-  const { SIZE, RUNS } = readers.size;
-  console.log(`tree ${tree}: SIZE ${JSON.stringify(SIZE)}, RUNS ${JSON.stringify(RUNS)}`);
+  const { SIZE, READINGS_IN_A_ROW } = readers.size;
+  console.log(
+    `tree ${tree}: SIZE ${JSON.stringify(SIZE)}, READINGS_IN_A_ROW ${JSON.stringify(READINGS_IN_A_ROW)}`,
+  );
   await scenario({
     tree,
     readers,

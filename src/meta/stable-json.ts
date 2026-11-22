@@ -21,7 +21,7 @@ export function compareCodeUnits(left: string, right: string): number {
  *
  * The two encodings differ only in `undefined`. Identity (`"omit"`) drops undefined object
  * properties and writes any other undefined as null, so adding an optional field and leaving it
- * unset preserves the digest — campaign epoch keys and candidate handoffs are compared on exactly
+ * unset preserves the digest: campaign epoch keys and candidate handoffs are compared on exactly
  * that. Evidence (`"keep"`) writes `undefined` literally, so a truth check can tell an unresolved
  * path from a path holding null.
  */

@@ -1,32 +1,31 @@
 /**
- * The base of every Darwin command profile: deny by default, then the process, IPC, sysctl and
- * device operations a toolchain needs. Copied from Anthropic's sandbox-runtime,
- * `f7a0f19fd:src/sandbox/macos-sandbox-utils.ts` (`generateSandboxProfile`, the array before its
- * network rules), Apache-2.0, at f7a0f19fd2 (@anthropic-ai/sandbox-runtime 0.0.82).
+ * Base rules for every Darwin command profile: deny by default, then grant the process, IPC,
+ * sysctl, and device operations required by standard toolchains. Adapted from Anthropic's
+ * sandbox-runtime (`f7a0f19fd:src/sandbox/macos-sandbox-utils.ts`, `generateSandboxProfile`,
+ * the rule array preceding its network rules), Apache-2.0, pinned at `f7a0f19fd2`
+ * (`@anthropic-ai/sandbox-runtime` 0.0.82).
  *
- * The wall ran on `(allow default)` with path denies until this copy, and on 11 November a walled
- * command was measured getting out of it four ways: `open` on an app it wrote in its own root had
- * LaunchServices start that app unconfined, and the app read a file every path rule denied; `nc -U`
- * reached an unconfined listener's socket in a denied folder; `pbpaste` returned the operator's
- * clipboard; and `defaults read` returned the home's preferences, which `cfprefsd` reads on the
- * command's behalf from a folder the path rules close. Under this base neither `lsopen`, an Apple
- * Event nor an unlisted Mach service is reachable. What `darwinCommandProfile` adds after it is
- * that file's to explain.
+ * Under `(allow default)` with path denials alone, a confined command can escape in four ways:
+ * invoking `open` on an application bundle inside its own root causes LaunchServices to launch the
+ * process unconfined; `nc -U` can connect to an unconfined listener's Unix socket in a denied
+ * directory; `pbpaste` reads the operator's clipboard; and `defaults read` retrieves home
+ * preferences via `cfprefsd` from directories closed by path rules. This deny-by-default base
+ * blocks LaunchServices launches, Apple Events, and unlisted Mach services. Additional rules are
+ * layered on top by `darwinCommandProfile`.
  *
- * Changes from upstream:
- * - Strings in the formatter's double quotes.
- * - No `(with message ...)` log tag and no `LogTag` comment, as in `seatbelt-path-guard.ts`: the tag
- *   carries a per-session random suffix, which nothing here reads.
- * - The `allowAppleEvents` and `allowMachLookup` branches are dropped; nothing here asks for either.
- * - `enableWeakerNetworkIsolation` is the seat's network setting: a command that may reach the
- *   network gets `trustd`, without which Go's TLS refuses every certificate, and
- *   `TrustEvaluationAgent`, without which Apple's `/usr/bin/curl` refuses every certificate (found by
- *   removing services from launchd's whole list until `curl https://` failed, 11 November).
- * - `(allow sysctl*)` instead of upstream's list of about sixty names, which is what a JavaScript
- *   runtime reads: `sysctl -n hw.ncpu` resolves its name by a write to `sysctl.name2oid`, and Apple's
- *   `java` launcher, which finds its runtime through `java_home`, reads more again. An unprivileged
- *   command reads no secret and writes no system setting through one, and another process's command
- *   line, which `kern.procargs2` would return, is refused as `process-info*` in the caller.
+ * Local modifications from upstream:
+ * - Double-quoted string literals matching the repository formatter.
+ * - Removed `(with message ...)` log tags and `LogTag` comments (as in `seatbelt-path-guard.ts`),
+ *   since the per-session random suffix is unused here and would break deterministic profile bytes.
+ * - Omitted the `allowAppleEvents` and `allowMachLookup` branches, which no caller requests.
+ * - Mapped `enableWeakerNetworkIsolation` to the policy's `network` flag: network-enabled commands
+ *   receive `trustd` (required for Go TLS certificate validation) and `TrustEvaluationAgent`
+ *   (required for Apple's `/usr/bin/curl` HTTPS certificate validation).
+ * - Permitted `(allow sysctl*)` instead of upstream's list of roughly sixty names, because
+ *   JavaScript runtimes, `sysctl -n hw.ncpu` (via `sysctl.name2oid`), and Apple's `java` launcher
+ *   query additional sysctls. An unprivileged process cannot read secrets or alter system settings
+ *   through sysctl, and reading another process's command line (`kern.procargs2`) is blocked by
+ *   the explicit `process-info*` denial in `darwinCommandProfile`.
  */
 export function seatbeltBaseRules({ network }: { network: boolean }): string[] {
   return [

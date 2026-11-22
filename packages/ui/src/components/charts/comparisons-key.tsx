@@ -4,19 +4,19 @@ import { outcomeTotals, type Slot } from "../../views/campaign-data.ts";
 import { OUTCOMES } from "../../views/outcome.ts";
 
 /*
- * What the comparisons chart's colours and marks mean, so that no reader is left to a colour: the
- * six outcomes with their totals over every comparison that reported, then a quieter row with only
- * the marks this campaign's chart draws. Beside it, the same counts as a table a screen reader
- * reads, one row a comparison, each named by a button that opens it in Moves as a click on its
- * column does. The chart's columns and labels take a pointer alone, so the table is the keyboard's
- * way in: hidden until focus enters it, and then in view under the chart (the stack review of
- * 12 October, finding 7).
+ * Legend and accessible data table for the comparisons chart. Displays the six task outcomes with
+ * their totals across all reported comparisons, followed by a secondary row containing only the
+ * annotation marks actually drawn on this campaign's chart. Alongside the legend, `CountsTable`
+ * renders the same counts as a screen-reader- and keyboard-accessible table with one row per
+ * comparison; each row's button opens the comparison in the Moves pane just as clicking its bar
+ * does. Because the chart columns accept pointer input only, the table provides keyboard access:
+ * it stays visually hidden until it receives focus, then appears beneath the chart.
  */
 
 const TEXT = "var(--ana-text)";
 const DIM = "var(--ana-dim)";
 
-/** A mark of the chart drawn small enough to stand in a line of text. */
+/** Renders a chart annotation symbol sized to sit inline with legend text. */
 function Glyph({ children }: { children: ReactNode }) {
   return (
     <svg aria-hidden className="ana-glyph" viewBox="0 0 16 12" width="16" height="12">
@@ -134,11 +134,11 @@ export function ChartKey({
   );
 }
 
-/** The chart's counts as a table, for a reader that cannot see it or uses no pointer: each row's
- *  button opens its comparison by its move's place in the log (`onOpen`). */
+/** Renders the chart counts as an accessible table for screen readers and keyboard users; each
+ *  row's button opens its comparison by move index via `onOpen`. */
 export function CountsTable({ slots, onOpen }: { slots: readonly Slot[]; onOpen: (move: number) => void }) {
   return (
-    // A table ignores a width of one pixel, so the box that hides it is a block around it.
+    // Tables ignore a 1px width, so the visually hidden container wraps the table in a block.
     <div className="ana-sr-only ana-shown-on-focus">
       <table className="ana-table">
         <caption>Scored tasks by outcome, one row a comparison, each opening in Moves</caption>

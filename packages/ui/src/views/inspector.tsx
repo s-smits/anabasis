@@ -21,7 +21,7 @@ import { plural } from "../../../../src/meta/text.ts";
  *
  * Each is read here, and only while the route names it: the diff per file, and the event only on
  * a server in the exam tier, since in the default tier it is refused and its place is the exam
- * side's quiet line, never an error (the brief of 11 October, section 8). An answer to the previous
+ * side's quiet line, never an error. An answer to the previous
  * file or diff is no answer to the one named now: it stays, under its own head and closed to the
  * pointer, until the next is read, and a read slower than a moment says so (`held.ts`); an answer to
  * the previous event is shown as loading. The issues an answer carries, a harness folder missing or
@@ -126,8 +126,8 @@ export function HarnessFiles({
 /** Two harnesses' files compared, one unified diff a changed file, each line signed as well as
  *  tinted so that an addition and a removal read apart without colour. The files stand in the
  *  harness's part order, the guide first, and only the first is open, so the closed heads under it
- *  index what changed: on 30 October one campaign's diff of harness H to J stood 11,461 pixels
- *  tall, every file open and the guide last. */
+ *  index what changed, where a diff with every file open and the guide last can stand thousands of
+ *  pixels tall. */
 function DiffView({ diff }: { diff: HarnessDiff }) {
   const { listed, toggle } = useBuildFiles(diff.files);
   return (

@@ -1,12 +1,11 @@
 /**
- * Settle a comparison's reading by hand: the plan's person in the loop, with a record.
+ * Settle a comparison's reading by hand: a person in the loop, with a record.
  *
- *   bun tools/d2/settle.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
- *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session g0
+ *   bun tools/d2/settle.ts --name truss --session g-1
  *
- * After every comparison a person answers one packet, the operator's one standing duty (the
- * overhaul plan's M3, 12 October). Until it is answered the comparison's report says `unsettled`,
- * and no promotion waits for it: a campaign runs unattended (the operator, 12 October). A rejected
+ * After every comparison a person answers one packet, the operator's one standing duty. Until it
+ * is answered the comparison's report says `unsettled`, and no promotion waits for it: a campaign
+ * runs unattended (the operator's choice). A rejected
  * answer one the Referee ruled a check defect or unclear, and one nobody ruled on, sets its task
  * aside, out of every tally of the comparison (`src/campaign/round.ts`), and the packet is how a
  * person decides those. `--session` is the comparison's id: a round's session, or a standalone comparison's
@@ -22,7 +21,7 @@
  * it: the task with its hidden values, the public contract whole (scope, conventions, rules, answer
  * format and objective) and the answer, and for a rejection the checks that refused it. A packet
  * holds no ruling and names no harness, so a label is made blind to both. A rejection ruled earned
- * is only sampled, and since 12 October that ruling rests on an answer probe that moved a check.
+ * is only sampled, and that ruling rests on an answer probe that moved a check.
  * An answer probe shows a difference, not which side is right, and in one audit 51 of 77 such differences stayed
  * undecidable (research 06).
  *
@@ -46,20 +45,15 @@
  * A fixed comparison that stopped before its test still supplies a packet. Its labels enter the
  * agreement report and may dispute tasks, while its reading and absent test stand unchanged.
  *
- * Until 12 October the command drew every rejection that set a task aside, and read the passes
- * apart; until 13 October it drew up to ten rejections, ruled earned or not, and three passes. Until 11 October it read a Diagnoser's accounts of practice fails; the seat went
- * (`7f0add79:docs/simplify.md`, E1).
- *
  * Where a task itself looks infeasible, say so with `prepare.ts --infeasible <task id> --note`,
  * which refuses the task and logs the note. A task disputed here on a check's fault is a repair
  * owed to the check program's owner, and a repaired checker takes a campaign of its own. Labels made beside a log that holds the Referee's rulings measure the Referee only as far
- * as a packet keeps them from the person: its bar is cleared on labels drawn before it reads
- * (`tools/c/rejections.ts`).
+ * as a packet keeps them from the person: its bar is cleared on labels drawn before it reads.
  *
  * It starts no solve and calls no model. Not run here: see `campaign.ts`.
  */
 import { PASS_LABELS, passesIn, reported, swapped, toLabel, UNSETTLED } from "#src/campaign/comparison.ts";
-import { settleReading } from "#src/campaign/round.ts";
+import { settleReading } from "#src/campaign/settle.ts";
 import { draw } from "#src/kernel/compare.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -116,7 +110,7 @@ function drawPacket(campaign: Campaign, events: readonly LogEvent[], session: st
     const packet = {
       solve,
       task: tasks.find((task) => task.taskId === verdict?.task) ?? null,
-      // The whole public contract (14 October): a label read on the rules alone misses a convention.
+      // The whole public contract: a label read on the rules alone misses a convention.
       contract: campaign.contract,
       answer: verdict?.answer ?? null,
       ...keyIfDefined("files", verdict?.files && shownFiles(campaign.log, verdict.files)),

@@ -12,9 +12,8 @@
  * sides part is the lane's reading, and the catalogue asks for the traces before the diff, so
  * `--no-diff` prints the rows alone.
  *
- * 8 of 13 lane-16 sessions between 3 and 10 November tabulated each won task's programs per solve by
- * hand (`wins.py` in three versions, `methods.py`, `best.ts`), and 5 typed the changed files of a
- * harness by hand from diffs of its kept states.
+ * Without it lane 16 sessions tabulate each won task's programs per solve by hand, and type the
+ * changed files of a harness from diffs of its kept states.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { read } from "#src/kernel/log.ts";
@@ -60,7 +59,7 @@ const NONE = "-";
 const contentOf = (path: string) => (existsSync(path) ? readFileSync(path) : null);
 
 /** What `fresh`'s state wrote that `old`'s did not, or wrote otherwise, both kept beside the log. */
-export function writtenAgainst(old: string, fresh: string): Written {
+function writtenAgainst(old: string, fresh: string): Written {
   const before = existsSync(old) ? writtenIn(old) : new Map<string, string>();
   const after = writtenIn(fresh);
   const same = (path: string) => {
@@ -148,7 +147,7 @@ function programsLine(calls: readonly Call[]): string {
 }
 
 /** The printed rows: a header, the diff unless asked not to, a row a solve and a count a side. */
-export function partsLines(
+function partsLines(
   rows: readonly SolveRow[],
   { session, old, fresh, paired }: { session: string; old: string; fresh: string; paired: number },
   written: Written | null,
@@ -213,7 +212,7 @@ function ranTable(rows: readonly SolveRow[], touched: readonly string[], table: 
     return { program, made: made.has(program), of };
   });
   // A program one side's solves alone ran, in fewer than a tenth of them, is that side's own
-  // one-off script (77 of the 109 rows of a buffer comparison of 25 October were such), and is counted
+  // one-off script (most rows of a comparison can be such), and is counted
   // on one line a side instead of printed.
   const oneOff = ({ of: [one, other] }: (typeof counted)[number]) =>
     [one, other].some((side) => side?.ran === 0) &&

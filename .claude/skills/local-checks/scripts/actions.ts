@@ -6,8 +6,7 @@
  *   bun .claude/skills/local-checks/scripts/actions.ts [--hours 24]
  *
  * A workflow younger than the window shows a first run after its start, so its count is read against
- * the hours it existed. On 30 October 2026 the last day held 113 runs of `mergeable.yml`, 49 of
- * `stacked.yml` in its first 15.5 hours and 4 of `ci.yml`; #543 moved the first two here.
+ * the hours it existed, since a new workflow's first day otherwise reads as a quieter one.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";

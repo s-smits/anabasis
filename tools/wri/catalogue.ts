@@ -1,12 +1,10 @@
 /**
- * The whole-run investigation's catalogue, read from the one file that holds it:
- * `.claude/skills/whole-run-investigation/references/lanes.md`. A lane is its number, its title, the
- * triggers that start it, its label, its importance, its marks and its body. Whether it is
- * standing, runs alone, grades blind or reads the campaigns side by side is read from its `Marks:`
- * line, never from its prose, and the owners a finding may name from the catalogue's owner table,
- * so nothing here repeats what the catalogue says. `test/wri-catalogue.test.ts` holds this file's
- * reading to `TRIGGERS` (`tools/wri/folds.ts`): every trigger the reader can print starts the lane
- * it names.
+ * Parser for the whole-run investigation lane catalogue
+ * (`.claude/skills/whole-run-investigation/references/lanes.md`). Extracts each lane's number,
+ * title, trigger names, area label, packing importance, execution flags (`Marks:` line:
+ * `standing`, `alone`, `blind`, `side-by-side`), and prompt body, as well as the valid finding
+ * owners from the catalogue's owner table. Verified against `TRIGGERS` (`tools/wri/folds.ts`) by
+ * `test/wri-readers.test.ts`.
  */
 import { readFileSync } from "#src/meta/filesystem.ts";
 import { join, resolve } from "#src/meta/path.ts";

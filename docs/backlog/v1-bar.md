@@ -236,7 +236,7 @@ or after 1 September), `starter-reads.ts --all`, a search of every gathered and 
     were won by validity.
   - Verdicts: 0 labels anywhere, and packets draw every non-earned rejection with three earned, so
     the catch rate needs several packets before it can be read.
-- **Rows nobody read.** The verdicts row named `tools/c/rejections.ts`, which reads a stored pack's
+- **Rows nobody read.** The verdicts row named `d2d7b54acools/c/rejections.ts`, which reads a stored pack's
   sweep and no live campaign; no reader pools packets. The grounding row named `accept.ts`, which
   decides admission and prints no status; the closing report's "What decides a pass" line does.
   The outside row named `run.ts read`, which no run has fed. No report printed the bar whole.

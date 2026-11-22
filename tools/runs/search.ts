@@ -14,6 +14,7 @@ import { homedir, tmpdir } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { runCaptured } from "#src/meta/subprocess.ts";
+import { CODEX_AUTH } from "#src/agent/backends/models.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { type Host, hostsOf } from "./host-config.ts";
 import { askedScript } from "./hosts.ts";
@@ -57,7 +58,7 @@ const EXCLUDED = [
   "*password*",
   "*passwd*",
   "*oauth*",
-  "auth.json",
+  CODEX_AUTH,
   "id_*",
   "*.pem",
   "*.key",
@@ -250,7 +251,7 @@ export async function search(args: readonly string[], dependencies: Dependencies
   const results = [own, ...peers];
   await display(results, max, dependencies.print ?? console.log);
   // A peer that does not answer is named and leaves the answer standing. This machine's own search
-  // failing, or nobody answering, is no search at all: until 5 November a machine with no `rg` exited 0.
+  // failing, or nobody answering, is no search at all, so a machine with no `rg` does not exit 0.
   if ("error" in own || !results.some((one) => "result" in one)) {
     runtimeProcess.exitCode = 1;
   }

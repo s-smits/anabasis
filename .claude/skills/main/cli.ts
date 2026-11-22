@@ -1,21 +1,14 @@
 /**
- * The front the repository's command scripts share: their declared options read by production's
- * `parseArgs` (`src/meta/process.ts`), and the one-line refusal they exit through.
+ * Shared command-line front end for repository skill scripts: strict option parsing via
+ * production's `parseArgs` (`src/meta/process.ts`) and uniform one-line diagnostic exits.
  *
- * The parse is strict, so a misspelled flag refuses before anything runs. A reader that looks up
- * `argv.indexOf("--run")` and ignores everything else turns `--rnu abc` into a run with no `--run`,
- * and one that takes the token after a flag as its value turns `--out --json` into an output path
- * called `--json`. Either way the script measures a condition nobody asked for and says nothing.
- * `--name=value` stays available for a value that begins with `-`, and a bare `--` ends the
- * options, so every token after it is positional. Two refusals are this file's own: an option that
- * is no list passed twice, where the platform keeps the last, and a count of positionals outside
- * the spec's.
+ * Strict parsing rejects misspelled or malformed flags before any work begins, preventing ad-hoc
+ * `argv` lookups from silently measuring an unintended condition. `--name=value` supports option
+ * values beginning with `-`, and a bare `--` terminates option parsing. Non-list options passed
+ * more than once and positional counts outside the declared bounds are both rejected.
  *
- * `--host <name>` runs any script that goes through `runCommand` on a host `ANA_HOSTS` names, by the
- * runs CLI's own transport (`scriptOn`), and writes a path under this machine's home as the same path
- * under that host's. On 28 October round 11's seats on the Linux runner were read every 15 minutes
- * through a hand-written ssh line naming the runner's tree and Bun, since `due`, `watch`, `compare`,
- * `pairs` and `stop` read only the machine they ran on.
+ * Passing `--host <name>` executes any `runCommand` script on a configured `ANA_HOSTS` peer via
+ * `scriptOn`, rewriting paths under the local home directory to `~/` on the target host.
  */
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
@@ -25,26 +18,25 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 
 /**
- * The script's own name in front of its one-line diagnostic, then the exit code a caller reads.
+ * Prints the script name and one-line diagnostic to stderr, then exits with `code`.
  *
- * The throw after `exit` is unreachable in a real process and is what makes the type `never`
- * without asserting it; a test that stubs `runtimeProcess.exit` reaches it and gets an error rather
- * than a function that quietly returned.
+ * The trailing `throw` satisfies the `never` return type and ensures tests stubbing
+ * `runtimeProcess.exit` abort immediately rather than continuing execution.
  */
 type ExitWith = (message: string, code?: number) => never;
 
 /**
- * How one declared option is read. `abs` refuses a relative path, `int` a non-integer, and `list`
- * collects every occurrence; the rest are one value or one flag.
+ * Option value kind: `abs` requires an absolute path, `int` an integer, `list` collects repeated
+ * occurrences, `text` takes a single string, and `flag` a boolean switch.
  */
 type OptionKind = "text" | "abs" | "int" | "flag" | "list";
 
-/** What a command's `run` returns: its exit code, or nothing for exit 0. */
+/** Return value of a command's `run` callback: an explicit exit code, or `undefined`/`void` for 0. */
 type CommandResult = number | undefined | void;
 
 interface CommandSpec {
   name: string;
-  /** Printed whole for `--help`, and named after a refused argument. */
+  /** Usage text printed for `--help` and referenced on argument errors. */
   usage: string;
   options?: Readonly<Record<string, OptionKind>>;
   positionals?: number | readonly [number, number];
@@ -53,23 +45,23 @@ interface CommandSpec {
 export interface CommandArgs {
   readonly die: ExitWith;
   readonly positionals: readonly string[];
-  /** The option's value, or null when it was not passed. An `abs` option comes back resolved. */
+  /** Returns the option's string value (resolved when `abs`), or `null` if omitted. */
   value: (name: string) => string | null;
-  /** The same value, refusing through `die` when it is absent or empty. */
+  /** Returns the option's non-empty value, or exits via `die` when missing or empty. */
   required: (name: string) => string;
   int: (name: string) => number | null;
   flag: (name: string) => boolean;
   list: (name: string) => readonly string[];
 }
-/** What `parseArgs` read: each option as a string, `true` for a flag or every value of a list. */
+/** Raw parsed arguments from `parseArgs`: option values and positional tokens. */
 interface Parsed {
   readonly values: Readonly<Record<string, string | boolean | readonly (string | boolean)[] | undefined>>;
   readonly positionals: readonly string[];
 }
 
-/** `argv` read against `spec` by production's `parseArgs`, which throws for an unknown option, a
- *  flag given a value and a value that is missing or looks like an option. `-h` is `--help`, under
- *  which the positionals are not counted. */
+/** Parses `argv` against `spec` using production's `parseArgs`, rejecting unknown options, missing
+ *  values, duplicate non-list options, and out-of-range positional counts (`-h`/`--help` bypasses
+ *  positional count validation). */
 export function parseCliArgs(
   argv: readonly string[],
   spec: Pick<CommandSpec, "options" | "positionals">,
@@ -104,8 +96,8 @@ export function parseCliArgs(
 }
 
 /**
- * A run that ended with its own exit code and one line, as a validator's verdict does: the command
- * worked and the answer was no. Anything else a command throws exits 1 with the error's message.
+ * Structured command exit carrying a specific exit code and one-line message (such as a negative
+ * validation verdict). Uncaught errors of other types exit with code 1.
  */
 export class CommandFailure extends Error {
   readonly code: number;
@@ -166,8 +158,8 @@ function commandArgs(spec: CommandSpec, parsed: Parsed, die: ExitWith): CommandA
   };
 }
 
-/** `arg` with a `from/` that opens it, opens its value after `--option=`, or follows a comma, as in
- *  `pairs <control>,<arm>` where the shell expands only the first `~`, written as `to/`. */
+/** Rewrites leading `from/` prefixes in `arg` (at the start, after `--option=`, or after commas)
+ *  to `to/` so home-relative paths translate cleanly across hosts. */
 function rehome(arg: string, from: string, to: string): string {
   return arg
     .split(",")
@@ -180,8 +172,8 @@ function rehome(arg: string, from: string, to: string): string {
     .join(",");
 }
 
-/** The host `--host` names before any `--`, and the other arguments with each path under `home`
- *  written `~/`, which the host's own `runCommand` reads as its home; null where none is named. */
+/** Extracts `--host` before any `--` separator and rewrites local home paths to `~/`, or returns
+ *  `null` when `--host` is absent. */
 export function hostRoute(argv: readonly string[], home: string): { host: string; args: string[] } | null {
   const end = argv.includes("--") ? argv.indexOf("--") : argv.length;
   const at = argv.slice(0, end).findIndex((token) => token === "--host" || token.startsWith("--host="));
@@ -197,12 +189,9 @@ export function hostRoute(argv: readonly string[], home: string): { host: string
 }
 
 /**
- * The whole front of a command script: strict parsing against the declared options, `--help`
- * printing the usage, one line naming the script for a refused argument (exit 2) and for a failed
- * run (exit 1, or a `CommandFailure`'s own code), and the number `run` returns as the exit code.
- * Scripts call it under `import.meta.main`, so a test importing the module runs nothing.
- * With `--host` the script runs there instead, at this tree's published commit, and its exit code is
- * this one's.
+ * Entry wrapper for skill CLI scripts: parses arguments against `spec`, prints usage on `--help`,
+ * exits 2 on invalid arguments, exits 1 (or `CommandFailure.code`) on runtime failures, and
+ * forwards execution via `scriptOn` when `--host` is specified.
  */
 export async function runCommand(
   spec: CommandSpec,

@@ -1,7 +1,6 @@
 # Anabasis
 
-A local, read-only page over v2's campaign logs: the v1 dashboard's shell and visual design, with
-four panes rewritten for v2 (Campaign, Moves, Tasks, Log). See [DESIGN.md](DESIGN.md).
+A local, read-only web interface for inspecting v2 campaign logs. It retains the v1 shell and visual identity while providing four panes tailored to v2 (Campaign, Moves, Tasks and Log). See [DESIGN.md](DESIGN.md) for layout and typographic conventions.
 
 From the repository root:
 
@@ -11,38 +10,24 @@ bun run ui:dev                      # the default tier
 bun run ui:dev -- --exam-side       # adds task text, hidden values, answers and rulings
 ```
 
-Bun hands the arguments after the script's name on through both levels of `bun run`, so the
-last line starts `bun serve.ts --exam-side` in `packages/ui`, and the server says
-`answering in the exam side` (checked on 11 October with Bun 1.4.2).
+Because Bun forwards arguments after the script name across nested `bun run` invocations, the final command executes `bun serve.ts --exam-side` inside `packages/ui`, and the server logs `answering in the exam side`.
 
-The server binds 127.0.0.1:5173 (`PORT` changes the port) and prints the page's address with its
-token, drawn once and kept in the ignored `packages/ui/.token` so that a restart leaves open tabs
-working, and kept by the page in the browser so that the bare address works too; every API request needs it, and a `Host` that is not the loopback is
-refused. The page reads every campaign under `.ana/d2/` in the repository's worktrees, writes
-nothing, and shows the exam side only on a server started with `--exam-side`, which belongs on a
-host no Builder or solver shares. The Campaign picker groups the campaigns by the project their
-opening names (`--project` on the campaign command); a campaign whose opening names none stands
-under "No project recorded". Its search box forgives typos and matches each word apart (Fuse.js),
-the closest campaign first. A warning dismissed with its cross stays dismissed in that browser
-until the same source says something else.
+The server listens on `127.0.0.1:5173` (configurable via `PORT`) and prints the page URL together with an access token. The token is generated once and persisted in the git-ignored file `packages/ui/.token` so open browser tabs survive server restarts, and the client caches it in the browser so the bare address continues to work. Every API request requires this token, and any non-loopback `Host` header is rejected.
 
-To look at the page without a campaign of your own, write the test fixture's three campaigns to a
-directory and point the server at it:
+The interface reads every campaign under `.ana/d2/` across repository worktrees without writing to disk. Exam-side data is exposed only when the server is started with `--exam-side`, which should be run exclusively on hosts not shared with any Builder or solver seat. The Campaign picker groups campaigns by the project declared at launch (`--project`), placing untagged campaigns under "No project recorded". Fuzzy search (Fuse.js) matches each query word independently with typo tolerance and ranks the closest match first. Dismissed warning banners stay suppressed in that browser until the same source emits a different message.
+
+To inspect the interface without live campaign logs, generate the three fixture campaigns into a temporary directory and launch the server against it:
 
 ```sh
 bun packages/ui/test/fixture-campaign.ts /tmp/ana-fixture
 cd packages/ui && bun serve.ts --repo /tmp/ana-fixture
 ```
 
-The browser tests (`test/browser-*.test.ts`) start `serve.ts` on that fixture and drive the
-installed Google Chrome through Playwright, with Playwright's own assertions under `bun:test`;
-`ANA_UI_CHROME=<path>` names another Chromium. They run with the rest of `packages/ui/test`:
+Pre-render view-model logic (URL state, formatted metrics and Campaign chart series) is verified without a browser in `test/view-model.test.ts`. Two end-to-end smoke tests (`test/browser-smoke.test.ts`) launch `serve.ts` against the fixture and drive Google Chrome via Playwright under `bun:test`, verifying that the default tier neither renders nor receives exam-side payloads and that every pane fits a mobile viewport and passes axe accessibility checks. Set `ANA_UI_CHROME=<path>` to test with an alternative Chromium binary. Run the UI test suite with:
 
 ```sh
-bun run test -- packages/ui/test/browser-shell.test.ts   # one file
+bun run test -- packages/ui/test/browser-smoke.test.ts   # the browser alone
 bun run test -- packages/ui/test                          # every UI test
 ```
 
-`bun run ui:build` builds the page alone into `packages/ui/dist`: it carries no campaign data.
-`bun run ui:gate` installs the locked UI dependencies, typechecks and builds the page, and runs
-`packages/ui/test`; CI's macOS job runs it before the lint.
+`bun run ui:build` compiles the static client bundle into `packages/ui/dist` without embedding campaign data. `bun run ui:gate` installs locked UI dependencies, typechecks and builds the bundle, and runs `packages/ui/test`; CI's macOS job executes it before linting.

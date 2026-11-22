@@ -1,35 +1,25 @@
 #!/usr/bin/env bun
 /**
- * Compare recorded reports with the current comparison rules.
+ * Compares recorded comparison reports against the current comparison rules.
  *
  *   bun .claude/skills/comparison-reading/scripts/reading.ts <log.jsonl | campaign folder | name>
  *     [--comparison <id>] [--level <n>]
  *   bun .claude/skills/comparison-reading/scripts/reading.ts --zone <log | name>...
  *
- * For each comparison's last report, show its reading, full and unbilled tests, frontier and retained
- * tallies, A/A control, room and omitted-task counts. Re-evaluate the step with stepOf and the A/A
- * with readsStepEitherWay, marking any disagreement with the recorded reading. Older reports may
- * lack the scores required by the current rule. --level uses the requested level for the test.
+ * For each comparison's final report, prints its reading, full and unbilled sign-flip tests,
+ * frontier and retained tallies, A/A control, room verdict, and omitted-task counts. Re-evaluates
+ * the step via `readsStep` and the A/A control via `readsStepEitherWay` (optionally at `--level`),
+ * flagging any divergence from the recorded reading.
  *
- * Beside the test it gives what 15 of 20 lane-8 sessions between 3 and 10 November rebuilt by hand:
- * the p read for the reference (a starter comparison confirms on it), a step's wins to spare or a
- * reading's losses short of a step (`clearance.ts`, largest margins first), the wins a step on
- * equal margins needs beside the losses read (`clearing`), whether the A/A tied every task, and
- * the comparison's dollar cap against its test at the dollars its counted solves billed.
+ * Also computes WRI lane 8 diagnostics: reference-side confirmation p-value, spare wins on a step
+ * or shortfall on a non-step (`clearance.ts`), minimum equal-margin wins required (`smallestSteps`),
+ * whether the A/A control tied every task, and comparison dollar cap vs. estimated test cost.
  *
- * From each report's pairs (`pairsReported`) it adds the zone, the reference's tasks with no, some
- * and every solve valid and those untied on validity, on the objective alone (`carriedBy`) or tied,
- * since a step reads only on untied tasks and a task the reference passes some of the time unties
- * most often (beside the A/A, where such a task unties too); and, under an objective, the gap, each
- * side's median ratio to the author's best answer on record (`sideGap`), which tells a strong
- * candidate from a weak reference. `--zone` prints the zone as TSV across logs. No seat is told
- * either, since an author told a share writes towards it (`AGENTS.md`, section 2).
- *
- * Names resolve through logAcross; read and lastReports own log parsing and report selection.
- * This script evaluates recorded scores. Use promotion-tuner/replay.ts --try to rescore recorded solves
- * under other rules. Output holds session ids, counts, ratios to the best, short digests and harness
- * letters, and no task identity, family, answer, measure or check; the ratios come from hidden
- * values, so it stays on the exam side.
+ * From `pairsReported`, reports the power zone (reference tasks with no, some, or every solve valid,
+ * and tasks untied on validity, on the objective alone via `carriedBy`, or tied) and, under an
+ * objective, each arm's median ratio to the author's best recorded answer (`sideGap`). `--zone`
+ * emits the zone table as TSV across logs. Because `sideGap` depends on hidden values, output
+ * remains on the exam side.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { billedRate } from "#src/campaign/admission.ts";
@@ -246,7 +236,7 @@ function rowOf(
   const scored = asRecord(data.scored);
   const tested = testedIn(data.scored);
   const unbilled = numbers(scored?.unbilled);
-  // Before 20 October the frontier held the test's detectable share and false rate (`reportLines`).
+  // In an older report the frontier held the test's detectable share and false rate (`reportLines`).
   const sized = testedSet(scored, asRecord(data.frontier));
   const detected = sized?.detectable;
   const retained = data.retained === UNMEASURED ? UNMEASURED : testedIn(data.retained);

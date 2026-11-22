@@ -1,10 +1,10 @@
-// The secret scan before a commit, v1's tools/secrets/scan.ts. Two modes, one vocabulary:
-//   --staged   the lines this commit ADDS (what `bun run commit:check` runs)
-//   the lines a range of commits adds, through `scanAdded` (what the pre-push hook runs)
-//   default    every tracked file (`bun run secrets`, a step of the gate and of CI's darwin job)
-// The staged mode reads added lines only. A check before a commit cannot repair history, and
-// re-reporting a line that is already committed teaches the operator to skip the check, which is
-// the one outcome that makes it worthless.
+// Pre-commit and repository-wide secret scanner (ported from v1's `tools/secrets/scan.ts`).
+// Supports two scanning scopes using the same rule set:
+//   --staged   lines added in the Git index (run by `bun run commit:check`)
+//   range      lines added across a commit range via `scanAdded` (run by the pre-push hook)
+//   default    all tracked files (`bun run secrets`, run by the gate and CI's darwin job)
+// Staged mode inspects added lines only, because a pre-commit check cannot rewrite committed
+// history and re-reporting existing lines encourages operators to bypass the check.
 
 import { existsSync, readFileSync, statSync } from "../../src/meta/filesystem.ts";
 import { type SecretHit, WAIVER, scanText } from "./rules.ts";
@@ -46,7 +46,7 @@ function scannable(path: string): boolean {
   return !SKIP_CONTENT.some((skip) => skip.test(path));
 }
 
-/** The lines `git diff <range>` adds: `--cached` for the index, or two commits. */
+/** Scans lines added by `git diff <range>` (such as `--cached` or a commit range). */
 export function scanAdded(range: readonly string[]): ScanAddedResult {
   const staged = git(["diff", ...range, "--name-only", "--diff-filter=ACMR"])
     .split("\n")

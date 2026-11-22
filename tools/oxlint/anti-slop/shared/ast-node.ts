@@ -5,11 +5,10 @@ import { isRecord, isString, type OpenRecord } from "#src/meta/json-shape.ts";
  * The plugins' one node test and their one keyed view of a node, for the walks that follow
  * `visitorKeys` rather than the ESTree union.
  *
- * Three files held their own copy of both until 2026-09-22: `lexical-type-parameters.ts` and
- * `type-alias-resolution.ts` each a `typeof` guard and an `as unknown as` cast, and
- * `ana/unproven-unknown-parameter` a third of each. Every copy answered the same two lint findings
- * the same way. Both read through json-shape.ts now, the owner of the primitive tests, so neither
- * needs an answer.
+ * Without them `lexical-type-parameters.ts`, `type-alias-resolution.ts` and
+ * `ana/unproven-unknown-parameter` would each hold a `typeof` guard and an `as unknown as` cast,
+ * every copy answering the same two lint findings the same way. Both read through json-shape.ts,
+ * the owner of the primitive tests, so neither needs an answer.
  */
 
 /** A node that can also be read by key: `node.type` narrows as ESTree's does, `node[key]` is unknown. */

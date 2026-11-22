@@ -178,17 +178,17 @@ export function seedCampaign(from: string, to: string, cut: Cut) {
         cpSync(join(from, part), join(to, part), { recursive: true, verbatimSymlinks: true });
       }
     };
-    // A campaign over a stored pack stages its checks beside the log; one that drafted its exam
-    // stages the exam under `exams/<digest>/` (`tools/d2/exam.ts`), which a seed of it needs too.
-    for (const part of ["checks", "exams", "states"]) copy(part);
+    // A campaign stages the exam it drafted under `exams/<digest>/` (`tools/d2/exam.ts`), which a
+    // seed of it needs too.
+    for (const part of ["exams", "states"]) copy(part);
     // Read as this tree reads a log: an event kind it does not know is refused here, not mid-round.
     const events = read(join(to, LOG_FILE));
     for (const { kind, data } of events) {
       if (kind === "build.started" && isString(data.session)) copy(join("memory", data.session));
     }
     // The Examiner's home is one folder each session replaces as it ends (`src/examiner/shell.ts`),
-    // so it is the one the cut stood with only where no session ended after the cut. Until 26
-    // October no seed copied it, and both arms of one simulation opened their Examiner on no home.
+    // so it is the one the cut stood with only where no session ended after the cut. A seed copies
+    // it so that a simulation does not open its Examiner on no home.
     const examinerHome =
       existsSync(join(from, "examiner-home")) &&
       !lines.slice(kept).some((line) => HOME_ENDS.has(asRecord(capturedJsonParse(line))?.kind));
@@ -211,8 +211,8 @@ export function seedCampaign(from: string, to: string, cut: Cut) {
 /**
  * A frozen copy of a campaign that may still write, for an investigation to read while the run goes
  * on: the seed's copy with its log cut at the last whole line, and the launch receipts a seed leaves
- * out, from which the investigation reads the code each launch ran. The operator's word of
- * 4 November: an iteration opens on a snapshot, since a run that will not promote is never stopped
+ * out, from which the investigation reads the code each launch ran. By the operator's choice an
+ * iteration opens on a snapshot, since a run that will not promote is never stopped
  * for its investigation. The copy lies outside `.ana/d2/`, so no registry lists it or continues it.
  * Whatever `to` holds is removed first, since a start killed while it copied leaves part of a copy
  * there: its one caller, `wri.ts start`, reaches it only for an investigation folder that holds no

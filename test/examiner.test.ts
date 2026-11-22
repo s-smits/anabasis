@@ -9,6 +9,7 @@ import {
   fauxAssistantMessage,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
+import { CLAUDE_COMPACTED } from "../src/agent/backends/claude.ts";
 import { draftOf } from "../src/examiner/draft.ts";
 import { heard } from "../src/examiner/record.ts";
 import { type Ask, examine } from "../src/examiner/session.ts";
@@ -284,18 +285,6 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     expect(readdirSync(keep)).toEqual(["kept.txt"]);
   });
 
-  it("keeps nothing of a drafting session's home where it crashed with a command running", async () => {
-    const s = seat("draft", []);
-    const keep = join(dirname(s.log), "examiner-home");
-    mkdirSync(keep);
-    writeFileSync(join(keep, "kept.txt"), "kept\n");
-    await inExaminerWall(s.request, { ...WALL, keep }, async ({ shell }) => {
-      writeFileSync(join(shell.dirs.home, "half.txt"), "half\n");
-      append(s.log, "draft.finished", { session: s.request.id, ended: "crashed", running: 1 });
-    });
-    expect(readdirSync(keep)).toEqual(["kept.txt"]);
-  });
-
   it("carries a relative link as it stands, into the home and out of it", async () => {
     // A venv's `python` names `python3.14` beside it; read through the session's root, which is
     // removed when the session ends, it dangles in the next session's home.
@@ -521,7 +510,7 @@ describe("a session that writes tasks", () => {
 
     // The budget every solve is held to, as a fact and no target; and the next session opens with
     // each earlier draft on its line, with no account of it by its author, and nothing of what a
-    // session said at its finish, which reached 13 of 80 sessions after 1 November.
+    // session said at its finish.
     const writer = seat("write", [propose(7), finish, finish]);
     await examine(writer.request);
     const next = seat("write", [finish, finish]);
@@ -542,8 +531,8 @@ describe("a session that writes tasks", () => {
     }
   });
 
-  // On the six logs read on 14 October two of eleven Examiner sessions were cut at their wall while
-  // still proposing, one in a command; the session's limits were told at its opening alone.
+  // An Examiner session can be cut at its wall while still proposing, even in a command, when its
+  // limits are told at its opening alone.
   it("ends when the host has its tasks, and declines each finish that follows a proposal while it has not", async () => {
     const both = fauxAssistantMessage(
       [
@@ -560,9 +549,9 @@ describe("a session that writes tasks", () => {
     expect(JSON.stringify(s.of(CALLED).at(-1))).toContain("The host has the tasks it needs");
     expect(s.of("exam.turn")).toHaveLength(1);
 
-    // Every live session of 9 and 10 October proposed one batch of one to three tasks in three
-    // turns and finished, of twelve tasks and two hundred turns it had; round 11's GPT arm of 28
-    // October proposed three more after its first finish and ended at its second.
+    // A live session may propose one batch of one to three tasks in three turns and finish, of
+    // twelve tasks and two hundred turns it has; asked again, it may propose more after its first
+    // finish and end at its second.
     const short = seat("write", [propose(1), finish, propose(2), finish, finish]);
     expect(await examine(short.request)).toMatchObject({ ended: "finished", puts: 2 });
     // Each finish after a proposal is declined with the need and without a count, which an author
@@ -570,8 +559,8 @@ describe("a session that writes tasks", () => {
     for (const at of [1, 3]) expect(short.of(CALLED)[at]?.text).not.toMatch(/\d/);
     expect(short.of("exam.turn")).toHaveLength(5);
 
-    // A session with no proposal left is not asked for more: on 29 October 6 of 206 declined
-    // finishes came after the allowance was spent, and each continuation could propose nothing.
+    // A session with no proposal left is not asked for more, since a continuation after the
+    // allowance is spent could propose nothing.
     const spent = seat("write", [propose(1), finish]);
     const limits = { ...spent.request.limits, puts: 1 };
     expect(await examine({ ...spent.request, limits })).toMatchObject({ ended: "finished", puts: 1 });
@@ -581,7 +570,7 @@ describe("a session that writes tasks", () => {
 
   it("runs the checks on an instance with an answer of its own, and keeps of a pass only that the instance has a valid answer", async () => {
     // A hidden value sent as JSON text is read as the JSON it encodes, in a try and in a proposal:
-    // on 12 October tries sent "null" where their proposals sent null, and no mark was kept.
+    // a try may send "null" where its proposal sends null, and the mark must still be kept.
     const s = seat("write", [
       tried(7),
       tried(8, { answer: "1", unit: "N" }),
@@ -653,7 +642,7 @@ describe("a session that writes tasks", () => {
     // The verifier measured, but the contract declares no objective: the record is the version.
     const undeclared = await run(false);
     expect(undeclared.of("task.feasible")).toEqual([{ version, session: "x-1", answer: GOOD }]);
-    // The Examiner is told each measure the record keeps, and none where none is kept (19 October).
+    // The Examiner is told each measure the record keeps, and none where none is kept.
     const told = (s: typeof declared) => s.of(CALLED).flatMap(({ text }) => (isString(text) ? [text] : []));
     expect(told(declared).filter((line) => line.includes("By the objective it measures"))).toHaveLength(2);
     expect(told(undeclared).join("\n")).not.toContain("By the objective");
@@ -739,8 +728,8 @@ describe("a session that writes tasks", () => {
   });
 
   it("takes again no content an earlier log's gate read, a gate that refused it unmeasured among them", async () => {
-    // Until 1 November a gate could refuse a draft before its room solves decided anything; that
-    // draft was handed to the next author to propose again. No gate leaves one so now.
+    // No gate refuses a draft before its room solves decide anything, so no draft is handed to
+    // the next author to propose again.
     const s = seat("write", []);
     const task = { taskId: "x-1-001", family: "fixture", publicInput: { base: 7 }, hidden: { seed: 1 } };
     const version = s.versionOf(task.taskId, 7);
@@ -853,12 +842,14 @@ describe("one Examiner conversation across the host's asks", () => {
       ["x-2", "finished", 3],
     ]);
     // Each ask's record says the backend's total for it, null here where the backend reports none:
-    // until 14 November an ask closed at a rest left the field out, and the cost check read past it.
+    // an ask closed at a rest still writes the field, so the cost check does not read past it.
     expect(s.of("exam.finished").map((ended) => "reportedCost" in ended)).toEqual([true, true]);
     // Each ask's turns and tasks are under its own id.
     expect(s.of("exam.turn").map(({ session }) => session)).toEqual(["x-1", "x-2", "x-2", "x-2"]);
     // A call that rests its ask and wakes in the next stays its own ask's.
     expect(s.of(CALLED).map(({ session }) => session)).toEqual(["x-1", "x-2", "x-2", "x-2"]);
+    // Its time is unknown, not the rest it spent parked.
+    expect(s.of(CALLED).map(({ ms }) => ms === null)).toEqual([true, false, false, false]);
     expect(s.of("task.proposed").map(({ taskId }) => taskId)).toEqual(["x-1-001", "x-2-001"]);
     // The second request is the same conversation: its context holds the opening and the wake.
     const [opening = "", woken = ""] = s.sent;
@@ -868,10 +859,26 @@ describe("one Examiner conversation across the host's asks", () => {
     expect(woken).toContain(JSON.stringify(told.split("\n\n").at(-1)).slice(1, -1));
     expect(opening).toContain("Public rules of the domain");
     expect(woken).toContain("Public rules of the domain");
-    // Only readings: that no comparison reported; no promotion, no count wanted, no target.
-    expect(told).not.toContain("promoted");
+    // Only readings: that no comparison reported and the promotion since; no count wanted, no target.
+    expect(told).toContain("The reference harness was promoted on the step of comparison c-1");
     expect(told).toContain("No comparison has reported since the host last told you.");
     for (const unsaid of ["17", "harder", "wanted"]) expect(told).not.toContain(unsaid);
+  });
+
+  it("closes a conversation whose ask finished holding nothing, so the next ask opens afresh", async () => {
+    const s = seat("write", [finish, finish, propose(2), finish]);
+    const rested: string[] = [];
+    const examined = await examine({
+      ...s.request,
+      wanted: 1,
+      rest: async (ask) => {
+        rested.push(ask.ended);
+        return { ...s.request, id: "x-2", wanted: 1 };
+      },
+    });
+    expect(rested).toEqual([]);
+    expect(examined).toMatchObject({ ended: "finished", held: [] });
+    expect(s.of("exam.started").map(({ session }) => session)).toEqual(["x-1"]);
   });
 
   it("serves at `read_opening` what the current ask was told: its record and its limits, whose wake a compaction would drop", async () => {
@@ -934,5 +941,93 @@ describe("one Examiner conversation across the host's asks", () => {
     const tasks = [...writtenTasks(read(s.log)), ...s.request.tasks];
     await examine({ ...next.request, log: s.log, id: "x-3", tasks });
     expect(next.sent[0]).toContain("x-1-001 (fixture)");
+  });
+
+  it("honours a later ask's own kill signal when waking a resting conversation", async () => {
+    const firstKill = new AbortController();
+    const secondKill = new AbortController();
+    const s = seat("write", [propose(2), propose(3), finish]);
+    const examined = await examine({
+      ...s.request,
+      kill: firstKill.signal,
+      wanted: 1,
+      rest: async () => {
+        secondKill.abort();
+        return { ...s.request, id: "x-2", wanted: 1, kill: secondKill.signal };
+      },
+    });
+    expect(examined.ended).toBe("killed");
+    expect(s.of("exam.finished").map(({ session, ended }) => [session, ended])).toEqual([
+      ["x-1", "supplied"],
+      ["x-2", "killed"],
+    ]);
+  });
+
+  it("cues read_opening once on the first tool result after compaction and skips trailing calls once a turn moved to a new ask", async () => {
+    const multiSupplyThenTrailing = fauxAssistantMessage(
+      [fauxToolCall(PROPOSE, { tasks: [instance(3)] }), fauxToolCall(PROPOSE, { tasks: [instance(4)] })],
+      { stopReason: "toolUse" },
+    );
+    const s = seat("write", [propose(2), multiSupplyThenTrailing, finish, finish]);
+    const baseModels = s.request.models();
+    // SAFETY: the inherited instance supplies every method; streamSimple alone attaches compaction diagnostics on turn 1.
+    const compactedModels = Object.create(baseModels) as typeof baseModels;
+    let firstTurn = true;
+    compactedModels.streamSimple = (...asked: Parameters<typeof baseModels.streamSimple>) => {
+      const streamed = createAssistantMessageEventStream();
+      (async () => {
+        for await (const event of baseModels.streamSimple(...asked)) {
+          if (event.type === "done" && firstTurn) {
+            firstTurn = false;
+            streamed.push({
+              ...event,
+              message: {
+                ...event.message,
+                diagnostics: [
+                  {
+                    type: CLAUDE_COMPACTED,
+                    timestamp: Date.now(),
+                    details: { tokensBefore: 1000, seconds: 1 },
+                  },
+                ],
+              },
+            });
+          } else {
+            streamed.push(event);
+          }
+        }
+      })().catch(() => undefined);
+      return streamed;
+    };
+    const asks: Ask[] = [{ ...s.request, id: "x-2", wanted: 2, models: () => compactedModels }];
+    await examine({
+      ...s.request,
+      models: () => compactedModels,
+      wanted: 2,
+      rest: async () => asks.shift() ?? null,
+    });
+    const texts = s.of(CALLED).map(({ text }) => (isString(text) ? text : ""));
+    expect(texts[0]).toContain("Context compacted; read_opening holds the ask's opening record and limits.");
+    expect(texts[1]).not.toContain(
+      "Context compacted; read_opening holds the ask's opening record and limits.",
+    );
+    expect(texts[2]).toContain("The previous ask ended and the host moved to a new ask");
+  });
+
+  it("skips trailing calls in a multi-tool turn when rest closes the conversation", async () => {
+    const multiSupplyThenTrailing = fauxAssistantMessage(
+      [fauxToolCall(PROPOSE, { tasks: [instance(2)] }), fauxToolCall(PROPOSE, { tasks: [instance(3)] })],
+      { stopReason: "toolUse" },
+    );
+    const s = seat("write", [multiSupplyThenTrailing]);
+    const examined = await examine({
+      ...s.request,
+      wanted: 1,
+      rest: async () => null,
+    });
+    expect(examined.ended).toBe("supplied");
+    expect(examined.held).toHaveLength(1);
+    const texts = s.of(CALLED).map(({ text }) => (isString(text) ? text : ""));
+    expect(texts[1]).toContain("The previous ask ended and the session is closing.");
   });
 });

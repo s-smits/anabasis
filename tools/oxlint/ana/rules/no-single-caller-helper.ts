@@ -26,8 +26,8 @@ const FUNCTIONS = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFu
  *  relocates to unchanged, so it is a third kind rather than a second flag. */
 type Site = "tail" | "statement" | "term";
 
-/** `tools/loc/source-policy.ts` refuses a function over this many nonblank lines. Formatted
- *  lines since 2026-09-20; the comment there says why the number moved from 80. */
+/** `tools/loc/source-policy.ts` refuses a function over this many nonblank lines, counted as
+ *  formatted; the comment there says why the number is not 80. */
 const CALLER_LINES = 115;
 
 /** The cyclomatic complexity at which a caller has no room for a helper's branches (v1's gate). */
@@ -53,26 +53,26 @@ const CHAIN_PEERS = 3;
  * producing it would have been an own goal.
  *
  * How short is short depends on where the one call stands, and that is the second measure after
- * the span. A call that is a statement — its own expression, a `return`'s value, the initialiser
- * of a declaration — takes the body's statements as statements, one under the other, and three of
- * them still read as the caller's own work. A call in an expression — an argument, a property
- * value, a spread, a ternary arm, the body of a concise arrow — has to hold the whole body as one
+ * the span. A call that is a statement (its own expression, a `return`'s value, the initialiser
+ * of a declaration) takes the body's statements as statements, one under the other, and three of
+ * them still read as the caller's own work. A call in an expression (an argument, a property
+ * value, a spread, a ternary arm, the body of a concise arrow) has to hold the whole body as one
  * term, and two statements is where that stops being a ternary and starts being a puzzle. So the
  * expression site keeps 2 statements and 5 lines and the statement site takes 3 and 7.
  *
- * Measured 2026-09-20 on the tree at `ce72b1f49`: a flat 3 and 7 reported 77 sites, and reading
- * fourteen of them found nine that could not be spelled at the call site at all. `epochBindingKeys`
- * is called inside a `...spread`, `starterAuthority` and `presetAuthority` inside a `.map` arrow's
- * object literal, `bindsProject` and `isRegularFileDeny` inside a `.some` and a `.flatMap` arrow
- * whose bodies are expressions, `probeOutcomeStatus` inside an `.every`. Three of those bodies
- * hold a `throw` or a `try`, which an expression cannot hold at all. The dial was not wrong about
- * the size; it was wrong about where the lines would go.
+ * Measured 2026-09-20: a flat 3 and 7 reported 77 sites, and reading fourteen of them found nine
+ * that could not be spelled at the call site at all. `epochBindingKeys` is called inside a
+ * `...spread`, `starterAuthority` and `presetAuthority` inside a `.map` arrow's object literal,
+ * `bindsProject` and `isRegularFileDeny` inside a `.some` and a `.flatMap` arrow whose bodies are
+ * expressions, `probeOutcomeStatus` inside an `.every`. Three of those bodies hold a `throw` or a
+ * `try`, which an expression cannot hold at all. The dial was not wrong about the size; it was
+ * wrong about where the lines would go.
  *
  * Ten things keep their name.
  *
  * A helper with two or more callers is shared, and this rule never sees it. An exported one is an
  * interface. A recursive one counts its own call, so it needs three references before it looks
- * single-caller, and never reaches two. A type guard — `function complete(b): b is Complete` — is
+ * single-caller, and never reaches two. A type guard, `function complete(b): b is Complete`, is
  * not two lines of code with a name on it: the name is where the narrowing is declared, and
  * inlining the body gives the caller a boolean and no narrowed value.
  *
@@ -80,13 +80,10 @@ const CHAIN_PEERS = 3;
  * land in: 115 nonblank lines, which `tools/loc/source-policy.ts` holds, and cyclomatic
  * complexity 22, which v1's `5bc9988:tools/loc/complexity-policy.ts` refused and which no v2 gate
  * holds; v2 never copied that file. A caller already at either has no spelling that also absorbs a
- * helper without growing past it. The complexity limit stays as this rule's own: on 20 October,
- * without it, the rule reported two helpers in `tools/wri/folds.ts`, `records` and `refusals`,
- * each a named computation whose caller already measures 22 or more. It happened six times in one pass over
- * `e7636e472:src/backends`, `5bc9988:src/correctness-bundle`, `94b305a54:src/author` and
- * `e7636e472:src/solve` before the rule was taught to check,
- * every time after the push gate had already run; the arithmetic is cheap and the reader of the
- * report should not have to do it.
+ * helper without growing past it. The complexity limit stays as this rule's own: without it, the
+ * rule reported two helpers in `tools/wri/folds.ts`, `records` and `refusals`,
+ * each a named computation whose caller already measures 22 or more. Without the check such
+ * findings arrive after the push gate has already run; the arithmetic is cheap and the reader of the report should not have to do it.
  *
  * That room is spent rather than only measured, because a caller can have room for either of two
  * helpers and not for both. `settle` in `5bc9988:src/builder/verifier-workshop.ts` measured 19 and
@@ -97,13 +94,13 @@ const CHAIN_PEERS = 3;
  *
  * And a call that is one term among peers in an `&&` or `||` chain keeps its name, because the same
  * argument applies a second time. `5bc9988:tools/outcome/builder-execution-current.ts` holds twenty
- * predicates of one shape — `validBackend`, `currentInvocation`, `findingDelta`,
- * `currentFailedCalls` — each read once, each an operand of a long `&&`. They are a vocabulary the
+ * predicates of one shape (`validBackend`, `currentInvocation`, `findingDelta`,
+ * `currentFailedCalls`) each read once, each an operand of a long `&&`. They are a vocabulary the
  * chains are written in, not helpers hiding two lines, and substituting one body into a thirty-term
  * chain lengthens the caller and leaves that one term spelled differently from its nineteen peers.
  *
  * The peers are the whole reason, so the exemption asks for them: three operands in the chain the
- * call sits in. `x ?? fallback()` and `a || b` have none — there is one other term, it is usually a
+ * call sits in. `x ?? fallback()` and `a || b` have none: there is one other term, it is usually a
  * literal, and nothing is being spelled consistently with anything. Measured 2026-09-20, before
  * this line existed: the exemption covered 15 sites, of which 8 were chains of three or more and 7
  * were not, including `defaultOpenRouterModel`, which sat behind `deps.model?.trim() || …` and had
@@ -118,8 +115,8 @@ const CHAIN_PEERS = 3;
  *
  * And two bodies keep their name because there is no legal spelling of them at a call site, which
  * is a stronger reason than size. A body that catches: JavaScript has no try expression, so
- * `symlinkText` in `0732a6118:src/verify/exact-read-attestation.ts` — a decoded link or a thrown
- * refusal — becomes a `let`, a try and a catch inside a loop that already holds two of each. And
+ * `symlinkText` in `0732a6118:src/verify/exact-read-attestation.ts` (a decoded link or a thrown
+ * refusal) becomes a `let`, a try and a catch inside a loop that already holds two of each. And
  * a body that leaves before its last statement, because a `return` belongs to the function that declares it:
  * the same line at a call site returns from the caller, so the inline is a restructuring into a
  * local and one assignment per escape rather than a relocation of the lines. `leafCategory` in
@@ -137,14 +134,14 @@ const CHAIN_PEERS = 3;
  * this, and it was found by reading the twenty-six sites the dial produced.
  *
  * And a name read as a value keeps it, because there is no call site to put the lines at. A member
- * of a rule table, a default parameter value, a predicate handed to `.filter` — `knownDemandGap`
+ * of a rule table, a default parameter value, a predicate handed to `.filter`: `knownDemandGap`
  * sits in the `FindingRule` array in `epoch-review-findings.ts`, and the only spelling that
  * removes the name puts an anonymous arrow in the table. The message would be asking for
  * something the site does not have.
  *
  * There is no fix, and one was written and thrown away. Substituting the arguments into a
- * one-`return` body is mechanical enough — the parameter ranges come from the scope analysis, so
- * even an identifier inside a string is safe — but the result is a longer expression where the
+ * one-`return` body is mechanical enough (the parameter ranges come from the scope analysis, so
+ * even an identifier inside a string is safe) but the result is a longer expression where the
  * author wanted a statement, and the caller ends up holding the same density under a different
  * shape. What this rule asks for is a caller that reads as one piece of work, and where the lines
  * go, what the local is called once it is no longer a return value, and whether a guard clause
@@ -254,8 +251,8 @@ export const noSingleCallerHelperRule = defineRule({
     /** Mark the function a `return` leaves, when it is not that body's last statement.
      *
      *  Read from the `return` upwards rather than from the body down. Walking down means
-     *  enumerating every statement type that can hold one — block, `if`, five loops, `switch`,
-     *  a label — and being wrong about whichever was forgotten; upwards, the first block that
+     *  enumerating every statement type that can hold one (block, `if`, five loops, `switch`,
+     *  a label) and being wrong about whichever was forgotten; upwards, the first block that
      *  stands directly under a function is the body, and the node this walk came through is its
      *  statement. A `return` inside a nested function stops at that function's own body, which
      *  is where it belongs. */
@@ -342,10 +339,10 @@ export const noSingleCallerHelperRule = defineRule({
     /** Where the one call stands, which decides both how much body the site can take and whether
      *  an escaping body relocates there at all.
      *
-     *  A `statement` site — the call as its own expression, the value of a `return`, the
-     *  initialiser of a statement-level declaration — takes the body's statements as statements,
-     *  one under the other. A `term` site — an argument, a property value, a spread, a ternary
-     *  arm, a concise arrow body, a `for` header — has to hold the whole body as one term, which
+     *  A `statement` site (the call as its own expression, the value of a `return`, the
+     *  initialiser of a statement-level declaration) takes the body's statements as statements,
+     *  one under the other. A `term` site (an argument, a property value, a spread, a ternary
+     *  arm, a concise arrow body, a `for` header) has to hold the whole body as one term, which
      *  is why its limits are lower. `tail` is the statement site that is the caller's own
      *  `return`, and the only one where an escaping body lands as written; `return await
      *  helper(x)` is not it, because the awaited value is not what the escapes return. */

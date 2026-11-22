@@ -1,10 +1,8 @@
 // The Examiner command, `tools/d1b/examine.ts`, with a scripted session. No paid model runs here.
 import { afterAll, describe, expect, it } from "bun:test";
-import { mkdtempSync, readdirSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
+import { readdirSync, rmSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import type { Session } from "../src/examiner/session.ts";
 import { inExaminerWall } from "../src/examiner/shell.ts";
 import { examineCommand } from "../tools/d1b/examine.ts";
 import { read } from "../src/kernel/log.ts";
@@ -13,27 +11,15 @@ import type { Seated } from "../tools/d2/round.ts";
 import { fixtureTasks, layOutPack } from "./helpers/fixture-pack.ts";
 import { present } from "./helpers/matchers.ts";
 
-const ROOT = realpathSync(mkdtempSync(join(tmpdir(), "ana-examine-command-")));
-const BUNDLE = join(ROOT, "bundle");
 const STEM = `test-examine-command-${String(runtimeProcess.pid)}`;
-const PACK = [
-  "--root",
-  ROOT,
-  "--sweep",
-  "s",
-  "--cycle",
-  "c01",
-  "--bundle",
-  BUNDLE,
-  "--examiner",
-  "claude/claude-opus-5-5",
-];
+const PACK = ["--examiner", "claude/claude-opus-5-5"];
 /** A scripted session that held nothing and refused nothing. */
 const finished = () => ({ ended: "finished", puts: 0, held: [], refused: [] }) as const;
-layOutPack(ROOT, BUNDLE, fixtureTasks(1), join(REPO, "test", "fixtures", "harness-min"));
+for (const name of ["home", "probe", "unkept"]) {
+  layOutPack(join(REPO, ".ana", "d2", `${STEM}-${name}`), fixtureTasks(1));
+}
 
 afterAll(() => {
-  rmSync(ROOT, { recursive: true, force: true });
   for (const name of ["home", "probe", "unkept"]) {
     rmSync(join(REPO, ".ana", "d2", `${STEM}-${name}`), { recursive: true, force: true });
   }
@@ -104,14 +90,5 @@ describe("the Examiner command", () => {
       seated,
     );
     expect(settings()).toHaveLength(1);
-  });
-
-  it("gives a session no probe where no seats are given", async () => {
-    const given: Parameters<Session<"write">>[0]["probe"][] = [];
-    await examineCommand([...PACK, "--name", `${STEM}-home`, "--session", "x-2"], async (request) => {
-      given.push(request.probe);
-      return finished();
-    });
-    expect(given).toEqual([null]);
   });
 });

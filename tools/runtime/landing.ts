@@ -1,18 +1,16 @@
 /**
  * What a landing does around its proofs, kept out of `gate.ts`: a pass is remembered under a
  * digest of the CI gate and every file it imports, read from the landing's checkout, so any edit
- * there proves every commit of the stack again. On 6 November `holdAlone`, added to `gate.ts`,
- * made `bun run land -- 661 --sanitize` prove all 49 commits from the bottom although the CI gate
- * that the passes record had not changed. Nothing here runs inside a pass.
+ * there proves every commit of the stack again, though the CI gate that the passes record has not
+ * changed. Nothing here runs inside a pass.
  */
-import { existsSync, lstatSync, readFileSync, rmSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
-import { processAnswers, runtimeProcess } from "../../src/meta/process.ts";
-import { hold, holderOf, recordIn, release } from "#src/meta/holder.ts";
+import { runtimeProcess } from "../../src/meta/process.ts";
+import { hold, holderOf, release } from "#src/meta/holder.ts";
 import { errorMessage } from "../../src/meta/runtime-values.ts";
-import { type Host, hostsFor } from "../runs/host-config.ts";
+import { checkHost, checkSlots, type Host, hostsFor } from "../runs/host-config.ts";
 import { git, lines, type Place, type Proof, short } from "./gate.ts";
-import { beneath, chainAbove, openPulls, type Pull } from "./pulls.ts";
+import { beneath, chainAbove, openPulls, type Pull, stackStart } from "./pulls.ts";
 
 /** What a holder says of itself in the lock, after its record, and whether a newer one may end it. */
 interface Claim {
@@ -25,12 +23,11 @@ const WATCH_MS = Number(runtimeProcess.env.ANA_LAND_WATCH_MS) || 60_000;
 const KINDS = ["proving", "sanitizing", "merging"];
 
 /** Hold this clone's `who` alone until the returned release, waiting while another live one holds
- *  it. On 6 November two landings of one stack proved 795f3758c at once on two runners into one
- *  log, and the one whose flaky test failed posted red over a head the other had passed. The later
- *  landing now waits, then finds the earlier one's passes remembered. Where `claim.over` reads the
+ *  it. Two landings of one stack proving one commit at once on two runners into one log would let
+ *  the one whose flaky test failed post red over a head the other had passed, so the later landing
+ *  waits, then finds the earlier one's passes remembered. Where `claim.over` reads the
  *  holder's note as work the newer one covers, it ends the holder (SIGTERM) instead of waiting it
- *  out: on 9 November `land -- 729 --sanitize` waited behind a landing of #726, beneath it on the
- *  same chain, that had been proving for 1 hour 42 minutes. */
+ *  out, since a landing beneath it on the same chain can prove for hours. */
 export async function holdAlone(
   root: string,
   who: string,
@@ -45,20 +42,8 @@ export async function holdAlone(
     // The run CLI's lock (`holder.ts`): a holder is a live process of this host with the start its
     // record names, and a dead one's lock is taken over under a `flock` of the folder, so of two
     // landings that find it dead one takes it and the other waits.
-    // A landing without this lock writes its pid alone or `<pid> #<n> <kind>`, as a link or, until
-    // 9 November, into `<lock>/pid` of a folder (a link's record names no file, so only a folder
-    // has one). While that pid answers signal 0 it is waited for and never ended, since a bare pid
-    // may name a later process; a folder naming no live pid is removed. The clause goes once no
-    // open branch writes that record.
-    const left = join(lock, "pid");
-    const record = existsSync(left) ? readFileSync(left, "utf8") : recordIn(lock);
-    const older = Number(/^(\d+)(?: #|$)/u.exec(record)?.[1]);
-    const live = older > 0 && processAnswers(older);
-    if (!live && lstatSync(lock, { throwIfNoEntry: false })?.isDirectory() === true) {
-      rmSync(lock, { recursive: true, force: true });
-    }
-    if (!live && hold(lock, claim?.note)) return () => release(lock);
-    const found = live ? { pid: older, note: "" } : holderOf(lock);
+    if (hold(lock, claim?.note)) return () => release(lock);
+    const found = holderOf(lock);
     if (found === null) continue;
     const { pid: holder, note: held } = found;
     if (ended !== holder && held !== "" && claim?.over(held) === true) {
@@ -103,13 +88,13 @@ export function sayingPulls(
 
 /** The lock's note for a landing of `target` (`#<pull request> <kind>`, `+` after the number where
  *  `--auto` may land above it), and which held landings it ends: one that does not merge or follow
- *  the top, writes no more than it, and lands part of its chain, since every pass it made is
- *  remembered and the newer landing reads the chain as it stands now. The chain is read only once a
- *  holder is found. */
+ *  the top, writes no more than it, and lands part of what it proves (from `--from`, or from the
+ *  native stack holding the top, `stackStart`), since every pass it made is remembered and the newer
+ *  landing reads the chain as it stands now. The chain is read only once a holder is found. */
 export function claimOf(
   root: string,
   target: number,
-  mode: { readonly auto: boolean; readonly kind: string },
+  mode: { readonly auto: boolean; readonly kind: string; readonly from: number | null },
 ): Claim {
   const kind = KINDS.indexOf(mode.kind);
   let chain: string[] | null = null;
@@ -123,8 +108,10 @@ export function claimOf(
         const open = openPulls(root);
         const named = open.find((pull) => pull.number === target);
         const top = named !== undefined && mode.auto ? (chainAbove(open, named).at(-1) ?? named) : named;
-        chain =
-          top === undefined ? [] : [...beneath(open, top), top].map((pull) => `#${String(pull.number)}`);
+        const pulls = top === undefined ? [] : [...beneath(open, top), top];
+        const from = pulls.findIndex((pull) => pull.number === mode.from);
+        const proved = pulls.slice(mode.from === null ? stackStart(root, pulls) : Math.max(from, 0));
+        chain = proved.map((pull) => `#${String(pull.number)}`);
       }
       return chain.includes(number);
     },
@@ -134,8 +121,8 @@ export function claimOf(
 /**
  * A stop for a landing's proofs: `moved` is called every `WATCH_MS` and its error, where it returns one,
  * ends them, as SIGINT or SIGTERM does with an `Interrupted` error; each proof runs in a process group of its
- * own, so it ends whole, and the landing starts again with every pass so far kept. Until 9 November a move was
- * read only as the next proof started, so a whole gate over a stale top ran to its end.
+ * own, so it ends whole, and the landing starts again with every pass so far kept. A move read only
+ * as the next proof started would let a whole gate over a stale top run to its end.
  */
 export function watching(Interrupted: new (message: string) => Error, moved: () => Error | null) {
   const stop = new AbortController();
@@ -162,10 +149,10 @@ export function watching(Interrupted: new (message: string) => Error, moved: () 
 }
 
 /**
- * Where a landing in `root` proves its commits. `RUN_REMOTE` set, `here` among its values, is one
+ * Where a landing in `root` proves its commits. `ANA_CHECK_HOST` set, `here` among its values, is one
  * place to the landing, which hands each pass to the runner, so under `auto` each pass picks its own
- * least loaded slot; unset, the passes spread over every host `ANA_HOSTS` lists with `checks`,
- * each taking as many at once as its `checks` says, and with no such host they stay on this machine.
+ * least loaded slot; unset, the passes spread over every host `ANA_HOSTS` lists, each taking
+ * as many at once as `checkSlots` gives it, and with no host listed they stay on this machine.
  * `--jobs N` is the most at once: N on one place, or N dealt in turn over the hosts' slots. A list
  * that cannot be read is refused, null, before anything is proved or posted.
  */
@@ -175,17 +162,17 @@ export function whereToProve(
   say: (line: string) => void,
 ): readonly Place[] | null {
   const one = [{ slots: jobs ?? 1 }];
-  if (runtimeProcess.env.RUN_REMOTE !== undefined) return one;
+  if (checkHost() !== undefined) return one;
   let listed: readonly Host[];
   try {
     listed = hostsFor(root);
   } catch (error) {
     console.error(
-      `land: ${errorMessage(error)}; RUN_REMOTE=here proves on this machine. Nothing was merged.`,
+      `land: ${errorMessage(error)}; ANA_CHECK_HOST=here proves on this machine. Nothing was merged.`,
     );
     return null;
   }
-  const hosts = listed.flatMap(({ name, checks }) => (checks === undefined ? [] : [{ name, checks }]));
+  const hosts = listed.map((host) => ({ name: host.name, checks: checkSlots(host) }));
   if (hosts.length === 0) return one;
   const dealt = new Map(hosts.map((host) => [host, 0]));
   for (let left = jobs ?? Infinity; left > 0 && [...dealt].some(([host, slots]) => slots < host.checks); ) {
@@ -198,7 +185,7 @@ export function whereToProve(
   }
   const places = [...dealt].flatMap(([host, slots]) => (slots === 0 ? [] : [{ remote: host.name, slots }]));
   const named = places.map(({ remote, slots }) => `${remote} (${String(slots)})`).join(", ");
-  say(`proving on ${named} at once; RUN_REMOTE=<one> proves at that one.`);
+  say(`proving on ${named} at once; ANA_CHECK_HOST=<one> proves at that one.`);
   return places;
 }
 
@@ -221,9 +208,9 @@ function openOrNull(root: string): Pull[] | null {
 /**
  * Lands with `round`, then again each time an open pull request moves, opens or closes, read every
  * `WATCH_MS`, until `target` is no longer open or SIGINT or SIGTERM ends it, where `--watch` is
- * named. A landing lands once by default (operator, 20 November: "standard just let it run and not
- * iterate", since a loop left running re-proves every move during heavy sessions and held the main
- * checkout from following the stack for a day), and a `--merge` lands once. A round costs only
+ * named. A landing lands once by default (on the operator's word: "standard just let it run and not
+ * iterate", since a loop left running re-proves every move during heavy sessions and can hold the
+ * main checkout from following the stack), and a `--merge` lands once. A round costs only
  * what moved, since every pass is remembered by tree; a round under way ends through `watching`,
  * a wait at once.
  */

@@ -1,23 +1,20 @@
 /**
- * The record of every campaign a model served other than the one its seats asked for, kept in
- * `data/runs/degradations/<campaign>.tsv` under the main worktree: one row a session or solve and
- * model served, with its turns and the first and last of them. The gather (`runs fetch` with no
- * name, every ten minutes) writes it for each log it brought from another host and each campaign
- * of this machine's worktrees written in the last hour, and says a campaign's line whenever its
- * record changes.
+ * Tracks silent model-routing degradations across campaigns, writing one TSV file per affected
+ * campaign to `data/runs/degradations/<campaign>.tsv` under the main worktree (one row per session
+ * or solve and served model, with turn counts and first/last timestamps). The periodic gather
+ * (`runs fetch` without a name) updates these files for every fetched log and every local campaign
+ * modified in the last hour, printing a summary line whenever a campaign's record changes.
  *
- * Seats that asked for claude-opus-5-5 were answered by another model on 7,542 recorded turns from
- * 20 to 31 October, nearly all of them recode's. An investigation named it on 23 October, but only
- * an investigation compared the two, so the campaigns went on and their readings were set beside
- * other domains' as Opus 5.5's. The operator asked on 31 October for a record kept without anyone
- * watching. A file per campaign holds no log in a folder of its own, so the archive's readers
- * (`campaignsIn`) never take the folder for a host's campaigns.
+ * A provider may silently serve a different model than the one requested for thousands of turns;
+ * recording this continuously prevents degraded runs from being pooled unknowingly with clean runs.
+ * Storing flat TSV files rather than campaign subdirectories ensures archive readers (`campaignsIn`)
+ * never mistake `degradations/` for a host directory.
  *
  *   bun tools/runs/degradations.ts <log or campaign name>...
  *
- * prints the reading a whole-run investigation derives for each campaign (`READERS`,
- * `tools/wri/derive.ts`): the share of each seat's turns another model answered, the comparisons
- * whose solves it answered, and a line a session or solve.
+ * Prints the per-campaign summary used by whole-run investigations (`READERS`, `tools/wri/derive.ts`):
+ * the fraction of each seat's turns served by a different model, the comparisons affected, and a
+ * per-session or per-solve breakdown.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { type Degradation, degradations, SEATS, tracesIn } from "#src/kernel/trace.ts";
@@ -40,11 +37,11 @@ const COLUMNS = [
   "last",
 ] as const satisfies readonly (keyof Degradation)[];
 
-/** The models that served `rows`, each against the one asked for. */
+/** Summarises the distinct `(served, asked)` model substitutions present in `rows`. */
 const which = (rows: readonly Degradation[]) =>
   [...new Set(rows.map(({ asked, served }) => `${served} for ${asked}`))].join("; ");
 
-/** The record's text for `rows`, a header and a line a row; empty where no row is. */
+/** Formats `rows` as a tab-separated table with a header line, or returns an empty string if none exist. */
 function recordOf(rows: readonly Degradation[]): string {
   if (rows.length === 0) return "";
   return [COLUMNS.join("\t"), ...rows.map((row) => COLUMNS.map((column) => String(row[column])).join("\t"))]
@@ -52,8 +49,8 @@ function recordOf(rows: readonly Degradation[]): string {
     .join("");
 }
 
-/** Writes the record of each log in `brought` and of this machine's campaigns written in the last
- *  hour, where it changed, and returns a line for each record written. */
+/** Updates degradation TSV records for `brought` logs and recently modified local campaigns,
+ *  returning one notification line for each record that changed. */
 export function recordDegradations(brought: readonly string[], repo: string, now = Date.now()): string[] {
   const own = runs(repo)
     .filter(isCampaign)
@@ -72,11 +69,11 @@ export function recordDegradations(brought: readonly string[], repo: string, now
   });
 }
 
-/** The investigation's reading of one campaign's log: every turn that names the model that answered
- *  it, read against the model its seat asked for. */
+/** Formats the investigation summary of model-routing degradations across all turns in `events`
+ *  that record a served model. */
 export function degradationLines(events: readonly LogEvent[]): string[] {
   const rows = degradations(events);
-  // The Referee's turns are left out: no start names the model they asked for (`degradations`).
+  // Exclude Referee turns because their start events do not record a requested model (`degradations`).
   const named = tracesIn(events).flatMap((each) =>
     each.part === "turn" && each.model !== null && each.seat !== "referee" ? [each] : [],
   );

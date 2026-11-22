@@ -21,8 +21,8 @@ import type { RuleExample } from "../../rule-examples.ts";
  * reported, since it answers nothing; it goes with the disable it closes.
  *
  * A disable that names no rule at all silences every rule on its line, the ana and anti-slop ones
- * among them, so it answers a slop finding with no name and no reason. Until 20 October the rule
- * read only a directive followed by a list, and passed that one by. Only the next-line form can
+ * among them, so it answers a slop finding with no name and no reason, and the rule reads it as
+ * well as a directive followed by a list. Only the next-line form can
  * be read: a bare `disable` or `disable-line` silences this rule's own report on its line too.
  *
  * There is no fix. The comment's reason moves into a ledger row, which needs an id only a lint run

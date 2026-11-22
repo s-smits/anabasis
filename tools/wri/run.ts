@@ -6,9 +6,9 @@
  * of the Referee's refused evidence sits here too, since `read.ts` stands near the size policy's
  * ceiling.
  *
- * Added on 27 October, when every pull request was given an area label (`references/lanes.md`,
- * "Labels") and six of the thirteen labels had no lane: a prediction about the campaign command, a
- * launch or the log could be written and never read back from a report. Every measured run opens
+ * Every pull request carries an area label (`references/lanes.md`, "Labels"), and a label with no
+ * lane lets a prediction about the campaign command, a launch or the log be written and never read
+ * back from a report. Every measured run opens
  * from a prompt and is led by a Builder's conversation (`AGENTS.md`, sections 4 and 10), and until
  * then no lane read either.
  */
@@ -21,10 +21,9 @@ import type { Receipt } from "../runs/receipt.ts";
 import { fired, firedIf, type Index, share, tally, text, type Trigger } from "./folds.ts";
 
 /** Lane 13: endings the campaign went on from, and the operator's words with how many an event
- *  acted on, read as the host reads them (`pendingWords`). Until 5 November it also counted the
- *  moves a Builder made where the table named another (`MOVES ASKED`): the Builder is no longer
- *  told the table's move, so the count read bookkeeping: 13 of 16 jobstat comparisons, 9 where the
- *  table named a build (overhaul report 11). */
+ *  acted on, read as the host reads them (`pendingWords`). It does not count the moves a Builder
+ *  made where the table named another: the Builder is not told the table's move, so that count
+ *  would read bookkeeping. */
 function moveTriggers(log: Index): Trigger[] {
   const last = log.events.length - 1;
   const endings = log.events.flatMap(({ kind, data }, index) =>
@@ -81,8 +80,8 @@ function draftTriggers(log: Index): Trigger[] {
 
 /** Lane 22: the launches beside the log, where there is more than one, more than one commit, a
  *  dirty tree, or a campaign command that left no receipt. It counts the solver's Python by version
- *  and packages, among the receipts that hold one: on 17 November a host's pin moved both between
- *  two launches at one commit, on one login and one Bun, and the line said nothing of it. */
+ *  and packages, among the receipts that hold one, since a host's pin can move both between two
+ *  launches at one commit, on one login and one Bun. */
 function launchTriggers(log: Index, launches: readonly Receipt[]): Trigger[] {
   if (launches.length === 0) {
     return firedIf(

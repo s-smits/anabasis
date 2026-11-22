@@ -3,14 +3,15 @@
  * happened, and one event whole, which the exam tier alone answers (`EXAM_ONLY`, refused by the
  * router before this is asked).
  *
- * Until 30 October the Log pane listed every raw event a page at a time: three in four were a
- * model's turns and calls, and on the default tier an event opened to a line saying the exam side
- * held it, so the pane said only that something happened (operator). A line now says what happened
+ * A pane of every raw event a page at a time would be mostly a model's turns and calls, and on the
+ * default tier an event would open to a line saying the exam side held it, so the pane would say
+ * only that something happened. A line instead says what happened
  * in words from what the default tier serves (counts, ids, states, endings, readings, costs and
  * times; `models.ts`), and a session's or a solve's turns, calls and compactions are counted into
- * its own line, which runs from its start to its end, and so is a solve's wait for a loaded host
- * (461 of 2,428 lines in buffer-fresh-opus-v065-a). The author's answer behind `task.feasible` is the exam side's, so its line says only that one is on record. A check's verdict and a condition say nothing
- * the solve's ending does not, and a ruling is the exam side's, so neither has a line.
+ * its own line, which runs from its start to its end, and so is a solve's wait for a loaded host (a
+ * large share of a campaign's lines). The author's answer behind `task.feasible` is the exam
+ * side's, so its line says only that one is on record. A check's verdict and a condition say
+ * nothing the solve's ending does not, and a ruling is the exam side's, so neither has a line.
  */
 import type { LogEvent } from "../../../../src/kernel/log.ts";
 import { isNumber, isRecord, isString } from "../../../../src/meta/json-shape.ts";

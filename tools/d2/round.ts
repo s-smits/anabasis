@@ -1,76 +1,34 @@
 /**
- * One round over a campaign: a Builder session from the latest harness the campaign keeps, then the
- * comparison of the harness it left with the reference harness, on held-out tasks.
- *
- *   bun tools/d2/round.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
- *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session b-1 \
- *     --builder claude/claude-opus-5-5 --target 8 --cap 625
- *
- * That is the plan's first round and its starter measurement G0 (`7f0add79:docs/plan.md`, Phase 0). The
- * Builder forks the
- * Starter Built Harness and builds on it, and the harness it leaves is compared with the starter
- * on eight drawn tasks, two solves a harness, under today's limits and a dollar cap. The same
- * comparison shows how the starter does by itself: the report holds, for each harness, on how
- * many tasks it was valid in every solve, in some and in none (`valid`), which the command also
- * prints in words. With no `--reviewer`, every rejection waits for a
- * person's label (`tools/d2/settle.ts`), which is how the first round is read before there is a
- * Judge.
+ * What a campaign's moves share (`session.ts`, `checkpoint.ts`, and the live Builder's tools through
+ * `campaign-terms.ts`): the seats, the flags of a Builder session and of a comparison with their
+ * defaults, the request each is made with, and the report a comparison prints.
  *
  * The sets are the log's (`prepare.ts`): the released tasks are the Builder's practice. The scored
- * set is `--target` of the held-out tasks, the newest epoch's first and within an epoch drawn by
- * the contract's hash alone. It is fixed before any solve, so that no harness's results choose it
- * (`src/campaign/round.ts`, `scoredSet`).
+ * set is the setting's `--target` of the held-out tasks, the newest epoch's first and within an
+ * epoch drawn by the contract's hash alone, fixed before any solve so that no harness's results
+ * choose it (`scoredSet`, `src/campaign/round.ts`). The other defaults are `SIZE`'s
+ * (`src/kernel/size.ts`).
  *
- * The defaults are the plan's (`SIZE`, `src/kernel/size.ts`): 24 scored tasks, two solves a
- * harness (the setting's `--target` and `--solves` name others), the paired sign-flip test at 0.02, and a stop past three check defects. At those a
- * round's comparison is 96 solves, all of them fresh and side by side; from 12 to 29 October it
- * was four solves, 192, until 12 October 12 tasks and two solves, 48, and until 2026-10-09 a round
- * was about 430.
- *
- * `--cap` is the round's dollar cap and is required: no solve starts that a reserve for it and for
- * each one running (`--reserve`, $3) would take past it, and the session's spend counts against
- * the same cap. A comparison the cap cuts short reads `not-scored`. On 2026-10-08 eight rounds
- * cost over $220 and scored no task, under no cap.
- *
- * `--reference` names the harness the new one is compared with, and is `promoted`: the campaign's
- * reference harness, which is the starter until another is promoted (`tools/d2/promote.ts`),
- * and the one last promoted from then on. Each comparison solves only the two harnesses it names.
- * `--parent` names the harness the session starts from, and is `latest`: the one the last whole
- * session left, and the starter while none has. After a comparison without a step the Builder
- * continues from its latest harness, and the operator may send it back to an earlier one.
- *
- * `--reviewer` gives the Builder the Referee on its practice fails, and the
- * comparison the Referee on every rejected answer. A rejection counts only once it is ruled a true
- * fail. One ruled a check defect or unclear, and with no reviewer every one, sets its task aside
- * until a person has labelled it (`tools/d2/settle.ts`). The comparison is read at the one budget
- * its solves were told; until 2026-10-11 `--budget turns=40` read the same solves at shorter
- * budgets as well, which read a solver told the longer one (`7f0add79:docs/simplify.md`, A2).
+ * `--cap` is a move's dollar cap and is required: no solve starts that a reserve for it and for each
+ * one running (`--reserve`, $3) would take past it, and a comparison the cap cuts short reads
+ * `not-scored`. `--reference` is `promoted`, the campaign's reference harness (`tools/d2/promote.ts`),
+ * and `--parent`, where a session starts from, is `latest`. `--reviewer` gives the Builder the
+ * Referee on its practice fails and a comparison the Referee on every rejected answer; with none,
+ * every rejection sets its task aside until a person has labelled it (`tools/d2/settle.ts`).
  *
  * Who solves, what a solve is held to and how many tasks are drawn are the campaign's setting, which
- * its log records once (`setting.ts`). A round that names none of it runs under the record, and
- * one whose `--solver`, `--solve-minutes`, `--solve-model-turns` or
- * `--target` name another is refused. The first comparison of a campaign records what it names, with the stored cycle's own
- * solver and the sweep's limits for the rest. `--minutes` and `--turns` are the Builder session's
- * own.
+ * its log records once (`setting.ts`): a move that names none of it runs under the record, and one
+ * that names another is refused.
  *
- * Before its first event a round asks whether its comparison may start
- * (`src/campaign/admission.ts`): on a checker nobody has read, with too few tasks left to untie, or
- * after the plan's stop rule has stopped the campaign, it starts nothing. `--past-stop "<why>"`
- * goes on past the stop rule, and the reason is logged.
- *
- * Run again with the same `--session`, a round goes on from its log. Its report and the plan's
- * stop rule are printed from the log.
- *
- * A simulation runs this same command with a script in each of its two model seats
- * (`tools/runs/rehearse.ts`), so that what it walks is what a paid round walks.
+ * A rehearsal runs these moves with a script in each model seat (`tools/runs/rehearse.ts`).
  *
  * Not run here: see `campaign.ts`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { admitComparison, stopRule, type Wanted } from "#src/campaign/admission.ts";
+import { stopRule, type Wanted } from "#src/campaign/admission.ts";
 import { worthLine } from "#src/campaign/climb.ts";
 import { predicted, type Report } from "#src/campaign/comparison.ts";
-import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/campaign/round.ts";
+import { type CheckpointRequest, scoredSet } from "#src/campaign/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import { type ObjectiveRule, testedSet, testOf, WEIGHTS } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
@@ -82,7 +40,6 @@ import { solverLast } from "#src/kernel/solves.ts";
 import { readBrief } from "#src/kernel/verify.ts";
 import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { parseArgs } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { median } from "#src/meta/tally.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
@@ -95,14 +52,11 @@ import {
   keptAs,
   openCampaign,
   PACK_OPTIONS,
-  packNamed,
-  stayAwake,
 } from "./campaign.ts";
 import {
   type AskedSetting,
   commandSeconds,
   firstRecord,
-  keepSetting,
   recordedSetting,
   SETTING_OPTIONS,
   settingAsked,
@@ -126,10 +80,9 @@ interface SolverSeat {
  *  first and never reads the second (`checkpoint.ts`). */
 export interface Seats extends SolverSeat {
   readonly builder: Pick<BuildRequest, "model" | "models"> | null;
-  /** Set by the paid seats, and kept by whatever holds them, as the solve queue does: until
-   *  20 October a command told them by `seated === solved`, and every move the campaign command
-   *  made through the solve queue read as a rehearsal's and skipped its admission (a Builder's compare on
-   *  esp32-fresh-opus-r2 began on 1 task, where a step at the level takes 6). The cap is still read by identity before the campaign opens,
+  /** Set by the paid seats, and kept by whatever holds them, as the solve queue does, rather than
+   *  told by `seated === solved`, which every move made through the solve queue would fail and so
+   *  read as a rehearsal's and skip its admission. The cap is still read by identity before the campaign opens,
    *  and the admission refuses a paid move without one. */
   readonly paid?: true;
 }
@@ -141,16 +94,14 @@ export type Seated = (
   given: { readonly builder: string | undefined; readonly reference: string },
 ) => Seats;
 
-/** The flags of every command that compares, and their defaults: the plan's (`7f0add79:docs/plan.md`,
- *  Tuning). */
+/** The flags of every command that compares, and their defaults. */
 export const COMPARISON_OPTIONS = {
   reference: { type: "string", default: PROMOTED },
   reviewer: { type: "string" },
   "reviewer-effort": { type: "string", default: "high" },
   target: { type: "string" },
-  // One reading at or under `level` is a step (`stepOf`, `src/kernel/compare.ts`). 0.20 was the
-  // default from #175 until 10 October, then 0.10 under the two-stage rule, and 0.02 since
-  // 12 October (the operator). Since 19 October one reading promotes. It is a per-comparison level:
+  // One reading at or under `level` is a step (`stepOf`, `src/kernel/compare.ts`), and one reading
+  // promotes; 0.02 is the operator's choice. It is a per-comparison level:
   // one reading on 24 untied tasks reads a step between equal harnesses 1.1% of the time at 0.02.
   level: { type: "string", default: "0.02" },
   defects: { type: "string", default: "3" },
@@ -181,9 +132,6 @@ export const SESSION_OPTIONS = {
   parent: { type: "string", default: "latest" },
 } as const;
 
-/** A round's flags and their defaults. */
-export const ROUND_OPTIONS = { ...SESSION_OPTIONS, ...COMPARISON_OPTIONS } as const;
-
 /** What a Builder session reads of its command's flags, each with its default by then. */
 interface SessionFlags {
   readonly session: string;
@@ -203,9 +151,9 @@ type Apart = "versions" | "aside" | "short" | "disputed" | "withdrawn";
 const effortNamed = (flag: string) => flag as ThinkingLevel;
 
 /** A campaign's task by its version, from the pack or a session's proposal. The log is read again
- *  for a version it did not hold when last read: on 17 October an Examiner held tasks out beside
- *  the Builder's conversation, the Builder released and practised one, and the conversation of each
- *  of three campaigns ended crashed on the map read at its start. */
+ *  for a version it did not hold when last read, since an Examiner holds tasks out beside the
+ *  Builder's conversation, and a conversation that practised one of them would crash on the map
+ *  read at its start. */
 export function packaged(campaign: Campaign): (version: string) => TaskPackage {
   let packages = campaign.packages();
   return (version) => {
@@ -283,7 +231,6 @@ export function sessionNamed(
     log: campaign.log,
     repoRoot: campaign.repo,
     otherTrees: campaign.trees,
-    packRoots: campaign.packRoots,
     practise: (task, dir, digest, kill) => seats.solve(packageOf(task.version), { dir, digest }, kill),
     referee:
       reviewers === null
@@ -322,8 +269,8 @@ export function solvingAs(campaign: Campaign, { limits }: Pick<AskedSetting, "na
 }
 
 /** The objective a comparison pairs two valid answers by, where its check program declares one:
- *  the brief's direction. Undefined otherwise. Until 19 October a margin went with it (`--margin`),
- *  and until 21 October a floor; the floor is now one constant (`ROOM`, `src/kernel/compare.ts`). */
+ *  the brief's direction. Undefined otherwise. No margin or floor goes with it; the floor is one
+ *  constant (`GAP_FLOOR`, `src/kernel/compare.ts`). */
 export function objectiveNamed(campaign: Pick<Campaign, "checks">): ObjectiveRule | undefined {
   const declared = readBrief(campaign.checks).objective;
   return declared === undefined ? undefined : { direction: declared.direction };
@@ -352,7 +299,7 @@ export function capRead(cap: string, reserve: string): Cap {
 
 /**
  * The dollar cap `--cap` and `--reserve` name. A command whose solves are paid for is refused
- * without one (`7f0add79:docs/plan.md`, Phase 0); a simulation, whose seats are scripts, may name none.
+ * without one; a simulation, whose seats are scripts, may name none.
  */
 export function capNamed(
   values: { readonly cap?: string | undefined; readonly reserve: string },
@@ -370,8 +317,7 @@ export function capNamed(
 /**
  * The Referee `--reviewer` names. A command whose solves are paid for is refused without one: a
  * rejection nobody rules sets its task aside, so a paid run without a Referee measured nothing of
- * its rejections and said so nowhere (20 October; the 81 unruled admission rejections on record all
- * predate task admission review). A simulation, whose seats are scripts, may name none.
+ * its rejections and said so nowhere. A simulation, whose seats are scripts, may name none.
  */
 export function refereeNamed(
   values: { readonly reviewer?: string | undefined },
@@ -427,15 +373,14 @@ export function printReport(campaign: Campaign, id: string, report: Report): voi
 
 /**
  * A report in lines, printed with every reading: the tasks its step was read on (`scored`, or the
- * frontier before 20 October), with their untied tasks,
+ * frontier in an older report), with their untied tasks,
  * the least share of them the test detects four times in five (`detectable`), its false rate
  * between equal harnesses (`falseRate`) and its p, all read without the bill as the step is
  * (`stepOf`), and the same tasks as scored, which decide nothing; the reference against itself where the comparison carries it (`aaLines`); the tasks it drew, by what
  * became of each (`accounted`); and `valid`,
  * each harness by itself, as the tasks by how many of their solves were valid, which is what the
- * plan's starter measurement reads of the starter, the reference harness of the first round
- * (`7f0add79:docs/plan.md`,
- * G0); the objective's margin. None for a report that compared nothing.
+ * starter measurement reads of the starter, the reference harness of the first round; the
+ * objective's margin. None for a report that compared nothing.
  */
 export function reportLines({
   valid,
@@ -457,7 +402,7 @@ export function reportLines({
   const took = (side: "old" | "fresh") => String(median(both.map((each) => each[side])));
   const test = testedSet(scored, frontier);
   const share = test?.detectable ?? null;
-  // A report of 26 October to 2 November read its step on its scores without the bill (`scoresIn`).
+  // Some older reports read their step on their scores without the bill (`scoresIn`).
   const unbilled = test?.unbilled === undefined ? null : testOf(test.unbilled);
   const stepped = unbilled ?? test;
   const untied = stepped === null ? 0 : stepped.wins + stepped.losses;
@@ -468,7 +413,7 @@ export function reportLines({
       : [
           `the step's test is read ${on} on ${plural(untied + stepped.ties, "tallied task")}, ${String(untied)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
           `the test at these margins clears the level between equal harnesses ${String(Math.round(1000 * test.falseRate) / 10)}% of the time, never more than the level`,
-          // The test weighs margins, but a sweep's p is its count's alone (the plan's 7.5).
+          // The test weighs margins, but a sweep's p is its count's alone.
           `its p is ${rounded(stepped.p)}: the test weighs each untied task by its score${stepped.losses === 0 && untied > 0 ? `, and where every untied task is won p is one half to the power of their count whatever the margins: ${String(untied)} won read ${rounded(0.5 ** untied)}` : ""}`,
           ...(unbilled === null
             ? []
@@ -511,7 +456,7 @@ function percent(share: number): string {
 }
 
 /**
- * The reference against itself beside every reading that carries one (the plan's 7.2): its tie
+ * The reference against itself beside every reading that carries one: its tie
  * share, its flip rate and the least shift it detects, three readings of the noise with three
  * meanings, each on a line of its own.
  */
@@ -527,7 +472,7 @@ function aaLines(noise: NonNullable<Report["noise"]>): string[] {
 }
 
 /**
- * The tasks a comparison drew, by what became of them (the plan's 7.3): the tallied ones, which
+ * The tasks a comparison drew, by what became of them: the tallied ones, which
  * the columns, room and the test are read over, and each kind left out, so that no task left out
  * swells the denominator or leaves the account. None for a report that names no versions.
  */
@@ -570,7 +515,7 @@ export async function comparedOn(
   values: { readonly level: string; readonly defects: string; readonly predict?: string | undefined },
   seats: Seats,
   reviewers: Reviewers | null,
-): Promise<Omit<RoundRequest, "session" | "reference" | "builder">> {
+): Promise<Omit<CheckpointRequest, "log" | "id" | "old" | "fresh" | "kill">> {
   const packageOf = packaged(campaign);
   return {
     starter: await starter(campaign),
@@ -590,48 +535,3 @@ export async function comparedOn(
         : (solve, version, kill) => reviewers.referee(solve, packageOf(version), kill),
   };
 }
-
-/** `bun tools/d2/round.ts`, and under a simulation's `seated` the same round with its seats scripted. */
-export async function roundCommand(args: readonly string[], seated: Seated = solved): Promise<Report> {
-  const { values } = parseArgs({ args: [...args], options: ROUND_OPTIONS });
-  const { session } = values;
-  const pack = packNamed(values, " and --session");
-  if (session === undefined) throw new Error("name --session, the id the round takes in the log");
-  const { cap, setting, campaign } = await campaignFor(values, pack, seated);
-  const { limits } = setting.named;
-  const reviewers = reviewersNamed(campaign, values);
-  const parent = await parentNamed(campaign, { ...values, session });
-  const reference = await keptAs(campaign, "--reference", values.reference);
-  const seats = seated(campaign, { builder: values.builder, reference: reference.dir });
-  const built = sessionNamed(
-    campaign,
-    { ...values, session },
-    { parent, reference: reference.dir, limits, seats, reviewers },
-  );
-  const request: RoundRequest = {
-    session: built,
-    reference,
-    ...(await comparedOn({ campaign, setting, cap }, values, seats, reviewers)),
-  };
-  // Every refusal comes before anything is recorded: the admission's, then the round's own
-  // terms, and only then an override of the stop rule and the campaign's setting.
-  const notes = admitComparison(campaign.log, {
-    id: session,
-    wanted: wantedNamed(values, { setting, cap, builds: true }),
-    seats: seats.paid ? "paid" : "scripted",
-    own: () =>
-      refuseTerms(request, {
-        log: campaign.log,
-        id: session,
-        practised: new Set(built.tasks.map(({ version }) => version)),
-      }),
-  });
-  for (const note of notes) console.log(`· ${note}`);
-  keepSetting(campaign.log, setting);
-  stayAwake();
-  const report = await round(request);
-  printReport(campaign, session, report);
-  return report;
-}
-
-if (import.meta.main) await roundCommand(Bun.argv.slice(2));

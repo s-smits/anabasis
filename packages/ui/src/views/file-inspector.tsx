@@ -21,9 +21,9 @@ interface InspectorPayload {
  *  back. What it holds is `inspector.tsx`'s to choose.
  *
  *  The pane takes focus as it attaches and gives it back to what held it before as it detaches,
- *  through its ref, and Escape closes it while focus is in it. Until 14 October both were effects:
- *  StrictMode ran the first twice, and the second run took the pane itself for the origin, which
- *  left focus on the page's body at every close (a browser test of that day). */
+ *  through its ref, and Escape closes it while focus is in it. Neither is an effect: StrictMode
+ *  runs an effect twice, and the second run would take the pane itself for the origin, leaving
+ *  focus on the page's body at every close. */
 export function FileInspector({
   label,
   path,

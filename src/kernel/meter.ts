@@ -8,9 +8,9 @@
  * dollars by served model, its own compactions and its calls on other models included
  * (`claudeSpend`); pi-durable keeps `pi.usage` for Codex and pi's own providers, DeepInfra among
  * them, every assistant entry, a retried attempt and a compaction summary included (`durableSpend`).
- * A backend only hands over what it recorded, and a seat bills it through `seatMeter`. Until
- * 1 November the session's bill was the sum of its turns: 305 exam and 19 build compactions Claude
- * Code ran billed $0 in the archive, and a retried attempt's dollars rode on the next turn.
+ * A backend only hands over what it recorded, and a seat bills it through `seatMeter`. A session's
+ * bill is not the sum of its turns, since a turn sum bills a backend's own compactions at nothing
+ * and puts a retried attempt's dollars on the next turn.
  *
  * The price rule: a model the table lists is billed at its frozen list price, cache reads at their
  * discount and writes at their premium; a model it does not list, such as one Claude Code called on
@@ -80,9 +80,8 @@ const BILLED: ReadonlySet<string> = new Set([
 
 /** The role whose work an event kind's prefix holds, as `billedAll` reads its dollars: what it was
  *  billed where it ended, and the turns of a session that never ended. A drafting session is the
- *  Examiner's, as the host's budget counts it: esp32's d-1 billed $1.57 that read as no role's on
- *  12 October. The Diagnoser was a seat until 11 October (`7f0add79:docs/simplify.md`, E1): a log
- *  of before holds what it billed. */
+ *  Examiner's, as the host's budget counts it, so its dollars are no role's only if it is left
+ *  out. The Diagnoser is a retired seat, and an old log holds what it billed. */
 const ROLES = new Map([
   ["solve", "solver"],
   ["build", "builder"],
@@ -227,8 +226,8 @@ export function sessionLedger(backend: Ledger | null, filed: Ledger, served: Led
 /**
  * The meter of one seat on `model`. Its prices are frozen once the seat's backends exist: its own
  * model's, then every model its provider's catalogue prices. A turn is priced at the model that
- * served it where that is listed, and at the seat's own otherwise (recode, 25 October: Claude Code
- * answered claude-opus-5-5's requests as claude-opus-5).
+ * served it where that is listed, and at the seat's own otherwise, since a backend may answer a
+ * request with a model other than the one asked for.
  */
 export function seatMeter(model: Model<Api>) {
   let prices = freezePrices([model]);
@@ -278,7 +277,7 @@ const billedOn = ({ kind, data }: LogEvent) =>
   BILLED.has(kind) && isNumber(data.billed) ? data.billed : null;
 
 /** Every billed dollar a log holds, whoever billed it: what a campaign's total budget is held
- *  against (`7f0add79:docs/plan.md`, row F49). A start the log holds no end of was killed before it could
+ *  against. A start the log holds no end of was killed before it could
  *  sum its turns, and is billed by what it metered (`unfinished`). */
 export function billedAll(events: readonly LogEvent[]): number {
   let total = 0;
@@ -294,8 +293,7 @@ export const reportedShare = (total: number | null, before: number | null) =>
  * The billed dollars of the stretch from event `from` to event `to` (the log's end where none):
  * what the log had billed by `to` less what it had by `from`. A sum over the slice alone billed a
  * session open across its start at its whole sum where it ended, and nothing of one still open at
- * its end: on 14 October recode-151's epoch b-4 read $6.87 where it billed $0.04, the Builder's
- * conversation of three epochs ending inside it.
+ * its end, so a long Builder conversation ending inside a short stretch would be billed to it whole.
  */
 export function billedBetween(events: readonly LogEvent[], from: number, to = events.length): number {
   return billedAll(events.slice(0, to)) - billedAll(events.slice(0, from));
@@ -303,9 +301,9 @@ export function billedBetween(events: readonly LogEvent[], from: number, to = ev
 
 /** The backend's own query totals beside the host's bill on the same ending records, the check
  *  that the meter prices what the backend charged. An ending without a total, and a session or a
- *  solve that never ended, are left out of both sides. Recode's three campaigns of October read
- *  backend totals 46 to 54% over the bill while every turn was priced at the requested model, and
- *  buffer's 0.6 to 1.9%, whose turns the requested model served. */
+ *  solve that never ended, are left out of both sides. A large gap means turns were priced at a
+ *  model other than the one that served them; where the requested model served every turn, the
+ *  two agree within a few per cent. */
 export function costLine(events: readonly LogEvent[]): string {
   let [records, covered, backend, billed] = [0, 0, 0, 0];
   for (const event of events) {
@@ -348,10 +346,8 @@ export function billedFor(events: readonly LogEvent[], id: string): number {
  * where it is the session; a solve of the comparison in the comparison's part; and a practice solve
  * of the session in the session's own alone, so a killed Builder closed on its turns (`endCut`,
  * `tools/d2/harness-builder.ts`) keeps the practice it was killed in, and its cap reads what it read
- * before. Until 19 October the session's part was everything in its span, which in a campaign its
- * Builder leads is every move it made, counted again on the moves' own lines: on 19 October
- * buffer-fresh-opus's view put $123.34 on b-4, whose own turns and practice billed $2.65, and its
- * steps summed to $362.92 where the log had billed $199.48.
+ * before. The session's part is not everything in its span, since in a campaign its Builder leads
+ * that is every move it made, which the moves' own lines bill again.
  */
 export function billedParts(events: readonly LogEvent[], id: string) {
   const owners = ownersOf(events);
@@ -381,21 +377,17 @@ export function billedParts(events: readonly LogEvent[], id: string) {
   return billed;
 }
 
-/** Billed dollars by role, the largest first, counted as the campaign's own budget counts them:
- *  a session a stop cut has no end record, and its turns were read as nothing. Buffer's Examiner
- *  session x-1 read 0.00 against $1.68 billed, and the builder's share of the campaign read 71.3%
- *  where it was 42.2% (2026-10-10). A role the log holds no event of is left out: every log since
- *  11 October printed "diagnoser 0.00" for a seat that no longer exists. The closing report
- *  (`economyLines`, `tools/d2/close.ts`) and the investigation read the Examiner's share here: until
- *  28 October the closing report summed it again from the sessions' parts. */
+/** Billed dollars by role, the largest first, counted as the campaign's own budget counts them, so
+ *  a session a stop cut, which has no end record, is billed by its turns rather than read as
+ *  nothing. A role the log holds no event of is left out, so a retired seat prints no zero. The
+ *  closing report (`economyLines`, `tools/d2/close.ts`) and the investigation read the Examiner's
+ *  share here rather than summing it again from the sessions' parts. */
 export function spendOf(events: readonly LogEvent[]): [string, number][] {
-  // A solve an Examiner session asked for, to try an instance on the reference harness (`try_reference`, and
-  // `try_task` until 1 November), names the session where a
-  // comparison's names the comparison, and is the Examiner's, as `countedSolves` keeps it out of
-  // every tally: about seven reference solves an admitted task at three a draft (the overhaul plan,
-  // 4b), which until 12 October read as the solver's. A drafting session's solves of its examples
-  // are the Examiner's too: until 27 October this reader took only `exam.started`, and $2.23 of
-  // buffer-fresh-opus-v072's drafting read as the solver's.
+  // A solve an Examiner session asked for, to try an instance on the reference harness
+  // (`try_reference`, or an old log's `try_task`), names the session where a comparison's names the
+  // comparison, and is the Examiner's, as `countedSolves` keeps it out of every tally; at about
+  // seven reference solves an admitted task, it would otherwise swell the solver's share. A drafting
+  // session's solves of its examples are the Examiner's too.
   const sessions = examinerSessions(events);
   const owners = ownersOf(events);
   const whoseRole = (kind: string, solve: JsonValue | undefined) => {

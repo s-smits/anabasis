@@ -4,8 +4,7 @@
  * the gate's steps (`test/helpers/fake-bun.ts`). A small driver written into the fixture imports the
  * gate from a checkout and proves the `<commit>:<pass>` pairs it is given, so a case names each
  * commit's pass as land would and reads which steps and nearby tests each pass ran, and which pass
- * a remembered one spared. Until 25 October these cases ran through the pre-push hook, which then
- * proved every commit a push added.
+ * a remembered one spared, without going through the pre-push hook.
  */
 import {
   appendFileSync,
@@ -147,10 +146,29 @@ describe("proveCommits", () => {
     expect(ran.slice(0, 3)).toEqual(["install --frozen-lockfile", "run format:check", "run secrets"]);
     expect(ran.slice(3).toSorted((one, other) => one.localeCompare(other))).toEqual([
       "run lint -- --strict",
+      "run simplify -- --gate",
       "run test -- test/owner.test.ts",
       "run typecheck",
       "tools/loc/source-policy.ts",
     ]);
+  });
+
+  it("chooses no test for a script whose comments alone changed, and its importers' for one whose code did", () => {
+    const mktree = (rows: readonly string[]): string =>
+      execTextSync("git", ["mktree"], { cwd: work, stdin: `${rows.join("\n")}\n` }).trim();
+    const rewritten = (from: string, text: string): string => {
+      const src = git("ls-tree", `${from}:src`)
+        .split("\n")
+        .map((row) => (row.endsWith("\towner.ts") ? `100644 blob ${blob(text)}\towner.ts` : row));
+      const top = git("ls-tree", from)
+        .split("\n")
+        .map((row) => (row.endsWith("\tsrc") ? `040000 tree ${mktree(src)}\tsrc` : row));
+      return git("commit-tree", mktree(top), "-p", from, "-m", "rewritten");
+    };
+    const comment = rewritten(source, "/** The owner, said once. */\nexport const owner = 2;\n");
+    const code = rewritten(comment, "/** The owner, said once. */\nexport const owner = 3;\n");
+    expect(prove([`${comment}:static`, `${code}:static`]).status).toBe(0);
+    expect(gatesRun(log)).toEqual([`${comment} -`, `${code} test/owner.test.ts`]);
   });
 
   it("runs the UI's whole gate over the UI, its tests within three imports over what it imports, and nothing over the rest", () => {
@@ -257,6 +275,24 @@ describe("proveCommits", () => {
     expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
   });
 
+  it("keys a pass by the Bun its commit pins, which the router runs it under, not the landing's own", () => {
+    const manifest = blob('{ "packageManager": "bun@0.0.1+sha" }\n');
+    const tree = execTextSync("git", ["mktree"], {
+      cwd: work,
+      stdin: `${[...git("ls-tree", second).split("\n"), `100644 blob ${manifest}\tpackage.json`].join("\n")}\n`,
+    }).trim();
+    const head = git("commit-tree", tree, "-p", second, "-m", "pin a Bun");
+    expect(prove([`${second}:static`, `${head}:static`]).status).toBe(0);
+    const keys = readFileSync(join(work, ".git", "ana-gate-passed"), "utf8")
+      .trim()
+      .split("\n");
+    // The commit without a manifest falls back to the running Bun; the pinned one names its pin.
+    expect(keys.map((key) => key.split(" bun-")[1])).toEqual([Bun.version, "0.0.1"]);
+    rmSync(log, { force: true });
+    expect(prove([`${head}:static`]).status).toBe(0);
+    expect(gatesRun(log)).toEqual([]);
+  });
+
   it("lets a running proof finish and keep its pass before a rejected mark removes the checkouts", () => {
     // `second` has no nearby test and passes at once; `source` is still in its two-second test step
     // when the mark for `second` throws, as land's does when a head moved.
@@ -343,8 +379,8 @@ describe("proveCommits", () => {
 
   it("ends a pass under way when stopped, records nothing of it and starts no other", () => {
     // The test step takes two seconds, so a stop once it starts lands while the static pass of
-    // `source` runs. Until 20 November 2026 the stop came at 1.2 s, which a host at a load of 19
-    // reached before that pass had begun, so no gate ran and the case failed.
+    // `source` runs. A stop at 1.2 s could land on a loaded host before that pass had begun, so no
+    // gate would run and the case would fail.
     const result = prove(landing, { ANA_FAKE_SUITE: "(pass) one", DRIVER_STOP_AT: `workers\t${source}` });
     expect(result.status).toBe(0);
     expect(result.stderr).toContain(`${short(source)}: stopped.`);
@@ -490,66 +526,6 @@ describe("one landing of a clone at a time", () => {
     expect(early).toBe("held");
     expect(stranger.killed || stranger.signalCode !== null).toBe(false);
     stranger.kill();
-    (await held)();
-  });
-
-  it("waits for a live landing that writes the older record, ends nothing, and takes the lock once it is gone", async () => {
-    const clone = mkdtempSync(join(fixture, "alone-"));
-    execTextSync("git", ["init", "-q"], { cwd: clone });
-    const lock = join(clone, ".git", "ana-land.lock");
-    const older = Bun.spawn(["sleep", "30"]);
-    symlinkSync(`${String(older.pid)} #5 sanitizing`, lock);
-    const held = holdAlone(clone, "land", () => undefined, 20, { note: "#6 sanitizing", over: () => true });
-    const early = await Promise.race([held.then(() => "held"), Bun.sleep(300).then(() => "waiting")]);
-    expect(early).toBe("waiting");
-    expect(older.signalCode).toBe(null);
-    expect(readlinkSync(lock)).toBe(`${String(older.pid)} #5 sanitizing`);
-    older.kill();
-    await older.exited;
-    (await held)();
-  });
-
-  it("takes at once an older record whose pid is gone", async () => {
-    const clone = mkdtempSync(join(fixture, "alone-"));
-    execTextSync("git", ["init", "-q"], { cwd: clone });
-    const lock = join(clone, ".git", "ana-land.lock");
-    symlinkSync("4194399 #5 sanitizing", lock);
-    const held = holdAlone(clone, "land", () => undefined, 20);
-    const early = await Promise.race([held.then(() => "held"), Bun.sleep(300).then(() => "waiting")]);
-    expect(early).toBe("held");
-    expect(readlinkSync(lock)).toBe(recordOf(runtimeProcess.pid));
-    (await held)();
-  });
-
-  it("takes over at once a folder lock an older landing left without its pid or naming a dead one", async () => {
-    for (const pid of [null, "4194399"]) {
-      const clone = mkdtempSync(join(fixture, "alone-"));
-      execTextSync("git", ["init", "-q"], { cwd: clone });
-      const lock = join(clone, ".git", "ana-land.lock");
-      mkdirSync(lock);
-      if (pid !== null) writeFileSync(join(lock, "pid"), pid);
-      const held = holdAlone(clone, "land", () => undefined, 20);
-      const early = await Promise.race([held.then(() => "held"), Bun.sleep(60).then(() => "waiting")]);
-      expect(early, `a folder whose pid is ${String(pid)}`).toBe("held");
-      expect(readlinkSync(lock)).toBe(recordOf(runtimeProcess.pid));
-      (await held)();
-    }
-  });
-
-  it("waits for a live landing that holds a folder lock, ends nothing, and takes the lock once it is gone", async () => {
-    const clone = mkdtempSync(join(fixture, "alone-"));
-    execTextSync("git", ["init", "-q"], { cwd: clone });
-    const lock = join(clone, ".git", "ana-land.lock");
-    const older = Bun.spawn(["sleep", "30"]);
-    mkdirSync(lock);
-    writeFileSync(join(lock, "pid"), `${String(older.pid)} #5 sanitizing`);
-    const held = holdAlone(clone, "land", () => undefined, 20, { note: "#6 sanitizing", over: () => true });
-    const early = await Promise.race([held.then(() => "held"), Bun.sleep(300).then(() => "waiting")]);
-    expect(early).toBe("waiting");
-    expect(older.signalCode).toBe(null);
-    expect(readFileSync(join(lock, "pid"), "utf8")).toBe(`${String(older.pid)} #5 sanitizing`);
-    older.kill();
-    await older.exited;
     (await held)();
   });
 

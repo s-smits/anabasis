@@ -170,7 +170,6 @@ const MOVES = 3;
  *  second. ANA_CI_POLL_MS shortens the poll for the tests as for `ci.yml`. */
 const STACK_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || 2000;
 const STACK_WAIT_MS = 10 * 60_000;
-/** The labels that rank a pull request's importance; each of a landing carries exactly one. */
 /** Subject labels: each pull request in a landing needs at least one. */
 export const CATEGORIES = new Set([
   "exam",

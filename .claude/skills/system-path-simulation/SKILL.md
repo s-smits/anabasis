@@ -114,8 +114,8 @@ size stated first: the seats, each seat's cap and minutes, and the total. Each s
 | seat | seed cut | command | read by |
 | --- | --- | --- | --- |
 | An Examiner session | where it should start | `tools/d1b/examine.ts --session x-<n> --examiner <model> --examiner-effort <e> ...` | `live-seat.ts read`, `pairs` |
-| A round's solves alone | right after a recorded `build.finished` (`--events`) | the round again with that `--session` | its report |
-| A round or campaign stretch | before `build.started`, or at rest | the round or `harness-builder.ts`, every seat's model named | the log's readers |
+| A comparison's solves alone | right after a recorded `build.finished` (`--events`) | `tools/d2/checkpoint.ts --id g-<n> --new latest` | its report |
+| A campaign stretch | before `build.started`, or at rest | `harness-builder.ts`, every seat's model named | the log's readers |
 | One solve of a stored sweep | none | `bun tools/m0/live-solve.ts <pack flags> --task <id> --live` | its verdict |
 
 - **The env file is a path**, passed on and never opened, printed or copied.

@@ -1,73 +1,34 @@
 /**
- * One round over a campaign: a Builder session from the latest harness the campaign keeps, then the
- * comparison of the harness it left with the reference harness, on held-out tasks.
- *
- *   bun tools/d2/round.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
- *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session b-1 \
- *     --builder claude/claude-opus-5-5 --target 8 --cap 625
- *
- * That is a campaign's first round, which also measures the starter. The Builder forks the
- * Starter Built Harness and builds on it, and the harness it leaves is compared with the starter
- * on eight drawn tasks, two solves a harness, under today's limits and a dollar cap. The same
- * comparison shows how the starter does by itself: the report holds, for each harness, on how
- * many tasks it was valid in every solve, in some and in none (`valid`), which the command also
- * prints in words. With no `--reviewer`, every rejection waits for a
- * person's label (`tools/d2/settle.ts`), which is how the first round is read before there is a
- * Judge.
+ * What a campaign's moves share (`session.ts`, `checkpoint.ts`, and the live Builder's tools through
+ * `campaign-terms.ts`): the seats, the flags of a Builder session and of a comparison with their
+ * defaults, the request each is made with, and the report a comparison prints.
  *
  * The sets are the log's (`prepare.ts`): the released tasks are the Builder's practice. The scored
- * set is `--target` of the held-out tasks, the newest epoch's first and within an epoch drawn by
- * the contract's hash alone. It is fixed before any solve, so that no harness's results choose it
- * (`src/campaign/round.ts`, `scoredSet`).
+ * set is the setting's `--target` of the held-out tasks, the newest epoch's first and within an
+ * epoch drawn by the contract's hash alone, fixed before any solve so that no harness's results
+ * choose it (`scoredSet`, `src/campaign/round.ts`). The other defaults are `SIZE`'s
+ * (`src/kernel/size.ts`).
  *
- * The defaults are `SIZE`'s (`src/kernel/size.ts`): 24 scored tasks, two solves a
- * harness (the setting's `--target` and `--solves` name others), the paired sign-flip test at 0.02, and a stop past three check defects. At those a
- * round's comparison is 96 solves, all of them fresh and side by side.
- *
- * `--cap` is the round's dollar cap and is required: no solve starts that a reserve for it and for
- * each one running (`--reserve`, $3) would take past it, and the session's spend counts against
- * the same cap. A comparison the cap cuts short reads `not-scored`, rather than rounds spending
- * without limit and scoring no task.
- *
- * `--reference` names the harness the new one is compared with, and is `promoted`: the campaign's
- * reference harness, which is the starter until another is promoted (`tools/d2/promote.ts`),
- * and the one last promoted from then on. Each comparison solves only the two harnesses it names.
- * `--parent` names the harness the session starts from, and is `latest`: the one the last whole
- * session left, and the starter while none has. After a comparison without a step the Builder
- * continues from its latest harness, and the operator may send it back to an earlier one.
- *
- * `--reviewer` gives the Builder the Referee on its practice fails, and the
- * comparison the Referee on every rejected answer. A rejection counts only once it is ruled a true
- * fail. One ruled a check defect or unclear, and with no reviewer every one, sets its task aside
- * until a person has labelled it (`tools/d2/settle.ts`). The comparison is read at the one budget
- * its solves were told, never at a shorter one as well, which would read a solver told the longer
- * one.
+ * `--cap` is a move's dollar cap and is required: no solve starts that a reserve for it and for each
+ * one running (`--reserve`, $3) would take past it, and a comparison the cap cuts short reads
+ * `not-scored`. `--reference` is `promoted`, the campaign's reference harness (`tools/d2/promote.ts`),
+ * and `--parent`, where a session starts from, is `latest`. `--reviewer` gives the Builder the
+ * Referee on its practice fails and a comparison the Referee on every rejected answer; with none,
+ * every rejection sets its task aside until a person has labelled it (`tools/d2/settle.ts`).
  *
  * Who solves, what a solve is held to and how many tasks are drawn are the campaign's setting, which
- * its log records once (`setting.ts`). A round that names none of it runs under the record, and
- * one whose `--solver`, `--solve-minutes`, `--solve-model-turns` or
- * `--target` name another is refused. The first comparison of a campaign records what it names, with the stored cycle's own
- * solver and the sweep's limits for the rest. `--minutes` and `--turns` are the Builder session's
- * own.
+ * its log records once (`setting.ts`): a move that names none of it runs under the record, and one
+ * that names another is refused.
  *
- * Before its first event a round asks whether its comparison may start
- * (`src/campaign/admission.ts`): on a checker nobody has read, with too few tasks left to untie, or
- * after the stop rule has stopped the campaign, it starts nothing. `--past-stop "<why>"`
- * goes on past the stop rule, and the reason is logged.
- *
- * Run again with the same `--session`, a round goes on from its log. Its report and the
- * stop rule are printed from the log.
- *
- * A simulation runs this same command with a script in each of its two model seats
- * (`tools/runs/rehearse.ts`), so that what it walks is what a paid round walks.
+ * A rehearsal runs these moves with a script in each model seat (`tools/runs/rehearse.ts`).
  *
  * Not run here: see `campaign.ts`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { admitComparison, stopRule, type Wanted } from "#src/campaign/admission.ts";
+import { stopRule, type Wanted } from "#src/campaign/admission.ts";
 import { worthLine } from "#src/campaign/climb.ts";
 import { predicted, type Report } from "#src/campaign/comparison.ts";
-import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/campaign/round.ts";
+import { type CheckpointRequest, scoredSet } from "#src/campaign/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import { type ObjectiveRule, testedSet, testOf, WEIGHTS } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
@@ -79,7 +40,6 @@ import { solverLast } from "#src/kernel/solves.ts";
 import { readBrief } from "#src/kernel/verify.ts";
 import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { parseArgs } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { median } from "#src/meta/tally.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
@@ -92,14 +52,11 @@ import {
   keptAs,
   openCampaign,
   PACK_OPTIONS,
-  packNamed,
-  stayAwake,
 } from "./campaign.ts";
 import {
   type AskedSetting,
   commandSeconds,
   firstRecord,
-  keepSetting,
   recordedSetting,
   SETTING_OPTIONS,
   settingAsked,
@@ -174,9 +131,6 @@ export const SESSION_OPTIONS = {
   turns: { type: "string", default: "300" },
   parent: { type: "string", default: "latest" },
 } as const;
-
-/** A round's flags and their defaults. */
-export const ROUND_OPTIONS = { ...SESSION_OPTIONS, ...COMPARISON_OPTIONS } as const;
 
 /** What a Builder session reads of its command's flags, each with its default by then. */
 interface SessionFlags {
@@ -562,7 +516,7 @@ export async function comparedOn(
   values: { readonly level: string; readonly defects: string; readonly predict?: string | undefined },
   seats: Seats,
   reviewers: Reviewers | null,
-): Promise<Omit<RoundRequest, "session" | "reference" | "builder">> {
+): Promise<Omit<CheckpointRequest, "log" | "id" | "old" | "fresh" | "kill">> {
   const packageOf = packaged(campaign);
   return {
     starter: await starter(campaign),
@@ -582,48 +536,3 @@ export async function comparedOn(
         : (solve, version, kill) => reviewers.referee(solve, packageOf(version), kill),
   };
 }
-
-/** `bun tools/d2/round.ts`, and under a simulation's `seated` the same round with its seats scripted. */
-export async function roundCommand(args: readonly string[], seated: Seated = solved): Promise<Report> {
-  const { values } = parseArgs({ args: [...args], options: ROUND_OPTIONS });
-  const { session } = values;
-  const pack = packNamed(values, " and --session");
-  if (session === undefined) throw new Error("name --session, the id the round takes in the log");
-  const { cap, setting, campaign } = await campaignFor(values, pack, seated);
-  const { limits } = setting.named;
-  const reviewers = reviewersNamed(campaign, values);
-  const parent = await parentNamed(campaign, { ...values, session });
-  const reference = await keptAs(campaign, "--reference", values.reference);
-  const seats = seated(campaign, { builder: values.builder, reference: reference.dir });
-  const built = sessionNamed(
-    campaign,
-    { ...values, session },
-    { parent, reference: reference.dir, limits, seats, reviewers },
-  );
-  const request: RoundRequest = {
-    session: built,
-    reference,
-    ...(await comparedOn({ campaign, setting, cap }, values, seats, reviewers)),
-  };
-  // Every refusal comes before anything is recorded: the admission's, then the round's own
-  // terms, and only then an override of the stop rule and the campaign's setting.
-  const notes = admitComparison(campaign.log, {
-    id: session,
-    wanted: wantedNamed(values, { setting, cap, builds: true }),
-    seats: seats.paid ? "paid" : "scripted",
-    own: () =>
-      refuseTerms(request, {
-        log: campaign.log,
-        id: session,
-        practised: new Set(built.tasks.map(({ version }) => version)),
-      }),
-  });
-  for (const note of notes) console.log(`· ${note}`);
-  keepSetting(campaign.log, setting);
-  stayAwake();
-  const report = await round(request);
-  printReport(campaign, session, report);
-  return report;
-}
-
-if (import.meta.main) await roundCommand(Bun.argv.slice(2));

@@ -1,19 +1,16 @@
 /**
- *   bun run runs rehearse --name <seed> <the flags of tools/d2/round.ts but --builder, --solver and --reviewer>
+ *   bun run runs rehearse --name <seed> <the flags of tools/d2/harness-builder.ts> [--supply N]
  *     [--held none:pass] [--starter none] [--root <folder> --sweep <sweep> --bundle <folder>]
  *   bun run runs rehearse --name <seed> --id <comparison> <the flags of tools/d2/checkpoint.ts> ...
  *   bun run runs rehearse --name <seed> --no-comparison <the flags of tools/d2/session.ts> ...
- *   bun run runs rehearse --name <seed> --campaign <the flags of tools/d2/harness-builder.ts> [--supply N] ...
  *
- * A round over a seeded campaign (`seed.ts`) with a script in each model seat and no model called.
- * A campaign's first round can be walked this way before it is paid for: the
- * scripted Builder forks the Starter Built Harness, and the harness it leaves is compared with the
- * starter. Flags that hold `--id` are a standalone comparison's, as a launch reads them, and rehearse one
- * comparison with no Builder session (`tools/d2/checkpoint.ts`). With `--no-comparison` the flags
- * are a session's, and rehearse one Builder session with no comparison after it
- * (`tools/d2/session.ts`): several sessions are walked before a standalone comparison.
- * With `--campaign` the flags are the Harness Builder's (`tools/d2/harness-builder.ts`), and the
- * live Builder is rehearsed: its script edits the guide and finishes each conversation, until it ends or
+ * A campaign over a seeded log (`seed.ts`) with a script in each model seat and no model called,
+ * so a campaign's path can be walked before it is paid for. Flags that hold `--id` are a
+ * standalone comparison's, and rehearse one comparison with no Builder session
+ * (`tools/d2/checkpoint.ts`). With `--no-comparison` the flags are a session's, and rehearse one
+ * Builder session with no comparison after it (`tools/d2/session.ts`). Otherwise the flags are the
+ * Harness Builder's (`tools/d2/harness-builder.ts`), and the live Builder is rehearsed: its script
+ * edits the guide and finishes each conversation, until it ends or
  * `--moves` are made. Over a stored pack no script sits in the Examiner's seat, so a rehearsal
  * that needs tasks written finishes when its Examiner tool is unavailable; over a drafted exam
  * the Examiner is scripted from the seed's source campaign, and proposes the tasks its sessions wrote after the
@@ -26,11 +23,11 @@
  * session and a step, until the supply is spent.
  * The scripted Examiner tries each task it has an answer for through try_answer and puts its tasks
  * to the gate, which reads their packages alone.
- * Everything under the seats is a paid round's: the campaign's log and sets, the Builder's tools on
+ * Everything under the seats is a paid campaign's: the campaign's log and sets, the Builder's tools on
  * the command wall and its freeze, each solve's deadline and root, the answer file and `submit`,
- * the verifier, the comparison and the report. It is `roundCommand` with other
- * seats, so its flags and defaults are the round's, but that it needs no `--cap`: a script is paid
- * nothing. The three flags that name a model are refused. The answers the script writes are a
+ * the verifier, the comparison and the report. Its flags and defaults are those of the command it
+ * runs, except that it needs no `--cap`: a script is paid nothing. The three flags that name a model
+ * are refused. The answers the script writes are a
  * stored pack's graded passes and control answers where `--root --sweep --bundle` name one, and otherwise
  * the drafted exam's control answers and every answer the seed's source campaign passed (`draftedGraded`).
  *
@@ -41,8 +38,8 @@
  * For `fail` it does the same with one a check rejected. For `none` it submits with no answer
  * written, as a solve that reached its limits has none: not valid, and nothing for anyone to rule on. `--held` says how a solve of a
  * held-out task ends under the two harnesses of the comparison, the reference harness and the new
- * one, as `old:new`. The reference harness is the starter unless `--reference` names another. For
- * a round the defaults, `none:pass`, script a step. `--starter` says how a solve ends under the
+ * one, as `old:new`. The reference harness is the starter unless `--reference` names another. The
+ * defaults, `none:pass`, script a step. `--starter` says how a solve ends under the
  * starter where it is neither of the two.
  *
  * No reviewer reads a rehearsal, so a scripted `fail` is a rejection nobody ruled on: it sets its
@@ -84,7 +81,7 @@ import { campaignLog, starter } from "../d2/campaign.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { checkpointCommand } from "../d2/checkpoint.ts";
 import { harnessBuilder } from "../d2/harness-builder.ts";
-import { roundCommand, type Seated } from "../d2/round.ts";
+import type { Seated } from "../d2/round.ts";
 import { sessionCommand } from "../d2/session.ts";
 import { packControls, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
 import { Misused, SEED_FILE } from "./registry.ts";
@@ -116,7 +113,7 @@ interface DraftedSource {
 /** The key a copied instance carries in its public input: which task it copies, and its number. */
 const COPY = "rehearsal_copy";
 
-const OWN = new Set(["held", "starter", "supply", "no-comparison", "campaign"]);
+const OWN = new Set(["held", "starter", "supply", "no-comparison"]);
 
 /** The flags that name a stored pack together (`packNamed`). */
 const PACK_FLAGS = 3;
@@ -143,7 +140,7 @@ const contentOf = ({ family, publicInput, hidden }: Task): string => {
 };
 
 /** `args` without the options `own` names and their values, as `parseArgs` tokenised them: what
- *  this command hands on to the round, the standalone comparison or the campaign command it rehearses. */
+ *  this command hands on to the session, the standalone comparison or the campaign command it rehearses. */
 function passedOn(
   args: readonly string[],
   tokens: readonly { kind: string; index: number; name?: string; inlineValue?: boolean | undefined }[],
@@ -514,7 +511,6 @@ export async function rehearse(args: readonly string[]): Promise<void> {
       starter: { type: "string", default: "none" },
       supply: { type: "string", default: "0" },
       "no-comparison": { type: "boolean", default: false },
-      campaign: { type: "boolean", default: false },
       id: { type: "string" },
       root: { type: "string" },
       sweep: { type: "string" },
@@ -561,7 +557,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
   // having named what strayed before, so that such a stop hides no solve of a task with no answer
   // on record read as a tie.
   try {
-    if (values.campaign === true) {
+    if (values["no-comparison"] !== true && !isString(values.id)) {
       await harnessBuilder(flags, {
         seated: seats,
         // The opening a seed copied names its source's reviewer, a live model.
@@ -574,11 +570,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
         ),
       });
     } else if (isString(values.id)) await checkpointCommand(flags, seats);
-    else if (
-      values["no-comparison"] === true
-        ? (await sessionCommand(flags, seats)) === null
-        : (await roundCommand(flags, seats)).fresh === null
-    ) {
+    else if ((await sessionCommand(flags, seats)) === null) {
       strayed.push("the Builder's script left the harness as it was");
     }
   } catch (error) {

@@ -1,6 +1,6 @@
 # Rehearsal
 
-A round, session, standalone comparison or campaign on a seed, with every seat scripted on pi's
+A campaign, session or standalone comparison on a seed, with every seat scripted on pi's
 faux provider and no Referee. Under the seats it is the paid path, so it answers whether commands
 join and what a position of a given size can read at all. A scripted solver runs one command inside
 the wall, the `printf` that writes its answer (`write` where its harness leaves the shell out), so a
@@ -40,20 +40,17 @@ before the first release and run `bun tools/d2/prepare.ts <pack flags> --name si
 ## Forms
 
 ```sh
-# a round
-bun run runs rehearse <pack flags> --name sim-<what> --session r-1 \
-  --target 6 --level 0.02 --minutes 10 --turns 10 [--held old:new] [--starter pass|fail|none] [--supply N]
 # sessions, then a standalone comparison of the latest harness against the reference
 bun run runs rehearse <pack flags> --name sim-<what> --session b-2 --no-comparison
 bun run runs rehearse <pack flags> --name sim-<what> --id g2 --new latest [--held pass:pass]
 # a campaign
-bun run runs rehearse --name sim-<what> --campaign [--held ...] [--starter ...] [--supply N]
+bun run runs rehearse --name sim-<what> [--held old:new] [--starter pass|fail|none] [--supply N]
 ```
 
-`rehearse` dispatches to the round, the session (`--no-comparison`), the standalone comparison
-(`--id`) or the campaign command (`--campaign`), and takes their flags less the three that name a
-model and with no `--cap`. Pack flags are omitted for a drafted exam, and a recorded setting still
-binds. A second round takes another `--session` and builds on the first's harness.
+`rehearse` dispatches to the session (`--no-comparison`), the standalone comparison (`--id`) or,
+by default, the campaign command, and takes their flags less the three that name a model and with
+no `--cap`. Pack flags are omitted for a drafted exam, and a recorded setting still binds. A second
+session takes another `--session` and builds on the first's harness.
 
 ## The scripts
 

@@ -342,12 +342,12 @@ suite("preparation and rehearsal over a stored pack", () => {
     const of = (kind: string) =>
       read(join(seeded, LOG)).flatMap((event) => (event.kind === kind ? [event.data] : []));
 
-    // A round refused on its own terms leaves the log as it was. Were it to record the campaign's
+    // A comparison refused on its own terms leaves the log as it was. Were it to record the campaign's
     // setting first, a mistyped flag would go with it, and the corrected command would then be
     // refused as another setting.
     const lines = () => read(join(seeded, LOG)).length;
     const before = lines();
-    expect(rehearse("--session", "b-0", "--target", "0").said).toMatch(/--target 0.*at least one/u);
+    expect(rehearse("--id", "g-0", "--target", "0").said).toMatch(/--target 0.*at least one/u);
     expect(lines()).toBe(before);
     expect(of("campaign.setting")).toEqual([]);
 
@@ -394,6 +394,6 @@ suite("preparation and rehearsal over a stored pack", () => {
     expect(tabled).toContain(": ");
     // At 0.02 the default patience holds the bound an opening may risk (`openingLines`).
     const terms = ["--project", "fixture", "--level", "0.02"];
-    expect(rehearse("--campaign", ...terms, "--dry-run").said).toContain(`next · ${tabled}`);
+    expect(rehearse(...terms, "--dry-run").said).toContain(`next · ${tabled}`);
   });
 });

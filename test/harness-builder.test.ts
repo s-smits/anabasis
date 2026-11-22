@@ -207,10 +207,12 @@ describe("a campaign run by its log", () => {
     // Led by its Builder, the Examiner session the table names starts beside the conversation.
     expect(of(name, MOVED).map(({ session }) => session ?? null)).toEqual([null, null, "b-1", "x-1"]);
     const ending = await harnessBuilder(flags, { ...seats, host });
-    // Slept to a minute past the named reset, and the session asked again went on to the ending.
-    expect(slept).toHaveLength(1);
+    // Slept to a minute past the named reset, and the session asked again went on to the ending. A
+    // solve's look at the slots sleeps `waitMs` as often as a loaded host keeps its solves in flight.
+    const waits = slept.filter((ms) => ms !== host.waitMs);
+    expect(waits).toHaveLength(1);
     expect(of(name, "campaign.waited")).toEqual([
-      { for: "provider", until: new Date(reset * 1000).toISOString(), ms: slept[0] ?? 0 },
+      { for: "provider", until: new Date(reset * 1000).toISOString(), ms: waits[0] ?? 0 },
     ]);
     expect(of(name, "campaign.ended")).toEqual([objectWith({ ending: "exam" })]);
     expect(ending).toMatchObject({ move: "end", ending: "exam" });

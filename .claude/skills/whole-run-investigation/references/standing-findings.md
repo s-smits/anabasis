@@ -1,28 +1,21 @@
 # Standing findings
 
-A standing finding is one that investigation after investigation meets, vets again and leaves where
-it was. This register holds each once. The synthesis session is given the keys and marks each merged
-row with one or with `new`; the vetting names the key in its `standing` column, recounts this
-run's count and does not argue the finding again. No lane is shown the register, since a lane told
-what to find finds it. The register holds no count: `bun tools/wri/wri.ts findings` reads, from the
-vettings, how many investigations of the newest week hold each key beside the week before, and names
-each key held more than once with no row that repairs it. Such a key goes to the operator once, with
-those counts, as a decision of the plan, and is not asked again while the decision stands.
+A standing finding is a recurring structural issue that repeated investigations encounter, re-verify, and leave unresolved. This register records each such issue once. The synthesis session receives the register keys and tags every merged row with either a matching key or `new`; during vetting, the primary records that key in the `standing` column, recounts the current run's figures, and avoids re-arguing the mechanism. Individual lanes are never shown this register, because priming a reviewer with expected findings biases discovery.
 
-A finding is standing once a third investigation within fourteen days confirms it and no plan
-between them repaired its owner; the plan of that third investigation adds its row here, in its own
-pull request. A row leaves once a change repairs its owner and two fresh runs no longer show it.
+The register stores no counts. Instead, `bun tools/wri/wri.ts findings` aggregates the vetting tables across investigations, comparing how many investigations in the latest week reported each key against the preceding week, and flags any key reported more than once without an associated repair. A flagged key is escalated to the operator once, accompanied by those ledger counts, as a decision row in the plan, and is not raised again while that decision stands.
+
+A finding enters this register once a third investigation within fourteen days confirms it and no intervening plan has repaired its owner; the plan for that third investigation adds the row in its own pull request. A row is retired once a change repairs its owner and two subsequent fresh runs no longer exhibit it.
 
 | key | finding | owner | on record |
 | --- | --- | --- | --- |
-| validity-saturated | Both sides answer nearly every scored task validly, so the objective's margin decides the reading. | the exam's ambition (examiner-complexity) | `AGENTS.md` section 1, "The objective against chance": say which measure carried a step |
-| narrow-step | A step rests on the smallest tally the test passes, or on tasks of one family from one session. | `src/kernel/compare.ts` and the level | section 1, "A stricter step against a faster climb" and "A promotion against the starter" |
-| confirmation-on-choosing-tasks | A promotion's starter comparison is read on the tasks that chose it and is weaker on the tasks written since. | `src/campaign/climb.ts` (`confirmed`, `starterReads`) | section 1, "A promotion against the starter" |
-| floor-and-power | A comparison is admitted with too few untied tasks for the test to read a step whatever the harness. | `src/campaign/admission.ts` (`comparisonFloor`) | section 1, "Task difficulty against statistical power" |
-| limits-never-bind | No solve ends at its turn, time or prompt limit, so the limits shape no outcome. | the setting, which is the operator's (section 3) | none: put it to the operator with the count of solves and the nearest any came |
-| aa-reads-nothing | The A/A control ties every task once the reference answers alike, so it reads no false rate. | `src/campaign/climb.ts` (`barLines`) | section 1, "The objective against chance": read the starter against itself beside it |
-| step-inside-noise | A step's margin lies inside the reference's own spread between its solves. | `src/kernel/compare.ts` (`GAP_FLOOR`) | section 1, "The objective against chance": a higher gap floor is no remedy |
-| practice-and-release | Practice is thin after a release, or practice gains do not repeat on held-out tasks. | `src/campaign/decide.ts` (`practiceDue`), `src/kernel/reports.ts` (`releaseOrder`) | section 1, "Practice against held-out supply" and "Builder freedom against overfitting practice" |
-| instrument-authored | A check is decided by its author's own computation instead of the field's pinned tool. | the Examiner's exam; the admission is the operator's | rule 10: a fault until the operator admits it |
-| examiner-reads-reference | The Examiner's tasks follow what the reference answered, so the draw fits the reference. | `src/examiner/record.ts` | section 1, "Two sides and one wall": the Examiner may read reference outcomes; the starter read's split shows the fit |
-| conditions-differ | The runs read against each other differ in more than the change, the host's interpreter and packages or its load among them. | attribution-and-proof; the host's condition (`src/kernel/condition.ts`) | section 9: never read one setting's result against another's as a gain |
+| validity-saturated | Both sides answer nearly every scored task validly, so objective margins alone decide the reading. | the exam's ambition (`examiner-complexity`) | `AGENTS.md` section 1, "The objective against chance": state which measure carried a step |
+| narrow-step | A step rests on the minimum tally the test passes, or on tasks from a single family or writing session. | `src/kernel/compare.ts` and the significance level | section 1, "A stricter step against a faster climb" and "A promotion against the starter" |
+| confirmation-on-choosing-tasks | A promotion's starter comparison relies on the tasks that selected the harness and weakens on tasks written afterwards. | `src/campaign/climb.ts` (`confirmed`, `starterReads`) | section 1, "A promotion against the starter" |
+| floor-and-power | A comparison is admitted with too few untied tasks for the sign-flip test to detect a step regardless of harness quality. | `src/campaign/admission.ts` (`comparisonFloor`) | section 1, "Task difficulty against statistical power" |
+| limits-never-bind | No solve reaches its turn, time, or prompt limit, so resource budgets never differentiate the harnesses. | the campaign setting, owned by the operator (section 3) | none: present to the operator with the solve count and the closest margin to any limit |
+| aa-reads-nothing | The A/A control ties on every task because the reference gives identical answers across rollouts, yielding no empirical false positive rate. | `src/campaign/climb.ts` (`barLines`) | section 1, "The objective against chance": inspect the starter's own A/A beside it |
+| step-inside-noise | A step's winning margins fall within the reference harness's own rollout variance across repeated solves. | `src/kernel/compare.ts` (`GAP_FLOOR`) | section 1, "The objective against chance": raising the gap floor is not a valid remedy |
+| practice-and-release | Practice supply is thin after a release, or gains observed on practice tasks fail to generalise to held-out tasks. | `src/campaign/decide.ts` (`practiceDue`), `src/kernel/reports.ts` (`releaseOrder`) | section 1, "Practice against held-out supply" and "Builder freedom against overfitting practice" |
+| instrument-authored | A check relies on its author's own computation rather than the domain's pinned reference tool. | the Examiner's exam; admission belongs to the operator | rule 10: treated as a defect until explicitly admitted by the operator |
+| examiner-reads-reference | The Examiner generates tasks conditioned on reference outcomes, so the held-out draw adapts to the reference harness. | `src/examiner/record.ts` | section 1, "Two sides and one wall": the Examiner may read reference outcomes; the starter comparison split exposes any resulting skew |
+| conditions-differ | Runs compared against one another differ in variables beyond the intended change, including the host's interpreter, installed packages, or system load. | `attribution-and-proof`; the host condition (`src/kernel/condition.ts`) | section 9: never interpret a difference across distinct settings as a causal gain |

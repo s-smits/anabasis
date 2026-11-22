@@ -1,65 +1,60 @@
 # Levers: what an iteration can tune
 
-A plan holds **repairs** of confirmed defects and **tunings** of levers the evidence points at, even
-where nothing is broken. Each lever the run's evidence selects gets a row, tuned or kept with one
-checkable sentence; a plan of repairs only names the three closest (`wri2p2.ts` checks for three ids).
-Feedback states what was measured, never a target; a tuning names no pack's field; the wall holds
-(rule 3). Levers marked *operator* are asked with evidence and a recommendation; the rest are the
-iteration's.
+An iteration plan contains both **repairs** for confirmed defects and **tunings** for system levers supported by empirical evidence, even when no defect is present. Every lever selected by a run's evidence receives a row in `plan.md`, either tuned or explicitly retained with one falsifiable justification; a plan consisting solely of repairs must still cite the three most relevant levers (`wri2p2.ts` checks for at least three lever identifiers). Feedback given to models states observed facts rather than target metrics, tunings never name a specific pack's domain, and the evaluation boundary holds strictly (rule 3). Levers marked *operator* require operator approval with supporting evidence and a recommendation; all other levers fall within the iteration's authority.
 
 ## Supply
 
 | # | lever | owner | selected by |
 | --- | --- | --- | --- |
-| E1 | "How hard" in the writing prompt | `src/examiner/prompt.ts` | reference valid everywhere; `TIES BETWEEN VALID ANSWERS` |
-| E2 | What the Examiner hears of outcomes | `heard`, `src/examiner/record.ts` | `OUTCOMES BY SESSION` reading `reference-every` |
-| E3 | The ladder's examples and rungs | `LADDER`, `src/examiner/ladder.ts` | high blind grades on closed tasks |
-| E4 | Drafting rules: objective, families | `src/examiner/draft.ts` | an objective tying every pair; `INSTRUMENT AUTHORED` |
-| E5 | The draft gate (a removal names the dishonest reading it no longer prevents) | `draftFaults`, `src/examiner/draft.ts` | an `exam` ending with nothing compared |
-| E6 | The task gate | `refusalOf`, `src/examiner/write.ts` | refusals beside a thin frontier |
-| E7 | When an Examiner session opens, for how long (*operator* for limits) | `src/campaign/decide.ts` | hours to a comparison against tasks admitted |
-| E8 | Comparison floor, retained share (*operator*) | `comparisonFloor`, `src/campaign/admission.ts` | `no-room` just under the floor |
+| E1 | "How hard" guidance in the task-writing prompt | `src/examiner/prompt.ts` | reference valid on every task; `TIES BETWEEN VALID ANSWERS` |
+| E2 | Outcome feedback reported to the Examiner | `heard`, `src/examiner/record.ts` | `OUTCOMES BY SESSION` reading `reference-every` |
+| E3 | Difficulty ladder examples and rungs | `LADDER`, `src/examiner/ladder.ts` | high blind grades on tasks the reference already solves |
+| E4 | Drafting rules: objective and task families | `src/examiner/draft.ts` | an objective that ties every pair; `INSTRUMENT AUTHORED` |
+| E5 | Draft admission gate (any relaxation must state which dishonest reading it no longer prevents) | `draftFaults`, `src/examiner/draft.ts` | an `exam` ending with zero comparisons completed |
+| E6 | Task admission gate | `refusalOf`, `src/examiner/write.ts` | frequent task refusals alongside a thin frontier |
+| E7 | Examiner session scheduling and duration (*operator* for hard limits) | `src/campaign/decide.ts` | elapsed hours to first comparison relative to tasks admitted |
+| E8 | Comparison floor and retained task share (*operator*) | `comparisonFloor`, `src/campaign/admission.ts` | `no-room` ending just below the comparison floor |
 
 ## Climb
 
 | # | lever | owner | selected by |
 | --- | --- | --- | --- |
-| B1 | What the Builder hears of practice | `src/builder/tools.ts`, `src/builder/past.ts` | repeated failures; unread traces |
-| B2 | The opening and the table's advice | `src/builder/prompt.ts`, `src/campaign/decide.ts` | moves the table did not name; idle sessions |
-| B3 | Memory across sessions | `src/builder/memory.ts`, `src/builder/kept.ts` | a session undoing the last |
-| B4 | Practice release (*operator* to move the half) | `releaseOrder`, `src/kernel/reports.ts` | a Builder starved of failures |
-| B5 | Builder session turns and hours (*operator*) | `tools/d2/harness-builder.ts` | sessions ending mid-change |
+| B1 | Practice outcome feedback given to the Builder | `src/builder/tools.ts`, `src/builder/past.ts` | repeated failures; unread solver traces |
+| B2 | Builder opening prompt and move-table advice | `src/builder/prompt.ts`, `src/campaign/decide.ts` | moves not recommended by the table; idle sessions |
+| B3 | Cross-session memory | `src/builder/memory.ts`, `src/builder/kept.ts` | a session reverting the preceding session's changes |
+| B4 | Practice task release order (*operator* to change the half-held cap) | `releaseOrder`, `src/kernel/reports.ts` | a Builder starved of informative practice failures |
+| B5 | Builder session turn and time limits (*operator*) | `tools/d2/harness-builder.ts` | sessions terminating mid-edit |
 
 ## Solve
 
 | # | lever | owner | selected by |
 | --- | --- | --- | --- |
-| S1 | The starter (*operator*) | `src/harness/starter.ts` | want of a generic tool |
-| S2 | Solve limits (*operator*) | `LIMITS`, `tools/d2/campaign.ts` | `turns-ended`, `wall-ended` on both sides |
-| S3 | Shell and wall grants (only where no protected root opens) | `src/tools/command.ts`, `src/wall/` | `sandbox-crash` on a needed path |
+| S1 | Starter Built Harness (*operator*) | `src/harness/starter.ts` | absence of a general-purpose tool |
+| S2 | Per-solve turn and time limits (*operator*) | `LIMITS`, `tools/d2/campaign.ts` | `turns-ended` or `wall-ended` on both sides of a comparison |
+| S3 | Shell and sandbox grants (only where no protected root is exposed) | `src/tools/command.ts`, `src/wall/` | `sandbox-crash` on a legitimate path |
 
 ## Reading
 
 | # | lever | owner | selected by |
 | --- | --- | --- | --- |
-| R1 | Tally weights (*operator*) | `WEIGHTS`, `src/kernel/compare.ts` | steps carried by a split objective |
-| R2 | Objective gap floor (*operator*) | `GAP_FLOOR`, `src/kernel/compare.ts` | A/A splits past 1% |
-| R3 | Solves a side, level (*operator*) | `SIZE`, `src/kernel/size.ts` | too few untied tasks |
-| R4 | Starter comparison timing (*operator*) | `heldSince`, `src/campaign/decide.ts` | epoch hours spent confirming |
-| R5 | Patience (*operator*) | `stopRule`, `src/campaign/admission.ts` | `stop` while the frontier grows |
+| R1 | Tally weights (*operator*) | `WEIGHTS`, `src/kernel/compare.ts` | promotion steps carried by a split objective |
+| R2 | Objective gap floor (*operator*) | `GAP_FLOOR`, `src/kernel/compare.ts` | A/A control splits exceeding 1% |
+| R3 | Solves per side and significance level (*operator*) | `SIZE`, `src/kernel/size.ts` | insufficient untied tasks for statistical power |
+| R4 | Starter confirmation comparison timing (*operator*) | `heldSince`, `src/campaign/decide.ts` | excessive epoch hours spent confirming promotions |
+| R5 | Improvement patience (*operator*) | `stopRule`, `src/campaign/admission.ts` | `stop` ending while the frontier is still expanding |
 
 ## Verdicts
 
 | # | lever | owner | selected by |
 | --- | --- | --- | --- |
-| V1 | Referee prompt and evidence | `src/referee/referee.ts` | `unclear` or refused rulings |
-| V2 | Check-defect stop (*operator*) | `src/campaign/admission.ts` | `check-defects` on few defects |
-| V3 | Admitting authored checks (*operator*) | `tools/c/accept.ts --admit` | authored checks refusing nothing |
+| V1 | Referee prompt and supplied evidence | `src/referee/referee.ts` | `unclear` or refused Referee rulings |
+| V2 | Check-defect stopping threshold (*operator*) | `src/campaign/admission.ts` | `check-defects` ending triggered by very few defects |
+| V3 | Admitting authored checks (*operator*) | `tools/c/accept.ts --admit` | authored checks producing zero rejections |
 
 ## Host and economy
 
 | # | lever | owner | selected by |
 | --- | --- | --- | --- |
-| H1 | Solve queue wait (*operator* for placement) | the solve queue | `campaign.waited` over 15 minutes |
-| H2 | Which seat spends (*operator* for the model) | `billOf`, `src/kernel/meter.ts` | `SPEND LED BY A ROLE` |
-| H3 | Prose no decision reads | every seat's prompt | prompts grown with no reading moved |
+| H1 | Solve queue wait threshold (*operator* for host placement) | the solve queue | `campaign.waited` exceeding 15 minutes |
+| H2 | Cost allocation across seats (*operator* for model selection) | `billOf`, `src/kernel/meter.ts` | `SPEND LED BY A ROLE` |
+| H3 | Prompt text that influences no decision | every seat's prompt | prompt length growing without moving any measured outcome |

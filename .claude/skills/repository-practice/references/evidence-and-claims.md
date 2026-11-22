@@ -1,26 +1,29 @@
-# 9. Status, evidence and claims
+# 9. Status, evidence, and claims
 
-Read this before stating an evidence level or claiming a step, mechanism or refusal (`AGENTS.md`
-section 9). `attribution-and-proof` owns what one reading may show.
+Read this reference before assigning an evidence rung or claiming a promotion step, mechanism, or
+refusal (`AGENTS.md` section 9). `attribution-and-proof` governs what conclusions a single reading
+supports.
 
 ## The ladder
 
-Each level describes evidence instead of effort: a part present in source still needs a test with
-its nearest hostile case, a replay or a rehearsal to be proved without a model, and an event in a
-real run's log to be exercised live.
+Each rung describes verified evidence rather than effort expended. Code that is present in source
+still requires a test covering its nearest hostile case, a replay, or a rehearsal to reach "proved
+without a model", and an observed event in a real run's log to reach "exercised live".
 
 ## Evidence
 
-A type proves a shape in the same way a prompt assertion proves text. A run is evidence only about
-the code it ran, so compare or triage only runs whose every launch held the mechanism
-(`bun run runs source --has <text>` or `--holds <commit>`, `ranWith`), named by text rather than by
-hash, since a restack rewrites commits. A wrong absence claim leads later work to rebuild a
-mechanism that already exists, hence the check of symbol, callers and a relevant check in the same
-turn.
+A type annotation verifies a data shape in the same way a prompt assertion verifies text. Because a
+run provides evidence only about the exact code it executed, compare or triage only runs whose every
+launch contained the mechanism under study (`bun run runs source --has <text>` or
+`--holds <commit>`, `ranWith`), identifying the mechanism by source text rather than commit hash
+since restacking rewrites hashes. False claims that a mechanism is absent lead subsequent work to
+duplicate existing code; therefore verify symbols, callers, and a relevant check in the same turn
+before asserting absence.
 
 ## What may be claimed
 
-A step is named with its setting, tasks, solves a side, level, budget and starter, and with its A/A
-beside it. A no-step reads "no gain found at this size". A programs ablation is a standalone
-comparison. Results across campaigns or settings may be described side by side, never as a gain over
-one another.
+Report every promotion step alongside its experimental setting, task count, solves per side,
+significance level, compute budget, starter baseline, and paired A/A control. Report a `no-step`
+reading as "no gain found at this size" rather than as equivalence. A programs ablation requires a
+standalone comparison. Results from different campaigns or settings may be presented side by side
+for context, never cited as a direct gain over one another.

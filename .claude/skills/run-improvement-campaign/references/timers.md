@@ -1,46 +1,33 @@
 # The loop's timers
 
-[The Timers section](../SKILL.md#timers) owns the firing protocol and the set. This file holds what
-a session needs when it arms, retimes or retires one: each timer's map, what a prompt carries, and
-the readings that decide whether a timer stays.
+[The Timers section](../SKILL.md#timers) owns the firing protocol and the active set of timers. This reference specifies what a session needs when arming, retiming, or retiring a timer: the responsibility map for each timer, the required contents of a timer prompt, and the diagnostic readings that determine whether a timer remains justified.
 
 ## Each timer's map
 
-A timer is kept only while its map can be filled in, and is retired at the firing its last column
-names.
+A timer is retained only while every column of its map can be filled in concretely, and is retired at the firing specified in the final column.
 
 | Timer | Owner | Fact it reads | Decision it changes | Evidence it stays on | Retired when |
 | --- | --- | --- | --- | --- | --- |
-| driver | the session that runs the cycle | `wri2p2.ts due`; `runs active` against the cap; the queue's first ready entry | which one step is taken now, or none | a step taken that no event had announced | `timers.ts` shows it quiet in three firings of four over two days: lengthen it, or move what it found into `due` |
-| chain | the firing that set it | `wri2p2.ts due` again | the next step, ten minutes after the last | `due` listed a step this session can take | `due` lists none; it sets no successor |
-| milestone | the prediction that names the deadline | one deadline no event marks (an event in a log is waited on with `until.ts`, which is no timer) | that row's outcome | the prediction's own row | it fires once |
-| open decisions | the session that runs the cycle | the open decisions of `cycle.md` and the plan | a routine doubt decided, or a row put to the operator | a decision written with what would overturn it | two firings in a row write nothing new |
-| morning read | the session that runs the cycle | the nightly local jobs' outcome and last exit, the hosts' disks, the stack against `main` | a finding in the backlog, or a row for the operator | a failure found that no line had announced | a local job writes these as lines the driver reads |
-| handover | the operator's agreed time | the five points, the stack, the loop's own measures ([cycle-ledger.md](cycle-ledger.md)) | what the next session or the operator takes up | the handover section in `cycle.md` | it fires once |
+| driver | the session running the cycle | `wri2p2.ts due`; `runs active` against the live cap; the queue's first ready entry | which single step to execute now, or none | a step taken that no event had already announced | `timers.ts` shows it quiet in three of four firings over two days: lengthen its interval, or move its trigger into `due` |
+| chain | the firing that scheduled it | `wri2p2.ts due` again | executes the next step ten minutes after the previous one | `due` listed a step this session can take | `due` lists no actionable step; it schedules no successor |
+| milestone | the prediction naming the deadline | a single deadline not marked by a log event (log events are awaited via `until.ts`, which is not a timer) | resolves that prediction row's outcome | the prediction's own row | after it fires once |
+| open decisions | the session running the cycle | open decisions in `cycle.md` and `plan.md` | resolves a routine ambiguity, or escalates a row to the operator | a recorded decision stating what evidence would overturn it | two consecutive firings record nothing new |
+| morning read | the session running the cycle | nightly local job outcomes and exit codes, host disk usage, and stack status relative to `main` | logs a backlog finding, or escalates a row to the operator | a failure detected that no alert line had announced | a local job emits these checks as lines read by the driver |
+| handover | the operator's agreed handover time | the five points, stack state, and loop diagnostics ([cycle-ledger.md](cycle-ledger.md)) | determines what the next session or operator takes up | the handover section in `cycle.md` | after it fires once |
 
-No row reads a run's log on a schedule: the pulse and `runs alerts` report a run's events as they
-land, each with no model. Where a firing finds itself doing what a command could (counting live runs,
-checking that a watcher still runs, looking for a marker), that check belongs in `due`, a verb of
-`bun run runs` or a local job, and the firing reads its one line.
+No timer polls a run's log on a fixed schedule: the pulse and `runs alerts` report campaign events as they land, without invoking a model. Whenever a firing performs deterministic checks that a script could handle (such as counting live runs, verifying that a watcher is running, or checking for a marker file), move that check into `due`, a `bun run runs` subcommand, or a local job so the firing reads a single summary line.
 
 ## What a prompt carries
 
-A firing may arrive after compaction, in a session that remembers nothing of the cycle. Its prompt
-therefore holds, in this order:
+A timer firing may execute after context compaction, in a session that retains no prior memory of the cycle. Its prompt therefore carries five items, in this order:
 
-1. the timer's name, the day it was created and the day on which a recurring one is created again
-   with the same prompt and its old id deleted (within seven days);
-2. the cycle folder and the worktree to run commands from, as absolute paths;
-3. the authority in the operator's words with their date, and the standing limits the cycle records
-   (the cap on live runs, and what is never launched, continued, moved, paused or merged without a
-   word);
-4. the one command to read first, and "follow the firing protocol of run-improvement-campaign's
-   Timers";
-5. what a firing that finds nothing does: one line, no row, no timer change.
+1. the timer's name, its creation date, and the date on which a recurring timer should be recreated with the same prompt and its old identifier deleted (within seven days);
+2. the cycle directory and the worktree from which commands must be run, as absolute paths;
+3. the operator's authority in their own words with its date, together with the cycle's standing constraints (the cap on live runs, and any actions that must never be launched, continued, moved, paused, or merged without explicit authorisation);
+4. the single command to run first, followed by "follow the firing protocol of run-improvement-campaign's Timers";
+5. the behaviour when nothing is due: emit one summary line, record no ledger row, and make no timer changes.
 
-A prompt states a limit once and names no step the skill already orders. A firing is safe to run
-twice: it reads `due` again instead of trusting what the last firing wrote, takes a step only where
-`next` still prints it, and writes a prediction file before any `--yes`.
+A prompt states each constraint once and omits steps already ordered by the skill. Every firing must be idempotent: it re-reads `due` instead of trusting what a previous firing wrote, executes a step only if `next` still prints it, and writes a prediction file before running any `--yes` command.
 
 ## Reading the timers
 
@@ -48,9 +35,4 @@ twice: it reads `due` again instead of trusting what the last firing wrote, take
 bun .claude/skills/run-improvement-campaign/scripts/timers.ts <transcript.jsonl | folder> ... [--since <ISO time>]
 ```
 
-It prints one line a timer (id, schedule, firings, changed, quiet) and the totals for recurring and
-one-shot timers. The split is read from each firing's tool calls and is an estimate. A recurring
-timer whose firings are mostly quiet reads a condition: move the condition into `due` or a local
-job, or retire the timer. Read the output with three questions. Which recurring timer is mostly quiet, and what condition was it polling? Which
-change did a firing make that an event had already announced, so that two owners read one fact?
-Which step in `cycle.md` waited for a firing that came late, and what would have announced it?
+The script prints one summary line per timer (id, schedule, total firings, active firings, and quiet firings), followed by totals for recurring and one-shot timers. The active-versus-quiet split is estimated from each firing's tool calls. A recurring timer whose firings are predominantly quiet is polling a deterministic condition; move that condition into `due` or a local job, or retire the timer. Evaluate the output with three questions: which recurring timer is mostly quiet and what condition was it polling? Which action did a firing perform that an event had already announced, indicating two owners reading one fact? Which step in `cycle.md` waited for a late firing, and what event would have announced it earlier?

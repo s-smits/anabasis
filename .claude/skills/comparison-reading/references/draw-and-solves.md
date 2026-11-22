@@ -1,41 +1,49 @@
-# Terms, the scored draw and the solves
+# Terms, the scored draw, and the solves
 
-Read this for comparison terms, the draw and how each ending counts (`AGENTS.md` section 7). The
-head comments of `src/kernel/compare.ts` (tally, test, step), `src/campaign/round.ts` (running one)
-and `src/campaign/comparison.ts` (reading one back) are the full account.
+Read this reference for comparison terms, held-out task selection, and solve outcome classification
+(`AGENTS.md` section 7). The authoritative specifications live in the head comments of
+`src/kernel/compare.ts` (tally, test, step), `src/campaign/round.ts` (execution), and
+`src/campaign/comparison.ts` (re-reading logs).
 
 ## Terms first
 
-`comparison.started` records the harnesses, setting, scored tasks, solves a side, level, objective
-rule, cap and any `--predict`; a continuation refuses a change.
+`comparison.started` logs the two harnesses, experimental setting, scored task list, solves per
+side, significance level, objective rule, dollar cap, and any `--predict` hypothesis before the
+first solve launches; resuming a comparison refuses any change to these terms.
 
 ## The scored draw
 
-The draw (`poolOf`) takes `--target` held-out tasks, newest epoch first and within it those held
-since the last comparison began, ordered by the contract's hash. It holds a family's siblings too:
-each family's tally is reported beside the test (`families` in the report; promotion-tuner's replay
-reads a step again on one task a family with `unit=first`) and decides nothing. It leaves out tasks awaiting review
-(no valid answer after two comparisons, "Awaiting task review" in `limits-and-room.md`) and marks as
-**exhausted** a task the reference answered in every one of its own solves in its last two
-comparisons (`ownOf`). Only the reference's solves count here, so which task the candidate won moves
-nothing the Builder is told (rule 3). A task stays open while some answer on record betters one of
-the reference's by the gap floor (`gapAgainst`). The counts live in `SIZE` and `READINGS_IN_A_ROW`
-(`src/kernel/size.ts`), and every rule reads a side's every, some or none, so they hold at any
-number of solves.
+The draw (`poolOf`) selects `--target` held-out tasks, prioritising the newest epoch first and,
+within an epoch, tasks admitted since the previous comparison started, ordered deterministically by
+the contract's hash. Sibling tasks from the same authoring family are included; per-family tallies
+are printed alongside the test (`families` in the report, and `promotion-tuner` replays single-task
+family subsampling via `unit=first`), though family tallies do not gate decisions. The draw excludes
+tasks awaiting review (no valid answer across two comparisons; see "Awaiting task review" in
+`limits-and-room.md`) and marks as **exhausted** any task that the reference solved on every rollout
+across its last two comparisons (`ownOf`). Only reference solves determine exhaustion, ensuring that
+candidate wins never alter what the Builder observes (rule 3). A task remains open whenever any
+recorded answer beats one of the reference's answers by at least `GAP_FLOOR` (`gapAgainst`). These
+thresholds live in `SIZE` and `READINGS_IN_A_ROW` (`src/kernel/size.ts`), and every predicate is
+expressed in terms of all, some, or none of a side's solves so that the logic holds for any rollout
+count.
 
-One **retained** exhausted task joins each three frontier tasks, beyond the target (`scoredSet`), so
-that a gain on new tasks cannot hide a regression on old ones.
+Beyond the target count, one **retained** exhausted task is appended for every three frontier tasks
+(`scoredSet`), ensuring that gains on newly authored tasks cannot mask regressions on previously
+mastered tasks.
 
 ## Fresh solves
 
-Workers take whole tasks in a hashed order, and the first side is mirrored within a task
-(`round.ts`), which balances order but not load or cache. A non-result gets one retry at the same
-slot; a second leaves the task short. A solve counts only when its start names the comparison: the
-condition names the host's code, which changes between comparisons, and one frozen draw of reference
-solves would bias every later reading (rule 5).
+Workers process whole tasks in hashed order, mirroring which harness runs first within each task
+(`round.ts`). Mirroring balances execution order, though it does not control for transient host load
+or cache state. A non-result receives one retry in the same slot; a second non-result leaves that
+task incomplete. A solve enters a comparison only if its start event explicitly references that
+comparison: the experimental condition hashes host code that can change between comparisons, and
+reusing frozen reference solves across comparisons would introduce correlated bias into every
+subsequent reading (rule 5).
 
 ## How a solve ends
 
-Section 7 lists how each kind (`src/kernel/solve.ts`) counts. Two edges: a deadline on a model
-silent for ten minutes with no tool running is a `provider` non-result (`SILENT_SECONDS`), and a
-`malformed` flag is reported apart (`flagged`), a task both sides flag being a tie.
+`AGENTS.md` section 7 lists how each solve outcome (`src/kernel/solve.ts`) is classified. Two edge
+cases warrant note: a deadline reached after a model stays silent for ten minutes with no tool
+running is classified as a `provider` non-result (`SILENT_SECONDS`), and a `malformed` flag is
+reported separately (`flagged`), with a task flagged by both arms scored as a tie.

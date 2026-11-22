@@ -1,82 +1,65 @@
 # How a review deceives itself
 
-A comparison fixes its terms before its first solve (rule 4); a review after it can take a hundred
-cuts of a small result without one false statement, the garden of forking paths. These guards keep
-exploration honest, so what leaves it is a lead of known strength.
+A comparison locks its terms before the first solve (rule 4); a post-hoc review, by contrast, can examine dozens of slices of a small sample without making a single factually false statement, a classic garden of forking paths. The safeguards below keep exploratory analysis disciplined so that every surviving lead carries known evidential strength.
 
-## The record of looks
+## Recording every look
 
-- **The hidden look**, a cut run and never mentioned: every cut gets a ledger row before it runs,
-  marked `after seeing` when unplanned.
-- **The uncounted family** of cuts read as one investigation: report the number of cuts beside any
-  pattern ("one of 14 cuts").
-- **Rewriting history**: the ledger only grows, and a correction is a new row naming the old.
-- **Pretending to be blind**: the ledger opens with what its author has already seen.
+- **Hidden looks** (running an exploratory slice and omitting it when uninteresting): log every cut in the ledger before executing it, marking unplanned cuts as `after seeing`.
+- **Uncounted families of cuts** presented as a single finding: report the total number of cuts examined beside any observed pattern (for example, "one of 14 cuts").
+- **Rewriting history**: the ledger is append-only; corrections enter as new rows citing the superseded entry.
+- **Feigned blindness**: open the ledger by listing every score, cut, and deliverable already inspected before the freeze.
 
-## Data used twice
+## Reusing data for discovery and confirmation
 
-- **Confirming on the pattern's own data**: the seal, read once against rows written before.
-- **A seal too small to read a step** still falsifies a directional story; say so, and confirm on a
-  fresh test.
-- **Burned tasks reused as evidence**: keep a burned list of every task whose deliverable, trace or
-  rubric anyone read closely, reviewers included. A burned task may check regressions and never counts
-  for the proposal it suggested. A benchmark with no unburned tasks is no longer held out.
-- **Teaching the benchmark by degrees**: each fix passes the gate alone, and the burned list carries
-  across reviews.
+- **Confirming on exploratory data**: reserve the sealed half and unseal it once against pre-registered predictions.
+- **Underpowered seals**: even a sealed half too small to detect a statistical step can falsify a directional narrative; state its power limit plainly and confirm on a fresh test.
+- **Reusing burned tasks as fresh evidence**: maintain a cumulative list of every task whose deliverable, trace, or rubric anyone has inspected closely (including blind reviewers). Burned tasks may serve as regression checks but never count as fresh confirmation for a proposal they inspired. A benchmark with no unburned tasks is no longer held out.
+- **Gradual overfitting to the benchmark**: every proposed fix must clear the eight-question gate independently, and the burned-task list carries across successive reviews.
 
-## Choosing what to read
+## Selection bias in reading
 
-- **Reading only the losses**: read wins and losses by one procedure, and require the favoured story
-  to predict both.
-- **Selecting on extremes**, which regress to the mean: read every task of the half, or a hashed draw.
-- **The garden of measures**: the ledger freezes the primary measure before anything is read, and
-  every other measure is description beside it.
-- **Subgroups after the fact** are cuts, counted; at eight tasks a subgroup is an anecdote.
+- **Inspecting losses only**: apply the same inspection protocol to wins and losses alike, and require any preferred explanation to account for both directions.
+- **Selecting on extremes**, which regress to the mean: inspect every task in the open half, or draw a deterministic hash-based sample.
+- **Metric shopping**: freeze one primary measure in the ledger before reading outcomes, treating all other metrics as descriptive context.
+- **Post-hoc subgroups**: count every subgroup split as an exploratory cut; on an eight-task sample, a subgroup is an anecdote rather than evidence.
 
-## Explaining
+## Causal overclaiming
 
-- **The just-so story**: rivals, one innocent and one blaming the instrument, each with a falsifying
-  count.
-- **A mechanism with no trace**: name the event joining cause to effect, or call it unproved. A false
-  statement can be a defect without being the cause.
-- **Averages over one arm's recovery**: sort turns by kind before comparing (level 9).
-- **The sighted card writer**, who chooses shapes knowing the direction: write cards from won and lost
-  rows, count both, and let an unsighted reader answer the mirror question.
-- **Instrument taken for ability**: level 6 before level 8.
-- **Claims of absence**: the symbol, its callers and a check in the same turn (`AGENTS.md`, section 9).
+- **Just-so stories**: commit at least three rival explanations, including one innocent explanation and one blaming the instrument, each paired with a falsifying count.
+- **Unverified mechanisms**: cite the exact trace or log event linking cause to effect, or mark the mechanism unproved. A factual error can be a real defect without having caused the score gap.
+- **Conflating recovery with work**: classify turns by activity type before comparing averages (level 9).
+- **Sighted card writing**: draft shape cards from both winning and losing rows, report counts by direction, and have a blinded reader evaluate the mirror question.
+- **Mistaking instrument artefacts for capability**: complete level 6 (grader visibility) before level 8 (per-task splits).
+- **Unverified claims of absence**: inspect the symbol, its callers, and a direct check in the same turn (`AGENTS.md` section 9).
 
-## Statistics
+## Statistical pitfalls
 
-- **"Within the noise" with no noise measured**: quote a clean A/A or say none exists.
-- **Mixed conditions read as a comparison** are a description (rule 5, section 9).
-- **A p-value from discovery**: discovery reports counts and effect sizes, and a p only on the frozen
-  primary measure.
-- **Several tests at one level**: Holm, or one primary and the rest description, fixed before the
-  fresh set is read.
-- **Power ignored**: give the test's size and what it could detect (`size.ts`); no step is no proof of
-  equality.
-- **The winner's curse**: size a confirmation for half the effect first seen.
-- **Optional stopping**: fix rollouts first (rule 4); a top-up is another comparison beside the first.
-- **A rate without a denominator.**
+- **Claiming "within the noise" without a noise measurement**: cite a clean A/A control or state explicitly that variance is unmeasured.
+- **Treating mixed conditions as a controlled comparison**: differences across mismatched settings are descriptive only (rule 5, section 9).
+- **Reporting discovery p-values**: report counts and effect sizes during exploration, reserving p-values for the pre-registered primary measure.
+- **Unadjusted multiple testing**: apply Holm correction or designate a single primary test and treat the rest as descriptive, fixed before inspecting fresh data.
+- **Ignoring statistical power**: report sample size alongside the minimum detectable effect (`size.ts`); a `no-step` reading is not evidence of equivalence.
+- **Winner's curse**: size confirmation experiments for half of the initially observed effect size.
+- **Optional stopping**: fix rollout counts before running (rule 4); any subsequent top-up is a separate comparison reported beside the first.
+- **Bare rates**: always report denominators alongside percentages or proportions.
 
-## People and sessions
+## Reviewer and session biases
 
-- **The anchored reviewer**: pointers and open questions, never findings (`report.md`'s brief).
-- **Blind in name only**: paths and a guide's words can reveal an arm; use names by hash and say what
-  could leak.
-- **Agreement as replication**: several reads of one data set are one data set, and a session's report
-  is recounted before use (`AGENTS.md`, section 11).
-- **Pressure to please**: the same counts in the same order whichever way the result went.
+- **Anchored reviewers**: give blind reviewers pointers and open questions only, never prior findings or counts (`report.md`'s blind brief).
+- **Nominal blindness**: file paths or guide phrasing can leak arm identity; replace arm names with hashes and note any residual leakage channels.
+- **Mistaking agreement for replication**: multiple readings of one dataset remain a single sample, and every subagent's count must be independently verified against the raw record (`AGENTS.md` section 11).
+- **Sycophancy**: report the same counts in the same order regardless of which arm came out ahead.
 
-## Cheap controls
+## Low-cost sanity checks
 
-Run these while the data is at hand: the **mirror question** (would this be proposed had the result
-reversed?); a **label swap** (an equal story for the swapped side means the cut finds stories);
-**placebo tasks** (the favoured measure on tied tasks); **leave one out**; and a **shared-miss check**
-(a weakness the other arm shows equally is no difference).
+Run these checks on the existing data before proposing any system change:
 
-## What a review may conclude
+- **Mirror question**: would this change still be proposed if the comparison outcome had reversed?
+- **Label swap**: if an equally convincing narrative emerges after swapping arm labels, the analysis is fitting noise.
+- **Placebo tasks**: check whether the proposed mechanism appears equally often on tied tasks.
+- **Leave-one-out sensitivity**: check whether removing a single task flips the sign of the gap.
+- **Shared-miss check**: a weakness exhibited equally by both arms cannot explain the difference between them.
 
-That a level is broken, a statement false, this much of the gap sits here, these explanations
-survived and these fell, and this shape recurs in N of M records. Never that a change will help or a
-cause is proved, until a fresh comparison reads it.
+## Permissible conclusions
+
+A comparison review may conclude that a specific level failed, a factual claim is false, a quantified share of the gap resides in a given component, specific explanations survived or were falsified, and a general shape recurs in N of M archived records. It may never conclude that a proposed change will improve performance or that a causal mechanism is proved until a fresh comparison confirms it.

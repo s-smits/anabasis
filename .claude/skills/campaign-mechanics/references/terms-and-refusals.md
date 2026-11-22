@@ -1,81 +1,92 @@
-Read this for a campaign's recorded terms, practice release, admission refusals and defaults. It
-expands the second half of `AGENTS.md` section 6; the commands are in `campaign-command.md`.
+Read this reference for a campaign's recorded terms, practice task release, admission refusals, and
+defaults. It expands the second half of `AGENTS.md` section 6; the commands themselves are
+documented in `campaign-command.md`.
 
 ## 6. A campaign's commands (continued)
 
 ### What the log records of a campaign's conditions
 
-**The opening** (`campaign.opened`) keeps what a continuation by name needs: the project, total and
-reserve, both patiences (`--patience`), the seats, and the move terms as last named (`TERMS`,
-`src/campaign/opening.ts`): level, conversation minutes and turns, practice and the promotion cap. A later command inherits them unless a flag records a replacement; terms an older
-opening kept that nothing reads are read past. The level is the exception: once a comparison has
-begun it is pinned to the level that comparison began at, and a command naming another is refused
-before it writes anything (rule 4).
+**The opening** (`campaign.opened`) stores everything required to continue a campaign by name: the
+project, total budget and reserve, both patience thresholds (`--patience`), the seat models, and the
+most recently specified move terms (`TERMS`, `src/campaign/opening.ts`), namely the significance
+level, conversation time and turn limits, practice allowance, and promotion cap. Subsequent
+invocations inherit these values unless overridden by a flag; legacy opening fields that no reader
+consumes are ignored. The significance level is the sole exception: once a comparison has started,
+the level is pinned to that comparison's level, and any command specifying a different level is
+refused before writing to the log (rule 4).
 
-**The project** (`--project`, required, fixed by the opening: `projectOf`) groups campaigns for the
-operator's page and changes no decision or message.
+**The project** (`--project`, required and fixed at opening via `projectOf`) groups campaigns on the
+operator dashboard and influences no campaign decision or seat message.
 
-**The setting** (`campaign.setting`, `tools/d2/setting.ts`) is the experimental condition, recorded
-once by the first command that begins a solve-bearing move (`settingOf`) and never changed: the
-solver and its effort, window and limits (`--solver`, `--solver-effort`, `--solver-window`,
-`--solve-minutes`, `--solve-model-turns`), `--target` and `--solves`. A conflicting flag is refused,
-since no solve on record counts for a different solver. A log with solves from before any setting is
-held to its last test-side solves' setting (`firstRecord`), refused as a paid command opens the
-campaign (`campaignFor`). `--solver-window` (300,000 tokens) is
-where the solver's backend compacts, so a model served with a 200K context is refused at it.
+**The setting** (`campaign.setting`, `tools/d2/setting.ts`) fixes the experimental condition once,
+when the first solve-bearing move begins (`settingOf`), and cannot be altered thereafter. It records
+the solver model, effort, context window, and limits (`--solver`, `--solver-effort`,
+`--solver-window`, `--solve-minutes`, `--solve-model-turns`), together with `--target` and
+`--solves`. Conflicting flags are refused because solves collected under one solver setting cannot
+be combined with another. A legacy log containing solves recorded before `campaign.setting` existed
+is bound to the setting of its last test-side solves (`firstRecord`) and checked when a paid command
+opens the campaign (`campaignFor`). `--solver-window` (300,000 tokens) sets the backend compaction
+threshold, so a model served with a 200K context window is refused at that setting.
 
 ### Practice release
 
-Practice keeps the Builder supplied with fresh failures, and each release is one task fewer to
-score. It is owed after each reading or promotion (`practiceDue`, `src/campaign/decide.ts`) and
-released by the host (`releaseOwed`, `tools/d2/campaign-actions.ts`) as tasks are held out, as an
-Examiner session ends, as a conversation opens on tasks held since the last release, and after a
-reading that promoted nothing, which is owed one task where nothing was held out since the last
-release; never while a comparison is unreported. A task the reference's own rejection left in doubt is never
-released (`practicePool`, `poolOf`). The rest go in this order (`releaseOrder`,
-`src/kernel/reports.ts`):
+Releasing practice tasks supplies the Builder with fresh training failures, at the direct cost of
+removing each released task from the held-out evaluation pool. Practice release is triggered after
+each comparison reading or promotion (`practiceDue`, `src/campaign/decide.ts`) and executed by the
+host (`releaseOwed`, `tools/d2/campaign-actions.ts`) when new tasks are admitted, when an Examiner
+session finishes, when a Builder conversation opens with newly admitted tasks available, and after a
+non-promoting reading (which releases one task if no new tasks were admitted since the previous
+release). Practice is never released while a comparison remains unreported, and any task left in
+doubt by a reference rejection is excluded (`practicePool`, `poolOf`). Eligible tasks are released
+in priority order (`releaseOrder`, `src/kernel/reports.ts`):
 
-1. tasks the reference answered in no solve of two comparisons;
-2. half, rounded down and counted with those already released, of the tasks that left the reference
-   room in its last reading; the other half stays held;
-3. the rest by the contract's draw, including tasks the reference always answers, since a practice
-   pass still returns the objective's measure.
+1. tasks that the reference failed to solve across two comparisons;
+2. half (rounded down, counted jointly with already released tasks) of the tasks that left
+   improvement headroom on the reference in its last reading, keeping the remaining half held out;
+3. remaining tasks in the contract's deterministic hash order, including tasks the reference always
+   solves, because a passing practice solve still exposes the objective measure.
 
-The order reads the reference's own solves alone, so which task a candidate won cannot change the
-practice set (rule 3). A task scored before its release keeps that comparison's solves on the exam
-side; the Builder sees only its practice solves (`practiceRan`, `src/kernel/solves.ts`).
+Because this ordering inspects only the reference harness's solves, which tasks a candidate won
+cannot influence the practice set (rule 3). A task evaluated before its release retains those
+comparison solves on the exam side; the Builder observes only its own practice solves
+(`practiceRan`, `src/kernel/solves.ts`).
 
 ### What refuses a move
 
-Comparison admission (`admission`, `src/campaign/admission.ts`) is asked before a comparison's first
-event, whoever started it. It refuses, among others: no held-out task; fewer frontier tasks than a
-step needs at the level plus two, one for a task set aside and one for a tie (`held-short`,
-`comparisonFloor`); no `--cap`; an unread checker; a cap below what the comparison's test alone
-costs at the dollars a solve the log's finished solves billed (`cap-short`), on which the table ends
-the campaign on its budget where no comparison is open; and a stopped campaign without
-`--past-stop` (`stop.overridden`). Session admission (`admitSession`) asks for a cap, a read checker and the stop
-rule, and refuses a `--session` whose Builder started and did not end whole (`spent`,
-`src/builder/session.ts`). A move the log shows begun continues without asking, and a rehearsal is
-exempt by name. Refusals run in the order admission, terms, stop override, setting.
-`bun run runs view` and `rehearse` read and prove these paths.
+Comparison admission (`admission`, `src/campaign/admission.ts`) runs before a comparison writes its
+first event, regardless of who initiated it. It refuses when there are no held-out tasks; when fewer
+frontier tasks exist than a step requires at the configured level plus two (one buffer for a task
+set aside and one for a tie; `held-short`, `comparisonFloor`); when `--cap` is missing; when the
+checker has not been validated; when the cap is below the estimated cost of the comparison's test
+alone based on historical finished solve bills (`cap-short`, which ends the campaign on budget if no
+comparison is open); or when a stopped campaign lacks `--past-stop` (`stop.overridden`). Session
+admission (`admitSession`) requires a cap, a validated checker, and a passing stop rule, and refuses
+a `--session` whose Builder started without completing cleanly (`spent`, `src/builder/session.ts`).
+A move already started in the log resumes without re-checking admission, and rehearsals are exempt
+by name. Refusal checks execute in fixed order: admission, terms, stop override, and setting.
+`bun run runs view` and `rehearse` exercise and verify these paths.
 
 ### Defaults
 
-Owners and edges of the defaults whose owners `AGENTS.md` section 6 names:
+Locations and edge cases for the defaults referenced in `AGENTS.md` section 6:
 
-- `--target` and `--solves` live in `SIZE` (`src/kernel/size.ts`); `GAP_FLOOR` is one constant read by
-  the tally, task admission, the frontier and `roomOf`.
-- The defect stop is `--defects` of a hand comparison only.
-- The reserve (`--reserve`) sits above the most a solve billed under the default limits, and is the
-  one place a turn limit stands in for dollars: a solve is held at it when it starts and is not cut
-  once it runs. `scripts/bills.ts` counts the solves on record that billed past it; read it before
-  naming longer solves or a lower reserve.
-- `--parent latest` and `--reference promoted`.
-- A Builder session has 24 practice solves (`--practice-solves`), fewer where the total cannot
-  reserve them (`practiceLeft`, `src/builder/tools.ts`); an Examiner session 240 minutes, 200 turns
-  and 36 proposals (`tools/d1b/examine.ts`).
+- `--target` and `--solves` are defined in `SIZE` (`src/kernel/size.ts`); `GAP_FLOOR` is a single
+  constant shared by the tally, task admission, the frontier definition, and `roomOf`.
+- The `--defects` stop threshold applies only to manual comparisons.
+- The per-solve reserve (`--reserve`) sits above the highest solve bill observed under default
+  limits and is the one place where a turn limit proxies for dollar spend: a solve is gated on the
+  reserve before starting and is not interrupted once running. Run `scripts/bills.ts` to inspect
+  historical solves that exceeded the reserve before increasing solve limits or lowering the
+  reserve.
+- Default selectors are `--parent latest` and `--reference promoted`.
+- Each Builder session receives 24 practice solves (`--practice-solves`), reduced when the remaining
+  budget cannot reserve them (`practiceLeft`, `src/builder/tools.ts`). Each Examiner session
+  receives 240 minutes, 200 turns, and 36 proposals (`tools/d1b/examine.ts`).
 
-An Examiner session finishes when it has supplied the need (`tasksToAskFor`, `src/campaign/decide.ts`:
-practice and the admission floor before the first comparison, the target after, at least a sweep), when it calls `finish` twice without proposing between, or after spending its
-proposals. An early `finish` is declined with the need but no count, since an Examiner told a count
-proposes one small batch and stops. The first two endings rest the conversation for the next ask.
+An Examiner session finishes once it has supplied the required tasks (`tasksToAskFor`,
+`src/campaign/decide.ts`: practice tasks plus the admission floor before the first comparison, and
+the comparison target thereafter, at least one sweep), when it calls `finish` twice with no
+intervening proposal, or when its proposal quota is exhausted. An early `finish` is declined with a
+statement of the need but without a numeric count, because an Examiner given an explicit count tends
+to propose one small batch and stop. The first two endings suspend the conversation for the next
+request.

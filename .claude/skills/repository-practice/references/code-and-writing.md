@@ -1,43 +1,46 @@
 # 12. Code that passes the first time, and 13. Writing
 
-Read this for the reasons behind `AGENTS.md` sections 12 and 13; `scripts/preflight.ts` reports the
-size and prose patterns it can detect.
+Read this reference for the rationale behind `AGENTS.md` sections 12 and 13; `scripts/preflight.ts`
+reports the file-size and prose patterns that can be checked statically.
 
 ## 12. Code that passes the first time
 
-`tools/oxlint/HABITS.md` holds the habits, the `src/meta` owners, the size policy and how to write a
-test; a change that writes no code can skip it.
+`tools/oxlint/HABITS.md` documents the repository's coding conventions, `src/meta` owners, size
+policy, and test design; changes that do not touch code may skip it.
 
-- Never turn a rule off: no new `"off"` in `.oxlintrc.json` and no `oxlint-disable` for a plugin
-  rule. A finding wrong about a site goes in the ledger, or the rule is tuned in a change about the
-  lint.
-- Dependencies run one way because production must stay readable without the tooling around it.
-  Production is `src/`, `vendor/`, `packages/` and `tools/` outside `tools/wri/`; a fact production
-  needs from a helper moves into a production owner.
-- Helper code has three homes, `tools/wri/`, `.claude/skills/main/` and a skill's `scripts/`, told
-  apart by who reads it (`AGENTS.md`, section 12, "Where a reader or a helper lives"). Before
-  adding a helper, search `main/` and `tools/wri/folds.ts`; no check yet enforces that `main/`
-  imports no skill's `scripts/`. No `bun run` verb lives in a skill's `scripts/`, a script a job runs
-  only prints what production computes, and a second command that prints another view of a fold
-  becomes a view of its owner. A helper that gains a caller in a second skill moves to `main/`
-  instead of being copied.
-- A test checks the facts a message carries (an outcome, a count, a limit) and the wall's exclusions
-  by their absence, because wording changes freely. A prompt's sentence is checked by reading the
-  composed prompt.
+- Never disable a lint rule: add no new `"off"` entries to `.oxlintrc.json` and no `oxlint-disable`
+  directives for plugin rules. Record a genuine false positive in the findings ledger, or tune the
+  rule in a dedicated linting change.
+- Dependencies run strictly one way so production code remains self-contained without auxiliary
+  tooling. Production comprises `src/`, `vendor/`, `packages/`, and `tools/` outside `tools/wri/`.
+  Any fact that production requires from a helper must be moved into a production owner.
+- Helper code belongs in one of three locations (`tools/wri/`, `.claude/skills/main/`, or a skill's
+  `scripts/` directory), distinguished by caller (`AGENTS.md`, section 12, "Where a reader or a
+  helper lives"). Before writing a new helper, search `main/` and `tools/wri/folds.ts`; no automated
+  check yet prevents `main/` from importing a skill's `scripts/`. No `bun run` verb lives inside a
+  skill's `scripts/`, scripts executed by automated jobs only format what production computes, and
+  an additional view of an existing fold becomes a view on its owner. When a helper gains a caller
+  in a second skill, move it to `main/` instead of duplicating it.
+- Tests assert the concrete facts a message conveys (outcomes, counts, limits) and verify wall
+  exclusions by their absence, allowing prose wording to evolve freely. When a prompt sentence
+  itself is under test, assert against the composed prompt directly.
 
 ## 13. Writing
 
-The register is simple academic prose: a clear question, a concrete mechanism, evidence and its
-limits, with ML terms where they clarify (practice as training exposure, held-out comparisons as
-evaluation). Additions to section 13:
+Write in plain, understated academic prose: a clear question, a concrete mechanism, empirical
+evidence with its limitations, and standard machine-learning terminology where it clarifies
+(practice tasks as training exposure, held-out comparisons as out-of-sample evaluation). Additional
+conventions for section 13:
 
-- Write "one owner instead of five" rather than a negation and its correction; infrastructure work
-  says what it enables and implies no gain.
-- One simulation is one observation, and an estimated saving is not a measured reduction. Keep
-  counts, baselines and limits when rewriting, and attribute earlier checks to their commit and
-  runner.
-- No authorship labels or stock closing claims; `stack-pr` section 7 owns a pull request's text.
-- A head comment is the module's manual: why the code is so, the defect it answers, the record that
-  showed it and the date, kept true by the change that alters the code.
-- A prompt fact lives in one surface (system prompt, opening message or tool result), because a fact
-  stated twice drifts apart.
+- Prefer direct contrasts such as "one owner instead of five" rather than negations followed by a
+  correction; infrastructure work describes what it enables without implying an empirical gain.
+- A single simulation is one observation, and an estimated saving is not a measured reduction.
+  Preserve counts, baselines, and stated limits when revising text, and attribute prior check
+  results to their commit and runner.
+- Omit authorship labels and boilerplate closing claims; `stack-pr` section 7 governs pull request
+  descriptions.
+- A file's head comment serves as the module manual: it states why the code is structured as it is,
+  the defect or design requirement it addresses, the evidence that motivated it, and the date of
+  any empirical measurement, updated whenever the code changes.
+- Each prompt fact lives on a single surface (system prompt, opening message, or tool result),
+  because duplicating a fact across surfaces causes them to drift apart.

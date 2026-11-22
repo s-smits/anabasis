@@ -1,82 +1,102 @@
-Read this for the evaluation question and the four reported factors behind `AGENTS.md` section 1.
-The information boundary is in `wall.md`.
+Read this reference for the evaluation question and the four reported factors behind `AGENTS.md`
+section 1. The information boundary is documented in `wall.md`.
 
 ## 1. What Anabasis does
 
-Anabasis is a training loop whose learner is a harness and whose loss is measured by running a fixed
-solver on held-out tasks. The question, the tally and the test are in `AGENTS.md` sections 1 and 7.
+Anabasis is an iterative optimisation loop in which the learned artefact is a harness and the
+objective is evaluated by running a fixed solver policy on held-out tasks. The core evaluation
+question, the tally, and the statistical test are defined in `AGENTS.md` sections 1 and 7.
 
 ### The four reported factors
 
-A useful loop needs a signal that carries information, an evaluation less noisy than the effect,
-correct labels and a result worth its cost. Supply is checked at admission, and the four factors are
-reported. Recorded values live only in `docs/plan.md`, "Goal and the four factors".
+A functioning improvement loop requires an informative learning signal, an evaluation noise floor
+lower than the effect size, accurate labels, and gains that justify their compute cost. Supply is
+enforced at admission, and the four factors are reported in campaign summaries. Recorded values are
+maintained exclusively in `docs/plan.md` under "Goal and the four factors".
 
-**Supply** is the gradient. A task registers a difference only where one harness answers and the
-other does not, or answers better by the objective (`informative`, `src/kernel/compare.ts`). Tasks
-the reference always closes, and tasks nobody solves, read "no room" whatever the candidate is.
-Informativeness is known only after solving, so admission counts the frontier instead
-(`comparisonFloor`). Meeting the floor shows only that a difference could be seen, so supply is not
-reported.
+**Supply** provides the learning gradient. A task contributes to a comparison only when one harness
+solves it and the other does not, or when one achieves a better objective score (`informative`,
+`src/kernel/compare.ts`). Tasks that the reference always solves, and tasks that neither harness
+solves, yield no gradient regardless of candidate quality. Because informativeness is observable
+only after solving, admission counts frontier tasks instead, namely tasks the reference has not yet
+closed (`comparisonFloor`). Meeting this floor establishes only that an effect is detectable, so
+supply itself is not a reported outcome factor.
 
-**1. Climb** is the reference harness moving. A promotion is one step of descent, a climb several
-within one campaign (`src/campaign/climb.ts`). A draft the reference never answered but whose
-author's answer passes (`task.feasible`) is held out like any other (`measured`,
-`src/examiner/write.ts`), since that is the room a promotion leaves; the passing answer does not
-show the public input suffices, so a held task nobody answers may be underspecified until a person
-reads it. An older log's `ladder` tasks read as held out and its ladder readings decide nothing
-(`lastReports`, `src/kernel/reports.ts`). Improvement patience marks a possible plateau without
-proving that no step remains, so a campaign ended on budget, environment or `finished` reads
-"reached N promotions; further improvement unresolved".
+**1. Climb** measures movement of the reference harness. Each promotion represents one accepted
+improvement step, and a climb comprises multiple promotions within a single campaign
+(`src/campaign/climb.ts`). A draft task that the reference has never solved, but whose author's
+solution passes the checks (`task.feasible`), enters the held-out pool like any other task
+(`measured`, `src/examiner/write.ts`), since unsolved feasible tasks provide the headroom for future
+promotions. A passing author solution does not guarantee that the public prompt alone is
+sufficient, so a held-out task that nobody solves may remain underspecified until inspected by a
+person. In older logs, `ladder` tasks are read as held-out tasks and their ladder readings carry no
+decision weight (`lastReports`, `src/kernel/reports.ts`). Improvement patience indicates a possible
+plateau without proving that no further gain exists; accordingly, a campaign ending on budget,
+environment, or `finished` reports "reached N promotions; further improvement unresolved".
 
-**2. Honesty** is the false-positive rate. The level is per comparison and nothing bounds a
-campaign's many attempts together, so no opening is refused on their sum. Each reading prints its
-own rate (`falseRate`, `src/campaign/comparison.ts`) and the opening prints it at its target
-(`sizeLines`, `src/kernel/size.ts`). The A/A beside each comparison measures the rate on the real
-solver, where a step is a false positive by construction. The climb sums the attempts' rates as an
-estimate and counts the A/A steps, leaving out an A/A too small to reach the level
-(`falsePromotion`, `incapable`).
+**2. Honesty** tracks the false positive rate. The significance level applies per comparison rather
+than across the full sequence of campaign attempts, so openings are not refused on cumulative
+multiplicity. Each comparison reading reports its own nominal false positive rate (`falseRate`,
+`src/campaign/comparison.ts`), and each opening prints the rate at its target sample size
+(`sizeLines`, `src/kernel/size.ts`). An A/A control (the reference evaluated against itself) runs
+alongside each comparison to measure the empirical false positive rate on the actual solver, where
+any detected step is a false positive by construction. The climb report sums per-attempt rates as an
+upper estimate and tallies A/A steps, excluding A/A controls whose sample size is too small to reach
+the significance level (`falsePromotion`, `incapable`).
 
-**3. Verdicts** is label noise. Nobody has audited the check program against the field, and a check
-that rejects a right answer mislabels the task. The Referee filters this noise before a rejection
-counts; its evidence rules are in the head comment of `src/referee/referee.ts`, and a ruling without
-them is refused and logged. It is itself measured against blind hand labels (`tools/d2/settle.ts`,
-`src/referee/agreement.ts`): two rates, each kind's agreement, PABAK beside kappa, and each settled
-comparison reread with the labels (`swapped`), where a decision that flips means the packet was too
-small.
+**3. Verdicts** measures label noise. Because the check program is not audited against the domain in
+advance, a defective check that rejects a valid answer introduces false-negative label noise. The
+Referee filters this noise before a rejection enters the tally; its evidence requirements are
+documented in the head comment of `src/referee/referee.ts`, and any ruling lacking the required
+evidence is refused and logged. Referee accuracy is itself calibrated against blind human labels
+(`tools/d2/settle.ts`, `src/referee/agreement.ts`), reporting both error rates, per-category
+agreement, PABAK alongside kappa, and a counterfactual rereading of each settled comparison under
+the human labels (`swapped`), where a flipped decision indicates that the evaluation packet was
+underpowered.
 
-**4. Economy** is cost per gain, read from the log at frozen list prices (`billOf`,
-`src/kernel/meter.ts`, the same meter the cap uses), with backend totals beside it (`costLine`).
+**4. Economy** measures compute cost per promotion, computed from the log at frozen list prices
+(`billOf`, `src/kernel/meter.ts`, the same meter enforcing the budget cap), with backend totals
+printed alongside (`costLine`).
 
-Left out on purpose: the wall (a tested correctness property), practice results (training score,
-rule 1) and cost apart from climb.
+Three quantities are deliberately excluded from the reported factors: the information wall (a
+binary correctness property verified by tests), practice results (training performance, rule 1), and
+raw expenditure divorced from climb.
 
 ### Further trade-offs
 
-`AGENTS.md` section 1 keeps the trade-offs a change most often gets wrong; these are the rest.
+`AGENTS.md` section 1 lists the trade-offs that changes most frequently violate; the remaining ones
+are summarised below.
 
-- **Task difficulty against statistical power**: tied tasks leave the test, and a step is likeliest
-  where the reference passes 30 to 50%; watch its valid share and the untied tasks a comparison.
-- **A stricter step against a faster climb**: 2 solves at 0.02 is the balance; an A/A step means the
-  level is loose for the noise, and a faster climb is a gain only where its promotions hold.
-- **Cost against value**: read dollars per promotion and per confirmed promotion on one meter
-  (`promotion-tuner`), and dollars a solve rising without validity gains as bloat.
-- **Supply against the clock**: an Examiner that aims higher takes longer and admits fewer; read
-  hours to the next comparison beside the tasks it admitted.
-- **Patience against stopping too soon**: six eligible moves without a gain end a campaign, and
-  each move after is another draw at the false rate; treat a step after `--past-stop` warily.
-- **A promotion against the starter**: a promotion beats its parent on the tasks that chose it, and
-  a near-sweep of one family from the newest session says less than the same tally over several. The
-  starter comparison after it splits its tally by where each task came from (`starterReads`), and a
-  reference that keeps losing the tasks written since is fitting its own draws, not climbing.
-- **The objective against the habits it leaves unpaid**: a harness learns only what the checks and
-  the objective reward, so a habit no check holds, a section's content for one, is no lever yet.
-- **A tuned query against its origin**: a query adapted from another system's prompt is bounded, in
-  words, against that origin instead of its last version, so that drift does not accumulate.
+- **Task difficulty versus statistical power**: tied tasks drop out of the paired test, and a step
+  is most easily detected when the reference pass rate lies between 30% and 50%. Monitor both the
+  reference validity share and the count of untied tasks per comparison.
+- **Stricter promotion threshold versus climb speed**: two solves per task at level 0.02 balances
+  power against noise. An A/A step indicates that the significance level is too loose for the
+  observed variance, and a faster climb is valuable only if its promotions hold on fresh evaluations.
+- **Cost versus value**: evaluate dollars per promotion and dollars per confirmed promotion on a
+  single consistent meter (`promotion-tuner`), and treat rising cost per solve without corresponding
+  validity gains as harness bloat.
+- **Supply versus wall-clock latency**: an Examiner targeting higher difficulty takes longer and
+  admits fewer tasks; read wall-clock hours to the next comparison alongside the count of admitted
+  tasks.
+- **Patience versus premature stopping**: six eligible moves without a gain terminate a campaign,
+  and every subsequent attempt adds another draw at the false positive rate. Treat any step obtained
+  after `--past-stop` with caution.
+- **Incremental promotion versus the starter baseline**: a promoted candidate outperforms its parent
+  on the specific tasks that selected it, and a near-sweep of one task family from the newest
+  session is weaker evidence than the same margin spread across several epochs. The subsequent
+  starter comparison partitions its tally by task provenance (`starterReads`); a reference that
+  repeatedly loses on newly authored tasks is overfitting its earlier draws rather than climbing.
+- **Declared objective versus unmeasured habits**: a harness optimises only what the checks and
+  objective reward, so any desired behaviour not enforced by a check provides no optimisation signal.
+- **Tuned query versus original prompt**: a domain query adapted from another system's prompt is
+  bounded in word count against that original prompt rather than its previous revision, preventing
+  cumulative prompt drift.
 
 ### Older vocabulary
 
-v1 is the history before v2 (`git show 5bc9988:<path>`, `docs/transfer.md`). A comment citing
-"AGENTS.md rule N" in code inherited from v1 (`src/meta`, `src/wall`, `tools/loc`, `tools/oxlint`)
-means v1's numbering. An **epoch** is a stretch under one reference; a **cycle**, **sweep** and
-**bundle** name the stored v1 run a pack comes from.
+v1 refers to the codebase prior to v2 (`git show 5bc9988:<path>`, `docs/transfer.md`). Comments
+citing "AGENTS.md rule N" in modules inherited from v1 (`src/meta`, `src/wall`, `tools/loc`,
+`tools/oxlint`) refer to v1's rule numbering. An **epoch** denotes the span of a campaign under one
+reference harness; **cycle**, **sweep**, and **bundle** refer to the archived v1 run from which a
+pack was extracted.

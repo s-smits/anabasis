@@ -1,46 +1,56 @@
-Read this for the Builder and Examiner conversations, recorded moves and the Builder's clock. It
-expands `AGENTS.md` section 4.
+Read this reference for the Builder and Examiner conversations, recorded campaign moves, and the
+Builder's clock. It expands `AGENTS.md` section 4.
 
 ## 4. The Harness Builder
 
-One Builder conversation and one workspace stay open while campaign tools run
-(`tools/d2/harness-builder.ts`). Continuity is the point of the design: a controller that drops the
-conversation is a regression. `test/builder-led.test.ts` proves the path without a model; a gain
-from it is unclaimed.
+A single Builder conversation and workspace remain open across campaign tool calls
+(`tools/d2/harness-builder.ts`). Conversational continuity is central to the design, so any
+controller change that drops the Builder conversation is a regression. `test/builder-led.test.ts`
+verifies this execution path without a live model; any empirical gain from continuity itself remains
+unclaimed.
 
-**Nothing blocks the Builder except the Examiner.** `examine` returns at once and the Examiner works
-alongside. A comparison runs beside the conversation with its draw fixed at the start, so tasks held
-later join the next one; its solves wait while the remaining total covers no more (`queued`,
-`tools/d2/host.ts`). Only the conversation's end and a second `examine` wait for the Examiner. When
-comparisons and promotions blocked, Builders spent 39 to 86% of their conversations waiting.
+**Nothing blocks the Builder except the Examiner.** Calling `examine` returns immediately while the
+Examiner runs concurrently. A comparison runs alongside the conversation with its held-out task draw
+fixed at launch, so tasks admitted later enter the next comparison; individual solves wait in the
+queue whenever the remaining budget cannot reserve additional concurrent solves (`queued`,
+`tools/d2/host.ts`). Only ending the conversation or issuing a second `examine` call waits for an
+active Examiner. Running comparisons and promotions asynchronously eliminates the substantial idle
+waiting that occurred when those actions blocked the Builder conversation.
 
-**The Examiner conversation rests between asks.** Each `examine` is one ask (`conversing`,
-`tools/d2/campaign-actions.ts`). Once the ask has supplied its tasks or its `finish` is accepted, it
-records `exam.finished` and waits, off every clock, for the next ask, which wakes it with what
-reported since (`wakeMessage`, `src/examiner/prompt.ts`), never a count or a target. Each ask has
-full limits. The conversation ends with the Builder's (`closing`), at a halt, where an ask crashed
-or met a limit, or at the first ask after a promotion (`examineAction`); the next ask then opens
-afresh from the log (`heard`) with the carried home.
-Rehearsals open every ask afresh.
+**The Examiner conversation rests between requests.** Each `examine` call represents one request
+(`conversing`, `tools/d2/campaign-actions.ts`). Once the request has supplied the needed tasks or
+its `finish` call is accepted, it logs `exam.finished` and suspends without consuming any timer
+until the next request arrives. The next request resumes it with only the events reported since it
+last ran (`wakeMessage`, `src/examiner/prompt.ts`), providing neither a target count nor a numeric
+goal. Each request receives fresh turn and proposal limits. The Examiner conversation closes
+together with the Builder conversation (`closing`), on a campaign halt, after a crash or limit
+exhaustion, or on the first request following a promotion (`examineAction`); the subsequent request
+then opens a fresh conversation from the log (`heard`) while preserving its home directory.
+Rehearsals always open each request afresh.
 
-**The table chooses conditions instead of the model.** Where the table needs another action than the
-one asked, the tool does it and says so (`comparedOf`), which is how section 4's three invariants
-hold. The host promotes a step as its comparison reports (`promoteOwed`), or under `--hitl` waits
-for `promote.ts`, and starts the Examiner session the table names after a promotion.
+**The move table enforces conditions rather than directing the model.** When the move table requires
+a different action from the one the Builder requested, the tool executes the required action and
+reports what it ran (`comparedOf`), preserving the three invariants in `AGENTS.md` section 4. The
+host promotes a winning candidate as soon as its comparison reports a step (`promoteOwed`), or waits
+for `promote.ts` under `--hitl`, and starts the post-promotion Examiner session specified by the
+table.
 
-**What is recorded.** A move writes `campaign.move` when it begins, with the table's row and reason
-where it is the table's move and `led` where the Builder chose another (`asked` in an older log);
-the conversation itself is a `build` move coded `led`. A refused or empty action writes nothing; a
-refusal after the start still counts against `--moves`. The Builder is never told the table's move,
-and the controller's reasons never reach a seat.
+**Recorded moves.** Starting a move appends `campaign.move` to the log, tagged with the move table's
+row and reason when it matches the table, or `led` when the Builder initiated a different action
+(`asked` in older logs); the Builder conversation itself is recorded as a `build` move coded `led`.
+Actions refused before starting or producing no effect write nothing, whereas a refusal occurring
+after a move starts still counts against `--moves`. The Builder is never shown the move table's
+recommendation, and controller rationales never cross to any seat.
 
-**The clock.** A comparison of the working copy freezes a snapshot (`build.checkpoint`) without
-ending the conversation. Session limits cover the whole conversation, but the deadline counts only
-the Builder's own time: it stops while a campaign action runs, since a comparison cut at the
-deadline would read as a failed host (`Bench.within`, `src/builder/tools.ts`). A conversation ended
-by limits or a restart is followed by a new one on the notes and results.
+**The Builder's clock.** Comparing the working directory freezes a harness snapshot
+(`build.checkpoint`) without ending the conversation. Session turn limits span the entire
+conversation, whereas the wall-clock deadline tracks only the Builder's active time and pauses while
+a campaign tool runs; otherwise a long comparison hitting the Builder deadline would be misreported
+as a host failure (`Bench.within`, `src/builder/tools.ts`). When a conversation terminates due to
+limits or a restart, a new conversation opens with the saved notes and results.
 
-A message sent between turns goes unseen, since a Builder ends nearly every turn in a tool call, so
-standing facts are repeated in every tool result and compaction needs no signal (`usedLine`,
-`continuation`, `read_opening`). A session by hand (`tools/d2/session.ts`, `round.ts`) lacks the
-campaign tools and has its own texts (`SAID`, `src/builder/prompt.ts`).
+Because the Builder ends almost every turn with a tool call, messages injected between turns are
+never observed. Standing campaign facts are therefore included in every tool result so that context
+compaction requires no separate signal (`usedLine`, `continuation`, `read_opening`). Manual sessions
+(`tools/d2/session.ts`, `round.ts`) omit the campaign tools and use separate prompt texts (`SAID`,
+`src/builder/prompt.ts`).

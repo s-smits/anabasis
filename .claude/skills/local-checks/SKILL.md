@@ -1,63 +1,78 @@
 ---
 name: local-checks
-description: "Decide where a check of Anabasis runs: locally (the pre-push hook, `stack.ts`, `bun run land`, the runner hosts) or on GitHub Actions, which runs `ci.yml` alone. Use when adding, moving or tuning a check, a workflow, a commit status or the pre-push hook, when asked about CI/CD, Actions use or a check shown on a pull request, or before editing `.github/workflows/`. Counts Actions runs with scripts/actions.ts."
+description: "Decide where each Anabasis check runs: locally (pre-push hook, `stack.ts`, `bun run land`, and fleet runner hosts) or on GitHub Actions, which runs `ci.yml` exclusively. Use when adding, relocating, or tuning a check, workflow, commit status, or pre-push hook, when asked about CI/CD, GitHub Actions usage, or pull request checks, or before modifying `.github/workflows/`. Counts Actions runs via scripts/actions.ts."
 ---
 
 # Local checks
 
-GitHub Actions runs only `ci.yml`, dispatched by `bun run land -- <top> --merge`, because its suite
-needs clean machines independent of the operator's (Seatbelt and the disk image on macOS,
-Bubblewrap on Linux, the UI's browser tests). Every other check runs locally and shows on GitHub
-as a commit status, one API call instead of a runner.
+GitHub Actions runs only `ci.yml`, dispatched exclusively by `bun run land -- <top> --merge`,
+because its verification suite requires clean, isolated machines independent of the operator's
+workstations (Seatbelt and disk-image checks on macOS, Bubblewrap namespaces on Linux, and browser
+tests for the UI). Every other check runs locally or on the fleet and reports to GitHub via a
+single commit-status API call rather than consuming CI runners.
 
 | check | where | GitHub shows |
 | --- | --- | --- |
 | `git diff --check`, secret scan | pre-push hook | nothing |
 | static steps and nearby tests | pre-push hook, `ANA_PUSH_VERIFY=1` | nothing |
-| pushed head and pull requests above it reset | pre-push hook (`mark`) | `mergeable` pending |
-| a pull request repeating another's commits | `stack.ts`, refused by `land` (`doubled.ts`) | nothing |
-| each commit alone, the gate at the top | `bun run land -- <top> --sanitize` | `ana/commit`, `mergeable` |
-| the clean-machine suite; after test failures, `ci-fixes` (`fixesFor`, `tools/runtime/ci-runs.ts`) | `ci.yml`, from `land --merge` | `ci.yml` |
-| the landing | `land --merge` | `ana/stack-gate`, required on `main` |
+| reset pushed head and dependent pull requests | pre-push hook (`mark`) | `mergeable` pending |
+| pull request duplicating another's commits | `stack.ts`, refused by `land` (`doubled.ts`) | nothing |
+| per-commit verification and top gate | `bun run land -- <top> --sanitize` | `ana/commit`, `mergeable` |
+| clean-machine suite; after test failures, `ci-fixes` (`fixesFor`, `tools/runtime/ci-runs.ts`) | `ci.yml`, from `land --merge` | `ci.yml` |
+| final stack gate | `land --merge` | `ana/stack-gate`, required on `main` |
 
-`--no-verify` skips the hook and its pending mark.
+Passing `--no-verify` bypasses the pre-push hook and its `mergeable` pending reset.
 
-## On which machine
+## Host routing
 
-`bun run test|typecheck|lint|secrets|gate` and `bun test` go through the bun router
-(`tools/runtime/router/`, installed with `bun tools/runtime/router/install.ts`). Where `ANA_HOSTS`
-lists any host (the operator's `CLAUDE.md` names theirs), an unset `ANA_CHECK_HOST`, like
-`ANA_CHECK_HOST=auto`, reads the one-minute load a core of this machine and of each such host
-(`tools/runs/load.ts`, the sample `runs loadwatch` draws), about a second, and runs the task in the
-first free slot, least loaded first, so checks started together spread over the slots; a machine
-that does not answer within `ANA_RUNNER_PICK_WAIT` (5 s) is left out. Where no host is listed, or
-the list cannot be read, an unset one runs the task here without a sample. `ANA_CHECK_HOST=here` keeps a
-task on this machine and a host's name sends it there. A landing alone reads an unset `ANA_CHECK_HOST` otherwise (`whereToProve`,
-`tools/runtime/landing.ts`): it spreads its commits' passes over every such host, each taking as many
-at once as its `checks` (two where unset), sends the top's whole gate, where it runs one, to the first listed, and proves again on
-another host a pass whose host gave no verdict; with no such host, or with `ANA_CHECK_HOST` set, as in
-`ANA_CHECK_HOST=here bun run land -- <top> --sanitize`, it proves as at one place, each pass where the
-runner sends it, so under `auto` each picks the least loaded slot for itself. Git
-carries the working tree there, uncommitted bytes included, as one commit in `HEAD`'s place, so only
-what the host lacks travels and a static gate reads the same change. The dependencies never travel:
-a slot installs them from the lockfiles it was sent, and again only once a lockfile or the pinned
-Bun moves. A slot no check has used for a week goes to the Trash at the host's own daily
-`runs retire` (`trashIdleSlots`), so a machine that stops taking checks keeps no clones. Exits 255, 75 and 69 say nothing about the tree (`NO_VERDICT`, `tools/runtime/gate.ts`).
+`bun run test|typecheck|lint|secrets|gate` and `bun test` route through the Bun router
+(`tools/runtime/router/`, installed with `bun tools/runtime/router/install.ts`). When `ANA_HOSTS`
+defines remote hosts (configured in the operator's `CLAUDE.md`), leaving `ANA_CHECK_HOST` unset
+behaves identically to `ANA_CHECK_HOST=auto`: the router samples one-minute load per core across
+the local machine and every configured host (`tools/runs/load.ts`, the same probe used by
+`runs loadwatch`, taking roughly one second) and dispatches the task to the least loaded host with
+a free slot, omitting any host that does not respond within `ANA_RUNNER_PICK_WAIT` (5 s). When no
+hosts are configured or the host list cannot be read, an unset `ANA_CHECK_HOST` runs locally
+without probing. Setting `ANA_CHECK_HOST=here` forces local execution, and setting it to a specific
+host name targets that host directly.
+
+`bun run land` handles an unset `ANA_CHECK_HOST` differently (`whereToProve`,
+`tools/runtime/landing.ts`): it distributes per-commit passes across all configured hosts up to
+each host's `checks` concurrency limit (default 2), sends the top commit's full gate (when
+required) to the first listed host, and retries any commit whose host returned no verdict on a
+different host. When no remote hosts exist or `ANA_CHECK_HOST` is explicitly set (for example,
+`ANA_CHECK_HOST=here bun run land -- <top> --sanitize`), `land` runs through the standard single
+runner path (under `auto`, each pass independently selects the least loaded slot).
+
+Git transfers the working tree (including uncommitted modifications) as a single synthetic commit
+on top of `HEAD`, so only missing objects cross the network and static gates inspect the exact same
+diff. Dependencies are never copied over the network: each runner slot installs from the
+transferred lockfiles and reinstalls only when a lockfile or the pinned Bun version changes. Any
+runner slot idle for seven days is moved to Trash by that host's daily `runs retire`
+(`trashIdleSlots`), preventing stale clones from accumulating. Exit codes 255, 75, and 69 denote
+infrastructure failures rather than code verdicts (`NO_VERDICT`, `tools/runtime/gate.ts`).
 
 ## Placing a new check
 
-Stop at the first yes: does its verdict need an independent clean machine (a step of `ci.yml`,
-never a new workflow); should it stop a push (the hook if it takes seconds, else under
-`ANA_PUSH_VERIFY=1`); should it stop a landing (`bun run land`); is it a reading of the stack
-(`stack.ts`)? To show a result, post `gh api -X POST repos/{owner}/{repo}/statuses/<sha> -f
-state=... -f context=<name>` with the context named once in `tools/runtime/pulls.ts` or `land.ts`.
-An event this machine never sees is caught at the next `stack.ts` or landing.
+Assign a new check to the first matching tier:
 
-## Measuring
+1. Does its verdict require an independent clean machine? Add it as a step inside `ci.yml` rather
+   than creating a new workflow.
+2. Should it block a push? Place it in the pre-push hook if it finishes in seconds, or gate it
+   behind `ANA_PUSH_VERIFY=1` otherwise.
+3. Should it block a landing? Add it to `bun run land`.
+4. Is it a read-only diagnostic over the stack? Add it to `stack.ts`.
+
+To publish a local result to GitHub, post
+`gh api -X POST repos/{owner}/{repo}/statuses/<sha> -f state=... -f context=<name>`, declaring the
+status context once in `tools/runtime/pulls.ts` or `land.ts`. Any state change missed by a local
+machine is caught on the next `stack.ts` or `land` run.
+
+## Measuring Actions usage
 
 ```sh
 bun .claude/skills/local-checks/scripts/actions.ts [--hours 24]
 ```
 
-prints each workflow's runs by triggering event. A pull request that moves a check gives the counts
-before and after, in runs and runner-minutes.
+This script tabulates workflow runs by triggering event. Any pull request that moves or alters a
+check must report before-and-after counts in both workflow runs and runner-minutes.

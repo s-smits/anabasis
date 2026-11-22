@@ -1,72 +1,46 @@
 ---
 name: compare-systems
-description: Compare a built system with a cheap solver against a bare system with a dear solver on one campaign's held-out tasks, outside the campaign's readings. Answers "can Terra with our truss harness reach Opus" and, when asked, how one domain's harnesses stand under one solver. One script joins production primitives and prints one plain reading. Use when the operator asks to compare models, a cheap model against a dear one, harnesses, or "can X reach equal scores".
+description: "Evaluate a built harness with a cheaper solver against a bare starter harness with a more expensive solver on a single campaign's held-out evaluation tasks, outside the campaign's own readings. Answers questions such as whether a smaller model with a built harness matches a larger bare model, or how multiple harnesses for one domain compare under a single solver. Use when the operator asks to compare models, test a cheaper model against a more expensive one, compare harnesses, or assess whether one system matches another's scores."
 ---
 
 # Compare systems
 
-A harness pays off when a cheap solver inside it matches a dear solver inside the starter. A
-campaign cannot read this, since its setting fixes the solver, so this skill reads it on one
-campaign's held-out tasks, by default one solve per task and system:
+A built harness demonstrates economic value when a cheaper solver operating inside it matches a more expensive solver operating inside the starter harness. A standard campaign cannot measure this directly because its experimental condition holds the solver fixed; this skill therefore evaluates both systems on a single campaign's held-out tasks, defaulting to one solve per task and system:
 
 ```text
 bare  = claude/claude-opus-5-5:medium   inside the starter (A)
 built = openai-codex/gpt-6.1-terra:high inside the domain's built harness
 ```
 
-Terra against Terra is the campaign's own question, run only when named. The reading is a study's
-(`studies/README.md`) and reaches no seat.
+Comparing Terra against Terra is the campaign's own internal evaluation and is run here only when explicitly requested. This evaluation belongs to studies (`studies/README.md`) and its results never cross to any model seat.
 
-`scripts/systems.ts` only joins production. Each system opens a seed with its own solver and trial
-log (`openCampaign`, as `close.ts --solve` does) and solves through the paid seat under the load
-gate (`solved`, `gated`), with the campaign's checks, limits and wall. Candidates are scored against
-the baseline by `scored`, `readsStep` without the bill, `detectable` and `carriedBy`; the
-`--reviewer` Referee rules each rejection, and one not ruled earned sets its task aside for every
-system (`rejectionAside`).
+`scripts/systems.ts` composes existing production primitives rather than reimplementing evaluation logic. Each system opens a seed with its own solver and trial log (`openCampaign`, as in `close.ts --solve`) and executes solves through the paid seat under the host load gate (`solved`, `gated`), preserving the campaign's checks, limits, and sandbox wall. Candidate systems are scored against the baseline using `scored`, `readsStep` (excluding cost), `detectable`, and `carriedBy`; the `--reviewer` Referee rules every rejection, and any rejection not ruled `earned` sets that task aside across all systems (`rejectionAside`).
 
 ## The procedure
 
-1. **Seed**: `bun run runs seed --from <campaign> --name cmp-<what>`, with `--events N` to cut the
-   log before its first release or at a `comparison.started`. The script refuses a folder
-   without `seed.json`. The starter is `starter` or `A`; import the built harness with
-   `bun tools/d2/import.ts --name cmp-<what> --harness <data/harnesses/<run>/harness>`.
-2. **Predict** the winner and its settling count in `.ana/compare/cmp-<what>/prediction.md`.
-3. **Read for free**: `--read` draws the tasks and solves nothing:
+1. **Seed**: create a seed with `bun run runs seed --from <campaign> --name cmp-<what>`, passing `--events N` to truncate the log before its first practice release or at a `comparison.started` event. The script refuses directories lacking `seed.json`. Refer to the starter as `starter` or `A`, and import the built harness using `bun tools/d2/import.ts --name cmp-<what> --harness <data/harnesses/<run>/harness>`.
+2. **Predict**: record the predicted winner and its settling count in `.ana/compare/cmp-<what>/prediction.md` before solving.
+3. **Dry-run at zero cost**: run with `--read` to draw the evaluation tasks without executing solves:
    ```sh
    bun .claude/skills/compare-systems/scripts/systems.ts --seed cmp-truss \
      --baseline bare-opus=claude/claude-opus-5-5:medium@A \
      --candidate built-terra=openai-codex/gpt-6.1-terra:high@<digest of the truss harness> --read
    ```
-4. **Solve, on the operator's word**: drop `--read`, add `--cap <dollars>`, `--reviewer <model>` and,
-   for a Claude solver, `--login N`, counted by hand against that login's cap. Run under
-   `bun --env-file=<.env with the logins>` on one quiet host (truss where the machine rules place
-   it). A rerun fills the missing solves under the recorded harness and setting, then retries any
-   rejection whose Referee call ended without a ruling. A seed admits one solving command at a time.
-   Once the recorded bill reaches the cap, further solves, retries and rulings wait. Calls already
-   in flight can still bill.
-5. **Clean up**: `/usr/bin/trash .ana/d2/cmp-<what> .ana/compare/cmp-<what>`.
+4. **Solve, with operator authorisation**: remove `--read` and supply `--cap <dollars>`, `--reviewer <model>`, and (for any Claude solver) `--login N`, accounting manually for that login's concurrency cap. Run under `bun --env-file=<.env with the logins>` on a quiet host (placing domain packs such as truss on their designated host). Re-running the command fills any missing solves under the recorded harness and setting, then retries any rejection whose Referee call terminated without a ruling. Only one solving process may run against a given seed at a time. Once recorded spend reaches `--cap`, further solves, retries, and Referee rulings pause, though calls already in flight may still incur charges.
+5. **Clean up**: remove temporary directories with `/usr/bin/trash .ana/d2/cmp-<what> .ana/compare/cmp-<what>`.
 
-Price solves from earlier `solve.finished.billed` of the same solver and pack. `--solves 2` adds the A/A at twice the price, on the operator's word only.
+Estimate solve costs beforehand from prior `solve.finished.billed` events for the same solver and pack. Passing `--solves 2` adds an A/A control at double the cost and requires explicit operator approval.
 
 ## How to read it
 
-Report the tasks drawn and which solver's Examiner admitted them; each system alone (valid over
-solves, tasks valid on every, some or no solve, fails not ruled earned); one table per solve of
-valid share, cost (the whole bill, rulings included), wall time, slowest solve and turns, with no
-cost per valid answer; the A/A at two or more solves; and per candidate the wins, losses, ties,
-carrying measure, p each way and one verdict: `X is better` (a step without the bill) or `no step
-either way`, which is no proof of equality and comes with the smallest winning share this size could
-show. Split high wall time into model turns and tool time (`solve.call` carries `ms`).
+Report the evaluation set drawn and which solver's Examiner admitted those tasks; each system's standalone performance (valid answers over total solves, tasks valid on all, some, or no solves, and failures not ruled `earned`); a per-solve summary table showing valid share, total cost (including Referee rulings), wall-clock time, slowest solve, and turns, omitting cost per valid answer; the A/A control when two or more solves per side were run; and for each candidate, wins, losses, ties, the carrying measure, two-sided p-values, and a single verdict: `X is better` (a step excluding cost) or `no step either way`. The latter is not proof of equivalence and must be reported alongside the minimum detectable winning share for the sample size. Decompose high wall-clock times into model turns versus tool execution time (`solve.call` records `ms`).
 
-One solve a side is weak evidence (rule 6). "Reaches equal scores" means only no step either way at
-this size, with the detectable share and each system's cost and time beside it.
+A single solve per side constitutes weak evidence (rule 6). "Reaches equal scores" means only that no step was detected in either direction at this sample size, and must always be accompanied by the minimum detectable share and each system's cost and runtime.
 
 ## Limits
 
-- Tasks were admitted against the campaign's own solver and references.
-- The Referee is a model until a person labels it.
-- Another campaign's harness meets this contract's format; compare formats first.
-- A harness may rely on the host's `python3`, so keep one question on the host it was built on
-  (`bun run runs source` shows what a launch found).
-- Trial logs hold hidden values: keep them under `.ana/compare/` and out of prompts, pull requests
-  and pastes.
+- The held-out tasks were originally admitted against the source campaign's solver and reference harnesses.
+- Referee rulings remain model outputs until verified by human labels.
+- A harness imported from another campaign must match the seed contract's answer format; verify format compatibility before running.
+- Because a harness may depend on the host's `python3` environment, keep all arms of a comparison on the same host class where the harness was built (`bun run runs source` reports the launch environment).
+- Trial logs contain hidden task values; keep them under `.ana/compare/` and out of prompts, pull requests, and pasted excerpts.

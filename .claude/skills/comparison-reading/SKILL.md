@@ -1,28 +1,29 @@
 ---
 name: comparison-reading
-description: "Use before editing src/kernel/{compare,reports,size,solve}.ts or src/campaign/{comparison,round,decide,admission,climb}.ts. Explains readings (step, no-step, not-scored), task scores (pointsOf, WEIGHTS), significance (flipP, readsStep), A/A controls, task draws (poolOf, scoredSet, held-short), sample size, decide and rule N (AGENTS.md sections 7–8). Scripts: size.ts, reading.ts, draw.ts and starter-reads.ts. Use promotion-tuner to read comparisons under other rules."
+description: "Use before editing src/kernel/{compare,reports,size,solve}.ts or src/campaign/{comparison,round,decide,admission,climb}.ts. Explains readings (step, no-step, not-scored), task scores (pointsOf, WEIGHTS), significance testing (flipP, readsStep), A/A controls, task draws (poolOf, scoredSet, held-short), sample size, decide, and AGENTS.md sections 7 to 8. Scripts: size.ts, reading.ts, draw.ts, and starter-reads.ts. Use promotion-tuner to replay comparisons under alternative rules."
 ---
 
 # Comparison reading
 
-This skill expands `AGENTS.md` sections 7 and 8: how recorded solves become a reading, what
-follows, and why each rule holds. Where a reference disagrees with the source, the source wins and
-the reference is corrected in the same change. Wording a claim is `attribution-and-proof`'s,
-doubting a reading `whole-run-investigation`'s, and rescoring the record under another rule
-`promotion-tuner`'s.
+This skill expands `AGENTS.md` sections 7 and 8: how recorded solves are aggregated into a
+comparison reading, what actions follow, and why each evaluation rule exists. Whenever a reference
+disagrees with the source code, the source code is authoritative and the reference must be updated
+in the same change. For phrasing experimental claims, consult `attribution-and-proof`; for auditing
+a suspicious reading, use `whole-run-investigation`; for replaying historical logs under modified
+rules, use `promotion-tuner`.
 
 | Section | Reference | What it explains |
 | --- | --- | --- |
-| 7. The draw and the solves | `references/draw-and-solves.md` | the terms fixed first, which tasks are scored (`poolOf`, `scoredSet`), the mirror, how each ending counts |
-| 7. The tally and the test | `references/tally-and-test.md` | `pointsOf`, `WEIGHTS`, `GAP_FLOOR`, `flipP`, `readsStep`, the A/A and each reading word |
-| 7. Limits and room | `references/limits-and-room.md` | rulings, the budget and cap, `roomOf`, `stopRule`, promotion |
-| 7. The move table | `references/move-table.md` | the nine rows of `decide`, `roomless`, supply patience |
-| 8. Rules | `references/rules.md` | each rule's reason and edge |
+| 7. The draw and the solves | `references/draw-and-solves.md` | Pre-logged terms, task selection (`poolOf`, `scoredSet`), arm mirroring, and how each solve ending counts |
+| 7. The tally and the test | `references/tally-and-test.md` | `pointsOf`, `WEIGHTS`, `GAP_FLOOR`, `flipP`, `readsStep`, A/A controls, and reading classifications |
+| 7. Limits and room | `references/limits-and-room.md` | Referee rulings, compute budget and dollar cap, `roomOf`, `stopRule`, and promotion |
+| 7. The move table | `references/move-table.md` | The nine rows of `decide`, `roomless`, and supply patience |
+| 8. Rules | `references/rules.md` | Rationale and edge cases for each evaluation rule |
 
 ## Scripts
 
-All read through production readers. Each takes `--help`, and `--host <name>` runs it on another
-host (`.claude/skills/main/cli.ts`). A name is found on any host.
+All scripts call the production readers directly. Each supports `--help`, and `--host <name>` runs
+it on a remote host (`.claude/skills/main/cli.ts`); campaign names are resolved across hosts.
 
 ```text
 bun .claude/skills/comparison-reading/scripts/size.ts [--level <n>] [--untied <n>]
@@ -34,36 +35,36 @@ bun .claude/skills/comparison-reading/scripts/draw.ts <log.jsonl | campaign name
 bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | campaign folder | name> | --all [--since <date>] [--name <part>]
 ```
 
-- `size.ts` is the power analysis: at a level and a count of untied tasks it prints the smallest
-  scored set that can read a step, the admission floor, the clearing tallies, the detectable share
-  and the false rate. With `--scores` it tests one set of task scores
-  (`--unbilled` without the bill).
-- `reading.ts` prints every comparison in a log by its last report: the reading, the test as
-  tallied, the scored sets, the A/A either way, the room and the tasks left out. It flags a recorded
-  reading that this tree's `readsStep` would read otherwise. Under each comparison a zone line
-  gives the reference's tasks with no, some and every solve valid and what untied each, and, under
-  an objective, a gap line gives each side's median ratio to the best answer on record and how
-  often it came within the floor: a large gap can mean a strong candidate or a weak reference. The
-  output is exam-side. `--zone` prints the zone counts with the A/A's untied share as one TSV row a
-  comparison across several logs. What a reading rests on task by task, with how many of its
-  tallied frontier tasks the largest family holds and the new side's tally on each writing
-  session's tasks, is `bun tools/wri/wri.ts reader pairs --log <name>`.
-- `draw.ts` predicts the next comparison: the held-out pool by part, the set it would fix, its
-  grain and its repeats of the comparison before, its frontier by epoch, admission's floor and
-  refusals (`held-short` among them) and the size lines, at
-  the table's target and level by default.
-- `starter-reads.ts` asks what a confirmed promotion rests on. It splits each starter read into the
-  tasks that selected the harness and those that did not (written before but undrawn, or after),
-  and says what the tasks written after read alone (a step, a step for the starter, no step, or too
-  few untied tasks to read one), the one origin no step selected: generalisation rather than
-  selection bias. Beside it, the read on every task no step before the promotion chose (the
-  reference's own or an ancestor's): "written before, not chosen on" holds an ancestor's chosen
-  tasks, so a confirmation that rests on them is partly a margin selected for its sign. Over the
-  record of 19 November, jobstat's 45 reads confirmed 20 and read a step on those tasks 8 times;
-  buffer's 31 confirmed 17 and read 9. It reports and decides nothing. `--all`
-  sums the record, `--name` filters by a text such as a pack. The fold is `starterReads`
-  (`src/campaign/climb.ts`). Across weeks of runs the same fold is read by promotion-tuner's
-  [trend.ts](../promotion-tuner/SKILL.md), which sets it beside how fast the promotions came.
+- `size.ts` performs power analysis: given a significance level and a count of untied tasks, it
+  prints the minimum scored set capable of detecting a step, the admission floor, the clearing
+  tallies, the minimum detectable win share, and the nominal false positive rate. Passing `--scores`
+  evaluates a concrete vector of task scores (`--unbilled` omits cost fields).
+- `reading.ts` prints every comparison in a log from its latest report: the reading, the tallied
+  test result, scored task sets, both directions of the A/A control, remaining headroom, and
+  excluded tasks. It flags any recorded reading that the current tree's `readsStep` would classify
+  differently. Beneath each comparison, a zone line reports how many reference tasks had none, some,
+  or all solves valid and what untied each task; under an objective, a gap line reports each arm's
+  median ratio to the best recorded answer and how often it fell within `GAP_FLOOR` (a large gap can
+  indicate either a strong candidate or a weak reference). This output is exam-side. `--zone` emits
+  the zone counts alongside the A/A untied share as one TSV row per comparison across multiple logs.
+  For task-by-task breakdown, including the largest task family's share of tallied frontier tasks and
+  the candidate's tally per authoring session, run `bun tools/wri/wri.ts reader pairs --log <name>`.
+- `draw.ts` predicts the next comparison: the held-out pool by partition, the task set it would fix,
+  its granularity and overlap with the prior comparison, its frontier breakdown by epoch, admission
+  floor and refusals (including `held-short`), and the power-analysis size lines, defaulting to the
+  move table's target and level.
+- `starter-reads.ts` audits what evidence supports each confirmed promotion. It partitions every
+  starter comparison into tasks that selected the promoted harness versus tasks that did not
+  (either authored earlier and undrawn, or authored after promotion), and reports the standalone
+  reading on post-promotion tasks (`step`, step for the starter, `no-step`, or too few untied tasks).
+  Post-promotion tasks are the only subset free from selection bias and therefore directly measure
+  out-of-sample generalisation. Alongside this, it reports the reading over all tasks unselected by
+  any preceding promotion (the reference's own or an ancestor's), since the "written before, not
+  chosen on" bucket can still contain tasks that selected an ancestor and therefore carries residual
+  selection bias. The script is reporting-only and alters no decision; `--all` aggregates across the
+  archive and `--name` filters by substring (such as a pack name). The underlying fold is
+  `starterReads` (`src/campaign/climb.ts`). Across multi-week cohorts, the same fold is analysed by
+  `promotion-tuner`'s [trend.ts](../promotion-tuner/SKILL.md) alongside promotion cadence.
 
-`size`, `reading` and `draw` print counts, ids, short digests and harness letters, never task
-identities, answers, objective measures or checks.
+`size`, `reading`, and `draw` print counts, identifiers, short digests, and harness letters; they
+never print task identities, answers, objective measures, or check code.

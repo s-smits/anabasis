@@ -5,7 +5,7 @@ description: "Use before editing src/examiner/{ladder,draft,prompt}.ts or when c
 
 # Examiner complexity
 
-A paired comparison has statistical power only on tasks that the reference harness solves inconsistently. While the Examiner model authors each task (`AGENTS.md` section 2), this skill calibrates the difficulty guidance it receives (the reach scale, worked examples from non-campaign domains, and factual reference performance observations) without hand-editing tasks or checks (rule 2) or prescribing numerical targets. Paired live-seat evaluations follow `system-path-simulation` (`cases/optimize.md`), and the reach scale aligns with lane 14 of `whole-run-investigation`.
+A paired comparison has statistical power only on tasks that the reference harness solves inconsistently. While the Examiner model authors each task (`AGENTS.md` section 2), this skill calibrates the difficulty guidance it receives (the reach scale, worked examples from non-campaign domains, and factual reference performance observations) without hand-editing tasks or checks (rule 2) or prescribing numerical targets. Paired live-seat evaluations follow `system-path-simulation` (`cases/optimize.md`), and the reach scale aligns with lane 8 of `whole-run-investigation`.
 
 ## 1. Calibrate the record and diagnose where solvers stop
 
@@ -26,7 +26,7 @@ bun .claude/skills/examiner-complexity/scripts/exams.ts [--every] <campaign fold
 | Exam difficulty bounds and how rules are stated | `src/examiner/draft.ts` |
 | Writing tasks above the reference harness's current grade | `src/examiner/prompt.ts`, "How hard" |
 
-`test/examiner-ladder.test.ts` enforces alignment with lane 14, excludes examined campaign domains from worked examples, and verifies that both drafting and writing prompts receive the ladder. Revise worked examples only via blind re-ratings by at least two independent graders (`id<TAB>grade<TAB>place`):
+`test/examiner-ladder.test.ts` enforces alignment with lane 8, excludes examined campaign domains from worked examples, and verifies that both drafting and writing prompts receive the ladder. Revise worked examples only via blind re-ratings by at least two independent graders (`id<TAB>grade<TAB>place`):
 
 ```sh
 bun .claude/skills/examiner-complexity/scripts/grades.ts rungs packet > <packet.md>

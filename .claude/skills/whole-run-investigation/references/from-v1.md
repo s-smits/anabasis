@@ -1,60 +1,53 @@
-# From v1's catalogue to v2's
+# Catalogue lineage (v1 and 23-lane v2 to 19-lane current)
 
-Consult this mapping when a v1 archive cites a row or lane absent from the current catalogue. The v1 catalogue is preserved at `git show 3f93d06:.claude/skills/whole-run-investigation/references/review-angles.md`. The v2 lane numbers below reflect the current catalogue, which added 10 lanes for paired comparisons and exams written independently of the Builder.
+Consult these mappings when an archived investigation cites a row or lane number from an earlier catalogue. The v1 catalogue is preserved at `git show 3f93d06:.claude/skills/whole-run-investigation/references/review-angles.md`, and the 23-lane v2 catalogue at `git show eccbc9ffe:.claude/skills/whole-run-investigation/references/lanes.md`.
 
-## Rows
+## From 23-lane v2 to 19-lane current
 
-| v1 row | v2 home |
+Eleven redundant or dead v2 lanes were removed or merged, and six lanes were added for current-system mechanisms (deliverables capture, practice bands & family transfer, harness portability & external transfer, seat compaction & handover, solver execution & tool friction, and evaluation wall / sandbox / provenance).
+
+| v2 lane | fate | current lane |
+| --- | --- | --- |
+| 1. Verdict chain: what a pass observes | rewritten (+ pass labels) | 1 |
+| 2. The drafted exam against its prompt | rewritten (now standing, + v2 lane 7) | 2 |
+| 3. Whether validity separates | removed (merged into 1 & 6) | 1, 6 |
+| 4. What each seat was told | rewritten | 14 |
+| 5. False rejection among fails | rewritten | 4 |
+| 6. Valid-alternative rejection challenge | kept (isolated) | 5 |
+| 7. Public disclosure and one recipe | removed (merged into 2) | 2 |
+| 8. What the test could show at its size | unified (absorbs 3, 9, 10, 11) | 6 |
+| 9. What a step rests on | removed (merged into 6) | 6 |
+| 10. Flips and solver variance | removed (merged into 6) | 6 |
+| 11. What an objective-only step won by | removed (merged into 6) | 6 |
+| 12. What a confirmation is made of | removed (merged into 7) | 7 |
+| 13. Which link holds the next promotion | rewritten (practice split to 11, endings/compaction to 15) | 16 |
+| 14. Harness quality, version by version | rewritten (blind) | 8 |
+| 15. Harness delta against its note | rewritten (boundary breach moved to 18) | 9 |
+| 16. What made each win | rewritten | 10 |
+| 17. The starter | removed (merged into 7) | 7 |
+| 18. The promotion and the climb after it | unified (absorbs 12, 17, 19; `/tmp` moved to 18) | 7 |
+| 19. How many independent batches a read rests on | removed (merged into 7) | 7 |
+| 20. Pressure on the Examiner | rewritten (+ v2 lane 21, `try_reference`, family concentration) | 13 |
+| 21. Supply and task admission | removed (merged into 13 & 18) | 13, 18 |
+| 22. Does the budget bind, and how each solve ended | dissolved into solver execution (17) & wall/provenance (18) | 17, 18 |
+| 23. Time, spend and silence | rewritten (compaction to 15, held-off to 16, + billing residual) | 19 |
+| — | added: Deliverables and file-artifact verification | 3 |
+| — | added: Practice feedback, band discipline and family transfer | 11 |
+| — | added: Harness portability and external-transfer readiness | 12 |
+| — | added: Seat continuity, compaction and handover | 15 |
+| — | added: Solver execution, tool friction and resource limits | 17 |
+| — | added: Evaluation wall, sandbox isolation and run provenance | 18 |
+
+## From v1 rows to current rows
+
+| v1 row | current home |
 | --- | --- |
 | A. Campaign identity | A |
-| B. Claim and promotion state | F; promotions are recorded as `harness.promoted` events |
-| C. Workspace and Git | lane 15 by harness digest; the launch receipt records the commit |
-| D. Static conformance | lane 15 |
+| B. Claim and promotion state | F (`harness.promoted`) |
+| C. Workspace and Git | lane 9 by harness digest; lane 18 by launch receipt |
+| D. Static conformance | lane 9 |
 | E. Fingerprint and task-admission census | B |
-| F. F2 solvability | D; lanes 8 and 21 |
+| F. F2 solvability | D; lanes 6 and 13 |
 | G. Case partition | E |
-| H. Runtime identity and isolation | C |
-| I. Served-model attestation | C, including missing `responseModels` |
-
-## Lanes
-
-| v1 lane | fate | v2 lane |
-| --- | --- | --- |
-| 1. Request-to-verdict chain | overhauled | 1 |
-| 2. Executable verifier dependency closure | kept | 4 |
-| 3. Authoring-to-host contract compatibility | removed: `draftReading` validates draft structure | none |
-| 4. Operating guide and roster truth | kept | 15 |
-| 5. Limit slack against the reference | overhauled | 8 |
-| 6. Check discrimination and binding | overhauled | 1 |
-| 7. Valid-alternative rejection challenge | kept | 6 |
-| 8. Public disclosure and one-recipe | kept | 7 |
-| 9. Rehearsal instrument reach | removed: practice uses the campaign's verifier | none |
-| 10. Difficulty calibration loop | removed: the setting remains fixed | none |
-| 11. Submit decision against rehearsal evidence | overhauled | 13 |
-| 12. Epoch Reviewer standing duties | removed: the Referee rules rejections | none |
-| 13. Public-safe feedback sufficiency | merged | 5 |
-| 14. Finding routing and recurrence | overhauled | 5 |
-| 15. Harness-versus-evaluation triage hand-off | kept | 5 |
-| 16. Judge disagreement adjudication | removed: no model Judge | none |
-| 17. Round hand-off census | removed | none |
-| 18. Same-task repair measurement | merged | 13 |
-| 19. Semantic repair closure | overhauled | 1 |
-| 20. Task movement and attribution | overhauled | 15 |
-| 21. Source-delta reach | merged | 9 |
-| 22. Solver process and walls | kept | 22 |
-| 23. Trace challenge | kept | 16 |
-| 24. Time, spend and provider waits | kept | 23 |
-| 25. Failure mechanism and non-result honesty | kept | 22 |
-| 26. Builder memory and posture | removed: `memory.ts` persists notes | none |
-| 27. Task-admission cost and confidence | overhauled | 3 |
-| 28. Evaluation-correction regrade | merged | 1 |
-| 29. Hardware target coverage against public ground truth | removed | none |
-| 30. Ground-truth verdict comparison | removed | none |
-| 31. Brief against the request | removed, later reintroduced as the drafted-exam lane | none |
-| 32. Judge pass decidability | removed: a human labels passes in `settle.ts` | none |
-| 33. Reference provenance and author's answer strength | overhauled | 8 |
-| 34. Check mirroring in solver tools | kept | 15 |
-| 35. Independent recomputation of passes | merged | 1 |
-| 36. Difficulty pressure on the Builder | removed: the Examiner authors tasks | none |
-| 37. Scored-set size and probe graduation | removed | none |
-| 38. False rejection among verified fails | kept | 5 |
+| H. Runtime identity and isolation | C; lane 18 |
+| I. Served-model attestation | C; lane 18 |

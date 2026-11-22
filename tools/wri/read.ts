@@ -58,6 +58,7 @@ import {
 import { safeguardTriggers } from "./climb.ts";
 import { promotionTriggers, testedOf } from "./promotion.ts";
 import { runTriggers } from "./run.ts";
+import { signalTriggers } from "./signals.ts";
 import { degradationLines } from "../runs/degradations.ts";
 import type { Receipt } from "../runs/receipt.ts";
 import { costTriggers, hoursLine, deadlineTriggers } from "./time.ts";
@@ -778,6 +779,7 @@ export function overview(events: readonly LogEvent[], launches: readonly Receipt
       ...promotionTriggers(log),
       ...safeguardTriggers(log),
       ...runTriggers(log, launches),
+      ...signalTriggers(log),
     ],
   };
 }

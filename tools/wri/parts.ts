@@ -163,7 +163,7 @@ function partsLines(
   const list = (paths: readonly string[]) => (paths.length === 0 ? "none" : paths.join(" "));
   const prefix = sharedPrefix(rows.map(({ solve }) => solve));
   const head = [
-    `parts (lane 16): ${session}, reference ${old.slice(0, 8)} against new ${fresh.slice(0, 8)}; the new harness won ${String(tasks)} of ${String(paired)} paired tasks, read as the report recorded each (WINS).`,
+    `parts (lane 10): ${session}, reference ${old.slice(0, 8)} against new ${fresh.slice(0, 8)}; the new harness won ${String(tasks)} of ${String(paired)} paired tasks, read as the report recorded each (WINS).`,
     "One row a solve of a won task: valid as the comparison read it, objective, ending, calls, and each program its calls ran with its count of calls (programsOf).",
     ...(prefix === "" ? [] : [`Solve ids leave off their shared prefix ${prefix}.`]),
     ...(written === null

@@ -5,8 +5,8 @@ External-transfer row of the v1.0 bar (`system-audit`, `docs/plan.md`): tests wh
 ## Trigger and `outside-reads.md` ledger
 
 At least one live slot stays on `jobstat`. Evaluate a `jobstat` run's newest promoted reference on the eight tasks below:
-- **At every pause from promotion 2 onwards**: start automatically without waiting for operator approval or lane 14 (append lane 14 soundness/weight once ready).
-- **On stopping at another trigger with 1 promotion**: run lane 14 first; skip if soundness ≤2 or bloat.
+- **At every pause from promotion 2 onwards**: start automatically without waiting for operator approval or lane 8 (append lane 8 soundness/weight once ready).
+- **On stopping at another trigger with 1 promotion**: run lane 8 first; skip if soundness ≤2 or bloat.
 
 Record every read in `<cycle>/outside-reads.md` (`scored`, `skipped` or `owed`; `wri2p2.ts next` enforces the `outside` gate before vetting). Even when `owed`, run the dry run immediately so the reference exports before `retire` archives the campaign:
 

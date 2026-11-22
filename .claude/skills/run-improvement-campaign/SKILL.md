@@ -55,7 +55,7 @@ bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts next <dir>
 ```
 
 1. **Trigger & pause**: triggers at 2 promotions, 12 elapsed hours, a scored comparison with 0 untied tasks, or a natural ending after ≥1 comparison. Pause cleanly (`runs pause <name> --after reported --yes` under `nohup`, which awaits any pending starter confirmation `heldBy`), then resolve `outcomes-<run>.md`.
-2. **Investigate**: `wri2p2.ts open <name>[,<peer>]` (`--snapshot` only on operator direction, logged in `deviations.md`), then follow `wri2p2.ts next <dir>` through `instruct`, `lanes --agents 4`, `wri.ts record`, `collect`, isolated lane 6 if triggered, and `synthesis`.
+2. **Investigate**: `wri2p2.ts open <name>[,<peer>]` (`--snapshot` only on operator direction, logged in `deviations.md`), then follow `wri2p2.ts next <dir>` through `instruct`, `lanes --agents 4`, `wri.ts record`, `collect`, isolated lane 5 if triggered, and `synthesis`.
 3. **Vet, cross-domain check & plan**: backtrack all prediction ids first, vet every synthesis finding in `vetting.md` (`vettingFaults`), inspect 5–10 recent vetted investigations from other domains to write `cross-domain.md`, then write `plan.md` accounting for every confirmed `vet-<n>` row, ≥3 lever ids and `## Intentionally opposed`.
 4. **Implement**: land the plan as one stacked PR at the top (or extend your own PR owning that label), verify with `bun run land -- <top> --sanitize`, record `Pull request: #N` in `plan.md`. Prove behavioural patches before/after on identical logs/seeds (`system-path-simulation/cases/before-after.md`).
 5. **Predict & fork**: dry-run `runs fresh --as forkedPR<N>` for the name, write `predictions-<run>.md` (carrying unheld parent ids + new `first` rows), and launch only `ready: yes` entries.
@@ -91,7 +91,7 @@ Report Supply + the four factors (`AGENTS.md` §1) at pass open and close:
 
 ## The outside aim: Harness² on JobBench
 
-At least one live slot stays on `jobstat`. Evaluate every `jobstat` run's newest promoted reference on JobBench's eight-task subset beside a fresh paired Starter—automatically on pause from promotion 2 onwards, or after lane 14 (skipping if soundness ≤2 or bloat) when stopping with 1 promotion. Nothing from JobBench ever enters seats, prompts, checks or queries, and external scores never gate promotions. See [references/outside.md](references/outside.md) for partitions, `outside-reads.md` columns, `runs bench` execution and spread actions.
+At least one live slot stays on `jobstat`. Evaluate every `jobstat` run's newest promoted reference on JobBench's eight-task subset beside a fresh paired Starter—automatically on pause from promotion 2 onwards, or after lane 8 (skipping if soundness ≤2 or bloat) when stopping with 1 promotion. Nothing from JobBench ever enters seats, prompts, checks or queries, and external scores never gate promotions. See [references/outside.md](references/outside.md) for partitions, `outside-reads.md` columns, `runs bench` execution and spread actions.
 
 ## Milestones and the walk
 
@@ -106,7 +106,7 @@ At least one live slot stays on `jobstat`. Evaluate every `jobstat` run's newest
 | M6 next epoch | First Examiner & comparison post-M5 | Drafts held vs refused, frontier & retained sizes |
 | M7 ending | `campaign.ended` | Ending kind, closing report, predictions |
 
-On stalls (spend without milestone progress; exclude rule-15 limit waits), walk from the active milestone and stop at the first failing link (matches WRI lane 13):
+On stalls (spend without milestone progress; exclude rule-15 limit waits), walk from the active milestone and stop at the first failing link (matches WRI lane 16):
 
 | # | Link | Point | Fails as | Owner |
 | --- | --- | --- | --- | --- |

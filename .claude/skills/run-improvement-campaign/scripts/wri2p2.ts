@@ -288,7 +288,7 @@ function runGates(where: Where, run: string, group: readonly string[] = []): Gat
  *  aim"): a row that names it in a cycle's `outside-reads.md`, scored, skipped or still owed. */
 function outsideGate({ root, dir }: Where, run: string): Gate[] {
   if (!run.startsWith("jobstat")) return [];
-  const owed = `${run} has no row in ${OUTSIDE} of its cycle's folder under ${root}: read its newest promoted reference on the eight tasks beside a fresh Starter (run-improvement-campaign, "A reference's read"), then add the row whose first cell is the run's name, with its scores, "skipped" with lane 14's grade or no promotion, or "owed" with what the read waits for`;
+  const owed = `${run} has no row in ${OUTSIDE} of its cycle's folder under ${root}: read its newest promoted reference on the eight tasks beside a fresh Starter (run-improvement-campaign, "A reference's read"), then add the row whose first cell is the run's name, with its scores, "skipped" with lane 8's grade or no promotion, or "owed" with what the read waits for`;
   return [
     {
       step: "outside",
@@ -400,7 +400,7 @@ function gatesOf(where: Where): Gate[] {
         )
           ? null
           : [
-              `the isolated lanes (${LONE.join(", ")}) run alone, after the reports they wait on: build each where its \`Starts from\` paragraph opens it (lane 6 only where lane 5 left a check undecided) with${wri("lanes", " --lanes <n>").slice(1)} and launch it alone, or record why not in ${at(DEVIATIONS)} as "| isolated | <reason> |"`,
+              `the isolated lanes (${LONE.join(", ")}) run alone, after the reports they wait on: build each where its \`Starts from\` paragraph opens it (lane 5 only where lane 4 left a check undecided) with${wri("lanes", " --lanes <n>").slice(1)} and launch it alone, or record why not in ${at(DEVIATIONS)} as "| isolated | <reason> |"`,
             ],
       ),
     ]),

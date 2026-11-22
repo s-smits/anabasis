@@ -27,9 +27,9 @@ git diff --no-index <parent>/.toolchain/ <child>/.toolchain/ -- ':!*__pycache__*
 
 - **Single practice solve from a handover** (runs a solve): `bun tools/d2/close.ts --name <campaign> --to <folder outside repo> --solve <task id>` logs to `handover/log.jsonl` outside campaign statistics.
 - **Paired comparison** (runs solves): `bun tools/d2/checkpoint.ts --reference <a> --new <b>` ([run-management](../run-management/SKILL.md)); use `programs-of:<harness>` to isolate installed programs.
-- **Pre-promotion audit** (when `--hitl` is set or promoting manually): (1) dry-run `bun tools/d2/promote.ts --name <campaign> --harness <digest>` without `--yes` (or `--despite "<why>"`), (2) verify digest integrity and lineage back to the starter, (3) run `--diff <digest> --against promoted`, and (4) check lanes 13, 15, and 18 of [whole-run-investigation](../whole-run-investigation/SKILL.md).
+- **Pre-promotion audit** (when `--hitl` is set or promoting manually): (1) dry-run `bun tools/d2/promote.ts --name <campaign> --harness <digest>` without `--yes` (or `--despite "<why>"`), (2) verify digest integrity and lineage back to the starter, (3) run `--diff <digest> --against promoted`, and (4) check lanes 7, 9, and 16 of [whole-run-investigation](../whole-run-investigation/SKILL.md).
 - **Blind handover review**: export via `bun tools/d2/close.ts --name <campaign> --to <folder>` and give an independent reviewer ([codex-gpt-swarm](../codex-gpt-swarm/SKILL.md)) only `harness/` and `RULES.md` (withholding `REPORT.md` and the log) to audit structure, guide/program consistency, escaping symlinks, and task/answer leakage (`src/builder/prompt.ts`).
-- **Component evaluation**: from `solve.call` events under that harness (lane 15), classify each component as `enrich`, `add`, `consolidate`, `describe`, `remove`, or `keep` to inform Starter or Builder guidance changes (subject to operator approval).
+- **Component evaluation**: from `solve.call` events under that harness (lane 9), classify each component as `enrich`, `add`, `consolidate`, `describe`, `remove`, or `keep` to inform Starter or Builder guidance changes (subject to operator approval).
 
 ## 3. Owners of the harness contract
 

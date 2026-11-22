@@ -256,6 +256,24 @@ describe("proveCommits", () => {
     expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
   });
 
+  it("keys a pass by the Bun its commit pins, which the router runs it under, not the landing's own", () => {
+    const manifest = blob('{ "packageManager": "bun@0.0.1+sha" }\n');
+    const tree = execTextSync("git", ["mktree"], {
+      cwd: work,
+      stdin: `${[...git("ls-tree", second).split("\n"), `100644 blob ${manifest}\tpackage.json`].join("\n")}\n`,
+    }).trim();
+    const head = git("commit-tree", tree, "-p", second, "-m", "pin a Bun");
+    expect(prove([`${second}:static`, `${head}:static`]).status).toBe(0);
+    const keys = readFileSync(join(work, ".git", "ana-gate-passed"), "utf8")
+      .trim()
+      .split("\n");
+    // The commit without a manifest falls back to the running Bun; the pinned one names its pin.
+    expect(keys.map((key) => key.split(" bun-")[1])).toEqual([Bun.version, "0.0.1"]);
+    rmSync(log, { force: true });
+    expect(prove([`${head}:static`]).status).toBe(0);
+    expect(gatesRun(log)).toEqual([]);
+  });
+
   it("lets a running proof finish and keep its pass before a rejected mark removes the checkouts", () => {
     // `second` has no nearby test and passes at once; `source` is still in its two-second test step
     // when the mark for `second` throws, as land's does when a head moved.

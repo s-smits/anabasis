@@ -38,7 +38,7 @@
  * CI gate stops at its first failed step, and each pass remembered in `ana-gate-passed` under the common Git directory, so a
  * commit that passed is not run again from any worktree. A pass is remembered by content
  * (`contentKey`): a whole pass by the commit's tree, a static one by its tree and its
- * parent's, each with the checker and the Bun version. The checker is this CI gate and what it imports, read from the
+ * parent's, each with the checker and the Bun the commit pins. The checker is this CI gate and what it imports, read from the
  * caller's checkout (`proveCommits`), since it runs from there over every target: a changed CI gate
  * runs again on trees it passed before. A pass is not remembered by commit id, since a restack
  * rewrites every id and would keep nothing, leaving the whole CI gate to run again on the top and
@@ -245,11 +245,17 @@ export function parentOf(root: string, commit: string): string {
 
 /** The record's key for a pass, by content: the commit's tree, which holds the lockfile, and for a
  *  static pass its first parent's tree too, since the diff between them chooses its tests; with
- *  the checker and the Bun the CI gate ran under. */
+ *  the checker and the Bun the CI gate ran under. That Bun is the one the commit's `package.json`
+ *  pins, since the `bun` router runs a pass under the pin of the tree it runs in, never the
+ *  landing's own; so a landing from a checkout pinning another Bun keeps the passes below it. It is
+ *  read from `"packageManager": "bun@X"` as the router reads it, or is the running Bun where the
+ *  commit pins none. */
 function contentKey(root: string, commit: string, pass: Pass, checker: string): string {
   const tree = git(root, ["rev-parse", `${commit}^{tree}`]);
   const from = pass === "static" ? `${git(root, ["rev-parse", `${parentOf(root, commit)}^{tree}`])}..` : "";
-  return `tree ${from}${tree} ${pass} checker-${checker} bun-${Bun.version}`;
+  const manifest = zeroExitText(runSync(["git", "show", `${commit}:package.json`], { cwd: root })) ?? "";
+  const bun = /"packageManager"\s*:\s*"bun@([^"+]+)/u.exec(manifest)?.[1] ?? Bun.version;
+  return `tree ${from}${tree} ${pass} checker-${checker} bun-${bun}`;
 }
 
 export const changesSource = (root: string, commit: string): boolean =>

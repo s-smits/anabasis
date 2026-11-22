@@ -1,15 +1,14 @@
 /**
- * How a skill script prints a table and its cells, so that every table over the record reads
- * alike and a spreadsheet takes any of them (`--format tsv`).
+ * Shared table and cell formatting for skill scripts (`--format md` or `--format tsv`).
  */
 import type { CommandArgs } from "./cli.ts";
 
-/** A cell with nothing to show: a count that does not apply, or a rate with no denominator. */
+/** Placeholder rendered for inapplicable counts or rates with a zero denominator. */
 export const MISSING = "-";
 
 export const money = (value: number | null): string => (value === null ? MISSING : value.toFixed(0));
 
-/** A table as GitHub markdown, or tab-separated lines for a spreadsheet. */
+/** Formats `head` and `rows` as a GitHub Markdown table or tab-separated lines. */
 export function printed(
   head: readonly string[],
   rows: readonly (readonly string[])[],
@@ -20,7 +19,7 @@ export function printed(
   return [line(head), line(head.map(() => "---")), ...rows.map(line)].join("\n");
 }
 
-/** `--format` as a script takes it, or a refusal naming the two. */
+/** Reads and validates `--format` (`"md"` or `"tsv"`). */
 export function formatOf(args: CommandArgs): "md" | "tsv" {
   const format = args.value("format") ?? "md";
   return format === "md" || format === "tsv" ? format : args.die(`--format takes md or tsv; got ${format}`);

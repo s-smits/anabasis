@@ -1,39 +1,37 @@
 /**
- * Whether two groups differ by more than their units do among themselves, for any statistic over a
- * group: a permutation test. The units of both groups are pooled and dealt out again in every way
- * that keeps the two sizes, and p is the share of deals in which the statistic differs between the
- * groups at least as much as recorded. It assumes no distribution, and takes the campaign as the
- * unit, since tasks and promotions inside one campaign share its exam.
+ * Two-sample permutation test over campaign-level units.
  *
- * Few deals are all counted and p is exact; past `DRAWS` a fixed sequence of shuffles stands in,
- * so a reading repeats to the digit. Beside p stands the smallest p any deal of the same units could
- * have read: where it is above the level, no record of these units could read a difference at it
- * (three against three, twenty deals with the record and its mirror the most extreme, or runs most
- * of which hold no denominator), which a caller says instead of printing a p.
+ * Pools the units of two groups and evaluates the absolute difference in a group statistic across
+ * all ways of partitioning the pool into the original group sizes. Assumes no parametric
+ * distribution and treats the campaign as the independent unit (since tasks and promotions within a
+ * campaign share one exam).
  *
- * It describes the record: no comparison of harnesses (`AGENTS.md`, section 7) and no step.
+ * When the number of combinations is at most `DRAWS`, all partitions are enumerated exactly;
+ * otherwise `DRAWS` deterministic Lehmer shuffles are sampled. Also reports `least`, the minimum
+ * achievable p-value for the given sample sizes and non-empty denominators.
+ *
+ * Used strictly for retrospective archive summaries (`trend.ts`), never for in-campaign harness
+ * comparisons (`AGENTS.md`, section 7).
  */
 
-/** The shuffles drawn where the deals are too many to count. */
+/** Maximum combinations for exact enumeration before falling back to deterministic shuffles. */
 const DRAWS = 4000;
-/** The Lehmer generator's modulus and multiplier (Park and Miller), exact in a double. */
+/** Park-Miller Lehmer PRNG modulus, multiplier, and fixed seed. */
 const MODULUS = 2_147_483_647;
 const MULTIPLIER = 48_271;
 const SEED = 20_261_111;
-/** What two equal statistics may differ by through rounding. */
+/** Floating-point tolerance when comparing permutation differences against the observed difference. */
 const SLACK = 1e-12;
 
-/** What a permutation test read. */
+/** Result of a two-group permutation test. */
 export interface Shift {
-  /** The share of deals at least as far apart as the record; null where a group's statistic has no
-   *  value as recorded. */
+  /** Two-sided permutation p-value, or `null` if either group's statistic is undefined. */
   readonly p: number | null;
-  /** The share of deals as far apart as the most extreme deal read, the smallest p these units can
-   *  give; null where p is. */
+  /** Smallest achievable p-value across all valid partitions of the pooled units, or `null` when `p` is `null`. */
   readonly least: number | null;
 }
 
-/** The ways to pick `size` of `pool`, `Infinity` once past `DRAWS`. */
+/** Number of ways to choose `size` items from `pool`, or `Infinity` when exceeding `DRAWS`. */
 function dealsOf(pool: number, size: number): number {
   let ways = 1;
   for (let picked = 1; picked <= Math.min(size, pool - size); picked += 1) {

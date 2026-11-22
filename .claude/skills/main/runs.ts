@@ -1,43 +1,22 @@
 /**
- * One campaign folded into the row every reader of the record across runs shares: when it reached
- * its first comparison and each promotion, what each took in hours and dollars, and what its climb
- * rests on. promotion-tuner's `table.ts` prints the rows and `trend.ts` sets one window of them
- * against another. Every number is a production fold over the log and its launch receipts
- * (AGENTS.md section 5): `comparisonsOf`, `epochsOf`, `starterReads`, `billedBetween` and `waitsOf`.
+ * Per-campaign summary fold shared across archive analysis tools (`table.ts`, `trend.ts`).
  *
- * A run's **release** is the release tag before its first launch (`after v0.7.4` is the cycle that
- * built the next release; a campaign with no receipt is placed by its first event), its **pack**
- * is `packOf` of its name, and its **setting** the solver, its effort and the solve limits.
+ * Aggregates each campaign's timeline, promotions, elapsed/active/unloaded hours, billed and
+ * repriced dollars, validity room, starter-read confirmation tallies, and A/A control rates from
+ * production folds over the log and launch receipts (`comparisonsOf`, `epochsOf`, `starterReads`,
+ * `billedBetween`, `waitsOf`).
  *
- * All times are on the log's own clock. **Elapsed** hours run from the first event. **Active**
- * hours subtract the union of every recorded wait (a provider's reset, the network, the solve
- * queue), so a run that sat out a limit is not slower for it. **Unloaded** hours also take out what
- * an overloaded host cost (`overloadOf`): each stretch after a recorded load counts the share of
- * the demand its cores could not serve, `1 - cores / load`. That treats the run as CPU-bound while
- * much of a solve waits on the provider, so it is an upper bound on the load's cost and an
- * estimate. No hour is scaled by the chip or the operating system.
- *
- * A fold can stop short of a log's end: at a moment, so that a reading repeats, and at an age, so
- * that runs of different ages are read alike (`trend.ts`). The run is then read as it stood at the
- * cut, live there where its log goes on past it.
- *
- * Hours say how fast a run climbed, not what it climbed on, so three readings stand beside them.
- * **Room on validity** is the scored tasks, summed over the reported comparisons, that the
- * reference did not answer validly in every solve; near zero, a step can be won only on the
- * objective. **Steps won by validity** counts them as the closing report does. A promotion is
- * **confirmed** by `confirmed` (`src/campaign/climb.ts`); `reads` counts the promotions a starter
- * comparison has read at all, the denominator, and `after` is the reference's tally in them on the
- * tasks written after its promotion, which it was not chosen on.
- *
- * **Dollars** are what the log billed under its own commit's meter, and the meter moved: it began
- * pricing each turn at the model that served it, and later billing a session on its backend's
- * ledger. **Repriced** dollars price every recorded turn with the seat meter a live seat runs today
- * (`seatMeter` on its provider's catalogue), the one measure every run shares (the operator's
- * words: "use current metrics mechanisms to backtrack
- * earlier runs and equally compare that way"); no old log holds a backend's excess over its turns.
- *
- * The first promotion over the Starter is set-up (epoch 0), as the closing report counts it
- * (`epochLine`); `promotions` holds it, and the climb is one fewer.
+ * - **Release**: the latest release tag preceding the campaign's first launch.
+ * - **Elapsed / Active / Unloaded hours**: total wall time from the first event; wall time minus
+ *   recorded waits (provider resets, network, solve queue); and active hours minus estimated CPU
+ *   overload (`1 - cores / load` via `overloadOf`).
+ * - **Cut (`until`, `age`)**: truncates the log at an absolute timestamp or relative campaign age
+ *   so historical snapshots and equal-age cohorts compare on identical terms.
+ * - **Room on validity / Steps won by validity / Confirmed**: scored tasks where the reference was
+ *   not valid on every solve; candidate steps with positive validity points (`validityOf`); and
+ *   promotions confirmed by their owed starter read (`confirmed`, `after`).
+ * - **Dollars / Repriced**: historical spend recorded at the run's own commit vs. every turn
+ *   repriced through today's `seatMeter` catalogue.
  */
 import { backends } from "#src/agent/backends/models.ts";
 import { epochsOf, ORIGINS, starterIn, starterReads } from "#src/campaign/climb.ts";

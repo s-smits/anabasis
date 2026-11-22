@@ -1,67 +1,26 @@
 ## How to read this bundle
 
-A run is its log. `log.jsonl` holds one event a line, `{at, kind, data}`, appended in order, and it
-is the whole record: every task admission, session, turn, tool call, verdict and reading. A run with no ending
-in its log was still running when it was zipped, or is of a kind that reports none, and its last line
-may be cut. `NOTES.md`, when the bundle has one, is the sender's own reading: check it against the
-log before repeating it.
+A campaign run is fully defined by its log. `log.jsonl` records one JSON event per line (`{at, kind, data}`) in chronological order, capturing every task admission, session, turn, tool call, verifier verdict and statistical reading. A log lacking a terminal ending indicates either that the run was still active when archived or that its run type emits no terminal event; in such cases the final line may be truncated. When `NOTES.md` is present, treat it as the sender's informal summary and verify every claim against `log.jsonl` before citing it.
 
-**Choose a level by the question.** Light answers what a run did and how it was read, and is the one
-to hand a reviewing model under a size cap. Medium adds the checker and what a harness installed,
-for why one answer was refused. Verbose adds the source each worktree ran at its commit, for what a
-model was told: the prompts are rendered by `src/builder/prompt.ts` and `src/solver/prompt.ts` and are
-not in the log.
+**Choose a bundle level according to the diagnostic question.** `Light` captures campaign behaviour and statistical readings, making it the preferred format for an automated reviewer under a context-size budget. `Medium` adds verifier source code and installed harness artefacts so you can diagnose why a specific submission was rejected. `Verbose` adds the exact repository source at each worktree's commit so you can inspect model prompts, which are rendered dynamically by `src/builder/prompt.ts` and `src/solver/prompt.ts` rather than stored in the log.
 
-**Read in this order.**
+**Recommended reading order.**
 
-1. `MANIFEST.json`, `runs`: each run's worktree, commit and ending. Two runs at different commits
-   differ by that source before they differ by anything a model did.
-2. `task.proposed`, `task.gate`, `task.state`, `task.feasible`: which task versions entered the exam
-   and have a valid answer on record. A known valid answer record (`task.feasible`) keeps the version
-   and session, with the answer where recorded, and since 19 October, where the contract declares an objective,
-   an optional `objective` with its quantity, direction and the answer's measure. Older runs use numbered `gate` fields: 1 is the
-   shape check, 2 a pass by the stronger condition (a fail there is `too-hard`), 3 the
-   check rerun on that pass, 4 the three reject control answers. The value 5 is screening, logged as the
-   state it gives: `admitted` tasks are the scored set, and `released` ones are the Builder's
-   practice, never scored.
-3. `build.started` to `build.finished`: one Builder session from the harness `parent`. Its
-   `build.turn`s are what it said, its `build.call`s every tool call with arguments and result, and
-   `build.finished` says how it ended (`finished`, or a limit such as `wall`), whether the harness
-   changed and whether the one it left is `broken`.
-4. `solve.started` to `solve.finished`: one solve. Its harness is
-   `condition.recorded.condition.harness` for the solve's `condition`: the session's `parent` is the
-   old harness, `build.finished.harness` the new. The `ending` is a `pass`, a `fail` with its kind,
-   or a `non-result` with its kind and reason. `verdict` holds the answer and the checks that blocked
-   it.
-5. `comparison.reported`: the round's test and its reading.
-6. `states/<digest>/agent/`: the harness a session kept, as the solver had it. The guide is
-   `BUILT_AGENTS.md`, and `tools-spec.json` selects pi's tools; a harness kept before 20 November
-   2026 may also hold tools of its own in `tools.ts`, which no solve serves any more.
-7. `memory/<session>/`: the notes a Builder session left the next, its `MEMORY.md` (a run from
-   before claude-mem's base also holds `SCRATCHPAD.md` and helper files under `scratch/`). They are
-   the Builder's own words and no part of a harness.
+1. `MANIFEST.json` (`runs`): records each run's worktree, commit SHA and terminal ending. Two runs at different commits differ in source code before they differ in model behaviour.
+2. `task.proposed`, `task.gate`, `task.state` and `task.feasible`: trace which task versions entered the exam and have a verified valid answer on record. `task.feasible` stores the task version, session, recorded answer where available and, when the contract declares an objective, an optional `objective` object containing its quantity, optimisation direction and measured value. Older archived logs use numbered `gate` fields: `1` for structural validation, `2` for a pass under the stronger condition (failure recorded as `too-hard`), `3` for check replay on that pass, `4` for the three negative control answers and `5` for screening, logged as the resulting task state (`admitted` tasks enter the held-out scored pool; `released` tasks enter the Builder's unscored practice set).
+3. `build.started` through `build.finished`: trace a single Builder session starting from the `parent` harness. `build.turn` records model messages, `build.call` records every tool invocation with arguments and results, and `build.finished` records the session ending (`finished` or a limit such as `wall`), whether the harness changed and whether the resulting harness is marked `broken`.
+4. `solve.started` through `solve.finished`: trace an individual solve rollout. Look up the solve's harness via `condition.recorded.condition.harness` for the solve's `condition` (the session's `parent` is the reference harness; `build.finished.harness` is the candidate). Each `ending` is classified as `pass`, `fail` (with its failure kind) or `non-result` (with its kind and reason). `verdict` holds the submitted answer and the checks that rejected it.
+5. `comparison.reported`: records the comparison's statistical test parameters and final reading.
+6. `states/<digest>/agent/`: contains the frozen harness exactly as supplied to the solver. `BUILT_AGENTS.md` is the operating guide and `tools-spec.json` selects pi's built-in tools; older archived harnesses may also contain custom tools in `tools.ts`, which current solves no longer serve.
+7. `memory/<session>/`: holds the Builder's persistent notes (`MEMORY.md`; older archived runs may also contain `SCRATCHPAD.md` and helper files under `scratch/`). These notes are the Builder's private scratchpad rather than part of any harness.
 
-**What a bundle cannot answer.** What the harness a session started from held, unless an earlier
-session of the same run kept it: the Builder's changes are its `build.call`s. How a check decides,
-below medium: a `verdict` names the checks that blocked an answer and no more. What a model was
-prompted with, below verbose.
+**Limitations of a bundle.** A bundle does not contain the starting harness of a session unless an earlier session in the same run saved it; infer Builder edits from `build.call` events instead. Below `medium`, check implementation logic is absent: `verdict` lists only the names of rejecting checks. Below `verbose`, exact rendered prompts are absent.
 
-**Do not conclude from a bundle**
+**Common misinterpretations to avoid.**
 
-- that a harness is no better because a round read `no-step`. A step rests on the scored set's test,
-  and the anchor only guards it. A report whose `scored` wins, losses and ties are all 0 had no
-  scored task, and could not have stepped. Its `target` is how many it asked for: 0 is a round that
-  was never going to score one, and a report without the field is from source that did not record
-  it. A `launch-<session>.json` beside the log holds the flags a round was started with.
-- that a solver is weak because every solve under one harness ended `fail` with `no-answer`. In a
-  run before 2026-10-09, read that harness's `tools-spec.json` first: submit then took only an answer
-  an `artifact-writer` had prepared. Since then the answer is the file `answer.json`.
-- anything from a `non-result`. It is no measurement: count passes, fails and non-results apart, and
-  rates over passes and fails alone.
-- that two solves are alike in time. `solve.started.load` is the host's load when the solve began,
-  and `cores`, from 9 October, the cores it is a load on. A wall reached under a heavy load is not
-  the wall reached on an idle host.
+- **Do not infer that a harness showed no improvement solely from a `no-step` reading.** A step requires statistical significance on the held-out scored set, while anchor tasks serve only as a guard. A report whose `scored` wins, losses and ties are all zero evaluated no scored tasks and could not have registered a step. Check `target` for the requested sample size: `0` indicates a round never intended to score held-out tasks, and an absent `target` field indicates an older log schema. Inspect `launch-<session>.json` alongside the log for the exact launch flags.
+- **Do not attribute universal `no-answer` failures under a harness to solver weakness without checking `tools-spec.json`.** In older archived runs, `submit` accepted only an answer prepared by an `artifact-writer`; in current runs, the answer is read directly from `answer.json`.
+- **Do not draw capability conclusions from a `non-result`.** Non-results are excluded from evaluation: always separate passes, fails and non-results, computing pass rates solely over passes and fails.
+- **Do not treat wall-clock durations across solves as directly comparable without checking host load.** `solve.started.load` records host load at solve start, and `cores` (where present) records the host CPU core count. A timeout reached under heavy load is not equivalent to one reached on an idle host.
 
-`checks/` at medium is the checker's own source and reference, and it stays out of any prompt
-written for a Builder or a solver. A `correctness-model/` inside a harness is a copy of it that the
-run's Builder could read: two runs that differ in having one differ in what their Builders knew.
+At `medium` and above, `checks/` contains the verifier's own source code and reference material; keep it strictly out of any prompt shown to a Builder or solver. If a harness contains a `correctness-model/` directory, that run's Builder had access to a copy of it, so runs that differ in this respect differ in Builder information exposure.

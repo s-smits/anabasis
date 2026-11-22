@@ -1,126 +1,70 @@
 # Which rules fix, and which only report
 
-Every `ana` and `anti-slop` rule is registered at `error`. **Ten carry a fixer. The rest report
-and leave the repair to the author.**
+Every `ana` and `anti-slop` rule is registered at `error`. **Ten carry an autofixer; the remainder report diagnostics and leave the repair to the author.**
 
-That split is not an accident of effort, and it is not a backlog. This file says what a fixer has
-to be true of before it ships, which rules pass that test, and which ones sit right on the edge and
-are refused on purpose. Each rule's own doc comment carries its reason in one sentence; this file is
-the argument they share, so the next rule author does not re-derive it and does not ship the fixer
-that makes the ruleset unenforceable.
+This boundary is a deliberate design choice rather than an unfinished backlog. This document defines the four criteria a fixer must satisfy before shipping, lists the ten rules that meet them, and explains why several borderline rules intentionally withhold autofixing. Each rule's head comment summarises its rationale in one sentence; this file records the shared argument so future rule authors do not re-derive it or ship fixers that undermine the ruleset.
 
-## The test a fixer has to pass
+## Criteria for an autofixer
 
-All four, not three.
+A fixer must satisfy all four conditions.
 
-1. **The repair is a fact, not a decision.** A `let` the next `if` decides is a `const` and a
-   conditional: there is one answer and the rule can see it. What a hoisted table should be
-   *called* is a decision. A fixer that decides writes the median answer everywhere, which is worse
-   than no answer, because nobody comes back to a line that lints clean.
+1. **The repair is a mechanical fact rather than a design decision.** Replacing a `let` immediately assigned in an `if` with a `const` conditional has a single canonical answer visible to the rule. Choosing a descriptive name for a hoisted table is a design decision. A fixer that guesses produces mediocre code everywhere, which is worse than reporting because clean-linting lines rarely receive follow-up edits.
 
-2. **A wrong fix fails loudly, at the line the fix wrote.** `require-captured-json-runtime` and
-   `require-meta-runtime-import` both write an import that might be missing a member. That is
-   admissible because the miss is a compile error naming the member and the module, on the line
-   the fixer just wrote. A fix that deleted an annotation and let the return infer would not be:
-   an inferred type that is quietly wider than the annotated one compiles. Silence is the
-   disqualifier, not risk.
+2. **An incorrect fix fails loudly at the edited line.** Both `require-captured-json-runtime` and `require-meta-runtime-import` emit imports that may reference an unexported member. This is acceptable because a missing member produces an immediate compiler error pointing to the exact line written by the fixer. By contrast, a fixer that deletes a type annotation to rely on inference is inadmissible: a silently widened inferred type still compiles. Silent degradation, rather than risk itself, is the disqualifier.
 
-3. **The fixed form is the form the repository already writes.** Measured against the tree, not
-   against taste. A fixer is the fastest way to push a house style the house does not have.
+3. **The rewritten form matches the codebase's established idiom.** This is measured empirically against the repository tree rather than personal preference; an autofixer should never impose a style the codebase does not already use.
 
-4. **The fix must not remove the occasion for the repair the report was asking for.** A rule that
-   stops reporting looks like a rule that worked. `no-inline-schema-literal` is the clean case:
-   hoisting the literal is mechanical, and hoisting it is also the only moment anyone will name the
-   table for what it holds. A mechanical hoist leaves `const strings` at module scope, uncommented,
-   and silences the rule.
+4. **The fix must preserve the prompt for the actual repair.** A silenced diagnostic looks like a resolved issue. `no-inline-schema-literal` illustrates this clearly: hoisting the literal is mechanical, yet hoisting is also the sole occasion on which the author will name and document the table. An automated hoist leaves an uncommented `const strings` at module scope while silencing the rule.
 
-## The ten that fix
+## The ten rules that fix
 
-| rule | the edit | why it is a fact |
+| Rule | Automated edit | Why it is a mechanical fact |
 | --- | --- | --- |
-| `no-hand-rolled-error-render` | routes a caught value through `errorMessage` / `asError` | those two own the decision already |
-| `no-renaming-temporary` | substitutes the expression at the one read | a const read once and only renaming is the expression |
-| `no-repeated-string-literal` | names the repeat once, **in test files only** | see below; the source half is deliberately refused |
-| `prefer-const-conditional` | `let` plus `if` becomes `const` plus conditional | one initialiser, one branch, no other write |
-| `prefer-find-over-loop` | the loop becomes `find`, `some` or `every` | the body is one conditional return; which of the three follows from what it returns |
-| `prefer-key-if-defined` | a run of `if (v !== undefined) o.k = v;` below `const o = {…}` becomes `...keyIfDefined("k", v)` inside the literal | `src/meta/optional-key.ts` already owns the fold; the value is a pure read, so moving it into the literal moves no evaluation |
-| `prefer-subpath-import` | `../../../../src/x.ts` becomes `#src/x.ts` | the alias is read off the nearest `package.json`, so it names the same file and a key it does not map is never written |
-| `require-captured-json-runtime` | imports `capturedJsonParse` and calls it | one owner, one name |
-| `require-declarations-first` | moves type, interface and const declarations above the first function | order, not content; the declaration text is untouched |
-| `require-meta-runtime-import` | moves a `node:` import onto the `src/meta` module that wraps it | a table of seven builtins with exactly one wrapper each; anything ambiguous is absent from it |
+| `no-hand-rolled-error-render` | routes caught values through `errorMessage` / `asError` | those two helpers already own the behaviour |
+| `no-renaming-temporary` | substitutes the expression at its single read site | a `const` read once that only aliases an expression is identical to that expression |
+| `no-repeated-string-literal` | extracts the repeated literal once, **in test files only** | see below; source files are deliberately excluded |
+| `prefer-const-conditional` | rewrites `let` plus `if` into `const` plus conditional | single initialiser, single branch, no further writes |
+| `prefer-find-over-loop` | rewrites the loop into `find`, `some` or `every` | the body is a single conditional return whose return value uniquely determines the method |
+| `prefer-key-if-defined` | moves `if (v !== undefined) o.k = v;` statements below `const o = {...}` into `...keyIfDefined("k", v)` inside the literal | `src/meta/optional-key.ts` already owns the pattern, and the value is a pure read so evaluation order is unchanged |
+| `prefer-subpath-import` | rewrites `../../../../src/x.ts` to `#src/x.ts` | the alias is resolved from the nearest `package.json`, naming the identical file and never writing an unmapped key |
+| `require-captured-json-runtime` | imports and calls `capturedJsonParse` | single owner, single name |
+| `require-declarations-first` | hoists type, interface and constant declarations above the first function | reorders declarations without modifying their contents |
+| `require-meta-runtime-import` | redirects a `node:` import to its `src/meta` wrapper | restricted to seven builtins with a one-to-one wrapper; ambiguous builtins are excluded |
 
-`no-repeated-string-literal` fixes half of its own findings on purpose. In a test file the local
-constant *is* the answer: the fixture belongs to the suite that spells it. In a source file, where
-the constant belongs is the whole question, and a fixer would answer it with a local one every
-time. So the fixer runs in tests and nowhere else.
+`no-repeated-string-literal` deliberately fixes only half of its findings. In test files, a file-local constant is the right scope because fixtures belong to the test suite that defines them. In production source files, deciding which module owns the constant is the core design question, and an autofixer would always default to a file-local constant. Accordingly, the fixer runs exclusively in test files.
 
-## On the bridge: five where the edit is available and refused
+## Borderline rules: five where a fixer is feasible but withheld
 
-In every case a fixer is mechanically within reach and the refusal is a judgement. An author who
-writes one of these is reversing a decision, and should say so.
+For each rule below, a mechanical edit is straightforward, yet autofixing is withheld by judgement. Anyone adding a fixer for these rules is reversing a deliberate policy and should state the rationale explicitly.
 
-| rule | the edit that exists | why it is refused |
+| Rule | Feasible edit | Reason for refusal |
 | --- | --- | --- |
-| `no-inline-schema-literal` | hoist the literal to module scope | the rename and the sentence are the value, and the hoist is the only occasion for them; condition 4 |
-| `no-single-caller-helper` | substitute the arguments into the one-`return` body | written and thrown away: at three hundred sites it produced a longer expression where the author wanted a statement, the shape the rule exists to remove |
-| `require-safety-comment-for-type-assertion` | insert a `SAFETY:` comment | the comment's content is the entire requirement; a generated one satisfies the rule and proves nothing |
-| `no-conditional-empty-object-spread` | emit the field as `null` | absent or present-and-null is the contract, and the spread is where that decision was avoided |
-| `no-alias-restating-return` | write the alias's body as the annotation and delete the alias | not written yet rather than refused; the inline edit keeps the type, and no site has asked for it |
+| `no-inline-schema-literal` | hoist the literal to module scope | naming and documenting the table is the point of the refactor, and hoisting is the only moment that prompts it (criterion 4) |
+| `no-single-caller-helper` | substitute arguments into the single-`return` body | prototyped and discarded: across roughly three hundred sites it produced unwieldy inline expressions where the author intended a clear statement |
+| `require-safety-comment-for-type-assertion` | insert a placeholder `SAFETY:` comment | the explanation of the verified invariant is the entire requirement; a generated comment satisfies the rule while verifying nothing |
+| `no-conditional-empty-object-spread` | emit the property with value `null` | whether a field is omitted or present-and-null is a contract decision that the spread obscured |
+| `no-alias-restating-return` | inline the alias body as the return annotation and delete the alias | unimplemented rather than formally refused; inlining preserves the type cleanly, and no site has yet motivated building it |
 
-## The rest: where the rule does not hold the repair
+## Report-only rules: where the rule lacks information to repair
 
-In each of these the missing piece is information the rule has no access to, and every one says
-so in its own doc comment: `test/lint-registry.test.ts` refuses a rule that neither declares
-`fixable` nor writes the words.
+In every rule below, choosing the correct repair requires context unavailable to a per-file syntax rule. Each rule states this explicitly in its head comment, and `test/lint-registry.test.ts` rejects any rule that neither declares `fixable` nor documents why it does not fix.
 
-- **The repair is a type** (8): `no-unproven-unknown-parameter`, `no-unknown-returns`,
-  `no-unknown-type-aliases`, `no-unsafe-dictionary-type`, `no-known-value-widening`,
-  `no-widen-then-assert`, `no-chained-type-assertions`, `no-runtime-typeof`. The `unknown` or the widening is exactly the work someone avoided; writing
-  it is the finding. A plugin rule does not read the checker.
-- **The repair is a name** (3): `no-thrice-spelled-object`, `no-shape-in-symbol-names`,
-  `no-positional-boolean-parameter`. Which two words name the states, or what the extracted
-  function is called, is the change.
-- **The repair is a structure the rule cannot choose** (9): `no-deep-nesting`,
-  `no-tangled-ternary`, `no-inline-block-reducer`, `no-side-effect-in-predicate`,
-  `no-arms-differing-in-one-term`, `no-hand-rolled-sleep`, `no-single-use-const-chain`,
-  `no-hand-read-argv`, `no-react-effect`. Each offers two or three correct answers (a guard clause
-  or an extraction, a mutating accumulator or a pipeline, one of the two exact waits or an admitted
-  real clock, a render, a `key`, a handler or a subscription), and which one a site wants is the
-  reading.
-- **The repair reaches other files** (5): `no-pass-through-wrapper`, `no-lifetime-outside-owner`,
-  `no-module-mocking`, `no-object-parameters`, `no-inline-slop-answer`. Deleting the wrapper means
-  editing every caller; moving a kill to its owner is two files; an injected interface replaces
-  the mock in the code under test; an owner-provided parameter type is a new contract at every call; a disable comment's answer moves into a row of `not-slop.tsv`, under an id only a lint
-  run computes. A per-file fixer cannot do any of them.
-- **The repair changes a semantic the rule can only ask about** (2): `no-transposed-argument`
-  and `no-hand-spelled-git`. Which of two crossed arguments is wrong is the caller's to say. A
-  hand-spelled git call has three owner answers (exact bytes, trimmed text, or null where "no" is
-  an answer), and a call reading the exit status or passing `cwd` needs a reading of which it meant.
+- **The repair requires type design** (8): `no-unproven-unknown-parameter`, `no-unknown-returns`, `no-unknown-type-aliases`, `no-unsafe-dictionary-type`, `no-known-value-widening`, `no-widen-then-assert`, `no-chained-type-assertions`, `no-runtime-typeof`. The `unknown` or widened type is precisely the specification work that was deferred, and plugin rules do not query the TypeScript type checker for synthesis.
+- **The repair requires naming** (3): `no-thrice-spelled-object`, `no-shape-in-symbol-names`, `no-positional-boolean-parameter`. Selecting the domain terms for two states or naming an extracted helper is the substantive change.
+- **The repair requires structural judgement** (9): `no-deep-nesting`, `no-tangled-ternary`, `no-inline-block-reducer`, `no-side-effect-in-predicate`, `no-arms-differing-in-one-term`, `no-hand-rolled-sleep`, `no-single-use-const-chain`, `no-hand-read-argv`, `no-react-effect`. Each admits multiple valid refactors (such as an early-return guard versus helper extraction, a loop versus a pipeline, an event wait versus an explicit clock, or derived render state versus a keyed reset, handler or store subscription), and selecting among them requires reading the intent.
+- **The repair spans multiple files** (5): `no-pass-through-wrapper`, `no-lifetime-outside-owner`, `no-module-mocking`, `no-object-parameters`, `no-inline-slop-answer`. Removing a wrapper requires updating every call site; consolidating process termination touches two modules; replacing a mock requires injecting an interface into the code under test; defining an options interface changes every caller's contract; moving an inline suppression into `not-slop.tsv` requires an identifier computed by a lint run. A single-file fixer cannot safely perform any of these.
+- **The repair alters semantics the rule can only question** (2): `no-transposed-argument` and `no-hand-spelled-git`. Determining which of two swapped arguments is wrong requires caller intent. Likewise, a hand-rolled git invocation maps to three distinct `src/meta/git.ts` helpers (raw bytes, trimmed text, or nullable output), and invocations reading exit status or passing `cwd` require interpreting what the caller expects.
 
-`no-hand-rolled-sleep` is the shape of a fixer that looks safe. A fixer writing `Bun.sleep` would
-have matched the tree everywhere and passed condition 3. It fails condition 4: a `Bun.sleep(50)` is
-the same guessed interval, and the rule would have stopped asking about it.
+`no-hand-rolled-sleep` exemplifies a deceptive fixer. Automatically rewriting `setTimeout` promises to `Bun.sleep` would match codebase conventions and satisfy criterion 3, yet it fails criterion 4: `Bun.sleep(50)` retains the same arbitrary polling delay while silencing the rule that prompted replacing it with a real condition wait.
 
-A report with no fixer is a working outcome and the majority outcome: the author is told exactly
-what is wrong and makes the call.
+A diagnostic without an autofixer is the normal and intended outcome: the linter identifies the defect precisely and leaves the design judgement to the author.
 
-## The implicit-state rules: the repair is an owner
+## Implicit-state rules: the repair is an owner
 
-`implicit-state` (`no-coupled-flags`, `no-marker-file-state`, `no-age-based-lock`)
-reports and never fixes, and each rule says so in its head comment. Every finding asks for an
-owner of a state that has none: the union the flags stand for, the record of a process's phase,
-the holder of a lock. Which states exist and where their owner lives is a design the rule cannot
-read off the syntax, so no edit is correct by construction (condition 1 fails at once).
+`implicit-state` (`no-coupled-flags`, `no-marker-file-state`, `no-age-based-lock`) reports diagnostics without autofixing, as stated in each rule's head comment. Every finding identifies state lacking a single typed owner: a discriminated union behind coupled flags, a phase record behind marker files, or a process handle behind an age-based lock. Determining the exact state space and owning module is a design decision inaccessible from syntax alone, violating criterion 1.
 
-`implicit-state-opinionated` (`max-boolean-fields`, `prefer-state-union`, `no-state-in-names`) reports and never
-fixes for the same reason, and more plainly: its findings are stances a codebase may not hold.
-Which record field should carry a fact parsed from a name is a decision about the program's design.
+`implicit-state-opinionated` (`max-boolean-fields`, `prefer-state-union`, `no-state-in-names`) withholds autofixing for the same reason, reinforced by the fact that its rules encode repository-specific architectural conventions. Deciding which record field should store an attribute previously encoded in a string name is a design choice.
 
-## A fixer's finding has no answer
+## Fixable findings cannot be suppressed in the ledger
 
-A report-only finding a reader judges wrong is answered once in `tools/oxlint/not-slop.tsv`, with
-a reason, and every reader of the findings drops it. A finding from one of the ten cannot be:
-`bun run not-slop` refuses the row, and so does `bun run lint` when it reads one. The ledger stops
-a report, not a fix (`--fix` rewrites the site whatever a row says), so a wrong report from a
-fixer is a defect in the rule and is repaired in the rule. That is condition 1 read from the other
-side: a repair that is a fact has no exception to record.
+A false positive from a report-only rule may be suppressed once in `tools/oxlint/not-slop.tsv` with a verifiable justification, after which all diagnostic readers ignore it. Findings from the ten fixable rules are ineligible for ledger suppression: both `bun run not-slop` and `bun run lint` reject ledger rows naming a fixable rule. Because `--fix` rewrites matching sites regardless of the ledger, a false positive from a fixable rule is a bug in the rule itself and must be fixed in the rule's source. This is the converse of criterion 1: a mechanical fact has no site-specific exceptions.

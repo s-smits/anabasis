@@ -9,6 +9,7 @@ import {
   fauxAssistantMessage,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
+import { CLAUDE_COMPACTED } from "../src/agent/backends/claude.ts";
 import { draftOf } from "../src/examiner/draft.ts";
 import { heard } from "../src/examiner/record.ts";
 import { type Ask, examine } from "../src/examiner/session.ts";
@@ -960,5 +961,54 @@ describe("one Examiner conversation across the host's asks", () => {
       ["x-1", "supplied"],
       ["x-2", "killed"],
     ]);
+  });
+
+  it("cues read_opening once on the first tool result after compaction and skips trailing calls once a turn moved to a new ask", async () => {
+    const multiSupplyThenTrailing = fauxAssistantMessage(
+      [fauxToolCall(PROPOSE, { tasks: [instance(3)] }), fauxToolCall(PROPOSE, { tasks: [instance(4)] })],
+      { stopReason: "toolUse" },
+    );
+    const s = seat("write", [propose(2), multiSupplyThenTrailing, finish, finish]);
+    const baseModels = s.request.models();
+    // SAFETY: the inherited instance supplies every method; streamSimple alone attaches compaction diagnostics on turn 1.
+    const compactedModels = Object.create(baseModels) as typeof baseModels;
+    let firstTurn = true;
+    compactedModels.streamSimple = (...asked: Parameters<typeof baseModels.streamSimple>) => {
+      const streamed = createAssistantMessageEventStream();
+      (async () => {
+        for await (const event of baseModels.streamSimple(...asked)) {
+          if (event.type === "done" && firstTurn) {
+            firstTurn = false;
+            streamed.push({
+              ...event,
+              message: {
+                ...event.message,
+                diagnostics: [
+                  {
+                    type: CLAUDE_COMPACTED,
+                    timestamp: Date.now(),
+                    details: { tokensBefore: 1000, seconds: 1 },
+                  },
+                ],
+              },
+            });
+          } else {
+            streamed.push(event);
+          }
+        }
+      })().catch(() => undefined);
+      return streamed;
+    };
+    const asks: Ask[] = [{ ...s.request, id: "x-2", wanted: 2, models: () => compactedModels }];
+    await examine({
+      ...s.request,
+      models: () => compactedModels,
+      wanted: 2,
+      rest: async () => asks.shift() ?? null,
+    });
+    const texts = s.of(CALLED).map(({ text }) => (isString(text) ? text : ""));
+    expect(texts[0]).toContain("Context compacted; read_opening holds the current record and limits.");
+    expect(texts[1]).not.toContain("Context compacted; read_opening holds the current record and limits.");
+    expect(texts[2]).toContain("The previous ask ended and the host moved to a new ask");
   });
 });

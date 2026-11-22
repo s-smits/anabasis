@@ -102,6 +102,8 @@ export interface Seat {
   readonly onTurn?: (message: AssistantMessage) => void;
   /** Each tool call as it starts and as it ends. */
   readonly onTool?: (phase: "start" | "end", callId: string, tool: string) => void;
+  /** Called once whenever durable or the Claude CLI backend compacts the conversation context. */
+  readonly onCompact?: () => void;
   /** What ends the session from outside: its deadline, a kill, a bound. */
   readonly stops: readonly (AbortSignal | undefined)[];
   /** Handed once the session opens: what it has spent so far by its backend's own count, compactions
@@ -202,9 +204,9 @@ export async function sit(seat: Seat): Promise<Sat> {
   const shutdown = AbortSignal.any([...stops, done.signal]);
   const halt = Promise.withResolvers<void>();
   const frame = sessionHooks(seat, halt.resolve, meter);
-  // Each summary's spend is traced at its price, one usage a model; the session's bill holds it
-  // through the backend's ledger, so it is priced here for the trace alone.
+  // Record per-compaction token usage in the trace; final session billing comes from the backend ledger.
   const compactions = compactionTrace(({ spent, ...event }) => {
+    seat.onCompact?.();
     if (seat.trace === undefined) return;
     append(seat.trace.log, traceKind(seat.trace.of, "compacted"), {
       [whose(seat.trace.of)]: seat.trace.as?.() ?? seat.id,
@@ -386,6 +388,9 @@ function sessionHooks(seat: Seat, halt: () => void, meter: ReturnType<typeof sea
             tools.reset();
             seat.turns.push(message);
             sink?.turn(message, retried);
+            if (message.diagnostics?.some(({ type }) => type === CLAUDE_COMPACTED) === true) {
+              seat.onCompact?.();
+            }
             retried.length = 0;
             seat.onTurn?.(message);
             if (message.stopReason === "error" && over()) await fence(context);

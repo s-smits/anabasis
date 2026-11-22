@@ -158,6 +158,17 @@ function withinBudget(log: string, spent: AbortController): boolean {
   return false;
 }
 
+/** Skip trailing calls from a multi-tool turn once an earlier call rested and moved to a new ask. */
+function guardAsk(each: SeatTool, moved: () => boolean): SeatTool {
+  return {
+    ...each,
+    execute: async (args, api, context) =>
+      moved()
+        ? text("The previous ask ended and the host moved to a new ask; act on the wake message above.")
+        : await each.execute(args, api, context),
+  };
+}
+
 /** The session's `finish`: declined where the mode declines one, its work is not
  *  done and its count moved since the last decline, so a session that is still producing is not
  *  ended early by its second `finish`; two in a row still end a session that has nothing left. A
@@ -288,6 +299,8 @@ async function examining(
         return null;
       }
       [current, from, began] = [next, turns.length, performance.now()];
+      askEpoch += 1;
+      compacted = false;
       watchKill(next.kill);
       Object.assign(said, { note: null, declined: null });
       clock = clocked();
@@ -303,18 +316,23 @@ async function examining(
     // The current turn's last call, whose result says what the session has used, since a session
     // told its limits at the opening alone can be cut at its deadline while still proposing.
     let lastCall: string | undefined;
+    let [compacted, askEpoch, turnEpoch] = [false, 0, 0];
     const used = (call: string) => {
+      if (call !== lastCall) return "";
       const minutes = `${String(Math.floor(clock.seconds() / 60))} of ${plural(Math.round(current.limits.wallSeconds / 60), "minute")}`;
-      const line = `Turn ${String(turns.length - from)} of ${String(current.limits.turns)}; ${minutes} used.`;
-      return call === lastCall ? line : "";
+      const cue = compacted ? " Context compacted; read_opening holds the current record and limits." : "";
+      compacted = false;
+      return `Turn ${String(turns.length - from)} of ${String(current.limits.turns)}; ${minutes} used.${cue}`;
     };
     const shell = await examinerShell(walls?.shell, mode.enters);
+    const reread = openingTool(() => {
+      compacted = false;
+      return mode.opening;
+    }, REREAD);
     const tools = [
-      ...[...mode.tools, ...shell, openingTool(() => mode.opening, REREAD)].map((each) =>
-        endingWith(each, used),
-      ),
+      ...[...mode.tools, ...shell, reread].map((each) => endingWith(each, used)),
       finishTool(mode, said, rest),
-    ];
+    ].map((each) => guardAsk(each, () => turnEpoch !== askEpoch));
     let running = 0;
     const sat = await sit({
       models: request.models,
@@ -337,6 +355,7 @@ async function examining(
           ? null
           : `You have not called finish. ${mode.nudge}, or call finish.`,
       onTurn: (message) => {
+        turnEpoch = askEpoch;
         lastCall = message.content
           .flatMap((part) =>
             part.type === "toolCall" && tools.some(({ name }) => name === part.name) ? [part.id] : [],
@@ -345,6 +364,9 @@ async function examining(
       },
       onTool: (phase) => {
         running += phase === "start" ? 1 : -1;
+      },
+      onCompact: () => {
+        compacted = true;
       },
       spending: (now) => {
         soFar = now;

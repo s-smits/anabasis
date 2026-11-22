@@ -39,7 +39,7 @@
  * silence of half an hour, which also takes out a solve-queue wait while other solves ran, so they
  * are a lower bound. Read-only; the output stays on the exam side with the log it reads.
  */
-import { epochsOf } from "#src/campaign/climb.ts";
+import { epochsOf, starterIn } from "#src/campaign/climb.ts";
 import { pathsUnder } from "#src/harness/open.ts";
 import { scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -184,7 +184,7 @@ function sideOf(sides: ReadonlyMap<string, Side>, session: string, harness: unkn
 export function trajectoryOf(name: string, events: readonly LogEvent[], grades: Grades | null): Trajectory {
   const clock = clockOf(events);
   const first = events.find(({ kind }) => kind === "comparison.started");
-  const starter = isString(first?.data.starter) ? first.data.starter : null;
+  const starter = starterIn(events);
   const { sides, opposed } = solvesOf(events);
   const hourOfSession = new Map<string, number>();
   const readings = lastReports(events).map(({ session, index, data }): Reading => {

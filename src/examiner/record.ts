@@ -34,7 +34,7 @@
  * check but one a ruling found at fault, and no count carries a band or a number to reach (the
  * operator's decision).
  */
-import { scoresIn } from "../kernel/compare.ts";
+import { type Paired, scoresIn } from "../kernel/compare.ts";
 import { familySizes, proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import {
@@ -100,13 +100,23 @@ export function heard(
 ) {
   const states = taskStates(events);
   const pool = poolOf(events);
+  const allProposals = proposalsOf(events);
   const proposals = new Map(
-    proposalsOf(events).flatMap((proposal) => {
+    allProposals.flatMap((proposal) => {
       const id = proposal.task?.taskId ?? proposal.taskId;
       return id === null ? [] : [[id, proposal] as const];
     }),
   );
-  const answered = referenceAnswers(events);
+  // Fold pairs once per report and share them between `referenceAnswers` and `stoodLines`.
+  const pairsCache = new Map<string, Paired[]>();
+  const pairsOf = (report: Reported): Paired[] => {
+    const cached = pairsCache.get(report.session);
+    if (cached !== undefined) return cached;
+    const computed = pairsReported(events, report);
+    pairsCache.set(report.session, computed);
+    return computed;
+  };
+  const answered = referenceAnswers(events, pairsOf);
   const faulted = faultedOf(events);
   const setting = events.findLast(({ kind }) => kind === "campaign.setting")?.data.modelTurns;
   const budget = isNumber(setting) ? setting : undefined;
@@ -136,17 +146,21 @@ export function heard(
     return held.length === 0 ? [] : [{ heading, lines: held }];
   });
   return {
-    stood: stoodLines(events, after),
+    stood: stoodLines(events, after, pairsOf),
     groups,
     // An opening's, and a wake's where the promotion came after the conversation last heard.
     promoted: after === undefined || since > after ? promotedLine(events, since, listed) : null,
-    refused: after === undefined ? refusedLines(events, since) : [],
+    refused: after === undefined ? refusedLines(events, since, allProposals) : [],
   };
 }
 
 /** The drafts the gate refused after event `since`, under its reason, each by its id and family. */
-function refusedLines(events: readonly LogEvent[], since: number): string[] {
-  const drafts = new Map(proposalsOf(events).map(({ version, task }) => [version, task]));
+function refusedLines(
+  events: readonly LogEvent[],
+  since: number,
+  allProposals: ReturnType<typeof proposalsOf>,
+): string[] {
+  const drafts = new Map(allProposals.map(({ version, task }) => [version, task]));
   const why = new Map<string, string[]>();
   for (const { kind, data } of events.slice(since + 1)) {
     const task = isString(data.version) ? drafts.get(data.version) : undefined;
@@ -229,7 +243,11 @@ function standingOf(standing: Standing | undefined): string[] {
  *  there are none: the last at an opening, whose record lists every task, and at a wake each one
  *  reported since `after`, so a wake after two readings does not miss the one that read the new
  *  reference against the starter. */
-function stoodLines(events: readonly LogEvent[], after: number | undefined): string | null {
+function stoodLines(
+  events: readonly LogEvent[],
+  after: number | undefined,
+  pairsOf: (report: Reported) => Paired[],
+): string | null {
   const reference = referenceOf(events);
   const stood = lastReports(events).filter(({ data }) => data.old === reference || data.fresh === reference);
   const told = after === undefined ? stood.slice(-1) : stood.filter(({ index }) => index >= after);
@@ -238,7 +256,9 @@ function stoodLines(events: readonly LogEvent[], after: number | undefined): str
     after === undefined
       ? `The last comparison the reference harness stood in, ${session}`
       : `Comparison ${session}, which the reference harness stood in`;
-  return told.map((report) => stoodLine(events, report, reference, named(report))).join("\n\n");
+  return told
+    .map((report) => stoodLine(events, report, reference, named(report), pairsOf(report)))
+    .join("\n\n");
 }
 
 /** One comparison the reference harness stood in, from its side: the tasks scored and how many of
@@ -252,9 +272,9 @@ function stoodLine(
   report: Reported,
   reference: string | null,
   named: string,
+  pairs: readonly Paired[],
 ): string {
   const side = report.data.fresh === reference ? "fresh" : "old";
-  const pairs = pairsReported(events, report);
   const spreads = pairs.map((pair) => howOftenValid(pair[side]));
   const largest =
     familySizes(
@@ -294,7 +314,10 @@ function promotedLine(events: readonly LogEvent[], since: number, listed: readon
 /** The reference harness's valid answers to each task in the last comparison that tallied it
  *  (`Answered`), including historical ladder reports as `poolOf` does for its outcome, from the side
  *  it stood on there, and none where it stood on neither. */
-function referenceAnswers(events: readonly LogEvent[]): Map<string, Answered> {
+function referenceAnswers(
+  events: readonly LogEvent[],
+  pairsOf: (report: Reported) => Paired[],
+): Map<string, Answered> {
   const reference = referenceOf(events);
   const took = new Map(
     solvesIn(events).flatMap(({ id, end }) => (isNumber(end?.turns) ? [[id, end.turns] as const] : [])),
@@ -303,7 +326,7 @@ function referenceAnswers(events: readonly LogEvent[]): Map<string, Answered> {
   const answered = new Map<string, Answered>();
   for (const report of lastReports(events, "all")) {
     const side = report.data.fresh === reference ? "fresh" : report.data.old === reference ? "old" : null;
-    for (const pair of pairsReported(events, report)) {
+    for (const pair of pairsOf(report)) {
       const solves = side === null ? [] : (pair.solves?.[side] ?? []);
       const valid = solves.filter((_, nth) => side !== null && pair[side][nth] === true);
       const measures = valid.flatMap((solve) => objectiveOf(verdicts.get(solve)?.checker) ?? []);

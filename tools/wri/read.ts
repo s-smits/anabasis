@@ -32,7 +32,7 @@ import { resetOf } from "#src/agent/backends/claude.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
 import { short } from "#src/campaign/move.ts";
 import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/campaign/handover.ts";
-import { differenceOf, readsStepEitherWay, scoresIn } from "#src/kernel/compare.ts";
+import { differenceOf, readsStepEitherWay, scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { billedAll, costLine, spendOf } from "#src/kernel/meter.ts";
@@ -595,12 +595,8 @@ function reviewTriggers(log: Index): Trigger[] {
       const level = count(own.level);
       const clears = (tested: { readonly p: number }) => tested.p <= level;
       const flipped = (tested: JsonValue | undefined) => {
-        // As `tallyOf` reads it: the unbilled scores where a report keeps them apart, else its own.
-        const record = asRecord(tested);
-        const scores = record?.unbilled ?? record?.differences;
-        return Array.isArray(scores)
-          ? tallyOf({ unbilled: scores.filter(isNumber).map((one) => -one) })
-          : null;
+        const scores = scoresIn(tested);
+        return scores.length === 0 ? null : testOf(scores.map((one) => -one));
       };
       const sides = [
         [tallyOf(own.counted), tallyOf(own.scored), ""],

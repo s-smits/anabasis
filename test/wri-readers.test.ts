@@ -11,6 +11,7 @@ import { catalogueText, type Lane, lanesOf, ownersOf } from "../tools/wri/catalo
 import { TRIGGERS } from "../tools/wri/folds.ts";
 import { reportIndex, reportOf, sessionsOf } from "../tools/wri/investigation.ts";
 import { overview } from "../tools/wri/read.ts";
+import { scoreRows } from "../tools/wri/scores.ts";
 import { wriCampaign } from "./helpers/wri-campaign.ts";
 
 const events = wriCampaign((tag) => `secret ${tag}`);
@@ -264,5 +265,16 @@ describe("a lane's report, as the synthesis collects it", () => {
     const index = reportIndex([report], (number) => `/r/${String(number)}.md`, []);
     expect(index).toContain("- lane 5: ok, finding, 2 findings, at `/r/5.md`");
     expect(index).toContain("  - 5.2, observation confirmed, cause plausible, owner pack/evaluator: Second");
+  });
+
+  it("excludes ladder comparisons from scoreRows just like lastReports does", () => {
+    const at = "2026-11-22T00:00:00.000Z";
+    const lines = scoreRows([
+      { at, kind: "comparison.started", data: { session: "l-1", ladder: true } },
+      { at, kind: "comparison.started", data: { session: "g-1" } },
+    ]);
+    const joined = lines.join("\n");
+    expect(joined).toContain("g-1: report absent");
+    expect(joined).not.toContain("l-1");
   });
 });

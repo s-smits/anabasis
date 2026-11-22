@@ -169,6 +169,17 @@ export function lastReports(events: readonly LogEvent[], read: "all" | "current"
   return [...found.values()];
 }
 
+/** Each non-ladder comparison session started in `events`, in the order it first began. */
+export function startedComparisons(events: readonly LogEvent[]): string[] {
+  return [
+    ...new Set(
+      events.flatMap(({ kind, data }) =>
+        kind === "comparison.started" && data.ladder !== true && isString(data.session) ? [data.session] : [],
+      ),
+    ),
+  ];
+}
+
 /**
  * The digest of the harness the last whole Builder session left, or null while none has changed
  * one: the next session starts there unless the operator names another. A killed or crashed

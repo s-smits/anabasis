@@ -22,6 +22,7 @@
  * Builder:<session>{<turn>}`).
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { starterIn } from "#src/campaign/climb.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { practiceRan } from "#src/kernel/solves.ts";
 import { callsOf } from "#src/kernel/trace.ts";
@@ -57,9 +58,7 @@ function rolesOf(log: Index) {
     kind === "comparison.started" ? [{ at, data }] : [],
   );
   const starter =
-    started.map(({ data }) => data.starter).find(isString) ??
-    log.builds.map(({ parent }) => parent).find((parent) => parent !== "") ??
-    null;
+    starterIn(log.events) ?? log.builds.map(({ parent }) => parent).find((parent) => parent !== "") ?? null;
   const promotions = log.events.flatMap(({ kind, data }, at) =>
     kind === "harness.promoted" && isString(data.harness) ? [{ at, harness: data.harness }] : [],
   );

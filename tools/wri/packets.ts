@@ -19,6 +19,7 @@
  * (the lane's own rule). Each grade changes no verdict, reading, promotion or move, and no seat is told it.
  * `key.json` names the campaigns, so it stays with the primary.
  */
+import { starterIn } from "#src/campaign/climb.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { passed, solvesIn } from "#src/kernel/solves.ts";
 import { sha256 } from "#src/meta/digest.ts";
@@ -90,17 +91,16 @@ function tasksOf({ events }: Campaign, label: string): Packed[] {
 }
 
 function versionsOf({ log, events }: Campaign, label: string): Packed[] {
-  const started = events.filter(({ kind }) => kind === "comparison.started");
-  const starter = started[0]?.data.starter;
+  const starter = starterIn(events);
   const states = join(dirname(log), "states");
-  const fresh = [...new Set(started.map(({ data }) => data.fresh))].filter(
-    (digest): digest is string => isString(digest) && digest !== starter,
-  );
+  const fresh = [
+    ...new Set(events.flatMap(({ kind, data }) => (kind === "comparison.started" ? [data.fresh] : []))),
+  ].filter((digest): digest is string => isString(digest) && digest !== starter);
   return fresh.flatMap((digest) => {
     const state = join(states, digest);
     if (!existsSync(state)) return [];
-    const parent = madeOf(events, digest, isString(starter) ? starter : "").parent ?? starter;
-    const named = isString(parent) ? parent : "none";
+    const parent = madeOf(events, digest, starter ?? "").parent ?? starter;
+    const named = parent ?? "none";
     const lines = diffOf(join(states, named), state);
     const weight = weightOf(state);
     const cut =
@@ -283,7 +283,7 @@ function rowsIn(text: string, kind: string): Map<string, number> {
 
 /** Tasks whose every solve under the Starter was valid, by id, at least two solves. */
 function starterAnswers(events: readonly LogEvent[]): Set<string> {
-  const starter = events.find(({ kind }) => kind === "comparison.started")?.data.starter;
+  const starter = starterIn(events);
   const tally = new Map<string, { valid: number; results: number }>();
   for (const solve of solvesIn(events)) {
     const task = solve.start.task;

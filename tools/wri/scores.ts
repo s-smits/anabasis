@@ -38,7 +38,7 @@ import {
   wholePoints,
 } from "#src/kernel/compare.ts";
 import { familiesOf } from "#src/kernel/history.ts";
-import { lastReports, pairsReported, type Reported } from "#src/kernel/reports.ts";
+import { lastReports, pairsReported, type Reported, startedComparisons } from "#src/kernel/reports.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
@@ -204,14 +204,7 @@ function absentLines(events: readonly LogEvent[], session: string): string[] {
 /** Each comparison's block, in the order the log began them. */
 export function scoreRows(events: readonly LogEvent[]): string[] {
   const reports = new Map(lastReports(events).map((report) => [report.session, report]));
-  const sessions = [
-    ...new Set([
-      ...events.flatMap(({ kind, data }) =>
-        kind === STARTED && isString(data.session) ? [data.session] : [],
-      ),
-      ...reports.keys(),
-    ]),
-  ];
+  const sessions = [...new Set([...startedComparisons(events), ...reports.keys()])];
   if (sessions.length === 0) return ["scores: no comparison on record"];
   return [
     "scores (lanes 3 and 9): each comparison's task scores recounted by this tree's differenceOf and matched to the report's by task; tallies are wins-losses-ties and the one-sided sign-flip p.",

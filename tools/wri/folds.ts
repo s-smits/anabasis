@@ -22,9 +22,9 @@
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { flipP, type Paired, type Tally, unsolved as noneAnswered } from "#src/kernel/compare.ts";
+import { type Paired, type Tally, testOf, unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { lastReports, poolOf, pairsReported, referenceOf } from "#src/kernel/reports.ts";
-import { SEATS, type Traced, traced, traceKind, tracesIn } from "#src/kernel/trace.ts";
+import { SEATS, type Traced, traceKind, tracesIn } from "#src/kernel/trace.ts";
 import { spendOf } from "#src/kernel/meter.ts";
 import { examinerSessions, type Judged, solvesIn, standsOf, verdictsOf } from "#src/kernel/solves.ts";
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
@@ -266,17 +266,13 @@ export const count = (value: JsonValue | undefined): number => (isNumber(value) 
 export function tallyOf(tested: JsonValue | undefined) {
   const record = asRecord(tested);
   if (record === null) return null;
-  const unbilled = Array.isArray(record.unbilled) ? record.unbilled.filter(isNumber) : null;
-  if (unbilled === null) {
-    return {
-      wins: count(record.wins),
-      losses: count(record.losses),
-      ties: count(record.ties),
-      p: count(record.p),
-    };
-  }
-  const signed = (sign: number) => unbilled.filter((one) => Math.sign(one) === sign).length;
-  return { wins: signed(1), losses: signed(-1), ties: signed(0), p: flipP(unbilled) };
+  if (Array.isArray(record.unbilled)) return testOf(record.unbilled.filter(isNumber));
+  return {
+    wins: count(record.wins),
+    losses: count(record.losses),
+    ties: count(record.ties),
+    p: count(record.p),
+  };
 }
 export const items = (value: JsonValue | undefined): readonly JsonValue[] =>
   Array.isArray(value) ? value : [];
@@ -382,29 +378,32 @@ function solvesOf(
   return [...solves.values()];
 }
 
-function buildsOf(events: readonly LogEvent[]): Build[] {
+function buildsOf(events: readonly LogEvent[], traces: readonly Traced[]): Build[] {
   const builds: Build[] = [];
-  for (const [index, event] of events.entries()) {
-    const { kind, data } = event;
+  const bySession = new Map<string, Build>();
+  for (const [index, { kind, data }] of events.entries()) {
     const session = text(data.session);
     if (kind === "build.started") {
       const last = builds.at(-1);
       if (last !== undefined) last.until = index;
-      builds.push({
+      const build: Build = {
         session,
         from: index,
         until: events.length,
         parent: text(data.parent),
         finished: null,
         calls: [],
-      });
+      };
+      builds.push(build);
+      bySession.set(session, build);
+    } else if (kind === BUILD_END) {
+      const build = bySession.get(session);
+      if (build !== undefined) build.finished = data;
     }
-    const build = builds.find((each) => each.session === session);
-    const call = traced(event, index);
-    if (build !== undefined && call?.seat === "build" && call.part === "call") {
-      build.calls.push({ index, tool: call.tool, args: asRecord(call.args) });
-    }
-    if (build !== undefined && kind === BUILD_END) build.finished = data;
+  }
+  for (const call of traces) {
+    if (call.seat !== "build" || call.part !== "call") continue;
+    bySession.get(call.id)?.calls.push({ index: call.index, tool: call.tool, args: asRecord(call.args) });
   }
   return builds;
 }
@@ -417,7 +416,7 @@ export function indexOf(events: readonly LogEvent[]): Index {
   const { states, held, released } = taskSets(events);
   const traces = tracesIn(events);
   const solves = solvesOf(events, traces, conditions);
-  const builds = buildsOf(events);
+  const builds = buildsOf(events, traces);
   const compared = comparedOf(events, { solves, builds });
   // An older report names no comparison in its solves' starts; the fold's window does.
   for (const { own, scoring } of compared) {

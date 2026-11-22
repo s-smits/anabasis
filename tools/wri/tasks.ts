@@ -28,6 +28,7 @@
  * packets read `scoredTasks` alone, as a blind grader's set stays the tasks that were scored.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { starterIn } from "#src/campaign/climb.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -169,11 +170,10 @@ function listed(events: readonly LogEvent[]) {
 /** The skeleton of lane 14's grade rows, as `gradesIn` and `wri.ts trajectory --grades` read them: a
  *  row a scored task and a row a version a comparison measured, grades blank, in the log's order. */
 function gradeRows(events: readonly LogEvent[], campaign: string): string[] {
-  const started = events.filter(({ kind }) => kind === "comparison.started");
-  const starter = started[0]?.data.starter;
-  const versions = [...new Set(started.map(({ data }) => data.fresh))].filter(
-    (digest): digest is string => isString(digest) && digest !== starter,
-  );
+  const starter = starterIn(events);
+  const versions = [
+    ...new Set(events.flatMap(({ kind, data }) => (kind === "comparison.started" ? [data.fresh] : []))),
+  ].filter((digest): digest is string => isString(digest) && digest !== starter);
   return [
     ...scoredTasks(events).map(({ taskId, version }) => `task\t${campaign}\t${taskId ?? version}\t`),
     ...versions.map((digest) => `version\t${campaign}\t${digest}\t`),

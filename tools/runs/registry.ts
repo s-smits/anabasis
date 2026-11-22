@@ -20,11 +20,10 @@
  */
 import { EXAMINE } from "#src/campaign/admission.ts";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
-import { lastReports } from "#src/kernel/reports.ts";
+import { lastReports, startedComparisons } from "#src/kernel/reports.ts";
 import { existsSync, readdirSync, readFileSync, readlinkSync, statSync } from "#src/meta/filesystem.ts";
 import { gitText, mainTree, worktrees } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
-import { isString } from "#src/meta/json-shape.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
@@ -324,10 +323,7 @@ export function writers(run: Run, running: readonly Running[]): Running[] {
  *  keep a run from resting and from moving to another commit for good. */
 export function openComparisons(events: readonly LogEvent[]): string[] {
   const reported = new Set(lastReports(events).map(({ session }) => session));
-  const begun = events.flatMap(({ kind, data }) =>
-    kind === "comparison.started" && data.ladder !== true ? [data.session] : [],
-  );
-  return [...new Set(begun.filter(isString))].filter((session) => !reported.has(session));
+  return startedComparisons(events).filter((session) => !reported.has(session));
 }
 
 /** The file beside `run`'s log that holds its keeper's output. */

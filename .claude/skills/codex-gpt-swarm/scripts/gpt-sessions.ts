@@ -92,7 +92,7 @@ const USAGE = `Usage: gpt-sessions.ts --manifest <absolute json> --output-dir <a
 
 Launch options:
   --codex-bin <absolute executable>
-  --model <gpt-6-luna|gpt-6.1-sol|gpt-6.2-sol>  Default: gpt-6-luna
+  --model <gpt-6-luna|gpt-6.1-sol>  Default: gpt-6-luna
   --reasoning-effort <effort>       Luna: high, xhigh or max (default max). Sol: low, medium, high or xhigh (default medium)
   --max-active <n>                  Sessions running at once. Default: all of them
   --start-interval-ms <0-60000>     Least time between two starts. Default: 1000 when there are several sessions
@@ -123,7 +123,6 @@ const MODE_OPTIONS: ReadonlyMap<string, readonly string[]> = new Map([
 const MODELS: ReadonlyMap<string, { efforts: readonly string[]; effort: string }> = new Map([
   ["gpt-6-luna", { efforts: ["high", "xhigh", "max"], effort: "max" }],
   ["gpt-6.1-sol", { efforts: ["low", "medium", "high", "xhigh"], effort: "medium" }],
-  ["gpt-6.2-sol", { efforts: ["low", "medium", "high", "xhigh"], effort: "medium" }],
 ]);
 const DEFAULT_MODEL = "gpt-6-luna";
 const SERVICE_TIER = "priority";

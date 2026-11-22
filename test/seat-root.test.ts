@@ -278,13 +278,20 @@ describe("what a seat left", () => {
       expect(existsSync(join(root, "home"))).toBe(true);
       holder.kill("SIGKILL");
       await holder.exited;
-      const release = await claimRoot(root);
+      // Two concurrent claims racing on the dead claimant's root must let only one win and leave
+      // its live root intact.
+      const raced = await Promise.allSettled([claimRoot(root), claimRoot(root)]);
+      const won = raced.flatMap((each) => (each.status === "fulfilled" ? [each.value] : []));
+      const lost = raced.flatMap((each) => (each.status === "rejected" ? [String(each.reason)] : []));
+      expect(won).toHaveLength(1);
+      expect(lost).toHaveLength(1);
+      expect(lost[0]).toContain("EEXIST");
       expect([existsSync(join(root, "home")), there(hostFolder(root)), claimed(root)]).toEqual([
         false,
         false,
         true,
       ]);
-      await release();
+      await won[0]?.();
     } finally {
       holder.kill("SIGKILL");
       await holder.exited;

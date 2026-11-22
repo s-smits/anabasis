@@ -166,6 +166,9 @@ export function fixesFor(root: string, top: Pull, say: (line: string) => void): 
   if (ran === "" && trunk === undefined) return full("the trunk's head could not be read");
   const sha = trunk ?? ran;
   const since = trunk === undefined ? `run ${ranId}` : "the trunk's head";
+  if (trunk === undefined && conclusion !== "success" && conclusion !== "failure") {
+    return full(`run ${ranId} ended ${conclusion || "without a conclusion"}`);
+  }
   const failed = conclusion === "failure" ? failedOf(root, ranId, sha, full) : [];
   if (failed === null) return null;
   if (

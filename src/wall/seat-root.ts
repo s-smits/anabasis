@@ -16,6 +16,7 @@ import {
   mkdirSync,
   readdirSync,
   realpathSync,
+  renameSync,
   rm,
 } from "../meta/filesystem.ts";
 import { held, hold, recordIn } from "../meta/holder.ts";
@@ -40,6 +41,37 @@ export function claim(root: string): void {
 /** Reports whether a live process currently holds the ownership claim on `root`. */
 export const claimed = (root: string): boolean => held(claimOf(root));
 
+let reclaimSeq = 0;
+
+/** Atomically moves a dead claimant's `.owner`, root and host folder onto private sibling paths
+ *  before removing them asynchronously, so concurrent callers racing on one stale root never
+ *  delete the winner's live root or ownership claim. */
+async function reclaimDead(at: string): Promise<void> {
+  const owner = claimOf(at);
+  if (recordIn(owner) === "" || claimed(at)) return;
+  const tomb = `${at}.reclaiming-${String(runtimeProcess.pid)}-${String((reclaimSeq += 1))}`;
+  const move = (from: string, to: string): string | null => {
+    try {
+      renameSync(from, to);
+      return to;
+    } catch {
+      return null;
+    }
+  };
+  const movedOwner = move(owner, `${tomb}.owner`);
+  if (movedOwner === null) return;
+  endHolders(at);
+  endHolders(hostFolder(at));
+  const movedRoot = move(at, tomb);
+  const movedHost = move(hostFolder(at), `${tomb}.host`);
+  try {
+    if (movedRoot !== null) await removeWhole(movedRoot);
+    if (movedHost !== null) await rm(movedHost, { recursive: true, force: true });
+  } finally {
+    await rm(movedOwner, { force: true });
+  }
+}
+
 /**
  * Creates a fresh seat root directory, claims it for this process, and returns its release
  * callback for cleanup once the seat terminates. A root whose claim names a dead process is
@@ -50,7 +82,7 @@ export const claimed = (root: string): boolean => held(claimOf(root));
 export async function claimRoot(root: string): Promise<ReleaseRoot> {
   const at = resolve(root);
   mkdirSync(dirname(at), { recursive: true });
-  if (recordIn(claimOf(at)) !== "" && !claimed(at)) await releaseRoot(at);
+  await reclaimDead(at);
   // Refuse an already-existing root held by a live claimant instead of sharing it across concurrent seats.
   mkdirSync(at, { mode: 0o700 });
   claim(at);

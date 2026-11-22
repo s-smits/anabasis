@@ -1061,6 +1061,16 @@ describe("bun run land", () => {
       expect(result.stdout).toContain(`failed beyond its tests (${step} cancelled)`);
     });
 
+    for (const conclusion of ["timed_out", "action_required", "stale", ""]) {
+      it(`dispatches the full run when the prior run ended ${conclusion || "without a conclusion"}`, () => {
+        const result = fixesLand({ ANA_FAKE_CI_BRANCH: `${broken}\t${conclusion}\t9` });
+        expect(dispatches()).toEqual(["workflow run ci.yml --ref fix"]);
+        expect(result.stdout).toContain(
+          `ci.yml runs in full: run 9 ended ${conclusion || "without a conclusion"}.`,
+        );
+      });
+    }
+
     it("dispatches the full run where what runs the suite changed since", () => {
       const result = fixesLand({ ANA_FAKE_CI_BRANCH: `${upper}\tfailure\t9` });
       expect(dispatches()).toEqual(["workflow run ci.yml --ref fix"]);

@@ -169,7 +169,7 @@ describe("a launch", () => {
       { name: "plain", task: "p" },
     ];
     writeFileSync(path, capturedJsonStringify({ workdir, sessions }));
-    const sol = ["--codex-bin", codex, "--model", "gpt-6.2-sol", "--start-interval-ms", "0"];
+    const sol = ["--codex-bin", codex, "--model", "gpt-6.1-sol", "--start-interval-ms", "0"];
     expect(run("--manifest", path, "--output-dir", join(root, "efforts"), ...sol).code).toBe(0);
     const effort = (name: string) =>
       calls()

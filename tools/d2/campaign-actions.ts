@@ -89,6 +89,7 @@ type ActionRun = (
   decided: Decided,
   begin: (named: JsonObject) => void,
   signal: AbortSignal | undefined,
+  unlock: () => void,
 ) => Promise<Outcome>;
 
 /** What a live Builder's campaign tools are made with, and what they leave the command to read. */
@@ -237,58 +238,74 @@ async function runAction(
     await bench.within(() => writing.done);
     if (context.used >= context.maxMoves) return halt(spent);
   }
-  if (context.failed !== null) return text("The campaign has been stopped by the host.");
-  const { turn, decided } = actionTurn(context);
-  if (decided.move === "end") {
-    return halt(`The campaign is at its ${decided.ending} gate; no action may start.`);
+  // Serialize a comparison's read, freeze and run behind any in-flight practice release, and hold
+  // later releases until the comparison ends, so `actionTurn`, `begin` and `comparedOf` all read
+  // the post-release log and no release takes a task between checkpoint, draw and start.
+  let unlock = () => {};
+  if (move === "compare") {
+    const done = Promise.withResolvers<boolean>();
+    const previous = context.releasing;
+    context.releasing = done.promise;
+    unlock = () => done.resolve(false);
+    if (previous !== undefined) await bench.within(() => previous);
   }
-  // A word is the operator's and reaches no seat: the Builder is told what the campaign waits for.
-  if (move !== "examine" && pendingWords(turn.events).some(({ word }) => word === "tasks")) {
-    return text("Other tasks are to be written before another action: examine does that.");
-  }
-  const named = decided.move === move;
-  // Where the log stood as the move began: an action that threw with nothing written after its
-  // move never started, which is a refusal the Builder may answer with another action.
-  let begun: number | null = null;
-  const begin = (made: JsonObject) => {
-    begun = read(context.log).length + 1;
-    context.used += 1;
-    moved(context.log, { move, code: named ? decided.code : LED, why: named ? decided.why : CHOSE }, made);
-  };
-  const { host } = context.seats;
-  // The conversation's deadline clock stops while the action runs, a wait for the provider included.
-  return await bench.within(async () => {
-    try {
-      const outcome = await run(turn, decided, begin, signal);
-      if ("refused" in outcome) return text(outcome.refused);
-      // A session of the action's that the provider's limit ended is waited out here, as after
-      // each move of a campaign before the Builder made them.
-      await waitCrashed(context.log, host);
-      return text(outcome.said);
-    } catch (error) {
-      // Asked before the throw is read as a refusal, as the host's loop asks it: a limit that
-      // ended a session before its first event is no refusal, and asked for again at once the
-      // action would meet the same limit.
-      if (await waitOut(context.log, error, host?.sleep)) {
-        return text(
-          `The provider's limit ended the ${label} action, and the host has waited it out: call ${move} again.`,
-        );
-      }
-      // The admission's own words, which name no task, so that the Builder can tell a want of
-      // tasks from a stop, which a fixed sentence would hide. Any other
-      // refusal may name a held-out task, and keeps the fixed sentence.
-      if (begun === null || read(context.log).length <= begun) {
-        return text(
-          error instanceof Refused
-            ? `The host refused the ${label} action: ${error.message}`
-            : `The host refused the ${label} action; choose another action.`,
-        );
-      }
-      context.failed = { move, why: errorMessage(error) };
-      bench.halt.abort();
-      return text(`The host could not complete the ${label} action. The campaign has been stopped.`);
+  try {
+    if (context.used >= context.maxMoves) return halt(spent);
+    if (context.failed !== null) return text("The campaign has been stopped by the host.");
+    const { turn, decided } = actionTurn(context);
+    if (decided.move === "end") {
+      return halt(`The campaign is at its ${decided.ending} gate; no action may start.`);
     }
-  });
+    // A word is the operator's and reaches no seat: the Builder is told what the campaign waits for.
+    if (move !== "examine" && pendingWords(turn.events).some(({ word }) => word === "tasks")) {
+      return text("Other tasks are to be written before another action: examine does that.");
+    }
+    const named = decided.move === move;
+    // Where the log stood as the move began: an action that threw with nothing written after its
+    // move never started, which is a refusal the Builder may answer with another action.
+    let begun: number | null = null;
+    const begin = (made: JsonObject) => {
+      begun = read(context.log).length + 1;
+      context.used += 1;
+      moved(context.log, { move, code: named ? decided.code : LED, why: named ? decided.why : CHOSE }, made);
+    };
+    const { host } = context.seats;
+    // The conversation's deadline clock stops while the action runs, a wait for the provider included.
+    return await bench.within(async () => {
+      try {
+        const outcome = await run(turn, decided, begin, signal, unlock);
+        if ("refused" in outcome) return text(outcome.refused);
+        // A session of the action's that the provider's limit ended is waited out here, as after
+        // each move of a campaign before the Builder made them.
+        await waitCrashed(context.log, host);
+        return text(outcome.said);
+      } catch (error) {
+        // Asked before the throw is read as a refusal, as the host's loop asks it: a limit that
+        // ended a session before its first event is no refusal, and asked for again at once the
+        // action would meet the same limit.
+        if (await waitOut(context.log, error, host?.sleep)) {
+          return text(
+            `The provider's limit ended the ${label} action, and the host has waited it out: call ${move} again.`,
+          );
+        }
+        // The admission's own words, which name no task, so that the Builder can tell a want of
+        // tasks from a stop, which a fixed sentence would hide. Any other
+        // refusal may name a held-out task, and keeps the fixed sentence.
+        if (begun === null || read(context.log).length <= begun) {
+          return text(
+            error instanceof Refused
+              ? `The host refused the ${label} action: ${error.message}`
+              : `The host refused the ${label} action; choose another action.`,
+          );
+        }
+        context.failed = { move, why: errorMessage(error) };
+        bench.halt.abort();
+        return text(`The host could not complete the ${label} action. The campaign has been stopped.`);
+      }
+    });
+  } finally {
+    unlock();
+  }
 }
 
 const examineAction =
@@ -465,47 +482,31 @@ const readAgainst = (events: readonly LogEvent[], fresh: string, reference: stri
   comparisonsOf(events).some((each) => each.fresh === fresh && each.old === reference);
 
 const compareTool = (context: CampaignContext, bench: Bench): SeatTool =>
-  actionTool(context, bench, "compare", async (_staleTurn, _staleDecided, begin, signal) => {
-    // Serialize the whole comparison setup and run behind any in-flight practice release, and hold
-    // later releases until it finishes, so `comparedOf` reads the post-release log and no release
-    // takes a task between `build.checkpoint`, the draw and `comparison.started`.
-    const done = Promise.withResolvers<boolean>();
-    const previous = context.releasing;
-    context.releasing = done.promise;
-    let turn: Turn;
-    let note: string;
-    let session: string;
-    try {
-      await previous;
-      const fresh = actionTurn(context);
-      turn = fresh.turn;
-      const { decided } = fresh;
-      const named = await comparedOf(context, bench, turn, decided);
-      if ("refused" in named) return named;
-      note = named.note;
-      const built = comparisonOf(named.move, turn);
-      session = built.session;
-      // The working copy as it is frozen for this comparison, kept inside the live conversation: a
-      // conversation cut later leaves it the latest harness all the same (`latestBuilt`). It is
-      // written before admission on purpose: the state is kept by then, and after a refusal the
-      // table names it as not yet compared (a refused compare is usually superseded by the
-      // session's next checkpoint).
-      if (named.froze !== undefined) {
-        append(context.log, "build.checkpoint", { session: bench.request.id, harness: named.froze });
-      }
-      // The comparison's own flags beside the pack's, so the log says what command the move ran
-      // (a flag left off would otherwise show on no record). The move is on record once the
-      // comparison is admitted, so that one the admission refused leaves no move that never began.
-      await checkpointCommand(built.args, context.held, signal, () =>
-        begin({
-          session,
-          args: built.args.slice(packOf(context.values).length),
-          ...keysIf(named.move !== decided, () => ({ code: named.move.code, why: named.move.why })),
-        }),
-      );
-    } finally {
-      done.resolve(false);
+  actionTool(context, bench, "compare", async (turn, decided, begin, signal, unlock) => {
+    const named = await comparedOf(context, bench, turn, decided);
+    if ("refused" in named) return named;
+    const { note } = named;
+    const built = comparisonOf(named.move, turn);
+    const { session } = built;
+    // The working copy as it is frozen for this comparison, kept inside the live conversation: a
+    // conversation cut later leaves it the latest harness all the same (`latestBuilt`). It is
+    // written before admission on purpose: the state is kept by then, and after a refusal the
+    // table names it as not yet compared (a refused compare is usually superseded by the
+    // session's next checkpoint).
+    if (named.froze !== undefined) {
+      append(context.log, "build.checkpoint", { session: bench.request.id, harness: named.froze });
     }
+    // The comparison's own flags beside the pack's, so the log says what command the move ran
+    // (a flag left off would otherwise show on no record). The move is on record once the
+    // comparison is admitted, so that one the admission refused leaves no move that never began.
+    await checkpointCommand(built.args, context.held, signal, () =>
+      begin({
+        session,
+        args: built.args.slice(packOf(context.values).length),
+        ...keysIf(named.move !== decided, () => ({ code: named.move.code, why: named.move.why })),
+      }),
+    );
+    unlock();
     const events = read(context.log);
     const step = campaignOf(events).steps.findLast(
       (each) => each.step === "comparison" && each.id === session,

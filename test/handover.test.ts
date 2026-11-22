@@ -474,6 +474,14 @@ describe("the Builder's filter over that reading", () => {
     expect(opened).toMatch(/\baaaaaaaa\b.*\bb-1\b.*\bcrashed\b/su);
     expect(opened).toContain("Its unfinished tree is in kept/bbbbbbbb/.");
     expect(opened).not.toContain("no Builder session");
+    // A killed session with an unfinished tree surfaces it just as a crashed session does.
+    const cut = campaign();
+    cut.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
+    cut.record("build.checkpoint", { session: "b-1", harness: HA });
+    cut.record("build.finished", { session: "b-1", ended: "killed", harness: HB, changed: true });
+    expect(startTold(campaignOf(cut.events()), HA, "b-2")).toContain(
+      "Its unfinished tree is in kept/bbbbbbbb/.",
+    );
     // A checkpoint of the parent itself changed nothing, so no session left the starter.
     const same = campaign();
     same.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });

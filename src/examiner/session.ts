@@ -158,14 +158,14 @@ function withinBudget(log: string, spent: AbortController): boolean {
   return false;
 }
 
-/** Skip trailing calls from a multi-tool turn once an earlier call rested and moved to a new ask. */
-function guardAsk(each: SeatTool, moved: () => boolean): SeatTool {
+/** Skip trailing calls from a multi-tool turn once an earlier call ended or moved the ask. */
+function guardAsk(each: SeatTool, stopped: () => string | null): SeatTool {
   return {
     ...each,
-    execute: async (args, api, context) =>
-      moved()
-        ? text("The previous ask ended and the host moved to a new ask; act on the wake message above.")
-        : await each.execute(args, api, context),
+    execute: async (args, api, context) => {
+      const reason = stopped();
+      return reason === null ? await each.execute(args, api, context) : text(reason);
+    },
   };
 }
 
@@ -320,7 +320,9 @@ async function examining(
     const used = (call: string) => {
       if (call !== lastCall) return "";
       const minutes = `${String(Math.floor(clock.seconds() / 60))} of ${plural(Math.round(current.limits.wallSeconds / 60), "minute")}`;
-      const cue = compacted ? " Context compacted; read_opening holds the current record and limits." : "";
+      const cue = compacted
+        ? " Context compacted; read_opening holds the ask's opening record and limits."
+        : "";
       compacted = false;
       return `Turn ${String(turns.length - from)} of ${String(current.limits.turns)}; ${minutes} used.${cue}`;
     };
@@ -332,7 +334,15 @@ async function examining(
     const tools = [
       ...[...mode.tools, ...shell, reread].map((each) => endingWith(each, used)),
       finishTool(mode, said, rest),
-    ].map((each) => guardAsk(each, () => turnEpoch !== askEpoch));
+    ].map((each) =>
+      guardAsk(each, () => {
+        if (rested !== null) return "The previous ask ended and the session is closing.";
+        if (turnEpoch !== askEpoch) {
+          return "The previous ask ended and the host moved to a new ask; act on the wake message above.";
+        }
+        return null;
+      }),
+    );
     let running = 0;
     const sat = await sit({
       models: request.models,

@@ -1007,8 +1007,27 @@ describe("one Examiner conversation across the host's asks", () => {
       rest: async () => asks.shift() ?? null,
     });
     const texts = s.of(CALLED).map(({ text }) => (isString(text) ? text : ""));
-    expect(texts[0]).toContain("Context compacted; read_opening holds the current record and limits.");
-    expect(texts[1]).not.toContain("Context compacted; read_opening holds the current record and limits.");
+    expect(texts[0]).toContain("Context compacted; read_opening holds the ask's opening record and limits.");
+    expect(texts[1]).not.toContain(
+      "Context compacted; read_opening holds the ask's opening record and limits.",
+    );
     expect(texts[2]).toContain("The previous ask ended and the host moved to a new ask");
+  });
+
+  it("skips trailing calls in a multi-tool turn when rest closes the conversation", async () => {
+    const multiSupplyThenTrailing = fauxAssistantMessage(
+      [fauxToolCall(PROPOSE, { tasks: [instance(2)] }), fauxToolCall(PROPOSE, { tasks: [instance(3)] })],
+      { stopReason: "toolUse" },
+    );
+    const s = seat("write", [multiSupplyThenTrailing]);
+    const examined = await examine({
+      ...s.request,
+      wanted: 1,
+      rest: async () => null,
+    });
+    expect(examined.ended).toBe("supplied");
+    expect(examined.held).toHaveLength(1);
+    const texts = s.of(CALLED).map(({ text }) => (isString(text) ? text : ""));
+    expect(texts[1]).toContain("The previous ask ended and the session is closing.");
   });
 });

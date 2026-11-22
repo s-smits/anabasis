@@ -131,7 +131,7 @@ export function startTold({ steps, reference }: Campaign, digest: string, id: st
   const last = builders.at(-1);
   const ended = last?.ended == null ? "has no ending on record" : (ENDED.get(last.ended) ?? last.ended);
   const kept =
-    last?.ended === "crashed" && last.unfinished !== null && last.unfinished !== digest
+    last !== undefined && last.unfinished !== null && last.unfinished !== digest
       ? ` Its unfinished tree is in kept/${short(last.unfinished)}/.`
       : "";
   return `You start from harness ${short(digest)}${origin}.${otherRef}${last === undefined ? "" : ` The last Builder session, ${last.id}, ${ended}.${kept}`}`;

@@ -1,6 +1,6 @@
 ---
 name: run-management
-description: "Start, continue, keep, pause, copy, move, monitor, and stop authorised Anabasis campaigns via `bun run runs`: launch named campaigns, resume from logs on another login or commit, keep runs alive across provider waits, pause cleanly, copy stopped runs between worktrees, migrate runs across hosts, inspect run status and login capacity, reach remote hosts, and terminate runs cleanly. Use when asked to manage campaign lifecycles, check login capacity or fleet status, verify move readiness, or diagnose move refusals. Owns host-level run lifecycle; `run-improvement-campaign` owns experimental decisions, and `whole-run-investigation` analyses run logs."
+description: "Use before launching, resuming, pausing, copying, moving, inspecting, or stopping a campaign via `bun run runs`, or when checking login capacity, fleet status, move readiness, or move refusals. Manages host-level lifecycles: launches named runs, resumes across logins/commits, keeps runs alive across provider waits, migrates across hosts, and terminates cleanly. `run-improvement-campaign` owns experimental decisions; `whole-run-investigation` analyses run logs."
 ---
 
 # Run management

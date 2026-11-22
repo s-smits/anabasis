@@ -1,6 +1,6 @@
 ---
 name: harness-audit
-description: "Inspect the harnesses a campaign retains outside a live run: inventory versions and their provenance, diff changes against a parent harness, review which comparisons evaluated each version, test a harness on a released task, prepare pre-promotion audits and blind handover reviews, assess whether components earn their keep, and locate owners of the harness contract. Use when asked which harness is current, what a Builder changed, whether a harness is ready for promotion or handover, or how to run a kept harness on a task. Full-run analysis belongs to `whole-run-investigation`; claim wording belongs to `attribution-and-proof`."
+description: "Use when inspecting kept harnesses, checking which harness is current, diffing Builder changes against a parent, preparing pre-promotion or handover reviews, assessing whether components earn their keep, or testing a kept harness on a released task. Inventories versions and provenance and locates harness contract owners. Full-run analysis belongs to `whole-run-investigation`; claim wording belongs to `attribution-and-proof`."
 ---
 
 # Harness audit

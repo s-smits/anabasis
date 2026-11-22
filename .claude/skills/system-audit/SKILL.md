@@ -1,6 +1,6 @@
 ---
 name: system-audit
-description: "Evaluate Anabasis as a whole using independent read-only sessions, each examining one subsystem through a single analytical lens (flaws proved from counted events in recent campaigns, first-principles rethink before reading code, deletion of unused machinery, fault-tolerance, or factor alignment). Claims name their evaluation pillar and are triaged by the v1.0 requirement they block; a challenge session attempts to refute them, the primary session vets each claim, and confirmed findings become assumed repairs for subsequent rounds, applied only with operator authorisation through stack-pr, commit-r, and simplify."
+description: "Use when auditing Anabasis subsystems as a whole, hunting fundamental flaws or deletion candidates, checking fault-tolerance or factor alignment, or running a fresh-eyes redesign. Runs independent read-only sessions per subsystem with a challenge pass, triaging claims by v1.0 blocker and applying confirmed repairs only with operator authorisation through stack-pr, commit-r, and simplify."
 ---
 
 # System audit

@@ -1,6 +1,6 @@
 ---
 name: consolidate-stack
-description: "Consolidate an open stack of Anabasis pull requests into fewer, simpler ones: catalogue each pull request by the problem its body states, group by type and mechanism, inspect each group's combined surface and rethink it with simplify until it is the minimal change resolving every stated problem; trial the new order on a scratch worktree (conflicts, ordered files, gates above their sites, tree equality, and per-group checks) before moving published branches; review, fix in lanes, regroup, and publish with `republish.ts`. Use when the operator asks to consolidate, regroup, fold, shrink, or overhaul the stack. Placing a single change belongs to stack-pr; rewriting one compartment belongs to commit-r."
+description: "Use when asked to consolidate, regroup, fold, shrink, or overhaul an open PR stack into fewer, simpler pull requests. Catalogues PRs by stated problem, groups by mechanism, simplifies each group's combined surface, trials the new order on a scratch worktree before moving published branches, reviews, fixes in lanes, and publishes with `republish.ts`. Placing a single change belongs to stack-pr; rewriting one compartment belongs to commit-r."
 ---
 
 # Consolidate the stack

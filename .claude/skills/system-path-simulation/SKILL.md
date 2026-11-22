@@ -1,6 +1,6 @@
 ---
 name: system-path-simulation
-description: "Exercise an untested Anabasis execution path before a live campaign traverses it: read the record (a single reader fact, a full archive replay, or an in-memory synthetic log), rehearse (real commands on a seeded campaign with scripted seats), or seat a live model (an Examiner session or round from a seed, or paired seat rounds tuning a prompt or term against one primary count), each runnable before and after a change, and trace findings back to the owning module to fix, simplify, or rewrite. Use to test command joins, revisit a recorded state, size a comparison, verify kill or stop recovery, simulate an open stack before landing, or tune the Examiner's prompt or terms (cases/optimize.md). Not for post-hoc analysis of a finished run (whole-run-investigation) or launching a paid campaign (run-management)."
+description: "Use before live runs or landing to exercise an untested execution path, test command joins, size a comparison, verify kill/stop recovery, simulate an open stack, or tune Examiner prompts/terms (`cases/optimize.md`). Supports archive replays, synthetic logs, scripted rehearsals on seeded campaigns, and paired live-seat rounds, tracing findings back to owning modules. Not for post-hoc analysis of finished runs (whole-run-investigation) or launching paid campaigns (run-management)."
 ---
 
 # System path simulation

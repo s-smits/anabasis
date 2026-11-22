@@ -1,6 +1,6 @@
 ---
 name: whole-run-investigation
-description: "Investigate one campaign or several campaigns jointly from their append-only logs, producing findings with named owners. Use for run audits, stalled climbs, unexpected failures, or doubts about a comparison reading (step, no-step, not-scored). Examines correctness, evaluation validity, evaluation-boundary leakage, task difficulty, promotions, compute time, and cost. Read-only: starts no solve, session, or round and modifies no verdict."
+description: "Use when auditing one or more campaign logs, diagnosing stalled climbs or unexpected failures, or questioning a comparison reading (step, no-step, not-scored). Investigates append-only logs across correctness, evaluation validity, wall leakage, task difficulty, promotions, compute time, and cost, producing findings with named owners. Read-only: starts no solve, session, or round and modifies no verdict."
 ---
 
 # Whole-Run Investigation

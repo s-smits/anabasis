@@ -1,6 +1,6 @@
 ---
 name: stack-pr
-description: "Place a change on an open stack of Anabasis pull requests, or start a new stack: inspect the current stack top, preserve local work while moving to it, expand the open pull request that owns a change before opening a new one, shape commits that pass in isolation, run the CI checks locally, publish through the pre-push hook, verify the stack with `bun run land -- <top> --sanitize`, write a concise title and body, replay child branches when a parent moves, and land with `bun run land`. Use when asked to open, append to, stack, restack, rebase, move to the latest head, sanitise, or land a pull request, to title or describe one, or when a push, hook, or base branch refuses. Whole-stack consolidation lives in consolidate-stack."
+description: "Use before branching, committing, pushing, opening, updating, restacking, or landing a pull request, to title or describe a PR, or when a push, hook, or base branch refuses. Places a change on the open stack (or starts a new stack): inspects stack top, preserves local work, expands an owning PR before opening a new one, shapes isolated commits, runs local CI checks, publishes through the pre-push hook, verifies with `bun run land -- <top> --sanitize`, replays child branches, and lands with `bun run land`. Whole-stack consolidation lives in consolidate-stack."
 ---
 
 # Stack a pull request

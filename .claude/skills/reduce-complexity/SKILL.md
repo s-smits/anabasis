@@ -1,6 +1,6 @@
 ---
 name: reduce-complexity
-description: "Measure structural complexity across a diff or pull request stack: line counts, branching density, import coupling, interface width, rule proxies, lint exemptions, and model-visible prompt prose. Use before claiming a simplification, when locating newly added machinery, or when asked whether a diff is simpler, how much a pull request added, for a function's branch count, or for `git complexity`. Report identical metrics before and after; v2 has no CI branch-count gate."
+description: "Use before claiming a simplification, when locating newly added machinery, or when asked whether a diff is simpler, how much a PR added, for a function's branch count, or for `git complexity`. Measures line counts, branching density, import coupling, interface width, rule proxies, lint exemptions, and model-visible prompt prose; reports identical metrics before and after (v2 has no CI branch-count gate)."
 ---
 
 # Reduce complexity

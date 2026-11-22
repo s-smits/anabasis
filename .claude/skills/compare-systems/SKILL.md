@@ -1,6 +1,6 @@
 ---
 name: compare-systems
-description: "Evaluate a built harness with a cheaper solver against a bare starter harness with a more expensive solver on a single campaign's held-out evaluation tasks, outside the campaign's own readings. Answers questions such as whether a smaller model with a built harness matches a larger bare model, or how multiple harnesses for one domain compare under a single solver. Use when the operator asks to compare models, test a cheaper model against a more expensive one, compare harnesses, or assess whether one system matches another's scores."
+description: "Use when comparing models or harnesses outside a campaign's own readings—testing a built harness with a cheaper solver against a bare starter with a stronger solver, or comparing multiple harnesses under one solver on held-out tasks."
 ---
 
 # Compare systems

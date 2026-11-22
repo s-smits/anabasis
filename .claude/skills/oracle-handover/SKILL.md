@@ -1,6 +1,6 @@
 ---
 name: oracle-handover
-description: "Package a question about Anabasis for an external Oracle model: either as one self-contained Markdown document (`document.ts`: source excerpts at a published commit, pull request summaries, and log slices such as `Builder{4-7}`), or as a task document paired with a zip archive of campaign logs and kept harnesses (`bun run runs zip`, `bundle.ts`). `slice.ts` extracts any seat's turns or event kinds from a campaign log; `open-pulls.ts` packages every open pull request's title, body, and diff alongside code within one import hop as a zip and a pasteable `.md` file (use `--diffs` for pasting). Generates local files only; uploading remains the operator's task."
+description: "Use when preparing an Oracle question, second opinion, log slice (`slice.ts`), open-PR bundle (`open-pulls.ts`, use `--diffs` for pasting), or external handover document (`document.ts`, `bundle.ts`, `bun run runs zip`). Packages source excerpts at a published commit, PR summaries, and campaign logs or kept harnesses locally; uploading remains the operator's task."
 ---
 
 # Oracle handover

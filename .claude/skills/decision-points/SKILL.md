@@ -1,6 +1,6 @@
 ---
 name: decision-points
-description: "Decide the next lifecycle action for a live Anabasis campaign at each established operator decision point: continue running, pause after the next comparison, stop, resume, or fork fresh. Encodes target promotion counts (two by default; one, three, four, or six depending on run purpose), criteria for abandoning non-promoting runs, slot eviction order under concurrency caps, criteria for launching a fresh fork, and release proof-run requirements, grounded in the empirical record of operator decisions (references/record.md). Use when a promotion, starter comparison, non-step comparison, or ending lands, when a concurrency slot opens, or before proposing a stop, pause, resume, or relaunch."
+description: "Use before proposing to continue, pause, stop, resume, evict, or fork a live campaign, or whenever a promotion, starter comparison, non-step comparison, ending, or concurrency slot change lands. Encodes target promotion counts, criteria for abandoning non-promoting runs, slot eviction order, fresh-fork rules, and release proof-run requirements from the empirical decision record (references/record.md)."
 ---
 
 # Decision points

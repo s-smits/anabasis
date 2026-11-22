@@ -1,6 +1,6 @@
 ---
 name: comparison-review
-description: "Analyse why a comparison of harnesses or systems produced its observed outcome, moving systematically from identities and experimental conditions to grader visibility, score formation, per-task splits, and rollout noise, then trace general mechanisms back to system owners without overfitting to the evaluation set. Separates exploratory discovery from confirmation via a frozen ledger, a sealed hold-out split, blind reading, and burned-task tracking, propagating findings back to the system only as domain-general shape cards stripped of benchmark names, directions, and scores. Use when the operator asks why a harness scored higher or lower, why an external benchmark disappointed, whether capability was lost in transfer, whether a difference is noise, or how to improve the system from a result."
+description: "Use when asked why a harness or system scored higher or lower, why an external benchmark disappointed, whether capability was lost in transfer, whether a difference is noise, or how to improve the system from a comparison result. Analyses identities, conditions, grader visibility, score formation, per-task splits, and rollout noise using a frozen ledger, sealed hold-out split, blind reading, and burned-task tracking, propagating findings only as domain-general shape cards."
 ---
 
 # Comparison review

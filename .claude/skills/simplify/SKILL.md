@@ -1,6 +1,6 @@
 ---
 name: simplify
-description: "Simplify Anabasis code using the whole-tree census method: run deterministic checks first (strict lint, `bun run simplify`, and the not-slop ledger), then inspect structural shapes that static scans cannot detect, resolving every site on a single verifiable sentence and measuring before and after with reduce-complexity scripts against explicit budgets. Use as /simplify on your own diff before committing, or when asked whether code is simple enough, why a mechanism exists, to move a fix one layer higher, or to remove something and find a cleaner alternative."
+description: "Use before committing source changes (as /simplify) or when asked whether code is simple enough, why a mechanism exists, to move a fix one layer higher, or to remove machinery for a cleaner alternative. Runs deterministic checks first (strict lint, `bun run simplify`, not-slop ledger), inspects structural shapes static scans miss, resolves every site on one verifiable sentence, and measures before and after with reduce-complexity scripts against explicit budgets."
 ---
 
 # Simplify

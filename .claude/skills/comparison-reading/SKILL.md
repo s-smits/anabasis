@@ -1,6 +1,6 @@
 ---
 name: comparison-reading
-description: "Use before editing src/kernel/{compare,reports,size,solve}.ts or src/campaign/{comparison,round,decide,admission,climb}.ts. Explains readings (step, no-step, not-scored), task scores (pointsOf, WEIGHTS), significance testing (flipP, readsStep), A/A controls, task draws (poolOf, scoredSet, held-short), sample size, decide, and AGENTS.md sections 7 to 8. Scripts: size.ts, reading.ts, draw.ts, and starter-reads.ts. Use promotion-tuner to replay comparisons under alternative rules."
+description: "Use before editing or answering questions about src/kernel/{compare,reports,size,solve}.ts, src/campaign/{comparison,round,decide,admission,climb}.ts, comparison readings (step, no-step, not-scored), scoring, A/A controls, or task draws. Explains pointsOf, WEIGHTS, flipP, readsStep, poolOf, scoredSet, held-short, sample size, decide, and AGENTS.md sections 7 to 8. Scripts: size.ts, reading.ts, draw.ts, and starter-reads.ts. Use promotion-tuner to replay comparisons under alternative rules."
 ---
 
 # Comparison reading

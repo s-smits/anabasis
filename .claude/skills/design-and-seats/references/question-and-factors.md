@@ -13,6 +13,7 @@ Excluded from factors: the wall (binary test invariant), practice results (train
 ## Further trade-offs
 
 Beyond `AGENTS.md` §1:
+- **Domain validity gradient**: hard-constraint domains (physical feasibility, compilers, simulators) separate harnesses on binary validity, whereas open-ended analytical domains saturate binary validity as a feasibility floor so the noisier objective governs. Report which measure carried a step and inspect the starter's A/A noise floor; raising `GAP_FLOOR` shifts noise while starving supply.
 - **Difficulty vs statistical power**: ties drop out; steps detect best at 30–50% reference pass rate. Watch reference validity share and untied task count.
 - **Stricter threshold vs climb speed**: 2 solves/task at 0.02 balances power and noise; an A/A step signals a loose alpha.
 - **Cost vs value**: compare USD/promotion on one meter (`promotion-tuner`); rising solve cost without validity gain is bloat.

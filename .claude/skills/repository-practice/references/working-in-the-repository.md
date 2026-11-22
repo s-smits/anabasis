@@ -37,8 +37,11 @@ Follow `stack-pr`:
 - Extend an open PR for fixes/simplifications to its own code; append commits only if it has children; never edit another session's PR without operator authorisation.
 - One worktree per PR from pinned stack top with `bun install --frozen-lockfile`; no branching inside live-run worktrees; no `git stash`.
 - Fold fixes into unpublished commits; never publish temporary `commit-r` commits.
-- `land` requires an importance label + category (no `Ix:` prefix in titles). `--no-verify` requires operator authorisation; `main` lands solely via `land -- <top> --merge`.
+- `land` requires an importance label + category (no `Ix:` prefix in titles): `I0` results already invalid/unsafe (bad reading/promotion, wall breach, lost answers, leaked credentials, cap exceeded, broken `main`; live runs pause); `I1` fixes a defect in decisions, measurement or seat exposure, prevents corruption/crashes/stalls/lost sessions/wasted compute, or removes a mechanism; `I2` other production code, prompts or run/landing tooling changes (including simplifications); `I3` reporting, wording, comments, docs, skill prose or tests alone. `--no-verify` requires operator authorisation; `main` lands solely via `land -- <top> --merge`.
+- Store backlog items in `docs/backlog/<subject>.md` (intended changes followed by history in the operator's words).
 - Link native stacks bottom-to-top (`gh stack link <pr>...`; `land --sanitize`/`--merge` runs this automatically). Repair wrong order via `gh stack unstack <stack>` then relink. `stack.ts` and `land` reject doubled-commit branches (`tools/runtime/doubled.ts`).
 - Pre-v2 PRs (≤#235) are cited as `anabasis-v2#N`. State affected behaviour first, cite source, note when no defect is addressed, and comment on superseded PRs.
 
 Before acting on any review finding, inspect owner, callers, tests and head comment; name the confirming event/count; check recent runs with that code (`runs replay`, `wri.ts`, `runs view`); list runs inspected and left unread. Confirmed findings left only in reports count as unfinished work.
+
+When delegating to reviewers or subagents (where permitted by operator config), assign one bounded read-only task stating authority, paths, revision, known facts and exact question; supply source rather than conclusions; require counts with denominators and `file:symbol` citations; and verify every finding at source as confirmed, plausible or refuted.

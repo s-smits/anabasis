@@ -1,6 +1,6 @@
 ---
 name: commit-r
-description: "Rewrite a single Anabasis compartment using the existing code or test suite as a behavioural oracle: test-first when an outcome or interface changes, as an oracle-verified refold when every output is preserved, or as a test pass verified by mechanical mutants when example tests give way to bounded checks and properties. Use when asked to rewrite, overhaul, rebuild, or accelerate code or tests, consolidate unit tests, or run Commit R; also within an authorised change when the existing shape requires another special case or a smaller set of owners would achieve the same behaviour. Whole-stack overhauls belong to stack-pr and consolidate-stack."
+description: "Use before rewriting, overhauling, rebuilding, or accelerating a single compartment or consolidating its unit tests, or within an authorised change when the current shape requires another special case. Rewrites using existing code or tests as a behavioural oracle (test-first on interface change, oracle-verified refold on preserved output, or mutant-verified test pass). Whole-stack overhauls belong to stack-pr and consolidate-stack."
 ---
 
 # Commit R

@@ -1,6 +1,6 @@
 ---
 name: zip-run
-description: "Package recorded Anabasis runs for handover at a chosen depth (`--light`, `--medium`, `--verbose`). Use when the operator asks to zip, bundle, archive, or send a run, round, log, harness, or full model context, or specifies a size cap. Every archive includes a `README.md`, a `GUIDE.md`, and a `MANIFEST.json`."
+description: "Use when asked to zip, bundle, archive, or send a recorded Anabasis run, round, log, harness, or model context, or when given a size cap. Packages runs at `--light`, `--medium`, or `--verbose` depth with `README.md`, `GUIDE.md`, and `MANIFEST.json`."
 ---
 
 # Zip a run

@@ -24,6 +24,13 @@ policy, and test design; changes that do not touch code may skip it.
 - Tests assert the concrete facts a message conveys (outcomes, counts, limits) and verify wall
   exclusions by their absence, allowing prose wording to evolve freely. When a prompt sentence
   itself is under test, assert against the composed prompt directly.
+- Match test style to code: bounded exhaustive checks (`test/compare-exhaustive.test.ts`),
+  state-space exploration (`test/decide-explore.test.ts`), or seeded property tests
+  (`test/pairs-property.test.ts`) for pure kernel/decision logic; clear regression tests for
+  real-run bugs, boundaries, and hostile refusals. Pin measured constants (`WEIGHTS`, `GAP_FLOOR`,
+  `SIZE`, `PATIENCE`) once. Check mechanical mutants before deleting or replacing tests (`commit-r`
+  step 8). Keep bounded checks ≤~10s via symmetry, verify full-change exit codes directly (never
+  masked by pipes), and treat missing-userns wall failures as real failures.
 
 ## 13. Writing
 

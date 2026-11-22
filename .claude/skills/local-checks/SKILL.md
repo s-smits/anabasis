@@ -1,6 +1,6 @@
 ---
 name: local-checks
-description: "Decide where each Anabasis check runs: locally (pre-push hook, `stack.ts`, `bun run land`, and fleet runner hosts) or on GitHub Actions, which runs `ci.yml` exclusively. Use when adding, relocating, or tuning a check, workflow, commit status, or pre-push hook, when asked about CI/CD, GitHub Actions usage, or pull request checks, or before modifying `.github/workflows/`. Counts Actions runs via scripts/actions.ts."
+description: "Use before adding, relocating, or tuning a check, commit status, pre-push hook, or `.github/workflows/` file, or when checking CI/CD or GitHub Actions usage. Decides where each Anabasis check runs: locally (pre-push hook, `stack.ts`, `bun run land`, fleet runner hosts) or on GitHub Actions (`ci.yml` exclusively); counts Actions runs via `scripts/actions.ts`."
 ---
 
 # Local checks

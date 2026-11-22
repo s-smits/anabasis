@@ -1,6 +1,6 @@
 ---
 name: promotion-tuner
-description: "Evaluate recorded comparisons off-policy under alternative promotion rules without model calls or spend. `scripts/replay.ts` checks whether a tree's scoring rule reproduces recorded promotions and identifies which measure won each task, and with `--try`, `--mechanism`, or `--against` compares alternative rules on a unified panel. `scripts/table.ts` tabulates runs and promotions (and with `--rows cost` reprices them on a single meter). `scripts/trend.ts` compares recent weeks against prior windows with campaign-level permutation tests, pairing climb rate with retention and optional external benchmark scores (`--bench`). Off-policy replay never establishes a live improvement."
+description: "Use before changing any scoring, admission, or promotion rule, or when replaying recorded comparisons off-policy, tabulating runs and repriced costs, or checking cohort trends. `scripts/replay.ts` checks whether a tree's scoring rule reproduces recorded promotions and compares alternative rules (`--try`, `--mechanism`, `--against`); `scripts/table.ts` tabulates runs and costs (`--rows cost`); `scripts/trend.ts` tests recent weeks against prior windows with optional `--bench` scores. Off-policy replay never establishes a live improvement."
 ---
 
 # Promotion tuner

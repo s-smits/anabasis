@@ -1,6 +1,6 @@
 ---
 name: run-improvement-campaign
-description: "Operate the Anabasis improvement loop (the Super Loop) across iterations and release cycles: fork fresh campaigns, track milestones, and resolve pre-registered predictions; when a run hits its trigger (two promotions, twelve hours, or a comparison leaving no untied tasks), pause it after its next comparison, investigate it (`scripts/wri2p2.ts`), implement findings as one stacked pull request, and fork fresh evaluation runs at its head; land the release once a proof run at the top promotes twice. Use when asked to manage ongoing campaigns, fork runs, work towards a release, run a pass or audit, interpret a promotion, diagnose a non-promoting campaign, or plan the next run. Owns the experiment and its evidence; `AGENTS.md` section 3 owns operator decisions."
+description: "Use when managing ongoing improvement cycles (the Super Loop), forking fresh runs, working toward a release, running a pass or audit, interpreting a promotion, diagnosing a non-promoting campaign, or planning the next run. Tracks milestones and pre-registered predictions, pauses triggered runs (2 promotions, 12h, or no untied tasks), investigates via `scripts/wri2p2.ts`, stacks fixes, and forks fresh evaluation runs. Owns the experiment and its evidence; `AGENTS.md` section 3 owns operator decisions."
 ---
 
 # Run improvement campaign (the Super Loop)

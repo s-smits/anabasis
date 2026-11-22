@@ -26,6 +26,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/fi
 import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { catalogueText, lanesOf } from "./catalogue.ts";
+import { LAUNCH } from "./index.ts";
 import { scoredTasks, VALUE_BYTES } from "./tasks.ts";
 import { diffOf, madeOf, weightOf } from "./trajectory.ts";
 
@@ -263,7 +264,7 @@ export function buildPackets(campaigns: readonly Campaign[], outDir: string, cou
   writeFileSync(join(out, "key.json"), `${JSON.stringify(key, null, 1)}\n`);
   launch(
     out,
-    "launch.json",
+    LAUNCH,
     graders.map((grader) => ({ grader, prompt: join(out, `grader-${grader}.md`) })),
   );
   return lines;

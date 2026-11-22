@@ -26,7 +26,7 @@
  * A check's tools resolve only from the verifier's tool tree. The condition pins that tree's digest,
  * and a tool missing from it once ran the host's copy off the search path's later directories.
  */
-import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
+import { CHECK_BRIEF, EVALUATOR_FILE } from "../meta/bundle-layout.ts";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "../meta/filesystem.ts";
 import { sha256OfFile } from "../meta/digest.ts";
 import { jsonPathTokens } from "../meta/json-evidence.ts";
@@ -394,7 +394,7 @@ export function checkProgramVersion(checks: string): Record<string, string> {
 
 /** A check program's declaration of its checks, as its author wrote it. */
 export function readBrief(checks: string): Brief {
-  const brief = parseJsonAs<Brief>(readFileSync(join(checks, "brief.json"), "utf8"));
+  const brief = parseJsonAs<Brief>(readFileSync(join(checks, CHECK_BRIEF), "utf8"));
   if (brief.truthChecks.some((check) => check.id === OBJECTIVE.id)) {
     throw new Error(`a check is named ${OBJECTIVE.id}, which names the objective`);
   }

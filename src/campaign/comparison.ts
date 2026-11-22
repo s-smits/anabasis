@@ -36,6 +36,7 @@ import type { LogEvent } from "../kernel/log.ts";
 import { poolOf } from "../kernel/reports.ts";
 import { passed, ranUnder, rejected, rulingsOf, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
+import { parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { median } from "../meta/tally.ts";
 import type { Ruling } from "../referee/referee.ts";
@@ -297,8 +298,8 @@ export function reported(events: readonly LogEvent[], id: string): Report | null
   // A report written before a field existed reads as that field's absence. The oldest reports hold
   // `counted` as a reading rather than a tally, and it reads as absent.
   const data: JsonObject = { ...NOTHING, ...found, counted: asRecord(found.counted) };
-  // SAFETY: only `checkpoint`, `round` (`round.ts`) and `settleReading` (`settle.ts`) write this event, from the report each returns.
-  return Object.fromEntries(REPORT_KEYS.map((key) => [key, data[key]])) as unknown as Report;
+  // Only `checkpoint`, `round` (`round.ts`) and `settleReading` (`settle.ts`) write this event, from the report each returns.
+  return parseJsonAs<Report>(Object.fromEntries(REPORT_KEYS.map((key) => [key, data[key] ?? null])));
 }
 
 /** The test-side solves a comparison may count: the ones whose start names it, under one of its

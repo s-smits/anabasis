@@ -35,7 +35,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { namesOf } from "#src/campaign/names.ts";
-import { campaignLog, keptAs, starter } from "./campaign.ts";
+import { harnessNamed, keptAs, starter } from "./campaign.ts";
 import { COMPARISON_OPTIONS } from "./round.ts";
 
 const OPTIONS = {
@@ -48,9 +48,7 @@ const OPTIONS = {
 /** `bun tools/d2/promote.ts`. It returns the command's exit code. */
 export async function promoteCommand(args: readonly string[]): Promise<number> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
-  const { name, harness } = values;
-  if (name === undefined || harness === undefined) throw new Error("name --name and --harness");
-  const log = campaignLog(name);
+  const { log, harness } = harnessNamed(values);
   const campaign = { log, states: join(dirname(log), "states") };
   const events = read(log);
   const [kept, least] = [await keptAs(campaign, "--harness", harness), await starter(campaign)];

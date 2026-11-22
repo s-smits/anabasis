@@ -475,7 +475,8 @@ export function pulse(
   if (due !== null && before?.due === false) {
     // A live run's step has one reader, the driver's `due`: it alone reads the deviation that keeps
     // a run past its trigger, and a peer that says this line holds no investigation's folder.
-    lines.push(`⚠ investigation due, ${due}: ${live ? `bun ${DRIVER} due` : openingCommand(run.name, live)}`);
+    const step = live ? `bun ${DRIVER} due` : openingCommand({ name: run.name, live });
+    lines.push(`⚠ investigation due, ${due}: ${step}`);
   }
   // A first comparison admission would begin and none has, said once where a look finds it long:
   // otherwise one can stand so for hours and no look says it.

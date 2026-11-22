@@ -184,8 +184,10 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
   with the condition at that value.
 - `prefer-const-conditional` [fix]: `let x; if (c) x = a; else x = b;` is `const x = c ? a : b`.
   A default followed by an override is `const w = o.w ?? D`.
-- `no-positional-boolean-parameter`: take a union of two string literals. Tests are exempt, and so
-  is a function the file never calls or exports and only hands on as a callback.
+- `no-positional-boolean-parameter`: take a union of two string literals, or for an exported
+  function the caller's row (`openingCommand(run)`). Tests are exempt, and so is a function the file
+  never calls or exports and only hands on as a callback, and a boolean whose every read decides only
+  whether anything is yielded (`holds ? [what] : []`), which reads at the call as an `if`.
 - `no-side-effect-in-predicate`: no mutation inside a `filter`, `find`, `some` or `every`
   callback. Deduplicate with `new Map(rows.map((r) => [r.id, r]))`, or write the loop.
 
@@ -447,9 +449,8 @@ reports zero and says nothing.
 A rule that is a heuristic, or that still has sites in the tree, starts in
 `tools/oxlint/staged-rules.json` at `"warn"` instead: `bun run simplify` prints its sites and
 nothing gates on them. It moves to `.oxlintrc.json` as an error once no site of it stands.
-A gated rule can stage a wider reading the same way: `ana/no-positional-boolean-parameter`
-gates with its default and is staged with `widen: ["flags", "bindings"]`, Foxglove's further
-readings of a boolean parameter, until their sites are settled.
+A gated rule can stage a wider reading the same way, behind an option the staged config sets,
+and the option goes once the wider reading gates.
 
 ## 12.14 Implicit state
 

@@ -587,7 +587,7 @@ export function openingOf(
   if (trigger === null) {
     return [row.live && turns !== null ? `step: run · its clock trigger turns at ${turns}` : "step: run"];
   }
-  const command = `  ${openingCommand(row.name, row.live, row.host === HERE ? "" : `on ${row.host} `)}`;
+  const command = `  ${openingCommand(row, row.host === HERE ? "" : `on ${row.host} `)}`;
   if (!row.live) return [`step: open · ${trigger}`, command];
   const waiting = waiters(row.name, running);
   const holders = running.filter(({ pid }) => waiting.includes(pid));

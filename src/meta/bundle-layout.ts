@@ -33,8 +33,10 @@ export const EVALUATOR_FILE = "evaluator.ts";
  *  once, through its prompt, and never beside a file of the backend's own (the operator's choice). */
 export const GUIDE_FILE = "BUILT_AGENTS.md";
 
-/** The check program's declaration: the domain plan and its public rule decisions. */
-export const BRIEF_FILE = "correctness-model/brief.json";
+/** The check program's declaration, at the root of its directory: the domain plan and its public rule
+ *  decisions. A bundle holds it under `correctness-model/`, `BRIEF_FILE`. */
+export const CHECK_BRIEF = "brief.json";
+export const BRIEF_FILE = `correctness-model/${CHECK_BRIEF}`;
 
 /** Public task inputs beside their hidden expectations. */
 export const TASKS_FILE = "correctness-model/tasks.json";

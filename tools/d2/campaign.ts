@@ -209,6 +209,16 @@ export function seatBackends(options: BackendOptions): ReturnType<typeof backend
  *  setting the campaign recorded (`setting.ts`). */
 export const campaignLog = (name: string): string => join(REPO, ".ana", "d2", name, LOG_FILE);
 
+/** The log and the harness a command's flags must both name, as `import.ts` and `promote.ts` take them. */
+export function harnessNamed(flags: {
+  readonly name?: string | undefined;
+  readonly harness?: string | undefined;
+}) {
+  const { name, harness } = flags;
+  if (name === undefined || harness === undefined) throw new Error("name --name and --harness");
+  return { log: campaignLog(name), harness };
+}
+
 /**
  * The campaign a command's flags name, refused where its log drafted no exam, one check for every
  * command rather than a copy in each. `also` is what else the command needs, for the sentence that

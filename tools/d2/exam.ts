@@ -20,7 +20,7 @@ import { type Checker, readChecker } from "#src/kernel/acceptance.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
 import { CHECK_PROGRAM_CONTRACT, checkProgramVersion, openVerifier, readBrief } from "#src/kernel/verify.ts";
-import { EVALUATOR_FILE } from "#src/meta/bundle-layout.ts";
+import { CHECK_BRIEF, EVALUATOR_FILE } from "#src/meta/bundle-layout.ts";
 import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -115,7 +115,7 @@ export function stageExam(dir: string, draft: Draft): Staged {
   };
   const tasks = draft.tasks.map((task, index) => ({ taskId: exampleId(index), ...task }));
   for (const [file, value] of [
-    ["brief.json", brief],
+    [CHECK_BRIEF, brief],
     ["tasks.json", tasks],
     ["controls.json", controls],
   ] as const) {

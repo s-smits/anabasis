@@ -1,5 +1,5 @@
 import { sha256 } from "./digest.ts";
-import { isString, type JsonValue } from "./json-shape.ts";
+import { isString, type JsonObject, type JsonValue } from "./json-shape.ts";
 
 const freeze = Object.freeze.bind(Object);
 const defineProperty = Object.defineProperty.bind(Object);
@@ -42,18 +42,19 @@ export function decodedJsonText(value: JsonValue): JsonValue {
 }
 
 /**
- * Read JSON bytes as a declared contract.
+ * Read JSON bytes, or an object a log reader already parsed from them, as a declared contract.
  *
- * `JSON.parse` returns `any`, so every reader in the tree ended in `as T`. The type parameter says
+ * `JSON.parse` returns `any`, and a logged event's fields are `JsonValue`, so every reader in the
+ * tree ended in `as T` or `as unknown as T`. The type parameter says
  * the same thing in one place. It remains a declaration about whoever wrote those bytes and not a
  * check on them: this owner narrows `any` and can observe no mismatch. A reader that must refuse
  * damaged bytes validates them itself, as `read` in src/kernel/log.ts does when it refuses a line.
  */
 // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- `T` is the caller's declared contract, narrowed once here for every reader of a log or a pack
-export function parseJsonAs<T>(text: string): T {
+export function parseJsonAs<T>(source: string | JsonObject): T {
   // SAFETY: `T` is the caller's declaration of the contract these bytes were written under. The
-  // assertion narrows the `any` that JSON.parse returns and asserts nothing else.
-  return nativeJsonParse(text) as T;
+  // assertion narrows the `any` that JSON.parse returns, or the logged object, and asserts nothing else.
+  return (isString(source) ? nativeJsonParse(source) : source) as T;
 }
 
 /** SHA-256 of native compact JSON bytes. Object insertion order is deliberately part of this

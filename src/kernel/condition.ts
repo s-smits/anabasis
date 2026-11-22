@@ -6,6 +6,7 @@
  * The host sets every field; the Builder sets none. The model, its effort and every limit are the
  * host's, and nothing a harness declares about them is read.
  */
+import { parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { hashJsonValue, requireJsonValue } from "../meta/stable-json.ts";
@@ -161,8 +162,8 @@ export function conditionsOf(events: readonly LogEvent[]): Map<string, Condition
   const conditions = new Map<string, Condition>();
   for (const event of events) {
     if (event.kind === RECORDED) {
-      // SAFETY: only `recordCondition` writes the event, and the hash proves the record whole.
-      const condition = event.data.condition as unknown as Condition;
+      // Only `recordCondition` writes the event, and the hash proves the record whole.
+      const condition = parseJsonAs<Condition>(asRecord(event.data.condition) ?? {});
       const id = conditionId(condition);
       if (id !== event.data.id) throw new Error(`${event.at}: a condition does not hash to its id`);
       conditions.set(id, condition);

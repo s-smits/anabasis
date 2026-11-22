@@ -332,8 +332,8 @@ export const clockTurns = (row: Pick<Progress, "hours">, now: number): string =>
     .toISOString()
     .replace(".000Z", "Z");
 
-/** The command that takes the step a trigger leaves owed on the run `name`: a live run pauses after
- *  its next comparison, so that its investigation reads it, and a stopped one opens; `on` is the run
- *  CLI's prefix that reaches the run's host. */
-export const openingCommand = (name: string, live: boolean, on = ""): string =>
-  live ? `bun run runs ${on}pause ${name} --after reported --yes` : `bun ${DRIVER} open ${name}`;
+/** The command that takes the step a trigger leaves owed on a run: a live run pauses after its next
+ *  comparison, so that its investigation reads it, and a stopped one opens; `on` is the run CLI's
+ *  prefix that reaches the run's host. */
+export const openingCommand = (run: { readonly name: string; readonly live: boolean }, on = ""): string =>
+  run.live ? `bun run runs ${on}pause ${run.name} --after reported --yes` : `bun ${DRIVER} open ${run.name}`;

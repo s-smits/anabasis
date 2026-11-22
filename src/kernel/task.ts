@@ -36,7 +36,7 @@
  * without a reader; the version covers the family, which the solver reads, and the rule ids, which
  * the shape check holds the check to.
  */
-import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
+import { CHECK_BRIEF, EVALUATOR_FILE } from "../meta/bundle-layout.ts";
 import { existsSync } from "../meta/filesystem.ts";
 import { type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
@@ -137,7 +137,7 @@ function packageFault(contract: Contract, task: TaskPackage): string | null {
       ["family", task.family.trim() === ""],
       ["inputs", task.publicInput === null],
       ["rule ids", task.ruleIds.length === 0],
-      ["brief.json", !existsSync(join(task.checks, "brief.json"))],
+      [CHECK_BRIEF, !existsSync(join(task.checks, CHECK_BRIEF))],
       [EVALUATOR_FILE, !existsSync(join(task.checks, EVALUATOR_FILE))],
     ] as const
   ).find(([, missing]) => missing);

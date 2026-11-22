@@ -29,7 +29,7 @@ import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { parentToolTree, stagedState } from "#src/builder/kept.ts";
 import { openHarness } from "#src/harness/open.ts";
-import { campaignLog } from "./campaign.ts";
+import { harnessNamed } from "./campaign.ts";
 
 const OPTIONS = {
   name: { type: "string" },
@@ -40,9 +40,7 @@ const OPTIONS = {
 /** `bun tools/d2/import.ts`. Returns the imported harness by its digest and where it is kept. */
 export async function importCommand(args: readonly string[]): Promise<{ digest: string; dir: string }> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
-  const { name, harness } = values;
-  if (name === undefined || harness === undefined) throw new Error("name --name and --harness");
-  const log = campaignLog(name);
+  const { log, harness } = harnessNamed(values);
   if (!existsSync(dirname(log))) {
     throw new Error(`${dirname(log)}: the campaign has no folder yet; open it before a harness is imported`);
   }

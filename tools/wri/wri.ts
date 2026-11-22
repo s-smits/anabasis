@@ -132,7 +132,7 @@ import {
   stem,
   weightOf,
 } from "./investigation.ts";
-import { INVESTIGATION, investigationIndex, REPORTS, SHARED } from "./index.ts";
+import { INVESTIGATION, investigationIndex, LAUNCH, REPORTS, SHARED } from "./index.ts";
 import { findingsLedger, standingLines } from "./findings.ts";
 import { overview } from "./read.ts";
 import { RECORD, RECORD_VERB, recordWith } from "./record.ts";
@@ -445,7 +445,7 @@ function lanes(): number {
   // Every build after the first has a manifest of its own beside the first's, named by its lanes, so
   // no session a manifest launched loses the manifest that owes its report, as a later build of one
   // lane would otherwise write over the grouped sessions of `launch.json`.
-  const first = join(out, "launch.json");
+  const first = join(out, LAUNCH);
   const launch = existsSync(first)
     ? join(out, `launch-${launched.map((lane) => stem(lane.number)).join("-")}.json`)
     : first;

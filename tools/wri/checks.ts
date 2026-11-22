@@ -22,6 +22,7 @@ import { frozenChecker } from "#src/kernel/acceptance.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { labelsIn } from "#src/kernel/solves.ts";
 import { blockingOf, type Brief, checkProgramVersion, OBJECTIVE, readBrief } from "#src/kernel/verify.ts";
+import { CHECK_BRIEF } from "#src/meta/bundle-layout.ts";
 import { existsSync } from "#src/meta/filesystem.ts";
 import { asRecord, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
@@ -52,7 +53,7 @@ export function programOnDisk(log: string): OnDisk {
   } catch (error) {
     return { where: errorMessage(error), version: null, brief: null };
   }
-  if (!existsSync(join(checks, "brief.json"))) {
+  if (!existsSync(join(checks, CHECK_BRIEF))) {
     return { where: `${checks} (not on disk)`, version: null, brief: null };
   }
   return { where: checks, version: hashJsonValue(checkProgramVersion(checks)), brief: readBrief(checks) };

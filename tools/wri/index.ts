@@ -116,6 +116,8 @@ const STAND_INS = [/^ab-synthesis\.md$/u, /^review.*\.md$/u];
 const LEDGERS: ReadonlySet<string> = new Set(["cycle.md", "predictions.md"]);
 export const VETTING = "vetting.md";
 export const REPORTS = "reports.md";
+/** The swarm manifest a verb writes into its folder for codex-gpt-swarm to launch. */
+export const LAUNCH = "launch.json";
 /** What `start` writes: the logs an investigation reads, and the instructions every lane carries. */
 export const INVESTIGATION = "investigation.json";
 export const SHARED = "shared-instructions.md";

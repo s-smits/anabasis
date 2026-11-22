@@ -1,20 +1,13 @@
 /**
- * A seat's root: the one folder a solve's, a Builder session's or an Examiner session's commands
- * write, claimed before the seat's first command and removed after its last, with whatever its
- * commands left running. On both platforms it is a folder of the host's disk.
+ * Lifecycle management for seat roots: the single writable host directory allocated to each solve,
+ * Builder session, or Examiner session, claimed before its first command and removed (together
+ * with any lingering child processes) when the seat finishes.
  *
- * A root is claimed by a link beside it that names the claiming process (`src/meta/holder.ts`), so
- * what a killed process left is told from what a live one holds by a fact and never by a name or
- * an age: `releaseLeft` releases the first and passes the second. Without a claim, only the roots
- * a run's log named would be released at its stop, and every other root, host folder, verifier
- * cell and Claude Code home would stand for good.
- *
- * No disk cap is set on a root. Linux, where an unprivileged host has neither a loop mount nor a
- * quota, cannot cap one, and a disk image as a cap on Darwin almost never bound (nearly every
- * solve's home holds a few megabytes at most) while it cost its own code and a run of incidents:
- * cloning a template, waiting out hdiutil calling a device busy on loaded runners, a detach that
- * hung disk arbitration for the whole host, and images a stopped run left attached. So both
- * platforms run alike, a seat bounded by its deadline, its model turn limit and the campaign's dollars.
+ * Each root is paired with a sibling ownership claim (`src/meta/holder.ts`) recording the owning
+ * process so `releaseLeft` can distinguish orphaned directories from active ones deterministically
+ * instead of relying on directory age or naming heuristics. Neither platform enforces a filesystem
+ * disk quota on seat roots; seats are bounded instead by their wall-clock deadline, turn limit,
+ * and campaign budget.
  */
 import {
   chmodSync,
@@ -30,66 +23,58 @@ import { dirname, join, resolve } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { processTable } from "../meta/process-table.ts";
 
-/** Undo `claimRoot`: `releaseRoot` on its root. */
+/** Cleanup callback returned by `claimRoot`, invoking `releaseRoot` on the claimed directory. */
 export type ReleaseRoot = () => Promise<void>;
 
-/** The host's folder of the seat whose root is `root`: beside the root, so out of the seat's reach. */
+/** Returns the sibling host-owned directory for `root`, placed outside the seat's writable tree. */
 export const hostFolder = (root: string): string => `${root}.host`;
 
-/** Where the claim on `root` is written: beside it, as its host folder is. */
+/** Returns the sibling ownership-claim path for `root`. */
 const claimOf = (root: string): string => `${root}.owner`;
 
-/** Write this process's claim on `root`, a folder that exists. */
+/** Records this process's ownership claim on an existing `root` directory. */
 export function claim(root: string): void {
   hold(claimOf(root));
 }
 
-/** Whether a live process claims `root`. */
+/** Reports whether a live process currently holds the ownership claim on `root`. */
 export const claimed = (root: string): boolean => held(claimOf(root));
 
 /**
- * Create the seat's root with this process's claim on it, and return its release, which the caller
- * runs once the solve or session that holds the root has ended. A root whose claim names a dead
- * process is released first, as the sweep would release it: a campaign takes each session id once,
- * so such a root is a killed seat's under a name made again (a seed seeded afresh, a seat started
- * again), and refusing it ended every restart until the daily sweep.
+ * Creates a fresh seat root directory, claims it for this process, and returns its release
+ * callback for cleanup once the seat terminates. A root whose claim names a dead process is
+ * released first, just as the daily sweep would release it: because a campaign uses each session id
+ * once, such a root belongs to a terminated seat whose id is being reused (for example, a seed
+ * re-seeded under the same name), and refusing it would block restarts until the daily sweep.
  */
 export async function claimRoot(root: string): Promise<ReleaseRoot> {
   const at = resolve(root);
   mkdirSync(dirname(at), { recursive: true });
   if (recordIn(claimOf(at)) !== "" && !claimed(at)) await releaseRoot(at);
-  // Not recursive: a root another solve or Builder session already holds is refused, not shared.
-  // Two rounds once ran a Builder session under one id, and the second's cleanup removed the
-  // first's command profiles.
+  // Refuse an already-existing root held by a live claimant instead of sharing it across concurrent seats.
   mkdirSync(at, { mode: 0o700 });
   claim(at);
   return () => releaseRoot(at);
 }
 
 /**
- * End what still works in `root`, and remove it with its host folder and, last, its claim, so
- * that a release cut part way still says whose the rest was. The solve or session that claimed it
- * does this when it ends; one that was stopped or killed never does, and a stop of its run does it
- * from the root's name in the log (`tools/runs/stop.ts`), and the daily sweep or the next claim of
- * the root from its claim (`releaseLeft`, `claimRoot`). A process a seat left behind is ended
- * here, where the root it works in goes, since one can run on forking long after its solve.
- *
- * The holders end before this returns its promise, and the removal runs off this thread, so a
- * solve reads its verdict beside it (`attemptSolve`): a home that holds a library in a virtual
- * environment takes some hundreds of milliseconds to remove.
+ * Terminates processes still holding `root` or its sibling host directory, then removes the root,
+ * the host directory, and finally the ownership claim (last so an interrupted cleanup remains
+ * attributable to the live run stop, the daily sweep, or the next `claimRoot` call). Holder
+ * termination runs synchronously before returning the asynchronous removal promise so verdict
+ * recording can proceed while large virtual environments are deleted.
  */
 export async function releaseRoot(root: string): Promise<void> {
   endHolders(root);
-  // The host's folder too: a seat's Claude Code works in its home there, and lives on for up to
-  // three seconds after its query closes, writing its state back into a folder removed under it.
-  // Ending them first keeps host folders from being left behind solves that ended well.
+  // Terminate processes in the host directory as well (for example, Claude Code writing session
+  // state briefly after query close) before deleting it.
   endHolders(hostFolder(root));
   await removeWhole(root);
   await rm(hostFolder(root), { recursive: true, force: true });
   await rm(claimOf(root), { force: true });
 }
 
-/** The entries at the top of `folder`, or none where a seat closed it to its owner (`removeWhole`). */
+/** Returns top-level entries inside `folder`, or an empty list if the directory is unreadable. */
 function inside(folder: string): string[] {
   try {
     return readdirSync(folder).map((name) => join(folder, name));
@@ -99,15 +84,10 @@ function inside(folder: string): string[] {
 }
 
 /**
- * Release every root under `parents` that nobody will release: one whose claimant is gone, at
- * once, since a claim names a process and a dead process releases nothing; and one with no claim,
- * which only an old tree or a kill between a root's creation and its claim
- * leaves, once nothing has written it since `unclaimedBefore`. A root a live process claims stands
- * whatever its age, and so does one in `spared`, which its caller holds for another owner. Returns
- * the roots it released, or those it would have where `act` is `describe`.
- *
- * A root that changes under the sweep, as one its own process is releasing does, is passed: the
- * next sweep reads it again.
+ * Releases orphaned roots under `parents`: directories whose claiming process has exited are
+ * released immediately, whereas unclaimed directories are released once their latest top-level
+ * modification time precedes `unclaimedBefore`. Roots claimed by live processes or listed in
+ * `spared` are skipped. When `act` is `"describe"`, returns candidate paths without deleting them.
  */
 export async function releaseLeft(
   parents: readonly string[],
@@ -123,7 +103,7 @@ export async function releaseLeft(
     for (const root of roots) {
       try {
         if (spared.has(root)) continue;
-        // Last written when the root or its host folder was, or an entry at the top of either.
+        // Compute the most recent modification time across the root, host folder, and top-level entries.
         const tops = [root, hostFolder(root)].filter((top) => existsSync(top));
         const written = Math.max(
           ...tops.flatMap((top) => [top, ...inside(top)]).map((path) => lstatSync(path).mtimeMs),
@@ -132,7 +112,7 @@ export async function releaseLeft(
         if (act === "release") await releaseRoot(root);
         left.push(root);
       } catch {
-        // Changed under the sweep.
+        // Ignore roots modified concurrently during the sweep.
       }
     }
   }
@@ -140,11 +120,8 @@ export async function releaseLeft(
 }
 
 /**
- * Removes `root` and all it holds. A seat may close a folder to itself, as `chmod 0` does, and a
- * folder nobody can list cannot be emptied: on Linux the release would throw EACCES on one and
- * take its solve with it (the solve test "judges an answer whose home cannot be walked" holds
- * this). Each folder is opened to its owner again, a link never followed, and the removal
- * tried once more.
+ * Recursively deletes `root`. If a seat revoked directory permissions (such as `chmod 0`),
+ * restores owner `0700` permissions without following symlinks and retries deletion.
  */
 async function removeWhole(root: string): Promise<void> {
   try {
@@ -163,24 +140,14 @@ async function removeWhole(root: string): Promise<void> {
 }
 
 /**
- * Darwin's, as Linux ends a pid namespace: kill every process working in `root` or running a
- * program from it, every process of `group` where a walled command's end names its process group
- * (`runWalled`), and every live descendant of those, in passes while one that forks leaves
- * another. A descendant is found by its parent, as Bun's `--no-orphans` walks them, which catches
- * one that left the group with `setsid` while its parent lives; one that left both the group and
- * the root after its parent ended is out of reach. Each pass kills from one listing, since a kill
- * changes what the next listing shows.
- *
- * The passes end at the second in a row that finds nothing to kill, or after a second. One
- * empty pass after a kill proves nothing: a pass lists the pids and then reads each, and a killed
- * parent can finish a fork in between, so that it reads as gone while its child is in no listing
- * yet. With eight loops forking at once, a release that ended at its first empty pass, or after
- * five, left a child running in 4 of 800; ending at the second left none in 1,920,
- * the longest taking 349 ms.
+ * Darwin equivalent of tearing down a Linux PID namespace: sends `SIGKILL` to every process whose
+ * working directory or executable lies inside `root`, every process in `group`, and all of their
+ * live descendants. Loops until two consecutive listings find no holders (avoiding a fork race
+ * between listing and killing) or until one second elapses.
  */
 export function endHolders(root: string, group?: number, table: typeof processTable = processTable): void {
   if (runtimeProcess.platform !== "darwin" || !existsSync(root)) return;
-  // libproc names a file by its real path, and a root under /var is /private/var to it.
+  // `libproc` reports canonical paths (for example, `/private/var` rather than `/var`).
   const real = realpathSync.native(root);
   const until = performance.now() + 1000;
   for (let settled = true; performance.now() < until; ) {
@@ -191,15 +158,14 @@ export function endHolders(root: string, group?: number, table: typeof processTa
       try {
         runtimeProcess.kill(pid, "SIGKILL");
       } catch {
-        // Gone between the listing and the kill.
+        // Process exited between listing and `SIGKILL`.
       }
     }
   }
 }
 
-/** The pids of `rows`, but this process's and launchd's, whose working directory or program lies in
- *  `root` (`processTable`, libproc, which reads them as lsof named them: by their real paths), or whose
- *  process group is `group`, with every descendant of theirs. */
+/** Returns PIDs from `rows` (excluding `launchd` and the current process) whose working directory
+ *  or executable resides in `root`, or whose process group equals `group`, plus all descendants. */
 function holdersOf(root: string, group: number | undefined, rows: ReturnType<typeof processTable>): number[] {
   const inRoot = (path: string | null) => path !== null && (path === root || path.startsWith(`${root}/`));
   const table = rows.filter(({ pid }) => pid > 1 && pid !== runtimeProcess.pid);

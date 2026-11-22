@@ -1,7 +1,6 @@
 /**
- * Shared protected paths and toolchain locations for the command wall, which a seat's commands and
- * a check both run under (`isolation.ts`). A check runs there with the network
- * closed, and reads open by default with the protected paths denied.
+ * Shared protected paths, scratch roots, and toolchain locations for the command wall used by
+ * seat commands and offline verification checks (`isolation.ts`).
  */
 import type { OptionalEnvValues } from "../agent/backends/scrub-env.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -14,33 +13,30 @@ import { runtimeProcess } from "../meta/process.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { claim } from "./seat-root.ts";
 
-/** What a Darwin system command answered, by the command: each is asked once per process. */
+/** Process-level cache of Darwin system probe outputs keyed by command string. */
 const darwinAnswers = new Map<string, string | undefined>();
 
 /**
- * The one directory every seat's root is made under, which keeps them together for creation and
- * cleanup at mode 0700. One parent does not separate them; the profile does that, by denying the
- * parent and re-allowing the running seat's root after it, so another seat's root is closed by a
- * rule that can be read and tested rather than by nobody having named it.
+ * Shared parent directory (mode `0700`) for all seat roots. Isolation between seats is enforced
+ * by denying this parent directory in the wall profile and reopening only the active seat's root.
  */
 export const BUILT_COMMAND_SCRATCH_ROOT = join(tmpdir(), "ana-built-bash");
 
 /**
- * The host's own scratch, beside the seats' parent: a verifier's cells, which hold a check program
- * and a task's hidden value, and the state a reviewer's or the Examiner's Claude Code keeps, which
- * holds what it read. Every wall closes it by path, as it closes the seats' parent, so a wall that
- * grants the shared temporary directory names no folder of the host's by pattern.
+ * Host-owned scratch parent beside `BUILT_COMMAND_SCRATCH_ROOT`, holding verifier cells (with
+ * check programs and hidden task values) and Claude Code session state for reviewers and the
+ * Examiner. Every command wall denies this root by path.
  */
 const HOST_SCRATCH_ROOT = join(tmpdir(), "ana-host");
 
-/** Both, as the folders every claimed root of this host lies in: what a sweep of the left reads. */
+/** All scratch parent directories scanned by orphan cleanup sweeps. */
 export const SCRATCH_ROOTS: readonly string[] = [BUILT_COMMAND_SCRATCH_ROOT, HOST_SCRATCH_ROOT];
 
-/** The parent of each test suite's temporary root (`tools/runtime/test-suite.ts`), which the suite
- *  claims as a seat claims its own, so the daily sweep releases what a killed suite left. */
+/** Parent directory for test-suite temporary roots (`tools/runtime/test-suite.ts`), claimed like
+ *  seat roots so periodic cleanup removes leftovers from killed test runs. */
 export const SUITE_SCRATCH_ROOT = join(tmpdir(), "ana-test-suite");
 
-/** Where under a home a toolchain installs itself, in the order the wall's path takes them. */
+/** Per-user home subdirectories where toolchains install binaries, ordered for `PATH` resolution. */
 export const TOOLCHAIN_HOME_ROOTS = [
   ".bun",
   ".cargo",
@@ -55,13 +51,13 @@ export const TOOLCHAIN_HOME_ROOTS = [
   "go",
 ];
 
-/** The two roots of the host's own above, in both path forms, for a wall to close whole. */
+/** Returns all canonical path forms of `SCRATCH_ROOTS`, sorted for wall denial rules. */
 export function hostRoots(): string[] {
   return SCRATCH_ROOTS.flatMap(canonicalForms).toSorted(compareCodeUnits);
 }
 
-/** A fresh folder of the host's under `HOST_SCRATCH_ROOT`, named from `prefix` and claimed by this
- *  process, which lets it go with `releaseRoot` (`seat-root.ts`). */
+/** Creates and claims a fresh host-owned scratch directory under `HOST_SCRATCH_ROOT`; callers
+ *  release it with `releaseRoot` (`seat-root.ts`). */
 export function hostScratch(prefix: string): string {
   mkdirSync(HOST_SCRATCH_ROOT, { recursive: true, mode: 0o700 });
   const folder = mkdtempSync(join(HOST_SCRATCH_ROOT, prefix));
@@ -69,10 +65,9 @@ export function hostScratch(prefix: string): string {
   return folder;
 }
 
-/** Both path forms of a root: a rule that names only the symlink form misses the access Seatbelt
- *  actually evaluates, which on Darwin is the difference between `/var` and `/private/var`. Every
- *  wall list is written once per directory and derived through this, so no list carries a
- *  hand-kept pair that one entry can be missing. */
+/** Returns both the resolved lexical path and its canonical `realpath` when they differ (for
+ *  example, `/var` and `/private/var` on Darwin), preventing Seatbelt rules from missing aliased
+ *  accesses. */
 export function canonicalForms(path: string): string[] {
   const abs = resolve(path);
   try {
@@ -83,20 +78,14 @@ export function canonicalForms(path: string): string[] {
   }
 }
 
-/** Every path form of `paths`, each once and sorted: the root list a rule set and the policy
- *  identity recording it are both written from. */
+/** Expands `paths` into deduplicated, sorted canonical path forms for rules and policy hashing. */
 export function canonicalRoots(paths: readonly string[]): string[] {
   return [...new Set(paths.flatMap(canonicalForms))].toSorted();
 }
 
 /**
- * Where a host toolchain installs itself.
- *
- * The command wall reads by default outside its protected roots, so this is not an enumeration of
- * every readable installation; it exists to reopen a toolchain that a denied home sits on top of,
- * and to construct PATH. A complete install allow list was tried and dropped, because it stopped
- * the shell using tools installed somewhere the list did not name. Both read this one list, so
- * adding an installation location updates access and command lookup together.
+ * Returns existing host toolchain roots reopened read-only inside the denied home directory and
+ * used to build `PATH`, keeping filesystem access and command lookup synchronised.
  */
 export function darwinToolchainInstallRoots(): string[] {
   const shared = ["/usr/local"];
@@ -105,8 +94,8 @@ export function darwinToolchainInstallRoots(): string[] {
   return [...shared, ...perUser].filter(existsSync).toSorted(compareCodeUnits);
 }
 
-/** The one line a Darwin system command answers with, asked once per process: undefined on another
- *  system, and where the command fails or says nothing. */
+/** Runs a Darwin system command once per process and returns its trimmed stdout, or `undefined`
+ *  on other platforms or when the command fails. */
 function darwinAnswer(...command: string[]): string | undefined {
   if (runtimeProcess.platform !== "darwin") return undefined;
   const asked = command.join(" ");
@@ -119,23 +108,14 @@ function darwinAnswer(...command: string[]): string | undefined {
 }
 
 /**
- * The per-user temporary directory a Darwin toolchain takes whatever `TMPDIR` says, in both path
- * forms, and what the command wall grants inside it once it has closed it whole
- * (`darwinCommandProfile`). `mktemp` takes it before `TMPDIR` on macOS 15, and Apple's `/usr/bin`
- * shims, `cc` and `python3` among them, reset `TMPDIR` to it, so without a grant `mktemp -d` fails
- * in every command and a check's tool that names `/usr/bin/cc` cannot compile (`unable to make
- * temporary file`). The grant is what those tools make there: a regular file directly in it, and a
- * folder named as `mktemp` names one (a prefix, a dot and ten letters or digits) or as Python's
- * `tempfile` does (`tmp` and eight of its own), with what lies in it. Any other folder there is
- * another process's, and stays closed with everything in it, as the directory's listing does, so a
- * folder of the grant's shape is found only by its random name.
- *
- * Granting every child of the directory, folders and all, would let a command read and write every
- * other process's folder there: an old run's, another agent's scratch, a test suite's.
- * `vnode-type` keeps the first grant to files, and Seatbelt's regex takes no counted repetition, so
- * the names are spelled out class by class. The directory is asked of the system rather than of the
- * environment, once per process, since `confstr` is what those tools read and `TMPDIR` does not move
- * it; a host that cannot answer has no such directory to grant.
+ * Returns Darwin's per-user temporary directory (in canonical path forms) and narrow Seatbelt
+ * exceptions inside it (`darwinCommandProfile`). Because `mktemp` and Apple's `/usr/bin` shims
+ * (`cc`, `python3`) reset `TMPDIR` to `DARWIN_USER_TEMP_DIR`, the wall denies the directory as a
+ * whole and permits only top-level regular files plus random-named `mktemp` (`*.XXXXXXXXXX`) and
+ * Python `tempfile` (`tmpXXXXXXXX`) subdirectories. Other directories and directory listings stay
+ * denied so commands cannot discover or access sibling processes' scratch trees. Because Seatbelt
+ * regular expressions do not support counted quantifiers, character classes are repeated
+ * explicitly.
  */
 export function userTempRules() {
   const confstr = darwinAnswer("/usr/bin/getconf", "DARWIN_USER_TEMP_DIR")?.replace(/\/$/, "");
@@ -146,7 +126,7 @@ export function userTempRules() {
     return [
       `(allow file-read* file-read-metadata file-write* (require-all (regex (string-append #"^" ${under} #"/[^/]+$")) (vnode-type REGULAR-FILE)))`,
       `(allow file-read* file-read-metadata file-write* (regex (string-append #"^" ${under} #"/${made}(/.*)?$")))`,
-      // A `stat` of the directory itself, which a tool makes before it writes there.
+      // Permit `stat` on the temporary directory itself before tools create entries inside it.
       `(allow file-read-metadata (literal ${capturedJsonStringify(root)}))`,
     ];
   });
@@ -154,39 +134,18 @@ export function userTempRules() {
 }
 
 /**
- * The directories a confined command searches for a program.
- *
- * A read grant lets a toolchain be opened, but PATH decides whether it can be named at all, and the
- * two come apart: with reads already open, `rustc` still reports `command not found` while
- * `~/.cargo/bin/rustc` sits present and readable. So the same install roots that grant the read
- * supply the search path too, which makes a toolchain a Builder installs usable without a
- * second list being edited.
- *
- * `shims` is here for pyenv and rbenv, which put no binaries in `bin` at all.
- *
- * What the host's user installed goes ahead of what the operating system ships, as it does in that
- * user's own shell. With the system's folders first, a bare `python3` would be the old Python the
- * operating system ships, while newer ones installed through Homebrew, zerobrew and `/usr/local`
- * would be reachable only by their versioned names; the system's Python may no longer receive
- * security fixes, and its pip cannot install much of what a solver asks it for. Homebrew and
- * zerobrew keep each Python's bare `python` in its `libexec`.
+ * Builds the host `PATH` directories for confined commands, placing pinned Python, user-installed
+ * package managers (Homebrew, zerobrew, `/usr/local`), per-user toolchain `bin`/`shims`
+ * directories, active developer binaries, and standard system directories in precedence order.
  */
 export function toolchainPathDirs(): string[] {
-  // Both /opt entries are readable under the open read default, so neither needs a read rule of its
-  // own. This host may have its only system Node under zerobrew, so the derived toolchain owner has
-  // to retain that executable directory rather than assume /usr/bin holds one.
+  // User-managed prefixes are readable under the open-read default and precede system directories.
   const user = ["/usr/local/bin", "/opt/homebrew/bin", "/opt/zerobrew/bin"];
   const installed = darwinToolchainInstallRoots().flatMap((root) => [join(root, "bin"), join(root, "shims")]);
-  // The active developer directory goes ahead of /usr/bin, where Darwin keeps `python3`, `make`,
-  // `git` and `cc` as xcrun shims. A shim starts its tool with TMPDIR reset to the user temporary
-  // directory, so a command's own TMPDIR never reached a Python it started: every temp folder of
-  // every solve landed in that one shared directory, outside the solve's capped volume, and stayed
-  // when the command was gone, so that a few days of campaigns left millions of them on one host.
-  // Started by its own path a tool keeps the TMPDIR it is given, and a program
-  // the user installed is never such a shim, so the user's folders may go first.
+  // Place active developer tools ahead of `/usr/bin` so Darwin invokes real binaries instead of
+  // `xcrun` shims, which reset `TMPDIR` to the shared user temporary directory.
   const system = [...activeDeveloperBinDirs(), "/usr/bin", "/bin", "/usr/sbin", "/sbin"];
-  // Every entry is checked for existence, as /opt/homebrew/bin is on Darwin and not on Linux, where
-  // /opt itself may not be listable, so each Python's `libexec` is looked for from its own prefix.
+  // Probe each prefix for Homebrew/zerobrew Python `libexec/bin` directories when present.
   const scan = { onlyFiles: false, absolute: true, followSymlinks: true };
   const glob = (cwd: string) => [...new Bun.Glob("opt/python*/libexec/bin").scanSync({ ...scan, cwd })];
   const brewed = user.map(dirname).filter(existsSync).flatMap(glob).toSorted(compareCodeUnits);
@@ -198,12 +157,9 @@ export function toolchainPathDirs(): string[] {
 }
 
 /**
- * The host's home, for the home a seat's wall closes and for the toolchains and pinned Python it puts
- * on a seat's path: `homedir()`, which is `HOME`, or the account's home from the user database where
- * `HOME` is unset or empty. A relative `HOME` comes back as it is and resolves against the working
- * directory, so the wall closed that folder in the home's place, leaving the operator's home open to
- * every seat, and put a folder there first on a seat's path, where a `python3` the seat planted
- * would run. Undefined then, so the wall refuses to start.
+ * Returns the host home directory when it is an absolute path, or `undefined` if `HOME` is
+ * relative. Rejecting relative paths prevents the wall from closing a working-directory subpath
+ * instead of the operator's real home or prepending a seat-writable path to `PATH`.
  */
 export function closedHome(): string | undefined {
   const home = homedir();
@@ -211,33 +167,19 @@ export function closedHome(): string | undefined {
 }
 
 /**
- * The folder of the Python `bun run runs sync` keeps on a host, first on the wall's path where it
- * exists, so a machine that never pinned one finds what it always found, and a seat's `python3`
- * does not move when someone changes the host's package managers. It sits under `~/.local`, which the
- * wall already lets a seat read (`darwinToolchainInstallRoots`).
+ * Returns the directory holding the host-pinned Python managed by `bun run runs sync`. When
+ * present, it takes precedence on `PATH` so `python3` remains stable across package-manager updates;
+ * it sits under `~/.local`, which `darwinToolchainInstallRoots` already reopens read-only.
  */
 export function pinnedPythonDir(home: string): string {
   return join(home, ".local", "share", "ana-python", "bin");
 }
 
 /**
- * Host state a toolchain reads through an environment name rather than through PATH.
- *
- * A confined command's `HOME` points at its own scratch tree, because a toolchain writing its cache
- * to the real home would be refused and that refusal reads as a broken tool rather than as the
- * isolation doing its job. The cost is that a toolchain looking for its installation under `$HOME`
- * no longer finds it: `rustc` fails with `rustup could not choose a version` while `~/.rustup`
- * sits readable on disk. `RUSTUP_HOME` puts rustup back on its real installation, which it may read
- * and may not write.
- *
- * Python's user base stays in the seat's home. Pointed at the real `~/.local`, `pip install` and
- * `pip install --user` would be refused there ("Operation not permitted: '~/.local/lib/python'")
- * wherever that directory exists, and solves would spend turns finding `--target`. A solve on one
- * host would also see packages installed there by hand, which one on another host could not.
- *
- * `SDKROOT` is the same for a Darwin compiler. `/usr/bin/cc` is an xcrun shim that names the SDK for
- * the compiler it starts; with the developer directory ahead of `/usr/bin` on PATH no shim runs, and
- * `cc` started by its own path finds no `<stdio.h>` unless the name is set.
+ * Supplies environment variables needed by host toolchains when `HOME` is redirected to the seat
+ * scratch directory: `RUSTUP_HOME` (read-only host `~/.rustup` when present) and `SDKROOT` on
+ * Darwin (needed when invoking developer `cc` directly without `xcrun` shims). Python's user base
+ * intentionally remains under the seat's `HOME` so `pip` installs stay local and reproducible.
  */
 export function hostToolchainEnv() {
   const sdk = darwinAnswer("/usr/bin/xcrun", "--show-sdk-path");
@@ -248,7 +190,7 @@ export function hostToolchainEnv() {
   return { ...compiler, ...keysIf(existsSync(rustup), () => ({ RUSTUP_HOME: rustup })) };
 }
 
-/** Every directory between `/` and `path`, outermost first, as a resolver walks them. */
+/** Returns every ancestor directory between `/` and `path`, ordered from outermost to innermost. */
 export function ancestorDirectories(path: string): string[] {
   const ancestors: string[] = [];
   let current = dirname(path);
@@ -262,16 +204,9 @@ export function ancestorDirectories(path: string): string[] {
 }
 
 /**
- * The metadata-only grants that let a path be resolved without its directory being readable.
- *
- * A profile that denies a directory denies `lstat` on it too, and a resolver walks every ancestor
- * of the file it opens. Without this, `node t.js` fails with `EPERM: operation not permitted,
- * lstat` for every script on disk while `node -e` works, because Node realpaths its entry point and
- * a `-e` script has none.
- *
- * The grant is `file-read-metadata` on each ancestor directory as a literal rather than a subpath,
- * which lets a path be traversed while the directory itself stays unlistable: `stat ~` succeeds and
- * `ls ~` stays refused.
+ * Emits literal `file-read-metadata` rules for every ancestor of `paths` so path resolvers (such
+ * as Node's `realpath` on script entry points) can `lstat` parent directories while keeping those
+ * directories unlistable.
  */
 export function traversalMetadataRules(paths: string[]): string[] {
   const ancestors = [...new Set(paths.flatMap(ancestorDirectories))]
@@ -281,10 +216,8 @@ export function traversalMetadataRules(paths: string[]): string[] {
 }
 
 /**
- * Whether this environment already sits inside someone else's OS sandbox, which is what makes a
- * wall refuse to nest. Presence of the name is the test and not its value, because a
- * surrounding sandbox that exports an empty `CODEX_SANDBOX` is still a surrounding sandbox, and a
- * wall that ran anyway would record isolation it does not have.
+ * Reports whether the current process already runs inside an outer OS sandbox, based on variable
+ * presence rather than value, so the wall refuses to nest or claim external isolation as its own.
  */
 export function surroundingSandbox(env: OptionalEnvValues): boolean {
   return Object.hasOwn(env, "CODEX_SANDBOX") || Object.hasOwn(env, "HARNESS_INNER_UNSANDBOXED");

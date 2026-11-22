@@ -2,41 +2,41 @@
  * `bun run runs bench <run> [--bench <name>] [--as <label>] [--harness <kept>] [--login N] [--wait] [--yes]`
  * `bun run runs bench [--bench <name>] [--store <dir>] [--host <name>]`
  *
- * One verb for the outside benchmarks. With no run it scores each read whose reference and Starter
- * are both judged, once, in the records this machine holds or those of the host `--host` names
- * (`scoreDone`, `bench-scores.ts`); the alerts job runs it after every look. With a run it is one
- * command for that run's outside read (run-improvement-campaign, "The outside aim"): the run's
- * newest promoted harness, or the kept harness `--harness` names by its letter or whole digest, is
- * written for the machine that rolls the benchmark, carried into the score store there, proved by a
- * dry run of each arm, and rolled with a fresh Starter behind it. `runs pause <run> --after <word>
- * --eval` is the pause and then this read with `--wait`, once for each benchmark that reads the run.
+ * Orchestrates external benchmark evaluations (`run-improvement-campaign`, "The outside aim").
+ * Invoked without a campaign name, it scores every evaluation whose reference and Starter arms are
+ * both judged (`scoreDone`, `bench-scores.ts`), either locally or on `--host`; the alerts cron job
+ * runs this after every poll. Invoked with a campaign name, it exports the run's newest promoted
+ * harness (or the kept harness specified by `--harness` via letter or full digest) for the target
+ * benchmark host, transfers it into that host's score store, validates both arms with a dry run, and
+ * launches the reference arm followed by a fresh Starter baseline. `runs pause <run> --after <word>
+ * --eval` pauses the run and then invokes this command with `--wait` for each matching benchmark.
  *
- * **The benchmarks** are the list `EVAL_RUNNER` holds (`benchesOf`, `.env.runs.example`): each its
- * name, the machine that rolls it, its score store and sitting command there, and the packs whose
- * runs it reads. A run is read on the one whose packs hold its own, or on the one `--bench` names
- * where several do.
+ * **Benchmark configuration** comes from `EVAL_RUNNER` (`benchesOf`, `.env.runs.example`), which
+ * specifies each benchmark's name, runner host, score store, sitting command, and covered packs. A
+ * run matches the benchmark whose pack list covers its pack, or the benchmark named by `--bench`
+ * when several apply.
  *
- * It owns no step: it runs the commands that do, in order, and stops at the first that fails.
+ * This module owns none of the underlying stages; it executes them in sequence and stops at the
+ * first failure:
  *
- * - **The export** is `studies/harness2/score.ts tree`, run on the machine that holds the campaign,
- *   since a harness's programs are rebuilt from the campaign's own tree.
- * - **The carry** is one compressed stream through this machine, since two peers need not reach
- *   each other (`sealed`, `opened`).
- * - **The sitting** is the benchmark's command on its machine, the operator's own, which owns the
- *   lock, the login and the judge. It is called as `<command> run <login> <label> <score.ts
- *   options>`; `status` answers `idle` on its first line while no arm holds the machine, and
- *   `python` the minor of the `python3` a rollout there finds first. A read is refused while an arm
- *   holds the machine, so that nothing loads one whose rollouts are read against each other; with
- *   `--wait` it looks again every five minutes instead. The dry runs refuse a tree whose own
- *   `python3` cannot start there (`ownPython`).
+ * - **Export**: runs `studies/harness2/score.ts tree` on the host holding the campaign, since a
+ *   harness's programs must be rebuilt from the campaign's own checkout.
+ * - **Transfer**: streams a single compressed archive through the local host (`sealed`, `opened`),
+ *   because two remote peers need not have direct connectivity.
+ * - **Sitting**: invokes the operator's benchmark command on the runner host, which owns locking,
+ *   login selection, and judging. It is called as `<command> run <login> <label> <score.ts options>`;
+ *   `status` prints `idle` on its first line when no arm is running, and `python` prints the minor
+ *   version of the `python3` interpreter on the rollout PATH. Evaluations are refused while another
+ *   arm holds the host so concurrent load does not confound paired rollouts; `--wait` polls every
+ *   five minutes instead. Dry runs reject exported trees whose own `python3` cannot start (`ownPython`).
  *
- * A label binds one exported tree for good, so a label the store already holds is rolled as it
- * stands, neither exported nor carried again, which is also how a read cut after its carry goes on.
- * `--as <label>` names the reference's arm, by default the first eight characters of the harness's
- * digest, and `starter-<label>` the Starter's; a letter takes `--as`. Without `--harness` the harness
- * is the one the run's log, here or as last gathered, last promoted. Without `--login` the login is
- * the one a keeper would move a run to (`roomFor`). Without `--yes` it prints the plan and starts
- * nothing; the prediction file is written from that plan.
+ * Each label permanently binds one exported tree: if the store already contains that label, it is
+ * rolled as-is without re-exporting or re-transferring, which also resumes runs interrupted after
+ * transfer. `--as <label>` names the reference arm (defaulting to the first eight hex characters of
+ * the harness digest) and `starter-<label>` names the Starter arm; a letter identifier requires
+ * `--as`. Without `--harness`, the latest promoted harness from the run's log is used. Without
+ * `--login`, the login with the most headroom (`roomFor`) is chosen. Without `--yes`, the plan is
+ * printed without launching so the operator can record a prediction file first.
  */
 import { UNAME_PLACES } from "#src/harness/place.ts";
 import { promoted } from "#src/kernel/reports.ts";
@@ -53,44 +53,45 @@ import { roomFor } from "./keep.ts";
 import { allowedLogins, asGathered, type Env, liveEverywhere } from "./logins.ts";
 import { logEvents, Misused, packOf, readNamed, runs } from "./registry.ts";
 
-/** One command of a read: what it is for, and the words that run it from this machine. */
+/** A single stage of a benchmark evaluation: its human-readable description and argv. */
 interface Step {
   readonly says: string;
   readonly command: readonly string[];
 }
 
-/** A read, settled before anything runs. A machine left undefined is this one. */
+/** Fully resolved benchmark evaluation plan. An `undefined` host refers to the local machine. */
 export interface Plan {
   readonly run: string;
   readonly label: string;
-  /** The kept harness, by its letter or digest. */
+  /** Kept harness identifier, either a single letter or a 64-character digest. */
   readonly harness: string;
   readonly login: string;
-  /** The machine that holds the campaign, and the tree and Bun its export runs from. */
+  /** Host holding the campaign, along with the checkout path and Bun executable used for export. */
   readonly holder: Host | undefined;
   readonly tree: string;
   readonly bun: string;
-  /** The benchmark, the machine that rolls it, and its store and sitting command as shell words there. */
+  /** Benchmark name, runner host, and shell-escaped store path and sitting command on that host. */
   readonly bench: string;
   readonly runner: Host | undefined;
   readonly store: string;
   readonly sitting: string;
-  /** The benchmark's machine as `score.ts tree --for` names it. */
+  /** Target platform token passed to `score.ts tree --for`. */
   readonly place: string;
-  /** The minor of the `python3` a rollout there finds first, as its sitting's `python` says it. */
+  /** Minor version of the `python3` interpreter on the runner host, reported by `<sitting> python`. */
   readonly python: string;
-  /** The harness the store already holds under the label, where it holds one. */
+  /** Digest of the harness already stored under `label`, or null if not yet exported. */
   readonly held: string | null;
-  /** Whether the read waits for the machine to be idle instead of refusing while an arm holds it. */
+  /** Whether to wait for the runner host to become idle rather than failing immediately if busy. */
   readonly wait: boolean;
 }
 
-/** The program that writes and checks SHA-256 sums, in one format: coreutils' where a machine has
- *  it, as a Linux one without Perl has no other, and Perl's elsewhere. */
+/** Shell expression selecting `sha256sum` (coreutils) when present, falling back to `shasum -a 256`
+ *  so checksum output matches across Linux hosts without Perl and macOS hosts. */
 const SUMS = "$(command -v sha256sum || echo shasum -a 256)";
 
-/** The benchmarks that read `run` (`EVAL_RUNNER`), or the one `named` names. A pack listed reads
- *  itself and every pack named from it, as `jobstat` reads `jobstat-v2`. */
+/** Returns configured benchmarks (`EVAL_RUNNER`) applicable to `run`, or the single benchmark named
+ *  by `named`. A configured pack matches both itself and hyphenated variants (for example `jobstat`
+ *  matches `jobstat-v2`). */
 function benchesFor(run: string, env: Env, named?: string): Bench[] {
   const pack = packOf(run);
   const reads = ({ name, packs }: Bench) =>
@@ -98,7 +99,7 @@ function benchesFor(run: string, env: Env, named?: string): Bench[] {
   return benchesOf(env).filter(reads);
 }
 
-/** The one benchmark a read of `run` rolls, as the plan holds it, or a refusal naming the choice. */
+/** Resolves the unique benchmark configuration for `run`, throwing if zero or multiple benchmarks match. */
 export function settingsOf(
   run: string,
   env: Env,
@@ -121,24 +122,23 @@ export function settingsOf(
   };
 }
 
-/** The holder's half of the carry, from the export's `trees` folder: each file's SHA-256, then the tree,
- *  its build record and the sums as one stream, without a Mac's extended attributes or Finder files.
- *  The sums are the check, since bsdtar extracts a gzip stream without reading its CRC. */
+/** Sender-side shell command for streaming an exported tree: computes SHA-256 checksums for all
+ *  files (needed because `bsdtar` does not verify gzip CRCs on extraction), then tars the tree,
+ *  build record, and checksums to stdout while stripping macOS extended attributes and `.DS_Store`. */
 export const sealed = (from: string, label: string) =>
   `cd ${from} && find ${quoted(label)} ${quoted(`${label}.build.json`)} -type f ! -name .DS_Store -exec ${SUMS} {} + > ${quoted(`${label}.sha256`)} && COPYFILE_DISABLE=1 tar -czf - --no-xattrs --exclude .DS_Store ${quoted(label)} ${quoted(`${label}.build.json`)} ${quoted(`${label}.sha256`)}`;
 
-/** The benchmark machine's half: the stream lands beside the store's trees and is moved in only once
- *  every file matches its sum and no link points at an absolute path, which on another machine
- *  names the build machine's files; never over a tree in place, since `score.ts` takes a tree it
- *  finds under a label as it is. */
+/** Receiver-side shell command on the benchmark host: extracts into a staging directory, verifies
+ *  every SHA-256 checksum, rejects symlinks pointing to absolute paths on the build machine, and
+ *  moves the tree into place atomically without overwriting an existing label. */
 export function opened(trees: string, label: string): string {
   const tree = `${trees}/${quoted(label)}`;
   const part = `${trees}/${quoted(`.part-${label}`)}`;
   return `test ! -e ${tree} && mkdir -p ${trees} && rm -rf ${part} && mkdir ${part} && tar -xzf - -C ${part} && (cd ${part} && ${SUMS} -c --quiet ${quoted(`${label}.sha256`)}) && links=$(find ${part} -type l -lname '/*') && { test -z "$links" || { echo "links to absolute paths: $links" >&2; false; }; } && rm ${part}/${quoted(`${label}.sha256`)} && mv ${part}/${quoted(label)} ${tree} && mv ${part}/${quoted(`${label}.build.json`)} ${trees}/ && rmdir ${part}`;
 }
 
-/** The commands of `plan`, in order: nothing is spent before both dry runs, and nothing loads the
- *  benchmark's machine before its sitting command says it is idle. */
+/** Builds the ordered shell steps for `plan`. Ensures the runner host is idle before loading it and
+ *  completes both dry runs before spending compute on rollouts. */
 export function stepsOf(plan: Plan): Step[] {
   const { run, label, login, holder, runner, sitting } = plan;
   const starter = `starter-${label}`;
@@ -152,7 +152,7 @@ export function stepsOf(plan: Plan): Step[] {
   const exported: Step[] = [
     {
       says: `export ${label} for ${plan.place} on ${holder?.name ?? "this machine"}`,
-      // A stage a cut read left would be taken as the tree, so each export starts without one.
+      // Remove any leftover staging directory from an interrupted export before writing a fresh tree.
       command: shellOn(
         holder,
         `rm -rf ${stage} && cd ${shellPath(plan.tree)} && ${plan.bun} studies/harness2/score.ts tree --arm ${quoted(run)} --harness ${quoted(plan.harness)} --name ${quoted(label)} --out ${stage} --for ${quoted(plan.place)} --python ${quoted(plan.python)}`,
@@ -178,9 +178,8 @@ export function stepsOf(plan: Plan): Step[] {
     ...(plan.held === null ? exported : []),
     on(`dry run of ${label}`, `${reference} --dry-run`),
     on(`dry run of ${starter}`, `${bare} --dry-run`),
-    // One process of their own rolls the arms in turn, so the Starter waits behind the reference on
-    // the sitting's lock and the read waits for neither. What they print is kept beside the store's
-    // records, so that an arm that never started says so.
+    // Launch both arms sequentially in a detached background process so the Starter arm runs
+    // immediately after the reference arm releases the sitting lock, logging output beside the store.
     on(
       `roll ${label}, then ${starter}, on login ${login}`,
       `nohup sh -c ${quoted(`${reference} --yes && ${bare} --yes`)} >> ${rolled} 2>&1 < /dev/null & echo "rolling in process $!, which writes ${rolled}; the sitting's status names the arm"`,
@@ -188,14 +187,14 @@ export function stepsOf(plan: Plan): Step[] {
   ];
 }
 
-/** What the benchmark's machine says of itself before a plan: its platform, the minor of the
- *  sitting's interpreter, then each tree's harness. A machine or a sitting that does not answer ends
- *  the probe with its own exit, rather than a closing `true` passing that silence on and the next
- *  line standing in for the minor an export builds for. A store with no tree yet is no fault. */
+/** Remote probe script executed before planning: reports platform (`uname -sm`), the sitting's
+ *  Python minor version, and existing exported harness digests in `store`. Exits immediately if
+ *  `uname` or `<sitting> python` fails so missing interpreter output cannot be misread; an empty
+ *  store without trees is allowed. */
 export const probed = ({ sitting, store }: Pick<Plan, "sitting" | "store">): string =>
   `uname -sm && ${sitting} python || exit; grep -H '"harness"' ${store}/trees/*/export.json; true`;
 
-/** Run `steps` in order with `spawn`, saying each, and refuse at the first that does not exit 0. */
+/** Executes `steps` sequentially via `spawn`, printing each description and throwing on the first non-zero exit. */
 export async function walk(
   steps: readonly Step[],
   spawn: (command: readonly string[]) => Promise<number>,
@@ -211,9 +210,9 @@ export async function walk(
   }
 }
 
-/** What the store holds of this read: the labels it read `harness` under already, where `--as`
- *  names no other read, and the harness `label` binds. A label binds one tree, so one the store holds
- *  for another digest refuses; a letter is no digest to set against it. */
+/** Checks `store` for existing exports matching `label` or `harness`. Throws if `label` already
+ *  binds a different 64-character digest; returns other labels that already hold `harness` unless
+ *  `--as` explicitly requested a new label. */
 export function heldAs(
   store: ReadonlyMap<string, string>,
   harness: string,
@@ -230,9 +229,9 @@ export function heldAs(
   return { again: again.map(([one]) => one), held };
 }
 
-/** `pause ... --eval`: the words the pause runs on, and the reads it owes once it lands, one a
- *  benchmark of the run, each waiting for its machine. They are named as the verb is armed, so that
- *  a list that refuses does so while the pause-at-two hook still reads the verb's end. */
+/** Strips `--eval` from `pause` arguments and computes the follow-up `bench --wait` commands owed
+ *  once the pause completes. Resolved upfront so missing or misconfigured benchmarks fail before
+ *  the pause hook runs. */
 export function evalOf(
   args: readonly string[],
   env: Env = runtimeProcess.env,
@@ -249,9 +248,9 @@ export function evalOf(
   return { passed, reads: benches.map(({ name }) => [run, "--bench", name, "--wait", ...yes]) };
 }
 
-/** Each read `evalOf` owed, once the pause landed. A plan is printed here; a read started is a
- *  process of its own, since one that waits for an idle machine would otherwise keep the pause
- *  alive, and a living pause is the run's one waiter (`waiters`), which refuses the next `continue`. */
+/** Runs each deferred benchmark evaluation from `evalOf` after a pause completes. Dry-run plans
+ *  print inline; live `--yes` invocations spawn detached processes so waiting for an idle benchmark
+ *  host does not keep the pause process alive and block a subsequent `continue`. */
 export async function readEach(reads: readonly (readonly string[])[]): Promise<void> {
   for (const words of reads) {
     if (!words.includes("--yes")) {
@@ -270,7 +269,7 @@ export async function readEach(reads: readonly (readonly string[])[]): Promise<v
   }
 }
 
-/** Where `run`'s export runs: the machine that holds the campaign, and the tree and Bun there. */
+/** Locates the host, checkout path, and Bun executable from which to export `run`. */
 async function exporterOf(run: string): Promise<Pick<Plan, "holder" | "tree" | "bun">> {
   const here = new Set(runs().map(({ name }) => name));
   if (here.has(run)) return { holder: undefined, tree: runtimeProcess.cwd(), bun: "bun" };
@@ -285,7 +284,7 @@ async function exporterOf(run: string): Promise<Pick<Plan, "holder" | "tree" | "
   return { holder, tree: controller.tree, bun: treeBun(controller.bun) };
 }
 
-/** The read `values` ask of `run`, or null where the store has read its harness under another label. */
+/** Resolves a complete `Plan` for `run`, or returns null if the harness is already evaluated under another label. */
 async function planOf(
   run: string,
   values: { as?: string; bench?: string; harness?: string; login?: string; wait: boolean },
@@ -294,7 +293,7 @@ async function planOf(
   const settings = settingsOf(run, env, values.bench);
   const harness = values.harness ?? promoted(logEvents(readNamed(run).path));
   if (harness === null) throw new Error(`${run} has promoted no harness: there is nothing to read outside`);
-  // A letter names a harness only beside the view that prints it, so it takes a label of its own.
+  // Single-letter harness identifiers are only meaningful alongside `view`, so require an explicit `--as` label.
   const label = values.as ?? (harness.length === 64 ? harness.slice(0, 8) : "");
   if (!isSafePathSegment(label)) throw new Misused();
   const said = await runTextOrThrow(shellOn(settings.runner, probed(settings)));
@@ -326,7 +325,7 @@ async function planOf(
   return { run, label, harness, login, ...exporter, ...settings, place, python, held, wait: values.wait };
 }
 
-/** `bun run runs bench`. */
+/** Entry point for `bun run runs bench`. */
 export async function bench(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],

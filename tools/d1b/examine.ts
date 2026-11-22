@@ -1,42 +1,37 @@
 /**
- * One Examiner session over a campaign:
+ * Runs a single Examiner task-writing session for a campaign:
  *
  *   bun tools/d1b/examine.ts --name truss --session x-1 --examiner claude/claude-opus-5-5
  *
- * The Examiner writes task instances against the pack's contract and check program. Each is put to
- * the gate, which holds it out on its package's shape check (`propose_tasks`,
- * `src/examiner/write.ts`). The session is shown every task the campaign holds, the pack's own
- * and the ones earlier sessions wrote, and the opening message groups them under how the reference
- * harness did on each in the last comparison that scored it, with who won it and on which measure,
- * what the reference's valid answers measured, whether a valid answer to it is on record, and any
- * check a ruling found at fault on an answer to it (`src/examiner/record.ts`). The home the last
- * session computed in is carried into this one, and its shell runs the engines the pack's checks
- * run. In a campaign the next ask wakes the same conversation instead, until a promotion
+ * The Examiner authors task instances against the pack's contract and check program. Each proposal
+ * passes through a structural gate (`propose_tasks`, `src/examiner/write.ts`) that admits valid
+ * packages to the held-out set without running any solver. The session receives all existing
+ * campaign tasks (both pack tasks and previously authored tasks), grouped in the opening message by
+ * the reference harness's outcome in the most recent scored comparison, together with the winning
+ * side and deciding measure, objective values of valid reference answers, whether any valid answer
+ * is on record, and any check previously ruled defective on that task (`src/examiner/record.ts`).
+ * The home directory persists across sessions and exposes the check engines in its shell. Inside a
+ * campaign, subsequent asks resume the same Examiner conversation rather than starting fresh
  * (`conversing`, `tools/d2/campaign-actions.ts`).
  *
- * The gate solves nothing: a gate that held a draft only where room solves by the reference left
- * it room was ablated, and the campaign without it promoted as soon and as far, an indication from
- * one campaign an arm. The author may put an instance to the comparison's launcher itself, at most
- * `--proposals` solves with a result a session (`try_reference`, `probing`): no Referee rules their
- * rejections, since they decide nothing, and no comparison counts them, since their start names
- * the session. A task is held out on its shape check; putting each instance to a stronger solver
- * as well cost a live session many times what its Examiner spent.
+ * The admission gate performs structural validation only, without requiring reference-solve
+ * headroom (ablations showed no advantage in promotion speed or count from gating on reference
+ * solves, and testing every proposal with a stronger solver multiplies session cost). Instead, the
+ * Examiner may probe the current reference harness directly via `try_reference` (`probing`) up to
+ * `--proposals` completed solves per session; probe rejections are not sent to the Referee and are
+ * excluded from comparison scoring because their start events are attributed to the session.
  *
- * The session stops at `--tasks` held-out tasks, at `--proposals` instances put to the gate, at
- * its deadline and model turn limit, or when the Examiner calls `finish`, which it may at any count,
- * and sessions often finish of their own accord after a few tasks. `--tasks` is the host's and is
- * never told to the Examiner. The campaign command names it from what the campaign is short of, at
- * least a sweep (`examinerRun`, `tools/d2/campaign-terms.ts`); run by hand it defaults to 12, half
- * a scored set (`SIZE.tasks`). Asking for many at once is what v1 found dilutes them, a probe
- * grown to 25 tasks in 10 of 13 cases.
+ * The session ends upon reaching `--tasks` held-out tasks, `--proposals` gate submissions, the
+ * wall-clock or turn limit, or when the Examiner calls `finish`. `--tasks` is a host cap and is
+ * never disclosed to the Examiner. Automated campaigns derive it from the current supply deficit
+ * (`examinerRun`, `tools/d2/campaign-terms.ts`); manual invocations default to 12 (half of
+ * `SIZE.tasks`), as larger batches tend to dilute task quality.
  *
- * The home holds no copy of the reference harness; the session tries the reference as a black box
- * (`try_reference`). A copy laid in the home once let a supply ablation hold more drafts for each
- * dollar, but that reading predates `try_reference`, and with the copy the starter comparisons
- * after a promotion read tasks aimed at one harness's programs, which the Starter, holding none,
- * can win; so the copy went on the operator's word.
+ * The Examiner home intentionally contains no copy of the reference harness; the reference is
+ * exposed only as a black box via `try_reference` so that tasks do not target specific harness
+ * programs in ways that distort post-promotion Starter confirmation comparisons.
  *
- * Not run here: see `campaign.ts`.
+ * Requires the verifier sandbox, command sandbox, and a model login (see `campaign.ts`).
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { examine, type Session } from "#src/examiner/session.ts";
@@ -70,7 +65,7 @@ import {
 } from "../d2/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
-/** An Examiner session's flags and their defaults. */
+/** CLI flags and defaults for an Examiner task-writing session. */
 const EXAMINE_OPTIONS = {
   ...PACK_OPTIONS,
   session: { type: "string" },
@@ -80,25 +75,24 @@ const EXAMINE_OPTIONS = {
   proposals: { type: "string", default: "36" },
   minutes: { type: "string", default: "240" },
   turns: { type: "string", default: "200" },
-  /** The campaign's setting, as every command that solves takes it: the campaign it opens, and the
-   *  budget the Examiner is told where no setting is on record, as by hand. `--tasks` is this command's
-   *  own, so the scored set is named by `--target` alone. */
+  /** Campaign setting flags used to open the campaign and supply the solve budget when no setting
+   *  is yet recorded. `--tasks` belongs to this command, so comparison set size uses `--target`. */
   ...SETTING_OPTIONS,
   target: { type: "string" },
 } as const;
 
-/** The solve launcher a comparison of the campaign uses, called for an Examiner session: one fresh
- *  solve of an instance by the reference harness in force, under the campaign's setting and deadline,
- *  its start naming the session where a comparison's names the comparison (`solved`,
- *  `tools/d2/round.ts`). The setting is held to the log's solves and recorded where none is, as a
- *  comparison's is. A solve the kill stops before it starts is a killed non-result with no id. */
+/** Creates the reference-probing solve launcher for an Examiner session. Each call runs one fresh
+ *  solve under the current reference harness and campaign setting, tagging the solve with the
+ *  session ID instead of a comparison ID (`solved`, `tools/d2/round.ts`). Validates the setting
+ *  against logged solves and records it on first use. Returns a `killed` non-result if aborted
+ *  before launch. */
 async function probing(campaign: Campaign, seated: Seated, setting: AskedSetting, session: string) {
   const unrecorded = firstRecord(setting, solvingAs(campaign, setting.named), solverLast(read(campaign.log)));
   if (unrecorded !== undefined) throw new Error(unrecorded);
   const reference = await keptAs(campaign, "--reference", PROMOTED);
   const seats = seated(campaign, { builder: undefined, reference: reference.dir });
-  // Kept at the first try rather than here, past the session's own refusals (`examine`), so that a
-  // refused session leaves the record alone (`keepSetting`).
+  // Persist the setting on the first probe rather than at setup so that a session refused before
+  // starting leaves the campaign log unchanged (`keepSetting`).
   let unkept: AskedSetting | null = setting;
   return async (task: Task, kill: AbortSignal) => {
     if (unkept !== null) keepSetting(campaign.log, unkept);
@@ -113,11 +107,9 @@ async function probing(campaign: Campaign, seated: Seated, setting: AskedSetting
   };
 }
 
-/** `bun tools/d1b/examine.ts`. `session` runs the Examiner's session: `examine`, unless a caller
- *  with no model stands in for it to read what the command would have asked of one. `seated` solves
- *  the instances it puts to the reference harness (`try_reference`), each held in the solve queue
- *  when the campaign command passes its own; null gives the session no tries. `kill` stops the
- *  session, and one stopped before it began opens nothing. */
+/** CLI entry point for `bun tools/d1b/examine.ts`. `session` defaults to `examine` and may be
+ *  stubbed in tests. `seated` launches reference probes (`try_reference`) and may be `null` to
+ *  disable probing. `kill` aborts the session; if already aborted, the session does not open. */
 export async function examineCommand(
   args: readonly string[],
   session: Session<"write"> = examine,
@@ -129,10 +121,10 @@ export async function examineCommand(
   if (id === undefined || examiner === undefined) throw new Error("name --session and --examiner");
   if (kill?.aborted === true) throw new Error(`session ${id} was stopped before it began`);
   const pack = packNamed(values, ", --session and --examiner");
-  // The campaign's setting is its log's, as a comparison reads it (`setting.ts`).
+  // Resolve the campaign setting from the log and CLI flags (`setting.ts`).
   const setting = settingAsked(values, recordedSetting(read(campaignLog(pack.name))));
   const campaign = await openCampaign({ ...pack, ...setting.named });
-  // The brief's rows in the verifier's reading and in the pack's are the same rows in the same order.
+  // Verifier brief rows and pack brief rows share identical ordering.
   const declared = readBrief(campaign.checks).truthChecks;
   const sofar = read(campaign.log);
   const before = taskStates(sofar);
@@ -144,7 +136,7 @@ export async function examineCommand(
       id,
       mode: "write",
       verify: campaign.verify,
-      // The budget every solve is held to, as the drafting session is told it (`draft.ts`).
+      // Solve budget exposed to the Examiner, matching what drafting sessions receive (`draft.ts`).
       budget: {
         modelTurns: setting.named.limits.modelTurns ?? null,
         minutes: setting.named.limits.wallSeconds / 60,
@@ -156,14 +148,14 @@ export async function examineCommand(
         assertion: campaign.brief.truthChecks[index]?.assertion ?? "",
         families: check.execution.families,
       })),
-      // Every task the campaign holds, the pack's and the ones earlier sessions wrote: the opening
-      // message says the outcome of each. One the log refused is no task of the exam.
+      // Pass all non-refused campaign tasks (pack and previously authored) so the opening summary
+      // can report each task's history.
       tasks: [...campaign.packages()].flatMap(([version, task]) =>
         before.get(version) === "refused" ? [] : [task],
       ),
       pack: campaign.pack,
       model: modelNamed(examiner),
-      // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
+      // SAFETY: effort is a pi thinking level; unsupported values are rejected by the backend.
       effort: values["examiner-effort"] as ThinkingLevel,
       limits: {
         wallSeconds: Number(values.minutes) * 60,
@@ -179,10 +171,10 @@ export async function examineCommand(
     {
       repoRoot: REPO,
       otherTrees: campaign.trees,
-      // The engines the campaign's checks run, installed in the Examiner's shell from the tree the
-      // verifier runs them from (`pinnedEngines`, `src/examiner/shell.ts`).
+      // Expose the check engines in the Examiner shell from the same toolchain tree used by the
+      // verifier (`pinnedEngines`, `src/examiner/shell.ts`).
       engines: { checks: campaign.checks, tools: join(campaign.bundle, ".toolchain") },
-      // The home the last session left, carried whole into this one, beside the log.
+      // Persist the Examiner home beside the campaign log across sessions.
       keep: join(dirname(campaign.log), "examiner-home"),
     },
   );

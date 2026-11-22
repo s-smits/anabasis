@@ -1,17 +1,15 @@
 /**
- * A comparison as the log holds it: its start (`Fixed`, from `comparison.started`), the test-side
- * solves it may count, its rejections and what stands of each, its tallies and reading (`compared`),
- * and its report (`Report`, from `comparison.reported`). Nothing here writes an event. `round.ts`
- * runs a comparison, writes its start and report, and settles it on a person's labels; its head
- * comment is the full account of what is fixed before the first solve, how a solve ends and how a
- * rejection counts.
+ * Pure log folds for a comparison: its fixed start terms (`Fixed`, from `comparison.started`),
+ * eligible test-side solves, rejection verdicts, tallies and hypothesis-test readings (`compared`),
+ * and reported outcomes (`Report`, from `comparison.reported`). This module writes no events;
+ * `round.ts` executes comparisons, appends starts and reports, and handles human settlement.
  *
- * The readers live here and the moves stay in `round.ts`, so each fold over the log has one owner
- * and the commands that read a comparison without running one (`tools/d2/round.ts`,
- * `tools/d2/checkpoint.ts`, `tools/d2/settle.ts`) read it through this module. Coverage is read at
- * the first report, apart from any tally, so a stopped comparison can be reviewed while its labels
- * cannot turn its completed prefix into a test. Passes a person labelled wrong are read from
- * history, as settlement reads them (`failWrongPasses`).
+ * Separating read-only folds from execution gives each log fold a single authoritative owner, so
+ * read-only commands (`tools/d2/round.ts`, `tools/d2/checkpoint.ts`, `tools/d2/settle.ts`) share
+ * the exact same interpretation. Coverage is evaluated at the first report independently of
+ * scoring so halted comparisons remain reviewable without turning partial prefixes into tests.
+ * Passes later labelled wrong by a human are folded from history (`failWrongPasses`), matching
+ * settlement semantics.
  */
 import {
   detectable,
@@ -43,50 +41,52 @@ import type { Ruling } from "../referee/referee.ts";
 import { type Worth, worthOf } from "./climb.ts";
 
 /**
- * A `step` requires the new harness to clear the fixed level against the reference on its task
- * scores (`readsStep`, `compare.ts`). A comparison that tallied no task is `not-scored`: it tested
- * nothing, and calling it `no-step` would claim that a test found no gain. `check-defects` marks a
- * comparison stopped for check defects, and `no-change` a session that left no new harness to
- * compare. Old reports may hold readings no longer written (`regressed`, `below-starter`,
- * `starter-unread`); nothing reads them now.
+ * Outcome classification for a comparison:
+ * - `step`: the candidate harness cleared the fixed significance level against the reference on
+ *   per-task scores (`readsStep`, `compare.ts`).
+ * - `no-step`: at least one task was tallied, but the test did not clear the significance level.
+ * - `not-scored`: no task was tallied (distinct from `no-step`, which claims a null test result).
+ * - `check-defects`: halted due to check defects.
+ * - `no-change`: a Builder session produced no new harness to compare.
+ * Legacy reports may contain retired readings (`regressed`, `below-starter`, `starter-unread`).
  */
 type Reading = "step" | "no-step" | "not-scored" | "check-defects" | "no-change";
-/** One test's tally, each task's score and its p; some older reports also hold each task's score
- *  without the bill, which their step was read on (`scoresIn`, `compare.ts`). */
+/** Tally, per-task score differences, and p-value for a single test; legacy reports may also carry
+ *  `unbilled` scores on which the step was evaluated (`scoresIn`, `compare.ts`). */
 type Tested = ReturnType<typeof scored> & { readonly unbilled?: readonly number[] };
-/** One of the two sets a comparison fixes at its start (`retained`, `Fixed`): the tasks that
- *  entered it, which are its denominator, those of them set aside, and its tally and test. `of`
- *  names the task of each difference, which the oldest reports lack. */
+/** One of the two task partitions fixed at comparison start (`retained`, `Fixed`): the entered
+ *  denominator tasks, the subset set aside, and its tally and test. `of` lists the task version
+ *  corresponding to each difference (absent in the oldest reports). */
 type Entered = Tested & {
   readonly tasks: readonly string[];
   readonly aside: readonly string[];
   readonly of?: readonly string[];
 };
 /**
- * How each harness did by itself over the tallied tasks: entry k counts the tasks on which k of its
- * counted solves gave a valid answer, so with two solves a side the three entries are the tasks
- * valid in none, in one and in both. No test is read off it. It shows where the exam leaves a
- * harness: valid nearly everywhere, the tasks cannot tell two harnesses apart; valid on about half
- * its solves, the fewest tasks tie by chance, which is where a test has most power.
+ * Per-harness validity histogram over tallied tasks: entry `k` counts tasks on which `k` counted
+ * solves produced a valid answer (for two solves per side, entries represent 0, 1, and 2 valid
+ * solves). Used diagnostically rather than for hypothesis testing: tasks solved almost everywhere
+ * cannot separate harnesses, whereas tasks solved roughly half the time minimise ties and maximise
+ * statistical power.
  */
 interface Valid {
   readonly old: readonly number[];
   readonly fresh: readonly number[];
-  /** The tasks informative for each harness (`informative`), which room is read by (`roomOf`). */
+  /** Number of tasks informative for each harness (`informative`), used by `roomOf`. */
   readonly informative: { readonly old: number; readonly fresh: number };
 }
 export interface Report {
-  /** The reference harness. */
+  /** Reference harness digest. */
   readonly old: string;
-  /** The digest of the new harness; null when a session left none to compare. Beside a `broken`
-   *  in the logged report, it is the last state the session practised with. */
+  /** Candidate harness digest, or null when a session produced no candidate. Alongside a `broken`
+   *  field in the logged report, this is the last state the session practised on. */
   readonly fresh: string | null;
   readonly starter: string;
-  /** The new harness against the reference, over `versions`: the tally and its test. `unsolved`
-   *  counts the tied tasks no counted solve of either harness answered validly; the other ties are
-   *  between valid answers. The step is read on the scores without the bill (`readsStep`), beside
-   *  `detectable` and `falseRate`, the test's `power` at one half, which never exceeds the level.
-   *  Null when nothing was compared. */
+  /** Overall comparison of candidate against reference across `versions`. `unsolved` counts tied
+   *  tasks where neither harness produced a valid answer (remaining ties are between valid answers).
+   *  The step is evaluated on unbilled scores (`readsStep`), reported alongside `detectable` and
+   *  `falseRate` (`power` at 0.5, bounded above by the significance level). Null when nothing was
+   *  compared. */
   readonly scored:
     | (Tested & {
         readonly unsolved: number;
@@ -94,26 +94,25 @@ export interface Report {
         readonly falseRate?: number;
       })
     | null;
-  /** Each harness by itself, over `versions`. Null when nothing was compared, and in the oldest
-   *  reports. */
+  /** Per-harness validity histograms over `versions` (null when uncompared or in legacy reports). */
   readonly valid: Valid | null;
-  /** The mean billed dollars of a counted solve under each harness; null where the log holds none. */
+  /** Mean billed cost in dollars per counted solve for each harness, or null when unbilled. */
   readonly billed: { readonly old: number | null; readonly fresh: number | null } | null;
-  /** The scored tasks not exhausted. Null when nothing was compared. */
+  /** Non-exhausted scored tasks (null when nothing was compared). */
   readonly frontier: (Entered & { readonly detectable?: number | null; readonly falseRate?: number }) | null;
-  /** The exhausted tasks the draw keeps, read in the one test with the frontier and reported apart,
-   *  so a loss on them shows; `unmeasured` where none was tallied, never no loss (`compare.ts`). */
+  /** Exhausted tasks retained in the draw to detect regressions; scored jointly with the frontier
+   *  and reported separately, or `unmeasured` when none was tallied (`compare.ts`). */
   readonly retained: Entered | typeof UNMEASURED | null;
-  /** Each family's tallies on the two sets, from the same rows, so they sum to the whole. They show
-   *  concentration; a family name can hide correlated tasks, and they establish no independence. */
+  /** Per-family frontier tallies derived from the same rows to expose concentration; shared family
+   *  names can hide correlated tasks and do not establish independence. */
   readonly families: Readonly<Record<string, { readonly frontier: Tally }>> | null;
-  /** The last comparison of its kind under the same reference (`overlapOf`), and the draws' overlap. */
+  /** Most recent prior comparison of the same kind under the same reference (`overlapOf`) and the
+   *  shared tasks between their initial draws. */
   readonly overlap: { readonly with: string; readonly tasks: readonly string[] } | null;
-  /** The A/A control: the reference against itself on halves of its own solves, mirrored in time,
-   *  where it holds an even number of solves of a task. `flips` is how often two of its solves of a
-   *  task disagree; `detectable` is the least share of its untied tasks one half must win for the
-   *  test at the level to detect it four times in five, which says how much a no-step reading can
-   *  show. Older reports without unbilled scores are read on their scores as they stand. */
+  /** Empirical A/A control: the reference compared against itself across time-mirrored halves of
+   *  its own solves when `solves` is even. `flips` is the per-task validity disagreement rate;
+   *  `detectable` is the minimum win share detectable at 80% power. Legacy reports without unbilled
+   *  scores are read on their stored scores. */
   readonly noise:
     | (Tested & {
         readonly flips: number | null;
@@ -121,45 +120,41 @@ export interface Report {
         readonly detectable?: number | null;
       })
     | null;
-  /** The tally were every rejection that set a task aside to stand; null when no task is set aside. */
+  /** Counterfactual tally if every set-aside rejection were counted as a failure; null when no task
+   *  was set aside. */
   readonly counted: Tested | null;
-  /** The task versions tallied. */
+  /** Task versions included in the tally. */
   readonly versions: readonly string[];
-  /** Task versions left out as disputed for good: a check could not run on the reference's answer,
-   *  or a person labelled a rejection a check defect. */
+  /** Task versions permanently excluded as disputed (check failure on reference answer or human
+   *  `check-defect` label). */
   readonly disputed: readonly string[];
-  /** Task versions set aside on a rejection that is not ruled a true fail. */
+  /** Task versions set aside due to an unresolved or non-earned rejection. */
   readonly aside: readonly string[];
-  /** Task versions left out as short of `solves` counted solves under a harness. */
+  /** Task versions excluded for having fewer than `solves` counted solves on either side. */
   readonly short: readonly string[];
-  /** Tallied task versions with a solve a solver flagged as malformed, counted as its side's fail. */
+  /** Tallied task versions with at least one solve flagged as malformed (counted as a side failure). */
   readonly flagged: readonly string[];
-  /** Task versions that left the held-out set while the comparison ran: released for practice, or
-   *  refused by a person as infeasible. */
+  /** Task versions removed from the held-out pool during the comparison (released to practice or
+   *  marked infeasible by the operator). */
   readonly withdrawn: readonly string[];
-  /** Whether the dollar cap cut the comparison short of its test, where nothing is tallied. */
+  /** Whether the dollar cap truncated the comparison before scoring. */
   readonly capped: boolean;
   readonly reading: Reading;
-  /** The objective the comparison fixed. Null where the check program declares none, and in the
-   *  oldest reports. */
+  /** Objective rule fixed at comparison start, or null if none was declared (or in legacy reports). */
   readonly objective: ObjectiveRule | null;
-  /** The points each measure gave the tallied tasks together (`pointsOf`), positive for the new
-   *  harness; null where nothing was tallied, and absent from older reports. */
+  /** Aggregate points contributed by each measure across tallied tasks (`pointsOf`), positive for
+   *  the candidate; null when untallied or absent in legacy reports. */
   readonly points: Measures | null;
-  /** By task, the median turns each harness's valid answers took, null where it gave none: reported
-   *  beside each pair, and read by no tally. */
+  /** Per-task median turn counts for valid answers on each side (null if none valid); descriptive
+   *  only and excluded from scoring. */
   readonly turns: Readonly<
     Record<string, { readonly old: number | null; readonly fresh: number | null }>
   > | null;
-  /** Where it reads a step, the cost bar as the log stood (`worthOf`): the epoch's attempts.
-   *  Reported, and deciding no admission. */
+  /** Epoch cost evaluation (`worthOf`) recorded when the comparison reads a step; descriptive only. */
   readonly worth: Worth | null;
-  /** `unsettled` in the comparison's own report until a person answers its packet (`settle.ts`),
-   *  which no promotion waits for. After that, the report `settleReading` writes holds what the
-   *  labels settled: how many rejections were labelled, how many of them a check defect, the tasks
-   *  those disputed, the tasks the labels restored to the tally, and the labels themselves, by
-   *  solve. A stopped comparison has a packet without a test; null where no fixed comparison
-   *  began. */
+  /** Settlement state: `unsettled` until a human completes the review packet (`settle.ts`), which
+   *  does not block promotion. Once settled, records label counts, defects, disputed and restored
+   *  tasks, and per-solve rejection and pass labels. Null when no fixed comparison started. */
   readonly settled:
     | typeof UNSETTLED
     | {
@@ -172,14 +167,14 @@ export interface Report {
       }
     | null;
 }
-/** What a person is asked to label before a comparison's reading is settled. */
+/** Rejections queued for human labelling during settlement. */
 interface ToLabel {
-  /** Rejections that set a task aside: ruled a check defect or unclear, or not ruled. */
+  /** Rejections that set a task aside (ruled `check-defect` or `unclear`, or unruled). */
   readonly aside: readonly string[];
-  /** Every other rejected answer of the comparison: the ones ruled a true fail. */
+  /** Remaining rejections in the comparison (ruled `earned`). */
   readonly others: readonly string[];
 }
-/** A comparison as its start fixes it: its id, the three harnesses by digest and how it is read. */
+/** Immutable comparison terms recorded at `comparison.started`. */
 export interface Fixed {
   readonly id: string;
   readonly old: string;
@@ -189,19 +184,19 @@ export interface Fixed {
   readonly solves: number;
   readonly level: number;
   readonly tasks: readonly string[];
-  /** The scored tasks fixed at the start as retained, from the exhausted ones and an earlier
-   *  epoch's (`scoredSet`, `round.ts`); the others are the frontier. */
+  /** Subset of `tasks` fixed at start as retained (exhausted or from prior epochs, `scoredSet` in
+   *  `round.ts`); the complement forms the frontier. */
   readonly retained: readonly string[];
-  /** The objective two valid answers are compared by, where the check program declares one. */
+  /** Objective rule used to compare valid answers, when declared by the check program. */
   readonly objective: ObjectiveRule | undefined;
 }
 
 export const STARTED = "comparison.started";
 export const REPORTED = "comparison.reported";
-/** What a comparison's report says of its packet until a person has answered it. */
+/** Sentinel stored in `Report.settled` until human settlement completes. */
 export const UNSETTLED = "unsettled";
-/** A person's words on an answer that passed: a valid answer by the rules; not one, and the checks
- *  passed it; unclear. A settled pass labelled wrong is its side's fail (`wrongAsFailed`). */
+/** Human review labels for passing answers: `sound` (valid), `wrong` (invalid answer that slipped
+ *  past checks, treated as a side failure via `wrongAsFailed`), or `unclear`. */
 export const PASS_LABELS = ["sound", "wrong", "unclear"] as const;
 export type PassLabel = (typeof PASS_LABELS)[number];
 const NOTHING_TO_LABEL: ToLabel = { aside: [], others: [] };
@@ -232,7 +227,7 @@ export const NOTHING = {
   worth: null,
 } as const;
 
-/** A report's fields, as its event carries them beside the comparison's own terms. */
+/** Report keys persisted in `comparison.reported` events alongside comparison terms. */
 const REPORT_KEYS = [
   "old",
   "fresh",
@@ -242,18 +237,15 @@ const REPORT_KEYS = [
   ...(Object.keys(NOTHING) as (keyof typeof NOTHING)[]),
 ] satisfies readonly (keyof Report)[];
 
-/** The log as comparison `id` is read once it has reported: up to its own first report. What comes
- *  after is other comparisons' and a person's: a later one adds solves of the same tasks, and a
- *  task may be released or disputed since. A comparison with no report yet is read whole. */
+/** Slice `events` up to and including the first report for comparison `id` so later comparisons or
+ *  task-state changes do not alter its reading; returns the full log if unreported. */
 function asReported(events: readonly LogEvent[], id: string): LogEvent[] {
   const own = events.findIndex(({ kind, data }) => kind === REPORTED && data.session === id);
   return own === -1 ? [...events] : events.slice(0, own + 1);
 }
 
-/** Each harness by itself over `pairs`: the tasks by how many of its solves were valid, and those
- *  informative for it (`informative`), a task it never answered among them where a valid answer to
- *  it is on record (`feasible`, `poolOf`), and one it answered alike where an author's answer on
- *  record is better by the objective (`bests`). */
+/** Build per-harness validity histograms and informative task counts over `pairs`, accounting for
+ *  known feasible tasks (`feasible`, `poolOf`) and author best objective values (`bests`). */
 function validOf(
   pairs: readonly Paired[],
   solves: number,
@@ -276,7 +268,7 @@ function validOf(
   };
 }
 
-/** By task, the median turns each side's valid answers took (`Report.turns`), null where none. */
+/** Compute per-task median turn counts for valid answers on each side (`Report.turns`). */
 function turnsOf(events: readonly LogEvent[], pairs: readonly Paired[]): NonNullable<Report["turns"]> {
   const turnsBySolve = new Map(solvesIn(events).map((solve) => [solve.id, solve.end?.turns]));
   const side = (pair: Paired, named: "old" | "fresh") =>
@@ -290,21 +282,19 @@ function turnsOf(events: readonly LogEvent[], pairs: readonly Paired[]): NonNull
   );
 }
 
-/** The last report the log holds for comparison `id`, its own or its settling, or null: a
- *  comparison that reported is finished. */
+/** Return the most recent report recorded for comparison `id` (initial or settled), or null. */
 export function reported(events: readonly LogEvent[], id: string): Report | null {
   const found = events.findLast((event) => event.kind === REPORTED && event.data.session === id)?.data;
   if (found === undefined) return null;
-  // A report written before a field existed reads as that field's absence. The oldest reports hold
-  // `counted` as a reading rather than a tally, and it reads as absent.
+  // Default missing fields for backwards compatibility; legacy reports stored `counted` as a string
+  // reading rather than a tally object, so coerce non-records to null.
   const data: JsonObject = { ...NOTHING, ...found, counted: asRecord(found.counted) };
   // Only `checkpoint`, `round` (`round.ts`) and `settleReading` (`settle.ts`) write this event, from the report each returns.
   return parseJsonAs<Report>(Object.fromEntries(REPORT_KEYS.map((key) => [key, data[key] ?? null])));
 }
 
-/** The test-side solves a comparison may count: the ones whose start names it, under one of its
- *  harnesses and its setting. Each says whether it ended in a pass or a fail, a flag among the
- *  fails, and so counts (`passed`). */
+/** Return test-side solves eligible for comparison `fixed` (matching comparison id, harness, and
+ *  setting), annotated with whether each solve yielded a countable pass or fail (`passed`). */
 export function solvesUnder(events: readonly LogEvent[], fixed: Fixed) {
   const settings = new Map(
     [...conditionsOf(events)].map(([condition, ran]) => [condition, settingId(ran)] as const),
@@ -321,9 +311,8 @@ export function solvesUnder(events: readonly LogEvent[], fixed: Fixed) {
 }
 
 /**
- * The rejected answers of a comparison, under any of its harnesses, each with its task version and
- * what stands of it: a person's label where `labels` holds one, the Referee's last ruling
- * otherwise, and null where nobody has ruled.
+ * Return all rejected answers in comparison `fixed`, paired with their task version and standing
+ * verdict: human label from `labels` if present, otherwise the latest Referee ruling, or null.
  */
 export function rejections(events: readonly LogEvent[], fixed: Fixed, labels: ReadonlyMap<string, Ruling>) {
   const ruled = rulingsOf(events);
@@ -335,10 +324,8 @@ export function rejections(events: readonly LogEvent[], fixed: Fixed, labels: Re
 }
 
 /**
- * The two sets a comparison's start fixed, as its tallied `pairs` fill them, which the step reads
- * as one: the frontier and the retained tasks, each with the tasks that entered it and those of
- * `aside` in it, and each family's tallies on both, from the same rows. A retained set no task
- * was tallied in is unmeasured, never no loss.
+ * Partition tallied `pairs` into the fixed frontier and retained subsets alongside per-family
+ * frontier tallies. An empty retained subset reports `UNMEASURED` rather than zero regressions.
  */
 function setsOf(
   events: readonly LogEvent[],
@@ -354,7 +341,7 @@ function setsOf(
   const tallied = { frontier: part("frontier"), retained: part("retained") };
   const setOf = (set: keyof typeof tallied): Entered => {
     const within = (task: string) => kept.has(task) === (set === "retained");
-    // `of` names the task of each difference, as the report holds it.
+    // Record the task version aligned with each entry in `differences`.
     const of = tallied[set].map(({ task }) => task);
     return { tasks: fixed.tasks.filter(within), aside: aside.filter(within), ...scored(tallied[set]), of };
   };
@@ -370,9 +357,8 @@ function setsOf(
 }
 
 /**
- * The fixed draw's completion and review facts at its first report. Pairs use the same counted
- * solves as the test, without scoring them. Later solves and task-state changes cannot alter this
- * descriptive coverage.
+ * Compute completion and review coverage for `fixed` at its first report without scoring. Later
+ * solves and task-state transitions cannot retroactively alter this snapshot.
  */
 export function coverageOf(
   all: readonly LogEvent[],
@@ -381,8 +367,8 @@ export function coverageOf(
 ) {
   const events = asReported(all, fixed.id);
   const states = taskStates(events);
-  // A task a person released or refused while the comparison ran is no held-out task any more. It
-  // is left out and named, since a comparison that could not report would lose every solve it paid.
+  // Exclude tasks released or refused while the comparison was running so they are reported as
+  // withdrawn instead of blocking the comparison report.
   const held = new Set(taskSets(events).held);
   const scorable = fixed.tasks.filter((task) => states.get(task) !== "disputed");
   const live = scorable.filter((task) => held.has(task));
@@ -406,11 +392,11 @@ export function coverageOf(
   };
 }
 
-/** Read the test from complete pairs, excluding both set-aside rejections and later disputes. */
+/** Score complete pairs for `fixed`, excluding set-aside rejections and any disputed tasks. */
 export function compared(all: readonly LogEvent[], fixed: Fixed, labels: ReadonlyMap<string, Ruling>) {
   const events = asReported(all, fixed.id);
   const coverage = coverageOf(all, fixed, labels);
-  // A dispute stands whenever it was made: a settling's own come after the comparison's report.
+  // Disputes apply regardless of when they were recorded (including during post-report settlement).
   const states = taskStates(all);
   const scorable = (task: string) => states.get(task) !== "disputed";
   const first = coverage.pairs.filter(({ task }) => scorable(task));
@@ -419,8 +405,8 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   const pairs = kept(first);
   const aside = coverage.aside.filter(scorable);
   const sets = setsOf(all, fixed, pairs, aside);
-  /** The reference against itself on halves of the test's own solves (`Sides`, `halves`), over the
-   *  tallied tasks and no other, so the A/A control and the tally count the same tasks. */
+  /** Evaluate the reference against itself on mirrored halves of its own solves over the exact same
+   *  tallied task set as the primary test. */
   const againstItself = () =>
     kept(
       pairsOf(
@@ -437,9 +423,8 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
         fixed.solves / 2,
       ).pairs,
     );
-  // The A/A control: where the reference's solves of a task are even, they are split into halves
-  // mirrored in time. At two a side, the default, it is one solve against the other, the earlier one
-  // first on every other task (`pairsOf`), which reads the flip rate and a step between halves alike.
+  // Compute the empirical A/A control whenever `solves` is even by splitting reference solves into
+  // time-mirrored halves (at two solves per side, alternating solve order across tasks).
   const mirroredOf = (halves: readonly Paired[]) => {
     const aa = scored(halves);
     return { ...aa, flips: flipsOf(halves), detectable: detectable(aa.differences, fixed.level) };
@@ -470,14 +455,14 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     withdrawn: coverage.withdrawn.filter(scorable),
     reading,
     turns: turnsOf(events, pairs),
-    // The cost bar, read where there is a step: printed, and deciding no admission.
+    // Attach descriptive epoch cost when the comparison reads a step.
     worth: reading === "step" ? worthOf(events, fixed.id) : null,
     objective: fixed.objective ?? null,
     points: pairs.length === 0 ? null : pointsIn(pairs),
   };
 }
 
-/** The points each measure gave `pairs` together (`pointsOf`), to the whole point (`wholePoints`). */
+/** Sum per-measure points across `pairs` (`pointsOf`), rounded to whole points (`wholePoints`). */
 function pointsIn(pairs: readonly Paired[]): Measures {
   const each = pairs.map(pointsOf);
   const sum = (measure: keyof Measures) =>
@@ -485,13 +470,13 @@ function pointsIn(pairs: readonly Paired[]): Measures {
   return { validity: sum("validity"), objective: sum("objective") };
 }
 
-/** The mean billed dollars of a counted solve under one side of `pairs`, or null where none billed. */
+/** Mean billed dollars per counted solve on one side of `pairs`, or null when unbilled. */
 function billedMean(pairs: readonly Paired[], side: "old" | "fresh"): number | null {
   const billed = pairs.flatMap((pair) => (pair.used?.[side] ?? []).flatMap((used) => used.billed ?? []));
   return billed.length === 0 ? null : billed.reduce((sum, each) => sum + each, 0) / billed.length;
 }
 
-/** The tasks of `pairs` a solve of either side flagged as malformed (`submit`). */
+/** Return task versions in `pairs` where either side flagged a solve as malformed (`submit`). */
 function flaggedIn(events: readonly LogEvent[], pairs: readonly Paired[]): string[] {
   const flags = new Set(
     solvesIn(events).flatMap((solve) => (solve.ending?.outcome === "flagged" ? [solve.id] : [])),
@@ -501,8 +486,8 @@ function flaggedIn(events: readonly LogEvent[], pairs: readonly Paired[]): strin
   );
 }
 
-/** How often two of a harness's solves of one task disagree on validity, over every two of its
- *  solves of each task, the tasks weighed alike: null where none was tallied. */
+/** Mean pairwise validity disagreement rate across solves of the same task, weighting tasks equally
+ *  (null when no task was tallied). */
 function flipsOf(pairs: readonly Paired[]): number | null {
   const each = pairs.map(({ old, fresh }) => {
     const solves = [...old, ...fresh];
@@ -512,10 +497,8 @@ function flipsOf(pairs: readonly Paired[]): number | null {
   return each.length === 0 ? null : each.reduce((sum, one) => sum + one, 0) / each.length;
 }
 
-/** The comparison of the same kind under the same reference that began last before `fixed`, and
- *  the intersection of the two initial draws; null where none did. The kind is a promotion attempt
- *  or a starter comparison, so a candidate scored on tasks an earlier candidate drew names that
- *  attempt, though the test counts those tasks as fresh draws. */
+/** Find the most recent prior comparison of the same kind (promotion attempt vs starter comparison)
+ *  under the same reference, and return the intersection of their initial task draws. */
 export function overlapOf(events: readonly LogEvent[], fixed: Fixed) {
   const began = events.findIndex(({ kind, data }) => kind === STARTED && data.session === fixed.id);
   const kindOf = (fresh: JsonValue | undefined) => fresh === fixed.starter;
@@ -531,9 +514,8 @@ export function overlapOf(events: readonly LogEvent[], fixed: Fixed) {
 }
 
 /**
- * `events` and `labels` with each answer that passed and a person labelled wrong read as a
- * rejection ruled earned: that side's fail, as an earned rejection is. A pass labelled sound or
- * unclear is read as it was.
+ * Rewrite `events` and `labels` so passing answers labelled `wrong` by a human are treated as
+ * earned rejections (side failures), leaving `sound` and `unclear` passes unchanged.
  */
 export function wrongAsFailed(
   events: readonly LogEvent[],
@@ -548,15 +530,12 @@ export function wrongAsFailed(
 }
 
 /**
- * Comparison `id`'s reading with its packet's labels in place of the verdicts they overturn, beside
- * the reading it was decided on: a rejected answer labelled a check defect read as a valid answer,
- * an answer that passed labelled wrong as a true fail, a rejection labelled earned as a true fail
- * and one labelled unclear left aside. It is read as the comparison's own report found it, before
- * its settling disputed anything. Null until it is settled. A decision that flips means its packet
- * was too small to stand on; it is reported, and no move reads it. The flip is read against the
- * same solves without labels under this tree's rule (`unlabelled`), since a report recorded under
- * an older rule may read otherwise by today's. A comparison whose first report has no score has no
- * decided test to swap.
+ * Recompute comparison `id`'s reading with human settlement labels substituted for the verdicts
+ * they overturn (`check-defect` rejections treated as valid passes, `wrong` passes as earned
+ * failures, `earned` rejections as failures, and `unclear` rejections set aside), evaluated on the
+ * log snapshot at initial report prior to settlement disputes. Returns null until settled or if the
+ * initial report had no scored test. Also returns `unlabelled` under the current tree's rule for
+ * apples-to-apples flip detection; purely descriptive.
  */
 export function swapped(
   events: readonly LogEvent[],
@@ -590,22 +569,21 @@ export function swapped(
   return { decided, unlabelled, swapped: found.reading, scored: found.scored };
 }
 
-/** What the operator predicted of comparison `id` before its first solve, or null where they
- *  predicted nothing. */
+/** Return the operator's pre-solve prediction for comparison `id`, or null if none was recorded. */
 export function predicted(events: readonly LogEvent[], id: string): string | null {
   const said = startOf(events, id)?.prediction;
   return isString(said) ? said : null;
 }
 
-/** The start of comparison `id` as the log holds it. */
+/** Return the raw `comparison.started` payload for comparison `id`, if present. */
 export function startOf(events: readonly LogEvent[], id: string): JsonObject | undefined {
   return events.find(({ kind, data }) => kind === STARTED && data.session === id)?.data;
 }
 
-/** What comparison `id` fixed at its start, read back from the log; null where it never began. */
+/** Reconstruct the immutable `Fixed` terms for comparison `id`, or null if it never started. */
 export function fixedIn(events: readonly LogEvent[], id: string): Fixed | null {
   const start = startOf(events, id) ?? {};
-  // Some old starts also hold a trigger for a retired two-stage rule, which is read past.
+  // Legacy starts may include a retired two-stage trigger field, which is ignored.
   const { old, fresh, starter, setting, solves, level, tasks, retained } = start;
   return isString(old) &&
     isString(fresh) &&
@@ -628,15 +606,15 @@ export function fixedIn(events: readonly LogEvent[], id: string): Fixed | null {
     : null;
 }
 
-/** The answers that passed in comparison `id`: its own solves that ended in a pass. */
+/** Return solve identifiers that ended in a pass within comparison `id`. */
 export function passesIn(events: readonly LogEvent[], id: string): string[] {
   return solvesIn(events).flatMap((solve) =>
     solve.start.comparison === id && passed(solve) === true ? [solve.id] : [],
   );
 }
 
-/** The rejections of comparison `id` a person may label: a fixed start and a report are required,
- *  whether or not the comparison reached its test. */
+/** Partition undisputed rejections of comparison `id` into set-aside and earned sets for human
+ *  labelling; requires both a fixed start and a report (whether scored or halted). */
 export function toLabel(events: readonly LogEvent[], id: string): ToLabel {
   const report = reported(events, id);
   const fixed = fixedIn(events, id);

@@ -1,9 +1,7 @@
-// The source gate carries only the checks that change whether a push is accepted, which is five
-// things. It measures every authored file and its longest function against the two ceilings below,
-// refuses a literal or a call that would restore a system this repository decided to remove,
-// reports an `export` that no other file names, and retires a copied-file ceiling once the file has
-// come inside the authored limits and the entry exempts nothing. Git owns provenance and history,
-// so nothing here records who wrote a file or what state it is in.
+// Enforces the five push-gating source policies: file-size and function-size ceilings, banned
+// literals and calls that would reintroduce retired systems, unused exports in authored roots, and
+// retirement of stale copied-file ceiling exemptions once a file fits within the standard limits.
+// Provenance and history belong to Git rather than policy metadata.
 
 import { existsSync, readFileSync, readdirSync, statSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
@@ -12,31 +10,26 @@ import { countNonBlank } from "./nonblank-loc.ts";
 import sourcePolicy from "./source-policy.json" with { type: "json" };
 import { scanTokens } from "./token-facts.ts";
 
-// 600 and 80 were chosen when an author picked every line break and a 200-character line counted
-// as one. `biome format` owns the breaks now, at lineWidth 110, and the same code measures larger:
-// 77,570 nonblank lines to 84,984 over src, tools and vendor. The factor is not one number. A flat
-// function barely moves and a deeply indented one nearly doubles (`runReferenceChild` went from 39
-// lines to 92 without a character of it changing) so no single multiplier restates the old
-// ceilings, and the 90th percentile is the honest place to put them: 1.330 per file and 1.425 per
-// function over everything the formatter touched. 600 x 1.330 and 80 x 1.425, rounded up.
-//
-// The tree was measured at 100, 110, 120, 130, 140 and 160 columns before these numbers were
-// picked, because a wider setting wraps less: 110 costs 9.6% and 160 costs nothing at all. 96.5%
-// of authored lines were already inside 110 columns, so 110 is the width this source was written
-// to and the ceilings move instead of it.
+// File and function ceilings scaled for `biome format` at `lineWidth: 110`. The earlier 600-line
+// file and 80-line function ceilings assumed manual line breaks; automatic wrapping at 110 columns
+// expands deeply indented functions disproportionately (90th-percentile multipliers of 1.330 per
+// file and 1.425 per function across formatted files), giving 800 and 115 when rounded up.
+// Measurements across 100 to 160 columns showed 96.5% of authored lines already fit within 110
+// columns, so the ceilings were adjusted rather than widening the formatter.
 export const NEW_FILE_CEILING = 800;
 export const NEW_FUNCTION_CEILING = 115;
 
 const SOURCE_ROOTS = ["src", "tools", "vendor", ".claude/skills"] as const;
 
-/** Authored source this repository owns and may restructure, and so the roots whose exports are a
- *  finding when nothing outside their own file names them. `vendor` is pinned verbatim, and
- *  `starters` is copied into a Builder workspace where the consumers of its names do not exist in
- *  this tree, so neither can be read this way. The simplify census scans these plus `.claude`. */
+/** Authored roots owned by this repository whose unused exports are reported as findings. `vendor`
+ *  is pinned verbatim and `starters` is copied into Builder workspaces with external consumers, so
+ *  neither is checked for unused exports. The simplification census scans these roots plus
+ *  `.claude`. */
 export const AUTHORED_ROOTS = ["src", "tools", "packages/ui/src"] as const;
 
-/** Where a name may be read from. Wider than the compiler's import graph on purpose: skill scripts
- *  under `.claude` import repository source, and a configuration file can name an export. */
+/** Roots searched for references to exported names. Intentionally broader than the TypeScript
+ *  import graph because skill scripts under `.claude` and configuration files may reference
+ *  repository exports. */
 export const READER_ROOTS = [
   "src",
   "tools",
@@ -49,16 +42,16 @@ export const READER_ROOTS = [
   "studies",
 ] as const;
 
-/** A declaration that carries `export` and a name of its own. `export { … }` lists and
- *  `export default` are not read: the first states a name a second time, the second has none. */
+/** Matches named `export` declarations. Excludes `export { ... }` re-export lists (which repeat
+ *  existing names) and `export default` (which introduces no bound name). */
 const EXPORTED =
   /^export (?:declare )?(?:async )?(?:interface|type|function|const|let|class|enum|abstract class) ([A-Za-z_$][\w$]*)/gm;
 
 const IDENTIFIER = /[A-Za-z_$][\w$]*/g;
 
 export const READ_AS_SOURCE = [".ts", ".tsx", ".mts", ".mjs", ".js", ".py", ".json"];
-/** Files held at a frozen limit of their own instead of the ceiling for authored code.
- *  `tree-findings.ts` asks the same question before it proposes moving code into one. */
+/** Per-file line ceilings for legacy or copied files exempt from the standard authored limits.
+ *  Also consulted by `tree-findings.ts` before suggesting code moves into a file. */
 export const copiedFileLimits: Readonly<Record<string, number>> = sourcePolicy.copiedFileLimits;
 const refusedLiterals: ReadonlySet<string> = new Set(sourcePolicy.refusedLiterals);
 const refusedCalls: ReadonlySet<string> = new Set(sourcePolicy.refusedCalls);
@@ -78,19 +71,13 @@ function walkFiles(root: string): string[] {
   }
   const files: string[] = [];
   for (const name of entries.toSorted()) {
-    // Installed dependencies and build output are nobody's authored source. The three original
-    // roots hold neither; `packages` and `.claude`, which the export search reads, hold both.
-    // Nor is a dot-directory: every one of the three dozen scratch roots a test opens inside the
-    // checkout carries a leading dot, and no tracked file in any root sits under one. Reading them
-    // costs a gate twice over: the census counts generated fixture bytes as authored shapes for as
-    // long as the suite runs, and the read below loses its race with the `rmSync` that removes
-    // one. `.git` was the first instance of this rule. A named root is never filtered, only what
-    // the walk descends into, so `.claude` still opens.
+    // Skip installed dependencies, build output, and nested dot-directories (including `.git` and
+    // temporary test scratch directories, which would otherwise distort counts and race with test
+    // cleanup). Top-level roots such as `.claude` are passed directly and remain included.
     if (name === "node_modules" || name === "dist" || name.startsWith(".")) continue;
     const path = join(root, name);
-    // A directory holding its own `.git` is another checkout, never this one's source: agent
-    // worktrees under `.claude/worktrees/` would otherwise fill the census with copies of files
-    // already read.
+    // Skip nested Git checkouts (for example agent worktrees under `.claude/worktrees/`) so
+    // duplicated repository files are not scanned twice.
     if (!statSync(path).isDirectory()) files.push(path);
     else if (!existsSync(join(path, ".git"))) files.push(...walkFiles(path));
   }
@@ -98,16 +85,12 @@ function walkFiles(root: string): string[] {
 }
 
 /**
- * `export` on a declaration that nothing outside its own file names.
+ * Reports exported declarations that no other file references.
  *
- * An export is a statement that another file may depend on the name, so changing the declaration
- * means looking for those dependents first, and for these there are none to find. It is the
- * single largest shape a simplification pass removes.
- *
- * The search is textual, which decides two things. A name declared in two files is left alone,
- * because a mention cannot be attributed to one of them. And a name that appears anywhere in
- * another file counts as read, including in a comment or a string: the check fails open, and what
- * it reports is a name no file spells at all.
+ * Removing unused `export` modifiers narrows the public surface so subsequent changes do not need
+ * to audit non-existent external callers. The scan is textual and intentionally fails open: names
+ * declared in multiple files are skipped (attribution is ambiguous), and any textual occurrence in
+ * another file (including comments or string literals) counts as a reference.
  */
 export function unusedExports(
   declaring: ReadonlyMap<string, string>,
@@ -137,8 +120,8 @@ export function unusedExports(
     }));
 }
 
-/** Every file under `roots` this check can read, by path. `tools/oxlint/tree-findings.ts` reads
- *  the same corpus for its whole-tree census, so the two scans see one set of files. */
+/** Reads all files matching `suffixes` under `roots` into a path-to-content map. Shared with
+ *  `tools/oxlint/tree-findings.ts` so both scans inspect the same file corpus. */
 export function corpus(roots: readonly string[], suffixes: readonly string[]): Map<string, string> {
   const files = new Map<string, string>();
   for (const root of roots) {
@@ -153,9 +136,8 @@ function sizeFindings(path: string, text: string, copiedLimit?: number): SourceP
   const findings: SourcePolicyFinding[] = [];
   const fileLimit = copiedLimit ?? NEW_FILE_CEILING;
   const lines = countNonBlank(text);
-  // Prose under a source root, the oxlint decision ledgers, is not authored code: what bounds one
-  // is retiring an entry whose mechanism has left the source, which a line count cannot judge.
-  // An explicit `copiedFileLimits` entry still binds a Markdown file.
+  // Markdown documentation under source roots (such as oxlint decision ledgers) is exempt from the
+  // default code-file ceiling unless explicitly listed in `copiedFileLimits`.
   if (lines > fileLimit && !(copiedLimit === undefined && path.endsWith(".md"))) {
     findings.push({
       check: "file-size",
@@ -202,15 +184,10 @@ export function sourceTextFindings(
 }
 
 /**
- * The copied-file ceilings that no longer change a decision, read through `read` so the caller
- * chooses the tree. A ceiling is stale when its file is gone, and equally when the file has come
- * inside both authored limits: the entry is then a standing exemption from rules the file already
- * satisfies, because a copied limit also turns the function check off for that file entirely. An
- * obsolete exception is debt, so the gate refuses it rather than carrying it (AGENTS.md rule 8).
- *
- * Most entries in the map bind nothing. They were written when the ceilings were introduced, and
- * without this check they keep their files exempt from the function check for as long as nobody
- * reads them back.
+ * Reports entries in `copiedFileLimits` that no longer have any effect, either because the named
+ * file was deleted or because it now satisfies both standard authored ceilings. Because a copied
+ * ceiling also disables the function-size check for that file, stale exemptions are refused rather
+ * than retained.
  */
 function staleCopyLimits(read: (path: string) => string | null): SourcePolicyFinding[] {
   const findings: SourcePolicyFinding[] = [];
@@ -233,8 +210,8 @@ function staleCopyLimits(read: (path: string) => string | null): SourcePolicyFin
   return findings;
 }
 
-/** The exports no other file names in the tree at `base`, the working directory where it is empty,
- *  each path relative to it: the gate's check, which preflight also reads before a commit. */
+/** Finds unused exports across the tree rooted at `base` (defaulting to the current working
+ *  directory), returning paths relative to `base`. Shared by the source gate and commit preflight. */
 export function unreadExports(base = ""): SourcePolicyFinding[] {
   const read = (roots: readonly string[], suffixes: readonly string[]) => {
     const files = corpus(

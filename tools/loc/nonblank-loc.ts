@@ -1,7 +1,6 @@
-// One owner for line counting, so that "nonblank" names the same line in every gate and every
-// report that uses the word: one carrying something other than whitespace.
-// `tools/loc/source-policy.ts` measures every file it walks under `src`, `tools` and `vendor`
-// against the authored ceiling and excludes none of them.
+// Single authoritative definition of non-blank line counting across gates and reports: a line
+// counts if it contains at least one non-whitespace character. `tools/loc/source-policy.ts`
+// applies this count to every walked file under `src`, `tools`, and `vendor`.
 
 export function countNonBlank(text: string): number {
   let n = 0;

@@ -1,21 +1,19 @@
 /**
- * `bun run runs <verb>`, over every run log in the repository's worktrees (`registry.ts`). `GROUPS`
- * says what each verb does, in one line, and a bare `bun run runs` prints it grouped, with what
- * holds of every verb under it (`EVERY`). The usage has one owner, the head of the verb's file,
- * which `bun run runs <verb> --help` reads (`usageOf`); `help <verb> ...` prints several and
- * `help all` every verb's. A verb that names a run no worktree here holds runs on the host that holds
- * it (`routed`), and `holds` is what that host is asked.
+ * Command-line dispatcher for `bun run runs <verb>`, operating across all campaign logs in the
+ * repository's worktrees (`registry.ts`). `GROUPS` lists one-line summaries displayed by a bare
+ * `bun run runs`, followed by universal flags (`EVERY`). Detailed usage has a single authoritative
+ * owner, the file header comment of each verb's module, parsed by `bun run runs <verb> --help`
+ * (`usageOf`); `help <verb> ...` prints multiple verbs and `help all` prints all of them. Verbs
+ * targeting a campaign held on another host are forwarded to that host (`routed`), discovered via
+ * `holds`.
  *
- * A verb given words it cannot act on (`Misused`, or a flag or an argument `parseArgs` did not take)
- * is answered with that usage, so the refusal is the correction; a word that names no verb is
- * answered with the verbs nearest it (`unknown`).
+ * Invalid arguments (`Misused` or `parseArgs` errors) print the verb's usage alongside the error;
+ * unrecognised verb names suggest the closest matches (`unknown`).
  *
- * `here` always names this machine, whichever verb hears it: `--here` is accepted by every verb, and a
- * verb with no use of its own for it reaches no other host for that one call, as a verb another host
- * sent here does (`ANA_HOP`, `hostsOf`). With no hosts it changes nothing, since an empty list is
- * already this machine alone. A refusal prints its one line and exits 1, without a Bun frame or a
- * stack trace. An error of another kind keeps
- * its trace, since that is a defect and not an answer.
+ * `here` always refers to the local host: `--here` is accepted by every verb and prevents contacting
+ * remote hosts for that invocation (equivalent to `ANA_HOP` on incoming peer calls in `hostsOf`),
+ * except for verbs with bespoke `--here` handling. Expected refusals print a single error line and
+ * exit 1 without a stack trace; unexpected errors propagate with their trace intact.
  */
 import { readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
@@ -55,11 +53,11 @@ interface Verb {
   readonly says: string;
 }
 
-/** The verbs whose own parser reads `--here`, each with more to it than reaching no other host. */
+/** Verbs whose own option parser handles `--here` beyond merely suppressing remote queries. */
 const READS_HERE: ReadonlySet<string | undefined> = new Set(["active", "hosts", "keep", "pulse"]);
 
-/** Each verb: its function, the file whose head states its usage, and what it does, in the groups
- *  the bare command prints. */
+/** Registry of all CLI verbs grouped for the bare `bun run runs` summary, with their handler,
+ *  usage-owning file, and one-line description. */
 const GROUPS = {
   "a run's life": {
     fresh: {
@@ -219,9 +217,9 @@ const GROUPS = {
 const VERBS: Record<string, Verb> = Object.fromEntries(
   Object.values(GROUPS).flatMap((verbs) => Object.entries(verbs)),
 );
-/** The words that ask for the list, or for the usage of the verbs named after them. */
+/** Tokens that trigger the verb list or per-verb help output. */
 const HELP: ReadonlySet<string> = new Set(["", "help", "--help", "-h"]);
-/** What holds of every verb, said under the list. */
+/** Universal flags and conventions displayed beneath the verb groups. */
 const EVERY = [
   ["<verb> --help", "its usage; `help <verb> ...` prints several, and `help all` every verb's"],
   [
@@ -233,15 +231,15 @@ const EVERY = [
 ] as const;
 const WIDTH = Math.max(...[...Object.keys(VERBS), ...EVERY.map(([name]) => name)].map((name) => name.length));
 
-/** The verb a word names, if any: by its own entry, so that `toString` names none. */
+/** Looks up a verb by exact own key so inherited `Object.prototype` names such as `toString` never match. */
 const verbNamed = (word: string | undefined): Verb | undefined =>
   Object.entries(VERBS).find(([name]) => name === word)?.[1];
 
-/** Names in one column and what each is in the next. */
+/** Formats two-column aligned rows with the name column padded to `WIDTH`. */
 const columns = (lines: readonly (readonly [string, string])[]): string =>
   lines.map(([name, says]) => `  ${name.padEnd(WIDTH)}  ${says}`).join("\n");
 
-/** A remote continuation at another revision runs that revision's launcher too. Flags after --
+/** A remote continuation at another revision runs that revision's launcher too. Flags after `--`
  *  belong to the campaign, and cannot request a controller checkout or grant launch authority. */
 async function continueOn(host: Host, args: readonly string[]): Promise<number> {
   const own = ownArgs(args);
@@ -261,7 +259,7 @@ async function continueOn(host: Host, args: readonly string[]): Promise<number> 
   return await verbOn(own.includes("--yes") ? await preparedHost(host, commit) : host, command);
 }
 
-/** Every verb, grouped, with what it does, and what holds of them all. */
+/** Renders the full grouped verb listing and universal options. */
 function list(): string {
   const groups = Object.entries(GROUPS).map(
     ([group, verbs]) =>
@@ -270,7 +268,7 @@ function list(): string {
   return `usage: bun run runs <verb> [<args>]\n\n${groups.join("\n\n")}\n\nevery verb:\n${columns(EVERY)}`;
 }
 
-/** The edits that turn one word into another (Levenshtein), a row of the table at a time. */
+/** Computes Levenshtein edit distance between `from` and `to` using single-row dynamic programming. */
 function edits(from: string, to: string): number {
   let row = Array.from({ length: to.length + 1 }, (_, at) => at);
   for (const [i, letter] of from.split("").entries()) {
@@ -287,9 +285,8 @@ function edits(from: string, to: string): number {
   return row.at(-1) ?? 0;
 }
 
-/** What a word that names no verb is answered: the verbs it begins, or else those two edits away at
- *  most (one, for a word of four letters or fewer), and the whole list where none is near. It runs
- *  none of them: `st` begins both `status` and `stop`. */
+/** Formats suggestions for an unrecognised verb: prefix matches first, otherwise verbs within edit
+ *  distance 2 (or 1 for words of four characters or fewer), falling back to the full list. */
 function unknown(word: string): string {
   const verbs = Object.entries(VERBS).map(([name, { says }]) => [name, says] as const);
   const begun = verbs.filter(([name]) => word !== "" && name.startsWith(word));
@@ -299,10 +296,9 @@ function unknown(word: string): string {
   return `no verb \`${word}\`; the nearest:\n${columns(near)}\n\`bun run runs\` lists every verb`;
 }
 
-/** A verb's usage, as the head of its file states it: each line indented in the head that names
- *  `runs <verb>`, with the lines indented further that continue it, and each quoted command
- *  `bun run runs <verb> ...` or `runs <verb> <args>`. The head stays the one owner of the options:
- *  `--help` prints these lines, and so does a verb given words it cannot act on (`misuse`). */
+/** Extracts usage lines for `verb` from its owning file's leading docblock: indented `runs <verb>`
+ *  blocks (with continuation lines) and backticked `bun run runs <verb> ...` or `runs <verb> <args>`
+ *  examples. Keeps the file header as the single source of truth for `--help` and misuse output. */
 function usageOf(verb: string, file: string): string[] {
   const text = readFileSync(join(import.meta.dir, file), "utf8");
   const head = text.slice(0, text.indexOf("*/")).replaceAll(/^\s*(\/\*\*|\*)/gmu, "");
@@ -314,13 +310,13 @@ function usageOf(verb: string, file: string): string[] {
   const lines = [...head.matchAll(indented), ...head.matchAll(quoted)].map((match) =>
     (match[1] ?? "").replaceAll(/\s+/gu, " "),
   );
-  // A quoted command that only begins a longer usage line says nothing more.
+  // Drop shorter quoted prefixes that are already subsumed by a fuller usage line.
   return [...new Set(lines)].filter(
     (line) => !lines.some((other) => other !== line && other.startsWith(line)),
   );
 }
 
-/** What `--help` prints of a verb: what it does, its usage, and where each option is explained. */
+/** Formats `--help` output for a single verb, citing the file header where options are documented. */
 const helpOf = (verb: string, { file, says }: Verb): string =>
   [
     `${verb}: ${says}`,
@@ -328,17 +324,17 @@ const helpOf = (verb: string, { file, says }: Verb): string =>
     `  why, and what each option does: the head of tools/runs/${file}`,
   ].join("\n");
 
-/** Words a verb cannot act on: its own `Misused`, or a flag or an argument `parseArgs` did not take. */
+/** Returns true for argument or flag errors (`Misused` or Node/Bun `parseArgs` errors). */
 const misuse = (error: Error): boolean => {
   const code = asRecord(error)?.code;
   return error instanceof Misused || (isString(code) && code.startsWith("ERR_PARSE_ARGS"));
 };
 
-/** What a verb refused, as opposed to a defect: a plain `Error`, or a misuse. */
+/** Distinguishes expected operator refusals (plain `Error` or `Misused`) from internal defects. */
 const refusal = (error: unknown): error is Error =>
   error instanceof Error && (error.constructor === Error || misuse(error));
 
-// `on here <verb>` is that verb here, reaching no further host, as one sent to a peer does.
+// Treat `on here <verb>` as a local-only invocation with `ANA_HOP=1`, matching remote peer calls.
 const argv = Bun.argv.slice(2);
 const onHere = argv[0] === "on" && argv[1] === HERE;
 if (onHere) runtimeProcess.env.ANA_HOP = "1";
@@ -349,7 +345,7 @@ const stripped = !READS_HERE.has(verb) && own.includes(KEEPING);
 if (stripped) runtimeProcess.env.ANA_HOP = "1";
 const args = stripped ? [...own.filter((word) => word !== KEEPING), ...given.slice(own.length)] : given;
 if (HELP.has(verb)) {
-  // A bare command or `help` alone asks for the list; verbs after it, or `all`, for their usage.
+  // Bare invocation or `help` lists all verbs; named verbs or `all` print detailed usage.
   const asked = (given[0] === "all" ? Object.keys(VERBS) : given).map(
     (name) => [name, verbNamed(name)] as const,
   );
@@ -362,15 +358,15 @@ if (HELP.has(verb)) {
     runtimeProcess.exitCode = 1;
   }
 } else if (chosen === undefined) {
-  // Any other word is a mistake, answered with the nearest verbs or the list.
+  // Unrecognised verb: suggest nearest matches or print the full listing.
   console.error(unknown(verb));
   runtimeProcess.exitCode = 1;
 } else if (own.includes("--help") || own.includes("-h")) {
   console.log(helpOf(verb, chosen));
 } else {
   try {
-    // `pause --eval` reads the run outside once it rests, from here, where `.env.runs` lists the
-    // benchmarks: a peer that holds the run only pauses it.
+    // Evaluate `pause --eval` locally where `.env.runs` defines benchmarks; a remote host holding
+    // the campaign only executes the pause.
     const { passed, reads } = verb === "pause" ? evalOf(args) : { passed: args, reads: [] };
     const { here, away } = await routed(verb, passed);
     for (const [host, words] of away) {
@@ -381,11 +377,11 @@ if (HELP.has(verb)) {
     if ((runtimeProcess.exitCode ?? 0) === 0) await readEach(reads);
   } catch (error) {
     if (!refusal(error)) throw error;
-    // A misuse is answered with the verb's usage, under what was wrong where the verb says it.
+    // Append the verb's usage lines beneath any misuse error message.
     const usage = misuse(error) ? usageOf(verb, chosen.file).map((line) => `usage: ${line}`) : [];
     console.error([error.message, ...usage].filter((line) => line !== "").join("\n"));
     runtimeProcess.exitCode = 1;
   }
 }
-// With the code a verb set: a verb that refused is not a success.
+// Exit explicitly with whatever `exitCode` was set so refused verbs never return 0.
 runtimeProcess.exit();

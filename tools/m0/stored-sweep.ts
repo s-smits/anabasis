@@ -1,6 +1,6 @@
 /**
  * A check program's pack as a campaign stages it (`tools/d2/exam.ts`): its brief, tasks and
- * controls, the contract and public resources it gives a solve, and the backends a seat runs on.
+ * controls, the contract and public resources it supplies to a solve, and the backends a seat runs on.
  */
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "#src/agent/backends/claude.ts";
@@ -20,24 +20,24 @@ import { basename, join } from "#src/meta/path.ts";
 import { type PublicResource, publicResource } from "#src/tools/answer.ts";
 import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
 
-/** The parts of v1's `brief.json` read here. */
+/** Subset of fields read from a `brief.json`. */
 interface PackBrief {
   readonly domain: string;
-  /** What a task may ask and what a practitioner takes as given, where the brief says them: an
-   *  exam drafted from a prompt does (`tools/d2/exam.ts`), and a v1 bundle's brief does not. */
+  /** Domain scope and practitioner conventions when declared (present in prompt-drafted exams from
+   *  `tools/d2/exam.ts`, absent in v1 bundle briefs). */
   readonly scope?: string;
   readonly conventions?: string;
   readonly ruleDecisions: readonly (JsonObject & { id: string; statement: string; visibility: string })[];
   readonly truthChecks: readonly { assertion: string; execution: { publicInputPaths: string[] } }[];
-  /** The objective, where the check program declares one (`src/kernel/contract.ts`). */
+  /** Declared optimisation objective, if any (`src/kernel/contract.ts`). */
   readonly objective?: Objective;
   readonly artifactSchema: readonly JsonObject[];
   readonly designRuleConstants: readonly JsonObject[];
   readonly designRuleSets?: readonly JsonObject[];
 }
 
-/** v1's `controls.json`: answers the checks must accept, and edits of them that a named check must
- *  refuse. */
+/** Structure of `controls.json`: answers that must pass and perturbations that a named check
+ *  must reject. */
 interface PackControls {
   readonly accept: readonly { taskId: string; artifact: JsonValue; files?: ControlFile[] }[];
   readonly reject: readonly {
@@ -48,14 +48,14 @@ interface PackControls {
   }[];
 }
 
-/** The files of a v1 `correctness-model` that are its battery rather than its check program. */
+/** Battery files inside a `correctness-model` directory that are excluded when staging checks. */
 const BATTERY_FILES = new Set(["tasks.json", "controls.json"]);
 
 /**
- * A v1 bundle's check program, copied to `to` without its battery: the verifier hands a check its
- * whole program, and `tasks.json` and `controls.json` hold every task's hidden values and every
- * control. Returns `to`. The copy is made beside it and renamed into place once whole, so a copy
- * cut short in place leaves no folder that a later run takes for the whole program.
+ * Copies a bundle's check program to `to` while omitting its battery files (`tasks.json` and
+ * `controls.json`, which contain hidden task values and controls). Copies into a sibling `.partial`
+ * directory and renames atomically so an interrupted copy never leaves an incomplete check tree
+ * that later runs mistake for a staged program. Returns `to`.
  */
 export function checkProgram(bundle: string, to: string): string {
   const filter = (path: string) => !BATTERY_FILES.has(basename(path));
@@ -66,11 +66,10 @@ export function checkProgram(bundle: string, to: string): string {
   return to;
 }
 
-/** The backends set as the sweep ran its Claude solves, for a model process keeping its state in
- *  `home`; a campaign's `--solver-window` names another window (`tools/d2/setting.ts`). A solve's
- *  cache lives five minutes: over 110,009 recorded solver turns, 0.9% came more than five minutes
- *  after the one before, and the hour-long writes a login gets by default billed 13% more than
- *  five-minute writes would have. */
+/** Builds backend options matching the default Claude configuration with state stored in `home`
+ *  (campaigns may override the compaction window via `--solver-window` in `tools/d2/setting.ts`).
+ *  Uses a 5-minute cache TTL because 99.1% of 110,009 recorded solver turns occurred within five
+ *  minutes of the previous turn, whereas the default 1-hour cache writes billed 13% more. */
 export function sweepOptions(
   home = homedir(),
   window = SWEEP_COMPACT_WINDOW,
@@ -81,7 +80,7 @@ export function sweepOptions(
   };
 }
 
-/** `provider/model`, as a condition names a model, resolved on this host's backends. */
+/** Resolves a `provider/model` identifier against this host's configured backends. */
 export function modelNamed(name: string): Model<Api> {
   const [provider = "", ...id] = name.split("/");
   const model = backends(sweepOptions()).getModel(provider, id.join("/"));
@@ -89,20 +88,19 @@ export function modelNamed(name: string): Model<Api> {
   return model;
 }
 
-/** A v1 check program's pack: its brief, its tasks and their hidden values, and its controls. */
+/** Reads a pack's brief and task list (including hidden values). */
 export function readPack(bundle: string) {
   const read = (file: string): string => readFileSync(join(bundle, file), "utf8");
   return { brief: parseJsonAs<PackBrief>(read(BRIEF_FILE)), tasks: parseJsonAs<Task[]>(read(TASKS_FILE)) };
 }
 
-/** Whether the bundle's tool tree holds a tool on the path a check is given, by its id. */
+/** Returns a predicate reporting whether a tool ID is available on the bundle's verifier `PATH`. */
 export function toolOnPath(bundle: string): (toolId: string) => boolean {
   const path = toolTreeSearchDirs(join(bundle, ".toolchain")).join(":");
   return (toolId) => Bun.which(toolId, { PATH: path }) !== null;
 }
 
-/** A pack's controls, each with the label its author gave it: the accept controls, then the reject
- *  controls, in the file's order. */
+/** Reads a pack's accept and reject controls in file order with their author-assigned labels. */
 export function packControls(bundle: string): Control[] {
   const { accept, reject } = parseJsonAs<PackControls>(readFileSync(join(bundle, CONTROLS_FILE), "utf8"));
   return [
@@ -121,7 +119,7 @@ export function packControls(bundle: string): Control[] {
   ];
 }
 
-/** The contract: the brief's public rule decisions are its rules, and the answer format the draft's. */
+/** Builds a `Contract` from a pack brief's public rule decisions and the draft's answer format. */
 export function contractOf(brief: PackBrief, answerFormat: JsonValue): Contract {
   return {
     answerFormat,
@@ -132,16 +130,16 @@ export function contractOf(brief: PackBrief, answerFormat: JsonValue): Contract 
   };
 }
 
-/** A v1 task as a package: its rule ids are those its family's checks cite. */
+/** Wraps a v1 task as a `TaskPackage`, attaching the deduplicated rule IDs cited by its family's checks. */
 export function packageOf(checks: string, task: Task): TaskPackage {
   const cited = applicableTruthChecks(readBrief(checks), task).flatMap((check) => check.citedDecisionIds);
   return { ...task, ruleIds: [...new Set(cited)], checks };
 }
 
 /**
- * The public resources the sweep's solver read, sed from harness-builder-v4,
- * `7af7315:src/truth/public-resources.ts:118-144` with the row projections of lines 66-111: each row is
- * rebuilt from its declared fields alone, in their order, and a field the row lacks is left out.
+ * Projects a pack brief into the public resources shown to solvers, ported from
+ * `7af7315:src/truth/public-resources.ts:118-144` (with row projections from lines 66-111): each
+ * row retains only its declared fields in order, omitting absent keys.
  */
 export function sweepResources(brief: PackBrief): PublicResource[] {
   const rows = (list: readonly JsonObject[], keys: readonly string[]): JsonObject[] =>
@@ -149,16 +147,15 @@ export function sweepResources(brief: PackBrief): PublicResource[] {
       Object.fromEntries(keys.flatMap((key) => (row[key] === undefined ? [] : [[key, row[key]]]))),
     );
   const named: [string, JsonValue[]][] = [
-    // What a task may ask and what a practitioner takes as given, where the brief says them: an
-    // exam drafted from a prompt states its units and tolerances there, and a solver is held to
-    // nothing it could not read. A v1 bundle's brief says neither, and gets no such file.
+    // Include domain scope and conventions when declared (prompt-drafted exams state units and
+    // tolerances here; v1 bundles omit both and receive no `public-scope` file).
     [
       "public-scope",
       brief.scope === undefined && brief.conventions === undefined
         ? []
         : [{ domain: brief.domain, scope: brief.scope ?? "", conventions: brief.conventions ?? "" }],
     ],
-    // The objective is public with the rules: a solver held to it has to read it.
+    // Expose the declared objective alongside the public rules so solvers know what is measured.
     [
       "public-objective",
       brief.objective === undefined
@@ -172,7 +169,7 @@ export function sweepResources(brief: PackBrief): PublicResource[] {
         publicInputPaths: check.execution.publicInputPaths,
       })),
     ],
-    // public-resources.ts:113-117 and 66-75.
+    // Mirrors `public-resources.ts:113-117` and `66-75`.
     [
       "public-rule-decisions",
       rows(

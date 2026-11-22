@@ -1,7 +1,7 @@
-// Token-level source facts built on TypeScript 7's scanner. The 7.0.2 native port exports no
-// stable parser API (its "." entry is version-only and the AST contract is behind unstable/) so
-// source policy and analysis tools read tokens rather than trees. The scanner skips trivia, so a
-// refused word inside a comment never triggers a source-policy finding.
+// Extracts token-level source facts using TypeScript 7's native scanner. Because the TypeScript
+// 7.0.2 native port does not export a stable parser API (AST internals sit under `unstable/`),
+// source-policy and analysis tools operate on token streams rather than parse trees. Trivia is
+// skipped by the scanner, so banned literals inside comments do not trigger policy findings.
 
 import { SyntaxKind } from "typescript/unstable/ast";
 import { type Scanner, computeLineStarts, createScanner } from "typescript/unstable/ast/scanner";
@@ -131,12 +131,13 @@ export function scanTokens(text: string): TokenFacts {
     open: [],
     spans: [],
   };
-  // Without a parser driving the scanner, the `}` ending a template substitution is a plain
-  // CloseBrace. Re-scan it exactly as the parser does so the rest of the template is not code.
+  // Without a parser driving the scanner, a `}` closing a template substitution scans as a plain
+  // `CloseBraceToken`. Re-scan it as a template token so the remaining template text is not parsed
+  // as code.
   const templateStack: number[] = [];
-  // A token-only scan never re-scans `/` as a regex, and TypeScript 7's scanner does not advance
-  // past a bare `#` inside one (`/##/`), so the gate would sit out its full 3600 s wall. Step over
-  // a position the scanner did not leave instead of looping on it.
+  // Token-only scanning never re-scans `/` as a regular expression, and TypeScript 7's scanner
+  // stalls on a bare `#` inside one (for example `/##/`). Advance past any stalled offset to avoid
+  // an infinite loop.
   let lastEnd = -1;
   for (let kind = state.scanner.scan(); kind !== SyntaxKind.EndOfFile; kind = state.scanner.scan()) {
     const end = state.scanner.getTokenEnd();

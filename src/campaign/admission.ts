@@ -1,49 +1,52 @@
 /**
- * Whether a paid comparison may start: what the campaign's log holds for it (`supplyOf`), set
- * against what it asks for.
+ * Admission rules for paid comparisons and standalone Builder sessions, comparing the campaign
+ * log's current supply (`supplyOf`) against the requirements of the requested move.
  *
- * One function owns every refusal the supply can earn, each under a code (`refusals`), and every
- * reader asks it: a round or a standalone comparison before its first event (`admitComparison`),
- * whether the campaign command started it or a person did by hand, so that no comparison pays for
- * solves on a checker nobody has read; and the decision table, whose rows read the codes and keep
- * no rule of their own (`decide.ts`), since its answer to a refusal is a move rather than a flag.
+ * A single function (`refusals`) owns every supply-based refusal under a structured code, and all
+ * callers consult it: a round or standalone comparison calls `admitComparison` before writing its
+ * first event (whether launched by the campaign loop or manually by the operator, preventing paid
+ * solves on an unread checker), and the decision table (`decide.ts`) reads the refusal codes
+ * without duplicating admission logic, responding with an appropriate move rather than a flag.
  *
- * - `no-held`: the log holds no held-out task to score;
- * - `held-short`: fewer tasks to score than a sweep at the level plus `MARGIN`, which leaves room
- *   for one task set aside and one tie (`comparisonFloor`). Without the margin, a comparison that
- *   sets one task aside can no longer reach the level, and its solves buy no reading;
- * - `unread`: a checker `tools/c/accept.ts` has never read;
- * - `cap-short`: a cap below what the comparison's test alone costs at the mean bill of the log's
- *   finished solves. A comparison its cap cuts short reads `not-scored` and ends the campaign on
- *   its budget, so its solves buy nothing. A log with no finished solve refuses nothing here: the
- *   reserve is then the only rate, and solves bill well under it;
- * - `stopped`: the improvement patience has run out, since as many moves in a row as it allows
- *   could have shown a gain and none did (`stopRule`). The operator may go on by giving a reason
- *   (`--past-stop`), which is logged.
+ * Supply refusal codes:
+ * - `no-held`: the log contains no held-out task available for scoring;
+ * - `held-short`: fewer frontier tasks are available than a minimum sweep at the target
+ *   significance level plus `MARGIN` (`comparisonFloor`), which reserves room for one set-aside
+ *   task and one tie. Without this margin, setting aside a single task makes the significance level
+ *   unreachable and wastes the comparison's solves;
+ * - `unread`: the checker has never been evaluated by `tools/c/accept.ts`;
+ * - `cap-short`: the remaining budget cap is below the expected cost of the comparison's test
+ *   solves alone, priced at the mean billed cost of finished solves in the log. A comparison
+ *   truncated by its cap reports `not-scored` and ends the campaign on budget, yielding no reading.
+ *   When the log contains no finished solves, this check does not refuse, because the per-solve
+ *   reserve is the only available rate and actual solves typically bill well below it;
+ * - `stopped`: the improvement patience is exhausted because the maximum permitted number of
+ *   consecutive eligible moves produced no step (`stopRule`). The operator may override this by
+ *   supplying a logged reason (`--past-stop`).
  *
- * The command asks one more beside them: a start with no dollar cap. A setting other than the one
- * the log's solves ran under is refused as the command opens the campaign (`campaignFor`,
- * `tools/d2/round.ts`).
+ * The command enforces one additional check: a launch must specify a dollar cap. A setting that
+ * conflicts with the campaign's existing solves is refused when the command opens the campaign
+ * (`campaignFor`, `tools/d2/round.ts`).
  *
- * A rehearsal is exempt from all of this, here and by name: its seats are unpaid scripts, and it
- * has to be able to walk any path a seed can be cut to. The refusals a comparison makes of its own
- * terms still hold it (`src/campaign/round.ts`): a scored task that is not held out, a practice
- * task among the scored, a task still waiting for a label.
+ * Rehearsals are exempt from supply admission because their seats are unpaid scripts that must be
+ * able to exercise any seeded path. Term-level refusals (`src/campaign/round.ts`) still apply to
+ * rehearsals: a scored task must be held out, practice tasks cannot be scored, and tasks awaiting
+ * human labels are excluded.
  *
- * A Builder session with no comparison after it (`tools/d2/session.ts`) is asked the same way
- * (`admitSession`), with fewer refusals: it scores nothing, so no held-out task is counted for it.
- * It needs its cap, a read checker where it has practice to judge (the same checks judge practice
- * solves), and a campaign the stop rule has not stopped.
+ * A standalone Builder session (`tools/d2/session.ts`) uses the same admission mechanism
+ * (`admitSession`) with narrower requirements: because it scores no held-out tasks, it checks only
+ * the budget cap, a read checker when practice tasks are present (since the same checks evaluate
+ * practice solves), and the stop rule.
  *
- * A start the log already holds goes on unasked, but only one of the same kind: a comparison that
- * began, or a session that began. A round started under the id of a session that ran alone is
- * asked everything, and a comparison interrupted after its start resumes under its id without
- * being asked again.
+ * A start already recorded in the log of the same kind (a comparison or a session) proceeds without
+ * re-checking admission. A round started under the identifier of a prior standalone session is
+ * checked in full, whereas an interrupted comparison resumes under its own identifier without
+ * re-checking.
  *
- * What only the host or an id can refuse belongs to the command: a comparison that has reported
- * prints its reading and ends, and a session whose id was interrupted is refused. Each solve then
- * waits in the solve queue for the host's load, the budget's reserve and a shared slot (`queued`,
- * `tools/d2/host.ts`).
+ * Host-level and identifier-specific refusals remain with the command: a comparison that has
+ * already reported prints its reading and exits, and an interrupted session identifier is refused.
+ * Each solve then waits in the solve queue for host load, budget reserve, and a shared concurrency
+ * slot (`queued`, `tools/d2/host.ts`).
  */
 import { frozenChecker } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
@@ -54,98 +57,97 @@ import { sizeLines } from "../kernel/size.ts";
 import { taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 
-/** What a log holds for the next comparison. */
+/** Current campaign supply available for the next comparison. */
 export interface Supply {
-  /** The held-out tasks a step may be read on (`frontier`, `poolOf`); those waiting for a person's
-   *  label, which are left out; those the reference answered in every solve of their last two
-   *  comparisons, which are scored only as retained; and the tasks released for practice. */
+  /** Counts of held-out tasks available for scoring (`frontier`, `poolOf`), tasks excluded while
+   *  awaiting a human label, exhausted tasks answered validly by the reference in every solve of
+   *  their last two comparisons (scored only as retained), and tasks released for practice. */
   readonly held: number;
   readonly awaiting: number;
   readonly exhausted: number;
   readonly released: number;
-  /** The fault count of the checker's last reading (`tools/c/accept.ts`), null where the log holds
-   *  no reading, and whether the operator has frozen the checker. */
+  /** Fault count from the most recent checker reading (`tools/c/accept.ts`), null if the checker
+   *  has never been read, together with whether the operator has frozen the checker. */
   readonly faults: number | null;
   readonly frozen: boolean;
-  /** The mean dollars the log's finished solves billed, null where none carries a bill: the rate
-   *  a comparison's test is priced at (`cap-short`). */
+  /** Mean billed cost in dollars across finished solves in the log, or null if none carries a
+   *  bill; used to price the comparison's test solves for `cap-short`. */
   readonly billed: number | null;
-  /** The improvement patience over the comparisons on record (`stopRule`). */
+  /** Improvement patience state computed over the recorded comparisons (`stopRule`). */
   readonly stop: ReturnType<typeof stopRule>;
 }
 
-/** What a comparison asks for. */
+/** Parameters requested for a comparison. */
 export interface Wanted {
-  /** The tasks to draw: `--target`. */
+  /** Target number of tasks to draw (`--target`). */
   readonly target: number;
   readonly solves: number;
-  /** The level a step must clear (`stepOf`, `src/kernel/compare.ts`). */
+  /** Significance level required for a step (`stepOf`, `src/kernel/compare.ts`). */
   readonly level: number;
-  /** Whether a Builder session runs before the comparison. */
+  /** Whether a Builder session precedes the comparison. */
   readonly builds: boolean;
   readonly cap: Cap | null;
-  /** The operator's reason to go on past the stop rule, where one is given. */
+  /** Operator-supplied reason for overriding the stop rule, when provided. */
   readonly pastStop?: string | undefined;
 }
 
-/** The part of a want the supply's refusals read: the comparison's size, its cap and any reason
- *  to go on past the stop rule. */
+/** Subset of comparison parameters inspected by supply refusals: size, budget cap, and any
+ *  stop-rule override. */
 type SizedWant = Pick<Wanted, "target" | "level" | "solves" | "cap" | "pastStop">;
 
-/** What a Builder session with no comparison after it asks for: its cap, and the practice solves
- *  its limits allow. */
+/** Parameters requested for a standalone Builder session: its budget cap, any stop-rule override,
+ *  and the maximum number of practice solves permitted by its limits. */
 interface WantedSession extends Pick<Wanted, "cap" | "pastStop"> {
   readonly practiceSolves?: number | undefined;
 }
 
-/** Who sits in the seats: paid models, or a rehearsal's scripts. */
+/** Execution mode for seats: paid language models or scripted rehearsal stubs. */
 type Seats = "paid" | "scripted";
 
-/** A comparison a command is about to start. */
+/** Specification of a comparison about to be started by a command. */
 interface Starting {
-  /** Its id: a round's session, or a standalone comparison's own. */
+  /** Comparison identifier: either the enclosing round's session id or a standalone comparison id. */
   readonly id: string;
   readonly wanted: Wanted;
   readonly seats: Seats;
-  /** The refusals the comparison makes of its own terms (`refuseTerms`, `round.ts`), which throw.
-   *  They run after admission's and before anything is written, so a command refused by either
-   *  leaves the log as it was. */
+  /** Term-level validation (`refuseTerms`, `round.ts`), which throws on invalid terms. Runs after
+   *  supply admission and before any log event is appended so a refused launch leaves the log
+   *  unchanged. */
   readonly own: () => void;
 }
 
-/** What a start is decided on: every refusal, all thrown together, and the notes its reader gets
- *  where there is none. */
+/** Result of an admission check: all refusals (thrown together when non-empty) and informational
+ *  notes surfaced to the caller when the start is admitted. */
 interface Admission {
   readonly refusals: readonly string[];
   readonly notes: readonly string[];
 }
 
-/** The command an Examiner session runs as: where a refusal sends its reader for more held-out
- *  tasks, and how a stop recognises a running session (`tools/runs/registry.ts`, `tools/runs/stop.ts`). */
+/** Command path for an Examiner session, referenced in refusal messages for held-out task
+ *  shortfalls and used to recognise running sessions (`tools/runs/registry.ts`, `tools/runs/stop.ts`). */
 export const EXAMINE = "tools/d1b/examine.ts";
-/** Room for one task set aside and one tie, kept before paying for a comparison. */
+/** Extra frontier tasks required above the minimum sweep to absorb one set-aside task and one tie. */
 const MARGIN = 2;
 const STARTED = "comparison.started";
-// A round on a checker nobody had read once rejected 22 of 32 solves, 14 on one check, with no way
-// to say whose fault each rejection was.
+// Running a comparison against an unread checker risks unattributable rejections across solves.
 const UNREAD =
   "the campaign's checker has never been read: run tools/c/accept.ts, which puts every control and the do-nothing answer to the checks and says what each check has been seen to do";
 const UNRELEASED = "no task is released: the Builder has nothing to practise on";
-/** The texts of the rows whose condition holds, in order. */
+/** Return the messages from rows whose predicate holds, preserving order. */
 const holding = (rows: readonly (readonly [boolean, string])[]) =>
   rows.flatMap(([holds, text]) => (holds ? [text] : []));
 
-/** The mean dollars the finished solves `solves` billed, null where none carries a bill: the rate
- *  admission prices a comparison's test at. */
+/** Mean billed cost in dollars across finished solves, or null when no solve carries a bill; used
+ *  by admission to estimate the cost of a comparison's test solves. */
 export function billedRate(solves: ReturnType<typeof ended>): number | null {
   const bills = solves.flatMap(({ end }) => (isNumber(end.billed) ? [end.billed] : []));
   return bills.length === 0 ? null : bills.reduce((sum, bill) => sum + bill, 0) / bills.length;
 }
 
-/** A log's supply for the next comparison. */
+/** Fold a campaign log into the current supply for the next comparison. */
 export function supplyOf(events: readonly LogEvent[]): Supply {
-  // The frontier a step is read on, the tasks waiting for a person's label (which `scoredSet`
-  // leaves out), and those the reference closed, which are scored only as retained.
+  // Partition held-out tasks into the scorable frontier, tasks awaiting a human label (excluded by
+  // `scoredSet`), and exhausted tasks scored only as retained.
   const { frontier, awaiting, exhausted } = poolOf(events);
   const reading = events.findLast(({ kind }) => kind === "checker.read")?.data.faults;
   return {
@@ -161,28 +163,29 @@ export function supplyOf(events: readonly LogEvent[]): Supply {
 }
 
 /**
- * The stop rule over a log: how many moves could have shown a gain, how many of those have passed
- * since the last step, and whether that reaches the campaign's improvement patience (`patienceOf`).
+ * Evaluate the improvement stop rule over a campaign log: count how many eligible moves could have
+ * demonstrated a gain, how many have occurred since the last step in the current epoch, and whether
+ * that count reaches the campaign's improvement patience (`patienceOf`).
  *
- * Two kinds of move count. The first is a harness a Builder session changed, compared with one
- * reference, where the comparison tallied a task and either left room (`roomOf`) or read a step.
- * Each such pair counts once, where it first reported, and shows a gain if any of its comparisons
- * read a step (which promotes it): three readings of one harness are still one harness. The count
- * covers the epoch, the moves since the last promotion, so a step restarts it.
+ * Two kinds of move count towards patience:
+ * 1. A candidate harness modified by a Builder session and compared against a reference, where the
+ *    comparison tallied at least one task and either left room (`roomOf`) or read a step. Each
+ *    `(candidate, reference)` pair counts once (at its first report) and counts as a gain if any
+ *    of its comparisons read a step; repeated readings of the same harness do not count multiple
+ *    times. The count resets on each promotion, so patience applies per epoch.
+ * 2. A completed Builder session that left its harness unchanged despite observing at least one
+ *    failed practice solve: the Builder saw a failure and declined to modify the harness. A session
+ *    whose practice solves all passed, or that ran none, had no failure signal to act on and is
+ *    excluded as a supply limitation rather than domain evidence.
  *
- * The second is a whole session that left its harness unchanged although one of its practice solves
- * failed: it was shown a failure and declined to act on it. A session whose practice solves all
- * passed, or that ran none, had nothing to work on; that is a fault of the supply, not evidence
- * about the domain, so it does not count.
+ * Excluded moves: comparisons between harnesses not produced by a Builder session (starter
+ * comparisons and A/A controls); comparisons halted by check defects, truncated by budget, or with
+ * all tasks set aside (which tested nothing); and comparisons that left no room (which require new
+ * tasks rather than a new harness). Comparisons are counted regardless of their setting identifier,
+ * since moving a worktree to a new commit changes the setting id.
  *
- * What does not count: a comparison between two harnesses no session made (a starter comparison
- * or an A/A control); one stopped on its check defects, cut by its cap, or with every task set
- * aside, which tested nothing; and one that left no room, whose answer is other tasks, not another
- * harness. Every comparison on record is read whatever setting id it carries, since the id names
- * the host's code and moving a tree to a new commit changes it.
- *
- * A practice failure the Referee left unresolved is set aside, as a comparison would set it aside,
- * rather than read as a failure the Builder declined.
+ * Practice failures left unresolved by the Referee are set aside, matching comparison semantics,
+ * rather than counted as failures the Builder ignored.
  */
 export function stopRule(events: readonly LogEvent[]) {
   const failed = practiceRan(events).filter(
@@ -190,26 +193,26 @@ export function stopRule(events: readonly LogEvent[]) {
   );
   const wholeSession = ({ kind, data }: LogEvent, harness: "changed" | "unchanged") =>
     kind === "build.finished" && data.changed === (harness === "changed") && !INTERRUPTED.has(data.ended);
-  // The harnesses a whole session changed, or a live one froze as a checkpoint.
+  // Harnesses modified by a completed session or frozen as a checkpoint during a live session.
   const builtHarnesses = new Set(
     events.flatMap((event) =>
       event.kind === "build.checkpoint" || wholeSession(event, "changed") ? [event.data.harness] : [],
     ),
   );
-  // The whole sessions that left their harness unchanged after one of their practice solves failed.
+  // Completed sessions that left the harness unchanged after observing a practice failure.
   const declined = events.flatMap((each, index) => {
     if (!wholeSession(each, "unchanged")) return [];
     const from = events.findLastIndex(
       (began, at) => at < index && began.kind === "build.started" && began.data.session === each.data.session,
     );
-    // A failure before the epoch the session finished in belongs to the reference it replaced.
+    // Failures before the current epoch belong to the superseded reference harness.
     const epoch = events.findLastIndex((one, at) => at < index && one.kind === "harness.promoted");
     return failed.some(({ started }) => started > Math.max(from, epoch) && started < index)
       ? [{ index, step: false }]
       : [];
   });
-  // Each pair of a harness and a reference: where it first reported, whether any of its
-  // comparisons read a step, and whether it counts (a step, or room at any of its readings).
+  // Track each (candidate, reference) pair: its first report index, whether any reading produced a
+  // step, and whether it counts towards patience (a step, or room at any of its readings).
   const pairs = new Map<string, { index: number; step: boolean; counts: boolean }>();
   for (const { index, data } of lastReports(events)) {
     const { old, fresh, versions } = data;
@@ -224,30 +227,30 @@ export function stopRule(events: readonly LogEvent[]) {
   const moves = [...pairs.values().filter(({ counts }) => counts), ...declined].toSorted(
     (one, other) => one.index - other.index,
   );
-  // A promotion starts an epoch, which has its own improvement patience.
+  // Each promotion opens a new epoch with a fresh patience counter.
   const epochAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
   const epoch = moves.filter(({ index }) => index > epochAt);
   const sinceStep = epoch.length - 1 - epoch.findLastIndex(({ step }) => step);
   return { checkpoints: moves.length, sinceStep, stop: sinceStep >= patienceOf(events) };
 }
 
-/** The smallest frontier a paid comparison may start on, which practice releases also leave held. */
+/** Minimum frontier size required to launch a paid comparison and preserved by practice releases. */
 export function comparisonFloor(level: number): number {
   return sweepOf(level) + MARGIN;
 }
 
-/** A comparison's size on a supply: the tasks it would score, the admission floor at its level,
- *  and the solves of its test. */
+/** Effective comparison size on the current supply: tasks to score, admission floor at the target
+ *  significance level, and total test solves across both harnesses. */
 function sizeOf(supply: Supply, wanted: Pick<Wanted, "target" | "level" | "solves">) {
   const scored = Math.min(wanted.target, supply.held);
-  // Keep the margin before a round pays for solves that may tie or be set aside.
+  // Require the margin before paying for solves that may tie or be set aside.
   const floor = comparisonFloor(wanted.level);
-  // The comparison's test alone: both harnesses, on every scored task.
+  // Count test solves across both sides for every scored task.
   return { scored, floor, test: 2 * scored * wanted.solves };
 }
 
-/** What the stop rule says of a start: a refusal where the campaign is stopped and no reason to go
- *  on is given, and a note where one is. */
+/** Evaluate the stop rule for a launch: refuse when patience is exhausted without an override, or
+ *  return an informational note when `--past-stop` is supplied. */
 function stopVerdict({ stop }: Supply, pastStop: string | undefined) {
   const after = `${String(stop.sinceStep)} moves that could have shown a gain`;
   return {
@@ -263,16 +266,16 @@ function stopVerdict({ stop }: Supply, pastStop: string | undefined) {
 }
 
 /**
- * Why a comparison of the size `wanted` names should not start on this supply: each refusal the
- * supply earns, with its code. Two of them are a want of tasks, which the decision table answers
- * with a move: write tasks (`decide.ts`).
+ * Compute all supply-based refusals for a comparison of size `wanted`, each paired with its code.
+ * Task-shortfall codes (`no-held`, `held-short`) are read by the decision table (`decide.ts`) to
+ * trigger task generation.
  */
 export function refusals(supply: Supply, wanted: SizedWant) {
   const { scored, floor, test } = sizeOf(supply, wanted);
   const { cap } = wanted;
   const [size = ""] = sizeLines(scored, wanted.level);
-  // What the test costs if its solves bill as the log's have. Retries and retained tasks only add
-  // to it, so a cap below it is cut short whatever the comparison meets.
+  // Estimate the test cost from the mean billed cost of finished solves. Retries and retained tasks
+  // only increase spend, so a cap below this estimate will truncate the comparison.
   const price = supply.billed === null ? null : test * supply.billed;
   const askForMore = `An Examiner session writes more held-out tasks (examine, or ${EXAMINE} by hand)`;
   const stop = stopVerdict(supply, wanted.pastStop);
@@ -302,7 +305,7 @@ export function refusals(supply: Supply, wanted: SizedWant) {
   return rows.flatMap(([code, holds, why]) => (holds ? [{ code, why }] : []));
 }
 
-/** The checker note both kinds of start get: faults in its last reading that nobody froze. */
+/** Shared checker warning surfaced when the latest reading reported unfrozen faults. */
 function faultNote(supply: Supply): readonly [boolean, string] {
   return [
     (supply.faults ?? 0) > 0 && !supply.frozen,
@@ -310,8 +313,7 @@ function faultNote(supply: Supply): readonly [boolean, string] {
   ];
 }
 
-/** Whether a comparison should start on this supply: the command's refusal, then the supply's,
- *  and the notes its reader gets when it does. */
+/** Compute admission refusals and informational notes for a comparison against the current supply. */
 function comparisonAdmission(supply: Supply, wanted: Wanted): Admission {
   const { scored, floor, test } = sizeOf(supply, wanted);
   const { cap, pastStop } = wanted;
@@ -350,8 +352,8 @@ function comparisonAdmission(supply: Supply, wanted: Wanted): Admission {
   };
 }
 
-/** The same for a Builder session with no comparison after it. With nothing to practise on, no
- *  check judges anything the session does, so an unread checker refuses nothing. */
+/** Compute admission refusals and notes for a standalone Builder session. When no practice tasks
+ *  are released, no check evaluates the session's work, so an unread checker does not refuse. */
 function sessionAdmission(supply: Supply, wanted: WantedSession): Admission {
   const { cap, pastStop, practiceSolves } = wanted;
   const afforded = cap === null ? null : Math.floor(cap.dollars / cap.reserve);
@@ -383,7 +385,7 @@ function sessionAdmission(supply: Supply, wanted: WantedSession): Admission {
   };
 }
 
-/** Whether the log already holds a start of `kind` under `id`, which was admitted when it began. */
+/** Return whether the log already records a start of `kind` under `id`, which was admitted when it began. */
 function alreadyStarted(
   events: readonly LogEvent[],
   id: string,
@@ -393,10 +395,9 @@ function alreadyStarted(
 }
 
 /**
- * What both admissions do with a decision. A start the log already holds, of the same kind, goes
- * on, since it was admitted when it began; otherwise every refusal is thrown together, the start's
- * own terms are asked, and where it goes on past the stop rule the operator's reason is logged
- * under its id, once.
+ * Shared admission runner for comparisons and standalone sessions. A start of the same kind already
+ * present in the log proceeds immediately; otherwise all refusals are thrown together, term-level
+ * validation runs, and any stop-rule override is logged once under `id`.
  */
 function admitStart(
   log: string,
@@ -422,16 +423,16 @@ function admitStart(
   return [...notes];
 }
 
-/** Admission's refusal. It states the campaign's own state in counts and commands and names no
- *  task, so a led Builder may read it; every other error a command throws stays the host's. */
+/** Structured admission refusal. Its message reports only campaign-level counts and commands without
+ *  naming any task, so it is safe to surface to a Builder; all other errors remain internal to the
+ *  host. */
 export class Refused extends Error {}
 
 /**
- * Admit the comparison a command is about to start on the campaign whose log is `log`, and return
- * the notes its reader should get; throw every refusal together where it may not start. A
- * comparison whose start the log already holds goes on, since it was admitted then; a session's
- * start under the same id admits no comparison. A rehearsal is admitted unasked, though its own
- * terms still hold it.
+ * Admit a comparison about to start on `log` and return any informational notes, or throw all
+ * refusals together via `Refused`. A comparison already started in the log proceeds without
+ * re-checking; a prior session start under the same id does not admit a comparison. Scripted
+ * rehearsals bypass supply admission while still enforcing term-level validation.
  */
 export function admitComparison(log: string, starting: Starting): string[] {
   const { id, wanted, seats, own } = starting;
@@ -445,7 +446,7 @@ export function admitComparison(log: string, starting: Starting): string[] {
   }));
 }
 
-/** The same for a Builder session with no comparison after it (`tools/d2/session.ts`). */
+/** Admit a standalone Builder session (`tools/d2/session.ts`), bypassing checks for scripted rehearsals. */
 export function admitSession(
   log: string,
   { id, wanted, seats }: { readonly id: string; readonly wanted: WantedSession; readonly seats: Seats },

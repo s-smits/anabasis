@@ -1,16 +1,15 @@
-/** Controller-owned wall for a seat's commands, and for a check (`src/kernel/verify.ts`), whose
- * cell is its root and whose network is closed.
+/** Host-owned OS isolation wall for seat commands and verification checks (`src/kernel/verify.ts`),
+ *  where each check runs inside its own cell with outbound network access disabled.
  *
- * A command receives an explicit environment rather than an inherited one, and outbound network is
- * open so it can fetch a toolchain into its private home (operator decision). That is what makes
- * the rest of this file necessary: a solver that can install things needs somewhere to install them
- * that is not the draft it is judged on, so a command may write its seat's root, which holds the
- * seat's HOME and its temporary folder, but for the host's own folder in it, and nothing else.
- * The host's shared temporary folders, `/tmp`, `/var/tmp` and Darwin's per-user one, are closed to
- * it whole. The host home and the repository stay closed, except for the
- * runtime and toolchain roots the enclosing solve policy reopens read-only so an installed
- * interpreter can still find itself, and for the tool tree, which a tree inside the seat's root
- * has to really lie inside that root to be (`commandReadAllows`).
+ * Commands receive an explicit environment rather than inheriting the host environment, and seat
+ * commands keep outbound network access open so they can install domain toolchains into their
+ * private home directory. To prevent installed packages from polluting the evaluated draft, a
+ * command may write only within its seat root (which holds its private `HOME` and temporary
+ * directory), excluding the host-owned subdirectory within that root. Shared host temporary
+ * directories (`/tmp`, `/var/tmp`, and Darwin's per-user temporary directory) are closed. The
+ * host home directory and repository remain closed except for the runtime and toolchain roots
+ * reopened read-only by the enclosing solve policy and the harness's tool tree, which must resolve
+ * inside the seat root when located there (`commandReadAllows`).
  */
 import { existsSync, readdirSync, realpathSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { tmpdir } from "../meta/os.ts";
@@ -46,28 +45,25 @@ import {
 } from "./policy.ts";
 
 /**
- * The whole environment a command receives, built from fixed settings, scratch paths and the host
- * toolchain locations below. It is built rather than filtered: the host's environment holds the
- * provider's credential, `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`
- * (`src/agent/backends/claude.ts`), so a command that inherited the parent environment could simply print
- * it. No credential-removal filter is trusted to stand between the two.
+ * Complete environment passed to a confined command, constructed from fixed settings, scratch
+ * directories, and host toolchain locations. The environment is built from scratch rather than
+ * filtered because the host process holds provider credentials (`CLAUDE_CODE_OAUTH_TOKEN` or
+ * `ANTHROPIC_API_KEY`, `src/agent/backends/claude.ts`), and an inherited environment would let a
+ * confined command print them directly.
  *
- * `HOME` points at the session home rather than at the work tree, because the write deny is
- * absolute outside the writable roots: a toolchain writing its cache to the real home would be
- * refused, and that refusal reads to the solver as a broken tool rather than as the isolation doing
- * its job. Pointing `HOME` at the work tree instead makes every temporary file a build writes a
- * candidate draft file.
+ * `HOME` points to the session home instead of the working tree: writes outside writable roots are
+ * denied, so pointing `HOME` at the real home causes toolchain caches to fail with permission
+ * errors, whereas pointing `HOME` at the working tree mixes build artefacts into candidate drafts.
  *
- * `TMPDIR` points at the seat's temporary folder, beside the home on its root. It lasts the seat, as
- * the home does, and keeps a build's leftovers out of the home that an install has to survive in;
- * the seat's cap counts them.
+ * `TMPDIR` points to the seat's temporary directory beside its home. It persists for the seat's
+ * lifetime and keeps build artefacts separate from installed packages in `HOME`.
  *
- * `hostToolchainEnv` adds the names a toolchain uses to find its own installation, which moving
- * `HOME` otherwise hides: `RUSTUP_HOME`, naming a real directory the command may read and may not
- * write, absent where the directory is. Python's user base stays in the home, where pip can install.
+ * `hostToolchainEnv` supplies variables that toolchains use to locate host installations when
+ * `HOME` is relocated (for example, `RUSTUP_HOME` pointing read-only to an existing installation).
+ * Python's user base remains under the seat's `HOME` so `pip` can install packages locally.
  *
- * The four fixed names sit on the type rather than only in the body, so a reader sees what a
- * command gets without opening the function and a caller cannot quietly lose one.
+ * Declaring the four required keys on this interface makes the contract visible at the type level
+ * and prevents callers from omitting any of them.
  */
 interface CommandIsolationEnvironment extends EnvValues {
   PATH: string;
@@ -76,62 +72,58 @@ interface CommandIsolationEnvironment extends EnvValues {
   LANG: string;
 }
 
-/** Executables under these directory names, a bounded depth below the tool tree. */
+/** Directory names searched for executables up to a bounded depth below a harness tool tree. */
 const TOOL_TREE_BIN_DIRS = new Set(["bin", "shims", "sbin"]);
 const TOOL_TREE_MAX_DEPTH = 5;
 const TOOL_TREE_MAX_DIRS = 4000;
 
 interface CommandIsolationPolicy {
-  /** Darwin's Seatbelt rules, staged as a file. Null on Linux, whose launch is argv alone, built
-   *  from the fields below by `stageCommandIsolation`. */
+  /** Rendered Darwin Seatbelt profile staged as a file, or `null` on Linux where
+   *  `stageCommandIsolation` encodes the policy directly as `bwrap` arguments. */
   profile: string | null;
   mechanismPath: string;
-  /** Whether the command may reach the network; Darwin's profile already says so. */
+  /** Whether outbound network access is enabled; on Darwin this is also encoded in `profile`. */
   network: boolean;
-  /** The seat's root, in both path forms: what a command may write. */
+  /** Canonical forms of the seat root that commands are permitted to write. */
   scratchRoots: string[];
-  /** The host's own folder in the root, in both path forms: what a command may read there and may
-   *  not write. */
+  /** Canonical forms of the host-owned subdirectory inside the seat root (readable, not writable). */
   keptRoots: string[];
-  /** Exact host runtimes and toolchains reopened read-only inside a closed home or repository. */
+  /** Exact host runtime and toolchain paths reopened read-only inside denied roots. */
   readAllowRoots: string[];
-  /** What stays closed under the open read default. Darwin carries these inside `profile` as
-   *  rules; Linux has no profile text, so `stageCommandIsolation` overmounts each one from here. */
+  /** Paths denied under the allow-by-default read posture. Darwin embeds these in `profile`;
+   *  Linux overmounts each path in `stageCommandIsolation`. */
   readDenies: string[];
-  /** The complete non-secret environment given to this command. Linux serialises it as bwrap
-   *  `--setenv` entries after its mandatory `--clearenv`; Darwin passes the same map to pi. */
+  /** Complete non-secret environment passed to the command. Linux emits these as `bwrap --setenv`
+   *  flags after `--clearenv`; Darwin passes the map directly to the runner. */
   environment: CommandIsolationEnvironment;
 }
 
 /**
- * A seat's folders, as its commands' wall names them: one root a command writes, but for the
- * host's own folder in it.
+ * Directory layout for a confined seat: a single writable root containing `home` and `temp`,
+ * plus a read-only `kept` directory owned by the host.
  *
- * `home` is where an install lands and where `HOME` points, kept across the seat's commands. `temp`
- * is where `TMPDIR` points. `kept` is the host's: it writes there, and a command reads there, what
- * must not follow a link a command made. pi writes a long output there while the command runs, so
- * a check before the write could not close that race; a command that cannot write the folder can
- * make no link in it.
+ * `home` (`HOME`) persists installed tools across commands in the seat, and `temp` (`TMPDIR`)
+ * holds temporary files. `kept` stores host-written artefacts (such as truncated command outputs)
+ * that commands may read without modifying; preventing writes inside `kept` closes symlink races
+ * while output is streamed.
  */
 interface CommandDirectories {
   root: string;
   kept: string;
   home: string;
   temp: string;
-  /** The adopted harness's own `.toolchain` tree, read-only and first on PATH; null when the
-   *  bundle has none. */
+  /** Adopted harness `.toolchain` directory placed first on `PATH` and mounted read-only, or
+   *  `null` when the harness provides no tool tree. */
   toolTree?: string | null;
 }
 
 /**
- * The tool tree's program directories: `bin` first, then every `bin`, `shims` or `sbin` below it in
- * breadth-first, code-unit order.
+ * Returns executable search directories under `toolTree`: `bin` first, followed by all `bin`,
+ * `shims`, and `sbin` subdirectories in breadth-first, code-unit order.
  *
- * The check inventory, the check cell and the Built shell all read this one list. When only the
- * inventory searched below `bin`, a check could name `.toolchain/home/.local/bin/x` and be
- * satisfied while the solver's shell found no `x` and fell back to the host's `python3`, which then
- * lacked the modules the install had put in the other tree. Sharing the list is what makes "the
- * tool a check names" and "the tool the solver's shell finds" the same tool.
+ * The verification inventory, verifier cell, and solver shell all share this traversal so that
+ * binaries installed under nested tool-tree paths resolve identically during verification and
+ * solving rather than falling back to a host interpreter lacking installed packages.
  */
 export function toolTreeSearchDirs(toolTree: string): string[] {
   if (!existsSync(toolTree)) return [];
@@ -149,25 +141,21 @@ export function toolTreeSearchDirs(toolTree: string): string[] {
         .map((entry) => join(dir, entry.name));
       for (const child of children.toSorted(compareCodeUnits)) queue.push({ dir: child, depth: depth + 1 });
     } catch {
-      // An unreadable directory holds no program this search can name.
+      // Skip unreadable directories that cannot yield executable paths.
     }
   }
   return found;
 }
 
 /**
- * The one search path a candidate's tools run under, in the Builder shell and in the verifier cell
- * alike. The harness's own tool tree goes first, because a Builder that installed `arduino-cli`
- * there meant that copy and not whatever version the host happens to carry. The cell shares the
- * same path because a script whose shebang is `#!/usr/bin/env python3` resolves its interpreter at
- * run time rather than at install time: wheels installed under the shell's `python3` fail
- * wholesale in a cell that inherited the launcher's PATH and found a different version first.
+ * Builds the `PATH` shared by the Builder shell, solver shell, and verifier cell. The harness's
+ * own tool tree precedes host directories so harness-installed binaries take precedence over host
+ * versions, and `#!/usr/bin/env python3` scripts resolve to the same interpreter at verification
+ * time as at install time.
  *
- * Next comes the folder that holds the executable the host runs on, its real path, so that a
- * command's `bun` is that executable wherever it is installed, on every system; the read grants
- * leave out a prefix under `/usr` or `/opt`, so an older Bun there would otherwise be a command's
- * `bun`, and start with no environment of the seat's: no `TMPDIR`, `/tmp` refused, and no `bun` on
- * its PATH. `executable` and `fallback` are the host's own but where a test names others.
+ * The real directory of the host's active runtime executable (`capturedExecPath`) comes next so
+ * `bun` resolves to the exact binary running the host rather than an older copy under `/usr` or
+ * `/opt`. `executable` and `fallback` default to host values and are injectable for tests.
  */
 function commandSearchPath(
   toolTree: string | null,
@@ -185,36 +173,31 @@ function commandIsolationEnvironment(dirs: CommandDirectories): CommandIsolation
     HOME: dirs.home,
     TMPDIR: dirs.temp,
     LANG: "en_US.UTF-8",
-    // Homebrew's Python marks itself as managed by its package manager (PEP 668), and its pip then
-    // refuses every install, `--user` among them. The wall refuses a write to Homebrew's folders
-    // anyway, so pip installs into the seat's own home and nothing on the host changes.
+    // Homebrew marks its Python as externally managed (PEP 668), causing `pip` to refuse even
+    // `--user` installs. Because the wall blocks writes to Homebrew directories, setting this flag
+    // allows `pip` to install into the seat's private `HOME` without modifying the host.
     PIP_BREAK_SYSTEM_PACKAGES: "1",
   };
 }
 
 /**
- * Runtime and toolchain roots to reopen inside the directories a denial closed. Only paths a read
- * denial actually covers are kept, since every other host path is readable already under the open
- * read rule and re-allowing it would add a rule that changes nothing. The adopted tool tree is added
- * explicitly, as no list above names it: it lies under the repository or a stored pack, both closed
- * whole. Both operating systems use this list, and Darwin emits it after the denials so the later,
- * more specific rule decides.
+ * Computes runtime and toolchain paths to reopen read-only inside denied roots. Only paths covered
+ * by a read denial are included, avoiding redundant rules under the open-read default. The adopted
+ * harness tool tree is added explicitly because it typically resides under the repository or a
+ * stored pack, both of which are denied as a whole.
  *
- * A tool tree inside the seat's root, the Builder's `harness/.toolchain`, is one the seat's own
- * commands write, and it is reopened only where its real path lies inside that root too: reopened
- * wherever it led, a Builder that linked `harness/.toolchain` to the repository, another worktree,
- * a pack or the operator's home would read that root through the wall. A tree outside the seat's
- * root is the host's or a pack's, a kept state's link to the tree beside it or a stored bundle's,
- * and is reopened with what it links to.
+ * When `toolTree` lies lexically inside the seat root (such as the Builder's `harness/.toolchain`),
+ * it is reopened only if its resolved real path also stays inside that root; otherwise a symlink
+ * pointing to the repository, a sibling worktree, a pack, or the operator's home would bypass the
+ * wall. Tool trees outside the seat root are host-owned kept harnesses or stored bundles and are
+ * reopened with their resolved targets.
  *
- * `manifests` are the package.json paths between the tree and the root that closes it, which
- * Darwin reopens one by one: Node takes a `.js` program's module type from the nearest one above
- * it, and a refused read of one ends the program at startup, so every program of a kept tree with
- * none of its own would die so on the checkout's. That one
- * stays closed: opened, its `"type": "module"` would make the same program an ES module, which it
- * was not on the Builder's bench outside the checkout. A campaign's folder holds an empty one
- * (`openCampaign`), so the walk ends there as it ends on the bench with none. Linux needs none: its
- * overmount leaves every one of them absent.
+ * `manifests` lists `package.json` paths between the tool tree and its enclosing denied root.
+ * Darwin reopens these individually because Node resolves `.js` module type by walking ancestor
+ * `package.json` files and exits on `EPERM`. The repository's own `package.json` remains closed so
+ * its `"type": "module"` does not alter CommonJS scripts from a kept harness; each campaign
+ * directory contains an empty `package.json` (`openCampaign`) to stop that walk. Linux requires no
+ * manifest exceptions because its tmpfs overmounts hide ancestor files completely.
  */
 function commandReadAllows(
   base: SolveIsolationPolicy,
@@ -226,10 +209,8 @@ function commandReadAllows(
     ...nodeRuntimeReadRoots(),
     ...darwinToolchainInstallRoots(),
   ]).filter((path) => readDenies.some((root) => covers(root, path)));
-  // The harness's tool tree lies under a closed root, the campaign's states in the repository, so
-  // without this the Builder's own install answers `command not found`. Allowing it by path after
-  // the root's deny restores that one tree and leaves the rest of the root closed. A tree a Builder
-  // has yet to install is left out, as bwrap refuses to bind a missing path.
+  // Reopen an existing harness tool tree after its enclosing denied root so harness-installed
+  // tools remain executable. Omit non-existent trees because `bwrap` refuses to bind missing paths.
   const toolTree = dirs.toolTree ?? null;
   const tree = toolTree === null || !existsSync(toolTree) ? null : resolve(toolTree);
   const seated = tree !== null && canonicalForms(dirs.root).some((root) => containsPath(tree, root));
@@ -249,47 +230,33 @@ function darwinCommandProfile(
   keptRoots: string[],
   dirs: Pick<CommandDirectories, "root" | "toolTree">,
 ) {
-  // The seats' parent and the host's own scratch beside it. Reads are open by default, so both are
-  // denied here and this seat's root is re-allowed after them.
+  // Deny the shared seat parent and host scratch root; this seat's own root is reopened below.
   const closed = hostRoots();
   const readDenies = [...new Set([...base.deniedReadRoots, ...closed])].toSorted();
   const { roots: readAllows, manifests } = commandReadAllows(base, readDenies, dirs);
-  // The host's shared temporary folders. `mktemp` and Python follow `TMPDIR`, which is the seat's
-  // own folder, and what a command spells as `/tmp/...` outright landed in a folder every seat of
-  // every campaign on the host shares, so reference solves of one campaign could run a program
-  // another campaign's Builder installed there. Linux gives each command an empty `/tmp` of its
-  // own; a Seatbelt rule cannot, so Darwin closes it, and such a write is refused where Linux would
-  // keep it private. `/var/tmp` is the same, since an old run's folder there can hold a held-out
-  // task's text and a graded solve of it. The per-user one, `confstr`'s, is the same
-  // again but for the files and folders `mktemp` and Apple's `/usr/bin` shims make in it, which
-  // take it whatever `TMPDIR` says (`userTempRules`).
+  // Shared host temporary directories (`/tmp`, `/var/tmp`, and Darwin's per-user temporary
+  // directory). Unlike Linux, which mounts a private tmpfs over `/tmp`, Seatbelt cannot create a
+  // per-command `/tmp`, so Darwin denies shared temporary directories outright to prevent
+  // cross-campaign leakage through hardcoded `/tmp` paths or stale run directories. Narrow
+  // exceptions for `mktemp` and Apple `/usr/bin` shims are added via `userTempRules`.
   const userTemp = userTempRules();
   const sharedTmp = canonicalRoots(["/tmp", "/var/tmp", ...userTemp.roots]);
   const profile = [
-    // Anthropic's sandbox-runtime base (`seatbelt-base.ts`): nothing is allowed but what it names,
-    // so a command neither signals a process outside its wall (Linux gives each command a pid
-    // namespace of its own) nor reaches a Mach service the base leaves out.
+    // Deny-by-default sandbox-runtime base (`seatbelt-base.ts`), blocking cross-process signals
+    // and unlisted Mach services.
     ...seatbeltBaseRules(base),
-    // The base allows `process-info*` on the command's own processes, which leaves another's to the
-    // default, and under that default a walled `sysctl(KERN_PROCARGS2)` still returned another
-    // process's command line, as a probe showed: another seat's `bash -c` text, a held-out task's
-    // among them, is what that would read. Named outright, the deny holds.
+    // Explicitly deny `process-info*` on other processes: under the default rule, a confined
+    // `sysctl(KERN_PROCARGS2)` can still inspect another seat's command line.
     "(deny process-info* (target others))",
-    // launchd answers every process of the user, walled or not: a walled `launchctl kickstart`
-    // started a job the command had not made, unconfined, and `launchctl disable` switched it off
-    // (as a probe showed). No profile operation gates those requests, so the program that sends
-    // them is refused, and the system kills a copy; one speaking launchd's own protocol is heard.
+    // Block `/bin/launchctl` so a confined process cannot kickstart or disable user launchd jobs.
     '(deny process-exec* (literal "/bin/launchctl"))',
-    // Reads open by default, with the repository and its worktrees, a stored pack and the home
-    // closed. All of it arrives through `solveIsolationPolicy`, so there is no second list here to
-    // fall out of step. Writes stay closed but for the seat's root and a few devices, below.
+    // Allow reads by default, then deny the repository, sibling worktrees, stored packs, and home
+    // via `solveIsolationPolicy`. Writes remain denied except for the seat root and device nodes.
     "(allow file-read*)",
-    // A seat's command may reach the network, so it can install what its task needs; a check may
-    // not (`src/kernel/verify.ts`). A Unix socket is a door to whatever listens on it, unconfined:
-    // an ssh control master's runs commands on the hosts it reaches, and a walled connect reached a
-    // VPN daemon's control socket and the print server's (as a probe showed). So with the network
-    // a command reaches the one the resolver answers on, without which no name resolves, and with
-    // or without it those in its own root, as a check on Linux does; the later rule wins.
+    // Seat commands may access the network to install dependencies; verification checks may not
+    // (`src/kernel/verify.ts`). Outbound Unix sockets outside the seat root are denied to block
+    // access to unconfined host daemons (such as SSH control masters), except `mDNSResponder` for
+    // DNS resolution when networking is enabled.
     ...(base.network
       ? [
           "(allow network*)",
@@ -301,48 +268,38 @@ function darwinCommandProfile(
       `(allow network-bind (local unix-socket (subpath ${capturedJsonStringify(root)})))`,
       `(allow network-outbound (remote unix-socket (subpath ${capturedJsonStringify(root)})))`,
     ]),
-    // The host's shared temporary folders, closed whole: what another process left there is
-    // neither read nor run, and a command leaves nothing there for the next. Their listings are
-    // every tenant's names, which Linux hides under a tmpfs. The seat's root, which lies in the
-    // per-user one, is opened again further down, after it, and so is a tool tree there.
+    // Deny shared host temporary directories so commands cannot list, read, or write files created
+    // by other processes. The seat root and tool tree are reopened by later rules below.
     ...sbRule("deny file-read* file-read-metadata file-write*", "subpath", sharedTmp),
     ...userTemp.rules,
-    // But for the file Apple's `diff` stages a pipe in, `/tmp/diff.` and eight random characters,
-    // whatever `TMPDIR` says: without it every `diff <(a) <(b)` fails, which seats write often and
-    // Linux runs. A command that cannot list `/tmp` finds
-    // another's such file only by its random name, as in `userTempRules`.
+    // Permit the random-named regular files (`/tmp/diff.XXXXXXXX`) that Apple's `diff` creates for
+    // process substitution (`diff <(a) <(b)`) regardless of `TMPDIR`. Because `/tmp` cannot be
+    // listed, another process's file is only guessable by its eight random characters.
     `(allow file-read* file-read-metadata file-write* (require-all (regex #"^/private/tmp/diff[.]${"[A-Za-z0-9]".repeat(8)}$") (vnode-type REGULAR-FILE)))`,
     ...sbRule("allow file-read-metadata", "literal", ["/tmp", "/private/tmp"]),
     ...sbRule("deny file-read*", "subpath", readDenies),
     ...traversalMetadataRules(readAllows),
-    // Seatbelt prefers the rule naming the more specific operation over the one naming the family,
-    // whatever their order, so a `file-read*` allow on its own leaves the pattern denies above
-    // (which name `file-read-metadata` outright) in charge of `stat`: `cat .toolchain/bin/own-tool`
-    // prints the file while `ls` of its directory and the shell's PATH search over it answer
-    // "Operation not permitted". Naming both operations in the allow puts this rule back in charge.
+    // Seatbelt gives precedence to more specific operations over wildcard families regardless of
+    // rule order. Naming both `file-read*` and `file-read-metadata` ensures this allow overrides
+    // earlier `file-read-metadata` denials so `stat`, `ls`, and `PATH` lookups succeed on allowed
+    // tool trees.
     ...sbRule("allow file-read* file-read-metadata", "subpath", readAllows),
     ...sbRule("allow file-read* file-read-metadata", "literal", manifests),
-    // The parent of every seat's root and the host's own scratch, closed for the same three
-    // operations the temporary grant above opened. `file-read-metadata` is named outright for the
-    // same specificity reason: without it, one seat's `stat` of another seat's file reports its size
-    // while `cat` of the same file is refused.
+    // Deny the seat parent and host scratch root for all three operations; naming
+    // `file-read-metadata` explicitly prevents `stat` from leaking metadata across seats.
     ...sbRule("deny file-read* file-read-metadata file-write*", "subpath", closed),
-    // A command may read and create files under its seat's root, and outside it and the shared
-    // temporary roots above it may create them nowhere. This allow names the same operations as the
-    // deny immediately above, which makes order the tie-break, and being later it wins.
+    // Reopen this seat's root for reading and writing. Matching the operation set of the denial
+    // immediately above lets rule order break the tie so this later allow takes precedence.
     ...sbRule("allow file-read* file-read-metadata", "subpath", scratchRoots),
     ...sbRule("allow file-write*", "subpath", scratchRoots),
-    // But for the host's own folder in it, which a command reads and does not write, by the same
-    // tie-break: later than the allow, this deny wins. A subpath names the folder itself, so a
-    // command can neither remove it nor put a link in its place.
+    // Re-deny writes to the host-owned subdirectory inside the seat root. Using `subpath` also
+    // covers the directory itself, preventing removal or symlink replacement.
     ...sbRule("deny file-write*", "subpath", keptRoots),
-    // A resolver walks every ancestor of the file it opens, so each ancestor needs `lstat` even
-    // where the directory itself stays closed. Without this, `node t.js` fails on the scratch
-    // parent and no script on disk runs at all.
+    // Permit `lstat` on ancestor directories of `scratchRoots` so runtimes such as Node can
+    // resolve real paths without making parent directories listable.
     ...traversalMetadataRules(scratchRoots),
-    // The devices sandbox-runtime keeps writable (`SANDBOX_OWN_WRITE_PATHS`), and a descriptor the
-    // command already holds by its `/dev/fd` name, which Bash's output substitution, `>(cmd)`, opens.
-    // Opening `/dev/fd/N` duplicates a descriptor already open, so it reaches nothing new.
+    // Permit writes to standard device nodes (`SANDBOX_OWN_WRITE_PATHS`) and already-open
+    // `/dev/fd/N` descriptors used by Bash process substitution (`>(cmd)`).
     ...sbRule("allow file-write*", "literal", [
       "/dev/stdout",
       "/dev/stderr",
@@ -358,9 +315,9 @@ function darwinCommandProfile(
   return { profile, readAllows };
 }
 
-/** The wall a seat's commands run under. It is a pure function of the seat's folders and its tool
- *  tree, and taken for each command, because a Builder's tool tree grows during its session and its
- *  preview runs another harness's under the same seat. */
+/** Constructs the per-command isolation policy from the base solve policy and seat directories.
+ *  Recomputed per command because a Builder's tool tree may change during its session and previews
+ *  may temporarily mount another harness's tool tree under the same seat. */
 export function commandIsolationPolicy(
   base: SolveIsolationPolicy,
   dirs: CommandDirectories,
@@ -377,18 +334,12 @@ export function commandIsolationPolicy(
     return { ...shared, profile, readAllowRoots: readAllows, readDenies: [] };
   }
   /*
-   * What the Linux command wall overmounts under its open read default: the session's
-   * denied roots, which are the repository, its other worktrees, a stored pack and the operator
-   * home; and the shared temporary directories. The temporary directory holds every
-   * other seat's root and every concurrent verification's staged workdir, so it is hidden whole
-   * and this seat's root is bound back inside it: a separation the Darwin profile spends two rules
-   * on only because a Seatbelt deny cannot be reopened by a mount.
-   *
-   * `TMPDIR` points at a tree bound back inside the overmount, so hiding the shared directory costs
-   * a toolchain nothing. `/tmp` is hidden the same way even when the host's temporary directory is
-   * elsewhere, because the overmount is an empty writable tmpfs: that is what gives `mktemp` and a
-   * build script spelling `/tmp` a private directory rather than the read-only root bind, where a
-   * `mkdir` answers "Read-only file system".
+   * Paths overmounted with empty tmpfs on Linux under the open-read default: the base denied roots
+   * (repository, sibling worktrees, stored packs, and operator home) plus shared temporary
+   * directories. Overmounting the shared temporary directory hides other seats' roots and
+   * concurrent verification cells, while the current seat root is bound back inside it. Mounting an
+   * empty writable tmpfs over `/tmp` also gives tools that hardcode `/tmp` a private writable
+   * directory instead of failing on the read-only root bind.
    */
   const readDenies = [...new Set([...base.deniedReadRoots, tmpdir(), "/tmp", "/var/tmp"])].toSorted();
   return {
@@ -399,45 +350,38 @@ export function commandIsolationPolicy(
   };
 }
 
-/** Escapes one argument for a POSIX shell's command line, which `/bin/bash` reads the same way. A
- *  single quote ends the literal, so the quote itself is spliced back in outside it: the standard
- *  transformation. */
+/** Quotes a single argument for POSIX shells and `/bin/bash` using single-quote escaping. */
 export function shellQuote(value: string): string {
   return `'${value.replaceAll("'", String.raw`'\''`)}'`;
 }
 
 /**
- * The command line that applies these rules to one shell command, and the profile file it reads.
+ * Renders the shell command line that executes `command` under `policy`, staging Darwin's Seatbelt
+ * profile at `profileFile`.
  *
- * The profile is staged as a file rather than passed with `-p` because its rules contain newlines
- * and would otherwise have to survive a second round of shell quoting. `profileFile` must sit
- * outside the seat's root and every other writable location, since a command that could rewrite
- * the rules would be choosing the wall a later command in the same seat runs under. `exec` replaces
- * the outer shell, so nothing of the controller's process survives into the command beyond the file
- * descriptors pi opened to capture its output.
+ * Staging the profile avoids a second round of shell quoting for multiline rules. `profileFile`
+ * must reside outside the seat root and all writable directories so a confined command cannot
+ * modify its own policy for subsequent commands. Prefixing with `exec` replaces the outer shell so
+ * no host shell process remains inside the invocation.
  *
- * Seatbelt has no namespace to end what a command leaves behind, so the host ends the command's
- * process group and its descendants after it (`endHolders`, `src/wall/seat-root.ts`).
- *
- * Inside the wall the command runs in the system's `/bin/bash`, 3.2.57 on macOS and 5.1 on Linux,
- * as durable's worker does a seat's shell commands (`src/tools/env.ts`): pi names its tool bash and
- * models write Bash. Under `/bin/sh`, 16 of 29,694 recorded solver commands failed on shell syntax
- * that Bash parses (7 process substitutions, 4 `time ( … )` under Linux's dash, 5 others). The
- * system's bash is the operator's choice; nothing is shipped or installed for it.
+ * Because Darwin Seatbelt provides no PID namespace, the host terminates the command's process
+ * group and descendants on exit (`endHolders`, `src/wall/seat-root.ts`). Commands execute under
+ * `/bin/bash` rather than `/bin/sh` (matching `src/tools/env.ts`) because models write Bash syntax
+ * such as process substitution and grouped `time` pipelines.
  */
 export function stageCommandIsolation(
   policy: CommandIsolationPolicy,
   profileFile: string,
   command: string,
 ): string {
-  // Every argument is quoted, so a scratch path with a space cannot split into two.
+  // Quote every argument so scratch paths containing spaces cannot split into multiple tokens.
   return `exec ${isolatedArgv(policy, profileFile, ["/bin/bash", "-c", command]).map(shellQuote).join(" ")}`;
 }
 
 /**
- * The argv that runs `argv` under these rules, with Darwin's profile staged at `profileFile`. A
- * seat's command takes it through the line above, and a check takes it bare (`src/kernel/verify.ts`),
- * where the verifier ends the check's process group itself.
+ * Returns the argument vector that runs `argv` under `policy`, staging Darwin's profile file at
+ * `profileFile` when applicable. Seat commands invoke this via `stageCommandIsolation`; verification
+ * checks invoke it directly (`src/kernel/verify.ts`) and manage process-group termination themselves.
  */
 export function isolatedArgv(
   policy: CommandIsolationPolicy,
@@ -445,14 +389,10 @@ export function isolatedArgv(
   argv: readonly string[],
 ): string[] {
   if (policy.profile === null) {
-    // bwrap rules are argv with no newlines, so nothing is staged. The order is itself the policy,
-    // as on Darwin: the host opens for reading, the protected paths are overmounted, the seat's
-    // root is bound back writable and the host's folder in it read-only over that, and only then
-    // do the host root and the overmounts over product trees go read-only, so a write there fails
-    // with EROFS instead of landing on the host or vanishing into an overmount. The two overmounts
-    // holding the seat's root, `/tmp` and the host tmpdir, stay writable, as Darwin lets `mktemp`
-    // through. Each remount touches one mount, which is why the overmounts are named beside the
-    // root and why the binds, mounted earlier, are unaffected.
+    // On Linux, argument order encodes the mount policy: open host reads, overmount denied paths,
+    // bind back allowed tool trees and the writable seat root, bind the host-owned subdirectory
+    // read-only, then remount `/` and non-enclosing overmounts read-only so writes fail with EROFS.
+    // Overmounts enclosing the seat root (`/tmp` and host `tmpdir`) remain writable for `mktemp`.
     return [
       policy.mechanismPath,
       ...bwrapOpenReadArgs({ network: policy.network }),
@@ -468,11 +408,9 @@ export function isolatedArgv(
       ...argv,
     ];
   }
-  // The staged file is read-only and cannot be overwritten in place; removing it first is what lets
-  // the same policy be restaged, with the same rules either way since its bytes are a pure function
-  // of the policy.
+  // Remove the read-only staged file before rewriting so identical policies can be restaged cleanly.
   rmSync(profileFile, { force: true });
-  // The rendered rules carry no trailing newline, and a staged file ends in one.
+  // Append a trailing newline to the rendered profile rules.
   writeFileSync(profileFile, `${policy.profile}\n`, { mode: 0o400 });
   return [policy.mechanismPath, "-f", profileFile, ...argv];
 }

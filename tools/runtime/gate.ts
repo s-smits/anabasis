@@ -288,15 +288,18 @@ export function addedLine(
   return line;
 }
 
+/** The transpiler that reads `file`, none for a file that is not a script. */
+const transpilerOf = (file: string): Bun.Transpiler | undefined =>
+  /\.[cm]?[jt]sx$/u.test(file) ? TRANSPILERS.tsx : /\.[cm]?[jt]s$/u.test(file) ? TRANSPILERS.ts : undefined;
+
 /** Resolve file's repository imports relative to root using Bun's resolver. Exclude packages and
  *  runtime modules such as node:fs and bun:test. Files without a supported transpiler have no imports. */
 export function importsOf(root: string, file: string): string[] {
   const known = IMPORTS.get(join(root, file));
   if (known !== undefined) return known;
-  const loader = /\.[cm]?[jt]sx$/u.test(file) ? "tsx" : /\.[cm]?[jt]s$/u.test(file) ? "ts" : null;
-  let found: { path: string }[] = [];
+  let found: { path: string }[];
   try {
-    if (loader !== null) found = TRANSPILERS[loader].scanImports(readFileSync(join(root, file), "utf8"));
+    found = transpilerOf(file)?.scanImports(readFileSync(join(root, file), "utf8")) ?? [];
   } catch {
     found = [];
   }
@@ -325,10 +328,27 @@ function within(root: string, start: string, depth: number): Set<string> {
 }
 
 /** The files the working tree changed since `base`, beyond the documentation set: a commit's own
- *  in a pass's checkout, and its uncommitted and untracked ones too where the CI gate is run by hand. */
+ *  in a pass's checkout, and its uncommitted and untracked ones too where the CI gate is run by hand.
+ *  A script whose transpiled form is the same on both sides changed its comments or layout alone,
+ *  so it chooses no test, as documentation chooses none; the whole pass at the top still runs every
+ *  test. A commit rewriting the comments of 94 test files otherwise chose all 1,573, and its static
+ *  pass failed five landings under the load. */
 export const changedSince = (root: string, base: string): Set<string> =>
   new Set([
-    ...lines(git(root, ["diff", "--name-only", base, "--", ".", ...DOCUMENTATION])),
+    ...lines(git(root, ["diff", "--name-only", base, "--", ".", ...DOCUMENTATION])).filter((file) => {
+      const code = (text: string | null): string | null => {
+        try {
+          return text === null ? null : (transpilerOf(file)?.transformSync(text) ?? null);
+        } catch {
+          return null;
+        }
+      };
+      const after = code(existsSync(join(root, file)) ? readFileSync(join(root, file), "utf8") : null);
+      return (
+        after === null ||
+        after !== code(zeroExitText(runSync(["git", "show", `${base}:${file}`], { cwd: root })))
+      );
+    }),
     ...lines(git(root, ["ls-files", "--others", "--exclude-standard", "--", ".", ...DOCUMENTATION])),
   ]);
 

@@ -153,6 +153,24 @@ describe("proveCommits", () => {
     ]);
   });
 
+  it("chooses no test for a script whose comments alone changed, and its importers' for one whose code did", () => {
+    const mktree = (rows: readonly string[]): string =>
+      execTextSync("git", ["mktree"], { cwd: work, stdin: `${rows.join("\n")}\n` }).trim();
+    const rewritten = (from: string, text: string): string => {
+      const src = git("ls-tree", `${from}:src`)
+        .split("\n")
+        .map((row) => (row.endsWith("\towner.ts") ? `100644 blob ${blob(text)}\towner.ts` : row));
+      const top = git("ls-tree", from)
+        .split("\n")
+        .map((row) => (row.endsWith("\tsrc") ? `040000 tree ${mktree(src)}\tsrc` : row));
+      return git("commit-tree", mktree(top), "-p", from, "-m", "rewritten");
+    };
+    const comment = rewritten(source, "/** The owner, said once. */\nexport const owner = 2;\n");
+    const code = rewritten(comment, "/** The owner, said once. */\nexport const owner = 3;\n");
+    expect(prove([`${comment}:static`, `${code}:static`]).status).toBe(0);
+    expect(gatesRun(log)).toEqual([`${comment} -`, `${code} test/owner.test.ts`]);
+  });
+
   it("runs the UI's whole gate over the UI, its tests within three imports over what it imports, and nothing over the rest", () => {
     const tree = (rows: readonly string[]): string =>
       execTextSync("git", ["mktree"], { cwd: work, stdin: `${rows.join("\n")}\n` }).trim();

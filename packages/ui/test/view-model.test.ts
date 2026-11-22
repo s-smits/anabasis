@@ -132,7 +132,11 @@ describe("the address of a route", () => {
           (campaignMoved && inCampaign.has(key)) ||
           (paneMoved && inPane.has(key));
         const expected = (key in change ? change[key] : cleared ? null : full[key]) ?? null;
-        expect([JSON.stringify(change), key, after[key]]).toEqual([JSON.stringify(change), key, expected]);
+        expect<unknown[]>([JSON.stringify(change), key, after[key]]).toEqual([
+          JSON.stringify(change),
+          key,
+          expected,
+        ]);
       }
     }
     // The shell writing back the project of a link that named a campaign alone moves nothing in it.
@@ -229,7 +233,7 @@ describe("what the Campaign pane reads off its comparisons", () => {
       ["b-3", 0, {}],
     ]);
     expect(outcomeTotals(bars)).toEqual(counted);
-    expect(Object.keys(NONE).toSorted()).toEqual(OUTCOMES.map(({ outcome }) => outcome).toSorted());
+    expect(Object.keys(NONE).toSorted()).toEqual(OUTCOMES.map(({ outcome }): string => outcome).toSorted());
   });
 
   test("ticks a count axis from nought at one even step to at or above its top, in two to six ticks", () => {

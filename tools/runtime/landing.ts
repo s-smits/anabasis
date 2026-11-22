@@ -10,7 +10,7 @@ import { hold, holderOf, release } from "#src/meta/holder.ts";
 import { errorMessage } from "../../src/meta/runtime-values.ts";
 import { checkHost, checkSlots, type Host, hostsFor } from "../runs/host-config.ts";
 import { git, lines, type Place, type Proof, short } from "./gate.ts";
-import { beneath, chainAbove, openPulls, type Pull } from "./pulls.ts";
+import { beneath, chainAbove, openPulls, type Pull, stackStart } from "./pulls.ts";
 
 /** What a holder says of itself in the lock, after its record, and whether a newer one may end it. */
 interface Claim {
@@ -88,13 +88,13 @@ export function sayingPulls(
 
 /** The lock's note for a landing of `target` (`#<pull request> <kind>`, `+` after the number where
  *  `--auto` may land above it), and which held landings it ends: one that does not merge or follow
- *  the top, writes no more than it, and lands part of its chain, since every pass it made is
- *  remembered and the newer landing reads the chain as it stands now. The chain is read only once a
- *  holder is found. */
+ *  the top, writes no more than it, and lands part of what it proves (from `--from`, or from the
+ *  native stack holding the top, `stackStart`), since every pass it made is remembered and the newer
+ *  landing reads the chain as it stands now. The chain is read only once a holder is found. */
 export function claimOf(
   root: string,
   target: number,
-  mode: { readonly auto: boolean; readonly kind: string },
+  mode: { readonly auto: boolean; readonly kind: string; readonly from: number | null },
 ): Claim {
   const kind = KINDS.indexOf(mode.kind);
   let chain: string[] | null = null;
@@ -108,8 +108,10 @@ export function claimOf(
         const open = openPulls(root);
         const named = open.find((pull) => pull.number === target);
         const top = named !== undefined && mode.auto ? (chainAbove(open, named).at(-1) ?? named) : named;
-        chain =
-          top === undefined ? [] : [...beneath(open, top), top].map((pull) => `#${String(pull.number)}`);
+        const pulls = top === undefined ? [] : [...beneath(open, top), top];
+        const from = pulls.findIndex((pull) => pull.number === mode.from);
+        const proved = pulls.slice(mode.from === null ? stackStart(root, pulls) : Math.max(from, 0));
+        chain = proved.map((pull) => `#${String(pull.number)}`);
       }
       return chain.includes(number);
     },

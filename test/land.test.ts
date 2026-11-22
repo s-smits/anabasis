@@ -701,6 +701,24 @@ describe("bun run land", () => {
     expect(writes()).toEqual([]);
   });
 
+  it("ends a held landing only where this one proves its pull request, from the stack or --from", () => {
+    const landing = JSON.stringify(join(import.meta.dir, "../tools/runtime/landing.ts"));
+    const ends = (env: Record<string, string>, from: number | null): string =>
+      spawnTextSync(
+        capturedExecPath,
+        [
+          "-e",
+          `import { claimOf } from ${landing};
+           const claim = claimOf(".", 15, { auto: false, kind: "sanitizing", from: ${String(from)} });
+           console.log(["#12 sanitizing", "#15 sanitizing"].map((note) => claim.over(note)).join(" "));`,
+        ],
+        { cwd: work, env: landEnv(env) },
+      ).stdout.trim();
+    expect(ends(opened, null)).toBe("true true");
+    expect(ends(divided, null)).toBe("false true");
+    expect(ends(opened, 15)).toBe("false true");
+  });
+
   it("without a flag says the link it would run, and links nothing", () => {
     const result = runLand(["15"], opened);
     expect(result.status).toBe(0);

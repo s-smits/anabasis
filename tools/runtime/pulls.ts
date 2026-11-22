@@ -99,16 +99,23 @@ export const form = (fields: Readonly<Record<string, string | undefined>>): stri
 export const api = (path: string): string => `repos/{owner}/{repo}/${path}`;
 
 /** Where `bun run split` divided a chain of pull requests into native stacks, the index in `pulls` of
- *  the lowest member of the one GitHub holds the chain's top in, read from its members up to the top;
- *  0 where that stack is the whole chain, holds a pull request beneath that index, or is unread. */
+ *  the lowest member of the one GitHub holds the chain's top in, or, for a top opened above it in no
+ *  stack yet, the one holding the nearest pull request beneath the top, read from its members up to
+ *  that one; 0 where that stack is the whole chain, holds a pull request beneath that index, or no
+ *  read answers. */
 export function stackStart(root: string, pulls: readonly { readonly number: number }[]): number {
   const chain = pulls.map((pull) => String(pull.number));
-  const top = chain.at(-1) ?? "";
-  const read = gh(root, ["api", api(`stacks?pull_request=${top}`), "--jq", STACK_MEMBERS]);
-  const members = (read.ok ? read.out : "").split(" ")[1]?.split(",") ?? [];
-  const upTo = members.slice(0, members.indexOf(top) + 1).join(",");
-  const start = chain.findIndex((_, index) => index > 0 && chain.slice(index).join(",") === upTo);
-  return start > 0 && !chain.slice(0, start).some((number) => members.includes(number)) ? start : 0;
+  for (let at = chain.length - 1; at > 0; at -= 1) {
+    const number = chain[at] ?? "";
+    const read = gh(root, ["api", api(`stacks?pull_request=${number}`), "--jq", STACK_MEMBERS]);
+    if (!read.ok) return 0;
+    const members = read.out.split(" ")[1]?.split(",") ?? [];
+    if (!members.includes(number)) continue;
+    const upTo = members.slice(0, members.indexOf(number) + 1).join(",");
+    const start = chain.findIndex((_, index) => index > 0 && chain.slice(index, at + 1).join(",") === upTo);
+    return start > 0 && !chain.slice(0, start).some((held) => members.includes(held)) ? start : 0;
+  }
+  return 0;
 }
 
 /** Posts a commit status on `sha`, and says whether GitHub took it. */

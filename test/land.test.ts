@@ -85,9 +85,9 @@ fi ;;
 "api repos/{owner}/{repo}/pulls/"*"/merge-async/"*) printf '%s\t\t%s\t%s\n' "$ANA_FAKE_STACK_END" "$ANA_FAKE_STACK_SHA" "$ANA_FAKE_STACK_END" ;;
 "api repos/{owner}/{repo}/stacks"*) [ "$ANA_FAKE_STACK" != down ] || { echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1; }
   asked=$(printf '%s' "$ANA_FAKE_TOP_STACK" | cut -d' ' -f1)
-  if [ -n "$ANA_FAKE_TOP_STACK" ] && case "$*" in *"pull_request=$asked "*) true ;; *) false ;; esac; then
+  if [ -n "$ANA_FAKE_LINKED" ] && grep -q '^stack link' "$ANA_GH_LOG"; then printf '%s\n' "$ANA_FAKE_LINKED"
+  elif [ -n "$ANA_FAKE_TOP_STACK" ] && case "$*" in *"pull_request=$asked "*) true ;; *) false ;; esac; then
     printf '%s\n' "$ANA_FAKE_TOP_STACK" | cut -d' ' -f2-
-  elif [ -n "$ANA_FAKE_LINKED" ] && grep -q '^stack link' "$ANA_GH_LOG"; then printf '%s\n' "$ANA_FAKE_LINKED"
   else printf '%s\n' "$ANA_FAKE_STACK"; fi ;;
 "stack link"*) ;;
 "api -X"*) case "$*" in *"state=success -f context=mergeable"*)
@@ -699,6 +699,18 @@ describe("bun run land", () => {
     );
     expect(gatesRun(gateLog)).toEqual([]);
     expect(writes()).toEqual([]);
+  });
+
+  it("proves and links from the stack beneath a top opened in no stack above a divided chain", () => {
+    const result = runLand(["15", "--sanitize"], {
+      ...opened,
+      ANA_FAKE_STACK: "7 11",
+      ANA_FAKE_TOP_STACK: "12 8 12",
+      ANA_FAKE_LINKED: "8 12,15",
+    });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(result.stdout).toContain("land: GitHub's stack holding #15 starts at #12; proving from it.");
+    expect(linkCalls()).toEqual(["stack link 12 15"]);
   });
 
   it("ends a held landing only where this one proves its pull request, from the stack or --from", () => {

@@ -133,7 +133,7 @@ export const runsAs = (args: readonly string[], tools: readonly string[]) => {
 
 /**
  * Whether a process writes a campaign's log: the campaign command, a command run by hand, or a
- * rehearsal (`rehearse.ts`), a round on a seed run as a verb of this CLI. A stop releases what a
+ * rehearsal (`rehearse.ts`), a campaign on a seed run as a verb of this CLI. A stop releases what a
  * run nobody writes left mounted, so a writer missed here would lose its roots: unlisted, a
  * campaign command reads as closed, and `runs stop` answers "none of these is running" and counts
  * a live session's root as left behind.

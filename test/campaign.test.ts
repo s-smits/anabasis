@@ -34,7 +34,7 @@ import { checkpointCommand } from "../tools/d2/checkpoint.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import { prepareCommand, ungated } from "../tools/d2/prepare.ts";
 import { promoteCommand } from "../tools/d2/promote.ts";
-import { capNamed, packaged, refereeNamed, ROUND_OPTIONS, roundCommand } from "../tools/d2/round.ts";
+import { COMPARISON_OPTIONS, capNamed, packaged, refereeNamed, SESSION_OPTIONS } from "../tools/d2/round.ts";
 import { sessionCommand } from "../tools/d2/session.ts";
 
 const REPO = resolve(import.meta.dir, "..");
@@ -376,9 +376,9 @@ describe("a campaign", () => {
     expect(await keptAs(campaign, "--parent", "latest")).toEqual(least);
     // A comparison is made against the campaign's reference harness, which is the starter until
     // the operator promotes another.
-    expect(ROUND_OPTIONS.reference.default).toBe("promoted");
+    expect(COMPARISON_OPTIONS.reference.default).toBe("promoted");
     expect(await keptAs(campaign, "--reference", "promoted")).toEqual(least);
-    expect(ROUND_OPTIONS.parent.default).toBe("latest");
+    expect(SESSION_OPTIONS.parent.default).toBe("latest");
     // The stored cycle's own harness is none the campaign keeps: it comes from v1's runs.
     await expect(keptAs(campaign, "--reference", "start")).rejects.toThrow(
       "--reference start is no harness this campaign keeps",
@@ -500,13 +500,12 @@ describe("a campaign", () => {
 
   it("starts no paid comparison without a dollar cap or a Referee", async () => {
     const flags = PACK;
-    await expect(roundCommand([...flags, "--session", "z-8", "--builder", "faux/none"])).rejects.toThrow(
+    await expect(checkpointCommand(["--id", "z-8", ...flags])).rejects.toThrow(
       "name --cap, the billed dollars this comparison may hold",
     );
-    await expect(checkpointCommand(["--id", "z-8", ...flags])).rejects.toThrow("name --cap");
     expect(capNamed({ cap: "375", reserve: "10" }, "paid")).toEqual({ dollars: 375, reserve: 10 });
     // Fix row F43: a cap that is no number above nothing held nothing, and is refused wherever a
-    // cap is read: by a round, a checkpoint, a session by itself and the launcher.
+    // cap is read: by a checkpoint, a session by itself and the launcher.
     for (const [cap, reserve] of [
       ["$40", "10"],
       ["0", "10"],
@@ -525,16 +524,13 @@ describe("a campaign", () => {
     expect(capNamed({ cap: "40", reserve: "5" }, "scripted")).toEqual({ dollars: 40, reserve: 5 });
     // Nor does a paid comparison start without a Referee, whose ruling a rejection waits for; a
     // simulation may name none.
-    await expect(
-      roundCommand([...flags, "--session", "z-8", "--builder", "faux/none", "--cap", "40"]),
-    ).rejects.toThrow("name --reviewer, the Referee that rules each rejection");
     await expect(checkpointCommand(["--id", "z-8", "--cap", "40", ...flags])).rejects.toThrow(
-      "name --reviewer",
+      "name --reviewer, the Referee that rules each rejection",
     );
     expect(() => refereeNamed({ reviewer: SERVED }, "paid")).not.toThrow();
     expect(() => refereeNamed({}, "scripted")).not.toThrow();
     // The same solves are not read again at each shorter `--budget`, and the flag is refused.
-    expect(ROUND_OPTIONS).not.toHaveProperty("budget");
+    expect({ ...SESSION_OPTIONS, ...COMPARISON_OPTIONS }).not.toHaveProperty("budget");
     const campaign = await openCampaign(ARGS);
     expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);
   });
@@ -545,18 +541,9 @@ describe("a campaign", () => {
     const flags = [...PACK, "--cap", "100", "--reviewer", SERVED, "--parent", "starter"];
     // The campaign's checker has never been read, which every command refuses, the launcher too.
     const unread = "the campaign's checker has never been read: run tools/c/accept.ts";
-    await expect(roundCommand([...flags, "--session", "z-5", "--builder", SERVED])).rejects.toThrow(unread);
     await expect(
       checkpointCommand(["--id", "z-5", "--new", "starter", ...flags.slice(0, -2)]),
     ).rejects.toThrow(unread);
-    // A rehearsal's seats are scripts, and it is exempt: it gets as far as its Builder's seat.
-    await expect(
-      roundCommand([...flags, "--session", "z-5"], () => ({
-        builder: null,
-        setting: "s",
-        solve: () => Promise.reject(new Error("no solve is asked for")),
-      })),
-    ).rejects.toThrow("name --builder");
     expect(read(campaign.log).some(({ data }) => data.session === "z-5")).toBe(false);
   });
 
@@ -633,16 +620,15 @@ describe("a campaign", () => {
       new RegExp(`^[A-Z]+ ${digest} is the campaign's reference harness already`, "mu"),
     );
     expect(promotions()).toHaveLength(1);
-    // A round that names no --reference is made against it, where it was made against the starter.
+    // A practice solve is seated against it, where it was seated against the starter.
     const against: string[] = [];
     const flags = [...PACK, "--cap", "100", "--reviewer", SERVED, "--parent", "starter", "--session", "z-3"];
     const seats = rehearsal((opened, given) => {
       expect(opened.log).toBe(campaign.log);
       against.push(given.reference);
     });
-    await expect(roundCommand(flags, seats)).rejects.toThrow("name --builder");
-    await expect(roundCommand([...flags, "--reference", "starter"], seats)).rejects.toThrow("name --builder");
-    expect(against).toEqual([join(campaign.states, digest), least.dir]);
+    await expect(sessionCommand(flags, seats)).rejects.toThrow("name --builder");
+    expect(against).toEqual([join(campaign.states, digest)]);
     // The starter named again returns the campaign to it.
     await promote("--harness", "starter", "--yes");
     expect(await keptAs(campaign, "--reference", "promoted")).toEqual(least);
@@ -653,7 +639,7 @@ describe("a campaign", () => {
     const flags = [...PACK, "--cap", "100", "--reviewer", SERVED, "--parent", "starter", "--session", "z-4"];
     // A wall the owner refuses is refused by each command before a campaign is opened.
     const refused = "--solve-minutes 0: a solve's wall is a whole number of minutes";
-    await expect(roundCommand([...flags, "--solve-minutes", "0"])).rejects.toThrow(refused);
+    await expect(sessionCommand([...flags, "--solve-minutes", "0"])).rejects.toThrow(refused);
     const checkpoint = async (...more: string[]) =>
       checkpointCommand(["--id", "z-4", ...flags.slice(0, -4), ...more]);
     await expect(checkpoint("--solve-minutes", "0")).rejects.toThrow(refused);
@@ -671,15 +657,15 @@ describe("a campaign", () => {
     const seats = rehearsal((opened) => {
       seen.push(opened.limits.wallSeconds, opened.limits.modelTurns ?? 0);
     });
-    await expect(roundCommand(flags, seats)).rejects.toThrow("name --builder");
+    await expect(sessionCommand(flags, seats)).rejects.toThrow("name --builder");
     expect(seen).toEqual([480, 40]);
     // A flag that names another is refused by every command, before anything is opened or logged.
     const other =
       "--solve-minutes 5 names another setting than the campaign's, which was recorded as --solve-minutes 8";
-    await expect(roundCommand([...flags, "--solve-minutes", "5"], seats)).rejects.toThrow(other);
+    await expect(sessionCommand([...flags, "--solve-minutes", "5"], seats)).rejects.toThrow(other);
     await expect(checkpoint("--solve-minutes", "5")).rejects.toThrow(other);
     // No word changes it: `--new-setting` is no flag, and another setting is another campaign.
-    await expect(roundCommand([...flags, "--solve-minutes", "5", "--new-setting"], seats)).rejects.toThrow(
+    await expect(sessionCommand([...flags, "--solve-minutes", "5", "--new-setting"], seats)).rejects.toThrow(
       "--new-setting",
     );
     expect(seen).toEqual([480, 40]);
@@ -698,7 +684,7 @@ describe("a campaign", () => {
     const before = read(campaign.log).length;
     const flags = [...flagsOf({ ...ARGS, name: UNRECORDED }), "--cap", "100", "--reviewer", SERVED];
     // The command's own refusal, no longer the admission's, which a led Builder would read.
-    const refusal = await roundCommand([...flags, "--session", "u-1", "--builder", SERVED]).catch(
+    const refusal = await sessionCommand([...flags, "--session", "u-1", "--builder", SERVED]).catch(
       (error: unknown) => (error instanceof Refused ? "the admission's" : errorMessage(error)),
     );
     expect(refusal).toContain("records no setting yet, and this command names another");
@@ -707,7 +693,7 @@ describe("a campaign", () => {
     expect(read(campaign.log)).toHaveLength(before);
     // A rehearsal walks the seed as it stands: it goes on to the Builder's seat.
     await expect(
-      roundCommand(
+      sessionCommand(
         [...flags, "--session", "u-1"],
         rehearsal(() => undefined),
       ),

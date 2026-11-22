@@ -55,7 +55,7 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
 import { awaitingLines, openCampaign, PACK_OPTIONS, packNamed } from "./campaign.ts";
 import { exampleId } from "./exam.ts";
-import { type Campaign, ROUND_OPTIONS } from "./round.ts";
+import { type Campaign, COMPARISON_OPTIONS } from "./round.ts";
 import { recordedSetting, targetNamed } from "./setting.ts";
 
 /** The practice tasks a campaign is brought to where no command names a count. */
@@ -63,8 +63,8 @@ export const PRACTICE = 6;
 const OPTIONS = {
   ...PACK_OPTIONS,
   practice: { type: "string", default: String(PRACTICE) },
-  level: ROUND_OPTIONS.level,
-  target: ROUND_OPTIONS.target,
+  level: COMPARISON_OPTIONS.level,
+  target: COMPARISON_OPTIONS.target,
   keep: { type: "string", multiple: true },
   infeasible: { type: "string", multiple: true },
   note: { type: "string" },

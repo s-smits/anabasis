@@ -470,12 +470,12 @@ describe("bun run land", () => {
     bun: "bun",
     checks,
   });
-  const twoHosts = JSON.stringify([host("alpha", 1), host("idle"), host("beta", 2)]);
+  const hosts = JSON.stringify([host("alpha", 1), host("unset"), host("beta", 3)]);
 
-  it("spreads its proofs over the hosts that take checks where RUN_REMOTE is unset, the whole gate on the first", () => {
-    const result = runLand(["12", "--sanitize"], { ANA_HOSTS: twoHosts, RUN_REMOTE: undefined });
+  it("spreads its proofs over every listed host where ANA_CHECK_HOST is unset, two on one that sets no checks, the whole gate on the first", () => {
+    const result = runLand(["12", "--sanitize"], { ANA_HOSTS: hosts, ANA_CHECK_HOST: undefined });
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("proving on alpha (1), beta (2) at once");
+    expect(result.stdout).toContain("proving on alpha (1), unset (2), beta (3) at once");
     expect(wherePassesRan(gateLog)).toContain(`${upper} alpha`);
     expect(statuses(COMMIT)).toContain(`success ${upper}`);
   });
@@ -483,23 +483,23 @@ describe("bun run land", () => {
   it("caps a spread at --jobs, dealt over the hosts in turn, and keeps a single host's list to that host", () => {
     const capped = runLand(["12", "--sanitize", "--jobs", "2"], {
       ANA_HOSTS: JSON.stringify([host("alpha", 2), host("beta", 2)]),
-      RUN_REMOTE: undefined,
+      ANA_CHECK_HOST: undefined,
     });
     expect(capped.status).toBe(0);
     expect(capped.stdout).toContain("proving on alpha (1), beta (1) at once");
     const single = runLand(["12", "--sanitize"], {
       ANA_HOSTS: JSON.stringify([host("alpha", 2)]),
-      RUN_REMOTE: undefined,
+      ANA_CHECK_HOST: undefined,
     });
     expect(single.status).toBe(0);
     expect(single.stdout).toContain("proving on alpha (2) at once");
   });
 
-  it("proves at the one place an explicit RUN_REMOTE names, whatever the host list holds", () => {
-    const result = runLand(["12", "--sanitize"], { ANA_HOSTS: twoHosts, RUN_REMOTE: "here" });
+  it("proves at the one place an explicit ANA_CHECK_HOST names, whatever the host list holds", () => {
+    const result = runLand(["12", "--sanitize"], { ANA_HOSTS: hosts, ANA_CHECK_HOST: "here" });
     expect(result.status).toBe(0);
     expect(result.stdout).not.toContain("proving on");
-    // Every pass inherits the caller's RUN_REMOTE, which the runner reads as this machine.
+    // Every pass inherits the caller's ANA_CHECK_HOST, which the runner reads as this machine.
     const ran = wherePassesRan(gateLog);
     expect(ran.length).toBeGreaterThan(0);
     expect(ran.filter((line) => !line.endsWith(" here"))).toEqual([]);
@@ -509,7 +509,7 @@ describe("bun run land", () => {
     const repo = join(fixture, "hosts-repo");
     mkdirSync(repo);
     execTextSync("git", ["init", "-q"], { cwd: repo });
-    writeFileSync(join(repo, ".env.runs"), `ANA_HOSTS='${twoHosts}'\n`);
+    writeFileSync(join(repo, ".env.runs"), `ANA_HOSTS='${hosts}'\n`);
     const landing = JSON.stringify(join(import.meta.dir, "..", "tools", "runtime", "landing.ts"));
     const where = (jobs: string) =>
       spawnTextSync(
@@ -518,17 +518,19 @@ describe("bun run land", () => {
           "-e",
           `import { whereToProve } from ${landing}; console.log(JSON.stringify(whereToProve(process.cwd(), ${jobs}, () => undefined)));`,
         ],
-        { cwd: repo, env: { ...Bun.env, ANA_HOSTS: "", RUN_REMOTE: undefined } },
+        { cwd: repo, env: { ...Bun.env, ANA_HOSTS: "", ANA_CHECK_HOST: undefined } },
       ).stdout.trim();
-    expect(where("undefined")).toBe('[{"remote":"alpha","slots":1},{"remote":"beta","slots":2}]');
+    expect(where("undefined")).toBe(
+      '[{"remote":"alpha","slots":1},{"remote":"unset","slots":2},{"remote":"beta","slots":3}]',
+    );
     expect(where("1")).toBe('[{"remote":"alpha","slots":1}]');
   });
 
   it("refuses a host list it cannot read before it proves or posts anything", () => {
-    const result = runLand(["12", "--sanitize"], { ANA_HOSTS: "[{", RUN_REMOTE: undefined });
+    const result = runLand(["12", "--sanitize"], { ANA_HOSTS: "[{", ANA_CHECK_HOST: undefined });
     expect(result.status).toBe(2);
     expect(result.stderr).toContain("land: ANA_HOSTS is not JSON");
-    expect(result.stderr).toContain("RUN_REMOTE=here proves on this machine");
+    expect(result.stderr).toContain("ANA_CHECK_HOST=here proves on this machine");
     expect(gatesRun(gateLog)).toEqual([]);
     expect(logLines(ghLog).filter((line) => line.includes("/statuses/"))).toEqual([]);
   });

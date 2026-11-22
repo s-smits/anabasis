@@ -368,8 +368,8 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
   const from = read(log).length;
   const env = {
     ...loginEnv(runtimeProcess.env, args.value("login") ?? undefined),
-    // A RUN_REMOTE the caller set for its own checks would send the seat's check tasks elsewhere.
-    RUN_REMOTE: "here",
+    // An ANA_CHECK_HOST the caller set for its own checks would send the seat's check tasks elsewhere.
+    ANA_CHECK_HOST: "here",
   };
   const child = capturedSpawn(["nice", "-n", "10", capturedExecPath, ...command, "--name", name], {
     cwd: tree,

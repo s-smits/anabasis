@@ -54,7 +54,7 @@ installer adds `~/.bun/bin` to the shell profile, so the session that ran it fin
 only in a new shell or at `~/.bun/bin/bun`. `bun install` may report blocked lifecycle scripts;
 leave them blocked, since nothing this setup proves needs them. Done when `bun --version` prints
 the pinned version and the wall test passes on this machine:
-`RUN_REMOTE=here bun run test -- test/walled-env.test.ts`. A failure there from unavailable user
+`ANA_CHECK_HOST=here bun run test -- test/walled-env.test.ts`. A failure there from unavailable user
 namespaces is a failure to report, not to skip.
 
 **B. Model seats.** This is the one real choice. A seat names its provider (`README.md`,

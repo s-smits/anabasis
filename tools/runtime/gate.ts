@@ -84,7 +84,7 @@ interface Failure {
   readonly verdict: boolean;
 }
 
-/** Where passes run, and how many at once there: `remote` is the `RUN_REMOTE` each carries to the
+/** Where passes run, and how many at once there: `remote` is the `ANA_CHECK_HOST` each carries to the
  *  check runner, a host's name, and undefined leaves the caller's own as it stands. */
 export interface Place {
   readonly remote?: string;
@@ -633,7 +633,7 @@ export async function proveCommits(
         ...keysIf(pass === "static" && place.remote === undefined, () => ({ ANA_TEST_WORKERS: share })),
         ...runtimeProcess.env,
         ANA_TEST_BAIL: "1",
-        ...keyIfDefined("RUN_REMOTE", place.remote),
+        ...keyIfDefined("ANA_CHECK_HOST", place.remote),
       },
       // Its own group, so a stop reaches the steps and the runner's ssh beneath it.
       detached: stop !== undefined,

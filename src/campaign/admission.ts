@@ -209,7 +209,7 @@ export function stopRule(events: readonly LogEvent[]) {
       : [];
   });
   // Each pair of a harness and a reference: where it first reported, whether any of its
-  // comparisons read a step, and whether it counts (a step, or room at its latest reading).
+  // comparisons read a step, and whether it counts (a step, or room at any of its readings).
   const pairs = new Map<string, { index: number; step: boolean; counts: boolean }>();
   for (const { index, data } of lastReports(events)) {
     const { old, fresh, versions } = data;
@@ -218,7 +218,8 @@ export function stopRule(events: readonly LogEvent[]) {
     const pair = `${fresh} ${isString(old) ? old : ""}`;
     const earlier = pairs.get(pair);
     const step = earlier?.step === true || data.reading === "step";
-    pairs.set(pair, { index: earlier?.index ?? index, step, counts: step || roomOf(data) === "room" });
+    const counts = earlier?.counts === true || step || roomOf(data) === "room";
+    pairs.set(pair, { index: earlier?.index ?? index, step, counts });
   }
   const moves = [...pairs.values().filter(({ counts }) => counts), ...declined].toSorted(
     (one, other) => one.index - other.index,

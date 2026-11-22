@@ -1401,18 +1401,29 @@ describe("a round", () => {
   });
 
   it("stops a comparison at the first refusal no retry clears", async () => {
-    const disabled: Ending = {
-      outcome: "non-result",
-      kind: "provider",
-      reason: "Claude Code: Your organization has disabled Claude subscription access for Claude Code",
-    };
-    let calls = 0;
-    const s = await setup([], (version, side, nth, digest) => {
-      calls += 1;
-      return calls > 2 ? disabled : step(version, side, nth, digest);
-    });
-    await expect(checkpoint(s.paired("g0"))).rejects.toThrow("no retry clears");
-    expect(calls).toBe(3);
+    for (const reason of [
+      "Claude Code: Your organization has disabled Claude subscription access for Claude Code",
+      "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.",
+    ]) {
+      const permanent: Ending = { outcome: "non-result", kind: "provider", reason };
+      let calls = 0;
+      const s = await setup([], (version, side, nth, digest) => {
+        calls += 1;
+        return calls > 2 ? permanent : step(version, side, nth, digest);
+      });
+      await expect(checkpoint(s.paired("g0"))).rejects.toThrow("no retry clears");
+      expect(calls).toBe(3);
+    }
+  });
+
+  it("enforces the campaign's total opening budget beside the comparison's own cap", async () => {
+    const s = await setup([], (version, side, nth, digest) => step(version, side, nth, digest));
+    // Campaign total is $5 with $2 reserve; another seat already billed $4, leaving $1 (< $2 reserve)
+    // even though the comparison's own --cap is $100.
+    append(s.log, "campaign.opened", { budget: { dollars: 5, reserve: 2 } });
+    append(s.log, "exam.turn", { session: "x-1", turn: 1, usage: { cost: { total: 4 } } });
+    const report = await checkpoint({ ...s.paired("g0"), cap: { dollars: 100, reserve: 2 } });
+    expect(report).toMatchObject({ reading: "not-scored", capped: true });
   });
 
   it("keeps a kill as the reason when a reset wait returns its provider ending", async () => {

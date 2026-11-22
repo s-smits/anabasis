@@ -93,7 +93,7 @@ import { append, type LogEvent, read } from "../kernel/log.ts";
 import { type Cap, capHolds, poolOf } from "../kernel/reports.ts";
 import { billedFor } from "../kernel/meter.ts";
 import { checkCouldNotRun, type Ending, nonRetryableProvider } from "../kernel/solve.ts";
-import { refereeErrorOf, rejected, solvesIn } from "../kernel/solves.ts";
+import { ranUnder, refereeErrorOf, rejected, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -102,6 +102,7 @@ import { sameJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import type { RefereeFinding } from "../referee/referee.ts";
 import { tasksByEpoch } from "./climb.ts";
+import { budgetLeft } from "./opening.ts";
 import {
   compared,
   coverageOf,
@@ -431,24 +432,28 @@ function unruledOf(events: readonly LogEvent[], fixed: Fixed) {
  *  in it, so a run killed after its answers loses no task; silent again, the task is reported short.
  *  `from` is where this run's events begin. */
 function silence(log: string, id: string, from: number) {
-  const [silent, provider] = [new Set<string>(), new Map<string, string>()];
+  const [silent, provider] = [new Set<string>(), new Set<string>()];
   let answered = false;
   const resumedAnswered = () => {
-    const ran = solvesIn(read(log)).filter(({ start }) => start.comparison === id);
-    const earlier = ran.filter(({ started }) => started < from);
-    const taskOf = new Map(ran.map(({ id: solve, start }) => [solve, start.task]));
+    const earlier = ranUnder(read(log)).filter(
+      ({ start, started }) => start.comparison === id && started < from,
+    );
+    const lastByCondition = new Map<string, { readonly task: string; readonly kind: unknown }>();
+    for (const { condition, under, ending } of earlier) {
+      lastByCondition.set(condition, { task: under.task, kind: ending?.kind });
+    }
     const silentBefore = new Set(
-      earlier.filter(({ ending }) => ending?.kind === "provider").map(({ start }) => start.task),
+      [...lastByCondition.values()].flatMap(({ task, kind }) => (kind === "provider" ? [task] : [])),
     );
     return (
       earlier.some(({ ending }) => ending !== null && ending.outcome !== "non-result") &&
-      [...provider.values()].some((solve) => !silentBefore.has(taskOf.get(solve)))
+      [...provider].some((task) => !silentBefore.has(task))
     );
   };
   return {
-    note(task: string, solve: string, why: string | null, ending: Ending): void {
+    note(task: string, why: string | null, ending: Ending): void {
       answered ||= why === null;
-      if (ending.outcome === "non-result" && ending.kind === "provider") provider.set(task, solve);
+      if (ending.outcome === "non-result" && ending.kind === "provider") provider.add(task);
       if (why === null) {
         silent.clear();
         provider.clear();
@@ -467,6 +472,25 @@ function silence(log: string, id: string, from: number) {
   };
 }
 
+/** Tasks already known to hold a check defect before `floor` starts its workers. */
+function knownDefects(before: readonly LogEvent[], id: string, fixed: Fixed): Set<string> {
+  return new Set([
+    ...before.flatMap(({ kind, data }) =>
+      kind === TASK_STATE && data.session === id && data.state === "disputed" && isString(data.version)
+        ? [data.version]
+        : [],
+    ),
+    ...rejections(before, fixed, NO_LABELS).flatMap(({ task, ruling }) => (ruling === DEFECT ? [task] : [])),
+  ]);
+}
+
+/** Whether starting one more solve would exceed either the comparison's cap or the campaign's total budget. */
+function capReached(events: readonly LogEvent[], id: string, cap: Cap | undefined, running: number): boolean {
+  const overCap = cap !== undefined && billedFor(events, id) + (running + 1) * cap.reserve > cap.dollars;
+  const left = budgetLeft(events);
+  return overCap || (left !== null && left.dollars < (running + 1) * left.reserve);
+}
+
 /**
  * What runs a comparison's solves: the jobs' pool, the Referee's part, and the reasons it stops
  * taking jobs. A solve that throws ends the pool and is thrown again by `settle` once every solve
@@ -481,16 +505,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
   let thrown: Error | null = null;
   let [running, capped] = [0, false];
   const before = read(log);
-  // The tasks with a check defect, kept beside the log so that a job does not fold the whole of
-  // it: those this comparison disputed, and those a Referee's ruling found one on.
-  const defects = new Set([
-    ...before.flatMap(({ kind, data }) =>
-      kind === TASK_STATE && data.session === id && data.state === "disputed" && isString(data.version)
-        ? [data.version]
-        : [],
-    ),
-    ...rejections(before, fixed, NO_LABELS).flatMap(({ task, ruling }) => (ruling === DEFECT ? [task] : [])),
-  ]);
+  const defects = knownDefects(before, id, fixed);
   const going = () => thrown === null && !kill.aborted && !capped && defects.size <= request.defects;
   const quiet = silence(log, id, before.length);
   /** Put one rejected answer to the Referee where one is seated, and again by `ruleLeft` if unruled. */
@@ -505,7 +520,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
   const run = async ({ task, under }: Job): Promise<Ending> => {
     const solved = await request.solve(task, under, id, kill);
     const { solve, ending } = solved;
-    quiet.note(task, solve, unanswered(log, id, solved), ending);
+    quiet.note(task, unanswered(log, id, solved), ending);
     // The task's defect on either side, and solved no further here (`sequence`). Only the
     // reference's answer disputes it: a candidate's may move no count its Builder reads (rule 3).
     if (checkCouldNotRun(ending)) {
@@ -526,7 +541,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
         const events = read(log);
         // A task this comparison disputed, or a person released or refused since, is solved no more.
         if (!taskSets(events).held.includes(job.task)) return;
-        if (cap !== undefined && billedFor(events, id) + (running + 1) * cap.reserve > cap.dollars) {
+        if (capReached(events, id, cap, running)) {
           // The task is left for a lane that can afford it. With solves in flight the reserve held
           // for each may come back in part, so this lane steps aside; with none in flight nothing
           // more will, and the cap is reached.

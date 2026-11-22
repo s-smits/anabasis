@@ -6,9 +6,11 @@
 // cannot pass by exploring nothing. The invariants span moves (the reference's lineage, no second
 // draw of one pair, an end within the patience) rather than restating one row.
 import { describe, expect, it } from "bun:test";
+import { stopRule } from "../src/campaign/admission.ts";
 import { decide, practiceDue } from "../src/campaign/decide.ts";
 import { groundOf, type Plan } from "../src/campaign/ground.ts";
 import type { Decided } from "../src/campaign/move.ts";
+import { conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import {
   comparedAs,
@@ -525,5 +527,123 @@ describe("the decision table, searched", () => {
       return promotedAt !== -1 && decided.move === "promote" && !epoch.some(({ fresh }) => fresh === STARTER);
     });
     expect(unconfirmed).toBe(true);
+  });
+
+  it("subtracts current-epoch non-frontier releases from practice allowance, keeps inherited tasks from triggering empty-campaign examine, and preserves sticky roomful counts in stopRule", () => {
+    // 1. Exhausted current-epoch task released after a report spends allowance just like inherited tasks.
+    const held = (version: string): LogEvent[] => [
+      event("task.proposed", { version }),
+      event("task.gate", { version, gate: 1, outcome: "passed" }),
+    ];
+    const cond = (
+      task: string,
+      harness: string,
+    ): { readonly id: string; readonly setting: string; readonly recorded: LogEvent } => {
+      const condition = {
+        contract: "c",
+        harness,
+        task,
+        model: "m",
+        effort: "high",
+        prices: { m: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 } },
+        runtime: {},
+        compaction: "off" as const,
+        solverTools: "s",
+        verifierTools: "v",
+        sandbox: "p",
+        limits: { wallSeconds: 60, turns: 10, shellDefaultSeconds: 10, shellMaxSeconds: 20, concurrency: 1 },
+        host: "h",
+        side: "test" as const,
+      };
+      const id = conditionId(condition);
+      return { id, setting: settingId(condition), recorded: event("condition.recorded", { id, condition }) };
+    };
+    const pass = (solve: string, condition: string, comparison: string): LogEvent[] => [
+      event("solve.started", { solve, condition, comparison }),
+      event("solve.finished", { solve, ending: { outcome: "pass" } }),
+    ];
+    // At level 0.1, comparisonFloor(0.1) = 4 + 2 = 6; hold 1 already-released task (t-0),
+    // 7 frontier tasks, and 1 exhausted task (t-ex), so allowance after g-2 is 7 - 6 = 1.
+    const cOld = cond("t-ex", STARTER);
+    const cNew = cond("t-ex", "h1");
+    const base: LogEvent[] = [
+      ...["t-0", "t-ex", "t-1", "t-2", "t-3", "t-4", "t-5", "t-6", "t-7"].flatMap(held),
+      event("task.state", { version: "t-0", state: "released" }),
+      cOld.recorded,
+      cNew.recorded,
+      ...pass("s-1", cOld.id, "g-1"),
+      ...pass("s-2", cNew.id, "g-1"),
+      event("comparison.reported", {
+        session: "g-1",
+        old: STARTER,
+        fresh: "h1",
+        starter: STARTER,
+        setting: cOld.setting,
+        solves: 1,
+        versions: ["t-ex"],
+        reading: "no-step",
+        scored: { wins: 0, losses: 0, ties: 1, p: 1, unsolved: 0 },
+        valid: { old: [0, 1], fresh: [0, 1] },
+        aside: [],
+      }),
+      ...pass("s-3", cOld.id, "g-2"),
+      ...pass("s-4", cNew.id, "g-2"),
+      event("comparison.reported", {
+        session: "g-2",
+        old: STARTER,
+        fresh: "h1",
+        starter: STARTER,
+        setting: cOld.setting,
+        solves: 1,
+        versions: ["t-ex"],
+        reading: "no-step",
+        scored: { wins: 0, losses: 0, ties: 1, p: 1, unsolved: 0 },
+        valid: { old: [0, 1], fresh: [0, 1] },
+        aside: [],
+      }),
+    ];
+    expect(poolOf(base).exhausted).toEqual(["t-ex"]);
+    expect(practiceDue(base, 3, 0.1)?.to).toBe(2);
+    const afterExhaustedRelease = [...base, event("task.state", { version: "t-ex", state: "released" })];
+    // Releasing t-ex spent the single allowance slot even though practiceFrontier stayed at 7.
+    expect(practiceDue(afterExhaustedRelease, 3, 0.1)).toBeNull();
+
+    // 2. Post-promotion campaign with practice=0 and only inherited held tasks does not say "holds no task".
+    const inheritedOnly: LogEvent[] = [
+      event("checker.read", { contract: "c", checks: "k", faults: [] }),
+      event("contract.frozen", { contract: "c", checks: "k" }),
+      ...held("t-old"),
+      event("harness.promoted", { harness: "h1", from: STARTER, rests: [] }),
+    ];
+    const move = decide(inheritedOnly, { ...PLAN, practice: 0 });
+    expect(move.why).not.toContain("the campaign holds no task");
+
+    // 3. A second no-room report on the same (fresh, old) pair keeps counts:true from its earlier roomful report.
+    const sticky: LogEvent[] = [
+      event("build.checkpoint", { session: "b-1", harness: "h1" }),
+      event("comparison.reported", {
+        session: "g-1",
+        old: STARTER,
+        fresh: "h1",
+        starter: STARTER,
+        versions: ["t-1", "t-2"],
+        reading: "no-step",
+        scored: { wins: 1, losses: 1, ties: 0, p: 0.75, unsolved: 0 },
+        valid: { old: [1, 1, 0], fresh: [1, 1, 0] },
+        aside: [],
+      }),
+      event("comparison.reported", {
+        session: "g-2",
+        old: STARTER,
+        fresh: "h1",
+        starter: STARTER,
+        versions: ["t-1", "t-2"],
+        reading: "no-step",
+        scored: { wins: 0, losses: 0, ties: 2, p: 1, unsolved: 0 },
+        valid: { old: [0, 0, 2], fresh: [0, 0, 2] },
+        aside: [],
+      }),
+    ];
+    expect(stopRule(sticky)).toMatchObject({ checkpoints: 1, sinceStep: 1 });
   });
 });

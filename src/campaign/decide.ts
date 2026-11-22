@@ -377,7 +377,7 @@ function tasks(ground: Ground): Move | null {
       why: "the pack holds tasks the log does not: each is put to its gate and held out",
     };
   }
-  if (supply.held + supply.awaiting + supply.exhausted + supply.released === 0) {
+  if (taskSets(events).held.length + supply.released === 0) {
     return examine(ground, "tasks", "the campaign holds no task");
   }
   // A campaign that names no practice is released none.
@@ -639,20 +639,23 @@ export function practiceDue(
   );
   const releases = releasedSince(events, since);
   const count = releases.length;
-  // A frontier task's release spends the allowance by leaving the frontier; one held out before
-  // the promotion leaves the frontier as it was, so it is subtracted, or the allowance is granted
-  // again at the next release.
+  // A frontier task's release spends the allowance by leaving the frontier; one that was already
+  // outside the practice frontier (inherited, exhausted, awaiting or doubted) leaves the frontier
+  // as it was, so it is subtracted, or the allowance is granted again at the next release.
   const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
-  const inherited = new Set(taskSets(events.slice(0, Math.max(0, promotedAt))).held);
+  let nonFrontier = 0;
+  if (count > 0 && since !== -1) {
+    const beforeSince = events.slice(0, since + 1);
+    const heldAtSince = new Set(taskSets(beforeSince).held);
+    const frontierAtSince = new Set(poolOf(beforeSince).practiceFrontier);
+    nonFrontier = releases.filter(
+      (version) => heldAtSince.has(version) && !frontierAtSince.has(version),
+    ).length;
+  }
   const allowance =
     released === 0 && promotedAt === -1
       ? Infinity
-      : Math.max(
-          0,
-          poolOf(events).practiceFrontier.length -
-            comparisonFloor(level) -
-            releases.filter((version) => inherited.has(version)).length,
-        );
+      : Math.max(0, poolOf(events).practiceFrontier.length - comparisonFloor(level) - nonFrontier);
   // The last release (or promotion) before the reading, so the reading's own releases do not count.
   const last = events.findLastIndex(
     ({ kind, data }, at) =>

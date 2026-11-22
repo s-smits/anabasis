@@ -463,37 +463,47 @@ const readAgainst = (events: readonly LogEvent[], fresh: string, reference: stri
   comparisonsOf(events).some((each) => each.fresh === fresh && each.old === reference);
 
 const compareTool = (context: CampaignContext, bench: Bench): SeatTool =>
-  actionTool(context, bench, "compare", async (turn, decided, begin, signal) => {
-    const named = await comparedOf(context, bench, turn, decided);
-    if ("refused" in named) return named;
-    const { session, args } = comparisonOf(named.move, turn);
-    // The working copy as it is frozen for this comparison, kept inside the live conversation: a
-    // conversation cut later leaves it the latest harness all the same (`latestBuilt`). It is
-    // written before admission on purpose: the state is kept by then, and after a refusal the
-    // table names it as not yet compared (a refused compare is usually superseded by the
-    // session's next checkpoint).
-    if (named.froze !== undefined) {
-      append(context.log, "build.checkpoint", { session: bench.request.id, harness: named.froze });
-    }
-    // The comparison's own flags beside the pack's, so the log says what command the move ran
-    // (a flag left off would otherwise show on no record). The move is on record once the
-    // comparison is admitted, so that one the admission refused leaves no move that never began.
-    // It runs in turn with the releases, so none takes a task between its draw and its start on
-    // record, before `comparing` sees it.
-    const comparison = Promise.resolve(context.releasing).then(() =>
-      checkpointCommand(args, context.held, signal, () =>
+  actionTool(context, bench, "compare", async (_staleTurn, _staleDecided, begin, signal) => {
+    // Serialize the whole comparison setup and run behind any in-flight practice release, and hold
+    // later releases until it finishes, so `comparedOf` reads the post-release log and no release
+    // takes a task between `build.checkpoint`, the draw and `comparison.started`.
+    const done = Promise.withResolvers<boolean>();
+    const previous = context.releasing;
+    context.releasing = done.promise;
+    let turn: Turn;
+    let note: string;
+    let session: string;
+    try {
+      await previous;
+      const fresh = actionTurn(context);
+      turn = fresh.turn;
+      const { decided } = fresh;
+      const named = await comparedOf(context, bench, turn, decided);
+      if ("refused" in named) return named;
+      note = named.note;
+      const built = comparisonOf(named.move, turn);
+      session = built.session;
+      // The working copy as it is frozen for this comparison, kept inside the live conversation: a
+      // conversation cut later leaves it the latest harness all the same (`latestBuilt`). It is
+      // written before admission on purpose: the state is kept by then, and after a refusal the
+      // table names it as not yet compared (a refused compare is usually superseded by the
+      // session's next checkpoint).
+      if (named.froze !== undefined) {
+        append(context.log, "build.checkpoint", { session: bench.request.id, harness: named.froze });
+      }
+      // The comparison's own flags beside the pack's, so the log says what command the move ran
+      // (a flag left off would otherwise show on no record). The move is on record once the
+      // comparison is admitted, so that one the admission refused leaves no move that never began.
+      await checkpointCommand(built.args, context.held, signal, () =>
         begin({
           session,
-          args: args.slice(packOf(context.values).length),
+          args: built.args.slice(packOf(context.values).length),
           ...keysIf(named.move !== decided, () => ({ code: named.move.code, why: named.move.why })),
         }),
-      ),
-    );
-    context.releasing = comparison.then(
-      () => false,
-      () => false,
-    );
-    await comparison;
+      );
+    } finally {
+      done.resolve(false);
+    }
     const events = read(context.log);
     const step = campaignOf(events).steps.findLast(
       (each) => each.step === "comparison" && each.id === session,
@@ -516,7 +526,7 @@ const compareTool = (context: CampaignContext, bench: Bench): SeatTool =>
       said: [
         ...(tallied ? [] : ["The comparison has no tally yet."]),
         ...size,
-        ...(named.note === "" ? [] : [named.note]),
+        ...(note === "" ? [] : [note]),
         ...promoted,
       ].join("\n"),
     };

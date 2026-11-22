@@ -16,7 +16,7 @@
  * the check deciding without its evidence, so the answer is a non-result whatever the check
  * returned. A tool that ran and failed is evidence: the check reads its exit code and decides.
  */
-import { mkdtempSync, writeFileSync } from "../meta/filesystem.ts";
+import { mkdtempSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, lockJsonGlobals, parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, isBoolean, isFunction, isNumber, typeName } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
@@ -49,8 +49,8 @@ export interface CellInput {
   readonly checks: readonly CheckInput[];
   /** The objective, measured once every check has passed; null where the brief declares none. */
   readonly objective: CheckInput | null;
-  /** Where the cell names the check that holds its one thread, as each starts and resumes from a
-   *  tool, so that the host can blame a check that never yields when it ends the cell. */
+  /** Directory where each running check keeps its own marker file (`<slot>.run`), removed on finish,
+   *  so concurrent checks do not overwrite each other and a cell timeout blames a still-running check. */
   readonly running: string;
 }
 
@@ -96,6 +96,7 @@ type CheckFn = (
  *  process groups still running, ended when its time is out. */
 interface Port {
   readonly check: CheckInput;
+  readonly marker: string;
   readonly lapses: string[];
   readonly live: Set<number>;
 }
@@ -110,6 +111,13 @@ const SHELL_LAUNCH_FAILURE =
 /** CPython's own line for an interpreter that died initialising itself, before the program's first
  *  line ran (`init_fs_encoding: ...` for a home whose stdlib it cannot read); it then exits 1. */
 const PYTHON_START_FAILURE = /^Fatal Python error: init/m;
+
+let seq = 0;
+let slots = 0;
+
+/** Record that `port.check` currently holds the cell's thread under a monotonic sequence number. */
+const markRunning = (port: Port): void =>
+  writeFileSync(port.marker, `${String(++seq)}\n${port.check.checkId}`);
 
 /** v1's reading (`74b10d9:src/verify/host.ts`) of a run whose program never started: a failing exit
  *  with nothing on stdout, and either a shell's 126 or 127 with its launch-failure line last on stderr
@@ -166,7 +174,7 @@ async function runTool(cell: CellInput, port: Port, call: ToolCall): Promise<Too
   await terminateAndReapProcessGroupId(child.pid);
   port.live.delete(child.pid);
   // The check resumes here, so it is the one that holds the thread now (`running`).
-  writeFileSync(cell.running, port.check.checkId);
+  markRunning(port);
   if (timedOut) return lapse("timeout", `${call.toolId} ran past ${timeoutMs} ms`);
   // A signal the host did not send is no answer either; Bun reports it as the signal, not 128 + n.
   if (child.signalCode !== null) return lapse("crash", `${call.toolId} was ended by ${child.signalCode}`);
@@ -186,8 +194,9 @@ async function decide(
   cell: CellInput,
   port: Port,
   found: unknown,
-  measure: boolean,
+  kind: "check" | "objective",
 ): Promise<CheckResult | Measure> {
+  const measure = kind === "objective";
   const named = measure ? "the objective" : "the check";
   if (!isFunction(found)) {
     return { faulty: `the check program has no ${measure ? "objective" : `check ${port.check.checkId}`}` };
@@ -196,13 +205,15 @@ async function decide(
   let returned: unknown;
   let threw: string | null = null;
   try {
-    writeFileSync(cell.running, port.check.checkId);
+    markRunning(port);
     // As in v1, the port rides on the request too, so a check that destructures it from there
     // reaches the same tools as one that takes it as the second argument.
     // SAFETY: a check program exports each check as a CheckFn; what it returns is narrowed below.
     returned = await (found as CheckFn)({ ...port.check.request, runtime }, runtime);
   } catch (error) {
     threw = errorMessage(error);
+  } finally {
+    rmSync(port.marker, { force: true });
   }
   if (port.lapses.length > 0) return { nonResult: port.lapses.join("; ") };
   if (threw !== null) return { faulty: `${named} threw: ${threw}` };
@@ -221,19 +232,21 @@ async function timed(
   cell: CellInput,
   check: CheckInput,
   found: unknown,
-  measure: boolean,
+  kind: "check" | "objective",
 ): Promise<CheckResult | Measure> {
-  const port: Port = { check, lapses: [], live: new Set() };
+  const marker = join(cell.running, `${String(++slots)}.run`);
+  const port: Port = { check, marker, lapses: [], live: new Set() };
   const late = Promise.withResolvers<Undecided>();
-  const named = measure ? "the objective" : "the check";
+  const named = kind === "objective" ? "the objective" : "the check";
   const timer = setTimeout(
     () => late.resolve({ faulty: `${named} timed out after ${cell.checkMs} ms` }),
     cell.checkMs,
   );
   try {
-    return await Promise.race([decide(cell, port, found, measure), late.promise]);
+    return await Promise.race([decide(cell, port, found, kind), late.promise]);
   } finally {
     clearTimeout(timer);
+    rmSync(marker, { force: true });
     for (const pid of port.live) killProcessGroupId(pid, "SIGKILL");
   }
 }
@@ -244,16 +257,17 @@ const { program, unloaded } = await import(cell.program).then(
   (module) => ({ program: asRecord(module), unloaded: null }),
   (error: unknown) => ({ program: null, unloaded: `the check program did not load: ${errorMessage(error)}` }),
 );
-const run = (check: CheckInput, measure: boolean) => {
+const run = (check: CheckInput, kind: "check" | "objective") => {
   if (unloaded !== null) return Promise.resolve({ nonResult: unloaded });
-  const found = measure ? program?.objective : asRecord(program?.checks)?.[check.checkId];
-  return timed(cell, check, found, measure);
+  const found = kind === "objective" ? program?.objective : asRecord(program?.checks)?.[check.checkId];
+  return timed(cell, check, found, kind);
 };
-// SAFETY: `decide` gives a check's answer where `measure` is false.
-const results = (await pooled(cell.checks, cell.width, (check) => run(check, false))) as CheckResult[];
+// SAFETY: `decide` gives a check's answer where `kind` is `"check"`.
+const results = (await pooled(cell.checks, cell.width, (check) => run(check, "check"))) as CheckResult[];
 const valid = results.every((result) => "passed" in result && result.passed);
-// SAFETY: `decide` gives a measure where `measure` is true.
-const measured = valid && cell.objective !== null ? ((await run(cell.objective, true)) as Measure) : null;
+// SAFETY: `decide` gives a measure where `kind` is `"objective"`.
+const measured =
+  valid && cell.objective !== null ? ((await run(cell.objective, "objective")) as Measure) : null;
 const written: CellResult = { results, measured };
 writeFileSync("result.json", capturedJsonStringify(written));
 runtimeProcess.exit(0);

@@ -941,4 +941,24 @@ describe("one Examiner conversation across the host's asks", () => {
     await examine({ ...next.request, log: s.log, id: "x-3", tasks });
     expect(next.sent[0]).toContain("x-1-001 (fixture)");
   });
+
+  it("honours a later ask's own kill signal when waking a resting conversation", async () => {
+    const firstKill = new AbortController();
+    const secondKill = new AbortController();
+    const s = seat("write", [propose(2), propose(3), finish]);
+    const examined = await examine({
+      ...s.request,
+      kill: firstKill.signal,
+      wanted: 1,
+      rest: async () => {
+        secondKill.abort();
+        return { ...s.request, id: "x-2", wanted: 1, kill: secondKill.signal };
+      },
+    });
+    expect(examined.ended).toBe("killed");
+    expect(s.of("exam.finished").map(({ session, ended }) => [session, ended])).toEqual([
+      ["x-1", "supplied"],
+      ["x-2", "killed"],
+    ]);
+  });
 });

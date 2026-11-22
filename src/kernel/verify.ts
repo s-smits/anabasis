@@ -479,6 +479,32 @@ const inputOf = (check: BriefTruthCheck, request: EvaluationRequest): CheckInput
   tools: requiredToolsOf(check.execution),
 });
 
+/** The check that last marked itself active among those still running in `runningDir`, or null. */
+function heldCheck(runningDir: string): string | null {
+  if (!existsSync(runningDir)) return null;
+  let held: { readonly seq: number; readonly checkId: string } | null = null;
+  for (const name of readdirSync(runningDir)) {
+    if (!name.endsWith(".run")) continue;
+    let content: string;
+    try {
+      content = readFileSync(join(runningDir, name), "utf8");
+    } catch {
+      continue;
+    }
+    const [rawSeq, checkId] = content.split("\n");
+    const seq = Number(rawSeq);
+    if (
+      Number.isFinite(seq) &&
+      checkId !== undefined &&
+      checkId !== "" &&
+      (held === null || seq > held.seq)
+    ) {
+      held = { seq, checkId };
+    }
+  }
+  return held?.checkId ?? null;
+}
+
 /**
  * One verdict's cell: a walled process that runs every check, and the objective where the answer
  * passes them, and writes their answers (`check-child.ts`). Its own time is the checks' times in
@@ -514,6 +540,8 @@ async function runCell(
   let abort: (() => void) | null = null;
   try {
     for (const dir of [dirs.home, dirs.temp, dirs.host]) mkdirSync(dir, { recursive: true });
+    const runningDir = join(dirs.temp, ".ana-running");
+    mkdirSync(runningDir, { recursive: true });
     // The program goes below the host's folder, so no file of it can stand as `result.json`.
     const copy = join(dirs.kept, "program");
     for (const file of wall.program) {
@@ -528,7 +556,7 @@ async function runCell(
       width: CHECKS_AT_ONCE,
       checks: checks.map((check) => inputOf(check, request)),
       objective: objective === null ? null : inputOf(objective, request),
-      running: join(root, "running"),
+      running: runningDir,
     };
     const policy = commandIsolationPolicy(base, { ...dirs, toolTree: wall.tree.tools });
     // The wall a seat's command takes, without its shell: the cell leads its own group, and the
@@ -553,7 +581,7 @@ async function runCell(
     timer = setTimeout(() => {
       // A check that never yields holds the cell past every check's own time: it is at fault, as
       // one that runs out its time is. A cell that started no check could not run, and decides nothing.
-      const held = existsSync(input.running) ? readFileSync(input.running, "utf8") : null;
+      const held = heldCheck(input.running);
       if (held === null) return stop(`the cell ran past ${String(cellMs)} ms`);
       killProcessGroupId(process.pid, "SIGKILL");
       stopped.resolve({ held, reason: `the check timed out, holding the cell past ${String(cellMs)} ms` });

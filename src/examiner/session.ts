@@ -222,11 +222,17 @@ async function examining(
   const { log, model } = request;
   const caller = new AbortController();
   const cancel = () => {
-    const reason: unknown = request.kill?.reason;
+    const reason: unknown = current.kill?.reason;
     caller.abort(reason instanceof Cancellation ? reason : new Cancellation("caller"));
   };
-  request.kill?.addEventListener("abort", cancel, { once: true });
-  if (request.kill?.aborted === true) cancel();
+  let watchedKill: AbortSignal | undefined;
+  const watchKill = (kill: AbortSignal | undefined) => {
+    watchedKill?.removeEventListener("abort", cancel);
+    watchedKill = kill;
+    kill?.addEventListener("abort", cancel, { once: true });
+    if (kill?.aborted === true) cancel();
+  };
+  watchKill(request.kill);
   try {
     const stops = [timed.signal, spent.signal, caller.signal];
     const said: Said = { note: null, declined: null };
@@ -282,6 +288,7 @@ async function examining(
         return null;
       }
       [current, from, began] = [next, turns.length, performance.now()];
+      watchKill(next.kill);
       Object.assign(said, { note: null, declined: null });
       clock = clocked();
       const woken = asking(next);
@@ -348,7 +355,7 @@ async function examining(
     const by = {
       [mode.done() ?? "none"]: true,
       finished: said.note !== null,
-      killed: request.kill?.aborted === true,
+      killed: caller.signal.aborted,
       wall: clock.signal.aborted,
       crashed: sat.crash !== null,
       turns: turns.length - from >= current.limits.turns,
@@ -365,7 +372,7 @@ async function examining(
     });
   } finally {
     clock.close();
-    request.kill?.removeEventListener("abort", cancel);
+    watchedKill?.removeEventListener("abort", cancel);
   }
 }
 
@@ -398,8 +405,8 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
 
 /** The Examiner's asks as one conversation: each later ask wakes it where it rests,
  *  and where it crashed or met a limit the next opens afresh from the log (`record.ts`). An ask is
- *  answered at its own end or at the conversation's; `close` ends a resting one, as the host does
- *  at the first ask after a promotion (`examineAction`). */
+ *  answered at its own end or at the conversation's; `close` ends a resting one when the Builder's
+ *  conversation closes. */
 export function conversing(sitting: Session<"write">) {
   let live: {
     settle: (examined: Examined) => void;

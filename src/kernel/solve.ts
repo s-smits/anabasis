@@ -130,11 +130,14 @@ export function providerFailed(last: LastTurn): boolean {
 
 /**
  * Whether a provider's refusal names a state no retry clears: a subscription an organisation
- * disabled, a provider never configured, or credits too few for the request. Each came back on every
- * solve of a run on record, 268 of them. A bare 403 is no such state: Cloudflare's came and went.
+ * disabled, a provider never configured, credits too few for the request, or a model the account
+ * does not support. Each came back on every solve of runs on record (276 across the archive). A
+ * bare 403 is no such state: Cloudflare's came and went.
  */
 export function nonRetryableProvider(reason: string): boolean {
-  return /disabled Claude subscription access|Provider is not configured|requires more credits/u.test(reason);
+  return /disabled Claude subscription access|Provider is not configured|requires more credits|model is not supported/u.test(
+    reason,
+  );
 }
 
 /**

@@ -42,7 +42,7 @@ function claimant(root: string) {
   const source = [
     `const { claimRoot, hostFolder } = await import(${quoted(import.meta.dir, "..", "src", "wall", "seat-root.ts")});`,
     `const { mkdirSync } = await import(${quoted(import.meta.dir, "..", "src", "meta", "filesystem.ts")});`,
-    `claimRoot(${quoted(root)});`,
+    `await claimRoot(${quoted(root)});`,
     `mkdirSync(hostFolder(${quoted(root)}));`,
     `mkdirSync(${quoted(root, "home")});`,
     "await Bun.sleep(60_000);",
@@ -73,14 +73,14 @@ describe("a seat's root", () => {
   // first's command profiles under it.
   it("is claimed once, refused to a second claim before anything in it is touched, and free again once released", async () => {
     const { parent, root } = unclaimed();
-    const release = claimRoot(root);
+    const release = await claimRoot(root);
     mkdirSync(join(root, "home"));
-    expect(() => claimRoot(root)).toThrow("EEXIST");
+    await expect(claimRoot(root)).rejects.toThrow("EEXIST");
     expect(existsSync(join(root, "home"))).toBe(true);
     await release();
     expect(existsSync(root)).toBe(false);
     // Released, it can be claimed again, as a session run again under its id claims it.
-    await claimRoot(root)();
+    await (await claimRoot(root))();
     rmSync(parent, { recursive: true, force: true });
   });
 
@@ -90,7 +90,7 @@ describe("a seat's root", () => {
     "ends a process working in it, and spares one working beside it",
     async () => {
       const { parent, root } = unclaimed();
-      claimRoot(root);
+      await claimRoot(root);
       const home = join(root, "home");
       mkdirSync(home);
       const beside = join(parent, "beside");
@@ -123,7 +123,7 @@ describe("a seat's root", () => {
     "ends a process running a program from it, wherever that process works",
     async () => {
       const { parent, root } = unclaimed();
-      const release = claimRoot(root);
+      const release = await claimRoot(root);
       const program = join(root, "sleeper");
       copyFileSync("/bin/sleep", program);
       chmodSync(program, 0o755);
@@ -154,7 +154,7 @@ describe("a seat's root", () => {
     "ends a child no listing held until its parent read as gone",
     async () => {
       const { parent, root } = unclaimed();
-      claimRoot(root);
+      await claimRoot(root);
       const home = join(root, "home");
       mkdirSync(home);
       const working = () =>
@@ -190,7 +190,7 @@ describe("a seat's root", () => {
     "ends a loop that forks children which live on, and every child it forked",
     async () => {
       const { parent, root } = unclaimed();
-      claimRoot(root);
+      await claimRoot(root);
       const home = join(root, "home");
       mkdirSync(home);
       const marker = `61.${String(runtimeProcess.pid)}`;
@@ -225,7 +225,7 @@ describe("a seat's root", () => {
 describe("what a seat left", () => {
   it("is let go whole by its release: the root, the host's folder beside it and the claim", async () => {
     const { parent, root } = unclaimed();
-    const release = claimRoot(root);
+    const release = await claimRoot(root);
     mkdirSync(join(hostFolder(root), "model"), { recursive: true });
     expect(claimed(root)).toBe(true);
     await release();
@@ -260,6 +260,31 @@ describe("what a seat left", () => {
       expect(existsSync(join(root, "home"))).toBe(true);
       expect(await releaseLeft([parent], 0, "release")).toEqual([root]);
       expect([root, hostFolder(root), claimOf(root)].map(there)).toEqual([false, false, false]);
+    } finally {
+      holder.kill("SIGKILL");
+      await holder.exited;
+      rmSync(parent, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  // A drafting seat stopped and seeded afresh under its name was refused its root at every restart,
+  // until the daily sweep, by the root its killed predecessor left.
+  it("is released by the next claim of it once its claimant is gone, and refused to it while that process lives", async () => {
+    const { parent, root } = unclaimed();
+    const holder = claimant(root);
+    try {
+      await ready(() => existsSync(join(root, "home")));
+      await expect(claimRoot(root)).rejects.toThrow("EEXIST");
+      expect(existsSync(join(root, "home"))).toBe(true);
+      holder.kill("SIGKILL");
+      await holder.exited;
+      const release = await claimRoot(root);
+      expect([existsSync(join(root, "home")), there(hostFolder(root)), claimed(root)]).toEqual([
+        false,
+        false,
+        true,
+      ]);
+      await release();
     } finally {
       holder.kill("SIGKILL");
       await holder.exited;
@@ -308,7 +333,7 @@ describe("what a seat left", () => {
     "ends a process working in the host's folder, so nothing is written back after the release",
     async () => {
       const { parent, root } = unclaimed();
-      const release = claimRoot(root);
+      const release = await claimRoot(root);
       const model = join(hostFolder(root), "model");
       const caches = join(model, "Library", "Caches");
       mkdirSync(model, { recursive: true });

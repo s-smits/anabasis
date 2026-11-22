@@ -39,7 +39,7 @@ async function inSeat(
   options: { otherTrees?: string[]; limits?: CommandWall["limits"] } = {},
 ) {
   const dirs = solveDirs(`command-${crypto.randomUUID()}`);
-  const release = claimRoot(dirs.root);
+  const release = await claimRoot(dirs.root);
   try {
     makeSeatDirs(dirs);
     const base = solveIsolationPolicy({ repoRoot, otherTrees: options.otherTrees ?? [] });

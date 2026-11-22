@@ -161,7 +161,7 @@ async function answers(tree: string, battery: readonly Probe[]): Promise<Answer[
     seat: (await import(join(tree, "src/wall/seat-root.ts"))) as typeof import("#src/wall/seat-root.ts"),
   };
   const dirs = command.solveDirs(`wall-probe-${String(runtimeProcess.pid)}`);
-  const release = seat.claimRoot(dirs.root);
+  const release = await seat.claimRoot(dirs.root);
   try {
     command.makeSeatDirs(dirs);
     const policy = base.solveIsolationPolicy({ repoRoot: tree, otherTrees: [] });

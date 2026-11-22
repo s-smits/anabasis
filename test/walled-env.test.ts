@@ -26,7 +26,7 @@ async function withSeat(run: (env: ExecutionEnv, wall: CommandWall, canary: stri
   const canary = join(repoRoot, "canary.txt");
   writeFileSync(canary, SECRET);
   const dirs = solveDirs(`env-test-${crypto.randomUUID()}`);
-  const release = claimRoot(dirs.root);
+  const release = await claimRoot(dirs.root);
   let env: ExecutionEnv | undefined;
   try {
     const base = await walledBase(dirs, { repoRoot }, "the environment test");

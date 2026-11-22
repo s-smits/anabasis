@@ -49,11 +49,15 @@ export const claimed = (root: string): boolean => held(claimOf(root));
 
 /**
  * Create the seat's root with this process's claim on it, and return its release, which the caller
- * runs once the solve or session that holds the root has ended.
+ * runs once the solve or session that holds the root has ended. A root whose claim names a dead
+ * process is released first, as the sweep would release it: a campaign takes each session id once,
+ * so such a root is a killed seat's under a name made again (a seed seeded afresh, a seat started
+ * again), and refusing it ended every restart until the daily sweep.
  */
-export function claimRoot(root: string): ReleaseRoot {
+export async function claimRoot(root: string): Promise<ReleaseRoot> {
   const at = resolve(root);
   mkdirSync(dirname(at), { recursive: true });
+  if (recordIn(claimOf(at)) !== "" && !claimed(at)) await releaseRoot(at);
   // Not recursive: a root another solve or Builder session already holds is refused, not shared.
   // Two rounds once ran a Builder session under one id, and the second's cleanup removed the
   // first's command profiles.
@@ -66,9 +70,9 @@ export function claimRoot(root: string): ReleaseRoot {
  * End what still works in `root`, and remove it with its host folder and, last, its claim, so
  * that a release cut part way still says whose the rest was. The solve or session that claimed it
  * does this when it ends; one that was stopped or killed never does, and a stop of its run does it
- * from the root's name in the log (`tools/runs/stop.ts`), and the daily sweep from its claim
- * (`releaseLeft`). A process a seat left behind is ended here, where the root it works in goes,
- * since one can run on forking long after its solve.
+ * from the root's name in the log (`tools/runs/stop.ts`), and the daily sweep or the next claim of
+ * the root from its claim (`releaseLeft`, `claimRoot`). A process a seat left behind is ended
+ * here, where the root it works in goes, since one can run on forking long after its solve.
  *
  * The holders end before this returns its promise, and the removal runs off this thread, so a
  * solve reads its verdict beside it (`attemptSolve`): a home that holds a library in a virtual

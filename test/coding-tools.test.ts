@@ -65,7 +65,7 @@ async function withSeat(
 ) {
   const repo = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-coding-repo-")));
   const dirs = solveDirs(`coding-${crypto.randomUUID()}`);
-  const release = claimRoot(dirs.root);
+  const release = await claimRoot(dirs.root);
   let env: ExecutionEnv | undefined;
   try {
     const base = await walledBase(dirs, { repoRoot: repo }, "the coding tool test");

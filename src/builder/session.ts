@@ -634,7 +634,7 @@ export const sessionDirs = (log: string, id: string): SolveDirs =>
 export async function build(request: BuildRequest): Promise<Built> {
   const dirs = sessionDirs(request.log, request.id);
   // Before the try: a claim refused because another round's session holds this id cleans up nothing.
-  const release = claimRoot(dirs.root);
+  const release = await claimRoot(dirs.root);
   try {
     const wall: CommandWall = {
       base: await walledBase(

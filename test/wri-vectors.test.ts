@@ -244,7 +244,7 @@ describe.skipIf(!osIsolationSupport().ok)("its vectors, through a seat's wall", 
       return (shell.ok && shell.value.exitCode === 0) || opened.ok;
     };
     const dirs = solveDirs(`vectors-wall-${crypto.randomUUID()}`);
-    const release = claimRoot(dirs.root);
+    const release = await claimRoot(dirs.root);
     let env: ExecutionEnv | undefined;
     try {
       const base = await walledBase(

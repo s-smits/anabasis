@@ -66,7 +66,7 @@ async function inSeat(
   fn: (wall: CommandWall, run: (command: string, under?: CommandWall) => Promise<string>) => Promise<void>,
 ) {
   const dirs = solveDirs(`sandbox-${String(runtimeProcess.pid)}-${String(Date.now())}-${String(seats++)}`);
-  const release = claimRoot(dirs.root);
+  const release = await claimRoot(dirs.root);
   try {
     makeSeatDirs(dirs);
     const base = solveIsolationPolicy({ repoRoot, otherTrees });

@@ -135,7 +135,7 @@ export async function inExaminerWall<T>(
   const pinned = engines === undefined ? [] : pinnedEngines(engines);
   const reopened = engines === undefined || pinned.length === 0 ? [] : [engines.tools];
   const tree = join(dirs.kept, "engines");
-  const release = claimRoot(dirs.root);
+  const release = await claimRoot(dirs.root);
   try {
     const base = await walledBase(dirs, { ...wall, readAllowRoots: reopened }, "an Examiner");
     for (const { name, path } of pinned) {

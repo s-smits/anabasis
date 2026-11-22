@@ -118,7 +118,7 @@ describe.skipIf(!osIsolationSupport().ok)("what a look wrote, through a seat's w
       writeFileSync(file, SECRET);
     }
     const dirs = solveDirs(`pulse-wall-${crypto.randomUUID()}`);
-    const release = claimRoot(dirs.root);
+    const release = await claimRoot(dirs.root);
     let env: ExecutionEnv | undefined;
     try {
       const base = await walledBase(dirs, { repoRoot }, "the pulse's wall test");

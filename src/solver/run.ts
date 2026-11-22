@@ -280,7 +280,7 @@ async function play(
   let digest: string | null = null;
   let prompts = 0;
   try {
-    release = claimRoot(dirs.root);
+    release = await claimRoot(dirs.root);
     const base = await walledBase(
       dirs,
       { repoRoot: request.repoRoot, otherTrees: request.otherTrees, packRoots: request.packRoots },

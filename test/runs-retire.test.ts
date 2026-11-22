@@ -217,7 +217,7 @@ describe("retiring", () => {
     writeFileSync(join(dirsOf(cut).home, MEMORY_FILE), "Next: widen the sweep.\n");
     // A root its run's log names as open and a live process claims: read as unwritten by the
     // process table, as a writer this sweep cannot name would be, and held by its claim.
-    const releaseHeld = claimRoot(dirsOf(held).root);
+    const releaseHeld = await claimRoot(dirsOf(held).root);
     // A verifier's cell whose claimant is gone, under a parent of this test's own.
     const parent = join(root, "scratch");
     mkdirSync(join(parent, "cell-left"), { recursive: true });

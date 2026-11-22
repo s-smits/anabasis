@@ -44,11 +44,6 @@
  *   each read of the record (`recordOwed`) and its vetting's fixed columns (`vettingFaults`).
  * - `ledger` prints the views derived from those files and never written by hand: the cycle view,
  *   the dropped view and each run's still-missing view (`tools/wri/ledger.ts`).
- *
- * Every gate is a default, never a wall (the operator's words: "to-be-deviated-from each time"): a
- * row `| <step> | <reason> |` in the folder's `deviations.md` passes it, and `next` prints the
- * deviation with the step it reaches, so a session's judgment is kept on the record beside the rule
- * it set aside.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { lastAt } from "#skills/main/logs.ts";

@@ -162,32 +162,6 @@ function memberReplacementCall(
  * tests with `bun:test`, whose spelling is `mock.module(…)`, and the upstream rule did not read
  * it; this copy reads a `mock` imported from `bun:test` too.
  *
- * This copy also reads the other ways of replacing what every caller shares: `spyOn`
- * over a member of any import or of a steering global (`spyOn(prepare, "prepareCommand")`,
- * `spyOn(Date, "now")`); in a test, an assignment, `Object.defineProperty` or `Object.assign`
- * over one (`fs.readFileSync = …`, `globalThis.fetch = …`); and a faked clock
- * (`setSystemTime(date)`, `vi.useFakeTimers()`). Each swaps the dependency above the code rather
- * than handing it in, so the repair is the same. Writes count only in a test, since production
- * writing an imported object's member, `runtimeProcess.exitCode` among them, is no substitution.
- * Narrowed out, each the honest interface rather than a seam: `env`, which is input; `exitCode`,
- * which is output; `execPath`, written only by the test that proves the wall reads the captured one;
- * `console`, which a test only observes; and `setSystemTime()` and `useRealTimers()`, which give
- * the clock back. A saved-and-restored global needs no shape of its own: the write is the finding.
- *
- * A mocked module is a test that passes against a description of the dependency instead of the
- * dependency. The description is written once and then drifts, so the module can change its
- * signature, its errors or its side effects and the suite keeps reporting green, and it keeps
- * reporting green about a call that no longer exists. It also decides the test can only run one
- * way, because the substitution happens above the code rather than inside it, which is why a
- * mocked suite so often cannot be asked the second question.
- *
- * `isTestFrameworkObject` is what keeps this from being a ban on the word `mock`. The receiver
- * has to be `vi` or `jest` resolving to a global, or an import of `vi` from `vitest`, `jest`
- * from `@jest/globals` or either from `bun:test`; anything else called `mock` on any other object
- * is someone else's method. A binding of either name with no definition in scope is treated as the
- * framework's, since an ambient global is how both are normally reached. Computed access is read
- * alongside plain access, because `vi["doMock"]` names the same method.
- *
  * There is no fix: the repair is a real interface the test can substitute at, which is usually a
  * change to the code under test rather than to the test.
  */

@@ -4,18 +4,6 @@
  *
  * Kept from v1's investigation classifier: the pin, and two lessons. A read embeds only what no
  * earlier read embedded, and it finishes offline and with a store it cannot write.
- *
- * Progress survives a kill: the vectors go down after every batch, and the next read embeds the rest.
- * A reader that calls this marks itself `embeds`, which `derive --no-embed` leaves out; no moment names
- * one, so a pulse's pass runs none.
- * The vectors are made from text that may hold hidden values, so they lie in the reader store under
- * `.ana/`, closed to every seat by name, instead of v1's `~/.cache`. The public model's files stay in
- * the shared cache, outside every worktree, so a fresh checkout downloads nothing. One log has one file
- * for one pin, whichever reader asks, so a text two readers want is embedded once.
- *
- * A read with nothing new loads no model. One thread at the pass's lowest priority holds it to the one
- * core `room` allows a reader: the log with the most prose takes under a minute at a footprint of
- * some hundreds of megabytes, and the next read a fraction of a second.
  */
 import { sha256 } from "#src/meta/digest.ts";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";

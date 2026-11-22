@@ -4,13 +4,6 @@
  *
  *   bun .claude/skills/comparison-reading/scripts/draw.ts <log.jsonl | campaign name>
  *     [--target <n>] [--level <n>]
- *
- * Useful for diagnosing a `held-short` refusal or a draw below `--target`. Calls `poolOf` for the
- * pool partition, `scoredSet` for task selection under the frozen contract, `tasksByEpoch` for
- * frontier epoch breakdown, and `comparisonFloor`, `refusals`, `supplyOf`, and `sizeLines` for
- * admission and statistical power figures. Defaults `--target` and `--level` to `planOn(events)`.
- * Also reports family concentration (`familySizes`) and overlap with the preceding comparison
- * without naming individual tasks or families.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { comparisonFloor, refusals, supplyOf } from "#src/campaign/admission.ts";

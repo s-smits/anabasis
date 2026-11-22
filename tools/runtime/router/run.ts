@@ -18,10 +18,6 @@
  * once per lockfile (`task.sh`). The snapshot keeps `HEAD`'s parents, so a static gate there chooses
  * the tests it would choose here, where a parentless snapshot would read every file as changed.
  *
- * **Slots.** A host takes as many tasks at once from this machine as its `checks` says (two where it
- * says nothing), and this machine one. A slot is a link in the temp folder whose target is its holder's PID, made in one
- * step, so a holder that died holds nothing; a task that finds none free looks again each second.
- *
  * Settings, each optional, in seconds unless said: `ANA_RUNNER_WALL` (a task's deadline, 3600),
  * `ANA_RUNNER_QUEUE_WAIT` (the wait for a slot, 2400; exit 75 past it), `ANA_RUNNER_MIN_FREE_GB`
  * (free space a host must have, 3; exit 69 below it or where it does not answer),

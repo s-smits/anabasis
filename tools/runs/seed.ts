@@ -1,28 +1,5 @@
 /**
  * `bun run runs seed --from <campaign folder> (--points | --name <name> [--before <session> | --events <n>] [--as-ran])`
- *
- * A campaign is its folder: the log, the staged check program (or the staged exam it drafted), the
- * harness states its sessions kept and the notes each session left the next (`src/builder/memory.ts`). A seed is a copy of one under another name in this worktree, with the log cut where a
- * question starts, so that the campaign's own commands (`tools/d2/campaign.ts`) go on from a
- * recorded position and the run that recorded it is never written.
- *
- * `--before` keeps what came before a Builder or an Examiner session started, which is where that
- * session stood. `--events` keeps the first n events, for a position inside a session: after a
- * round's `build.finished`, say, to walk its comparison again. With neither the whole log is kept.
- *
- * `seed.json` in the copy says where it came from and where it was cut. `rehearse` runs only where
- * that file is, since a scripted solve in a real campaign's log would be counted as a solve.
- *
- * The Examiner's home comes with it only where it is still the one the cut stood with.
- *
- * `--as-ran` puts the seed in a tree that holds the code the run ran at the cut (`treeAsRan`)
- * instead of this one, and `--points` prints where a seed can be cut and writes nothing.
- *
- * Not copied: the receipts and outputs, which are the source run's, and the notes of a
- * session the cut log no longer holds, which a session run again under its id would otherwise find
- * in its place. The states come with the
- * tool trees kept beside them. A state frozen while its link named the tree by its whole path still
- * links to the source's tree; a solve reads it behind the wall and writes nothing there.
  */
 import { epochsOf } from "#src/campaign/climb.ts";
 import { lastHost } from "#src/kernel/condition.ts";

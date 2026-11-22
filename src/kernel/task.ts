@@ -1,40 +1,12 @@
 /**
  * The Examiner's gate checks a task package's shape (`src/examiner/write.ts`).
  *
- * The id, the family and the inputs are what the solver reads; the rule ids are the contract rules
- * the check enforces, which the shape check holds it to. The check is a program the solver never sees,
- * with hidden values only the check's own runs receive.
- *
- * A draft is held out when its shape check passes.
- * Every comparison may score it (`compare.ts`). It leaves that set three ways. It is
- * released to a Builder as practice, and a practice task is never scored. It is disputed when a
- * check is found at fault on an answer to it, from either set, and is then neither scored nor
- * practised on. Or task admission refuses the draft, and it never was one. Each task version's
- * state is a view over the log.
- *
- * An old log may hold a draft held for the ladder by task admission, a fixed set read only after a
- * promotion: its admission outcome and its state are `ladder`. The ladder is retired
- * (`src/examiner/write.ts`), and such a task is read as held out.
- *
- * Room solves use the campaign's solver, never a stronger one. v1's solver matched whatever its
- * author's side found, and an admission test of one stronger solve lost more than half the tasks
- * of the first live sessions (`docs/v1.md`). Up to three reference solves refuse a draft that
- * leaves no room: it needs variation in validity, a known valid
- * answer where the reference never answers, or an objective gap. Both harnesses later solve the
- * same scored tasks under one compute budget. Reject control answers belong to the check program
- * and are read once for it (`tools/c/accept.ts`), rather than written per task.
- *
  * The oldest logs hold four later admission tests (a stronger solve, the checks run again
  * on its answer, three reject control answers, and a screening under two harnesses) and the states
  * screening moved a task through: `too-hard`, `admitted`, `too-easy`, `wall-bound`, and the
  * anchor's draw. They are read here as history. A later admission test says nothing of a task's shape, and
  * each of those states leaves the task what it was, a held-out task; a refusal one of the later
  * admission tests led to stands, since its state was logged beside it. No command writes any of them now.
- *
- * Departure from the plan, which hashes statement, inputs, check and control answers into the task
- * version: a task carries no statement, since v1's tasks have none and a stand-in would be hashed
- * without a reader; the version covers the family, which the solver reads, and the rule ids, which
- * the shape check holds the check to.
  */
 import { CHECK_BRIEF, EVALUATOR_FILE } from "../meta/bundle-layout.ts";
 import { existsSync } from "../meta/filesystem.ts";

@@ -1,17 +1,5 @@
 /**
  * A log's proposals and accepted answers, in the log's order.
- *
- * `task.ts` folds a task's proposal, its task admissions and its moves into a version's state, and refuses a
- * history that could not have happened. Its readers ask one thing more of a proposal than a state:
- * which tasks the log holds whole, since no pack holds an Examiner's. Here it is
- * read once, for every reader.
- * An author's answer and passing solves have one reader here, by proposed version, so a Referee
- * packet cannot miss them; the known valid answer remains `poolOf`'s fact. Passes a person labelled
- * wrong are read here too, for answer history, reported pairs and settlement alike (rule 12), so a
- * settled wrong pass is never offered as a valid answer.
- *
- * Nothing here judges a history. An event the fold would refuse is handed over like any other; a
- * caller that needs the log to be sound asks the fold first (`taskSets`).
  */
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";

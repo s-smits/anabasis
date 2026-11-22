@@ -410,25 +410,6 @@ function isCaughtValue(sourceCode: SourceCode, identifier: ESTree.IdentifierRefe
  * A value the source already described, widened, and a later assertion that puts the description
  * back: `const raw: unknown = { id };` then `raw as Row`.
  *
- * Both halves compile and each one alone looks defensible, which is why the pair survives review.
- * Read together they are a round trip through nothing: the type was known at the declaration, the
- * widening erased it, and the assertion re-states it from memory rather than from evidence. If
- * the value changed in between, the assertion is a guess; if it did not, the widening bought
- * nothing and cost the compiler its knowledge of every use in between.
- *
- * A value is widened by a `const`'s annotation or its initializer's assertion, by a call to a
- * function of this file whose declared return type erases what each of its returns states, or by
- * a JSON round trip of a known value. What erases is `unknown`, `any`, `object` or an open
- * dictionary, and this repository's `JsonValue` and `JsonObject`, which a file imports and its
- * own type environment therefore cannot open. A call to a function of this file whose declared
- * return type is precise states a known value, as a literal does.
- *
- * The flow has to be one flow before any of that is readable. The assertion must come after the
- * declaration in the source, since an assertion above it is about some earlier value. It must sit
- * in the declaration's function or a function nested in it, and the binding must be a `const`
- * that is never written again, so what it holds at the assertion is what the declaration put
- * there. A call widened by its callee is read where it is asserted, `opened() as Opened`.
- *
  * `recreatesErasedType` is what separates a narrowing from a change of subject. Asserting one
  * broad type to another narrows nothing and is not reported. `any` and `unknown` erase
  * everything, so any precise type narrows them back. The object-shaped widenings erase only a
@@ -436,23 +417,6 @@ function isCaughtValue(sourceCode: SourceCode, identifier: ESTree.IdentifierRefe
  * name imported from elsewhere, to which TypeScript would not let a dictionary be asserted unless
  * the two overlap. `object` asserted to `string` is a different defect, and not this rule's.
  * `x as unknown as T` is `no-chained-type-assertions`' and is not read here.
- *
- * Two assertions recreate a type the code could have carried without any widening of its own. An
- * element read, `xs[i]`, `.at()`, `.shift()`, `.pop()`, `.find()`, `.findLast()` or `.get()`,
- * returns its element's type beside `undefined`, which `noUncheckedIndexedAccess` puts there on
- * purpose; asserting it away to a precise type discards that evidence, where a check, a fallback
- * or an iteration keeps the element's own type. A target that keeps `undefined` or `null`, or is
- * itself broad, removes nothing and is left alone, and a string-literal key is a property read.
- * And a caught value is `unknown`, so an assertion on it is a guess that `instanceof` or a record
- * test would make a fact.
- *
- * Read in a census and left out, each as the honest boundary: `JSON.parse(...)`,
- * a dynamic `import()` or a host's document asserted to its shape (foreign input, which a parser
- * owns); `Object.fromEntries`, `Object.keys` and a computed key asserted to a typed record (the
- * library's signatures cannot carry the key type); a property read asserted to a literal union,
- * such as a command-line flag (a parser that this file cannot see owns it); a partial object
- * literal asserted to a foreign interface (a test double, or a library that reads two fields of
- * it); and `x as JsonObject` (a broad target narrows nothing this rule can recreate).
  *
  * There is no fix: the repair is to drop the widening, but which of the two annotations states
  * the true type is not readable from the flow alone.

@@ -3,25 +3,6 @@
  * hand in many files. An oxlint rule sees one file, so it cannot tell a union's owner from its
  * readers.
  *
- * `no-scattered-state-literals` (generic). The scan infers each declared set of states from the syntax:
- * a type alias or an inline union of two or more string literals, an `as const` array or object of
- * string literals, a string `enum`, and a `Set` of string literals. The file declaring it owns it.
- * A reader groups states when one condition compares one subject with two or more of them
- * (`s === "done" || s === "failed"`, `s !== "a" && s !== "b"`, `["done", "failed"].includes(s)`,
- * or `case` labels falling through to one body in a switch that is not exhaustive). A grouping
- * written outside the owner names a derived state ("ended") that only the reader knows, so each
- * reader re-derives it and their sets drift. Reported: a declared set grouped by hand in two or
- * more files besides its owner, at the owner, with every grouping as a place. A grouping maps to the
- * smallest declared set holding all its literals; an exhaustive switch maps every state and does
- * not count. The remedy is a predicate or a table in the owner that each reader calls.
- *
- * `no-unowned-state-literals` (opinionated: every status literal comes from a declared owner). A
- * grouping of word-like literals that no type, `as const`, `enum` or `Set` in the tree spells,
- * written in two or more files (the same `--readers`). Nobody owns those states: a typo in one copy
- * is a state no other reads. Contested where the literals are another program's protocol
- * (`process.platform`, an error `code`), which a tree that declares no type for them cannot tell
- * apart.
- *
  * Not read: tests, declaration files, vendored and generated trees. `typeof x === "string"` is no
  * state. The scan is syntactic and leans to silence; it runs on any folder as
  * `bun tools/oxlint/tree-implicit-state.ts <root> [--json] [--readers <n>]`, which also prints

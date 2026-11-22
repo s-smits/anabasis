@@ -1,38 +1,15 @@
 /**
- * The runs pulse: v1's `bun run runs pulse`, on v2's log. One look reads the run logs of the
- * repository's worktrees (`registry.ts`) and says one status line for each and what happened since
- * the last look: `◆` a milestone, `⚠` something to look at, `·` the rest. Each log is the run's
- * whole record, so the pulse keeps only how far it read and what it last said, in `--state`.
+ * Campaign status and incremental event pulse (`bun run runs pulse` and `bun run runs status`):
  *
  *   bun run runs pulse [<part of a name> ...] [--every 290] [--state .ana/runs-pulse.json]
  *     [--here] [--no-readers] [--ack <token>]
  *   bun run runs status [--all]
  *
- * One look and out, unless `--every <seconds>` asks it to keep looking, so that a session reading one
- * run through a pipe does not wait for an end that never comes.
- *
- * With no names a look covers the open runs and those open at the last look, so a run's ending is
- * said once; an observer's first look of a run also covers one stopped in the last day without an
- * ending, and later looks do not, which would repeat each stopped run's "process gone" and its
- * stderr for a day. A name matches every run whose name holds it. Quiet, no event for 20 minutes in an
- * open run, counted from a named reset it waits out where that is later, is said when it starts and
- * when it ends. Each look also polls every configured host once, with a cursor for
- * this observer, unless --here is named. A missing peer is a warning and exit 0, since the anti-stall
- * hook reads any other exit as a failed look. No local state path is sent to another machine.
- *
- * What an event says is `said.ts`'s, which the alerts and the iteration's script read too. A look also
- * says, under each moment among its new events (an opening, the contract's freeze, a comparison's
- * start, a report, a promotion, a session's or a campaign's end), what the deterministic readers that
- * name it found (`at`, `tools/wri/derive.ts`; `pulse-readers.ts`), which `--no-readers` leaves out, and
- * the triggers come from their `rows`. No reader of a moment loads the embedding model, so the look
- * has no flag for it.
- *
- * Nothing a look read is lost to a kill, and the hook's `timeout 40` kills it whole. A look remembers
- * only after it has printed, so a kill before that says the same events again, and a look over ssh
- * cannot know its caller read it: a peer holds what it would remember in `<state>.pending` until the
- * caller's next look returns the token it printed last (`--ack`), and looks again from the old cursor
- * if it does not. A host that has not answered within `PEERS_MS` is said to have left its lines for the
- * next look, on stdout, where the hook's filter keeps them.
+ * Polls local and remote (`ANA_HOSTS`, unless `--here`) campaign logs, printing a status line and
+ * new milestones (`◆`), warnings (`⚠`), routine events (`·`), 20-minute quiet intervals, and
+ * deterministic moment-reader findings (`tools/wri/derive.ts`, `pulse-readers.ts`, unless
+ * `--no-readers`). Persists cursor state in `--state` only after printing, using `<state>.pending`
+ * and `--ack <token>` over SSH so interrupted polls never drop events.
  */
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { endingOf } from "#src/kernel/reports.ts";
@@ -274,23 +251,6 @@ function triggersSaid(
 
 /**
  * Where the process that writes `log` stands now, read once for the status line and the look.
- *
- * Its launch begins at the first event at or after its launch receipt, or the start where none is
- * kept, and a solve or a wait before it belongs to a process that is gone. Otherwise a campaign
- * continued after a provider wait would read its cut solves as running and its new invocation as
- * waiting out that reset, so a stall after it would not read quiet until the reset.
- *
- * A run stands where the last thing it started does (a Builder session, an Examiner session or a
- * comparison), or at its last solve where that is later: a comparison gone on from its log writes no
- * second start, so the solves it makes after another comparison's report say it has not reported.
- * That work ends in its run's end, or `exam.finished` after an Examiner session: an Examiner session
- * writes no report, and one that ended whole would otherwise be said to be gone before one. A
- * campaign that wrote its ending is done whatever it was doing, even one that ended while drafting
- * its exam, which none of these starts covers.
- *
- * A run waiting out a named reset is silent by design, so its quiet is counted from the reset, and
- * neither the minute between the reset and its next event nor other seats writing after the wait
- * makes it quiet.
  */
 function standing(run: Run, log: readonly LogEvent[]) {
   const solves = solvesIn(log);
@@ -443,11 +403,6 @@ function standsSaid(
  * what happened since `before`, and what to remember. A first look says only the status and a quiet
  * already under way. `alarms` are the investigation's triggers where the readers' rows moved since the
  * last look, which reads past a moment, and `under` the readers' lines by each new event's place.
- *
- * A campaign's look also says the step it has come to owe, once, at the look that finds it so: an
- * investigation at its trigger (`triggerOf`), with the command that opens one on a stopped run and
- * the driver's `due` for a live one, so that a session that watches the pulse alone does not run a
- * campaign past twelve hours unread.
  */
 export function pulse(
   run: Run,

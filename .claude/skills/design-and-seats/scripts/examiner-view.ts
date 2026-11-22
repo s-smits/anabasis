@@ -8,10 +8,6 @@
  * Calls `heard` (`src/examiner/record.ts`) over the drafted examples plus all written tasks and
  * reports line counts per section heading, reference outcome counts from `poolOf`, the last comparison
  * summary line, and any promotion notice, omitting task prose, refusal text, and hidden values.
- *
- * `--each` replays the log prefix before each `exam.started` event through `heard` and `wakeOn`
- * (`src/examiner/write.ts`) and compares the reconstructed wake or `read_opening` output against
- * the text served in `exam.call` (used by WRI lanes 4 and 20).
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { draftOf } from "#src/examiner/draft.ts";

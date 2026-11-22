@@ -12,14 +12,6 @@ import { calleeName, enclosingFunction, innermost, isTestPath } from "../shared/
  * with the holder: a pid that can be asked whether it is alive, a lease the holder renews and
  * releases, or an exclusive open (`wx`) released on exit.
  *
- * Reported: a relational comparison (`<`, `<=`, `>`, `>=`) one of whose operands is a difference
- * whose subtrahend reads a file time (`.mtimeMs`, `.ctimeMs`, `.mtime.getTime()`, `+stat.mtime`,
- * `Number(stat.mtime)`), or which compares a file time with a difference (`stat.mtimeMs < now -
- * STALE`), in a function that takes something over on the strength of it: it deletes, renames or
- * signals (`rm`, `unlink`, `rmdir`, `remove`, `rename`, `kill`, each in its sync form too, by any
- * receiver), directly or through a function of this file whose body does. Platform forms only:
- * `fs.Stats` and `Bun.file().lastModified` name the field.
- *
  * Not reported: an age that only selects what a report shows or a cache keeps (`files.filter((f)
  * => now - statSync(f).mtimeMs < RECENT)`), since no holder loses anything by it; a deletion by age
  * of data nothing holds, in a function (and the functions around it) that names no holder: no

@@ -16,46 +16,6 @@ import { calleeName, isTestPath, objectValues } from "../../implicit-state/share
  * reader has to know which five never happen. One union, or a discriminated union where each
  * state carries its own data, makes the impossible combinations unspellable.
  *
- * Read as Clippy reads a struct: an interface, an object type literal or a class with more than
- * `max` boolean members (2 here, where Clippy's default is 3) is reported. A member counts when it is required and
- * its annotation is `boolean`, or `true` or `false`, with `undefined` or `null` allowed beside
- * them, or, on a class, when it has a `true` or `false` initialiser. An optional member does not
- * count: a record of optional flags is a set of settings a caller may leave out one by one (a
- * build's `minify?`, `sourcemap?`), a product of independent choices rather than one state, and on
- * foreign repositories such options records were most of what a count of every flag reported.
- * The TypeScript port adds the one record Rust does not have: the boolean `useState` cells of one
- * function, which in a React component are that component's state record (`isLoading`,
- * `isError`, `isSuccess`, `isIdle`).
- *
- * The function half counts a declaration's boolean parameters and reports more than `params`
- * (Clippy's default, 3). A repository that already reports every boolean parameter on its own
- * passes `params: null` and keeps one owner for that fact.
- *
- * The count is a stance rather than a shape. Scored against the implicit-state corpus, a record or
- * parameter list of three or more flags was a state spelled as flags in 4 of 8 labelled hits on
- * this repository, 3 of 5 on vite and 3 of 9 on excalidraw, since most records of flags elsewhere
- * hold independent options; at Clippy's four or more it was 1 of 5 here. So `max` defaults to 2.
- * The shapes (flags a class's methods move, a flag derived from two others) are `prefer-state-union`.
- *
- * A member typed as one literal (`procedure: true`, `declare isNamespace: true`) is a brand or a
- * discriminant, and a `readonly` field given a literal (`readonly isCluster = false`) is a constant,
- * so neither counts. A `readonly` field the constructor computes (`this.isNamespace = name === "*"`)
- * still does: two such projections of one value are the shape the count is for.
- *
- * Two interfaces are read as independent flags rather than one state. One that a parse call is
- * typed with (`parseJsonAs<StoredSolve>(text)`, `JSON.parse(text) as StoredSolve`) describes bytes
- * another writer laid down, which the reader spells as they are, as a declaration file describes
- * another package. And one whose every object literal in the file builds each flag from names no
- * other flag reads (`wallEnded: deadline.aborted`, `moved: stamp() !== before`) records separate
- * observations, as a membership `marks.has("blind")` beside `marks.has("alone")` records separate
- * tags: two flags compared from one value (`kind === "using"`, `kind === "const"`) still count, and
- * so does a literal of constants (`{ open: false, closed: false }`), which shows nothing. On this
- * repository these were most of the interfaces the count reported in `tools/` and `src/`; the
- * other held projections of one run state and became that state.
- *
- * Test files and declaration files (`.d.ts`, another package's interface described) are not read:
- * a fixture lists its flags beside each other on purpose.
- *
  * There is no fix: which states the flags stand for is the whole change.
  */
 const MAX_FIELDS = 2;

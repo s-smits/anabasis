@@ -8,20 +8,6 @@
  * take one (`pulse-readers.ts`, `snapshots.ts`), and a controller's preparation follows the rule in
  * shell (`code.ts`). A landing holds its clone the same way (`holdAlone`, `landing.ts`), with a note
  * after the record that says what it lands.
- *
- * Only processes of the host that keeps the folder take these locks, so a record that names another
- * host came with a copied folder and holds nothing. A process that holds a lock is refused it again
- * like any other taker: the pass takes its one lock once, and a fetch waits by polling, so a second
- * refresh of one copy in the process waits for the first to release it.
- *
- * A lock held by its taker's life, rather than lapsing at an age, keeps a slow pass, a cold
- * install or a fetch from losing its lock to a second taker while it still runs, and leaves no
- * stage behind a killed one. Taking a lock over is the one step two processes could
- * race at, so it runs under a `flock` of the folder, which closes with the process.
- *
- * A file a writer fills before renaming it into place names its writer by pid alone (`remember`'s
- * `<file>.<pid>.tmp`, the model library's `.tmp.<pid>.<suffix>`), and is the writer's while that pid
- * lives (`dropCutWrites`), rather than by its age, which would take the part from a slow download.
  */
 import {
   closeSync,

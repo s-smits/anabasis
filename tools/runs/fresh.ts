@@ -26,19 +26,9 @@
  * before the next is placed, the whole plan is printed, and nothing launches while a login it takes
  * is missing from its host.
  *
- * The verb replaces typing a launch by hand (a worktree, a prompt file, eight seat flags and a
- * name), where one flag left out, such as `--login`, ends a launch on its environment.
- *
  * A solve's limits are the campaign's one budget (`LIMITS`, `tools/d2/campaign.ts`), unless the
  * flags after `--` name others, so that a solve's budget is held in one place, not two that
  * disagree.
- *
- * `gpt` seats GPT-6.1 Sol through the Codex CLI's login, which `--login` does not choose, at high in
- * every seat (the operator's choice). That login is one a machine, and placement and a named
- * `--host` hold it to one live GPT run a machine (`fullOn`, `logins.ts`). Any other model a backend serves is named by its id, so
- * `--model openrouter/deepseek/deepseek-v4.1-flash-1017` seats DeepSeek V4.1 Flash 1017 in every seat
- * as `<pack>-fresh-deepseek-v4.1-flash-1017`, with no seat flags after `--` and under a name that
- * says which model it seats.
  */
 import { existsSync } from "#src/meta/filesystem.ts";
 import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";

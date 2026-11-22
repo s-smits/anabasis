@@ -1,31 +1,9 @@
 /**
- * The Claude backend: Claude Code, run through the Agent SDK, served to pi as a provider.
- *
- * One pi session is one live SDK query. pi's tools reach Claude Code as an in-process MCP server whose
- * handlers park until pi has run the call and sent the result back, and one pi turn is one API message
- * with a pi tool call in it, or the last of the query's prompt. That design is pi-claude-bridge's
- * (e870bc89), and its four leaf modules come over verbatim; its index.ts does not. A headless solve has
- * no steering or UI, so the glue a solve needs is this file.
- *
- * The query runs under the options v1's sweep solves ran under, wherever an option changes what the
- * solver sees: the MCP server's name, which every tool name carries; the CLI's WebSearch beside the
- * pi tools; bypassed permissions; summarized thinking; the effort each model was served; and a
- * working directory outside any repository, as v1's worker bundle directory was, since Claude Code
- * writes its directory and git state into its prompt. A nudge is a further user message into the
- * same query, where v1 resumed the session in a fresh one; the model reads the same history either
- * way.
- * A request's signal interrupts only the turn being read; the query closes on the seat's shutdown
- * signal (`ClaudeOptions.shutdown`), including while tools run between turns.
- *
- * One of the sweep's options is not kept: its solver read Claude Code's own system prompt with the
- * harness's appended. That prompt is a coding assistant's, about a repository and Claude Code's own
- * tools, none of which a session here has: every tool is pi's, served through the MCP server. So
- * every session, a solver's, a Builder's, an Examiner's and a reviewer's alike, is sent its own
- * prompt and nothing before it. A solver's is pi coding-agent's (`src/solver/prompt.ts`).
- *
- * One difference is left, and it reaches no model: v1 ran Claude Code in an empty environment; here
- * HOME, the solve's own, PATH and TMPDIR are set as well.
- * A query's spend is read from its last `result` (`claudeLedger`), which the meter bills.
+ * Claude Agent SDK backend (`claude` on `CLAUDE_CODE_OAUTH_TOKEN` and `claude-api` on
+ * `ANTHROPIC_API_KEY`), serving pi sessions through an in-process MCP tool server
+ * (`vendor/pi-claude-bridge/`) with `WebSearch`, summarized thinking, and seat-specific system
+ * prompts (`src/solver/prompt.ts`, `src/builder/prompt.ts`, `src/examiner/prompt.ts`,
+ * `src/referee/referee.ts`). Query spend is metered from the SDK's final `result` message (`claudeLedger`).
  */
 import {
   type EffortLevel,
@@ -668,9 +646,6 @@ function take(message: SDKAssistantMessage, model: Model<Api>, turn: AssistantMe
  * parked it asks the model again, and no meter reads that request: a query closed on a parked
  * `submit` has been seen calling it again within two seconds. Interrupted first, it calls nothing
  * and is gone inside a second. The timer is for a child that never answers the interrupt.
- *
- * A query no turn is reading is read on to the result the interrupt brings, which carries the
- * ledger, and ends there (`claudeLedger`); a turn being read takes that result itself.
  */
 function close(key: string, session: Session): void {
   if (sessions.get(key) !== session) return;

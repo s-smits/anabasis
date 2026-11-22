@@ -5,10 +5,6 @@
  * `predictions-<run>.md`, its outcome its `outcomes-<run>.md`, and what stays undone or opposed the
  * `plan.md` of the iteration that read the run (an older run's `still-missing-<run>.md` is still
  * read). The cycle, dropped and still-missing views are derived here and never written by hand.
- *
- * A table counts only where its header's first cell names it (`id` for a ledger), so a second
- * table, a heading or prose is never read as a prediction; comments and code fences are skipped,
- * so a heading inside an example does not count as the section.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";

@@ -1,13 +1,5 @@
 /**
  * What move 7 reads its rows from: a campaign's plan, and its log read once (`groundOf`).
- *
- * The table (`decide.ts`) asks one question after another of the same reading of the log: the
- * supply and comparison admission's refusals (`admission.ts`), every comparison in the
- * order it began, the reference harness and the one a session left that waits to be read, and the
- * pair's last reading. It adds no fold of its own beside the owners it reads.
- *
- * A campaign runs at one setting, recorded once (`campaign.setting`, `tools/d2/setting.ts`), so
- * every comparison of the log is read.
  */
 import type { LogEvent } from "../kernel/log.ts";
 import { INTERRUPTED, lastReports, latestBuilt, referenceOf } from "../kernel/reports.ts";

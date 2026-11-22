@@ -3,11 +3,6 @@
  * `keepFollowing`, `firstReadings`, `minuteLoads`). Powers both `bun run runs loadwatch` and
  * `ANA_CHECK_HOST=auto` host selection so interactive monitoring and automated task placement read
  * identical metrics.
- *
- * Each host runs a single sampling loop over `shellOn` (sharing the SSH control socket from
- * `sshOptions`). Linux hosts sample `/proc/stat` and `/proc/loadavg` deltas; macOS hosts stream
- * `iostat` tick deltas, which capture short-lived processes missed by decaying `ps %cpu` averages.
- * Streams silent for longer than their interval plus `SILENT_MS` transition to `"unreachable"`.
  */
 import { capturedSpawn } from "#src/meta/process.ts";
 import { killProcessGroup } from "#src/meta/subprocess.ts";

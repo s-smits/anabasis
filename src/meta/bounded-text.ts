@@ -3,17 +3,6 @@ import { plural } from "./text.ts";
 /**
  * The one way this repository cuts a text to a size: truncation in UTF-8 bytes and whole
  * lines, applied to the trimmed text and trimmed again at the cut.
- *
- * A `.slice` ends wherever the count runs out: inside a word, inside a surrogate pair, or on the
- * whitespace between two paragraphs. The last is a defect rather than a blemish wherever a reader
- * holds the text to being trimmed: a prose row whose cut landed on `"\n\n"` was refused by the very
- * reader it was written for.
- *
- * So a cut here keeps whole lines while any fit, falls back to a code-point-safe cut of the one
- * line that does not, and never leaves whitespace at the cut. `text` is what was kept, for a
- * record that carries its own truncation flag; `shown` adds the one omission marker, for anything a
- * person or a model reads.
- * pi-durable 1.5.2 still keeps its truncation helpers private, so this owns the contract its readers use.
  */
 interface BoundedText {
   /** The kept text: at most `maxBytes` UTF-8 bytes, trimmed at both ends. */
@@ -62,9 +51,6 @@ function linesWithin(text: string, maxBytes: number, maxLines: number, keep: "he
 
 /**
  * Cut `text` to at most `maxBytes` bytes and `maxLines` lines, keeping its head or its tail.
- *
- * `keep: "tail"` is for output whose end is the part that matters: a failing command's stderr,
- * a log, and marks the omission in front instead of behind.
  */
 export function boundText(
   text: string,

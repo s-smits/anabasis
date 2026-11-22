@@ -3,10 +3,6 @@
  *
  *   bun run runs sync [--yes | --check] [--force]
  *
- * With no flag it prints what differs and changes nothing. `--yes` applies that and reads every machine
- * again; `--check` exits 1 on a difference or a silent host, for a timer. With no host, no `ANA_PYTHON`
- * and no `ANA_TOOLS` there is nothing to do: it says so and exits 0 with no ssh and no file.
- *
  * Settings need no step: every remote verb carries them (`carriedTo`, `hosts.ts`), so a dry run only
  * says what travels and no peer holds a copy to drift. Three things do live on a machine:
  * - **Tools.** `ANA_TOOLS` is one table of each tool's version (`.env.runs.example`). A row with no
@@ -21,16 +17,6 @@
  *   machine's version, once this machine holds the pin (`behind`). Nothing is uninstalled, and a
  *   package nobody named stays and is said.
  * - **Runner.** An installed runner is stale where git says its source moved since the receipt's commit.
- *
- * A change a seat would find (a Python, and a table row unless it says `"seats":false`) is refused on
- * a host with a live or uncountable campaign unless `--force`: changing what a solver is given is the
- * operator's (AGENTS.md section 3). One probe runs here and over ssh, reading in the wall's order of
- * folders, since a login shell's PATH can miss what a machine holds or find another copy, so that a
- * wall and a login shell may find different versions. A row no seat finds falls back on the
- * login shell's PATH as well.
- *
- * What it gives up: a verb a peer's own job starts sees no shared setting (`retire` reads none), and
- * a hand edit of an installed runner file reads as in step.
  */
 import { gitMaybe } from "#src/meta/git.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";

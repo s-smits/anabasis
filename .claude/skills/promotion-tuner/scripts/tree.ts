@@ -4,10 +4,6 @@
  * modules, so one script reads the same record under two scores and the tables differ in what the
  * trees differ in, rather than each prototype importing a tree by hand. The logs a replay reads are
  * listed by `campaignLogs` (`.claude/skills/main/logs.ts`).
- *
- * A tree scores a task by its weighted measures (`pointsOf`, `WEIGHTS`), and one without them is
- * refused: the margin, the trigger and the two-stage rule of older trees are not read, since no
- * candidate branched from `main` can hold them.
  */
 import { type Paired, UNMEASURED } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";

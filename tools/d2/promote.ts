@@ -3,29 +3,6 @@
  * record.
  *
  *   bun tools/d2/promote.ts --name buffer --harness latest [--yes]
- *
- * A comparison is made against the campaign's reference harness, which is the Starter Built
- * Harness until the operator promotes another. A promotion is not a flag on one command, which
- * nothing would record and the next command without the flag would read against the starter
- * again. Here it is an event, `harness.promoted`,
- * and every command that compares reads its reference from the last one (`promoted`,
- * `src/kernel/reports.ts`).
- *
- * `--harness` names a harness the campaign keeps, as any flag does (`campaign.ts`, `keptAs`):
- * `latest`, the whole digest of one a session froze, or `starter`, which returns the campaign to
- * the starter. The command says what the log holds of that harness, each comparison it was the
- * new harness of with what it was read against and how it read, and what the reference is now.
- * Without `--yes` it records nothing. With it the event is written, with the comparisons it rests
- * on, so that a reader of the log sees what the operator saw.
- *
- * The rule promotes a harness a comparison against the reference read as a step. That rule is
- * move 7's (`unpromoted`, `src/campaign/decide.ts`),
- * and it is asked here: a harness it would not promote now is refused, with the reason. The
- * choice stays the operator's: `--despite "<why>"` promotes all the same, and the event keeps the
- * reason. Returning the campaign to the starter is asked nothing. A promotion is held to the rule,
- * since one comparison is one draw.
- *
- * It starts no solve and calls no model.
  */
 import { unpromoted } from "#src/campaign/decide.ts";
 import { openingOf, planOf } from "#src/campaign/opening.ts";

@@ -3,13 +3,6 @@
  * eligible test-side solves, rejection verdicts, tallies and hypothesis-test readings (`compared`),
  * and reported outcomes (`Report`, from `comparison.reported`). This module writes no events;
  * `round.ts` executes comparisons, appends starts and reports, and handles human settlement.
- *
- * Separating read-only folds from execution gives each log fold a single authoritative owner, so
- * read-only commands (`tools/d2/round.ts`, `tools/d2/checkpoint.ts`, `tools/d2/settle.ts`) share
- * the exact same interpretation. Coverage is evaluated at the first report independently of
- * scoring so halted comparisons remain reviewable without turning partial prefixes into tests.
- * Passes later labelled wrong by a human are folded from history (`failWrongPasses`), matching
- * settlement semantics.
  */
 import {
   detectable,

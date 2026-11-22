@@ -1,23 +1,6 @@
 /**
  * What every lane of a whole-run investigation starts from: the folds of one campaign's log, the
  * catalogue of triggers, and the lanes of the exam side.
- *
- * The folds (`indexOf`) read the log once into what the lanes ask of it: each solve with what it
- * ran under and how it ended, each Builder session with the window of the log that is its round,
- * each comparison with the solves it could count, and the last verdict and ruling of each solve.
- * A solve reached its turn bound where its end records as many turns as its start allowed.
- * `TRIGGERS` names only the triggers a live reader can print and the lane each starts, and
- * `fired` makes one. Lanes 1 and 4 to 6 read the exam's instrument, which is the pack author's, and
- * lanes 3, 7, 8, 20 and 21 the tasks, which are the Examiner's and the pack's; both sit here, below
- * the lanes of the build side and the host, which `read.ts` keeps with the rows and the overview,
- * and the lanes that read the clock, which are `time.ts`.
- *
- * Split from `read.ts`, which would otherwise stand far over the size policy's ceiling of 800
- * nonblank lines (`tools/loc/source-policy.ts`). The lanes
- * need the folds, so the folds sit below every lane, and the exam side's lanes sit with them so
- * that each of the two files is under the ceiling. Every function keeps the name and the body it
- * had in `read.ts`; `taskTriggers` alone was split at its tallies (`tallyTriggers`), which held it
- * at 147 lines against the policy's 115.
  */
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import { type Condition, conditionsOf } from "#src/kernel/condition.ts";

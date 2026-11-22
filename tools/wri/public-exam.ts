@@ -5,17 +5,6 @@
  * answers its practice solves passed with, which a Builder reads in their traces.
  *
  *   bun tools/wri/public-exam.ts <log | campaign folder | name>
- *
- * Without it a lane 6 session pulls the released tasks and their practice passes out of the log by
- * hand, in dozens of calls, and `exam.drafted`, the one event that holds the public rules whole,
- * holds the evaluator's source beside them, which a session reading it to stay blind would have to
- * strip by hand.
- *
- * It prints only what crosses the wall (`AGENTS.md`, section 1): each rule's id and statement, the
- * conventions, the scope, the objective and the answer format; each released task's public input;
- * and the answers of practice solves (`practiceRan`), never a comparison's or an Examiner's. It
- * reads no check, evaluator, control answer, hidden value, Referee finding or held-out task's input,
- * so none can reach its output, and a held-out task is counted only.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { draftOf } from "#src/examiner/draft.ts";

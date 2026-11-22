@@ -4,17 +4,6 @@
  * label, and what stands of it. With `--solve` it prints that one rejection's finding and probe rows.
  *
  *   bun tools/wri/rejections.ts <log | campaign folder | name> [--solve <id>]
- *
- * Lane 5 reads it, and lane 4 and comparison-review read the same table. Without it a session joins
- * `condition.recorded`, `solve.started`, `verdict` and `referee.finding` by hand, often in pipelines
- * the lane guard refuses, and looks for a `labels.json` where the labels are in the log.
- *
- * A row is a solve whose ending is a rejection (`rejected`); a refused verdict on a solve that ended
- * otherwise, a crash after the check ran among them, is no rejection and is counted apart. A solve an
- * Examiner session asked for (`examinerSessions`), which a task id of `try-` names in newer logs,
- * is marked `examiner` and is never scored. What stands is `standsOf`'s, a label over the ruling
- * (rule 8), and `aside` is `rejectionAside`'s, read for scored rows only. It prints facts and no
- * reading of them: whether a check was right is the lane's question.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";

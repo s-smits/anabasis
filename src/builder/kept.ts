@@ -1,31 +1,6 @@
 /**
  * Keeping harnesses: `harness/` frozen beside a campaign's states, and a kept harness copied into
  * a Builder's home.
- *
- * The installed programs are the session's own. `harness/.toolchain` starts as a copy of the
- * parent's tool tree, which the wall puts first on PATH. A frozen harness links to a copy of that
- * tree kept beside the states, made again only when the tree has changed since. A harness is frozen,
- * and its solves run, away from the home it was built in, which is gone once the session ends; so a
- * snapshot naming that home in a link or script is refused, with how to write it instead. A compiled
- * program is not read for it: a path built into one is as often a build's record as the place it runs from.
- *
- * A kept harness copied into a Builder's home: the one a session starts from as `harness/`, and
- * every other one the campaign kept as `kept/<head of its digest>`, as the Builder's readings of
- * past comparisons and fails name it (`short`, `past.ts`), so a remedy an earlier session froze and
- * a later one dropped can be read again. Harness² (arXiv 2610.14224) keeps
- * such a library of kept harnesses for its editors, and removing it cost 3.1 and 1.8 points in
- * its table 3.
- *
- * It is a folder and no tool, and the Builder is told it is there and nothing more (the operator's
- * choice: the way back is left open and not promoted). Every kept harness is copied whole and the
- * Builder searches them with its own shell, which runs Python (the operator's choice), rather than
- * being handed the newest few that fit. No tool puts `harness/agent` back as the session found it,
- * since Builders never called one.
- *
- * A kept state's tool tree is a link to the copy kept of it, so the tree is copied from where it
- * is. A v1 state carries its correctness model, whose exam holds every task's hidden values, at
- * its root and again in each `.bundle-snapshots` entry; no harness reads it, and the checks are the
- * host's, so the Builder is given no copy of it at any depth.
  */
 import type { LogEvent } from "../kernel/log.ts";
 import { CORRECTNESS_MODEL_DIR, TOOL_TREE_DIR } from "../meta/bundle-layout.ts";
@@ -226,9 +201,6 @@ export function stagedState(source: string, states: string, tree: string | null,
  * copied as they are: a stored state carries links that resolve to nothing, and following one would
  * copy what it points at. The copy is removed once `use` returns or throws, unless `use` moved it
  * away: only a state a solve ran with, or the session's last, is kept (`snapshot`).
- *
- * Every question is asked of the copy, which no command of the Builder's can reach, and none of
- * `harness/` itself, which a process a command left behind could still be changing.
  */
 export async function frozen<T>(bench: Freezing, use: (kept: HarnessSnapshot) => T | Promise<T>): Promise<T> {
   const { states } = bench.request;
@@ -256,10 +228,6 @@ export async function frozen<T>(bench: Freezing, use: (kept: HarnessSnapshot) =>
 /**
  * Freeze `harness/` and keep the copy under its digest in the caller's `states`, so every harness a
  * practice solve ran with can be opened again.
- *
- * The copy is not kept in the session's own scratch. The command wall closes the parent of every
- * solve's scratch after it reopens a harness's tool tree, so a state kept there is one no practice
- * solve could run a program from.
  */
 export async function snapshot(bench: Freezing): Promise<HarnessSnapshot> {
   return await frozen(bench, ({ dir, harness }) => {

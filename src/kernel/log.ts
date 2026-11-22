@@ -1,19 +1,6 @@
 /**
  * The log: one append-only JSONL file, one event per line. Every state and every report is a view
  * over it, and nothing else is stored as truth.
- *
- * An append is written and synced before it returns, so an event the host acted on survives a crash.
- * A read refuses an unknown line instead of skipping it: a view over a log with a hole in it would be
- * a view over a different history. A last line without its newline is no hole but an append in
- * flight or one a killed process left, which the host never acted on (`append` returns only once
- * the whole line is synced), so a read ends at the last whole line.
- *
- * An append refuses, writing nothing, an event the task states read when folding it onto the log so
- * far throws (a probe's second `task.proposed` made every later read throw); only those events can
- * break the fold, so the frequent ones skip the read. One exclusive descriptor lock covers that
- * validation, the whole line's write and its sync, since two processes writing at once can leave an
- * unreadable history. A short write throws and is cut back, and so is a dead writer's tail without its
- * newline, since under the lock no other append is in flight.
  */
 import {
   closeSync,

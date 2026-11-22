@@ -2,25 +2,6 @@
  * One fact about a value (a field tested against a literal, read together with another field of
  * the same value) written out as an expression in three or more production files, where no
  * function owns it.
- *
- * Recorded case: "what the checker measured of a valid answer", `checker?.kind === "pass" ?
- * checker.objective ?? null : null` and its variants, stood in src/kernel/compare.ts,
- * src/builder/tools.ts (twice) and tools/wri/gate-era.ts until it was given one owner, now
- * `objectiveOf` in src/kernel/verify.ts, beside the type. `tree/no-duplicate-block` missed it: each copy was one
- * expression, not consecutive statements, and the spellings differed.
- *
- * A unit is an outermost condition or derivation: a `?:`, `&&`, `||` or `??` expression whose
- * parent is not one, and nothing inside a nested function. Within it each member chain is read off
- * its root (a name, a call, `this`), with `?.`, `!`, `as` and parentheses dropped, and the chains
- * of one root are re-rooted at the longest path they share, so `verdict?.checker?.kind` read beside
- * `verdict.checker.objective` and a local `checker.kind` beside `checker.objective` read alike. A
- * chain compared with a literal is a test (`kind = "pass"`, either equality); a comparison with
- * `undefined` or `null` is only a read, so `x.objective !== undefined` and `x.objective ?? null`
- * spell one fact. A root's fact is its set of tests and reads, and it counts only where it holds a
- * test and a read of another field: two fields of one value, one of them a discriminant.
- *
- * Precision over recall, as a heuristic reports and never blocks (the operator's choice). Tests,
- * vendored and generated files are not read, and only src/ and tools/ count as production.
  */
 import * as ts from "typescript5";
 import { OPTED_OUT } from "./tree-copied-block.ts";

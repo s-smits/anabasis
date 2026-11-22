@@ -5,21 +5,6 @@
  * a file extension, an HTTP method, the direction of a handle, the role on a chat message. Both are
  * grouped by hand the same way, so the syntax of the grouping cannot tell them apart; where the
  * literals are written can.
- *
- * A set reads as a state when one of its literals is written in an update: the right side of an
- * assignment (`job.state = "done"`), the argument of a setter (`setStatus("done")`), or a property
- * of an object that updates another (`{ ...element, type: "arrow" }`) or is handed to a setter
- * (`setState({ mode: "edit" })`). The write has to land in the set's own place: the type the
- * compiler expects there (its contextual type) spells two or more of the set's literals, or, where
- * the type is not known, the place has the name the readers compare (`status` for
- * `issue.status === "closed"`). An object created whole, a value returned and a comparison write
- * nothing, so a set written only there is an enumeration.
- *
- * The types come from the TypeScript compiler API over the files already parsed for the syntactic
- * scan, so nothing is parsed twice, and the program is built only where a candidate write exists.
- * It loads no library and resolves relative imports alone, so a type behind a path alias or a
- * package reads as unknown and the name decides. `"persisted"` (written to a file or a store) is
- * not read: such a value is written first, which is what this reads.
  */
 import * as ts from "typescript5";
 import { setterState } from "./implicit-state/shared/syntax.ts";

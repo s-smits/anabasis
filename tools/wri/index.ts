@@ -3,34 +3,6 @@
  * a domain is not read by opening each synthesis in turn. This reads every
  * folder as it stands and renders one row a folder, newest first, then each campaign group's
  * investigations in time order, so a domain's binding constraints show side by side.
- *
- * The page is a view over the folders, written whole each time and never edited, so it is no second
- * store (`AGENTS.md` section 5, habit 1). The files it reads hold hidden values, so it quotes only
- * the first sentence of each binding constraint, cut at about 300 characters, and counts, and it
- * belongs under `.ana/` beside them. It copies no lane prose.
- *
- * Reading is lenient because the folders span every shape the procedure has had:
- * `investigation.json` named one `log` and its `peers` before it named `logs`, a synthesis written
- * before the template has no section 2 or no findings table, an A/B synthesis or a review stands in
- * for one in older folders, some folders hold collected lanes and no synthesis, and some hold notes
- * alone. A part that is missing reads as none and the row says so; nothing here throws on a folder.
- *
- * The operator asked to "backtrack the older runs ... from last 2 weeks to centralize the
- * summaries", so two more sections follow the investigations. One lists each cycle folder and
- * prediction ledger, under `.ana/wri/` and in the main checkout's `notes/`, with its predictions
- * counted by resolution. The other lists every campaign whose log moved in the last fourteen days,
- * from the run registry's local worktrees and archive, with its ending, its promotions through
- * `epochsOf`, and the investigations and ledgers that name it, so a run nobody investigated or
- * predicted shows as such.
- *
- * Each run keeps its own ledgers in a cycle folder (`predictions-<run>.md` and `outcomes-<run>.md`,
- * read by `tools/wri/ledger.ts`, and in older folders a hand-written `still-missing-<run>.md`; now
- * the plan says what is left out on purpose), and an investigation's `plan.md` names its pull
- * request as `Pull request: #N`, measured by the forks named `...forkedPR<N>`. So that whether each
- * fix held is recorded across iterations, a last section rows each pull request with its forks,
- * their outcomes, the predictions still
- * unresolved, what each fork leaves out on purpose, and whether each fork carried the ids its
- * parent's runs did not hold. A fork from before the per-run files reads as "no per-run files".
  */
 import { DAY_MS } from "#src/meta/clock.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/filesystem.ts";

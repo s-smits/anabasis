@@ -1,16 +1,6 @@
 /**
  * Pre-tool hook for the `wri-lane` agent type (`.claude/agents/wri-lane.md`).
  *
- * Blocks writes outside the lane's own report, `synthesis.md`, `cross-domain.md`, or scratch
- * directories; blocks shell commands that incur model spend, launch a seat, mutate a campaign or
- * execute inside a campaign directory; and blocks reads of `.env` files. All other calls pass.
- *
- * Enforcing the hard rules of a whole-run investigation in code ("never write under the campaign's
- * folder", "start no solve, session, round or check run", `AGENTS.md` section 10 item 5) keeps the
- * lane prompt focused on rules that cannot be checked syntactically (such as the no-quote wall).
- * Every refusal states its reason and an allowed alternative so the lane can either use the
- * read-only path or record what the blocked call would have settled.
- *
  * Executing kept harness programs with Python inside a campaign folder leaves `__pycache__`
  * directories under `states/`, and direct interpreter invocations, `perl -i`, `tar -C`, shell
  * redirects into gate files, and `.env.*` reads can bypass narrower filters. Accordingly, no
@@ -18,11 +8,6 @@
  * argument, Python must run with bytecode disabled (`-B` or `PYTHONDONTWRITEBYTECODE=1`), shell
  * writes under `.ana/wri/` are restricted to the same targets as the `Write` tool, and every
  * `.env*` file except a committed `*.example` is blocked.
- *
- * The shell lexer handles escaped quotes inside double quotes, tokens following `$()` command
- * substitutions, `sed` or `awk` programs that merely match a campaign path without writing or
- * executing it, and `command -v python3` lookups, validated by replay across recorded lane
- * sessions.
  */
 import { realpathSync } from "../../src/meta/filesystem.ts";
 import { capturedJsonParse } from "../../src/meta/json-runtime.ts";

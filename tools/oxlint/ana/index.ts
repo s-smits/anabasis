@@ -31,38 +31,12 @@ import { preferConstConditionalRule } from "./rules/prefer-const-conditional.ts"
 import { preferFindOverLoopRule } from "./rules/prefer-find-over-loop.ts";
 import { requireDeclarationsFirstRule } from "./rules/require-declarations-first.ts";
 
-/** The rules this repository owns. The anti-slop plugin beside it is copied from dmmulroy/anti-slop
- *  at a pinned commit, as its README asks, so a rule that has to answer an Anabasis question lives
- *  here instead.
- *
- *  The second group below are the simplify catchers. They exist because `/simplify` is a reading
- *  pass: it finds real removals, and it finds them once, in whichever files a reviewer happened
- *  to open. The shapes it kept finding again and again are decidable from the syntax alone, so a
- *  catcher now finds every site of one in a second.
- *
- *  A catcher moves up into the first group once every site it reports has been taken, because a
- *  rule that finds nothing cannot break a strict lint, costs nothing to enforce, and keeps the
- *  shape from arriving again. The evidence for that move is a clean `bun run lint -- --strict`
- *  rather than an emptied census group: a group can empty while a site still stands in a vendored
- *  copy `simplify-census.ts` does not read. Both groups have taken rules since the split was made,
- *  so read it as the order things arrived in and nothing more.
- *
- *  Every one of them is registered at `error` in `.oxlintrc.json`, so all of them run
- *  in `bun run lint` and fail it under `--strict` or `ANA_LINT_STRICT=1`; the census runs no rule
- *  of its own. Each was promoted by passing
- *  the admission test (at every site it reports, does a spelling exist that satisfies every
- *  other rule) and a catcher that could not pass it was retuned until it could, or taken out;
- *  none was baselined per file.
- *
- *  Taste is for code this repository authors, and the config draws that line one tree at a time:
- *  most of these are off over `vendor/pi-claude-bridge/**`, where a taste edit would pay
- *  a merge cost at the next copy from upstream and buy nothing. `tools/oxlint/anti-slop/**` is
- *  the other copied tree and `simplify-census.ts` leaves both unread, but the config exempts it
- *  from one rule only, `ana/no-inline-slop-answer`, so every catcher here does report on the
- *  vendored anti-slop source.
- *
- *  What `bun run simplify` still reads is the whole-tree scans, which relate two files and which
- *  no per-file rule can express. */
+/**
+ * Repository-owned custom lint rules (`ana/*`), registered at `error` in `.oxlintrc.json` and
+ * enforced under `bun run lint -- --strict` or `ANA_LINT_STRICT=1`. Vendored trees
+ * (`vendor/pi-claude-bridge/**` and `tools/oxlint/anti-slop/**`) are exempted in `.oxlintrc.json`
+ * where applicable; cross-file structural scans run in `bun run simplify` (`tools/oxlint/simplify-census.ts`).
+ */
 const anaPlugin = eslintCompatPlugin({
   meta: { name: "ana" },
   rules: {

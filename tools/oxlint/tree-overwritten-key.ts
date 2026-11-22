@@ -1,23 +1,6 @@
 /**
  * A key a caller passes to a function that spreads what it was given and then sets the same key
  * itself, so the caller's value is never read.
- *
- * The recorded case: `tool()` in `src/tools/answer.ts` returns `defineTool({ ...definition,
- * executionMode: "sequential", ... })`, and 20 callers in 10 files passed `executionMode:
- * "sequential"` inside the `tool({ ... })` they wrote, every one of them dead. No per-file rule
- * could see it, since the wrapper and most of its
- * callers sit in different files.
- *
- * The scan is syntactic and leans to silence. A wrapper is a top-level function (a declaration, or
- * a `const` holding an arrow or function expression) with a plain parameter it spreads into an
- * object it returns or hands straight to a call, in a statement no earlier `return` can skip. A key
- * written after the last spread of that parameter is set over the caller's, unless the function
- * reads the key from the parameter anywhere (`definition.execute` keeps the caller's `execute`
- * alive). A parameter used any other way (passed on whole, destructured, spread a second time
- * into another object, reassigned) may carry the caller's key elsewhere, so it is not read at all.
- * A key set before the spread is the caller's to override, and a key set inside a conditional
- * spread is not always set, so neither counts. A caller is a call by the wrapper's own name, in its
- * file or through a named import that resolves to it, with an object literal at that position.
  */
 import * as ts from "typescript5";
 import { dirname, join } from "../../src/meta/path.ts";

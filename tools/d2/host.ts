@@ -23,12 +23,6 @@
  *   a session begun seconds after another crashed on a failed DNS lookup would only crash again
  *   (`waitCrashed`). The provider's edge, whose 403 page can end a campaign, is on that route; a
  *   refusal the provider's own API writes (credit, a login, a model) gets no wait.
- *
- * Every wait but the reserve's, slots' and pause's is on record as `campaign.waited`, so a reader tells
- * the solver's time from the host's, and a provider's starts the crash rule's count again
- * (`crashedRun`). A queued solve leaves on its kill signal without invoking the solving seat.
- * Load, reserve, slot and pause waits are interruptible; a load wait records its elapsed time even when
- * cancellation ends it.
  */
 import { CRASHES_IN_A_ROW } from "#src/campaign/decide.ts";
 import { crashedRun } from "#src/campaign/ground.ts";

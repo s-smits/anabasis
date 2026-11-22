@@ -10,11 +10,6 @@
  * completed turn for `SILENT_SECONDS`, with none of its tools running.
  * `waiting` ends sleeps at cancellation, including injected host sleeps before a solve starts.
  *
- * The loop runs in this process and so does the model's own process: under the Claude backend,
- * Claude Code runs on the host with a home of its own outside the command wall. v1 confined the
- * model process too; here only the commands are walled: the solver's bash and its file tools alike
- * (`command.ts`).
- *
  * The loop is v1's: tools run one at a time, a
  * model that stops without submitting is nudged, and the prompt limit counts the opening prompt
  * and each nudge. Departures, beside those named in the tools and the prompt:

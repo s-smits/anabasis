@@ -10,10 +10,6 @@
  * one record of a solve's limits, the scored tasks and the solves a side: the campaign command
  * records it as it starts (`tools/d2/harness-builder.ts`), so the opening keeps no copy of them.
  *
- * It names the project the campaign belongs to (`--project`), so the operator's page can group
- * campaigns by project rather than by prompts that differ in a word. The project is the operator's
- * choice at the opening and stays the campaign's; the oldest openings name none.
- *
  * It also keeps the terms of the campaign's moves as a command last named them (`TERMS`): the
  * limits of a Builder conversation, the comparison's level, the practice tasks and the operator's
  * cap of promotions. Without them, a campaign continued by its name alone would run each move by

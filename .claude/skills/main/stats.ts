@@ -1,17 +1,5 @@
 /**
  * Two-sample permutation test over campaign-level units.
- *
- * Pools the units of two groups and evaluates the absolute difference in a group statistic across
- * all ways of partitioning the pool into the original group sizes. Assumes no parametric
- * distribution and treats the campaign as the independent unit (since tasks and promotions within a
- * campaign share one exam).
- *
- * When the number of combinations is at most `DRAWS`, all partitions are enumerated exactly;
- * otherwise `DRAWS` deterministic Lehmer shuffles are sampled. Also reports `least`, the minimum
- * achievable p-value for the given sample sizes and non-empty denominators.
- *
- * Used strictly for retrospective archive summaries (`trend.ts`), never for in-campaign harness
- * comparisons (`AGENTS.md`, section 7).
  */
 
 /** Maximum combinations for exact enumeration before falling back to deterministic shuffles. */

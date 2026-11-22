@@ -11,15 +11,6 @@
  * By default, compare the working tree, including untracked files, with HEAD's upstream merge base,
  * falling back to origin/main. --base selects another revision; repeated --file selects paths.
  * The import graph always comes from the working tree.
- *
- * Import reach identifies candidates for inspection; it does not prove message reach. A dependency
- * may never affect a message, and paths loaded without imports are missed: spawned workers, home
- * files, harness resources and logs. Inspect the printed chain. SEATS is a maintained table of
- * owners and tests; missing entries cause refusal. The Referee has owning tests in review.test.ts,
- * but no separate byte-identity test for its view.
- *
- * The script reads no log and prints no hidden values. It gives design-and-seats the part of
- * AGENTS.md sections 1 to 3 that a diff can be checked against.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";

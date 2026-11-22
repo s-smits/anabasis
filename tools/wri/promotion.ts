@@ -3,19 +3,6 @@
  * what it measured, what touched both sides of it, and what the campaign did after it.
  * Validity percentages require a profile with a task and solve denominator; missing measurements
  * read unmeasured, while a nonempty profile of failed solves reads zero.
- *
- * A promotion can rest on comparisons against a starter that answers none of the solves on most
- * tasks, so these lanes ask whether a promotion was the table's rule followed, what it showed beyond
- * "the starter carries no engine", and whether the room Examiner, the control and the next Builder
- * followed it, rather than leaving a reader to rebuild each from thousands of events. They also
- * read a solve that found and ran a program another campaign's seat had left under a shared
- * temporary folder.
- *
- * Private seat paths and denied calls are not possible shared use: only successful calls outside
- * the seats' parent (`BUILT_COMMAND_SCRATCH_ROOT`, `src/wall/policy.ts`) count here.
- *
- * Split from `read.ts`, which stands near the size policy's ceiling, as `time.ts` and `folds.ts`
- * were. Nothing here reads a file beside the log.
  */
 import { epochsOf as epochsRead, ORIGINS, type Origin, starterReads } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";

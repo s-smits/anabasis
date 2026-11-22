@@ -3,22 +3,6 @@
  * Explains recorded campaign endings and reports current stopping-condition counts.
  *
  *   bun .claude/skills/campaign-mechanics/scripts/ending.ts <name | path/to/log.jsonl> [--at <line | ISO time>]
- *
- * The `--at` option evaluates a prefix of the log (up to the given 1-based line or the last event
- * at or before the given ISO timestamp) under the current tree's decision table, avoiding manual
- * log slicing; `tools/wri/table-timeline.ts` invokes this across every transition point.
- *
- * Whereas the standard run view reports only the climb and next move, this script lists each
- * `campaign.ended` event alongside its preceding `campaign.move` counts, followed by current
- * budget, improvement and supply patience, consecutive crashes, idle conversations, admission
- * refusals, pending operator instructions, and the move `decide` would choose.
- *
- * Every quantity is computed by its production fold under `planOn`, matching the run view. Current
- * counts reflect a restart from the log rather than historical state at earlier endings.
- * `logEvents` ignores an incomplete trailing append. Campaign names resolve locally or in the
- * archive, while absolute paths can read archived copies no longer registered on their source
- * host; `--host` runs remotely. Output contains IDs, codes, counts, and host reasons only, never
- * tasks or checks, though it remains exam-side.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { refusals, stopRule, supplyOf } from "#src/campaign/admission.ts";

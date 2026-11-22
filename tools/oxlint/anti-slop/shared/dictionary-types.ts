@@ -11,13 +11,6 @@ import {
 /**
  * What a written type denotes, for the three anti-slop rules that ask whether a type
  * still carries evidence.
- *
- * Every question here (is this value type an escape hatch, is this target an open
- * container, is this certainly an object) is the same walk over a written type:
- * unwrap the parentheses and `readonly`, substitute a bound type parameter, pass
- * through a transparent wrapper, recognise a built-in, follow the visible alias with
- * its arguments bound, and stop at a cycle. `resolveReference` is that walk, so the
- * classifiers below differ only in the leaves they care about.
  */
 
 const BUILT_INS = new Set([
@@ -420,11 +413,6 @@ export function classifyUnsafeDictionary(
  * "anonymous object" is reported where a written member, or a mapped value, is itself a widening
  * target, and it is produced before the walk follows a name and never after: the same members
  * behind an alias are that alias's contract.
- *
- * An unnamed shape with members is not reported on that alone: of the findings on record that
- * were judged, the anonymous-object ones were false at nearly every site: a function's declared
- * return type stating exactly the literal it returns, answered by deleting the annotation or by a
- * one-use interface that `no-alias-restating-return` would then ask to remove.
  */
 function memberEscapes(type: ESTree.TSTypeLiteral, environment: TypeEnvironment): boolean {
   return type.members.some((member) => {

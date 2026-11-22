@@ -6,19 +6,12 @@
  * a promotion stand with and without it, since subtracting one kind of wait alone leaves hours a
  * promotion far above what every recorded wait leaves.
  *
- * Split from `read.ts`, which stands near the size policy's ceiling of 800 nonblank lines
- * (`tools/loc/source-policy.ts`). Each of these lanes' three readings answers a gap a reading of
- * one measure alone leaves:
- *
  * - a miss is read at every limit the kernel calls one (`AT_A_LIMIT`), by comparison and by side,
  *   rather than at the deadline alone, which reads none of the misses that end on turns;
  * - a silence is read against the campaign's own median solve and labelled by what ran through
  *   it, rather than at a fixed twenty minutes with only the first given, by its time, which reads
  *   nothing on a campaign of quick solves;
  * - the hours are read by role beside the billed dollars.
- *
- * An unfinished comparison's solves belong to it, not outside a comparison: membership comes from
- * `solve.started`, even before a report can supply a scoring set.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { AT_A_LIMIT } from "#src/kernel/reports.ts";

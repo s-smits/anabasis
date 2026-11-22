@@ -6,12 +6,6 @@
  * scratch home lifecycle, trace and compaction logging, crash classification, and final spend
  * accounting. Each seat retains ownership of its tools, prompts, domain events, and deadline
  * pauses via `sessionClock`.
- *
- * `src/kernel/trace.ts` reconstructs the events written here. Final session cost is taken from the
- * backend's own usage ledger at frozen list prices (`src/kernel/meter.ts`) so retries and
- * compaction summaries are included; individual turns are also priced as they complete (against
- * the served model when reported) to enforce live spend caps and preserve partial accounting if a
- * session aborts.
  */
 import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import type { Api, AssistantMessage, Message, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";

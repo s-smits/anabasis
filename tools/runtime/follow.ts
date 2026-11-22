@@ -14,10 +14,6 @@
  * branch is deleted, since a checkout left on an old top after a restack onto a newer main can sit
  * commits ahead and behind, where a fast-forward no longer reaches.
  *
- * Where no pull request is open the checkout lands on `main`, tracking `origin/main`, which holds
- * whatever landed, and the `stack-pr<N>` it left is deleted, so a checkout on the last stack's
- * branch does not stay behind `main` once that stack merges.
- *
  * The branch is reset to the top: what matters is on GitHub, so a commit made on it is not kept.
  * Changes to tracked files are stashed and popped back on the new top, by the stash's own commit,
  * so that a stash another worktree pushed meanwhile is never the one popped. A switch git refuses

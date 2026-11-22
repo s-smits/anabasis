@@ -5,10 +5,6 @@
  *   bun tools/d2/close.ts --name queues --to ~/handover/queues [--harness <letter|digest>]
  *     [--solve <task id>[,<task id>...] [--solver <model> --solver-effort <level> ...]]
  *
- * Without this a campaign hands nothing over: a kept harness stays a folder among the campaign's
- * states, with its programs behind a link into a tree beside it, and what the campaign has read
- * stands in its log alone. This writes, under `--to`:
- *
  *   harness/     the reference harness as it then stands, the starter where no step was promoted,
  *                copied whole with its programs, except that under `data/harnesses/` a tool tree over
  *                100 MB is copied once to `.trees/<campaign>/` there and linked to (`copyHarness`).
@@ -29,30 +25,6 @@
  *                a residual on matching closed records, with open backend costs unknown.
  *                Comparison unit costs count scored versions in the last report; a report with
  *                none retains its bill without a unit price.
- *
- * The report says what decides the checker, not only that it was read and frozen, since every
- * check of a campaign, the objective among them, can be its author's own computation, and a reader
- * of the report could not otherwise tell.
- *
- * The report is a view of the log, and nothing reads it back. A handover written again to its folder
- * replaces the one there, since the campaign command writes one at each ending, a pause's among them. It names no task and
- * holds no check, hidden value or answer, so the folder can leave the exam side: `--to` lies
- * outside the repository, which holds the logs, or under `data/harnesses/` of its main worktree
- * (`harnessesOf`), which git ignores and every seat's wall denies with the rest of the repository.
- * `runs fresh` names a campaign's own folder there. `--harness` hands over another harness the
- * campaign keeps, named as `promote.ts` names one; the reference harness is the default.
- *
- * The campaign command writes it at an ending where `--handover <dir>` names the place
- * (`harness-builder.ts`), and this command writes it at any time, of an ended campaign or not.
- *
- * With `--solve <task id>[,<task id>...]` it then solves those tasks of the campaign, one after the
- * other, under the harness as handed over, from the folder it was written to, which shows that the
- * harness runs by itself. The solver is the campaign's, or the one `--solver` and the other
- * setting flags name (`settingNamed`), so a harness can be tried under another model with nothing
- * else of the campaign run. The solves are under the campaign's checks, and are recorded in a log of
- * its own under the campaign's folder (`handover/log.jsonl`), which no reading of the campaign
- * counts; the command prints how it ended. A released task is the one to name: a held-out task
- * is solved for nothing a Builder could learn from, but its answer then lies in that log.
  */
 import { barLines, promotionsWorth, riskLines, starterIn, worthLine } from "#src/campaign/climb.ts";
 import { UNSETTLED } from "#src/campaign/comparison.ts";

@@ -11,10 +11,6 @@
  * the step via `readsStep` and the A/A control via `readsStepEitherWay` (optionally at `--level`),
  * flagging any divergence from the recorded reading.
  *
- * Also computes WRI lane 8 diagnostics: reference-side confirmation p-value, spare wins on a step
- * or shortfall on a non-step (`clearance.ts`), minimum equal-margin wins required (`smallestSteps`),
- * whether the A/A control tied every task, and comparison dollar cap vs. estimated test cost.
- *
  * From `pairsReported`, reports the power zone (reference tasks with no, some, or every solve valid,
  * and tasks untied on validity, on the objective alone via `carriedBy`, or tied) and, under an
  * objective, each arm's median ratio to the author's best recorded answer (`sideGap`). `--zone`

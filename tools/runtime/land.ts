@@ -51,12 +51,6 @@
  * where `bun run split` divided the chain, a sanitize proves the stack holding the top (`ownStack`).
  * A merge that does not go through sets the status of every head back to pending.
  *
- * A merge is refused where another chain of two or more starts on main, which it would leave to be
- * replayed by hand; `--alone` merges anyway, on the operator's word.
- *
- * Every pull request of the landing carries one importance label (`importance:I0` to `I3`), which the
- * operator ranks the stack by, and a category (`CATEGORIES`); `checkLabels` refuses it in every mode.
- *
  * A failure names the commit and the pull request it sits on. Its fix goes into that commit, the
  * pull requests above it are replayed on it (stack-pr, section 8), and a second landing runs only
  * what the replay moved. A commit whose runner gave no verdict is marked with an error instead, and

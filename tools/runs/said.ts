@@ -3,11 +3,6 @@
  * readers, the pulse (`pulse.ts`), the alerts (`alerts.ts`) and the loop's driver (`wri2p2.ts`), so
  * that a session watching any one of them learns of a starter comparison, a pause or an
  * investigation owed without another command.
- *
- * An event's line is read from the event alone (`SAID`), in counts and ids: no line carries a task's
- * text, a check's or a reason the exam side wrote beyond what the pulse already said. The climb's
- * lines are read from the log up to the event (`climbAt`), and the trigger from the whole log
- * (`progressOf`, `triggerOf`).
  */
 import { comparisonFloor } from "#src/campaign/admission.ts";
 import { BARS, epochsOf, starterReads } from "#src/campaign/climb.ts";

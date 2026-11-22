@@ -4,42 +4,12 @@
  *
  *   bun tools/d2/prepare.ts --name <campaign> --practice 6
  *
- * Run it before a comparison. What it finds already in place it leaves. It is the set-up of the
- * first round.
- *
- * Each task of the pack that the log does not hold is proposed and put to the shape check
- * of its package (`src/kernel/task.ts`). A task that passes is a held-out task, and no solve has a
- * say.
- *
- * A control answer does say whether a task has a known valid answer. Each of a drafted exam's
- * examples its accept control answers is rechecked under today's checks, until one passes, and a pass is logged as `task.feasible`, as an
- * author's answer is: such a task is never read as possibly infeasible (`poolOf`). A recheck that
- * fails establishes nothing and is said nowhere.
- *
- * Practice is what the Builder learns from, and a practice task is never scored. `--practice` is
- * the number of released tasks the campaign is brought to. What is missing is released from the
- * held-out tasks by the contract's draw, and no solve chooses which. One release takes at most
- * half of what is held, so that a comparison is left tasks to score: a release drawn over nearly
- * the whole pack would leave round after round no task to score. A task the reference's own rejection
- * left in doubt is neither drawn nor counted (`practicePool`). Each release is said by its task.
- * A task that a comparison scored before its release keeps that comparison's solves on the exam
- * side: a Builder is shown its practice solves only (`practiceRan`, `src/kernel/solves.ts`).
- * A run that labels a task (below) releases none: a release cannot be taken back, and a person
- * labelling one task has not asked for another to leave the held-out set.
- *
  * It is also where a person labels a task awaiting task review as possibly infeasible: one with no
  * valid answer on record after two comparisons that cut no solve of it at a limit, which is left
  * out of the scored set until it is labelled (`src/kernel/reports.ts`, `poolOf`). `--keep <task id>` returns it to the set,
  * and it is read again after two more comparisons without a valid answer. `--infeasible <task id>`
  * refuses it for good. Each may be given more than once, and each label is logged with the person's
  * `--note`.
- *
- * It ends by saying what a comparison of `--target` tasks, at the setting's solves a side and
- * `--level`, can show at this supply, before it runs (`src/kernel/size.ts`), and which held-out
- * tasks wait for a label (`campaign.ts`, `awaitingLines`). It recommends no number and decides
- * nothing.
- *
- * Not run here: see `campaign.ts`.
  */
 import { contractHash } from "#src/kernel/contract.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";

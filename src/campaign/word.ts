@@ -1,13 +1,6 @@
 /**
  * A word the operator leaves for a campaign that runs, as the campaign's log holds it
  * (`campaign.word`, written by `tools/d2/word.ts`).
- *
- * A word steers a campaign without stopping the command that runs it.
- * It is left while a move runs and read at the next move's boundary, by the table for a stop and
- * for other tasks (`decide.ts`) and by the campaign's command for the budget
- * (`tools/d2/harness-builder.ts`). It changes the move after it and nothing in the one that was
- * running, since a comparison's terms are fixed before its first solve; `PAUSE` holds that move's
- * further solves and changes no term. No seat reads a word or its reason.
  */
 import type { LogEvent } from "../kernel/log.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";

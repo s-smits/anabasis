@@ -1,22 +1,6 @@
 /**
  * The solves a log holds: each attempt once, from its `solve.started` to its `solve.finished`, with
  * the condition it ran under and the verdict its answer was given.
- *
- * A solve is three records in the log. Its start names its condition by id alone, the condition
- * record says which task version, harness and side that was (`condition.ts`), and its ending and
- * its verdict name the solve. Every reader of a campaign joins them: a task's standing against a
- * harness, the pairs a comparison counts (`compare.ts`), a Builder's practice record,
- * the reviewers' packets, the pulse and the investigation's reader. Fourteen places that each made
- * the join for themselves had come to differ in small ways: one read a task's solves in the order
- * they started and another in the order they ended, which are not the same order when four run at
- * once.
- *
- * Here the join is made once. `solvesIn` is the solves as their own two events tell them and
- * resolves nothing, so a watcher can read a log whose conditions it has no use for; `ranUnder` adds
- * the condition; `ended` puts solves in the order they finished, which is the order every count of
- * "the latest so many" means; `verdictsOf` is the last verdict of each.
- * `rejectionAside` keeps unclear and unread rejections out of every practice failure reader,
- * under rule 8.
  */
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";

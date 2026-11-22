@@ -4,11 +4,6 @@
  * written under a heading of its own in `<dir>/record.md`, so the vetting recounts against one file
  * instead of beginning with those reads. `wri.ts record --out <dir>` writes it, and an iteration's
  * `record` gate owes every read `recordOwed` still names (`wri2p2.ts`).
- *
- * Each read says under its heading when it ran, how many lane reports were written then, and its
- * exit code, so a later reading of the investigations counts whether the reads were made while the
- * lanes were out instead of inferring it from file times, which rarely shows them made in the
- * lanes' hours.
  */
 import { packOf } from "../runs/registry.ts";
 import { WRI } from "./index.ts";

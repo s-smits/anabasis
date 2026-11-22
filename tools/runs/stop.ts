@@ -11,13 +11,6 @@
  * a word left with `tools/d2/word.ts` ends a campaign at its next move boundary and spends none, and
  * `bun run runs pause` stops one at its next step, or where nothing but its Builder's conversation
  * is open.
- *
- * A stop also releases what the run held on the host: the root of each solve and session its
- * log started and never finished (`unfinished`, `src/kernel/reports.ts`), which only the ended
- * process would have let go. A named run that is not running is released the same way, so a run
- * that was killed, or stopped before this was done, is cleaned up by stopping it again. A Builder's
- * notes are kept from its home first (`keepCutNotes`), as its own end would have. A keeper
- * of the run (`runs keep`) ends with it, but for the one that asked for the stop.
  */
 import { EXAMINE } from "#src/campaign/admission.ts";
 import { keepCutNotes, sessionDirs, spent } from "#src/builder/session.ts";
@@ -64,13 +57,6 @@ export function family(table: string, pid: number): number[] {
  * The directories of the solves and sessions a run started and never finished. A run that was
  * stopped or killed leaves the root of each, and what still works in it: only its own process
  * would have let them go. A seed's log begins as its source's, and what that run has open is the source's to hold.
- *
- * An Examiner session has a root as a Builder's: left out here, the root of the one a stop cut
- * would stay and have to be released by hand. A session that drafts an exam has one too. Every
- * Examiner session is named, finished or not: the
- * root is its conversation's first ask's, which stands through each rest with that ask finished
- * and goes only when the conversation ends, so one that stands was left. A run stopped at a rest
- * can keep hundreds of megabytes under an early session after a later one has finished.
  */
 export function leftOpen(run: Pick<Run, "path" | "seed">): (SolveDirs & { build?: string })[] {
   const events = logEvents(run.path).slice(run.seed === true ? seedCut(dirname(run.path)) : 0);

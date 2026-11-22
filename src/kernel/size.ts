@@ -2,27 +2,6 @@
  * How big a comparison is: how many held-out tasks it scores and how many times each side solves
  * each one (`SIZE`), and what a comparison of that size can and cannot show, printed before it runs
  * (`sizeLines`). Nothing here decides anything.
- *
- * The size is fixed before a comparison starts and never changed once results are visible, since
- * adding tasks until a result clears the bar would make the test meaningless. So the size is chosen
- * on arithmetic alone, and the arithmetic is the comparison's own exact test (`flipP`, `power` and
- * `detectable` in `compare.ts`), with no normal approximation: the small sizes used here are where
- * an approximation is worst.
- *
- * Each side solves each task twice by default, in every domain (the operator's choice), and a
- * campaign may set another count once with `--solves`. Four solves a side cost about a sixth more of
- * a campaign's budget and more of its hours, and one reading of four still could not call a task
- * easy without a second. Two solves still show a task the harnesses split, and readings add up
- * across comparisons.
- *
- * Statistical power comes from untied tasks alone. At level 0.02, 24 untied tasks detect a harness
- * that wins 80% of them four times in five, where 12 need 87%. How many tasks tie is measured by the
- * reference compared with itself (`noise`, `comparison.ts`); until that is read, the size is
- * described as if no task tied, which is the best case.
- *
- * One reading that clears the level promotes, so the level is a per-comparison rate. What a
- * campaign's attempts risk together is the running sum over its readings (`falsePromotion`,
- * `climb.ts`).
  */
 import { plural } from "../meta/text.ts";
 import { detectable, flipP, power, sweepOf } from "./compare.ts";

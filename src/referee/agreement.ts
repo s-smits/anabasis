@@ -1,21 +1,10 @@
 /**
  * How far the Referee's rulings agree with a person's labels of the same fails.
  *
- * The plan has every failing answer of the pilot and of D1 read by hand, as a wrong answer, a check
- * that refuses a right answer, or unclear: the Referee's three rulings. Those labels are the only set
- * the Referee can be measured on before it decides anything, and v1's equivalent reader failed the
- * bar frozen for it. So the bar is an argument the operator writes down before the Referee runs on
- * the labelled fails, and this file only counts.
- *
  * Two rates carry the risk, and they pull apart. A check defect the Referee lets stand turns a broken
  * check into a scored task; an earned fail it voids removes a real limit from the count. A fail is
  * voided by any ruling but `earned`, since `unclear` sets its task aside as `check-defect` does, so
  * a Referee that ruled every earned fail unclear does not read as voiding none of them.
- *
- * Beside them, the agreement of each kind and over all three: on kinds as uneven as these, most
- * fails earned, Cohen's kappa can be low while
- * the share read alike is high, so kappa is reported beside PABAK, the share read alike corrected
- * for three kinds and not for how they are spread, and never alone.
  *
  * No bar is read on fewer than thirty labelled fails (`LEAST_LABELS`), whatever
  * else the operator sets. And where a person

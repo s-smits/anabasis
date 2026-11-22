@@ -1,54 +1,13 @@
 /**
- * The CI gate: what CI runs, as one command over the tree it is run in, and the same CI gate run over each
- * commit a landing would publish, or over a pushed head, in a checkout of its own.
+ * Local CI gate (`bun run gate [-- --static]`) and multi-commit prover (`proveCommits`, used by
+ * `bun run land` and `.githooks/pre-push`).
  *
- *   bun run gate                 install, the UI's own CI gate as far as it is due, format, the secret scan,
- *                                typecheck, strict lint, the size policy, the simplify census, the suite
- *   bun run gate -- --static     the same, with the suite replaced by the tests near what HEAD changed
- *
- * The steps are `ci.yml`'s two Darwin jobs, with the size policy and the simplify census beside
- * them. The install, the format check, the secret scan and the UI's install run first, one after
- * another, so a format slip fails in a second; then the UI's gate, the typecheck, the strict lint
- * and the tests run side by side, since none reads what another writes once the UI's dependencies
- * are in place; run one after another, the UI's browser tests would leave a four-core runner mostly
- * idle for minutes before the suite began. A step run beside others holds its output until it ends,
- * so each prints whole; the tests stream theirs, which the pulse reads. A failed step no longer
- * keeps the rest from starting, so the gate ends once all have. The strict lint fails on everything
- * a plain one does, so it runs once. Every step fails in one spelling, `gate: step <name> failed
- * (exit <n>)`, which the pre-push hook and `bun run land` repeat without knowing each tool's
- * wording. A step whose runner said nothing about the commit (a dropped connection, no slot in
- * time, or a host that does not answer or lacks the disk; `NO_VERDICT`) runs once more, and a
- * second such exit reads `gave no verdict`: the landing then marks the commit with an error rather
- * than a failure and prints no fix, since nothing was learnt about the commit. Each exit is read
- * once, by `verdictOf`.
- *
- * `--static` is what the pre-push hook runs over a pushed head where the push asks (`ANA_PUSH_VERIFY=1`,
- * `tools/runtime/pre-push.ts`), and
- * what each commit below the one that gets the whole CI gate receives: v1's rule that every
- * published commit passes alone, because a session reading the history
- * copies a red commit and its repair as the way work is done. "Near" is one import, v1's depth: at
- * three imports, three commits of 11-17 files each selected 62-70 per cent of the suite's recorded
- * time against 14-19 at one, and the top then ran the whole suite again. A test is near when the
- * commit changed it, when it imports a changed file directly, or, for a changed file no test
- * imports (a fixture, or a command a test spawns by its path), when its text names the file. The UI's
- * tests are chosen by the same rule at three imports (`NEAR`, `uiStep`).
- *
- * `proveCommits` runs this CI gate over a list of commits for `bun run land` and `.githooks/pre-push`:
- * in scratch worktrees made for the run, its output in a log under the Git directory, a pulse while
- * a pass runs, its tests stopped at the first that fails (`ANA_TEST_BAIL`, `test-suite.ts`) as the
- * CI gate stops at its first failed step, and each pass remembered in `ana-gate-passed` under the common Git directory, so a
- * commit that passed is not run again from any worktree. A pass is remembered by content
- * (`contentKey`): a whole pass by the commit's tree, a static one by its tree and its
- * parent's, each with the checker and the Bun the commit pins. The checker is this CI gate and what it imports, read from the
- * caller's checkout (`proveCommits`), since it runs from there over every target: a changed CI gate
- * runs again on trees it passed before. A pass is not remembered by commit id, since a restack
- * rewrites every id and would keep nothing, leaving the whole CI gate to run again on the top and
- * `bun run land` to prove every pull request from scratch. A line recorded by commit id is not
- * read: it names no checker, so it would stand for
- * whatever CI gate runs now, and each such commit is proved once more instead. The key covers the
- * target's tree and the caller's CI gate; it does not see the host: its tools, its environment and its
- * load. `ANA_GATE_FRESH=1` reads no remembered pass, so every commit selected for proof is run
- * again, and its passes are remembered as any others.
+ * Runs `ci.yml`'s Darwin steps (`install`, `format:check`, `secrets`, `ui:deps`, then in parallel
+ * `ui:gate`, `typecheck`, `lint --strict`, `source-policy.ts`, `simplify --gate`, and `test`).
+ * Under `--static`, replaces the full test suite with tests within one import hop of changed root
+ * files (`NEAR.root = 1`) and non-browser UI tests within three hops (`NEAR.ui = 3`). Passes are
+ * cached in `ana-gate-passed` under the common Git directory by tree hash, parent tree hash (for
+ * static passes), checker digest, and pinned Bun version (`ANA_GATE_FRESH=1` bypasses the cache).
  */
 import {
   appendFileSync,
@@ -120,29 +79,7 @@ export const DOCUMENTATION = [
   ":(exclude)docs/**",
   ":(exclude).claude/**/*.md",
 ];
-/** The UI's own CI gate, in a tree that holds the UI: `packages/ui` keeps its own lock, compiler
- *  settings and tests, which the root's typecheck and suite do not reach, and the lint leaves it
- *  out until its dependencies are installed (`tools/runtime/lint.ts`). A commit from before the UI
- *  came back has no such step to run. What the step runs follows what changed since the pass's base,
- *  a static pass's parent or the commit where a whole pass's tree left `origin/main`, which
- *  `bun run land` merges only once `ci.yml`'s `darwin-ui` job has run every UI file (`uiStep`):
- *
- *  - `packages/ui` itself, or what `ui:gate` installs it from and runs it with (`UI_SETUP`): the
- *    whole UI CI gate, as where no base is known. The list holds nothing `ui:gate` does not read,
- *    such as the root's compiler and lint settings or `tools/runtime`, since those would run the
- *    browser files in static passes for no reason and stop landings on browser timeouts at commits
- *    that changed stack scripts alone. This file only chooses the step, so a change to it
- *    is no change to what `ui:gate` runs;
- *  - root source that a UI file imports at any depth: the UI's dependencies, its build, which
- *    typechecks it, and its test files within three imports of the change;
- *  - nothing the UI reads: no UI step.
- *
- *  The UI's tests reach the root's folds through the server's handlers and the fixture campaign,
- *  two imports in. Over the root files the UI reads, a change to one selects on average about a
- *  fifth of its test files at three imports, almost none at one and nearly all with every import
- *  followed; a central fold, `src/kernel/log.ts`, still selects nearly all. A static pass leaves out
- *  the browser files (`BROWSER_FILE`): the UI step's failures in static passes over commits that
- *  changed nothing under `packages/ui` have all been in browser files. */
+/** UI package path and setup files (`UI_ROOT`, `UI_SETUP`); `uiStep` runs the full `ui:gate` when `packages/ui` or `UI_SETUP` changes, or builds the UI and runs non-browser UI tests within `NEAR.ui` import hops when root files imported by the UI change. */
 const UI_PACKAGE = "packages/ui/package.json";
 export const UI_ROOT = "packages/ui";
 /** The test runner every pass goes through, so a change to it proves nothing narrower than the whole run. */

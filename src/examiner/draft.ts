@@ -1,12 +1,6 @@
 /**
  * Move 2 of a campaign that opens from a prompt: the Examiner drafts the exam.
  *
- * A campaign opens from a prompt. The operator's prompt names a domain, and one session
- * drafts what a campaign needs before its first task is solved: the public rules, each with the
- * source that states it, the answer format, one check for each rule, the objective or why there is
- * none, a few example tasks, and control answers, which are answers to those examples with a known
- * label.
- *
  * The session is `examine`'s in its drafting mode (`session.ts`), and this file is what that mode
  * is made of (`drafting`): what the Examiner is told, the tool it puts a whole draft by, and the two
  * readings a draft is held to without a model. The first is its shape (`draftFaults`), which the
@@ -16,10 +10,6 @@
  * draft again. A draft with no fault stands: it goes into the log whole, as `exam.drafted`, and the
  * session ends. The campaign reads its exam from that event (`draftOf`). Validation and acceptance
  * stay together here because only drafting submits a whole exam.
- *
- * What the readings cannot say is whether a rule is the field's and its source real. The source
- * is on record beside the rule for a person to look up, and the host holds a draft only to
- * naming one.
  *
  * Every check a draft holds is its author's own computation, since nothing installs an engine of
  * the field for a campaign yet. The acceptance reading lists each such check as a fault until the
@@ -40,29 +30,6 @@
  * told that nothing a solver needs is hidden published every planted defect with its repair;
  * validity rests on `FAIR` alone.
  *
- * An objective read as the share of an answer's values agreeing with a recomputation from the
- * input scores nearly every solve at exactly 1 and ties every task, so the prompt names that measure
- * as one the standard method reaches, beside one read against what the task was built from. A rule
- * requiring hidden values whenever an objective is declared was weighed and not taken: truss's mass
- * reads none, and the standard method does not reach its best.
- *
- * A declared stand-in is named as one in the scope, beside the quantity it stands in for, which is
- * named as not measured, so a reader of a step knows what it measured: a draft whose prompt named a
- * quantity no check could compute declared an extra-channel count in its place, and a step promoted
- * on it alone.
- *
- * The scope names classes of problem rather than what tasks plant, and calls no unnamed effect
- * absent. One of the 214 drafts on record listed the faults its tasks would plant and called every
- * other effect absent, and each of the 16 guides built on it repeated 14 or 15 of the listed terms,
- * against 3 or 4 in each of the 26 of a fork of the same query whose scope named two of them.
- *
- * Whether valid answers differ is decided by the answer format and the scope, which the prompt
- * says, and a reason for no objective is taken only where no task of the domain could leave that
- * choice. Exams whose own tasks fixed every part gave a reason true of the draft and not of the
- * field: the reference answered every compared task validly, all tied, and the campaigns ended
- * `no-room`, while exams that left the answer a choice of parts declared its count or cost and
- * promoted.
- *
  * The Examiner is told the prompt, its limits and what the host found in each draft, and no count
  * of tasks, since an author told a target writes towards it. It reads the reach scale and who the
  * grades are for (`REACH`, `ladder.ts`), not the worked fields, which teach how hard a task is and
@@ -76,14 +43,6 @@
  * host's reading cannot see a requirement a draft leaves out. Where it has a shell (`shell.ts`) it
  * is told what the shell is and what the wall test found of the network, and not what to use it
  * for; nothing hidden exists at drafting, and the wall closes the repository, where the log lies.
- *
- * No solve runs at drafting: solving a draft before it stood, or refusing one the Starter Built
- * Harness answered on every solve, ended campaigns `exam` with nothing compared, and the operator
- * asked for gates that trust a capable model. The reading's notes, facts a draft stood with, ride
- * on the reply that ends the session (`ending`, `src/tools/answer.ts`), so no model reads them.
- *
- * The account of proper losses and their scales, and what the host's reading of a draft checks,
- * are one sentence each (the operator's choice); the reading's faults name the rest.
  */
 import { type Static, Type } from "typebox";
 import { answerFormatFault, type Objective } from "../kernel/contract.ts";

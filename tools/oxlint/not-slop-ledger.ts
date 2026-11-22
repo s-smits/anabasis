@@ -13,18 +13,6 @@
  * excusing whatever was later written there, and a comment without a reason (thirty-one of
  * the forty in the tree on 2026-09-21 had none) records that someone was silenced, not why.
  *
- * A row is keyed by what the site is rather than where it sits. The id hashes the rule, the paths
- * and the text of every place the site spans, whitespace collapsed: lines moving above it keep the
- * id, and an edit to any place gives a new one and brings the site back for a fresh answer. The
- * vocabulary is SARIF's external suppression (a fingerprint, the rule, the location and a
- * justification) with the date it was given and an excerpt of the hashed text, so a reviewer can
- * read a row without opening the file and see what it answers.
- *
- * Only a finding with no repair can be answered. A rule with a fixer states a fact (`--fix`
- * rewrites the site, and the ledger does not stop it) so a wrong report from one is a defect in
- * the rule (`FIXER-DECISIONS.md`). A core oxlint rule is a correctness rule, not a heuristic, and
- * its exception is a fact about the code that belongs beside it: an inline comment with a reason.
- *
  * The file is tab-separated, one sorted row per line under a header, so it renders as a table,
  * diffs one row per answer, and `.gitattributes` merges it by union: two branches answering two
  * sites never conflict. `bun run not-slop` writes and prunes it; nothing reads it but the code here.
@@ -91,10 +79,6 @@ const ordered = (places: readonly Place[]): Place[] =>
 
 /**
  * The id of a site: its rule, and the path and collapsed text of every place it spans.
- *
- * Every place, not the first: a copied block answered as two copies kept apart on purpose is a
- * different site once its second copy changes, and hashing only the first let the edited copy
- * keep the old answer.
  */
 export function siteId(rule: string, places: readonly Place[]): string {
   const parts = ordered(places).flatMap((place) => [place.path, collapsed(place.text)]);
@@ -113,9 +97,6 @@ export function siteExcerpt(places: readonly Place[]): string {
 
 /**
  * Why a lint rule's findings cannot be answered in the ledger, or null when they can.
- *
- * The whole-tree scans are the census's to judge, so this reads only plugin rules; a `tree/` rule
- * is answerable here and its register kinds are refused where the scans are known.
  */
 export function unanswerable(rule: string): string | null {
   if (rule.startsWith(TREE_RULE_PREFIX)) return null;
@@ -171,9 +152,6 @@ export function readLedger(text: string): Ledger {
 
 /**
  * The ledger's text: one row per id, sorted by path, rule and id, under the header.
- *
- * The same id twice is two branches answering one site, which a union merge keeps both of; the
- * later row stands.
  */
 export function formatLedger(answers: readonly Answer[]): string {
   const byId = new Map(answers.map((answer) => [answer.id, answer]));

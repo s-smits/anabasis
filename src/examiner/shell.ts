@@ -2,31 +2,12 @@
  * The Examiner's shell: `bash`, `read` and `write` in a walled home of its own, the same for a
  * session of any mode (`examine`, `session.ts`).
  *
- * The home is in a root of its own as a Builder's is, under the solver's command wall (`walledBase`,
- * `src/tools/command.ts`): the repository, its other worktrees and a stored pack are closed to it,
- * and the wall is tested before its first command. Nothing in the home enters the exam: a session
- * puts a task or a draft through its own tool, and the host reads that alone.
- *
  * A task-writing session has one because, without it, its notes estimated by hand
  * whether a task had a valid answer. A drafting session has one so that it can look up the source it names
  * for each rule, and run its own check program on its own controls before it puts a draft
  * One wall and one sentence serve every mode, so that their walls
  * cannot drift apart, and the wall says when the seat began to be set up: a session's time is
  * counted from then, so the claim of its root and the wall test are inside its limit in every mode.
- *
- * A session with a campaign's exam before it also has the field's engines: the programs the
- * campaign's check program names (`requiredToolsOf`), each as the verifier's tool tree resolves it,
- * run by name, and no other program of that tree (`pinnedEngines`, `src/kernel/verify.ts`, which
- * names each by its digest). The operator ruled that the Examiner may have them, as the exam's side
- * and never the agent under test, from a pinned list; the tree a campaign's checks run under is that
- * list, its content in every solve's setting (`verifierTools`). With the host's toolchains alone, a
- * session spends its first minutes fetching and compiling an engine, and has no instrument to tell
- * a hard task from a large one. A stored pack's tool tree can hold more than
- * its checks run, since a v1 Builder installed its own tools beside them, so a program no check
- * names stays off the path: the Examiner computes with the instruments, and is never given a
- * solver. The tree itself is open to read, since an engine runs from it, so such a program is off
- * the path and not out of reach. Its tasks still enter through the gate alone (`propose_tasks`),
- * and its answers are ruled on by `try_answer` alone.
  */
 import { validateToolArguments } from "@earendil-works/pi-ai/utils/validation";
 import type { ToolRegistration } from "@earendil-works/pi-durable";

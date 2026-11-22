@@ -2,27 +2,6 @@
  * What a campaign's moves share (`session.ts`, `checkpoint.ts`, and the live Builder's tools through
  * `campaign-terms.ts`): the seats, the flags of a Builder session and of a comparison with their
  * defaults, the request each is made with, and the report a comparison prints.
- *
- * The sets are the log's (`prepare.ts`): the released tasks are the Builder's practice. The scored
- * set is the setting's `--target` of the held-out tasks, the newest epoch's first and within an
- * epoch drawn by the contract's hash alone, fixed before any solve so that no harness's results
- * choose it (`scoredSet`, `src/campaign/round.ts`). The other defaults are `SIZE`'s
- * (`src/kernel/size.ts`).
- *
- * `--cap` is a move's dollar cap and is required: no solve starts that a reserve for it and for each
- * one running (`--reserve`, $3) would take past it, and a comparison the cap cuts short reads
- * `not-scored`. `--reference` is `promoted`, the campaign's reference harness (`tools/d2/promote.ts`),
- * and `--parent`, where a session starts from, is `latest`. `--reviewer` gives the Builder the
- * Referee on its practice fails and a comparison the Referee on every rejected answer; with none,
- * every rejection sets its task aside until a person has labelled it (`tools/d2/settle.ts`).
- *
- * Who solves, what a solve is held to and how many tasks are drawn are the campaign's setting, which
- * its log records once (`setting.ts`): a move that names none of it runs under the record, and one
- * that names another is refused.
- *
- * A rehearsal runs these moves with a script in each model seat (`tools/runs/rehearse.ts`).
- *
- * Not run here: see `campaign.ts`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { stopRule, type Wanted } from "#src/campaign/admission.ts";

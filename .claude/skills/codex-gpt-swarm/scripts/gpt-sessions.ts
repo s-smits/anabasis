@@ -2,22 +2,6 @@
 /**
  * The Codex launcher: one `codex exec` a session, queued under `--max-active` and paced by
  * `--start-interval-ms`, with one session-level retry.
- *
- * Codex owns resilience inside a session: it retries a request, reconnects a stream and falls back
- * from WebSocket to HTTPS. What it cannot do is start a session that stopped, so that is the part
- * this launcher owns. A session that ends without a report is tried again (`--retries`, once by
- * default): resumed with `codex exec resume` where Codex named its thread, started again from its
- * prompt where it did not. `--retry <outputDir>` does the same later for the sessions an earlier
- * launch left incomplete, from that launch's own record. What each session leaves behind, and how
- * it is read back, is `gpt-receipts.ts`'s.
- *
- * Each session runs with Codex's live web search (`codex --search`) unless its manifest says
- * `"search": false`, as a whole-run investigation's does, so that a literature question is not
- * answered from memory.
- *
- * v1's launcher also held a parent Codex task open through a stop hook, and took a bare task list
- * beside a manifest. v2 registers no Codex hook and a manifest holds a task list whole, so it has
- * neither.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { sha256 } from "#src/meta/digest.ts";

@@ -1,26 +1,5 @@
 /**
  * One reading of a campaign's log: what each step handed over.
- *
- * A campaign is a sequence of steps over one log: the set-up, Examiner sessions, Builder sessions
- * and comparisons. Separate readers of its parts can disagree about the same facts, so the log is
- * read here once (`campaignOf`), and each reader is a rendering of that reading
- * through its own filter: the operator's view prints it whole (`tools/runs/view.ts`), and the
- * Builder's opening message takes its fails and its tallies from it and nothing else (`past.ts`).
- * A step's handover is what the owner of a campaign needs of it, never its content: counts, a
- * harness's digest, a tally, a reading, a cost. No task is named in one.
- *
- * Nothing here decides or launches anything. The move that comes next is the decision table's
- * (`decide.ts`), which the view prints once beside this reading.
- *
- * A session is read from its own events while it has no end, and from its end once it has one,
- * since a running session read from its end alone would show nothing proposed and nothing billed.
- * A step with no end is `cut` where the campaign went past it, and open at the log's end otherwise
- * (`nextBound`, `soFar`); an open one may be running or stopped, which the log cannot tell apart,
- * so the view says when it last wrote. The Examiner's sessions and the comparisons run inside the
- * Builder's conversation, and an Examiner session can outlast it, so a session is gone past only
- * at its own seat's next start or the campaign's end (`soFar`). A session is billed its own dollars
- * alone, open or ended (`ownedBy`, `src/kernel/reports.ts`), so a move made inside a Builder's span
- * is not billed twice. Unclear and unread practice rejections are not counted as failures.
  */
 import { type Measures, pointsOf, scoresIn, type Tally, testOf } from "../kernel/compare.ts";
 import { proposalsOf } from "../kernel/history.ts";

@@ -79,10 +79,6 @@
  *   beside the recorded verdict), either with fields replaced (`--set`, which refuses a path the answer
  *   lacks and a change of JSON type), or every file of a folder (`--answers`) with each one's sha256
  *   (`tools/wri/grade.ts`). It writes nothing and logs nothing.
- *
- * A log is named by its path or by its campaign's whole name in any of the
- * repository's worktrees (`runNamed`). No verb starts a solve, a session
- * or a round, and none appends to a log.
  */
 import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";

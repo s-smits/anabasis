@@ -12,23 +12,6 @@
  * checkout or giving an interpreter a campaign's path. The files read are what the
  * harness wrote (`writtenIn`, `tools/wri/trajectory.ts`: the guide and its own programs, nothing it
  * installed). A word matches whole: `x-1-3` is not found inside `x-1-31`.
- *
- * A short id or a common word matches by chance, so each hit carries the token's length and how many
- * kept versions and public inputs hold it, and the lane judges. A public token is kept only where it
- * looks like an identifier (a digit, an inner `_`, `.` or `:`, or a capital past its first letter), has
- * at least `MIN_TOKEN` characters and stands in at most `RARE` tasks' public inputs; a plain word is
- * left out, a compound of plain words joined by hyphens with it, and the header says how many were.
- * A task's id is looked for whatever its form. A public token's own text is not printed, its place is.
- *
- * A phrase is a span of at least `PHRASE` consecutive words (lower-cased runs of letters and digits,
- * across lines) that a written file shares with a public input; overlapping windows are one hit, at
- * its first word's line, with its length in words and the tasks holding it. A span every task's
- * public input holds (with two tasks or more) is the contract's fixed wording, left out and counted
- * in the header. A phrase's text is not printed either.
- * A practice task's name in a harness is one the Builder was shown; a held-out task's is not, and
- * neither is called a breach here.
- *
- * It names which tasks were held out, so lane 14 reads it only after it has graded.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { DIGEST } from "#src/campaign/names.ts";

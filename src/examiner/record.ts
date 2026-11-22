@@ -2,37 +2,11 @@
  * What a writing session is told of its campaign's past at its opening, and at a wake what came
  * since (`after`): a view of the log, with no store of its own (`heard`), in four parts.
  *
- * - `stood`: the comparisons the reference harness stood in that the session has not heard of, each
- *   from its side: the tasks it scored and how many its largest family held, how many each harness
- *   won, the reference's every, some and none, the tasks set aside, and how often its own two solves
- *   differed in that comparison's A/A. An opening tells the last one, and a wake each since it was
- *   last told. The reference's own solves often differ on the objective alone, and the session's own
- *   comparison says how often, rather than a count from the archive.
- * - `groups`: every task under the reference's outcome in the last comparison that scored it, one
- *   block an outcome with a heading that says once what the block means. A line gives the task, then
- *   the turns each of the reference's valid answers took and, under an objective, what each measured,
- *   who won and on which measure (`carriedBy`), whether a valid answer is on record where none of the
- *   reference's was valid, and the checks a ruling found at fault on an answer to it (`faultedOf`).
- * - `promoted`: at an opening and at the first wake after a promotion, that the reference was
- *   promoted, and how many tasks were held out before then.
- * - `refused`: at an opening alone, the drafts the gate refused since that promotion, by its reason.
- *
  * A conversation hears each reading at the wake after it, so an opening tells no task's earlier
  * comparisons. A live conversation
  * hears each refusal from the gate, so a wake repeats none, but one that crashed or met a limit
  * opens afresh from the log (`AGENTS.md`, section 4) and has that record of them alone. A wake
  * after a promotion says it, as an opening does.
- *
- * The record carries no legend, no grade or sentence of the author's on a task, and no line of its
- * tries of the reference, which `try_reference`'s reply tells once. An older log's gate readings are
- * read by `tools/wri/gate-era.ts`. A line gives the reference's measures, so a saturated objective
- * reads as "measured 1, 1" instead of passing unremarked. The check a ruling found at fault is
- * named, so that a later session does not write more tasks that the same frozen check refuses.
- *
- * Reference measurements are told by epoch, so a session after a promotion does not read the
- * starter's admission counts as the new reference's. Nothing here names a harness or a target, no
- * check but one a ruling found at fault, and no count carries a band or a number to reach (the
- * operator's decision).
  */
 import { type Paired, scoresIn } from "../kernel/compare.ts";
 import { familySizes, proposalsOf } from "../kernel/history.ts";

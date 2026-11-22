@@ -2,11 +2,6 @@
  * The exam of a campaign that opened from a prompt, as files: the draft its log holds, staged as a
  * pack laid out the way a stored one is, so that every command reads it as it reads a v1 bundle.
  *
- * A draft is in the log whole (`exam.drafted`, `src/examiner/draft.ts`), and the log is the one
- * store. What is staged here is a view of it, under the draft's own digest: written again from
- * the log whenever it is missing, and never read back as the truth. A campaign whose exam is
- * drafted again before it is frozen stages the new draft beside the old.
- *
  * Every check of a staged exam declares its author's own computation as its evidence and names no
  * tool. Nothing installs an engine of the field for a drafted exam, so no check can run one, and
  * the acceptance reading names each check's instrument `author` and lists it as a fault until the

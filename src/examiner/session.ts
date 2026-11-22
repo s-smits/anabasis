@@ -1,25 +1,6 @@
 /**
  * The Examiner's one session, in its two modes: it drafts an exam (`draft.ts`), or it writes tasks
  * (`write.ts`). No seat repairs a check (`AGENTS.md` rule 2).
- *
- * A mode is what a session is told, the tools it works with and when its work is done (`Mode`);
- * everything else is one loop (`examining`) in the frame every seat's session has (`sit`,
- * `src/agent/session.ts`): its start event, its `finish`, its shell where it has one, the model turns and
- * calls in the log under the mode's kind, and its end event with what it billed. A
- * turn of its own the provider failed ends it crashed, with what the provider said. A drafting
- * session puts one whole draft to the host's reading until one stands (`drafting`); a writing
- * session proposes many tasks. The id, the root and the home are the wall's (`inExaminerWall`,
- * `shell.ts`), which seeds a writing session's home and carries it on.
- *
- * Neither mode receives the reference harness's guide or programs, nor a solver's trace or answer:
- * a writing session tries the reference as a black box (`try_reference`), and its home holds no
- * copy of the reference harness. Its shell is a walled home, closed to the repository.
- *
- * The session clock charges setup and every turn and tool call except a drafting session's wait for
- * the host's reading of a draft, which is the verifier's time (`drafting`), and kill
- * and budget signals stay independent of it. Typed abort reasons latch the first parent source
- * before the agent loop aborts an invocation. No solve runs at the gate (`write.ts`), so the clock
- * never waits on one.
  */
 import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
@@ -199,10 +180,6 @@ function finishTool(mode: Mode, said: Said, rest: Rest): SeatTool {
  * `finish`, or a limit ends it. Everything it does is in the log under the mode's kind: its start,
  * its turns and calls, and its end with what it billed and, for a crash, how many of its commands
  * were running, which decides whether its home is carried on (`inExaminerWall`).
- *
- * Given `rest`, a writing session is one ask of a conversation: its done work or
- * accepted `finish` ends the ask on record and the call waits, off any clock, for the next ask, with
- * its own id, events, clock and turns, and is told the readings since (`ask`, `write.ts`).
  */
 async function examining(
   request: Sitting,

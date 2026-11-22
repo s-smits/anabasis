@@ -1,30 +1,6 @@
 /**
  * The verifier: whether an answer passes a task's checks, decided on the verifier's own tree and
  * nowhere else. Answers are stored, so a verdict can be recomputed at any time.
- *
- * Every applicable check runs in a fresh cell, as its own process with only its declared projection
- * of the answer and the task, under the wall a seat's commands run under with the network closed. A
- * check's tools run in that same wall. No wall of the verifier's own is needed, as v1's was while
- * its Builder wrote the checks: here an answer is data and a check is the exam side's code.
- *
- * The verdict is a pass, a fail naming the checks that refused the answer, faulty when a check
- * itself failed on the request (it threw, returned no boolean, or is missing), or a non-result when
- * the wall, a tool or the program's loading could not decide. No answer is a fail. A faulty check is
- * the task's defect and drops the task; a non-result is the verifier's and stops the run.
- * The verifier accepts the reader's abort signal, races a check's result against it, reaps the
- * check group and its cell's holders, and returns a non-result, so a reader's deadline also ends
- * an answer probe and a detached check child cannot hold stderr open.
- *
- * The contract is v1's check-program/v1, the format of the experiment's stored answers: a
- * `brief.json` declaring the checks and an `evaluator.ts` exporting them as `checks`. A check
- * program is its whole directory, nested directories included, and each check's cell gets a copy,
- * since a check program may import a helper beside `evaluator.ts`, which a copy of that file alone
- * would leave behind. The hidden values are the task's, not the program's, so they
- * reach a check only as its request carries them; a directory that keeps them, as a v1 bundle's
- * `tasks.json` does, hands every task's to every check, and the caller leaves such files out.
- *
- * A check's tools resolve only from the verifier's tool tree. The condition pins that tree's digest,
- * and a tool missing from it once ran the host's copy off the search path's later directories.
  */
 import { CHECK_BRIEF, EVALUATOR_FILE } from "../meta/bundle-layout.ts";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "../meta/filesystem.ts";
@@ -273,15 +249,6 @@ export function applicableTruthChecks(brief: Brief, task: { family: string }): B
  * Rebuild a value carrying only the declared paths. A declared path grants the value at that path,
  * whole: `$.system` hands over its subtree, which is what a collection predicate naming a root
  * already means. Declaring a parent therefore grants its whole subtree.
- *
- * Two grants are wider than "the declared leaf" and belong to the contract. An array keeps its
- * length, with undeclared positions as null, so an index rule and a cardinality rule both still
- * work: declaring one element reveals its array's length. Absent is distinguishable
- * from present-and-null only where some rule declared the path.
- *
- * Traversal follows the source, so key order is the task's own and the bytes are stable under brief
- * reordering. `Object.fromEntries` defines rather than assigns, so a model-authored `__proto__` key
- * lands as an own property instead of reaching a prototype.
  */
 function projectPaths(value: JsonValue, paths: readonly string[][]): JsonValue {
   if (paths.some((path) => path.length === 0)) return value;

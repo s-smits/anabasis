@@ -1,55 +1,14 @@
 /**
- * One `bun test` invocation over the repository suite, under its own output-idle wall.
+ * Repository test runner (`tools/runtime/test-suite.ts`): executes `bun test --parallel` ordered
+ * slowest-first from `test/.test-timings.json` (`--update-timings`, `--max-concurrency=4`), sizing
+ * worker count from available cores minus current one-minute load (`ANA_TEST_WORKERS` overrides,
+ * capped at 4 for browser UI suites; `ANA_TEST_BAIL=1` passes `--bail`).
  *
- * It used to be seven sequential shards of four workers each, paying Bun's start-up and the
- * timings read seven times over and leaving three workers idle at every shard's tail. Now it is
- * one process: `--parallel` with two workers fewer than the machine has free,
- * `--max-concurrency=4` inside a file, and the files ordered slowest-first from the recorded
- * timings so the long files start at t=0 and the short ones fill the gaps. The wrapper always
- * writes the timings back (`--update-timings`): the file is ignored by Git, so each checkout
- * learns its own order from its first run. A request that names the UI's browser files takes four
- * workers at most. `ANA_TEST_WORKERS` overrides the worker count. Two
- * fewer than the cores because most heavy tests spawn confined children -- Seatbelt or Bubblewrap
- * cells, generated-tool workers, git -- so a worker running four concurrent tests already loads
- * more than one core.
- *
- * The host the suite shares. The cores a machine has are not the cores this suite gets. The worker
- * count subtracts half the one-minute load average, so a runner already carrying four jobs of its
- * own is not asked for three times itself, while a laptop that merely looks busy keeps its workers.
- *
- * A failed test is the verdict, whatever the host's load. A failure is not run again where a clock
- * ended it or the host was loaded, since on a busy runner that retry would fire on nearly every
- * proof and cannot tell a test that depends on time from a real race (the operator's choice): a
- * failure stops the run for someone to fix.
- *
- * `ANA_TEST_BAIL=1` stops the run at its first failed test (`--bail`), which every proof of the
- * pre-push hook and `bun run land` asks for, so a red commit comes back in minutes rather than after
- * the rest of its tests; CI leaves it unset, so one run names every failure.
- *
- * The wall. `--timeout=60000` bounds each test, not the worker. Bun 1.4 sometimes leaves a
- * `--test-worker` spinning at full CPU with exited, unreaped children after a subprocess-heavy
- * file; no test is running, so the per-test wall never fires, and an unattended run holds the
- * queue until someone notices. A worker that finishes its own share of the files takes over the
- * rest of another's, so the group goes silent only when every worker has wedged, and then every
- * file behind them is stranded: with two workers, two wedges can leave most of the suite unrun.
- * Every chunk of output resets a clock, and 180 s of silence (three per-test walls) fires the
- * wall, which lists what the group was running and then does what Bun's own CI runner does with a
- * stalled batch: SIGTERM to the coordinator, SIGKILL 15 s later, and every file left unfinished run
- * again one at a time, however many there are. Here that is one fresh process without workers, over
- * the files Bun's interrupt report names and every file that printed no result, and its exit code is
- * the suite's. A file that declares no test prints nothing in either process, and one that would
- * not load fails that exit with an unhandled error, so silence alone is no verdict. A failure
- * printed before the wall is kept: the rerun covers the files the first process never finished,
- * never the verdict of one it did.
- * The suite owns the wall, so `bun run test` and the CI gate share one behaviour; `startWall`
- * widens it in proportion to load the suite did not create.
- *
- * Around the command: one fresh temporary root, and a check that every explicitly named test file
- * exists, since Bun treats an unknown path as a filter and would silently run only its neighbours.
- * The root lies under `SUITE_SCRATCH_ROOT` and this process claims it, as a seat claims its own: a
- * suite ended by SIGKILL, as a runner's deadline or a dead ssh shell ends one (`task.sh`), cannot
- * remove it, and `bun run runs retire` releases it once its claimant is gone, where a root loose in
- * the host's temporary folder would be left by a killed suite for good.
+ * Guards against wedged `--test-worker` processes with an output-idle wall (`IDLE_WALL_SECONDS = 180`,
+ * scaled by external host load): if output stops for 180 s, sends SIGTERM then SIGKILL to the
+ * coordinator and reruns unfinished/unreported files sequentially in a single workerless process
+ * while preserving any failure already reported. Runs inside a claimed scratch directory under
+ * `SUITE_SCRATCH_ROOT` cleaned up on exit or by `bun run runs retire`.
  */
 import { boundText } from "../../src/meta/bounded-text.ts";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync } from "../../src/meta/filesystem.ts";

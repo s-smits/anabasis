@@ -38,16 +38,6 @@
  * one, as `old:new`. The reference harness is the starter unless `--reference` names another. The
  * defaults, `none:pass`, script a step. `--starter` says how a solve ends under the
  * starter where it is neither of the two.
- *
- * No reviewer reads a rehearsal, so a scripted `fail` is a rejection nobody ruled on: it sets its
- * task aside, as a paid comparison's would with no reviewer, the report's `counted` holds the
- * tally were it to stand, and `tools/d2/settle.ts` settles it on labels. That is the path a
- * rehearsal of rejections walks to its end.
- *
- * It proves the joins and nothing of a model: that each command takes what the one before it left,
- * and that the readings come out as the script was written to make them. A scripted solve that
- * ends otherwise than scripted is named at the end, with exit code 1. Whether the script or the
- * path under it is at fault is then the finding to make.
  */
 import {
   createModels,
@@ -405,11 +395,6 @@ function draftedSource(name: string): DraftedSource {
  * tasks the source's sessions wrote after the cut, as many as the host asks for, and finishes; one
  * with none left proposes copies of the source's answered tasks while `--supply` lasts, and then
  * finishes with none, which the campaign reads as a session that held out no task.
- *
- * It sits as a real one does: in its wall, with its root claimed, resting after each ask with that
- * root standing until the next ask wakes it, or a promotion or the Builder's conversation closes it (`conversing`,
- * `src/examiner/session.ts`), so that a rehearsal claims an Examiner's root, rests and wakes, and a
- * stop at a rest, which can keep a closed run's root, is within its reach.
  */
 function scriptedExaminer(
   later: Task[],

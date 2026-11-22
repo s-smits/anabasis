@@ -13,11 +13,6 @@ export function containsUnknownType(type: ESTree.TSType): boolean {
 /**
  * The type a parameter declares, found past the three things a parameter can be wrapped in: a
  * constructor's `private`/`public` parameter property, a rest element, and a default value.
- *
- * Each of those can carry the annotation itself or leave it on the binding inside, so both places
- * are read and the wrapper's own wins. A parameter with no annotation at all comes back
- * `undefined` rather than null, which is why the callers either test for both or collapse them
- * with `??`.
  */
 export function functionParameterTypeAnnotation(
   parameter: FunctionParameter,
@@ -37,12 +32,6 @@ export function functionParameterTypeAnnotation(
 /**
  * What to call a parameter: its name where it has one, and otherwise the source text of the
  * pattern it was written as, with the annotation cut off.
- *
- * A destructured parameter has no single name, and the two callers both need one anyway: the
- * rules use it to say which parameter a message is about, and `no-known-value-widening` matches a
- * type predicate's subject to the parameter it names. The pattern's own text is the closest thing
- * to an identity such a parameter has, and cutting the annotation off keeps the answer to what
- * the author wrote on the binding side.
  */
 export function functionParameterBindingName(parameter: FunctionParameter, sourceCode: SourceCode): string {
   if (parameter.type === "TSParameterProperty") {

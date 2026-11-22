@@ -5,57 +5,17 @@ import { isTestFile } from "../shared/file-role.ts";
 /** The fewest properties a repeated literal must carry before naming it is worth a function. */
 const PROPERTY_FLOOR = 3;
 
-/**
- * The fewest spellings that make an owner, in source and in a test.
- *
- * In source, three spellings are three callers and the floor holds. A test is the other case:
- * the literal is usually the case being read, and a reader who has to resolve a name to know
- * what a case was given has lost more than the three edits cost. Measured 2026-09-20: 47 of the
- * 48 sites were in tests, 30 of them at exactly three spellings. At five the file is no longer
- * showing a case: it is repeating a fixture, and `draft-authority.test.ts` spells one eight
- * times. Ten sites survive both floors, every one of them a test.
- */
+/** The fewest spellings that make an owner, in source and in a test. */
 const SPELLING_FLOOR = { source: 3, test: 5 };
 
 /**
- * Rung 5 of the simplify skill's ladder, second clause: "three spellings of one object literal
- * are one small function (one owner, even when the line count is equal)."
- *
- * Five of the 138 net-negative commits the recorded simplify passes produced made this cut. The
- * shape is always the same: a row, a finding, a fixture or an options bag written out in full at
- * three or more places in one file, so that changing what the shape means is three edits and
- * forgetting one of them is a silent drift.
- *
- * Three is the floor in source and it is load-bearing. At two spellings the extraction is a
- * one-caller helper, which `ana/no-single-caller-helper` exists to remove, so a catcher that
- * fired at two would ask for the thing another rule takes away. At three the owner has three
- * callers and both rules agree. The skill states the same floor in the same words. A test
- * carries a higher floor and an assertion carries none; both are argued where they are set.
- *
- * Comparison is over the printed text with whitespace collapsed, so the same literal spelled
- * across three lines in one place and on one line in another still counts as the same literal.
- * That is a deliberately blunt instrument: it cannot see two literals that differ only in a
- * value the owner would take as a parameter, which is the more common and more valuable
- * version of this finding. It reports what it can prove and leaves the rest to a reader.
- *
- * A literal under two properties is not reported. `{}` and `{ ok: true }` are spelled everywhere
- * and naming them buys nothing. One report is made per group, at its first spelling, naming the
- * lines the others sit on, because three reports of one finding read as three findings.
- *
- * There is no fix: the function needs a name and a parameter list, and which fields vary across
- * the three spellings is what the parameter list is.
+ * Rung 5 of the simplify ladder: an object literal of at least three properties spelled three or
+ * more times in a source file (five in a test file) should be extracted into a single small
+ * function. Pure boolean/null/empty flag bags (`valueless`) and literals inside `expect(...)`
+ * assertions (`asserted`) are exempt. There is no fix.
  */
 
-/**
- * The constants that carry no domain content: a literal of only these is a set of flags.
- *
- * `{ recursive: true, force: true }` is 16 of this shape's 168 sites and the largest single
- * spelling in it, and it is not this repository's shape to redefine: Node owns it, so "changing
- * what the shape means" is not a change anybody here can make. `{ answered: false, refusal: null }`
- * and `{ done: true, value: undefined }` are the same case written locally: a state, already
- * named by the union type the function returns. Naming a flag set again buys a second name for
- * one state and an object three call sites now share.
- */
+/** Whether a property value is a pure flag constant (`true`, `false`, `null`, `undefined`, `[]`, `{}`). */
 function valueless(value: ESTree.Node): boolean {
   if (value.type === "Literal") return value.value === true || value.value === false || value.value === null;
   if (value.type === "Identifier") return value.name === "undefined";
@@ -70,14 +30,7 @@ function assertionRoot(node: ESTree.Node): boolean {
   return node.type === "CallExpression" && assertionRoot(node.callee);
 }
 
-/**
- * Whether the literal sits inside an assertion, where the point is to read it where it is.
- *
- * `expect(slots.review).toMatchObject({ enabled: true, kind: "claude", source: "operator" })`
- * spelled three times is three expectations, not one shape. Naming it once means a reader of any
- * one assertion can no longer see what it asserts, and changing what one of them expects changes
- * the other two, which is the coupling a test exists not to have. Ten of 48 sites.
- */
+/** Whether the literal sits inside an `expect(...)` assertion, where inlining keeps the test readable. */
 function asserted(node: ESTree.ObjectExpression): boolean {
   // Only the Program has no parent, and it answers `null`, so one spelling ends the walk.
   for (let at: ESTree.Node | null = node.parent; at !== null; at = at.parent) {

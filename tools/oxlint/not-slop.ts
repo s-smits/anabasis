@@ -6,12 +6,6 @@
  *                                                 report printed, in a reviewer's sentence
  *     bun run not-slop -- prune                   remove every row no finding bears out
  *
- * `answer` looks the id up among the last lint run's sites and the whole-tree scans, and writes
- * the row: the rule, the paths, the date, the reason and the text the id hashed. It refuses an id
- * no current finding has, a finding from a rule with a fixer or from a register, and a reason a
- * reviewer could not check. Rows were once pasted by hand from a line the report printed, and a
- * pasted row names whatever the paster typed.
- *
  * `prune` judges a tree row against a fresh scan and a lint row against a fresh lint of its file,
  * which `bun run lint` also does and fails on; this is the one command that answers that failure.
  */

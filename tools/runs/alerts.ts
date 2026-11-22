@@ -7,12 +7,6 @@
  *   bun run runs alerts [--state .ana/runs-alerts.json]
  *   bun run runs alerts --rows
  *
- * Each invocation queries every host listed in `ANA_HOSTS` via `--rows` (each host inspects its own
- * local processes) and prints one line on stdout for every event new since the previous state
- * snapshot, printing nothing otherwise. State is persisted only after printing so that an
- * interrupted run may duplicate a line rather than drop one. The command neither starts nor stops
- * campaigns: when a run is ready to pause, it prints the command for the operator to execute.
- *
  * State is keyed by campaign name so that a run relocated by `runs move` retains its history. Runs
  * on unreachable hosts remain in the state as last observed so that reconnecting hosts report what
  * changed; a run is dropped from state only once a responding host no longer holds it. On a first

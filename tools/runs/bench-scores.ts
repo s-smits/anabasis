@@ -7,12 +7,6 @@
  * the reference arm, because the sitting runs the Starter last over the reference arm's task set.
  * Its `score.ts table` output is then written once to `scored/<label>.txt` alongside the records,
  * and one summary line is printed so the alerts job reports each completed evaluation once.
- *
- * By default this reads local records (`recordsHere`): either the benchmark's own store when run
- * locally, or the append-only copy fetched by `runs fetch` into `data/bench/<benchmark>`, so tables
- * written there persist. `--store` overrides the directory, and `--host <name>` delegates scoring to
- * that host as `runs on <host> bench` would. Because writing a score table beside its inputs is the
- * only side effect, no `--yes` flag is required. `bench.ts` owns the top-level verb.
  */
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";

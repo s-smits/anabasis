@@ -2,10 +2,6 @@
  * Linux OS isolation backend, corresponding to Darwin Seatbelt. Bubblewrap (`bwrap`) binds the
  * host root read-only and overmounts protected subtrees, while callers supply the shared policy
  * data (denied roots, writable roots, and network posture).
- *
- * Because Linux mount points remain attached to their dentry across ancestor renames, the
- * path-relocation rules required by Darwin Seatbelt have no Linux counterpart. Support fails
- * closed whenever Bubblewrap or unprivileged user namespaces are unavailable.
  */
 
 import { existsSync, lstatSync, realpathSync, statSync } from "../meta/filesystem.ts";

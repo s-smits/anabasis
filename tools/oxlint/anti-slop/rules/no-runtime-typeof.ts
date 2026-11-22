@@ -103,10 +103,6 @@ function predicatesAnswer(
 /**
  * Whether this `typeof` is the whole of a primitive predicate in the representation owner, such as
  * `function isString(value: unknown): value is string { return typeof value === "string"; }`.
- *
- * The predicate must name exactly the type the answer establishes, so `value is number` over
- * `"string"` is still reported, and `"object"` must also exclude null. A decoder is built from
- * these leaves; the owner holds them once, and a copy in any other file is still reported.
  */
 function isOwnedPrimitivePredicate(
   node: ESTree.UnaryExpression,
@@ -129,12 +125,6 @@ function isOwnedPrimitivePredicate(
 /**
  * A `typeof` in running code, which narrows a value by asking what it happens to be rather than
  * by parsing it into something the rest of the program can rely on.
- *
- * The narrowing works, and that is what makes it attractive: `typeof value === "string"` hands
- * the branch below a `string` and the compiler agrees. What it does not do is establish anything
- * about the value as a domain object, so the same question gets asked again at the next reader,
- * and each caller ends up with its own idea of which shapes the input can take. A decoder at the
- * boundary asks once and gives everyone downstream a type with a name.
  *
  * Three things are admitted. A `typeof x === "undefined"` comparison is an existence probe, and
  * it is the only expression in the language that can ask about a binding that may not exist at

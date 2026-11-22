@@ -22,23 +22,6 @@
  * tasks count towards supply. A checked instance can be proposed by its content reference, with
  * the same identity and gate as a full instance, for the rest of this session, so that a proposal
  * need not repeat input already sent to try_answer.
- *
- * A draft carries no grade of its author's or sentence on where a solver falls short (`claim` in
- * an old `task.proposed`, which `history.ts` no longer reads): it gave the record a second account
- * of a task beside the reference's outcome on it, a required field that added strictness and no
- * fact.
- *
- * Where the host gives a probe, `try_reference` puts an instance to fresh solves by the reference
- * harness at the author's asking, at most `tries` of them with a result, and tells of each its
- * validity, its turns, its measure and the kind of a fail, never its answer, trace or check. Its
- * reply is the one place a try is told: the record of a later session tells none, since a held task
- * is compared afresh and its comparison supersedes the tries. The gate reads none of it. Without a
- * gate that solves, an exam that declares no objective has nothing but a failure of the reference to
- * separate harnesses, and an author who cannot see one coming writes tasks it answers every time,
- * which the tries let it see. The solves are the campaign's, billed to it, and counted by no
- * comparison (`countedSolves`, `solves.ts`). The session's clock stands still while they run, as a
- * drafting session's does while its draft is read, so trying a hard task costs its author no
- * writing time.
  */
 import type { SeatTool } from "../agent/session.ts";
 import { Type } from "typebox";

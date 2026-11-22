@@ -5,14 +5,6 @@
  * the rule array preceding its network rules), Apache-2.0, pinned at `f7a0f19fd2`
  * (`@anthropic-ai/sandbox-runtime` 0.0.82).
  *
- * Under `(allow default)` with path denials alone, a confined command can escape in four ways:
- * invoking `open` on an application bundle inside its own root causes LaunchServices to launch the
- * process unconfined; `nc -U` can connect to an unconfined listener's Unix socket in a denied
- * directory; `pbpaste` reads the operator's clipboard; and `defaults read` retrieves home
- * preferences via `cfprefsd` from directories closed by path rules. This deny-by-default base
- * blocks LaunchServices launches, Apple Events, and unlisted Mach services. Additional rules are
- * layered on top by `darwinCommandProfile`.
- *
  * Local modifications from upstream:
  * - Double-quoted string literals matching the repository formatter.
  * - Removed `(with message ...)` log tags and `LogTag` comments (as in `seatbelt-path-guard.ts`),

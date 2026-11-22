@@ -1,10 +1,6 @@
 /**
  * `bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]`
  *
- * A campaign as its log reads: the set-up, what each step handed over, the climb, and the move
- * that comes next. It is the one reading of `src/campaign/handover.ts`, printed whole for the
- * campaign's owner. Nothing here reads the log for itself, and nothing is launched.
- *
  * Its last line is the one move the decision table names on this log (`decide`,
  * `src/campaign/decide.ts`), with its reason: what `tools/d2/harness-builder.ts` would make next.
  * The table is asked with the four flags of the campaign command that bear on it, and with the
@@ -14,14 +10,6 @@
  * table does not make, and it parses no flag of its own.
  * The view opens no campaign, so of a log that holds no task it says what holds for a campaign
  * over a pack: that the pack's tasks are taken in first.
- *
- * A step's line holds counts, harnesses, a tally, a reading and a cost. A harness is named by its
- * letter beside its digest's head (`namesOf`, `src/campaign/names.ts`), since a run of
- * eight hex characters a line was what an operator had to match by eye across the view and the
- * closing report. A comparison's line also says how far its tasks are independent draws: the
- * largest family's share of its frontier, and the tasks the comparison of its kind before it drew.
- * It names no task and no family, and it is for the operator and the session that stands in for
- * the campaign's owner: what a Builder is told of the same rows is `src/builder/past.ts`.
  */
 import { barLines, epochLine, epochsOf, starterReads } from "#src/campaign/climb.ts";
 import { decide } from "#src/campaign/decide.ts";

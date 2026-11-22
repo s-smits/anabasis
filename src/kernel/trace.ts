@@ -2,18 +2,6 @@
  * A model's trace as the log holds it, and as its readers page it: every turn, tool call and
  * compaction of a solve or of a session, each under its seat's prefix (`solve.turn`, `build.call`,
  * `exam.compacted`), as `traceSink` and `sit` write them (`src/agent/session.ts`).
- *
- * Every reader of these events reads them here, once, into a typed record: the dollars of a
- * session that never ended, the last turn of a solve, the Builder's `read_trace`, the campaign
- * page's turns, calls and call counts, the pulse's failed turns and the whole-run reader's lanes.
- * None spells the kinds, the field that names whose a trace is or the price of a usage again.
- *
- * The Builder reads a practice solve's calls through `callList` and `callText` and nothing wider;
- * a verdict's checks and the Referee's reasons share the log and never enter a practice trace.
- * The list shows each call's arguments and size, since a list of tool names alone showed most
- * calls only as "bash", and a call comes back whole, since a Builder rarely paged past a cut
- * window: the seat tool's own cap spills a longer one to a file.
- * The same records bill completed and unfinished sessions (`billedAll`, `src/kernel/meter.ts`).
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import {

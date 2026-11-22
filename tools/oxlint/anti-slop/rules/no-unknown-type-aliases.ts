@@ -123,56 +123,6 @@ function isPublic(element: ESTree.PropertyDefinition | ESTree.MethodDefinition):
 /**
  * A named type that stands where `unknown` or `any` is, directly or through other aliases.
  *
- * The other `unknown` rules (`no-unknown-returns`, `unproven-unknown-parameter`,
- * `no-unsafe-dictionary-type`) all read a written annotation, and a name is the one move that
- * takes the word out of the annotation without taking the top type out of the program. `type
- * Payload = unknown` reads at every use as though someone had decided something. This rule is
- * what stops the rest of the set being answered by a rename. It reports five places:
- *
- * - an alias whose type resolves to `unknown` or `any`, or to a container handing one out: an
- *   array, readonly array or tuple element (`type Rows = unknown[]`), a `Promise` or `PromiseLike`
- *   result, or a `Map`, `ReadonlyMap` or `WeakMap` value; alone or as a member of a union;
- * - a property of an exported interface, or of the type literal an exported alias names, whose type
- *   resolves the same way, nested type literals included (`export interface Request { artifact:
- *   unknown }`);
- * - a public field of an exported class, typed the same way;
- * - a property of a module-local interface or alias that an export hands out: named in an exported
- *   function's or public method's return type, an exported variable's annotation, or an exported
- *   type's or another such local's members (`resolveJsonPath` returning its local result type);
- * - a type parameter default of an exported interface or alias that resolves the same way
- *   (`export interface Evidence<D = unknown>`), which every bare use of the name inherits.
- *
- * The resolution follows aliases through aliases, through parentheses, and into any member of a
- * union, so `type A = B`, `type B = unknown | Other` is reported at `A` as well as at `B`. It
- * stops where the name is not the alias it looks like: `visibleTypeAlias` walks out to the
- * nearest scope that declares the name, refuses to resolve one a type parameter is binding, and
- * refuses again when two declarations of the name tie at the same distance, because there is then
- * no single thing the name stands for. A member check reads the declaration's own body only: a reference
- * to another generic type (`Tree<unknown>`) is that type's business and is not opened.
- *
- * Members are judged only on exported types, and that is how foreign input is told apart. A
- * module-local interface whose fields stay `unknown` until a predicate reads them (the hook input
- * of `tools/wri/lane-guard.ts`) has every reader in the same file, beside the parse; an exported
- * one is a contract read in other modules, where nothing shows whether anything parsed it, and
- * there the reader guesses (two `as JsonValue` assertions read `EvaluationRequest` before its
- * members were given their type). A local type an export only takes in, as a parameter, stays a
- * boundary: the hook's stdin, a provider's payload and parsed JSON arrive `unknown` and are read
- * where they arrive. A `Set<unknown>` and a map's key are only asked whether they hold a value, so
- * neither hides one. A `cause` member is exempt, as the message says.
- *
- * Narrowed out as other rules' or out of reach: `Record<K, unknown>` with any key, and a
- * `[key: string]: unknown` index signature, are `no-unsafe-dictionary-type`'s, which judges the
- * value whatever the key; `ReturnType<typeof f>` and `Parameters<F>` resolve only in the checker,
- * and where `F` is written as a function type its return is `no-unknown-returns`'.
- *
- * A function type returning `unknown` (`type Read = () => unknown`) is `no-unknown-returns`'s, and
- * an `unknown` parameter in one is an input, so neither is judged here.
- *
- * `unknown` itself is not banned, only the name hiding it. The message says where it stays legal:
- * at a parsing boundary, where the value genuinely has not been read yet, and on a `cause` field.
- * Both of those are written `unknown` at the site, which is the point: the reader sees the top
- * type where it is.
- *
  * There is no fix: the repair is the type the name was avoiding, and a name exists because
  * someone did not want to write it.
  */

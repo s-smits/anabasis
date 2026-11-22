@@ -23,12 +23,6 @@
  * - seats containing at least one turn priced at ten times their own median turn or higher;
  * - for solves, the number that exceeded their campaign's reserve, indicating whether `--reserve`
  *   is adequate before raising limits or lowering the reserve.
- *
- * Across archived campaigns, turn counts and dollar bills correlate closely for Opus solves, with
- * typical per-turn spend of a few cents between the 10th and 90th percentiles, occasional high-cost
- * turns above ten times the seat median, and no solves exceeding their reserve.
- *
- * Prints aggregate counts and dollar figures only, never task text, answers, or checks.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { campaignLogs } from "#skills/main/logs.ts";

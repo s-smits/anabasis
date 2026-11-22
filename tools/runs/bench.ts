@@ -1,42 +1,6 @@
 /**
  * `bun run runs bench <run> [--bench <name>] [--as <label>] [--harness <kept>] [--login N] [--wait] [--yes]`
  * `bun run runs bench [--bench <name>] [--store <dir>] [--host <name>]`
- *
- * Orchestrates external benchmark evaluations (`run-improvement-campaign`, "The outside aim").
- * Invoked without a campaign name, it scores every evaluation whose reference and Starter arms are
- * both judged (`scoreDone`, `bench-scores.ts`), either locally or on `--host`; the alerts cron job
- * runs this after every poll. Invoked with a campaign name, it exports the run's newest promoted
- * harness (or the kept harness specified by `--harness` via letter or full digest) for the target
- * benchmark host, transfers it into that host's score store, validates both arms with a dry run, and
- * launches the reference arm followed by a fresh Starter baseline. `runs pause <run> --after <word>
- * --eval` pauses the run and then invokes this command with `--wait` for each matching benchmark.
- *
- * **Benchmark configuration** comes from `EVAL_RUNNER` (`benchesOf`, `.env.runs.example`), which
- * specifies each benchmark's name, runner host, score store, sitting command, and covered packs. A
- * run matches the benchmark whose pack list covers its pack, or the benchmark named by `--bench`
- * when several apply.
- *
- * This module owns none of the underlying stages; it executes them in sequence and stops at the
- * first failure:
- *
- * - **Export**: runs `studies/harness2/score.ts tree` on the host holding the campaign, since a
- *   harness's programs must be rebuilt from the campaign's own checkout.
- * - **Transfer**: streams a single compressed archive through the local host (`sealed`, `opened`),
- *   because two remote peers need not have direct connectivity.
- * - **Sitting**: invokes the operator's benchmark command on the runner host, which owns locking,
- *   login selection, and judging. It is called as `<command> run <login> <label> <score.ts options>`;
- *   `status` prints `idle` on its first line when no arm is running, and `python` prints the minor
- *   version of the `python3` interpreter on the rollout PATH. Evaluations are refused while another
- *   arm holds the host so concurrent load does not confound paired rollouts; `--wait` polls every
- *   five minutes instead. Dry runs reject exported trees whose own `python3` cannot start (`ownPython`).
- *
- * Each label permanently binds one exported tree: if the store already contains that label, it is
- * rolled as-is without re-exporting or re-transferring, which also resumes runs interrupted after
- * transfer. `--as <label>` names the reference arm (defaulting to the first eight hex characters of
- * the harness digest) and `starter-<label>` names the Starter arm; a letter identifier requires
- * `--as`. Without `--harness`, the latest promoted harness from the run's log is used. Without
- * `--login`, the login with the most headroom (`roomFor`) is chosen. Without `--yes`, the plan is
- * printed without launching so the operator can record a prediction file first.
  */
 import { UNAME_PLACES } from "#src/harness/place.ts";
 import { promoted } from "#src/kernel/reports.ts";

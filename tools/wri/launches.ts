@@ -6,19 +6,6 @@
  * and `.err`, and the hours from its last event to the next launch.
  *
  *   bun tools/wri/wri.ts reader launches --log <log>
- *
- * For lanes 13, 18 and 22 where a run stopped after a promotion. A stop by hand writes no
- * `campaign.ended` and no `campaign.word`, only `killed` endings, so a session would otherwise
- * search transcripts and read the receipts and their output by hand to see how each launch ended.
- * This prints what the stretch holds and does not say who ended it.
- *
- * A stretch runs from the receipt's time to the next receipt's, so two launches a minute apart
- * each keep their own events; a launch writes its `campaign.opened` a few milliseconds before its
- * receipt, so an opening within a second before it is the launch's own. A session a stop left open
- * is closed `killed` by the launch after it, so its ending is counted in the next stretch. Events
- * before the first receipt are counted apart: a seed's, or a fork's parent's. It names no login,
- * path or env file, only whether the login changed, and it reads no line of the output files, only
- * counts them.
  */
 import { campaignOf, openSteps } from "#src/campaign/handover.ts";
 import type { LogEvent } from "#src/kernel/log.ts";

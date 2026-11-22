@@ -16,18 +16,6 @@ import { noAgeBasedLockRule } from "./rules/no-age-based-lock.ts";
  * transition that happens between two of them (a crash between two writes, a slow holder past a
  * threshold) lands in a state no branch expects. The remedy is always one owner: a union or a
  * discriminated union for a value, one record for a process's phase, the holder itself for a lock.
- *
- * Tiers. These rules are generic: they name no module, path or helper of any one repository, match
- * the platform's own forms (`fs`, `Bun.file`, React's `useState`) or a local wrapper whose body
- * reduces to one, and keep any list they need as an option with a generic default. Their false
- * findings on foreign repositories are the test of that tier. The stances that fit one
- * repository's philosophy and would be contested elsewhere are `implicit-state-opinionated`, next
- * door; the cross-file shapes (one literal compared by hand in many files, one external read
- * repeated on one call path) are the scan `tools/oxlint/tree-implicit-state.ts`, which runs on any
- * folder.
- *
- * Every rule reports and none fixes: naming the states is the change. A rule starts as a report and
- * joins a gating configuration only once no site stands in the tree.
  */
 const implicitStatePlugin = eslintCompatPlugin({
   meta: { name: "implicit-state" },

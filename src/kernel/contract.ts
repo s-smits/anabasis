@@ -2,9 +2,6 @@
  * The domain contract: the one public document the Builder and the Examiner both work against. It is
  * frozen once the first exam is admitted, and its hash enters every condition. A frozen contract
  * changes only through the operator, and a change opens a new condition.
- *
- * Every check cites the rule ids it enforces, and the host confirms those ids exist here. Whether a
- * rule's statement says enough is not the host's to decide: it surfaces as a Referee dispute.
  */
 import type { TSchema } from "typebox";
 import { Compile } from "typebox/compile";

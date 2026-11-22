@@ -23,59 +23,11 @@ function gatesYield(read: ESTree.Node): boolean {
 }
 
 /**
- * `closeVerifierLifetime(lifetime, true)` does not say what is true. The declaration says
- * `failed: boolean`, so the reader has to open it, and the two call sites that pass the wrong way
- * round read exactly like the two that pass it right.
- *
- * A union of two string literals fixes that at the call site without moving anything:
- * `closeVerifierLifetime(lifetime, "failed")` against `"clean"`. The compiler still rejects every
- * other value, the argument still costs nothing, and `if (outcome === "failed")` reads as the
- * sentence it is. An options object with one named field would do the same job, which is why other
- * languages reach for keyword arguments here; the union is asked for because it costs the caller
- * nothing and a bag of optional fields hides the same question one level further in.
- *
- * Only a declaration is reported. A callback's parameter type is written by whoever declared the
- * signature it satisfies, and renaming it there changes nothing for a reader. A callback under a
- * name is the same callback: `const counted = (confirmed: boolean | null) => …` whose one use is
- * `[true, false, null].map(counted)` is called with the data, and no line of the file spells
- * `counted(true)`. So a function this file never calls and never exports, and only hands on as an
- * argument, keeps its boolean; one direct call, or an export, and its call sites are judged again.
- *
- * An assertion or guard keeps its boolean. `judgeIntegrity(condition: boolean): asserts condition`
- * needs that parameter to be the thing TypeScript narrows on, so the union the message asks for
- * would not compile, and the call site reads as the condition it just evaluated rather than as a
- * bare `true`.
- *
- * A parameter whose every call passes its own name keeps its boolean, whether that name arrives
- * bare, as a no-argument call of it, or as a property of that name on some value:
- * `missTail(difficulty, "above", everyBattery)`, `completedOutcome(…, submitted(), …)` and
- * `scoredFields(outcome, solvedCase.acceptedSubmit)` each state at the call site exactly what the
- * declaration states, and the reader needs no jump; three of the five reports in `5bc9988:src/run` were
- * that shape, threaded through one file. The exemption needs the call sites in view, so it applies to a module-local function
- * only: an exported one has callers this rule never sees, and one of them will pass `true`.
- *
- * A boolean that decides whether the function yields anything at all keeps its boolean too:
- * `keysIf(this.files.size > 0, () => ({ files: … }))`, `held(open.has("solve"), "its open
- * solves")` and `firedIf(ended !== "finished", …)` each read at every call site as the condition
- * and what it yields, which is an `if` written as a call. The union would read `keysIf("present",
- * …)` and lose the condition. The body has to show it: every read of the boolean is the test of a
- * conditional one of whose arms yields nothing (`[]`, `{}`, `null`, `undefined`). A flag that
- * chooses between two things, such as `live ? pause : open`, or that merely precedes a callback,
- * such as `run(verbose: boolean, done: () => void)` logging on `verbose` and calling `done`
- * regardless, is still reported. The first form of this admission asked for a function after the
- * boolean, which let `keysIf` by and reported `held` and `firedIf` (22 November 2026).
- *
- * It reads what Foxglove's `no-boolean-parameters` reads (the notice is in
- * `THIRD_PARTY_NOTICES.md`): a flag spelled `boolean`, `true | false` or beside `undefined`, `null`
- * or `void`, and a parameter defaulted to `true` or `false`, which reads as a bare `true` at the call
- * site as surely as an annotated one; on a function declaration, a method, a `const` bound to an
- * arrow or a function expression, a `declare` function or overload, and an abstract method, each a
- * declaration a caller in another file reads. The last two readings were staged until their sites
- * reached none (22 November 2026). Foxglove's `allowLoneParameter` is not taken, since the default reading reports a lone boolean
- * as well. A formatter whose one argument is the data (`yesNo(value: boolean)`) reads well at its
- * call sites, and a reader answers it through `bun run not-slop` rather than an option.
- *
- * There is no fix. Which two words name the states is the whole point of the change.
+ * Flags boolean parameters (`boolean`, `true | false`, or defaulted to `true`/`false`) on
+ * functions, methods, and declarations, preferring a two-element string-literal union at the call
+ * site. Uncalled non-exported callbacks, `asserts` type guards, module-local functions whose callers
+ * always pass an identifier/member matching the parameter name, and parameters that only gate
+ * whether a conditional yields a value vs nothing (`gatesYield`) are exempt. There is no fix.
  */
 export const noPositionalBooleanParameterRule = defineRule({
   meta: {

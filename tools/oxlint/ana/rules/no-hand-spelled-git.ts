@@ -53,23 +53,10 @@ function isCommandPosition(array: ESTree.ArrayExpression): boolean {
 }
 
 /**
- * A git subprocess spelled by hand in a tree that has an owner for it. `src/meta/git.ts` records why
- * the owner exists: the local helpers it replaced had drifted in the two places a helper that small
- * can, some paying the Darwin xcrun shim on every call by spelling bare `git` where `hostTool`
- * skips it, and some leaving the capture unbounded so that a runaway listing ended as a short read
- * instead of a refusal. A copied helper is caught by the duplicate-block scans; one written again in
- * a different spelling is caught here. The owner lives in production, since production code
- * cannot import a skill module and would otherwise spell git again.
- *
- * Four spellings report: `hostTool("git")` anywhere, since resolving the executable is the first
- * line of every hand-written call; a command array whose first element is `"git"` in a position
- * that reaches a process; `spawnSync("git", …)` and its siblings; and Bun's `` $`git …` ``. The
- * string a guard builds with `["git", "reset"].join(" ")` is not a subprocess and passes. Tests are
- * outside the scope: a fixture builds the repository it then reads.
- *
- * There is no fix. The owner offers three answers (exact bytes, trimmed text, or null where "no"
- * is an answer) and a call that also reads the exit status or passes `cwd` instead of `-C` needs a
- * reading of what it wanted.
+ * Requires `.claude/skills`, `src`, `tools/runs`, and `tools/d2` modules (outside `src/meta/git.ts`
+ * and tests) to run git subprocesses through `gitOutput`, `gitText`, or `gitMaybe` in
+ * `src/meta/git.ts`, which resolves the binary via `hostTool("git")` and bounds output capture.
+ * There is no fix.
  */
 export const noHandSpelledGitRule = defineRule({
   meta: {

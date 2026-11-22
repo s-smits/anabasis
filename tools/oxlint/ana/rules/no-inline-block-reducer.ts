@@ -3,37 +3,9 @@ import type { RuleExample } from "../../rule-examples.ts";
 import { identifierName, isNamedMember } from "../shared/statements.ts";
 
 /**
- * A fold written with its reducer inline and a block body is a loop with the accumulator hidden
- * in the signature. The reader has to hold "what `best` is so far" in their head while reading
- * statements that could have said it directly.
- *
- *     const best = rows.reduce<Row | undefined>((best, row) => {
- *       if (best === undefined) return row;
- *       return row.score > best.score ? row : best;
- *     }, undefined);
- *
- *     let best: Row | undefined;
- *     for (const row of rows) if (best === undefined || row.score > best.score) best = row;
- *
- * The loop is shorter, needs no type argument to tell TypeScript what the seed is, and the
- * accumulator is a name in the enclosing scope where every other local lives.
- *
- * A reducer that is a *name*, `rows.reduce(addTurnUsage)`, `iterations.reduce(countUnchanged,
- * seed)`, is not read here. There the fold is one word and the step has its own doc comment,
- * which is the readable form of the same operation; `unicorn/no-array-reduce` condemns both and
- * is off in this repository for that reason. An expression-bodied arrow is not read here either:
- * `(total, row) => total + row.count` is an operator, not a procedure.
- *
- * There is no fix. The rewrite has to choose the accumulator's declared type and
- * where it lives, and a reducer that returns early in three places is not one loop body.
- *
- * Read again on 2026-09-20, because a rule that gates at zero has to say why it is still here.
- * The tree performs this operation 105 times across `src`, `tools`, `test` and `.claude`: 98
- * expression-bodied arrows and 6 named reducers, both of which this rule exempts, and 0 block
- * bodies outside its own example and fixture. So the gate is at zero because the spelling is
- * absent, not because the operation is: `.claude` alone folds 52 times and is the tree most
- * likely to grow the next one in a hurry. That is the case for keeping a silent rule, and it is
- * the case a rule silent over an operation nobody performs cannot make.
+ * Flags `.reduce((acc, item) => { ... }, seed)` calls whose reducer is an inline function or arrow
+ * with a block body, preferring a `for...of` loop or a named reducer function. Expression-bodied
+ * arrows and named reducer functions are exempt. There is no fix.
  */
 
 export const noInlineBlockReducerRule = defineRule({

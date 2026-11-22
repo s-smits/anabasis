@@ -15,10 +15,6 @@
  * every kept harness) keeps a process of its own, named by its `args`, under a time limit, with no
  * credential in its environment and with `ANA_HOP=1`, under which it reaches no other host.
  * `pass.ts` runs for the pulse those that name a moment (`at`).
- *
- * The folders sit under the main worktree's `data/derived/`, which git ignores: the readers print
- * hidden values as the log holds them, so they stay on the exam side with the archive. A reader that
- * fails leaves its failure in its file and is named; the others still run.
  */
 import { conditionLines } from "#skills/campaign-mechanics/scripts/conditions.ts";
 import { campaignEnding, endingLines } from "#skills/campaign-mechanics/scripts/ending.ts";

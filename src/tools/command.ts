@@ -4,20 +4,6 @@
  * (`stageCommandIsolation`), on durable's local shell backend, which kills the command's process group on
  * a timeout or an abort. Whatever else the command left in its group, below it or working in the
  * seat's root is ended here.
- *
- * A seat (a solve, a Builder's session, an Examiner's) owns two directories under the shared
- * scratch parent, which the command wall closes to every seat but its own:
- * - `root`, claimed for the seat (`claimRoot`), which its commands write whole: `home`, kept between
- *   commands and never read back, and `tmp`, their `TMPDIR` for the seat's whole life. The one part
- *   they may not write is `kept`, where the host stages what a command brings before it starts,
- *   without following a link a command made. Long shell output is written under the wall in home.
- * - `host`, beside it, which no command can read: the staged profile and the
- *   model backend's own state, such as Claude Code's configuration and transcripts.
- *
- * A command starts in the home, the one working directory pi's coding tools share: when each
- * started in a folder of its own, nine in ten of the solver's began with `cd ~` (the Starter
- * solves of six campaigns, `docs/transfer.md`). A command that brings files, a harness's tool call
- * or a file tool's write, starts in a folder of its own beside a copy of them (`runWalled`).
  */
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
@@ -197,11 +183,6 @@ export function makeSeatDirs(dirs: SolveDirs): void {
  * The base of a wall over `dirs`, with its folders made: the solver's, the Builder's and the
  * Examiner's are built the same way, here. `who` names the actor in the refusal of a host that
  * cannot wall one.
- *
- * The wall is a test and no convention (`AGENTS.md`, rule 3): before its first use in a process
- * each policy runs its wall test (`probeWall`), and a failed test refuses the start with its own
- * lines, since a wall test run in the test suite alone would not catch a live policy that leaves a
- * sibling worktree's log readable.
  */
 export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Promise<SolveIsolationPolicy> {
   makeSeatDirs(dirs);
@@ -232,9 +213,6 @@ export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Pr
  * a file the host staged for it reaches its own folder, is written there and reads back. Null where
  * all four held, and otherwise the command's output, a line a step. The last step tests its own
  * write and read: a launch that refuses everything fails it, as one that refuses nothing fails the first.
- *
- * Nothing is written in the sibling, which another user may own, so a rehearsal as another user
- * does not refuse every solve on EACCES when the wall test would write a canary there.
  */
 export async function probeWall(
   wall: CommandWall,
@@ -319,11 +297,6 @@ export async function networkReach(
 
 /**
  * Runs `command` on `wall`, in the seat's home, or beside a copy of what it brings (`stage`).
- *
- * A command that brings nothing makes nothing to start, so a seat that fills its disk can still run
- * the `rm` that frees it, which a command that made a folder of its own first could not. One that
- * brings files has nowhere to stage them on
- * a full disk, and fails as the full disk it is.
  */
 export async function runWalled(
   wall: CommandWall,

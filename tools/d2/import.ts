@@ -4,23 +4,6 @@
  * comparison may name it, and the operator may promote it (`promote.ts --despite "epoch 0"`).
  *
  *   bun tools/d2/import.ts --name r-1 --harness ~/handover/t-4/harness [--note "<why>"]
- *
- * This opens a campaign's first epoch from a harness that already installs the field's engine, so
- * that the first epoch stops measuring
- * a solver's set-up time, and until now that harness had to be built by a Builder session of the
- * same campaign. What another campaign handed over (`close.ts`, `harness/`), or a harness written
- * by hand, is imported here instead.
- *
- * It is kept as a session keeps one (`snapshot`, `src/builder/kept.ts`): the files under their
- * digest, the programs copied into a tree beside the state and named by the link `.toolchain`,
- * links copied as they are. It is opened there before anything is recorded and refused where it
- * does not open as the harness it was read as, so that no solve is paid for under a name that is
- * not the harness. The record is `harness.imported`, with where it came from; a harness the
- * campaign keeps already is said so and recorded again by nothing. The campaign is otherwise
- * untouched: the import is no session, so `latest` still names the harness the last session left,
- * and the reference moves only by `promote.ts`.
- *
- * It starts no solve and calls no model.
  */
 import { append } from "#src/kernel/log.ts";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "#src/meta/filesystem.ts";

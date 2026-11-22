@@ -5,11 +5,6 @@
  * The next session's opening message renders prior session notes newest-first within
  * `CONTEXT_OUTPUT_LIMIT`, dropping oldest sessions first and truncating an oversized single item
  * via head-and-tail retention.
- *
- * Notes are written by the Builder inside its own session without extra model turns and are not
- * part of the frozen harness. To preserve the evaluation wall, `keepMemory` and `keptOf` read only
- * regular files (`lstatSync(...).isFile()`), ignoring symlinks, and any read or write error fails
- * open without aborting the session.
  */
 import { CONTEXT_OUTPUT_LIMIT, fitContextToBudget } from "../../vendor/claude-mem/ContextBudget.ts";
 import { retainTextHeadTail } from "../../vendor/claude-mem/text-truncation.ts";

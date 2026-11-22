@@ -6,19 +6,6 @@
  * otool 28.0 ms against 6.2 ms. A campaign starts thousands of git processes, mostly for
  * domain-workspace operations, so the shim accounts for a fifth of the suite's git time and most of
  * its otool time.
- *
- * PATH is searched first, which preserves a Homebrew installation, a custom build or a test
- * executable found ahead of the Apple shim. Only an exact `/usr/bin/<tool>` match is replaced, with
- * the binary under the directory `xcode-select -p` reports, and only when that binary exists:
- * Command Line Tools keep every tool in `usr/bin`, while a full Xcode keeps `git` there and `otool`
- * and `install_name_tool` in its default toolchain. A developer directory holding neither keeps the
- * shim: on a GitHub macOS runner, which selects a full Xcode, the unchecked `usr/bin/otool` did not
- * exist.
- *
- * The developer directory and each tool's resolved path are cached for the life of the process, so a
- * later environment or developer-directory change does not refresh them. With no PATH match the bare
- * name is returned and resolution, or failure, is left to process creation. This helper selects host
- * command paths only.
  */
 import { existsSync } from "./filesystem.ts";
 import { join } from "./path.ts";

@@ -1,30 +1,6 @@
 /**
- * The campaign's moves as a live Builder makes them: the tools its conversation is given beside
- * its own, and the facts their results end with. This module is the whole of what the campaign
- * command (`harness-builder.ts`) adds to a Builder session by hand (`session.ts`); the flags and
- * terms a campaign runs by are `campaign-terms.ts`.
- *
- * The Builder keeps one conversation and one working copy while it asks a separate Examiner for
- * tasks (`examine`) and freezes its harness and has it compared (`compare`), and reads the
- * campaign's public counts (`campaign_status`, and under each action's result). The host releases
- * owed practice (`releaseOwed`) and promotes the harness a step names (`promoteOwed`) itself.
- * The Builder has no tool for either, and no result names the move the decision table names: a
- * model told a course follows it instead of the evidence (`AGENTS.md`, section 2), and a Builder
- * given those tools almost never promoted and often released nothing. What the Builder cannot do is go
- * past a condition of the host's: each action runs the command an operator would run, with that
- * command's admission and refusals, under what is left of the campaign's total, behind the
- * operator's words, and on the exam's side of the wall. A tool returns counts and tallies and
- * nothing of a held-out task.
- *
- * **A move is on record as it begins** (`campaign.move`), for the two
- * actions that run a session or solve: with the code of the table's row and its reason where the
- * table names the move, as for the host's own, and with `led` where the Builder chose it. A
- * release and a promotion are the host's own acts of a moment, which their commands may refuse,
- * and a refusal is no move: they are recorded once made.
- *
- * An action that threw after it began ends the campaign on its environment
- * (`CampaignContext.failed`), unless what it threw was a provider's limit with a reset the
- * campaign waits out (`waitOut`, `src/solver/run.ts`): the Builder is then told to call the tool again.
+ * Campaign tools exposed to a live Builder conversation (`examine`, `compare`, `campaign_status`,
+ * `wait`), plus host-executed practice release (`releaseOwed`) and promotion (`promoteOwed`).
  */
 import { Type } from "typebox";
 import { type SeatTool, textsOf } from "#src/agent/session.ts";
@@ -378,12 +354,6 @@ const examineAction =
  * end or before a conversation, where an epoch would be left owed practice and a Builder in `wait`
  * could not practise on tasks released only then. It is the host's own move, on record with the
  * cause, and `--moves` bounds it as any move.
- *
- * A comparison that has not reported is not thinned by it: a task it drew that a release takes is
- * solved no more (`round.ts`), so practice waits for the report. The sweep at the level stays held
- * (`practiceDue`). `bench`, inside a conversation, is laid with what was released. Returns whether
- * it released a task. Releases run one at a time, since two at once would read one count released
- * before them and each log a move.
  */
 export function releaseOwed(context: CampaignContext, cause: string, bench?: Bench): Promise<boolean> {
   const release = Promise.resolve(context.releasing).then(() => releaseOnce(context, cause, bench));

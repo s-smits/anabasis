@@ -5,11 +5,6 @@
  * comparison, which confirms the promotion (climb); the estimated false-promotion probability
  * across its attempts alongside the A/A controls (honesty); and the promotion cost (economy). Rows
  * hold aggregate counts only and reveal no task identity; `runs view` renders them.
- *
- * `starterReads` further stratifies each starter comparison tally by task origin, because a pooled
- * tally can mask opposite behaviour on tasks written after the promotion. The climb bar lines
- * (`barLines`), `runs alerts`, and `comparison-reading`'s `starter-reads.ts` print this breakdown;
- * it is purely descriptive and affects neither move selection nor confirmation.
  */
 import {
   differenceOf,

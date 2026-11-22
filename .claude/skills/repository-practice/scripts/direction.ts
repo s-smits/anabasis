@@ -3,17 +3,6 @@
  * Report production imports that cross into helper or test code.
  *
  *   bun .claude/skills/repository-practice/scripts/direction.ts [--file <path>]...
- *
- * AGENTS.md section 12 allows helpers to wrap production readers and forbids the reverse
- * dependency. Production includes src, vendor, packages and tools, excluding tools/wri. Helpers
- * include .claude, tools/wri and studies; tests are also excluded from production dependencies.
- *
- * Use the gate's importsOf resolver, including aliases, to inspect all tracked production source
- * files or the repeated --file selections. Report each import into a protected helper or test root
- * and exit 1 when any is found. The script reads no campaign logs.
- *
- * It exists because the file-role lint distinguishes tests from source without checking this
- * dependency direction.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { gitText } from "#src/meta/git.ts";

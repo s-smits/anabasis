@@ -2,22 +2,6 @@
  * What a whole-run investigation is made of once the log has been read: which lanes open, the
  * prompt each session is given, and whether a report has the shape the synthesis can use. Nothing
  * here touches a file; `tools/wri/wri.ts` does the reading and the writing.
- *
- * What every open lane shares (the shared instructions, the overview, what is already counted, the
- * catalogue's stance and the report's form) is one file a session reads once (`sharedPrompt`), and
- * an open lane's prompt carries its question, its own triggers whole, the predictions that name it
- * and where its report goes, rather than each prompt carrying the shared part too, which made most
- * of every prompt the same text and left a session given a dozen of them compacting before its last
- * lanes. An isolated lane's prompt stands alone and carries the campaigns' rows, the hard rules, the
- * deterministic rows, its own triggers, the lane and the reporting rules: it is told neither the
- * operator's question nor what any other lane was started by, because it freezes its result before
- * it reads anything that could lead it. A blind lane's carries the campaigns' rows and the hard rules
- * alone, since a blind lane handed the orientation, the readings and every trigger grades sighted.
- *
- * An investigation reads one campaign or several as equals, and each lane reads every one of them.
- * Reading one campaign under review and the others as peers would find a shared defect once per
- * campaign, and a defect one campaign holds alone only by that campaign's sessions. So every
- * finding says on its `Seen in:` line which campaigns show it.
  */
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";

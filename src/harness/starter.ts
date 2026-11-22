@@ -8,32 +8,8 @@
  * host's, the same under every harness: the command wall behind the tools, the answer file and
  * `submit`, and the prompt's addendum and environment (`run.ts`, `answer.ts`, `prompt.ts`).
  *
- * Every campaign starts from it. The Builder forks it in its
- * first session, since a session copies the harness it starts from whole. It is the first
- * reference harness: a new harness is compared with it until a step is promoted. It still runs in starter comparisons
- * after that: once another harness is promoted, the tasks written for it are read by the
- * starter against it (`src/campaign/decide.ts`). How the starter does by
- * itself, read from the first comparison, is what says whether the tasks leave a harness room to
- * add anything.
- *
  * It needs nothing from the correctness model. The host seeds the solver's home with the task, the
  * public rules and the contract's answer format, and sends the submitted answer to the verifier.
- *
- * The starter instructions (`STARTER.guide`) take the place of an empty guide. Under an empty guide
- * nearly every promoted guide copied `EXAMPLE`'s outline exactly, so the outline was taught, while
- * the general lines that recurred across domains (what a check establishes, a run that could not
- * run against one that found a fault) were each written afresh, and some guides told the solver it
- * need not read the public rules. Systems that
- * evolve a harness from a seed start it with an instruction file of roughly 10 to 200 words
- * (Meta-Harness, Harness², DGM), and in AHE's ablation the evolved prompt alone scored below its
- * seed while the whole evolved harness scored above it. So the starter's guide is short, holds only
- * what is true in every domain, and is the Builder's to revise, replace or remove on the evidence
- * of its practice. `HARNESS.md` shows `EXAMPLE` as an example and does not say to keep to its
- * outline, which a reader that follows a prompt literally would otherwise copy into every guide.
- *
- * It is written out in v1's on-disk format like any other harness state, and is named by its digest
- * like any other: the two files below are the whole of it, so a change to either is another harness,
- * and solves under the old one are not counted for the new.
  *
  * The account, `HARNESS.md`, stands where v1's starter pack carried `contract.md`. A Builder without
  * it wrote three tool files whose only purpose was to print `defineDraftTool`'s source through tool
@@ -41,18 +17,6 @@
  * handed it afresh in its home (`src/builder/session.ts`), so it describes the host that will open
  * the harness, whichever harness the session forks.
  * It limits the reminder promise to tools that execute.
- *
- * The outline has a fourth heading, `HOST_ONLY`, for what holds only for this host's answer: what
- * makes one valid and what the objective rewards. A kept harness is also written out and run
- * outside a campaign (`studies/shared/claude-export.ts`), where there is no task file, answer file,
- * check or score of the exam, and a solver that uses a reference's programs in nearly every solve
- * inside can use none of them outside, reading the guide's sections on the exam's validity and
- * score as instructions. The export carries a guide as far as the heading, and the
- * account tells the Builder so as a fact, and that a program runs on other data only where it takes
- * plain data.
- *
- * A harness has no part for tools of its own (`agent/tools.ts`), which few harnesses ever used; the
- * part went on the operator's word (`open.ts`).
  */
 import { AGENT_DIR, GUIDE_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
@@ -165,14 +129,6 @@ A rota that leaves a shift of the task unassigned is not valid.
 
 /**
  * What a Builder reads of the harness's files, as `HARNESS.md` in its home.
- *
- * Each part of a harness has one purpose, which the Builder's system prompt states
- * (`src/builder/prompt.ts`); this account gives each part's shape, and does not repeat what the
- * prompt and the tools' descriptions say. A Builder given several routes can ship one checker
- * three times over, as a program, a tool that wraps it and a guide that describes both, or keep
- * an optimiser as a snippet in the guide for each solver to paste and run. A computation is a
- * program, the one route the host serves, and the guide stays words, since
- * pasted code shows in a trace under no name.
  */
 export const HARNESS_ACCOUNT = `# The Built Harness
 

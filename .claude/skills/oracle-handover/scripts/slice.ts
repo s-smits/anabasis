@@ -4,40 +4,6 @@
  * Oracle document or a reader who wants a few turns and not the whole log.
  *
  *   bun .claude/skills/oracle-handover/scripts/slice.ts <run | log | folder> <selector>... [--whole] [--max-chars 6000]
- *
- * A selector names a seat or an event kind, optionally a session, and optionally which items:
- *
- *   Builder                 the Builder's sessions, one row each (one session: its turns, one row each)
- *   Builder:b-1[compare,wait] the turns of b-1 that called compare or wait, with those calls alone
- *   HarnessBuilder{4-7}     the Builder's 4th to 7th turns, each with every tool call it made
- *   Builder:b-2{1,3,10-}    turns 1, 3 and 10 to the last of session b-2
- *   Examiner:x-1{~2}        the last two turns of Examiner session x-1
- *   Solver:mw1kj2l9-1-1{1-3} the first three turns of the solve whose id ends so
- *   comparison.reported{~1} the last `comparison.reported` event, whole
- *
- * A `[tool,...]` list after the session keeps the calls to those tools and the turns that made them,
- * and refuses a tool the chosen calls never used, naming those they did. `--count <phrase>` prints,
- * in place of text, how often the phrase stands in each chosen call's result (an event kind: in each
- * event's data), which settles a count of a phrase in served text without a jq filter or a count
- * written by hand.
- *
- * Seats are Builder (or HarnessBuilder, build), Examiner (exam), Drafter (draft), Referee,
- * Solver (solve) and Repair. A model turn and the calls it asked for are one group, so `{4}` is
- * the fourth time the seat spoke and everything it ran then. Without a session the groups are
- * numbered across the seat's sessions in log order, each printed with its session and turn; a
- * session's own numbering is its turn numbers. An item is `N`, `N-M`, `N-` (to the last) or `~N`
- * (the last N). A range past the end stops at the end and a selector that finds nothing prints a
- * line saying so, so a reader may guess wide (`Builder{1-40}`) without reading the log first.
- *
- * The log is read through the production readers: `logAcross` (`tools/runs/snapshots.ts`) finds a
- * run by name on any host, and `tracesIn` (`src/kernel/trace.ts`) reads every turn and call, so
- * this script parses no event itself. A call's result and an event longer than `--max-chars` are
- * cut in the middle with the count cut said in place; `--whole` cuts nothing. The output holds what
- * the log holds, hidden values included: it is for the operator's side of the wall (`AGENTS.md`
- * section 1) and an Oracle, never for a seat.
- *
- * It gives an Oracle document its log extracts, which would otherwise come from a script made for
- * that one document in a session's scratch folder.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";

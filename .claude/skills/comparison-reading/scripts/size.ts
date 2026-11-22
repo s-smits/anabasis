@@ -4,15 +4,6 @@
  *
  *   bun .claude/skills/comparison-reading/scripts/size.ts [--level <n>] [--untied <n>]
  *     [--scores <s,s,...> [--unbilled <s,s,...>]]
- *
- * Without `--scores`, prints the minimum all-win sweep size (`sweepOf`), the comparison admission
- * floor (`comparisonFloor`), `sizeLines` (smallest clearing tallies, 80%-power detectable win share,
- * and equal-harness false-positive rate), and all equal-margin clearing tallies (`smallestSteps`)
- * for `--level` (default `0.02`) and `--untied` (default `24`).
- *
- * With `--scores`, evaluates a comma-separated vector of task scores (ties as `0`) and reports its
- * tally, p-value, false-positive rate, and detectable win share at those margins (plus `readsStep`
- * when `--unbilled` is supplied).
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { comparisonFloor } from "#src/campaign/admission.ts";

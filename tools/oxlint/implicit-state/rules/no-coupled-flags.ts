@@ -21,29 +21,6 @@ import { innermost, isTestPath, objectValues, outermost, setterState } from "../
  * field (`phase: "loading" | "error" | "success" | "idle"`) makes the other combinations
  * unspellable.
  *
- * A co-write is the fields of one state written in one place: an object handed to a setter
- * (`setState({ … })`, `this.setState({ … })`, or an updater returning one), an object that updates
- * a named value by spreading it (`{ ...state, … }`; a spread of a fresh object, `...(c ? { k } :
- * {})`, updates nothing), or a run of statements that assigns fields of one
- * object (`tool.isResizing = true; tool.isRotating = false;`) or calls a function's `useState`
- * setters one after another. A field is set when it is written anything but `false`, `null` or
- * `undefined`. Fields of one state form a cluster when each pair of them is written together at
- * least `writes` times and each is set in some co-write that clears the other, and the cluster is
- * reported once, at its first write, when it holds at least `fields` fields and at most one of them
- * is set in a share `exclusive` of the co-writes that touch it.
- *
- * Two shapes show a mode without that count. Two fields of one object computed by comparisons that
- * cannot both hold (`isResizing: tool !== "rotation"` beside `isRotating: tool === "rotation"`, or
- * `kind === "file"` beside `kind === "dir"`, two distinct literals; `index === items.length - 1`
- * beside `index === 0` can both hold) are exclusive by construction, reported at that
- * object. And two fields written as opposite literals in objects of one file (`{ imported: true,
- * frozen: false }` and `{ imported: false, frozen: true }`) and never both `true` are reported at
- * the first such object, where neither object is handed straight to a call.
- *
- * Not reported: an object created whole and passed on (a config, whose options are independent
- * choices), fields set together (`{ x, y }`), comparisons of two different subjects, and a reset
- * that clears every field, which on its own shows no mode. Test files are not read.
- *
  * There is no fix: what the mode is called and what each state carries is the change.
  */
 const FIELDS = 2;

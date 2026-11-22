@@ -1,14 +1,6 @@
 /**
  * Lane 18 across campaigns: one row a campaign, in the columns the lane compares, and the paths
  * under the host's `/tmp` that one campaign named before another campaign's solve ran them.
- *
- * Campaigns of one pack run side by side on one host, each on its own code. Read one at a time, a
- * promotion's tally says nothing of whether its peer on another tree climbed faster, and a solve
- * that ran a program from `/tmp` says nothing of who put it there, since another campaign's Builder
- * may have installed it hours before, and only the two logs together show it. `wri.ts climb` prints
- * this, and the lane 18 prompt carries it beside the peers' overviews.
- * Reference validity comes from each report's scored profile; an absent denominator reads
- * unmeasured rather than a measured zero.
  */
 import { epochsOf as epochsRead } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";

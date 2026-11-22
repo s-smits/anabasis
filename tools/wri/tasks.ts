@@ -7,25 +7,6 @@
  *
  *   bun tools/wri/tasks.ts <log.jsonl | campaign folder | name> [--shape | --rows]
  *   bun tools/wri/tasks.ts <log.jsonl | campaign folder | name> --task <id | version prefix>
- *
- * `--shape` prints one line a task: its key paths, a list's items folded into one `[]` path, each with
- * its kind, a list's length and a text's longest, and no value. `--task` prints one task's public
- * input indented, every text whole up to `VALUE_BYTES`. `--rows` prints the skeleton of lane 14's
- * grade rows (`gradesIn`, `tools/wri/trajectory.ts`) under the campaign's folder name, grades blank.
- * Without these, lane 14 and lane 9 sessions parse the one-line `public:` JSON below by hand, and
- * lane 14 sessions assemble the grade rows with full digests by hand. None of the three prints an
- * outcome, a tally or a reading.
- *
- * The tasks come from `proposalsOf` (`src/kernel/history.ts`) and the scored sets from each
- * `comparison.started`, whose `tasks` hold its retained ones too (`scoredSet`, `src/campaign/round.ts`). A task of the
- * drafted exam is proposed by its id alone, so its input is read from the draft by that id
- * (`exampleId`, `tools/d2/exam.ts`), so that no grading packet goes out with a scored task bare.
- * A stored pack's task carries no public
- * input in the log, and says so.
- *
- * A task released and never scored follows, marked, since what a harness practised on is part of what
- * it was built against, and a campaign can hold many such tasks. Lane 14's
- * packets read `scoredTasks` alone, as a blind grader's set stays the tasks that were scored.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { starterIn } from "#src/campaign/climb.ts";

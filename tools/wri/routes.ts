@@ -3,13 +3,6 @@
  * tools its passes took.
  *
  *   bun tools/wri/wri.ts reader routes --log <log>
- *
- * `TOOLS CALLED` counts tools over a harness's solves, and `ANSWER FROM A PROGRAM` opens on a won task
- * reached quickly, so nothing sets a side's passes beside the other's. Over the recorded campaigns, the
- * new harness's median calls stand further under the reference's at a step than at another reading
- * in most logs that hold both. One log's comparisons
- * are not independent, so each log counts once. It is a lead and decides nothing: fewer calls can be a
- * program that closed a search or a solver that stopped looking.
  */
 import type { JsonValue } from "#src/meta/json-shape.ts";
 import { median } from "#src/meta/tally.ts";

@@ -7,9 +7,6 @@
  * value or passage remain; a side without a verdict still supplies no evidence. Whole-answer swaps
  * could manufacture defect evidence, so object and array roots
  * stay fixed, and a coupled answer probe has at most three paths that one refusing check reads together.
- *
- * A probe may add a file the answer lacks, and each row records what every file text it changed
- * held before and after, in lines and bytes (`referee.ts` says why).
  */
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";

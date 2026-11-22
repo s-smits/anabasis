@@ -1,29 +1,6 @@
 /**
  * Two or more consecutive statements written out at two or more places, once the names each
  * function binds for itself and every literal are abstracted away.
- *
- * The comparison is over syntax, not lines. Every named function (a declaration, a method, an arrow
- * or function expression a variable holds) is a host. A name the host binds becomes one token
- * whatever it is called; any other name keeps its spelling, so two blocks calling different
- * functions never match. Literals become their kind, and types, `as`, `satisfies`, `!` and
- * parentheses are dropped, so formatting, comments and imports are gone before anything is compared.
- *
- * Every run of two or more consecutive statements in a block or a `case` is a unit, keyed by a hash
- * that grows one statement at a time. Units with one key are one copy; copies are taken largest
- * first, and one whose places all lie inside places already taken is a larger copy seen through a
- * window, and goes. A reported copy has at least 64 tokens and every place at least three lines.
- *
- * Tests, vendored code, files that declare themselves generated and files named as a legacy reader
- * are not read: each is written to stand alone. A separately published package does not import
- * this tree, so only the places in the package holding most of them count. A copy whose places say
- * different things (five or more word-bearing literals differ, or the block is mostly data and most
- * of its literals differ) is a table with different rows rather than a copy of work.
- *
- * One unbounded window is read, grown to a copy's full extent. Expressions are not grouped, since
- * they only ever covered windows. There is no filter for four or more parallel variants (a dialect
- * per directory): written for other repositories, here it read any two one-word files in one
- * directory as variants, and hid real
- * copies such as the preambles `tools/d2/checkpoint.ts`, `round.ts` and `session.ts` share.
  */
 import * as ts from "typescript5";
 import type { TreeFinding } from "./tree-findings.ts";

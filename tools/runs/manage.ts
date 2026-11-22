@@ -34,18 +34,6 @@
  * command refuses it there and ends on its environment. Then it checks out the commit, installs,
  * and starts the command only once the command's own dry run passed: niced, in a process group of
  * its own, its output beside the receipt the command keeps (`launch-run-<n>.out` and `.err`).
- *
- * `--login N` runs the command on the login the environment holds as `CLAUDE_CODE_OAUTH_TOKEN<N>`,
- * passed on as `CLAUDE_CODE_OAUTH_TOKEN` and recorded as `ANA_LOGIN`; no numbered key reaches the
- * command. With none named the unnumbered token stays and the numbered keys are removed. The launch
- * guesses no numbered login: the dry run refuses a seat whose provider holds no credential
- * (`served`), so a Claude run may use the unnumbered token, and a run that bills none starts without
- * one. A `continue` that names no login stays on the one its last run recorded, which is no guess:
- * the account that pays is the operator's. Which login a run takes is chosen by `fresh` and `keep`
- * (`billsLogin`, `logins.ts`). The verb never opens the env file: Bun's own `--env-file` loads it.
- *
- * These verbs ask no admission of a move: the command refuses
- * what it refuses.
  */
 import { SEATS, traceKind, unfinished } from "#src/kernel/trace.ts";
 import { append, type LogEvent } from "#src/kernel/log.ts";

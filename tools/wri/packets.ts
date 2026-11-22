@@ -3,21 +3,6 @@
  *
  *   bun tools/wri/wri.ts packets --log <log>,<log>[,...] --out <dir> [--graders 2]
  *   bun tools/wri/wri.ts packets --out <dir> --join
- *
- * A grade read across campaigns must not follow a campaign's age or result. Hand-written grading
- * scripts carry two faults into the packets: a long requirement reduced to its keys, and diffs cut
- * at a few hundred lines. So
- * here each campaign gets an opaque label, a grader holds half of them with old and new alternating
- * and tasks shuffled across them, a value is shown whole up to `VALUE_BYTES`, which every requirement
- * in those logs fits and a long table does not, and a diff is cut only past `DIFF_LINES`, which none
- * there reaches. The verb prints each grader's size, since a session has only so much room.
- *
- * Each grader also holds `ANCHORS` tasks of the others' campaigns, unmarked, so the join can say how
- * far the graders differ before anyone sets their grades side by side. No packet reads an outcome.
- * The join writes `grades.tsv` under the campaigns' names for `wri.ts trajectory --grades`, and only
- * then asks each grader to regrade, once, a task it graded high that the Starter answered every time
- * (the lane's own rule). Each grade changes no verdict, reading, promotion or move, and no seat is told it.
- * `key.json` names the campaigns, so it stays with the primary.
  */
 import { starterIn } from "#src/campaign/climb.ts";
 import type { LogEvent } from "#src/kernel/log.ts";

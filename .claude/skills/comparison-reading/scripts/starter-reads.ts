@@ -5,20 +5,6 @@
  *   bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | campaign folder | name> [--tasks]
  *   bun .claude/skills/comparison-reading/scripts/starter-reads.ts --log <log> [--log <log> ...] [--tasks]
  *   bun .claude/skills/comparison-reading/scripts/starter-reads.ts --all [--since <date>] [--name <part>] [--tasks]
- *
- * A starter read scores three task origins: tasks from the comparison that promoted the reference
- * (`read at the promotion`), tasks held before the promotion but not drawn then (`written before,
- * not chosen on`, which may still have been selected by an ancestor promotion), and tasks authored
- * after the promotion (`written after`, the only origin free of selection bias). Because the
- * reference stands on the `old` side in a starter comparison, all tallies and margins here are
- * oriented from the reference's side (`reference - starter`), with each origin split into total,
- * validity-differed, and objective-only tallies.
- *
- * Also reports WRI lane 12 and 19 diagnostics: each origin's point sum and share, exact post-promotion
- * sign-draw confirmation counts (`stepCount`, `selection.ts`), and per-Examiner-session slices of
- * post-promotion tasks. With `--tasks` (lanes 17 and 18), prints one row per scored task with its
- * origin, authoring session, solve outcomes, reference margin, and each arm's ratio to `author best`
- * (exam-side only).
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { sideGap } from "#tools/wri/pairs.ts";

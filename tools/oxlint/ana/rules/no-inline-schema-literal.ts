@@ -4,71 +4,9 @@ import { isTestFile } from "../shared/file-role.ts";
 import { isConstDeclaration, isNamedMember } from "../shared/statements.ts";
 
 /**
- * A table of constants built inside a function body is rebuilt on every call, and it sits where
- * the work is rather than where the shapes are.
- *
- *     function pathRecordRow(value: JsonValue) {
- *       const strings = ["at", "sessionId", "capability", "guardId", "policyDigest", ...];
- *       if (strings.some((key) => !isString(row[key]))) return null;
- *
- * The operator's shape for a file is the declarations at the front and the work below, which
- * `require-declarations-first` asks of module scope. This asks the same of a function
- * body: a value that closes over nothing and never changes is a declaration, and its place is the
- * top of the file where a reader looking for the data finds it without reading the code around it.
- *
- * Two conditions, both read off the syntax, and together they are the admission test. Every entry
- * is a primitive written as a constant, so the table closes over nothing and module scope can hold
- * it exactly as written. And the binding never escapes the declaration: in this whole file the
- * name appears only as the object of a property read. That second one is what makes the hoist safe
- * rather than merely legal: at module scope one object is shared by every call, where an inline
- * one was fresh each time, so anything that could write to it withdraws the report.
- *
- * Primitive is stricter than constant, and the difference is the entry a property read hands out.
- * A nested `{ a: [1, 2], b: [3], c: [4] }` is constant throughout and still has `t.a.push(5)` in
- * it, and a `use(t.a)` that no rule can follow; hoisted, one call's array would be every call's.
- * A flat table has nothing to hand out but a string or a number, which no caller can write to. It
- * costs nothing measurable here: all five sites are flat, and of the six fixtures it withdraws
- * one, `const authored: CorrectnessModelResult = { ok: false, issues: [], ... }`, whose empty
- * nested array is the thing there is no rule for. It removes the class rather than the spellings
- * of it somebody thought of.
- *
- * It is the escape rule that does the work, and it was written after reading what a weaker one
- * reported. Withdrawing only on a bare call argument still reported `segment-actor.mts`'s
- * `const state: BuilderTurnState = { accepted: null, attempts: 0, ... }`, six constants that the
- * turn loop then writes to, handed on as the shorthand `{ session, state, ... }`: a property
- * value, not an argument. Hoisting it would have shared one actor's turn state with every other
- * actor. A rule in the gate has to be wrong in the other direction, so every use that is not a
- * property read now withdraws: passed, returned, assigned, spread, destructured or iterated.
- *
- * Names are matched across the file rather than by scope, which over-withdraws where two
- * functions each hold their own `rows` and under-withdraws nothing.
- *
- * Test files are exempt, and the reason is what a fixture is rather than how many there are. The
- * five sites the test tree holds are each a made-up input standing next to the assertion that
- * explains it: `const scratchpad = ["a", "b", "a", "c"]` under a comment reading `A → B → A → C`,
- * a ten-label shortlist, a four-commit history. Moved to the top of the file they would be read
- * before the case that gives them meaning, which is the opposite of what this rule is for.
- *
- * Measured over `src`, `tools`, `vendor`, `starters`, `test`, `packages` and `.claude` on
- * 2026-09-20, five sites outside tests: `path-record.ts`'s seven required row keys,
- * `gpt-sessions.ts`'s five quick-launch option names, `policy.ts`'s three run-data
- * directory names, `prose-classify.ts`'s three case kinds and `archive-scaffold.ts`'s
- * lane-state lookup. Each of those five files already carried module constants of exactly this
- * shape (`BACKENDS`, `EFFECT_STATES`) so the rule found the exception
- * rather than a new style, and all five were hoisted. The launcher's table has since gone with
- * its quick-launch options, in the 2026-09-30 rewrite. It enters the gate at zero, where it
- * costs nothing and keeps the shape from arriving.
- *
- * There is no fix, and the five sites say why. Moving the declaration is mechanical; the four
- * things a reader gets out of the move are not. Each of the five was renamed on the way up --
- * `strings` became `REQUIRED_STRINGS`, `runData` became `RUN_DATA_NAMES`, `outcomes` became
- * `CASE_OUTCOMES`, `stateOf` became `LANE_STATES` -- and only `quickOptionNames` is the name a
- * casing rule reaches. That is the point rather than a detail: a name that read well beside the
- * one function using it says nothing at the top of a file, so the hoist is the moment the table
- * has to be named for what it holds. Four of the five also gained the sentence saying what the
- * table is for, which no fixer can write either. A mechanical hoist would leave `const strings`
- * at module scope, uncommented, and stop the rule reporting -- compliance with the letter of it
- * and none of the benefit, and no second chance to do it properly.
+ * Flags a `const` array or object literal of at least `ENTRY_FLOOR` (3) primitive constant entries
+ * declared inside a function body (outside test files) when the binding is only ever read by
+ * non-mutating property access, so it can be hoisted to a named module-scope constant. There is no fix.
  */
 
 /** Entries below which an inline literal is one argument written out, not a table. */

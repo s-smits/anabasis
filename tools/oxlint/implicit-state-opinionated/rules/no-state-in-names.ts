@@ -22,16 +22,6 @@ import {
  * record beside the name cannot follow the advice. Where every named thing has a record beside its
  * name, a parse is a second owner.
  *
- * Reported: a regular expression literal with a capturing group, applied by `exec` or `match` (a
- * global `match` captures nothing) to a name, when a captured group is read: by index (`m[1]`,
- * `m?.[1]`), through `.groups`, or by destructuring. A name is an identifier or property whose
- * last word (`runName`, `run_name`, `run.name`, a plural) is one of the `subjects` option (by
- * default name, branch, ref, label, slug, title, dir or path), or a `basename()` or `dirname()`
- * call. `file`, `id`, `key` and `tag` are left out by default: on foreign repositories they were
- * mostly path arithmetic, module ids carrying a query and markup tags, protocol text rather than
- * names (scored against the implicit-state corpus, `file` read 1 true hit to 4 false). A regular
- * expression bound to a `const` of the same file counts as the literal.
- *
  * Not reported: a capture of a file's extension (`/\.(png|svg)$/`), which is the file system's
  * own field rather than a fact someone wrote into a name; a capture of a path's leading folders
  * (`/^(.*\/)?[^/]+\.(dist-info|libs)\//`), with at most a group of fixed words beside it, which is

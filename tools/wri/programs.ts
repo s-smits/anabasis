@@ -2,12 +2,6 @@
  * Static command-to-program attribution for solve tool calls (`programsOf`). Shared by the calls
  * table (`calls.ts`), harness component attribution (`parts.ts`), provenance checks, and the solve
  * fold (`Solve.programs`, `folds.ts`).
- *
- * Splits `bash` commands into pipeline/list/subshell segments, strips heredoc bodies, redirections,
- * variable assignments, shell keywords, and wrapper prefixes (`env`, `timeout`, `sudo`, etc.), and
- * extracts the invoked executable name (recursing into `sh -c` strings and resolving script/module
- * arguments for interpreters such as `python`, `bun`, and `node`). Segments whose command token is
- * dynamically expanded or unrecognised increment `unattributed`.
  */
 import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 

@@ -1,13 +1,6 @@
 /**
  * Shared campaign log discovery across the archive and worktrees for skill scripts (`replay.ts`,
  * `table.ts`, `trend.ts`, `starter-reads.ts`).
- *
- * By default, discovery queries the production registry and refreshed peer records across all
- * configured hosts. Passing an explicit `home` directory scans offline layouts via `campaignsIn`
- * (a directory of worktrees, a `data/runs` archive, or a single host's campaign folder), keeping
- * the largest copy of each campaign name. Excludes seeds (`seed.json`, unless explicitly named),
- * scratch prefixes (`sim-`, `rh-`, `test-`), and scripted rehearsals (`faux/` models, checked via
- * `rehearsed`).
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { closeSync, fstatSync, openSync, readdirSync, readSync, statSync } from "#src/meta/filesystem.ts";

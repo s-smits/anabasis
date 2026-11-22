@@ -8,16 +8,6 @@
  * set it maps (`satisfies Record<Ending, string>` on the object its entries come from). An object
  * literal read with a typed key needs no such word: a key it lacks is already a type error.
  *
- * A table is a `new Map` of `[literal, value]` pairs, or of `Object.entries` of a plain object
- * literal, with at least two keys, bound to a name with no annotation, read somewhere as
- * `TABLE.get(key)` with a computed key and never changed (`set`, `delete`, `clear`: an accumulator
- * is no table). Its set is the smallest exported set (`tree-implicit-state.ts` gathers them:
- * unions, `as const` lists, string enums, `Set`s of literals and discriminated unions) that holds
- * every key. Reported: a table that maps at least half of its set and leaves the rest out, unless
- * its keys are exactly another set its own file declares, which it then maps whole; and a table
- * that maps its whole set, since nothing holds it there once the set grows. A table that maps fewer
- * than half is a selection (which of these are special), whose reader expects a miss.
- *
  * `@typescript-eslint/switch-exhaustiveness-check` (typescript-eslint, `src/rules/
  * switch-exhaustiveness-check.ts`) already holds a `switch` over a union to every member, and the
  * repository runs it as an error, so a switch is not read here. No upstream rule reads a lookup

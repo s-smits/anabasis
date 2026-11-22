@@ -1,11 +1,6 @@
 /**
  * Per-campaign summary fold shared across archive analysis tools (`table.ts`, `trend.ts`).
  *
- * Aggregates each campaign's timeline, promotions, elapsed/active/unloaded hours, billed and
- * repriced dollars, validity room, starter-read confirmation tallies, and A/A control rates from
- * production folds over the log and launch receipts (`comparisonsOf`, `epochsOf`, `starterReads`,
- * `billedBetween`, `waitsOf`).
- *
  * - **Release**: the latest release tag preceding the campaign's first launch.
  * - **Elapsed / Active / Unloaded hours**: total wall time from the first event; wall time minus
  *   recorded waits (provider resets, network, solve queue); and active hours minus estimated CPU

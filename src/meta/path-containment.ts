@@ -3,9 +3,6 @@
  * lies under it. Each guard that writes this out is another chance to forget the separator that
  * makes `/srv/shared` stop containing `/srv/sharedx`. The check here is lexical, so it decides
  * containment of a path someone else has already resolved and is not a symlink defence on its own.
- *
- * Kept apart from `meta/path`, which holds only `node:path` re-exports; these two need a local
- * binding of `sep` rather than being re-exported.
  */
 import { sep } from "./path.ts";
 

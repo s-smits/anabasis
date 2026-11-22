@@ -36,31 +36,6 @@
  * each emptied at a start, since a relaunch under one prefix that writes nothing to stderr would
  * otherwise leave the error that ended the launch before it in its `.err`.
  * `--mention` counts the Examiner's calls whose arguments name the text, such as a folder of its home.
- *
- * An ablation run on a hand-made reader, watcher and spawner types the event where each arm began
- * by hand, sums `billed` by kinds of its own, names one domain's programs and must route its checks
- * itself. Each of those facts has one owner already: the login (`loginEnv`), the dollars
- * (`billedBetween`), a task admission that read its draft (`measuredGate`) and held it
- * (`heldAtGate`), and the turns of the reference's valid answers at a task admission
- * (`gateAnswers`), so this script reads them there.
- *
- * Before-and-after arms improvised by hand compose each arm's prompt in a scratch script, count
- * both arms in a second watcher, end a seat by killing its group and compare arms read at different
- * paces by eye; `prompt`, `read`, `stop` and `pairs` do each of those once.
- *
- * A tuning round read by hand sets its table of pairs together from one `compare` a pair, counts
- * the sign over pairs by eye and keeps GPT apart from Opus by memory, and a census of tool calls
- * (such as failed `read_example` calls or a declined first `finish`) becomes a scratch script. A
- * one-off read of a seed's log counts its source campaign's task admissions as the seat's, and a
- * seed copied to another host with its links unresolved crashes its seat on a missing file.
- * `pairs`, `calls`, `read --log` on a seed from its cut, and `start`'s refusal of a seed with a
- * broken link answer those four.
- *
- * A round decided and stopped while a seating script still waits for load on another host would
- * otherwise seat a fresh pair afterwards: `stop` on a prefix nothing has seated leaves its
- * `.stopped` word, and `start` refuses a prefix that holds one. `start` wakes as its group ends
- * rather than at its next tick, keeps its own pid, and `stop` ends it where it outlives its
- * reading, so no `start` wrapper stays alive after its group.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { EXAMINE } from "#src/campaign/admission.ts";

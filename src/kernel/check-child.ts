@@ -3,18 +3,6 @@
  * process's stdin, and the process writes each check's answer, in the order given, and the
  * objective's where every check passed, to `result.json` in its working directory, the verdict's
  * cell. The answers go to a file because a check may print what it likes.
- *
- * The program is imported once and its checks run in this one process, a few at once, so they share
- * its module and the cell's folder, since no check program on record writes a file or keeps any
- * state but a memo cache. Each check has a time of its own: past it the check is at fault, as one
- * that throws is, its tools are ended and the other checks' answers stand. A check that holds the
- * process's one thread is ended with the cell, by the host.
- *
- * A tool the check runs starts here, in a directory of its own under the cell, so it runs inside the
- * same wall: the Seatbelt profile follows every child on Darwin, and the namespaces do on Linux. A
- * tool that is missing, never started its program, was ended by a signal or ran out its time leaves
- * the check deciding without its evidence, so the answer is a non-result whatever the check
- * returned. A tool that ran and failed is evidence: the check reads its exit code and decides.
  */
 import { mkdtempSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, lockJsonGlobals, parseJsonAs } from "../meta/json-runtime.ts";

@@ -86,11 +86,6 @@ function walkFiles(root: string): string[] {
 
 /**
  * Reports exported declarations that no other file references.
- *
- * Removing unused `export` modifiers narrows the public surface so subsequent changes do not need
- * to audit non-existent external callers. The scan is textual and intentionally fails open: names
- * declared in multiple files are skipped (attribution is ambiguous), and any textual occurrence in
- * another file (including comments or string literals) counts as a reference.
  */
 export function unusedExports(
   declaring: ReadonlyMap<string, string>,

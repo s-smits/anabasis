@@ -22,27 +22,6 @@
  * its ending, since campaigns zipped together can have run at several commits. Light is refused over
  * 2 MB a run, any level over `--max-mb`. Unnamed, the zip is `<names>-<level>.zip` where the command
  * runs.
- *
- * `--latest N`, `--minPromotions N` and `--minTime 2h` choose the runs instead of naming them
- * (`newest`): campaigns on any host, seeds and live solves left out, with at least that many
- * `harness.promoted` events and at least that long from the first event to the last (`s`, `m`, `h`
- * or `d`), the N whose last event is newest. `--since` and `--until` keep the campaigns whose record
- * overlaps that window, so a run live during it counts although it began earlier; a time is a date
- * (`2026-11-06`, UTC), a date with a time and a zone (`2026-11-06T12:00Z`) or how long ago (`36h`).
- * Names given beside them narrow the candidates. The choice is made on each campaign's record and
- * only the chosen come whole (`pickedAcross`).
- *
- * Never held: installed packages, caches and built bundles, a link out of the run's folder, a file
- * named like a secret. A relative link inside it is held as a link, in the group of what it names:
- * a kept state's `.toolchain` names its `../tree-*`, which a zip would otherwise lose, leaving a
- * reader to match each harness to its programs by digest by hand.
- *
- * A log is held to its last whole line, since a live run's may end in the append it is writing. An
- * exam a campaign drafted is its brief and its checker as `checks/` is a stored pack's, so a drafted
- * exam's `exams/<digest>/` goes with the checker rather than verbose's rest. `--from` makes the zip
- * on a host `ANA_HOSTS` names, by that host's reading of its own runs, and brings the zip back to
- * `--out`, so that live campaigns on other hosts can be investigated here, and the files a level
- * holds are chosen in one place.
  */
 import {
   cpSync,

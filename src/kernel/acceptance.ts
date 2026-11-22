@@ -2,14 +2,6 @@
  * A checker's acceptance: what an imported check program has been seen to do, before any task
  * counts on it.
  *
- * v1's record is why. Its passes were sound, the Judge vetoing 5 of 1,411, and its rejections were
- * not: of 47 rehearsal misses 36 were a check or its instrument refusing a right answer, and 24
- * of 32 firmware fails were an author's stand-in refusing valid code. A task's shape check reads only
- * its package's structure (`task.ts`), so this asks the checker as a whole whether every control answer gets
- * the verdict its author labelled it with, whether a second run agrees, whether every check has
- * been seen both to refuse an answer and to let one pass, and whether every instrument a check
- * names is there to run.
- *
  * Two readings ask what no control answer of the pack's does. The do-nothing answer, the smallest
  * the answer format allows, must be rejected on every
  * task: Anchor tests its generated verifiers so, and cites a benchmark on which an agent that did
@@ -20,11 +12,6 @@
  * by the tool it runs, never by a label its author writes, since an author's label can call a
  * check `authored` that runs the pack's engine. An exam with no engine behind any check stands only
  * once the operator admits each check by name.
- *
- * This reads and decides nothing: a fault is a sentence for the checker's owner, and what share of
- * faults a checker may carry is the operator's. One thing is not read here. A control answer tests the
- * faults its author thought of, so control answers cannot show that the answers a check refused were
- * wrong; that takes a reading of the refused answers themselves (`src/referee/rejections.ts`).
  */
 import { Pointer } from "typebox/value";
 import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
@@ -379,11 +366,6 @@ function acceptance(
  * schema yields one that follows the format (`unformed` says why it does not). The acceptance
  * command records it (`tools/c/accept.ts`), and an Examiner's draft is held to the same reading
  * before it stands (`tools/d2/exam.ts`), so an exam is drafted against what it will be read by.
- *
- * A do-nothing answer that does not follow the format is a note, not a fault: the format refuses
- * it before a check reads it, as it refuses a solver's answer. As a fault it refused drafts over a
- * keyword the host's builder does not read, while a check that passes everything is still a fault
- * through its reject control.
  */
 export async function readChecker(given: Read) {
   const { verify, brief, tasks, width } = given;

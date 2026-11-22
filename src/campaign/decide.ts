@@ -1,23 +1,8 @@
 /**
- * The campaign's decision table: given the log and the campaign's plan, the one move that comes
- * next, with its reason, or an ending.
- *
- * A campaign is a loop of moves over one log: the exam is read, tasks are written, a Builder
- * builds, two harnesses are compared, and then something has to say what comes next. This table
- * chooses which move; what a harness holds, what a task asks and how it is solved stay a model's.
- *
- * `ROWS` is asked in order over one reading of the log (`groundOf`, `ground.ts`), and the first row
- * that names a move chooses it. Comparison admission owns its refusals (`refusals`,
- * `admission.ts`); the rows only read their codes.
- *
- * A Builder that leads its campaign makes its own moves and is never told the table's, so the table
- * gives it no advice: practice is released by the host as each conversation opens and each
- * comparison reports (`releaseOwed`), and a Builder that compares too early hears admission's
- * refusal itself. A Builder that was given the table's advice went against it in most comparisons.
- *
- * One count ends a campaign that cannot be given tasks or room (`fruitlessRun`), at its supply
- * patience. A setting is recorded once (`campaign.setting`) and never changes, so every comparison
- * in the log is read at the one budget it names.
+ * Campaign decision table (`decide`, `ROWS`), selecting the next move (`stop`, `exam`, `bound`,
+ * `tasks`, `unfinished`, `step`, `no-room`, `unread`, `build`) from a single fold over the log
+ * (`groundOf`, `src/campaign/ground.ts`), plus practice release bounds (`practiceDue`) and
+ * supply patience tracking (`fruitlessRun`, `supplyRun`).
  */
 import { unadmitted } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
@@ -177,8 +162,6 @@ function enoughWrittenSince(ground: Ground, reading: Reading): boolean {
  * yet, however few it wrote. A session that ended before the latest reported comparison started,
  * so that comparison could draw its tasks, is passed over, as is one the provider failed or a stop
  * cut (`crashedRun`, `cutShort`).
- *
- * This is the one count that ends a campaign for want of tasks or of room (`outOfPatience`).
  */
 function fruitlessRun({ events, reports, reference }: Ground) {
   const read = Math.max(-1, ...reports.map(({ at }) => at));
@@ -491,10 +474,6 @@ function owedPromotion(ground: Ground): Move | null {
  * side the reference took, so the rule is the same in every epoch. A task nobody answers at the
  * campaign's one budget is one for the Examiner to replace. Tasks admitted since are compared
  * first (`unread`).
- *
- * A newly promoted reference also gets one Examiner session written for it, room or none, before
- * anything else: the tasks it was promoted on are the ones it already beat the last reference on,
- * so they say little about where it can still improve.
  */
 function noRoom(ground: Ground): Move | null {
   const { reports, reference, events } = ground;
@@ -539,15 +518,6 @@ function unread(ground: Ground): Move | null {
 
 /**
  * A comparison of the tasks held out since the last reading, before anything more is built.
- *
- * After a promotion, a starter comparison is owed until one tallies a task in the epoch, whatever
- * harness waits, since that reading is what confirms the promotion (`confirmed`, `climb.ts`). Once
- * one has tallied it is not owed again; owing it on every new task would put it first for the rest
- * of the epoch and leave the Builder's changes unread.
- *
- * A waiting harness whose last reading tested nothing, or left no room, is read on the new tasks.
- * One whose reading had room and read no step is not: that would be a second draw of the same pair
- * (`AGENTS.md`, section 4). The Builder changes it, and the next comparison reads the change.
  */
 function heldSince(ground: Ground): Move | null {
   const { events, read, reports, waiting, reference, starter } = ground;
@@ -594,9 +564,6 @@ function buildsOn(ground: Ground): string {
  * says why, or null where no practice is owed. This is the one reader of practice's bounds
  * (rule 12); the host releases on it as a conversation opens, as a task is held out and as a
  * comparison reports (`releaseOwed`, `campaign-actions.ts`).
- *
- * Practice is owed again after each reading (a comparison's first report, or a promotion), so a
- * new reference gets tasks to practise on rather than only the ones its predecessor passed.
  *
  * Each release is one task fewer to compare, so two limits apply. A reading with nothing held out
  * since the last release is owed only one task, and after a promotion none: the new reference's

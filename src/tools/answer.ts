@@ -15,10 +15,6 @@
  * command had printed them: the solver had computed the answer into a file and then copied it out
  * by hand (`docs/transfer.md`).
  *
- * So a solver's working state is what it is under pi, the files in its working directory, and the
- * answer is one of them. What v1's draft store held is kept the way a filesystem keeps it. The
- * public resources and the answer format are files there too (`prompt.ts`, `seedHome`).
- *
  * v1 took three submit attempts and no more, when its submit ran checks of its own. This one
  * returns no verdict and reads nothing hidden, so a refused submit tells a solver nothing but what
  * is wrong with its file, and none is counted.

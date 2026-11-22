@@ -60,9 +60,6 @@ function waitOf({ at, kind, data }: LogEvent): Wait | null {
  * launch's first event. A wait stands through calls and failed turns, since a seat that runs on
  * after a wait is recorded writes its call and its failed turn, and any other event ends it. Quiet
  * counts from the last event or the end of a wait of this launch, whichever is later.
- *
- * Pulse, view, alerts and the keeper all read this here rather than each its own way, which would
- * let a keeper take a wait from before the current launch and move a run it had just moved again.
  */
 export function stateOf(events: readonly LogEvent[], life: Life, now: number, launched = 0): RunState {
   if (!life.writing) {

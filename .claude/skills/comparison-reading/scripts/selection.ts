@@ -1,10 +1,6 @@
 /**
  * Exact sign-draw enumeration for starter-read confirmation analysis (WRI lane 12).
  *
- * Holding pre-promotion tasks fixed at their recorded margins, counts how many of the `2^free`
- * sign assignments to the untied post-promotion (`written after`) tasks would still register a step
- * under `readsStep` (`stepCount`).
- *
  * Omits cross-session homogeneity tests across Examiner writing sessions (lane 19): because those
  * sessions are sequential wakes of one Examiner conversation, whether they form independent draws
  * is the investigative question itself. `starter-reads.ts` reports each session slice's tally directly.

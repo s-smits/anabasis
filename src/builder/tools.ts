@@ -4,29 +4,6 @@
  * working directory, its home. On top of them are the tools that are a Builder's alone. Two ask
  * the host about `harness/` as it stands and run on the same wall: `check_harness` and
  * `preview_harness`. Four are the host's: `practice`, `read_trace`, `read_opening` and `finish`.
- *
- * v1's Builder had pi's file tools too. A Builder with the shell and one `write_file` alone rewrote
- * a 30 KB tools file through a heredoc to change a line and could not see what a solver would be
- * shown (`7af7315:src/builder/tools.ts`). The shell is the whole of its action space beyond these,
- * and no tool is given for what a command already does.
- *
- * The wall is the solver's, so the repository, the operator's home and every other solve's scratch
- * are closed to the Builder by the operating system and not by a path check in this process: a guard
- * in the process it constrains is a convention and not a wall (`7af7315:src/builder/candidate-isolation.ts`).
- * So every file tool here works through a walled command.
- *
- * One read is the host's own: the host opens a harness snapshot, as a solve opens any harness.
- * `openHarness` reads the guide and the spec alone, refusing either where it links out of the
- * harness, so nothing here asks that again.
- *
- * `practice` is where the Referee meets the Builder. A rejected answer goes to it, as in a
- * comparison; a check defect's task leaves the session, and an unclear or unread rejection is not
- * shown as a failure. What comes back names the ending and the
- * task's record, and never a check, a verdict's detail or the Referee's reasons. A practice solve
- * that could not be run at all, the verifier failing to decide for one, ends the session: its
- * error can name a check, so it is kept for the host and the Builder is told only that the session ends.
- * Finish reads counted practice for the exact current digest, including restored states; a frozen
- * harness snapshot alone supplies no practice evidence. The same record supplies continuation facts.
  */
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
@@ -515,11 +492,6 @@ export function traceTool(bench: Bench): SeatTool {
  * practice solve run on it, the solves spent on earlier versions, which is why `practice` says when
  * the last one is gone. A session that never
  * practised chose so and is told nothing here. A second `finish` ends the session as it is.
- *
- * A Builder that leads its campaign is also told that no comparison has read the harness it would
- * leave, since a Builder that finishes while an Examiner session writes can end the campaign
- * `finished` with no comparison. One that would finish on the harness last promoted is told the
- * move the table names next, since finishing there stops the climb.
  */
 async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<string | null> {
   const { request, told } = bench;

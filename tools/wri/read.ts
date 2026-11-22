@@ -3,18 +3,6 @@
  * identities the primary reviewer settles, and the triggers that say which of the twenty-three
  * lanes of `.claude/skills/whole-run-investigation/references/lanes.md` have something to read.
  *
- * v1's readers walked a campaign folder of some forty record kinds: claims, promotions, epochs,
- * task sets, case records, Builder executions, reviews. v2 keeps one append-only log, and everything
- * a lane starts from is a fold of it. This file replaces v1's thirteen readers; the overview also
- * reads launch receipts for host and launch provenance, without reading a harness or a pack.
- *
- * A trigger is a capitalised name, the lane it starts and one line of counts. It says a lane has
- * something to read and never what the answer is: a lane that contradicts its trigger from the
- * bytes has done its job. A trigger that did not fire says this arithmetic found nothing, and not
- * that the property is absent. No trigger carries an answer, a task's text or a hidden value.
- * Lane 8 reads the recorded tally and power at its margins. Reversing one win establishes
- * neither a small sample nor dependence on winning every task, so it starts no trigger.
- *
  * The folds of the log, the catalogue of triggers and the lanes of the exam side (1 to 4 and 7 to
  * 11) are `folds.ts`, which keeps this file within the size policy's ceiling. This file
  * keeps the lanes of the review, the harness, the comparison and the solve (5, 12 to 21 and 24),

@@ -2,53 +2,11 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 
 /**
- * Four levels of nesting inside one function means the reader has to hold four conditions at
- * once to know why the innermost line runs. The count is not a style preference: each level is
- * a fact that stays true for everything below it, and the working contract's own habit,
- * `if (…) continue;`, `if (…) return null;`, exists because holding one fact is cheaper than
- * holding four.
- *
- * The three answers, in the order to try them. A guard that ends the iteration or the call
- * flattens the rest of the body by one level and costs a line. A body that does two separable
- * things is two functions, and the inner one usually wants the loop, not the branch. A loop
- * inside a loop inside a branch is often one `.flatMap()` or one `Map` lookup that the shape
- * is spelling out by hand.
- *
- * This is deliberately not a complexity gate. v1's `5bc9988:tools/loc/complexity-policy.ts`, which v2 did
- * not copy, counted decision points and refused at 22, which a long flat `switch` reaches while staying readable and which
- * a four-deep pyramid can sit well under. Depth and branch count measure different costs, and a
- * function can pass one while failing the other.
- *
- * A `catch` counts and a `try` block does not. Entering a `try` is unconditional: every
- * statement in it runs on the same path as the statement above the `try`, so the reader holds
- * no extra fact about why the line runs, only where control goes if it fails: one fact for the
- * whole function rather than one per level. A `catch` is the other way round: a reader is there
- * because something threw. Counting the `try` block reported four shapes that are the
- * repository's ordinary "do the work, clean up on failure" body: `cleanStaleTempRootScratch`
- * opens a directory inside a `try` inside a `try` and is then two levels deep, and
- * `rememberReadRootListing` spends two of its four on a `try` whose `catch` is `return`.
- * `finally` does not count either, for the same reason as `try`: it runs on every path.
- *
- * A `switch` counts once for the statement, not once more for each case, since the cases are
- * alternatives rather than accumulated conditions. A nested function resets the count: its body
- * is read on its own.
- *
- * A guard is not a level. It is the first answer this rule offers, and counting it reported the
- * remedy as the defect: control leaves, so nothing below it is inside it and the next line is one
- * level shallower rather than deeper. `caseGroundingClauses` was reported on
- * `if (executedTriples.has(…)) continue;` and `openWorkshopCell` on
- * `if (canary.status === 255) throw unavailable(…);`: both of them the shape a reader wants.
- * Nine of 14 sites.
- *
- * A guard has no `else`, ends in `return`, `continue`, `break` or `throw`, holds at most three
- * statements and branches in none of them. The three statements are what the recorded shape
- * needs: `safeguardUsageReport` counts a malformed line and continues, which is a guard with a
- * side effect and not a branch. The no-branching clause is what keeps
- * `authoringContractFiles` reported, where the `continue` sits under a nested `if` that decides
- * whether the type-only edge still joins the contract: that body is doing two things, which is
- * the second answer this rule offers.
- *
- * There is no fix. Which of the three answers a site wants is the whole decision.
+ * Flags statements nested four or more levels deep (`DEPTH_LIMIT = 4`) inside a function body.
+ * `try` and `finally` blocks, `else if` chains, `switch` cases (counted once at the `switch`),
+ * and non-branching guard `if`s ending in `return`/`continue`/`break`/`throw` within
+ * `GUARD_STATEMENTS` (3) statements do not add a nesting level. Nested functions reset the count.
+ * There is no fix.
  */
 
 /** Levels of nesting a function body may hold before the innermost line has too many reasons. */
@@ -112,11 +70,6 @@ export const noDeepNestingRule = defineRule({
     const open: ESTree.Node[] = [];
     /**
      * One frame per function being read, the file itself first.
-     *
-     * `base` is where this function's own counting starts, so a callback nested three deep
-     * reads its body from zero. `reported` belongs to the frame rather than to the rule: with
-     * one shared flag, a callback returning restored it, and the second pyramid in a function
-     * that contains a callback was reported as though the first had not been.
      */
     const frames: { base: number; reported: boolean }[] = [{ base: 0, reported: false }];
 

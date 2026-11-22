@@ -4,34 +4,6 @@
  * report stored it and as this tree rebuilds it, the new side against itself, and of a tie, its kind.
  *
  *   bun tools/wri/wri.ts reader pairs --log <log>
- *
- * Lanes 8, 9, 10 and 11 read a comparison task by task. Without it a session builds this table by
- * hand and sets each win beside its own task's A/A, and a script that pairs the tasks with the
- * report's scores by position misaligns once retained tasks are tallied. Here every number is
- * the production fold's on one pair (`pairsReported`, `differenceOf`, `pointsOf`, `carriedBy`,
- * `gapAgainst`, `src/kernel/`), and a pair is never matched to a score by its place in a list.
- *
- * A row's `diff` is the new side's score over the reference's on that task in thousandths
- * (`differenceOf`), so in a starter read, whose new side is the starter, a positive `diff` is a task
- * the starter won, and `starter-reads.ts --tasks`, which gives the reference's margin over the
- * starter, has the opposite sign on the same task. Under each comparison's rows one line counts its
- * new side's wins whose `diff` stands inside, level with or outside that task's rebuilt A/A, and
- * apart those whose task has no A/A, and a `grain` line names no family. A report stores its A/A (`noise`) aligned with `versions`; since 9a9528bf5 this
- * tree mirrors the A/A's halves from one task to the next, so the rebuilt A/A can differ from the
- * stored one on an older log, and both are printed. Tasks the report did not tally have a row too,
- * by the list that holds them (`aside`, `short`, `disputed`, `flagged`, `withdrawn`), `unpaired`
- * where a start named them and no list does, as a comparison its cap cut leaves them, and `open`
- * in a comparison with no report: those rows give each side's counted solves and no score. A tie's
- * kind is a fact of its solves: `both-invalid` (no valid answer on either side), `exact-repeat`
- * (every answer valid, one measure throughout), `within-room` (every answer valid and every pairing
- * of a solve of each within the floor, `GAP_FLOOR`), `both-valid` (every answer valid, the objective
- * not measured on each), and `cancelling` (gains of the two sides cancelling over the pairings).
- * The origin a starter read gives each task is `starter-reads.ts --tasks`'s column
- * (`comparison-reading`), so no column here repeats it. `x_best` gives each side's median ratio to
- * the best answer on record for the task, reference then new (1.00 is the best; `sideGap`, `reading.ts`'s gap line,
- * which prints the same per comparison), so that lane 20 need not set it beside each task's writer
- * by hand. It comes from hidden values, so the output stays on the exam
- * side: it names task versions and families and no task text, answer or measure.
  */
 import {
   type Measures,

@@ -4,28 +4,6 @@
  * taken at two moments; a process that starts or ends between them, or a file rewritten between
  * them, makes the two halves of the command disagree about which state the world is in. Read once,
  * at the join, and pass the answer on.
- *
- * An external read is a platform form: a spawn (`spawnSync`, `execSync`, `execFileSync`, `spawn`,
- * `execFile`, `execa`, `Bun.spawn`, `Bun.spawnSync`, `child_process.exec`, or a `$` template), a
- * file read (`readFileSync`, `readFile`, `readJson`, `readdirSync`, `Bun.file(p).text()` and its
- * kin), or a `fetch`. It is keyed by what it reads: the program and its literal arguments, the
- * path, the URL. A part spelled by a literal, a module constant or an import keys; a part a caller
- * passes is substituted at each call, so a local wrapper (`ps(args)` around `spawnSync("ps",
- * args)`) reads what its caller asks; any other part makes the read unkeyed and it is not counted.
- *
- * The call graph is syntactic: top-level functions and `const` functions of each file, reached by
- * their name in the file or through a named or namespace import. A call to a function counts each
- * read it makes once, so a function reports only the repetition its own body makes: two calls, two
- * reads, or one inside a `for` loop or an iteration callback (`map`, `forEach`, `filter` and kin),
- * which runs once per item. The two arms of an `if`, a ternary or a `switch`, and the code after an
- * `if` whose arm returns or throws, are alternatives, so they combine by the larger count. A read
- * inside `while` or `do` is polling, which wants a fresh answer each time, and one inside any other
- * function (a callback, a handler) runs later; neither is counted. A statement that moves what is
- * read splits a run of statements into two moments, whose reads of what it moved combine by the
- * larger count: an awaited wait (`sleep`, `delay`, a `setTimeout` promise, or a call to a function
- * that waits) moves everything, a signal to a process (`kill`, any signal but 0) moves the process
- * table (`ps`, `pgrep`, `lsof`), and a write or removal moves the path it names. A re-read after
- * one of these asks a later question on purpose. Tests are not read.
  */
 import * as ts from "typescript5";
 import type { TreeFinding } from "./tree-findings.ts";

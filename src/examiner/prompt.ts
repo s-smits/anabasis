@@ -1,63 +1,11 @@
 /**
- * What an Examiner reads before its first call: the system prompt and the opening message.
+ * Examiner system prompt and opening/wake messages (`src/examiner/prompt.ts`).
  *
- * The Examiner writes task instances against a fixed contract and check program. Its prompt
- * carries no zone, share or target count: an author told one wrote towards it in v1, so it is
- * told measured facts with their denominators (`record.ts`) and the budget every solve is held to,
- * since a task that tells two harnesses apart is one a better method answers within that budget
- * and a worse one does not. While the budget was withheld the tasks of ten campaigns tied.
- *
- * Room is defined once, in the scoring section, as a comparison reads it (`informative`,
- * `src/kernel/compare.ts`), with the objective's floor (`GAP_FLOOR`); the opening refers to it. What
- * v1's prompt said of tasks is kept: no limit the field does not hold, and no growth by size or a
- * moved limit alone (limits reset at a 3.4-hour search's best passed 5 of 6).
- *
- * A task needs a valid answer. Nothing solves a task before it is held (`AGENTS.md`, rule 9), so
- * the author alone stands between the exam and a task no answer satisfies: in the first campaign
- * opened from a prompt, two of seven tasks pressed to the margin had none. The prompt states what
- * `try_answer` shows and leaves the method to the author (section 2, consequence 1: facts, never a
- * course), since a prescribed method, to plant an answer and grow the task around it, tied each task
- * to what the author could build and left the reference valid on nearly every solve. An answer that
- * passed never reaches a solver: the gate refuses a task that carries it (`write.ts`).
- *
- * The solve is described as one system, the model inside the harness, because an Examiner that read
- * the reference harness's programs wrote against them: drafts aimed at one program's faults, which
- * the solver repaired in a few turns. For the same reason a writing session's home holds no copy of
- * the reference harness, which pointed the Examiner at one harness's programs and let it compute its
- * answers with the reference's own optimiser. The prompt separates the three kinds of room, but names
- * no kind of draft: a list of admitted constructions led the author to describe many held drafts as
- * one construction, and a paired trial without the list held as many drafts for less per draft.
- *
- * Each fact is stated once, in the section that owns it, and once to each session: the valid-answer
- * section is a point of "What the exam needs", the turns a method cost are part of "How hard", and
- * the task's make-up and the limit the field does not hold are one text each for both modes (`TASK`,
- * `UNHELD`, read by `draft.ts`). What the host enforces is said by the tool result that enforces it
- * and not beforehand: a declined first finish, an instance not taken again, a planted answer carried
- * whole, and the end of a session once the host has the tasks it needs. What a passing try shows is
- * said here, in "What the exam needs", and its result names the verdict alone.
- *
- * How hard a task should be has a scale and worked examples (`ladder.ts`, with the record behind
- * them), given as calibration facts before the request. The section asks for tasks above the
- * highest grade the reference answers on every solve, which is relative to the record the session
- * reads and names no count, so the exam climbs as the reference does; a grade is what the field
- * demands, never "above the new reference's", which points the Examiner at one harness's faults that
- * the starter, holding none, can win. `SOLVER` owns where grade 2 ends. The gate reads the package
- * alone (`write.ts`), so the prompt names no solve at the gate and leaves room to the comparisons.
- *
- * The texts are written for a model that follows a prompt literally. The reference's two solves
- * often differ on the objective alone, so that spread is named as chance alongside validity flips,
- * and the record's first line gives the count of the session's own last comparison, lest a literal
- * reader take it for room. Where no objective is declared, two valid answers always tie, which the
- * scoring section says. A draft carries no grade or account of where a solver falls short, since a
- * required account adds strictness and no fact, and a declined finish names no course (`write.ts`).
- *
- * Where the host gives the session tries of the reference harness ("Trying the reference",
- * `try_reference` in `write.ts`), the section says what a try shows and what it decides, which is
- * nothing at the gate or in a comparison, and that one solve is weak evidence (`AGENTS.md`, rule 6).
- * It names no count to reach and no course: when to try, and what to make of it, is the author's.
- *
- * The gate's section is in propose_tasks's description (`write.ts`), where the Examiner reads what
- * the tool does.
+ * Supplies measured reference outcomes and winning harnesses (`record.ts`), solve budget limits,
+ * comparison scoring rules (`GAP_FLOOR`), and the difficulty reach scale (`LADDER`, `ladder.ts`)
+ * without numerical targets, pass-rate quotas, or access to the reference harness's files
+ * (`AGENTS.md` sections 2 and 3). Shared task-structure invariants (`TASK`, `FAIR`, `UNHELD`) are
+ * also imported by `src/examiner/draft.ts`.
  */
 import { GAP_FLOOR } from "../kernel/compare.ts";
 import { type Contract, objectiveLine } from "../kernel/contract.ts";

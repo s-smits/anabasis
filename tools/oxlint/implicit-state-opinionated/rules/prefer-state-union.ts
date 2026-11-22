@@ -15,8 +15,6 @@ import {
  * Tier: opinionated. Booleans that are one state spelled as flags, found by what the code does
  * with them rather than by how many there are (`max-boolean-fields` counts them).
  *
- * Reported, two shapes:
- *
  * - A class whose methods move two or more of its boolean fields at different times: `_started`
  *   set in `start()` and `_closed` in `close()` are a lifecycle (created, started, closed) held as
  *   flags, and every reader has to know that closed without started never happens. A field is
@@ -34,11 +32,6 @@ import {
  * Not reported: fields only the constructor sets (configuration), records of independent options
  * however many, and a value derived from another object's fields. Test and declaration files are
  * not read. There is no fix: which states the flags stand for is the change.
- *
- * The shapes do not reach the generic floor. Scored against both implicit-state corpora, 16 of 29
- * labelled hits on nine foreign repositories were a state spelled as flags: a large class keeps
- * unrelated latches (a warn-once flag, a lazy load, a restore guard) that its methods move at
- * different times, which the syntax cannot tell from a lifecycle.
  */
 const DECLARATION = /\.d\.[cm]?ts$/u;
 const COMPARISON = new Set(["===", "!==", "==", "!=", "<", "<=", ">", ">=", "in", "instanceof"]);

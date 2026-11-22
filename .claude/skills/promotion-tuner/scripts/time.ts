@@ -7,8 +7,6 @@
  * own sum over the epoch (`billedBetween`), split by who billed each event: a solve by the session
  * or comparison its start names. A session open across a promotion bills each epoch what its turns
  * metered there.
- *
- * A promotion can take several hours, and without it no reader says where they went.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";

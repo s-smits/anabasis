@@ -15,9 +15,6 @@ const processKill = runtimeProcess.kill.bind(runtimeProcess);
  * How much output a captured command may produce before it is stopped. Bun 1.4.2 caps nothing by
  * default, so without this a runaway command is a host process holding its entire output in
  * memory.
- *
- * The 1 MiB default a reader may be thinking of is Node's contract, not Bun's: there is no default
- * to raise here, so the number is not what is being defended: the existence of a cap is.
  */
 export const CAPTURE_MAX_BYTES = 64 * 1024 * 1024;
 
@@ -58,12 +55,6 @@ interface SpawnSyncOptions {
  * descendants a solve left behind is the whole point, then the process alone. The fallback is
  * there because a child does not always lead a group (bubblewrap's namespace init is the case
  * this meets) and without it such a child would be signalled by nobody.
- *
- * Ids of 1 and below are refused rather than passed through: `kill(-1, …)` signals every process
- * the host allows and `kill(0, …)` the caller's own group, so an id that arrived from a closed or
- * mis-read receipt would take down the controller instead of the worker. A group that has already
- * exited raises on both targets and is reported as false, which is what a caller polling for its
- * disappearance reads as gone.
  */
 export function killProcessGroupId(processGroupId: number, signal: RuntimeSignal): boolean {
   if (!Number.isSafeInteger(processGroupId) || processGroupId <= 1) return false;
@@ -92,11 +83,6 @@ export function killProcessGroup(child: Bun.Subprocess, signal: RuntimeSignal): 
  * Whether any process still belongs to the group, or the process itself is still there. Signal 0
  * runs the permission check and delivers nothing, so the question can be asked of a running child
  * without disturbing it.
- *
- * EPERM counts as alive, because it is the host saying the target exists and this process may not
- * signal it. Reading it as gone is the expensive direction: the verifier removes a check's cell
- * once its group is reaped (`src/kernel/verify.ts`), so a live member declared absent means a
- * directory deleted underneath a process that is still writing to it.
  */
 export function processGroupExists(processGroupId: number): boolean {
   if (!Number.isSafeInteger(processGroupId) || processGroupId <= 1) return false;
@@ -114,15 +100,6 @@ export function processGroupExists(processGroupId: number): boolean {
  * Terminate one exact group and wait until the host agrees it is gone, escalating from SIGTERM to
  * SIGKILL. The id form exists because isolation can put the worker below a wrapper process, so the
  * group to reap is one a receipt names rather than one a `Bun.Subprocess` in hand leads.
- *
- * The first wait is short, since SIGTERM is there to let a child with a handler close its own
- * files, and the second is longer because delivery is not disappearance: a group stays visible
- * until its last member has been reaped, and returning at the syscall would report a dead group on
- * a pid the next check still finds.
- *
- * It answers with a boolean rather than throwing, because a group that will not die is a fact its
- * caller records (`tools/runs/stop.ts` counts the groups it left) and not an error that should
- * displace whatever the command produced.
  */
 export async function terminateAndReapProcessGroupId(processGroupId: number): Promise<boolean> {
   if (!processGroupExists(processGroupId)) return true;
@@ -212,18 +189,6 @@ export function runSync(cmd: readonly string[], options: RunSyncOptions = {}): R
 
 /**
  * Run a command and return its stdout bytes, throwing with the captured stderr on any failure.
- *
- * The message names which of four endings happened: a non-zero exit, a signal or timeout, a
- * capture that reached `maxBuffer`, or a command that never started. Reporting only the captured
- * stderr, or the exit code when there is none, covers a command that ran and refused and nothing
- * else: the two endings that leave `exitCode` null with both streams empty, a missing tool and a
- * child killed at the cap, then arrive identically as `git exited null` with nothing after the
- * colon. The cap is read before the exit code because Bun's kill races the child's own exit, and
- * the child winning makes that code zero.
- *
- * The command is named by its basename rather than by `cmd[0]`, because `hostTool` resolves a
- * developer tool to its absolute path: every git refusal would otherwise open with the Xcode
- * developer directory before saying anything about what went wrong.
  */
 function runSyncOrThrow(cmd: readonly string[], options: RunSyncOptions = {}): Uint8Array {
   const result = runSync(cmd, options);

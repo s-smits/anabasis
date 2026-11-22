@@ -3,23 +3,6 @@
  * on how many its solves handed in the same answer, byte for byte.
  *
  *   bun tools/wri/wri.ts reader answers --log <log>
- *
- * A valid answer says a task was answered and nothing of how. Read one at a time, a harness whose
- * program prints one answer and a solver that works one out anew read alike, so this reads two
- * answers together. Over the recorded comparisons, the new harness mostly repeats itself more than
- * the reference; in the logs holding both a step and another reading, the gap (new less reference)
- * mostly stands higher at the steps, which a domain cannot carry since each log is its own control. It is a
- * lead and decides nothing: a repeat can be a harness that closed a task's search or one that no longer searches, and
- * the objective reads the same either way (`ANSWER FROM A PROGRAM`, lane 16, says how it was
- * reached).
- *
- * An answer may hold what a task hides, so this prints counts only, and compares digests it never
- * keeps.
- *
- * Under an objective each row also says on how many tasks a side's solves gave one measure, exactly
- * and within the floor (`gapAgainst`, `compare.ts`), since an answer can differ in bytes where the
- * measure the comparison reads does not, and a harness that repeats no answer whole can repeat its
- * measure on many tasks, so that its 2 solves a task are fewer than 2 draws.
  */
 import { gapAgainst, type Paired } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";

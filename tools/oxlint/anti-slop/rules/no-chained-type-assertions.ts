@@ -55,12 +55,6 @@ function isForbiddenAssertionChain(node: TypeAssertionExpression): boolean {
  * Two or more type assertions stacked on one expression: `value as unknown as Row`, or the same
  * thing spelled with angle brackets or hidden behind parentheses.
  *
- * One assertion says the author knows something the checker does not. Two say the first one was
- * not accepted either, and the usual second one is `as unknown`, whose entire job is to widen far
- * enough that the assertion after it stops being an error. What reaches the reader is a value
- * carrying a name and no evidence, and the type it started from (the one piece of real
- * information in the expression) has been discarded on the way.
- *
  * A chain of nothing but `as const` is admitted, because `as const` narrows rather than widens
  * and adds evidence rather than replacing it. `isForbiddenAssertionChain` therefore counts the
  * assertions and separately asks whether any one of them is something other than `const`, so the

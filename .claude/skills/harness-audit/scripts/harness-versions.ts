@@ -7,40 +7,12 @@
  *   bun .claude/skills/harness-audit/scripts/harness-versions.ts <log | campaign folder | name> [--blind] [--json]
  *   bun .claude/skills/harness-audit/scripts/harness-versions.ts <log | campaign folder | name> --diff <harness> [--against <harness>]
  *
- * A harness is named as a campaign's commands name one (`keptAs`, `tools/d2/campaign.ts`): `starter`,
- * `promoted`, `latest`, a whole digest or its unambiguous letter. The states sit beside the log,
- * under `states/`.
- *
  * v1's final-harness-audit joined each workspace commit to its iteration, its scored set and its claim
  * through four scripts of 1,246 lines. v2 writes those joins as events, `harness.version`,
  * `harness.imported`, `harness.promoted` and the comparisons' own, and `campaignOf`
  * (`src/campaign/handover.ts`) folds them. This lists the states, opens each as a solve would
  * (`openHarness`), counts its parts, and leaves the joining to the fold. Whole-run-investigation's
  * lane 15 diffs a parent and a child part by part; `--diff` is that count, and quotes a line only under `--lines`.
- *
- * The list reads only the folders of `states/` named by a digest, and the counts leave out the
- * bytecode caches the digest leaves out (`BYTECODE`). Without both, the list shows each shared
- * `tree-*` folder as a harness that does not open, with every file of one tree on a single line,
- * and `--diff` counts hundreds of changed files where the digest sees one, the rest being caches.
- *
- * `--blind` takes from each version how it was measured (`blinded`: every comparison, session,
- * promotion and role but the starter's) and prints its diff against a kept parent in their place.
- * Lane 14 grades soundness from it before it reads a result, rather than reading the list's
- * comparisons first.
- *
- * `--files` adds a line for each written file that moved (the guide, the spec, `tools.ts` and the
- * programs the harness wrote, `writtenIn` in `tools/wri/trajectory.ts`), and `--lines` prints the
- * moved lines themselves; `--chain` reads every kept version against its kept parent at either depth,
- * blind as `--blind` is. Without it lane 14 and 15 sessions rebuild these by hand, often as a diff
- * loop given a campaign's `states/` path, which a lane guard refuses and this command, taking the
- * log, does not need. A digest prefix of eight characters names a version where it names one, since
- * sessions type the prefixes the readers print.
- *
- * `--diff` reads a kept state where it sits, as `--chain` does, and says in a line where one opens
- * as another harness. A copy of a campaign from another host leaves out what its harness installed
- * (`installs`, `tools/runs/snapshots.ts`), so there a state opens as another digest: `keptAs`, which
- * guards a solve, would refuse every diff of such a copy's states, and a lane would read "not as
- * kept" as a lost harness.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type Handover, campaignOf } from "#src/campaign/handover.ts";

@@ -38,115 +38,13 @@ const CALLER_COMPLEXITY = 22;
 const CHAIN_PEERS = 3;
 
 /**
- * A module-scope function nobody exports, whose body is a couple of statements, called from exactly
- * one place. It is not an abstraction; it is a name standing between a reader and two lines of
- * code, and reading the caller now means jumping somewhere else and back.
- *
- * The measured tree had a hundred of these. They are the reason a fifteen-line function reads as
- * forty: `toArgs`, `packageName`, `sizedManifest`, `unchangedCommitOf`, each used once, each a line
- * or two. Put the lines where they run and the caller states its whole job in one place.
- *
- * Both measures have to hold, and the line count is the one that was missing. Counting statements
- * alone reported 322 sites, and 210 of them were validators whose whole body is a single
- * `return a && b && c && …` running to fifteen lines: one statement, and inlining it hands the
- * caller a forty-line boolean expression. That is the shape this rule exists to remove, so
- * producing it would have been an own goal.
- *
- * How short is short depends on where the one call stands, and that is the second measure after
- * the span. A call that is a statement (its own expression, a `return`'s value, the initialiser
- * of a declaration) takes the body's statements as statements, one under the other, and three of
- * them still read as the caller's own work. A call in an expression (an argument, a property
- * value, a spread, a ternary arm, the body of a concise arrow) has to hold the whole body as one
- * term, and two statements is where that stops being a ternary and starts being a puzzle. So the
- * expression site keeps 2 statements and 5 lines and the statement site takes 3 and 7.
- *
- * Measured 2026-09-20: a flat 3 and 7 reported 77 sites, and reading fourteen of them found nine
- * that could not be spelled at the call site at all. `epochBindingKeys` is called inside a
- * `...spread`, `starterAuthority` and `presetAuthority` inside a `.map` arrow's object literal,
- * `bindsProject` and `isRegularFileDeny` inside a `.some` and a `.flatMap` arrow whose bodies are
- * expressions, `probeOutcomeStatus` inside an `.every`. Three of those bodies hold a `throw` or a
- * `try`, which an expression cannot hold at all. The dial was not wrong about the size; it was
- * wrong about where the lines would go.
- *
- * Ten things keep their name.
- *
- * A helper with two or more callers is shared, and this rule never sees it. An exported one is an
- * interface. A recursive one counts its own call, so it needs three references before it looks
- * single-caller, and never reaches two. A type guard, `function complete(b): b is Complete`, is
- * not two lines of code with a name on it: the name is where the narrowing is declared, and
- * inlining the body gives the caller a boolean and no narrowed value.
- *
- * And a caller with no room keeps it. Two limits measure the function the inlined lines would
- * land in: 115 nonblank lines, which `tools/loc/source-policy.ts` holds, and cyclomatic
- * complexity 22, which v1's `5bc9988:tools/loc/complexity-policy.ts` refused and which no v2 gate
- * holds; v2 never copied that file. A caller already at either has no spelling that also absorbs a
- * helper without growing past it. The complexity limit stays as this rule's own: without it, the
- * rule reported two helpers in `tools/wri/folds.ts`, `records` and `refusals`,
- * each a named computation whose caller already measures 22 or more. Without the check such
- * findings arrive after the push gate has already run; the arithmetic is cheap and the reader of the report should not have to do it.
- *
- * That room is spent rather than only measured, because a caller can have room for either of two
- * helpers and not for both. `settle` in `5bc9988:src/builder/verifier-workshop.ts` measured 19 and
- * called two one-statement helpers, one of them a null guard worth two branches; each report fitted on
- * its own and following both took the function to 22 against a ceiling of 21. Each report now
- * charges the caller for what it would land there, so the second helper reads as a caller with no
- * room, which is what it is.
- *
- * And a call that is one term among peers in an `&&` or `||` chain keeps its name, because the same
- * argument applies a second time. `5bc9988:tools/outcome/builder-execution-current.ts` holds twenty
- * predicates of one shape (`validBackend`, `currentInvocation`, `findingDelta`,
- * `currentFailedCalls`) each read once, each an operand of a long `&&`. They are a vocabulary the
- * chains are written in, not helpers hiding two lines, and substituting one body into a thirty-term
- * chain lengthens the caller and leaves that one term spelled differently from its nineteen peers.
- *
- * The peers are the whole reason, so the exemption asks for them: three operands in the chain the
- * call sits in. `x ?? fallback()` and `a || b` have none: there is one other term, it is usually a
- * literal, and nothing is being spelled consistently with anything. Measured 2026-09-20, before
- * this line existed: the exemption covered 15 sites, of which 8 were chains of three or more and 7
- * were not, including `defaultOpenRouterModel`, which sat behind `deps.model?.trim() || …` and had
- * had exactly one caller since it was written.
- *
- * And a body that opens a `using` resource keeps its name, whatever its size, because `using`
- * disposes at the end of the block that declares it. `admissionPayload` in
- * `5bc9988:src/run/admission.ts` opens the controller ledger, reads one string and returns,
- * closing it there; the same three lines in `readAdmission` would hold the ledger open for the
- * rest of that function. That is not the same program, and no reader of the report would be told
- * so.
- *
- * And two bodies keep their name because there is no legal spelling of them at a call site, which
- * is a stronger reason than size. A body that catches: JavaScript has no try expression, so
- * `symlinkText` in `0732a6118:src/verify/exact-read-attestation.ts` (a decoded link or a thrown
- * refusal) becomes a `let`, a try and a catch inside a loop that already holds two of each. And
- * a body that leaves before its last statement, because a `return` belongs to the function that declares it:
- * the same line at a call site returns from the caller, so the inline is a restructuring into a
- * local and one assignment per escape rather than a relocation of the lines. `leafCategory` in
- * `5bc9988:src/correctness-bundle/draft-summary.ts` is three `if (…) return a;` lines and a final
- * `return`, and none of its spellings inside `boundedDraftSummary` is the same program moved.
- *
- * That second one was measured as the chain it happened to be, and reading it back a day later
- * showed the chain was the shape and not the reason. `const t = value.trim(); if (t === "")
- * return null; return t.length;` is no more relocatable and the chain predicate admitted it. The
- * first justification named `ana/no-tangled-ternary` and `ana/no-arms-differing-in-one-term` as
- * the two rules that refuse every expression form of a decision chain, which was true and made
- * this refusal only as durable as its two siblings; the census that proposed retiring one of them
- * is what sent us back to it. The one call in tail position is the exception the wider predicate
- * earns: `return helper(x)` takes the escapes exactly as written. The size dial cannot see any of
- * this, and it was found by reading the twenty-six sites the dial produced.
- *
- * And a name read as a value keeps it, because there is no call site to put the lines at. A member
- * of a rule table, a default parameter value, a predicate handed to `.filter`: `knownDemandGap`
- * sits in the `FindingRule` array in `epoch-review-findings.ts`, and the only spelling that
- * removes the name puts an anonymous arrow in the table. The message would be asking for
- * something the site does not have.
- *
- * There is no fix, and one was written and thrown away. Substituting the arguments into a
- * one-`return` body is mechanical enough (the parameter ranges come from the scope analysis, so
- * even an identifier inside a string is safe) but the result is a longer expression where the
- * author wanted a statement, and the caller ends up holding the same density under a different
- * shape. What this rule asks for is a caller that reads as one piece of work, and where the lines
- * go, what the local is called once it is no longer a return value, and whether a guard clause
- * belongs there instead are the reader's decisions. A fixer would have produced, at three hundred
- * sites, exactly the shape the rule exists to remove.
+ * Flags a non-exported module-scope function or arrow helper called from a single call site whose
+ * body fits within the call site's budget (`SHORT_BODY`/`SHORT_SPAN` at expression sites,
+ * `STATEMENT_BODY`/`STATEMENT_SPAN` at statement/tail sites) without pushing the enclosing caller
+ * past `CALLER_LINES` (115 nonblank lines) or `CALLER_COMPLEXITY` (22 branches). Type predicates,
+ * helpers using `using` or `try`, helpers with early `return`s outside tail position, and calls
+ * standing as one term among three or more peers in a boolean chain (`CHAIN_PEERS`) are exempt.
+ * There is no fix.
  */
 export const noSingleCallerHelperRule = defineRule({
   meta: {
@@ -196,23 +94,14 @@ export const noSingleCallerHelperRule = defineRule({
       }
       // `value is T` and `asserts value` declare a narrowing the call site cannot restate.
       if (value.returnType?.typeAnnotation.type === "TSTypePredicate") return null;
-      // Statements alone are the wrong measure: a validator whose whole body is one 15-line
-      // `return a && b && c && …` is one statement, and inlining it gives the caller a forty-line
-      // boolean expression. What the rule is about is a name standing in front of a couple of
-      // lines, so the lines have to be counted too.
       if (
         context.sourceCode.getText(value).split("\n").length > (site === "term" ? SHORT_SPAN : STATEMENT_SPAN)
       ) {
         return null;
       }
-      // A `declare function` has no body, so there is nothing to inline into the caller.
       if (value.body === null) return null;
-      // An expression-bodied arrow is already at the call site's level of detail: one term.
       if (value.body.type !== "BlockStatement") return 1;
-      // A `using` declaration disposes at the end of the block holding it, so the same lines in
-      // the caller keep the resource open for everything the caller does after the call.
-      // `admissionPayload` in `5bc9988:src/run/admission.ts` opens the controller ledger and closes
-      // it at its return; inlined, it would hold the ledger for the rest of `readAdmission`.
+      // A `using` declaration disposes at the end of its enclosing block, and JavaScript has no try expression.
       if (
         value.body.body.some(
           (statement) => statement.type === "VariableDeclaration" && statement.kind.endsWith("using"),
@@ -220,42 +109,15 @@ export const noSingleCallerHelperRule = defineRule({
       ) {
         return null;
       }
-      // JavaScript has no try expression, so a body that catches is the one shape the call site
-      // cannot spell: `symlinkText` in `0732a6118:src/verify/exact-read-attestation.ts` returns a
-      // decoded link or throws a refusal, and the same lines in its caller are a `let`, a try and a catch
-      // inside a loop that already holds two of each.
       if (value.body.body.some((statement) => statement.type === "TryStatement")) return null;
       if (site !== "tail" && escaping.has(value)) return null;
       return value.body.body.length;
     }
 
-    /** The functions control leaves before their last statement, filled as the linter walks.
-     *
-     *  A `return` belongs to the function that declares it. Standing at a call site, the same
-     *  line returns from the caller instead, so the inline is a restructuring and not a
-     *  relocation: the caller has to invent a local and turn each escape into an assignment to
-     *  it. The one exception is a call that is itself the caller's `return`, where the escapes
-     *  land exactly as written and nothing follows them; `cost` reads that and passes it in.
-     *
-     *  Written first as the narrower thing in front of us, a body of `if (…) return a;` lines
-     *  and a final `return z`, which is what `leafCategory` in
-     *  `5bc9988:src/correctness-bundle/draft-summary.ts` is,
-     *  and justified by two of this repository's own rules refusing every expression form of
-     *  one: `ana/no-tangled-ternary` on a nested ternary and `ana/no-arms-differing-in-one-term`
-     *  on one assignment per arm. Both were true and neither was the reason. `const t =
-     *  value.trim(); if (t === "") return null; return t.length;` relocates no better and the
-     *  narrow predicate admitted it, and a refusal that rests on two sibling rules is only as
-     *  durable as the shorter-lived of them. */
+    /** Functions whose control flow leaves before their last statement, which relocate unchanged only in tail position. */
     const escaping = new Set<ESTree.Node>();
 
-    /** Mark the function a `return` leaves, when it is not that body's last statement.
-     *
-     *  Read from the `return` upwards rather than from the body down. Walking down means
-     *  enumerating every statement type that can hold one (block, `if`, five loops, `switch`,
-     *  a label) and being wrong about whichever was forgotten; upwards, the first block that
-     *  stands directly under a function is the body, and the node this walk came through is its
-     *  statement. A `return` inside a nested function stops at that function's own body, which
-     *  is where it belongs. */
+    /** Mark the enclosing function when a `return` is not that function body's last statement. */
     function noteEscape(node: ESTree.Node): void {
       let child: ESTree.Node = node;
       let holder: ESTree.Node | null = node.parent;

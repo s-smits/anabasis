@@ -2,15 +2,6 @@
  * Whether a login is open or closed, read from one reading of `readLogins`. Closed means a window is
  * used up or refused, until that window's reset; two closed windows mean the later reset. A login
  * that could not be read is neither, since a read that failed says nothing of its limits.
- *
- * Each full `usage` keeps who it found closed and until when in its snapshot, and a picker (`keep`,
- * `fresh`) asks the provider only of the rest, since a reading may cost a one-token request a login
- * and a keeper with nowhere to go reads every ten minutes through a wait that can last days
- * (the operator's choice). A cached closure expires at its reset or after 45 minutes, whichever
- * comes first, so a keeper can find credit restored early without another full `usage`. Only the
- * last snapshot counts. A move spends on the login it takes, so a picker still reads it afresh.
- * `--open` and `--closed` narrow what `usage` lists, and what it keeps and forecasts still covers
- * every login.
  */
 import { MINUTE_MS } from "#src/meta/clock.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";

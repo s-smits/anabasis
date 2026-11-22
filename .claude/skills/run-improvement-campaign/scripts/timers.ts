@@ -4,21 +4,6 @@
  * firing's account of itself.
  *
  *   bun .claude/skills/run-improvement-campaign/scripts/timers.ts <transcript.jsonl | folder> ... [--since <ISO time>]
- *
- * It reads Claude Code transcripts (a session's `.jsonl`, or every one under a folder) and prints one
- * line for each timer `CronCreate` made: its id, its schedule, how often it fired and how its firings
- * ended. A firing **changed** something where its turn edited a file, appended to one, ran a verb
- * that moves a run, a pull request or an investigation, or started an agent or a timer (`CHANGE`,
- * `ACTS`); it was **quiet** where it changed nothing and its last message was shorter than 400
- * characters. The split is a reading of the turn's tool calls and so an estimate, never a record: a
- * single `>` redirect, `sed -i`, `mv` and `trash` are not matched, so their firings can read quiet.
- * A timer is listed where it fired or was made from `--since` on; its creation is read from any time,
- * and one whose creation is not in the transcripts is of kind unknown, in neither total.
- *
- * The cycle ledgers asked every firing to say whether it was useful and when it should have fired.
- * Few rows said the first and none the second, while about half of the recurring timers' firings
- * in the transcripts were quiet, so this counts the firings from the transcripts instead.
- * A session copied between logins repeats its past, so each line counts once, by its `uuid`.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { closeSync, openSync, readdirSync, readSync, realpathSync, statSync } from "#src/meta/filesystem.ts";

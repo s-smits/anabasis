@@ -1,104 +1,12 @@
 /**
- * The Harness Builder's controller: one campaign run by its log, move after move.
- * Launches, dry runs and continuations require the executing Bun to match this tree's exact
- * packageManager pin and engines.bun, before opening a campaign, keeping a receipt or recovery.
+ * Campaign controller (`tools/d2/harness-builder.ts`): drives a campaign from its append-only log
+ * until it reaches a terminal state (`budget`, `stop`, `exam`, `no-room`, `environment`, `operator`,
+ * or `finished` after `IDLE` consecutive Builder conversations without a campaign move) or completes
+ * `--moves`. Requires the executing Bun to match `packageManager` and `engines.bun` in `package.json`.
  *
  *   bun tools/d2/harness-builder.ts --name queues --prompt "<the domain, in the operator's words>" \
  *     --solver claude/claude-sonnet-5-5 --budget 60 --builder claude/claude-opus-5-5 \
  *     --examiner claude/claude-opus-5-5 --reviewer claude/claude-opus-5-5 [--moves 1] [--dry-run] [--hitl]
- *
- * A campaign is a loop of moves over one log. Rather than a session carrying each one by hand,
- * reading the view, choosing a move by a skill's walk and typing the command with its flags, this
- * command does that. It reads the log, asks move 7 for the one
- * move that follows (`decide`, `src/campaign/decide.ts`), prints it with its reason, makes it by
- * the command an operator would run, and reads the log again, until the campaign ends or `--moves`
- * are made. It chooses nothing of its own: the table chooses, and every refusal is the command's.
- *
- * **The Builder makes the moves after set-up.** The host drafts and reads the exam, sets the tasks
- * apart, makes the promotion the rule names and the comparison it owes (`converse`), and from there
- * one live Builder conversation makes the moves through its campaign tools: an Examiner session
- * and a comparison (`campaign-actions.ts`). The host releases the practice owed and makes the
- * promotion a step names, and every condition above stays the host's at each action. A conversation that ends at its own
- * limits is followed by another on the Builder's notes, and so is one the Builder ends with
- * `finish`, until three in a row have made no campaign move (`finished`). Every ending the table
- * names ends a live conversation too, a lack of room among them, since as advice a Builder could
- * buy an Examiner session past its supply patience. An older log whose host made every move
- * (`--no-builder-led`) runs led like any other.
- *
- * **A campaign opens from a prompt.** The prompt and who solves are part of what it runs by, its
- * first move is the Examiner's draft of the exam, and from there every command opens the campaign
- * by its name alone, over the exam its log holds. Every check of a drafted exam is its author's
- * own computation, and the launch is the operator's word for each: the exam is read with every
- * check its author decides admitted, the objective among them (`--admit-authored`), and frozen
- * where nothing else is at fault. Under `--hitl` they wait for `--admit`.
- *
- * What it runs each move as:
- *
- *   draft the exam      tools/d1b/draft.ts, under `d-N`, for a campaign that opened from a prompt;
- *                       a draft that stands keeps its reading, and is frozen unless `--hitl`
- *   read the exam       tools/c/accept.ts, for the checks a reading under `--hitl` left
- *                       unadmitted (`planOf`, `opening.ts`)
- *   set the tasks apart tools/d2/prepare.ts
- *   a conversation      tools/d2/session.ts with the campaign's tools, under `b-N`, where the
- *                       table names a Builder or an Examiner session (`converse`)
- *   a comparison        tools/d2/checkpoint.ts, under `g-N`; one that began goes on under its id
- *                       and its own terms
- *   a promotion         tools/d2/promote.ts `--yes`
- *
- * **What it runs by** is recorded once, as `campaign.opened`: its project (`--project`, required at
- * the opening: `projectOf`, `campaign.ts`), the total budget in dollars and the
- * reserve one solve is held at (`--budget`, `--reserve`), the
- * campaign's improvement patience and supply patience (`--patience`: moves without a gain, and
- * readings that left nothing to gain, it bears in a row before it ends, six by default while the system is
- * built, since a patience of three ends campaigns before their tasks are measured), who sits in
- * each seat, and the terms of its moves as a command last named them
- * (`TERMS`, `src/campaign/opening.ts`): a session's limits, a comparison's size, the practice tasks.
- * A later run that names nothing runs by the record, and one that names another records it again:
- * these are the operator's conditions, and a comparison logs its own terms at its start. The
- * setting (who solves, a solve's deadline and model turns, the scored tasks and the solves a side)
- * is recorded once, as the first run that is no dry run starts (`campaign.setting`, `settingOf`),
- * and every command refuses another.
- *
- * **The budget is one total.** Each move's cap is what is left of it:
- * the total less every billed dollar the log holds, and where less is left than one solve is held
- * at, the campaign ends on its budget. **What it risks** is said as it opens: what one reading of
- * its target can show and its per-comparison rate (`sizeLines`, `src/kernel/size.ts`), and a paid
- * campaign whose target is too small for a step at its level is refused there.
- *
- * **A campaign runs unattended** (the operator's choice): it admits every check
- * its author's own computation decides, a drafted exam's objective among them, freezes an exam whose reading holds no fault and promotes a harness a comparison
- * against the reference read as a step. Under `--hitl`, the operator in the loop, kept by the opening until
- * `--no-hitl`, all three wait for the operator's word and a promotion stops the command. Going on past the stop rule takes `--past-stop "<why>"` either way.
- *
- * **A word the operator leaves** (`word.ts`) is read at each move's boundary: a stop
- * ends the campaign there, other tasks are written first, and another total is what the campaign
- * runs by from that move on. A word changes nothing in the move that was running when it came.
- *
- * **Endings.** A campaign ends on its budget, on the stop rule, on an exam that was not accepted,
- * on tasks that could not be made to leave room, on its environment, on the operator's word, or
- * once three of its Builder's conversations in a row made no campaign move (`idleOf`), and
- * its log's last event says which (`campaign.ended`). With `--handover <dir>` it then writes what
- * it hands over there: the reference harness as a directory that stands by itself, the public rules
- * and the closing report (`close.ts`). A move that threw after it had begun is the
- * environment's ending, and run again the command goes on from the log; one whose session is on
- * record as crashed is the provider's failure, which the campaign goes on from (`goesOn`). A
- * session a stopped run left open is ended on record as killed before the next run's first move
- * (`endCut`), keeping its last practised harness where the saved state opens. A move refused before
- * it began is no ending: the refusal is printed, nothing kept.
- *
- * A move is recorded as it begins (`campaign.move`), with the code of the table's row that chose it and its
- * reason, so the log holds what was decided before what was done. Each run of the command keeps a receipt beside the
- * log, `launch-run-<n>.json`: its flags, the commit it stands at and the load it started under
- * (`keepReceipt`, `tools/runs/receipt.ts`).
- *
- * **A solve waits for the host.** Each solve of a Builder session or a comparison starts once the
- * host's one-minute load is at or under its cores, and a wait is on record (`queued`, `host.ts`).
- * `--loaded` starts them all the same.
- *
- * `--dry-run` prints the next move and makes none. Under a rehearsal's seats (`tools/runs/`) the
- * same loop runs with a script in each model seat, no budget and no model.
- *
- * Not run here: see `campaign.ts`.
  */
 import { backends } from "#src/agent/backends/models.ts";
 import { decide } from "#src/campaign/decide.ts";

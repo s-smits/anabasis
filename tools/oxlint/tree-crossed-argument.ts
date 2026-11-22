@@ -1,14 +1,5 @@
 /**
  * A call into another file whose arguments are named for one another's parameters, crossed.
- *
- * `ana/no-transposed-argument` reads this shape where the callee is declared in the calling file,
- * since an oxlint rule sees one file and its plugin API offers no other module's declarations. Most
- * calls go to an import, so this scan reads the rest: a call by a named or namespace import of a
- * top-level function or `const` function, `new` of an imported class (its constructor's
- * parameters), and a call of a method of an imported object literal (`paths.relative(a, b)`). What
- * counts as crossed is the rule's own reading (`crossings`, `tools/oxlint/ana/shared/crossed.ts`),
- * so the two never disagree about a name. A call within one file is the rule's and is not read
- * here. A name declared twice in its file (overloads) has no one parameter list and is skipped.
  */
 import * as ts from "typescript5";
 import { crossings } from "./ana/shared/crossed.ts";

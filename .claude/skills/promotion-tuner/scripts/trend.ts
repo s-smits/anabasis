@@ -3,18 +3,6 @@
  * Windowed campaign trend report: compares runs opened in the most recent window of days against
  * preceding windows, pack by pack, across supply, climb, holding, honesty, and economy metrics.
  * Read-only diagnostic tool (`AGENTS.md` section 1); it launches no solves and makes no decisions.
- *
- * Each campaign is folded via `.claude/skills/main/runs.ts` and bucketed by opening timestamp.
- * Earlier windows retain only settings present in the newest window for that pack (unless
- * `--any-setting` is passed), and every run in a block is truncated to a common elapsed-hour
- * horizon (`atHorizon`, floored at `FLOOR` hours) so incomplete recent runs do not bias comparisons
- * against older completed runs. Differences between windows are evaluated with a campaign-level
- * permutation test (`shiftOf`, `main/stats.ts`) at `LEVEL` (0.05).
- *
- * To check whether faster promotion rates reflect genuine improvement rather than overfitting to
- * comparison draws, `guardOf` pairs promotion speed against starter confirmation rates and
- * post-promotion task win rates, and `--bench` appends external benchmark transfer scores
- * (`outside.ts`). Output contains aggregate counts and pack names only.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { formatOf, MISSING, printed } from "#skills/main/print.ts";

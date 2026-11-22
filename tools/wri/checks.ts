@@ -5,18 +5,6 @@
  * belong to: the check program on disk, the one the rows were read at and the frozen one.
  *
  *   bun tools/wri/wri.ts reader checks --log <log | campaign folder | name>
- *
- * Lanes 1 and 5 read it first. Without it a session finds the exam's files by hand and sets each
- * `checker.read` row beside its `brief.json` entry, in many calls, and `REFUSALS BY CHECK` gives one
- * count a check and no split by side, by who asked or by version.
- *
- * The rows are the last `checker.read` at the frozen check program (`frozenChecker`), or the last
- * reading where none is frozen. A solve is counted under the program of the last reading before it
- * started, so an answer judged under an earlier draft is counted apart, as is one judged before any
- * reading. A refusal by several checks counts under each (`refusalsByCheck`, which `REFUSALS BY
- * CHECK` reads), so a column can sum past the answers. What stands is `standsOf`'s, a label over the
- * ruling (rule 8). A check the verdicts name and the reading does not gets a row of its own, marked.
- * It prints counts; no row says which check to read.
  */
 import { frozenChecker } from "#src/kernel/acceptance.ts";
 import type { LogEvent } from "#src/kernel/log.ts";

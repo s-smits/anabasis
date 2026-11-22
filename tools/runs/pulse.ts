@@ -40,7 +40,7 @@ import { degradations, traceKind, tracesIn } from "#src/kernel/trace.ts";
 import { billedAll } from "#src/kernel/meter.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { DAY_MS, HOUR_MS } from "#src/meta/clock.ts";
-import { existsSync, readFileSync, rmSync, statfsSync, statSync } from "#src/meta/filesystem.ts";
+import { existsSync, readFileSync, rmSync, statfsSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -86,12 +86,14 @@ import {
 import {
   ARCHIVE,
   archived,
+  fileStat,
   HERE,
   isCampaign,
   logEvents,
   Misused,
   openComparisons,
   processes,
+  readLog,
   type Run,
   runs,
   writers,
@@ -208,7 +210,6 @@ const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
  *  its starter comparison reads, a checker read with a fault and a freeze despite one. They came a
  *  reader pass after their event, and the first again at every milestone until that comparison. */
 const OWN = ["PROMOTION UNCONFIRMED", "CHECKER READ WITH FAULTS", "FROZEN DESPITE FAULTS"];
-/** The events after which a reading is said again. */
 /** The comparisons and sessions a trigger's detail names (`g-2`, `b-3`, `x-1`), not a task (`x-1-3`). */
 const NAMED = /\b[bgx]-\d+(?![-\d])/g;
 /** A load wait a person moves a run for (`AGENTS.md`, section 10, condition 4). */
@@ -561,15 +562,19 @@ async function look(
       names.length > 0
         ? names.some((name) => run.name.includes(name))
         : life.writing ||
+          life.kept ||
           before?.open === true ||
           (before?.moments?.length ?? 0) > 0 ||
           (before === undefined &&
             !unlaunchedSeed(run) &&
-            Date.now() - statSync(run.path).mtimeMs < RECENT_MS &&
+            Date.now() - (fileStat(run.path)?.mtimeMs ?? 0) < RECENT_MS &&
             logEvents(run.path).at(-1)?.kind !== ENDED),
     )
     // The bytes are read after the events, so a moment's size covers it.
-    .map((each) => ({ ...each, events: logEvents(each.run.path), size: statSync(each.run.path).size }));
+    .flatMap((each) => {
+      const read = readLog(each.run.path);
+      return read === null ? [] : [{ ...each, ...read }];
+    });
   if (store !== null) {
     const tree = resolve(import.meta.dir, "..", "..");
     const asks = chosen.map(({ run, before, events, size }) => ({
@@ -748,7 +753,9 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
   let [promoted, compared, quiet] = [0, 0, 0];
   for (const run of runs()) {
     const open = writers(run, running).length > 0;
-    const age = now - statSync(run.path).mtimeMs;
+    const at = fileStat(run.path)?.mtimeMs;
+    if (at === undefined) continue;
+    const age = now - at;
     // A seed no launch went on from is a rehearsal's copy, and its promotions are its source's, shown
     // while a process writes it.
     if (!values.all && !onStatus(run, open ? "open" : "closed", age)) {
@@ -779,7 +786,8 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
   // This machine's own: a host's copy is said by that host's `status`, as its rows are.
   const archive = archived().filter((run) => run.archived === HERE && !unlaunchedSeed(run));
   const newest = archive
-    .map((run) => ({ run, at: statSync(run.path).mtimeMs }))
+    .map((run) => ({ run, at: fileStat(run.path)?.mtimeMs }))
+    .filter((each): each is { run: Run; at: number } => each.at !== undefined)
     .toSorted((one, other) => other.at - one.at)
     .slice(0, NEWEST)
     .map(({ run, at }) => ({

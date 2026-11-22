@@ -187,7 +187,7 @@ export function planOn(events: readonly LogEvent[], values: Asked = {}): Plan {
   return planOf(
     events,
     {
-      unprepared: !events.some(({ kind }) => kind === "task.proposed"),
+      unprepared: opening?.prompt == null && !events.some(({ kind }) => kind === "task.proposed"),
       level: Number(term("level", COMPARISON_OPTIONS.level.default)),
       target: target === undefined ? undefined : Number(target),
       pastStop: values["past-stop"],

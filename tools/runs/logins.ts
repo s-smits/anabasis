@@ -174,12 +174,13 @@ export function noLogin(env: Env, allowed: readonly string[]): string | null {
   return `no login here: set ${keys} in the process environment, or in a file named with bun --env-file=<file>`;
 }
 
-/** The logins a run may take: those `ANA_LOGINS` names, or every login `env` holds. */
+/** The logins a run may take: those `ANA_LOGINS` names (empty when set empty), or every login `env`
+ *  holds when unset. */
 export function allowedLogins(env: Env): string[] {
   const named = env.ANA_LOGINS?.split(",")
     .map((login) => login.trim())
     .filter((login) => login !== "");
-  return named === undefined || named.length === 0 ? loginsIn(env) : named;
+  return named ?? loginsIn(env);
 }
 
 /** Whether a run goes on the plain `CLAUDE_CODE_OAUTH_TOKEN` alone: no numbered login is allowed

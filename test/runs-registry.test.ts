@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../
 import { tmpdir } from "../src/meta/os.ts";
 import { capturedSpawn, runtimeProcess } from "../src/meta/process.ts";
 import { join } from "../src/meta/path.ts";
-import { BUILDER, processes, type Run, writers } from "../tools/runs/registry.ts";
+import { BUILDER, campaignsIn, processes, readLog, type Run, writers } from "../tools/runs/registry.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ana-runs-registry-test-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -75,5 +75,19 @@ describe("the processes that may write a log", () => {
       writer.kill();
       other.kill();
     }
+  });
+
+  it("ignores plain files beside campaign directories and handles vanished logs without ENOTDIR or ENOENT", () => {
+    const dir = mkdtempSync(join(root, "plain-"));
+    writeFileSync(join(dir, "README.md"), "not a directory\n");
+    expect(campaignsIn(join(dir, "README.md"), dir)).toEqual([]);
+    const log = join(dir, "c1", "log.jsonl");
+    mkdirSync(join(dir, "c1"), { recursive: true });
+    writeFileSync(log, '{"at":"2026-10-15T12:00:00.000Z","kind":"campaign.opened","data":{}}\n');
+    expect(campaignsIn(dir, dir).map(({ name }) => name)).toEqual(["c1"]);
+    const present = readLog(log);
+    expect(present?.events).toHaveLength(1);
+    expect(present?.size).toBeGreaterThan(0);
+    expect(readLog(join(dir, "vanished", "log.jsonl"))).toBeNull();
   });
 });

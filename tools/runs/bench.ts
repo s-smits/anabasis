@@ -183,7 +183,7 @@ export function stepsOf(plan: Plan): Step[] {
     // records, so that an arm that never started says so.
     on(
       `roll ${label}, then ${starter}, on login ${login}`,
-      `nohup sh -c ${quoted(`${reference} --yes; ${bare} --yes`)} >> ${rolled} 2>&1 < /dev/null & echo "rolling in process $!, which writes ${rolled}; the sitting's status names the arm"`,
+      `nohup sh -c ${quoted(`${reference} --yes && ${bare} --yes`)} >> ${rolled} 2>&1 < /dev/null & echo "rolling in process $!, which writes ${rolled}; the sitting's status names the arm"`,
     ),
   ];
 }

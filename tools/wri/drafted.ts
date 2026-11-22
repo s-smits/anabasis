@@ -149,14 +149,16 @@ export function draftRows(events: readonly LogEvent[]): string[] {
 }
 
 /** The archived campaigns drafted from the same prompt, each with its standing draft's counts. */
-function siblingRows(prompt: string, archive: string, own: string): string[] {
+export function siblingRows(prompt: string, archive: string, own: string): string[] {
   if (!existsSync(archive)) return [`siblings: no archive at ${archive}`];
   const digest = digestOf(prompt);
-  const logs = readdirSync(archive).flatMap((host) =>
-    existsSync(join(archive, host))
-      ? readdirSync(join(archive, host)).map((name) => join(archive, host, name, "log.jsonl"))
-      : [],
-  );
+  const logs = readdirSync(archive, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .flatMap(({ name: host }) =>
+      readdirSync(join(archive, host), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map(({ name }) => join(archive, host, name, "log.jsonl")),
+    );
   const rows = logs.flatMap((log) => {
     if (log === own || !existsSync(log)) return [];
     // Only the drafting lines are parsed: an archived log runs to 90 MB.

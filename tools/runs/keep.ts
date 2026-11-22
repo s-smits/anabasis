@@ -33,6 +33,8 @@
  * keeper is this verb under `--here` (`KEEPING`), which keeps the run in this process.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
+import { endedOf } from "#src/kernel/reports.ts";
+import { nonRetryableProvider } from "#src/kernel/solve.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -189,6 +191,18 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     const logins = await pool();
     if (turn === "move" && current !== undefined && state.kind === "waiting") {
       spentUntil.set(current, state.wait.until);
+    }
+    // A permanent provider refusal (disabled subscription, missing credits, unconfigured provider)
+    // never clears on retry, so mark the login spent and move to another roomy login instead of
+    // restarting into the same failure.
+    const ended = endedOf(events);
+    if (
+      turn === "continue" &&
+      current !== undefined &&
+      ended?.ending === GOES_ON &&
+      nonRetryableProvider(ended.why)
+    ) {
+      spentUntil.set(current, Number.POSITIVE_INFINITY);
     }
     for (const [login, at] of spentUntil) {
       if (at <= now) spentUntil.delete(login);

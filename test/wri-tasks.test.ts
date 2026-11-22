@@ -3,12 +3,13 @@
 // lane 14's grade rows. None may print an outcome, a tally, a reading, a hidden value or an unscored task.
 import { describe, expect, it } from "bun:test";
 import { append } from "../src/kernel/log.ts";
-import { mkdirSync, mkdtempSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, mkdtempSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
+import { siblingRows } from "../tools/wri/drafted.ts";
 import { inputPaths, VALUE_BYTES } from "../tools/wri/tasks.ts";
 
 const TRIS = { volume_L: 1, systems: ["Tris"] };
@@ -102,6 +103,18 @@ describe("the scored tasks", () => {
     expect(out).toContain('"load":"DRAFT-INPUT"');
     expect(out).not.toContain("in the pack");
     expect(out).not.toContain("HIDDEN-VALUE");
+  });
+
+  it("ignores plain files in the archive root and inside host folders when scanning siblings", () => {
+    const archive = join(dir, "sibling-archive");
+    mkdirSync(join(archive, "here", "camp-a"), { recursive: true });
+    writeFileSync(join(archive, "README.md"), "not a host folder\n");
+    writeFileSync(join(archive, "here", "notes.txt"), "not a campaign folder\n");
+    const siblingLog = join(archive, "here", "camp-a", "log.jsonl");
+    append(siblingLog, "campaign.opened", { prompt: "shared prompt" });
+    const rows = siblingRows("shared prompt", archive, join(archive, "here", "other", "log.jsonl"));
+    expect(rows[0]).toContain(": 1");
+    expect(rows[1]).toContain("here/camp-a: no standing draft");
   });
 });
 

@@ -39,7 +39,7 @@ function judgedIn(store: string): Map<string, Set<string>> {
 }
 
 /** The labels in `store` whose reference and Starter are both judged and that have no table yet. */
-function readsDone(store: string): string[] {
+export function readsDone(store: string): string[] {
   const judged = judgedIn(store);
   return [...judged.keys()]
     .filter((arm) => arm.startsWith("starter-"))
@@ -47,7 +47,11 @@ function readsDone(store: string): string[] {
     .filter((label) => {
       const own = judged.get(label);
       const starter = judged.get(`starter-${label}`) ?? new Set<string>();
-      const done = own !== undefined && own.size > 0 && [...own].every((task) => starter.has(task));
+      const done =
+        own !== undefined &&
+        own.size > 0 &&
+        own.size === starter.size &&
+        [...own].every((task) => starter.has(task));
       return done && !existsSync(join(store, "scored", `${label}.txt`));
     })
     .toSorted();

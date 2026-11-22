@@ -242,6 +242,38 @@ describe("a keeper's looks, scripted", () => {
     expect(uncounted.state.acted).toEqual([]);
     expect(uncounted.state.asked).toBe(0);
   });
+
+  it("rotates off a login permanently after a non-retryable provider ending, while retrying transient ones", async () => {
+    for (const otherKeeper of [true, false]) {
+      const dead = scripted();
+      dead.state.open = false;
+      dead.state.otherKeeper = otherKeeper;
+      dead.state.events = [
+        event("campaign.ended", {
+          ending: "environment",
+          why: "3 sessions in a row crashed (disabled Claude subscription access)",
+        }),
+      ];
+      await dead.look(NOW);
+      expect(dead.state.acted).toEqual(["start 3"]);
+      // Even a week later, the permanently dead login is not taken again.
+      dead.state.acted = [];
+      dead.state.pool = ["2"];
+      await dead.look(NOW + 168 * HOUR);
+      expect(dead.state.acted).toEqual([]);
+    }
+    const transient = scripted();
+    transient.state.open = false;
+    transient.state.otherKeeper = true;
+    transient.state.events = [
+      event("campaign.ended", {
+        ending: "environment",
+        why: "3 sessions in a row crashed (fetch failed)",
+      }),
+    ];
+    await transient.look(NOW);
+    expect(transient.state.acted).toEqual(["start 2"]);
+  });
 });
 
 describe("going on with a live run after a pause", () => {

@@ -9,10 +9,11 @@ import type { JsonObject } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { join } from "#src/meta/path.ts";
 import { liveOf, payerOf, seatsIn } from "../tools/runs/live.ts";
-import { asGathered, capOf, startRefusal } from "../tools/runs/logins.ts";
+import { allowedLogins, asGathered, capOf, startRefusal } from "../tools/runs/logins.ts";
 import type { Host } from "../tools/runs/host-config.ts";
 import { leastOccupied } from "../tools/runs/placement.ts";
 import { packOf, type Run, runNamed } from "../tools/runs/registry.ts";
+import { decidedOn, planOn } from "../tools/runs/view.ts";
 
 describe("each login's live runs, on every host", () => {
   it("leaves a host uncounted whose answer is no list of records with logins", () => {
@@ -249,5 +250,29 @@ describe("the machines a kept harness's programs run on", () => {
       expect([place, foreignHead(head, placeOf(place))]).toEqual([place, why]);
     }
     expect(() => placeOf("windows-x64")).toThrow("names no machine");
+  });
+
+  it("treats explicit empty ANA_LOGINS as an empty pool rather than widening to every login in env", () => {
+    const env = { CLAUDE_CODE_OAUTH_TOKEN2: "tok-2", CLAUDE_CODE_OAUTH_TOKEN3: "tok-3" };
+    expect(allowedLogins(env)).toEqual(["2", "3"]);
+    expect(allowedLogins({ ...env, ANA_LOGINS: "" })).toEqual([]);
+    expect(allowedLogins({ ...env, ANA_LOGINS: "  " })).toEqual([]);
+    expect(allowedLogins({ ...env, ANA_LOGINS: "3" })).toEqual(["3"]);
+  });
+
+  it("reads a prompt-opened campaign with a frozen exam and zero tasks as examine, not prepare", () => {
+    const at = "2026-11-22T00:00:00.000Z";
+    const events = [
+      { at, kind: "campaign.opened", data: { prompt: "statistical diagnostics", attended: false } },
+      { at, kind: "exam.drafted", data: { session: "d-1", draft: { tasks: [] } } },
+      { at, kind: "checker.read", data: { contract: "c1", checks: "k1", faults: [] } },
+      { at, kind: "contract.frozen", data: { contract: "c1", checks: "k1" } },
+    ] as const;
+    expect(planOn(events).unprepared).toBe(false);
+    expect(decidedOn(events).move).toBe("examine");
+    // A stored-pack opening (no prompt) still reports unprepared before tasks are proposed.
+    const packEvents = events.slice(1);
+    expect(planOn(packEvents).unprepared).toBe(true);
+    expect(decidedOn(packEvents).move).toBe("prepare");
   });
 });

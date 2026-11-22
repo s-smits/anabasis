@@ -21,7 +21,7 @@
 import { EXAMINE } from "#src/campaign/admission.ts";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
 import { lastReports } from "#src/kernel/reports.ts";
-import { existsSync, readdirSync, readFileSync, readlinkSync } from "#src/meta/filesystem.ts";
+import { existsSync, readdirSync, readFileSync, readlinkSync, statSync } from "#src/meta/filesystem.ts";
 import { gitText, mainTree, worktrees } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
@@ -84,9 +84,12 @@ export const harnessesOf = (repo: string, ...parts: readonly string[]) =>
 export const archiveOf = (repo: string, ...parts: readonly string[]) =>
   join(mainTree(repo), ARCHIVE, ...parts);
 
+/** Stat `path`, returning undefined when it has vanished (a concurrent retire or cleanup). */
+export const fileStat = (path: string) => statSync(path, { throwIfNoEntry: false });
+
 /** A folder's names in one order on every host: Linux's file systems list them unsorted, so the
  *  archive's campaigns would read in another order there than on macOS. */
-const listed = (dir: string) => (existsSync(dir) ? readdirSync(dir).toSorted() : []);
+const listed = (dir: string) => (fileStat(dir)?.isDirectory() === true ? readdirSync(dir).toSorted() : []);
 /** The campaign `name` whose folder lies in `dir`, read as `tree`'s. */
 const campaignIn = (dir: string, name: string, tree: string): Run => ({
   name,
@@ -240,6 +243,14 @@ export function logEvents(path: string): LogEvent[] {
     .split("\n")
     .slice(0, -1)
     .map((line) => parseJsonAs<LogEvent>(line));
+}
+
+/** A log's events and byte size, or null when the file vanished between listing and reading. */
+export function readLog(path: string): { readonly events: LogEvent[]; readonly size: number } | null {
+  if (fileStat(path) === undefined) return null;
+  const events = logEvents(path);
+  const size = fileStat(path)?.size;
+  return size === undefined ? null : { events, size };
 }
 
 /** Where a worktree stands: its commit, and whether it holds a change no commit names. */

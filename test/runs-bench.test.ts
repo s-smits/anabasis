@@ -1,7 +1,12 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { tmpdir } from "../src/meta/os.ts";
+import { join } from "../src/meta/path.ts";
 import { benchesOf } from "../tools/runs/host-config.ts";
 import { type Plan, settingsOf, stepsOf, walk } from "../tools/runs/bench.ts";
+import { readsDone } from "../tools/runs/bench-scores.ts";
 
+const scratch: string[] = [];
 const HOSTS = JSON.stringify([
   { name: "builder", ssh: "you@builder", tree: "~/src/anabasis", bun: "~/.bun/bin/bun" },
   { name: "bench", ssh: "you@bench", tree: "~/src/anabasis", bun: "~/.bun/bin/bun" },
@@ -39,6 +44,9 @@ const planOf = (over: Partial<Plan> = {}): Plan => ({
 
 const said = (plan: Plan) => stepsOf(plan).map(({ says }) => says);
 const text = (plan: Plan) => stepsOf(plan).map(({ command }) => command.join(" "));
+afterAll(() => {
+  for (const dir of scratch) rmSync(dir, { recursive: true, force: true });
+});
 
 describe("runs bench", () => {
   test("a run's pack chooses its benchmark, and a choice the list leaves open refuses before any machine is asked", () => {
@@ -90,6 +98,9 @@ describe("runs bench", () => {
     expect(steps[1]).toContain("you@builder");
     expect(steps[1]).toContain(String.raw`--for '\''linux-x64'\'' --python '\''3.12'\''`);
     expect(steps[6]).toContain("you@bench");
+    // Reference must succeed before the paired Starter rolls.
+    expect(steps[6]).toContain("--yes && ");
+    expect(steps[6]).not.toContain("--yes; ");
   });
 
   test("a read that waits looks again while an arm holds the machine, and one that does not refuses", () => {
@@ -111,5 +122,20 @@ describe("runs bench", () => {
     await expect(failing).rejects.toThrow("dry run of ref-a1: exit 1; none of the 2 steps after it ran");
     expect(ran).toHaveLength(5);
     expect(ran.some((words) => words.includes("--yes"))).toBe(false);
+  });
+
+  test("readsDone skips a label whose arms hold mismatched task counts and marks matching arms ready", () => {
+    const store = mkdtempSync(join(tmpdir(), "ana-bench-scores-"));
+    scratch.push(store);
+    const put = (arm: string, task: string) => {
+      mkdirSync(join(store, "judged", arm), { recursive: true });
+      writeFileSync(join(store, "judged", arm, `${task}.json`), "{}\n");
+    };
+    put("ref-a1", "t1");
+    put("starter-ref-a1", "t1");
+    put("starter-ref-a1", "t2");
+    expect(readsDone(store)).toEqual([]);
+    put("ref-a1", "t2");
+    expect(readsDone(store)).toEqual(["ref-a1"]);
   });
 });

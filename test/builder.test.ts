@@ -446,7 +446,9 @@ describe("a Builder session", () => {
     // the fail by another seat.
     const practised = s.sent[2] ?? "";
     expect(practised).toContain("t-1: fail (rejected). Solve s-3.");
-    expect(practised).toContain("passed 0 of 1. Under the harness you started from: 0 of 1.");
+    expect(practised).toContain(
+      "passed 0 of 1. Under the reference harness, which is also the harness you started from: 0 of 1.",
+    );
     expect(practised).not.toContain("Diagnosis");
     expect(practised).toContain("t-2: pass. Solve s-4.");
     expect(practised).toContain("1 practice solve left.");
@@ -577,17 +579,22 @@ describe("a Builder session", () => {
     append(log, SOLVE_STARTED, { solve: "s-ref", condition: refCond, task: "t-1" });
     append(log, "verdict", { solve: "s-ref", kind: "pass", answer: { answer: 6 }, objective: 1.5 });
     append(log, SOLVE_FINISHED, { solve: "s-ref", ending: { outcome: "pass" } });
-    const promote = tool({
-      name: "promote",
-      description: "Promote another harness.",
-      parameters: Type.Object({}),
-      execute: async () => {
-        append(log, "harness.promoted", { harness: promoted });
-        return text("Promoted.");
-      },
-    });
+    // As a campaign action does: the log records the promotion, and the session's reference follows
+    // it (`refreshCampaign`).
+    const promote = (bench: Bench) =>
+      tool({
+        name: "promote",
+        description: "Promote another harness.",
+        parameters: Type.Object({}),
+        execute: async () => {
+          append(log, "harness.promoted", { harness: promoted });
+          const { dir, harness } = bench.reference;
+          bench.reference = { dir, harness: { ...harness, digest: promoted } };
+          return text("Promoted.");
+        },
+      });
     await session(
-      { ...s.request, contract, campaign: () => ({ hook: () => "", tools: [promote] }) },
+      { ...s.request, contract, campaign: (bench) => ({ hook: () => "", tools: [promote(bench)] }) },
       s,
       s.walled,
     );
@@ -930,7 +937,7 @@ describe("a Builder session", () => {
               ending: { outcome: "fail", kind: "no-answer" },
             });
             append(log, "harness.promoted", { harness: harness.digest });
-            bench.reference = dir;
+            bench.reference = { dir, harness };
             return text("Promoted.");
           },
         }),
@@ -941,9 +948,11 @@ describe("a Builder session", () => {
       .of(BUILD_CALL)
       .flatMap(({ tool: name, text: told }) => (name === "practice" && isString(told) ? [told] : []));
     const started = "the harness you started from: 0 of 1.";
-    // Before any comparison the log names no reference, and the harness the conversation started
-    // from stands for it.
-    expect(results[0]).toContain(`Record under this harness: passed 1 of 1. Under ${started}`);
+    // Before any comparison the log names no reference, and the session still names the one it was
+    // handed, which the conversation started from.
+    expect(results[0]).toContain(
+      "Record under this harness: passed 1 of 1. Under the reference harness, which is also the harness you started from: 0 of 1.",
+    );
     // After it harness/ is the reference until it is edited, and then the reference has a line of its own.
     expect(results[1]).toContain(
       `Record under this harness, which is also the reference harness: passed 2 of 2. Under ${started}`,
@@ -976,6 +985,11 @@ describe("a Builder session", () => {
     const plain = await setup(steps);
     await session(plain.request, plain, plain.walled);
     expect(plain.sent[2]).toContain("passed 2 of 2.");
+    // Two solves of one task in one call: its record follows the last of them alone.
+    const told = plain
+      .of(BUILD_CALL)
+      .flatMap(({ tool: name, text: result }) => (name === "practice" && isString(result) ? [result] : []));
+    expect(told.map((result) => result.split("Record under").length - 1)).toEqual([1]);
   });
 
   it("is told a band and never a measure, in a result and a record, and none where no author's answer is on record", async () => {
@@ -1036,7 +1050,9 @@ describe("a Builder session", () => {
       .of(BUILD_CALL)
       .flatMap(({ tool: name, text: told }) => (name === "practice" && isString(told) ? [told] : []));
     // Against the author's 0.8/8.1 the gains are -0.2 and about -0.9999 (`gainOver`).
-    expect(first).toContain("Measured cost against the author's answer on record: 10 to 50% worse.");
+    expect(first).toContain(
+      "Measured the objective (cost) against the author's answer on record: 10 to 50% worse.",
+    );
     expect(first).toContain(
       "Measured the objective against the author's answer on record: 90% or more worse.",
     );
@@ -1088,7 +1104,7 @@ describe("a Builder session", () => {
     const results = [...(s.sent[3] ?? "").matchAll(/"toolName":"practice","content":(.*?),"details"/g)];
     const last = results.at(-1)?.[1] ?? "";
     expect(last).toContain(
-      "Under the harness you started from: 1 of 2, the objective against the author's answer: level.",
+      "Under the reference harness, which is also the harness you started from: 1 of 2, the objective against the author's answer: level.",
     );
     expect(last).toContain("Measured the objective against the author's answer on record:");
     expect(last.split(quantity)).toHaveLength(2);
@@ -1170,7 +1186,7 @@ describe("a Builder session", () => {
     };
     // The solve measures 30 against the author's 12, a gain of -0.6.
     expect(await told([["v1", 12]])).toContain(
-      "Measured cost against the author's answer on record: 50 to 90% worse.",
+      "Measured the objective (cost) against the author's answer on record: 50 to 90% worse.",
     );
     // v3 is held out: its author's measure, whatever it is, changes nothing the Builder reads.
     const none = await told([]);

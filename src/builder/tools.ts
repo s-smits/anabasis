@@ -47,7 +47,7 @@ import {
 } from "../kernel/solves.ts";
 import { objectiveOf } from "../kernel/verify.ts";
 import { GAP_FLOOR, gainOver, type ObjectiveRule } from "../kernel/compare.ts";
-import { poolOf, referenceOf } from "../kernel/reports.ts";
+import { poolOf } from "../kernel/reports.ts";
 import { taskStates } from "../kernel/task.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isFunction, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
@@ -58,7 +58,7 @@ import { plural } from "../meta/text.ts";
 import { ending as endSession, openDesk, text, tool } from "../tools/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../tools/coding.ts";
 import { type CommandWall, type NetworkReach, networkReach } from "../tools/command.ts";
-import { type Harness, openHarness } from "../harness/open.ts";
+import type { Harness } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
 import { homeHolds, systemPrompt } from "../solver/prompt.ts";
 import { clockText, solverTools } from "../solver/run.ts";
@@ -73,9 +73,11 @@ export interface Bench extends Freezing {
   readonly request: BuildRequest;
   /** The texts of this session that differ by who makes its campaign's moves (`SAID`). */
   readonly said: Said;
-  /** Released tasks and the reference, refreshed by campaign tools while the conversation stays open. */
+  /** Released tasks and the reference, refreshed by campaign tools while the conversation stays open.
+   *  The reference is the one the session was handed, held opened, which every record names from
+   *  the first session on; the log names none until a comparison reports (`referenceOf`). */
   tasks: readonly PracticeTask[];
-  reference: string;
+  reference: HarnessSnapshot;
   /** The digest of the harness the session started from. */
   readonly parent: string;
   /** Practice solves spent. */
@@ -163,8 +165,8 @@ function endingText(ending: Ending): string {
 }
 
 /** Where a valid practice answer stands against the author's answer (`bandOf`), which the Builder
- *  reads of its own practice only; `name` gives the quantity in full once a result, then "the
- *  objective". */
+ *  reads of its own practice only; `name` gives the quantity in full once a result, in brackets
+ *  after "the objective", since a contract's quantity can run to a sentence, then "the objective". */
 function measuredText(
   events: readonly LogEvent[],
   solve: string,
@@ -289,22 +291,21 @@ function measuresOf(
 }
 
 /** Practice tasks with their counted records under `parent` and, when distinct and solved, under the
- *  current reference harness, each valid answer as its band against the author's answer. */
+ *  `reference` harness, each valid answer as its band against the author's answer. */
 export function listedPractice(
   events: readonly LogEvent[],
   tasks: readonly PracticeTask[],
-  parent: string,
+  { parent, reference }: { readonly parent: string; readonly reference: string },
   contract: Contract,
 ): Listed[] {
   const states = taskStates(events);
   const verdicts = verdictsOf(events);
-  const reference = referenceOf(events);
   const againstFor = againstOf(events, contract);
   return tasks.map(({ version, task }) => {
     const kept = record(events, version, parent);
     const against = againstFor(version);
     const measures = measuresOf(verdicts, kept.solves, against);
-    const ref = reference !== null && reference !== parent ? record(events, version, reference) : null;
+    const ref = reference === parent ? null : record(events, version, reference);
     return {
       taskId: task.taskId,
       family: task.family,
@@ -313,7 +314,7 @@ export function listedPractice(
       ...keyIfDefined("measures", measures.length > 0 ? measures : undefined),
       ...keyIfDefined(
         "reference",
-        ref !== null && reference !== null && ref.solves.length > 0
+        ref !== null && ref.solves.length > 0
           ? { digest: reference, ...ref, measures: measuresOf(verdicts, ref.solves, against) }
           : undefined,
       ),
@@ -394,10 +395,7 @@ export function practiceTool(bench: Bench): SeatTool {
       // as it stands need not open. What the reference does on a task is the Builder's to buy with
       // its own solve, and each result's record names what such solves found. There is no
       // `under: "parent"`, since Builders hardly ever named it.
-      const ran: HarnessSnapshot =
-        args.under === "reference"
-          ? { dir: bench.reference, harness: await openHarness(bench.reference) }
-          : await snapshot(bench);
+      const ran = args.under === "reference" ? bench.reference : await snapshot(bench);
       if (kill.aborted) throw new Error("The session has ended.");
       bench.spent += chosen.length;
       let unstarted = 0;
@@ -427,24 +425,26 @@ export function practiceTool(bench: Bench): SeatTool {
       }
       const events = read(request.log);
       const under = args.under ?? "harness";
-      const reference = under === "reference" ? ran.harness.digest : referenceOf(events);
       const roles = [
         [under === "reference" ? null : ran.harness.digest, "this harness"],
-        [reference, "the reference harness"],
+        [bench.reference.harness.digest, "the reference harness"],
         [under === "reference" ? (bench.opened?.harness.digest ?? null) : null, "harness/ as last practised"],
         [bench.parent, "the harness you started from"],
       ] as const;
-      const names = [request.contract.objective?.quantity ?? ""];
+      const names = [`the objective (${request.contract.objective?.quantity ?? ""})`];
       const name = () => names.shift() ?? "the objective";
       const againstFor = againstOf(events, request.contract);
-      const said = solved.flat().map(({ task, solve, ending, lines }) => {
+      // A task's record is read once all its solves finished, so it follows its last solve alone.
+      const flat = solved.flat();
+      const last = new Map(flat.map(({ task }, at) => [task.version, at]));
+      const said = flat.map(({ task, solve, ending, lines }, at) => {
         const shown = rejectionAside(events, { id: solve, ending })
           ? "rejection set aside"
           : endingText(ending);
         const against = againstFor(task.version);
         return [
           `${task.task.taskId}${under === "reference" ? " under the reference harness" : ""}: ${shown}. Solve ${solve}.${usedText(events, solve)}${measuredText(events, solve, against, name)}`,
-          recordText(events, task.version, roles, against, name),
+          ...(last.get(task.version) === at ? [recordText(events, task.version, roles, against, name)] : []),
           ...lines,
         ].join("\n");
       });
@@ -541,7 +541,7 @@ async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<stri
     hasPractice(bench, events, now) ||
     events.some(({ kind, data }) => kind === COMPARISON_STARTED && (data.old === now || data.fresh === now));
   const untried = !tried && left > 0 && told.get("untried") !== now;
-  const unreadKey = `${now}@${referenceOf(events) ?? ""}`;
+  const unreadKey = `${now}@${bench.reference.harness.digest}`;
   const unread = told.get("unread") === unreadKey ? null : ((await unmeasured?.(now)) ?? null);
   if (unread !== null) told.set("unread", unreadKey);
   if (untried) {

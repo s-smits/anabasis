@@ -340,7 +340,7 @@ export async function session(
     request,
     said: SAID[request.campaign === undefined ? "host" : "builder"],
     tasks: request.tasks,
-    reference: request.reference,
+    reference: { dir: request.reference, harness: await openHarness(request.reference) },
     home: dirs.home,
     parent: parent.digest,
     tree: null,
@@ -370,7 +370,12 @@ function openingFor(bench: Bench): string {
     : "";
   return firstMessage(
     request.contract,
-    listedPractice(recorded, bench.tasks, bench.parent, request.contract),
+    listedPractice(
+      recorded,
+      bench.tasks,
+      { parent: bench.parent, reference: bench.reference.harness.digest },
+      request.contract,
+    ),
     // The count it opens with is the one `practice` holds it to (`practiceLeft`).
     {
       ...request.limits,

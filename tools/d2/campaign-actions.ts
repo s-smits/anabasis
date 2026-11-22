@@ -54,6 +54,7 @@ import { text, tool } from "#src/tools/answer.ts";
 import { publicView } from "#src/solver/prompt.ts";
 import { waitOut } from "#src/solver/run.ts";
 import { examineCommand } from "../d1b/examine.ts";
+import { openHarness } from "#src/harness/open.ts";
 import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
 import {
   comparisonOf,
@@ -156,7 +157,8 @@ async function refreshCampaign(context: CampaignContext, bench: Bench): Promise<
   const campaign = await openCampaign(packNamed(context.values));
   context.campaign = campaign;
   refreshPractice(bench, campaign);
-  bench.reference = (await keptAs(campaign, "--reference", PROMOTED)).dir;
+  const { dir } = await keptAs(campaign, "--reference", PROMOTED);
+  bench.reference = { dir, harness: await openHarness(dir) };
   // What was kept since the conversation opened as well as before, since the Builder is told
   // kept/ holds every kept harness (`shellWalls`, `prompt.ts`).
   seedKept(bench.home, bench.request.states, read(campaign.log), bench.parent);

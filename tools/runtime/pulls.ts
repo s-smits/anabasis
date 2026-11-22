@@ -190,14 +190,14 @@ function longest(pool: readonly Pull[], bases: readonly string[], seen: Readonly
   return found;
 }
 
-/** The open pull requests beneath `pull`, nearest first: each the one whose head the one above it is
- *  based on. */
+/** The open pull requests beneath `pull`, bottom first, as a chain is landed: each the one whose head
+ *  the one above it is based on. */
 export function beneath(open: readonly Pull[], pull: Pull): Pull[] {
   const byHead = new Map(open.map((each) => [each.headRefName, each]));
   const found: Pull[] = [];
   for (let below = byHead.get(pull.baseRefName); below !== undefined && below.number !== pull.number; ) {
     if (found.includes(below)) break;
-    found.push(below);
+    found.unshift(below);
     below = byHead.get(below.baseRefName);
   }
   return found;

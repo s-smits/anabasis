@@ -215,7 +215,7 @@ const topAbove = (open: readonly Pull[], from: Pull): Pull => chainAbove(open, f
 function readLanding(root: string, target: number, open: readonly Pull[]): Landing {
   const named = open.find((pull) => pull.number === target);
   if (named === undefined) throw new Refusal(`#${String(target)} is not an open pull request.`);
-  const pulls = [...beneath(open, named).toReversed(), named];
+  const pulls = [...beneath(open, named), named];
   // `pulls` ends with the named pull request, so the fallback is never taken.
   const bottom = pulls[0] ?? named;
   const trunk = trunkOf(root);

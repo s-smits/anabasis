@@ -691,6 +691,9 @@ describe("bun run land", () => {
     expect(gatesRun(gateLog).filter((line) => !line.startsWith(stacked))).toEqual([]);
   });
 
+  /** `bun run split` left #11 and #12 in native stacks of their own, and #15 was opened on #12 since. */
+  const openedAbove = { ...opened, ANA_FAKE_STACK: "7 11", ANA_FAKE_TOP_STACK: "12 8 12" };
+
   it("refuses to merge the upper of divided stacks before the lower, gating nothing", () => {
     const result = runLand(["15", "--merge"], divided);
     expect(result.status).toBe(1);
@@ -722,13 +725,15 @@ describe("bun run land", () => {
           "-e",
           `import { claimOf } from ${landing};
            const claim = claimOf(".", 15, { auto: false, kind: "sanitizing", from: ${String(from)} });
-           console.log(["#12 sanitizing", "#15 sanitizing"].map((note) => claim.over(note)).join(" "));`,
+           console.log(["#11", "#12", "#15"].map((pull) => claim.over(pull + " sanitizing")).join(" "));`,
         ],
         { cwd: work, env: landEnv(env) },
       ).stdout.trim();
-    expect(ends(opened, null)).toBe("true true");
-    expect(ends(divided, null)).toBe("false true");
-    expect(ends(opened, 15)).toBe("false true");
+    expect(ends(opened, null)).toBe("true true true");
+    expect(ends(divided, null)).toBe("false false true");
+    expect(ends(openedAbove, null)).toBe("false true true");
+    expect(ends(opened, 15)).toBe("false false true");
+    expect(ends(opened, 12)).toBe("false true true");
   });
 
   it("without a flag says the link it would run, and links nothing", () => {

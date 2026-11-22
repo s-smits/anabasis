@@ -110,7 +110,7 @@ function divide(root: string, number: number): void {
   if (cut === undefined || above.length === 0) {
     throw new Error(`no open pull request is based on #${String(number)}'s head.`);
   }
-  relink(root, [...beneath(open, cut).toReversed(), cut], trunkOf(root));
+  relink(root, [...beneath(open, cut), cut], trunkOf(root));
   relink(root, above, cut.headRefName);
 }
 

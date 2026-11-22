@@ -32,7 +32,7 @@ describe("the chains of bases", () => {
   });
 
   it("reads beneath by bases and above by the longest chain, the lower number winning a tie", () => {
-    expect(numbers(beneath(open, pull(3, "c", "b")))).toEqual([2, 1]);
+    expect(numbers(beneath(open, pull(3, "c", "b")))).toEqual([1, 2]);
     expect(numbers(chainAbove(open, pull(1, "a", "main")))).toEqual([2, 3]);
     const tie = [pull(1, "a", "main"), pull(4, "y", "a"), pull(2, "x", "a")];
     expect(numbers(chainAbove(tie, pull(1, "a", "main")))).toEqual([2]);

@@ -96,7 +96,7 @@ function chainTold(repo: string, into: string, open: readonly Pull[], line: read
   const code = new Set<string>();
   const rows = line.map((pull) => {
     const text = how.told(String(pull.number));
-    const range = `${beneath(open, pull)[0]?.headRefOid ?? `origin/${pull.baseRefName}`}...${pull.headRefOid}`;
+    const range = `${beneath(open, pull).at(-1)?.headRefOid ?? `origin/${pull.baseRefName}`}...${pull.headRefOid}`;
     for (const file of lines(gitText(repo, "diff", "--name-only", range))) changed.add(file);
     for (const file of lines(gitText(repo, "diff", "--name-only", range, "--", ".", ...DOCUMENTATION))) {
       code.add(file);

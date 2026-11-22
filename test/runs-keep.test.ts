@@ -542,7 +542,8 @@ describe("the keeper a run gets by itself", () => {
 describe("going on with a live run after a pause", () => {
   /** `continue --after next` of a live campaign whose comparisons began at 0.02, on `level`. The
    *  campaign command here takes its dry run's refusal from the real opening (`opened`), and its
-   *  live run, once it reads the pause word, finishes a solve. */
+   *  live run, once it reads the pause word, finishes a solve. Each case takes 60 s: under a whole
+   *  suite, the word, the run's end and `continue`'s polls outlast 20 s. */
   async function goOnLive(level: string) {
     const made = fakeHosts();
     fixtures.push(made.root);
@@ -605,7 +606,7 @@ if (stat !== "" && !stat.startsWith("Z")) console.log(${JSON.stringify(row)});
     expect(result.err).toContain("--level 0.05: the campaign's comparisons began at level 0.02");
     expect(after).toBe(before);
     expect(alive).toBe(true);
-  }, 20_000);
+  }, 60_000);
 
   it("pauses the run and goes on with it where the dry run passes", async () => {
     const { result, before, after, alive } = await goOnLive("0.02");
@@ -615,7 +616,7 @@ if (stat !== "" && !stat.startsWith("Z")) console.log(${JSON.stringify(row)});
     expect(after.startsWith(before)).toBe(true);
     expect(after).toContain('"kind":"campaign.word"');
     expect(alive).toBe(false);
-  }, 20_000);
+  }, 60_000);
 });
 
 describe("the login a run goes on with", () => {

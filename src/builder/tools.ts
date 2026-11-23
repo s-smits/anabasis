@@ -8,6 +8,7 @@
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
+import { callPrograms } from "../kernel/call-programs.ts";
 import { checkCouldNotRun, type Ending } from "../kernel/solve.ts";
 import { limitsIn } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
@@ -199,6 +200,30 @@ function usedText(events: readonly LogEvent[], solve: string): string {
   return ` It took ${clockText(end.seconds)} of ${clockText(limits.wallSeconds)} and ${plural(end.turns, "model turn")}${given}${counted}.`;
 }
 
+/** A finished solve's calls, as a sentence after its usage: how many, which failed by the numbers
+ *  `read_trace` gives them, and which of the harness's programs ran (`callPrograms`), with how
+ *  many calls ran and failed each. */
+function callsText(events: readonly LogEvent[], solve: string, programs: readonly string[]): string {
+  const { calls } = traceOf(events, "solve", solve);
+  if (calls.length === 0) return "";
+  const failed = calls.flatMap(({ isError }, at) => (isError ? [at + 1] : []));
+  const ran = calls.map((call) => ({ ...callPrograms(call), isError: call.isError }));
+  const used = programs.flatMap((name) => {
+    const by = ran.filter((call) => call.programs.includes(name));
+    if (by.length === 0) return [];
+    const broke = by.filter(({ isError }) => isError).length;
+    return [`${name} ${String(by.length)}${broke === 0 ? "" : ` (${String(broke)} failed)`}`];
+  });
+  const unused = programs.length - used.length;
+  const shown =
+    programs.length === 0
+      ? ""
+      : used.length === 0
+        ? ` Harness programs run: none of ${String(programs.length)}.`
+        : ` Harness programs run: ${used.join(", ")}${unused === 0 ? "" : ` (${String(unused)} of ${String(programs.length)} unused)`}.`;
+  return ` It made ${plural(calls.length, "tool call")}; failed: ${failed.join(", ") || "none"}.${shown}`;
+}
+
 /** One practice solve and what the Referee read of its fail. Throws only what the solve itself
  *  threw: a Referee that fails is noted for the host and leaves the rejection set aside. */
 async function practise(bench: Bench, task: PracticeTask, kept: HarnessSnapshot, kill: AbortSignal) {
@@ -330,7 +355,7 @@ export function practiceTool(bench: Bench): SeatTool {
   const { request } = bench;
   return tool({
     name: "practice",
-    description: `Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits: a practice solve takes as long as any solve. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, what the solve used of its limits and the tokens it read and wrote, the task's record of practice solves under each harness the result names, the reference harness among them, the solve's id for read_trace and, for a rejection the Referee set aside, that it was set aside; never which check refused an answer. Under an objective a valid answer's measure is given as a band against the task author's answer on record: ${BANDS_TOLD}; a task with no author's answer on record shows none. A harness that does not open spends no solve. \`under: "reference"\` costs the same solves and shows what your change is measured against.`,
+    description: `Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits: a practice solve takes as long as any solve. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, what the solve used of its limits and the tokens it read and wrote, how many tool calls it made, which failed and how many ran each of the harness's programs, the task's record of practice solves under each harness the result names, the reference harness among them, the solve's id for read_trace and, for a rejection the Referee set aside, that it was set aside; never which check refused an answer. Under an objective a valid answer's measure is given as a band against the task author's answer on record: ${BANDS_TOLD}; a task with no author's answer on record shows none. A harness that does not open spends no solve. \`under: "reference"\` costs the same solves and shows what your change is measured against.`,
     parameters: Type.Object({
       tasks: Type.Array(Type.String(), {
         minItems: 1,
@@ -414,13 +439,14 @@ export function practiceTool(bench: Bench): SeatTool {
       // A task's record is read once all its solves finished, so it follows its last solve alone.
       const flat = solved.flat();
       const last = new Map(flat.map(({ task }, at) => [task.version, at]));
+      const programs = installedPrograms(ran.harness.toolTree);
       const said = flat.map(({ task, solve, ending, lines }, at) => {
         const shown = rejectionAside(events, { id: solve, ending })
           ? "rejection set aside"
           : endingText(ending);
         const against = againstFor(task.version);
         return [
-          `${task.task.taskId}${under === "reference" ? " under the reference harness" : ""}: ${shown}. Solve ${solve}.${usedText(events, solve)}${measuredText(events, solve, against, name)}`,
+          `${task.task.taskId}${under === "reference" ? " under the reference harness" : ""}: ${shown}. Solve ${solve}.${usedText(events, solve)}${callsText(events, solve, programs)}${measuredText(events, solve, against, name)}`,
           ...(last.get(task.version) === at ? [recordText(events, task.version, roles, against, name)] : []),
           ...lines,
         ].join("\n");

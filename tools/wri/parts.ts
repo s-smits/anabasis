@@ -4,7 +4,7 @@
  *   bun tools/wri/parts.ts --log <log> --comparison g-3 [--no-diff] [--all]
  *
  * One row a solve: its task, side, how the comparison read it (valid or not, and its objective where
- * one is fixed), how it ended, its calls, and the programs its calls ran (`programsOf`, `programs.ts`, the
+ * one is fixed), how it ended, its calls, and the programs its calls ran (`callPrograms`, `src/kernel/call-programs.ts`, the
  * one reader of which program a call ran). Then, unless `--no-diff`, what the new harness wrote that the
  * reference did not (`writtenIn`, `trajectory.ts`: the guide and its own programs, added or changed
  * against the reference's kept state, by content), and for each solve the first call that ran one of
@@ -26,7 +26,7 @@ import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
-import { programsOf } from "./programs.ts";
+import { callPrograms } from "#src/kernel/call-programs.ts";
 import { sharedPrefix, wonPairs } from "./provenance.ts";
 import { writtenIn } from "./trajectory.ts";
 
@@ -92,7 +92,7 @@ function writtenAgainst(old: string, fresh: string): Written {
 
 const fileOf = (path: string) => path.replace(/^.*\//u, "");
 const escaped = (text: string) => text.replaceAll(/[$()*+.?[\\\]^{|}]/gu, String.raw`\$&`);
-/** The names `programsOf` may give the program at `path`: its file name, and that less its extension
+/** The names `callPrograms` may give the program at `path`: its file name, and that less its extension
  *  (a module run with `-m`). */
 const namesOf = (path: string) => [fileOf(path), fileOf(path).replace(/\.[^.]+$/u, "")];
 
@@ -103,7 +103,7 @@ function firstUses(calls: readonly Call[], programs: readonly string[]): { ran: 
   const names = new Set(programs.flatMap(namesOf));
   const word =
     files.length === 0 ? null : new RegExp(`(?<![\\w.-])(?:${files.map(escaped).join("|")})(?![\\w-])`, "u");
-  const ran = calls.findIndex((call) => programsOf(call).programs.some((program) => names.has(program)));
+  const ran = calls.findIndex((call) => callPrograms(call).programs.some((program) => names.has(program)));
   const named = word === null ? -1 : calls.findIndex((call) => word.test(capturedJsonStringify(call.args)));
   const at = (index: number) => (index === -1 ? NONE : `call ${String(index + 1)}`);
   return { ran: at(ran), named: at(named) };
@@ -139,7 +139,7 @@ export function solveRows(events: readonly LogEvent[], session: string): SolveRo
 function programsLine(calls: readonly Call[]): string {
   const counts = new Map<string, number>();
   for (const call of calls) {
-    for (const program of new Set(programsOf(call).programs)) {
+    for (const program of new Set(callPrograms(call).programs)) {
       counts.set(program, (counts.get(program) ?? 0) + 1);
     }
   }
@@ -164,7 +164,7 @@ function partsLines(
   const prefix = sharedPrefix(rows.map(({ solve }) => solve));
   const head = [
     `parts (lane 10): ${session}, reference ${old.slice(0, 8)} against new ${fresh.slice(0, 8)}; the new harness won ${String(tasks)} of ${String(paired)} paired tasks, read as the report recorded each (WINS).`,
-    "One row a solve of a won task: valid as the comparison read it, objective, ending, calls, and each program its calls ran with its count of calls (programsOf).",
+    "One row a solve of a won task: valid as the comparison read it, objective, ending, calls, and each program its calls ran with its count of calls (callPrograms).",
     ...(prefix === "" ? [] : [`Solve ids leave off their shared prefix ${prefix}.`]),
     ...(written === null
       ? ["Diff left out (--no-diff)."]
@@ -200,7 +200,7 @@ function partsLines(
 function ranTable(rows: readonly SolveRow[], touched: readonly string[], table: "all" | "parted"): string[] {
   const sides = ["new", "reference"] as const;
   const ranBy = new Map(
-    rows.map((row) => [row, new Set(row.calls.flatMap((call) => programsOf(call).programs))] as const),
+    rows.map((row) => [row, new Set(row.calls.flatMap((call) => callPrograms(call).programs))] as const),
   );
   const made = new Set(touched.flatMap(namesOf));
   const programs = new Set([...[...ranBy.values()].flatMap((each) => [...each]), ...touched.map(fileOf)]);
@@ -226,7 +226,7 @@ function ranTable(rows: readonly SolveRow[], touched: readonly string[], table: 
     return `${side} ${String(own.length)}`;
   });
   return [
-    `Solves a side that ran each program, by programsOf's name (a shell command and a harness program of one name count together)${table === "all" ? "" : `; ${String(counted.length - kept.length)} of ${String(counted.length)} programs left out (--all prints them): ${String(alike)} run by as many solves on each side, and those one side alone ran in under a tenth of its solves, ${folded.join(", ")}`}:`,
+    `Solves a side that ran each program, by callPrograms's name (a shell command and a harness program of one name count together)${table === "all" ? "" : `; ${String(counted.length - kept.length)} of ${String(counted.length)} programs left out (--all prints them): ${String(alike)} run by as many solves on each side, and those one side alone ran in under a tenth of its solves, ${folded.join(", ")}`}:`,
     ...kept.map(
       ({ program, made: changed, of }) =>
         `  ${program}${changed ? " (added or changed)" : ""}  ${of.map(({ side, ran, of: all }) => `${side} ${String(ran)}/${String(all)}`).join("  ")}`,

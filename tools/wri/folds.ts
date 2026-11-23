@@ -18,7 +18,7 @@ import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#
 import { runtimeProcess } from "#src/meta/process.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
-import { programsOf } from "./programs.ts";
+import { callPrograms } from "#src/kernel/call-programs.ts";
 
 export interface Trigger {
   readonly lane: number;
@@ -53,7 +53,7 @@ export interface Solve {
   readonly cancelledBy: string | null;
   readonly seconds: number;
   readonly calls: string[];
-  /** The programs its `bash` calls ran (`programsOf`, `programs.ts`): a harness's `.toolchain/bin`
+  /** The programs its `bash` calls ran (`callPrograms`, `src/kernel/call-programs.ts`): a harness's `.toolchain/bin`
    *  programs are reached on the shell's path, so they show only here. */
   readonly programs: string[];
   errors: number;
@@ -386,7 +386,7 @@ function solvesOf(
     const solve = call.seat === "solve" ? solves.get(call.id) : undefined;
     if (solve === undefined || call.part !== "call") continue;
     solve.calls.push(call.tool);
-    if (call.tool === "bash") solve.programs.push(...programsOf(call).programs);
+    if (call.tool === "bash") solve.programs.push(...callPrograms(call).programs);
     solve.errors += call.isError ? 1 : 0;
   }
   return [...solves.values()];

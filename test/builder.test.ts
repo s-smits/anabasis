@@ -1792,9 +1792,23 @@ describe("what crosses to the Builder", () => {
 });
 
 describe("what a practice solve used", () => {
-  it("is its time of its limit, the model's turns and the tokens it read and wrote, and nothing where the log holds no limits", async () => {
-    const s = await setup([call("practice", { tasks: ["t-1", "t-2", "t-1"] }), finish]);
+  it("is its time of its limit, the model's turns, the tokens it read and wrote, its failed calls and the calls that ran each program, and nothing the log does not hold", async () => {
+    const s = await setup([call("practice", { tasks: ["t-1", "t-2", "t-1"] }), finish], [], true);
     const limits = { ...LIMITS, wallSeconds: 480 };
+    // Each solve's own calls, as `read_trace` numbers them. The harness installs `hello`: a call
+    // runs it by name or by path, and a word that only holds the name runs nothing. The third
+    // solve has no call on record.
+    const traced: readonly (readonly (readonly [string, string, boolean])[])[] = [
+      [
+        ["bash", "hello --fit data.csv", false],
+        ["bash", "cd work && ./.toolchain/bin/hello", true],
+        ["bash", "python3 fit.py", true],
+        ["bash", "echo helloworld say-hello", false],
+        ["read", "", false],
+      ],
+      [["bash", "ls", false]],
+      [],
+    ];
     // As a live runner logs them: the limits on the start, the usage on the end. A live solve's end
     // carries its tokens, the one measure of what a tool or a program costs a solve that a Builder
     // can act on. The third start holds no limits.
@@ -1816,10 +1830,15 @@ describe("what a practice solve used", () => {
         ...s.request,
         practise: async (task, _dir, harness) => {
           const { started, finished } = used[n] ?? { started: {}, finished: {} };
+          const calls = traced[n] ?? [];
           n += 1;
           const solve = `s-used-${String(n)}`;
           const condition = recordCondition(s.request.log, s.condition(task.version, harness));
           append(s.request.log, SOLVE_STARTED, { solve, condition, task: "t", ...started });
+          for (const [turn, [name, command, isError]] of calls.entries()) {
+            const args = name === "bash" ? { command } : { path: "task.json" };
+            append(s.request.log, "solve.call", { solve, turn, tool: name, args, isError, text: "" });
+          }
           append(s.request.log, SOLVE_FINISHED, { solve, ending: { outcome: "pass" }, ...finished });
           return { solve, ending: { outcome: "pass" } };
         },
@@ -1831,10 +1850,14 @@ describe("what a practice solve used", () => {
     const line = (said: string) => JSON.stringify(`${said}\n`).slice(1, -1);
     expect(s.sent[1]).toContain(
       line(
-        "t-1: pass. Solve s-used-1. It took 0:04 of 8:00 and 2 model turns of 10, and read 8394 tokens and wrote 131.",
+        "t-1: pass. Solve s-used-1. It took 0:04 of 8:00 and 2 model turns of 10, and read 8394 tokens and wrote 131. It made 5 tool calls; failed: 2, 3. Harness programs run: hello 2 (1 failed).",
       ),
     );
-    expect(s.sent[1]).toContain(line("t-2: pass. Solve s-used-2. It took 3:42 of 8:00 and 14 model turns."));
+    expect(s.sent[1]).toContain(
+      line(
+        "t-2: pass. Solve s-used-2. It took 3:42 of 8:00 and 14 model turns. It made 1 tool call; failed: none. Harness programs run: none of 1.",
+      ),
+    );
     expect(s.sent[1]).toContain(line("t-1: pass. Solve s-used-3."));
   });
 });

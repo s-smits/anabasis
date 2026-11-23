@@ -36,7 +36,7 @@ import { plural } from "../meta/text.ts";
 import { ending as endSession, openDesk, text, tool } from "../tools/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../tools/coding.ts";
 import { type CommandWall, type NetworkReach, networkReach } from "../tools/command.ts";
-import { formatKeys, namedTasks, readHarnessFiles } from "../harness/files.ts";
+import { namedTasks, readHarnessFiles } from "../harness/files.ts";
 import type { Harness } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
 import { HOST_ONLY } from "../harness/starter.ts";
@@ -640,9 +640,8 @@ function countPhrases(rows: readonly (readonly [number, string, string?])[]): st
 function opens(harness: Harness, dir: string, contract: Contract, tasks: readonly PracticeTask[]): string {
   const presets = selectedCodingTools(harness.presets);
   const programs = installedPrograms(harness.toolTree);
-  const answerKeys = [...new Set(formatKeys(contract.answerFormat))];
   const ruleIds = [...new Set(contract.rules.map(({ id }) => id).filter((id) => id !== ""))];
-  const info = readHarnessFiles(dir, answerKeys, ruleIds);
+  const info = readHarnessFiles(dir, [], ruleIds);
   const { guide, files: toolFiles, lines: toolLines } = info.size ?? { guide: 0, files: 0, lines: 0 };
   const chars = harness.guide?.length ?? 0;
   const split = info.hasSplit
@@ -656,8 +655,7 @@ function opens(harness: Harness, dir: string, contract: Contract, tasks: readonl
     [info.brokenLinks, "broken link"],
   ]);
   const guideIssues = countPhrases([
-    [info.keptHostRefs, "host path or tool"],
-    [info.keptFormatKeys, "answer-format field"],
+    [info.keptHostRefs, "host reference"],
     [info.keptRuleIds, "rule id"],
   ]);
   const exportNote = info.hasSplit

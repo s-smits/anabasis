@@ -2094,14 +2094,21 @@ describe("harness file checks and practice task mentions", () => {
       chmodSync(join(clean, TOOL_TREE_DIR, "bin", "run-tool"), 0o755);
 
       const answerKeys = formatKeys({ properties: { estimateValue: { type: "number" } } });
+      const shared = "logistic model with exposure and age as linear terms";
       const tasks = [
         {
           taskId: "task-alpha-1",
-          publicInput: { prompt: "compute the quarterly regional payroll total accurately" },
+          publicInput: {
+            prompt: `follow up from the later of entry for subject S01-007 (Kaplan-Meier, 365.25, 2024-3-5, age_group) and compute the quarterly regional payroll total accurately every month using ${shared}`,
+          },
         },
         {
           taskId: "task-beta-2",
-          publicInput: { prompt: "estimate annual warehouse throughput under peak load" },
+          publicInput: { prompt: `estimate annual warehouse throughput under peak load using ${shared}` },
+        },
+        {
+          taskId: "task-gamma-3",
+          publicInput: { prompt: `reconcile laboratory assay batches across clinics using ${shared}` },
         },
       ];
       const cleanInfo = readHarnessFiles(clean, answerKeys, ["R-1"]);
@@ -2118,12 +2125,23 @@ describe("harness file checks and practice task mentions", () => {
       });
       expect(namedTasks(cleanInfo.written, tasks)).toEqual([]);
 
+      // Six-word generic prose, ordinary domain tokens/dates, and boilerplate shared across >2 tasks
+      // stay silent; rare task codes and rare 8-word quotes carry exact line numbers and text.
+      const proseOnly = [
+        {
+          path: "guide",
+          text: `Follow-up from the later of entry; Kaplan-Meier over 365.25 days, 2024-3-5, age_group; fit ${shared}.\n`,
+          executable: false,
+        },
+      ];
+      expect(namedTasks(proseOnly, tasks)).toEqual([]);
+
       const dirty = join(dir, "dirty");
       mkdirSync(join(dirty, "agent"), { recursive: true });
       mkdirSync(join(dirty, TOOL_TREE_DIR, "bin"), { recursive: true });
       writeFileSync(
         join(dirty, "agent", "BUILT_AGENTS.md"),
-        "# Guide\nRead public/task.json for estimateValue under R-1 on task-alpha-1: compute the quarterly regional payroll total accurately.\n",
+        "# Guide\nRead public/task.json for estimateValue under R-1 on task-alpha-1 (drop S01-007): compute the quarterly regional payroll total accurately every month.\n",
       );
       writeFileSync(
         join(dirty, TOOL_TREE_DIR, "bin", "bad-bin"),
@@ -2143,7 +2161,11 @@ describe("harness file checks and practice task mentions", () => {
         plainBins: 1,
         brokenLinks: 1,
       });
-      expect(namedTasks(dirtyInfo.written, tasks)).toEqual(["guide names and quotes task-alpha-1"]);
+      expect(namedTasks(dirtyInfo.written, tasks)).toEqual([
+        "guide names task-alpha-1",
+        'guide:2 uses code "S01-007" from task-alpha-1',
+        'guide:2 quotes task-alpha-1 ("compute the quarterly regional payroll total accurately every month")',
+      ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

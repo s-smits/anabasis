@@ -33,8 +33,15 @@ const HOST_SHEBANG_RE = /^#!\s*\/(?:Users|home|opt\/homebrew|Library)\//u;
 const HOST_REF_RE = /(?:public\/task\.json|public\/files\/|public\/resources\/|answer\.json|\bsubmit\b)/gu;
 const MIN_KEY_LEN = 4;
 const WORD_RE = /[\p{L}\p{N}]+/gu;
-/** Word span length used to spot copied public-input text. */
+const TOKEN_RE = /[\p{L}\p{N}_](?:[\p{L}\p{N}_.:-]*[\p{L}\p{N}_])?/gu;
+/** Record or entity code shape (e.g. `S01-007`, `P-00123`, `C-01`): 0 false positives across 444 archived harnesses. */
+const TASK_CODE_RE = /^[A-Za-z][A-Za-z0-9_-]*[-_]\d{2,}$/;
+/** Word span length used by WRI to spot copied public-input text. */
 export const QUOTE_WORDS = 6;
+/** Longer span length for Builder `check_harness` (6-word spans mostly hit generic domain prose). */
+const BUILDER_QUOTE_WORDS = 8;
+/** Spans or codes shared by more than this many practice tasks are domain boilerplate, not task copying. */
+const RARE_TASKS = 2;
 
 interface WrittenFile {
   readonly path: string;
@@ -249,13 +256,16 @@ function wordsIn(text: string): { word: string; at: number }[] {
   return [...text.matchAll(WORD_RE)].map((match) => ({ word: match[0].toLowerCase(), at: match.index }));
 }
 
-/** Six-word spans of public inputs mapped to their tasks, dropping spans shared by every task. */
-export function spansOf(tasks: readonly { readonly name: string; readonly strings: readonly string[] }[]) {
+/** Word spans of public inputs mapped to their tasks, dropping spans shared by every task. */
+export function spansOf(
+  tasks: readonly { readonly name: string; readonly strings: readonly string[] }[],
+  length = QUOTE_WORDS,
+) {
   const spans = new Map<string, Set<string>>();
   for (const { name, strings } of tasks) {
     for (const words of strings.map((text) => wordsIn(text).map(({ word }) => word))) {
-      for (let from = 0; from + QUOTE_WORDS <= words.length; from += 1) {
-        const span = words.slice(from, from + QUOTE_WORDS).join(" ");
+      for (let from = 0; from + length <= words.length; from += 1) {
+        const span = words.slice(from, from + length).join(" ");
         spans.set(span, (spans.get(span) ?? new Set()).add(name));
       }
     }
@@ -271,6 +281,7 @@ export function quotedSpans(
   path: string,
   text: string,
   spans: ReadonlyMap<string, ReadonlySet<string>>,
+  length = QUOTE_WORDS,
 ): QuotedSpan[] {
   const words = wordsIn(text);
   const plain = words.map(({ word }) => word);
@@ -278,13 +289,13 @@ export function quotedSpans(
   const tasks = new Set<string>();
   let from = -1;
   for (let at = 0; at <= plain.length; at += 1) {
-    const holders = spans.get(plain.slice(at, at + QUOTE_WORDS).join(" "));
+    const holders = spans.get(plain.slice(at, at + length).join(" "));
     if (holders !== undefined) {
       from = from === -1 ? at : from;
       for (const task of holders) tasks.add(task);
     } else if (from !== -1) {
       const line = text.slice(0, words[from]?.at ?? 0).split("\n").length;
-      const span = plain.slice(from, at - 1 + QUOTE_WORDS).join(" ");
+      const span = plain.slice(from, at - 1 + length).join(" ");
       hits.push({ path, line, text: span, tasks: [...tasks] });
       tasks.clear();
       from = -1;
@@ -293,27 +304,59 @@ export function quotedSpans(
   return hits;
 }
 
-/** Plain descriptions of harness files that name or quote released practice tasks. */
+/** Rare record/entity codes from public inputs (`S01-007`, `P-00123`, `C-01`), mapped to their tasks. */
+function rareCodes(tasks: readonly { readonly name: string; readonly strings: readonly string[] }[]) {
+  const codes = new Map<string, Set<string>>();
+  for (const { name, strings } of tasks) {
+    for (const token of strings.flatMap((text) => text.match(TOKEN_RE) ?? [])) {
+      if (token !== name && TASK_CODE_RE.test(token)) {
+        codes.set(token, (codes.get(token) ?? new Set()).add(name));
+      }
+    }
+  }
+  return new Map([...codes].filter(([, holders]) => holders.size <= RARE_TASKS));
+}
+
+/** First-occurrence rare task codes found in one written file. */
+function codeHitsIn(path: string, text: string, codes: ReadonlyMap<string, ReadonlySet<string>>): string[] {
+  if (codes.size === 0) return [];
+  const seen = new Set<string>();
+  const hits: string[] = [];
+  for (const [at, line] of text.split("\n").entries()) {
+    for (const token of line.match(TOKEN_RE) ?? []) {
+      if (seen.has(token)) continue;
+      const holders = codes.get(token);
+      if (holders === undefined) continue;
+      seen.add(token);
+      hits.push(`${path}:${String(at + 1)} uses code "${token}" from ${[...holders].toSorted().join(", ")}`);
+    }
+  }
+  return hits;
+}
+
+/** Plain descriptions of harness files that name a practice task id, copy a rare record code, or
+ *  quote a rare 8-word span from one, giving exact line numbers and text so the Builder never
+ *  searches blindly. */
 export function namedTasks(
   written: readonly WrittenFile[],
   tasks: readonly { readonly taskId: string; readonly publicInput: JsonValue }[],
 ): string[] {
   if (written.length === 0 || tasks.length === 0) return [];
-  const { spans } = spansOf(
-    tasks.map(({ taskId, publicInput }) => ({ name: taskId, strings: stringsIn(publicInput) })),
-  );
+  const inputs = tasks.map(({ taskId, publicInput }) => ({ name: taskId, strings: stringsIn(publicInput) }));
+  const { spans } = spansOf(inputs, BUILDER_QUOTE_WORDS);
+  const rare = new Map([...spans].filter(([, holders]) => holders.size <= RARE_TASKS));
+  const codes = rareCodes(inputs);
   const found: string[] = [];
   for (const { path, text } of written) {
-    const named = new Set(
-      tasks.filter(({ taskId }) => taskId !== "" && hasWholeToken(text, taskId)).map(({ taskId }) => taskId),
-    );
-    const quoted = new Set(quotedSpans(path, text, spans).flatMap((hit) => hit.tasks));
-    const both = [...new Set([...named, ...quoted])].toSorted();
-    if (both.length === 0) continue;
-    const verb = [named.size > 0 ? "names" : "", quoted.size > 0 ? "quotes" : ""]
-      .filter(Boolean)
-      .join(" and ");
-    found.push(`${path} ${verb} ${both.join(", ")}`);
+    const named = tasks
+      .filter(({ taskId }) => taskId !== "" && hasWholeToken(text, taskId))
+      .map(({ taskId }) => taskId)
+      .toSorted();
+    if (named.length > 0) found.push(`${path} names ${named.join(", ")}`);
+    found.push(...codeHitsIn(path, text, codes));
+    for (const hit of quotedSpans(path, text, rare, BUILDER_QUOTE_WORDS)) {
+      found.push(`${path}:${String(hit.line)} quotes ${hit.tasks.toSorted().join(", ")} ("${hit.text}")`);
+    }
   }
   return found;
 }

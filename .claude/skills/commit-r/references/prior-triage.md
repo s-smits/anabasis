@@ -2,7 +2,7 @@
 
 Mechanical oracles (`runs replay`, byte-identical diffs, `mutate.ts`) check preservation and test coverage. They cannot test whether a behavioural rewrite's assumptions match real campaign logs, whether seat prompts introduce hedging or saturation incentives, or whether an overhaul breaks a coupled neighbour outside the compartment.
 
-Use this protocol for behavioural rewrites, acceptance/verifier/prompt overhauls, and redesigned behavioural test suites. Skip it for pure refolds whose observable outputs remain identical.
+Use this protocol for behavioural rewrites, acceptance/verifier/prompt overhauls, and redesigned high-importance test invariants. Skip it for pure refolds whose observable outputs remain identical and for low-importance test amputations.
 
 ## Who runs it
 

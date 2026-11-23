@@ -249,6 +249,7 @@ describe("draft shape and session gate", () => {
       "never search for, fetch, or copy tasks from public benchmarks",
       "penalising wrong or hedged claims",
       "runtime.tools.run",
+      "coupled domain invariants",
     ]) {
       expect(s.sent[0]).toContain(phrase);
     }

@@ -101,11 +101,15 @@ const putting =
     });
 
 describe("draft shape and session gate", () => {
-  it("enforces evaluator purity, safe verifier tool names, and single objective decision", () => {
+  it("enforces evaluator purity, syntax, exports, safe verifier tool names, and single objective decision", () => {
     const allowed: readonly Draft[] = [
       SOUND,
       MEASURED,
       { ...SOUND, evaluator: `${SOUND.evaluator}\nconst t = new Date(0).getTime();` },
+      {
+        ...SOUND,
+        evaluator: `// import x; process.env; fetch("http://x"); Math.random()\nconst note = "import fetch( process.env Date.now()";\n${SOUND.evaluator}`,
+      },
       withTools(["bash", "python3"]),
       { ...MEASURED, objectiveTools: ["python3"] },
     ];
@@ -115,6 +119,21 @@ describe("draft shape and session gate", () => {
       [{ ...SOUND, evaluator: `import "node:fs";\n${SOUND.evaluator}` }, "import"],
       [{ ...SOUND, evaluator: `${SOUND.evaluator}\nconst r = Math.random();` }, "random number or the clock"],
       [{ ...SOUND, evaluator: `${SOUND.evaluator}\nconst t = Date.now();` }, "random number or the clock"],
+      [{ ...SOUND, evaluator: `${SOUND.evaluator}\nconst d = new Date();` }, "random number or the clock"],
+      [
+        { ...SOUND, evaluator: `${SOUND.evaluator}\nconst p = performance.now();` },
+        "random number or the clock",
+      ],
+      [
+        { ...SOUND, evaluator: `${SOUND.evaluator}\nconst id = crypto.randomUUID();` },
+        "random number or the clock",
+      ],
+      [{ ...SOUND, evaluator: `${SOUND.evaluator}\nconst x = eval("1");` }, "dynamic code evaluation"],
+      [{ ...SOUND, evaluator: `${SOUND.evaluator}\nconst f = new Function("return 1");` }, "dynamic code"],
+      [{ ...SOUND, evaluator: `${SOUND.evaluator}\nconst e = process["env"];` }, "runtime's own objects"],
+      [{ ...SOUND, evaluator: `export const checks = { "check-product": (req) => === ;` }, "did not compile"],
+      [{ ...SOUND, evaluator: `export const other = {};` }, "does not export `checks`"],
+      [{ ...MEASURED, evaluator: SOUND.evaluator }, "does not export `objective`"],
       [SILENT, "objective"],
       [{ ...MEASURED, unmeasured: "every answer is as good" }, "objective"],
       [withTools(["../sh"]), "invalid verifier tool"],

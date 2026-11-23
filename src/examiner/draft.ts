@@ -16,6 +16,7 @@ import { capturedJsonStringify, decodedJsonText, parseJsonAs } from "../meta/jso
 import { asRecord, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { isSafePathSegment } from "../meta/path-segment.ts";
+import { errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import { ending, text, tool } from "../tools/answer.ts";
 
@@ -91,15 +92,19 @@ interface DraftingTerms {
 /** The fewest example tasks a draft holds: the reading needs each check seen to pass and to
  *  refuse, and the campaign's first practice tasks are drawn from them. */
 const EXAMPLES = 3;
-/** What a check program may not spell: a way out of its argument, or a value that differs from
- *  one run to the next. A check that read its host's files or its clock would give one answer two
- *  verdicts on two hosts. The verifier's wall is what confines a check, and it is not the same on
- *  every host; this is what the host can say of the source before it runs. */
+/** What a check program may not spell in executable code: a way out of its argument, or a value
+ *  that differs from one run to the next. Comments and string literals are stripped from the
+ *  transpiled output first, and `Bun.Transpiler.scan` checks imports, syntax and exports. */
+const EVALUATOR_TRANSPILER = new Bun.Transpiler({ loader: "ts" });
 const OUTSIDE = [
-  [/^\s*import\s|\bimport\s*\(|\brequire\s*\(/m, "an import"],
-  [/\b(?:Bun|process)\s*\./, "the runtime's own objects"],
+  [/\brequire\s*\(/, "an import"],
+  [/\b(?:Bun|process)\s*(?:\.|\[)/, "the runtime's own objects"],
   [/\bfetch\s*\(/, "the network"],
-  [/\bMath\s*\.\s*random\b|\bDate\s*\.\s*now\b/, "a random number or the clock"],
+  [
+    /\bMath\s*\.\s*random\b|\bDate\s*\.\s*now\b|\bnew\s+Date\b(?!\s*\(\s*[^)\s])|\bperformance\s*\.\s*now\b|\bcrypto\s*\.\s*(?:randomUUID|getRandomValues|randomBytes)\b/,
+    "a random number or the clock",
+  ],
+  [/\beval\s*\(|\bnew\s+Function\b/, "dynamic code evaluation"],
 ] as const;
 const TEXT_FILE = Type.Object({ path: Type.String({ minLength: 1 }), text: Type.String() });
 /** Files beside an answer, as a control or a try gives them (`ControlFile`). */
@@ -314,6 +319,102 @@ function controlFaults(draft: Draft): string[] {
   ];
 }
 
+/** Strip comments and quoted/template string chunks (keeping `${...}` code) from transpiled JS. */
+function codeOnly(source: string): string {
+  const parts: string[] = [];
+  let index = 0;
+  const end = source.length;
+  while (index < end) {
+    const ch = source[index];
+    const next = source[index + 1];
+    if (ch === "/" && next === "/") {
+      const eol = source.indexOf("\n", index + 2);
+      index = eol === -1 ? end : eol + 1;
+      parts.push("\n");
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      const close = source.indexOf("*/", index + 2);
+      index = close === -1 ? end : close + 2;
+      parts.push(" ");
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      index += 1;
+      while (index < end && source[index] !== ch) {
+        index += source[index] === "\\" ? 2 : 1;
+      }
+      index += 1;
+      parts.push('""');
+      continue;
+    }
+    if (ch === "`") {
+      index += 1;
+      parts.push('""');
+      index = scanTemplate(source, index, parts);
+      continue;
+    }
+    parts.push(ch ?? "");
+    index += 1;
+  }
+  return parts.join("");
+}
+
+/** Advance past a template literal starting after its opening backtick, preserving `${...}` code. */
+function scanTemplate(source: string, start: number, parts: string[]): number {
+  let index = start;
+  const end = source.length;
+  while (index < end && source[index] !== "`") {
+    if (source[index] === "\\") {
+      index += 2;
+      continue;
+    }
+    if (source[index] !== "$" || source[index + 1] !== "{") {
+      index += 1;
+      continue;
+    }
+    index += 2;
+    parts.push(" ");
+    let depth = 1;
+    while (index < end && depth > 0) {
+      const cur = source[index];
+      if (cur === "{") depth += 1;
+      else if (cur === "}") depth -= 1;
+      if (depth > 0) parts.push(cur ?? "");
+      index += 1;
+    }
+    parts.push(" ");
+  }
+  return index + 1;
+}
+
+/** Static syntax, export and purity faults of `draft.evaluator`, checked before staging any cell. */
+function evaluatorFaults(draft: Draft): string[] {
+  let scanned: ReturnType<typeof EVALUATOR_TRANSPILER.scan>;
+  let transformed: string;
+  try {
+    scanned = EVALUATOR_TRANSPILER.scan(draft.evaluator);
+    transformed = EVALUATOR_TRANSPILER.transformSync(draft.evaluator);
+  } catch (error) {
+    return [`the check program did not compile: ${errorMessage(error)}`];
+  }
+  const code = codeOnly(transformed);
+  const reached = [
+    ...(scanned.imports.length > 0 ? ["an import"] : []),
+    ...OUTSIDE.flatMap(([spelled, what]) => (spelled.test(code) ? [what] : [])),
+  ];
+  return [
+    ...[...new Set(reached)].map(
+      (what) =>
+        `the check program reaches for ${what}: a check computes from its request alone, so that one answer gets one verdict on every host`,
+    ),
+    ...(scanned.exports.includes("checks") ? [] : ["the check program does not export `checks`"]),
+    ...(draft.objective !== undefined && !scanned.exports.includes("objective")
+      ? ["the draft declares an objective, and the check program does not export `objective`"]
+      : []),
+  ];
+}
+
 /**
  * What the host can say of a draft before anything runs, one sentence a fault: its shape. The
  * answer format's own fault comes first and alone, since nothing below reads without it.
@@ -328,13 +429,7 @@ export function draftFaults(draft: Draft): string[] {
   const again = twice(ruleIds) ?? twice(draft.checks.map(({ id }) => id));
   const hidden = draft.tasks.filter((task) => task.hidden !== null).length;
   return [
-    ...OUTSIDE.flatMap(([spelled, what]) =>
-      spelled.test(draft.evaluator)
-        ? [
-            `the check program reaches for ${what}: a check computes from its request alone, so that one answer gets one verdict on every host`,
-          ]
-        : [],
-    ),
+    ...evaluatorFaults(draft),
     ...(again === undefined ? [] : [`${again} is named twice: an id names one rule or one check`]),
     ...draft.rules.flatMap(({ id }) => {
       const checked = draft.checks.filter((check) => check.rule === id).length;

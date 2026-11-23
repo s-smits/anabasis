@@ -470,4 +470,12 @@ describe.skipIf(!osIsolationSupport().ok)("the objective", () => {
       });
     }
   });
+
+  it("faults under brief when no check applies to the task's family instead of passing vacuously", async () => {
+    expect(await measured(task("unknown-family"), { value: 7 })).toEqual({
+      kind: "faulty",
+      check: "brief",
+      reason: "no check applies to family unknown-family",
+    });
+  });
 });

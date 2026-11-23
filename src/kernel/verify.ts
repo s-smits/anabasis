@@ -172,7 +172,6 @@ interface ResolvedVerifierTool {
 const CHECK_CHILD = join(import.meta.dir, "check-child.ts");
 const CHECK_CHILD_SOURCES = [import.meta.dir, resolve(import.meta.dir, "..", "meta")];
 const REPO = resolve(import.meta.dir, "..", "..");
-const TOOL_CEILING_MS = 300_000;
 const CHECKS_AT_ONCE = 4;
 /** Per-check wall timeout including its tools; exceeding it marks the check faulty. */
 export const PER_CHECK_MS = 120_000;
@@ -453,6 +452,9 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
       ...keyIfDefined("files", files),
     };
     const checks = applicableTruthChecks(brief, task);
+    if (checks.length === 0) {
+      return { kind: "faulty", check: "brief", reason: `no check applies to family ${task.family}` };
+    }
     const ran = await runCell(wall, checks, objective, request, signal);
     if ("nonResult" in ran) return { kind: "non-result", reason: ran.nonResult };
     if ("held" in ran) return { kind: "faulty", check: ran.held, reason: ran.reason };
@@ -572,7 +574,7 @@ async function runCell(
     const input: CellInput = {
       program: join(copy, EVALUATOR_FILE),
       tools: wall.toolMap,
-      toolCeilingMs: TOOL_CEILING_MS,
+      toolCeilingMs: wall.checkMs,
       checkMs: wall.checkMs,
       width: CHECKS_AT_ONCE,
       checks: checks.map((check) => inputOf(check, request)),

@@ -1,50 +1,47 @@
 /**
- * Read remote campaigns through the local readers. One catalogue lists each
- * machine's originals, including its archive. One transfer owner refreshes copies in the existing
- * archive. Copies never become runnable campaigns. Fetch, WRI, view, source and replay used to
- * disagree on discovery, and an old fetched copy could silently stand for a growing remote log.
- * A failed transfer leaves the previous copy intact and refuses the read. Only whole log lines
- * are published. The catalogue states each log's size, and a record refresh skips a copy that
- * already has it, so a frequent gather copies only campaigns that moved. No credential file is
- * copied and rsync never follows a link.
+ * Read remote campaigns through the local readers. One catalogue lists each machine's originals,
+ * including its archive. One transfer owner refreshes copies in the existing archive. Copies never
+ * become runnable campaigns. A failed transfer leaves the previous copy intact and refuses the read;
+ * only whole log lines are published; credentials are excluded and rsync never follows a link.
  *
  *   bun run runs catalogue
  */
 import { Type } from "typebox";
 import { CODEX_AUTH } from "#src/agent/backends/models.ts";
-import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
-import { DELIVERABLES } from "#src/kernel/answer-files.ts";
 import { openingOf } from "#src/campaign/opening.ts";
-import { existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync } from "#src/meta/filesystem.ts";
+import { DELIVERABLES } from "#src/kernel/answer-files.ts";
+import { LOG_FILE, read as readLog, truncatePartial } from "#src/kernel/log.ts";
+import { cloneFile, lstatSync, mkdirSync, readdirSync, renameSync, rmSync } from "#src/meta/filesystem.ts";
+import { hold, release } from "#src/meta/holder.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { isNumber } from "#src/meta/json-shape.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
+import { homedir } from "#src/meta/os.ts";
 import { dirname, isAbsolute, join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { pooled } from "#src/meta/pool.ts";
 import { runtimeProcess, warn } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { asked, answerOf } from "./hosts.ts";
-import { type Bench, benchesOf, type Host, hostNamed, hostsOf } from "./host-config.ts";
-import { homedir } from "#src/meta/os.ts";
-import { quoted, rsync, sideOf, sshScript } from "./host-command.ts";
 import { runTextOrThrow } from "#src/meta/subprocess.ts";
-import { hold, release } from "#src/meta/holder.ts";
+import { keepObservation, observationAt, stderrTail } from "./diagnosis.ts";
+import { quoted, rsync, sideOf, sshScript } from "./host-command.ts";
+import { type Bench, benchesOf, type Host, hostNamed, hostsOf } from "./host-config.ts";
+import { answerOf, asked } from "./hosts.ts";
+import PACKAGE_PATHS from "./package-paths.py" with { type: "text" };
 import {
   ARCHIVE,
   archiveOf,
+  fileStat,
   HERE,
   keepers,
   originals,
+  processes,
   readable,
   readNamed,
-  wholeLines,
-  processes,
   SEED_FILE,
   writers,
   type Run,
 } from "./registry.ts";
-import { keepObservation, stderrTail } from "./diagnosis.ts";
-import PACKAGE_PATHS from "./package-paths.py" with { type: "text" };
 
 interface RemoteRun {
   readonly name: string;
@@ -58,8 +55,8 @@ interface RemoteRun {
 }
 
 type Depth = "record" | "whole";
-/** Of a benchmark's trees, the folder of programs (`TOOLCHAIN`'s `bin`): the export also searches a
- *  `py/bin`, which on every tree on record holds only the interpreters `exportedPrograms` drops. */
+
+/** Of a benchmark's trees, only the toolchain `bin` folder (`levels` reads exported program names). */
 const PROGRAMS_ONLY = [
   "--include=/trees/",
   "--include=/trees/*/",
@@ -82,12 +79,14 @@ export const DERIVED: ReadonlySet<string> = new Set([
   ".matplotlib",
   "Library",
 ]);
-/** Run the same wheel RECORD reader at the source of a zip or remote copy. */
-export const PACKAGED = `python3 -I -c ${quoted(PACKAGE_PATHS)}`;
-/** The submitted files, the one part of `states/` a record holds, since readers of a verdict need them. */
+const DERIVED_LIST = [...DERIVED];
+/** Run the wheel RECORD reader at the source of a zip or remote copy, pruning `DERIVED` dirs. */
+export const PACKAGED = `python3 -I -c ${quoted(PACKAGE_PATHS)} ${DERIVED_LIST.map(quoted).join(" ")}`;
+/** List remote files while pruning `DERIVED` dirs at the source (emits pruned dirs with a trailing `/`). */
+const FIND_FILES = `find . \\( -type d \\( ${DERIVED_LIST.map((name) => `-name ${quoted(name)}`).join(" -o ")} \\) -prune -exec printf '%s/\\0' {} + \\) -o ! -type d -print0`;
+/** Submitted files, the one part of `states/` a record copy keeps so verdict readers can inspect them. */
 const DELIVERED = join("states", DELIVERABLES.folder);
-// The seed's mark comes too, so a copy of a rehearsal's seed is no paid campaign to a reader, where
-// without it a seed would count as a campaign in a replay.
+// Include `SEED_FILE` so a copied rehearsal seed never reads as a paid campaign in a replay.
 const RECORD = [
   "--include=/log.jsonl",
   "--include=/states/",
@@ -109,28 +108,22 @@ const CATALOGUE = Type.Array(
     bytes: Type.Optional(Type.Unknown()),
   }),
 );
-/** How many copies are refreshed at once. Each is one rsync over the host's shared ssh connection,
- *  which carries ten sessions at most by sshd's default. */
+/** Concurrent rsyncs per sweep, under sshd's default ten-session limit on the shared control socket. */
 const AT_ONCE = 6;
-/** How often a fetch looks again at a copy another fetch holds. */
+/** Poll interval when waiting on a copy another fetch holds. */
 const WAIT_MS = 200;
-
-/** The text only an opening's line holds. A line that merely quotes it is parsed and passed over. */
-const OPENED = `"kind":"campaign.opened"`;
 
 /** Files and complete directories a package owns, relative to the archive root. */
 export const packagedOf = (printed: string): Set<string> =>
   new Set(printed === "" ? [] : parseJsonAs<string[]>(printed));
 
-/** One original campaign's identity and project, as a catalogue lists it. Only the openings are
- *  parsed: every refresh asks each host for its catalogue, and parsing every line of every log for
- *  one project would take most of a refresh. */
+/** One original campaign's identity and project, streaming only `campaign.opened` events. */
 function entryOf({ name, path }: Run): { name: string; path: string; project: string | null } {
-  const openings = wholeLines(path)
-    .split("\n")
-    .filter((line) => line.includes(OPENED))
-    .map((line) => parseJsonAs<LogEvent>(line));
-  return { name, path, project: openingOf(openings)?.project ?? null };
+  return {
+    name,
+    path,
+    project: openingOf(readLog(path, (kind) => kind !== "campaign.opened"))?.project ?? null,
+  };
 }
 
 /** Only originals are advertised: a fetched copy cannot claim another machine's campaign. */
@@ -177,160 +170,198 @@ export function remoteRuns(lines: readonly string[] | null, host: Host): RemoteR
   });
 }
 
-/** The files and links of a remote folder that a copy takes, each by its path from it, in byte
- *  order, and what it leaves of the folder on the host (`installs`). */
+/** Whether `run` already lives in its peer's archive (`data/runs/here/<name>`), so nothing else
+ *  (including cut-Builder note recovery on retire) will write to its folder. */
+const isArchived = (run: RemoteRun): boolean =>
+  run.path.endsWith(`/${join(ARCHIVE, HERE, run.name, LOG_FILE)}`);
+
+/** The rsync flag that leaves one path of the copied folder where it is. */
+const leaving = (path: string): string => `--exclude=/${path.replaceAll(/[*?[]/gu, String.raw`\$&`)}`;
+
+/** Files a copy takes in byte order and outermost paths it leaves behind (`DERIVED` folders and
+ *  entries owned by pip wheel `RECORD`s), pruned at the source so installed trees are not walked. */
 async function filesOf(host: Host, folder: string): Promise<{ taken: string[]; left: string[] }> {
   const listed = (
-    await runTextOrThrow(sshScript(host, `cd ${quoted(folder)} && find . ! -type d -print0 && ${PACKAGED}`))
+    await runTextOrThrow(sshScript(host, `cd ${quoted(folder)} && ${FIND_FILES} && ${PACKAGED}`))
   ).split("\0");
   const owned = packagedOf(listed.pop() ?? "");
   const paths = listed
     .filter((path) => path.startsWith("./"))
     .map((path) => path.slice(2))
     .toSorted();
-  return installs(paths, owned);
-}
-
-/** What a copy takes of a campaign's `paths` and what it leaves on its host, each by its outermost
- *  path: the folders named as installed or cached (`DERIVED`), and the entries of a pip target its
- *  packages own (`owned`), so that a file a seat wrote beside them is copied. A copy therefore
- *  opens as no harness (`keptAs` refuses a kept state short of its programs): a campaign runs on
- *  from its original. */
-function installs(paths: readonly string[], owned: ReadonlySet<string>): { taken: string[]; left: string[] } {
-  const outers = paths.map((path) => {
-    const parts = path.split("/");
-    return parts
-      .map((_, index) => parts.slice(0, index + 1).join("/"))
-      .find(
-        (under, index) => owned.has(under) || (index + 1 < parts.length && DERIVED.has(parts[index] ?? "")),
-      );
-  });
-  return {
-    taken: paths.filter((_, index) => outers[index] === undefined),
-    left: [...new Set(outers.filter((outer) => outer !== undefined))].toSorted(),
-  };
-}
-
-/** The files among `paths` that a disk which folds case cannot hold beside another named the same
- *  but for case: all of each such group but its last in byte order, the most lower-case, to which
- *  `terminfo`'s upper-case aliases link. Otherwise a whole copy from a case-sensitive host fails:
- *  `N/NCR260VT300WPP`, a link to `../n/ncr260vt300wpp`, becomes a link to itself here, and an
- *  Examiner's `w/t1.py` beside its `w/T1.py` aborts rsync. */
-function caseTwins(paths: readonly string[]): string[] {
-  const last = new Map(paths.map((path) => [path.toLowerCase(), path]));
-  return paths.filter((path) => last.get(path.toLowerCase()) !== path);
-}
-
-/** The rsync flag that leaves one path of the copied folder where it is. */
-const leaving = (path: string): string => `--exclude=/${path.replaceAll(/[*?[]/gu, String.raw`\$&`)}`;
-
-/** Refresh one copy under its holder (`holder.ts`), which a fetch keeps however long it transfers and
- *  the next takes over once its process is gone. The stage sits beside the holder, so a fetch killed
- *  part way leaves it where the next one finds it: a copy set aside is put back, and the rest goes. */
-async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): Promise<string> {
-  // A log only grows, so a record copy of the size the catalogue states has nothing to gain.
-  const held = join(into, LOG_FILE);
-  if (depth === "record" && run.bytes !== null && existsSync(held) && lstatSync(held).size === run.bytes) {
-    keepObservation(into, { open: run.open, kept: run.kept, stderr: run.stderr });
-    return held;
+  const taken: string[] = [];
+  const left = new Set<string>();
+  for (const raw of paths) {
+    const pruned = raw.endsWith("/");
+    const parts = (pruned ? raw.slice(0, -1) : raw).split("/");
+    let outer: string | undefined;
+    let prefix = "";
+    for (let index = 0; index < parts.length; index += 1) {
+      const part = parts[index] ?? "";
+      prefix = index === 0 ? part : `${prefix}/${part}`;
+      if (owned.has(prefix) || ((pruned || index + 1 < parts.length) && DERIVED.has(part))) {
+        outer = prefix;
+        break;
+      }
+    }
+    if (outer !== undefined) left.add(outer);
+    else if (!pruned) taken.push(raw);
   }
+  return { taken, left: [...left].toSorted() };
+}
+
+/** Inspect `into` as it stands. Returns null after updating its observation if `into` already holds
+ *  everything `depth` needs at `run.bytes`; otherwise returns the local copy state for transfer. */
+function copyOrReuse(run: RemoteRun, into: string, depth: Depth) {
+  const exists = fileStat(into)?.isDirectory() === true;
+  const bytes = exists ? (fileStat(join(into, LOG_FILE))?.size ?? null) : null;
+  const wholeBytes = exists ? observationAt(into)?.wholeBytes : undefined;
+  const closedWhole = !run.open && !run.kept && isArchived(run) && wholeBytes === run.bytes;
+  if (run.bytes !== null && bytes === run.bytes && (depth === "record" || closedWhole)) {
+    keepObservation(into, {
+      open: run.open,
+      kept: run.kept,
+      stderr: run.stderr,
+      ...keyIfDefined("wholeBytes", wholeBytes),
+    });
+    return null;
+  }
+  return { exists, bytes, wholeBytes };
+}
+
+/** Stage a remote snapshot into `folder` and return its verified whole-line log byte length. */
+async function stageTransfer(
+  run: RemoteRun,
+  host: Host,
+  spec: {
+    readonly into: string;
+    readonly folder: string;
+    readonly depth: Depth;
+    readonly exists: boolean;
+    readonly bytes: number | null;
+  },
+): Promise<number> {
+  const { into, folder, depth, exists, bytes } = spec;
+  mkdirSync(folder, { recursive: true });
+  // Pre-seed a growing log via copy-on-write clone so openrsync delta-transfers only appended bytes
+  // (`--link-dest` alone only hardlinks identical files and re-sends grown logs from byte 0).
+  if (bytes !== null && run.bytes !== null && bytes < run.bytes) {
+    cloneFile(join(into, LOG_FILE), join(folder, LOG_FILE));
+  }
+  const { taken, left } =
+    depth === "whole" ? await filesOf(host, dirname(run.path)) : { taken: [], left: [] };
+  // On case-folding disks, keep only the last byte-order member (typically lower-case) of each
+  // case-colliding group so upper-case terminfo aliases or Examiner files never abort rsync.
+  const foldCase = taken.length > 0 && fileStat(dirname(into).toUpperCase()) !== undefined;
+  const last = foldCase ? new Map(taken.map((path) => [path.toLowerCase(), path])) : null;
+  const twins = last === null ? [] : taken.filter((path) => last.get(path.toLowerCase()) !== path);
+  if (twins.length > 0) {
+    console.log(
+      `${run.name}: ${String(twins.length)} paths named as another but for case stay on ${host.name} alone`,
+    );
+  }
+  await rsync(
+    `${sideOf(host, dirname(run.path))}/`,
+    `${folder}/`,
+    ...(exists ? [`--link-dest=${into}`] : []),
+    ...EXCLUDED,
+    ...left.map(leaving),
+    ...twins.map(leaving),
+    ...(depth === "record" ? RECORD : []),
+  );
+  const log = join(folder, LOG_FILE);
+  if (!lstatSync(log).isFile()) throw new Error(`${run.name}: the copied log is not a regular file`);
+  return truncatePartial(log);
+}
+
+/** Publish staged `folder` into `into`. Record refreshes overlay files into an existing copy
+ *  (deliverables before the log that references them) so whole artefacts survive; whole or initial
+ *  refreshes swap atomically through `previous`. */
+function publishSnapshot(folder: string, into: string, depth: Depth): void {
+  if (depth === "record" && fileStat(into) !== undefined) {
+    const delivered =
+      fileStat(join(folder, DELIVERED)) === undefined ? [] : readdirSync(join(folder, DELIVERED));
+    if (delivered.length > 0) mkdirSync(join(into, DELIVERED), { recursive: true });
+    for (const kept of delivered) renameSync(join(folder, DELIVERED, kept), join(into, DELIVERED, kept));
+    const record = readdirSync(folder)
+      .filter((name) => name !== "states")
+      .toSorted((a, b) => Number(a === LOG_FILE) - Number(b === LOG_FILE));
+    for (const file of record) renameSync(join(folder, file), join(into, file));
+    return;
+  }
+  const previous = join(dirname(folder), "previous");
+  if (fileStat(into) !== undefined) renameSync(into, previous);
+  try {
+    renameSync(folder, into);
+  } catch (error) {
+    if (fileStat(previous) !== undefined) renameSync(previous, into);
+    throw error;
+  }
+}
+
+/** Refresh one copy under its holder (`holder.ts`), recovering any copy a killed swap set aside. */
+async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): Promise<string> {
+  const held = join(into, LOG_FILE);
+  if (copyOrReuse(run, into, depth) === null) return held;
   const lock = join(dirname(into), `.fetch-${run.name}.lock`);
   const holder = join(lock, "holder");
+  const stage = join(lock, "stage");
+  const previous = join(stage, "previous");
   mkdirSync(lock, { recursive: true });
   while (!hold(holder)) await Bun.sleep(WAIT_MS);
-  const stage = join(lock, "stage");
-  const folder = join(stage, "campaign");
-  const previous = join(stage, "previous");
   let published = false;
   try {
-    if (existsSync(previous) && !existsSync(into)) renameSync(previous, into);
-    rmSync(stage, { recursive: true, force: true });
-    mkdirSync(folder, { recursive: true });
-    const reused = existsSync(into) ? [`--link-dest=${into}`] : [];
-    const { taken, left } =
-      depth === "whole" ? await filesOf(host, dirname(run.path)) : { taken: [], left: [] };
-    const twins = existsSync(dirname(into).toUpperCase()) ? caseTwins(taken) : [];
-    if (twins.length > 0) {
-      console.log(
-        `${run.name}: ${String(twins.length)} paths named as another but for case stay on ${host.name} alone`,
-      );
-    }
-    await rsync(
-      `${sideOf(host, dirname(run.path))}/`,
-      `${folder}/`,
-      ...reused,
-      ...EXCLUDED,
-      ...left.map(leaving),
-      ...twins.map(leaving),
-      ...(depth === "record" ? RECORD : []),
-    );
-    const log = join(folder, LOG_FILE);
-    if (!lstatSync(log).isFile()) throw new Error(`${run.name}: the copied log is not a regular file`);
-    // link-dest may have linked an unchanged log to the previous copy. Replace its inode.
-    const whole = join(stage, "whole-log");
-    await Bun.write(whole, wholeLines(log));
-    renameSync(whole, log);
-    keepObservation(folder, { open: run.open, kept: run.kept, stderr: run.stderr });
-    // A record refresh keeps the artefacts a whole refresh fetched by moving only the record into
-    // the copy, a file at a time, the log last, since copying the folder to keep them would take most
-    // of a refresh of one live run, whose Examiner's home holds thousands of files.
-    if (depth === "record" && existsSync(into)) {
-      // The stored files are named by digest, so a refresh adds each beside those already kept,
-      // before the log that names them.
-      const delivered = existsSync(join(folder, DELIVERED)) ? readdirSync(join(folder, DELIVERED)) : [];
-      if (delivered.length > 0) mkdirSync(join(into, DELIVERED), { recursive: true });
-      for (const kept of delivered) renameSync(join(folder, DELIVERED, kept), join(into, DELIVERED, kept));
-      const record = readdirSync(folder)
-        .filter((name) => name !== "states")
-        .toSorted((a, b) => Number(a === LOG_FILE) - Number(b === LOG_FILE));
-      for (const file of record) renameSync(join(folder, file), join(into, file));
+    if (fileStat(previous) !== undefined && fileStat(into) === undefined) renameSync(previous, into);
+    const copy = copyOrReuse(run, into, depth);
+    if (copy === null) {
       published = true;
       return held;
     }
-    // A whole refresh replaces them.
-    if (existsSync(into)) renameSync(into, previous);
-    try {
-      renameSync(folder, into);
-      published = true;
-    } catch (error) {
-      if (existsSync(previous)) renameSync(previous, into);
-      throw error;
-    }
-    return join(into, LOG_FILE);
+    rmSync(stage, { recursive: true, force: true });
+    const folder = join(stage, "campaign");
+    const logBytes = await stageTransfer(run, host, {
+      into,
+      folder,
+      depth,
+      exists: copy.exists,
+      bytes: copy.bytes,
+    });
+    const wholeBytes =
+      depth === "whole" && !run.open && !run.kept && isArchived(run) ? logBytes : copy.wholeBytes;
+    keepObservation(folder, {
+      open: run.open,
+      kept: run.kept,
+      stderr: run.stderr,
+      ...keyIfDefined("wholeBytes", wholeBytes),
+    });
+    publishSnapshot(folder, into, depth);
+    published = true;
+    return held;
   } finally {
-    if (published || !existsSync(previous)) rmSync(stage, { recursive: true, force: true });
+    if (published || fileStat(previous) === undefined) rmSync(stage, { recursive: true, force: true });
     else console.error(`${run.name}: the previous copy is kept in ${previous} for the next fetch`);
     release(holder);
   }
 }
 
-/** Refresh matching remote campaigns. Exact discovery is used by one-run readers; collections
- *  use the CLI's substring matching. It returns the copies it refreshed and those a silent host's
- *  were left at. A name two machines hold refuses the read where one run is asked for. A collection leaves out each copy after the first and
- *  says so, since one shared name would refuse every collection read, the daily retire's among
- *  them. */
+/** Refresh matching remote campaigns. Exact discovery refuses duplicate names across hosts;
+ *  collection reads drop duplicates after the first and keep copies from silent or unlisted hosts. */
 export async function syncRuns(
   names: readonly string[],
   options: {
     readonly match?: "exact" | "part";
     readonly from?: string;
     readonly depth?: Depth;
-    /** Only the campaigns no process writes, which a copy can hold whole without moving under it. */
+    /** Only campaigns no process writes or keeps, so a whole copy does not move underneath it. */
     readonly closed?: boolean;
   } = {},
 ): Promise<string[]> {
   const repo = runtimeProcess.cwd();
-  const local = originals(repo);
-  // Only the host named is asked: another host's catalogue would be read and then dropped.
-  const selected = await asked(
-    ["catalogue"],
-    options.from === undefined ? hostsOf() : [hostNamed(options.from)],
-  );
+  const peers = hostsOf();
+  const selected = await asked(["catalogue"], options.from === undefined ? peers : [hostNamed(options.from)]);
   const matches = (name: string) =>
     names.length === 0 ||
     names.some((part) => (options.match === "exact" ? name === part : name.includes(part)));
-  // A host asked alone refuses; among several, one that is silent keeps its copies as they were.
-  // Refusing every refresh would leave every copy stale whenever one host is silent.
   const silent = new Set<string>();
   const remote = selected.flatMap(({ host, lines }) => {
     if (lines !== null || options.from !== undefined) {
@@ -342,7 +373,7 @@ export async function syncRuns(
     silent.add(host.name);
     return [];
   });
-  const owners = new Set(local.map((run) => run.name));
+  const owners = new Set(originals(repo).map((run) => run.name));
   const kept: typeof remote = [];
   for (const one of remote) {
     if (owners.has(one.run.name)) {
@@ -354,15 +385,10 @@ export async function syncRuns(
     owners.add(one.run.name);
     kept.push(one);
   }
-  // The archive is named once, rather than asking git for the main worktree for each copy.
-  // A copy whose host no `ANA_HOSTS` names cannot be refreshed, so it is read as it stands, where a
-  // reader run without `.env.runs` would drop every peer's copy and miss their promotions.
-  const known = new Set(hostsOf().map(({ name }) => name));
+  const known = new Set(peers.map(({ name }) => name));
   const stale = (from = HERE) => silent.has(from) || (from !== HERE && !known.has(from));
   const archive = archiveOf(repo);
   const left = readable(repo).filter((run) => stale(run.archived) && matches(run.name));
-  // One copy that fails holds up no other, and the read still fails once the rest are in, so one
-  // aborted rsync does not stop the further copies of its host.
   const failed: string[] = [];
   const brought = await pooled(kept, AT_ONCE, ({ host, run }) =>
     refresh(run, join(archive, host.name, run.name), host, options.depth ?? "whole").catch(
@@ -378,23 +404,13 @@ export async function syncRuns(
   return [...brought.filter((log) => log !== null), ...left.map((run) => run.path)];
 }
 
-/** Where this machine holds a benchmark's records: its store where it is rolled here, otherwise the
- *  copy `fetchBenches` keeps in `data/bench/<benchmark>`. */
+/** Where this machine holds a benchmark's records: its store where rolled here, else `data/bench/<name>`. */
 export const recordsHere = ({ name, host, store }: Pick<Bench, "name" | "host" | "store">): string =>
   host === undefined
     ? store.replace(/^~\//u, `${homedir()}/`)
     : join(dirname(archiveOf(runtimeProcess.cwd())), "bench", name);
 
-/**
- * Copy each benchmark's score store (`score.ts --out`) from the machine that rolls it into
- * `data/bench/<benchmark>` here: every task's rollout and judgement, which `score.ts table` reads
- * here as it does there. Of an arm's exported tree only its programs' folder comes, which `levels`
- * reads for the programs a rollout starts by name; the rest, an interpreter built for that machine
- * among it, stays behind, and `score.ts tree` writes it again from its campaign. A record there is written
- * once, so the copy only adds, and what that machine later clears stays here. A benchmark rolled on
- * this machine needs no copy; one whose machine does not answer keeps its copy as it was, as a silent
- * host keeps its campaigns'. It returns the folders it copied into.
- */
+/** Copy each remote benchmark score store into `data/bench/<name>`, keeping only toolchain `bin` from trees. */
 export async function fetchBenches(): Promise<string[]> {
   const copied: string[] = [];
   for (const bench of benchesOf()) {
@@ -402,7 +418,7 @@ export async function fetchBenches(): Promise<string[]> {
     if (host === undefined) continue;
     const into = recordsHere(bench);
     mkdirSync(into, { recursive: true });
-    // rsync reads a relative path from the home folder there, and a quoted `~` as a folder's name.
+    // rsync reads a relative path from the remote home folder, whereas a quoted `~` is literal.
     const from = `${sideOf(host, store.replace(/^~\//u, ""))}/`;
     try {
       await rsync(from, `${into}/`, ...EXCLUDED, ...PROGRAMS_ONLY);
@@ -414,19 +430,7 @@ export async function fetchBenches(): Promise<string[]> {
   return copied;
 }
 
-/**
- * Take over the campaigns `host`, a machine that rolls a benchmark, has retired, so that it stays
- * clear for outside evaluations: each its own retire moved into its archive (that retire alone
- * decides when a campaign is finished), which no process writes or keeps there and of which this
- * machine holds every file a copy takes byte for byte, joins this machine's own archive and is
- * deleted there. Nothing else deletes an original, and a campaign still in its worktree there is
- * left alone. The proof is one checksummed dry run of rsync, so a campaign with a path left there
- * for its case (`caseTwins`) stays; credentials and installs are never copied (`EXCLUDED`,
- * `installs`), so a campaign taken over is a record. The copy moves first, so a sweep killed before
- * the deletion is finished by the next; the deletion runs only while the log there is as long as
- * the catalogue said, and one that grew stays, its copy the host's again; one that fails part way
- * leaves the copy this machine's own. Asked to `describe`, it says what it would do.
- */
+/** Take over retired campaigns on `host` once this machine holds an identical copy byte for byte. */
 export async function takeRetired(host: Host, act: "take" | "describe"): Promise<void> {
   const archive = archiveOf(runtimeProcess.cwd());
   const [answer] = await asked(["catalogue"], [host]);
@@ -435,9 +439,10 @@ export async function takeRetired(host: Host, act: "take" | "describe"): Promise
     const from = dirname(run.path);
     const copy = join(archive, host.name, run.name);
     const own = join(archive, HERE, run.name);
-    const held = [own, copy].find((folder) => existsSync(join(folder, LOG_FILE)));
-    const retired = run.path.endsWith(`/${join(ARCHIVE, HERE, run.name, LOG_FILE)}`);
-    if (!retired || run.open || run.kept || run.bytes === null || held === undefined) continue;
+    const held = [own, copy].find(
+      (folder) => fileStat(folder)?.isDirectory() === true && fileStat(join(folder, LOG_FILE)) !== undefined,
+    );
+    if (!isArchived(run) || run.open || run.kept || run.bytes === null || held === undefined) continue;
     try {
       const differing = (
         await rsync(
@@ -451,7 +456,7 @@ export async function takeRetired(host: Host, act: "take" | "describe"): Promise
         )
       )
         .split("\n")
-        // A line that opens with a point names a path whose times or modes alone differ.
+        // Lines starting with `.` report unchanged contents whose timestamps or modes alone differ.
         .filter((line) => line !== "" && !line.startsWith("."));
       if (differing.length > 0) {
         console.log(
@@ -505,13 +510,10 @@ export async function readableAcross(names: readonly string[] = [], depth: Depth
   );
 }
 
-/**
- * The one resolver of a reader's `<log | campaign folder | name>`: a folder reads its log, an
- * explicit path stays explicit, and a campaign's name reaches every host, copied whole or, for a
- * reader of its log alone, as its record. Every reader resolves a folder here rather than its own
- * way.
- */
+/** Resolve `<log | campaign folder | name>` across local paths and remote hosts. */
 export async function logAcross(named: string, depth: Depth = "whole"): Promise<string> {
-  if (existsSync(join(named, LOG_FILE))) return join(named, LOG_FILE);
-  return existsSync(named) ? named : (await readAcross(named, depth)).path;
+  const stat = fileStat(named);
+  if (stat === undefined) return (await readAcross(named, depth)).path;
+  if (stat.isDirectory() && fileStat(join(named, LOG_FILE)) !== undefined) return join(named, LOG_FILE);
+  return named;
 }

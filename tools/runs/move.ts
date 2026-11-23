@@ -214,7 +214,7 @@ export async function move(args: readonly string[]): Promise<void> {
   const folder = (root: string) => join(root, CAMPAIGNS, name);
   const login = values.login === undefined ? [] : ["--login", values.login];
   const size = (end: End, root: string) =>
-    Number(at(end, `cat ${quoted(join(folder(root), LOG_FILE))} 2>/dev/null | wc -c`));
+    Number(at(end, `{ wc -c < ${quoted(join(folder(root), LOG_FILE))}; } 2>/dev/null || echo 0`));
   // Read before anything stops: a pause that a taken destination then refuses leaves the run stopped.
   const taken = at(
     to,

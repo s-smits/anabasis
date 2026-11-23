@@ -23,10 +23,11 @@ type Mode = "cached" | "install";
 const CONTROLLERS = "ana-code";
 /** Timeout for remote preparation, accommodating cold frozen installs on Linux hosts. */
 const PREPARE_MS = 300_000;
+/** How long a verified read controller stays cached in-process before re-checking clean state. */
+const CONTROLLER_TTL_MS = 60_000;
 const warned = new Set<string>();
-/** Deduplicates concurrent controller preparations per `(host, commit)` within a process so parallel
- *  remote calls do not contend on `git fetch` ref locks or the preparation lock directory. */
-const preparing = new Map<string, Promise<Host | null>>();
+/** Deduplicates concurrent and back-to-back read controller checks per `(host, commit)` in one process. */
+const preparing = new Map<string, { until: number; promise: Promise<Host | null> }>();
 
 /** Shell helper deciding whether lock directory `$1` is stale (matching `holder.ts`): returns true
  *  when the recorded PID is no longer alive, or when no PID was written (killed mid-creation) and
@@ -177,13 +178,19 @@ export async function preparedHost(host: Host, commit: string, mode: Mode = "ins
 export async function readControllers(hosts: readonly Host[]): Promise<(Host | null)[]> {
   if (hosts.length === 0) return [];
   const commit = readCommit();
+  const now = Date.now();
   return await Promise.all(
     hosts.map((host) => {
       const key = `${host.name} ${commit}`;
-      const prepared =
-        preparing.get(key) ?? readController(host, commit).finally(() => preparing.delete(key));
-      preparing.set(key, prepared);
-      return prepared;
+      const cached = preparing.get(key);
+      if (cached !== undefined && cached.until > now) return cached.promise;
+      const promise = readController(host, commit).then((ready) => {
+        if (ready === null) preparing.delete(key);
+        else preparing.set(key, { until: Date.now() + CONTROLLER_TTL_MS, promise });
+        return ready;
+      });
+      preparing.set(key, { until: now + PREPARE_MS, promise });
+      return promise;
     }),
   );
 }

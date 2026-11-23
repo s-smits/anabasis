@@ -85,4 +85,22 @@ describe("controller pruning and cursor storage", () => {
     expect(made.run(PREPARE, { FAKE_EXECUTE: "1", FAKE_PS_FAIL: "1" }).code).toBe(0);
     expect(made.recorded().some((call) => call.args.includes("remove"))).toBe(false);
   });
+
+  it("caches verified read controllers in-process and retries immediately after failure", () => {
+    const made = fixture();
+    const cached = made.run(
+      'import { readControllers } from "REPOSITORY/tools/runs/code.ts"; import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; const hosts = hostsOf(); const first = await readControllers(hosts); const second = await readControllers(hosts); console.log(JSON.stringify([first[0]?.tree, second[0]?.tree]));',
+    );
+    expect(cached.code).toBe(0);
+    expect(JSON.parse(cached.out)).toEqual([made.env.FAKE_PREPARED, made.env.FAKE_PREPARED]);
+    expect(made.recorded().filter((call) => call.tool === "ssh")).toHaveLength(1);
+
+    const recovered = fixture();
+    const retried = recovered.run(
+      'import { rmSync, writeFileSync } from "node:fs"; import { readControllers } from "REPOSITORY/tools/runs/code.ts"; import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; const hosts = hostsOf(); const flag = `${process.env.FAKE_NOW}/FAKE_OFFLINE`; writeFileSync(flag, "1"); const missed = await readControllers(hosts); rmSync(flag); const ready = await readControllers(hosts); console.log(JSON.stringify([missed[0], ready[0]?.tree]));',
+    );
+    expect(retried.code).toBe(0);
+    expect(JSON.parse(retried.out)).toEqual([null, recovered.env.FAKE_PREPARED]);
+    expect(recovered.recorded().filter((call) => call.tool === "ssh")).toHaveLength(2);
+  });
 });

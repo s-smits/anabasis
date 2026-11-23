@@ -4,6 +4,7 @@
  */
 import {
   closeSync,
+  detachHardlink,
   existsSync,
   fstatSync,
   fsyncSync,
@@ -144,8 +145,9 @@ export function append(path: string, kind: EventKind, data: JsonObject): LogEven
   try {
     lockExclusiveSync(fd);
     if (foldsEvent(kind)) taskStates([...read(path, (each) => !foldsEvent(each)), event]);
-    const size = wholeSize(fd);
-    if (size !== fstatSync(fd).size) ftruncateSync(fd, size);
+    const full = fstatSync(fd).size;
+    const size = wholeSize(fd, full);
+    if (size !== full) ftruncateSync(fd, size);
     const line = Buffer.from(`${capturedJsonStringify(event)}\n`, "utf8");
     let written = 0;
     try {
@@ -163,9 +165,9 @@ export function append(path: string, kind: EventKind, data: JsonObject): LogEven
 
 /** The log's size up to its last whole line, read back from its end a block at a time through the
  *  locked descriptor, so the cut is of the file the lock holds whatever its path names by then. */
-function wholeSize(fd: number): number {
+function wholeSize(fd: number, total: number): number {
   const block = Buffer.alloc(65_536);
-  let end = fstatSync(fd).size;
+  let end = total;
   while (end > 0) {
     const from = Math.max(0, end - block.length);
     const newline = block.subarray(0, readSync(fd, block, 0, end - from, from)).lastIndexOf(NEWLINE);
@@ -173,6 +175,30 @@ function wholeSize(fd: number): number {
     end = from;
   }
   return 0;
+}
+
+/** Truncates `path` to its last complete newline-terminated line, returning the whole byte length.
+ *  When already whole, reads only the tail without writing (safe on read-only or hardlinked files);
+ *  otherwise detaches a shared hard link before truncating in place. */
+export function truncatePartial(path: string): number {
+  const fd = openSync(path, "r");
+  let stat: ReturnType<typeof fstatSync>;
+  let size: number;
+  try {
+    stat = fstatSync(fd);
+    size = wholeSize(fd, stat.size);
+  } finally {
+    closeSync(fd);
+  }
+  if (size === stat.size) return size;
+  if (stat.nlink > 1) detachHardlink(path);
+  const writable = openSync(path, "r+");
+  try {
+    ftruncateSync(writable, size);
+  } finally {
+    closeSync(writable);
+  }
+  return size;
 }
 
 /** Every event in append order. Missing logs are empty; kinds matched by `without` are skipped

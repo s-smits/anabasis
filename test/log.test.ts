@@ -1,9 +1,12 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { append, read } from "../src/kernel/log.ts";
+import { append, read, truncatePartial } from "../src/kernel/log.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import {
   appendFileSync,
+  chmodSync,
   existsSync,
+  linkSync,
+  lstatSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -187,5 +190,42 @@ describe("the log", () => {
       for (const child of children) child.kill();
       await Promise.all(children.map((child) => child.exited));
     }
+  });
+
+  it("truncates trailing partial lines without writing whole read-only files or mutating sibling hard links", () => {
+    const empty = fresh();
+    writeFileSync(empty, "");
+    expect(truncatePartial(empty)).toBe(0);
+
+    const partialOnly = fresh();
+    writeFileSync(partialOnly, '{"inFlight":true');
+    expect(truncatePartial(partialOnly)).toBe(0);
+    expect(readFileSync(partialOnly, "utf8")).toBe("");
+
+    const wholePath = fresh();
+    append(wholePath, "verdict", { pass: true });
+    const wholeBytes = lstatSync(wholePath).size;
+    const readOnlyLink = `${wholePath}.ro`;
+    linkSync(wholePath, readOnlyLink);
+    chmodSync(readOnlyLink, 0o444);
+    try {
+      expect(truncatePartial(readOnlyLink)).toBe(wholeBytes);
+      expect(lstatSync(wholePath).ino).toBe(lstatSync(readOnlyLink).ino);
+    } finally {
+      chmodSync(readOnlyLink, 0o644);
+    }
+
+    const sharedA = fresh();
+    append(sharedA, "verdict", { pass: true });
+    const kept = readFileSync(sharedA, "utf8");
+    const tail = `{"at":"2026-10-07T00:00:00.000Z","kind":"solve.call","data":{"text":"${"é".repeat(40_000)}`;
+    appendFileSync(sharedA, tail);
+    const sharedB = `${sharedA}.link`;
+    linkSync(sharedA, sharedB);
+    expect(lstatSync(sharedA).ino).toBe(lstatSync(sharedB).ino);
+    expect(truncatePartial(sharedB)).toBe(Buffer.byteLength(kept));
+    expect(lstatSync(sharedA).ino).not.toBe(lstatSync(sharedB).ino);
+    expect(readFileSync(sharedB, "utf8")).toBe(kept);
+    expect(readFileSync(sharedA, "utf8")).toBe(kept + tail);
   });
 });

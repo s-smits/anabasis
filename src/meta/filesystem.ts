@@ -7,15 +7,15 @@
  * Bun exposes no equivalent descriptor lock.
  */
 import { dlopen, FFIType } from "bun:ffi";
+import { constants, copyFileSync, renameSync, rmSync } from "node:fs";
 import { runtimeProcess } from "./process.ts";
 
+export { constants, copyFileSync, renameSync, rmSync };
 export {
   accessSync,
   appendFileSync,
   chmodSync,
   closeSync,
-  constants,
-  copyFileSync,
   cpSync,
   existsSync,
   fstatSync,
@@ -32,9 +32,7 @@ export {
   readlinkSync,
   readSync,
   realpathSync,
-  renameSync,
   rmdirSync,
-  rmSync,
   statfsSync,
   statSync,
   symlinkSync,
@@ -63,4 +61,21 @@ export function lockExclusiveSync(fd: number): void {
     flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
   }).symbols.flock;
   if (flock(fd, 2) !== 0) throw new Error(`cannot lock file descriptor ${String(fd)}`);
+}
+
+/** Copies `source` to `destination` using copy-on-write cloning where the filesystem supports it. */
+export function cloneFile(source: string, destination: string): void {
+  copyFileSync(source, destination, constants.COPYFILE_FICLONE);
+}
+
+/** Replaces `path` with a private copy-on-write inode so mutating it never alters sibling hard links. */
+export function detachHardlink(path: string): void {
+  const temp = `${path}.private`;
+  try {
+    cloneFile(path, temp);
+    renameSync(temp, path);
+  } catch (error) {
+    rmSync(temp, { force: true });
+    throw error;
+  }
 }

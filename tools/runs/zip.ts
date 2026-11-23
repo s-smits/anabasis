@@ -33,7 +33,7 @@ import {
   rmSync,
   writeFileSync,
 } from "#src/meta/filesystem.ts";
-import type { LogEvent } from "#src/kernel/log.ts";
+import { type LogEvent, truncatePartial } from "#src/kernel/log.ts";
 import { endingOf } from "#src/kernel/reports.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
@@ -48,16 +48,7 @@ import { receipts } from "./receipt.ts";
 import { hostNamed } from "./host-config.ts";
 import { rsync, sideOf, sshScript } from "./host-command.ts";
 import { verbOn } from "./hosts.ts";
-import {
-  HERE,
-  isCampaign,
-  logEvents,
-  Misused,
-  readable,
-  type Run,
-  standing,
-  wholeLines,
-} from "./registry.ts";
+import { HERE, isCampaign, logEvents, Misused, readable, type Run, standing } from "./registry.ts";
 import { DERIVED, PACKAGED, packagedOf, PRIVATE_NAMES, readableAcross, syncRuns } from "./snapshots.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
@@ -224,18 +215,14 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
   const left: Left[] = [];
   const keep = (from: string, under: string, found: ReturnType<typeof fit>) => {
     for (const { path, bytes, group } of found.held.filter((file) => holds(level, file.group))) {
-      cpSync(join(from, path), join(stage, under, path), { verbatimSymlinks: true });
+      const target = join(stage, under, path);
+      cpSync(join(from, path), target, { verbatimSymlinks: true });
       // A live run's log may end in the line it is writing, which every reader would refuse.
-      const whole =
+      const wholeBytes =
         group === "log" && path.endsWith(".jsonl") && lstatSync(join(from, path)).isFile()
-          ? wholeLines(join(from, path))
-          : null;
-      if (whole !== null) writeFileSync(join(stage, under, path), whole);
-      files.push({
-        path: join(under, path),
-        bytes: whole === null ? bytes : Buffer.byteLength(whole),
-        group,
-      });
+          ? truncatePartial(target)
+          : bytes;
+      files.push({ path: join(under, path), bytes: wholeBytes, group });
     }
     left.push(...found.left.map(({ path, why }) => ({ path: join(under, path), why })));
   };

@@ -4,12 +4,12 @@
  * Full semantics live in `.claude/skills/comparison-reading/references/tally-and-test.md`.
  */
 import { sha256 } from "../meta/digest.ts";
-import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
-import { conditionsOf, settingId } from "./condition.ts";
+import { settingId } from "./condition.ts";
 import type { LogEvent } from "./log.ts";
-import { ended, passed, ranUnder, verdictsOf } from "./solves.ts";
+import { checkerVerdict, countedSolves, ended, passed, ranUnder } from "./solves.ts";
 import { taskSets } from "./task.ts";
 import { objectiveOf } from "./verify.ts";
 
@@ -62,29 +62,31 @@ export const WEIGHTS: Measures = { validity: 0.6, objective: 0.3 };
 const POINTS_SCALE = 1000;
 
 /** Exact DP distribution of winning margin sums when each integer margin wins independently with `share`. */
-function plusTotalChances(sizes: readonly number[], share: number): number[] {
-  let chances = [1];
+function plusTotalChances(sizes: readonly number[], share: number): Float64Array {
+  const chances = new Float64Array(sumOf(sizes) + 1);
+  chances[0] = 1;
+  const keep = 1 - share;
+  let top = 0;
   for (const size of sizes) {
-    const next = Array.from({ length: chances.length + size }, () => 0);
-    for (const [at, chance] of chances.entries()) {
-      next[at] = (next[at] ?? 0) + chance * (1 - share);
-      next[at + size] = (next[at + size] ?? 0) + chance * share;
+    for (let at = top; at >= 0; at -= 1) {
+      const chance = chances[at] ?? 0;
+      chances[at] = chance * keep;
+      chances[at + size] = (chances[at + size] ?? 0) + chance * share;
     }
-    chances = next;
+    top += size;
   }
   return chances;
 }
 
-function untiedMargins(differences: readonly number[]): number[] {
-  return differences.flatMap((one) => (one === 0 ? [] : [Math.abs(one)]));
-}
+const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+const sumOf = (values: readonly number[]) => values.reduce((sum, one) => sum + one, 0);
+const chanceOfAtLeast = (chances: Float64Array, from: number) =>
+  chances.subarray(Math.max(0, from)).reduce((sum, one) => sum + one, 0);
 
-function sumOf(values: readonly number[]): number {
-  return values.reduce((sum, one) => sum + one, 0);
-}
-
-function chanceOfAtLeast(chances: readonly number[], from: number): number {
-  return sumOf(chances.slice(Math.max(0, from)));
+function scaledMargins(differences: readonly number[]) {
+  const sizes = differences.flatMap((one) => (one === 0 ? [] : [Math.abs(one)]));
+  const unit = sizes.every(Number.isInteger) ? Math.max(1, sizes.reduce(gcd, 0)) : 1;
+  return { scaled: sizes.map((size) => size / unit), unit };
 }
 
 function stepThreshold(sizes: readonly number[], level: number): number {
@@ -99,12 +101,10 @@ function stepThreshold(sizes: readonly number[], level: number): number {
 
 /** Exact one-sided paired sign-flip p-value over untied task scores (1 when no task is untied). */
 export function flipP(differences: readonly number[]): number {
-  const sizes = untiedMargins(differences);
+  const { scaled, unit } = scaledMargins(differences);
   // Scores sum to 2 * (winning margins) - (all margins).
-  return Math.min(
-    1,
-    chanceOfAtLeast(plusTotalChances(sizes, 0.5), Math.ceil((sumOf(differences) + sumOf(sizes)) / 2)),
-  );
+  const from = Math.ceil((sumOf(differences) + sumOf(scaled) * unit) / (2 * unit));
+  return Math.min(1, chanceOfAtLeast(plusTotalChances(scaled, 0.5), from));
 }
 
 export function readsStep(scores: readonly number[], level: number): boolean {
@@ -131,14 +131,21 @@ export function scoresIn(test: unknown): number[] {
 
 /** Chance of reading a step at `level` given per-task win probability `share` (0.5 gives nominal false rate). */
 export function power(differences: readonly number[], share: number, level: number): number {
-  const sizes = untiedMargins(differences);
-  return Math.min(1, chanceOfAtLeast(plusTotalChances(sizes, share), stepThreshold(sizes, level)));
+  const { scaled } = scaledMargins(differences);
+  return Math.min(1, chanceOfAtLeast(plusTotalChances(scaled, share), stepThreshold(scaled, level)));
 }
 
 /** Smallest win rate (0.01 grid) achieving `DETECTION_CHANCE` power at `level`, or null if undetectable. */
 export function detectable(differences: readonly number[], level: number): number | null {
-  const shares = Array.from({ length: 51 }, (_, at) => (50 + at) / 100);
-  return shares.find((share) => power(differences, share, level) >= DETECTION_CHANCE) ?? null;
+  const { scaled } = scaledMargins(differences);
+  const threshold = stepThreshold(scaled, level);
+  let [lo, hi] = [50, 101];
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (chanceOfAtLeast(plusTotalChances(scaled, mid / 100), threshold) >= DETECTION_CHANCE) hi = mid;
+    else lo = mid + 1;
+  }
+  return lo <= 100 ? lo / 100 : null;
 }
 
 /** Minimum all-win untied task count needed to clear `level`. */
@@ -294,29 +301,35 @@ export function pairsOf(
   solves: number,
 ) {
   const { old, fresh, setting, comparison, halves, objective } = sides;
-  const verdicts = objective === undefined ? null : verdictsOf(events);
   if (old === fresh && halves === undefined) {
     throw new Error(`a comparison sets two harnesses against each other, and both sides are ${old}`);
   }
   const { states, held } = taskSets(events);
   const heldOut = new Set(held);
-  const settings = new Map(
-    [...conditionsOf(events)].map(([id, condition]) => [id, settingId(condition)] as const),
+  const ownSolves = countedSolves(events).filter(
+    (solve) => solve.start.comparison === comparison && passed(solve) !== null,
   );
-  const counted = ended(ranUnder(events))
-    .filter(
-      (solve) =>
-        solve.under.side === "test" &&
-        solve.start.comparison === comparison &&
-        settings.get(solve.condition) === setting &&
-        passed(solve) !== null,
-    )
+  const solved = ended(ranUnder(events, ownSolves));
+  const byId = new Map(solved.map(({ condition, under }) => [condition, under]));
+  const settings = new Map([...byId].map(([id, under]) => [id, settingId(under)]));
+  const counted = solved
+    .filter((solve) => solve.under.side === "test" && settings.get(solve.condition) === setting)
     .toSorted((a, b) => a.started - b.started);
+  const byKey = Map.groupBy(counted, ({ under }) => `${under.task}\u0000${under.harness}`);
+  const measures = new Map(
+    objective === undefined
+      ? []
+      : events.flatMap(({ kind, data }) =>
+          kind === "verdict" && isString(data.solve)
+            ? [[data.solve, objectiveOf(checkerVerdict(data))] as const]
+            : [],
+        ),
+  );
   const disputed = versions.filter((task) => states.get(task) === "disputed");
   const short: string[] = [];
   const pairs = versions.flatMap((task, place): Paired[] => {
-    if (disputed.includes(task)) return [];
     const state = states.get(task);
+    if (state === "disputed") return [];
     if (!heldOut.has(task)) {
       const why =
         state === undefined
@@ -326,8 +339,7 @@ export function pairsOf(
             : `is ${state}`;
       throw new Error(`task ${task} ${why}; only a held-out task is scored`);
     }
-    const under = (harness: string) =>
-      counted.filter((solve) => solve.under.task === task && solve.under.harness === harness);
+    const under = (harness: string) => byKey.get(`${task}\u0000${harness}`) ?? [];
     // Mirror A/A split across tasks (0,3 vs 1,2 mod 4): always putting earlier solves first showed
     // order bias across 234 controls (446-363, p=0.004) vs balanced (405-404) when mirrored.
     const ran = old === fresh ? place * 2 * solves : 0;
@@ -344,7 +356,7 @@ export function pairsOf(
       old: before.slice(0, solves).map(of),
       fresh: after.slice(0, solves).map(of),
     });
-    const measured = side(({ id }) => objectiveOf(verdicts?.get(id)?.checker));
+    const measured = side(({ id }) => measures.get(id) ?? null);
     return [
       {
         task,

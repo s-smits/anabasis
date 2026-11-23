@@ -17,7 +17,7 @@ import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
-import { keptStates, stateAuditFiles, weightOf } from "./trajectory.ts";
+import { keptStates, stateAuditFiles } from "./trajectory.ts";
 
 /** Hardcoded host-environment or Anabasis-internal path prefixes that break external transfer. */
 const HOST_PATH_RE = /(?:\/Users\/|\/home\/|\/opt\/homebrew\/|\/private\/tmp\/|\/var\/folders\/|\.ana\/)/gu;
@@ -35,47 +35,25 @@ function examAnswerKeys(events: readonly LogEvent[]): readonly string[] {
   return Object.keys(props).filter((key) => key.length >= MIN_KEY_LEN);
 }
 
-/** Role label for a kept harness digest in this campaign. */
-function roleOf(events: readonly LogEvent[], digest: string): string {
-  if (digest === starterIn(events)) return "starter";
-  const promoted = events.filter(({ kind, data }) => kind === "harness.promoted" && data.harness === digest);
-  if (promoted.length > 0) return "promoted";
-  const compared = events.some(
-    ({ kind, data }) => kind === "comparison.started" && (data.fresh === digest || data.old === digest),
-  );
-  return compared ? "compared" : "other";
-}
-
 /** Audit one kept harness folder and return its compact single-line summary. */
 function auditHarness(digest: string, role: string, stateDir: string, answerKeys: readonly string[]): string {
-  const weight = weightOf(stateDir);
-  const { written, brokenLinks, toolTreeFiles } = stateAuditFiles(stateDir);
-  let hostPathHits = 0;
-  let badShebangs = 0;
-  let nonExecBins = 0;
-  let filesWithExamKeys = 0;
+  const { written, brokenLinks, toolTreeFiles, weight } = stateAuditFiles(stateDir);
+  let [hostPathHits, badShebangs, nonExecBins, filesWithExamKeys] = [0, 0, 0, 0];
   const matchedKeys = new Set<string>();
   for (const { path, text, executable } of written) {
     hostPathHits += (text.match(HOST_PATH_RE) ?? []).length;
-    if (BAD_SHEBANG_RE.test(text)) badShebangs += 1;
-    if (path.startsWith("bin/") && !executable) nonExecBins += 1;
-    let hitInFile = false;
-    for (const key of answerKeys) {
-      if (text.includes(key)) {
-        matchedKeys.add(key);
-        hitInFile = true;
-      }
-    }
-    if (hitInFile) filesWithExamKeys += 1;
+    badShebangs += Number(BAD_SHEBANG_RE.test(text));
+    nonExecBins += Number(path.startsWith("bin/") && !executable);
+    const matched = answerKeys.filter((key) => text.includes(key));
+    for (const key of matched) matchedKeys.add(key);
+    filesWithExamKeys += Number(matched.length > 0);
   }
   const guideEntry = written.find(({ path }) => path === "guide");
   const portable = guideEntry === undefined ? "" : portableGuide(guideEntry.text);
   const hasHostOnly = guideEntry !== undefined && portable.length < guideEntry.text.length;
   const portableLines = portable.split("\n").filter((line) => line.trim() !== "").length;
   const aboveLeaks = (portable.match(PORTABLE_LEAK_RE) ?? []).length;
-  const guide = weight?.guide ?? 0;
-  const toolFiles = weight?.files ?? 0;
-  const toolLines = weight?.lines ?? 0;
+  const { guide, files: toolFiles, lines: toolLines } = weight ?? { guide: 0, files: 0, lines: 0 };
   const ratio = toolLines === 0 ? "guide-only" : `${(guide / toolLines).toFixed(2)}x`;
   const hazards = hostPathHits + badShebangs + nonExecBins + brokenLinks;
   const examPart =
@@ -90,22 +68,27 @@ export function portabilityRows(events: readonly LogEvent[], statesDir: string):
   const kept = keptStates(statesDir);
   if (kept.length === 0) return [`portability: no kept harness under ${statesDir}`];
   const answerKeys = examAnswerKeys(events);
-  const promotedOrder = new Map(
-    events
-      .flatMap(({ kind, data }) =>
-        kind === "harness.promoted" && isString(data.harness) ? [data.harness] : [],
-      )
-      .map((digest, index) => [digest, index]),
+  const starter = starterIn(events);
+  const promotedOrder = new Map<string, number>();
+  const compared = new Set<string>();
+  for (const [at, { kind, data }] of events.entries()) {
+    if (kind === "harness.promoted" && isString(data.harness)) {
+      promotedOrder.set(data.harness, at);
+    } else if (kind === "comparison.started") {
+      if (isString(data.fresh)) compared.add(data.fresh);
+      if (isString(data.old)) compared.add(data.old);
+    }
+  }
+  const roleOf = (digest: string) => {
+    if (digest === starter) return "starter";
+    return promotedOrder.has(digest) ? "promoted" : compared.has(digest) ? "compared" : "other";
+  };
+  const ordered = kept.toSorted(
+    (one, other) =>
+      (promotedOrder.get(other) ?? -1) - (promotedOrder.get(one) ?? -1) || one.localeCompare(other),
   );
-  const ordered = kept.toSorted((one, other) => {
-    const [a, b] = [promotedOrder.get(one), promotedOrder.get(other)];
-    if (a !== undefined && b !== undefined) return b - a;
-    if (a !== undefined) return -1;
-    if (b !== undefined) return 1;
-    return one.localeCompare(other);
-  });
   const rows = ordered.map((digest) =>
-    auditHarness(digest, roleOf(events, digest), join(statesDir, digest), answerKeys),
+    auditHarness(digest, roleOf(digest), join(statesDir, digest), answerKeys),
   );
   return [
     `portability: ${plural(kept.length, "kept harness")} audited for host paths, shebangs, bin modes, broken links, exam answer-format key coupling (${String(answerKeys.length)} keys) and guide/tool weight`,

@@ -8,7 +8,7 @@ import { frozenChecker } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { type Cap, INTERRUPTED, lastReports, patienceOf, poolOf, roomOf } from "../kernel/reports.ts";
-import { ended, practiceRan, rejectionAside, solvesIn } from "../kernel/solves.ts";
+import { ended, practiceRan, rejectionAside, solvesIn, standsOf } from "../kernel/solves.ts";
 import { sizeLines } from "../kernel/size.ts";
 import { taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
@@ -89,8 +89,9 @@ export function supplyOf(events: readonly LogEvent[]): Supply {
  * pairs with room or a step, plus completed unchanged sessions after an adjudicated practice failure.
  */
 export function stopRule(events: readonly LogEvent[]) {
+  const stands = standsOf(events);
   const failed = practiceRan(events).filter(
-    (solve) => solve.ending?.outcome === "fail" && !rejectionAside(events, solve),
+    (solve) => solve.ending?.outcome === "fail" && !rejectionAside(events, solve, stands),
   );
   const wholeSession = ({ kind, data }: LogEvent, harness: "changed" | "unchanged") =>
     kind === "build.finished" && data.changed === (harness === "changed") && !INTERRUPTED.has(data.ended);

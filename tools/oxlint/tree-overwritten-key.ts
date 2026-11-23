@@ -83,17 +83,17 @@ function keysAfterSpread(
   parameter: string,
   file: ts.SourceFile,
 ): Map<string, number> | null {
-  const spreads = (property: ts.ObjectLiteralElementLike): boolean =>
-    ts.isSpreadAssignment(property) &&
-    ts.isIdentifier(bare(property.expression)) &&
-    bare(property.expression).getText(file) === parameter;
-  const last = object.properties.findLastIndex(spreads);
+  const last = object.properties.findLastIndex((property) => {
+    if (!ts.isSpreadAssignment(property)) return false;
+    const inner = bare(property.expression);
+    return ts.isIdentifier(inner) && inner.text === parameter;
+  });
   if (last === -1) return null;
   const keys = new Map<string, number>();
   for (const property of object.properties.slice(last + 1)) {
     const key = keyOf(property);
-    const line = file.getLineAndCharacterOfPosition(property.getStart(file)).line + 1;
-    if (key !== undefined) keys.set(key, line);
+    if (key === undefined) continue;
+    keys.set(key, file.getLineAndCharacterOfPosition(property.getStart(file)).line + 1);
   }
   return keys;
 }
@@ -114,14 +114,12 @@ function deadKeys(
   const visit = (node: ts.Node): void => {
     if (ts.isIdentifier(node) && node.text === parameter) {
       const parent = node.parent;
-      if (ts.isPropertyAccessExpression(parent) && parent.expression === node) read.add(parent.name.text);
-      else if (ts.isElementAccessExpression(parent) && ts.isStringLiteral(parent.argumentExpression)) {
+      if (ts.isPropertyAccessExpression(parent)) {
+        if (parent.expression === node) read.add(parent.name.text);
+      } else if (ts.isElementAccessExpression(parent) && ts.isStringLiteral(parent.argumentExpression)) {
         read.add(parent.argumentExpression.text);
-      } else if (
-        (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
-        (ts.isPropertyAssignment(parent) && parent.name === node)
-      ) {
-        // a member or a key spelled like the parameter, not a use of it
+      } else if (ts.isPropertyAssignment(parent) && parent.name === node) {
+        // a key spelled like the parameter, not a use of it
       } else if (!(ts.isSpreadAssignment(parent) && built.includes(parent.parent))) escapes = true;
     }
     ts.forEachChild(node, visit);
@@ -140,9 +138,9 @@ function functionsOf(file: ts.SourceFile): [string, ts.FunctionLikeDeclaration][
     }
     if (!ts.isVariableStatement(statement)) return [];
     return statement.declarationList.declarations.flatMap((one): [string, ts.FunctionLikeDeclaration][] => {
-      const value = one.initializer === undefined ? undefined : bare(one.initializer);
-      const isFunction = value !== undefined && (ts.isArrowFunction(value) || ts.isFunctionExpression(value));
-      return isFunction && ts.isIdentifier(one.name) ? [[one.name.text, value]] : [];
+      if (!ts.isIdentifier(one.name) || one.initializer === undefined) return [];
+      const value = bare(one.initializer);
+      return ts.isArrowFunction(value) || ts.isFunctionExpression(value) ? [[one.name.text, value]] : [];
     });
   });
 }
@@ -160,9 +158,11 @@ function wrappersOf(path: string, file: ts.SourceFile): Wrapper[] {
 /** The file a specifier names, among the files read. */
 export function resolved(from: string, specifier: string, files: ReadonlySet<string>): string | undefined {
   const alias = ALIASES.find(([key]) => specifier.startsWith(key));
-  let base: string | undefined;
-  if (alias !== undefined) base = alias[1] + specifier.slice(alias[0].length);
-  else if (specifier.startsWith(".")) base = join(dirname(from), specifier);
+  const base = alias
+    ? alias[1] + specifier.slice(alias[0].length)
+    : specifier.startsWith(".")
+      ? join(dirname(from), specifier)
+      : undefined;
   if (base === undefined) return undefined;
   const stem = base.replace(/\.m?js$/u, "");
   return [base, `${stem}.ts`, `${stem}.tsx`, `${base}/index.ts`].find((one) => files.has(one));
@@ -173,8 +173,8 @@ function namesIn(
   path: string,
   file: ts.SourceFile,
   byFile: ReadonlyMap<string, Wrapper[]>,
+  files: ReadonlySet<string>,
 ): Map<string, Wrapper[]> {
-  const files = new Set(byFile.keys());
   const named = Map.groupBy(byFile.get(path) ?? [], (one) => one.name);
   for (const statement of file.statements) {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
@@ -192,36 +192,30 @@ function namesIn(
 
 /** Every file but a declaration file, parsed with its parent links set. */
 export function parsedSources(files: ReadonlyMap<string, string>): Map<string, ts.SourceFile> {
-  return new Map(
-    [...files]
-      .filter(([path]) => !/\.d\.m?ts$/u.test(path))
-      .map(([path, text]) => [
-        path,
-        ts.createSourceFile(
-          path,
-          text,
-          ts.ScriptTarget.Latest,
-          true,
-          path.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-        ),
-      ]),
-  );
+  const out = new Map<string, ts.SourceFile>();
+  for (const [path, text] of files) {
+    if (/\.d\.m?ts$/u.test(path)) continue;
+    const kind = path.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+    out.set(path, ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, kind));
+  }
+  return out;
 }
 
 /** Every key a call hands a wrapper that the wrapper then sets over it. */
-export function overwrittenKeys(files: ReadonlyMap<string, string>): TreeFinding[] {
-  const parsed = parsedSources(files);
+export function overwrittenKeys(parsed: ReadonlyMap<string, ts.SourceFile>): TreeFinding[] {
   const byFile = new Map([...parsed].map(([path, file]) => [path, wrappersOf(path, file)]));
+  const files = new Set(byFile.keys());
   const rows: TreeFinding[] = [];
   for (const [path, file] of parsed) {
-    const named = namesIn(path, file, byFile);
+    const named = namesIn(path, file, byFile, files);
     if (named.size === 0) continue;
     const visit = (node: ts.Node): void => {
       if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
         for (const wrapper of named.get(node.expression.text) ?? []) {
           const given = node.arguments[wrapper.index];
-          const object = given === undefined ? undefined : bare(given);
-          if (object === undefined || !ts.isObjectLiteralExpression(object)) continue;
+          if (given === undefined) continue;
+          const object = bare(given);
+          if (!ts.isObjectLiteralExpression(object)) continue;
           for (const property of object.properties) {
             const key = keyOf(property);
             const set = key === undefined ? undefined : wrapper.keys.get(key);

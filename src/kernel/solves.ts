@@ -30,6 +30,9 @@ interface Ended {
   readonly end: JsonObject;
 }
 
+type Stands = ReadonlyMap<string, string | null>;
+type Checked = Pick<Solve, "id" | "ending">;
+
 /** Last logged verdict for one solve's submitted answer. */
 export interface Judged {
   readonly solve: string;
@@ -59,12 +62,7 @@ export function solvesIn(events: readonly LogEvent[]): Solve[] {
     } else if (kind === "solve.finished") {
       const started = solves.get(data.solve);
       if (started !== undefined) {
-        solves.set(data.solve, {
-          ...started,
-          finished: index,
-          ending: asRecord(data.ending),
-          end: data,
-        });
+        solves.set(data.solve, { ...started, finished: index, ending: asRecord(data.ending), end: data });
       }
     }
   }
@@ -88,9 +86,10 @@ export function countedSolves(events: readonly LogEvent[]): Solve[] {
 
 /** Counted solves paired with their verified condition, omitting any solve whose opened harness
  *  disagreed with its condition. */
-export function ranUnder(events: readonly LogEvent[]): Ran[] {
-  const conditions = conditionsOf(events);
-  return countedSolves(events).flatMap((solve) => {
+export function ranUnder(events: readonly LogEvent[], solves = countedSolves(events)): Ran[] {
+  if (solves.length === 0) return [];
+  const conditions = conditionsOf(events, new Set(solves.map(({ condition }) => condition)));
+  return solves.flatMap((solve) => {
     const under = conditions.get(solve.condition);
     const opened = solve.end?.harness;
     return under === undefined || (isString(opened) && opened !== under.harness) ? [] : [{ ...solve, under }];
@@ -99,9 +98,8 @@ export function ranUnder(events: readonly LogEvent[]): Ran[] {
 
 /** Practice solves: test-side counted solves that belong to no comparison (rule 3 boundary). */
 export function practiceRan(events: readonly LogEvent[]): Ran[] {
-  return ranUnder(events).filter(
-    ({ under, start }) => under.side === "test" && start.comparison === undefined,
-  );
+  const uncompared = countedSolves(events).filter(({ start }) => start.comparison === undefined);
+  return ranUnder(events, uncompared).filter(({ under }) => under.side === "test");
 }
 
 /** Model, effort, and limits of the last test-side solve started in `events`, or null before any. */
@@ -197,8 +195,12 @@ export function standsOf(events: readonly LogEvent[]): Map<string, string | null
 }
 
 /** True when `solve` is a rejection not yet established as `earned` (`standsOf`). */
-export function rejectionAside(events: readonly LogEvent[], solve: Pick<Solve, "id" | "ending">): boolean {
-  return rejected(solve.ending) && standsOf(events).get(solve.id) !== "earned";
+export function rejectionAside(
+  events: readonly LogEvent[],
+  solve: Checked,
+  stands: Stands | null = null,
+): boolean {
+  return rejected(solve.ending) && (stands ?? standsOf(events)).get(solve.id) !== "earned";
 }
 
 /** Last `verdict` event recorded for each solve. */

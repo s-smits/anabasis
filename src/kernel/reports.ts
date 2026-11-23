@@ -22,7 +22,6 @@ import { providerFailed, windowEnded } from "./solve.ts";
 import { passed, ranUnder, rejected, standsOf } from "./solves.ts";
 import { READINGS_IN_A_ROW, howOftenValid } from "./size.ts";
 import { taskSets } from "./task.ts";
-import { tracesIn } from "./trace.ts";
 
 /** A comparison's last report, placed in the log where its first report stands. */
 export interface Reported {
@@ -155,13 +154,11 @@ export function lastReports(events: readonly LogEvent[], read: "all" | "current"
 
 /** Each non-ladder comparison session started in `events`, in the order it first began. */
 export function startedComparisons(events: readonly LogEvent[]): string[] {
-  return [
-    ...new Set(
-      events.flatMap(({ kind, data }) =>
-        kind === "comparison.started" && data.ladder !== true && isString(data.session) ? [data.session] : [],
-      ),
-    ),
-  ];
+  const seen = new Set<string>();
+  for (const { kind, data } of events) {
+    if (kind === STARTED && data.ladder !== true && isString(data.session)) seen.add(data.session);
+  }
+  return [...seen];
 }
 
 /**
@@ -210,9 +207,10 @@ export const endingOf = (events: readonly LogEvent[]): string | null => endedOf(
 /** The campaign's reference: the last promoted harness, else its recorded starter, else the old
  *  side of the first report where an older log names no starter. */
 export function referenceOf(events: readonly LogEvent[]): string | null {
+  const current = promoted(events);
+  if (current !== null) return current;
   const reports = lastReports(events);
-  const harness =
-    promoted(events) ?? reports.map(({ data }) => data.starter).find(isString) ?? reports[0]?.data.old;
+  const harness = reports.map(({ data }) => data.starter).find(isString) ?? reports[0]?.data.old;
   return isString(harness) ? harness : null;
 }
 
@@ -332,33 +330,36 @@ export function taskRecords(events: readonly LogEvent[]) {
     records.set(version, made);
     return made;
   };
+  /** Each solve's last recorded turn payload, by the solve's id. */
+  const lastTurn = new Map<string, JsonObject>();
+  // Every harness that has been the reference: a former reference's valid answer still counts as a
+  // reference's after a promotion, so a task it answered never goes to a person as possibly
+  // infeasible.
+  const references = new Set<unknown>([referenceOf(events)]);
   for (const [index, { kind, data }] of events.entries()) {
+    if (kind === "solve.turn" && isString(data.solve)) {
+      lastTurn.set(data.solve, data);
+      continue;
+    }
+    if (kind === PROMOTED) {
+      references.add(data.harness);
+      references.add(data.from);
+      continue;
+    }
     if (!isString(data.version)) continue;
     if (kind === "task.state" && data.state === "held") recordOf(data.version).keptAt = index;
     const referenceValidAtGate = kind === "task.gate" ? asRecord(data.reference)?.valid : undefined;
     if (kind === "task.feasible" || (isNumber(referenceValidAtGate) && referenceValidAtGate > 0)) {
       recordOf(data.version).validAnswer = "independent";
     }
+    if (kind !== "task.feasible") continue;
     const { measure, direction } = asRecord(data.objective) ?? {};
-    if (kind !== "task.feasible" || !isNumber(measure)) continue;
+    if (!isNumber(measure)) continue;
     const record = recordOf(data.version);
     record.best = (direction === "lower" ? Math.min : Math.max)(measure, record.best ?? measure);
   }
   /** Solves cut short by a wall-clock or context-window limit (`solveKey`; full model-turn budgets are not cuts unless the last turn hit a window or provider error). */
   const cut = new Set<string>();
-  /** Each solve's last recorded turn, by the solve's id. */
-  const lastTurn = new Map(
-    tracesIn(events).flatMap((trace) =>
-      trace.seat === "solve" && trace.part === "turn" ? [[trace.id, trace]] : [],
-    ),
-  );
-  // Every harness that has been the reference: a former reference's valid answer still counts as a
-  // reference's after a promotion, so a task it answered never goes to a person as possibly
-  // infeasible.
-  const references = new Set([
-    referenceOf(events),
-    ...events.flatMap(({ kind, data }) => (kind === PROMOTED ? [data.harness, data.from] : [])),
-  ]);
   const wrong = wrongPassesIn(events);
   /** Each comparison's rejected solves, keyed as `solveKey` keys them. */
   const rejectedIn = new Map<string, string[]>();
@@ -366,22 +367,22 @@ export function taskRecords(events: readonly LogEvent[]) {
     const { task, limits, harness } = solve.under;
     const { comparison } = solve.start;
     const kind = solve.ending?.kind;
-    const turn = lastTurn.get(solve.id);
-    const last = { stopReason: turn?.stopReason, errorMessage: turn?.error };
-    const interrupted = windowEnded(last) || providerFailed(last);
-    const ranOutOfTurns = kind === "turns-ended" && isNumber(limits.modelTurns) && !interrupted;
     if (passed(solve) === true && !wrong.has(solve.id)) {
       const record = recordOf(task);
       record.validAnswer =
         references.has(harness) || record.validAnswer === "independent" ? "independent" : "known";
     }
-    if (isString(comparison) && AT_A_LIMIT.has(kind) && !ranOutOfTurns) {
-      cut.add(solveKey(comparison, task, harness));
-    }
-    if (isString(comparison) && rejected(solve.ending)) {
-      const key = solveKey(comparison, task, harness);
-      rejectedIn.set(key, [...(rejectedIn.get(key) ?? []), solve.id]);
-    }
+    if (!isString(comparison)) continue;
+    const turn = lastTurn.get(solve.id);
+    const last = {
+      stopReason: isString(turn?.stopReason) ? turn.stopReason : null,
+      errorMessage: isString(turn?.error) ? turn.error : null,
+    };
+    const ranOutOfTurns =
+      kind === "turns-ended" && isNumber(limits.modelTurns) && !(windowEnded(last) || providerFailed(last));
+    const key = solveKey(comparison, task, harness);
+    if (AT_A_LIMIT.has(kind) && !ranOutOfTurns) cut.add(key);
+    if (rejected(solve.ending)) rejectedIn.set(key, [...(rejectedIn.get(key) ?? []), solve.id]);
   }
   addReportReadings(events, recordOf, { cut, rejectedIn });
   return { records: [...records.values()], held: heldOut };
@@ -474,25 +475,28 @@ export function poolOf(events: readonly LogEvent[]) {
   const leftOut = new Set([...awaiting, ...doubted]);
   const heldBeforePromotion = new Set(beforePromotion(events).held);
   const exhausted = easy.filter((task) => !leftOut.has(task));
-  const inherited = held.filter((task) => heldBeforePromotion.has(task) && !leftOut.has(task));
-  const retained = [...new Set([...exhausted, ...inherited])];
+  const retained = new Set([
+    ...exhausted,
+    ...held.filter((task) => heldBeforePromotion.has(task) && !leftOut.has(task)),
+  ]);
+  const doubtedSet = new Set(doubted);
   const scorable = held.filter((task) => !leftOut.has(task));
-  const practiceOut = new Set([...easy, ...doubted, ...awaiting]);
+  const practiceOut = new Set([...easy, ...leftOut]);
   const firstSeen = ({ tallied, asideOrder }: TaskRecord) =>
     Math.min(tallied[0]?.order ?? asideOrder, asideOrder);
   return {
     scorable,
-    frontier: scorable.filter((task) => !retained.includes(task)),
+    frontier: scorable.filter((task) => !retained.has(task)),
     practiceFrontier: held.filter((task) => !heldBeforePromotion.has(task) && !practiceOut.has(task)),
     // What a practice release draws from: current-epoch held tasks not in doubt. Tasks held
     // before the latest promotion stay held for regression scoring rather than filling post-promotion
     // practice. Doubt is read from the reference's own solves alone, so which task another harness
     // won moves nothing here (rule 3).
-    practicePool: held.filter((task) => !heldBeforePromotion.has(task) && !doubted.includes(task)),
+    practicePool: held.filter((task) => !heldBeforePromotion.has(task) && !doubtedSet.has(task)),
     awaiting,
     doubted,
     exhausted,
-    retained,
+    retained: [...retained],
     feasible: new Set(
       records.flatMap(({ version, validAnswer }) => (validAnswer === "none" ? [] : [version])),
     ),

@@ -3,11 +3,10 @@
  * operator's page (`packages/ui`) ask before they read or act on a log.
  */
 import { EXAMINE } from "#src/campaign/admission.ts";
-import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
+import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports, startedComparisons } from "#src/kernel/reports.ts";
 import { existsSync, readdirSync, readFileSync, readlinkSync, statSync } from "#src/meta/filesystem.ts";
 import { gitText, mainTree, worktrees } from "#src/meta/git.ts";
-import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
@@ -217,10 +216,8 @@ export function wholeLines(path: string): string {
 
 /** The whole lines of a log an append may be writing to. */
 export function logEvents(path: string): LogEvent[] {
-  return wholeLines(path)
-    .split("\n")
-    .slice(0, -1)
-    .map((line) => parseJsonAs<LogEvent>(line));
+  if (!existsSync(path)) throw new Error(`no log at ${path}`);
+  return read(path);
 }
 
 /** A log's events and byte size, or null when the file vanished between listing and reading. */

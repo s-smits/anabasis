@@ -11,9 +11,9 @@
  * `--no-readers`). Persists cursor state in `--state` only after printing, using `<state>.pending`
  * and `--ack <token>` over SSH so interrupted polls never drop events.
  */
-import type { EventKind, LogEvent } from "#src/kernel/log.ts";
+import { type EventKind, type LogEvent, read as readEvents } from "#src/kernel/log.ts";
 import { endingOf } from "#src/kernel/reports.ts";
-import { degradations, traceKind, tracesIn } from "#src/kernel/trace.ts";
+import { degradations, traceKind } from "#src/kernel/trace.ts";
 import { billedAll } from "#src/kernel/meter.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { DAY_MS, HOUR_MS } from "#src/meta/clock.ts";
@@ -368,8 +368,9 @@ function troubles(log: readonly LogEvent[], from: number): string[] {
       `⚠ ${plural(loaded.length, "solve")} waited over ${minutes(LOAD_WAIT_MS)} for the load, the longest ${minutes(Number(longest.ms))} at load ${isNumber(longest.load) ? longest.load.toFixed(1) : "?"} on ${word(longest.cores)} cores`,
     );
   }
-  const turns = tracesIn(fresh).flatMap((each) => (each.part === "turn" ? [each] : []));
-  const errors = turns.flatMap(({ error }) => (error === null ? [] : [error]));
+  const errors = fresh.flatMap((e) =>
+    e.kind.endsWith(".turn") && isString(e.data.error) ? [e.data.error] : [],
+  );
   if (errors.length > 0) {
     lines.push(`⚠ ${plural(errors.length, "failed turn")}: ${[...new Set(errors)].map(short).join("; ")}`);
   }
@@ -568,7 +569,7 @@ async function look(
           (before === undefined &&
             !unlaunchedSeed(run) &&
             Date.now() - (fileStat(run.path)?.mtimeMs ?? 0) < RECENT_MS &&
-            logEvents(run.path).at(-1)?.kind !== ENDED),
+            readEvents(run.path, (k) => k.endsWith(".call") || k === "verdict").at(-1)?.kind !== ENDED),
     )
     // The bytes are read after the events, so a moment's size covers it.
     .flatMap((each) => {
@@ -778,9 +779,7 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
       open || ending === null ? "" : `ended ${ending}`,
       open || age > RECENT_MS ? "" : `off status in ${String(Math.ceil((RECENT_MS - age) / HOUR_MS))}h`,
     ];
-    console.log(
-      `${status(run, log, standing(run, log), open, now)}\n  ${where.filter((part) => part !== "").join(" · ")}`,
-    );
+    console.log(`${status(run, log, standing(run, log), open, now)}\n  ${where.filter(Boolean).join(" · ")}`);
   }
   console.log(`${plural(promoted, "promotion")} in ${plural(compared, "comparison")} over the runs shown`);
   // This machine's own: a host's copy is said by that host's `status`, as its rows are.
@@ -793,7 +792,7 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
     .map(({ run, at }) => ({
       name: run.name,
       days: (now - at) / DAY_MS,
-      promoted: count(logEvents(run.path), PROMOTED),
+      promoted: readEvents(run.path, (kind) => kind !== PROMOTED).length,
     }));
   for (const line of leftOut(quiet, archive.length, newest)) console.log(line);
   await away;

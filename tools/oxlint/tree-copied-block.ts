@@ -49,12 +49,15 @@ export function boundNames(fn: ts.FunctionLikeDeclaration): Set<string> {
   return names;
 }
 
+const pushMap = <K, V>(map: Map<K, V[]>, key: K, item: V) => map.get(key)?.push(item) ?? map.set(key, [item]);
+
 /** The functions a finding can name, each with its name. An anonymous callback is its host's. */
 function hostsOf(file: ts.SourceFile): [string, ts.FunctionLikeDeclaration][] {
   const hosts: [string, ts.FunctionLikeDeclaration][] = [];
   const visit = (node: ts.Node): void => {
     if (
       (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node)) &&
+      node.body !== undefined &&
       node.name &&
       ts.isIdentifier(node.name)
     ) {
@@ -70,7 +73,7 @@ function hostsOf(file: ts.SourceFile): [string, ts.FunctionLikeDeclaration][] {
     ts.forEachChild(node, visit);
   };
   visit(file);
-  return hosts.filter(([, fn]) => fn.body !== undefined);
+  return hosts;
 }
 
 /** A node as the comparison reads it: kinds, bound names as one token, literals as their kind. */
@@ -106,19 +109,25 @@ function unitsOf(path: string, file: ts.SourceFile, into: Map<string, Place[]>):
   for (const [host, fn] of hostsOf(file)) {
     const bound = boundNames(fn);
     const runs = (statements: readonly ts.Statement[]): void => {
-      const spelled = statements.map((statement) => spell(statement, bound, []));
-      for (let first = 0; first < statements.length; first += 1) {
-        let [key, tokens] = [spelled[first]?.join(" ") ?? "", spelled[first]?.length ?? 0];
-        for (let last = first + 1; last < statements.length; last += 1) {
-          key = Bun.hash(`${key}|${spelled[last]?.join(" ")}`).toString(36);
-          tokens += spelled[last]?.length ?? 0;
+      const spelled = statements.map((statement) => {
+        const parts = spell(statement, bound, []);
+        return {
+          text: parts.join(" "),
+          tokens: parts.length,
+          line: lineOf(statement.getStart(file)),
+          end: lineOf(statement.getEnd()),
+        };
+      });
+      for (const [first, start] of spelled.entries()) {
+        let [key, tokens] = [start.text, start.tokens];
+        for (let last = first + 1; last < spelled.length; last += 1) {
+          const stop = spelled[last];
+          if (stop === undefined) break;
+          key = Bun.hash(`${key}|${stop.text}`).toString(36);
+          tokens += stop.tokens;
           if (tokens < TOKEN_FLOOR) continue;
-          const [line, end] = [
-            lineOf(statements[first]?.getStart(file) ?? 0),
-            lineOf(statements[last]?.getEnd() ?? 0),
-          ];
-          const place = { path, host, statements, first, last, tokens, line, end };
-          into.set(key, [...(into.get(key) ?? []), place]);
+          const place = { path, host, statements, first, last, tokens, line: start.line, end: stop.end };
+          pushMap(into, key, place);
         }
       }
     };
@@ -164,33 +173,27 @@ function saysDifferentThings(places: readonly Place[]): boolean {
 }
 
 /** One row per copied block, at its first place, naming the others. */
-export function copiedBlocks(files: ReadonlyMap<string, string>): TreeFinding[] {
+export function copiedBlocks(parsed: ReadonlyMap<string, ts.SourceFile>): TreeFinding[] {
   const groups = new Map<string, Place[]>();
-  for (const [path, text] of [...files].toSorted(([a], [b]) => (a < b ? -1 : 1))) {
-    if (SKIPPED_PATH.test(path) || /\.d\.m?ts$/u.test(path)) continue;
-    const file = ts.createSourceFile(
-      path,
-      text,
-      ts.ScriptTarget.Latest,
-      true,
-      path.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-    );
-    if (!OPTED_OUT.test(text.slice(0, file.statements[0]?.getStart(file)))) unitsOf(path, file, groups);
+  for (const [path, file] of [...parsed].toSorted(([a], [b]) => (a < b ? -1 : 1))) {
+    if (SKIPPED_PATH.test(path)) continue;
+    if (!OPTED_OUT.test(file.text.slice(0, file.statements[0]?.getStart(file)))) unitsOf(path, file, groups);
   }
   const taken = new Map<string, Place[]>();
   const overlaps = (one: Place, other: Place): boolean =>
     one.path === other.path && one.line <= other.end && other.line <= one.end;
   const covered = (place: Place): boolean =>
     (taken.get(place.path) ?? []).some((big) => big.line <= place.line && place.end <= big.end);
+  const tokensOf = (group: readonly Place[]) => group[0]?.tokens ?? 0;
   const rows: TreeFinding[] = [];
   for (const group of [...groups.values()]
     .filter((one) => one.length > 1)
-    .toSorted((a, b) => (b[0]?.tokens ?? 0) - (a[0]?.tokens ?? 0))) {
+    .toSorted((a, b) => tokensOf(b) - tokensOf(a))) {
     const distinct = group.filter(
       (place, index) => group.findIndex((other) => overlaps(place, other)) === index,
     );
     if (distinct.length < 2 || distinct.every(covered)) continue;
-    for (const place of distinct) taken.set(place.path, [...(taken.get(place.path) ?? []), place]);
+    for (const place of distinct) pushMap(taken, place.path, place);
     const packages = Map.groupBy(distinct, (place) => /^packages\/[^/]+\//u.exec(place.path)?.[0] ?? "");
     const kept = [...packages.values()]
       .reduce((best, one) => (one.length > best.length ? one : best), [])

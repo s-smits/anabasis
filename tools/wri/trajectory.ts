@@ -41,7 +41,6 @@
  */
 import { DIGEST } from "#src/campaign/names.ts";
 import { epochsOf, starterIn } from "#src/campaign/climb.ts";
-import { pathsUnder } from "#src/harness/open.ts";
 import { scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { lastReports } from "#src/kernel/reports.ts";
@@ -67,6 +66,8 @@ const SILENCE = 30 * 60 * 1000;
 /** Path segments of what a harness installed rather than wrote. A folder named `python` is none: a
  *  harness keeps its own modules in `lib/python/`, and an interpreter's home goes by `HOME`. */
 const INSTALLED = /(^|\/)(site-packages|dist-packages|node_modules|\.?venv|vendor|include|__pycache__)(\/|$)/;
+const SKIP_DIR = /^(?:node_modules|\.?venv|vendor|include|__pycache__)$/;
+const SITE_DIR = /^(?:site|dist)-packages$/;
 /** A bundled interpreter's home, known by the library folder its build lays out, whatever the home
  *  is named. The tool tree itself is no such home: a harness keeps its own programs there. */
 const HOME = /\/lib\/python\d[\d.]*\//;
@@ -152,6 +153,8 @@ export function clockOf(events: readonly LogEvent[]): (at: string) => number {
   };
 }
 
+const num = (value: JsonValue | undefined) => (isNumber(value) ? value : 0);
+
 /** What each side did in each comparison, and the tasks each comparison solved. */
 function solvesOf(events: readonly LogEvent[]) {
   const started = new Map<string, { comparison: string; task: string }>();
@@ -173,11 +176,10 @@ function solvesOf(events: readonly LogEvent[]) {
     if (solve === undefined || outcome === "non-result") continue;
     const side = `${solve.comparison}:${data.harness}`;
     const sum = sides.get(side) ?? { turns: 0, valid: 0, results: 0 };
-    sides.set(side, {
-      turns: sum.turns + (isNumber(data.turns) ? data.turns : 0),
-      valid: sum.valid + (outcome === "pass" ? 1 : 0),
-      results: sum.results + 1,
-    });
+    sum.turns += num(data.turns);
+    sum.valid += Number(outcome === "pass");
+    sum.results += 1;
+    sides.set(side, sum);
     opposed.set(solve.comparison, (opposed.get(solve.comparison) ?? new Set<string>()).add(solve.task));
   }
   return { sides, opposed };
@@ -204,9 +206,7 @@ export function trajectoryOf(name: string, events: readonly LogEvent[], grades: 
     const { wins, losses, ties } = testOf(scoresIn(data.scored));
     const tallied = wins + losses + ties;
     const points = asRecord(data.points);
-    const sum =
-      (isNumber(points?.validity) ? points.validity : 0) +
-      (isNumber(points?.objective) ? points.objective : 0);
+    const sum = num(points?.validity) + num(points?.objective);
     const each = tallied === 0 ? 0 : sum / tallied;
     const noise = testOf(scoresIn(data.noise));
     const starterFresh = data.fresh === starter;
@@ -226,21 +226,15 @@ export function trajectoryOf(name: string, events: readonly LogEvent[], grades: 
       grade: graded.length === 0 ? null : median(graded),
     };
   });
-  const promotions = epochsOf(events).flatMap((epoch): Promotion[] => {
-    if (epoch.reference === "starter") return [];
-    const read =
-      epoch.confirmed === true && epoch.starter_read !== null
-        ? hourOfSession.get(epoch.starter_read)
-        : undefined;
-    return [
-      {
-        harness: epoch.reference,
-        hour: clock(events[epoch.from]?.at ?? ""),
-        read: epoch.starter_read !== null,
-        confirmed: read ?? null,
-      },
-    ];
-  });
+  const promotions = epochsOf(events)
+    .filter(({ reference }) => reference !== "starter")
+    .map(({ reference: harness, from, starter_read, confirmed }) => ({
+      harness,
+      hour: clock(events[from]?.at ?? ""),
+      read: starter_read !== null,
+      confirmed:
+        confirmed === true && starter_read !== null ? (hourOfSession.get(starter_read) ?? null) : null,
+    }));
   const end = events.at(-1)?.at ?? "";
   const ending = events.findLast(({ kind }) => kind === "campaign.ended")?.data.ending;
   const open = events.findLast(({ kind }) => kind === "comparison.started")?.data.session;
@@ -271,42 +265,41 @@ function resolved(path: string): string {
 /** The paths an installer wrote, from each package's metadata: the files its `RECORD` names (a CSV
  *  whose first field is a path from the folder it installed into), or, where no record can be read,
  *  the folders and modules its `top_level.txt` or its own name gives. */
+const nonblank = (body: string) => body.split("\n").filter((line) => line.trim() !== "").length;
+
 function installedBy(files: readonly { readonly path: string }[], recordOf: (path: string) => string | null) {
   const paths = new Set<string>();
   const folders = new Set<string>();
   const marks = new Map(
     files.flatMap(({ path }) => {
       const segments = path.split("/");
-      const at = segments.findIndex(
-        (segment, place) => place < segments.length - 1 && METADATA.test(segment),
-      );
+      const at = segments.findIndex((seg, i) => i < segments.length - 1 && METADATA.test(seg));
+      if (at === -1) return [];
       const folder = segments[at] ?? "";
       const site = segments
         .slice(0, at)
-        .map((segment) => `${segment}/`)
+        .map((seg) => `${seg}/`)
         .join("");
-      return at === -1 ? [] : [[`${site}${folder}/`, { site, name: folder.replace(PAST_NAME, "") }] as const];
+      return [[`${site}${folder}/`, { site, name: folder.replace(PAST_NAME, "") }] as const];
     }),
   );
   for (const [meta, { site, name }] of marks) {
     folders.add(meta);
     const record = recordOf(`${meta}RECORD`) ?? recordOf(`${meta}installed-files.txt`);
-    const from = record !== null && meta.endsWith(".egg-info/") ? meta : site;
-    const named = record
-      ?.split("\n")
-      .map((line) =>
-        line.startsWith('"') ? line.slice(1, line.indexOf('"', 1)) : (line.split(",")[0] ?? ""),
-      );
-    if (named !== undefined) {
-      for (const each of named.filter((line) => line.trim() !== "")) paths.add(resolved(`${from}${each}`));
+    if (record === null) {
+      const tops = recordOf(`${meta}top_level.txt`)
+        ?.split("\n")
+        .filter((line) => line.trim() !== "") ?? [name];
+      for (const top of tops) {
+        folders.add(`${site}${top.trim()}/`);
+        paths.add(`${site}${top.trim()}.py`);
+      }
       continue;
     }
-    const tops = recordOf(`${meta}top_level.txt`)
-      ?.split("\n")
-      .filter((line) => line.trim() !== "") ?? [name];
-    for (const top of tops) {
-      folders.add(`${site}${top.trim()}/`);
-      paths.add(`${site}${top.trim()}.py`);
+    const from = meta.endsWith(".egg-info/") ? meta : site;
+    for (const line of record.split("\n")) {
+      const entry = line.startsWith('"') ? line.slice(1, line.indexOf('"', 1)) : (line.split(",")[0] ?? "");
+      if (entry.trim() !== "") paths.add(resolved(`${from}${entry}`));
     }
   }
   return { paths, folders: [...folders] };
@@ -320,7 +313,7 @@ function installedBy(files: readonly { readonly path: string }[], recordOf: (pat
  *  bundled interpreter's home goes whole (`HOME`), whatever the harness named it. */
 function ownPrograms(
   files: readonly { readonly path: string; readonly bytes: number }[],
-  recordOf: (path: string) => string | null = () => null,
+  recordOf: (path: string) => string | null,
 ): string[] {
   const installed = installedBy(files, recordOf);
   const homes = [...new Set(files.map(({ path }) => path.slice(0, path.search(HOME) + 1)))].filter(Boolean);
@@ -337,22 +330,47 @@ function ownPrograms(
     .map(({ path }) => path);
 }
 
+function dirMode(mode: "all" | "site" | "count", name: string): "all" | "site" | "count" {
+  if (mode === "all") return SKIP_DIR.test(name) ? "count" : SITE_DIR.test(name) ? "site" : "all";
+  return mode === "site" && METADATA.test(name) ? "all" : "count";
+}
+
+function walkTree(state: string, scope: "full" | "own") {
+  const tree = join(state, TOOL_TREE_DIR);
+  const empty: string[] = [];
+  if (!existsSync(tree)) return { root: tree, paths: empty, brokenLinks: 0, toolTreeFiles: 0 };
+  const root = realpathSync(tree);
+  const files: { path: string; bytes: number }[] = [];
+  let [brokenLinks, toolTreeFiles] = [0, 0];
+  const walk = (dir: string, prefix: string, mode: "all" | "site" | "count"): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      toolTreeFiles += 1;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        const next = dirMode(mode, entry.name);
+        if (next !== "count" || scope === "full") walk(full, join(prefix, entry.name), next);
+      } else if (entry.isSymbolicLink() && !existsSync(full)) {
+        brokenLinks += 1;
+      } else if (mode === "all" && entry.isSymbolicLink()) {
+        const target = realpathSync(full);
+        if (target.startsWith(`${root}/`) && lstatSync(target).isFile()) {
+          files.push({ path: join(prefix, entry.name), bytes: 0 });
+        }
+      } else if (mode === "all" && entry.isFile()) {
+        files.push({ path: join(prefix, entry.name), bytes: lstatSync(full).size });
+      }
+    }
+  };
+  walk(root, "", "all");
+  const recordOf = (path: string) =>
+    existsSync(join(root, path)) ? readFileSync(join(root, path), "utf8") : null;
+  return { root, paths: ownPrograms(files, recordOf).toSorted(), brokenLinks, toolTreeFiles };
+}
+
 /** The programs a kept harness wrote, under the real root of its tool tree: its files, and each link
  *  that names another file of the tree (`bin/pack-answer` to `check-answer`), listed by its own name. */
 export function ownFilesOf(state: string): { readonly root: string; readonly paths: readonly string[] } {
-  const tree = join(state, TOOL_TREE_DIR);
-  if (!existsSync(tree)) return { root: tree, paths: [] };
-  const root = realpathSync(tree);
-  const files = pathsUnder(root).flatMap((path) => {
-    const stat = lstatSync(join(root, path));
-    if (stat.isFile()) return [{ path, bytes: stat.size }];
-    const target =
-      stat.isSymbolicLink() && existsSync(join(root, path)) ? realpathSync(join(root, path)) : "";
-    return target.startsWith(`${root}/`) && lstatSync(target).isFile() ? [{ path, bytes: 0 }] : [];
-  });
-  const recordOf = (path: string) =>
-    existsSync(join(root, path)) ? readFileSync(join(root, path), "utf8") : null;
-  return { root, paths: ownPrograms(files, recordOf) };
+  return walkTree(state, "own");
 }
 
 const unrecorded = (value: JsonValue | undefined): string => (isString(value) ? value : "unrecorded");
@@ -374,29 +392,24 @@ export function keptStates(statesDir: string): string[] {
     .toSorted();
 }
 
-/** Static file inventory of one kept harness state for portability auditing. */
-export function stateAuditFiles(state: string): {
-  readonly written: readonly { readonly path: string; readonly text: string; readonly executable: boolean }[];
-  readonly brokenLinks: number;
-  readonly toolTreeFiles: number;
-} {
-  const files = writtenIn(state);
+/** Static file inventory and weight of one kept harness state for portability auditing. */
+export function stateAuditFiles(state: string) {
+  const { root, paths, brokenLinks, toolTreeFiles } = walkTree(state, "full");
+  const guideFile = join(state, GUIDE_PATH);
+  const entries = [
+    ...paths.map((path) => [path, join(root, path)] as const),
+    ...(existsSync(guideFile) ? [["guide", guideFile] as const] : []),
+  ];
   const written: { path: string; text: string; executable: boolean }[] = [];
-  for (const [path, file] of files) {
-    const stat = lstatSync(file);
-    if (stat.isSymbolicLink()) continue;
-    written.push({ path, text: readFileSync(file, "utf8"), executable: (stat.mode & 0o111) !== 0 });
+  let [guide, lines] = [0, 0];
+  for (const [path, file] of entries) {
+    const [stat, text] = [lstatSync(file), readFileSync(file, "utf8")];
+    if (path === "guide") guide = nonblank(text);
+    else lines += nonblank(text);
+    if (!stat.isSymbolicLink()) written.push({ path, text, executable: (stat.mode & 0o111) !== 0 });
   }
-  const tree = join(state, TOOL_TREE_DIR);
-  if (!existsSync(tree)) return { written, brokenLinks: 0, toolTreeFiles: 0 };
-  const root = realpathSync(tree);
-  const all = pathsUnder(root);
-  let brokenLinks = 0;
-  for (const rel of all) {
-    const full = join(root, rel);
-    if (lstatSync(full).isSymbolicLink() && !existsSync(full)) brokenLinks += 1;
-  }
-  return { written, brokenLinks, toolTreeFiles: all.length };
+  const weight = existsSync(state) ? { guide, files: paths.length, lines } : null;
+  return { written, brokenLinks, toolTreeFiles, weight };
 }
 
 /** The unified diff of what a harness wrote, from `parent` (a state folder, or none) to `version`,
@@ -484,12 +497,14 @@ export function madeOf(events: readonly LogEvent[], digest: string, starter: str
 /** A kept harness's weight from its state beside the log, or null where the copy keeps none. */
 export function weightOf(state: string): Weight | null {
   if (!existsSync(state)) return null;
-  const text = (file: string) =>
-    existsSync(join(state, file)) ? readFileSync(join(state, file), "utf8") : "";
-  const nonblank = (body: string) => body.split("\n").filter((line) => line.trim() !== "").length;
+  const guideFile = join(state, GUIDE_PATH);
   const { root, paths } = ownFilesOf(state);
   const lines = paths.reduce((sum, path) => sum + nonblank(readFileSync(join(root, path), "utf8")), 0);
-  return { guide: nonblank(text(`${AGENT_DIR}${GUIDE_FILE}`)), files: paths.length, lines };
+  return {
+    guide: existsSync(guideFile) ? nonblank(readFileSync(guideFile, "utf8")) : 0,
+    files: paths.length,
+    lines,
+  };
 }
 
 /** The task grades of a lane 14 report: its `task` rows, anything else passed over. */
@@ -593,42 +608,40 @@ function stretchesOf(runs: readonly Trajectory[]): string {
 
 /** One table a run, a row a comparison. */
 function comparisonsOf(run: Trajectory): string {
-  const lines = run.readings.map((one) =>
-    row([
-      one.session,
-      fixed(one.hour),
-      fixed(one.took),
-      one.reading,
-      one.tally,
-      one.aa,
-      fixed(one.each, 0),
-      fixed(one.lead, 0),
-      one.starter === null
-        ? "-"
-        : `${fixed(one.starter.turns / Math.max(one.starter.results, 1))}, ${String(one.starter.valid)}/${String(one.starter.results)}`,
-      one.built === null
-        ? "-"
-        : `${fixed(one.built.turns / Math.max(one.built.results, 1))}, ${String(one.built.valid)}/${String(one.built.results)}`,
-      fixed(one.grade),
-    ]),
-  );
+  const sideCell = (side: Side | null) =>
+    side === null
+      ? "-"
+      : `${fixed(side.turns / Math.max(side.results, 1))}, ${String(side.valid)}/${String(side.results)}`;
   return [
     `#### ${run.name}`,
-    row([
-      "comparison",
-      "work h",
-      "took",
-      "reading",
-      "tally",
-      "A/A",
-      "points a task",
-      "lead over the Starter",
-      "Starter turns, valid",
-      "built turns, valid",
-      "median task grade",
-    ]),
-    row(Array.from({ length: 11 }, () => "---")),
-    ...lines,
+    table(
+      [
+        "comparison",
+        "work h",
+        "took",
+        "reading",
+        "tally",
+        "A/A",
+        "points a task",
+        "lead over the Starter",
+        "Starter turns, valid",
+        "built turns, valid",
+        "median task grade",
+      ],
+      run.readings.map((one) => [
+        one.session,
+        fixed(one.hour),
+        fixed(one.took),
+        one.reading,
+        one.tally,
+        one.aa,
+        fixed(one.each, 0),
+        fixed(one.lead, 0),
+        sideCell(one.starter),
+        sideCell(one.built),
+        fixed(one.grade),
+      ]),
+    ),
   ].join("\n");
 }
 

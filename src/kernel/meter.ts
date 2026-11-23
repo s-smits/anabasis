@@ -221,7 +221,8 @@ export const reportedShare = (total: number | null, before: number | null) =>
 
 /** Billed USD in `[from, to)` via prefix difference so sessions spanning `from` are not attributed whole. */
 export function billedBetween(events: readonly LogEvent[], from: number, to = events.length): number {
-  return billedAll(events.slice(0, to)) - billedAll(events.slice(0, from));
+  const prefix = (at: number) => billedAll(at < events.length ? events.slice(0, at) : events);
+  return from === 0 ? prefix(to) : prefix(to) - prefix(from);
 }
 
 export function costLine(events: readonly LogEvent[]): string {
@@ -246,25 +247,29 @@ export function billedFor(events: readonly LogEvent[], id: string): number {
 }
 
 /** Splits spend for `id` into `session` (own turns/practice), `span` (whole session window), and `comparison`. */
-export function billedParts(events: readonly LogEvent[], id: string) {
-  const owners = ownersOf(events);
+export function billedParts(
+  events: readonly LogEvent[],
+  id: string,
+  owners = ownersOf(events),
+  open = unfinished(events),
+) {
   const mine = ownedBy(events, id, owners);
   const asked = (solve: JsonValue | undefined) => {
     const owner = isString(solve) ? owners.get(solve) : undefined;
     return owner?.asked === true && owner.by === id;
   };
-  const at = (kind: string) => events.findIndex((event) => event.kind === kind && event.data.session === id);
-  const [opened, closed] = [at("build.started"), at("build.finished")];
   const billed = { session: 0, span: 0, comparison: 0 };
-  for (const [index, event] of events.entries()) {
+  let inBuild = false;
+  for (const event of events) {
+    if (event.kind === "build.started" && event.data.session === id) inBuild = true;
     const own = billedOn(event);
-    if (own === null) continue;
-    if (opened !== -1 && index >= opened && (closed === -1 || index <= closed)) {
+    if (own !== null && inBuild) {
       billed.span += own;
       if (mine(event)) billed.session += own;
-    } else if (asked(event.data.solve)) billed.comparison += own;
+    } else if (own !== null && asked(event.data.solve)) billed.comparison += own;
+    if (event.kind === "build.finished" && event.data.session === id) inBuild = false;
   }
-  for (const { of, id: which, dollars } of unfinished(events)) {
+  for (const { of, id: which, dollars } of open) {
     if (of === "build" && which === id) {
       billed.span += dollars;
       billed.session += dollars;

@@ -23,7 +23,7 @@ import { endedOf, latestBuilt, promoted } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import { cutSessions } from "#src/kernel/trace.ts";
 import { sizeLines } from "#src/kernel/size.ts";
-import { existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
+import { mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -330,7 +330,7 @@ async function lead(
  * or the model turns, which would be two records of one fact.
  */
 function settingOf(log: string, given: Values): AskedSetting {
-  const events = existsSync(log) ? read(log) : [];
+  const events = read(log);
   const recorded = recordedSetting(events);
   const solver = recorded === null ? openingOf(events)?.solver : undefined;
   const asked = settingAsked(
@@ -427,8 +427,10 @@ export async function harnessBuilder(
   const given = flagsOf(args);
   const paid = seats.seated === solved ? "paid" : "scripted";
   const refusedTree = paid === "paid" ? treeFault(REPO) : null;
-  if (refusedTree !== null && given["dry-run"]) console.error(`a real run here is refused: ${refusedTree}`);
-  else if (refusedTree !== null) throw new Error(refusedTree);
+  if (refusedTree !== null) {
+    if (given["dry-run"]) console.error(`a real run here is refused: ${refusedTree}`);
+    else throw new Error(refusedTree);
+  }
   const { name } = given;
   if (name === undefined) throw new Error("name --name, the campaign");
   const most = given.moves === undefined ? Number.POSITIVE_INFINITY : Number(given.moves);
@@ -445,7 +447,7 @@ export async function harnessBuilder(
   // this launch's receipt lands strictly after `began` for both the outer loop and `queued`.
   const began = read(log).length;
   if (paid === "paid" && !given["dry-run"]) keepReceipt(log, args);
-  if (!given["dry-run"] && existsSync(log)) await endCut(log);
+  if (!given["dry-run"]) await endCut(log);
   // Every move is made with the terms the opening keeps: this command's, and the record's for
   // each it does not name.
   const values: Values = { ...given, ...opening.terms };
@@ -455,9 +457,12 @@ export async function harnessBuilder(
   for (let made = 0; ; ) {
     // A total the operator left as a word rules from this move on: the newest stands, and the record
     // answers every one, so that no older one applies at the next move.
-    const totals = pendingWords(read(log)).filter(({ word }) => word === "budget");
-    if (totals.length > 0) opening = opened(log, values, paid, totals);
-    const events = existsSync(log) ? read(log) : [];
+    let events = read(log);
+    const totals = pendingWords(events).filter(({ word }) => word === "budget");
+    if (totals.length > 0) {
+      opening = opened(log, values, paid, totals);
+      events = read(log);
+    }
     campaign ??= draftOf(events) === null ? null : await openCampaign(packNamed(values));
     const turn = turnOf({ log, values, opening, seats, held, campaign });
     const { plan } = turn;
@@ -473,7 +478,7 @@ export async function harnessBuilder(
       if (!values["dry-run"]) keepSetting(log, setting);
     }
     // Where the log stands as the move begins: the setting a first run just kept is no part of it.
-    const from = existsSync(log) ? read(log).length : 0;
+    const from = made === 0 && !values["dry-run"] ? read(log).length : events.length;
     const decided = decide(events, plan);
     console.log(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,
@@ -481,9 +486,10 @@ export async function harnessBuilder(
     if (decided.move === "end") {
       const faults = examLines(events, values, decided.ending, last === "accept" ? "printed" : "unprinted");
       for (const line of faults) console.log(line);
-      if (!values["dry-run"]) ended(log, events, decided);
+      if (values["dry-run"]) return decided;
+      ended(log, events, decided);
       // What the campaign hands over, once it has an exam to open over (`close.ts`).
-      if (!values["dry-run"] && values.handover !== undefined && campaign !== null) {
+      if (values.handover !== undefined && campaign !== null) {
         await closeCommand([...packOf(values), "--to", values.handover]);
       }
       return decided;

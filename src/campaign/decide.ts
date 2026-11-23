@@ -60,7 +60,7 @@ const ROWS: readonly {
   // Tasks held out since the last reading are compared before a Builder session is paid for, where
   // admission would take the comparison: the starter comparison a promotion owes, or a waiting
   // harness whose last reading left no room.
-  { code: "unread", move: unread },
+  { code: "unread", move: (ground) => (wantsTasks(ground) ? null : heldSince(ground)) },
   // Nothing new to read, or too few tasks to read it on: the Builder builds and asks the Examiner
   // itself. Short of tasks at the supply patience, the campaign ends on its exam.
   {
@@ -99,7 +99,7 @@ const MOST_ASKED_AFTER_PROMOTION = 16;
 /** Whether comparison admission would refuse the next comparison for want of tasks. */
 const wantsTasks = ({ refused }: Ground): boolean => SHORT_OF_TASKS.some((code) => refused.has(code));
 
-const end = (ending: Ending, why: string): Move => ({ move: "end", ending, why });
+const end = (ending: Ending, why: string) => ({ move: "end" as const, ending, why });
 /** A comparison of the latest harness, or of the starter (a starter comparison), with the reference. */
 const compare = (why: string, fresh = "latest"): Move => ({
   move: "compare",
@@ -238,16 +238,10 @@ function stop({ events, plan }: Ground): Move | null {
     const promoted = events.filter(({ kind }) => kind === PROMOTED).length;
     return plan.promotions === null || promoted < plan.promotions
       ? null
-      : {
-          move: "end",
-          ending: "operator",
-          why: `the operator's cap of ${plural(plan.promotions, "promotion")}`,
-        };
+      : end("operator", `the operator's cap of ${plural(plan.promotions, "promotion")}`);
   }
   return {
-    move: "end",
-    ending: "operator",
-    why: `the operator's word${stopped.why === "" ? "" : `: ${stopped.why}`}`,
+    ...end("operator", `the operator's word${stopped.why === "" ? "" : `: ${stopped.why}`}`),
     // The stop answers every word left before it, since the campaign has stopped.
     answers: words.filter(({ at }) => at <= stopped.at).map(({ at }) => at),
   };
@@ -483,6 +477,7 @@ function noRoom(ground: Ground): Move | null {
   const room = roomOf(last.report, side);
   if (room === "room") {
     const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
+    if (promotedAt === -1) return null;
     // A session the provider crashed or a stop killed did not finish writing for the new
     // reference, whatever it had held out by then, so it is owed again.
     const since = events.slice(promotedAt);
@@ -496,7 +491,7 @@ function noRoom(ground: Ground): Move | null {
         (event.kind === "exam.started" || event.kind === "exam.finished") &&
         !interrupted.has(event.data.session),
     );
-    return promotedAt === -1 || writtenForIt
+    return writtenForIt
       ? null
       : {
           move: "examine",
@@ -509,11 +504,7 @@ function noRoom(ground: Ground): Move | null {
       : side === "old"
         ? `comparison ${last.id} read no step, and no task was informative for the reference harness: the tasks have to change`
         : `harness ${short(reference ?? "")} is the reference, and comparison ${last.id} found no task informative for it: the tasks have to change, to ones that leave it room to improve`;
-  return outOfPatience(ground, "room", why) ?? { move: "examine", why };
-}
-
-function unread(ground: Ground): Move | null {
-  return wantsTasks(ground) ? null : heldSince(ground);
+  return examine(ground, "room", why);
 }
 
 /**
@@ -575,8 +566,11 @@ function buildsOn(ground: Ground): string {
  */
 /** The tasks released after `from` that are practice still: a release that a check defect has
  *  since closed is no longer practice, so another is owed in its place. */
-function releasedSince(events: readonly LogEvent[], from: number): string[] {
-  const { states } = taskSets(events);
+function releasedSince(
+  events: readonly LogEvent[],
+  from: number,
+  states = taskSets(events).states,
+): string[] {
   return events.flatMap(({ kind, data }, at) =>
     at > from &&
     kind === "task.state" &&
@@ -598,13 +592,16 @@ export function practiceDue(
   const released = sets.released.length;
   // A settling reports its comparison again (`settleReading`); only a comparison's first report is
   // a reading.
-  const since = events.findLastIndex(
-    ({ kind, data }, at) =>
-      kind === PROMOTED ||
-      (kind === "comparison.reported" &&
-        !events.slice(0, at).some((one) => one.kind === kind && one.data.session === data.session)),
-  );
-  const releases = releasedSince(events, since);
+  const seen = new Set<unknown>();
+  let since = -1;
+  for (const [at, { kind, data }] of events.entries()) {
+    if (kind === PROMOTED) since = at;
+    else if (kind === "comparison.reported" && !seen.has(data.session)) {
+      seen.add(data.session);
+      since = at;
+    }
+  }
+  const releases = releasedSince(events, since, sets.states);
   const count = releases.length;
   // A frontier task's release spends the allowance by leaving the frontier; one that was already
   // outside the practice frontier (inherited, exhausted, awaiting or doubted) leaves the frontier

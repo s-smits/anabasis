@@ -67,6 +67,7 @@ export type Terms = Readonly<Partial<Record<(typeof TERMS)[number], string>>>;
 /** The seats a campaign names a model for. The solver's is the setting's (`tools/d2/setting.ts`). */
 export const SEATS = ["builder", "examiner", "reviewer"] as const;
 const SETTING = "campaign.setting";
+const UNBILLED = /\.call$|^verdict$|^task\.|^condition\.|^exam\.drafted$/u;
 
 /** The paid solves of each campaign in flight in this process, by its log: a Builder's practice
  *  and a comparison's solves share one budget, so every solve in flight holds a reserve and two
@@ -89,7 +90,7 @@ export function budgetLeft(events: readonly LogEvent[], opening = openingOf(even
 /** Whether the campaign whose log is `log` holds a reserve for `count` more solves beside those in
  *  flight. A log whose opening names no budget holds every one. */
 export function affords(log: string, count: number): boolean {
-  const left = budgetLeft(read(log));
+  const left = budgetLeft(read(log, (kind) => UNBILLED.test(kind)));
   return left === null || left.dollars >= (inFlight(log) + count) * left.reserve;
 }
 

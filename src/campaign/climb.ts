@@ -17,6 +17,7 @@ import {
   type Tally,
   testedSet,
   testOf,
+  wholePoints,
 } from "../kernel/compare.ts";
 import { OPENING, writersOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
@@ -180,31 +181,27 @@ export interface StarterRead {
 
 const levelOf = ({ data }: Reported) => (isNumber(data.level) ? data.level : 0);
 
-/** Return the log index and reference harness that open each epoch: campaign start, then each promotion. */
-function epochStarts(events: readonly LogEvent[]): { index: number; harness: string }[] {
-  const promotions = events.flatMap(({ kind, data }, index) =>
-    kind === PROMOTED && isString(data.harness) ? [{ index, harness: data.harness }] : [],
-  );
-  return [{ index: 0, harness: "starter" }, ...promotions];
+function epochSlices(events: readonly LogEvent[]) {
+  const bounds: { index: number; harness: string }[] = [{ index: 0, harness: "starter" }];
+  const tasks: string[][] = [[]];
+  const sessions: Set<string>[] = [new Set()];
+  for (const [at, { kind, data }] of events.entries()) {
+    if (kind === PROMOTED && isString(data.harness)) {
+      bounds.push({ index: at, harness: data.harness });
+      tasks.push([]);
+      sessions.push(new Set());
+    } else if (kind === "task.gate" && heldAtGate(data.outcome) && isString(data.version)) {
+      tasks.at(-1)?.push(data.version);
+    } else if (kind.startsWith("build.") && isString(data.session)) {
+      sessions.at(-1)?.add(data.session);
+    }
+  }
+  return { bounds, tasks, sessions };
 }
 
 /** Return task versions admitted by the gate in each epoch, oldest epoch first; comparisons draw
  *  from newest epoch backwards (`scoredSet`). */
-export function tasksByEpoch(events: readonly LogEvent[]): string[][] {
-  const bounds = epochStarts(events);
-  return bounds.map(({ index: from }, nth) => {
-    const to = bounds[nth + 1]?.index ?? null;
-    return events.flatMap(({ kind, data }, at) =>
-      at >= from &&
-      (to === null || at < to) &&
-      kind === "task.gate" &&
-      heldAtGate(data.outcome) &&
-      isString(data.version)
-        ? [data.version]
-        : [],
-    );
-  });
-}
+export const tasksByEpoch = (events: readonly LogEvent[]): string[][] => epochSlices(events).tasks;
 
 /** Return the starter harness digest named in the first comparison's terms, or null before any comparison. */
 export function starterIn(events: readonly LogEvent[]): string | null {
@@ -214,22 +211,24 @@ export function starterIn(events: readonly LogEvent[]): string | null {
 
 /** Fold a campaign log into its epochs, oldest first. A log with no promotions yields one epoch. */
 export function epochsOf(events: readonly LogEvent[]): Epoch[] {
+  return epochsFrom(events, lastReports(events));
+}
+
+function epochsFrom(
+  events: readonly LogEvent[],
+  reports: readonly Reported[],
+  controls = controlsIn(reports),
+): Epoch[] {
   const starter = starterIn(events);
-  const bounds = epochStarts(events);
-  const byEpoch = tasksByEpoch(events);
-  const reports = lastReports(events);
+  const { bounds, tasks, sessions } = epochSlices(events);
   return bounds.map(({ index: from, harness: reference }, nth) => {
     const next = bounds[nth + 1];
     const to = next?.index ?? null;
-    const within = (at: number) => at >= from && (to === null || at < to);
-    const tasks = byEpoch[nth] ?? [];
-    // Builder-led conversations can span promotions, so count any session that emitted a build
-    // event within the epoch rather than only sessions that closed inside it.
-    const buildEvents = events.filter(({ kind }, at) => within(at) && kind.startsWith("build."));
-    // Legacy ladder readings are excluded from epoch comparisons (`lastReports`).
-    const comparisons = reports
-      .filter(({ index }) => within(index))
-      .map(({ session, data }) => ({ id: session, reading: isString(data.reading) ? data.reading : "" }));
+    const own = reports.filter(({ index }) => index >= from && (to === null || index < to));
+    const comparisons = own.map(({ session, data }) => ({
+      id: session,
+      reading: isString(data.reading) ? data.reading : "",
+    }));
     const referenceDigest = reference === "starter" ? starter : reference;
     return {
       nth: nth + 1,
@@ -237,12 +236,11 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
       from,
       to,
       promoted: next?.harness ?? null,
-      tasks,
-      sessions: new Set(buildEvents.flatMap(({ data }) => (isString(data.session) ? [data.session] : [])))
-        .size,
+      tasks: tasks[nth] ?? [],
+      sessions: sessions[nth]?.size ?? 0,
       comparisons,
-      ...againstStarter(reports, within, reference === "starter" ? null : referenceDigest, starter),
-      falsePromotion: falsePromotionOf(reports, within, { reference: referenceDigest, starter }),
+      ...againstStarter(own, reference === "starter" ? null : referenceDigest, starter),
+      falsePromotion: falsePromotionOf(own, controls, { reference: referenceDigest, starter }),
     };
   });
 }
@@ -257,14 +255,12 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
  */
 function againstStarter(
   reports: readonly Reported[],
-  within: (at: number) => boolean,
   reference: string | null,
   starter: string | null,
 ): Pick<Epoch, "starter_tally" | "starter_read" | "confirmed"> {
   if (reference === null) return { starter_tally: null, starter_read: null, confirmed: null };
   const first = reports.find(
-    ({ index, data }) =>
-      within(index) &&
+    ({ data }) =>
       data.old === reference &&
       data.fresh === starter &&
       data.reading !== "not-scored" &&
@@ -322,12 +318,11 @@ function controlsIn(reports: readonly Reported[]) {
  */
 function falsePromotionOf(
   reports: readonly Reported[],
-  within: (at: number) => boolean,
+  read: readonly ReturnType<typeof controlOf>[],
   harnesses: { readonly reference: string | null; readonly starter: string | null },
 ): FalsePromotion {
   const attempts = reports.filter(
-    ({ index, data }) =>
-      within(index) &&
+    ({ data }) =>
       data.old === harnesses.reference &&
       data.fresh !== harnesses.starter &&
       asRecord(data.frontier) !== null,
@@ -338,7 +333,6 @@ function falsePromotionOf(
     const rate = testedSet(asRecord(attempt.data.scored), asRecord(attempt.data.frontier))?.falseRate;
     return isNumber(rate) ? rate : levelOf(attempt);
   };
-  const read = controlsIn(reports);
   const controls = read.filter(({ able }) => able).length;
   const sliceCount = (slice: "validity" | "objective"): ControlSlice => {
     const own = read.filter((one) => one.slice === slice);
@@ -388,33 +382,36 @@ function starterClause({ reference, starter_tally: tally, confirmed }: Epoch, re
 export const aloneOf = (reads: readonly Pick<StarterRead, "after">[]) =>
   `on the tasks written after alone, ${UNSELECTED.map((one) => `${one} ${String(reads.filter(({ after }) => after === one).length)}`).join(", ")}`;
 
-/** Compute the tally of `pairs` oriented from the reference's perspective (the old side). */
-const tallyOf = (pairs: readonly Paired[]): Tally => {
-  const { wins, losses, ties } = testOf(pairs.map((pair) => -differenceOf(pair)));
+const tallyOf = (margins: readonly number[]): Tally => {
+  const { wins, losses, ties } = testOf(margins);
   return { wins, losses, ties };
 };
+
+/** Memoised `pairsReported` over one call's `events`, keyed by report session. */
+function pairLookup(events: readonly LogEvent[]): (report: Reported) => Paired[] {
+  const seen = new Map<string, Paired[]>();
+  return (report) => {
+    const found = seen.get(report.session);
+    if (found !== undefined) return found;
+    const pairs = pairsReported(events, report);
+    seen.set(report.session, pairs);
+    return pairs;
+  };
+}
 
 /** Return the set of tasks scored by step-producing comparisons before `from` whose new side
  *  satisfies `stepped`. A step won by the starter as the new side of a starter comparison did not
  *  select any ancestor of the reference. */
 function tasksChosenBefore(
-  events: readonly LogEvent[],
   reports: readonly Reported[],
+  pairsOf: (report: Reported) => Paired[],
   stepped: (fresh: JsonValue | undefined) => boolean,
   from: number,
 ) {
   const chose = reports.filter(
     ({ index, data }) => index < from && stepped(data.fresh) && data.reading === "step",
   );
-  return new Set(chose.flatMap((report) => pairsReported(events, report).map(({ task }) => task)));
-}
-
-/** Group `pairs` by Examiner session and compute each session's tally. */
-function byAuthor(writers: ReadonlyMap<string, string>, pairs: readonly Paired[]): StarterRead["authors"] {
-  return [...new Set(writers.values())].flatMap((session) => {
-    const own = pairs.filter(({ task }) => writers.get(task) === session);
-    return own.length === 0 ? [] : [{ session, tally: tallyOf(own) }];
-  });
+  return new Set(chose.flatMap((report) => pairsOf(report).map(({ task }) => task)));
 }
 
 /** Classify reference-oriented scores `ahead` at `level` into an `Unselected` reading. */
@@ -428,29 +425,58 @@ export function unselectedOf(ahead: readonly number[], level: number): Unselecte
 /** Extract all starter reads from `events`, oldest first. */
 export function starterReads(events: readonly LogEvent[]): StarterRead[] {
   const reports = lastReports(events);
-  const epochs = epochsOf(events);
+  return starterReadsFrom(events, reports, epochsFrom(events, reports), pairLookup(events));
+}
+
+function starterReadsFrom(
+  events: readonly LogEvent[],
+  reports: readonly Reported[],
+  epochs: readonly Epoch[],
+  pairsOf: (report: Reported) => Paired[],
+): StarterRead[] {
   const writers = writersOf(events);
+  const writerOrder = [...new Set(writers.values())];
   return epochs.flatMap((epoch, nth) => {
     const report = reports.find(({ session }) => session === epoch.starter_read);
     const fresh = report?.data.fresh;
     if (report === undefined || epoch.starter_tally === null || !isString(fresh)) return [];
-    const { level } = report.data;
-    const chosen = tasksChosenBefore(events, reports, (side) => side === epoch.reference, epoch.from);
+    const at = levelOf(report);
+    const chosen = tasksChosenBefore(reports, pairsOf, (side) => side === epoch.reference, epoch.from);
+    const anyChosen = tasksChosenBefore(reports, pairsOf, (side) => side !== fresh, epoch.from);
     const writtenEarlier = new Set(epochs.slice(0, nth).flatMap(({ tasks }) => tasks));
-    const pairs = pairsReported(events, report);
-    const originOf = ({ task }: Paired): Origin =>
-      chosen.has(task) ? ORIGINS[0] : writtenEarlier.has(task) ? ORIGINS[1] : ORIGINS[2];
-    const splitOf = (origin: Origin): Split => {
-      const own = pairs.filter((pair) => originOf(pair) === origin);
+    const scored = pairsOf(report).map((pair) => {
+      const { validity, objective } = pointsOf(pair);
+      const origin = chosen.has(pair.task)
+        ? ORIGINS[0]
+        : writtenEarlier.has(pair.task)
+          ? ORIGINS[1]
+          : ORIGINS[2];
       return {
-        whole: tallyOf(own),
-        validity: tallyOf(own.filter((pair) => pointsOf(pair).validity !== 0)),
-        rest: tallyOf(own.filter((pair) => pointsOf(pair).validity === 0)),
+        row: {
+          task: pair.task,
+          origin,
+          writer: writers.get(pair.task) ?? OPENING,
+          margin: -wholePoints(validity + objective),
+          pair,
+        },
+        validity: validity !== 0,
+      };
+    });
+    const margins = (list: typeof scored) => list.map(({ row }) => row.margin);
+    const splitOf = (origin: Origin): Split => {
+      const own = scored.filter(({ row }) => row.origin === origin);
+      return {
+        whole: tallyOf(margins(own)),
+        validity: tallyOf(margins(own.filter(({ validity }) => validity))),
+        rest: tallyOf(margins(own.filter(({ validity }) => !validity))),
       };
     };
-    const at = isNumber(level) ? level : 0;
-    const anyChosen = tasksChosenBefore(events, reports, (side) => side !== fresh, epoch.from);
-    const unchosenPairs = pairs.filter(({ task }) => !anyChosen.has(task));
+    const byWriter = Map.groupBy(scored, ({ row }) => writers.get(row.task));
+    const authors = writerOrder.flatMap((session) => {
+      const own = byWriter.get(session);
+      return own === undefined ? [] : [{ session, tally: tallyOf(margins(own)) }];
+    });
+    const unchosen = margins(scored.filter(({ row }) => !anyChosen.has(row.task)));
     return [
       {
         session: report.session,
@@ -464,28 +490,13 @@ export function starterReads(events: readonly LogEvent[]): StarterRead[] {
           [ORIGINS[1]]: splitOf(ORIGINS[1]),
           [ORIGINS[2]]: splitOf(ORIGINS[2]),
         },
-        authors: byAuthor(writers, pairs),
-        after: unselectedOf(
-          pairs.filter((pair) => originOf(pair) === ORIGINS[2]).map((pair) => -differenceOf(pair)),
-          at,
-        ),
-        unchosen: {
-          tally: tallyOf(unchosenPairs),
-          read: unselectedOf(
-            unchosenPairs.map((pair) => -differenceOf(pair)),
-            at,
-          ),
-        },
-        levelled: isNumber(level),
-        rows: pairs.map((pair) => ({
-          task: pair.task,
-          origin: originOf(pair),
-          writer: writers.get(pair.task) ?? OPENING,
-          margin: -differenceOf(pair),
-          pair,
-        })),
-        key: `${epoch.reference}|${fresh}|${pairs
-          .map(({ task }) => task)
+        authors,
+        after: unselectedOf(margins(scored.filter(({ row }) => row.origin === ORIGINS[2])), at),
+        unchosen: { tally: tallyOf(unchosen), read: unselectedOf(unchosen, at) },
+        levelled: isNumber(report.data.level),
+        rows: scored.map(({ row }) => row),
+        key: `${epoch.reference}|${fresh}|${scored
+          .map(({ row }) => row.task)
           .toSorted()
           .join(",")}`,
       },
@@ -592,40 +603,35 @@ export function worthLine({ cost }: Worth): string {
  * attempt bar. Strictly observational.
  */
 export function barLines(events: readonly LogEvent[]): string[] {
-  const epochs = epochsOf(events);
+  const reports = lastReports(events);
+  const controls = controlsIn(reports);
+  const epochs = epochsFrom(events, reports, controls);
+  const pairsOf = pairLookup(events);
   const climbed = epochs.filter(({ nth }) => nth > 1);
-  const confirmed = climbed.filter((epoch) => epoch.confirmed === true).length;
+  const confirmed = climbed.filter((epoch) => epoch.confirmed === true);
   const unread = climbed.filter(({ starter_tally: tally }) => tally === null).length;
-  const confirmedSessions = new Set(
-    climbed.filter((epoch) => epoch.confirmed === true).map((epoch) => epoch.starter_read),
+  const confirmedSessions = new Set(confirmed.map((epoch) => epoch.starter_read));
+  const confirmedReads = starterReadsFrom(events, reports, epochs, pairsOf).filter(({ session }) =>
+    confirmedSessions.has(session),
   );
-  const confirmedReads = starterReads(events).filter(({ session }) => confirmedSessions.has(session));
   const overBar = climbed.flatMap((epoch) => {
     const cost = costOf(events, epoch);
     const open = epoch.promoted === null ? ", open" : "";
     return cost.met ? [] : [`epoch ${String(epoch.nth)} at ${String(cost.attempts)}${open}`];
   });
   return [
-    `- Climb: ${plural(climbed.length, "promotion")}, ${String(confirmed)} confirmed against a milestone of ${String(MILESTONE.promotions)}${confirmedReads.length === 0 ? "" : ` (${aloneOf(confirmedReads)})`}; ${String(climbed.length - confirmed - unread)} read against the starter without a step, ${String(unread)} not read against it.`,
-    honestyLine(events, epochs[MILESTONE.promotions]?.from),
+    `- Climb: ${plural(climbed.length, "promotion")}, ${String(confirmed.length)} confirmed against a milestone of ${String(MILESTONE.promotions)}${confirmedReads.length === 0 ? "" : ` (${aloneOf(confirmedReads)})`}; ${String(climbed.length - confirmed.length - unread)} read against the starter without a step, ${String(unread)} not read against it.`,
+    honestyLine(controls, epochs[MILESTONE.promotions]?.from),
     `- Economy: ${plural(climbed.length, "epoch")} after set-up against a bar of ${plural(BARS.cost, ATTEMPT)} each, ${String(overBar.length)} over it${overBar.length === 0 ? "" : `: ${overBar.join("; ")}`}. Reported only.`,
-    starterNoiseLine(events),
-    repeatLine(events),
+    starterNoiseLine(events, reports),
+    repeatLine(reports, pairsOf),
   ];
 }
 
-/**
- * Count comparisons in which each side produced identical validity across all solves of every task,
- * and the subset in which each side also produced identical objective measures (within the tie
- * floor of `gapAgainst`, matching the A/A control and `tools/wri/scores.ts`). In such comparisons
- * no split of either side's solves can register noise, so a zero-step A/A control is uninformative.
- * Validity is tracked separately because a harness can repeat its measure while still flipping
- * validity. Descriptive only.
- */
-function repeatLine(events: readonly LogEvent[]): string {
+function repeatLine(reports: readonly Reported[], pairsOf: (report: Reported) => Paired[]): string {
   const allSame = (values: readonly boolean[]) => values.every((value) => value === values[0]);
-  const read = lastReports(events).flatMap((report) => {
-    const pairs = pairsReported(events, report);
+  const read = reports.flatMap((report) => {
+    const pairs = pairsOf(report);
     if (pairs.length === 0 || !pairs.every((pair) => allSame(pair.old) && allSame(pair.fresh))) return [];
     const measured = pairs.every((pair) => !gapAgainst(pair, "old", []) && !gapAgainst(pair, "fresh", []));
     return [{ session: report.session, measured }];
@@ -648,10 +654,9 @@ function tiedClause(controls: readonly { readonly tied: boolean }[], of: string)
 
 /** Summarise A/A controls reported after log index `sixth` (the sixth promotion). Capable vs
  *  incapable controls and one-sided vs two-sided steps are kept separate for operator judgement. */
-function honestyLine(events: readonly LogEvent[], sixth: number | undefined): string {
+function honestyLine(all: readonly ReturnType<typeof controlOf>[], sixth: number | undefined): string {
   const named = `promotion ${String(MILESTONE.promotions)}`;
   const bar = `the bar's ${String(MILESTONE.controls)}`;
-  const all = controlsIn(lastReports(events));
   if (sixth === undefined) {
     const so = tiedClause(all, `the campaign's ${plural(all.length, "A/A comparison")} so far`);
     const counted = all.length === 0 ? "" : ` So far ${controlCounts(all)}.`;
@@ -675,9 +680,9 @@ function controlCounts(controls: readonly ReturnType<typeof controlOf>[]): strin
  * noise floor of the baseline harness against which promotions are confirmed, reusing already-paid
  * solves. Strictly observational and excluded from the honesty bar.
  */
-function starterNoiseLine(events: readonly LogEvent[]): string {
+function starterNoiseLine(events: readonly LogEvent[], reports: readonly Reported[]): string {
   const starter = starterIn(events);
-  const read = lastReports(events).flatMap((report) => {
+  const read = reports.flatMap((report) => {
     if (starter === null || report.data.fresh !== starter || report.data.old === starter) return [];
     const pairs = pairsReported(events, report, "fresh");
     return pairs.length === 0

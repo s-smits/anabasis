@@ -202,8 +202,15 @@ suite("rehearsal over a drafted exam", () => {
     expect(viewed).not.toContain("  a round");
     expect(cli("view", SEED, "--cap", "100").said).toContain("Unknown option '--cap'");
     // Fix row F26: the view's last line is the one move the decision table names, and the
-    // campaign's own command, rehearsed and asked what it would do next, names the same.
-    const tabled = viewed.slice(viewed.indexOf("the table's move\n") + "the table's move\n".length).trim();
+    // campaign's own command, rehearsed and asked what it would do next, names the same. The move is
+    // the line after the heading alone: a view run from an unpushed head warns after it which
+    // published ancestor its remote reads use.
+    const tabled = (
+      viewed
+        .slice(viewed.indexOf("the table's move\n") + "the table's move\n".length)
+        .trim()
+        .split("\n")[0] ?? ""
+    ).trim();
     expect(tabled).toContain(": ");
     // At 0.02 the default patience holds the bound an opening may risk (`openingLines`).
     const terms = ["--project", "fixture", "--level", "0.02"];

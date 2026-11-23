@@ -4,6 +4,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { countNonBlank } from "../tools/loc/nonblank-loc.ts";
 import {
+  AGENTS_MD_BYTE_CEILING,
   corpus,
   NEW_FILE_CEILING,
   NEW_FUNCTION_CEILING,
@@ -26,6 +27,10 @@ describe("source policy", () => {
       "}",
     ].join("\n");
     expect(checks(longFunction)).toContain("function-size");
+    expect(sourceTextFindings("AGENTS.md", "a".repeat(AGENTS_MD_BYTE_CEILING))).toEqual([]);
+    expect(
+      sourceTextFindings("AGENTS.md", "a".repeat(AGENTS_MD_BYTE_CEILING + 1)).map((f) => f.check),
+    ).toEqual(["file-size"]);
   });
 
   it("reads a root's own files and skips a nested checkout under it", () => {

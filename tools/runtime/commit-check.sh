@@ -32,11 +32,12 @@ esac
 
 root=$(git rev-parse --show-toplevel)
 
-# The formatter and the linter over the staged source files only. CI still runs both over the
-# whole tree; this is the same check at the moment a finding is one file old rather than one
-# branch old. The linter reads the working-tree bytes of each staged path, so a partially
-# staged file is judged on what is on disk, not on what the index holds.
+# The formatter, strict linter, source policy and simplify census over staged files. CI still runs
+# them over the whole tree; this catches findings when they are one commit old rather than one
+# stack old. The checks read working-tree bytes of staged paths, so a partially staged file is
+# judged on what is on disk, not on what the index holds.
 staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.ts' '*.tsx' '*.js' '*.mjs')
+staged_md=$(git diff --cached --name-only --diff-filter=ACMR -- '*.md')
 if [ -n "$staged" ]; then
   cd "$root"
   # A commit may stage only files biome.json leaves unformatted, such as the copied pi sources;
@@ -46,14 +47,24 @@ if [ -n "$staged" ]; then
     echo "commit-check: staged files are not formatted; run bun fmt <paths> and stage the result." >&2
     exit 1
   }
-  ANA_LINT_PATHS="$staged" bun tools/runtime/lint.ts || {
-    echo "commit-check: staged files fail bun run lint; fix the findings and stage again." >&2
+  ANA_LINT_PATHS="$staged" bun tools/runtime/lint.ts --strict || {
+    echo "commit-check: staged files fail bun run lint -- --strict; fix the findings and stage again." >&2
     exit 1
   }
-  # The slop report: the whole-tree simplify scans, narrowed to the lines this commit changes, with
-  # an id per site for the not-slop ledger. It prints and never refuses: its scans are heuristics
-  # (tools/oxlint/staged-slop.ts says why), so a scan that fails to finish costs one line here.
-  bun tools/oxlint/staged-slop.ts || echo "commit-check: the slop report did not finish; the commit goes ahead." >&2
+fi
+if [ -n "$staged" ] || printf '%s\n' "$staged_md" | grep -qx "AGENTS.md"; then
+  cd "$root"
+  bun tools/loc/source-policy.ts || {
+    echo "commit-check: source-policy failed; fix the findings and stage again." >&2
+    exit 1
+  }
+fi
+if [ -n "$staged" ] || [ -n "$staged_md" ]; then
+  cd "$root"
+  bun tools/oxlint/staged-slop.ts || {
+    echo "commit-check: simplify census findings touch staged lines; fix or answer them and stage again." >&2
+    exit 1
+  }
 fi
 
 exec bun "$root/tools/secrets/scan.ts" --staged

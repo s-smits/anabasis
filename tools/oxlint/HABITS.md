@@ -157,7 +157,7 @@ If a rule cites a moved owner, update the rule in the same change.
 
 ## 12.10 The size policy
 
-`tools/loc/source-policy.ts` enforces ≤800 nonblank lines/file and ≤115 lines/function across `src`, `tools`, `vendor` and `.claude/skills`, plus flags unreferenced `export`s in `src`, `tools` and `packages/ui/src` (comment mentions count as readers). `source-policy.json` stays empty. `bun run gate` runs it; `bun run commit:check` does not—run `bun tools/loc/source-policy.ts` directly after editing exports or large files. No cyclomatic complexity gate exists in v2.
+`tools/loc/source-policy.ts` enforces ≤800 nonblank lines/file, ≤115 lines/function across `src`, `tools`, `vendor` and `.claude/skills`, `AGENTS.md` ≤24,000 bytes, one-way production→helper dependencies, and unreferenced `export`s in `src`, `tools` and `packages/ui/src` (comment mentions count as readers). `source-policy.json` stays empty. `bun run commit:check`, `bun run gate` and `ci.yml` all run it. No cyclomatic complexity gate exists in v2.
 
 ## 12.11 Per-path overrides
 

@@ -80,6 +80,10 @@ jobs:
       # Every tracked file, where the pre-push hook scans only what a push adds.
       - run: bun run secrets
         if: ${{ !cancelled() && steps.install.outcome == 'success' && inputs.tests == '' }}
+      - run: bun tools/loc/source-policy.ts
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && inputs.tests == '' }}
+      - run: bun run simplify -- --gate
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && inputs.tests == '' }}
       - run: bun run test -- $TESTS
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
 

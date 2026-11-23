@@ -1,8 +1,8 @@
 // Check preflight suggestions against the gate, hook routes, size policy and label set, and the
 // direction check against an import graph. Fixtures use temporary repositories.
 import { afterAll, describe, expect, it } from "bun:test";
-import { breaches } from "#skills/repository-practice/scripts/direction.ts";
 import { treeLines } from "#skills/repository-practice/scripts/preflight.ts";
+import { breaches } from "../tools/loc/source-policy.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";

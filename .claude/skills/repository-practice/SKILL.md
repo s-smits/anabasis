@@ -54,8 +54,4 @@ perform actual validation. Its test suite lives in `test/repository-practice-scr
 bun .claude/skills/repository-practice/scripts/direction.ts [--file <path>]...
 ```
 
-`AGENTS.md` section 12 enforces one-way dependencies that no lint rule currently checks. Using the
-gate's import parser (`importsOf`), this script flags any import from production code (`src/`,
-`vendor/`, `packages/`, and `tools/` outside `tools/wri/`, or each `--file` argument) into
-`.claude/`, `tools/wri/`, `studies/`, or `test/`, exiting with status 1 if any violation is found.
-Its tests live in `test/repository-practice-script.test.ts`.
+`AGENTS.md` section 12 enforces one-way dependencies, gated in `tools/loc/source-policy.ts` (`commit:check`, `gate`, `ci.yml`). This script wraps that check for targeted `--file` runs, flagging any import from production code (`src/`, `vendor/`, `packages/`, and `tools/` outside `tools/wri/`) into `.claude/`, `tools/wri/`, `studies/`, or `test/`, exiting with status 1 if any violation is found. Its tests live in `test/repository-practice-script.test.ts`.

@@ -14,7 +14,7 @@
  * installed). A word matches whole: `x-1-3` is not found inside `x-1-31`.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { PHRASE_WORDS, phrasesIn, spansOf, stringsIn } from "#src/harness/audit.ts";
+import { QUOTE_WORDS, quotedSpans, spansOf, stringsIn } from "#src/harness/files.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { lstatSync, readFileSync } from "#src/meta/filesystem.ts";
@@ -131,7 +131,7 @@ function hitsIn(state: string, known: ReturnType<typeof tokensOf>): { files: num
       );
     }
     hits.push(
-      ...phrasesIn(path, whole, known.phrases.spans).map((hit) => ({ kind: "phrase" as const, ...hit })),
+      ...quotedSpans(path, whole, known.phrases.spans).map((hit) => ({ kind: "phrase" as const, ...hit })),
     );
   }
   return { files: files.size, hits };
@@ -154,7 +154,7 @@ export function nameRows(events: readonly LogEvent[], states: string, only: stri
   const kinds = [...known.tokens.values()];
   const count = (kind: Kind) => String(kinds.filter((token) => token.kind === kind).length);
   return [
-    `names: where the files each kept harness wrote name a task, word by word, or copy its public input; looked for ${count("id")} task ids, ${String(known.versions.size)} version prefixes, ${String(known.familyRules.length)} families, ${count("public")} identifiers of public inputs (${String(known.plain)} plain words left out) and ${String(known.phrases.spans.size)} spans of ${String(PHRASE_WORDS)} words of public inputs (${String(known.phrases.common)} spans every task shares left out)`,
+    `names: where the files each kept harness wrote name a task, word by word, or copy its public input; looked for ${count("id")} task ids, ${String(known.versions.size)} version prefixes, ${String(known.familyRules.length)} families, ${count("public")} identifiers of public inputs (${String(known.plain)} plain words left out) and ${String(known.phrases.spans.size)} spans of ${String(QUOTE_WORDS)} words of public inputs (${String(known.phrases.common)} spans every task shares left out)`,
     "harness  path:line  kind  length  kept versions holding it  public inputs holding it  tasks",
     ...(kept.length === 0 ? [`no kept harness under ${states}`] : []),
     ...scanned.flatMap(({ digest, files, hits }) => [

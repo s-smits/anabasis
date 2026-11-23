@@ -200,14 +200,14 @@ ${STARTER.guide.trimEnd()}
 
 You may revise, replace, or remove it, including the file itself.
 
-- Portable boundary: kept harnesses are exported and run outside this host on ordinary domain
+- Exported guide: kept harnesses are exported and run outside this host on ordinary domain
   workspaces where public/task.json, public/files/, public/resources/, answer.json, submit, exam
   rule IDs, and campaign scoring do not exist. Export keeps the guide up to the heading
   "${HOST_ONLY}" and strips everything below it (a guide without that heading is exported whole
   under a host disclaimer). Sections above "${HOST_ONLY}" — Programs and tools, Working with them,
   and Domain notes — therefore apply to general workspaces and ordinary files: how to use your
   programs, reason from first principles, and verify work independently.
-- Host-only section ("${HOST_ONLY}"): campaign-specific workflow belongs strictly under this
+- Under "${HOST_ONLY}": campaign-specific workflow belongs strictly under this
   heading — reading public/task.json, public/files/, and public/resources/, checking rules against
   answer.json, campaign scoring notes, and calling submit.
 - Conciseness and pruning: every paragraph sits in the system prompt of every solve. Long

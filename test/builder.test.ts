@@ -18,7 +18,7 @@ import { crashedRun } from "../src/campaign/ground.ts";
 import { type BuildRequest, build, layPractice, type PracticeTask, session } from "../src/builder/session.ts";
 import { HOME_TOOL_TREE, snapshot } from "../src/builder/kept.ts";
 import { type Bench, practiceLeft, record } from "../src/builder/tools.ts";
-import { auditHarnessState, practiceCopyHits, schemaKeys } from "../src/harness/audit.ts";
+import { formatKeys, namedTasks, readHarnessFiles } from "../src/harness/files.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
@@ -2041,11 +2041,10 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
     expect(calls[6]).toContain("harness/.toolchain/bin/named name your home");
     // A line for each part of the harness.
     expect(calls[8]).toContain(
-      String.raw`The harness opens.\npi's tools: bash.\nPrograms: greet, hello, real.\nGuide: 28 characters.`,
+      String.raw`The harness opens.\npi's tools: bash.\nPrograms: greet, hello, real.\nGuide: 1 line (28 characters; no \"## Validity and score\" heading).\nYour files under .toolchain/: 3 files, 6 lines.`,
     );
-    expect(calls[8]).toContain("Weight: 1 guide line");
-    expect(calls[8]).not.toContain("Portability notes:");
-    expect(calls[8]).not.toContain("Practice-copy note:");
+    expect(calls[8]).not.toContain("Files in harness/ carry");
+    expect(calls[8]).not.toContain("Matches a practice task:");
     expect(calls[9]).toContain(String.raw`/home\n# The Built Harness`);
     expect(calls[10]).toContain("Successfully replaced 1 block(s)");
     expect(calls[11]).toContain("Always multiply before you record.");
@@ -2080,9 +2079,9 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
   }, 120_000);
 });
 
-describe("harness static audit and practice-copy notes", () => {
-  it("reports portability hazards, HOST_ONLY leaks, and copied practice tasks while staying silent on clean harnesses", () => {
-    const dir = mkdtempSync(join(tmpdir(), "ana-harness-audit-"));
+describe("harness file checks and practice task mentions", () => {
+  it("reports host paths, heading leaks, and named or quoted practice tasks while staying silent on clean harnesses", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ana-harness-files-"));
     try {
       const clean = join(dir, "clean");
       mkdirSync(join(clean, "agent"), { recursive: true });
@@ -2094,7 +2093,7 @@ describe("harness static audit and practice-copy notes", () => {
       writeFileSync(join(clean, TOOL_TREE_DIR, "bin", "run-tool"), "#!/usr/bin/env sh\necho ok\n");
       chmodSync(join(clean, TOOL_TREE_DIR, "bin", "run-tool"), 0o755);
 
-      const answerKeys = schemaKeys({ properties: { estimateValue: { type: "number" } } });
+      const answerKeys = formatKeys({ properties: { estimateValue: { type: "number" } } });
       const tasks = [
         {
           taskId: "task-alpha-1",
@@ -2105,19 +2104,19 @@ describe("harness static audit and practice-copy notes", () => {
           publicInput: { prompt: "estimate annual warehouse throughput under peak load" },
         },
       ];
-      const cleanAudit = auditHarnessState(clean, answerKeys, ["R-1"]);
-      expect(cleanAudit).toMatchObject({
-        hasHostOnly: true,
-        portableLines: 2,
-        aboveLeaks: 0,
-        aboveKeys: 0,
-        aboveRules: 0,
-        hostPathHits: 0,
-        badShebangs: 0,
-        nonExecBins: 0,
+      const cleanInfo = readHarnessFiles(clean, answerKeys, ["R-1"]);
+      expect(cleanInfo).toMatchObject({
+        hasSplit: true,
+        keptLines: 2,
+        keptHostRefs: 0,
+        keptFormatKeys: 0,
+        keptRuleIds: 0,
+        hostPaths: 0,
+        hostShebangs: 0,
+        plainBins: 0,
         brokenLinks: 0,
       });
-      expect(practiceCopyHits(cleanAudit.written, tasks)).toEqual([]);
+      expect(namedTasks(cleanInfo.written, tasks)).toEqual([]);
 
       const dirty = join(dir, "dirty");
       mkdirSync(join(dirty, "agent"), { recursive: true });
@@ -2133,18 +2132,18 @@ describe("harness static audit and practice-copy notes", () => {
       chmodSync(join(dirty, TOOL_TREE_DIR, "bin", "bad-bin"), 0o644);
       symlinkSync("/no/such/target", join(dirty, TOOL_TREE_DIR, "bin", "broken"));
 
-      const dirtyAudit = auditHarnessState(dirty, answerKeys, ["R-1"]);
-      expect(dirtyAudit).toMatchObject({
-        hasHostOnly: false,
-        aboveLeaks: 1,
-        aboveKeys: 1,
-        aboveRules: 1,
-        hostPathHits: 2,
-        badShebangs: 1,
-        nonExecBins: 1,
+      const dirtyInfo = readHarnessFiles(dirty, answerKeys, ["R-1"]);
+      expect(dirtyInfo).toMatchObject({
+        hasSplit: false,
+        keptHostRefs: 1,
+        keptFormatKeys: 1,
+        keptRuleIds: 1,
+        hostPaths: 2,
+        hostShebangs: 1,
+        plainBins: 1,
         brokenLinks: 1,
       });
-      expect(practiceCopyHits(dirtyAudit.written, tasks)).toEqual(["guide (names/copies task-alpha-1)"]);
+      expect(namedTasks(dirtyInfo.written, tasks)).toEqual(["guide names and quotes task-alpha-1"]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

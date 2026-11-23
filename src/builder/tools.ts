@@ -36,7 +36,7 @@ import { plural } from "../meta/text.ts";
 import { ending as endSession, openDesk, text, tool } from "../tools/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../tools/coding.ts";
 import { type CommandWall, type NetworkReach, networkReach } from "../tools/command.ts";
-import { auditHarnessState, practiceCopyHits, schemaKeys } from "../harness/audit.ts";
+import { formatKeys, namedTasks, readHarnessFiles } from "../harness/files.ts";
 import type { Harness } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
 import { HOST_ONLY } from "../harness/starter.ts";
@@ -622,45 +622,65 @@ export function finishTool(bench: Bench, unmeasured?: Unmeasured): SeatTool {
   });
 }
 
-/** What a harness that opens gives a solver, a line for each of its parts, plus factual weight,
- *  portability hazards, and any copied practice-task references (wall-safe: reads only the frozen
+/** Joins English phrases with commas and "and" (`a`, `a and b`, `a, b, and c`). */
+function listText(parts: readonly string[]): string {
+  if (parts.length <= 1) return parts[0] ?? "";
+  if (parts.length === 2) return `${parts[0] ?? ""} and ${parts[1] ?? ""}`;
+  return `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1) ?? ""}`;
+}
+
+/** Formats positive `[count, singular, suffix?]` rows as plain English clauses. */
+function countPhrases(rows: readonly (readonly [number, string, string?])[]): string[] {
+  return rows.flatMap(([count, unit, suffix = ""]) => (count > 0 ? [`${plural(count, unit)}${suffix}`] : []));
+}
+
+/** What a harness that opens gives a solver, plus plain facts about its guide, written files,
+ *  host-specific paths, and any practice task named or quoted (wall-safe: reads only the frozen
  *  harness, the public contract, and released practice tasks). */
 function opens(harness: Harness, dir: string, contract: Contract, tasks: readonly PracticeTask[]): string {
   const presets = selectedCodingTools(harness.presets);
   const programs = installedPrograms(harness.toolTree);
-  const answerKeys = [...new Set(schemaKeys(contract.answerFormat))];
+  const answerKeys = [...new Set(formatKeys(contract.answerFormat))];
   const ruleIds = [...new Set(contract.rules.map(({ id }) => id).filter((id) => id !== ""))];
-  const audit = auditHarnessState(dir, answerKeys, ruleIds);
-  const { guide, files: toolFiles, lines: toolLines } = audit.weight ?? { guide: 0, files: 0, lines: 0 };
-  const split = audit.hasHostOnly
-    ? `${String(audit.portableLines)} portable, ${String(Math.max(0, guide - audit.portableLines))} host-only`
-    : `${String(audit.portableLines)} portable, no ${HOST_ONLY} section`;
-  const hazards = [
-    ...(audit.hostPathHits > 0 ? [plural(audit.hostPathHits, "hardcoded host path")] : []),
-    ...(audit.badShebangs > 0 ? [plural(audit.badShebangs, "non-portable shebang")] : []),
-    ...(audit.nonExecBins > 0 ? [plural(audit.nonExecBins, "non-executable bin/ file")] : []),
-    ...(audit.brokenLinks > 0 ? [plural(audit.brokenLinks, "broken symlink")] : []),
-    ...(audit.aboveLeaks > 0
-      ? [`${plural(audit.aboveLeaks, "campaign-only reference")} above ${HOST_ONLY}`]
-      : []),
-    ...(audit.aboveKeys > 0 ? [`${plural(audit.aboveKeys, "answer-format key")} above ${HOST_ONLY}`] : []),
-    ...(audit.aboveRules > 0 ? [`${plural(audit.aboveRules, "rule id")} above ${HOST_ONLY}`] : []),
-  ];
-  const copied = practiceCopyHits(
-    audit.written,
+  const info = readHarnessFiles(dir, answerKeys, ruleIds);
+  const { guide, files: toolFiles, lines: toolLines } = info.size ?? { guide: 0, files: 0, lines: 0 };
+  const chars = harness.guide?.length ?? 0;
+  const split = info.hasSplit
+    ? `${String(info.keptLines)} before "${HOST_ONLY}", ${String(Math.max(0, guide - info.keptLines))} under it; ${String(chars)} characters`
+    : `${String(chars)} characters; no "${HOST_ONLY}" heading`;
+  const guideLine = harness.guide === null ? "Guide: none." : `Guide: ${plural(guide, "line")} (${split}).`;
+  const fileIssues = countPhrases([
+    [info.hostPaths, "path", " to this machine"],
+    [info.hostShebangs, "host-specific shebang"],
+    [info.plainBins, "non-executable file", " in bin/"],
+    [info.brokenLinks, "broken link"],
+  ]);
+  const guideIssues = countPhrases([
+    [info.keptHostRefs, "host path or tool"],
+    [info.keptFormatKeys, "answer-format field"],
+    [info.keptRuleIds, "rule id"],
+  ]);
+  const exportNote = info.hasSplit
+    ? `Before "${HOST_ONLY}", the guide names ${listText(guideIssues)}; text before that heading stays in exported harnesses.`
+    : `The guide names ${listText(guideIssues)}, with no "${HOST_ONLY}" heading to separate them on export.`;
+  const mentions = namedTasks(
+    info.written,
     tasks.map(({ task }) => task),
   );
   return [
     "The harness opens.",
     `pi's tools: ${presets.join(", ") || "none"}.`,
     `Programs: ${programs.join(", ") || "none"}.`,
-    `Guide: ${String(harness.guide?.length ?? 0)} characters.`,
-    `Weight: ${plural(guide, "guide line")} (${split}); own tools: ${plural(toolFiles, "file")}, ${plural(toolLines, "line")}.`,
+    guideLine,
+    ...(toolFiles > 0
+      ? [`Your files under .toolchain/: ${plural(toolFiles, "file")}, ${plural(toolLines, "line")}.`]
+      : []),
     ...(programs.length > 0 && !presets.includes("bash")
       ? ["The solver has no shell, so it can run none of the programs itself."]
       : []),
-    ...(hazards.length > 0 ? [`Portability notes: ${hazards.join("; ")}.`] : []),
-    ...(copied.length > 0 ? [`Practice-copy note: ${copied.join("; ")} (keep harnesses task-general).`] : []),
+    ...(fileIssues.length > 0 ? [`Files in harness/ carry ${listText(fileIssues)}.`] : []),
+    ...(guideIssues.length > 0 ? [exportNote] : []),
+    ...(mentions.length > 0 ? [`Matches a practice task: ${mentions.join("; ")}.`] : []),
   ].join("\n");
 }
 
@@ -670,7 +690,7 @@ function checkTool(bench: Bench): SeatTool {
   return tool({
     name: "check_harness",
     description:
-      "Open harness/ as a solve would. Reports pi's tools it selects, its programs by name, guide/tool weight, any portability or above-heading leaks, and any copied practice-task text, or the error a solve would stop on. Spends no practice solve.",
+      "Open harness/ as a solve would. Reports pi's tools, its programs, the guide's length and heading split, any host-specific paths or campaign references that break outside this host, and any practice task named or quoted in your files, or the error a solve would stop on. Spends no practice solve.",
     parameters: Type.Object({}),
     execute: async () =>
       await frozen(bench, ({ dir, harness }) =>

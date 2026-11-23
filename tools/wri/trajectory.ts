@@ -41,7 +41,7 @@
  */
 import { DIGEST } from "#src/campaign/names.ts";
 import { epochsOf, starterIn } from "#src/campaign/climb.ts";
-import { type HarnessWeight, nonblank, ownFilesOf } from "#src/harness/audit.ts";
+import { type HarnessSize, nonblank, ownFiles } from "#src/harness/files.ts";
 import { scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { lastReports } from "#src/kernel/reports.ts";
@@ -231,7 +231,7 @@ const unrecorded = (value: JsonValue | undefined): string => (isString(value) ? 
 /** The guide and the programs a kept harness wrote, by path (the guide as `guide`), here so that
  *  `harness-versions.ts --lines` and `names.ts` read the one list a blind packet reads. */
 export function writtenIn(state: string): Map<string, string> {
-  const { root, paths } = ownFilesOf(state);
+  const { root, paths } = ownFiles(state);
   const found = new Map(paths.map((path) => [path, join(root, path)]));
   if (existsSync(join(state, GUIDE_PATH))) found.set("guide", join(state, GUIDE_PATH));
   return found;
@@ -328,10 +328,10 @@ export function madeOf(events: readonly LogEvent[], digest: string, starter: str
 }
 
 /** A kept harness's weight from its state beside the log, or null where the copy keeps none. */
-export function weightOf(state: string): HarnessWeight | null {
+export function weightOf(state: string): HarnessSize | null {
   if (!existsSync(state)) return null;
   const guideFile = join(state, GUIDE_PATH);
-  const { root, paths } = ownFilesOf(state);
+  const { root, paths } = ownFiles(state);
   const lines = paths.reduce((sum, path) => sum + nonblank(readFileSync(join(root, path), "utf8")), 0);
   return {
     guide: existsSync(guideFile) ? nonblank(readFileSync(guideFile, "utf8")) : 0,
@@ -488,7 +488,7 @@ export function trajectoryText(
   const { grades, hours } = options;
   const runs = campaigns.map(({ name, events }) => trajectoryOf(name, events, grades));
   runs.sort((a, b) => Date.parse(a.opened) - Date.parse(b.opened));
-  const weights = new Map<string, HarnessWeight | null>();
+  const weights = new Map<string, HarnessSize | null>();
   const weight = (run: Trajectory, harness: string | null) => {
     if (harness === null) return null;
     const log = campaigns.find(({ name }) => name === run.name)?.log ?? "";

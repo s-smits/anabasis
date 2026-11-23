@@ -19,7 +19,7 @@
  * guard refuses their greps of the kept states this opens itself.
  */
 import { draftOf } from "#src/examiner/draft.ts";
-import { ownFilesOf } from "#src/harness/audit.ts";
+import { ownFiles } from "#src/harness/files.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports } from "#src/kernel/reports.ts";
@@ -272,7 +272,7 @@ function harnessPlaces(log: string, harness: string): Place[] {
   const state = join(dirname(log), "states", harness);
   if (!existsSync(state)) return [];
   const guide = fileText(join(state, AGENT_DIR, GUIDE_FILE));
-  const own = ownFilesOf(state);
+  const own = ownFiles(state);
   const tools = [
     ...[GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE].map((file) => ({
       where: file,

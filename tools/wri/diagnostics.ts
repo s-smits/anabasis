@@ -15,7 +15,7 @@
  * Wall-safe: emits only counts, ratios, session ids, and 8-char digests — never file names, task
  * text, family names, or hidden values.
  */
-import { stateAuditFiles } from "#src/harness/audit.ts";
+import { writtenFiles } from "#src/harness/files.ts";
 import { differenceOf, pointsOf, readsStep } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { PATIENCE } from "#src/kernel/reports.ts";
@@ -53,7 +53,7 @@ function deadProgramFindings(log: Index, statesDir: string): Finding[] {
       (solve) => solve.side === TEST && solve.comparison !== null && solve.harness === digest,
     );
     if (testSolves.length < MIN_SOLVES_FOR_DEAD_CODE) continue;
-    const binEntries = stateAuditFiles(join(statesDir, digest))
+    const binEntries = writtenFiles(join(statesDir, digest))
       .written.filter(({ path }) => path.startsWith("bin/"))
       .map(({ path, text: body }) => ({ name: basename(path), text: body }));
     if (binEntries.length === 0) continue;

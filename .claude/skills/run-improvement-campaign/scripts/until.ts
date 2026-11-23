@@ -1,17 +1,24 @@
 #!/usr/bin/env bun
 /**
  * Background log waiter: polls a campaign log until it records `count` events of kind `--at`
- * (default 1), reaches `campaign.ended`, or exceeds `--hours` wall-clock hours since opening, then
- * prints a single status line to wake the calling session. `--say` appends a note for context
- * without conferring operator authority.
+ * (default 1; pass `:next` to target `currentCount + 1` at startup for per-promotion chaining),
+ * reaches `campaign.ended`, or exceeds `--hours` wall-clock hours since opening, then prints a
+ * single status line with live counts to wake the calling session. Tolerates transient log-swap
+ * read errors during concurrent fetches. `--say` appends a note for context without conferring
+ * operator authority.
  */
-import { lastAt } from "#skills/main/logs.ts";
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { type EventKind, isKind, type LogEvent } from "#src/kernel/log.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { basename, dirname } from "#src/meta/path.ts";
 import { logEvents } from "#tools/runs/registry.ts";
+import { PROMOTED, REPORTED, TRIGGER_AT } from "#tools/runs/said.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
+
+interface BoundSpec {
+  readonly kind: EventKind;
+  readonly target: number | "next";
+}
 
 interface Wait {
   readonly bound: { readonly kind: EventKind; readonly count: number } | null;
@@ -19,12 +26,20 @@ interface Wait {
   readonly say: string | null;
 }
 
+const POLL_MS = 30_000;
+const MAX_READ_FAILS = 10;
+const USAGE =
+  "usage: until.ts <log | folder | name> [--at <kind>[:<count>|next]] [--hours <n>] [--say <text>]";
+
 /** The `--at` asked; a kind no log holds is refused, since a mistyped one would wait for good. */
-function boundOf(text: string): NonNullable<Wait["bound"]> {
+function boundOf(text: string): BoundSpec {
   const [kind = "", count = "1"] = text.split(":");
   if (!isKind(kind)) throw new Error(`--at ${text}: ${kind} is no event kind`);
-  if (!/^[1-9]\d*$/.test(count)) throw new Error(`--at ${text}: the count is a whole number, at least 1`);
-  return { kind, count: Number(count) };
+  if (count === "next") return { kind, target: "next" };
+  if (!/^[1-9]\d*$/u.test(count)) {
+    throw new Error(`--at ${text}: the count is a whole number >= 1 or "next"`);
+  }
+  return { kind, target: Number(count) };
 }
 
 /** The line that ends the wait on `events` at `now`, or null while it goes on. */
@@ -41,31 +56,71 @@ function untilLine(name: string, events: readonly LogEvent[], wait: Wait, now: n
       : null,
   ].find((reason) => reason !== null);
   if (why === undefined) return null;
+  const promos = events.filter(({ kind }) => kind === PROMOTED).length;
+  const compared = events.filter(({ kind }) => kind === REPORTED).length;
   const counted = bound === null ? "" : `; ${String(count)} ${bound.kind}`;
+  const summary = ` (${String(promos)} promoted in ${String(compared)} compared, ${String(events.length)} events)`;
   const raw = since === null ? "no opening in the log" : `${since.toFixed(1)} raw hours since it opened`;
   const at = `${new Date(now).toISOString().slice(0, 16)}Z`;
-  return `UNTIL (automated, not operator input) at ${at}: ${name} reached ${why}${counted}; ${raw}.${say === null ? "" : ` ${say}`}`;
+  const decision =
+    bound?.kind === PROMOTED
+      ? ` Backtrack predictions-${name}.md against the log and decide pause (--after reported) vs continue (up to ${String(TRIGGER_AT.ceilingPromotions)}).`
+      : "";
+  return `UNTIL (automated, not operator input) at ${at}: ${name} reached ${why}${counted}${summary}; ${raw}.${decision}${say === null ? "" : ` ${say}`}`;
+}
+
+/** Reads `log` when its file signature moved, returning null on transient swap or partial-line errors. */
+function pollLog(
+  log: string,
+  prev: { readonly sig: string; readonly events: LogEvent[] },
+): { readonly sig: string; readonly events: LogEvent[] } | null {
+  try {
+    const file = Bun.file(log);
+    const sig = `${String(file.size)}:${String(file.lastModified)}`;
+    if (sig === prev.sig && prev.events.length > 0) return prev;
+    const events = logEvents(log);
+    return { sig, events };
+  } catch {
+    return null;
+  }
 }
 
 if (import.meta.main) {
-  const usage = "usage: until.ts <log | folder | name> [--at <kind>[:<count>]] [--hours <n>] [--say <text>]";
   await runCommand(
-    { name: "until", usage, options: { at: "text", hours: "text", say: "text" }, positionals: 1 },
+    { name: "until", usage: USAGE, options: { at: "text", hours: "text", say: "text" }, positionals: 1 },
     async (args: CommandArgs) => {
       const [at, asked] = [args.value("at"), args.value("hours")];
       const hours = asked === null ? null : Number(asked);
-      const wait = { bound: at === null ? null : boundOf(at), hours, say: args.value("say") };
-      if (wait.hours !== null && !(wait.hours > 0)) args.die("--hours must be a number above 0");
-      if (wait.bound === null && wait.hours === null) args.die("name --at, --hours or both");
+      const spec = at === null ? null : boundOf(at);
+      if (hours !== null && !(hours > 0)) args.die("--hours must be a number above 0");
+      if (spec === null && hours === null) args.die("name --at, --hours or both");
       const log = await logAcross(args.positionals[0] ?? "");
-      // A log runs to tens of megabytes, so it is read again only once its last event has moved.
-      let [seen, events]: [string, LogEvent[]] = ["", []];
+      let state = pollLog(log, { sig: "", events: [] });
+      if (state === null || state.events.length === 0) {
+        throw new CommandFailure(`${log} holds no readable event`);
+      }
+      const initial = spec === null ? 0 : state.events.filter(({ kind }) => kind === spec.kind).length;
+      const bound =
+        spec === null ? null : { kind: spec.kind, count: spec.target === "next" ? initial + 1 : spec.target };
+      const wait: Wait = { bound, hours, say: args.value("say") };
+      let misses = 0;
       for (;;) {
-        if (lastAt(log) !== seen) [seen, events] = [lastAt(log), logEvents(log)];
-        const line = untilLine(basename(dirname(log)), events, wait, Date.now());
+        const next = pollLog(log, state);
+        if (next === null) {
+          misses += 1;
+          if (misses >= MAX_READ_FAILS) {
+            throw new CommandFailure(
+              `${log} stayed unreadable for ${String(misses)} consecutive checks (ENOENT or partial write)`,
+            );
+          }
+          await Bun.sleep(POLL_MS);
+          continue;
+        }
+        misses = 0;
+        state = next;
+        const line = untilLine(basename(dirname(log)), state.events, wait, Date.now());
         if (line !== null) return console.log(line);
-        if (events.length === 0) throw new CommandFailure(`${log} holds no event`);
-        await Bun.sleep(30_000);
+        await Bun.sleep(POLL_MS);
       }
     },
   );

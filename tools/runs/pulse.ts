@@ -45,6 +45,7 @@ import {
   REPORTED,
   SAID,
   short,
+  TRIGGER_AT,
   triggerOf,
   word,
 } from "./said.ts";
@@ -91,9 +92,10 @@ interface Seen {
   readonly moments?: readonly Moment[];
   /** The hashes of the readers' lines this observer has said. */
   readonly said?: readonly string[];
-  /** Whether an investigation was due at the last look, so that it is said at the look that finds
-   *  it so; an older state holds none, and its first look only remembers. */
-  readonly due?: boolean;
+  /** Last due trigger key (`false` when none, `"hours"` / `"tied"` / `"closed"` / `"<N> promotion(s)"`,
+   *  or legacy `true`), so each new promotion checkpoint (`1` through `5`) surfaces once without
+   *  re-firing on clock ticks. */
+  readonly due?: boolean | string;
   /** The run's state at the last look (`RunState`), whose reason is said when it changes. */
   readonly state?: string;
 }
@@ -451,12 +453,29 @@ export function pulse(
   // The trigger is a campaign's: a round or a seed measures no climb an investigation could read.
   const read = isCampaign(run) && run.seed !== true;
   const live = open || life.kept;
-  const due = read ? triggerOf(progressOf({ live }, log, now)) : null;
-  if (due !== null && before?.due === false) {
+  const progress = read ? progressOf({ live }, log, now) : null;
+  const due = progress === null ? null : triggerOf(progress);
+  let dueKey: boolean | string = false;
+  if (due !== null && progress !== null) {
+    if (progress.promotions > 0) dueKey = due;
+    else if (progress.allTied) dueKey = "tied";
+    else dueKey = live ? "hours" : "closed";
+  }
+  if (
+    due !== null &&
+    progress !== null &&
+    before?.due !== undefined &&
+    before.due !== dueKey &&
+    !(before.due === true && progress.promotions === 0)
+  ) {
     // A live run's step has one reader, the driver's `due`: it alone reads the deviation that keeps
     // a run past its trigger, and a peer that says this line holds no investigation's folder.
     const step = live ? `bun ${DRIVER} due` : openingCommand({ name: run.name, live });
-    lines.push(`⚠ investigation due, ${due}: ${step}`);
+    const label =
+      live && progress.promotions > 0 && progress.promotions < TRIGGER_AT.ceilingPromotions
+        ? "decision point"
+        : "investigation due";
+    lines.push(`⚠ ${label}, ${due}: ${step}`);
   }
   // A first comparison admission would begin and none has, said once where a look finds it long:
   // otherwise one can stand so for hours and no look says it.
@@ -477,7 +496,7 @@ export function pulse(
       open,
       quiet: state.kind === "quiet",
       state: state.kind,
-      ...keyIfDefined("due", read ? due !== null : undefined),
+      ...keyIfDefined("due", read ? dueKey : undefined),
       ...keyIfDefined("heldOff", held?.long === true ? true : undefined),
       ...keyIfDefined("triggers", triggers.now),
     },

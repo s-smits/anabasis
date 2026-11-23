@@ -128,7 +128,7 @@ import {
   stem,
   weightOf,
 } from "./investigation.ts";
-import { INVESTIGATION, investigationIndex, LAUNCH, REPORTS, SHARED } from "./index.ts";
+import { INVESTIGATION, investigationIndex, LAUNCH, OVERVIEW, REPORTS, SHARED } from "./index.ts";
 import { findingsLedger, standingLines } from "./findings.ts";
 import { overview } from "./read.ts";
 import { RECORD, RECORD_VERB, recordWith } from "./record.ts";
@@ -322,7 +322,7 @@ async function start(): Promise<number> {
     logs.length === 1
       ? texts.join("")
       : texts.map((each, index) => `## ${nameOf(logs[index] ?? "")}\n\n${each}`).join("\n");
-  writeFileSync(join(out, "overview.md"), text);
+  writeFileSync(join(out, OVERVIEW), text);
   writeFileSync(join(out, INVESTIGATION), `${JSON.stringify({ logs }, null, 2)}\n`);
   // The shared instructions last, since a start refuses a folder that holds them, and a start that
   // failed after writing them would leave a folder no start or later verb could read. The author's
@@ -538,7 +538,7 @@ function synthesis(): number {
     filled(template, {
       out,
       synthesis: join(out, "synthesis.md"),
-      overview: readFileSync(join(out, "overview.md"), "utf8").trim(),
+      overview: readFileSync(join(out, OVERVIEW), "utf8").trim(),
       reports: reportIndex(reports, (lane) => reportPath(out, lane), investigation.campaigns, shared),
       sharedInstructions: shared.replaceAll(/<!--[\s\S]*?-->\n?/g, "").trim(),
       register: standingLines(),

@@ -43,20 +43,44 @@ const read = (digest: string, session: string, confirmed = true) => ({
 const lookedAt = (...rows: Row[]): AlertState => alertsOf(null, here(...rows)).next;
 
 describe("the fold of one look", () => {
-  it("says a run is ready to pause, with the command, once a second promotion is read and only then", () => {
-    const unconfirmed = row({ promotions: [read("aaaa", "g-1"), unread("bbbb")] });
-    const waiting = alertsOf(lookedAt(row({ promotions: [read("aaaa", "g-1")] })), here(unconfirmed));
+  it("surfaces a decision prompt on each fully read promotion 1..4 and a ceiling pause at 5", () => {
+    const p1Unread = row({ promotions: [unread("aaaa")] });
+    expect(alertsOf(lookedAt(row()), here(p1Unread)).lines.join("\n")).not.toContain("ready to pause");
+
+    const p1Read = row({ promotions: [read("aaaa", "g-1")] });
+    const after1 = alertsOf(lookedAt(p1Unread), here(p1Read));
+    expect(after1.lines).toHaveLength(2);
+    expect(after1.lines[1]).toContain("ready to pause or continue, 1 promotion read");
+    expect(after1.lines[1]).toEndWith("bun run runs pause r --yes");
+
+    const p2Unread = row({ promotions: [read("aaaa", "g-1"), unread("bbbb")] });
+    const waiting = alertsOf(after1.next, here(p2Unread));
     expect(waiting.lines.join("\n")).not.toContain("ready to pause");
-    const both = row({ promotions: [read("aaaa", "g-1"), read("bbbb", "g-2")] });
-    const ready = alertsOf(waiting.next, here(both));
-    expect(ready.lines).toHaveLength(2);
-    expect(ready.lines[1]).toContain("ready to pause");
-    expect(ready.lines[1]).toEndWith("bun run runs pause r --yes");
-    const third = row({ promotions: [...both.promotions, read("cccc", "g-3")] });
-    expect(alertsOf(ready.next, here(third)).lines.join("\n")).not.toContain("ready to pause");
+
+    const p2Read = row({ promotions: [read("aaaa", "g-1"), read("bbbb", "g-2")] });
+    const after2 = alertsOf(waiting.next, here(p2Read));
+    expect(after2.lines).toHaveLength(2);
+    expect(after2.lines[1]).toContain("ready to pause or continue, 2 promotions read");
+    expect(after2.lines[1]).toEndWith("bun run runs pause r --yes");
+
+    const p3Read = row({ promotions: [...p2Read.promotions, read("cccc", "g-3")] });
+    const after3 = alertsOf(after2.next, here(p3Read));
+    expect(after3.lines.at(-1)).toContain("ready to pause or continue, 3 promotions read");
+
+    const p4Read = row({ promotions: [...p3Read.promotions, read("dddd", "g-4")] });
+    const after4 = alertsOf(after3.next, here(p4Read));
+    expect(after4.lines.at(-1)).toContain("ready to pause or continue, 4 promotions read");
+
+    const p5Read = row({ promotions: [...p4Read.promotions, read("eeee", "g-5")] });
+    const after5 = alertsOf(after4.next, here(p5Read));
+    expect(after5.lines.at(-1)).toContain("ready to pause, 5 promotions read (ceiling reached)");
+    expect(after5.lines.at(-1)).toEndWith("bun run runs pause r --yes");
+
+    // Re-running with no new starter read does not repeat the prompt.
+    expect(alertsOf(after5.next, here(p5Read)).lines).toEqual([]);
   });
 
-  it("reads no second promotion as ready where its first was never read against the starter", () => {
+  it("reads no promotion as ready where an earlier promotion was never read against the starter", () => {
     const { lines } = alertsOf(
       lookedAt(row({ promotions: [unread("aaaa")] })),
       here(row({ promotions: [unread("aaaa"), read("bbbb", "g-2")] })),

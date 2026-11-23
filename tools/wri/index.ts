@@ -93,6 +93,7 @@ export const LAUNCH = "launch.json";
 /** What `start` writes: the logs an investigation reads, and the instructions every lane carries. */
 export const INVESTIGATION = "investigation.json";
 export const SHARED = "shared-instructions.md";
+export const OVERVIEW = "overview.md";
 const INDEX = "INDEX.md";
 /** The quoted sentence's length, so a constraint is named and no hidden value is carried whole. */
 const QUOTE = 300;
@@ -150,7 +151,7 @@ function campaignsOf(dir: string): string[] {
   const listed = [read?.logs, read?.peers].flatMap((each) => (Array.isArray(each) ? each : []));
   const logs = [read?.log, ...listed].filter(isString);
   if (logs.length > 0) return [...new Set(logs.map((log) => basename(dirname(log))))];
-  const overview = textAt(join(dir, "overview.md")) ?? "";
+  const overview = textAt(join(dir, OVERVIEW)) ?? "";
   return [...overview.matchAll(/^## (\S+)$/gmu)].flatMap(([, name]) => name ?? []);
 }
 
@@ -440,14 +441,15 @@ function opposedOf(text: string): number | null {
 }
 
 /** Whether `fork`'s `## Carried` names what its parents owe it, read as `wri2p2.ts next` reads it. */
-function carriedOf(fork: PerRun, parents: readonly PerRun[]): string {
+function carriedOf(fork: PerRun, parents: readonly (PerRun & { readonly plan: string })[]): string {
   if (parents.every(({ files }) => files.predictions === undefined)) return "parents: no per-run files";
   const { owed, missing } = carryOf(
     fork.files.predictions ?? "",
-    parents.map(({ name, files }) => ({
+    parents.map(({ name, files, plan }) => ({
       name,
       predictions: files.predictions ?? "",
       outcomes: files.outcomes ?? "",
+      plan,
     })),
   );
   if (linesUnder(fork.files.predictions ?? "", "Carried") === null) {
@@ -472,9 +474,10 @@ function pullRows(root: string, entries: readonly Entry[], known: readonly strin
     .map((pull) => {
       const planned = entries.filter((entry) => entry.pull === pull);
       const dirs = [root, ...planned.map(({ folder }) => join(root, folder))];
-      const parents = planned.flatMap(({ folder, campaigns }) =>
-        campaigns.map((run) => perRunOf(root, [root, join(root, folder)], run)),
-      );
+      const parents = planned.flatMap(({ folder, campaigns }) => {
+        const plan = textAt(join(root, folder, "plan.md")) ?? "";
+        return campaigns.map((run) => ({ ...perRunOf(root, [root, join(root, folder)], run), plan }));
+      });
       // A fork at a child of the pull request is named by its iteration's `launch` deviation (`madeBy`).
       const deviated = planned.flatMap(({ folder }) =>
         launchForks(textAt(join(root, folder, "deviations.md")) ?? ""),

@@ -3,8 +3,8 @@
  *
  *   bun tools/wri/wri.ts reader portability --log <log>
  *
- * Inspects every kept harness under `states/<digest>/` for export hazards before external
- * evaluation (`runs bench`): hardcoded host paths, non-portable shebangs, non-executable `bin/`
+ * Inspects every kept harness under `states/<digest>/` via production's `auditHarnessState`
+ * (`src/harness/audit.ts`): hardcoded host paths, non-portable shebangs, non-executable `bin/`
  * files, broken symlinks, exam `answerFormat` key coupling, and guide-to-tool weight ratio.
  * Wall-safe: emits only counts, ratios, roles, and 8-char digests — never file names, key names,
  * or source snippets. Each kept harness line opens with its 8-char digest so `bun run runs pulse`
@@ -12,67 +12,30 @@
  */
 import { starterIn } from "#src/campaign/climb.ts";
 import { draftOf } from "#src/examiner/draft.ts";
-import { portableGuide } from "#src/harness/starter.ts";
+import { auditHarnessState, schemaKeys } from "#src/harness/audit.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
+import { isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
-import { hasWholeToken, plural } from "#src/meta/text.ts";
-import { keptStates, stateAuditFiles } from "./trajectory.ts";
-
-/** Hardcoded host-environment or Anabasis-internal path prefixes that break external transfer. */
-const HOST_PATH_RE = /(?:\/Users\/|\/home\/|\/opt\/homebrew\/|\/private\/tmp\/|\/var\/folders\/|\.ana\/)/gu;
-/** Absolute-path shebangs that fail across OSes/hosts (portable ones use `#!/usr/bin/env` or `/bin/sh`). */
-const BAD_SHEBANG_RE = /^#!\s*\/(?:Users|home|opt\/homebrew|Library)\//u;
-/** Campaign-only mechanics that belong strictly below `HOST_ONLY` (`## Validity and score`). */
-const PORTABLE_LEAK_RE =
-  /(?:public\/task\.json|public\/files\/|public\/resources\/|answer\.json|\bsubmit\b)/gu;
-const MIN_KEY_LEN = 4;
-
-/** Top-level and nested `answerFormat` property keys of length >= `MIN_KEY_LEN`. */
-function schemaKeys(node: JsonValue | undefined): string[] {
-  const held = asRecord(node);
-  if (held === null) return [];
-  const own = Object.entries(asRecord(held.properties) ?? {}).flatMap(([key, value]) => [
-    ...(key.length >= MIN_KEY_LEN ? [key] : []),
-    ...schemaKeys(value),
-  ]);
-  return [...own, ...schemaKeys(held.items)];
-}
+import { plural } from "#src/meta/text.ts";
+import { keptStates } from "./trajectory.ts";
 
 /** Audit one kept harness folder and return its compact single-line summary. */
-function auditHarness(
+function auditRow(
   digest: string,
   role: string,
   stateDir: string,
   answerKeys: readonly string[],
   ruleIds: readonly string[],
 ): string {
-  const { written, brokenLinks, toolTreeFiles, weight } = stateAuditFiles(stateDir);
-  let [hostPathHits, badShebangs, nonExecBins, filesWithExamKeys] = [0, 0, 0, 0];
-  const matchedKeys = new Set<string>();
-  for (const { path, text, executable } of written) {
-    hostPathHits += (text.match(HOST_PATH_RE) ?? []).length;
-    badShebangs += Number(BAD_SHEBANG_RE.test(text));
-    nonExecBins += Number(path.startsWith("bin/") && !executable);
-    const matched = answerKeys.filter((key) => text.includes(key));
-    for (const key of matched) matchedKeys.add(key);
-    filesWithExamKeys += Number(matched.length > 0);
-  }
-  const guideEntry = written.find(({ path }) => path === "guide");
-  const portable = guideEntry === undefined ? "" : portableGuide(guideEntry.text);
-  const hasHostOnly = guideEntry !== undefined && portable.length < guideEntry.text.length;
-  const portableLines = portable.split("\n").filter((line) => line.trim() !== "").length;
-  const aboveLeaks = (portable.match(PORTABLE_LEAK_RE) ?? []).length;
-  const aboveKeys = answerKeys.filter((key) => hasWholeToken(portable, key)).length;
-  const aboveRules = ruleIds.filter((id) => hasWholeToken(portable, id)).length;
-  const { guide, files: toolFiles, lines: toolLines } = weight ?? { guide: 0, files: 0, lines: 0 };
+  const audit = auditHarnessState(stateDir, answerKeys, ruleIds);
+  const { guide, files: toolFiles, lines: toolLines } = audit.weight ?? { guide: 0, files: 0, lines: 0 };
   const ratio = toolLines === 0 ? "guide-only" : `${(guide / toolLines).toFixed(2)}x`;
-  const hazards = hostPathHits + badShebangs + nonExecBins + brokenLinks;
+  const hazards = audit.hostPathHits + audit.badShebangs + audit.nonExecBins + audit.brokenLinks;
   const examPart =
     answerKeys.length === 0
       ? "exam-keys n/a"
-      : `exam-keys ${String(matchedKeys.size)}/${String(answerKeys.length)} in ${plural(filesWithExamKeys, "file")}`;
-  return `${digest.slice(0, 8)} (${role}): guide ${String(guide)}L (host-only ${hasHostOnly ? "yes" : "no"}, portable ${String(portableLines)}L, above-leaks ${String(aboveLeaks)}, above-keys ${String(aboveKeys)}, above-rules ${String(aboveRules)}), own ${String(toolFiles)}f/${String(toolLines)}L (${ratio}), tree ${String(toolTreeFiles)}f · hazards ${String(hazards)} (host-paths ${String(hostPathHits)}, bad-shebangs ${String(badShebangs)}, non-exec-bins ${String(nonExecBins)}, broken-links ${String(brokenLinks)}) · ${examPart}`;
+      : `exam-keys ${String(audit.matchedKeys.size)}/${String(answerKeys.length)} in ${plural(audit.filesWithExamKeys, "file")}`;
+  return `${digest.slice(0, 8)} (${role}): guide ${String(guide)}L (host-only ${audit.hasHostOnly ? "yes" : "no"}, portable ${String(audit.portableLines)}L, above-leaks ${String(audit.aboveLeaks)}, above-keys ${String(audit.aboveKeys)}, above-rules ${String(audit.aboveRules)}), own ${String(toolFiles)}f/${String(toolLines)}L (${ratio}), tree ${String(audit.toolTreeFiles)}f · hazards ${String(hazards)} (host-paths ${String(audit.hostPathHits)}, bad-shebangs ${String(audit.badShebangs)}, non-exec-bins ${String(audit.nonExecBins)}, broken-links ${String(audit.brokenLinks)}) · ${examPart}`;
 }
 
 /** Static portability audit for every kept harness under `statesDir`. */
@@ -106,7 +69,7 @@ export function portabilityRows(events: readonly LogEvent[], statesDir: string):
       (promotedOrder.get(other) ?? -1) - (promotedOrder.get(one) ?? -1) || one.localeCompare(other),
   );
   const rows = ordered.map((digest) =>
-    auditHarness(digest, roleOf(digest), join(statesDir, digest), answerKeys, ruleIds),
+    auditRow(digest, roleOf(digest), join(statesDir, digest), answerKeys, ruleIds),
   );
   return [
     `portability: ${plural(kept.length, "kept harness")} audited for host paths, shebangs, bin modes, broken links, exam answer-format key coupling (${String(answerKeys.length)} keys) and guide/tool weight`,

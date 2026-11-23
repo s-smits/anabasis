@@ -14,10 +14,11 @@
  * installed). A word matches whole: `x-1-3` is not found inside `x-1-31`.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { PHRASE_WORDS, phrasesIn, spansOf, stringsIn } from "#src/harness/audit.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { lstatSync, readFileSync } from "#src/meta/filesystem.ts";
-import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
+import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { proposedTasks } from "./tasks.ts";
@@ -32,8 +33,6 @@ const PREFIX_CHARS = 8;
 const WORD = /[\p{L}\p{N}_](?:[\p{L}\p{N}_.:-]*[\p{L}\p{N}_])?/gu;
 const IDENTIFIER = /\d|[_.:]|^.+\p{Lu}/u;
 const HEX = /^[0-9a-f]{8,64}$/;
-const PHRASE = 6;
-const PLAIN = /[\p{L}\p{N}]+/gu;
 
 type Kind = "id" | "family" | "phrase" | "public" | "version";
 
@@ -49,59 +48,6 @@ interface Hit {
   readonly kind: Kind;
   readonly text: string;
   readonly tasks: readonly string[];
-}
-
-/** Every string of a public input, keys and values, at any depth. */
-function stringsIn(value: JsonValue | undefined): string[] {
-  if (isString(value)) return [value];
-  if (Array.isArray(value)) return value.flatMap(stringsIn);
-  const record = asRecord(value);
-  return record === null ? [] : Object.entries(record).flatMap(([key, each]) => [key, ...stringsIn(each)]);
-}
-
-/** The words of a text as a phrase is matched: lower-cased runs of letters and digits, each with its offset. */
-function plainWords(text: string): { word: string; at: number }[] {
-  return [...text.matchAll(PLAIN)].map((match) => ({ word: match[0].toLowerCase(), at: match.index }));
-}
-
-/** The six-word spans of public inputs with the tasks holding each, and how many every task holds. */
-function spansOf(tasks: readonly { name: string; strings: readonly string[] }[]) {
-  const spans = new Map<string, Set<string>>();
-  for (const { name, strings } of tasks) {
-    for (const words of strings.map((text) => plainWords(text).map(({ word }) => word))) {
-      for (let from = 0; from + PHRASE <= words.length; from += 1) {
-        const span = words.slice(from, from + PHRASE).join(" ");
-        spans.set(span, (spans.get(span) ?? new Set()).add(name));
-      }
-    }
-  }
-  const everyone = new Set(tasks.map(({ name }) => name)).size;
-  const common = everyone < 2 ? [] : [...spans].filter(([, holders]) => holders.size === everyone);
-  for (const [span] of common) spans.delete(span);
-  return { spans, common: common.length };
-}
-
-/** The phrases of one written file: each run of overlapping shared windows, once, as its longest span. */
-function phrasesIn(path: string, text: string, spans: ReadonlyMap<string, ReadonlySet<string>>): Hit[] {
-  const words = plainWords(text);
-  const plain = words.map(({ word }) => word);
-  const hits: Hit[] = [];
-  const tasks = new Set<string>();
-  let from = -1;
-  for (let at = 0; at <= plain.length; at += 1) {
-    const holders = spans.get(plain.slice(at, at + PHRASE).join(" "));
-    if (holders !== undefined) {
-      from = from === -1 ? at : from;
-      for (const task of holders) tasks.add(task);
-    } else if (from !== -1) {
-      const line = text.slice(0, words[from]?.at ?? 0).split("\n").length;
-      const span = plain.slice(from, at - 1 + PHRASE).join(" ");
-      hits.push({ path, line, kind: "phrase", text: span, tasks: [...tasks] });
-      tasks.clear();
-      from = -1;
-    }
-  }
-  return hits;
 }
 
 /** The tokens to look for, by their text, with the tasks each names; and the plain words left out. */
@@ -184,7 +130,9 @@ function hitsIn(state: string, known: ReturnType<typeof tokensOf>): { files: num
           : []),
       );
     }
-    hits.push(...phrasesIn(path, whole, known.phrases.spans));
+    hits.push(
+      ...phrasesIn(path, whole, known.phrases.spans).map((hit) => ({ kind: "phrase" as const, ...hit })),
+    );
   }
   return { files: files.size, hits };
 }
@@ -206,7 +154,7 @@ export function nameRows(events: readonly LogEvent[], states: string, only: stri
   const kinds = [...known.tokens.values()];
   const count = (kind: Kind) => String(kinds.filter((token) => token.kind === kind).length);
   return [
-    `names: where the files each kept harness wrote name a task, word by word, or copy its public input; looked for ${count("id")} task ids, ${String(known.versions.size)} version prefixes, ${String(known.familyRules.length)} families, ${count("public")} identifiers of public inputs (${String(known.plain)} plain words left out) and ${String(known.phrases.spans.size)} spans of ${String(PHRASE)} words of public inputs (${String(known.phrases.common)} spans every task shares left out)`,
+    `names: where the files each kept harness wrote name a task, word by word, or copy its public input; looked for ${count("id")} task ids, ${String(known.versions.size)} version prefixes, ${String(known.familyRules.length)} families, ${count("public")} identifiers of public inputs (${String(known.plain)} plain words left out) and ${String(known.phrases.spans.size)} spans of ${String(PHRASE_WORDS)} words of public inputs (${String(known.phrases.common)} spans every task shares left out)`,
     "harness  path:line  kind  length  kept versions holding it  public inputs holding it  tasks",
     ...(kept.length === 0 ? [`no kept harness under ${states}`] : []),
     ...scanned.flatMap(({ digest, files, hits }) => [

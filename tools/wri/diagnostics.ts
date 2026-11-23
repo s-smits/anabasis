@@ -15,6 +15,7 @@
  * Wall-safe: emits only counts, ratios, session ids, and 8-char digests — never file names, task
  * text, family names, or hidden values.
  */
+import { stateAuditFiles } from "#src/harness/audit.ts";
 import { differenceOf, pointsOf, readsStep } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { PATIENCE } from "#src/kernel/reports.ts";
@@ -26,7 +27,6 @@ import { spareOf } from "./clearance.ts";
 import { rereadAfter } from "./continuity.ts";
 import { EXAM_END, type Index, indexOf, items, TEST, text } from "./folds.ts";
 import { testedOf } from "./promotion.ts";
-import { stateAuditFiles } from "./trajectory.ts";
 
 interface Finding {
   readonly level: "WARN" | "INFO";

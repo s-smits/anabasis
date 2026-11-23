@@ -18,7 +18,7 @@ import { draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { spendOf } from "#src/kernel/meter.ts";
-import { tracesIn } from "#src/kernel/trace.ts";
+import { type Seat, tracesIn } from "#src/kernel/trace.ts";
 import { HOST_TOOLS_FILE } from "#src/kernel/verify.ts";
 import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
@@ -73,12 +73,21 @@ const SHORT_DIGEST_LEN = 8;
 const CLEAN_DRAFT_ENDS = new Set(["stands", "finished"]);
 const CLEAN_EXAM_ENDS = new Set(["supplied", "finished"]);
 const VERIFIER_NON_RESULTS = new Set(["check", "verifier"]);
+const REFEREE_DRAFT = "referee.draft";
+const REFEREE_ADJUDICATE = "referee.adjudicate";
+const SEAT_ROLES = {
+  draft: "draft",
+  exam: "examiner",
+  build: "builder",
+  solve: "solver",
+  referee: REFEREE_ADJUDICATE,
+} satisfies Record<Seat, string>;
 
 const passesText = (count: number) => (count === 1 ? "1 pass" : `${String(count)} passes`);
 
-function draftAuditPasses(events: readonly LogEvent[]): DraftAuditPass[] {
+export function draftAuditPasses(events: readonly LogEvent[]): DraftAuditPass[] {
   return events.flatMap(({ kind, data }, index) => {
-    if (kind !== "referee.draft") return [];
+    if (kind !== REFEREE_DRAFT) return [];
     const findings = items(data.findings).flatMap((entry) => {
       const findingKind = text(asRecord(entry)?.kind);
       return findingKind === "" ? [] : [findingKind];
@@ -98,7 +107,7 @@ function draftAuditPasses(events: readonly LogEvent[]): DraftAuditPass[] {
   });
 }
 
-function unverifiedFinalPasses(
+export function unverifiedFinalPasses(
   events: readonly LogEvent[],
   passes: readonly DraftAuditPass[],
 ): DraftAuditPass[] {
@@ -371,108 +380,73 @@ function seatLedger(events: readonly LogEvent[]): {
   readonly nonSolverBilled: number;
   readonly overshoots: readonly string[];
 } {
-  const traces = tracesIn(events);
-  const spend = new Map(spendOf(events));
+  const counts = new Map<
+    string,
+    { runs: number; turns: number; calls: number; errors: number; anomalies: number }
+  >();
+  const rowOf = (role: string) => {
+    const held = counts.get(role) ?? { runs: 0, turns: 0, calls: 0, errors: 0, anomalies: 0 };
+    counts.set(role, held);
+    return held;
+  };
+  for (const trace of tracesIn(events)) {
+    const { seat, part, id } = trace;
+    const role = seat === "referee" && id.startsWith("draft-") ? REFEREE_DRAFT : SEAT_ROLES[seat];
+    const entry = rowOf(role);
+    if (part === "turn") entry.turns += 1;
+    else if (part === "call") {
+      entry.calls += 1;
+      if (trace.isError) entry.errors += 1;
+    }
+  }
   const auditPasses = draftAuditPasses(events);
   const auditBilled = auditPasses.reduce((sum, row) => sum + row.billed, 0);
   const auditTurns = auditPasses.reduce((sum, row) => sum + row.turns, 0);
-  const auditAnomalies = auditPasses.filter(({ verdict }) => verdict === "skipped").length;
-  const refereeTotal = spend.get("referee") ?? 0;
-  const refereePostBilled = Math.max(0, refereeTotal - auditBilled);
-  const refereeTurnsTotal = traces.filter(({ seat, part }) => seat === "referee" && part === "turn").length;
-  const refereeCalls = traces.flatMap((each) =>
-    each.seat === "referee" && each.part === "call" ? [each] : [],
-  );
-  const draftAuditCalls = refereeCalls.filter(({ id }) => id.startsWith("draft-"));
-  const postRefereeCalls = refereeCalls.filter(({ id }) => !id.startsWith("draft-"));
-
-  const draftEnds = events.filter(({ kind }) => kind === "draft.finished");
-  const draftBilled = draftEnds.reduce((sum, { data }) => sum + (isNumber(data.billed) ? data.billed : 0), 0);
-  const examinerBilled = Math.max(0, (spend.get("examiner") ?? 0) - draftBilled);
-  const examEnds = events.filter(({ kind }) => kind === EXAM_END);
-  const buildEnds = events.filter(({ kind }) => kind === "build.finished");
-  const findings = events.filter(({ kind }) => kind === "referee.finding");
-  const solves = events.filter(({ kind }) => kind === "solve.finished");
-
-  const traceStats = (seat: string) => {
-    const mine = traces.filter((each) => each.seat === seat);
-    const calls = mine.flatMap((each) => (each.part === "call" ? [each] : []));
-    return {
-      turns: mine.filter((each) => each.part === "turn").length,
-      calls: calls.length,
-      errors: calls.filter((each) => each.isError).length,
-    };
-  };
-
-  const draftStats = traceStats("draft");
-  const examStats = traceStats("exam");
-  const buildStats = traceStats("build");
-  const solveStats = traceStats("solve");
-
-  const rows: RoleRow[] = [
-    {
-      role: "draft",
-      runs: events.filter(({ kind }) => kind === "draft.started").length,
-      ...draftStats,
-      anomalies: draftEnds.filter(({ data }) => !CLEAN_DRAFT_ENDS.has(text(data.ended))).length,
-      billed: draftBilled,
-    },
-    {
-      role: "referee.draft",
-      runs: auditPasses.length,
-      turns: auditTurns,
-      calls: draftAuditCalls.length,
-      errors:
-        draftAuditCalls.filter((each) => each.isError).length +
-        events.filter(({ kind }) => kind === "referee.draft.refused").length,
-      anomalies: auditAnomalies,
-      billed: auditBilled,
-    },
-    {
-      role: "examiner",
-      runs: events.filter(({ kind }) => kind === "exam.started").length,
-      ...examStats,
-      anomalies: examEnds.filter(
-        ({ data }) => !CLEAN_EXAM_ENDS.has(text(data.ended)) || items(data.held).length === 0,
-      ).length,
-      billed: examinerBilled,
-    },
-    {
-      role: "builder",
-      runs: events.filter(({ kind }) => kind === "build.started").length,
-      ...buildStats,
-      anomalies: buildEnds.filter(({ data }) => text(data.ended) !== "finished" || isString(data.broken))
-        .length,
-      billed: spend.get("builder") ?? 0,
-    },
-    {
-      role: "solver",
-      runs: solves.length,
-      ...solveStats,
-      anomalies: solves.filter(({ data }) => {
-        const ending = asRecord(data.ending);
-        return ending?.outcome === "fail" && text(ending.kind) === "broken-harness";
-      }).length,
-      billed: spend.get("solver") ?? 0,
-    },
-    {
-      role: "referee.adjudicate",
-      runs: findings.length,
-      turns: Math.max(0, refereeTurnsTotal - auditTurns),
-      calls: postRefereeCalls.length,
-      errors: postRefereeCalls.filter((each) => each.isError).length,
-      anomalies: findings.filter(
-        ({ data }) => text(data.ruling) === "unclear" && items(data.probes).length === 0,
-      ).length,
-      billed: refereePostBilled,
-    },
-  ];
+  let draftBilled = 0;
+  for (const { kind, data } of events) {
+    if (kind === "draft.started") rowOf("draft").runs += 1;
+    else if (kind === "draft.finished") {
+      draftBilled += isNumber(data.billed) ? data.billed : 0;
+      if (!CLEAN_DRAFT_ENDS.has(text(data.ended))) rowOf("draft").anomalies += 1;
+    } else if (kind === "referee.draft.refused") rowOf(REFEREE_DRAFT).errors += 1;
+    else if (kind === "exam.started") rowOf("examiner").runs += 1;
+    else if (kind === EXAM_END && (!CLEAN_EXAM_ENDS.has(text(data.ended)) || items(data.held).length === 0)) {
+      rowOf("examiner").anomalies += 1;
+    } else if (kind === "build.started") rowOf("builder").runs += 1;
+    else if (kind === "build.finished" && (text(data.ended) !== "finished" || isString(data.broken))) {
+      rowOf("builder").anomalies += 1;
+    } else if (kind === "solve.finished") {
+      rowOf("solver").runs += 1;
+      const ending = asRecord(data.ending);
+      if (ending?.outcome === "fail" && text(ending.kind) === "broken-harness") {
+        rowOf("solver").anomalies += 1;
+      }
+    } else if (kind === "referee.finding") {
+      rowOf(REFEREE_ADJUDICATE).runs += 1;
+      if (text(data.ruling) === "unclear" && items(data.probes).length === 0) {
+        rowOf(REFEREE_ADJUDICATE).anomalies += 1;
+      }
+    }
+  }
+  const auditRow = rowOf(REFEREE_DRAFT);
+  auditRow.runs = auditPasses.length;
+  auditRow.turns = auditTurns;
+  auditRow.anomalies = auditPasses.filter(({ verdict }) => verdict === "skipped").length;
+  const spend = new Map(spendOf(events));
+  const billedBy = new Map<string, number>([
+    ["draft", draftBilled],
+    [REFEREE_DRAFT, auditBilled],
+    ["examiner", Math.max(0, (spend.get("examiner") ?? 0) - draftBilled)],
+    ["builder", spend.get("builder") ?? 0],
+    ["solver", spend.get("solver") ?? 0],
+    [REFEREE_ADJUDICATE, Math.max(0, (spend.get("referee") ?? 0) - auditBilled)],
+  ]);
+  const rows: RoleRow[] = [...billedBy].map(([role, billed]) => ({ role, ...rowOf(role), billed }));
   const totalBilled = rows.reduce((sum, row) => sum + row.billed, 0);
-  const solverBilled = spend.get("solver") ?? 0;
   return {
     rows,
     totalBilled,
-    nonSolverBilled: Math.max(0, totalBilled - solverBilled),
+    nonSolverBilled: Math.max(0, totalBilled - (spend.get("solver") ?? 0)),
     overshoots: pauseOvershoots(events),
   };
 }

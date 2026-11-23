@@ -19,6 +19,7 @@
  * guard refuses their greps of the kept states this opens itself.
  */
 import { draftOf } from "#src/examiner/draft.ts";
+import { ownFilesOf } from "#src/harness/audit.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports } from "#src/kernel/reports.ts";
@@ -37,7 +38,6 @@ import { countBy } from "#src/meta/tally.ts";
 import { callPrograms } from "#src/kernel/call-programs.ts";
 import { indexOf } from "./folds.ts";
 import { wonOf } from "./read.ts";
-import { ownFilesOf } from "./trajectory.ts";
 
 /** One value of an answer: where it stands, what it is, and its significant digits or length. */
 interface Leaf {

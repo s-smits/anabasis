@@ -18,11 +18,13 @@ import { crashedRun } from "../src/campaign/ground.ts";
 import { type BuildRequest, build, layPractice, type PracticeTask, session } from "../src/builder/session.ts";
 import { HOME_TOOL_TREE, snapshot } from "../src/builder/kept.ts";
 import { type Bench, practiceLeft, record } from "../src/builder/tools.ts";
+import { auditHarnessState, practiceCopyHits, schemaKeys } from "../src/harness/audit.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
 import { latestBuilt } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
+import { TOOL_TREE_DIR } from "../src/meta/bundle-layout.ts";
 import {
   chmodSync,
   cpSync,
@@ -2041,6 +2043,9 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
     expect(calls[8]).toContain(
       String.raw`The harness opens.\npi's tools: bash.\nPrograms: greet, hello, real.\nGuide: 28 characters.`,
     );
+    expect(calls[8]).toContain("Weight: 1 guide line");
+    expect(calls[8]).not.toContain("Portability notes:");
+    expect(calls[8]).not.toContain("Practice-copy note:");
     expect(calls[9]).toContain(String.raw`/home\n# The Built Harness`);
     expect(calls[10]).toContain("Successfully replaced 1 block(s)");
     expect(calls[11]).toContain("Always multiply before you record.");
@@ -2073,4 +2078,75 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
       expect(linked).toContain(join("..", name));
     }
   }, 120_000);
+});
+
+describe("harness static audit and practice-copy notes", () => {
+  it("reports portability hazards, HOST_ONLY leaks, and copied practice tasks while staying silent on clean harnesses", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ana-harness-audit-"));
+    try {
+      const clean = join(dir, "clean");
+      mkdirSync(join(clean, "agent"), { recursive: true });
+      mkdirSync(join(clean, TOOL_TREE_DIR, "bin"), { recursive: true });
+      writeFileSync(
+        join(clean, "agent", "BUILT_AGENTS.md"),
+        "# Guide\nUse tool.\n\n## Validity and score\nWrite answer.json.\n",
+      );
+      writeFileSync(join(clean, TOOL_TREE_DIR, "bin", "run-tool"), "#!/usr/bin/env sh\necho ok\n");
+      chmodSync(join(clean, TOOL_TREE_DIR, "bin", "run-tool"), 0o755);
+
+      const answerKeys = schemaKeys({ properties: { estimateValue: { type: "number" } } });
+      const tasks = [
+        {
+          taskId: "task-alpha-1",
+          publicInput: { prompt: "compute the quarterly regional payroll total accurately" },
+        },
+        {
+          taskId: "task-beta-2",
+          publicInput: { prompt: "estimate annual warehouse throughput under peak load" },
+        },
+      ];
+      const cleanAudit = auditHarnessState(clean, answerKeys, ["R-1"]);
+      expect(cleanAudit).toMatchObject({
+        hasHostOnly: true,
+        portableLines: 2,
+        aboveLeaks: 0,
+        aboveKeys: 0,
+        aboveRules: 0,
+        hostPathHits: 0,
+        badShebangs: 0,
+        nonExecBins: 0,
+        brokenLinks: 0,
+      });
+      expect(practiceCopyHits(cleanAudit.written, tasks)).toEqual([]);
+
+      const dirty = join(dir, "dirty");
+      mkdirSync(join(dirty, "agent"), { recursive: true });
+      mkdirSync(join(dirty, TOOL_TREE_DIR, "bin"), { recursive: true });
+      writeFileSync(
+        join(dirty, "agent", "BUILT_AGENTS.md"),
+        "# Guide\nRead public/task.json for estimateValue under R-1 on task-alpha-1: compute the quarterly regional payroll total accurately.\n",
+      );
+      writeFileSync(
+        join(dirty, TOOL_TREE_DIR, "bin", "bad-bin"),
+        "#!/Users/dev/python3\nprint('/opt/homebrew/bin')\n",
+      );
+      chmodSync(join(dirty, TOOL_TREE_DIR, "bin", "bad-bin"), 0o644);
+      symlinkSync("/no/such/target", join(dirty, TOOL_TREE_DIR, "bin", "broken"));
+
+      const dirtyAudit = auditHarnessState(dirty, answerKeys, ["R-1"]);
+      expect(dirtyAudit).toMatchObject({
+        hasHostOnly: false,
+        aboveLeaks: 1,
+        aboveKeys: 1,
+        aboveRules: 1,
+        hostPathHits: 2,
+        badShebangs: 1,
+        nonExecBins: 1,
+        brokenLinks: 1,
+      });
+      expect(practiceCopyHits(dirtyAudit.written, tasks)).toEqual(["guide (names/copies task-alpha-1)"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

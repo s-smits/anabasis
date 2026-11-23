@@ -41,20 +41,14 @@
  */
 import { DIGEST } from "#src/campaign/names.ts";
 import { epochsOf, starterIn } from "#src/campaign/climb.ts";
+import { type HarnessWeight, nonblank, ownFilesOf } from "#src/harness/audit.ts";
 import { scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { lastReports } from "#src/kernel/reports.ts";
 import { practiceRan } from "#src/kernel/solves.ts";
-import { AGENT_DIR, GUIDE_FILE, TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
+import { AGENT_DIR, GUIDE_FILE } from "#src/meta/bundle-layout.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
-import {
-  existsSync,
-  lstatSync,
-  readdirSync,
-  readFileSync,
-  readlinkSync,
-  realpathSync,
-} from "#src/meta/filesystem.ts";
+import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
@@ -63,29 +57,9 @@ import { waitsOf } from "./time.ts";
 
 export const HOURS = [2, 4, 6, 8, 12, 16, 24] as const;
 const SILENCE = 30 * 60 * 1000;
-/** Path segments of what a harness installed rather than wrote. A folder named `python` is none: a
- *  harness keeps its own modules in `lib/python/`, and an interpreter's home goes by `HOME`. */
-const INSTALLED = /(^|\/)(site-packages|dist-packages|node_modules|\.?venv|vendor|include|__pycache__)(\/|$)/;
-const SKIP_DIR = /^(?:node_modules|\.?venv|vendor|include|__pycache__)$/;
-const SITE_DIR = /^(?:site|dist)-packages$/;
-/** A bundled interpreter's home, known by the library folder its build lays out, whatever the home
- *  is named. The tool tree itself is no such home: a harness keeps its own programs there. */
-const HOME = /\/lib\/python\d[\d.]*\//;
-/** An installed package's metadata folder, and what follows its package's name in that folder's name. */
-const METADATA = /\.(?:dist-info|egg-info)$/;
-const PAST_NAME = /(?:-[^/]*)?\.(?:dist-info|egg-info)$/;
-/** A wheel's folder of bundled shared libraries, written whole by the installer. */
-const LIBS = /(^|\/)[^/]+\.libs\//;
-/** A program a harness wrote is shorter than this; an interpreter or a library's binary is not. */
-const WRITTEN_BYTES = 256 * 1024;
 const GUIDE_PATH = `${AGENT_DIR}${GUIDE_FILE}`;
 
 export type Grades = ReadonlyMap<string, number>;
-interface Weight {
-  readonly guide: number;
-  readonly files: number;
-  readonly lines: number;
-}
 interface Side {
   readonly turns: number;
   readonly valid: number;
@@ -252,127 +226,6 @@ export function trajectoryOf(name: string, events: readonly LogEvent[], grades: 
   };
 }
 
-/** A path with its `.` and `..` segments resolved, as a `RECORD` line names one from its folder. */
-function resolved(path: string): string {
-  const kept: string[] = [];
-  for (const segment of path.split("/")) {
-    if (segment === "..") kept.pop();
-    else if (segment !== "." && segment !== "") kept.push(segment);
-  }
-  return kept.join("/");
-}
-
-/** The paths an installer wrote, from each package's metadata: the files its `RECORD` names (a CSV
- *  whose first field is a path from the folder it installed into), or, where no record can be read,
- *  the folders and modules its `top_level.txt` or its own name gives. */
-const nonblank = (body: string) => body.split("\n").filter((line) => line.trim() !== "").length;
-
-function installedBy(files: readonly { readonly path: string }[], recordOf: (path: string) => string | null) {
-  const paths = new Set<string>();
-  const folders = new Set<string>();
-  const marks = new Map(
-    files.flatMap(({ path }) => {
-      const segments = path.split("/");
-      const at = segments.findIndex((seg, i) => i < segments.length - 1 && METADATA.test(seg));
-      if (at === -1) return [];
-      const folder = segments[at] ?? "";
-      const site = segments
-        .slice(0, at)
-        .map((seg) => `${seg}/`)
-        .join("");
-      return [[`${site}${folder}/`, { site, name: folder.replace(PAST_NAME, "") }] as const];
-    }),
-  );
-  for (const [meta, { site, name }] of marks) {
-    folders.add(meta);
-    const record = recordOf(`${meta}RECORD`) ?? recordOf(`${meta}installed-files.txt`);
-    if (record === null) {
-      const tops = recordOf(`${meta}top_level.txt`)
-        ?.split("\n")
-        .filter((line) => line.trim() !== "") ?? [name];
-      for (const top of tops) {
-        folders.add(`${site}${top.trim()}/`);
-        paths.add(`${site}${top.trim()}.py`);
-      }
-      continue;
-    }
-    const from = meta.endsWith(".egg-info/") ? meta : site;
-    for (const line of record.split("\n")) {
-      const entry = line.startsWith('"') ? line.slice(1, line.indexOf('"', 1)) : (line.split(",")[0] ?? "");
-      if (entry.trim() !== "") paths.add(resolved(`${from}${entry}`));
-    }
-  }
-  return { paths, folders: [...folders] };
-}
-
-/** The tool tree's files a harness wrote, given each file's path and size (`recordOf` reads a file
- *  of the tree by its path, or gives null): not an installed folder (`INSTALLED`, a wheel's `.libs`),
- *  not a file an installed package's metadata names, and not a binary-sized file. A harness's own
- *  module beside installed packages stays, so that one `.dist-info` does not drop the whole folder
- *  that holds it and hide a harness's own module behind the packages beside it. A
- *  bundled interpreter's home goes whole (`HOME`), whatever the harness named it. */
-function ownPrograms(
-  files: readonly { readonly path: string; readonly bytes: number }[],
-  recordOf: (path: string) => string | null,
-): string[] {
-  const installed = installedBy(files, recordOf);
-  const homes = [...new Set(files.map(({ path }) => path.slice(0, path.search(HOME) + 1)))].filter(Boolean);
-  return files
-    .filter(
-      ({ path, bytes }) =>
-        bytes <= WRITTEN_BYTES &&
-        !INSTALLED.test(path) &&
-        !homes.some((home) => path.startsWith(home)) &&
-        !LIBS.test(path) &&
-        !installed.paths.has(path) &&
-        !installed.folders.some((folder) => path.startsWith(folder)),
-    )
-    .map(({ path }) => path);
-}
-
-function dirMode(mode: "all" | "site" | "count", name: string): "all" | "site" | "count" {
-  if (mode === "all") return SKIP_DIR.test(name) ? "count" : SITE_DIR.test(name) ? "site" : "all";
-  return mode === "site" && METADATA.test(name) ? "all" : "count";
-}
-
-function walkTree(state: string, scope: "full" | "own") {
-  const tree = join(state, TOOL_TREE_DIR);
-  const empty: string[] = [];
-  if (!existsSync(tree)) return { root: tree, paths: empty, brokenLinks: 0, toolTreeFiles: 0 };
-  const root = realpathSync(tree);
-  const files: { path: string; bytes: number }[] = [];
-  let [brokenLinks, toolTreeFiles] = [0, 0];
-  const walk = (dir: string, prefix: string, mode: "all" | "site" | "count"): void => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      toolTreeFiles += 1;
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        const next = dirMode(mode, entry.name);
-        if (next !== "count" || scope === "full") walk(full, join(prefix, entry.name), next);
-      } else if (entry.isSymbolicLink() && !existsSync(full)) {
-        brokenLinks += 1;
-      } else if (mode === "all" && entry.isSymbolicLink()) {
-        const target = realpathSync(full);
-        if (target.startsWith(`${root}/`) && lstatSync(target).isFile()) {
-          files.push({ path: join(prefix, entry.name), bytes: 0 });
-        }
-      } else if (mode === "all" && entry.isFile()) {
-        files.push({ path: join(prefix, entry.name), bytes: lstatSync(full).size });
-      }
-    }
-  };
-  walk(root, "", "all");
-  const recordOf = (path: string) =>
-    existsSync(join(root, path)) ? readFileSync(join(root, path), "utf8") : null;
-  return { root, paths: ownPrograms(files, recordOf).toSorted(), brokenLinks, toolTreeFiles };
-}
-
-/** The programs a kept harness wrote, under the real root of its tool tree: its files, and each link
- *  that names another file of the tree (`bin/pack-answer` to `check-answer`), listed by its own name. */
-export function ownFilesOf(state: string): { readonly root: string; readonly paths: readonly string[] } {
-  return walkTree(state, "own");
-}
-
 const unrecorded = (value: JsonValue | undefined): string => (isString(value) ? value : "unrecorded");
 
 /** The guide and the programs a kept harness wrote, by path (the guide as `guide`), here so that
@@ -390,26 +243,6 @@ export function keptStates(statesDir: string): string[] {
   return readdirSync(statesDir)
     .filter((entry) => DIGEST.test(entry))
     .toSorted();
-}
-
-/** Static file inventory and weight of one kept harness state for portability auditing. */
-export function stateAuditFiles(state: string) {
-  const { root, paths, brokenLinks, toolTreeFiles } = walkTree(state, "full");
-  const guideFile = join(state, GUIDE_PATH);
-  const entries = [
-    ...paths.map((path) => [path, join(root, path)] as const),
-    ...(existsSync(guideFile) ? [["guide", guideFile] as const] : []),
-  ];
-  const written: { path: string; text: string; executable: boolean }[] = [];
-  let [guide, lines] = [0, 0];
-  for (const [path, file] of entries) {
-    const [stat, text] = [lstatSync(file), readFileSync(file, "utf8")];
-    if (path === "guide") guide = nonblank(text);
-    else lines += nonblank(text);
-    if (!stat.isSymbolicLink()) written.push({ path, text, executable: (stat.mode & 0o111) !== 0 });
-  }
-  const weight = existsSync(state) ? { guide, files: paths.length, lines } : null;
-  return { written, brokenLinks, toolTreeFiles, weight };
 }
 
 /** The unified diff of what a harness wrote, from `parent` (a state folder, or none) to `version`,
@@ -495,7 +328,7 @@ export function madeOf(events: readonly LogEvent[], digest: string, starter: str
 }
 
 /** A kept harness's weight from its state beside the log, or null where the copy keeps none. */
-export function weightOf(state: string): Weight | null {
+export function weightOf(state: string): HarnessWeight | null {
   if (!existsSync(state)) return null;
   const guideFile = join(state, GUIDE_PATH);
   const { root, paths } = ownFilesOf(state);
@@ -655,7 +488,7 @@ export function trajectoryText(
   const { grades, hours } = options;
   const runs = campaigns.map(({ name, events }) => trajectoryOf(name, events, grades));
   runs.sort((a, b) => Date.parse(a.opened) - Date.parse(b.opened));
-  const weights = new Map<string, Weight | null>();
+  const weights = new Map<string, HarnessWeight | null>();
   const weight = (run: Trajectory, harness: string | null) => {
     if (harness === null) return null;
     const log = campaigns.find(({ name }) => name === run.name)?.log ?? "";

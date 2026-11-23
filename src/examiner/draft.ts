@@ -110,44 +110,6 @@ const OUTSIDE = [
   ],
   [/(?<!\.)\beval\s*\(|\(\s*0\s*,\s*eval\s*\)|(?<!\.)\bFunction\s*\(/u, "dynamic code evaluation"],
 ] as const;
-/** Keywords and punctuation after which `/` begins a JS regex literal rather than division. */
-const REGEX_PREV_KEYWORDS = new Set([
-  "return",
-  "case",
-  "throw",
-  "in",
-  "of",
-  "typeof",
-  "void",
-  "delete",
-  "await",
-  "yield",
-  "new",
-  "else",
-  "do",
-]);
-const REGEX_PREV_PUNCT = new Set([
-  "",
-  "(",
-  "[",
-  "{",
-  ",",
-  ";",
-  ":",
-  "=",
-  "!",
-  "&",
-  "|",
-  "?",
-  "+",
-  "-",
-  "*",
-  "%",
-  "^",
-  "~",
-  "<",
-  ">",
-]);
 const TEXT_FILE = Type.Object({ path: Type.String({ minLength: 1 }), text: Type.String() });
 /** Files beside an answer, as a control or a try gives them (`ControlFile`). */
 export const TEXT_FILES = Type.Optional(
@@ -361,45 +323,13 @@ function controlFaults(draft: Draft): string[] {
   ];
 }
 
-/** Advance past a JS regex literal starting after its opening `/`, skipping `[...]` classes and flags. */
-function scanRegex(source: string, start: number): number {
-  let index = start;
-  let inClass = false;
-  while (index < source.length) {
-    const cur = source[index];
-    if (cur === "\\") {
-      index += 2;
-      continue;
-    }
-    if (cur === "[") inClass = true;
-    else if (cur === "]") inClass = false;
-    else if (cur === "/" && !inClass) {
-      index += 1;
-      while (index < source.length && /[a-z]/iu.test(source[index] ?? "")) index += 1;
-      return index;
-    } else if (cur === "\n") {
-      return index;
-    }
-    index += 1;
-  }
-  return index;
-}
-
-/** Whether `/` at the current position starts a regex literal given the preceding significant token. */
-function canStartRegex(prevToken: string): boolean {
-  return REGEX_PREV_PUNCT.has(prevToken) || REGEX_PREV_KEYWORDS.has(prevToken);
-}
-
-/** Strip comments, strings, regex literals and template text (recursing into `${...}`) from JS.
- *  Under `"template"`, stops after consuming the unmatched closing `}` of `${...}`. */
+/** Strip comments, string literals, and template text (recursing into `${...}`) before static
+ *  purity checks; `openVerifier`'s OS sandbox remains the hard runtime backstop. */
 function stripCode(source: string, start: number, scope: "whole" | "template", parts: string[]): number {
-  let index = start;
-  let braceDepth = 0;
-  let prevToken = "";
+  let [index, braceDepth] = [start, 0];
   const end = source.length;
   while (index < end) {
-    const ch = source[index] ?? "";
-    const next = source[index + 1];
+    const [ch, next] = [source[index] ?? "", source[index + 1]];
     if (ch === "/" && next === "/") {
       const eol = source.indexOf("\n", index + 2);
       index = eol === -1 ? end : eol + 1;
@@ -412,24 +342,16 @@ function stripCode(source: string, start: number, scope: "whole" | "template", p
       parts.push(" ");
       continue;
     }
-    if (ch === "/" && canStartRegex(prevToken)) {
-      index = scanRegex(source, index + 1);
-      parts.push('""');
-      prevToken = '""';
-      continue;
-    }
     if (ch === '"' || ch === "'") {
       index += 1;
       while (index < end && source[index] !== ch) index += source[index] === "\\" ? 2 : 1;
       index += 1;
       parts.push('""');
-      prevToken = '""';
       continue;
     }
     if (ch === "`") {
       parts.push('""');
       index = scanTemplate(source, index + 1, parts);
-      prevToken = '""';
       continue;
     }
     if (ch === "{") braceDepth += 1;
@@ -437,24 +359,7 @@ function stripCode(source: string, start: number, scope: "whole" | "template", p
       if (scope === "template" && braceDepth === 0) return index + 1;
       braceDepth = Math.max(0, braceDepth - 1);
     }
-    if (/[A-Za-z_$]/u.test(ch)) {
-      let wordEnd = index + 1;
-      while (wordEnd < end && /[A-Za-z0-9_$]/u.test(source[wordEnd] ?? "")) wordEnd += 1;
-      const word = source.slice(index, wordEnd);
-      parts.push(word);
-      prevToken = word;
-      index = wordEnd;
-      continue;
-    }
-    if ((ch === "+" && next === "+") || (ch === "-" && next === "-")) {
-      const pair = ch + next;
-      parts.push(pair);
-      prevToken = pair;
-      index += 2;
-      continue;
-    }
     parts.push(ch);
-    if (!/\s/u.test(ch)) prevToken = ch;
     index += 1;
   }
   return index;

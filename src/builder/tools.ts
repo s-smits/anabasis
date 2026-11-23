@@ -214,13 +214,12 @@ function callsText(events: readonly LogEvent[], solve: string, programs: readonl
     const broke = by.filter(({ isError }) => isError).length;
     return [`${name} ${String(by.length)}${broke === 0 ? "" : ` (${String(broke)} failed)`}`];
   });
-  const unused = programs.length - used.length;
   const shown =
     programs.length === 0
       ? ""
       : used.length === 0
         ? ` Harness programs run: none of ${String(programs.length)}.`
-        : ` Harness programs run: ${used.join(", ")}${unused === 0 ? "" : ` (${String(unused)} of ${String(programs.length)} unused)`}.`;
+        : ` Harness programs run: ${used.join(", ")}.`;
   return ` It made ${plural(calls.length, "tool call")}; failed: ${failed.join(", ") || "none"}.${shown}`;
 }
 

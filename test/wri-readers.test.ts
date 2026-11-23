@@ -3,6 +3,7 @@
 // trigger fires on its lane with its count, the catalogue names every trigger the reader can fire,
 // and a report is collected as a finding, no finding or could not read only when its fields are even.
 import { afterAll, describe, expect, it } from "bun:test";
+import { STARTED as COMPARISON_STARTED } from "../src/campaign/comparison.ts";
 import { conditionId } from "../src/kernel/condition.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { lastReports, referenceOf } from "../src/kernel/reports.ts";
@@ -628,10 +629,10 @@ describe("current-system WRI triggers and blind packet rendering", () => {
       states,
     ).join("\n");
     expect(portText).toContain(
-      `${cleanDigest.slice(0, 8)} (promoted): guide 4L (host-only yes, portable 2L, above-leaks 0)`,
+      `${cleanDigest.slice(0, 8)} (promoted): guide 4L (host-only yes, portable 2L, above-leaks 0, above-keys 0, above-rules 0)`,
     );
     expect(portText).toContain(
-      `${leakDigest.slice(0, 8)} (promoted): guide 4L (host-only yes, portable 2L, above-leaks 3)`,
+      `${leakDigest.slice(0, 8)} (promoted): guide 4L (host-only yes, portable 2L, above-leaks 3, above-keys 0, above-rules 0)`,
     );
 
     const examsDir = join(dir, "exams");
@@ -1026,5 +1027,179 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     expect(text).toContain("untried-compare-fishing");
     expect(text).toContain("repeated-objective-cluster");
     expect(text).not.toContain("SECRET-");
+  });
+
+  it("enforces cluster-6 WRI detector accuracy across wall-audit, portability, diagnostics, fast-pass, tmp, margins, and live examiners", () => {
+    const STAMP = "2026-11-23T18:00:00.000Z";
+    const candDigest = "d".repeat(64);
+    const shortCand = candDigest.slice(0, 8);
+    const states = join(dir, "cluster6-states");
+    const binDir = join(states, candDigest, ".toolchain", "bin");
+    const agentDir = join(states, candDigest, "agent");
+    mkdirSync(binDir, { recursive: true });
+    mkdirSync(agentDir, { recursive: true });
+    writeFileSync(
+      join(agentDir, "BUILT_AGENTS.md"),
+      "# Guide\nEnsure record_id obeys R1 and check output.\n\n## Validity and score\nSubmit answer.json.\n",
+    );
+    writeFileSync(
+      join(binDir, "write-package"),
+      "#!/usr/bin/env python3\nimport subprocess\nsubprocess.run(['check-package'])\n",
+    );
+    writeFileSync(join(binDir, "check-package"), "#!/usr/bin/env python3\nprint('ok')\n");
+    writeFileSync(join(binDir, "dead-cli"), "#!/usr/bin/env python3\nprint('dead')\n");
+    chmodSync(join(binDir, "write-package"), 0o755);
+    chmodSync(join(binDir, "check-package"), 0o755);
+    chmodSync(join(binDir, "dead-cli"), 0o755);
+
+    const compCond = conditionOf("v-held", candDigest, { wallSeconds: 1800, turns: 20 });
+    const compCondId = conditionId(compCond);
+    const pracCond = conditionOf("v-prac", candDigest, { wallSeconds: 1800, turns: 20 });
+    const pracCondId = conditionId(pracCond);
+    const cluster6Log: readonly LogEvent[] = [
+      { at: STAMP, kind: "campaign.opened", data: { budget: { dollars: 100, reserve: 1 } } },
+      {
+        at: STAMP,
+        kind: "exam.drafted",
+        data: {
+          draft: {
+            rules: [{ id: "R1", statement: "Required rule" }],
+            answerFormat: {
+              type: "object",
+              properties: {
+                rows: { type: "array", items: { type: "object", properties: { record_id: {} } } },
+              },
+            },
+            checks: [{ id: "check-r1", assertion: "valid" }],
+          },
+        },
+      },
+      { at: STAMP, kind: "task.proposed", data: { version: "v-held", taskId: "x-1-001", session: "x-1" } },
+      { at: STAMP, kind: "task.proposed", data: { version: "v-prac", taskId: "x-1-002", session: "x-1" } },
+      // Builder references x-1-002 BEFORE it is released -> must flag time-indexed held-task leak!
+      {
+        at: STAMP,
+        kind: "build.call",
+        data: {
+          session: "b-1",
+          turn: 1,
+          tool: "bash",
+          args: { command: "echo hi > /tmp/x" },
+          text: "Operation not permitted on /tmp/x while reading x-1-002 and referee.draft",
+          isError: false,
+        },
+      },
+      { at: STAMP, kind: "task.gate", data: { version: "v-prac", gate: 1, outcome: "passed" } },
+      { at: STAMP, kind: "task.state", data: { version: "v-prac", state: "released" } },
+      { at: STAMP, kind: "build.checkpoint", data: { session: "b-1", harness: candDigest } },
+      // Examiner wake call mentions 8-char short digest -> must flag exam harness-digests leak!
+      {
+        at: STAMP,
+        kind: "exam.started",
+        data: { session: "x-live", conversation: "x-1" },
+      },
+      {
+        at: STAMP,
+        kind: "exam.call",
+        data: {
+          session: "x-live",
+          turn: 1,
+          tool: "read_opening",
+          args: {},
+          text: `Ref ${shortCand}`,
+          isError: false,
+        },
+      },
+      {
+        at: STAMP,
+        kind: "condition.recorded",
+        data: { id: compCondId, condition: requireJsonValue(compCond) },
+      },
+      {
+        at: STAMP,
+        kind: "condition.recorded",
+        data: { id: pracCondId, condition: requireJsonValue(pracCond) },
+      },
+      // Practice solve runs dead-cli (must NOT mask dead-cli from comparison solves!).
+      { at: STAMP, kind: "solve.started", data: { solve: "sp-1", condition: pracCondId, side: "practice" } },
+      {
+        at: STAMP,
+        kind: "solve.call",
+        data: {
+          solve: "sp-1",
+          turn: 1,
+          tool: "bash",
+          args: { command: "dead-cli" },
+          isError: false,
+          text: "",
+        },
+      },
+      {
+        at: STAMP,
+        kind: "solve.finished",
+        data: { solve: "sp-1", ending: { outcome: "pass" }, seconds: 20, turns: 7 },
+      },
+      // 4 comparison solves run write-package (which invokes check-package internally), all 7 turns < 90s (must NOT trigger PASSES AT A SMALL WALL SHARE).
+      ...Array.from({ length: 4 }, (_, nth): LogEvent[] => [
+        {
+          at: STAMP,
+          kind: "solve.started",
+          data: { solve: `sc-${String(nth)}`, condition: compCondId, comparison: "g-1" },
+        },
+        {
+          at: STAMP,
+          kind: "solve.call",
+          data: {
+            solve: `sc-${String(nth)}`,
+            turn: 1,
+            tool: "bash",
+            args: { command: "write-package" },
+            isError: false,
+            text: "",
+          },
+        },
+        {
+          at: STAMP,
+          kind: "solve.finished",
+          data: { solve: `sc-${String(nth)}`, ending: { outcome: "pass" }, seconds: 45, turns: 7 },
+        },
+      ]).flat(),
+      {
+        at: STAMP,
+        kind: COMPARISON_STARTED,
+        data: { session: "g-1", old: "h-starter", fresh: candDigest, starter: "h-starter" },
+      },
+      {
+        at: STAMP,
+        kind: "comparison.reported",
+        data: {
+          session: "g-1",
+          old: "h-starter",
+          fresh: candDigest,
+          starter: "h-starter",
+          reading: "no-step",
+          scored: { wins: 1, losses: 1, ties: 0 },
+        },
+      },
+    ];
+
+    const wallText = wallAuditRows(cluster6Log).join("\n");
+    expect(wallText).toContain("network-parity: unobserved");
+    expect(wallText).toContain("held-tasks 1");
+    expect(wallText).toContain("internal-kinds 1");
+    expect(wallText).toContain("harness-digests 1");
+
+    const portText = portabilityRows(cluster6Log, states).join("\n");
+    expect(portText).toContain("above-leaks 0, above-keys 1, above-rules 1");
+    expect(portText).not.toContain("record_id");
+
+    const diagText = diagnosticRows(cluster6Log, states).join("\n");
+    // 3 bins shipped; write-package ran, check-package credited via write-package, ONLY dead-cli (1) unused despite practice call.
+    expect(diagText).toContain("shipped 3 bin programs, 1 never invoked across 4 comparison solves");
+
+    const firedNames = overview(cluster6Log).triggers.map(({ name }) => name);
+    expect(firedNames).not.toContain("PASSES AT A SMALL WALL SHARE");
+    expect(firedNames).not.toContain("SHARED TEMPORARY FOLDER");
+    expect(firedNames).not.toContain("EXAMINER NEVER FINISHED");
   });
 });

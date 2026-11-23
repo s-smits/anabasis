@@ -43,6 +43,8 @@ interface Epoch {
 const [CHOSEN, BEFORE, AFTER] = ORIGINS;
 /** The units a budget on record may name (`folds.ts`). */
 const UNITS = ["turns", "prompts", "cpu", "seconds"] as const;
+/** OS-wall denial messages excluded from `SHARED TEMPORARY FOLDER` (`sharedTmpTrigger`). */
+const WALL_DENIED_RE = /\b(?:Operation not permitted|EPERM|Read-only file system)\b/u;
 /** The share of tasks a reference answers on none of its solves above which a step is read as an
  *  engine against none. */
 const BARE = 0.5;
@@ -332,10 +334,14 @@ function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): 
 
 /** `SHARED TEMPORARY FOLDER`: successful calls naming a path outside the seats' roots under the
  *  host's temporary folders, by role, solves by side and practice apart, with paths named by more
- *  than one seat. */
+ *  than one seat. Calls blocked by the OS wall (`Operation not permitted` / `EPERM`) are excluded. */
 function sharedTmpTrigger(log: Index): Trigger[] {
   const calls = log.traces.filter(
-    (each): each is Call => each.part === "call" && !each.isError && sharedPaths(each).length > 0,
+    (each): each is Call =>
+      each.part === "call" &&
+      !each.isError &&
+      !WALL_DENIED_RE.test(each.text) &&
+      sharedPaths(each).length > 0,
   );
   const of = (seat: Seat) => calls.filter((call) => call.seat === seat);
   const solves = new Map(log.solves.map((solve) => [solve.id, solve]));
@@ -499,7 +505,7 @@ function marginTrigger(log: Index): Trigger[] {
       (pair) =>
         differenceOf(pair) <= Math.max(reference.get(pair.task) ?? -1, candidate.get(pair.task) ?? -1),
     );
-    if (inside.length * 2 <= wins.length) return [];
+    if (inside.length * 2 < wins.length) return [];
     const steady = inside.filter(
       ({ task, objective: rule }) =>
         candidate.get(task) === 0 &&

@@ -202,7 +202,7 @@ describe("trying the reference at writing", () => {
     expect(made.handed).toHaveLength(TRIES);
   });
 
-  it("states the author's checked measure beside the reference's best valid solve, with the lead and the floor and no verdict", async () => {
+  it("states the author's checked measure beside a coarse separation band relative to the floor with no signed percentage or verdict", async () => {
     // The probe's valid solves measure 2.5, and lower is better.
     const told = async (author: number) => {
       const s = seat("write", []);
@@ -226,12 +226,15 @@ describe("trying the reference at writing", () => {
     const [unchecked = "", roomy = ""] = await told(2);
     expect(unchecked).not.toContain("try_answer");
     expect(roomy).toContain(
-      "measures 2; valid solves here: 1, the best measuring 2.5; yours leads it by 20% of the larger measure, against the comparison's floor of 1%.",
+      "measures 2; valid solves here: 1; yours clears the comparison's 1% floor ahead of it",
     );
+    expect(roomy).not.toContain("20%");
     const [, tied = ""] = await told(2.5);
-    expect(tied).toContain("yours leads it by 0% of the larger measure");
+    expect(tied).toContain("both lie within the comparison's 1% floor");
+    expect(tied).not.toContain("0%");
     const [, behind = ""] = await told(3);
-    expect(behind).toContain("yours trails it by 16.7% of the larger measure");
+    expect(behind).toContain("its best valid solve clears the comparison's 1% floor ahead of yours");
+    expect(behind).not.toContain("16.7%");
     for (const line of [roomy, tied, behind]) expect(line).not.toMatch(/room|leaves the reference/);
     expect(tied).not.toContain(CANARY);
   });

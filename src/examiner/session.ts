@@ -300,7 +300,6 @@ async function examining(
       const cue = compacted
         ? " Context compacted; read_opening holds the ask's opening record and limits."
         : "";
-      compacted = false;
       return `Turn ${String(turns.length - from)} of ${String(current.limits.turns)}; ${minutes} used.${cue}`;
     };
     const shell = await examinerShell(walls?.shell, mode.enters);

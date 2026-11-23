@@ -135,8 +135,9 @@ export interface Index {
   readonly of: (kind: LogEvent["kind"]) => JsonObject[];
 }
 
-/** A pass under this share of its deadline, on few calls, is the lead v1 read for a published recipe. */
+/** A pass under this share of its deadline, on few turns, is the lead v1 read for a published recipe. */
 export const SMALL_DEADLINE_SHARE = 0.05;
+const SMALL_DEADLINE_TURNS = 3;
 /** What a reader of no seat's words reads a large log without. */
 export const NO_TRACES: ReadonlySet<LogEvent["kind"]> = new Set(
   SEATS.flatMap((seat) => [traceKind(seat, "call"), traceKind(seat, "turn")]),
@@ -752,7 +753,12 @@ export function taskTriggers(log: Index): Trigger[] {
   const unanswered = [...scored.values()].filter(Boolean).length;
   const [{ outcomes, awaiting }, by] = [poolOf(log.events), short(referenceOf(log.events) ?? "none")];
   const done = log.solves.filter((solve) => solve.side === TEST && solve.outcome === "pass");
-  const quick = done.filter((solve) => solve.seconds < solve.wallSeconds * SMALL_DEADLINE_SHARE);
+  const quick = done.filter(
+    (solve) =>
+      solve.seconds < solve.wallSeconds * SMALL_DEADLINE_SHARE &&
+      solve.turns !== null &&
+      solve.turns <= SMALL_DEADLINE_TURNS,
+  );
   const sequences = new Set(quick.map((solve) => solve.calls.join(">"))).size;
   // Each Examiner session's tasks still held at the end, under the reference then, and the reports before it.
   const bySession = Map.groupBy(proposed, (data) => text(data.session));

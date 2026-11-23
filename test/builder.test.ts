@@ -5,6 +5,7 @@
 // Restores distinguish counted practice, including failure, from snapshots and non-results.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
+  createAssistantMessageEventStream,
   createModels,
   type FauxResponseStep,
   fauxAssistantMessage,
@@ -12,6 +13,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
+import { CLAUDE_COMPACTED } from "../src/agent/backends/claude.ts";
 import { crashedRun } from "../src/campaign/ground.ts";
 import { type BuildRequest, build, layPractice, type PracticeTask, session } from "../src/builder/session.ts";
 import { HOME_TOOL_TREE, snapshot } from "../src/builder/kept.ts";
@@ -1859,6 +1861,117 @@ describe("what a practice solve used", () => {
       ),
     );
     expect(s.sent[1]).toContain(line("t-1: pass. Solve s-used-3."));
+    expect(s.sent[1]).not.toContain("unused)");
+  });
+
+  it("omits per-solve unused noise on multi-bin harnesses", async () => {
+    const s = await setup([call("practice", { tasks: ["t-1", "t-2"] }), finish], [], true);
+    const binDir = join(s.home, HOME_TOOL_TREE, "bin");
+    mkdirSync(binDir, { recursive: true });
+    for (const bin of ["alpha", "beta", "gamma"]) {
+      const path = join(binDir, bin);
+      writeFileSync(path, "#!/bin/sh\necho ok\n");
+      chmodSync(path, 0o755);
+    }
+    const calls = [[["bash", "alpha data.csv", false] as const], [["bash", "beta data.csv", false] as const]];
+    let n = 0;
+    await session(
+      {
+        ...s.request,
+        practise: async (task, _dir, harness) => {
+          const solve = `s-multi-${String(n + 1)}`;
+          const runCalls = calls[n] ?? [];
+          n += 1;
+          const condition = recordCondition(s.request.log, s.condition(task.version, harness));
+          append(s.request.log, SOLVE_STARTED, {
+            solve,
+            condition,
+            task: task.task.taskId,
+            side: "practice",
+          });
+          for (const [turn, [toolName, command, isError]] of runCalls.entries()) {
+            append(s.request.log, "solve.call", {
+              solve,
+              turn,
+              tool: toolName,
+              args: { command },
+              isError,
+              text: "",
+            });
+          }
+          append(s.request.log, SOLVE_FINISHED, { solve, ending: { outcome: "pass" }, turns: 2, seconds: 5 });
+          return { solve, ending: { outcome: "pass" } };
+        },
+      },
+      s,
+      s.walled,
+    );
+    const result = s.of(BUILD_CALL).find(({ tool: name }) => name === "practice")?.text ?? "";
+    expect(result).toContain("Harness programs run: alpha 1.");
+    expect(result).toContain("Harness programs run: beta 1.");
+    expect(result).not.toContain("unused)");
+  });
+
+  it("persists the read_opening cue after Builder compaction until read_opening runs and preserves reusability facts in systemPrompt", async () => {
+    const s = await setup(
+      [
+        call("practice", { tasks: ["t-1"] }),
+        call("practice", { tasks: ["t-2"] }),
+        call("read_opening", {}),
+        call("practice", { tasks: ["t-1"] }),
+        finish,
+      ],
+      [],
+      true,
+    );
+    let firstTurn = true;
+    await session(
+      {
+        ...s.request,
+        models: (home, shutdown) => {
+          const baseModels = s.request.models(home, shutdown);
+          // SAFETY: inherited instance supplies every method; streamSimple attaches compaction diagnostics on turn 1.
+          const compactedModels = Object.create(baseModels) as typeof baseModels;
+          compactedModels.streamSimple = (...asked: Parameters<typeof baseModels.streamSimple>) => {
+            const streamed = createAssistantMessageEventStream();
+            (async () => {
+              for await (const event of baseModels.streamSimple(...asked)) {
+                if (event.type === "done" && firstTurn) {
+                  firstTurn = false;
+                  streamed.push({
+                    ...event,
+                    message: {
+                      ...event.message,
+                      diagnostics: [
+                        {
+                          type: CLAUDE_COMPACTED,
+                          timestamp: Date.now(),
+                          details: { tokensBefore: 1000, seconds: 1 },
+                        },
+                      ],
+                    },
+                  });
+                } else {
+                  streamed.push(event);
+                }
+              }
+            })().catch(() => undefined);
+            return streamed;
+          };
+          return compactedModels;
+        },
+      },
+      s,
+      s.walled,
+    );
+    const texts = s.of(BUILD_CALL).map(({ text: body }) => (isString(body) ? body : ""));
+    const cue = "Context compacted; read_opening holds the opening record and limits.";
+    expect(texts[0]).toContain(cue);
+    expect(texts[1]).toContain(cue);
+    expect(texts[2]).not.toContain(cue);
+    expect(texts[3]).not.toContain(cue);
+    expect(s.sent[0]).toContain("General, composable programs under .toolchain/");
+    expect(s.sent[0]).toContain("## Validity and score");
   });
 });
 

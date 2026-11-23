@@ -474,17 +474,24 @@ const capped = (probe: Terms["probe"]): number => Math.min(probe?.tries ?? 0, TR
 const filed = (desk: Desk): string => (desk.home === undefined ? "" : ` ${FROM_FILE}`);
 
 /** Where the contract declares an objective, the author's `try_answer` measure of the instance, the
- *  best of this call's valid solves with their count, and the author's lead over it as a share of the
- *  larger measure beside the comparison's floor (`GAP_FLOOR`): one line, or none. Facts, not a verdict
- *  on room, since one or two solves show little of the reference's spread; the gate reads none of it. */
+ *  count of valid solves in this call, and a coarse band comparing the best valid solve against the
+ *  author's answer relative to `GAP_FLOOR`: one line, or none. Coarse bands instead of exact signed
+ *  percentages curb single-solve survivorship filtering while preserving factual separation; the gate
+ *  reads none of it. */
 function roomLine(contract: Contract, author: number | null, valid: readonly number[]): string[] {
   const declared = contract.objective;
   if (declared === undefined || author === null || valid.length === 0) return [];
   const best = valid.reduce((kept, next) => (gainOver(declared, next, kept) > 0 ? next : kept));
   const lead = gainOver(declared, author, best);
-  const share = `${String(Number((Math.abs(lead) * 100).toPrecision(3)))}%`;
+  const floor = `${String(GAP_FLOOR * 100)}%`;
+  const band =
+    lead >= GAP_FLOOR
+      ? `yours clears the comparison's ${floor} floor ahead of it`
+      : lead <= -GAP_FLOOR
+        ? `its best valid solve clears the comparison's ${floor} floor ahead of yours`
+        : `both lie within the comparison's ${floor} floor`;
   return [
-    `Your answer that passed try_answer on this instance measures ${measured(author)}; valid solves here: ${String(valid.length)}, the best measuring ${measured(best)}; yours ${lead >= 0 ? "leads" : "trails"} it by ${share} of the larger measure, against the comparison's floor of ${String(GAP_FLOOR * 100)}%.`,
+    `Your answer that passed try_answer on this instance measures ${measured(author)}; valid solves here: ${String(valid.length)}; ${band} (one or two solves show little of the reference's spread).`,
   ];
 }
 

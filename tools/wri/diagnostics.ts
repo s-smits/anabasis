@@ -21,12 +21,12 @@ import { PATIENCE } from "#src/kernel/reports.ts";
 import { isNumber } from "#src/meta/json-shape.ts";
 import { basename, join } from "#src/meta/path.ts";
 import { median } from "#src/meta/tally.ts";
-import { plural } from "#src/meta/text.ts";
+import { hasWholeToken, plural } from "#src/meta/text.ts";
 import { spareOf } from "./clearance.ts";
 import { rereadAfter } from "./continuity.ts";
 import { EXAM_END, type Index, indexOf, items, TEST, text } from "./folds.ts";
 import { testedOf } from "./promotion.ts";
-import { ownFilesOf } from "./trajectory.ts";
+import { stateAuditFiles } from "./trajectory.ts";
 
 interface Finding {
   readonly level: "WARN" | "INFO";
@@ -40,7 +40,7 @@ const LOW_SNR = 1.5;
 const HIGH_TRY_PER_HELD = 5;
 const DEFAULT_LEVEL = 0.02;
 
-/** 1. Compare Builder-written executable names in `states/<digest>/.toolchain/bin/` against solver calls. */
+/** 1. Compare Builder-written executable names in `states/<digest>/.toolchain/bin/` against comparison solves. */
 function deadProgramFindings(log: Index, statesDir: string): Finding[] {
   const checked = new Set<string>();
   for (const { own } of log.compared) {
@@ -49,19 +49,34 @@ function deadProgramFindings(log: Index, statesDir: string): Finding[] {
   }
   const findings: Finding[] = [];
   for (const digest of checked) {
-    const testSolves = log.solves.filter((solve) => solve.side === TEST && solve.harness === digest);
+    const testSolves = log.solves.filter(
+      (solve) => solve.side === TEST && solve.comparison !== null && solve.harness === digest,
+    );
     if (testSolves.length < MIN_SOLVES_FOR_DEAD_CODE) continue;
-    const { paths } = ownFilesOf(join(statesDir, digest));
-    const bins = paths.filter((path) => path.startsWith("bin/")).map((path) => basename(path));
-    if (bins.length === 0) continue;
+    const binEntries = stateAuditFiles(join(statesDir, digest))
+      .written.filter(({ path }) => path.startsWith("bin/"))
+      .map(({ path, text: body }) => ({ name: basename(path), text: body }));
+    if (binEntries.length === 0) continue;
     const invoked = new Set(testSolves.flatMap((solve) => solve.programs));
-    const unused = bins.filter((name) => !invoked.has(name)).length;
+    // Propagate intra-`.toolchain/bin` invocations (e.g. a CLI importing or execing a sibling bin).
+    const queue = [...invoked];
+    while (queue.length > 0) {
+      const caller = queue.pop();
+      const body = binEntries.find(({ name }) => name === caller)?.text;
+      if (body === undefined) continue;
+      const reached = binEntries.filter(({ name }) => !invoked.has(name) && hasWholeToken(body, name));
+      for (const { name } of reached) {
+        invoked.add(name);
+        queue.push(name);
+      }
+    }
+    const unused = binEntries.filter(({ name }) => !invoked.has(name)).length;
     if (unused > 0) {
       findings.push({
         level: "WARN",
         factor: "climb",
         lane: 9,
-        detail: `unused harness bins: ${digest.slice(0, 8)} shipped ${String(bins.length)} bin programs, ${String(unused)} never invoked across ${String(testSolves.length)} test solves`,
+        detail: `unused harness bins: ${digest.slice(0, 8)} shipped ${String(binEntries.length)} bin programs, ${String(unused)} never invoked across ${String(testSolves.length)} comparison solves`,
       });
     }
   }

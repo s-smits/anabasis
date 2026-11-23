@@ -18,7 +18,6 @@ import { draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { spendOf } from "#src/kernel/meter.ts";
-import { taskSets } from "#src/kernel/task.ts";
 import { tracesIn } from "#src/kernel/trace.ts";
 import { HOST_TOOLS_FILE } from "#src/kernel/verify.ts";
 import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
@@ -28,7 +27,7 @@ import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { countBy } from "#src/meta/tally.ts";
-import { plural } from "#src/meta/text.ts";
+import { hasWholeToken, plural } from "#src/meta/text.ts";
 import { EXAM_END, firedIf, type Index, items, percent, share, tally, text, type Trigger } from "./folds.ts";
 
 interface DraftAuditPass {
@@ -65,11 +64,12 @@ interface RoleRow {
 
 const EXAM_HASH_PREFIX = 16;
 const CHECK_ID_RE = /^check-[a-z0-9-]+$/u;
-const INTERNAL_KIND_RE = /\b(?:referee\.finding|campaign\.word)\b/u;
+const INTERNAL_KIND_RE = /\b(?:referee\.finding|referee\.draft(?:\.refused)?|campaign\.word)\b/u;
 const NON_SOLVER_SKEW = 0.4;
 const MIN_SKEW_DOLLARS = 10;
 const MIN_TASK_ID_LEN = 4;
 const FULL_DIGEST_LEN = 64;
+const SHORT_DIGEST_LEN = 8;
 const CLEAN_DRAFT_ENDS = new Set(["stands", "finished"]);
 const CLEAN_EXAM_ENDS = new Set(["supplied", "finished"]);
 const VERIFIER_NON_RESULTS = new Set(["check", "verifier"]);
@@ -217,11 +217,6 @@ export function groundingRows(events: readonly LogEvent[], examsDir?: string): s
   ];
 }
 
-function hasWholeToken(haystack: string, needle: string): boolean {
-  const escaped = needle.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
-  return new RegExp(`(?<![A-Za-z0-9_-])${escaped}(?![A-Za-z0-9_-])`, "u").test(haystack);
-}
-
 function wallScanOf(events: readonly LogEvent[]): WallScan {
   const checkIds = new Set<string>();
   for (const check of draftOf(events)?.checks ?? []) {
@@ -232,15 +227,19 @@ function wallScanOf(events: readonly LogEvent[]): WallScan {
     const id = text(asRecord(row)?.id);
     if (CHECK_ID_RE.test(id)) checkIds.add(id);
   }
-  const sets = taskSets(events);
-  const released = new Set(sets.released);
-  const heldTaskIds = new Set<string>();
+  const releasedAt = new Map<string, number>();
+  for (const [index, { kind, data }] of events.entries()) {
+    if (kind !== "task.state" || data.state !== "released") continue;
+    const version = text(data.version);
+    if (version !== "" && !releasedAt.has(version)) releasedAt.set(version, index);
+  }
+  const heldTasks: { readonly taskId: string; readonly releasedAt: number }[] = [];
   for (const { kind, data } of events) {
     if (kind !== "task.proposed") continue;
     const version = text(data.version);
     const taskId = text(data.taskId) || text(asRecord(data.task)?.taskId);
-    if (version !== "" && !released.has(version) && taskId.length >= MIN_TASK_ID_LEN) {
-      heldTaskIds.add(taskId);
+    if (version !== "" && taskId.length >= MIN_TASK_ID_LEN) {
+      heldTasks.push({ taskId, releasedAt: releasedAt.get(version) ?? Number.POSITIVE_INFINITY });
     }
   }
   const starter = starterIn(events);
@@ -251,8 +250,8 @@ function wallScanOf(events: readonly LogEvent[]): WallScan {
     if (digest.length === FULL_DIGEST_LEN && digest !== starter) harnessDigests.add(digest);
   }
   const checkList = [...checkIds];
-  const taskList = [...heldTaskIds];
   const digestList = [...harnessDigests];
+  const shortDigests = [...new Set(digestList.map((digest) => digest.slice(0, SHORT_DIGEST_LEN)))];
 
   let [buildCheckIds, buildHeldTasks, buildInternalKinds, examHarnessDigests, examInternalKinds] = [
     0, 0, 0, 0, 0,
@@ -261,18 +260,21 @@ function wallScanOf(events: readonly LogEvent[]): WallScan {
     if (trace.part !== "call") continue;
     if (trace.seat === "build") {
       if (checkList.some((id) => hasWholeToken(trace.text, id))) buildCheckIds += 1;
-      if (taskList.some((id) => hasWholeToken(trace.text, id))) buildHeldTasks += 1;
+      if (
+        heldTasks.some(({ taskId, releasedAt: at }) => trace.index < at && hasWholeToken(trace.text, taskId))
+      ) {
+        buildHeldTasks += 1;
+      }
       if (INTERNAL_KIND_RE.test(trace.text)) buildInternalKinds += 1;
     } else if (trace.seat === "exam") {
-      if (digestList.some((digest) => trace.text.includes(digest))) examHarnessDigests += 1;
+      if (
+        digestList.some((digest) => trace.text.includes(digest)) ||
+        shortDigests.some((short) => hasWholeToken(trace.text, short))
+      ) {
+        examHarnessDigests += 1;
+      }
       if (trace.text.includes("campaign.word")) examInternalKinds += 1;
     }
-  }
-  for (const { kind, data } of events) {
-    if (kind !== "exam.started") continue;
-    const prompt = text(data.prompt);
-    if (digestList.some((digest) => prompt.includes(digest))) examHarnessDigests += 1;
-    if (prompt.includes("campaign.word")) examInternalKinds += 1;
   }
 
   const comparisonBySolve = new Map<string, string>();
@@ -321,8 +323,10 @@ export function wallAuditRows(events: readonly LogEvent[]): string[] {
     scan.buildInternalKinds +
     scan.examHarnessDigests +
     scan.examInternalKinds;
-  const netState =
-    scan.networkMismatches.length === 0 && !scan.mixedNetworkPresence
+  const unobserved = Object.keys(scan.networkCounts).length === 1 && scan.networkCounts.absent !== undefined;
+  const netState = unobserved
+    ? "unobserved"
+    : scan.networkMismatches.length === 0 && !scan.mixedNetworkPresence
       ? "clean"
       : `mismatched (${scan.networkMismatches.join("; ") || "mixed present/absent"})`;
   return [

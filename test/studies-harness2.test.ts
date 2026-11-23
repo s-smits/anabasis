@@ -286,8 +286,9 @@ describe("a harness written out for Claude Code", () => {
       stage:
         "#!/bin/sh\n# stage [public/task.json] [--out DIR]\n#\n# Writes each input file of the task to DIR.\ncat public/task.json\n",
       "python3.12": "#!/bin/sh\necho the harness's interpreter\n",
+      "write-answer": "#!/bin/sh\n# write-answer: campaign-only answer writer\necho answer\n",
     };
-    const own = `# Operating Guide\n\n## Programs and tools\n- mark: prints marked.\n\n## Domain notes\nA mark counts once.\n\n${HOST_ONLY}\nAn answer over three lines is not valid.\n`;
+    const own = `# Operating Guide\n\n## Programs and tools\n- mark: prints marked.\n\n## Domain notes\nA mark counts once.\n\n${HOST_ONLY}\nRun write-answer before submit. An answer over three lines is not valid.\n`;
     const made = await campaign("exported", () => undefined, { ...MARKED, programs, guide: own });
     const into = join(root, "claude-tooled");
     const record = await exportForClaudeCode(into, { campaign: made.log, harness: made.child });
@@ -299,6 +300,7 @@ describe("a harness written out for Claude Code", () => {
     // Each program in PATH order with the first line of its own account, and one that gives none by
     // its name alone: what a program opens is said by the program, and no reading of its text decides it.
     expect(guide).toContain("\n- cat\n- mark\n- stage: stage [public/task.json] [--out DIR]\n");
+    expect(guide).not.toContain("write-answer");
     expect(guide).not.toContain("Writes each input file");
     expect(guide).toContain("(`scripts/toolchain/bin`) are on your PATH behind this machine's own programs");
     // No interpreter is named, the tool tree's own among its programs neither: a note that named

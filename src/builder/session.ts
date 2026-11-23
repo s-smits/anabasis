@@ -405,16 +405,21 @@ async function converse(
   // the last, which a call pi refuses before it runs (a tool the session lacks, arguments its schema
   // refuses) never reaches. A result is a result whichever call made it.
   let told = false;
+  let compacted = false;
   const footer = () => {
     if (told) return "";
     told = true;
-    return usedLine(used("during-tools"), limits);
+    const cue = compacted ? " Context compacted; read_opening holds the opening record and limits." : "";
+    return `${usedLine(used("during-tools"), limits)}${cue}`;
   };
   const tools = [
     ...walled(bench),
     practiceTool(bench),
     traceTool(bench),
-    openingTool(campaign === undefined ? first : opening, bench.said.opening),
+    openingTool(() => {
+      compacted = false;
+      return campaign === undefined ? first : opening();
+    }, bench.said.opening),
     finishTool(bench, campaign?.unmeasured),
     ...(campaign?.tools ?? []),
   ].map((each) => endingWith(each, footer));
@@ -463,6 +468,9 @@ async function converse(
     },
     onTurn: () => {
       told = false;
+    },
+    onCompact: () => {
+      compacted = true;
     },
     stops: [clock.signal, bench.halt.signal, request.kill],
   });

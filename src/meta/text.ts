@@ -19,3 +19,9 @@ export function plural(count: number, noun: string): string {
 export function textOr(value: string | null | undefined, fallback: string): string {
   return hasText(value) ? value : fallback;
 }
+
+/** True when `needle` appears in `haystack` bounded away from identifier characters (`[A-Za-z0-9_-]`). */
+export function hasWholeToken(haystack: string, needle: string): boolean {
+  const escaped = needle.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
+  return new RegExp(`(?<![A-Za-z0-9_-])${escaped}(?![A-Za-z0-9_-])`, "u").test(haystack);
+}

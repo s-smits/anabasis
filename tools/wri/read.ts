@@ -546,7 +546,11 @@ function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
       ].join("; "),
     ),
     ...firedIf(cut + open > 0, "SOLVE NEVER FINISHED", apart(solves(cut), solves(open))),
-    ...firedIf(unended.length > 0, "EXAMINER NEVER FINISHED", apart(ids("cut"), ids("open"))),
+    ...firedIf(
+      ids("cut") !== "" || (log.of("campaign.ended").length > 0 && ids("open") !== ""),
+      "EXAMINER NEVER FINISHED",
+      apart(ids("cut"), ids("open")),
+    ),
     ...firedIf(Object.keys(unjudged).length > 0, "MISSES WITHOUT A VERDICT", tally(unjudged)),
     ...firedIf(crashed.length > 0, "SESSION CRASHED", crashed.join(", ")),
     ...costTriggers(log),

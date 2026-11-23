@@ -684,6 +684,8 @@ describe("adversarial draft audit", () => {
       }),
       callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: "999" }] }),
       callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: "-1" }] }),
+      callTool(PROBE, { task: "t-1", changes: [{ path: "file:results.csv", value: "null" }] }),
+      callTool(PROBE, { task: "t-1", changes: [{ path: "file:missing.csv", value: "null" }] }),
       reviewCall({
         verdict: "defects",
         findings: [{ kind: "vacuous-pass", task: "t-2", probe: 1, reason: "wrong task" }],
@@ -708,13 +710,18 @@ describe("adversarial draft audit", () => {
       }),
       reviewCall({
         verdict: "defects",
+        findings: [{ kind: "check-defect", task: "t-1", probe: 2, reason: "missing check id" }],
+        summary: "missing check id",
+      }),
+      reviewCall({
+        verdict: "defects",
         findings: [{ kind: "check-defect", task: "t-1", check: "other", probe: 2, reason: "wrong check" }],
         summary: "wrong check id",
       }),
       reviewCall({
         verdict: "defects",
         findings: [
-          { kind: "vacuous-pass", task: "t-1", probe: 1, reason: "span=999 still passed" },
+          { kind: "vacuous-pass", task: "t-1", probe: 3, reason: "removing results.csv still passed" },
           { kind: "check-defect", task: "t-1", check: "span", probe: 2, reason: "span=-1 blocked by span" },
           {
             kind: "objective-defect",
@@ -749,9 +756,12 @@ describe("adversarial draft audit", () => {
     const res = await reviewDraft(s.reader, target);
     expect(res.verdict).toBe("defects");
     expect(res.findings).toHaveLength(3);
-    expect(res.probes).toHaveLength(2);
+    expect(res.probes).toHaveLength(3);
+    expect(res.probes[2]?.texts).toEqual([
+      { path: "file:results.csv", was: { lines: 2, bytes: 8 }, now: { lines: 0, bytes: 0 } },
+    ]);
     expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(0);
-    expect(read(s.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(8);
+    expect(read(s.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(9);
     expect(read(s.log).filter(({ kind }) => kind === "referee.draft")).toMatchObject([{ data: { pass: 2 } }]);
     expect(unfinished(read(s.log))).toEqual([]);
     expect(billedBetween(read(s.log), 0)).toBeGreaterThanOrEqual(0);

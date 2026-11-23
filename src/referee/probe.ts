@@ -64,7 +64,7 @@ const VALUE_MAX_CHARS = 4000;
 const CHANGE_SCHEMA = Type.Object({
   path: Type.String({
     description:
-      "An existing field or its parent (`$` only for a scalar root). Bracket array indices and quote keys holding `.` or `/` (`$.files['src/main.cpp']`). Submitted text files use `file:<path>` (or `file:<archive>/<member>`); a new `file:<path>` with a JSON string `value` adds a text file.",
+      "An existing field or its parent (`$` only for a scalar root). Bracket array indices and quote keys holding `.` or `/` (`$.files['src/main.cpp']`). Submitted text files use `file:<path>` (or `file:<archive>/<member>`); a new `file:<path>` with a JSON string `value` adds a text file, and `value: \"null\"` on an existing submitted `file:<path>` removes that deliverable file.",
   }),
   value: Type.Optional(
     Type.String({
@@ -156,9 +156,10 @@ function rowText(row: ProbeRow): string {
       if (edit !== null) {
         return `  ${path} edited, its one passage of ${String(edit.find.length)} characters rewritten as ${String(edit.replace.length)}`;
       }
-      return path.startsWith(FILE)
-        ? `  ${path} given a whole text`
-        : `  ${path} replaced with ${String(value)}`;
+      if (path.startsWith(FILE)) {
+        return value?.trim() === "null" ? `  ${path} removed` : `  ${path} given a whole text`;
+      }
+      return `  ${path} replaced with ${String(value)}`;
     }),
     ...row.texts.map(({ path, was, now }) =>
       was === null
@@ -268,6 +269,15 @@ export function fileTexts(files: readonly AnswerFile[]): Map<string, string> {
 function changedFile(files: readonly AnswerFile[], change: ProbeRow["changes"][number]): AnswerFile[] {
   const at = files.findIndex(({ path }) => inFile(change.path, path));
   const file = files[at];
+  const wholeFile = file !== undefined && change.path === `${FILE}${file.path}`;
+  if (change.edit === null && change.value?.trim() === "null") {
+    if (!wholeFile) {
+      throw new Error(
+        `${change.path} cannot be removed: \`value: "null"\` removes an existing submitted \`file:<path>\` deliverable`,
+      );
+    }
+    return files.toSpliced(at, 1);
+  }
   const was = fileTexts(files).get(change.path);
   const folder = files.some(({ path }) => `${FILE}${path}`.startsWith(`${change.path}/`));
   if (was === undefined && (file !== undefined || change.edit !== null || folder)) {
@@ -281,7 +291,7 @@ function changedFile(files: readonly AnswerFile[], change: ProbeRow["changes"][n
       `${change.path} takes a JSON string \`value\` for its whole text, or a passage \`find\` names once with its \`replace\`, that changes it, each at most ${String(VALUE_MAX_CHARS)} characters or the file's length`,
     );
   }
-  if (file === undefined || change.path === `${FILE}${file.path}`) {
+  if (file === undefined || wholeFile) {
     try {
       const whole = textFiles([{ path: change.path.slice(FILE.length), text: parsed }]);
       return files.toSpliced(file === undefined ? files.length : at, 1, ...whole);
@@ -352,14 +362,21 @@ async function executeProbe(given: {
   const before = await original();
   const after = await verify(task, changed, signal, changedFiles);
   const submitted = fileTexts(files);
+  const updated = fileTexts(changedFiles);
   return {
     id: used + 1,
     changes,
-    texts: [...fileTexts(changedFiles)].flatMap(([path, now]) => {
+    texts: onFiles.flatMap(({ path }) => {
       const was = submitted.get(path);
-      return onFiles.some((change) => change.path === path)
-        ? [{ path, was: was === undefined ? null : sizeOf(was), now: sizeOf(now) }]
-        : [];
+      const now = updated.get(path);
+      if (was === undefined && now === undefined) return [];
+      return [
+        {
+          path,
+          was: was === undefined ? null : sizeOf(was),
+          now: now === undefined ? { lines: 0, bytes: 0 } : sizeOf(now),
+        },
+      ];
     }),
     original: before,
     changed: after,

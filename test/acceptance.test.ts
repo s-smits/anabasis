@@ -516,6 +516,65 @@ describe("cross-example and hidden-value probes (probeReading)", () => {
     });
     expect([nonRes.faults, nonRes.notes]).toEqual([[], []]);
   });
+
+  it("distinguishes deliverable-blind faults, objective-only deliverable notes, partial strip notes, and checked deliverables", async () => {
+    const file = { path: "report.md", base64: "b2s=", text: "ok" };
+    const withFiles: Control[] = [
+      { taskId: "ex-001", answer: { v: 1 }, files: [file], refusedBy: null },
+      { taskId: "ex-002", answer: { v: 2 }, files: [file], refusedBy: null },
+      { taskId: "ex-003", answer: { v: 3 }, files: [file], refusedBy: null },
+      { taskId: "ex-001", answer: { v: 0 }, files: [file], refusedBy: "ok" },
+    ];
+    const runWith = (check: Verifier) =>
+      readChecker({
+        brief: probeBrief,
+        contract,
+        verify: check,
+        tasks: tasksOf([null, null, null]),
+        controls: withFiles,
+        found: () => true,
+        width: 2,
+      });
+
+    // Blind to deliverables -> blocking fault, no duplicate note.
+    const blind = await runWith(async (t, a) =>
+      asRecord(a)?.v === asRecord(t.publicInput)?.id
+        ? { kind: "pass", objective: 10 }
+        : { kind: "fail", blocking: ["ok"] },
+    );
+    expect(blind.faults).toEqual([matching(/deliverable files had no effect/u)]);
+    expect(blind.notes).toEqual([]);
+
+    // Only objective reads deliverables -> factual note, 0 faults.
+    const objOnly = await runWith(async (t, a, _s, files) =>
+      asRecord(a)?.v === asRecord(t.publicInput)?.id
+        ? { kind: "pass", objective: (files?.length ?? 0) > 0 ? 10 : 1 }
+        : { kind: "fail", blocking: ["ok"] },
+    );
+    expect(objOnly.faults).toEqual([]);
+    expect(objOnly.notes).toEqual([matching(/only the objective read deliverables/u)]);
+
+    // Partial deliverable check (ex-001 passes without files, others fail) -> factual note for ex-001.
+    const partial = await runWith(async (t, a, _s, files) => {
+      const id = asRecord(t.publicInput)?.id;
+      if (asRecord(a)?.v !== id) return { kind: "fail", blocking: ["ok"] };
+      return id === 1 || (files?.length ?? 0) > 0
+        ? { kind: "pass", objective: 10 }
+        : { kind: "fail", blocking: ["ok"] };
+    });
+    expect(partial.faults).toEqual([]);
+    expect(partial.notes).toEqual([
+      "the accept control of ex-001 still passed with all deliverable files removed",
+    ]);
+
+    // Validity check rejects missing deliverables -> 0 faults, 0 notes.
+    const checked = await runWith(async (t, a, _s, files) =>
+      asRecord(a)?.v === asRecord(t.publicInput)?.id && (files?.length ?? 0) > 0
+        ? { kind: "pass", objective: 10 }
+        : { kind: "fail", blocking: ["ok"] },
+    );
+    expect([checked.faults, checked.notes]).toEqual([[], []]);
+  });
 });
 
 describe("seeded property invariants", () => {

@@ -188,15 +188,71 @@ function doNothingAnswer(
 }
 
 /**
- * Two probes of a drafted exam's examples, run without a model beside its controls: faults where
- * checks are completely blind to the task or hidden values, and factual notes (never refusal gates)
- * when validity checks alone pass every hidden-value swap or when an accept control passes some
- * other examples.
+ * Probe deliverable-carrying accept controls with all deliverable files removed: faults when no
+ * check or objective reads deliverables, and surfaces factual notes when only the objective reads
+ * them or when some accept controls still pass without files.
+ */
+async function deliverableReading(
+  { verify, brief, tasks, width }: Read,
+  accepted: readonly ControlAnswerRun[],
+): Promise<{ readonly faults: readonly string[]; readonly notes: readonly string[] }> {
+  const byId = new Map(tasks.map((task) => [task.taskId, task]));
+  const withFiles = accepted.flatMap((run) => {
+    const task = (run.files?.length ?? 0) > 0 ? byId.get(run.taskId) : undefined;
+    return task === undefined ? [] : [{ run, task }];
+  });
+  if (withFiles.length === 0) return { faults: [], notes: [] };
+  const stripped = (
+    await pooled(withFiles, width, async ({ run, task }) => ({
+      run,
+      verdict: await verify(task, run.answer, undefined, []),
+    }))
+  ).filter(({ verdict }) => verdict.kind !== "non-result");
+  if (stripped.length === 0) return { faults: [], notes: [] };
+  const rule = { direction: brief.objective?.direction ?? "higher" } as const;
+  const allValid = stripped.every(
+    ({ verdict }) => verdict.kind === "pass" || (verdict.kind === "faulty" && verdict.check === OBJECTIVE.id),
+  );
+  const blind = stripped.every(
+    ({ run, verdict }) =>
+      verdict.kind === "pass" &&
+      Math.abs(gainOver(rule, objectiveOf(verdict), objectiveOf(run.verdicts[0]))) < GAP_FLOOR,
+  );
+  const partial = allValid
+    ? []
+    : stripped.flatMap(({ run, verdict }) =>
+        verdict.kind === "pass"
+          ? [`the accept control of ${run.taskId} still passed with all deliverable files removed`]
+          : [],
+      );
+  return {
+    faults: blind
+      ? [
+          "deliverable files had no effect on any accept control: with all deliverables removed, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective reads them",
+        ]
+      : [],
+    notes: [
+      ...partial,
+      ...(allValid && !blind
+        ? [
+            "every validity check passed when each example's deliverable files were removed: only the objective read deliverables, so validity checks ignore submitted files",
+          ]
+        : []),
+    ],
+  };
+}
+
+/**
+ * Three probes of a drafted exam's examples, run without a model beside its controls: faults where
+ * checks are completely blind to the task, hidden values or deliverable files, and factual notes
+ * (never refusal gates) when validity checks alone pass every hidden-value swap or deliverable
+ * removal, or when an accept control passes some other examples.
  */
 async function probeReading(
-  { verify, brief, tasks, width }: Read,
+  given: Read,
   runs: readonly ControlAnswerRun[],
 ): Promise<{ readonly faults: readonly string[]; readonly notes: readonly string[] }> {
+  const { verify, brief, tasks, width } = given;
   const accepted = runs.filter(
     ({ refusedBy, verdicts: [first] }) => refusedBy === null && first.kind === "pass",
   );
@@ -268,6 +324,7 @@ async function probeReading(
         verdict.kind === "pass" &&
         Math.abs(gainOver(rule, objectiveOf(verdict), objectiveOf(run.verdicts[0]))) < GAP_FLOOR,
     );
+  const deliverables = await deliverableReading(given, accepted);
   return {
     faults: [
       ...swapped,
@@ -276,6 +333,7 @@ async function probeReading(
             "hidden values had no effect on any accept control: with another example's hidden values in place of its own, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective is decided by them",
           ]
         : []),
+      ...deliverables.faults,
     ],
     notes: [
       ...partialSwaps,
@@ -288,6 +346,7 @@ async function probeReading(
             "every validity check passed when each example's hidden values were swapped with another's: only the objective read hidden values, so validity checks test public properties alone",
           ]
         : []),
+      ...deliverables.notes,
     ],
   };
 }

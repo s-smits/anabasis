@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Repository invariants and map; read the owning skill before modifying or answering about a subsystem.
+Repository invariants and map; read the owning skill before editing or answering about a subsystem.
 
 | Scope | Read first | Related skills | Verify with |
 | --- | --- | --- | --- |
@@ -9,20 +9,20 @@ Repository invariants and map; read the owning skill before modifying or answeri
 | Readings, scoring, sampling, A/A, `decide` | `comparison-reading` (§7–8) | `promotion-tuner`, `attribution-and-proof`, `comparison-review`, `compare-systems` | `promotion-tuner` replay |
 | Commits, PRs, checks, claims, writing | `repository-practice` (§9–14), `tools/oxlint/HABITS.md` | `stack-pr`, `consolidate-stack`, `simplify`, `reduce-complexity`, `commit-r`, `local-checks`, `system-audit`, `codex-gpt-swarm` | `bun run gate`, `preflight.ts` |
 
-Run skill scripts via `bun .claude/skills/<skill>/scripts/<name>.ts`. Current metrics live in `docs/plan.md`; `docs/v1.md`, `docs/transfer.md` and `studies/` hold the v1 record; `tools/runtime/moments.ts` injects nudges on governed paths.
+Run skill scripts via `bun .claude/skills/<skill>/scripts/<name>.ts`. Current metrics: `docs/plan.md`; v1 record: `docs/v1.md`, `docs/transfer.md`, `studies/`; governed-path nudges: `tools/runtime/moments.ts`.
 
 **How to approach a task.** Carry work as far as authority permits, through verification and delivery:
-1. **Fix the owning design, not the symptom.** Refactor the owner when you own the boundary or are consolidating; weigh rebase blast radius on deep stacks, and patch locally when structural change awaits a §3 decision.
+1. **Fix the owning design, not the symptom.** Refactor the owner when owning the boundary or consolidating; weigh rebase blast radius on deep stacks, and patch locally when structural change awaits a §3 decision.
 2. **Replay before changing any decision rule.** Replay admission, sampling, scoring, practice-release or stop-rule changes over `data/runs/` (`promotion-tuner`, `system-path-simulation`) and report every flipped decision.
 3. **Subtract before adding.** Check existing owners (rule 12) and collapse seams before adding a flag, guard, branch, helper or prompt paragraph.
 4. **Connect stored skill outputs, then verify at primary source.** Join `.ana/wri/` artifacts with live folds before spawning subagents or scanning raw logs (§9); assert nothing unverified and correct errors immediately.
-5. **Stress-test your change.** Check the strongest objection, what refutes it, and which test or mutant fails before and passes after.
+5. **Stress-test your change.** Check the strongest objection, its refutation, and which test or mutant fails before and passes after.
 
-Resolve routine ambiguity by choosing the strongest option and stating what would overturn it; pause only for missing permissions or a §3 decision, with analysis and recommendation. Audits, reviews and plans stay read-only. Report the evidence rung (§9) and open items. Keep operator infrastructure (hosts, logins, accounts, scheduled jobs, full run names) out of tracked files, commits and PRs.
+Finish or checkpoint current work before unrelated tasks, unless redirected or stopped. Resolve routine ambiguity with the strongest option and what would overturn it; pause only for missing permissions or a §3 decision, with analysis and recommendation. Audits, reviews, plans stay read-only. Report evidence rung (§9) and open items. Keep operator infra (hosts, logins, accounts, scheduled jobs, full run names) out of tracked files, commits and PRs.
 
 ## 1. What Anabasis does
 
-From a domain query, a campaign builds a **Built Harness** (guide + tooling) for a fixed **solver** model to isolate the harness's causal effect:
+From a domain query, a campaign builds a **Built Harness** (guide + tooling) for a fixed **solver** to isolate its causal effect:
 
 > Is the candidate harness better than the reference harness, for this solver, on held-out tasks that neither was built on?
 

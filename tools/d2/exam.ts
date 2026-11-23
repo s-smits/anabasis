@@ -2,10 +2,11 @@
  * The exam of a campaign that opened from a prompt, as files: the draft its log holds, staged as a
  * pack laid out the way a stored one is, so that every command reads it as it reads a v1 bundle.
  *
- * Declared host/toolchain `tools` are recorded in `.toolchain/host-tools.json` so the offline cell
- * can dispatch directly to resolved host executables without shell wrappers, while every check of a
- * drafted exam remains `authored` under Rule 10 until admitted by `--admit` or an unattended launch
- * (`tools/d1b/draft.ts`).
+ * When the drafting Examiner installed tools under `.toolchain/` in its home, `stageExam` freezes
+ * that tree into the staged bundle first (preserving symlinks). Any remaining declared host
+ * executables are recorded in `.toolchain/host-tools.json` so the offline cell dispatches directly
+ * to resolved host executables without shell wrappers while keeping drafted checks `authored` under
+ * Rule 10 until admitted (`tools/d1b/draft.ts`).
  */
 import { type Draft, draftOf } from "#src/examiner/draft.ts";
 import { readChecker } from "#src/kernel/acceptance.ts";
@@ -18,14 +19,15 @@ import {
   openVerifier,
   readBrief,
 } from "#src/kernel/verify.ts";
-import { CHECK_BRIEF, EVALUATOR_FILE } from "#src/meta/bundle-layout.ts";
-import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { CHECK_BRIEF, EVALUATOR_FILE, TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
+import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
 import { checkProgram, contractOf, packControls, readPack, toolOnPath } from "../m0/stored-sweep.ts";
 
 /** A draft as a pack on disk. */
@@ -63,27 +65,44 @@ export function stagedExamOf(log: string): Staged | null {
 /** The id of an example task, by its place in the draft. */
 export const exampleId = (index: number): string => `ex-${String(index + 1).padStart(3, "0")}`;
 
-/**
- * Stage a draft under a campaign's folder, and return where. Any plain program name declared by a
- * check or the objective is recorded in `.toolchain/host-tools.json` so `resolveVerifierTool`
- * dispatches directly to the host toolchain executable while keeping drafted checks `authored`.
- */
-export function stageExam(dir: string, draft: Draft): Staged {
-  const { bundle, checks } = examStaged(dir, draft);
-  if (existsSync(checks)) return { bundle, checks };
-  const model = join(bundle, "correctness-model");
-  const toolchain = join(bundle, ".toolchain");
-  mkdirSync(model, { recursive: true });
+/** Freeze any Examiner-installed `.toolchain/` from `sourceHome` and record any remaining declared
+ *  host executables in `.toolchain/host-tools.json` so `resolveVerifierTool` dispatches directly. */
+function stageTools(bundle: string, draft: Draft, sourceHome?: string): void {
+  const toolchain = join(bundle, TOOL_TREE_DIR);
+  if (sourceHome !== undefined) {
+    rmSync(toolchain, { recursive: true, force: true });
+    const homeTools = join(sourceHome, TOOL_TREE_DIR);
+    if (existsSync(homeTools)) cpSync(homeTools, toolchain, { recursive: true, verbatimSymlinks: true });
+  }
   mkdirSync(join(toolchain, "bin"), { recursive: true });
+  const stagedPath = toolTreeSearchDirs(toolchain).join(":");
   const engines = [
     ...new Set([...draft.checks.flatMap(({ tools }) => tools ?? []), ...(draft.objectiveTools ?? [])]),
   ].filter(isSafePathSegment);
-  if (engines.length > 0) {
-    writeFileSync(
-      join(toolchain, HOST_TOOLS_FILE),
-      `${capturedJsonStringify({ tools: engines }, null, 2)}\n`,
-    );
+  const hostOnly = engines.filter((engine) => Bun.which(engine, { PATH: stagedPath }) === null);
+  const hostFile = join(toolchain, HOST_TOOLS_FILE);
+  if (hostOnly.length > 0) {
+    writeFileSync(hostFile, `${capturedJsonStringify({ tools: hostOnly }, null, 2)}\n`);
+  } else {
+    rmSync(hostFile, { force: true });
   }
+}
+
+/**
+ * Stage a draft under a campaign's folder, and return where. When `sourceHome` holds a
+ * `.toolchain/` directory populated by the drafting Examiner, it is frozen into the staged exam's
+ * `.toolchain/` first (preserving symlinks); any remaining declared program is recorded in
+ * `.toolchain/host-tools.json` so `resolveVerifierTool` resolves it from the host toolchain path.
+ */
+export function stageExam(dir: string, draft: Draft, sourceHome?: string): Staged {
+  const { bundle, checks } = examStaged(dir, draft);
+  if (existsSync(checks)) {
+    if (sourceHome !== undefined) stageTools(bundle, draft, sourceHome);
+    return { bundle, checks };
+  }
+  const model = join(bundle, "correctness-model");
+  mkdirSync(model, { recursive: true });
+  stageTools(bundle, draft, sourceHome);
   const hidden = draft.tasks.some((task) => task.hidden !== null) ? "whole" : "none";
   const brief = {
     correctnessContract: CHECK_PROGRAM_CONTRACT,
@@ -155,9 +174,9 @@ export function stageExam(dir: string, draft: Draft): Staged {
  * reads the draft's shape before it calls this (`draftFaults`), and the reading's notes are left
  * out, since on the reply that ends the session they would carry nothing to a model.
  */
-export async function draftReading(dir: string, draft: Draft, width: number) {
+export async function draftReading(dir: string, draft: Draft, width: number, sourceHome?: string) {
   try {
-    const { bundle, checks } = stageExam(dir, draft);
+    const { bundle, checks } = stageExam(dir, draft, sourceHome);
     const pack = readPack(bundle);
     const contract = contractOf(pack.brief, draft.answerFormat);
     const controls = packControls(bundle);

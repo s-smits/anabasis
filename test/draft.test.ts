@@ -568,6 +568,55 @@ describe("staging and offline reading", () => {
     expect(before?.sha256).toBeDefined();
     expect(after?.sha256).not.toBe(before?.sha256);
 
+    // Examiner-installed `.toolchain/` executables (and sibling files) freeze into the offline verifier cell
+    // ahead of host PATH, clear `authoredFaults`, refresh on retries, and run offline after `home` is deleted.
+    const home = realpathSync(mkdtempSync(join(tmpdir(), "ana-draft-toolchain-")));
+    const customDir = join(root, "custom-toolchain");
+    const binDir = join(home, ".toolchain", "bin");
+    const libDir = join(home, ".toolchain", "lib");
+    mkdirSync(binDir, { recursive: true });
+    mkdirSync(libDir, { recursive: true });
+    writeFileSync(join(libDir, "factor.txt"), "5\n");
+    const engineBin = join(binDir, "scale-engine");
+    writeFileSync(
+      engineBin,
+      [
+        "#!/bin/sh",
+        'dir="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"',
+        'factor="$(cat "$dir/lib/factor.txt")"',
+        'read -r base ans; [ "$ans" = "$((base * factor))" ] && echo OK || echo BAD',
+        "",
+      ].join("\n"),
+    );
+    chmodSync(engineBin, 0o755);
+    const customDraft: Draft = {
+      ...SOUND,
+      checks: [{ id: "check-product", rule: "R1", assertion: "via scale-engine", tools: ["scale-engine"] }],
+      evaluator: [
+        "export const checks = {",
+        '  "check-product": async (req, rt) => {',
+        '    const res = await rt.tools.run({ toolId: "scale-engine", stdin: `${req.publicTask.publicInput.base} ${req.artifact.answer}\\n` });',
+        '    return res.exitCode === 0 && res.stdout.trim() === "OK";',
+        "  },",
+        "};",
+      ].join("\n"),
+    };
+    expect((await draftReading(customDir, customDraft, 2, home)).faults.length).toBeGreaterThan(0);
+    // Fixing `.toolchain/lib/factor.txt` in `home` refreshes the staged toolchain even on identical draft JSON.
+    writeFileSync(join(libDir, "factor.txt"), "6\n");
+    const customOk = await draftReading(customDir, customDraft, 2, home);
+    expect(customOk.faults).toEqual([]);
+    expect(authoredFaults(customOk.read?.reading.checks ?? [], new Set())).toEqual([]);
+    rmSync(home, { recursive: true, force: true });
+    // After `home` is gone, the frozen staged bundle still runs offline and pins the installed executable directly.
+    const frozen = stageExam(customDir, customDraft);
+    expect(existsSync(join(frozen.bundle, ".toolchain", HOST_TOOLS_FILE))).toBe(false);
+    const customPinned = pinnedEngines({ checks: frozen.checks, tools: join(frozen.bundle, ".toolchain") });
+    expect(customPinned).toHaveLength(1);
+    expect(customPinned[0]?.name).toBe("scale-engine");
+    expect(customPinned[0]?.sha256).toBe(sha256OfFile(customPinned[0]?.path ?? ""));
+    expect((await draftReading(customDir, customDraft, 2)).faults).toEqual([]);
+
     // Undeclared tool invocation and missing host binary both fail cleanly.
     const undeclared = await draftReading(
       join(root, "undeclared"),

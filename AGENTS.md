@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Every coding agent loads this document for Anabasis's invariants and repository structure. Detailed mechanisms live in four numbered skills; read the owning skill before modifying a subsystem or answering questions about it.
+Repository invariants and map; read the owning skill before modifying or answering about a subsystem.
 
 | Scope | Read first | Related skills | Verify with |
 | --- | --- | --- | --- |
@@ -15,18 +15,18 @@ Run skill scripts via `bun .claude/skills/<skill>/scripts/<name>.ts`. Current me
 1. **Fix the owning design, not the symptom.** Refactor the owning module when you own the boundary or are consolidating; weigh rebase blast radius on deep stacks, and patch locally when structural change awaits a §3 decision.
 2. **Replay before changing any decision rule.** Replay changes to admission, sampling, scoring, practice release or stopping over `data/runs/` (`promotion-tuner`, `system-path-simulation`) and report every flipped decision.
 3. **Subtract before adding.** Check existing owners (rule 12) and collapse seams before adding a flag, guard, branch, helper or prompt paragraph.
-4. **Verify every claim at the primary source.** Assert nothing about source, logs, remotes or the clock without reading it directly; correct inaccuracies immediately.
+4. **Connect stored skill outputs, then verify at the primary source.** Join existing `.ana/wri/` artifacts with live folds before spawning subagents or scanning raw logs (§9). Assert nothing without direct verification; correct inaccuracies immediately.
 5. **Stress-test your change.** Check the strongest objection, what refutes it, and which test or mutant fails before and passes after.
 
-Resolve routine ambiguity by choosing the most defensible option and stating what would overturn it. Pause only for missing permissions or a §3 decision, supplying analysis and a recommendation. Audits, reviews and plans stay read-only. Report the evidence rung (§9) and what remains open. Keep operator infrastructure (hosts, logins, accounts, scheduled jobs, full run names) out of tracked files, commits and PRs.
+Resolve routine ambiguity by choosing the strongest option and stating what would overturn it. Pause only for missing permissions or a §3 decision, with analysis and recommendation. Audits, reviews and plans stay read-only. Report the evidence rung (§9) and open items. Keep operator infrastructure (hosts, logins, accounts, scheduled jobs, full run names) out of tracked files, commits and PRs.
 
 ## 1. What Anabasis does
 
-From a domain query, a campaign builds a **Built Harness** (a harness): the operating guide and domain tooling used by a fixed **solver** model across tasks in that domain. Fixing the solver isolates the harness's causal effect:
+From a domain query, a campaign builds a **Built Harness** (operating guide + domain tooling) for a fixed **solver** model, isolating the harness's causal effect:
 
 > Is the candidate harness better than the reference harness, for this solver, on held-out tasks that neither was built on?
 
-A controlled paired comparison answers this (§7). Both harnesses solve the same held-out tasks afresh under pre-registered conditions; an isolated Verifier checks validity; the Referee adjudicates reproducible rejections; and a one-sided paired sign-flip test over per-task scores registers a **step** (promoting candidate to reference) or no significant effect. Cross-solver comparisons run separately (`compare-systems`).
+A paired comparison answers this (§7): both harnesses solve held-out tasks afresh under pre-registered conditions; an isolated Verifier checks validity; the Referee rules on reproducible rejections; a one-sided paired sign-flip test registers a **step** (promoting candidate to reference) or no effect. Cross-solver comparisons use `compare-systems`.
 
 ### The four reported factors
 
@@ -114,7 +114,7 @@ Logs contain hidden exam values—keep them out of prompts, PRs and transcripts.
 
 ## 6. A campaign's commands
 
-`bun tools/d2/harness-builder.ts` runs unattended until one of seven terminal states: `budget`, `stop`, `exam`, `no-room`, `environment`, `operator` or `finished` (3 consecutive Builder sessions with no move). Operators steer live runs via `tools/d2/word.ts` (hidden from all seats). Configuration locks solver, limits, `--target` and `--solves`. Practice tasks release exclusively from reference solves (≤ half the held-out pool, preserving `comparisonFloor` via `practiceDue`).
+`bun tools/d2/harness-builder.ts` runs unattended until `budget`, `stop`, `exam`, `no-room`, `environment`, `operator` or `finished` (3 no-move Builder sessions). Operators steer live runs via `tools/d2/word.ts` (hidden from seats). Config locks solver, limits, `--target` and `--solves`. Practice releases from reference solves only (≤ half the held-out pool, preserving `comparisonFloor` via `practiceDue`).
 
 Moves are gated by `src/campaign/admission.ts`, session admission and the stopping rule (overridden only by `--past-stop "<why>"`). Nothing appends before a final refusal except `build.checkpoint` frozen by `compare`.
 
@@ -164,11 +164,11 @@ Own conclusions and subagent reports sit lowest until grounded higher. Compute c
 | A refusal | Refusal text (proves only its trigger) |
 | Attribution to part of a harness | Ablation comparison against `programs-of:<digest>` |
 
-Separate distinct counts, give every rate its denominator, and evaluate longitudinal progress across fresh-run cohorts (`promotion-tuner`, `scripts/trend.ts`).
+Separate distinct counts with denominators. Triage releases, runs and cohorts inline by connecting stored skill outputs (`.ana/wri/` `synthesis.md`, `cross-domain.md`, `outcomes-*.md`, `outside-reads.md`, `plan.md`, `cycle.md`) with live folds (`runs source` commit ancestry, `runs view` post-snapshot deltas, `promotion-tuner` `table.ts`/`trend.ts`, `starter-reads.ts`, `score.ts`): use prose artifacts as indices, re-ground key counts in owning folds, and separate code fixes from confirmed factor shifts.
 
 ## 10. Runs with a real model
 
-Live runs spend budget and require explicit authorisation for named runs. Seats run inside Seatbelt or Bubblewrap (unavailable wall = typed non-result). Procedures live in `run-improvement-campaign`, `run-management` and `whole-run-investigation`; `bun run runs` lists verbs.
+Live runs spend budget and need explicit authorisation per named run. Seats run in Seatbelt or Bubblewrap (unavailable wall = typed non-result). See `run-improvement-campaign`, `run-management`, `whole-run-investigation` (`bun run runs`).
 
 1. **The worktree is the condition**: launch in a clean worktree at a published commit (`runs fresh`), leave `src/` untouched while active; paid seats refuse main checkout or `ana-followed` (`treeFault`).
 2. **Prove without a model first** (`--dry-run`, `runs replay`, `runs rehearse`).
@@ -192,7 +192,7 @@ Use the Bun pinned in `package.json`, keep git hooks enabled, run `bun run test 
 
 Releases land an entire PR stack: **small** (`0.x.y+1`) after automated proof; **big** (`0.x+1.0`) only when exercised live at stack head and a reported factor shifts beyond inter-run spread. Compare runs by commit (`bun run runs source`), not version.
 
-Follow `stack-pr` and run `bun .claude/skills/stack-pr/scripts/stack.ts` before branching or pushing:
+Run `stack-pr` (`scripts/stack.ts`) before branching or pushing:
 - Extend the open PR owning a problem, or stack a new draft PR on top and link via `bun run land -- <new top> --sanitize` (`--from` requires operator authorisation).
 - One worktree per PR, no manual `git stash`, every commit passes checks independently.
 - Never modify another session's PR, worktree or run (except replaying unchanged commits while restacking).

@@ -19,7 +19,7 @@ import {
   readFileSync,
 } from "../../src/meta/filesystem.ts";
 import { sha256, sha256OfFile } from "../../src/meta/digest.ts";
-import { keyIfDefined, keysIf } from "../../src/meta/optional-key.ts";
+import { keysIf } from "../../src/meta/optional-key.ts";
 import { availableParallelism, tmpdir } from "../../src/meta/os.ts";
 import { basename, dirname, isAbsolute, join, relative } from "../../src/meta/path.ts";
 import { parseArgs, type ParseArgsOptionsConfig, runtimeProcess } from "../../src/meta/process.ts";
@@ -576,7 +576,8 @@ export async function proveCommits(
   const queue: Queued[] = proofs.map((proof, index) => ({ ...proof, index }));
   const run = async (at: string, proof: Queued, pass: Pass, place: Place): Promise<void> => {
     const { index, commit } = proof;
-    const share = String(Math.max(2, Math.floor((availableParallelism() - 2) / place.slots)));
+    const { remote, slots } = place;
+    const share = String(Math.max(2, Math.floor((availableParallelism() - 2) / slots)));
     let tree = free.pop();
     if (tree === undefined) {
       tree = mkdtempSync(join(tmpdir(), "ana-gate-"));
@@ -587,7 +588,7 @@ export async function proveCommits(
     git(tree, ["checkout", "-q", "-f", "--detach", commit]);
     git(tree, ["clean", "-fdq"]);
     const log = join(logs, `${who}-${short(commit)}-${pass}.log`);
-    say(`${at}: ${WHAT[pass]}${place.remote === undefined ? "" : ` on ${place.remote}`}. Log: ${log}`);
+    say(`${at}: ${WHAT[pass]}${remote === undefined ? "" : ` on ${remote}`}. Log: ${log}`);
     mark(commit, "pending", WHAT[pass]);
     const fd = openSync(log, "w");
     const started = Date.now();
@@ -595,10 +596,10 @@ export async function proveCommits(
     const child = Bun.spawn(["bun", GATE, ...FLAGS[pass]], {
       cwd: tree,
       env: {
-        ...keysIf(pass === "static" && place.remote === undefined, () => ({ ANA_TEST_WORKERS: share })),
+        ...keysIf(pass === "static" && remote === undefined, () => ({ ANA_TEST_WORKERS: share })),
         ...runtimeProcess.env,
         ANA_TEST_BAIL: "1",
-        ...keyIfDefined("ANA_CHECK_HOST", place.remote),
+        ...keysIf(remote !== undefined, () => ({ ANA_CHECK_HOST: remote, ANA_RUNNER_SPARE_HELD: "1" })),
       },
       // Its own group, so a stop reaches the steps and the runner's ssh beneath it.
       detached: stop !== undefined,
@@ -636,7 +637,7 @@ export async function proveCommits(
     const state = verdict ? "failure" : "error";
     mark(commit, state, FAILED[state]);
   };
-  const running = new Set<Promise<void>>();
+  const running = new Set<Promise<boolean>>();
   try {
     // Until the queue, into which a pass given no verdict comes back, and the passes under way are empty.
     for (;;) {
@@ -662,9 +663,7 @@ export async function proveCommits(
         continue;
       }
       queue.shift();
-      const task: Promise<void> = run(at, next, pass, place).then(() => {
-        running.delete(task);
-      });
+      const task: Promise<boolean> = run(at, next, pass, place).then(() => running.delete(task));
       running.add(task);
     }
     await Promise.all(running);

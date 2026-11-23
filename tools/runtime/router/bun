@@ -9,12 +9,22 @@
 # with a package.json of its own beneath it, such as packages/ui, runs its own scripts: its
 # `bun run typecheck` checks that package, where the root's would check other files.
 set -euo pipefail
-top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-here="$(pwd -P)"
+orig=("$@")
+work="$PWD"
+if [[ "${1-}" == "--cwd" && $# -ge 2 && -d "${2-}" ]]; then
+  work="$2"
+  shift 2
+elif [[ "${1-}" == --cwd=* && -d "${1#--cwd=}" ]]; then
+  work="${1#--cwd=}"
+  shift
+fi
+top="$(git -C "$work" rev-parse --show-toplevel 2>/dev/null || true)"
+[[ -z "$top" ]] || top="$(cd "$top" && pwd -P)"
+here="$(cd "$work" && pwd -P)"
 while [[ -n "$top" && "$here" != "$top" && "$here" != / && ! -f "$here/package.json" ]]; do
   here="$(dirname "$here")"
 done
-package="${top:-$PWD}/package.json"
+package="${top:-$work}/package.json"
 pin=""
 if [[ -f "$package" ]]; then
   pin="$(sed -n '/"packageManager"/{s/.*"bun@\([^"+]*\).*/\1/p;q;}' "$package")"
@@ -40,15 +50,17 @@ if [[ -z "${ANA_RUNNER_ACTIVE:-}" && -n "$top" && "$here" == "$top" && -f "$top/
       ;;
   esac
 fi
-[[ -n "$task" ]] || exec "$bun" "$@"
+[[ -n "$task" ]] || exec "$bun" ${orig[@]+"${orig[@]}"}
 
 # A task for another host needs ANA_HOSTS, which lives in the main worktree's .env.runs, where
 # `bun run runs` finds it; unset ANA_CHECK_HOST reads it too, since it means auto where a host takes
 # checks. A task told to run here reads no host list.
 hosts=()
 place="${ANA_CHECK_HOST:-}"
+place="${place#"${place%%[![:space:]]*}"}"
+place="${place%"${place##*[![:space:]]}"}"
 if [[ "$place" != here && -z "${ANA_HOSTS:-}" ]]; then
-  main="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+  main="$(dirname "$(git -C "$top" rev-parse --path-format=absolute --git-common-dir)")"
   [[ ! -f "$main/.env.runs" ]] || hosts=(--env-file="$main/.env.runs")
 fi
 exec "$bun" ${hosts[@]+"${hosts[@]}"} "$HOME/.local/share/ana-runner/run.js" "$top" "$pin" "$task" "$@"

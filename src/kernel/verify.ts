@@ -3,7 +3,14 @@
  * nowhere else. Answers are stored, so a verdict can be recomputed at any time.
  */
 import { CHECK_BRIEF, EVALUATOR_FILE } from "../meta/bundle-layout.ts";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "../meta/filesystem.ts";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+} from "../meta/filesystem.ts";
 import { sha256OfFile } from "../meta/digest.ts";
 import { jsonPathTokens } from "../meta/json-evidence.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
@@ -14,10 +21,11 @@ import { capturedExecPath, capturedSpawn } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { killProcessGroupId, terminateAndReapProcessGroupId } from "../meta/subprocess.ts";
+import { containsPath } from "../meta/path-containment.ts";
 import { commandIsolationPolicy, isolatedArgv, toolTreeSearchDirs } from "../wall/isolation.ts";
 import { hostFolder, releaseRoot } from "../wall/seat-root.ts";
 import { type SolveIsolationPolicy, solveIsolationPolicy } from "../wall/base.ts";
-import { hostScratch } from "../wall/policy.ts";
+import { closedHome, hostScratch, toolchainPathDirs } from "../wall/policy.ts";
 import type { CellInput, CellResult, CheckInput, CheckResult } from "./check-child.ts";
 import type { Objective } from "./contract.ts";
 import type { AnswerFile } from "./answer-files.ts";
@@ -121,8 +129,8 @@ interface Wall {
   readonly tree: VerifierTree;
   /** The check program's files, as `checkProgramFiles` lists them. */
   readonly program: readonly string[];
-  /** The tool tree's search directories, joined as a search path. */
-  readonly toolPath: string;
+  /** Declared tool ids pre-resolved to their direct executable paths (`resolveVerifierTool`). */
+  readonly toolMap: Readonly<Record<string, string>>;
   /** The base of every check's command wall, or why this host has none. */
   readonly base: SolveIsolationPolicy | { readonly unsupported: string };
   readonly checkMs: number;
@@ -148,6 +156,18 @@ export const OBJECTIVE: BriefTruthCheck = {
     evidence: { kind: "authored" },
   },
 };
+
+/** Manifest listing ambient host tool names a drafted exam (`tools/d2/exam.ts`) is permitted to
+ *  invoke inside the verifier cell; stored packs install binaries directly under `.toolchain/bin/`. */
+export const HOST_TOOLS_FILE = "host-tools.json";
+
+/** Resolved verifier executable with its provenance: physically installed inside the pack's
+ *  `.toolchain/` (`pack`) or forwarded from the ambient host toolchain path (`host`). */
+interface ResolvedVerifierTool {
+  readonly kind: "pack" | "host";
+  readonly path: string;
+  readonly sha256: string;
+}
 
 const CHECK_CHILD = join(import.meta.dir, "check-child.ts");
 const CHECK_CHILD_SOURCES = [import.meta.dir, resolve(import.meta.dir, "..", "meta")];
@@ -182,6 +202,36 @@ export function spelled(verdict: Verdict): string {
   return `non-result ${verdict.reason}`;
 }
 
+/** Ambient host tool names allowed by `toolsDir/host-tools.json`, or empty when absent. */
+function hostToolsIn(toolsDir: string): Set<string> {
+  const manifest = join(toolsDir, HOST_TOOLS_FILE);
+  if (!existsSync(manifest)) return new Set();
+  const parsed = asRecord(parseJsonAs<JsonValue>(readFileSync(manifest, "utf8")));
+  const listed = Array.isArray(parsed?.tools) ? parsed.tools : [];
+  return new Set(listed.filter((entry): entry is string => isString(entry) && isSafePathSegment(entry)));
+}
+
+/** Resolve one declared verifier tool by provenance: a pack-installed binary under `toolsDir`
+ *  takes precedence (`pack`), otherwise an ambient host binary named in `host-tools.json` (`host`).
+ *  Preserves the lexical executable path (for Python PEP 405 venvs and argv0-relative tools) while
+ *  hashing the canonical `realpathSync` target so host binary updates move the digest. */
+export function resolveVerifierTool(
+  toolsDir: string,
+  name: string,
+  hostPath = toolchainPathDirs().join(":"),
+): ResolvedVerifierTool | null {
+  if (!isSafePathSegment(name)) return null;
+  const packBin = Bun.which(name, { PATH: toolTreeSearchDirs(toolsDir).join(":") });
+  if (packBin !== null) {
+    return { kind: "pack", path: packBin, sha256: sha256OfFile(realpathSync(packBin)) };
+  }
+  if (!hostToolsIn(toolsDir).has(name)) return null;
+  const hostBin = Bun.which(name, { PATH: hostPath });
+  return hostBin === null
+    ? null
+    : { kind: "host", path: hostBin, sha256: sha256OfFile(realpathSync(hostBin)) };
+}
+
 /** Tool ids a check requires, whether declared under external evidence or execution dependencies. */
 export function requiredToolsOf(execution: CheckExecution): readonly string[] {
   return execution.evidence.kind === "external"
@@ -189,17 +239,17 @@ export function requiredToolsOf(execution: CheckExecution): readonly string[] {
     : (execution.requiredToolIds ?? []);
 }
 
-/** Resolve and hash every declared verifier engine found on the verifier tool tree's path. */
+/** Resolve and hash every declared verifier engine (`resolveVerifierTool`). */
 export function pinnedEngines({ checks, tools }: VerifierTree): Engine[] {
-  const path = toolTreeSearchDirs(tools).join(":");
+  const hostPath = toolchainPathDirs().join(":");
   const brief = readBrief(checks);
   const named = [
     ...brief.truthChecks.flatMap(({ execution }) => requiredToolsOf(execution)),
     ...(brief.objectiveTools ?? []),
   ];
   return [...new Set(named)].flatMap((name) => {
-    const found = isSafePathSegment(name) ? Bun.which(name, { PATH: path }) : null;
-    return found === null ? [] : [{ name, path: found, sha256: sha256OfFile(found) }];
+    const resolved = resolveVerifierTool(tools, name, hostPath);
+    return resolved === null ? [] : [{ name, path: resolved.path, sha256: resolved.sha256 }];
   });
 }
 
@@ -357,18 +407,39 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
             execution: {
               ...OBJECTIVE.execution,
               requiredToolIds: objectiveTools,
-              evidence: { kind: "external", requiredToolIds: objectiveTools },
+              evidence: { kind: "authored" },
             },
           };
+  const hostPath = toolchainPathDirs().join(":");
+  const declared = [
+    ...new Set([
+      ...brief.truthChecks.flatMap(({ execution }) => requiredToolsOf(execution)),
+      ...(brief.objectiveTools ?? []),
+    ]),
+  ];
+  const resolvedTools = declared.flatMap((name) => {
+    const resolved = resolveVerifierTool(tree.tools, name, hostPath);
+    return resolved === null ? [] : [[name, resolved] as const];
+  });
+  const toolMap = Object.fromEntries(resolvedTools.map(([name, resolved]) => [name, resolved.path]));
+  const home = closedHome();
+  const homeToolRoots =
+    home === undefined
+      ? []
+      : resolvedTools.flatMap(([, resolved]) => {
+          if (resolved.kind !== "host") return [];
+          const real = realpathSync(resolved.path);
+          return containsPath(real, home) ? [dirname(dirname(real))] : [];
+        });
   const wall: Wall = {
     tree,
     program: checkProgramFiles(tree.checks),
-    toolPath: toolTreeSearchDirs(tree.tools).join(":"),
+    toolMap,
     base: solveIsolationPolicy({
       repoRoot: REPO,
       otherTrees: given.otherTrees ?? [],
       packRoots: given.packRoots ?? [],
-      readAllowRoots: CHECK_CHILD_SOURCES,
+      readAllowRoots: [...CHECK_CHILD_SOURCES, ...new Set(homeToolRoots)],
       network: false,
     }),
     checkMs: given.checkMs ?? PER_CHECK_MS,
@@ -500,7 +571,7 @@ async function runCell(
     }
     const input: CellInput = {
       program: join(copy, EVALUATOR_FILE),
-      toolPath: wall.toolPath,
+      tools: wall.toolMap,
       toolCeilingMs: TOOL_CEILING_MS,
       checkMs: wall.checkMs,
       width: CHECKS_AT_ONCE,

@@ -1,7 +1,7 @@
 /**
  * Upstream adversarial draft audit (`reviewDraft`): runs inside the Referee seat on mechanically
  * clean drafted exams before `contract.frozen`, probing example accept controls and deliverables
- * for vacuous passes, check defects, and gameable objectives (`referee.draft`, `referee.refused`).
+ * for vacuous passes, check defects, and gameable objectives (`referee.draft`, `referee.draft.refused`).
  */
 import { type Static, Type } from "typebox";
 import type { Control } from "../kernel/acceptance.ts";
@@ -182,7 +182,7 @@ export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promi
     execute: async (args) => {
       const problem = refusal(rows, args);
       if (problem !== null) {
-        append(target.log, "referee.refused", {
+        append(target.log, "referee.draft.refused", {
           session: target.session,
           ruling: args.verdict,
           why: problem,

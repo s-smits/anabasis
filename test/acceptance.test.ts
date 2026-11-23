@@ -255,18 +255,29 @@ describe("control tallies, faults, and instruments", () => {
     });
     expect(authoredFaults(checks, new Set(["span"]))).toEqual([matching(/objective.*--admit objective/u)]);
 
-    // Declared objectiveTools clear authoredFaults when present and fault when missing.
-    const toolObj: Brief = { ...measured, objectiveTools: ["python3"] };
-    const pyOk = await reading({ ...sound, brief: toolObj, verify: weighed });
-    expect(pyOk.checks.at(-1)).toMatchObject({ id: "objective", instrument: "python3", missing: [] });
-    expect(authoredFaults(pyOk.checks, new Set(["span"]))).toEqual([]);
+    // Host-forwarded objectiveTools stay author-decided while still faulting when missing; pack-installed engines clear authoredFaults.
+    const pyObj: Brief = { ...measured, objectiveTools: ["python3"] };
+    const pyHost = await reading({
+      ...sound,
+      brief: pyObj,
+      verify: weighed,
+      found: (t) => (t === "python3" ? "host" : "pack"),
+    });
+    expect(pyHost.checks.at(-1)).toMatchObject({ id: "objective", instrument: AUTHOR, missing: [] });
+    expect(authoredFaults(pyHost.checks, new Set(["span"]))).toEqual([
+      matching(/objective.*--admit objective/u),
+    ]);
     const pyMiss = await reading({
       ...sound,
-      brief: toolObj,
+      brief: pyObj,
       verify: weighed,
-      found: (t) => t !== "python3",
+      found: (t) => (t === "python3" ? false : "pack"),
     });
     expect(pyMiss.faults).toEqual([matching(/objective names python3.*tool path/u)]);
+    const engObj: Brief = { ...measured, objectiveTools: ["ngspice"] };
+    const engOk = await reading({ ...sound, brief: engObj, verify: weighed, found: () => "pack" });
+    expect(engOk.checks.at(-1)).toMatchObject({ id: "objective", instrument: "ngspice", missing: [] });
+    expect(authoredFaults(engOk.checks, new Set(["span"]))).toEqual([]);
 
     // Drifting, unmeasured, and faulty objectives.
     let n = 0;

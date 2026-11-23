@@ -7,17 +7,22 @@ import { examine, type Session } from "../src/examiner/session.ts";
 import { authoredFaults } from "../src/kernel/acceptance.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { examinerSessions, solvesIn } from "../src/kernel/solves.ts";
-import { pinnedEngines } from "../src/kernel/verify.ts";
+import { HOST_TOOLS_FILE, pinnedEngines } from "../src/kernel/verify.ts";
+import { sha256OfFile } from "../src/meta/digest.ts";
 import {
+  chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
 import { asRecord, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
@@ -67,13 +72,18 @@ afterAll(() => {
   for (const name of campaigns) rmSync(dirname(campaignLog(name)), { recursive: true, force: true });
 });
 
-function opened(name: string, attended = false): string[] {
+function opened(
+  name: string,
+  attended = false,
+  reviewer?: { readonly model: string; readonly effort: string },
+): string[] {
   campaigns.push(name);
   const log = campaignLog(name);
   mkdirSync(dirname(log), { recursive: true });
   append(log, "campaign.opened", {
     prompt: "A fixture.",
     solver: { model: SOLVER, effort: "high" },
+    ...keyIfDefined("seats", reviewer === undefined ? undefined : { reviewer }),
     attended,
   });
   return ["--name", name, "--examiner", SOLVER, "--solver", SOLVER];
@@ -440,8 +450,8 @@ describe("staging and offline reading", () => {
     ]);
   });
 
-  it("auto-stages declared bash and python3 tools, clears authored faults, and refuses missing or undeclared tools", async () => {
-    const engined: Draft = {
+  it("dispatches declared host tools via host-tools.json manifest, keeps drafted checks author-decided, pins real binaries, and refuses missing/undeclared tools", async () => {
+    const hostEngined: Draft = {
       ...MEASURED,
       checks: [{ id: "check-product", rule: "R1", assertion: "via bash wrapping python3", tools: ["bash"] }],
       objective: { quantity: "error", direction: "lower" },
@@ -469,19 +479,74 @@ describe("staging and offline reading", () => {
       ].join("\n"),
     };
     const dir = join(root, "engines");
-    const ok = await draftReading(dir, engined, 2);
+    const ok = await draftReading(dir, hostEngined, 2);
     expect(ok.faults).toEqual([]);
     const checks = ok.read?.reading.checks ?? [];
     expect(checks.map(({ id, instrument, missing }) => ({ id, instrument, missing }))).toEqual([
-      { id: "check-product", instrument: "bash", missing: [] },
-      { id: "objective", instrument: "python3", missing: [] },
+      { id: "check-product", instrument: "author", missing: [] },
+      { id: "objective", instrument: "author", missing: [] },
     ]);
-    expect(authoredFaults(checks, new Set())).toEqual([]);
+    // Host-forwarded tools in a drafted exam never bypass Rule 10 / `--hitl` admission.
+    expect(authoredFaults(checks, new Set())).toHaveLength(2);
     expect(ok.read?.reading.notes).toEqual([HIDDEN_BLIND_NOTE]);
-    const staged = stageExam(dir, engined);
+    const staged = stageExam(dir, hostEngined);
+    // No shell wrappers are generated in `.toolchain/bin/`; provenance lives in `host-tools.json`.
+    expect(existsSync(join(staged.bundle, ".toolchain", "bin", "bash"))).toBe(false);
+    expect(existsSync(join(staged.bundle, ".toolchain", "bin", "python3"))).toBe(false);
     expect(
-      pinnedEngines({ checks: staged.checks, tools: join(staged.bundle, ".toolchain") }).map((e) => e.name),
-    ).toEqual(["bash", "python3"]);
+      parseJsonAs<{ tools: string[] }>(
+        readFileSync(join(staged.bundle, ".toolchain", HOST_TOOLS_FILE), "utf8"),
+      ),
+    ).toEqual({
+      tools: ["bash", "python3"],
+    });
+    const pinned = pinnedEngines({ checks: staged.checks, tools: join(staged.bundle, ".toolchain") });
+    expect(pinned.map((e) => e.name)).toEqual(["bash", "python3"]);
+    for (const engine of pinned) {
+      expect(engine.path).not.toContain(".toolchain");
+      expect(engine.sha256).toBe(sha256OfFile(realpathSync(engine.path)));
+    }
+
+    // Even a non-shell host executable (`git`) stays `author` when forwarded via `host-tools.json`,
+    // whereas a binary physically installed inside `.toolchain/bin/` hashes its target and updates cleanly.
+    const hostGit: Draft = {
+      ...SOUND,
+      checks: [{ id: "check-product", rule: "R1", assertion: "via host git", tools: ["git"] }],
+      evaluator: [
+        "export const checks = {",
+        '  "check-product": async (req, runtime) => {',
+        '    const got = await runtime.tools.run({ toolId: "git", args: ["hash-object", "--stdin"], stdin: String(req.artifact.answer) });',
+        '    const want = await runtime.tools.run({ toolId: "git", args: ["hash-object", "--stdin"], stdin: String(req.publicTask.publicInput.base * 6) });',
+        "    return got.exitCode === 0 && want.exitCode === 0 && got.stdout === want.stdout;",
+        "  },",
+        "};",
+      ].join("\n"),
+    };
+    const extDir = join(root, "external-engine");
+    const extOk = await draftReading(extDir, hostGit, 2);
+    expect(extOk.faults).toEqual([]);
+    expect(extOk.read?.reading.checks).toMatchObject([
+      { id: "check-product", instrument: "author", missing: [] },
+    ]);
+    expect(authoredFaults(extOk.read?.reading.checks ?? [], new Set())).toHaveLength(1);
+
+    // Updating the binary behind a pack-installed tool symlink changes its pinned sha256.
+    const customTools = join(root, "custom-tools");
+    const realBin = join(root, "real-engine.sh");
+    mkdirSync(join(customTools, "bin"), { recursive: true });
+    writeFileSync(realBin, "#!/bin/sh\necho v1\n");
+    chmodSync(realBin, 0o755);
+    symlinkSync(realBin, join(customTools, "bin", "git"));
+    const extStaged = stageExam(extDir, hostGit);
+    const before = pinnedEngines({ checks: extStaged.checks, tools: customTools }).find(
+      (e) => e.name === "git",
+    );
+    writeFileSync(realBin, "#!/bin/sh\necho v2\n");
+    const after = pinnedEngines({ checks: extStaged.checks, tools: customTools }).find(
+      (e) => e.name === "git",
+    );
+    expect(before?.sha256).toBeDefined();
+    expect(after?.sha256).not.toBe(before?.sha256);
 
     // Undeclared tool invocation and missing host binary both fail cleanly.
     const undeclared = await draftReading(
@@ -544,14 +609,24 @@ describe("campaign draft lifecycle", () => {
     }
   });
 
-  it("audits up to two passes (verify-after-fix with priorFindings), stops early on sound/skipped, and never stalls on try 3", async () => {
+  it("audits up to two passes using reviewer.effort, stops early on sound/skipped, and skips when no reviewer is configured", async () => {
     const defectName = `${STEM}-audit-defect`;
-    const seenPasses: { pass: number | undefined; prior: readonly string[] | undefined }[] = [];
+    const seenPasses: {
+      effort: string;
+      pass: number | undefined;
+      prior: readonly string[] | undefined;
+    }[] = [];
     await draftCommand(
-      [...opened(defectName), "--session", "d-1"],
+      [
+        ...opened(defectName, false, { model: SOLVER, effort: "low" }),
+        "--session",
+        "d-1",
+        "--examiner-effort",
+        "high",
+      ],
       putting(SOUND, SOUND, SOUND),
-      async (target) => {
-        seenPasses.push({ pass: target.pass, prior: target.priorFindings });
+      async (reader, target) => {
+        seenPasses.push({ effort: reader.effort, pass: target.pass, prior: target.priorFindings });
         return {
           verdict: "defects",
           findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "wrong value passed" }],
@@ -561,7 +636,8 @@ describe("campaign draft lifecycle", () => {
       },
     );
     expect(seenPasses).toHaveLength(2);
-    expect(seenPasses[0]).toEqual({ pass: 1, prior: [] });
+    expect(seenPasses[0]).toEqual({ effort: "low", pass: 1, prior: [] });
+    expect(seenPasses[1]?.effort).toBe("low");
     expect(seenPasses[1]?.pass).toBe(2);
     expect(seenPasses[1]?.prior?.[0]).toContain("vacuous-pass on ex-001");
     expect(draftOf(read(campaignLog(defectName)))).toEqual(SOUND);
@@ -569,12 +645,24 @@ describe("campaign draft lifecycle", () => {
     for (const verdict of ["sound", "skipped"] as const) {
       const name = `${STEM}-audit-${verdict}`;
       let calls = 0;
-      await draftCommand([...opened(name), "--session", "d-1"], putting(SOUND), async () => {
-        calls += 1;
-        return { verdict, findings: [], summary: verdict, probes: [] };
-      });
+      await draftCommand(
+        [...opened(name, false, { model: SOLVER, effort: "medium" }), "--session", "d-1"],
+        putting(SOUND),
+        async () => {
+          calls += 1;
+          return { verdict, findings: [], summary: verdict, probes: [] };
+        },
+      );
       expect(calls).toBe(1);
       expect(draftOf(read(campaignLog(name)))).toEqual(SOUND);
     }
+
+    const noReviewer = `${STEM}-audit-none`;
+    let skippedCalls = 0;
+    await draftCommand([...opened(noReviewer), "--session", "d-1"], putting(SOUND), async () => {
+      skippedCalls += 1;
+      return { verdict: "sound", findings: [], summary: "unused", probes: [] };
+    });
+    expect(skippedCalls).toBe(0);
   });
 });

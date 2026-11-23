@@ -2,24 +2,30 @@
  * The exam of a campaign that opened from a prompt, as files: the draft its log holds, staged as a
  * pack laid out the way a stored one is, so that every command reads it as it reads a v1 bundle.
  *
- * A check that names host/toolchain `tools` (such as `python3`, `bash`, or a domain engine) declares
- * external evidence backed by `.toolchain/bin` wrappers; a check with no tools declares author
- * evidence until admitted by `--admit` or an unattended launch (`tools/d1b/draft.ts`).
+ * Declared host/toolchain `tools` are recorded in `.toolchain/host-tools.json` so the offline cell
+ * can dispatch directly to resolved host executables without shell wrappers, while every check of a
+ * drafted exam remains `authored` under Rule 10 until admitted by `--admit` or an unattended launch
+ * (`tools/d1b/draft.ts`).
  */
 import { type Draft, draftOf } from "#src/examiner/draft.ts";
 import { readChecker } from "#src/kernel/acceptance.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
-import { CHECK_PROGRAM_CONTRACT, checkProgramVersion, openVerifier, readBrief } from "#src/kernel/verify.ts";
+import {
+  CHECK_PROGRAM_CONTRACT,
+  checkProgramVersion,
+  HOST_TOOLS_FILE,
+  openVerifier,
+  readBrief,
+} from "#src/kernel/verify.ts";
 import { CHECK_BRIEF, EVALUATOR_FILE } from "#src/meta/bundle-layout.ts";
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
-import { toolchainPathDirs } from "#src/wall/policy.ts";
 import { checkProgram, contractOf, packControls, readPack, toolOnPath } from "../m0/stored-sweep.ts";
 
 /** A draft as a pack on disk. */
@@ -59,41 +65,24 @@ export const exampleId = (index: number): string => `ex-${String(index + 1).padS
 
 /**
  * Stage a draft under a campaign's folder, and return where. Any plain program name declared by a
- * check or the objective (e.g. `python3`, `bash`, or a domain engine) that resolves on the wall's
- * toolchain search path is wrapped inside `.toolchain/bin` so check cells can run it cleanly.
+ * check or the objective is recorded in `.toolchain/host-tools.json` so `resolveVerifierTool`
+ * dispatches directly to the host toolchain executable while keeping drafted checks `authored`.
  */
 export function stageExam(dir: string, draft: Draft): Staged {
   const { bundle, checks } = examStaged(dir, draft);
   if (existsSync(checks)) return { bundle, checks };
   const model = join(bundle, "correctness-model");
-  const bin = join(bundle, ".toolchain", "bin");
+  const toolchain = join(bundle, ".toolchain");
   mkdirSync(model, { recursive: true });
-  mkdirSync(bin, { recursive: true });
-  const hostPath = toolchainPathDirs().join(":");
+  mkdirSync(join(toolchain, "bin"), { recursive: true });
   const engines = [
     ...new Set([...draft.checks.flatMap(({ tools }) => tools ?? []), ...(draft.objectiveTools ?? [])]),
   ].filter(isSafePathSegment);
-  for (const engine of engines) {
-    if (Bun.which(engine, { PATH: hostPath }) === null) continue;
-    const wrapper = join(bin, engine);
-    // Strip lexical and canonical `.toolchain/bin` from PATH before `exec` so host/wall binaries
-    // resolve cleanly even across macOS `/var` -> `/private/var` symlinks.
+  if (engines.length > 0) {
     writeFileSync(
-      wrapper,
-      [
-        "#!/bin/sh",
-        'raw="$(dirname -- "$0")"; self="$(CDPATH= cd -- "$raw" 2>/dev/null && pwd -P)"',
-        'rest=""; oldIFS="$IFS"; IFS=:',
-        "for d in $PATH; do",
-        '  [ -z "$d" ] || [ "$d" = "$raw" ] || [ "$d" = "$self" ] && continue',
-        '  [ "$(CDPATH= cd -- "$d" 2>/dev/null && pwd -P)" = "$self" ] && continue',
-        '  rest="${rest:+$rest:}$d"',
-        "done",
-        `IFS="$oldIFS"; PATH="$rest" exec ${engine} "$@"`,
-        "",
-      ].join("\n"),
+      join(toolchain, HOST_TOOLS_FILE),
+      `${capturedJsonStringify({ tools: engines }, null, 2)}\n`,
     );
-    chmodSync(wrapper, 0o755);
   }
   const hidden = draft.tasks.some((task) => task.hidden !== null) ? "whole" : "none";
   const brief = {
@@ -116,9 +105,8 @@ export function stageExam(dir: string, draft: Draft): Staged {
           filePaths: ["$"],
           publicInputPaths: ["$"],
           hidden,
-          ...(required === undefined
-            ? { evidence: { kind: "authored" } }
-            : { requiredToolIds: required, evidence: { kind: "external", requiredToolIds: required } }),
+          ...keyIfDefined("requiredToolIds", required),
+          evidence: { kind: "authored" },
         },
       };
     }),

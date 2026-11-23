@@ -8,6 +8,7 @@ import { openingOf } from "#src/campaign/opening.ts";
 import { type Examined, examine, type Session } from "#src/examiner/session.ts";
 import { read } from "#src/kernel/log.ts";
 import { type DraftAuditCase, type DraftAuditFinding, reviewDraft } from "#src/referee/draft-audit.ts";
+import type { Reader } from "#src/referee/referee.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
@@ -18,7 +19,7 @@ import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../d2/setting.ts
 import { modelNamed } from "../m0/stored-sweep.ts";
 
 /** Optional adversarial audit over a mechanically clean draft (`reviewDraft`). */
-type DraftAuditor = (target: DraftAuditCase) => Promise<DraftAuditFinding>;
+type DraftAuditor = (reader: Reader, target: DraftAuditCase) => Promise<DraftAuditFinding>;
 
 /** Maximum adversarial draft audits per drafting session (initial audit + verify-after-fix pass). */
 const MAX_DRAFT_AUDITS = 2;
@@ -60,20 +61,17 @@ export async function draftCommand(
     );
   }
   const reviewer = opening?.seats.reviewer ?? null;
-  const defaultAuditor: DraftAuditor | null =
-    session === examine && reviewer !== null
-      ? (target) =>
-          reviewDraft(
-            {
-              model: modelNamed(reviewer.model),
-              // SAFETY: effort matches the drafting Examiner's pi thinking level (`high` by default).
-              effort: values["examiner-effort"] as ThinkingLevel,
-              models: examinerSession,
-            },
-            target,
-          )
-      : null;
-  const auditor = audit === undefined ? defaultAuditor : audit;
+  const defaultAuditor: DraftAuditor | null = session === examine ? reviewDraft : null;
+  const auditor: DraftAuditor | null = audit === undefined ? defaultAuditor : audit;
+  const auditReader: Reader | null =
+    reviewer === null
+      ? null
+      : {
+          model: modelNamed(reviewer.model),
+          // SAFETY: `reviewer.effort` is the pi thinking level recorded on `campaign.opened`.
+          effort: reviewer.effort as ThinkingLevel,
+          models: examinerSession,
+        };
   const setting = settingAsked(values, recordedSetting(events));
   const { wallSeconds, modelTurns } = setting.named.limits;
   /** Validation readings for each draft submitted in this session; the final entry corresponds to
@@ -91,13 +89,19 @@ export async function draftCommand(
       reading: async (draft) => {
         const { faults, read: seen } = await draftReading(dirname(log), draft, Number(values.jobs));
         readings.push(seen);
-        if (faults.length > 0 || seen === undefined || audits >= MAX_DRAFT_AUDITS || auditor === null) {
+        if (
+          faults.length > 0 ||
+          seen === undefined ||
+          audits >= MAX_DRAFT_AUDITS ||
+          auditor === null ||
+          auditReader === null
+        ) {
           return faults;
         }
         // Run up to two bounded Adversarial Judge passes (initial audit + verify-after-fix),
         // letting any subsequent clean draft stand unconditionally so supply can never stall.
         audits += 1;
-        const review = await auditor({
+        const review = await auditor(auditReader, {
           session: id,
           pass: audits,
           prompt,

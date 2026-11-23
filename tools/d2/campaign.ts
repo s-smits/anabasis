@@ -24,7 +24,14 @@ import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
 import { latestBuilt, poolOf, promoted } from "#src/kernel/reports.ts";
 import { type TaskPackage, taskVersion } from "#src/kernel/task.ts";
-import { checkProgramVersion, openVerifier, type Task, type Verifier } from "#src/kernel/verify.ts";
+import {
+  checkProgramVersion,
+  HOST_TOOLS_FILE,
+  openVerifier,
+  pinnedEngines,
+  type Task,
+  type Verifier,
+} from "#src/kernel/verify.ts";
 import {
   cpSync,
   existsSync,
@@ -103,6 +110,7 @@ interface Solver {
  *  campaign's contract, the verifier's tool tree, and what every solve is held to. */
 interface Standing {
   readonly contract: Contract;
+  readonly checks: string;
   readonly tools: string;
   readonly limits: Limits;
 }
@@ -288,8 +296,14 @@ let here: ReturnType<typeof codeOf> | undefined;
  * Builder conversation, each tree is a walk of thousands of files, and a tree that moved between
  * two openings would name code the process never ran.
  */
-function recordedUnder({ contract, tools, limits }: Standing) {
-  const verifierTools = hashJsonValue(treeContent(tools));
+function recordedUnder({ contract, checks, tools, limits }: Standing) {
+  const hostManifest = join(tools, HOST_TOOLS_FILE);
+  const verifierTools = existsSync(hostManifest)
+    ? hashJsonValue([
+        treeContent(tools),
+        pinnedEngines({ checks, tools }).map(({ name, sha256 }) => [name, sha256]),
+      ])
+    : hashJsonValue(treeContent(tools));
   here ??= codeOf(REPO);
   const { runtime, host } = here;
   /** What every solve by `by` runs under whatever its task and harness: its condition less those. */
@@ -356,7 +370,7 @@ export async function openCampaign(args: CampaignArgs) {
   // The drafted exam is staged under `.ana` here, closed with the repository.
   const verify = openVerifier({ checks, tools, otherTrees: trees });
   const limits = args.limits ?? LIMITS;
-  const { conditionOf, setting } = recordedUnder({ contract, tools, limits });
+  const { conditionOf, setting } = recordedUnder({ contract, checks, tools, limits });
   const pack = (task: Task): TaskPackage => packageOf(checks, task);
   /** Every task the pack holds or a session wrote into the log, by version. */
   const packages = (): Map<string, TaskPackage> =>

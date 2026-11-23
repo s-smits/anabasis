@@ -66,11 +66,16 @@ interface Idle {
   readonly verdict: Verdict;
 }
 
+/** Whether a declared verifier tool is installed inside the pack (`"pack"` or legacy `true`),
+ *  forwarded from the ambient host toolchain (`"host"`), or absent (`false`). Only pack-installed
+ *  engines qualify as independent instruments under Rule 10. */
+export type ToolAvailability = boolean | "pack" | "host";
+
 /** What one check has been seen to do. */
 interface CheckReading {
   readonly id: string;
-  /** What decides it, named by its tool: the engines it runs, as it names them, or `author`
-   *  where it runs none and its author's own computation decides it. */
+  /** What decides it, named by its pack-installed engines (`"pack"`), or `author` where it runs
+   *  none or only host-forwarded tools and its author's own code decides it. */
   readonly instrument: string;
   /** Declared tools the verifier's tool path does not hold. */
   readonly missing: readonly string[];
@@ -102,7 +107,7 @@ export interface Read {
   readonly contract: Contract;
   readonly tasks: readonly Task[];
   readonly controls: readonly Control[];
-  readonly found: (toolId: string) => boolean;
+  readonly found: (toolId: string) => ToolAvailability;
   /** Verifier runs in flight at once. */
   readonly width: number;
   /** False where the reading runs no probe of its tasks (`probeFaults`): the acceptance command's,
@@ -331,13 +336,19 @@ function acceptance(
   brief: Brief,
   tasks: readonly Task[],
   runs: readonly ControlAnswerRun[],
-  found: (toolId: string) => boolean,
+  found: (toolId: string) => ToolAvailability,
 ): Acceptance {
   const byId = new Map(tasks.map((task) => [task.taskId, task]));
   const graded: Graded[] = runs.flatMap(({ taskId, verdicts: [verdict] }) => {
     const task = byId.get(taskId);
     return task === undefined ? [] : [{ task, verdict }];
   });
+  const packInstalled = (tools: readonly string[]) =>
+    tools.filter((tool) => {
+      const seen = found(tool);
+      return seen === true || seen === "pack";
+    });
+  const missingOf = (tools: readonly string[]) => tools.filter((tool) => found(tool) === false);
   // The objective is read as a check is: its author's own computation, which the operator admits
   // by name, and seen to measure every valid answer or none.
   const objTools = brief.objectiveTools ?? [];
@@ -347,8 +358,8 @@ function acceptance(
       : [
           {
             id: OBJECTIVE.id,
-            instrument: objTools.join(", ") || AUTHOR,
-            missing: objTools.filter((tool) => !found(tool)),
+            instrument: packInstalled(objTools).join(", ") || AUTHOR,
+            missing: missingOf(objTools),
             passed: graded.filter(({ verdict }) => objectiveOf(verdict) !== null).length,
             refused: 0,
             named: 0,
@@ -362,10 +373,11 @@ function acceptance(
     );
     const refused = seen.filter(({ verdict }) => verdict.kind === "fail" && verdict.blocking.includes(id));
     const naming = runs.filter((run) => run.refusedBy === id);
+    const required = requiredToolsOf(execution);
     return {
       id,
-      instrument: requiredToolsOf(execution).join(", ") || AUTHOR,
-      missing: requiredToolsOf(execution).filter((tool) => !found(tool)),
+      instrument: packInstalled(required).join(", ") || AUTHOR,
+      missing: missingOf(required),
       passed: seen.length - refused.length,
       refused: refused.length,
       named: naming.length,

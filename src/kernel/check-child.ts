@@ -27,8 +27,8 @@ export interface CheckInput {
 export interface CellInput {
   /** The check program's absolute path. */
   readonly program: string;
-  /** The verifier tool tree's search directories, the only place a declared tool is looked up. */
-  readonly toolPath: string;
+  /** Declared tool ids mapped to their pre-resolved executable paths (`resolveVerifierTool`). */
+  readonly tools: Readonly<Record<string, string>>;
   readonly toolCeilingMs: number;
   /** One check's time, its tools included. */
   readonly checkMs: number;
@@ -125,10 +125,9 @@ async function runTool(cell: CellInput, port: Port, call: ToolCall): Promise<Too
   if (!port.check.tools.includes(call.toolId)) {
     throw new Error(`check ${port.check.checkId} ran ${call.toolId}, which it does not declare`);
   }
-  // Only the tool tree is searched: the process's own PATH runs on into the host's toolchain, which
-  // a tool's interpreter needs and the tool itself must not come from. A name with a slash in it is
-  // never looked up, since `Bun.which` hands such a path back whatever the search path says.
-  const command = isSafePathSegment(call.toolId) ? Bun.which(call.toolId, { PATH: cell.toolPath }) : null;
+  // Only pre-resolved tools declared in the brief are reachable here; undeclared or missing tools
+  // are refused even when present on the host toolchain PATH inside the cell.
+  const command = isSafePathSegment(call.toolId) ? (cell.tools[call.toolId] ?? null) : null;
   if (command === null) {
     return lapse("verifierUnavailable", `${call.toolId} is not on the verifier's tool path`);
   }

@@ -59,8 +59,10 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  accepted answer passes today's checks on (`tools/d2/prepare.ts`), by version and sweep. An
  *  optional `objective` holds the contract's quantity, its direction and the answer's measure: the
  *  Examiner's two paths write it where the contract declares an objective (`measureOf`,
- *  `src/examiner/write.ts`), and `prepare.ts` never does. `referee.refused` is a ruling the host
- *  refused the Referee for want of its evidence, with why (`src/referee/referee.ts`). */
+ *  `src/examiner/write.ts`), and `prepare.ts` never does. `referee.refused` is a rejection ruling
+ *  the host refused the Referee for want of its evidence (`src/referee/referee.ts`);
+ *  `referee.draft.refused` is the matching refusal for an upstream draft-audit verdict
+ *  (`src/referee/draft-audit.ts`). */
 const EVENT_KINDS = [
   "campaign.opened",
   "campaign.setting",
@@ -107,6 +109,7 @@ const EVENT_KINDS = [
   "referee.finding",
   "referee.refused",
   "referee.draft",
+  "referee.draft.refused",
   "diagnosis.recorded",
   "comparison.started",
   "comparison.reported",

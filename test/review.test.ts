@@ -750,7 +750,8 @@ describe("adversarial draft audit", () => {
     expect(res.verdict).toBe("defects");
     expect(res.findings).toHaveLength(3);
     expect(res.probes).toHaveLength(2);
-    expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(8);
+    expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(0);
+    expect(read(s.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(8);
     expect(read(s.log).filter(({ kind }) => kind === "referee.draft")).toMatchObject([{ data: { pass: 2 } }]);
     expect(unfinished(read(s.log))).toEqual([]);
     expect(billedBetween(read(s.log), 0)).toBeGreaterThanOrEqual(0);

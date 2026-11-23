@@ -56,6 +56,7 @@ import {
   unprobedEarned,
 } from "./folds.ts";
 import { safeguardTriggers } from "./climb.ts";
+import { componentTriggers } from "./components.ts";
 import { promotionTriggers, testedOf } from "./promotion.ts";
 import { runTriggers } from "./run.ts";
 import { signalTriggers } from "./signals.ts";
@@ -780,6 +781,7 @@ export function overview(events: readonly LogEvent[], launches: readonly Receipt
       ...safeguardTriggers(log),
       ...runTriggers(log, launches),
       ...signalTriggers(log),
+      ...componentTriggers(log),
     ],
   };
 }

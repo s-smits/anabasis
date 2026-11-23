@@ -12,6 +12,7 @@
  */
 import { starterIn } from "#src/campaign/climb.ts";
 import { draftOf } from "#src/examiner/draft.ts";
+import { portableGuide } from "#src/harness/starter.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
@@ -22,6 +23,9 @@ import { keptStates, stateAuditFiles, weightOf } from "./trajectory.ts";
 const HOST_PATH_RE = /(?:\/Users\/|\/home\/|\/opt\/homebrew\/|\/private\/tmp\/|\/var\/folders\/|\.ana\/)/gu;
 /** Absolute-path shebangs that fail across OSes/hosts (portable ones use `#!/usr/bin/env` or `/bin/sh`). */
 const BAD_SHEBANG_RE = /^#!\s*\/(?:Users|home|opt\/homebrew|Library)\//u;
+/** Campaign-only mechanics that belong strictly below `HOST_ONLY` (`## Validity and score`). */
+const PORTABLE_LEAK_RE =
+  /(?:public\/task\.json|public\/files\/|public\/resources\/|answer\.json|\bsubmit\b)/gu;
 const MIN_KEY_LEN = 4;
 
 /** Top-level `answerFormat.properties` keys of length >= `MIN_KEY_LEN` from the standing draft. */
@@ -64,6 +68,11 @@ function auditHarness(digest: string, role: string, stateDir: string, answerKeys
     }
     if (hitInFile) filesWithExamKeys += 1;
   }
+  const guideEntry = written.find(({ path }) => path === "guide");
+  const portable = guideEntry === undefined ? "" : portableGuide(guideEntry.text);
+  const hasHostOnly = guideEntry !== undefined && portable.length < guideEntry.text.length;
+  const portableLines = portable.split("\n").filter((line) => line.trim() !== "").length;
+  const aboveLeaks = (portable.match(PORTABLE_LEAK_RE) ?? []).length;
   const guide = weight?.guide ?? 0;
   const toolFiles = weight?.files ?? 0;
   const toolLines = weight?.lines ?? 0;
@@ -73,7 +82,7 @@ function auditHarness(digest: string, role: string, stateDir: string, answerKeys
     answerKeys.length === 0
       ? "exam-keys n/a"
       : `exam-keys ${String(matchedKeys.size)}/${String(answerKeys.length)} in ${plural(filesWithExamKeys, "file")}`;
-  return `${digest.slice(0, 8)} (${role}): guide ${String(guide)}L, own ${String(toolFiles)}f/${String(toolLines)}L (${ratio}), tree ${String(toolTreeFiles)}f · hazards ${String(hazards)} (host-paths ${String(hostPathHits)}, bad-shebangs ${String(badShebangs)}, non-exec-bins ${String(nonExecBins)}, broken-links ${String(brokenLinks)}) · ${examPart}`;
+  return `${digest.slice(0, 8)} (${role}): guide ${String(guide)}L (host-only ${hasHostOnly ? "yes" : "no"}, portable ${String(portableLines)}L, above-leaks ${String(aboveLeaks)}), own ${String(toolFiles)}f/${String(toolLines)}L (${ratio}), tree ${String(toolTreeFiles)}f · hazards ${String(hazards)} (host-paths ${String(hostPathHits)}, bad-shebangs ${String(badShebangs)}, non-exec-bins ${String(nonExecBins)}, broken-links ${String(brokenLinks)}) · ${examPart}`;
 }
 
 /** Static portability audit for every kept harness under `statesDir`. */

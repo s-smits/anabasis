@@ -165,6 +165,16 @@ export const ROWS = {
   "HOST CODE MOVED": "source",
   LAUNCHES: "launches",
   "ENDED AND WENT ON": "launches",
+  "DRAFT AUDITED": "draft-audit",
+  "DRAFT AUDIT DEFECTS": "draft-audit",
+  "DRAFT AUDIT REFUSED": "draft-audit",
+  "DRAFT AUDIT SKIPPED": "draft-audit",
+  "VERIFIER TOOL PROVENANCE": "grounding",
+  "VERIFIER FAULTS": "grounding",
+  "NETWORK PARITY MISMATCH": "wall-audit",
+  "WALL BOUNDARY SIGNAL": "wall-audit",
+  "SEAT BOUNDARY ANOMALY": "seats",
+  "ROLE YIELD SKEW": "seats",
 } satisfies Partial<Record<keyof typeof TRIGGERS, string>>;
 
 /** A lane's file stem: `07` for lane 7. */

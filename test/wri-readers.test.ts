@@ -21,6 +21,7 @@ import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { solvesIn } from "../src/kernel/solves.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import { catalogueText, type Lane, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
+import { draftAuditRows, groundingRows, seatSummaryRows, wallAuditRows } from "../tools/wri/components.ts";
 import { continuityRows } from "../tools/wri/continuity.ts";
 import { deliverableRows } from "../tools/wri/deliverables.ts";
 import { READERS } from "../tools/wri/derive.ts";
@@ -131,8 +132,8 @@ describe("each trigger, on its lane with its count", () => {
     expect(named.toSorted()).toEqual(fold.toSorted());
   });
 
-  it("numbers nineteen lanes in order and packs each into exactly one session", () => {
-    expect(lanes.map(({ number }) => number)).toEqual(Array.from({ length: 19 }, (_, index) => index + 1));
+  it("numbers twenty-three lanes in order and packs each into exactly one session", () => {
+    expect(lanes.map(({ number }) => number)).toEqual(Array.from({ length: 23 }, (_, index) => index + 1));
     for (const count of [1, 4, 7]) {
       expect(
         sessionsOf(lanes, count)
@@ -588,6 +589,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     expect(deliv).toContain("referee file:* probes 1/");
     expect(deliverableRows(events).join("\n")).toContain("deliverables: none");
     const port = portabilityRows(log, states).join("\n");
+    expect(port).toContain("host-only no, portable 1L, above-leaks 0");
     expect(port).toContain("host-paths 2, bad-shebangs 1, non-exec-bins 1");
     expect(port).toContain("exam-keys 1/2 in 1 file");
     expect(port).not.toContain("secretKeyAlpha");
@@ -600,5 +602,231 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     expect(diag).toContain("compaction amnesia:");
     expect(diag).toContain("patience burn: 4/6");
     expect(diag).toContain("examiner inefficiency:");
+  });
+
+  it("fires lanes 20-23 component triggers, readers, and HOST_ONLY portability leaks", () => {
+    const cleanDigest = "b".repeat(64);
+    const leakDigest = "c".repeat(64);
+    const states = join(dir, "port-states");
+    for (const [d, guide] of [
+      [cleanDigest, "# Guide\nUse tool.\n\n## Validity and score\nRead public/task.json and submit.\n"],
+      [
+        leakDigest,
+        "# Guide\nRead public/task.json and write answer.json then submit.\n\n## Validity and score\nDone.\n",
+      ],
+    ] as const) {
+      const agentDir = join(states, d, "agent");
+      mkdirSync(agentDir, { recursive: true });
+      writeFileSync(join(agentDir, "BUILT_AGENTS.md"), guide);
+    }
+    const portText = portabilityRows(
+      [
+        { at: AT, kind: "harness.promoted", data: { harness: cleanDigest, from: "hp" } },
+        { at: AT, kind: "harness.promoted", data: { harness: leakDigest, from: cleanDigest } },
+      ],
+      states,
+    ).join("\n");
+    expect(portText).toContain(
+      `${cleanDigest.slice(0, 8)} (promoted): guide 4L (host-only yes, portable 2L, above-leaks 0)`,
+    );
+    expect(portText).toContain(
+      `${leakDigest.slice(0, 8)} (promoted): guide 4L (host-only yes, portable 2L, above-leaks 3)`,
+    );
+
+    const examsDir = join(dir, "exams");
+    const draft = {
+      domain: "stats",
+      scope: "s",
+      conventions: "c",
+      rules: [{ id: "R1", statement: "ok", source: "s" }],
+      answerFormat: { type: "object", properties: { v: { type: "number" } } },
+      checks: [{ id: "check-domain", rule: "R1", assertion: "a", tools: ["python3"] }],
+      evaluator: "export const checks = {};",
+      objectiveTools: ["python3"],
+      tasks: [{ family: "f", publicInput: {}, hidden: null }],
+      accept: [],
+      reject: [],
+    };
+    const draftHash = requireJsonValue(draft);
+    const cond = conditionOf("v-held", cleanDigest, { wallSeconds: 100, turns: 8 });
+    const cid = conditionId(cond);
+    const compLog: readonly LogEvent[] = [
+      { at: AT, kind: "draft.started", data: { session: "d-1" } },
+      {
+        at: AT,
+        kind: "referee.draft",
+        data: {
+          session: "d-1",
+          pass: 1,
+          verdict: "defects",
+          findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "SECRET-REF-PROSE" }],
+          probeRows: [{ id: 1 }],
+          turns: 5,
+          billed: 1.5,
+        },
+      },
+      {
+        at: AT,
+        kind: "referee.draft.refused",
+        data: { session: "d-1", pass: 1, ruling: "defects", why: "SECRET-WHY" },
+      },
+      {
+        at: AT,
+        kind: "referee.draft",
+        data: {
+          session: "d-1",
+          pass: 2,
+          verdict: "defects",
+          findings: [{ kind: "objective-defect", task: "ex-002", probe: 2, reason: "SECRET-PASS2" }],
+          probeRows: [{ id: 1 }, { id: 2 }],
+          turns: 4,
+          billed: 1.4,
+        },
+      },
+      {
+        at: AT,
+        kind: "referee.draft",
+        data: {
+          session: "d-2",
+          pass: 1,
+          verdict: "skipped",
+          findings: [],
+          probeRows: [],
+          turns: 1,
+          billed: 0.2,
+        },
+      },
+      { at: AT, kind: "exam.drafted", data: { session: "d-1", draft: draftHash } },
+      { at: AT, kind: "draft.finished", data: { session: "d-1", ended: "finished", billed: 5 } },
+      {
+        at: AT,
+        kind: "checker.read",
+        data: { rows: [{ id: "check-domain", instrument: "author" }] },
+      },
+      { at: AT, kind: "contract.frozen", data: { contract: "c1", checks: "k1", admitted: ["check-domain"] } },
+      {
+        at: AT,
+        kind: "task.proposed",
+        data: {
+          version: "v-held",
+          taskId: "x-1-009",
+          task: { taskId: "x-1-009", family: "f", publicInput: {} },
+        },
+      },
+      { at: AT, kind: "task.gate", data: { version: "v-held", gate: 1, outcome: "passed" } },
+      { at: AT, kind: "build.started", data: { session: "b-1", parent: "hp" } },
+      {
+        at: AT,
+        kind: "build.call",
+        data: {
+          session: "b-1",
+          turn: 1,
+          tool: "practice",
+          args: {},
+          text: "failed check-domain on x-1-009",
+          isError: false,
+          ms: 5,
+        },
+      },
+      {
+        at: AT,
+        kind: "build.finished",
+        data: { session: "b-1", ended: "finished", harness: cleanDigest, billed: 6 },
+      },
+      { at: AT, kind: "condition.recorded", data: { id: cid, condition: requireJsonValue(cond) } },
+      {
+        at: AT,
+        kind: "comparison.started",
+        data: {
+          session: "g-1",
+          old: "hp",
+          fresh: cleanDigest,
+          starter: "hp",
+          tasks: ["v-held"],
+          retained: [],
+        },
+      },
+      { at: AT, kind: "solve.started", data: { solve: "sn1", condition: cid, comparison: "g-1" } },
+      {
+        at: AT,
+        kind: "solve.finished",
+        data: { solve: "sn1", ending: { outcome: "pass" }, network: "uv", seconds: 10, billed: 2 },
+      },
+      { at: AT, kind: "solve.started", data: { solve: "sn2", condition: cid, comparison: "g-1" } },
+      {
+        at: AT,
+        kind: "solve.finished",
+        data: {
+          solve: "sn2",
+          ending: { outcome: "non-result", kind: "verifier" },
+          network: "unreached",
+          seconds: 10,
+          billed: 1,
+        },
+      },
+      {
+        at: AT,
+        kind: "verdict",
+        data: { solve: "sn2", task: "v-held", kind: "faulty", reason: "SECRET-FAULT" },
+      },
+      { at: AT, kind: "campaign.word", data: { word: "pause", after: "reported", base: 0, why: "promo 2" } },
+      {
+        at: AT,
+        kind: "comparison.reported",
+        data: {
+          session: "g-1",
+          old: "hp",
+          fresh: cleanDigest,
+          starter: "hp",
+          reading: "no-step",
+          scored: { wins: 1, losses: 1, ties: 0 },
+        },
+      },
+      // Overshoot comparison started AFTER pause(--after reported, base 0) was already reached
+      {
+        at: AT,
+        kind: "comparison.started",
+        data: {
+          session: "g-2",
+          old: "hp",
+          fresh: cleanDigest,
+          starter: "hp",
+          tasks: ["v-held"],
+          retained: [],
+        },
+      },
+    ];
+
+    const fired = overview(compLog).triggers;
+    const byName = (name: keyof typeof TRIGGERS) => fired.filter((trigger) => trigger.name === name);
+    expect(byName("DRAFT AUDITED")[0]).toMatchObject({ lane: 20 });
+    expect(byName("DRAFT AUDIT DEFECTS")[0]).toMatchObject({ lane: 20 });
+    expect(byName("DRAFT AUDIT DEFECTS")[0]?.detail).toContain("unverified final pass");
+    expect(byName("DRAFT AUDIT REFUSED")[0]).toMatchObject({ lane: 20 });
+    expect(byName("DRAFT AUDIT SKIPPED")[0]).toMatchObject({ lane: 20 });
+    expect(byName("VERIFIER TOOL PROVENANCE")[0]).toMatchObject({ lane: 21 });
+    expect(byName("VERIFIER FAULTS")[0]).toMatchObject({ lane: 21 });
+    expect(byName("NETWORK PARITY MISMATCH")[0]).toMatchObject({ lane: 22 });
+    expect(byName("NETWORK PARITY MISMATCH")[0]?.detail).toContain("g-1 (unreached vs uv)");
+    expect(byName("WALL BOUNDARY SIGNAL")[0]).toMatchObject({ lane: 22 });
+    expect(byName("SEAT BOUNDARY ANOMALY")[0]).toMatchObject({ lane: 23 });
+    expect(byName("SEAT BOUNDARY ANOMALY")[0]?.detail).toContain(
+      "pause overshoot: g-2 after pause(reported)",
+    );
+    expect(byName("ROLE YIELD SKEW")[0]).toMatchObject({ lane: 23 });
+
+    const daText = draftAuditRows(compLog).join("\n");
+    expect(daText).toContain("final-pass unverified defects: yes (1)");
+    expect(daText).not.toContain("SECRET-REF-PROSE");
+    expect(daText).not.toContain("SECRET-WHY");
+    const grText = groundingRows(compLog, examsDir).join("\n");
+    expect(grText).toContain("1 drafted check (1 with tools)");
+    expect(grText).not.toContain("SECRET-FAULT");
+    const waText = wallAuditRows(compLog).join("\n");
+    expect(waText).toContain("check-ids 1, held-tasks 1");
+    expect(waText).toContain("g-1 (unreached vs uv)");
+    const seatText = seatSummaryRows(compLog).join("\n");
+    expect(seatText).toContain("referee.draft:");
+    expect(seatText).toContain("pause overshoots: g-2 after pause(reported)");
   });
 });

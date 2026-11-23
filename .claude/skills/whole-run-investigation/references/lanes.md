@@ -1,10 +1,23 @@
 # Whole-run investigation lanes
 
-Six deterministic rows settled by the primary reviewer and 19 investigative lanes parsed by `tools/wri/catalogue.ts` (verified against `TRIGGERS` in `tools/wri/folds.ts` by `test/wri-readers.test.ts`).
+Six deterministic rows settled by the primary reviewer and 23 investigative lanes parsed by `tools/wri/catalogue.ts` (verified against `TRIGGERS` in `tools/wri/folds.ts` by `test/wri-readers.test.ts`).
 
 ## Who holds which pen
 
-The Examiner drafts the exam and authors tasks, the Builder develops the harness, the Verifier decides validity inside a fresh sandbox, and the Referee rules on reproducible rejections (`AGENTS.md` §1–8). Six principles govern every lane:
+The Examiner drafts the exam and authors tasks, the Adversarial Draft Auditor (Referee pre-freeze pass) probes mechanically clean drafts before freezing, the Builder develops the harness, the Solver answers tasks inside it, the Verifier decides validity inside a fresh offline sandbox, the Referee adjudicates reproducible rejections, and the Host owns protocol, wall, statistics, and pauses (`AGENTS.md` §1–8):
+
+| Component | Purpose | Inputs & Wall | Outputs & Events | Key Edge Cases | Lanes |
+| --- | --- | --- | --- | --- | --- |
+| Examiner Drafter (`d-N`) | Drafts rules, scope, conventions, `answerFormat`, `evaluator.ts`, objective, ≥3 examples & controls, optional `.toolchain/` | Operator prompt, solve budget, drafting limits, `draftFaults`, `draftReading` | `draft.*`, `exam.drafted`, `checker.read`, `contract.frozen`, staged `exams/` | Recipe disclosure, scope narrowing, `from_file` faults, broken `.toolchain/` links | `2, 3, 14, 21` |
+| Adversarial Draft Auditor (`referee.draft`) | Pre-freeze judge (≤2 passes, 24 turns, 16 probes) trying to break accept controls & deliverables | Prompt, contract, check source, hidden values, accept controls, `priorFindings` (exam side only) | `referee.draft`, `referee.draft.refused`, findings fed back to `d-N` | Ceremony policing, pass-2 cap leak (final defects unverified), drafting spend overhead, `skipped` | `1, 2, 4, 19, 20, 23` |
+| Examiner Task Author (`x-N`) | Authors diverse feasible held-out tasks with room above reference in one resting conversation | Brief, contract, check assertions (not source), reference outcomes & winning harness; no targets or harness files | `exam.*`, `propose_tasks`, `try_answer`, `try_reference`, `task.proposed`, `task.gate` | Unique-family collapse, zero-yield sessions, `>=0.98` near-copies, reference targeting, wake drift | `13, 14, 15, 22, 23` |
+| Builder (`b-N`) | Builds/refines Built Harness (`tools-spec.json`, `.toolchain/`, `BUILT_AGENTS.md`) and leads campaign moves | Wall (§1 five items only): contract, practice tasks, trajectories + coarse `bandOf` + `callsText` telemetry, tallies, budget | `build.*`, `build.checkpoint`, kept `states/<digest>/`, `MEMORY_FILE` | `HOST_ONLY` leaks, guide bloat, dead `.toolchain/bin`, untried freezes, `prac_fam` overfitting, compaction amnesia | `8, 9, 10, 11, 12, 14, 15, 22` |
+| Solver (`s-N`) | Solves one task inside Built Harness under host turn & wall limits | Public task/files/resources, harness guide + `.toolchain/bin`, pinned `COMPARISON_REACH` network | `solve.*`, `answer.json`, `deliverables/`, `solve.finished` (with `network`) | Cross-arm `network` drift, high tool errors, asymmetric limits, `/tmp` sharing, model swap | `10, 14, 15, 17, 18, 22` |
+| Verifier (code) | Evaluates submitted answer & deliverables inside fresh offline OS sandbox | Frozen `checks/`, `.toolchain/`, `host-tools.json` (`origin: "draft"`), hidden values, submitted files | `verdict` (`pass`/`fail`/`faulty`), check breakdown, objective, `toolCeilingMs` | Zero-applicable-check `faulty`, non-finite `timeoutMs`, offline `.toolchain/` denials, nondeterministic replay, Rule-10 bypass | `1, 3, 4, 18, 21` |
+| Referee Adjudicator (`referee.finding`) | Adjudicates reproducible rejections on exam side with conclusive `probe_check` evidence | Contract, task, hidden values, refused answer/files, check source, replay verdict | `referee.finding` (`earned`/`check-defect`/`unclear`), `referee.refused` | Unprobed `earned` restatements, cap expiries, asymmetric set-asides flipping readings, uncalibrated without human labels | `4, 5, 14, 19, 23` |
+| Host Controller (code) | Enforces append-only log, wall, epoch practice release, paired comparisons + A/A, `decide`, starter reads, pauses | Append-only `log.jsonl`, operator `campaign.word` (hidden from all seats), host load & locks | `campaign.*`, `comparison.*`, `harness.promoted`, `task.state`, `campaign.ended` | Pre-promo practice leaks, pause overshoot, fragile `spare === 0` steps, underpowered no-steps, billing residuals | `6, 7, 16, 18, 19, 22, 23` |
+
+Six principles govern every lane:
 - **Weigh verdicts by instrument**: pinned domain engines outweigh author-computed checks.
 - **Verify condition identity**: paired solves must differ solely in the harness.
 - **Separate outcomes**: valid answers, earned rejections, limit expiries without submission, and non-results.
@@ -56,15 +69,15 @@ Maps PR and prediction labels (`checkLabels`, `tools/runtime/land.ts`) to lanes:
 
 | point | lanes | label | changes |
 | --- | --- | --- | --- |
-| verdicts | 1, 2, 3, 14 | `exam` | drafting, checks, deliverables, verifier, controls, freeze/admission, seat prompts |
+| verdicts | 1, 2, 3, 14, 20, 21 | `exam` | drafting, draft audit, checks, verifier grounding, deliverables, verifier, controls, freeze/admission, seat prompts |
 | verdicts | 4, 5 | `verdicts` | Referee, set-asides, hand labels, `settle.ts` |
 | supply | 13 | `supply` | task authoring, `try_reference`/`try_answer`, admission, Examiner inputs |
 | climb | 9 to 12 | `harness` | Builder session/tools/practice/bands, harness contract, export portability |
 | honesty | 6 | `comparison` | terms, pairing, scored set, tally, statistical test, A/A, conditions |
-| climb | 7, 8, 15, 16 | `climb` | move table, campaign moves, starter reads, promotion, compaction/handover, endings |
+| climb | 7, 8, 15, 16, 23 | `climb` | move table, campaign moves, starter reads, promotion, compaction/handover, pause boundaries, endings |
 | honesty | 17 | `solve` | solve execution, backends, tool friction, limits, non-results, solver prompt |
 | economy | 19 | `economy` | billing, metering, budget, timing readers |
-| honesty | 18 | `runs` | sandbox wall, isolation, launching/moving runs, logins, hosts, launch receipts |
+| honesty | 18, 22 | `runs` | sandbox wall, cross-seat wall, network parity, isolation, launching/moving runs, logins, hosts, launch receipts |
 | honesty | rows A to F | `log` | log schema, event kinds, conditions, folds, `view`, `replay`, UI |
 | none | none | `investigation` | `tools/wri/`, this catalogue, WRI skill & scripts |
 | none | none | `landing` | PR stack, `land`, git hooks, CI gate |
@@ -81,7 +94,7 @@ Settle from `bun tools/wri/wri.ts read --log <log>` before opening lanes:
 - **E. case partition**: per arm—passes, fails by kind (`rejected` with check ids), `flagged`, non-results, unfinished.
 - **F. sessions & chain**: moves (incl. open move), endings, spend vs cap, Builder parent/child digests, practice activity, comparison readings (`g-N`), Examiner proposed/admitted counts.
 
-## Lanes 1 to 19
+## Lanes 1 to 23
 
 ### Exam and verification
 
@@ -364,3 +377,67 @@ Marks: none.
 Starts from `LONG SILENCES (lane 19)`, `SPEND LED BY A ROLE (lane 19)`, and `BILLING RESIDUAL (lane 19)`.
 
 Where did compute hours and billed dollars go, is the billing record complete, and what does a confirmed promotion cost? Verify billing completeness first (`BILLING RESIDUAL`, row F `costLine`, `continuity.txt` for Claude CLI `usages: []` unpriced compactions vs pi-priced ones). Align wall hours and active hours (outside recorded waits) against billed dollars by role (row A, `spendOf`) and by epoch (`epoch-spend.txt`, splitting promotion-spanning sessions). Verify each `LONG SILENCES` interval from surrounding events (`log.ts events --kind ...`) to separate provider/load waits from stuck commands or between-move gaps. Project next-round spend and read the closing economy bar (`tools/d2/close.ts`, `worthOf`). Decision: billing trustworthiness, next-round spend projection, and whether each role earns its compute share. Routes to `operator`, `host` (`src/kernel/meter.ts`, `src/kernel/trace.ts`), and `environment`.
+
+### Component contracts, grounding and runtime wall
+
+**20. Adversarial draft audit and pre-freeze gate.**
+
+Label: `exam`.
+Importance: 0.75.
+Marks: none.
+
+Starts from `DRAFT AUDITED (lane 20)`, `DRAFT AUDIT DEFECTS (lane 20)`, `DRAFT AUDIT REFUSED (lane 20)`, and `DRAFT AUDIT SKIPPED (lane 20)`.
+
+Did the pre-freeze Adversarial Draft Auditor (`reviewDraft`, `src/referee/draft-audit.ts`) earn its added agentic complexity, latency, and spend, or did it police formatting ceremony, leak pass-2 defects past `MAX_DRAFT_AUDITS`, or over-tighten checks? Inspect `draft-audit.txt` beside `drafted.txt`, `checks.txt`, and `rejections.txt`:
+1. **Execution, refusals and overhead**: separate `referee.draft` turns, probes, and billed USD from post-solve Referee rulings; audit `DRAFT AUDIT REFUSED` retries and `DRAFT AUDIT SKIPPED` timeouts/errors.
+2. **Substance vs ceremony policing**: classify reported findings (`vacuous-pass`, `check-defect`, `objective-defect`) into domain-substantive holes versus deliverable/formatting ceremony, and cross-check whether audited exams reduced downstream `check-defect` or vacuous-pass rates compared to unaudited runs.
+3. **Final-pass cap leak**: whenever the last `referee.draft` pass before `exam.drafted` returned `defects` (`unverified final pass`, since `MAX_DRAFT_AUDITS = 2` lets the next mechanically clean draft freeze unconditionally), verify against the frozen `exams/` check program (via `wri.ts grade`) whether each final-pass finding was actually fixed or leaked unverified.
+4. **Keep-or-remove bar (`AGENTS.md` §2.7, Rule 13)**: state explicitly whether measured downstream benefit justifies keeping the adversarial draft auditor, simplifying it, or removing it.
+
+Decision: whether `reviewDraft` improves exam validity enough to keep or should be simplified/removed. Routes to `reviewer-prompt` (`src/referee/draft-audit.ts`), `host` (`tools/d1b/draft.ts`), `pack/evaluator`, and `operator`.
+
+**21. Verifier grounding, engines and tool provenance.**
+
+Label: `exam`.
+Importance: 0.7.
+Marks: none.
+
+Starts from `VERIFIER TOOL PROVENANCE (lane 21)` and `VERIFIER FAULTS (lane 21)`.
+
+Do the verifier's declared engines, staged Examiner `.toolchain/` trees, and `.toolchain/host-tools.json` execute reliably offline while honoring Rule 10 provenance? Inspect `grounding.txt`, `checks.txt`, and staged `exams/<digest>/bundle/.toolchain/` alongside `checks/brief.json`:
+1. **Rule-10 provenance**: confirm `host-tools.json` retains `origin: "draft"` for drafted exams (never elevating drafted checks to `pinned` without explicit operator `--admit`), and check whether declared `requiredToolIds`/`objectiveTools` map to real staged `.toolchain/bin/` binaries or host-delegated tools.
+2. **Offline execution faults**: diagnose every `VERIFIER FAULTS` hit (`faulty` verdicts from zero-applicable checks or non-finite `timeoutMs`, `check`/`verifier` non-results, `toolCeilingMs` timeouts, or offline Seatbelt/Bubblewrap `EPERM`/`ENOENT` errors on staged venvs).
+3. **Engine utilization**: verify declared domain engines actually ran inside verifier cells rather than sitting unused behind author-computed JS arithmetic.
+
+Decision: whether verifier tool staging, provenance, and offline execution are sound. Routes to `host` (`src/kernel/verify.ts`, `tools/d2/exam.ts`), `pack/evaluator`, `examiner-prompt`, and `operator`.
+
+**22. Cross-seat information wall and network condition parity.**
+
+Label: `runs`.
+Importance: 0.8.
+Marks: `standing`.
+
+Starts from `NETWORK PARITY MISMATCH (lane 22)` and `WALL BOUNDARY SIGNAL (lane 22)`, and is standing.
+
+Did every runtime seat boundary hold in the logged tool traffic and solve conditions (beyond static prompt checks)? Inspect `wall-audit.txt`, `conditions.txt`, `builder-view.txt`, `examiner-view.txt`, and `wakes.txt`:
+1. **Build-side wall (`AGENTS.md` §1, Rule 3)**: verify `0` check IDs, Referee rulings/prose, raw hidden objective values, held-out unreleased task IDs, move-table recommendations, or operator `campaign.word` strings crossed into `build.call` results.
+2. **Exam-side wall**: verify `0` non-starter harness digests, harness files, numeric task/pass-rate targets, or operator words crossed into `exam.started` openings or wakes.
+3. **Solver network parity (`COMPARISON_REACH`)**: verify `solve.finished.network` is present uniformly and matches across both arms of every scored comparison (`NETWORK PARITY MISMATCH`).
+4. **Draft-audit containment**: verify `referee.draft` probes and findings never crossed to the build side or test solves.
+
+Decision: whether runtime wall integrity and cross-arm network parity hold uncontaminated. Routes to `host` (`src/builder/tools.ts`, `src/examiner/record.ts`, `src/campaign/comparison.ts`, `src/tools/command.ts`), `environment`, and `operator`.
+
+**23. Agentic component yield, handoffs and pause boundaries.**
+
+Label: `climb`.
+Importance: 0.7.
+Marks: `standing`.
+
+Starts from `SEAT BOUNDARY ANOMALY (lane 23)` and `ROLE YIELD SKEW (lane 23)`, and is standing.
+
+Across all agentic roles (`draft`, `referee.draft`, `examiner`, `builder`, `solver`, `referee.adjudicate`) plus Verifier and Host, where did seat boundaries break, pause contracts overshoot, or auxiliary agentic spend fail to earn its keep? Inspect `seats.txt` alongside `epoch-spend.txt`, `continuity.txt`, and `table-timeline.ts`:
+1. **End-to-end component ledger**: reconcile runs, turns, tool calls, error rates, cap/abnormal endings, and spend share per role, separating `referee.draft` spend from `referee.adjudicate` spend.
+2. **Pause boundary adherence**: verify every `campaign.word` pause (`--after reported` etc.) held cleanly with `0` overshoot comparisons started after the boundary was reached (`pausePointReached`, `src/campaign/word.ts`).
+3. **Auxiliary-role ROI (`ROLE YIELD SKEW`)**: when non-solver roles exceed 40% of billed spend or any auxiliary seat exhibits repeated anomalies/cap hits, identify the bottleneck handoff and whether simplifying or removing an agentic layer improves yield.
+
+Decision: which agentic component or inter-seat handoff limits campaign yield or violates lifecycle boundaries. Routes to `host` (`src/campaign/word.ts`, `tools/d2/harness-builder.ts`, `tools/d2/campaign-actions.ts`), `builder-prompt`, `examiner-prompt`, `reviewer-prompt`, and `operator`.

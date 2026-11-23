@@ -271,6 +271,20 @@ export const TRIGGERS = {
   "LONG SILENCES": 19,
   "SPEND LED BY A ROLE": 19,
   "BILLING RESIDUAL": 19,
+  // Lane 20: Adversarial draft audit and pre-freeze gate
+  "DRAFT AUDITED": 20,
+  "DRAFT AUDIT DEFECTS": 20,
+  "DRAFT AUDIT REFUSED": 20,
+  "DRAFT AUDIT SKIPPED": 20,
+  // Lane 21: Verifier grounding, engines and tool provenance
+  "VERIFIER TOOL PROVENANCE": 21,
+  "VERIFIER FAULTS": 21,
+  // Lane 22: Cross-seat information wall and network condition parity
+  "NETWORK PARITY MISMATCH": 22,
+  "WALL BOUNDARY SIGNAL": 22,
+  // Lane 23: Agentic component yield, handoffs and pause boundaries
+  "SEAT BOUNDARY ANOMALY": 23,
+  "ROLE YIELD SKEW": 23,
 } as const;
 
 export const text = (value: JsonValue | undefined): string => (isString(value) ? value : "");

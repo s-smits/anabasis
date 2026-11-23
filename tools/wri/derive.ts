@@ -54,6 +54,7 @@ import { aimRows } from "./aim.ts";
 import { callRows, sequenceRows } from "./calls.ts";
 import { checkRows, programOnDisk } from "./checks.ts";
 import { climbText } from "./climb.ts";
+import { draftAuditRows, groundingRows, seatSummaryRows, wallAuditRows } from "./components.ts";
 import { continuityRows } from "./continuity.ts";
 import { deliverableRows } from "./deliverables.ts";
 import { diagnosticRows } from "./diagnostics.ts";
@@ -142,6 +143,7 @@ const ENDED = "campaign.ended";
 const EXAMINED = "exam.finished";
 const STARTED = "comparison.started";
 const BUILT = "build.finished";
+const FROZEN = "contract.frozen";
 /** No call left out, as `calls.ts` reads without a flag. */
 const EVERY_CALL = { harness: null, program: null, command: null, output: null };
 
@@ -435,7 +437,7 @@ export const READERS: readonly Reader[] = [
         "deliverable file-artifact capture per comparison arm and role, draft file references, cap hits, and file:* Referee probes",
       read: ({ quiet }) => deliverableRows(quiet),
     },
-    [REPORTED, "contract.frozen"],
+    [REPORTED, FROZEN],
     /^draft deliverables:/,
   ),
   at(
@@ -445,7 +447,7 @@ export const READERS: readonly Reader[] = [
         "one row a check (instrument, rules, controls, refusals, standings), scored pass rate, and human pass-soundness calibration",
       read: ({ log, quiet }) => checkRows(quiet, programOnDisk(log)),
     },
-    ["contract.frozen"],
+    [FROZEN],
     /^(checks:|pass soundness:|controls read:|the reading's faults:)/,
   ),
   at(
@@ -499,8 +501,48 @@ export const READERS: readonly Reader[] = [
         "how the exam was drafted: each draft and its faults, the standing draft's counts, admitted checks",
       read: ({ events }) => draftRows(events),
     },
-    ["contract.frozen"],
+    [FROZEN],
     /^(standing draft|shape faults|checks:)/,
+  ),
+  at(
+    {
+      name: "draft-audit",
+      answers:
+        "adversarial draft auditor passes (`referee.draft`), finding kinds, refusals, spend/turns, and unverified final-pass cap leaks",
+      read: ({ events }) => draftAuditRows(events),
+    },
+    [FROZEN],
+    /^draft-audit:/,
+  ),
+  at(
+    {
+      name: "grounding",
+      answers:
+        "verifier tool provenance (`host-tools.json`, staged `.toolchain/bin/`, author vs admitted checks) and `faulty`/verifier non-result counts",
+      read: ({ log, events }) => groundingRows(events, join(dirname(log), "exams")),
+    },
+    [FROZEN, REPORTED],
+    /^grounding:/,
+  ),
+  at(
+    {
+      name: "wall-audit",
+      answers:
+        "runtime cross-seat wall boundary signals in Builder/Examiner traces and cross-arm `solve.finished.network` parity",
+      read: ({ events }) => wallAuditRows(events),
+    },
+    [REPORTED, ENDED],
+    /^(wall-audit|network-parity):/,
+  ),
+  at(
+    {
+      name: "seats",
+      answers:
+        "unified per-role agentic component ledger (runs, turns, calls, errors, anomalies, spend share) and post-pause comparison overshoots",
+      read: ({ events }) => seatSummaryRows(events),
+    },
+    [PROMOTED, ENDED],
+    /^seats:/,
   ),
   {
     name: "wakes",

@@ -111,11 +111,11 @@ export const SEATS = {
     ],
   },
   Referee: {
-    owners: ["src/referee/referee.ts"],
+    owners: ["src/referee/referee.ts", "src/referee/draft-audit.ts"],
     tests: [
       {
         file: "test/review.test.ts",
-        name: "the Referee ends a reading at its wall, and says so in the finding",
+        name: "handles wall timeouts, provider errors, and kill cancellations cleanly",
       },
     ],
   },

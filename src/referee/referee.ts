@@ -1,17 +1,18 @@
 /**
- * The Referee (`src/referee/referee.ts`): adjudicates each rejected solve answer as `earned`,
- * `check-defect`, or `unclear` before the rejection enters a comparison tally (`AGENTS.md`
- * sections 3 and 7).
+ * The Referee: adjudicates reproducible check rejections (`referee`, ruling `earned`,
+ * `check-defect`, or `unclear`) on the exam side with conclusive sandboxed probe evidence
+ * (`referee.finding`, `referee.refused`). Shared Referee session/file-reading helpers are reused
+ * by `draft-audit.ts` for pre-freeze exam audits.
  */
 import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { type Static, Type } from "typebox";
-import { sit } from "../agent/session.ts";
-import type { Contract } from "../kernel/contract.ts";
+import { type SeatTool, sit } from "../agent/session.ts";
 import { type AnswerFile, readAnswerFiles, shownFiles } from "../kernel/answer-files.ts";
-import { verdictsOf } from "../kernel/solves.ts";
+import type { Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, proposalsOf } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { priceKey } from "../kernel/meter.ts";
+import { verdictsOf } from "../kernel/solves.ts";
 import {
   applicableTruthChecks,
   blockingOf,
@@ -26,70 +27,59 @@ import { boundText } from "../meta/bounded-text.ts";
 import { readFileSync } from "../meta/filesystem.ts";
 import { resolveJsonPath } from "../meta/json-evidence.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined, keyIfNotNull, keysIf } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import { ending, RESULT, text, tool } from "../tools/answer.ts";
 import { conclusive, FILE, fileTexts, inFile, type ProbeRow, probeTool, reaches } from "./probe.ts";
 
-/** Who reads, and on what. */
+/** Who sits in the Referee seat. */
 export interface Reader {
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
-  /** The backends, built for one session on the home its model process keeps its state in. */
   readonly models: (home: string, shutdown: AbortSignal) => Models;
-  /** Seconds one session may run; half an hour when the caller names none. */
   readonly wallSeconds?: number;
-  /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;
 }
 
 export type Ruling = "earned" | "check-defect" | "unclear";
 
-/** One fail to referee: the solve that failed, as its log names it, and the verifier's side of it. */
 interface RefereeCase {
   readonly solve: string;
   readonly task: Task;
   readonly contract: Contract;
-  /** The check program's directory, as the verifier reads it. */
   readonly checks: string;
   readonly verify: Verifier;
   readonly log: string;
 }
 
 export interface RefereeFinding {
-  /** Null where the reader gave no answer. */
   readonly ruling: Ruling | null;
-  /** The check a `check-defect` names; null otherwise. */
   readonly check: string | null;
-  /** The public rule an `earned` ruling says the answer breaks, and where in the answer; null on a
-   *  ruling the host made or on any other. */
   readonly rule: string | null;
   readonly field: string | null;
   readonly reason: string;
-  /** The probes the ruling cites. */
   readonly probes: readonly number[];
 }
 
-/** What a ruling may name of one refusing check: the fields of the answer it reads and the public
- *  rules it cites. */
 interface Refusing {
   readonly fields: readonly string[];
   readonly rules: readonly string[];
 }
 
-const REASON_DISPLAY_BYTES = 700;
-/** answer.ts's window: the longest text one read returns. */
+interface LoggedVerdict {
+  readonly answer: JsonValue;
+  readonly files: readonly AnswerFile[];
+  readonly shown: readonly JsonValue[];
+  readonly blocking: readonly string[];
+  readonly fault: string | null;
+}
+
+export const REASON_DISPLAY_BYTES = 700;
 const READ_WINDOW = 12_000;
-/** A window's most lines, which with its note are what a seat tool's result keeps (`RESULT`): a
- *  window that cap cut would end where no offset says how to read on. */
 const READ_LINES = RESULT.lines - 1;
-/** The first of a character's two halves in a string, where a cut must not fall. */
 const HIGH_HALF = /[\uD800-\uDBFF]/u;
-/** Enough for a dozen reads and answer probes and the ruling. */
 const MODEL_TURN_LIMIT = 24;
-/** Half an hour: v1's ESP32 reviews spent 50 and 63 minutes inside answer probes
- *  (`review-probe.ts:84-86` at 3f93d06b). A Referee session reads one fail. */
 const DEADLINE_SECONDS = 1800;
 
 const SYSTEM_PROMPT = [
@@ -110,25 +100,13 @@ const RULING_PARAMETERS = Type.Object({
   field: Type.Optional(
     Type.String({
       description:
-        "For earned: the field of the answer where the rule is broken, or a parent of it up to `$`, the whole answer, spelt as the checks spell paths: `$.items[0].value`; or a submitted file, `file:report.md`, a member of one as a probe names it, or a file the answer lacks that a probe added. A cited probe changes this field or one inside it.",
+        "For earned: the field of the answer where the rule is broken, or a parent up to `$`, or `file:<path>`.",
     }),
   ),
   reason: Type.String({ minLength: 1 }),
-  probes: Type.Array(Type.Number(), {
-    description: "The numbers of the probes the ruling rests on; [] for none.",
-  }),
+  probes: Type.Array(Type.Number(), { description: "Probe numbers supporting the ruling; [] for none." }),
 });
 
-interface LoggedVerdict {
-  readonly answer: JsonValue;
-  readonly files: readonly AnswerFile[];
-  readonly shown: readonly JsonValue[];
-  readonly blocking: readonly string[];
-  /** The host's refusal of the answer's format, when no check ran. */
-  readonly fault: string | null;
-}
-
-/** The verdict the log holds for `solve`; null when no answer reached a check. */
 function loggedVerdict(events: readonly LogEvent[], solve: string, log: string): LoggedVerdict | null {
   const judged = verdictsOf(events).get(solve);
   if (judged?.answer === undefined) return null;
@@ -143,10 +121,6 @@ function loggedVerdict(events: readonly LogEvent[], solve: string, log: string):
   };
 }
 
-/** The host's own ruling, or null when the fail needs a reading. An answer outside the contract's
- *  format broke the contract before any check ran. `replay` is the checks run again on the logged
- *  answer: where it moves a check's verdict, that check does not repeat, and where it reaches none
- *  there is nothing to read against. */
 function hostRuling(verdict: LoggedVerdict, replay: Verdict | null): RefereeFinding | null {
   const ruled = (ruling: Ruling | null, check: string | null, reason: string): RefereeFinding => ({
     ruling,
@@ -160,9 +134,7 @@ function hostRuling(verdict: LoggedVerdict, replay: Verdict | null): RefereeFind
     return ruled("earned", null, `the answer does not follow the contract's format: ${verdict.fault}`);
   }
   if (replay === null) return null;
-  if (!decides(replay)) {
-    return ruled(null, null, `the replay reached no verdict: ${replay.reason}`);
-  }
+  if (!decides(replay)) return ruled(null, null, `the replay reached no verdict: ${replay.reason}`);
   const [moved] = [...new Set(verdict.blocking).symmetricDifference(new Set(blockingOf(replay)))].toSorted();
   return moved === undefined
     ? null
@@ -185,7 +157,6 @@ function packet(
       `- ${id}, citing ${rules.map((rule) => `${rule} ("${statements.get(rule) ?? "not in the contract"}")`).join("; ") || "no rule"}; reads ${fields.join(", ") || "no field of the answer"}`,
   );
   const { hidden, ...task } = fail.task;
-  // Where a refusing check reads files and the solve sent none, that absence is said, not left out.
   const readsFiles = [...refusing.values()].some(({ fields }) =>
     fields.some((field) => field.startsWith(FILE)),
   );
@@ -204,9 +175,7 @@ function packet(
   ].join("\n\n");
 }
 
-/** A window of one text among those `names` lists, or the list with no path: how the Referee reads
- *  the check program and the answer's files, each whole in as many windows as it takes. */
-function readTool(
+export function readTool(
   name: string,
   listed: string,
   example: string,
@@ -228,8 +197,6 @@ function readTool(
       if (!all.includes(args.path)) throw new Error(`${args.path} is not among ${listed}`);
       const source = textOf(args.path);
       const from = Math.floor(args.from ?? 0);
-      // A window that ended on the first half of a character would lose it: a result's lone half
-      // is dropped on its way to the model.
       const end = from + READ_WINDOW - (HIGH_HALF.test(source.charAt(from + READ_WINDOW - 1)) ? 1 : 0);
       const window = source.slice(from, end).split("\n").slice(0, READ_LINES).join("\n");
       if (window === "") {
@@ -245,18 +212,20 @@ function readTool(
   });
 }
 
-/** The Referee's two reads: the check program's files from its directory, and the texts of the
- *  answer's files as the replay and every probe are given them. */
+export function checkProgramTool(checks: string) {
+  return readTool(
+    "read_check_program",
+    "the check program's files",
+    "evaluator.ts",
+    () => checkProgramFiles(checks),
+    (path) => readFileSync(join(checks, path), "utf8"),
+  );
+}
+
 function readTools(checks: string, files: readonly AnswerFile[]) {
   const texts = fileTexts(files);
   return [
-    readTool(
-      "read_check_program",
-      "the check program's files",
-      "evaluator.ts",
-      () => checkProgramFiles(checks),
-      (path) => readFileSync(join(checks, path), "utf8"),
-    ),
+    checkProgramTool(checks),
     readTool(
       "read_answer_file",
       "the texts of the answer's files, each as a probe names it, an archive's member after its file",
@@ -267,8 +236,6 @@ function readTools(checks: string, files: readonly AnswerFile[]) {
   ];
 }
 
-/** Why the host refuses a ruling for want of its evidence, or null where it stands. `answered` is
- *  the answer and files the ruling is of. */
 function refusal(
   refusing: ReadonlyMap<string, Refusing>,
   answered: Pick<LoggedVerdict, "answer" | "files">,
@@ -280,7 +247,6 @@ function refusal(
     if (!refusing.has(check)) {
       return `a check-defect names one of the refusing checks: ${[...refusing.keys()].join(", ") || "none refused"}`;
     }
-    // A check that reads no field of the answer refuses whatever it holds, so no probe can move it.
     const moved =
       refusing.get(check)?.fields.length === 0 ||
       rows.some((row) => conclusive(row) && args.probes.includes(row.id) && row.moved.includes(check));
@@ -294,8 +260,6 @@ function refusal(
     return `an earned ruling names the public rule the answer breaks, one a refusing check cites: ${[...new Set([...refusing.values()].flatMap(({ rules }) => rules))].join(", ") || "none cited"}; name one of these, the rule whose check refused the answer`;
   }
   const field = args.field ?? "";
-  // A file's field is one the solve submitted, a member of one, or one a probe added: the file the
-  // answer lacks, where its absence is what broke the rule.
   const held = field.startsWith(FILE)
     ? answered.files.some(({ path }) => inFile(field, path)) ||
       rows.some((row) => row.texts.some(({ path, was }) => path === field && was === null))
@@ -306,8 +270,6 @@ function refusal(
   if (!citing.some(([, { fields }]) => reaches(field, fields))) {
     return `no refusing check that cites ${String(args.rule)} reads ${field}; name the field the rule is broken at, or rule unclear`;
   }
-  // An answer probe's original side is the replay, on which every citing check refused: one it moved
-  // was moved off its refusal.
   const moved = rows.some(
     (row) =>
       conclusive(row) &&
@@ -320,15 +282,12 @@ function refusal(
     : `an earned ruling cites a probe that changed ${field} and moved a check that cites ${String(args.rule)} off its refusal; a probe that moved none shows nothing a verdict did not. Probe that field, or rule unclear`;
 }
 
-/** The tool that records the reader's one ruling. A ruling refused for want of its evidence is
- *  logged as `referee.refused` before the reader is told why, so that the log holds every ruling
- *  the model asked for and not only the one that stood. */
 function rulingTool(
   refusing: ReadonlyMap<string, Refusing>,
   answered: Pick<LoggedVerdict, "answer" | "files">,
   rows: readonly ProbeRow[],
   found: RefereeFinding[],
-  refused: (asked: Static<typeof RULING_PARAMETERS>, why: string) => void,
+  onRefused: (asked: Static<typeof RULING_PARAMETERS>, why: string) => void,
 ) {
   return tool({
     name: "record_ruling",
@@ -336,17 +295,16 @@ function rulingTool(
       "Record whether this fail counts, with the probes it rests on. The system prompt states the evidence each ruling needs.",
     parameters: RULING_PARAMETERS,
     execute: async (args) => {
-      const why = refusal(refusing, answered, rows, args);
-      if (why !== null) {
-        refused(args, why);
-        throw new Error(why);
+      const problem = refusal(refusing, answered, rows, args);
+      if (problem !== null) {
+        onRefused(args, problem);
+        throw new Error(problem);
       }
-      const earned = args.ruling === "earned";
       found.push({
         ruling: args.ruling,
         check: args.ruling === "check-defect" ? (args.check ?? null) : null,
-        rule: earned ? (args.rule ?? null) : null,
-        field: earned ? (args.field ?? null) : null,
+        rule: args.ruling === "earned" ? (args.rule ?? null) : null,
+        field: args.ruling === "earned" ? (args.field ?? null) : null,
         reason: boundText(args.reason, REASON_DISPLAY_BYTES).shown,
         probes: [...new Set(args.probes)].toSorted((a, b) => a - b),
       });
@@ -355,16 +313,47 @@ function rulingTool(
   });
 }
 
-/** Referee one fail and log the finding. The host rules what needs no reading (`hostRuling`), and
- *  the reader rules the rest; one that never rules leaves the fail unclear. The reader's first
- *  answer probe reuses the replay as its original side, so a reading costs no second run of the checks.
- *  The accepted answer is the last the log holds for the task's id, which is how a verdict names
- *  its task.
- *
- *  A solve with no answer on record is refused before anything is written: a ruling is a reading
- *  of a rejected answer, and the Referee is asked of no other solve (`src/campaign/round.ts`,
- *  `src/builder/tools.ts`, `tools/d1b/examine.ts`), rather than ruled `earned` with "no answer
- *  reached a check", a finding with no evidence behind it. */
+/** Shared bounded `sit` runner for both Referee modes (`referee` and `reviewDraft`). */
+export async function runRefereeSession(given: {
+  readonly id: string;
+  readonly reader: Reader;
+  readonly system: string;
+  readonly opening: string;
+  readonly tools: readonly SeatTool[];
+  readonly log: string;
+  readonly over: () => boolean;
+  readonly most: number;
+  readonly defaultSeconds: number;
+  readonly next: string;
+}) {
+  const { id, reader, system, opening, tools, log, over, most, defaultSeconds, next } = given;
+  const deadline = AbortSignal.timeout((reader.wallSeconds ?? defaultSeconds) * 1000);
+  const turns: AssistantMessage[] = [];
+  const { spent } = await sit({
+    models: reader.models,
+    id,
+    model: reader.model,
+    effort: reader.effort,
+    system,
+    opening,
+    tools,
+    trace: { log, of: "referee" },
+    over,
+    turns,
+    most,
+    next: async () => next,
+    stops: [deadline, reader.kill],
+  });
+  return {
+    reader: id,
+    model: priceKey(reader.model),
+    walled: deadline.aborted,
+    error: turns.at(-1)?.errorMessage ?? null,
+    ...spent,
+  };
+}
+
+/** Referee one failed solve and log `referee.finding`. */
 export async function referee(reader: Reader, fail: RefereeCase): Promise<RefereeFinding> {
   const events = read(fail.log);
   const verdict = loggedVerdict(events, fail.solve, fail.log);
@@ -381,81 +370,60 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
   const refusing = new Map(
     applicableTruthChecks(readBrief(fail.checks), fail.task)
       .filter(({ id }) => verdict.blocking.includes(id))
-      // The fields a check reads, its files named as a probe and a ruling name them.
       .map(({ id, execution: { artifactPaths, filePaths = [] }, citedDecisionIds: rules }) => [
         id,
         { fields: [...artifactPaths, ...filePaths.map((path) => `${FILE}${path}`)], rules },
       ]),
   );
-  let meter: JsonObject | null = null;
-  if (host === null) {
-    const opening = packet(fail, verdict, accepted, refusing);
-    const tools = [
-      ...readTools(fail.checks, verdict.files),
-      probeTool(
-        async (task, answer, signal, files) =>
-          replay !== null && answer === verdict.answer && files === verdict.files
-            ? replay
-            : fail.verify(task, answer, signal, files),
-        fail.task,
-        verdict.answer,
-        rows,
-        {
-          readTogether: [...refusing.values()].map(({ fields }) => fields),
-          accepted: accepted?.answer,
-          files: verdict.files,
-        },
-      ),
-      rulingTool(refusing, verdict, rows, found, (asked, why) =>
-        append(fail.log, "referee.refused", {
-          solve: fail.solve,
-          task: fail.task.taskId,
-          asked: {
-            ruling: asked.ruling,
-            ...keyIfDefined("check", asked.check),
-            ...keyIfDefined("rule", asked.rule),
-            ...keyIfDefined("field", asked.field),
-            reason: asked.reason,
-            probes: asked.probes,
-          },
-          why,
-        }),
-      ),
-    ];
-    const deadline = AbortSignal.timeout((reader.wallSeconds ?? DEADLINE_SECONDS) * 1000);
-    // Parallel rulings need distinct session ids: two begun in one millisecond once shared a
-    // Claude query, and the second packet went into the first one's session.
-    const turns: AssistantMessage[] = [];
-    const id = `reader-${crypto.randomUUID()}`;
-    const { spent } = await sit({
-      models: reader.models,
-      id,
-      model: reader.model,
-      effort: reader.effort,
-      system: SYSTEM_PROMPT,
-      opening,
-      tools,
-      trace: { log: fail.log, of: "referee" },
-      over: () => found.length > 0,
-      turns,
-      most: MODEL_TURN_LIMIT,
-      next: async () => "Nothing is recorded until you call the tool that records your answer.",
-      stops: [deadline, reader.kill],
-    });
-    meter = {
-      reader: id,
-      model: priceKey(reader.model),
-      walled: deadline.aborted,
-      error: turns.at(-1)?.errorMessage ?? null,
-      ...spent,
-    };
-  }
+  const meter =
+    host === null
+      ? await runRefereeSession({
+          id: `reader-${crypto.randomUUID()}`,
+          reader,
+          system: SYSTEM_PROMPT,
+          opening: packet(fail, verdict, accepted, refusing),
+          tools: [
+            ...readTools(fail.checks, verdict.files),
+            probeTool(
+              async (task, answer, signal, files) =>
+                replay !== null && answer === verdict.answer && files === verdict.files
+                  ? replay
+                  : fail.verify(task, answer, signal, files),
+              fail.task,
+              verdict.answer,
+              rows,
+              {
+                readTogether: [...refusing.values()].map(({ fields }) => fields),
+                accepted: accepted?.answer,
+                files: verdict.files,
+              },
+            ),
+            rulingTool(refusing, verdict, rows, found, (asked, why) =>
+              append(fail.log, "referee.refused", {
+                solve: fail.solve,
+                task: fail.task.taskId,
+                asked: {
+                  ruling: asked.ruling,
+                  ...keyIfDefined("check", asked.check),
+                  ...keyIfDefined("rule", asked.rule),
+                  ...keyIfDefined("field", asked.field),
+                  reason: asked.reason,
+                  probes: asked.probes,
+                },
+                why,
+              }),
+            ),
+          ],
+          log: fail.log,
+          over: () => found.length > 0,
+          most: MODEL_TURN_LIMIT,
+          defaultSeconds: DEADLINE_SECONDS,
+          next: "Nothing is recorded until you call the tool that records your answer.",
+        })
+      : null;
   const finding = host ??
     found.at(-1) ?? {
-      ruling:
-        reader.kill?.aborted === true || (isString(meter?.error) && meter.walled === false)
-          ? null
-          : "unclear",
+      ruling: reader.kill?.aborted === true || (isString(meter?.error) && !meter.walled) ? null : "unclear",
       check: null,
       rule: null,
       field: null,

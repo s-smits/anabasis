@@ -186,7 +186,10 @@ export async function draftReading(dir: string, draft: Draft, width: number) {
     // The checker as a campaign opens it (`openCampaign`), so that one frozen here is the one it runs.
     const checker = { contract: contractHash(contract), checks: hashJsonValue(checkProgramVersion(checks)) };
     const faults: readonly string[] = reading.faults;
-    return { faults, read: { checker, reading } };
+    return {
+      faults,
+      read: { checker, reading, checks, contract, tasks: pack.tasks, controls, verify },
+    };
   } catch (error) {
     const faults: readonly string[] = [
       `the check program could not be put to its controls: ${errorMessage(error)}`,

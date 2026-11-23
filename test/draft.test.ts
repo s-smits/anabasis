@@ -1,15 +1,13 @@
-// An exam drafted from a prompt: the shape the host holds a draft to before anything runs
-// (`draftFaults`, `src/examiner/draft.ts`), which a drafting session reads before the host's own
-// reading, that reading on a staged draft with the real verifier (`tools/d2/exam.ts`), and the
-// campaign's end once its drafts are spent. The session a draft is put in is `examine`'s, held in
-// `test/examiner.test.ts`.
-
+// Behavioural and boundary tests for drafted exams (`src/examiner/draft.ts`), staging and offline
+// acceptance (`tools/d2/exam.ts`), and campaign drafting lifecycle (`tools/d1b/draft.ts`).
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { decide } from "../src/campaign/decide.ts";
 import { type Draft, draftFaults, drafting, draftOf } from "../src/examiner/draft.ts";
 import { examine, type Session } from "../src/examiner/session.ts";
+import { authoredFaults } from "../src/kernel/acceptance.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { examinerSessions, solvesIn } from "../src/kernel/solves.ts";
+import { pinnedEngines } from "../src/kernel/verify.ts";
 import {
   mkdirSync,
   mkdtempSync,
@@ -25,7 +23,7 @@ import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { draftCommand } from "../tools/d1b/draft.ts";
 import { campaignLog, openCampaign, packNamed } from "../tools/d2/campaign.ts";
-import { draftReading, stageExam } from "../tools/d2/exam.ts";
+import { draftReading, stagedExamOf, stageExam } from "../tools/d2/exam.ts";
 import { packControls, readPack, sweepResources } from "../tools/m0/stored-sweep.ts";
 import {
   call,
@@ -42,13 +40,19 @@ import {
 import { scriptedModel } from "./helpers/fixture-pack.ts";
 
 const FORMAT = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
+const OBJECTIVE = { quantity: "mass in kg", direction: "lower" } as const;
+const SOLVER = "claude/claude-opus-5-5";
+const HIDDEN_BLIND_NOTE =
+  "every validity check passed when each example's hidden values were swapped with another's: only the objective read hidden values, so validity checks test public properties alone";
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-draft-")));
 const STEM = `test-draft-${String(runtimeProcess.pid)}`;
-const SOLVER = "claude/claude-opus-5-5";
 const campaigns: string[] = [];
-const OBJECTIVE = { quantity: "mass in kg", direction: "lower" } as const;
-// The sound draft with no decision on the objective, and with a quantity in place of its reason.
+
 const { unmeasured: _reason, ...SILENT } = SOUND;
+const withTools = (tools: readonly string[]): Draft => ({
+  ...SOUND,
+  checks: SOUND.checks.map((check) => ({ ...check, tools })),
+});
 const MEASURED: Draft = {
   ...SILENT,
   objective: OBJECTIVE,
@@ -63,374 +67,6 @@ afterAll(() => {
   for (const name of campaigns) rmSync(dirname(campaignLog(name)), { recursive: true, force: true });
 });
 
-describe("the shape of a draft", () => {
-  it("rejects imports or nondeterminism in the check program, while allowing input dates", () => {
-    const importing = `import "node:fs";\n${SOUND.evaluator}`;
-    const random = `${SOUND.evaluator}\nconst random = Math.random();`;
-    for (const [evaluator, fact] of [
-      [importing, "import"],
-      [random, "random number or the clock"],
-    ] as const) {
-      const faults = draftFaults({ ...SOUND, evaluator });
-      expect(faults).toHaveLength(1);
-      expect(faults[0]).toContain(fact);
-    }
-    const dated = `${SOUND.evaluator}\nconst date = new Date(0).getTime();`;
-    for (const draft of [SOUND, MEASURED, { ...SOUND, evaluator: dated }]) {
-      expect(draftFaults(draft)).toEqual([]);
-    }
-  });
-
-  it("tells the drafting Examiner to author original tasks without public benchmarks and distinguishes domain validity from multi-criteria objectives", () => {
-    const system = drafting(
-      {
-        limits: { wallSeconds: 60, turns: 5, puts: 2 },
-        id: "d-1",
-        log: join(root, "prompt-check.jsonl"),
-        prompt: "domain",
-        budget: { modelTurns: 20, minutes: 30, solves: 2 },
-        reading: async () => [],
-      },
-      (action) => action(),
-    ).system;
-    expect(system).toContain("never search for, fetch, or copy tasks from public benchmarks");
-    expect(system).toContain("penalising wrong or hedged claims");
-  });
-
-  it("holds a draft to one decision on the objective: a quantity with its direction, or why there is none", () => {
-    expect(draftFaults(SOUND)).toEqual([]);
-    expect(draftFaults(MEASURED)).toEqual([]);
-    // Neither form, and both, are the same one fault.
-    for (const draft of [SILENT, { ...MEASURED, unmeasured: "every answer is as good" }]) {
-      const faults = draftFaults(draft);
-      expect(faults).toHaveLength(1);
-      expect(faults[0]).toContain("objective");
-    }
-  });
-
-  it("refuses an accept control that carries a field the answer format does not name, wherever it sits", () => {
-    const settings: JsonObject = { channel: 0, clk_div_q8: 1000 };
-    const pwmAs = (pwm: JsonObject): JsonObject => ({
-      ...FORMAT,
-      properties: { ...FORMAT.properties, pwm: { type: ["object", "null"], ...pwm } },
-    });
-    const carrying = (answerFormat: JsonValue): Draft => ({
-      ...SOUND,
-      answerFormat,
-      accept: [2, 3, 4].map((base, task) => ({ task, answer: { answer: String(base * 6), pwm: settings } })),
-    });
-    // An object with no properties, as esp32's `pwm` was, and one that names some of them.
-    for (const format of [pwmAs({}), pwmAs({ properties: { channel: { type: "integer" } } })]) {
-      const faults = draftFaults(carrying(format));
-      expect(faults).toHaveLength(3);
-      expect(faults[0]).toContain("$.pwm.clk_div_q8");
-      expect(faults[0]).toContain("does not name");
-    }
-    // Named in the properties, under a typed map, in one branch of a choice, beside a choice that
-    // only requires, under a condition, or behind a reference.
-    const both = { channel: { type: "integer" }, clk_div_q8: { type: "integer" } };
-    for (const format of [
-      pwmAs({ properties: both }),
-      pwmAs({ additionalProperties: { type: "integer" } }),
-      pwmAs({ anyOf: [{ properties: { duty: {} } }, { properties: { channel: {}, clk_div_q8: {} } }] }),
-      pwmAs({ properties: both, anyOf: [{ required: ["channel"] }, { required: ["clk_div_q8"] }] }),
-      pwmAs({ dependentSchemas: { channel: { properties: both } } }),
-      { ...FORMAT, properties: { ...FORMAT.properties, pwm: { $ref: "#/$defs/pwm" } }, $defs: { pwm: {} } },
-    ]) {
-      expect(draftFaults(carrying(format))).toEqual([]);
-    }
-    // A reject control may carry what it likes: the check it names is what refuses it.
-    const reject = [{ task: 0, answer: { answer: "13", pwm: settings }, check: "check-product" }];
-    expect(draftFaults({ ...SOUND, answerFormat: pwmAs({}), reject })).toEqual([]);
-  });
-
-  it("is read by the session before the host's reading, which a draft out of shape never reaches", async () => {
-    const lone: Draft = { ...SOUND, accept: SOUND.accept.slice(1), reject: [] };
-    const s = seat("draft", [drafted(lone), drafted(SOUND), finish]);
-    const reached: Draft[] = [];
-    const examined = await examine({
-      ...s.request,
-      reading: async (draft: Draft) => {
-        reached.push(draft);
-        return [];
-      },
-    });
-    expect(examined).toMatchObject({ ended: "stands", puts: 2 });
-    expect(reached).toEqual([SOUND]);
-    // The refusal carries each of the draft's faults and the puts it has left.
-    const told = s.of("draft.call")[0]?.text;
-    const faults = draftFaults(lone);
-    expect(faults).toHaveLength(2);
-    for (const fault of faults) expect(told).toContain(`- ${fault}`);
-    expect(told).toMatch(/3.*drafts/u);
-    expect(draftOf(read(s.log))).toEqual(SOUND);
-  });
-
-  it("spends no put on a draft whose objective, rule or family the schema refuses", async () => {
-    const args = draftArgs(SOUND);
-    const { objective: _objective, ...unsaid } = args;
-    const blank = (draft: Draft): Draft => ({
-      ...draft,
-      rules: draft.rules.map((rule) => ({ ...rule, source: "  " })),
-    });
-    for (const refused of [
-      unsaid,
-      draftArgs(blank(SOUND)),
-      draftArgs({ ...SOUND, tasks: SOUND.tasks.map((task) => ({ ...task, family: " " })) }),
-    ]) {
-      const s = seat("draft", [call("draft_exam", refused), drafted(SOUND), finish]);
-      expect(await examine(s.request)).toMatchObject({ ended: "stands", puts: 1 });
-      expect(s.of("draft.finished")).toMatchObject([{ stands: true, tries: 1 }]);
-    }
-  });
-
-  it("tells a quantity without its direction as no decision, and the draft does not stand", async () => {
-    for (const objective of [
-      { quantity: OBJECTIVE.quantity },
-      { quantity: OBJECTIVE.quantity, none: "nothing is left to prefer" },
-    ]) {
-      const half = { ...draftArgs(SILENT), objective };
-      const s = seat("draft", [call("draft_exam", half), drafted(SOUND), finish]);
-      expect(await examine(s.request)).toMatchObject({ ended: "stands", puts: 2 });
-      expect(s.of("draft.call")[0]?.text).toContain("objective");
-      expect(draftOf(read(s.log))).toEqual(SOUND);
-    }
-  });
-
-  it("reads a draft logged before the objective was required, with or without one", () => {
-    for (const old of [SILENT, { ...SILENT, objective: OBJECTIVE }]) {
-      const log = join(root, `old-${String(old.objective !== undefined)}.jsonl`);
-      append(log, "exam.drafted", {
-        session: "d-1",
-        draft: parseJsonAs<JsonObject>(capturedJsonStringify(old)),
-      });
-      expect(draftOf(read(log))).toEqual(old);
-    }
-  });
-});
-
-describe("a draft read without a model", () => {
-  it("stages a draft as a pack a campaign reads, once", () => {
-    const staged = stageExam(join(root, "staged"), SOUND);
-    expect(stageExam(join(root, "staged"), SOUND)).toEqual(staged);
-    const { brief, tasks } = readPack(staged.bundle);
-    expect(tasks.map(({ taskId }) => taskId)).toEqual(["ex-001", "ex-002", "ex-003"]);
-    expect(brief.ruleDecisions).toMatchObject([
-      { id: "R1", source: SOUND.rules[0]?.source, visibility: "public" },
-    ]);
-    expect(packControls(staged.bundle)).toHaveLength(4);
-    // A solver reads the scope and the conventions with the rules, and each rule's source.
-    const resources = new Map(sweepResources(brief).map(({ name, content }) => [name, content]));
-    expect(resources.get("public-scope")).toEqual([
-      { domain: SOUND.domain, scope: SOUND.scope, conventions: SOUND.conventions },
-    ]);
-    expect(resources.get("public-rule-decisions")).toEqual([{ ...SOUND.rules[0], visibility: "public" }]);
-    // The check program is staged without the tasks and the controls, which hold what is hidden.
-    expect(readFileSync(join(staged.checks, "evaluator.ts"), "utf8")).toBe(SOUND.evaluator);
-    expect(() => readFileSync(join(staged.checks, "controls.json"), "utf8")).toThrow();
-  });
-
-  it("stages the reason for no objective nowhere a solver, a Builder or a writing session reads", () => {
-    const model = (draft: Draft) =>
-      join(stageExam(join(root, "unmeasured"), draft).bundle, "correctness-model");
-    const files = ["brief.json", "tasks.json", "controls.json", "evaluator.ts"];
-    const [one, other] = [SOUND, { ...SOUND, unmeasured: "another reason" }].map((draft) =>
-      files.map((file) => readFileSync(join(model(draft), file), "utf8")),
-    );
-    expect(one).toEqual(other);
-    // A declared objective is staged, as before.
-    expect(readPack(stageExam(join(root, "unmeasured"), MEASURED).bundle).brief.objective).toEqual(OBJECTIVE);
-  });
-
-  it("finds no fault in a sound draft, and tells the faults of one whose check passes everything", async () => {
-    expect((await draftReading(join(root, "read"), SOUND, 2)).faults).toEqual([]);
-    const lax = { ...SOUND, evaluator: `export const checks = { "check-product": () => true };\n` };
-    const faults = (await draftReading(join(root, "read"), lax, 2)).faults;
-    expect(faults).toHaveLength(8);
-    for (const [index, facts] of [
-      ["ex-001", "check-product", "reject control", "pass"],
-      ["check-product", "refused nothing"],
-      ...["ex-001", "ex-002", "ex-003"].map((id) => [id, "do-nothing", "pass"]),
-      // Each accept control passes every other example too, so the checks read no task.
-      ...["ex-001", "ex-002", "ex-003"].map((id) => [id, "passed every other example"]),
-    ].entries()) {
-      for (const fact of facts) expect(faults[index]).toContain(fact);
-    }
-  });
-
-  it("gives each check a task's hidden values as the author wrote them", async () => {
-    const hidden = {
-      ...SOUND,
-      evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * req.hidden.factor),\n};\n`,
-      tasks: SOUND.tasks.map((task) => ({ ...task, hidden: { factor: 6 } })),
-    };
-    expect((await draftReading(join(root, "read"), hidden, 2)).faults).toEqual([]);
-  });
-
-  it("reads an accept control's files under a check that reads request.files", async () => {
-    const report = {
-      ...SOUND,
-      evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) && req.files.some((file) => file.path === "report.md" && file.text === "six times"),\n};\n`,
-      accept: SOUND.accept.map((control) => ({
-        ...control,
-        files: [{ path: "report.md", text: "six times" }],
-      })),
-    };
-    expect((await draftReading(join(root, "read"), report, 2)).faults).toEqual([]);
-    // Without the files the same controls fail the check that reads them.
-    const bare = { ...report, accept: SOUND.accept };
-    expect((await draftReading(join(root, "read"), bare, 2)).faults.join("\n")).toContain("accept control");
-  });
-
-  it("reads an accept control's archive members under a check that reads a file's entries", async () => {
-    const book = {
-      ...SOUND,
-      evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) && req.files.some((file) => file.path === "book.xlsx" && file.base64 !== "" && (file.entries ?? []).some((entry) => entry.text === "<v>6</v>")),\n};\n`,
-      accept: SOUND.accept.map((control) => ({
-        ...control,
-        files: [{ path: "book.xlsx", entries: [{ path: "xl/worksheets/sheet1.xml", text: "<v>6</v>" }] }],
-      })),
-    };
-    expect((await draftReading(join(root, "read"), book, 2)).faults).toEqual([]);
-    // The same file without its members fails the check that reads them.
-    const flat = {
-      ...book,
-      accept: SOUND.accept.map((control) => ({
-        ...control,
-        files: [{ path: "book.xlsx", text: "<v>6</v>" }],
-      })),
-    };
-    expect((await draftReading(join(root, "read"), flat, 2)).faults.join("\n")).toContain("accept control");
-  });
-
-  it("tells a check program that does not load as a fault", async () => {
-    const broken = {
-      ...SOUND,
-      evaluator: `export const checks = { "check-product": (req) => req.artifact.answer === ;\n`,
-    };
-    // Which control met it first is the pool's order.
-    const [fault, ...more] = (await draftReading(join(root, "read"), broken, 2)).faults;
-    expect(more).toEqual([]);
-    for (const fact of ["ex-00", "check-product", "did not load", "Unexpected ;"]) {
-      expect(fault).toContain(fact);
-    }
-  });
-
-  it("tells a declared objective the program does not export, and a check it does not define", async () => {
-    expect((await draftReading(join(root, "read"), MEASURED, 2)).faults).toEqual([]);
-    const unexported = (
-      await draftReading(join(root, "read"), { ...MEASURED, evaluator: SOUND.evaluator }, 2)
-    ).faults;
-    expect(unexported.some((fault) => fault.includes("objective"))).toBe(true);
-    const renamed = SOUND.evaluator.replace("check-product", "check-other");
-    const undefinedCheck = (await draftReading(join(root, "read"), { ...SOUND, evaluator: renamed }, 2))
-      .faults;
-    expect(undefinedCheck.length).toBeGreaterThan(0);
-    expect(undefinedCheck.some((fault) => fault.includes("check-product"))).toBe(true);
-  });
-
-  it("refuses checks an accept control passes on every other example, and passes ones bound to the task", async () => {
-    // A check of the answer's form alone: each accept control is a valid answer to any task.
-    const formOnly = {
-      ...SOUND,
-      evaluator: `export const checks = { "check-product": (req) => /^[0-9]+$/u.test(req.artifact.answer) };\n`,
-      reject: [{ task: 0, answer: { answer: "x" }, check: "check-product" }],
-    };
-    const faults = (await draftReading(join(root, "read"), formOnly, 2)).faults;
-    expect(faults).toHaveLength(SOUND.tasks.length);
-    for (const fault of faults) expect(fault).toContain("passed every other example");
-    // The sound draft's check reads the base, so another example's control fails it.
-    expect((await draftReading(join(root, "read"), SOUND, 2)).faults).toEqual([]);
-  });
-
-  it("refuses hidden values no check or measure reads, and passes ones that decide a check", async () => {
-    const seeded = SOUND.tasks.map((task, seed) => ({ ...task, hidden: { seed } }));
-    const unread = (await draftReading(join(root, "read"), { ...SOUND, tasks: seeded }, 2)).faults;
-    expect(unread).toEqual([expect.stringContaining("hidden values had no effect on any accept control")]);
-    // Each task's own factor decides its product, so another example's factor fails its answer.
-    const factors = [5, 6, 7] as const;
-    const decided = {
-      ...SOUND,
-      evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * req.hidden.factor),\n};\n`,
-      tasks: SOUND.tasks.map((task, index) => ({ ...task, hidden: { factor: factors[index] ?? 0 } })),
-      accept: SOUND.tasks.map((task, index) => ({
-        task: index,
-        answer: { answer: String(Number(asRecord(task.publicInput)?.base) * Number(factors[index])) },
-      })),
-    };
-    expect((await draftReading(join(root, "read"), decided, 2)).faults).toEqual([]);
-  });
-});
-
-describe("a draft put to the host", () => {
-  it("reads a draft's values from files in the session's home as the same values written inline", async () => {
-    const home = realpathSync(mkdtempSync(join(tmpdir(), "ana-draft-home-")));
-    try {
-      writeFileSync(join(home, "evaluator.json"), JSON.stringify(SOUND.evaluator));
-      writeFileSync(join(home, "format.json"), JSON.stringify(SOUND.answerFormat));
-      const s = seat("draft", []);
-      const mode = drafting({ ...s.request, reading: async () => [] }, async (act) => await act(), home);
-      expect(toolOf(mode).description).toContain("from_file");
-      // A strict caller holds the program to the schema, which takes the object as well as the text.
-      expect(JSON.stringify(toolOf(mode).parameters)).toContain('"from_file"');
-      const args = {
-        ...draftArgs(SOUND),
-        evaluator: { from_file: "evaluator.json" },
-        answer_format: { from_file: "format.json" },
-      };
-      await invoke(toolOf(mode), "put", args);
-      expect(draftOf(read(s.log))).toEqual(SOUND);
-      // The check program is a text field, which a draft may give as the text of a `from_file`
-      // object: the gate must not load that text as the program and refuse it.
-      const spelt = drafting({ ...s.request, reading: async () => [] }, async (act) => await act(), home);
-      const filled = toolOf(spelt).prepareArguments?.({
-        ...args,
-        evaluator: JSON.stringify({ from_file: "evaluator.json" }),
-      });
-      expect(filled).toMatchObject({ evaluator: SOUND.evaluator });
-      // A check program named by its own source file is taken as that file's text.
-      writeFileSync(join(home, "evaluator.ts"), SOUND.evaluator);
-      expect(
-        toolOf(spelt).prepareArguments?.({ ...args, evaluator: { from_file: "evaluator.ts" } }),
-      ).toMatchObject({
-        evaluator: SOUND.evaluator,
-      });
-      const homeless = drafting(s.request, async (act) => await act());
-      expect(toolOf(homeless).description).not.toContain("from_file");
-    } finally {
-      rmSync(home, { recursive: true, force: true });
-    }
-  });
-
-  it("stands at its first put once it has no fault, with no solve of its examples", async () => {
-    const s = seat("draft", [drafted(SOUND), finish]);
-    expect(await examine(s.request)).toMatchObject({ ended: "stands", puts: 1 });
-    expect(s.of("draft.call").map(({ text }) => text)).toEqual([
-      "The draft stands: it is the campaign's exam. The session ends here.",
-    ]);
-    expect(draftOf(read(s.log))).toEqual(SOUND);
-    expect(solvesIn(read(s.log))).toEqual([]);
-    expect(s.of("draft.finished")).toMatchObject([{ ended: "stands", stands: true, tries: 1 }]);
-    expect(s.of("draft.finished")[0]).not.toHaveProperty("measurement");
-    // Its system prompt says what the host does with a draft, and names no solve of it.
-    expect(s.sent[0]).toContain("draft_exam validates the whole draft and returns any faults");
-    expect(s.sent[0]).not.toMatch(/starter harness|is then solved/u);
-    // Its opening says the budget the exam's solves will be held to, as a writing session's does.
-    expect(s.sent.join("\n")).toMatch(
-      /held to 20 turns of the solver's own[^.]*, and 30 minutes, and a comparison solves each task 2 times under each harness\./u,
-    );
-  });
-
-  it("counts a drafting session's solves as the Examiner's, as a writing session's", () => {
-    const log = join(root, "sessions.jsonl");
-    append(log, "draft.started", { session: "d-1" });
-    append(log, "exam.started", { session: "x-1" });
-    append(log, "build.started", { session: "b-1" });
-    expect(examinerSessions(read(log))).toEqual(new Set(["d-1", "x-1"]));
-  });
-});
-
-/** A campaign opened from a prompt, with no exam yet, under the repository as a campaign is. */
 function opened(name: string, attended = false): string[] {
   campaigns.push(name);
   const log = campaignLog(name);
@@ -443,7 +79,6 @@ function opened(name: string, attended = false): string[] {
   return ["--name", name, "--examiner", SOLVER, "--solver", SOLVER];
 }
 
-/** An Examiner that puts `drafts` in turn and then finishes. */
 const putting =
   (...drafts: Draft[]): Session<"draft"> =>
   (request) =>
@@ -455,17 +90,427 @@ const putting =
       ]),
     });
 
-describe("a campaign's drafts", () => {
-  it("ends the campaign on its exam once three drafts in two sessions did not stand", async () => {
+describe("draft shape and session gate", () => {
+  it("enforces evaluator purity, safe verifier tool names, and single objective decision", () => {
+    const allowed: readonly Draft[] = [
+      SOUND,
+      MEASURED,
+      { ...SOUND, evaluator: `${SOUND.evaluator}\nconst t = new Date(0).getTime();` },
+      withTools(["bash", "python3"]),
+      { ...MEASURED, objectiveTools: ["python3"] },
+    ];
+    for (const draft of allowed) expect(draftFaults(draft)).toEqual([]);
+
+    const rejected: readonly [Draft, string][] = [
+      [{ ...SOUND, evaluator: `import "node:fs";\n${SOUND.evaluator}` }, "import"],
+      [{ ...SOUND, evaluator: `${SOUND.evaluator}\nconst r = Math.random();` }, "random number or the clock"],
+      [{ ...SOUND, evaluator: `${SOUND.evaluator}\nconst t = Date.now();` }, "random number or the clock"],
+      [SILENT, "objective"],
+      [{ ...MEASURED, unmeasured: "every answer is as good" }, "objective"],
+      [withTools(["../sh"]), "invalid verifier tool"],
+      [{ ...MEASURED, objectiveTools: ["a/b"] }, "invalid verifier tool"],
+    ];
+    for (const [draft, fact] of rejected) {
+      const faults = draftFaults(draft);
+      expect(faults).toHaveLength(1);
+      expect(faults[0]).toContain(fact);
+    }
+  });
+
+  it("refuses unnamed fields in accept controls across JSON Schema constructs while leaving reject controls free", () => {
+    const settings: JsonObject = { channel: 0, clk_div_q8: 1000 };
+    const pwmAs = (pwm: JsonObject): JsonObject => ({
+      ...FORMAT,
+      properties: { ...FORMAT.properties, pwm: { type: ["object", "null"], ...pwm } },
+    });
+    const carrying = (answerFormat: JsonValue): Draft => ({
+      ...SOUND,
+      answerFormat,
+      accept: [2, 3, 4].map((base, task) => ({ task, answer: { answer: String(base * 6), pwm: settings } })),
+    });
+    for (const format of [pwmAs({}), pwmAs({ properties: { channel: { type: "integer" } } })]) {
+      const faults = draftFaults(carrying(format));
+      expect(faults).toHaveLength(3);
+      expect(faults[0]).toContain("$.pwm.clk_div_q8");
+      expect(faults[0]).toContain("does not name");
+    }
+    const both = { channel: { type: "integer" }, clk_div_q8: { type: "integer" } };
+    for (const format of [
+      pwmAs({ properties: both }),
+      pwmAs({ additionalProperties: { type: "integer" } }),
+      pwmAs({ anyOf: [{ properties: { duty: {} } }, { properties: { channel: {}, clk_div_q8: {} } }] }),
+      pwmAs({ properties: both, anyOf: [{ required: ["channel"] }, { required: ["clk_div_q8"] }] }),
+      pwmAs({ dependentSchemas: { channel: { properties: both } } }),
+      { ...FORMAT, properties: { ...FORMAT.properties, pwm: { $ref: "#/$defs/pwm" } }, $defs: { pwm: {} } },
+    ]) {
+      expect(draftFaults(carrying(format))).toEqual([]);
+    }
+    const reject = [{ task: 0, answer: { answer: "13", pwm: settings }, check: "check-product" }];
+    expect(draftFaults({ ...SOUND, answerFormat: pwmAs({}), reject })).toEqual([]);
+  });
+
+  it("blocks unshaped drafts before reading, spends no put on schema errors, and handles partial objectives", async () => {
+    const lone: Draft = { ...SOUND, accept: SOUND.accept.slice(1), reject: [] };
+    const s = seat("draft", [drafted(lone), drafted(SOUND), finish]);
+    const reached: Draft[] = [];
+    const examined = await examine({
+      ...s.request,
+      reading: async (draft: Draft) => {
+        reached.push(draft);
+        return [];
+      },
+    });
+    expect(examined).toMatchObject({ ended: "stands", puts: 2 });
+    expect(reached).toEqual([SOUND]);
+    const loneFaults = draftFaults(lone);
+    expect(loneFaults).toHaveLength(2);
+    const told = s.of("draft.call")[0]?.text;
+    for (const fault of loneFaults) expect(told).toContain(`- ${fault}`);
+    expect(told).toMatch(/3.*drafts/u);
+    expect(draftOf(read(s.log))).toEqual(SOUND);
+
+    // Exhausting puts returns the terminal refusal line; a 1-char scope and measured+objectiveTools round-trip cleanly.
+    const exhausted = seat("draft", [drafted(lone), finish]);
+    await examine({ ...exhausted.request, limits: { ...exhausted.request.limits, puts: 1 } });
+    expect(exhausted.of("draft.call")[0]?.text).toContain("This session can put no further draft");
+    const withToolsDraft: Draft = { ...MEASURED, scope: "x", objectiveTools: ["python3"] };
+    const measuredSeat = seat("draft", [drafted(withToolsDraft), finish]);
+    expect(await examine(measuredSeat.request)).toMatchObject({ ended: "stands", puts: 1 });
+    expect(draftOf(read(measuredSeat.log))).toEqual(withToolsDraft);
+
+    // Schema-refused drafts spend no put.
+    const { objective: _obj, ...unsaid } = draftArgs(SOUND);
+    for (const refused of [
+      unsaid,
+      draftArgs({ ...SOUND, rules: SOUND.rules.map((r) => ({ ...r, source: "  " })) }),
+      draftArgs({ ...SOUND, tasks: SOUND.tasks.map((t) => ({ ...t, family: " " })) }),
+    ]) {
+      const schemaSeat = seat("draft", [call("draft_exam", refused), drafted(SOUND), finish]);
+      expect(await examine(schemaSeat.request)).toMatchObject({ ended: "stands", puts: 1 });
+      expect(schemaSeat.of("draft.finished")).toMatchObject([{ stands: true, tries: 1 }]);
+    }
+
+    // Half-specified objective is treated as no decision (spends a put, rejected by draftFaults).
+    for (const objective of [
+      { quantity: OBJECTIVE.quantity },
+      { quantity: OBJECTIVE.quantity, none: "nothing is left to prefer" },
+    ]) {
+      const halfSeat = seat("draft", [
+        call("draft_exam", { ...draftArgs(SILENT), objective }),
+        drafted(SOUND),
+        finish,
+      ]);
+      expect(await examine(halfSeat.request)).toMatchObject({ ended: "stands", puts: 2 });
+      expect(halfSeat.of("draft.call")[0]?.text).toContain("objective");
+      expect(draftOf(read(halfSeat.log))).toEqual(SOUND);
+    }
+  });
+
+  it("stands on the first clean put with prompt guidance, from_file support, and log backwards-compatibility", async () => {
+    const s = seat("draft", [drafted(SOUND), finish]);
+    expect(await examine(s.request)).toMatchObject({ ended: "stands", puts: 1 });
+    expect(s.of("draft.call").map(({ text }) => text)).toEqual([
+      "The draft stands: it is the campaign's exam. The session ends here.",
+    ]);
+    expect(solvesIn(read(s.log))).toEqual([]);
+    expect(s.of("draft.finished")).toMatchObject([{ ended: "stands", stands: true, tries: 1 }]);
+    expect(s.of("draft.finished")[0]).not.toHaveProperty("measurement");
+    for (const phrase of [
+      "draft_exam validates the whole draft and returns any faults",
+      "never search for, fetch, or copy tasks from public benchmarks",
+      "penalising wrong or hedged claims",
+      "runtime.tools.run",
+    ]) {
+      expect(s.sent[0]).toContain(phrase);
+    }
+    expect(s.sent[0]).not.toMatch(/starter harness|is then solved/u);
+    expect(s.sent.join("\n")).toMatch(
+      /held to 20 turns of the solver's own[^.]*, and 30 minutes, and a comparison solves each task 2 times under each harness\./u,
+    );
+
+    // Home `from_file` resolution (inline JSON, JSON-stringified object, raw `.ts` source) vs homeless.
+    const home = realpathSync(mkdtempSync(join(tmpdir(), "ana-draft-home-")));
+    try {
+      writeFileSync(join(home, "evaluator.json"), JSON.stringify(SOUND.evaluator));
+      writeFileSync(join(home, "format.json"), JSON.stringify(SOUND.answerFormat));
+      writeFileSync(join(home, "evaluator.ts"), SOUND.evaluator);
+      const homeSeat = seat("draft", []);
+      const mode = drafting({ ...homeSeat.request, reading: async () => [] }, async (act) => act(), home);
+      expect(toolOf(mode).description).toContain("from_file");
+      expect(JSON.stringify(toolOf(mode).parameters)).toContain('"from_file"');
+      const args = {
+        ...draftArgs(SOUND),
+        evaluator: { from_file: "evaluator.json" },
+        answer_format: { from_file: "format.json" },
+      };
+      await invoke(toolOf(mode), "put", args);
+      expect(draftOf(read(homeSeat.log))).toEqual(SOUND);
+      expect(
+        toolOf(mode).prepareArguments?.({
+          ...args,
+          evaluator: JSON.stringify({ from_file: "evaluator.json" }),
+        }),
+      ).toMatchObject({ evaluator: SOUND.evaluator });
+      expect(
+        toolOf(mode).prepareArguments?.({ ...args, evaluator: { from_file: "evaluator.ts" } }),
+      ).toMatchObject({ evaluator: SOUND.evaluator });
+      expect(toolOf(drafting(homeSeat.request, async (act) => act())).description).not.toContain("from_file");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+
+    // Legacy `exam.drafted` logs without `unmeasured` and `examinerSessions` accounting.
+    for (const old of [SILENT, { ...SILENT, objective: OBJECTIVE }]) {
+      const log = join(root, `old-${String(old.objective !== undefined)}.jsonl`);
+      append(log, "exam.drafted", {
+        session: "d-1",
+        draft: parseJsonAs<JsonObject>(capturedJsonStringify(old)),
+      });
+      expect(draftOf(read(log))).toEqual(old);
+    }
+    const sessionsLog = join(root, "sessions.jsonl");
+    for (const [kind, session] of [
+      ["draft.started", "d-1"],
+      ["exam.started", "x-1"],
+      ["build.started", "b-1"],
+    ] as const) {
+      append(sessionsLog, kind, { session });
+    }
+    expect(examinerSessions(read(sessionsLog))).toEqual(new Set(["d-1", "x-1"]));
+  });
+});
+
+describe("staging and offline reading", () => {
+  it("stages packs idempotently without leaking hidden controls or unmeasured rationale", () => {
+    const staged = stageExam(join(root, "staged"), SOUND);
+    expect(stageExam(join(root, "staged"), SOUND)).toEqual(staged);
+    expect(staged.bundle).toMatch(/\/exams\/[0-9a-f]{16}\/bundle$/u);
+    expect(stagedExamOf(join(root, "staged", "empty.jsonl"))).toBeNull();
+    const { brief, tasks } = readPack(staged.bundle);
+    expect(tasks.map(({ taskId }) => taskId)).toEqual(["ex-001", "ex-002", "ex-003"]);
+    expect(brief.ruleDecisions).toMatchObject([
+      { id: "R1", source: SOUND.rules[0]?.source, visibility: "public" },
+    ]);
+    expect(packControls(staged.bundle)).toHaveLength(4);
+    const resources = new Map(sweepResources(brief).map(({ name, content }) => [name, content]));
+    expect(resources.get("public-scope")).toEqual([
+      { domain: SOUND.domain, scope: SOUND.scope, conventions: SOUND.conventions },
+    ]);
+    expect(resources.get("public-rule-decisions")).toEqual([{ ...SOUND.rules[0], visibility: "public" }]);
+    expect(readFileSync(join(staged.checks, "evaluator.ts"), "utf8")).toBe(SOUND.evaluator);
+    expect(() => readFileSync(join(staged.checks, "controls.json"), "utf8")).toThrow();
+
+    // `unmeasured` text must never appear in any staged file; declared objective is staged.
+    const modelFiles = (draft: Draft) =>
+      ["brief.json", "tasks.json", "controls.json", "evaluator.ts"].map((file) =>
+        readFileSync(
+          join(stageExam(join(root, "unmeasured"), draft).bundle, "correctness-model", file),
+          "utf8",
+        ),
+      );
+    expect(modelFiles(SOUND)).toEqual(modelFiles({ ...SOUND, unmeasured: "another reason" }));
+    expect(readPack(stageExam(join(root, "unmeasured"), MEASURED).bundle).brief.objective).toEqual(OBJECTIVE);
+  });
+
+  it("reads sound, lax, form-only, unloadable, and missing-export evaluators accurately", async () => {
+    expect((await draftReading(join(root, "read"), SOUND, 2)).faults).toEqual([]);
+    expect((await draftReading(join(root, "read"), MEASURED, 2)).faults).toEqual([]);
+
+    const lax = { ...SOUND, evaluator: `export const checks = { "check-product": () => true };\n` };
+    const laxFaults = (await draftReading(join(root, "read"), lax, 2)).faults;
+    expect(laxFaults).toHaveLength(8);
+    for (const [index, facts] of [
+      ["ex-001", "check-product", "reject control", "pass"],
+      ["check-product", "refused nothing"],
+      ...["ex-001", "ex-002", "ex-003"].map((id) => [id, "do-nothing", "pass"]),
+      ...["ex-001", "ex-002", "ex-003"].map((id) => [id, "passed every other example"]),
+    ].entries()) {
+      for (const fact of facts) expect(laxFaults[index]).toContain(fact);
+    }
+
+    const formOnly = {
+      ...SOUND,
+      evaluator: `export const checks = { "check-product": (req) => /^[0-9]+$/u.test(req.artifact.answer) };\n`,
+      reject: [{ task: 0, answer: { answer: "x" }, check: "check-product" }],
+    };
+    const formFaults = (await draftReading(join(root, "read"), formOnly, 2)).faults;
+    expect(formFaults).toHaveLength(3);
+    for (const fault of formFaults) expect(fault).toContain("passed every other example");
+
+    const broken = {
+      ...SOUND,
+      evaluator: `export const checks = { "check-product": (req) => req.artifact.answer === ;\n`,
+    };
+    const [syntaxFault, ...rest] = (await draftReading(join(root, "read"), broken, 2)).faults;
+    expect(rest).toEqual([]);
+    for (const fact of ["ex-00", "check-product", "did not load", "Unexpected ;"]) {
+      expect(syntaxFault).toContain(fact);
+    }
+
+    expect(
+      (await draftReading(join(root, "read"), { ...MEASURED, evaluator: SOUND.evaluator }, 2)).faults.some(
+        (f) => f.includes("objective"),
+      ),
+    ).toBe(true);
+    const undefinedCheck = (
+      await draftReading(
+        join(root, "read"),
+        { ...SOUND, evaluator: SOUND.evaluator.replace("check-product", "check-other") },
+        2,
+      )
+    ).faults;
+    expect(undefinedCheck.some((f) => f.includes("check-product"))).toBe(true);
+  });
+
+  it("verifies deliverable files, archive entries, hidden-value sensitivity, and factual notes", async () => {
+    // Plain deliverable file and archive member checks pass with files and fail without.
+    const report: Draft = {
+      ...SOUND,
+      evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) && req.files.some((f) => f.path === "report.md" && f.text === "six times"),\n};\n`,
+      accept: SOUND.accept.map((c) => ({ ...c, files: [{ path: "report.md", text: "six times" }] })),
+    };
+    expect((await draftReading(join(root, "read"), report, 2)).faults).toEqual([]);
+    expect(
+      (await draftReading(join(root, "read"), { ...report, accept: SOUND.accept }, 2)).faults.join("\n"),
+    ).toContain("accept control");
+
+    const book: Draft = {
+      ...SOUND,
+      evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) && req.files.some((f) => f.path === "book.xlsx" && f.base64 !== "" && (f.entries ?? []).some((e) => e.text === "<v>6</v>")),\n};\n`,
+      accept: SOUND.accept.map((c) => ({
+        ...c,
+        files: [{ path: "book.xlsx", entries: [{ path: "xl/worksheets/sheet1.xml", text: "<v>6</v>" }] }],
+      })),
+    };
+    expect((await draftReading(join(root, "read"), book, 2)).faults).toEqual([]);
+    const flatBook: Draft = {
+      ...book,
+      accept: SOUND.accept.map((c) => ({ ...c, files: [{ path: "book.xlsx", text: "<v>6</v>" }] })),
+    };
+    expect((await draftReading(join(root, "read"), flatBook, 2)).faults.join("\n")).toContain(
+      "accept control",
+    );
+
+    // Hidden values: unread fails, check-deciding passes silently, objective-only (including key throw) emits factual note.
+    const unread = { ...SOUND, tasks: SOUND.tasks.map((t, seed) => ({ ...t, hidden: { seed } })) };
+    expect((await draftReading(join(root, "read"), unread, 2)).faults).toEqual([
+      expect.stringContaining("hidden values had no effect on any accept control"),
+    ]);
+
+    const factors = [5, 6, 7] as const;
+    const hiddenDecided: Draft = {
+      ...SOUND,
+      evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * req.hidden.factor),\n};\n`,
+      tasks: SOUND.tasks.map((t, i) => ({ ...t, hidden: { factor: factors[i] ?? 0 } })),
+      accept: SOUND.tasks.map((t, i) => ({
+        task: i,
+        answer: { answer: String(Number(asRecord(t.publicInput)?.base) * Number(factors[i])) },
+      })),
+    };
+    const decidedRead = await draftReading(join(root, "read"), hiddenDecided, 2);
+    expect(decidedRead.faults).toEqual([]);
+    expect(decidedRead.read?.reading.notes).toEqual([]);
+
+    const keyChecked: Draft = {
+      ...MEASURED,
+      objective: { quantity: "score", direction: "lower" },
+      tasks: SOUND.tasks.map((t, i) => ({ ...t, hidden: { [`k${String(i)}`]: i + 1 } })),
+      evaluator: [
+        'export const checks = { "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) };',
+        "export function objective(req) {",
+        "  const v = req.hidden[`k${String(req.publicTask.publicInput.base - 2)}`];",
+        '  if (typeof v !== "number") throw new Error("missing hidden key");',
+        "  return v;",
+        "}",
+      ].join("\n"),
+    };
+    const noteRead = await draftReading(join(root, "hidden-note"), keyChecked, 2);
+    expect(noteRead.faults).toEqual([]);
+    expect(noteRead.read?.reading.notes).toEqual([HIDDEN_BLIND_NOTE]);
+
+    // Partial cross-example pass emits a factual note without faulting.
+    const partial: Draft = {
+      ...SOUND,
+      evaluator: `export const checks = { "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) || (req.publicTask.publicInput.base === 3 && req.artifact.answer === "12") };\n`,
+    };
+    const partialRead = await draftReading(join(root, "partial-note"), partial, 2);
+    expect(partialRead.faults).toEqual([]);
+    expect(partialRead.read?.reading.notes).toEqual([
+      "the accept control of ex-001 also passed 1 of 2 other examples",
+    ]);
+  });
+
+  it("auto-stages declared bash and python3 tools, clears authored faults, and refuses missing or undeclared tools", async () => {
+    const engined: Draft = {
+      ...MEASURED,
+      checks: [{ id: "check-product", rule: "R1", assertion: "via bash wrapping python3", tools: ["bash"] }],
+      objective: { quantity: "error", direction: "lower" },
+      objectiveTools: ["python3"],
+      tasks: SOUND.tasks.map((t, i) => ({ ...t, hidden: { target: (i + 2) * 5 } })),
+      evaluator: [
+        "export const checks = {",
+        '  "check-product": async (req, runtime) => {',
+        "    const res = await runtime.tools.run({",
+        '      toolId: "bash",',
+        String.raw`      args: ["-c", "python3 -c 'import json, sys; d = json.load(sys.stdin); a = d[\"artifact\"][\"answer\"]; print(a.isdigit() and int(a) == d[\"publicTask\"][\"publicInput\"][\"base\"] * 6)'"],`,
+        "      stdin: JSON.stringify(req),",
+        "    });",
+        '    return res.exitCode === 0 && res.stdout.trim() === "True";',
+        "  },",
+        "};",
+        "export async function objective(req, runtime) {",
+        "  const res = await runtime.tools.run({",
+        '    toolId: "python3",',
+        "    args: [\"-c\", \"import json, sys; d = json.load(sys.stdin); print(abs(int(d['artifact']['answer']) - d['hidden']['target']))\"],",
+        "    stdin: JSON.stringify(req),",
+        "  });",
+        "  return Number(res.stdout.trim());",
+        "}",
+      ].join("\n"),
+    };
+    const dir = join(root, "engines");
+    const ok = await draftReading(dir, engined, 2);
+    expect(ok.faults).toEqual([]);
+    const checks = ok.read?.reading.checks ?? [];
+    expect(checks.map(({ id, instrument, missing }) => ({ id, instrument, missing }))).toEqual([
+      { id: "check-product", instrument: "bash", missing: [] },
+      { id: "objective", instrument: "python3", missing: [] },
+    ]);
+    expect(authoredFaults(checks, new Set())).toEqual([]);
+    expect(ok.read?.reading.notes).toEqual([HIDDEN_BLIND_NOTE]);
+    const staged = stageExam(dir, engined);
+    expect(
+      pinnedEngines({ checks: staged.checks, tools: join(staged.bundle, ".toolchain") }).map((e) => e.name),
+    ).toEqual(["bash", "python3"]);
+
+    // Undeclared tool invocation and missing host binary both fail cleanly.
+    const undeclared = await draftReading(
+      join(root, "undeclared"),
+      {
+        ...SOUND,
+        evaluator: `export const checks = { "check-product": async (_req, rt) => (await rt.tools.run({ toolId: "sh", args: ["-c", "true"] })).exitCode === 0 };\n`,
+      },
+      2,
+    );
+    expect(undeclared.faults.join("\n")).toContain("which it does not declare");
+    const missing = await draftReading(join(root, "missing"), withTools(["no-such-engine-xyz"]), 2);
+    expect(missing.faults.join("\n")).toContain(
+      "no-such-engine-xyz, which is not on the verifier's tool path",
+    );
+  });
+});
+
+describe("campaign draft lifecycle", () => {
+  it("ends the campaign after three failed drafts across two sessions", async () => {
+    await expect(draftCommand([])).rejects.toThrow("name --name, --session and --examiner");
     const name = `${STEM}-spent`;
     const flags = opened(name);
-    const log = campaignLog(name);
     const unformed: Draft = { ...SOUND, answerFormat: { type: "string" } };
     await draftCommand([...flags, "--session", "d-1"], putting(unformed));
     await draftCommand([...flags, "--session", "d-2"], putting(unformed, unformed));
-    const events = read(log);
+    const events = read(campaignLog(name));
     expect(draftOf(events)).toBeNull();
-    const plan = {
+    const decided = decide(events, {
       patience: 3,
       unprepared: false,
       practice: null,
@@ -475,12 +520,12 @@ describe("a campaign's drafts", () => {
       admits: [],
       left: null,
       promotions: null,
-    };
-    expect(decide(events, plan)).toMatchObject({ move: "end", ending: "exam" });
-    expect(decide(events, plan).why).toContain("3 drafts in 2 sessions did not stand");
+    });
+    expect(decided).toMatchObject({ move: "end", ending: "exam" });
+    expect(decided.why).toContain("3 drafts in 2 sessions did not stand");
   });
 
-  it("keeps the reading a draft stood on as the checker's, frozen as the campaign opens it unless under --hitl", async () => {
+  it("freezes unattended drafts matching openCampaign and holds --hitl drafts for operator admission", async () => {
     for (const attended of [false, true]) {
       const name = `${STEM}-kept-${String(attended)}`;
       await draftCommand([...opened(name, attended), "--session", "d-1"], putting(SOUND));
@@ -493,10 +538,43 @@ describe("a campaign's drafts", () => {
       );
       const frozen = events.filter(({ kind }) => kind === "contract.frozen");
       expect(frozen).toHaveLength(attended ? 0 : 1);
-      // The checker frozen is the one the campaign opens under: another would refuse to open.
       const { checker } = await openCampaign(packNamed({ name }));
       expect(readings[0]?.data).toMatchObject({ ...checker });
       if (!attended) expect(frozen[0]?.data).toMatchObject({ ...checker });
+    }
+  });
+
+  it("audits up to two passes (verify-after-fix with priorFindings), stops early on sound/skipped, and never stalls on try 3", async () => {
+    const defectName = `${STEM}-audit-defect`;
+    const seenPasses: { pass: number | undefined; prior: readonly string[] | undefined }[] = [];
+    await draftCommand(
+      [...opened(defectName), "--session", "d-1"],
+      putting(SOUND, SOUND, SOUND),
+      async (target) => {
+        seenPasses.push({ pass: target.pass, prior: target.priorFindings });
+        return {
+          verdict: "defects",
+          findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "wrong value passed" }],
+          summary: "vacuous check",
+          probes: [],
+        };
+      },
+    );
+    expect(seenPasses).toHaveLength(2);
+    expect(seenPasses[0]).toEqual({ pass: 1, prior: [] });
+    expect(seenPasses[1]?.pass).toBe(2);
+    expect(seenPasses[1]?.prior?.[0]).toContain("vacuous-pass on ex-001");
+    expect(draftOf(read(campaignLog(defectName)))).toEqual(SOUND);
+
+    for (const verdict of ["sound", "skipped"] as const) {
+      const name = `${STEM}-audit-${verdict}`;
+      let calls = 0;
+      await draftCommand([...opened(name), "--session", "d-1"], putting(SOUND), async () => {
+        calls += 1;
+        return { verdict, findings: [], summary: verdict, probes: [] };
+      });
+      expect(calls).toBe(1);
+      expect(draftOf(read(campaignLog(name)))).toEqual(SOUND);
     }
   });
 });

@@ -1,35 +1,13 @@
 /**
- * Runs a single Examiner drafting session to build a campaign exam from the operator's prompt:
- *
- *   bun tools/d1b/draft.ts --name queues --session d-1 --examiner claude/claude-opus-5-5
- *
- * The campaign must have been opened with `tools/d2/harness-builder.ts --prompt`, whose prompt is
- * stored in the opening event. The Examiner drafts public rules (each with a source), the answer
- * format, one check per rule, example tasks, and control answers (`src/examiner/draft.ts`). Each
- * candidate draft is validated offline (`draftReading`, `tools/d2/exam.ts`): structural shape,
- * every control run twice through the checks, and the minimal do-nothing answer tested on every
- * example task. An accepted draft becomes the campaign's exam (`exam.drafted`), and its validation
- * reading is stored as `checker.read`.
- *
- * No solver rollouts run during drafting; a fault-free draft is accepted without first testing it
- * against the Starter Built Harness (see `src/examiner/draft.ts` for rationale).
- *
- * The session ends once a draft is accepted, after `--tries` submissions, or when its wall-clock
- * or turn limit is reached. If no draft is accepted, the campaign may retry drafting or terminate
- * once its drafting allowance is exhausted (`drafting`, `src/campaign/decide.ts`). The Examiner
- * runs inside a sandboxed home directory under the campaign's solve disk cap, isolated from this
- * repository and its other worktrees.
- *
- * Author-computed checks appear as faults in acceptance readings until admitted by the operator.
- * Unattended campaigns (without `--hitl`) admit these checks and freeze the accepted draft here;
- * `--hitl` campaigns wait for `tools/c/accept.ts --admit`.
- *
- * Requires the verifier sandbox, command sandbox, and a model login (see `../d2/campaign.ts`).
+ * Runs one Examiner drafting session (`bun tools/d1b/draft.ts`), validates each draft offline
+ * (`draftReading`), runs up to two bounded Adversarial Judge Referee audits (`reviewDraft`) on
+ * mechanically clean drafts when a reviewer is configured, and records `checker.read` / `contract.frozen`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { openingOf } from "#src/campaign/opening.ts";
 import { type Examined, examine, type Session } from "#src/examiner/session.ts";
 import { read } from "#src/kernel/log.ts";
+import { type DraftAuditCase, type DraftAuditFinding, reviewDraft } from "#src/referee/draft-audit.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
@@ -39,12 +17,18 @@ import { draftReading } from "../d2/exam.ts";
 import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../d2/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
+/** Optional adversarial audit over a mechanically clean draft (`reviewDraft`). */
+type DraftAuditor = (target: DraftAuditCase) => Promise<DraftAuditFinding>;
+
+/** Maximum adversarial draft audits per drafting session (initial audit + verify-after-fix pass). */
+const MAX_DRAFT_AUDITS = 2;
+
 const OPTIONS = {
   name: { type: "string" },
   session: { type: "string" },
   examiner: { type: "string" },
   "examiner-effort": { type: "string", default: "high" },
-  tries: { type: "string", default: "3" },
+  tries: { type: "string", default: "4" },
   minutes: { type: "string", default: "60" },
   turns: { type: "string", default: "40" },
   jobs: { type: "string", default: "4" },
@@ -55,10 +39,11 @@ const OPTIONS = {
 } as const;
 
 /** CLI entry point for `bun tools/d1b/draft.ts`. Accepts a `session` runner (defaulting to
- *  `examine`) so tests can substitute a model-free stub. */
+ *  `examine`) and optional `audit` runner so tests can substitute model-free stubs. */
 export async function draftCommand(
   args: readonly string[],
   session: Session<"draft"> = examine,
+  audit?: DraftAuditor | null,
 ): Promise<Examined> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
   const { name, session: id, examiner } = values;
@@ -67,17 +52,35 @@ export async function draftCommand(
   }
   const log = campaignLog(name);
   const events = read(log);
-  const prompt = openingOf(events)?.prompt;
+  const opening = openingOf(events);
+  const prompt = opening?.prompt;
   if (!isString(prompt)) {
     throw new Error(
       `campaign ${name} did not open from a prompt, so there is nothing to draft its exam from: open it with tools/d2/harness-builder.ts --prompt`,
     );
   }
+  const reviewer = opening?.seats.reviewer ?? null;
+  const defaultAuditor: DraftAuditor | null =
+    session === examine && reviewer !== null
+      ? (target) =>
+          reviewDraft(
+            {
+              model: modelNamed(reviewer.model),
+              // SAFETY: effort matches the drafting Examiner's pi thinking level (`high` by default).
+              effort: values["examiner-effort"] as ThinkingLevel,
+              models: examinerSession,
+            },
+            target,
+          )
+      : null;
+  const auditor = audit === undefined ? defaultAuditor : audit;
   const setting = settingAsked(values, recordedSetting(events));
   const { wallSeconds, modelTurns } = setting.named.limits;
   /** Validation readings for each draft submitted in this session; the final entry corresponds to
    *  the accepted draft. */
   const readings: (Awaited<ReturnType<typeof draftReading>>["read"] | undefined)[] = [];
+  let audits = 0;
+  let priorFindings: readonly string[] = [];
   stayAwake();
   const drafted = await session(
     {
@@ -88,7 +91,31 @@ export async function draftCommand(
       reading: async (draft) => {
         const { faults, read: seen } = await draftReading(dirname(log), draft, Number(values.jobs));
         readings.push(seen);
-        return faults;
+        if (faults.length > 0 || seen === undefined || audits >= MAX_DRAFT_AUDITS || auditor === null) {
+          return faults;
+        }
+        // Run up to two bounded Adversarial Judge passes (initial audit + verify-after-fix),
+        // letting any subsequent clean draft stand unconditionally so supply can never stall.
+        audits += 1;
+        const review = await auditor({
+          session: id,
+          pass: audits,
+          prompt,
+          contract: seen.contract,
+          checks: seen.checks,
+          verify: seen.verify,
+          tasks: seen.tasks,
+          controls: seen.controls,
+          notes: seen.reading.notes,
+          priorFindings,
+          log,
+        });
+        if (review.verdict !== "defects" || review.findings.length === 0) return [];
+        priorFindings = review.findings.map(
+          ({ kind, task, probe, reason }) =>
+            `independent check audit (${kind} on ${task}, probe #${String(probe)}): ${reason}`,
+        );
+        return priorFindings;
       },
       model: modelNamed(examiner),
       // SAFETY: effort is a pi thinking level; unsupported values are rejected by the backend.

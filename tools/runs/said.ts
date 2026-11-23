@@ -196,6 +196,8 @@ export const SAID: Partial<Record<EventKind, (data: JsonObject) => string | null
       ? `⚠ waited ${isNumber(data.ms) ? minutes(data.ms) : "?"} for the ${data.for}${isString(data.until) ? ` until ${data.until}` : ""}`
       : null,
   "referee.finding": (data) => `· the Referee on ${word(data.task)}: ${short(data.reason)}`,
+  "referee.draft": (data) =>
+    `· the Referee audited draft ${word(data.session)} (${word(data.verdict)}): ${short(data.summary)}`,
   "comparison.started": startLine,
   [REPORTED]: reportLine,
 };

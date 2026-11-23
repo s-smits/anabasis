@@ -46,6 +46,7 @@ export const NOTHING_SPENT: Spent = { turns: 0, tokens: NO_TOKENS, billed: 0, re
 const BILLED: ReadonlySet<string> = new Set([
   ...METERED.map(({ of }) => `${of}.finished`),
   "referee.finding",
+  "referee.draft",
   "diagnosis.recorded",
 ]);
 

@@ -287,12 +287,12 @@ export function unfinished(events: readonly LogEvent[]): Unfinished[] {
     of,
     id,
     starts: `${of}.started`,
-    ends: of === "referee" ? "referee.finding" : `${of}.finished`,
+    ends: of === "referee" ? ["referee.finding", "referee.draft"] : [`${of}.finished`],
     ended: new Set<JsonValue | undefined>(),
     open: new Map<JsonValue | undefined, Unfinished>(),
   }));
   for (const { kind, data } of events) {
-    for (const { id, ends, ended } of seats) if (kind === ends) ended.add(data[id]);
+    for (const { id, ends, ended } of seats) if (ends.includes(kind)) ended.add(data[id]);
   }
   for (const [index, event] of events.entries()) {
     const { at, kind, data } = event;

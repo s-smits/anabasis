@@ -106,6 +106,7 @@ const EVENT_KINDS = [
   "referee.compacted",
   "referee.finding",
   "referee.refused",
+  "referee.draft",
   "diagnosis.recorded",
   "comparison.started",
   "comparison.reported",

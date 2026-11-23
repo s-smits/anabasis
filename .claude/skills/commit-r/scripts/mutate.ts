@@ -145,7 +145,9 @@ async function verdict(clone: string, paths: readonly string[], seconds: number)
   );
   const code = await run.exited;
   if (run.signalCode !== null) return true;
-  return /\n *\d+ (pass|fail)/.test(said) ? code !== 0 : null;
+  // A full run ends on its pass and fail counts; a run `--bail` stopped ends on the line saying so
+  // and prints no counts (Bun 1.4).
+  return /\n *\d+ (pass|fail)|\nBailed out after \d+ failures?/.test(said) ? code !== 0 : null;
 }
 
 async function runMutants(args: CommandArgs, root: string, files: readonly string[]): Promise<void> {

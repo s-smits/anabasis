@@ -31,8 +31,9 @@ Always fetch first and compare against `origin/main` (merge-base default; `--lit
 ## Single-diff budgets & per-function branch counts
 
 ```sh
+python3 .claude/skills/reduce-complexity/scripts/measure.py --base <pre-change ref> [-C <worktree>]
 .claude/skills/reduce-complexity/scripts/scope.sh [<PR#>|<commit>|<a..b>|<paths>] -C <worktree> -o <scope.diff>
-.claude/skills/reduce-complexity/scripts/measure.py --diff <scope.diff> --base <pre-change ref> -C <worktree>
+python3 .claude/skills/reduce-complexity/scripts/measure.py --diff <scope.diff> --base <pre-change ref> -C <worktree>
 ```
 
 `measure.py` reports ranked per-function cyclomatic complexity (via `node_modules/oxlint/bin/oxlint`; advisory `--complexity 21`, ceilings 115 lines/fn and 800/file), export caller counts (`UNUSED`/`one-caller` leads), **budget** (net prod/test lines, added/deleted files, net functions, new imports), and **repeats** (added 3-line duplicates).

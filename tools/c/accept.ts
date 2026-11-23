@@ -86,6 +86,7 @@ export function keepReading(
         : { unformed },
     admitted: [...admitted],
     faults: [...faults],
+    ...keyIfDefined("notes", reading.notes.length > 0 ? [...reading.notes] : undefined),
   });
   const frozen = word.freeze && (faults.length === 0 || word.despite !== "");
   // `openCampaign` rejects any checker that conflicts with an existing freeze, so freezing here

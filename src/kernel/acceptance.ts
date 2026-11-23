@@ -183,19 +183,15 @@ function doNothingAnswer(
 }
 
 /**
- * Two probes of a drafted exam's examples, run without a model beside its controls, a fault each
- * where one finds the checks blind to which task an answer is for. Each accept control that passed
- * is run on every other example: a control that every other example's checks also pass answers any
- * task, so no check reads the task. Where every example carries hidden values, each such control is
- * run on its own example with each other example's differing hidden values in place of its own:
- * where no verdict moves and no measure moves by the comparison's floor (`GAP_FLOOR`), no check and no
- * objective is decided by them. A probe the verifier cannot decide is left unread, so a probe never stops
- * the reading its controls make.
+ * Two probes of a drafted exam's examples, run without a model beside its controls: faults where
+ * checks are completely blind to the task or hidden values, and factual notes (never refusal gates)
+ * when validity checks alone pass every hidden-value swap or when an accept control passes some
+ * other examples.
  */
-async function probeFaults(
+async function probeReading(
   { verify, brief, tasks, width }: Read,
   runs: readonly ControlAnswerRun[],
-): Promise<string[]> {
+): Promise<{ readonly faults: readonly string[]; readonly notes: readonly string[] }> {
   const accepted = runs.filter(
     ({ refusedBy, verdicts: [first] }) => refusedBy === null && first.kind === "pass",
   );
@@ -212,28 +208,54 @@ async function probeFaults(
       return task === null ? [] : [{ run, task }];
     });
   const swaps = await judged(accepted.flatMap((run) => others(run, (other) => other)));
-  const swapped = accepted.flatMap((run) => {
+  const swapped: string[] = [];
+  const partialSwaps: string[] = [];
+  const faultySwaps: string[] = [];
+  for (const run of accepted) {
     const own = swaps.filter((swap) => swap.run === run);
-    return own.length > 0 && own.every(({ verdict }) => verdict.kind === "pass")
-      ? [`the accept control of ${run.taskId} passed every other example: its checks do not bind to the task`]
-      : [];
-  });
+    const passed = own.filter(({ verdict }) => verdict.kind === "pass").length;
+    if (own.length > 0 && passed === own.length) {
+      swapped.push(
+        `the accept control of ${run.taskId} passed every other example: its checks do not bind to the task`,
+      );
+    } else if (passed > 0) {
+      partialSwaps.push(
+        `the accept control of ${run.taskId} also passed ${String(passed)} of ${String(own.length)} other examples`,
+      );
+    }
+    const faulted = own.find(({ verdict }) => verdict.kind === "faulty");
+    if (faulted?.verdict.kind === "faulty") {
+      faultySwaps.push(
+        `the accept control of ${run.taskId} faulted ${faulted.verdict.check} on another example: ${faulted.verdict.reason}`,
+      );
+    }
+  }
   const byId = new Map(tasks.map((task) => [task.taskId, task]));
   const hiddenOf = (task: Task) => capturedJsonStringify(task.hidden ?? null);
   const carried = tasks.length > 1 && tasks.every(({ hidden }) => hidden !== null);
-  const moved = carried
-    ? await judged(
-        accepted.flatMap((run) => {
-          const own = byId.get(run.taskId);
-          return own === undefined
-            ? []
-            : others(run, (other) =>
-                hiddenOf(other) === hiddenOf(own) ? null : { ...own, hidden: other.hidden },
-              );
-        }),
-      )
-    : [];
+  const identicalHidden = carried && accepted.length > 0 && new Set(tasks.map(hiddenOf)).size === 1;
+  const moved =
+    carried && !identicalHidden
+      ? await judged(
+          accepted.flatMap((run) => {
+            const own = byId.get(run.taskId);
+            return own === undefined
+              ? []
+              : others(run, (other) =>
+                  hiddenOf(other) === hiddenOf(own) ? null : { ...own, hidden: other.hidden },
+                );
+          }),
+        )
+      : [];
   const rule = { direction: brief.objective?.direction ?? "higher" } as const;
+  // `objective` runs only after every truth check passed (`verify.ts`), so an objective-only
+  // fault on swapped hidden values still proves every validity check passed without reading hidden.
+  const allValidOnHiddenSwap =
+    moved.length > 0 &&
+    moved.every(
+      ({ verdict }) =>
+        verdict.kind === "pass" || (verdict.kind === "faulty" && verdict.check === OBJECTIVE.id),
+    );
   const blind =
     moved.length > 0 &&
     moved.every(
@@ -241,14 +263,28 @@ async function probeFaults(
         verdict.kind === "pass" &&
         Math.abs(gainOver(rule, objectiveOf(verdict), objectiveOf(run.verdicts[0]))) < GAP_FLOOR,
     );
-  return [
-    ...swapped,
-    ...(blind
-      ? [
-          "hidden values had no effect on any accept control: with another example's hidden values in place of its own, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective is decided by them",
-        ]
-      : []),
-  ];
+  return {
+    faults: [
+      ...swapped,
+      ...(blind
+        ? [
+            "hidden values had no effect on any accept control: with another example's hidden values in place of its own, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective is decided by them",
+          ]
+        : []),
+    ],
+    notes: [
+      ...partialSwaps,
+      ...faultySwaps,
+      ...(identicalHidden
+        ? ["every example carries identical hidden values, so hidden-value sensitivity could not be probed"]
+        : []),
+      ...(allValidOnHiddenSwap && !blind
+        ? [
+            "every validity check passed when each example's hidden values were swapped with another's: only the objective read hidden values, so validity checks test public properties alone",
+          ]
+        : []),
+    ],
+  };
 }
 
 /** The do-nothing answer through every task's checks, `width` at once. */
@@ -386,17 +422,19 @@ export async function readChecker(given: Read) {
   const unformed = answerFormatFault(given.contract.answerFormat, idle);
   const rejected = unformed === null ? await runDoNothing(verify, tasks, idle, width) : [];
   const { checks, faults } = acceptance(brief, tasks, runs, given.found);
-  const probed = given.probes === false ? [] : await probeFaults(given, runs);
+  const probed = given.probes === false ? { faults: [], notes: [] } : await probeReading(given, runs);
   return {
     runs,
     checks,
-    faults: [...faults, ...(unformed === null ? doNothingFaults(rejected) : []), ...probed],
-    notes:
-      unformed === null
+    faults: [...faults, ...(unformed === null ? doNothingFaults(rejected) : []), ...probed.faults],
+    notes: [
+      ...(unformed === null
         ? []
         : [
             `the do-nothing answer ${capturedJsonStringify(idle)} does not follow the answer format (${unformed}), so the format refuses it before any check reads it: the host builds it from the schema's types, required properties, minimums, least lengths and counts, first enumerated or constant values, first choices and local references, and reads no other keyword`,
-          ],
+          ]),
+      ...probed.notes,
+    ],
     idle,
     unformed,
     rejected,

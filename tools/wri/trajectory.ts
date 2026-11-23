@@ -39,6 +39,7 @@
  * silence of half an hour, which also takes out a solve-queue wait while other solves ran, so they
  * are a lower bound. Read-only; the output stays on the exam side with the log it reads.
  */
+import { DIGEST } from "#src/campaign/names.ts";
 import { epochsOf, starterIn } from "#src/campaign/climb.ts";
 import { pathsUnder } from "#src/harness/open.ts";
 import { scoresIn, testOf } from "#src/kernel/compare.ts";
@@ -47,7 +48,14 @@ import { lastReports } from "#src/kernel/reports.ts";
 import { practiceRan } from "#src/kernel/solves.ts";
 import { AGENT_DIR, GUIDE_FILE, TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
-import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "#src/meta/filesystem.ts";
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+} from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
@@ -356,6 +364,39 @@ export function writtenIn(state: string): Map<string, string> {
   const found = new Map(paths.map((path) => [path, join(root, path)]));
   if (existsSync(join(state, GUIDE_PATH))) found.set("guide", join(state, GUIDE_PATH));
   return found;
+}
+
+/** Sorted content-addressed harness digests kept under `statesDir`, empty when absent. */
+export function keptStates(statesDir: string): string[] {
+  if (!existsSync(statesDir)) return [];
+  return readdirSync(statesDir)
+    .filter((entry) => DIGEST.test(entry))
+    .toSorted();
+}
+
+/** Static file inventory of one kept harness state for portability auditing. */
+export function stateAuditFiles(state: string): {
+  readonly written: readonly { readonly path: string; readonly text: string; readonly executable: boolean }[];
+  readonly brokenLinks: number;
+  readonly toolTreeFiles: number;
+} {
+  const files = writtenIn(state);
+  const written: { path: string; text: string; executable: boolean }[] = [];
+  for (const [path, file] of files) {
+    const stat = lstatSync(file);
+    if (stat.isSymbolicLink()) continue;
+    written.push({ path, text: readFileSync(file, "utf8"), executable: (stat.mode & 0o111) !== 0 });
+  }
+  const tree = join(state, TOOL_TREE_DIR);
+  if (!existsSync(tree)) return { written, brokenLinks: 0, toolTreeFiles: 0 };
+  const root = realpathSync(tree);
+  const all = pathsUnder(root);
+  let brokenLinks = 0;
+  for (const rel of all) {
+    const full = join(root, rel);
+    if (lstatSync(full).isSymbolicLink() && !existsSync(full)) brokenLinks += 1;
+  }
+  return { written, brokenLinks, toolTreeFiles: all.length };
 }
 
 /** The unified diff of what a harness wrote, from `parent` (a state folder, or none) to `version`,

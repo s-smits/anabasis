@@ -617,7 +617,7 @@ export function barLines(events: readonly LogEvent[]): string[] {
 /**
  * Count comparisons in which each side produced identical validity across all solves of every task,
  * and the subset in which each side also produced identical objective measures (within the tie
- * floor of `gapAgainst`, matching the A/A control and `tools/wri/answers.ts`). In such comparisons
+ * floor of `gapAgainst`, matching the A/A control and `tools/wri/scores.ts`). In such comparisons
  * no split of either side's solves can register noise, so a zero-step A/A control is uninformative.
  * Validity is tracked separately because a harness can repeat its measure while still flipping
  * validity. Descriptive only.

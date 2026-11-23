@@ -161,19 +161,32 @@ const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
   ["AWAITING A LABEL", ["supply", "alarm"]],
   ["GATE REFUSED", ["supply", "reading"]],
   ["OUTCOMES BY SESSION", ["supply", "reading"]],
+  ["EXAMINER ZERO YIELD", ["supply", "alarm"]],
+  ["FAMILY CONCENTRATION", ["supply", "reading"]],
+  ["EXAMINER NEVER FINISHED", ["supply", "alarm"]],
   ["CHAIN AGAINST THE STARTER", ["climb", "reading"]],
   ["MARGINS INSIDE THE NOISE", ["honesty", "reading"]],
   ["BROKEN AT END", ["climb", "alarm"]],
   ["STEP CARRIERS", ["climb", "reading"]],
   ["CHAIN", ["climb", "reading"]],
+  ["PRACTICE CONCENTRATION", ["climb", "reading"]],
+  ["INTERRUPTED HANDOVER", ["climb", "alarm"]],
+  ["UNDERPOWERED NO-STEPS", ["climb", "alarm"]],
   ["SCORED SET MOVED", ["honesty", "alarm"]],
   ["HOST CODE MOVED", ["honesty", "alarm"]],
+  ["VERIFIER TOOLS MOVED", ["honesty", "alarm"]],
   ["PRACTISED TASK MEASURED", ["honesty", "alarm"]],
+  ["SCORED AFTER RELEASE", ["honesty", "alarm"]],
+  ["PRE-PROMOTION PRACTICE RELEASED", ["honesty", "alarm"]],
+  ["SHARED TEMPORARY FOLDER", ["honesty", "alarm"]],
   ["MEASURED AN EARLIER STATE", ["honesty", "alarm"]],
   ["STARTS OUT OF TURN", ["honesty", "alarm"]],
   ["LOG OUT OF ORDER", ["honesty", "alarm"]],
+  ["ENDED AND WENT ON", ["honesty", "alarm"]],
   // A reading: it names most promotions on record under this score.
   ["SAFEGUARD-9 PROMOTION BEYOND VALIDITY", ["honesty", "reading"]],
+  ["NO DELIVERABLES CAPTURED", ["verdicts", "alarm"]],
+  ["PASSES LABELLED", ["verdicts", "reading"]],
   ["CHECK DEFECT RULED", ["verdicts", "alarm"]],
   ["RULED UNCLEAR", ["verdicts", "alarm"]],
   ["RULINGS REFUSED", ["verdicts", "alarm"]],
@@ -182,6 +195,17 @@ const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
   ["SET ASIDE AND UNSETTLED", ["verdicts", "alarm"]],
   ["REPLAY MOVED THE VERDICT", ["verdicts", "alarm"]],
   ["SESSION CRASHED", ["economy", "alarm"]],
+  ["EXAMINER COMPACTED", ["economy", "reading"]],
+  ["SOLVER COMPACTED", ["economy", "reading"]],
+  ["HIGH TOOL ERROR RATE", ["economy", "alarm"]],
+  ["BILLING RESIDUAL", ["economy", "alarm"]],
+  ["LONG SILENCES", ["economy", "reading"]],
+]);
+/** Triggers whose detail numbers move continuously (dollars/counts) and should fire once per run. */
+const ONCE_TRIGGERS: ReadonlySet<string> = new Set([
+  "SUPPLY THIN",
+  "FAMILY CONCENTRATION",
+  "BILLING RESIDUAL",
 ]);
 /** The triggers a look says in the line of the event that fires them (`said.ts`): a promotion until
  *  its starter comparison reads, a checker read with a fault and a freeze despite one. They came a
@@ -207,7 +231,7 @@ const count = (log: readonly LogEvent[], kind: EventKind) =>
  * solve, again at nearly every look; it is said once.
  */
 function keyOf(name: string, detail: string): string {
-  if (name === "SUPPLY THIN") return "";
+  if (ONCE_TRIGGERS.has(name)) return "once";
   const ids = detail.match(NAMED);
   return ids === null ? (/\d+/.exec(detail)?.[0] ?? detail) : [...new Set(ids)].join(",");
 }
@@ -232,7 +256,8 @@ function triggersSaid(
     ? []
     : [...read].flatMap(([name, { lane, details }]) => {
         const [factor, kind] = WATCHED.get(name) ?? ["", "alarm"];
-        const known = new Set((kept[name] ?? "").split("\n"));
+        const prior = kept[name];
+        const known = new Set(prior === undefined ? [] : prior.split("\n"));
         return details
           .filter((detail) => !known.has(keyOf(name, detail)))
           .map(

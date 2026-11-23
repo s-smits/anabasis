@@ -46,7 +46,7 @@ import {
 } from "#src/meta/json-shape.ts";
 import { basename, dirname } from "#src/meta/path.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
-import { percent } from "#tools/wri/budget.ts";
+import { percent } from "#tools/wri/execution.ts";
 import { equalMost, equalNeed, shortOf, spareOf } from "#tools/wri/clearance.ts";
 import { wlt } from "#tools/wri/folds.ts";
 import { type SideGap, sideGap } from "#tools/wri/pairs.ts";

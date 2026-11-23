@@ -51,25 +51,26 @@ import { receipts } from "#tools/runs/receipt.ts";
 import { CLI, logEvents, readNamed } from "#tools/runs/registry.ts";
 import { hostOf } from "#tools/runs/seed.ts";
 import { aimRows } from "./aim.ts";
-import { answerRows } from "./answers.ts";
-import { budgetRows } from "./budget.ts";
 import { callRows, sequenceRows } from "./calls.ts";
 import { checkRows, programOnDisk } from "./checks.ts";
 import { climbText } from "./climb.ts";
-import { compactionRows } from "./compactions.ts";
+import { continuityRows } from "./continuity.ts";
+import { deliverableRows } from "./deliverables.ts";
+import { diagnosticRows } from "./diagnostics.ts";
 import { draftRows } from "./drafted.ts";
 import { epochSpendLines } from "./epoch-spend.ts";
+import { executionRows } from "./execution.ts";
 import { indexOf, NO_TRACES } from "./folds.ts";
 import { launchLines } from "./launches.ts";
 import { nameRows } from "./names.ts";
 import { pairRows } from "./pairs.ts";
+import { portabilityRows } from "./portability.ts";
 import { practiceRows } from "./practice.ts";
 import { overview, rendered } from "./read.ts";
 import { rejectionRows } from "./rejections.ts";
-import { routeRows } from "./routes.ts";
 import { scoreRows } from "./scores.ts";
 import { tasksLines } from "./tasks.ts";
-import { waitRows } from "./waits.ts";
+import { transferRows } from "./transfer.ts";
 
 /** One parse of a log, which every reader of this process is handed. */
 interface Parsed {
@@ -233,6 +234,16 @@ export const READERS: readonly Reader[] = [
   ),
   at(
     {
+      name: "diagnostics",
+      answers:
+        "cross-cutting structural warnings: dead harness bins, compaction amnesia, patience burn, validity saturation, step SNR and fragility, Examiner efficiency",
+      read: ({ log, events }) => diagnosticRows(events, join(dirname(log), "states")),
+    },
+    [REPORTED, PROMOTED, EXAMINED, BUILT, ENDED],
+    /^\[WARN\]/,
+  ),
+  at(
+    {
       name: "ending",
       answers: "why the campaign stopped, and the move and log line that ended it",
       read: ({ log, events }) => [log, ...endingLines(campaignEnding(events))],
@@ -249,11 +260,33 @@ export const READERS: readonly Reader[] = [
     },
     [REPORTED],
   ),
-  {
-    name: "starter-reads",
-    answers: "each starter comparison after a promotion, its tally split by where each task came from",
-    read: ({ events }) => starterLines(events),
-  },
+  at(
+    {
+      name: "scores",
+      answers:
+        "each comparison recounted by task: validity vs objective, A/A halves, answer/objective repetition, practised-family split, and step removals",
+      read: ({ events }) => scoreRows(events),
+    },
+    [REPORTED],
+  ),
+  at(
+    {
+      name: "starter-reads",
+      answers: "each starter comparison after a promotion, its tally split by where each task came from",
+      read: ({ events }) => starterLines(events),
+    },
+    [REPORTED],
+  ),
+  at(
+    {
+      name: "transfer",
+      answers:
+        "2x2 starter-read matrix (task origin x practised family before promotion), post-promotion batches, and Builder practice/band discipline",
+      read: ({ events }) => transferRows(events),
+    },
+    [REPORTED, PROMOTED],
+    /^transfer totals/,
+  ),
   {
     name: "degradations",
     answers: "each session or solve a model other than the one asked for served",
@@ -298,7 +331,6 @@ export const READERS: readonly Reader[] = [
     ["campaign.opened"],
     /^run-\d+ /,
   ),
-  namedReader("logged", "the log's counts as this tree's folds replay it, in one line", CLI, ["replay"]),
   at(
     namedReader(
       "cost",
@@ -398,28 +430,24 @@ export const READERS: readonly Reader[] = [
   ),
   at(
     {
-      name: "answers",
+      name: "deliverables",
       answers:
-        "per comparison, tasks where a side's passes repeated one answer, and the objective's repeat spread",
-      read: ({ quiet }) => answerRows(quiet),
+        "deliverable file-artifact capture per comparison arm and role, draft file references, cap hits, and file:* Referee probes",
+      read: ({ quiet }) => deliverableRows(quiet),
     },
-    [REPORTED],
+    [REPORTED, "contract.frozen"],
+    /^draft deliverables:/,
   ),
-  {
-    name: "waits",
-    answers: "per comparison, the median share of a solve spent inside tool calls, by side and ending",
-    read: ({ events }) => waitRows(indexOf(events)),
-  },
-  {
-    name: "routes",
-    answers: "per comparison, the median calls a pass and the distinct tool orders, by side",
-    read: ({ events }) => routeRows(indexOf(events)),
-  },
-  {
-    name: "checks",
-    answers: "one row a check: rating, rules, controls, refusals by side and asker, whether it stands",
-    read: ({ log, quiet }) => checkRows(quiet, programOnDisk(log)),
-  },
+  at(
+    {
+      name: "checks",
+      answers:
+        "one row a check (instrument, rules, controls, refusals, standings), scored pass rate, and human pass-soundness calibration",
+      read: ({ log, quiet }) => checkRows(quiet, programOnDisk(log)),
+    },
+    ["contract.frozen"],
+    /^(checks:|pass soundness:|controls read:|the reading's faults:)/,
+  ),
   at(
     {
       name: "rejections",
@@ -437,31 +465,31 @@ export const READERS: readonly Reader[] = [
   },
   at(
     {
-      name: "budget",
-      answers: "each comparison side's endings, turns and seconds against the bound, long calls, queue, load",
-      read: ({ events }) => budgetRows(indexOf(events)),
+      name: "execution",
+      answers:
+        "per comparison side: endings, turns, wall share, tool errors/non-zero exits, compactions, inside-call wait share, pass routes, long calls, queue and load",
+      read: ({ events }) => executionRows(indexOf(events)),
     },
     [REPORTED],
   ),
-  {
-    name: "compactions",
-    answers: "each compaction's tokens, seconds, error and priced usages, and each session's sum",
-    read: ({ events }) => compactionRows(events),
-  },
+  at(
+    {
+      name: "continuity",
+      answers:
+        "compactions with read_opening recovery, resting Examiner multi-ask conversations, and interrupted Builder handovers",
+      read: ({ events }) => continuityRows(events),
+    },
+    [BUILT, EXAMINED, REPORTED],
+  ),
   {
     name: "launches",
     answers: "each launch beside its stretch of the log: last event, steps left open, killed endings, gap",
     read: ({ log, events }) => launchLines(log, events),
   },
   {
-    name: "scores",
-    answers: "each comparison recounted by task: tallies by measure, A/A halves, a step's removals",
-    read: ({ events }) => scoreRows(events),
-  },
-  {
     name: "aim",
     answers:
-      "what each Examiner session could read and wrote, and each side's measures against the author's best",
+      "each Examiner session's reference, friction, family spread, cost per held task, and each side's measures against the author's best",
     read: ({ events }) => aimRows(events),
   },
   at(
@@ -494,11 +522,16 @@ export const READERS: readonly Reader[] = [
     answers: "test-side passes by family and harness: distinct program sequences and the commonest's share",
     read: ({ events }) => sequenceRows(events, EVERY_CALL),
   },
-  {
-    name: "epoch-spend",
-    answers: "each epoch's billed dollars by role, and what the comparisons it reported billed",
-    read: ({ events }) => epochSpendLines(events),
-  },
+  at(
+    {
+      name: "epoch-spend",
+      answers:
+        "each epoch's billed dollars by role, active vs wall hours, billing residual, unpriced compactions, and $/promotion",
+      read: ({ events }) => epochSpendLines(events),
+    },
+    [PROMOTED, ENDED],
+    /^economy summary:/,
+  ),
   {
     name: "restated",
     answers: "which Referee reasons say the same thing",
@@ -516,6 +549,15 @@ export const READERS: readonly Reader[] = [
       name: "names",
       answers: "where a kept harness's own files name a task or copy six words of its public input",
       read: ({ log, events }) => nameRows(events, join(dirname(log), "states")),
+    },
+    [PROMOTED],
+  ),
+  at(
+    {
+      name: "portability",
+      answers:
+        "static export-readiness audit of each kept harness: host paths, shebangs, bin modes, broken links, exam-key coupling, and guide/tool weight",
+      read: ({ log, events }) => portabilityRows(events, join(dirname(log), "states")),
     },
     [PROMOTED],
   ),
@@ -691,7 +733,7 @@ function linesOf(file: string): string {
 /**
  * What each derived file answers, and how many lines it holds for each campaign, as a table for a
  * lane's prompt; "" where no folder of `folders` stands. Naming the folders and no file in them
- * leaves lanes rebuilding what a file such as `answers.txt` or `nearness.txt` already holds. A
+ * leaves lanes rebuilding what a file such as `scores.txt` or `nearness.txt` already holds. A
  * length beside each name lets a session open a short file whole and search a long one.
  */
 export function derivedMap(

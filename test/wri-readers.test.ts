@@ -3,19 +3,37 @@
 // trigger fires on its lane with its count, the catalogue names every trigger the reader can fire,
 // and a report is collected as a finding, no finding or could not read only when its fields are even.
 import { afterAll, describe, expect, it } from "bun:test";
+import { conditionId } from "../src/kernel/condition.ts";
+import type { LogEvent } from "../src/kernel/log.ts";
 import { lastReports, referenceOf } from "../src/kernel/reports.ts";
-import { mkdtempSync, readFileSync, rmSync } from "../src/meta/filesystem.ts";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { isString } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
+import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { solvesIn } from "../src/kernel/solves.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import { catalogueText, type Lane, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
-import { TRIGGERS } from "../tools/wri/folds.ts";
-import { reportIndex, reportOf, sessionsOf } from "../tools/wri/investigation.ts";
+import { continuityRows } from "../tools/wri/continuity.ts";
+import { deliverableRows } from "../tools/wri/deliverables.ts";
+import { READERS } from "../tools/wri/derive.ts";
+import { diagnosticRows } from "../tools/wri/diagnostics.ts";
+import { executionRows } from "../tools/wri/execution.ts";
+import { indexOf, TRIGGERS } from "../tools/wri/folds.ts";
+import { reportIndex, reportOf, ROWS, sessionsOf } from "../tools/wri/investigation.ts";
 import { buildPackets } from "../tools/wri/packets.ts";
+import { portabilityRows } from "../tools/wri/portability.ts";
 import { overview } from "../tools/wri/read.ts";
 import { scoreRows } from "../tools/wri/scores.ts";
+import { transferRows } from "../tools/wri/transfer.ts";
+import { conditionOf } from "./helpers/logged-round.ts";
 import { wriCampaign } from "./helpers/wri-campaign.ts";
 
 const events = wriCampaign((tag) => `secret ${tag}`);
@@ -444,5 +462,143 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     expect(prompt).toContain("**Reach** measures how difficult");
     expect(prompt).toContain("**Soundness** measures whether");
     expect(prompt).toContain("08a-report.md");
+  });
+
+  it("maps every ROWS entry to an existing derived reader", () => {
+    const names = new Set(READERS.map(({ name }) => name));
+    for (const [trigger, reader] of Object.entries(ROWS)) {
+      expect({ trigger, exists: names.has(reader) }).toEqual({ trigger, exists: true });
+    }
+  });
+
+  it("covers rewritten and new readers (execution, continuity, deliverables, portability, transfer, diagnostics)", () => {
+    const digest = "a".repeat(64);
+    const states = join(dir, "states");
+    const binDir = join(states, digest, ".toolchain", "bin");
+    const agentDir = join(states, digest, "agent");
+    mkdirSync(binDir, { recursive: true });
+    mkdirSync(agentDir, { recursive: true });
+    writeFileSync(join(agentDir, "BUILT_AGENTS.md"), "Run /Users/dev/helper for secretKeyAlpha.\n");
+    writeFileSync(join(binDir, "unused-tool"), "#!/opt/homebrew/bin/python3\nprint('hi')\n");
+    chmodSync(join(binDir, "unused-tool"), 0o644);
+
+    const deadCond = conditionOf("v1", digest, { wallSeconds: 100, turns: 8 });
+    const deadCondId = conditionId(deadCond);
+    const log: readonly LogEvent[] = [
+      ...events,
+      {
+        at: AT,
+        kind: "exam.drafted",
+        data: {
+          draft: {
+            evaluator: "export const checks = { f: ({ files }) => files.length > 0 };",
+            answerFormat: { properties: { secretKeyAlpha: {}, otherField: {} } },
+            accept: [{ files: [{ path: "a.txt", text: "ok" }] }],
+          },
+        },
+      },
+      {
+        at: AT,
+        kind: "verdict",
+        data: {
+          solve: "s1",
+          task: "v1",
+          kind: "pass",
+          files: [{ path: "out.csv", bytes: 128, sha256: digest }],
+        },
+      },
+      {
+        at: AT,
+        kind: "referee.finding",
+        data: { solve: "s2", ruling: "earned", probeRows: [{ id: 1, changes: [{ path: "file:out.csv" }] }] },
+      },
+      { at: AT, kind: "harness.promoted", data: { harness: digest, from: "hp" } },
+      {
+        at: AT,
+        kind: "build.compacted",
+        data: { session: "b-1", tokensBefore: 50_000, seconds: 3, usages: [] },
+      },
+      {
+        at: AT,
+        kind: "build.call",
+        data: { session: "b-1", turn: 9, tool: "bash", args: {}, text: "", isError: false, ms: 5 },
+      },
+      {
+        at: AT,
+        kind: "build.call",
+        data: {
+          session: "b-1",
+          turn: 10,
+          tool: "practice",
+          args: {},
+          text: "objective: 12.5",
+          isError: false,
+          ms: 5,
+        },
+      },
+      { at: AT, kind: "build.started", data: { session: "b-3", parent: digest } },
+      { at: AT, kind: "build.finished", data: { session: "b-3", ended: "killed", turns: 4 } },
+      { at: AT, kind: "build.started", data: { session: "b-4", parent: digest } },
+      { at: AT, kind: "exam.started", data: { session: "x-2", conversation: "x-1" } },
+      { at: AT, kind: "exam.finished", data: { session: "x-2", ended: "finished", held: [], billed: 4 } },
+      ...Array.from({ length: 4 }, (_, nth): LogEvent[] => [
+        {
+          at: AT,
+          kind: "condition.recorded",
+          data: { id: deadCondId, condition: requireJsonValue(deadCond) },
+        },
+        {
+          at: AT,
+          kind: "solve.started",
+          data: { solve: `su-${String(nth)}`, condition: deadCondId, comparison: "g-dead" },
+        },
+        {
+          at: AT,
+          kind: "solve.finished",
+          data: { solve: `su-${String(nth)}`, ending: { outcome: "pass" }, seconds: 5 },
+        },
+      ]).flat(),
+      ...Array.from({ length: 4 }, (_, nth): LogEvent[] => [
+        {
+          at: AT,
+          kind: "comparison.started",
+          data: { session: `g-p${String(nth)}`, old: digest, fresh: digest, starter: "hp" },
+        },
+        {
+          at: AT,
+          kind: "comparison.reported",
+          data: {
+            session: `g-p${String(nth)}`,
+            old: "hp",
+            fresh: digest,
+            starter: "hbase",
+            reading: "no-step",
+            scored: { wins: 1, losses: 1, ties: 0 },
+          },
+        },
+      ]).flat(),
+    ];
+
+    expect(executionRows(indexOf(events)).join("\n")).toContain("pass routes");
+    const cont = continuityRows(log).join("\n");
+    expect(cont).toContain("read_opening<=3: no");
+    expect(cont).toContain("b-4 (interrupted handover): opened after b-3 (killed");
+    const deliv = deliverableRows(log).join("\n");
+    expect(deliv).toContain("evaluator reads files");
+    expect(deliv).toContain("referee file:* probes 1/");
+    expect(deliverableRows(events).join("\n")).toContain("deliverables: none");
+    const port = portabilityRows(log, states).join("\n");
+    expect(port).toContain("host-paths 2, bad-shebangs 1, non-exec-bins 1");
+    expect(port).toContain("exam-keys 1/2 in 1 file");
+    expect(port).not.toContain("secretKeyAlpha");
+    expect(port).not.toContain("/Users/");
+    const xfer = transferRows(log).join("\n");
+    expect(xfer).toContain("1 raw-measure leaks");
+    expect(xfer).toContain("epoch practice scoping:");
+    const diag = diagnosticRows(log, states).join("\n");
+    expect(diag).toContain("unused harness bins:");
+    expect(diag).toContain("compaction amnesia:");
+    expect(diag).toContain("patience burn: 4/6");
+    expect(diag).toContain("examiner inefficiency:");
   });
 });

@@ -14,6 +14,7 @@ import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { passAgreement, settledPassLabels } from "#src/referee/agreement.ts";
+import { draftDeliverableInfo } from "./deliverables.ts";
 import {
   EXAM_END,
   firedIf,
@@ -26,6 +27,7 @@ import {
   text,
   type Trigger,
 } from "./folds.ts";
+import { inheritedPracticeReleases } from "./transfer.ts";
 
 const REPEATED_PRACTICE = 4;
 const MAX_SHOWN = 6;
@@ -35,7 +37,6 @@ const UNDERPOWERED_MIN_RUNS = 2;
 const MIN_ARM_CALLS = 10;
 const RESIDUAL_PCT = 5;
 const RESIDUAL_RE = /\(([+-]\d+(?:\.\d+)?)%\)$/u;
-const DELIVERABLE_CODE_RE = /\bfiles\s*[.[]|deliverables\//u;
 
 /** Lane 1: human pass-soundness labels recorded on this log (`passAgreement`). */
 function passLabelTriggers(log: Index): Trigger[] {
@@ -63,11 +64,9 @@ function deliverableTriggers(log: Index): Trigger[] {
     if (bytes > maxBytes) maxBytes = bytes;
     if (files.length >= DELIVERABLES.count || bytes >= DELIVERABLES.bytes) atBound += 1;
   }
-  const draft = asRecord(log.of("exam.drafted").at(-1)?.draft);
-  const controls = [...items(draft?.accept), ...items(draft?.reject)].map(asRecord);
+  const draftInfo = draftDeliverableInfo(log.events);
   const draftUsesFiles =
-    DELIVERABLE_CODE_RE.test(text(draft?.evaluator)) ||
-    controls.some((control) => items(control?.files).length > 0);
+    draftInfo.evaluatorUsesFiles || draftInfo.acceptWithFiles > 0 || draftInfo.rejectWithFiles > 0;
   return [
     ...firedIf(
       withFiles > 0,
@@ -98,20 +97,7 @@ function practiceSignalTriggers(log: Index): Trigger[] {
             .join(", ")}${heavy.length > MAX_SHOWN ? ` +${String(heavy.length - MAX_SHOWN)} more` : ""}`,
         ];
   });
-  const proposedAt = new Map<string, number>();
-  let lastPromotion = -1;
-  const inherited: string[] = [];
-  for (const [index, { kind, data }] of log.events.entries()) {
-    if (kind === "task.proposed" && isString(data.version) && !proposedAt.has(data.version)) {
-      proposedAt.set(data.version, index);
-    } else if (kind === "harness.promoted") {
-      lastPromotion = index;
-    } else if (kind === "task.state" && data.state === "released" && lastPromotion >= 0) {
-      const version = text(data.version);
-      const proposed = proposedAt.get(version);
-      if (proposed !== undefined && proposed < lastPromotion) inherited.push(short(version));
-    }
-  }
+  const inherited = inheritedPracticeReleases(log.events).map(short);
   return [
     ...firedIf(
       repeated.length > 0,

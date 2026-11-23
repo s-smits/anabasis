@@ -17,6 +17,7 @@ import { dirname, join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { countBy } from "#src/meta/tally.ts";
+import { passAgreement, settledPassLabels } from "#src/referee/agreement.ts";
 import { stagedExamOf } from "#tools/d2/exam.ts";
 import { count, indexOf, items, refusals, refusalsByCheck, type Solve, strings, text } from "./folds.ts";
 import { askedOf, sideOf } from "./rejections.ts";
@@ -133,17 +134,29 @@ export function checkRows(events: readonly LogEvent[], disk: OnDisk): string[] {
     judged.filter((solve) => !under(solve)),
     (solve) => short(programOf(solve)),
   );
+  const passSummary = passAgreement(settledPassLabels(events));
+  const passLine =
+    passSummary.total === 0
+      ? "pass soundness: 0 labelled passes (uncalibrated by a human)"
+      : `pass soundness: ${String(passSummary.total)} labelled (sound ${String(passSummary.counts.sound)}, wrong ${String(passSummary.counts.wrong)}, unclear ${String(passSummary.counts.unclear)}), wrong rate ${passSummary.wrongRate === null ? "none" : `${(passSummary.wrongRate * 100).toFixed(1)}%`}, bar ${passSummary.clears ? "clears" : "unmet"}`;
+  const scoredJudged = judged.filter((solve) => under(solve) && asked(solve) === "scored");
+  const scoredPasses = scoredJudged.filter((solve) => log.verdicts.get(solve.id)?.kind === "pass").length;
+  const passRate =
+    scoredJudged.length === 0
+      ? "none"
+      : `${String(scoredPasses)}/${String(scoredJudged.length)} (${String(Math.round((100 * scoredPasses) / scoredJudged.length))}%)`;
   return [
     headOf(events, reading, disk),
     "id  instrument  rules  evidence  controls caught/named  refused in all  scored ref/new  examiner  practice  under another program  scored stands earned/defect/unclear/unread  labelled  every control passed/refused",
     ...lines,
-    `verdicts under ${short(program)}: ${verdicts.join(", ")}; under another program or before any reading: ${
+    `verdicts under ${short(program)}: ${verdicts.join(", ")}; scored pass rate ${passRate}; under another program or before any reading: ${
       Object.keys(elsewhere).length === 0
         ? "none"
         : Object.entries(elsewhere)
             .map(([at, n]) => `${at} ${String(n)}`)
             .join(", ")
     }`,
+    passLine,
     controlsLine(reading),
     ...(strings(reading?.faults).length > 0
       ? [`the reading's faults: ${String(strings(reading?.faults).length)}`]

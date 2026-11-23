@@ -138,6 +138,24 @@ describe("holder", () => {
       holder.kill();
       await holder.exited;
     }
+    // Pre-UTC ambient-TZ lock file on a non-UTC host stays recognized as live, and releasing a deleted folder does not throw.
+    const cetFile = join(scratch(), "legacy-cet.lock");
+    const cetStart = Bun.spawnSync(["/bin/ps", "-o", "lstart=", "-p", String(process.pid)], {
+      env: { ...runtimeProcess.env, TZ: "Europe/Amsterdam", LC_ALL: "C" },
+      stdout: "pipe",
+    })
+      .stdout.toString()
+      .trim();
+    record(cetFile, process.pid, hostname(), cetStart);
+    const prevTz = runtimeProcess.env.TZ;
+    runtimeProcess.env.TZ = "Europe/Amsterdam";
+    try {
+      expect(held(cetFile)).toBe(true);
+    } finally {
+      if (prevTz === undefined) delete runtimeProcess.env.TZ;
+      else runtimeProcess.env.TZ = prevTz;
+    }
+    expect(() => release(join(scratch(), "missing-folder", "holder"))).not.toThrow();
   });
 
   it("lets one of many takers win over a dead holder", async () => {

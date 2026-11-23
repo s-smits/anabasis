@@ -29,7 +29,7 @@ const own = new Map<number, string>();
 
 /** The record the process `pid` of this host would hold a lock by, `<pid> <host> <start>`, or ""
  *  where none has that pid. `ps` is named by its full path, since the host fakes put their own first
- *  on the path. `utc` pins `TZ=UTC LC_ALL=C` (default); `false` queries ambient TZ to recognize
+ *  on the path. `utc` pins `TZ=UTC LC_ALL=C` (default); `ambient` queries ambient TZ to recognize
  *  live locks written by pre-UTC commits on non-UTC hosts. */
 function recordOf(pid: number, tz: "utc" | "ambient" = "utc"): string {
   const env = tz === "utc" ? { ...runtimeProcess.env, TZ: "UTC", LC_ALL: "C" } : runtimeProcess.env;

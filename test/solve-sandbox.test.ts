@@ -17,7 +17,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { homedir } from "../src/meta/os.ts";
+import { homedir, tmpdir } from "../src/meta/os.ts";
 import { containsPath } from "../src/meta/path-containment.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
@@ -410,5 +410,31 @@ describe.skipIf(!onDarwin)("the Darwin wall's edges", () => {
       );
       expect(output.split("\n").slice(0, 4)).toEqual(["same", "out", "err", "closed"]);
     });
+  }, 60_000);
+});
+
+describe("explicit readAllowRoots inside tmpdir", () => {
+  it("reopens an explicitly granted readAllowRoot under tmpdir while keeping sibling tmpdir paths closed", async () => {
+    const allowed = mkdtempSync(join(tmpdir(), "ana-allowed-tmp-"));
+    const sibling = mkdtempSync(join(tmpdir(), "ana-denied-tmp-"));
+    made.push(allowed, sibling);
+    writeFileSync(join(allowed, "ok.txt"), "ALLOWED_OK\n");
+    writeFileSync(join(sibling, "secret.txt"), "SIBLING_SECRET\n");
+    const base = solveIsolationPolicy({ repoRoot: workRepo(), readAllowRoots: [allowed] });
+    if ("unsupported" in base) throw new Error(base.unsupported);
+    const dirs = solveDirs(`allow-tmp-${String(runtimeProcess.pid)}-${String(Date.now())}`);
+    makeSeatDirs(dirs);
+    try {
+      const chunks: string[] = [];
+      const res = await runWalled(
+        { base, dirs, toolTree: null, limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 } },
+        `cat ${join(allowed, "ok.txt")}; cat ${join(sibling, "secret.txt")} 2>/dev/null || echo sibling-denied`,
+        { timeout: 15, onData: (b) => chunks.push(b.toString()) },
+      );
+      expect(res.exitCode).toBe(0);
+      expect(chunks.join("").trim().split("\n")).toEqual(["ALLOWED_OK", "sibling-denied"]);
+    } finally {
+      rmSync(dirs.root, { recursive: true, force: true });
+    }
   }, 60_000);
 });

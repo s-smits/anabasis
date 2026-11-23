@@ -98,12 +98,12 @@ const EXAMPLES = 3;
  *  transpiled output first, and `Bun.Transpiler.scan` checks imports, syntax and exports. */
 const EVALUATOR_TRANSPILER = new Bun.Transpiler({ loader: "ts" });
 const OUTSIDE = [
-  [/\brequire\s*\(|\bimport\s*\(/u, "an import"],
+  [/(?<!\.)\brequire\s*\(|\bimport\s*\(/u, "an import"],
   [
     /(?<!\.)\b(?:Bun|process)\s*(?:\??\.|\[)|\b(?:const|let|var)\s*\{[^}]*\}\s*=\s*(?:Bun|process)\b/u,
     "the runtime's own objects",
   ],
-  [/\bfetch\s*\(/u, "the network"],
+  [/(?<!\.)\bfetch\s*\(/u, "the network"],
   [
     /\bMath\s*\.\s*random\b|\bDate\s*\.\s*now\b|\bnew\s+Date\b(?!\s*\(\s*[^)\s.])|(?<!\bnew\s+|\.)\bDate\s*\(\s*\)|\bperformance\s*\.\s*now\b|\bcrypto\s*\.\s*(?:randomUUID|getRandomValues|randomBytes)\b/u,
     "a random number or the clock",
@@ -444,6 +444,13 @@ function stripCode(source: string, start: number, scope: "whole" | "template", p
       parts.push(word);
       prevToken = word;
       index = wordEnd;
+      continue;
+    }
+    if ((ch === "+" && next === "+") || (ch === "-" && next === "-")) {
+      const pair = ch + next;
+      parts.push(pair);
+      prevToken = pair;
+      index += 2;
       continue;
     }
     parts.push(ch);

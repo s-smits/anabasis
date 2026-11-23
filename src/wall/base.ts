@@ -17,10 +17,11 @@
  * (`walledBase`) and verifies its network reachability once (`networkReach`).
  */
 import { hashJsonBytes } from "../meta/json-runtime.ts";
+import { tmpdir } from "../meta/os.ts";
 import { nodeRuntimeReadRoots } from "./linux-bwrap.ts";
 import { type OsIsolationRuntime, osIsolationSupport } from "./os-isolation.ts";
 import { covers } from "./seatbelt-path-guard.ts";
-import { canonicalRoots, closedHome } from "./policy.ts";
+import { canonicalRoots, closedHome, userTempRules } from "./policy.ts";
 import { DARWIN_SEATBELT_ID } from "./darwin-seatbelt.ts";
 
 /** Isolation profile identifier recorded in a solve condition's `sandbox` field (`tools/d2/campaign.ts`). */
@@ -71,8 +72,9 @@ export function solveIsolationPolicy(input: {
     ...(input.packRoots ?? []),
     home,
   ]);
+  const sharedTmp = canonicalRoots([tmpdir(), "/tmp", "/var/tmp", ...userTempRules().roots]);
   const allowedReads = canonicalRoots([...nodeRuntimeReadRoots(), ...(input.readAllowRoots ?? [])]).filter(
-    (path) => reads.some((root) => covers(root, path)),
+    (path) => reads.some((root) => covers(root, path)) || sharedTmp.some((root) => covers(root, path)),
   );
   const network = input.network ?? true;
   const identity = {

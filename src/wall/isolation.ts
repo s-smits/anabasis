@@ -121,12 +121,14 @@ function commandReadAllows(
   base: SolveIsolationPolicy,
   readDenies: readonly string[],
   dirs: Pick<CommandDirectories, "root" | "toolTree">,
+  extraDenies: readonly string[] = [],
 ) {
+  const coveredDenies = [...readDenies, ...extraDenies];
   const covered = canonicalRoots([
     ...base.allowedReadRoots,
     ...nodeRuntimeReadRoots(),
     ...darwinToolchainInstallRoots(),
-  ]).filter((path) => readDenies.some((root) => covers(root, path)));
+  ]).filter((path) => coveredDenies.some((root) => covers(root, path)));
   const toolTree = dirs.toolTree ?? null;
   const tree = toolTree === null || !existsSync(toolTree) ? null : resolve(toolTree);
   const seated = tree !== null && canonicalForms(dirs.root).some((root) => containsPath(tree, root));
@@ -147,10 +149,10 @@ function darwinCommandProfile(
   dirs: Pick<CommandDirectories, "root" | "toolTree">,
 ) {
   const closed = hostRoots();
-  const readDenies = [...new Set([...base.deniedReadRoots, ...closed])].toSorted();
-  const { roots: readAllows, manifests } = commandReadAllows(base, readDenies, dirs);
   const userTemp = userTempRules();
   const sharedTmp = canonicalRoots(["/tmp", "/var/tmp", ...userTemp.roots]);
+  const readDenies = [...new Set([...base.deniedReadRoots, ...closed])].toSorted();
+  const { roots: readAllows, manifests } = commandReadAllows(base, readDenies, dirs, sharedTmp);
   const profile = [
     ...seatbeltBaseRules(base),
     // Prevent sysctl(KERN_PROCARGS2) from inspecting other seats' argv.

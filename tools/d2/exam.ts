@@ -95,8 +95,12 @@ function stageTools(bundle: string, draft: Draft, sourceHome?: string): void {
   ].filter(isSafePathSegment);
   for (const engine of engines) {
     const binEntry = join(binDir, engine);
-    if (lstatSync(binEntry, { throwIfNoEntry: false })?.isSymbolicLink() === true && !existsSync(binEntry)) {
+    const entryStat = lstatSync(binEntry, { throwIfNoEntry: false });
+    if (entryStat?.isSymbolicLink() === true && !existsSync(binEntry)) {
       throw new Error(`.toolchain/bin/${engine} is a broken symlink`);
+    }
+    if (entryStat?.isFile() === true && (entryStat.mode & 0o111) === 0) {
+      throw new Error(`.toolchain/bin/${engine} is not executable (run chmod +x)`);
     }
   }
   const hostOnly = engines.filter((engine) => Bun.which(engine, { PATH: stagedPath }) === null);

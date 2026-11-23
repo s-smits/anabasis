@@ -626,27 +626,35 @@ describe("staging and offline reading", () => {
     expect(customPinned[0]?.sha256).toBe(sha256OfFile(customPinned[0]?.path ?? ""));
     expect((await draftReading(customDir, customDraft, 2)).faults).toEqual([]);
 
-    // Hostile `.toolchain/` shapes: broken symlink, symlinked `.toolchain`, and script naming `home` all fail cleanly.
+    // Hostile `.toolchain/` shapes: broken symlink, non-executable file, symlinked `.toolchain`, and script naming `home` all fail cleanly.
     const badHome = realpathSync(mkdtempSync(join(tmpdir(), "ana-draft-bad-toolchain-")));
-    mkdirSync(join(badHome, ".toolchain", "bin"), { recursive: true });
-    symlinkSync("/no/such/target", join(badHome, ".toolchain", "bin", "scale-engine"));
+    mkdirSync(join(badHome, TOOL_TREE_DIR, "bin"), { recursive: true });
+    symlinkSync("/no/such/target", join(badHome, TOOL_TREE_DIR, "bin", "scale-engine"));
     expect(() => stageExam(join(root, "broken-link"), customDraft, badHome)).toThrow("broken symlink");
-    rmSync(join(badHome, ".toolchain", "bin", "scale-engine"));
-    const namedScript = join(badHome, ".toolchain", "bin", "scale-engine");
+    rmSync(join(badHome, TOOL_TREE_DIR, "bin", "scale-engine"));
+    const nonExec = join(badHome, TOOL_TREE_DIR, "bin", "scale-engine");
+    writeFileSync(nonExec, "#!/bin/sh\necho OK\n");
+    chmodSync(nonExec, 0o644);
+    expect(() => stageExam(join(root, "non-exec"), customDraft, badHome)).toThrow("is not executable");
+    rmSync(nonExec);
+    const namedScript = join(badHome, TOOL_TREE_DIR, "bin", "scale-engine");
     writeFileSync(namedScript, `#!/bin/sh\ncat "${badHome}/x"\n`);
     chmodSync(namedScript, 0o755);
     expect(() => stageExam(join(root, "named-home"), customDraft, badHome)).toThrow("name your home");
-    rmSync(join(badHome, ".toolchain"), { recursive: true, force: true });
-    symlinkSync(root, join(badHome, ".toolchain"));
+    rmSync(join(badHome, TOOL_TREE_DIR), { recursive: true, force: true });
+    symlinkSync(root, join(badHome, TOOL_TREE_DIR));
     expect(() => stageExam(join(root, "symlink-tree"), customDraft, badHome)).toThrow("must be a directory");
     rmSync(badHome, { recursive: true, force: true });
 
-    // Static evaluator scanner: regexes with quotes, strings inside `${...}`, and nested templates do not false-positive,
+    // Static evaluator scanner: regexes with quotes, strings inside `${...}`, nested templates,
+    // postfix ++/-- division, and method calls obj.fetch()/obj.require() do not false-positive,
     // while regex/template desyncs, bare Date()/Function(), indirect eval, process destructuring/optional chaining, and import() are caught.
     for (const clean of [
       `export const checks = { "check-product": (r) => /["']/.test("fetch()") || /\\/\\//.test(String(r.artifact.answer)) };\n`,
       'export const checks = { "check-product": (r) => `${r.artifact.answer || "Date.now()"}`.length > 0 };\n',
       'export const checks = { "check-product": () => `outer ${`inner Math.random()`}`.length > 0 };\n',
+      `export const checks = { "check-product": (r) => { let x = Number(r.artifact.answer); return (x++ / 2) + (x-- / 2) + "a / b".length + "Math.random()".length > 0; } };\n`,
+      `export const checks = { "check-product": (r) => { const bag = { fetch: (v) => Boolean(v), require: (v) => Boolean(v) }; return bag.fetch(r.artifact.answer) && bag.require(r.artifact.answer); } };\n`,
     ]) {
       expect(draftFaults({ ...SOUND, evaluator: clean })).toEqual([]);
     }

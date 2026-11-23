@@ -1,5 +1,5 @@
 /**
- * `bun run runs bench <run> [--bench <name>] [--as <label>] [--harness <kept>] [--login N] [--wait] [--yes]`
+ * `bun run runs bench <run> [--bench <name>] [--as <label>] [--harness <kept>] [--pi] [--login N] [--wait] [--yes]`
  * `bun run runs bench [--bench <name>] [--store <dir>] [--host <name>]`
  */
 import { UNAME_PLACES } from "#src/harness/place.ts";
@@ -47,6 +47,8 @@ export interface Plan {
   readonly held: string | null;
   /** Whether to wait for the runner host to become idle rather than failing immediately if busy. */
   readonly wait: boolean;
+  /** Which solver runtime rolls the arm: exported Claude Code (`claude`, default) or native `pi`. */
+  readonly runtime?: "claude" | "pi";
 }
 
 /** Shell expression selecting `sha256sum` (coreutils) when present, falling back to `shasum -a 256`
@@ -105,12 +107,13 @@ export function opened(trees: string, label: string): string {
  *  completes both dry runs before spending compute on rollouts. */
 export function stepsOf(plan: Plan): Step[] {
   const { run, label, login, holder, runner, sitting } = plan;
+  const prefix = plan.runtime === "pi" ? "pi:" : "";
   const starter = `starter-${label}`;
   const stage = `"\${TMPDIR:-/tmp}"/${quoted(`ana-outside-read-${label}`)}`;
   const on = (says: string, script: string): Step => ({ says, command: shellOn(runner, script) });
   const piped = (host: Host | undefined, script: string) => shellOn(host, script).map(quoted).join(" ");
-  const reference = `${sitting} run ${quoted(login)} ${quoted(label)} --arm ${quoted(run)} --harness ${quoted(plan.harness)}`;
-  const bare = `${sitting} run ${quoted(login)} ${quoted(starter)} --arm starter`;
+  const reference = `${sitting} run ${quoted(login)} ${quoted(label)} --arm ${quoted(`${prefix}${run}`)} --harness ${quoted(plan.harness)}`;
+  const bare = `${sitting} run ${quoted(login)} ${quoted(starter)} --arm ${quoted(`${prefix}starter`)}`;
   const idle = `${sitting} status | head -n 1 | grep -qx idle`;
   const rolled = `${plan.store}/rolled-${label}.log`;
   const exported: Step[] = [
@@ -119,7 +122,7 @@ export function stepsOf(plan: Plan): Step[] {
       // Remove any leftover staging directory from an interrupted export before writing a fresh tree.
       command: shellOn(
         holder,
-        `rm -rf ${stage} && cd ${shellPath(plan.tree)} && ${plan.bun} studies/harness2/score.ts tree --arm ${quoted(run)} --harness ${quoted(plan.harness)} --name ${quoted(label)} --out ${stage} --for ${quoted(plan.place)} --python ${quoted(plan.python)}`,
+        `rm -rf ${stage} && cd ${shellPath(plan.tree)} && ${plan.bun} studies/harness2/score.ts tree --arm ${quoted(`${prefix}${run}`)} --harness ${quoted(plan.harness)} --name ${quoted(label)} --out ${stage} --for ${quoted(plan.place)} --python ${quoted(plan.python)}`,
       ),
     },
     {
@@ -251,14 +254,15 @@ async function exporterOf(run: string): Promise<Pick<Plan, "holder" | "tree" | "
 /** Resolves a complete `Plan` for `run`, or returns null if the harness is already evaluated under another label. */
 async function planOf(
   run: string,
-  values: { as?: string; bench?: string; harness?: string; login?: string; wait: boolean },
+  values: { as?: string; bench?: string; harness?: string; login?: string; pi: boolean; wait: boolean },
 ): Promise<Plan | null> {
   const env = runtimeProcess.env;
   const settings = settingsOf(run, env, values.bench);
   const harness = values.harness ?? promoted(logEvents(readNamed(run).path));
   if (harness === null) throw new Error(`${run} has promoted no harness: there is nothing to read outside`);
   // Single-letter harness identifiers are only meaningful alongside `view`, so require an explicit `--as` label.
-  const label = values.as ?? (harness.length === 64 ? harness.slice(0, 8) : "");
+  const defaultLabel = harness.length === 64 ? `${values.pi ? "pi-" : ""}${harness.slice(0, 8)}` : "";
+  const label = values.as ?? defaultLabel;
   if (!isSafePathSegment(label)) throw new Misused();
   const said = await runTextOrThrow(shellOn(settings.runner, probed(settings)));
   const [named = "", python = ""] = said.split("\n");
@@ -273,7 +277,7 @@ async function planOf(
     label,
     values.as,
   );
-  if (again.length > 0) {
+  if (again.length > 0 && !values.pi) {
     console.log(`${run}: ${harness.slice(0, 8)} is read already as ${again.join(", ")}; --as reads it again`);
     return null;
   }
@@ -286,7 +290,19 @@ async function planOf(
     throw new Error(`no login has room${why === "" ? "" : ` (${why})`}; the read stays owed`);
   }
   const exporter = held === null ? await exporterOf(run) : { holder: undefined, tree: "", bun: "" };
-  return { run, label, harness, login, ...exporter, ...settings, place, python, held, wait: values.wait };
+  return {
+    run,
+    label,
+    harness,
+    login,
+    ...exporter,
+    ...settings,
+    place,
+    python,
+    held,
+    wait: values.wait,
+    runtime: values.pi ? "pi" : "claude",
+  };
 }
 
 /** Entry point for `bun run runs bench`. */
@@ -301,6 +317,7 @@ export async function bench(args: readonly string[]): Promise<void> {
       store: { type: "string" },
       harness: { type: "string" },
       login: { type: "string" },
+      pi: { type: "boolean", default: false },
       wait: { type: "boolean", default: false },
       yes: { type: "boolean", default: false },
     },

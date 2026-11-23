@@ -92,7 +92,7 @@ import {
 } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
-import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
+import { keyIfDefined, keyIfNotNull, keysIf } from "#src/meta/optional-key.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -103,6 +103,7 @@ import { logAcross } from "#tools/runs/snapshots.ts";
 import { foreignPrograms, placeOf } from "#src/harness/place.ts";
 import { HARNESS_DIR, HERE, placeHarness, sourceNamed } from "../shared/bundle.ts";
 import { exportForClaudeCode, ownPython } from "../shared/claude-export.ts";
+import { rebuildForeignPython, uvPython } from "../shared/foreign-python.ts";
 import { RESULT_FILE, TRACE_FILE } from "../shared/pi-solve.ts";
 import { inGroup, REFUSED, type Agent, type Claude } from "./h2/claude.ts";
 import { NAMESPACE } from "./h2/recursion.ts";
@@ -309,8 +310,15 @@ export function piAgent(claude: Claude): Agent {
       rmSync(logs, { recursive: true, force: true });
       mkdirSync(logs, { recursive: true });
       writeFileSync(join(logs, "instruction.md"), prompt);
+      const sourceHarness = join(treeDir, HARNESS_DIR);
+      const stagedHarness = join(logs, HARNESS_DIR);
+      let harness = sourceHarness;
+      if (existsSync(sourceHarness)) {
+        cpSync(sourceHarness, stagedHarness, { recursive: true, verbatimSymlinks: true });
+        harness = stagedHarness;
+      }
       const flags = {
-        harness: join(treeDir, HARNESS_DIR),
+        harness,
         instruction: join(logs, "instruction.md"),
         solver: `claude/${claude.model}`,
         effort: claude.effort,
@@ -319,7 +327,9 @@ export function piAgent(claude: Claude): Agent {
         prompts: String(LIMITS.turns),
         logs,
       };
+      const wrap = runtimeProcess.env.ANA_SOLVER_WRAP;
       return [
+        ...(wrap !== undefined && wrap !== "" ? [wrap] : []),
         capturedExecPath,
         PI_SOLVE,
         ...Object.entries(flags).flatMap(([name, value]) => [`--${name}`, value]),
@@ -353,6 +363,8 @@ function piDry(claude: Claude, tree: string): string {
   rmSync(piLogs(traj), { recursive: true, force: true });
   if (field(result, "ending") !== "dry-run") throw new Error(`pi-solve cannot open ${tree}: ${text(result)}`);
   const found = text(field(result, "found")).trim().split("\n").filter(Boolean);
+  const missing = found.filter((line) => line.startsWith("missing: "));
+  if (missing.length > 0) throw new Error(`pi-solve missing programs in ${tree}: ${missing.join(", ")}`);
   return `  pi-solve: tools ${text(field(result, "tools"))}; ${String(found.length)} installed programs${found.length === 0 ? "" : `: ${found.join(", ")}`}`;
 }
 
@@ -442,14 +454,32 @@ async function armOf(values: Values, out: string, baseHarness: string, place = H
   if (!existsSync(into)) {
     if (pi) {
       const part = `${into}.part-${String(runtimeProcess.pid)}`;
-      await placeHarness(join(part, HARNESS_DIR), source);
+      const origin = await placeHarness(join(part, HARNESS_DIR), source);
+      const toolTree = join(part, HARNESS_DIR, TOOL_TREE_DIR);
+      const hasTools = existsSync(toolTree);
+      const rebuilt = hasTools ? await rebuildForeignPython(toolTree, place, uvPython(place)) : null;
+      const harnessDigest = (await openHarness(join(part, HARNESS_DIR))).digest;
+      writeFileSync(
+        join(part, "export.json"),
+        `${capturedJsonStringify(
+          {
+            harness: harnessDigest,
+            mode: "pi",
+            ...origin,
+            toolchain: hasTools ? join(HARNESS_DIR, TOOL_TREE_DIR) : null,
+            ...keyIfNotNull("rebuilt", rebuilt === null ? null : { for: place.name, ...rebuilt }),
+          },
+          null,
+          2,
+        )}\n`,
+      );
       renameSync(part, into);
     } else await exportForClaudeCode(into, source, place);
   }
   const record = readJson(join(into, "export.json"));
   const digest = pi ? (await openHarness(join(into, HARNESS_DIR))).digest : field(record, "harness");
   // A rollout runs outside a container, on the programs its tree was exported with.
-  const toolchain = pi ? join(HARNESS_DIR, TOOL_TREE_DIR) : field(record, "toolchain");
+  const toolchain = field(record, "toolchain") ?? (pi ? join(HARNESS_DIR, TOOL_TREE_DIR) : null);
   if (isString(toolchain)) await foreignPrograms(join(into, toolchain), place);
   // The build is priced once, beside the tree and outside what a solver is given, so a tree copied
   // to another machine rolls there without the campaign's log, which stays on its own host.

@@ -652,6 +652,9 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     const tree = join(out, "trees", "pi-tooled");
     expect((await openHarness(join(tree, "harness"))).digest).toBe(made.child);
     expect(existsSync(join(tree, "CLAUDE.md"))).toBe(false);
+    expect(
+      parseJsonAs<{ harness: string; mode: string }>(readFileSync(join(tree, "export.json"), "utf8")),
+    ).toMatchObject({ harness: made.child, mode: "pi" });
     // The tree and its build's price are all another machine needs: no campaign is read again.
     const elsewhere = ["--arm", `pi:${join(place, "no-campaign")}`, "--name", "pi-tooled"];
     expect(score(...elsewhere, "--dry-run").exitCode).toBe(0);
@@ -678,6 +681,39 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     expect(existsSync(join(out, "dataset", task, "model_output"))).toBe(false);
     expect(readdirSync(join(place, "tmp"))).toStrictEqual([]);
   }, 240_000);
+
+  it("strips Host-only from pi-solve prompts, stages harness into logs, and honors ANA_SOLVER_WRAP", async () => {
+    const made = await campaign("pi-host-only", () => undefined, {
+      ...MARKED,
+      guide: `# Operating Guide\n\nKeep general method.\n\n${HOST_ONLY}\nExam-only rule never shown outside.\n`,
+    });
+    const tree = join(root, "pi-wrapped-tree");
+    mkdirSync(join(tree, "harness"), { recursive: true });
+    cpSync(join(made.states, made.child), join(tree, "harness"), { recursive: true });
+    const prevWrap = runtimeProcess.env.ANA_SOLVER_WRAP;
+    runtimeProcess.env.ANA_SOLVER_WRAP = "/usr/bin/env";
+    try {
+      const traj = join(root, `pi-wrap-${String(runtimeProcess.pid)}.jsonl`);
+      const argv = piAgent(pilot).argv({ prompt: "Solve task.", treeDir: tree, workspace: root, traj });
+      expect(argv[0]).toBe("/usr/bin/env");
+      const staged = argv[argv.indexOf("--harness") + 1] ?? "";
+      expect(staged).not.toBe(join(tree, "harness"));
+      expect(existsSync(join(staged, "agent", "BUILT_AGENTS.md"))).toBe(true);
+      const logs = argv[argv.indexOf("--logs") + 1] ?? "";
+      const dry = runSync([...argv, "--dry-run"], { cwd: root });
+      expect(dry.exitCode).toBe(0);
+      const result = parseJsonAs<{ ending: string; tools: string[]; prompt: string }>(
+        readFileSync(join(logs, RESULT_FILE), "utf8"),
+      );
+      expect(result.ending).toBe("dry-run");
+      expect(result.tools).toStrictEqual(["bash", "submit"]);
+      expect(result.prompt).toContain("Keep general method.");
+      expect(result.prompt).not.toContain("Exam-only rule never shown outside.");
+    } finally {
+      if (prevWrap === undefined) delete runtimeProcess.env.ANA_SOLVER_WRAP;
+      else runtimeProcess.env.ANA_SOLVER_WRAP = prevWrap;
+    }
+  });
 });
 
 describe("the arms table over a store of judged records", () => {

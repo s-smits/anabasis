@@ -103,6 +103,15 @@ describe("runs bench", () => {
     expect(steps[6]).not.toContain("--yes; ");
   });
 
+  test("a pi runtime plan exports and rolls pi: arms without Claude Code translation", () => {
+    const steps = text(planOf({ runtime: "pi", label: "pi-ref-a1" }));
+    expect(steps[1]).toContain(String.raw`--arm '\''pi:stats-fresh-opus-builder'\''`);
+    expect(steps[4]).toContain(String.raw`--arm '\''pi:stats-fresh-opus-builder'\''`);
+    expect(steps[5]).toContain(String.raw`--arm '\''pi:starter'\''`);
+    expect(steps[6]).toContain(`pi:${RUN}`);
+    expect(steps[6]).toContain("pi:starter");
+  });
+
   test("a read that waits looks again while an arm holds the machine, and one that does not refuses", () => {
     const [waits] = text(planOf({ wait: true }));
     const [refuses] = text(planOf());

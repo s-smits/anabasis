@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Repository invariants and map; read the owning skill before editing or answering about a subsystem.
+Repository invariants and map; read the owning skill before editing or answering.
 
 | Scope | Read first | Related skills | Verify with |
 | --- | --- | --- | --- |
@@ -9,130 +9,128 @@ Repository invariants and map; read the owning skill before editing or answering
 | Readings, scoring, sampling, A/A, `decide` | `comparison-reading` (§7–8) | `promotion-tuner`, `attribution-and-proof`, `comparison-review`, `compare-systems` | `promotion-tuner` replay |
 | Commits, PRs, checks, claims, writing | `repository-practice` (§9–14), `tools/oxlint/HABITS.md` | `stack-pr`, `consolidate-stack`, `simplify`, `reduce-complexity`, `commit-r`, `local-checks`, `system-audit`, `codex-gpt-swarm` | `bun run gate`, `preflight.ts` |
 
-Run skill scripts via `bun .claude/skills/<skill>/scripts/<name>.ts`. Current metrics: `docs/plan.md`; v1 record: `docs/v1.md`, `docs/transfer.md`, `studies/`; governed-path nudges: `tools/runtime/moments.ts`.
+Skill scripts: `bun .claude/skills/<skill>/scripts/<name>.ts`. Metrics: `docs/plan.md`; v1: `docs/v1.md`, `docs/transfer.md`, `studies/`; nudges: `tools/runtime/moments.ts`.
 
 **How to approach a task.** Carry work as far as authority permits, through verification and delivery:
-1. **Fix the owning design, not the symptom.** Refactor the owner when owning the boundary or consolidating; weigh rebase blast radius on deep stacks, and patch locally when structural change awaits a §3 decision.
-2. **Replay before changing any decision rule.** Replay admission, sampling, scoring, practice-release or stop-rule changes over `data/runs/` (`promotion-tuner`, `system-path-simulation`) and report every flipped decision.
-3. **Subtract before adding.** Check existing owners (rule 12) and collapse seams before adding a flag, guard, branch, helper or prompt paragraph.
-4. **Connect stored skill outputs, then verify at primary source.** Join `.ana/wri/` artifacts with live folds before spawning subagents or scanning raw logs (§9); assert nothing unverified and correct errors immediately.
-5. **Stress-test your change.** Check the strongest objection, its refutation, and which test or mutant fails before and passes after.
+1. **Fix the owning design upstream, not the symptom.** Refactor the owner at its boundary (fix standalone Anabasis, not export shims); weigh rebase blast radius on deep stacks, patching locally when structural work awaits §3.
+2. **Sweep archives before changing rules or heuristics.** Replay decision-rule edits over `data/runs/` (`promotion-tuner`, `system-path-simulation`) and report flipped decisions; sweep archived logs/harnesses before shipping any heuristic, regex or note to prove real triggers (not `0/N`) and near-zero false positives.
+3. **Subtract and reuse before adding.** Exhaust existing seats, tools and owners (rule 12) before adding an agent, tool, flag or guard; rethink edited and adjacent files from scratch to keep net complexity flat or falling (`git complexity`), preferring a far simpler design capturing ~90%+ of the gain.
+4. **Think inline from primary sources first.** Join `.ana/wri/` artifacts with live folds and form your own hypothesis before invoking subagents or raw log scans (§9); assert nothing unverified and correct errors immediately.
+5. **Stress-test your change.** Check the strongest objection, its refutation, and which test, simulation or mutant fails before and passes after.
 
-Finish or checkpoint current work before unrelated tasks, unless redirected or stopped. Resolve routine ambiguity with the strongest option and what would overturn it; pause only for missing permissions or a §3 decision, with analysis and recommendation. Audits, reviews, plans stay read-only. Report evidence rung (§9) and open items. Keep operator infra (hosts, logins, accounts, scheduled jobs, full run names) out of tracked files, commits and PRs.
+Finish or checkpoint current work before unrelated tasks, unless redirected or stopped. Resolve routine ambiguity with the strongest option and its falsifier; pause only for missing permissions or a §3 decision, with analysis and recommendation. Audits, reviews, plans stay read-only. Report evidence rung (§9) and open items. Keep operator infra (hosts, logins, accounts, jobs, full run names) out of tracked files, commits and PRs.
 
 ## 1. What Anabasis does
 
-From a domain query, a campaign builds a **Built Harness** (guide + tooling) for a fixed **solver** to isolate its causal effect:
+From a query, a campaign builds a **Built Harness** (guide + tooling) for a fixed **solver**, isolating its causal effect:
 
 > Is the candidate harness better than the reference harness, for this solver, on held-out tasks that neither was built on?
 
-A paired comparison answers this (§7): both harnesses solve held-out tasks afresh under pre-registered conditions; Verifier checks validity; Referee rules on reproducible rejections; a one-sided paired sign-flip test registers a **step** (promoting candidate) or no effect. Cross-solver runs use `compare-systems`.
+A paired comparison (§7) runs both harnesses afresh on held-out tasks, checks validity, adjudicates rejections and tests for a **step** (promoting candidate); cross-solver runs use `compare-systems`.
 
 ### The four reported factors
 
-Name the target factor and empirical count in every change (`docs/plan.md`):
+Name target factor and empirical count (`docs/plan.md`):
 - **Supply** (precondition): informative gradient (`informative`, `src/kernel/compare.ts`); admission tracks unclosed frontier tasks (`comparisonFloor`).
-- **1. Climb**: promotions in one campaign (`src/campaign/climb.ts`), confirmed when the epoch's first starter comparison beats starter (`confirmed`). Never expose the 6-promotion / 2-domain milestone to any seat.
-- **2. Honesty**: A/A control beside every comparison; bar is zero A/A steps across 10 comparisons after promotion 6 (`falseRate`, `barLines`).
-- **3. Verdicts**: evidence-backed Referee rulings; against ≥30 blind operator labels, bar is ≥3/4 check-defect detection and ≤1/10 voided earned rejections (`clears`, `src/referee/agreement.ts`).
+- **1. Climb**: promotions per campaign (`src/campaign/climb.ts`), confirmed when the epoch's first starter read beats starter (`confirmed`). Never expose the 6-promotion / 2-domain bar to seats.
+- **2. Honesty**: A/A control beside each comparison; bar is 0 A/A steps across 10 comparisons post-promotion 6 (`falseRate`, `barLines`).
+- **3. Verdicts**: evidence-backed Referee rulings; against ≥30 blind labels, bar is ≥3/4 defect detection and ≤1/10 voided earned rejections (`clears`, `src/referee/agreement.ts`).
 - **4. Economy**: list-price dollars and wall-clock hours per promotion (`tools/d2/close.ts`, `billOf`, `BARS`).
 
 ### Trade-offs to keep in view
 
-Expanded in `design-and-seats` (`question-and-factors.md`, `stance.md`):
-- **Objective signal vs variance**: hard-constraint domains separate on validity; open-ended domains saturate validity so the noisier objective governs. Report carrying measure and starter A/A noise floor; raising `GAP_FLOOR` shifts noise while starving supply.
-- **Promotion vs confirmation**: the owed starter comparison runs on the next `compare` (`heldSince`); reading ahead leaves promotion unconfirmed (`test/decide-explore.test.ts`).
+See `design-and-seats` (`question-and-factors.md`, `stance.md`):
+- **Objective signal vs variance**: hard-constraint domains separate on validity; open-ended domains saturate validity so a non-hedgable objective governs. Near-100% passes on shallow self-checks while external transfer lags is an exam-grounding failure, not model mastery. Report carrying measure and A/A floor; raising `GAP_FLOOR` shifts noise and starves supply.
+- **Promotion vs confirmation**: owed starter read runs on next `compare` (`heldSince`); reading ahead leaves it unconfirmed (`test/decide-explore.test.ts`).
 - **Practice vs held-out supply**: practice takes ≤ half the held-out pool; watch `comparisonFloor` and treat untransferred practice gains as overfitting.
-- **Gate strictness vs capability**: refuse only measurement-breaking or wasted-compute actions; pass other observations as notes. Err toward lenient sandboxing and Builder freedom.
+- **Gate strictness vs capability**: refuse only measurement-breaking or wasted-compute actions; pass others as factual notes; err toward lenient sandboxing and Builder freedom.
 - **External benchmarks**: measure transfer, not promotion; keep queries naturally scoped.
 
 ### Two sides and one wall
 
-Practice is training; held-out is test and never leaks to the build side. Examiner sees reference outcomes and winning harnesses; only five items cross to the build side: (1) contract public rules, scope, conventions, answer format and objective (quantity + direction); (2) public spec of released practice tasks; (3) practice solve outcome, kind, trajectory and coarse objective band relative to author's best (no raw values); (4) aggregate comparison tally and reading without task names; (5) host limits, remaining budget, and held-out/practice counts. Nothing else crosses: no held-out text/trajectory, check source, hidden values, refusing check list, Referee rationale or move-table recommendation (rule 3).
+Practice is training; held-out is test and never leaks. Examiner sees reference outcomes and winning harnesses; only five items cross to build: (1) contract public rules, scope, conventions, answer format and objective (quantity + direction); (2) public spec of released practice tasks; (3) practice solve outcome, kind, trajectory and coarse band vs author's best (no raw values); (4) aggregate comparison tally and reading without task names; (5) host limits, remaining budget, held-out/practice counts. Nothing else crosses: no held-out text/trajectory, check source, hidden values, refusing check list, Referee rationale or move-table recommendation (rule 3).
 
 ## 2. The stance: code owns the conditions, models own the content
 
-Code governs protocol and conditions (move eligibility, refusals, limits, solve conditions, verification, statistics, wall, dollar cap, append-only log); models govern content (harness, solutions, tasks, rulings, diagnosis, next hypothesis).
+Code governs protocol and conditions (eligibility, refusals, limits, solve conditions, verification, statistics, wall, dollar cap, log); models govern content (harness, solutions, tasks, rulings, diagnosis, hypothesis).
 
-1. **Supply facts, not directives** (prescribed actions make models ignore contradicting evidence) **and no numerical targets** (Examiner never receives a target count or pass rate).
-2. **Keep the Builder unconstrained**, except no harness may name a task, copy its text or embed its answer.
-3. **Code validates declared structure, never selects content**; a model reply never sets a score, limit or identity.
-4. **When in doubt, permit the full workspace** (isolation hides only hidden values, credentials and other seats' private files: `SolveDirs`, `src/tools/command.ts`).
-5. **Prefer the simplest design capturing most of the effect** without compromising measurement honesty.
+1. **Supply facts, frame positively, omit numeric targets.** Describe what good work looks like rather than "do not X" bans (which seed failure modes) or numeric targets (Examiner never sees target counts or pass rates); bound prompt edits (~20–30% drift) and prune distracting lines.
+2. **Design for frontier models; keep Builder unconstrained.** Give seats clean sandbox primitives and freedom instead of arbitrary count floors (min lines/tools) or weak-model handholding; forbid only naming a task, copying its text or embedding its answer.
+3. **Code validates structure, never selects content**; a model reply never sets a score, limit or identity. Any model review pass runs upstream at low frequency, reuses an existing seat and requires mechanical probe evidence rather than prose opinion.
+4. **When in doubt, permit full workspace** (isolation hides only hidden values, credentials and other seats' private files: `SolveDirs`, `src/tools/command.ts`).
+5. **Keep designs as simple as honesty allows.**
 
 ### Reward hacking vs overfitting
 
-Close gaming channels structurally in code rather than with "do not cheat" prompt bans (which often backfire). Separate practice overfitting from structural reward hacking:
-- **Practice memorisation** (task IDs, rare dataset codes like `P-00123`, verbatim prompts): training-set overfitting, not a held-out exploit; held-out comparisons block it from winning, while `check_harness` (`src/harness/files.ts`) and WRI `names.ts` flag high-precision leaks cheaply.
-- **Oracle / hidden-value inversion** (probing exact practice scores or `try_reference` gaps to back-solve hidden parameters or tune around decision boundaries): close by coarsening cross-wall feedback into bands (`bandOf`, `roomLine` `GAP_FLOOR`), keeping raw digits in the log.
-- **Measurement softening & comparison fishing** (dropping checks across retries, `vacuous-pass` holes like `Number("") === 0`, hedgable single-metric objectives, or repeatedly comparing untried/noisy edits until variance clears `α`): prevent via upstream mechanical probes (`referee.draft`, `doNothing`, hidden-swap checks), host-gated fresh comparisons (`decide`, `written-after` Starter confirmation), and Lane 24 (`tools/wri/gaming.ts`).
+Close gaming channels in code. Separate practice overfitting from structural reward hacking:
+- **Practice memorisation** (task IDs, rare codes like `P-00123`, verbatim prompts): training overfitting, not a held-out exploit; held-out comparisons block it from winning, while `check_harness` (`src/harness/files.ts`) and WRI `names.ts` flag high-precision leaks cheaply.
+- **Oracle / hidden-value inversion** (probing practice scores or `try_reference` gaps to invert hidden values or boundary-tune): close by coarsening cross-wall feedback into bands (`bandOf`, `roomLine` `GAP_FLOOR`), keeping raw digits in the log.
+- **Measurement softening & comparison fishing** (dropped checks across retries, `vacuous-pass` holes like `Number("") === 0`, hedgable metrics, or re-comparing noisy edits to clear `α`): prevent via upstream mechanical probes (`referee.draft`, `doNothing`, hidden-swap checks), host-gated fresh comparisons (`decide`, `written-after` confirmation), and WRI gaming audit (`tools/wri/gaming.ts`).
 
 ## 3. The seats
 
-- **Examiner** (model, `src/examiner/`): drafts exam specs and authors tasks; host gate validates structure and rejects planted answers without solving (`propose_tasks`); reads `src/examiner/record.ts` without targets or harness names.
-- **Builder** (model, `src/builder/`): edits `harness/`, chooses moves and freezes candidates, seeing only §1's five items, its own notes and kept harnesses.
-- **Solver** (model, `src/solver/`): solves one task via `read`, `bash`, `edit`, `write`, `submit` and installed programs.
+- **Examiner** (`src/examiner/`): drafts exam specs and tasks; host validates structure and rejects planted answers without solving (`propose_tasks`); reads `src/examiner/record.ts` without targets or harness names.
+- **Builder** (`src/builder/`): edits `harness/`, chooses moves and freezes candidates, seeing only §1's five items, its notes and kept harnesses.
+- **Solver** (`src/solver/`): solves one task via `read`, `bash`, `edit`, `write`, `submit` and installed programs.
 - **Verifier** (code, `src/kernel/verify.ts`): runs every check in a fresh offline sandbox.
-- **Referee** (model, `src/referee/referee.ts`): rules on each rejection reproducing on host replay as `earned`, `check-defect` or `unclear` (exam side only).
-- **Host** (code): everything assigned to code under §2.
+- **Referee** (`src/referee/referee.ts`): rules on reproducible rejections as `earned`, `check-defect` or `unclear` (exam side only).
 
-A **harness** (`agent/tools-spec.json`, `.toolchain/`, `agent/BUILT_AGENTS.md`) is content-addressed. The **Starter Built Harness** (`src/harness/starter.ts`, pi's four tools) is baseline (**Starter** / **bareSolver**); adding `HARNESS.md` forms the **Starter Pack**; a Builder-authored harness runs a **builtSolver**. Every solve runs inside a harness—never say "with or without a harness".
+A **harness** (`agent/tools-spec.json`, `.toolchain/`, `agent/BUILT_AGENTS.md`) is content-addressed. **Starter** (**bareSolver**, `src/harness/starter.ts`, pi's four tools) is baseline; + `HARNESS.md` = **Starter Pack**; Builder harness = **builtSolver**. Every solve runs in a harness—never say "with or without a harness".
 
 ### What waits for the operator
 
-Seven decisions require explicit operator authority (`design-and-seats`, `operator-and-harness.md`): freezing/rejecting the contract or check program or admitting an authored check (`tools/c/accept.ts --freeze`, `--admit`); blind labelling of sampled rejections; setting the dollar cap and paying account; declaring an unsolved task infeasible; manually promoting a harness (`tools/d2/promote.ts --harness <digest> --yes`, `--despite` to override `decide`); changing solver inputs/limits (starter harness, shell env, campaign limits); and stopping a live run.
+Seven decisions need explicit operator approval (`design-and-seats`, `operator-and-harness.md`): freezing/rejecting the contract or check program or admitting an authored check (`tools/c/accept.ts --freeze`, `--admit`); blind rejection labels; dollar cap and paying account; declaring an unsolved task infeasible; manual promotion (`tools/d2/promote.ts --harness <digest> --yes`, `--despite` to override `decide`); changing solver inputs/limits (starter, shell env, campaign limits); and stopping a live run.
 
-Present evidence and a recommendation when asking, continuing independent work meanwhile. Authorisation covers only what it names ("keep going" grants none of the seven; opening a cycle covers its runs, pauses and stack patches). Host messages say "a person" solely for these seven.
+Present evidence and a recommendation while continuing independent work. Approval covers only what it names ("keep going" grants none of the seven; opening a cycle covers its runs, pauses and stack patches). Host messages say "a person" solely for these seven.
 
 ## 4. The Harness Builder
 
-One Builder conversation (`tools/d2/harness-builder.ts`) drives the campaign via `examine`, `compare`, `campaign_status` and `wait`. One Examiner sleeps between `examine` calls across promotions and closes with the Builder (`tools/d2/campaign-actions.ts`). Host code enforces stops, practice release and promotions; the Builder never sees `decide`'s recommendation (`src/campaign/decide.ts`). Comparisons test exact frozen digests (step promotes that digest); unchanged harnesses re-compare only when `decide` calls for it (repeated draws inflate false positives); refused actions are not moves; embed standing facts in every tool result (out-of-band messages never reach the Builder).
+One Builder (`tools/d2/harness-builder.ts`) drives the campaign via `examine`, `compare`, `campaign_status` and `wait`; one Examiner sleeps between `examine` calls across promotions and closes with it (`tools/d2/campaign-actions.ts`). Host enforces stops, practice release and promotions; Builder never sees `decide`'s recommendation (`src/campaign/decide.ts`). Comparisons test exact frozen digests (step promotes that digest); unchanged harnesses re-compare only when `decide` asks; refused actions are not moves; embed standing facts in every tool result (out-of-band messages never reach Builder).
 
 ## 5. The log
 
-A campaign's sole record is `.ana/d2/<name>/log.jsonl` (`src/kernel/log.ts`, append-only, fsynced). All state and reports are pure folds over it. A **condition** (`src/kernel/condition.ts`) fixes host-controlled solve parameters; two solves are comparable only when differing solely in the tested variable.
+`.ana/d2/<name>/log.jsonl` (`src/kernel/log.ts`, append-only, fsynced) is the sole record; all state and reports are pure folds over it. A **condition** (`src/kernel/condition.ts`) fixes host solve parameters; solves compare only when differing solely in the tested variable.
 
 1. **No second store** (persist state as log events) and **no second reader** (call the owning fold).
-2. **Never edit a log or hand-author events.** Use `bun run runs copy|move|retire`; only `retire` deletes.
-3. **Preserve readability of all recorded `EVENT_KINDS`.**
+2. **Never edit a log or hand-author events** (`bun run runs copy|move|retire`; only `retire` deletes); **preserve readability of all `EVENT_KINDS`**.
 
-Logs hold hidden exam values—keep them out of prompts, PRs and transcripts. Copied campaigns omit installed binaries and are read-only.
+Logs hold hidden exam values—keep them out of prompts, PRs and transcripts. Copied campaigns omit binaries and are read-only.
 
 ## 6. A campaign's commands
 
-`bun tools/d2/harness-builder.ts` runs unattended until `budget`, `stop`, `exam`, `no-room`, `environment`, `operator` or `finished` (3 no-move Builder sessions). Operators steer via `tools/d2/word.ts` (hidden from seats). Config locks solver, limits, `--target` and `--solves`. Practice releases from reference solves only (≤ half the held-out pool, preserving `comparisonFloor` via `practiceDue`). Moves are gated by `src/campaign/admission.ts`, session admission and the stop rule (`--past-stop "<why>"` overrides); nothing appends before a final refusal except `build.checkpoint` frozen by `compare`. Defaults live in code alone: `SIZE` (`src/kernel/size.ts`), `PATIENCE` (`src/kernel/reports.ts`), `GAP_FLOOR`/`WEIGHTS` (`src/kernel/compare.ts`), `LIMITS` (`tools/d2/campaign.ts`), and significance/reserve/session flags (`tools/d2/campaign-terms.ts`).
+`bun tools/d2/harness-builder.ts` runs unattended until `budget`, `stop`, `exam`, `no-room`, `environment`, `operator` or `finished` (3 no-move Builder sessions). Operators steer via `tools/d2/word.ts` (hidden from seats). Config locks solver, limits, `--target` and `--solves`. Practice releases from reference solves only (≤ half held-out pool, preserving `comparisonFloor` via `practiceDue`). Moves pass `src/campaign/admission.ts`, session admission and stop rule (`--past-stop "<why>"` overrides); nothing appends before a final refusal except `build.checkpoint` frozen by `compare`. Defaults live in code alone: `SIZE` (`src/kernel/size.ts`), `PATIENCE` (`src/kernel/reports.ts`), `GAP_FLOOR`/`WEIGHTS` (`src/kernel/compare.ts`), `LIMITS` (`tools/d2/campaign.ts`), and flags (`tools/d2/campaign-terms.ts`).
 
 ## 7. How a comparison is read
 
-Comparisons pre-register terms before solving, run both harnesses afresh on the same sampled tasks (newest epoch first, 1 retained per 3 frontier tasks), and pair every rollout across arms. **Outcomes** (`src/kernel/solve.ts`): pass = valid answer; failure = earned rejection, limit expiry, `no-answer`, `broken-harness`, `malformed`; set aside = unruled, `check-defect` or `unclear`; non-result (retried, excluded from pairing) = `provider`, `sandbox-crash`, `killed`, `moved-files`, `check`, `verifier`. **Scoring**: validity first, objective breaks ties (`pointsOf`, `WEIGHTS`); cost never enters scores. An exact one-sided paired sign-flip test over nonzero scores registers `step`, `no-step`, `not-scored`, `check-defects` or `no-change`. `decide` (`src/campaign/decide.ts`) chooses moves; 6 eligible moves without gain trigger `stopRule`.
+Comparisons pre-register terms before solving, run both harnesses afresh on sampled tasks (newest epoch first, 1 retained per 3 frontier tasks), and pair every rollout. **Outcomes** (`src/kernel/solve.ts`): pass = valid; failure = earned rejection, limit expiry, `no-answer`, `broken-harness`, `malformed`; set aside = unruled, `check-defect`, `unclear`; non-result (retried, excluded) = `provider`, `sandbox-crash`, `killed`, `moved-files`, `check`, `verifier`. **Scoring**: validity first, objective breaks ties (`pointsOf`, `WEIGHTS`); cost never enters scores. Exact one-sided paired sign-flip test over nonzero scores registers `step`, `no-step`, `not-scored`, `check-defects` or `no-change`. `decide` (`src/campaign/decide.ts`) chooses moves; 6 eligible moves without gain trigger `stopRule`.
 
 ## 8. Rules
 
 1. **Only held-out comparisons decide**—never practice outcomes, prose, reviews or unit tests.
-2. **Only the Examiner authors the exam; nobody coaches it.** Never patch domain rules, checks, tasks, packs, kept harnesses or logs; fix cross-domain host/prompt/contract defects instead.
-3. **Nothing crosses the wall except §1's five items.** Perturbing hidden values, checks or held-out winners must leave Builder and solver messages byte-identical apart from budget (`test/builder.test.ts`, `test/builder-led.test.ts`, `test/wall-practice.test.ts`). Any PR touching those surfaces documents its wall check.
-4. **Pre-register experimental terms before solving and never alter them post hoc.**
+2. **Only Examiner authors the exam; nobody coaches it.** Never patch domain rules, checks, tasks, packs, kept harnesses or logs; fix cross-domain host/prompt/contract defects.
+3. **Nothing crosses the wall except §1's five items.** Perturbing hidden values, checks or held-out winners leaves Builder/solver messages byte-identical except budget (`test/builder.test.ts`, `test/builder-led.test.ts`, `test/wall-practice.test.ts`); document wall checks on PRs touching those surfaces.
+4. **Pre-register terms before solving; never alter post hoc.**
 5. **Solve both arms afresh under identical conditions** (no cached solves).
-6. **Single rollouts are weak evidence**; label any single solve shown to an agent as such.
-7. **Non-results are neither passes nor fails**; retry and exclude from all denominators.
-8. **Rejections count only once adjudicated**; blind operator labels override Referee rulings.
-9. **No reference answers, stronger solvers or answer-finding agents** (generation parameters are task facts, not answers).
-10. **No agent authors a measurement instrument.** Unpinned authored checks are faults unless admitted (`--admit` or `--admit-authored`).
-11. **The host owns every resource limit**; files requesting more time, turns or disk have no effect.
+6. **Single rollouts are weak evidence**; label any single solve shown to an agent.
+7. **Non-results are neither passes nor fails**; retry and exclude from denominators.
+8. **Rejections count only once adjudicated**; blind operator labels override Referee.
+9. **No reference answers, stronger solvers or answer-finding agents** (generation parameters are task facts).
+10. **No agent authors a measurement instrument.** Unpinned authored checks are faults unless admitted (`--admit`, `--admit-authored`).
+11. **Host owns every resource limit**; files requesting more time, turns or disk have no effect.
 12. **One owner per decision, one reader per fact.** When two locations decide the same thing, remove one.
-13. **Add machinery only on empirical evidence; prefer simplification**: `owner → live reader → decision it changes → evidence → hostile test`. Collapse seams first; new diagnostics report only until replay flips decisions; superseding changes delete what they replace (or list remaining readers under "Not done"); additions >~50 production lines note why no existing surface could be simplified.
+13. **Add machinery only on empirical evidence**: `owner → live reader → decision → evidence → hostile test`. Collapse seams first; new diagnostics report only until replay flips decisions; superseding edits delete what they replace (or list remaining readers under "Not done"); additions >~50 prod lines explain why no existing surface could be simplified.
 14. **Stop when nothing can be learned** (refuse invalid launches; do not re-run dead providers).
-15. **Credit and session limits are normal operating conditions, not defects.** Resume from the log at the run's commit once quota recovers or on another login; investigate only non-limit 429s, timeouts or crashes.
+15. **Credit and session limits are normal conditions, not defects.** Resume from the log at the run's commit once quota recovers or on another login; investigate only non-limit 429s, timeouts or crashes.
 
 ## 9. Status, evidence and claims
 
-Read `attribution-and-proof` before claiming improvement. Use exact evidence rungs instead of "built" or "done": `planned` < `present in source` (commit + live reader) < `proved without a model` (bounded check/property, replay, rehearsal) < `exercised live` (real log event) < `shown in an outcome` (replicated on fresh solves), or `withdrawn`.
+Read `attribution-and-proof` before claiming improvement. Use exact rungs instead of "built"/"done": `planned` < `present in source` (commit + live reader) < `proved without a model` (bounded check/property, replay, rehearsal) < `exercised live` (real log event) < `shown in an outcome` (replicated on fresh solves), or `withdrawn`.
 
 ```text
 log events > log fold > source & tests > printed line > PR text > agent's account
 ```
 
-Own conclusions and subagent reports sit lowest until grounded higher. Compute counts via owning folds; state causal claims as falsifiable hypotheses. Tests prove code paths, not model gain; one OS proves nothing about another OS's wall; a live run speaks only for its commit (`bun run runs source --has <text>`). Inspect symbol and callers before claiming absence.
+Own conclusions and subagent reports sit lowest until grounded higher. Compute counts via owning folds; state causal claims as falsifiable hypotheses. Tests prove paths, not model gain; one OS proves nothing about another's wall; a run speaks only for its commit (`bun run runs source --has <text>`). Inspect symbol and callers before claiming absence.
 
 | Claim | Required evidence |
 | --- | --- |
@@ -140,51 +138,51 @@ Own conclusions and subagent reports sit lowest until grounded higher. Compute c
 | No step | Same with sample size; never proves equivalence |
 | A mechanism | Recorded event in a live log where its trigger occurred |
 | A refusal | Refusal text (proves only its trigger) |
-| Attribution to part of a harness | Ablation comparison against `programs-of:<digest>` |
+| Harness attribution | Ablation comparison against `programs-of:<digest>` |
 
-Give every rate its denominator. Triage releases, runs and cohorts inline by joining `.ana/wri/` artifacts (`synthesis.md`, `cross-domain.md`, `outcomes-*.md`, `outside-reads.md`, `plan.md`, `cycle.md`) with live folds (`runs source`, `runs view`, `promotion-tuner` `table.ts`/`trend.ts`, `starter-reads.ts`, `score.ts`): treat prose as an index, re-ground key counts in owning folds, and separate code fixes from confirmed factor shifts.
+Give every rate its denominator and compare runs over matched active hours, not wall-clock span. Separate **instrument health** (clean runs, zero A/A steps, low crashes) from **product outcome** (`written-after` confirmation apart from `chosen-on` selection, external transfer vs Starter, and same-domain delta vs nearest prior version, weighting recent gaps highest). Triage inline by joining `.ana/wri/` artifacts (`synthesis.md`, `cross-domain.md`, `outcomes-*.md`, `outside-reads.md`, `plan.md`, `cycle.md`) with live folds (`runs source`, `runs view`, `tools/wri/backtrack.ts`, `table.ts`, `trend.ts`, `starter-reads.ts`, `score.ts`): treat prose as an index and re-ground key counts in owning folds.
 
 ## 10. Runs with a real model
 
-Live runs spend budget and need explicit approval per named run; seats run in Seatbelt or Bubblewrap (unavailable wall = typed non-result). See `run-improvement-campaign`, `run-management`, `whole-run-investigation` (`bun run runs`):
+Live runs spend budget and need explicit approval per named run; seats run in Seatbelt/Bubblewrap (unavailable wall = typed non-result). See `run-improvement-campaign`, `run-management`, `whole-run-investigation` (`bun run runs`):
 1. **Worktree is the condition**: launch in a clean worktree at a published commit (`runs fresh`), leave `src/` untouched; paid seats refuse main checkout or `ana-followed` (`treeFault`).
-2. **Prove without a model first** (`--dry-run`, `runs replay`, `runs rehearse`); **pre-register one falsifiable prediction** settled by an empirical count before the first solve.
+2. **Prove without a model first** (`--dry-run`, `runs replay`, `runs rehearse`, `system-path-simulation` on brittle seat/tool seams); **pre-register count-based predictions** before solve 1 and resolve what held or missed before forking next.
 3. **At most 1–2 concurrent rounds per host** (`leastOccupied`); **never open, print or copy `--env-file`**.
 4. **Never stop a live run to patch it** (stack fixes for fresh runs); **read logs/reports before prose**; **report every started attempt**; **a measured run opens a fresh project at one commit** (inherited promotions do not count).
 
-Track primary + control domains and external transfer (`docs/plan.md`, `run-improvement-campaign`), checking conditions before blaming a harness on external benchmarks. React to `runs alerts`/`runs pulse` instead of polling.
+Track primary + control domains and external transfer (`docs/plan.md`, `run-improvement-campaign`), checking conditions before blaming a harness on external benchmarks. React to `runs alerts`/`runs pulse`, not polling.
 
 ## 11. Working in the repository
 
-Use the pinned Bun (`package.json`), keep git hooks on, run `bun run test -- <paths>` while iterating and `bun run gate` at top (`local-checks`). GitHub Actions runs only `ci.yml`.
+Use pinned Bun (`package.json`), keep hooks on, run `bun run test -- <paths>` while iterating and `bun run gate` at top (`local-checks`). GitHub Actions runs only `ci.yml`.
 
 **Never touch**: `.ana/` (except `.ana/wri/`), `data/runs/`, packs, checks, kept harnesses, `.env`, credentials or installed deps. `vendor/` requires verbatim upstream provenance and documented local edits.
 
 ### The stack and pull requests
 
-Releases land an entire PR stack: **small** (`0.x.y+1`) after automated proof; **big** (`0.x+1.0`) only when exercised live at stack head and a reported factor shifts past inter-run spread. Compare runs by commit (`bun run runs source`), not version.
+Releases land a full PR stack: **small** (`0.x.y+1`) after automated proof; **big** (`0.x+1.0`) only when exercised live at stack head and a factor shifts past inter-run spread. Compare runs by commit (`bun run runs source`), not version.
 
-Run `stack-pr` (`scripts/stack.ts`) before branching or pushing: extend the open PR owning a problem, or stack a new draft PR on top and link via `bun run land -- <new top> --sanitize` (`--from` needs operator approval); one worktree per PR, no manual `git stash`, every commit passes checks independently; never modify another session's PR, worktree or run (except replaying unchanged commits while restacking); push only your authorised branch (`--force-with-lease` on rewrites), verify remote state, and leave merging to the operator.
+Run `stack-pr` (`scripts/stack.ts`) before branching/pushing: extend the owning PR or stack a draft PR on top and link via `bun run land -- <new top> --sanitize` (`--from` needs approval); one worktree/PR, no `git stash`, every commit passes checks; never edit another session's PR, worktree or run (except replaying commits when restacking); push only your branch (`--force-with-lease` on rewrites), verify remote state, leave merging to operator.
 
-Label every PR with a category (`CATEGORIES`, `tools/runtime/land.ts`) and highest importance (`repository-practice`): `I0` invalid/unsafe results (live runs pause), `I1` decision/measurement/wall/crash/stall/waste fix or mechanism removal, `I2` other production/prompt/tooling change, `I3` docs/prose/comments/tests alone.
+Label PRs by category (`CATEGORIES`, `tools/runtime/land.ts`) and highest importance (`repository-practice`): `I0` invalid/unsafe results (runs pause), `I1` decision/measurement/wall/crash/stall/waste fix or removal, `I2` other prod/prompt/tooling change, `I3` docs/prose/tests alone.
 
-**Shell & reviews** (`repository-practice`): pass the command guard, edit via tools, leave profiles/SSH/env untouched; give subagents/reviewers bounded read-only tasks with source and verify every cited count and `file:symbol`.
+**Shell & reviews** (`repository-practice`): pass command guard, edit via tools, leave profiles/SSH/env untouched; keep architectural reasoning and implementation inline, using read-only subagents only after forming your own plan (continue context-holding ones over cold relaunch) with source, bounded questions and verified counts plus `file:symbol`.
 
 ## 12. Code that passes the first time
 
-Read `tools/oxlint/HABITS.md` first. Add zero strict-lint findings, never disable rules (`bun run not-slop` for single-site false positives; fix systematic ones in rule source), import `node:` only through `src/meta`, keep files ≤800 nonblank lines and functions ≤115 lines, and export only symbols imported elsewhere.
+Read `tools/oxlint/HABITS.md` first. Add zero strict-lint findings, never disable rules (`bun run not-slop` for single-site false positives; fix systematic ones in rule source), import `node:` only through `src/meta`, keep files ≤800 nonblank lines and functions ≤115 lines, and export only imported symbols.
 
 ### Tests
 
 State outcomes over an input space, not one-off examples (`code-and-writing.md`, `HABITS.md` §12.12). Prefer, in order:
-1. **Bounded exhaustive checks** against an independent count/rule (`compare-exhaustive`), ≤~10s via symmetry/canonical state before shrinking bounds.
+1. **Bounded exhaustive checks** against an independent rule (`compare-exhaustive`), ≤~10s via symmetry/canonical state before shrinking bounds.
 2. **State-space search** over reachable logs with cross-move invariants (`decide-explore`), or **seeded LCG generators** counting reached branches (`pairs-property`).
 3. **Shared perturbation walls** (`wri-walls`, `wall-practice`) and **pure invariant/view-model tables** (`runs-invariants`, `view-model`).
 4. **Named examples only** across process/file/provider boundaries, refusals/locks (nearest hostile case) or real-run regressions.
 
-Pin measured constants (`WEIGHTS`, `GAP_FLOOR`, `SIZE`, `PATIENCE`) once. Avoid wording/per-reader examples, per-rule lint fixtures (`rule-examples`), browser click-flows (use view-model tables + smokes), module mocks, fixed sleeps and test-only exports; assert via live entry points. Delete/replace tests only against mechanical mutants of the owner (`commit-r` step 8). Check full exit codes directly (unmasked by pipes); isolated passes are leads, and missing-userns wall failures are real failures.
+Pin constants (`WEIGHTS`, `GAP_FLOOR`, `SIZE`, `PATIENCE`) once. Avoid wording/per-reader examples, lint fixtures (`rule-examples`), browser click-flows (view-model tables + smokes), module mocks, sleeps and test-only exports; assert via live entry points. Delete/replace tests only against owner mutants (`commit-r` step 8). Check full exit codes directly (unmasked by pipes); isolated passes are leads, missing-userns wall failures are real.
 
-**Where a reader or helper lives** (search by behaviour first, delete dead guards/timers; helpers may import production, never the reverse, `direction.ts`, and must call owning folds):
+**Where a reader or helper lives** (search by behaviour first, delete dead guards/timers; helpers may import production, never reverse, `direction.ts`, and must call owning folds):
 
 | Consumer | Location |
 | --- | --- |
@@ -195,11 +193,11 @@ Pin measured constants (`WEIGHTS`, `GAP_FLOOR`, `SIZE`, `PATIENCE`) once. Avoid 
 
 ## 13. Writing
 
-Write concisely, stating what each mechanism does and why: give exact figures with their measured axis (keeping tests, observations and estimates distinct), use §14 terms and backticks for identifiers/paths, state each fact once in prompts (rewrite rather than append), and keep defaults in code.
+Write plain, logical English without forced ML jargon, robotic phrasing or chronological hints, stating what each mechanism does and why: give exact figures with measured axis (distinguishing tests, observations, estimates), use §14 terms and backticks for identifiers/paths, state each fact once in its owner (link elsewhere; rewrite prompts rather than append), and keep defaults in code.
 
 ## 14. Terms and map
 
-**Held-out**: scored in comparisons, hidden from Builder. **Practice**: released to Builder, never scored. **Valid answer**: passes checks within host limits. **Reference**: starter until promoted. **Round**: Builder session + comparison. Full glossary: `repository-practice` (`terms-and-map.md`).
+**Held-out**: scored, hidden from Builder. **Practice**: released to Builder, unscored. **Valid answer**: passes checks within host limits. **Reference**: starter until promoted. **Round**: Builder session + comparison. Glossary: `repository-practice` (`terms-and-map.md`).
 
 ```text
 src/meta     runtime owners       src/kernel   log, conditions, verifier, comparison, reports

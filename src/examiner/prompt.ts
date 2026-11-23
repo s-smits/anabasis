@@ -34,11 +34,11 @@ type Told = Parameters<typeof firstMessage>[3];
 
 /** What a task is made of, as both modes are told it: the objective reads hidden values too. */
 export const TASK =
-  "A task is a family, a public input and hidden values. A solver reads the family's name and the public input; only the check program receives hidden values.";
+  "A task is a family, a public input and hidden values. The family names a general class of problem shared across multiple tasks (never a unique per-task title). A solver reads the family's name and the public input; only the check program receives hidden values.";
 
 /** What validity rests on, and where what a task was built from goes, as both modes are told it. */
 export const FAIR =
-  "Author original tasks yourself from the domain's principles; never search for, fetch, or copy tasks from public benchmarks. A check refuses only what a rule, the scope, the conventions or a standard a rule names states. A solver copies a string it is asked for as the public input spells it, markup included, so a check that compares that text exactly refuses the markup, which measures the wording rather than the solver. What a task was built from, such as generating parameters, a latent process or planted faults, stays hidden. The Builder reads the objective's measure of each practice solve, so a value several tasks were built from can be learnt from practice instead of found in the task, and what a harness learns so is of the exam, not of the field.";
+  "Author original tasks yourself from the domain's principles; never search for, fetch, or copy tasks from public benchmarks. A check refuses only what a rule, the scope, the conventions or a standard a rule names states. A solver copies a string it is asked for as the public input spells it, markup included, so a check that compares that text exactly refuses the markup, which measures the wording rather than the solver. What a task was built from, such as generating parameters, a latent process, planted faults or the solving method required, stays hidden — never disclosed in the public input or the family name. The Builder reads the objective's measure of each practice solve, so a value several tasks were built from can be learnt from practice instead of found in the task, and what a harness learns so is of the exam, not of the field.";
 
 /** The one limit on a rule or a task the field does not set, as both modes are told it. */
 export const UNHELD =

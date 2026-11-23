@@ -11,6 +11,7 @@
  */
 import {
   closeSync,
+  existsSync,
   lockExclusiveSync,
   openSync,
   readdirSync,
@@ -30,7 +31,11 @@ const own = new Map<number, string>();
  *  where none has that pid. `ps` is named by its full path, since the host fakes put their own first
  *  on the path. */
 function recordOf(pid: number): string {
-  const start = decodeOutput(runSync(["/bin/ps", "-o", "lstart=", "-p", String(pid)]).stdout).trim();
+  const start = decodeOutput(
+    runSync(["/bin/ps", "-o", "lstart=", "-p", String(pid)], {
+      env: { ...runtimeProcess.env, TZ: "UTC", LC_ALL: "C" },
+    }).stdout,
+  ).trim();
   return start === "" ? "" : `${String(pid)} ${hostname()} ${start}`;
 }
 
@@ -90,7 +95,19 @@ export function dropCutWrites(folder: string, named: RegExp, { deep = false } = 
   }
 }
 
-/** Give `file` up, where this process holds it. */
+/** Give `file` up, where this exact process record holds it, serialized by the folder lock. */
 export function release(file: string): void {
-  if (Number.parseInt(recordIn(file), 10) === runtimeProcess.pid) rmSync(file, { force: true });
+  const dir = dirname(file);
+  if (!existsSync(dir)) return;
+  const guard = openSync(dir, "r");
+  try {
+    lockExclusiveSync(guard);
+    const record = recordIn(file);
+    const mine = ownRecord();
+    if (mine !== "" && (record === mine || record.startsWith(`${mine} `))) {
+      rmSync(file, { force: true });
+    }
+  } finally {
+    closeSync(guard);
+  }
 }

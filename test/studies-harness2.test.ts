@@ -661,6 +661,15 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     renameSync(`${tree}.build.json`, `${tree}.build.kept`);
     expect(score(...elsewhere, "--dry-run").exitCode).not.toBe(0);
     renameSync(`${tree}.build.kept`, `${tree}.build.json`);
+    // `pi:starter` has no `.toolchain` and records `toolchain: null`; dry-running it must respect null instead of probing a missing toolchain dir.
+    const piStarter = ["--arm", "pi:starter", "--name", "pi-bare"];
+    expect(score(...piStarter, "--dry-run").exitCode).toBe(0);
+    expect(
+      parseJsonAs<{ mode: string; toolchain: string | null }>(
+        readFileSync(join(out, "trees", "pi-bare", "export.json"), "utf8"),
+      ),
+    ).toMatchObject({ mode: "pi", toolchain: null });
+    expect(score(...piStarter, "--dry-run").exitCode).toBe(0);
     const unsaid = score(...arm);
     expect(unsaid.exitCode).not.toBe(0);
     expect(decodeOutput(unsaid.stderr)).toContain("--yes");

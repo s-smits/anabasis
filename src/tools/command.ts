@@ -95,6 +95,9 @@ export const UNREACHED_MS = 10 * 60_000;
 /** The reach of each policy this process has probed, by its hash, with when the probe began: the
  *  promise, so that solves that start together wait on one probe. */
 const REACH = new Map<string, { readonly at: number; readonly probe: Promise<NetworkReach> }>();
+/** Reach pinned per `(comparison, policyHash)` so both arms of one comparison see identical network
+ *  and installer prompt text even if an `unreached` reading expires mid-comparison (rule 5). */
+const COMPARISON_REACH = new Map<string, Promise<NetworkReach>>();
 const REACH_MARK = "ANA-NETWORK-REACHED";
 /** The index pip reads; curl first, and the resolver pip itself uses where curl is not on the host. */
 const UV_MARK = "ANA-UV-FOUND";
@@ -277,12 +280,25 @@ async function probeReach(wall: CommandWall): Promise<NetworkReach> {
 
 /** The reach of the wall `wall` stands for (`NetworkReach`), as this process last probed it at
  *  `now`: a reached reading stands, and an unreached one is probed again once `UNREACHED_MS` old.
- *  An unreached probe that stood for the process's life would hold for a whole Builder session. */
+ *  When `comparison` is named, the first reading for `(comparison, policyHash)` is pinned for the
+ *  whole comparison so both arms receive identical network/installer prompt text (rule 5). */
 export async function networkReach(
   wall: CommandWall,
-  { now = Date.now(), probe = probeReach }: { now?: number; probe?: typeof probeReach } = {},
+  {
+    now = Date.now(),
+    probe = probeReach,
+    comparison,
+  }: { now?: number; probe?: typeof probeReach; comparison?: string } = {},
 ): Promise<NetworkReach> {
   const key = wall.base.policyHash;
+  if (comparison !== undefined) {
+    const pinnedKey = `${comparison}\0${key}`;
+    const pinned = COMPARISON_REACH.get(pinnedKey);
+    if (pinned !== undefined) return pinned;
+    const reading = networkReach(wall, { now, probe });
+    COMPARISON_REACH.set(pinnedKey, reading);
+    return reading;
+  }
   const known = REACH.get(key);
   if (known !== undefined && (now - known.at < UNREACHED_MS || (await known.probe) !== "unreached")) {
     return known.probe;

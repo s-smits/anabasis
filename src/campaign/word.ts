@@ -1,13 +1,31 @@
 /**
  * A word the operator leaves for a campaign that runs, as the campaign's log holds it
- * (`campaign.word`, written by `tools/d2/word.ts`).
+ * (`campaign.word`, written by `tools/d2/word.ts` and `tools/runs/manage.ts`).
  */
 import type { LogEvent } from "../kernel/log.ts";
+import { SEATS, traceKind } from "../kernel/trace.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";
+import { epochsOf } from "./climb.ts";
 
-/** The word `runs pause` leaves to let the campaign's open solves finish: the solve queue starts no
- *  other while it holds (`paused`, read by `queued`, `tools/d2/host.ts`). No move reads it. */
+/** The word `runs pause` leaves to let the campaign's open solves finish or hold at an armed
+ *  boundary: no further solve or campaign action starts once it holds (`paused`, read by `queued`,
+ *  `tools/d2/host.ts`, and `runAction`, `tools/d2/campaign-actions.ts`). No move reads it. */
 export const PAUSE = "pause";
+
+/** The events a pause waits for one more of, by the word that names it: `next` is the smallest step
+ *  a run completes, a finished solve or a recorded tool call of any seat, and `compacted` a
+ *  compaction of any seat's conversation. Words joined by `|` wait for the first of their events. */
+const PAUSE_AFTER = {
+  next: ["solve.finished", "build.call", "draft.call", "exam.call", "referee.call", "solve.call"],
+  compacted: SEATS.map((seat) => traceKind(seat, "compacted")),
+  reported: ["comparison.reported"],
+  promoted: ["harness.promoted"],
+  examined: ["exam.finished"],
+  finished: ["build.finished"],
+} as const;
+
+/** How long a reached boundary pause holds new actions/solves before expiring if `runs pause` died. */
+export const PAUSE_STOP_WINDOW_MS = 180_000;
 
 /** The words a move answers, each by the event that acts on it: a stop by the campaign's ending,
  *  other tasks by the Examiner session's move and a total by the opening it changes. With `PAUSE`
@@ -26,22 +44,74 @@ export interface Word {
   readonly dollars: number | null;
 }
 
+/** The kinds of event the words `after` names, refused where one names none or joins `next`. */
+export function pauseKindsOf(after: string): readonly string[] {
+  const words = after.split("|");
+  const isWord = (word: string): word is keyof typeof PAUSE_AFTER => Object.hasOwn(PAUSE_AFTER, word);
+  if (!words.every(isWord) || (words.length > 1 && words.includes("next"))) {
+    throw new Error(`--after takes ${Object.keys(PAUSE_AFTER).join(", ")}, or several but next joined by |`);
+  }
+  return words.flatMap((word) => PAUSE_AFTER[word]);
+}
+
+/** How many events of `kinds` `events` holds. */
+export const pauseCountOf = (events: readonly LogEvent[], kinds: readonly string[]): number =>
+  events.filter(({ kind }) => kinds.includes(kind)).length;
+
+/** Whether `events` has crossed the armed boundary `(after, base)`, including waiting out an
+ *  unread promotion against the starter when `after === "reported"`. */
+export function pausePointReached(events: readonly LogEvent[], after: string, base: number): boolean {
+  if (pauseCountOf(events, pauseKindsOf(after)) <= base) return false;
+  if (after !== "reported") return true;
+  const last = epochsOf(events).at(-1);
+  return !(last?.starter_tally === null && last.reference !== "starter");
+}
+
+/** Timestamp (ms) when `event` at `index` became active in `events`, or null if its armed boundary
+ *  has not yet been crossed. Unparameterized or `next` pauses activate at `event.at`. */
+function pauseReachedAt(events: readonly LogEvent[], event: LogEvent, index: number): number | null {
+  const { after, base } = event.data;
+  if (!isString(after) || after === "next" || !isNumber(base)) return Date.parse(event.at);
+  let kinds: readonly string[];
+  try {
+    kinds = pauseKindsOf(after);
+  } catch {
+    return Date.parse(event.at);
+  }
+  if (!pausePointReached(events, after, base)) return null;
+  if (pausePointReached(events.slice(0, index + 1), after, base)) return Date.parse(event.at);
+  for (let i = index + 1; i < events.length; i += 1) {
+    const step = events[i];
+    if (
+      step !== undefined &&
+      kinds.includes(step.kind) &&
+      pausePointReached(events.slice(0, i + 1), after, base)
+    ) {
+      return Date.parse(step.at);
+    }
+  }
+  return Date.parse(event.at);
+}
+
 /** How long `runs pause --after next` lets the open solves of a campaign whose solves run
  *  `wallSeconds` finish: their limit and a minute to end and be recorded. */
 export const pauseWaitMs = (wallSeconds: number): number => wallSeconds * 1000 + 60_000;
 
-/** The newest pause left since `since`, where the reading process began, as an older one was for a
- *  process that is gone. */
-export const pauseSince = (events: readonly LogEvent[], since: number): LogEvent | undefined =>
-  events.findLast(
-    ({ kind, data }, place) => place >= since && kind === "campaign.word" && data.word === PAUSE,
-  );
+/** The newest active pause left since `since`, where the reading process began, as an older one was
+ *  for a process that is gone, and an armed boundary pause whose point has not landed is not yet active. */
+export function pauseSince(events: readonly LogEvent[], since: number): LogEvent | undefined {
+  for (let i = events.length - 1; i >= since; i -= 1) {
+    const event = events[i];
+    if (event?.kind !== "campaign.word" || event.data.word !== PAUSE) continue;
+    if (pauseReachedAt(events, event, i) !== null) return event;
+  }
+  return undefined;
+}
 
 /**
- * Whether a pause holds a campaign's solves at `now`: one was left since the reading process began
- * (`pauseSince`), and less than its wait and a minute have passed, so `runs pause`'s stop comes
- * first. Nothing else answers a pause, so one that died before its stop would otherwise hold the
- * campaign for good.
+ * Whether a pause holds a campaign's solves or new moves at `now`: one was left since the reading
+ * process began (`pauseSince`), its boundary (if any) has been reached, and its hold window has not
+ * elapsed so `runs pause`'s stop comes first without deadlocking if the pause process died.
  */
 export function paused(
   events: readonly LogEvent[],
@@ -49,8 +119,16 @@ export function paused(
   now: number,
   wallSeconds: number,
 ): boolean {
-  const left = pauseSince(events, since);
-  return left !== undefined && now - Date.parse(left.at) < pauseWaitMs(wallSeconds) + 60_000;
+  for (let i = events.length - 1; i >= since; i -= 1) {
+    const event = events[i];
+    if (event?.kind !== "campaign.word" || event.data.word !== PAUSE) continue;
+    const reached = pauseReachedAt(events, event, i);
+    if (reached === null) continue;
+    const bounded = isString(event.data.after) && event.data.after !== "next" && isNumber(event.data.base);
+    const windowMs = bounded ? PAUSE_STOP_WINDOW_MS : pauseWaitMs(wallSeconds) + 60_000;
+    return now - reached < windowMs;
+  }
+  return false;
 }
 
 /**

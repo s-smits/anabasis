@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/files
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { benchesOf } from "../tools/runs/host-config.ts";
-import { type Plan, settingsOf, stepsOf, walk } from "../tools/runs/bench.ts";
+import { heldAs, type Plan, probed, settingsOf, stepsOf, walk } from "../tools/runs/bench.ts";
 import { readsDone } from "../tools/runs/bench-scores.ts";
 
 const scratch: string[] = [];
@@ -146,5 +146,29 @@ describe("runs bench", () => {
     expect(readsDone(store)).toEqual([]);
     put("ref-a1", "t2");
     expect(readsDone(store)).toEqual(["ref-a1"]);
+  });
+
+  test("heldAs deduplicates per runtime mode and probed reads both harness and mode", () => {
+    expect(probed({ sitting: "bin/sitting.sh", store: "bench/store" })).toContain(
+      `grep -EH '"(harness|mode)"'`,
+    );
+    const store = new Map([
+      ["aaaaaaaa", DIGEST],
+      ["pi-aaaaaaaa", DIGEST],
+    ]);
+    const modes = new Map<string, "claude" | "pi">([["pi-aaaaaaaa", "pi"]]);
+    // Another label in the same mode is reported as duplicate (`again`), while another mode is allowed.
+    expect(heldAs(store, DIGEST, "pi-other", { modes, runtime: "pi" })).toEqual({
+      again: ["pi-aaaaaaaa"],
+      held: null,
+    });
+    expect(heldAs(store, DIGEST, "claude-other", { modes, runtime: "claude" })).toEqual({
+      again: ["aaaaaaaa"],
+      held: null,
+    });
+    expect(heldAs(new Map([["aaaaaaaa", DIGEST]]), DIGEST, "pi-aaaaaaaa", { runtime: "pi" })).toEqual({
+      again: [],
+      held: null,
+    });
   });
 });

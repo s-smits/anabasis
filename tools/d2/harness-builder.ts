@@ -422,6 +422,7 @@ export async function harnessBuilder(
   // Every move is made with the terms the opening keeps: this command's, and the record's for
   // each it does not name.
   const values: Values = { ...given, ...opening.terms };
+  const began = read(log).length;
   const held = queued({ ...seats, loaded: values.loaded }, log);
   /** The move this run made last: an exam read here printed its faults as it was read. */
   let last: Decided["move"] | null = null;
@@ -455,7 +456,7 @@ export async function harnessBuilder(
     if (decided.move === "build" || decided.move === "examine") {
       if (values["dry-run"] || made >= most) return decided;
       campaign ??= await openCampaign(packNamed(values));
-      const turns = { maxMoves: most, used: made, failed: null };
+      const turns = { maxMoves: most, used: made, failed: null, began };
       const context: CampaignContext = { log, values, opening, seats, held, campaign, paid, ...turns };
       const left = await lead(context, decided);
       [made, { opening }] = [context.used, context];

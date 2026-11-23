@@ -76,7 +76,8 @@ interface SourcePolicyFinding {
   detail: string;
 }
 
-const helperOf = (path: string): string | null => HELPER_ROOTS.find((root) => path.startsWith(root)) ?? null;
+const helperOf = (path: string): string | null =>
+  HELPER_ROOTS.find((root) => path.startsWith(root)) ?? (path.includes("/test/") ? "test/" : null);
 
 /** Whether `path` is a production source file (`AGENTS.md` §12). */
 export const production = (path: string): boolean =>

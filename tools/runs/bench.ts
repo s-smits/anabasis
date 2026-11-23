@@ -51,6 +51,13 @@ export interface Plan {
   readonly runtime?: "claude" | "pi";
 }
 
+/** Options governing duplicate-export detection in `heldAs`. */
+interface HeldAsOptions {
+  readonly as?: string | undefined;
+  readonly modes?: ReadonlyMap<string, "claude" | "pi"> | undefined;
+  readonly runtime?: "claude" | "pi" | undefined;
+}
+
 /** Shell expression selecting `sha256sum` (coreutils) when present, falling back to `shasum -a 256`
  *  so checksum output matches across Linux hosts without Perl and macOS hosts. */
 const SUMS = "$(command -v sha256sum || echo shasum -a 256)";
@@ -159,7 +166,7 @@ export function stepsOf(plan: Plan): Step[] {
  *  `uname` or `<sitting> python` fails so missing interpreter output cannot be misread; an empty
  *  store without trees is allowed. */
 export const probed = ({ sitting, store }: Pick<Plan, "sitting" | "store">): string =>
-  `uname -sm && ${sitting} python || exit; grep -H '"harness"' ${store}/trees/*/export.json; true`;
+  `uname -sm && ${sitting} python || exit; grep -EH '"(harness|mode)"' ${store}/trees/*/export.json; true`;
 
 /** Executes `steps` sequentially via `spawn`, printing each description and throwing on the first non-zero exit. */
 export async function walk(
@@ -178,13 +185,13 @@ export async function walk(
 }
 
 /** Checks `store` for existing exports matching `label` or `harness`. Throws if `label` already
- *  binds a different 64-character digest; returns other labels that already hold `harness` unless
- *  `--as` explicitly requested a new label. */
+ *  binds a different 64-character digest; returns other labels that already hold `harness` under
+ *  the same `runtime` unless `--as` explicitly requested a new label. */
 export function heldAs(
   store: ReadonlyMap<string, string>,
   harness: string,
   label: string,
-  as?: string,
+  { as, modes, runtime = "claude" }: HeldAsOptions = {},
 ): { again: string[]; held: string | null } {
   const held = store.get(label) ?? null;
   if (held !== null && harness.length === 64 && held !== harness) {
@@ -192,7 +199,11 @@ export function heldAs(
       `${label}: the store holds that label for ${held.slice(0, 8)}; a label binds one tree, so name another`,
     );
   }
-  const again = as === undefined ? [...store].filter(([one, of]) => of === harness && one !== label) : [];
+  const sameMode = (one: string) => (modes?.get(one) ?? "claude") === runtime;
+  const again =
+    as === undefined
+      ? [...store].filter(([one, of]) => of === harness && one !== label && sameMode(one))
+      : [];
   return { again: again.map(([one]) => one), held };
 }
 
@@ -271,13 +282,18 @@ async function planOf(
     throw new Error(`the benchmark's machine is '${named}', which no export is written for`);
   }
   const rows = said.matchAll(/\/trees\/([^/\n]+)\/export\.json:\s*"harness":\s*"([^"]*)"/gu);
+  const modeRows = said.matchAll(/\/trees\/([^/\n]+)\/export\.json:\s*"mode":\s*"(pi|claude)"/gu);
+  const modes = new Map(
+    [...modeRows].map(([, one = "", mode = "claude"]) => [one, mode === "pi" ? "pi" : "claude"] as const),
+  );
+  const runtime = values.pi ? "pi" : "claude";
   const { again, held } = heldAs(
     new Map([...rows].map(([, one = "", of = ""]) => [one, of])),
     harness,
     label,
-    values.as,
+    { as: values.as, modes, runtime },
   );
-  if (again.length > 0 && !values.pi) {
+  if (again.length > 0) {
     console.log(`${run}: ${harness.slice(0, 8)} is read already as ${again.join(", ")}; --as reads it again`);
     return null;
   }

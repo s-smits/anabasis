@@ -47,6 +47,7 @@ import { codingTools, selectedCodingTools, wallExec } from "../tools/coding.ts";
 import { walledEnv } from "../tools/env.ts";
 import {
   type CommandWall,
+  type NetworkReach,
   networkReach,
   type SolveClock,
   solveDirs,
@@ -142,6 +143,7 @@ export interface Played {
   readonly turnsEnded: boolean;
   readonly moved: boolean;
   readonly homeBytes: number | null;
+  readonly network?: NetworkReach;
 }
 
 const RERUNS = 3;
@@ -237,6 +239,7 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
     responseModels: [...new Set(played.turns.flatMap((turn) => turn.responseModel ?? []))],
     harness: played.harness,
     homeBytes: played.homeBytes,
+    ...keyIfDefined("network", played.network),
     seconds: (performance.now() - started) / 1000,
     load: loadavg(),
   });
@@ -273,6 +276,7 @@ async function play(
   let crash: string | null = null;
   let broken: string | null = null;
   let digest: string | null = null;
+  let network: NetworkReach | undefined;
   let prompts = 0;
   try {
     release = await claimRoot(dirs.root);
@@ -289,6 +293,9 @@ async function play(
     const defined = await Promise.resolve()
       .then(() => solverTools(request, harness, commandWall, desk))
       .catch(brokenHarness);
+    network = await networkReach(commandWall, {
+      ...keyIfDefined("comparison", request.comparison),
+    });
     const prompt = systemPrompt({
       tools: defined,
       home: dirs.home,
@@ -297,7 +304,7 @@ async function play(
       limits,
       ...seeded,
       programs: installedPrograms(harness.toolTree),
-      network: await networkReach(commandWall),
+      network,
     });
     prompts = 1;
     // The deadline counts the solver's time, so it starts with the first turn rather than the setup.
@@ -361,6 +368,7 @@ async function play(
     turnsEnded: limits.modelTurns !== undefined && turns.length >= limits.modelTurns,
     moved: treeStamp(request.harness) !== before,
     homeBytes,
+    ...keyIfDefined("network", network),
     released,
   };
 }

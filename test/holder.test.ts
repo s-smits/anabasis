@@ -14,7 +14,7 @@ import {
 } from "../src/meta/filesystem.ts";
 import { hostname, tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
+import { capturedExecPath, capturedSpawn, runtimeProcess } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import { dropCutWrites, held, hold, release } from "../src/meta/holder.ts";
 import { CUT_PART } from "../tools/wri/embed.ts";
@@ -30,7 +30,11 @@ afterAll(() => {
 });
 
 const startOf = (pid: number): string =>
-  decodeOutput(runSync(["/bin/ps", "-o", "lstart=", "-p", String(pid)]).stdout).trim();
+  decodeOutput(
+    runSync(["/bin/ps", "-o", "lstart=", "-p", String(pid)], {
+      env: { ...runtimeProcess.env, TZ: "UTC", LC_ALL: "C" },
+    }).stdout,
+  ).trim();
 const record = (file: string, pid: number, host = hostname(), start = startOf(pid)): void => {
   rmSync(file, { force: true });
   symlinkSync(`${String(pid)} ${host} ${start}`, file);
@@ -109,6 +113,31 @@ describe("holder", () => {
     record(file, 1, hostname(), "");
     release(file);
     expect(there(file)).toBe(true);
+    // Same PID with a different start timestamp (PID reuse or takeover): release must not unlink it.
+    record(file, process.pid, hostname(), "Thu Jan  1 00:00:00 1970");
+    release(file);
+    expect(there(file)).toBe(true);
+  });
+
+  it("reads a lock held under another TZ environment as live", async () => {
+    const file = join(scratch(), "tz.lock");
+    const holder = capturedSpawn(
+      [
+        capturedExecPath,
+        "-e",
+        `import { hold } from ${holderPath}; hold(${JSON.stringify(file)}); await Bun.sleep(30000);`,
+      ],
+      { env: { ...runtimeProcess.env, TZ: "America/New_York" } },
+    );
+    try {
+      const until = performance.now() + 10_000;
+      while (!there(file) && performance.now() < until) await Bun.sleep(20);
+      expect(held(file)).toBe(true);
+      expect(hold(file)).toBe(false);
+    } finally {
+      holder.kill();
+      await holder.exited;
+    }
   });
 
   it("lets one of many takers win over a dead holder", async () => {

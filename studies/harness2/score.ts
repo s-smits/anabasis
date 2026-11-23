@@ -479,7 +479,9 @@ async function armOf(values: Values, out: string, baseHarness: string, place = H
   const record = readJson(join(into, "export.json"));
   const digest = pi ? (await openHarness(join(into, HARNESS_DIR))).digest : field(record, "harness");
   // A rollout runs outside a container, on the programs its tree was exported with.
-  const toolchain = field(record, "toolchain") ?? (pi ? join(HARNESS_DIR, TOOL_TREE_DIR) : null);
+  const fallbackToolchain = pi ? join(HARNESS_DIR, TOOL_TREE_DIR) : null;
+  const toolchain =
+    isRecord(record) && "toolchain" in record ? field(record, "toolchain") : fallbackToolchain;
   if (isString(toolchain)) await foreignPrograms(join(into, toolchain), place);
   // The build is priced once, beside the tree and outside what a solver is given, so a tree copied
   // to another machine rolls there without the campaign's log, which stays on its own host.

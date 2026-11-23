@@ -14,7 +14,7 @@ import { comparisonsTold } from "#src/builder/past.ts";
 import { seedKept, snapshot } from "#src/builder/kept.ts";
 import { type BuildRequest, layPractice } from "#src/builder/session.ts";
 import { type Bench, endingWith, waitTool } from "#src/builder/tools.ts";
-import { pendingWords } from "#src/campaign/word.ts";
+import { paused, pendingWords } from "#src/campaign/word.ts";
 import { conversing, type Examined, examine } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { latestBuilt, patienceOf, promoted as lastPromoted } from "#src/kernel/reports.ts";
@@ -28,7 +28,7 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { plural } from "#src/meta/text.ts";
 import { text, tool } from "#src/tools/answer.ts";
 import { publicView } from "#src/solver/prompt.ts";
-import { waitOut } from "#src/solver/run.ts";
+import { waiting, waitOut } from "#src/solver/run.ts";
 import { examineCommand } from "../d1b/examine.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
@@ -83,6 +83,8 @@ export interface CampaignContext {
   /** The moves this run of the command may make (`--moves`), and those it has made. */
   readonly maxMoves: number;
   used: number;
+  /** Log event index when this campaign process started, so pauses left for an earlier process are ignored. */
+  readonly began?: number;
   /** The action that threw after it began, with what it threw: the environment's ending. */
   failed: { readonly move: string; readonly why: string } | null;
   /** The Examiner session writing beside the conversation, which settles and never throws. */
@@ -93,6 +95,7 @@ export interface CampaignContext {
   examiner?: ReturnType<typeof conversing>;
 }
 
+const PAUSE_POLL_MS = 5000;
 /** The code a move carries where the Builder chose it, and the table names another. */
 const LED = "led";
 const CHOSE = "the Builder's own move in its campaign conversation";
@@ -179,6 +182,28 @@ const promotedSince = (events: readonly LogEvent[]) =>
   events.findLastIndex(({ kind }) => kind === "harness.promoted") >
   events.findLastIndex(({ kind }) => kind === "comparison.started");
 
+/** Wait inside `bench` while an armed or active pause holds this process, returning whether aborted. */
+async function holdWhilePaused(
+  context: CampaignContext,
+  bench: Bench,
+  signal: AbortSignal | undefined,
+): Promise<boolean> {
+  const { host } = context.seats;
+  const waitMs = Math.min(host?.waitMs ?? PAUSE_POLL_MS, PAUSE_POLL_MS);
+  const shouldWait = () =>
+    signal?.aborted !== true &&
+    paused(
+      read(context.log),
+      context.began ?? 0,
+      (host?.now ?? Date.now)(),
+      context.campaign.limits.wallSeconds,
+    );
+  while (shouldWait()) {
+    await bench.within(() => waiting(waitMs, signal, host?.sleep));
+  }
+  return signal?.aborted === true;
+}
+
 /** The same admission for a model's call and the Examiner session the host starts for it. */
 async function runAction(
   context: CampaignContext,
@@ -228,6 +253,10 @@ async function runAction(
   try {
     if (context.used >= context.maxMoves) return halt(spent);
     if (context.failed !== null) return text("The campaign has been stopped by the host.");
+    if (await holdWhilePaused(context, bench, signal)) {
+      return text("The campaign has been stopped by the host.");
+    }
+    const { host } = context.seats;
     const { turn, decided } = actionTurn(context);
     if (decided.move === "end") {
       return halt(`The campaign is at its ${decided.ending} gate; no action may start.`);
@@ -245,7 +274,6 @@ async function runAction(
       context.used += 1;
       moved(context.log, { move, code: named ? decided.code : LED, why: named ? decided.why : CHOSE }, made);
     };
-    const { host } = context.seats;
     // The conversation's deadline clock stops while the action runs, a wait for the provider included.
     return await bench.within(async () => {
       try {

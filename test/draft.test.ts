@@ -787,5 +787,59 @@ describe("campaign draft lifecycle", () => {
       return { verdict: "sound", findings: [], summary: "unused", probes: [] };
     });
     expect(skippedCalls).toBe(0);
+
+    // Deterministic $0 probe replay blocks unfixed revisions without spending an LLM pass and gates post-cap drafts too.
+    const replayName = `${STEM}-audit-replay`;
+    const holeOne: Draft = {
+      ...SOUND,
+      evaluator: `export const checks = { "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) || req.artifact.answer === "hole1" || req.artifact.answer === "hole2" };\n`,
+    };
+    const holeTwo: Draft = {
+      ...SOUND,
+      evaluator: `export const checks = { "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) || req.artifact.answer === "hole2" };\n`,
+    };
+    const probeRow = (value: string) => ({
+      id: 1,
+      task: "ex-001",
+      changes: [{ path: "$.answer", value: JSON.stringify(value), edit: null }],
+      texts: [],
+      original: { kind: "pass" as const },
+      changed: { kind: "pass" as const },
+      moved: [],
+    });
+    const replayCalls: {
+      pass: number | undefined;
+      verifiedFixed: readonly string[] | undefined;
+      prior: readonly string[] | undefined;
+    }[] = [];
+    const replayed = await draftCommand(
+      [...opened(replayName, false, { model: SOLVER, effort: "low" }), "--session", "d-1", "--tries", "5"],
+      // Try 1: holeOne -> LLM Pass 1 flags hole1. Try 2: holeOne again -> $0 replay blocks (no LLM call!).
+      // Try 3: holeTwo -> $0 replay confirms hole1 fixed, LLM Pass 2 flags hole2.
+      // Try 4: holeTwo again -> $0 replay blocks even after MAX_DRAFT_AUDITS = 2!
+      // Try 5: SOUND -> $0 replay confirms hole2 fixed -> draft stands.
+      putting(holeOne, holeOne, holeTwo, holeTwo, SOUND),
+      async (_reader, target) => {
+        replayCalls.push({
+          pass: target.pass,
+          verifiedFixed: target.verifiedFixed,
+          prior: target.priorFindings,
+        });
+        const hole = target.pass === 1 ? "hole1" : "hole2";
+        return {
+          verdict: "defects",
+          findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: `${hole} passed` }],
+          summary: `${hole} vacuous`,
+          probes: [probeRow(hole)],
+        };
+      },
+    );
+    expect(replayed).toMatchObject({ ended: "stands", puts: 5 });
+    expect(replayCalls).toHaveLength(2);
+    expect(replayCalls[0]).toEqual({ pass: 1, verifiedFixed: [], prior: [] });
+    expect(replayCalls[1]?.pass).toBe(2);
+    expect(replayCalls[1]?.prior).toEqual([]);
+    expect(replayCalls[1]?.verifiedFixed?.[0]).toContain("hole1 passed");
+    expect(draftOf(read(campaignLog(replayName)))).toEqual(SOUND);
   });
 });

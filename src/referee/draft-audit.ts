@@ -6,15 +6,16 @@
 import { type Static, Type } from "typebox";
 import type { Control } from "../kernel/acceptance.ts";
 import type { AnswerFile } from "../kernel/answer-files.ts";
+import { GAP_FLOOR, gainOver } from "../kernel/compare.ts";
 import type { Contract } from "../kernel/contract.ts";
 import { append } from "../kernel/log.ts";
 import { blockingOf, objectiveOf, type Task, type Verifier } from "../kernel/verify.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isString } from "../meta/json-shape.ts";
-import { keyIfDefined } from "../meta/optional-key.ts";
+import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
 import { ending, text, tool } from "../tools/answer.ts";
-import { conclusive, type DraftProbeRow, FILE, fileTexts, probeExamplesTool } from "./probe.ts";
+import { conclusive, type DraftProbeRow, executeProbe, FILE, fileTexts, probeExamplesTool } from "./probe.ts";
 import {
   checkProgramTool,
   type Reader,
@@ -34,6 +35,7 @@ export interface DraftAuditCase {
   readonly controls: readonly Control[];
   readonly notes: readonly string[];
   readonly priorFindings?: readonly string[];
+  readonly verifiedFixed?: readonly string[];
   readonly log: string;
 }
 
@@ -88,9 +90,23 @@ const PARAMETERS = Type.Object({
   summary: Type.String({ minLength: 1 }),
 });
 
-function refusal(rows: readonly DraftProbeRow[], args: Static<typeof PARAMETERS>): string | null {
+function refusal(
+  rows: readonly DraftProbeRow[],
+  args: Static<typeof PARAMETERS>,
+  objective: "measured" | "none",
+): string | null {
   if (args.verdict === "sound") {
-    return args.findings.length === 0 ? null : "a sound verdict carries no defect findings";
+    if (args.findings.length > 0) return "a sound verdict carries no defect findings";
+    if (
+      objective === "measured" &&
+      !rows.some((row) => {
+        const [before, after] = [objectiveOf(row.original), objectiveOf(row.changed)];
+        return conclusive(row) && before !== null && after !== null && after !== before;
+      })
+    ) {
+      return "sound on an exam with an objective requires at least one passing probe whose perturbation changes the objective value";
+    }
+    return null;
   }
   if (args.findings.length === 0) return "a defects verdict must list at least one probe-verified finding";
   const byId = new Map(rows.map((row) => [row.id, row]));
@@ -148,9 +164,14 @@ function packet(
     ...(target.notes.length === 0
       ? []
       : [`Host acceptance notes:\n${target.notes.map((n) => `- ${n}`).join("\n")}`]),
+    ...(target.verifiedFixed !== undefined && target.verifiedFixed.length > 0
+      ? [
+          `Prior audit findings already mechanically verified fixed on this revision (do not spend probes re-testing them; focus on regressions or remaining holes):\n${target.verifiedFixed.map((f) => `- ${f}`).join("\n")}`,
+        ]
+      : []),
     ...(target.priorFindings !== undefined && target.priorFindings.length > 0
       ? [
-          `Prior audit findings the Examiner revised against (re-probe these first and check for regressions):\n${target.priorFindings.map((f) => `- ${f}`).join("\n")}`,
+          `Prior audit findings the Examiner revised against (re-probe any not yet verified fixed and check for regressions):\n${target.priorFindings.map((f) => `- ${f}`).join("\n")}`,
         ]
       : []),
     `Example tasks and accept controls (${String(examples.length)}):`,
@@ -183,7 +204,7 @@ export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promi
     description: "Record your final verdict on the drafted exam once probes settle it.",
     parameters: PARAMETERS,
     execute: async (args) => {
-      const problem = refusal(rows, args);
+      const problem = refusal(rows, args, target.contract.objective === undefined ? "none" : "measured");
       if (problem !== null) {
         append(target.log, "referee.draft.refused", {
           session: target.session,
@@ -272,4 +293,91 @@ export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promi
     ...meter,
   });
   return result;
+}
+
+/** Single-line description of one draft audit finding for Examiner retries and Pass-2 prompts. */
+export function formatDraftFinding({ kind, task, check, probe, reason }: DraftDefect): string {
+  return `independent check audit (${kind} on ${task}${check === undefined ? "" : `, check ${check}`}, probe #${String(probe)}): ${reason}`;
+}
+
+/** Whether a replayed prior finding still reproduces against `replayed`. */
+function reproduces(
+  finding: DraftDefect,
+  replayed: DraftProbeRow,
+  objective: Contract["objective"],
+): boolean {
+  if (finding.kind === "vacuous-pass") return replayed.changed.kind === "pass";
+  if (finding.kind === "check-defect") {
+    return (
+      replayed.changed.kind === "fail" &&
+      (finding.check === undefined || blockingOf(replayed.changed).includes(finding.check))
+    );
+  }
+  if (replayed.changed.kind !== "pass" || objective === undefined) return false;
+  const [before, after] = [objectiveOf(replayed.original), objectiveOf(replayed.changed)];
+  return before !== null && after !== null && gainOver(objective, after, before) > -GAP_FLOOR;
+}
+
+/** Deterministically replay prior defect probes against a revised draft at zero model cost. */
+export async function replayDraftProbes(
+  prior: DraftAuditFinding,
+  target: Pick<DraftAuditCase, "contract" | "verify" | "tasks" | "controls">,
+): Promise<{
+  readonly stillBroken: readonly string[];
+  readonly verifiedFixed: readonly string[];
+  readonly unverified: readonly string[];
+}> {
+  const byProbe = new Map(prior.probes.map((row) => [row.id, row]));
+  const byTask = new Map(target.tasks.map((task) => [task.taskId, task]));
+  const controls = new Map(
+    target.controls.filter(({ refusedBy }) => refusedBy === null).map((control) => [control.taskId, control]),
+  );
+  const originals = new Map<string, Promise<Awaited<ReturnType<Verifier>>>>();
+  const stillBroken: string[] = [];
+  const verifiedFixed: string[] = [];
+  const unverified: string[] = [];
+  for (const finding of prior.findings) {
+    const formatted = formatDraftFinding(finding);
+    const row = byProbe.get(finding.probe);
+    const task = byTask.get(finding.task);
+    const control = controls.get(finding.task);
+    if (row === undefined || task === undefined || control === undefined) {
+      unverified.push(formatted);
+      continue;
+    }
+    const rawChanges = row.changes.map(({ path, value, edit }) => ({
+      path,
+      ...keyIfDefined("value", value ?? undefined),
+      ...keysIf(edit !== null, () => ({ find: edit?.find, replace: edit?.replace })),
+    }));
+    const files = control.files ?? [];
+    try {
+      const replayed = await executeProbe({
+        used: 0,
+        budget: 1,
+        verify: target.verify,
+        task,
+        answer: control.answer,
+        files,
+        rawChanges,
+        signal: undefined,
+        original: () => {
+          const cached = originals.get(task.taskId) ?? target.verify(task, control.answer, undefined, files);
+          originals.set(task.taskId, cached);
+          return cached;
+        },
+      });
+      if (!conclusive(replayed)) {
+        unverified.push(formatted);
+      } else if (reproduces(finding, { task: finding.task, ...replayed }, target.contract.objective)) {
+        stillBroken.push(`${formatted} (prior probe still reproduces on this revision)`);
+      } else {
+        verifiedFixed.push(formatted);
+      }
+    } catch {
+      // Example shape or text changed enough that the exact prior edit no longer applies; defer to LLM audit.
+      unverified.push(formatted);
+    }
+  }
+  return { stillBroken, verifiedFixed, unverified };
 }

@@ -317,7 +317,7 @@ function sizeOf(held: string): TextSize {
 }
 
 /** Shared probe execution for single-answer and multi-example probe tools. */
-async function executeProbe(given: {
+export async function executeProbe(given: {
   readonly used: number;
   readonly budget?: number;
   readonly verify: Verifier;

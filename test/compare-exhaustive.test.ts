@@ -376,6 +376,15 @@ describe("how much better one measure is than another", () => {
           expect(gainOver({ direction }, other, one)).toBeCloseTo(-gain, 12);
         }
       }
+      // Sub-1e-12 floating-point dust around zero reads as tied rather than a ±100% gain.
+      for (const [one, other] of [
+        [0, 1e-13],
+        [1e-13, 0],
+        [-5e-13, 5e-13],
+      ] as const) {
+        expect(gainOver({ direction }, one, other)).toBe(0);
+      }
+      expect(gainOver({ direction }, 0, 1e-9)).toBe(direction === "lower" ? 1 : -1);
     }
   });
 });

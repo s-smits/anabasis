@@ -61,6 +61,10 @@ Keep **triage** (copying synthesis rows) separate from **vetting** (recounting d
 | `verdict` | `confirmed` \| `plausible` \| `refuted` |
 | `fate` | when `confirmed`: `repair` \| `carry` \| `operator` \| `none`, with reason |
 
+## Custom counterfactual angles (on top of normal WRI)
+
+When testing specific candidate improvements or open dilemmas on top of standard WRI, run ~3 independent read-only subagents (`gemini-4-neon` at `medium` effort, or `Model: "inherit"` where effort is not exposed) writing `<dir>/angles/<slug>.md`. Split along orthogonal axes tailored to the proposed changes (typically: scoring, sampling and decision rules; exam grounding, audit and objective; supply, harness economy and runtime waste), quantifying exact counterfactual dollars, wall-clock hours, and flipped decisions with denominators against primary logs, derived readers, and `promotion-tuner` replays. Keep every angle under `## Hard rules` (read-only, wall-safe, no quotes), separate observed spend from counterfactual bounds, and verify cited counts before using them in vetting or design dilemmas.
+
 ## Related skills
 
 - Driving WRI2P2 cycles & landing fixes: [run-improvement-campaign](../run-improvement-campaign/SKILL.md), [stack-pr](../stack-pr/SKILL.md)

@@ -24,7 +24,7 @@ import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { agreement, clears, passAgreement, settledPassLabels } from "../src/referee/agreement.ts";
-import { reviewDraft } from "../src/referee/draft-audit.ts";
+import { replayDraftProbes, reviewDraft } from "../src/referee/draft-audit.ts";
 import { type DraftProbeRow, type ProbeRow, probeExamplesTool, probeTool } from "../src/referee/probe.ts";
 import { type Reader, referee } from "../src/referee/referee.ts";
 import { containing, copies, matching, objectWith } from "./helpers/matchers.ts";
@@ -794,6 +794,70 @@ describe("adversarial draft audit", () => {
       const open = setup([response]);
       expect((await reviewDraft(open.reader, { ...target, log: open.log })).verdict).toBe("skipped");
     }
+
+    // Objective-bearing exams require at least one passing probe whose perturbation actually moves the objective before `sound`.
+    const objectiveContract = { ...CONTRACT, objective: { quantity: "score", direction: "lower" as const } };
+    const sensitiveVerify: Verifier = async (_task, answer, _signal, files) => {
+      if (asRecord(answer)?.span === -1) return { kind: "fail", blocking: ["span"] };
+      if ((files ?? []).length === 0) return { kind: "pass", objective: 10 };
+      return { kind: "pass", objective: asRecord(answer)?.span === 999 ? 50 : 10 };
+    };
+    const gated = setup([
+      reviewCall({ verdict: "sound", findings: [], summary: "premature sound without probe" }),
+      callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: "-1" }] }),
+      reviewCall({ verdict: "sound", findings: [], summary: "failing probe does not measure objective" }),
+      callTool(PROBE, { task: "t-1", changes: [{ path: "file:results.csv", value: "null" }] }),
+      reviewCall({ verdict: "sound", findings: [], summary: "file probe left objective unchanged" }),
+      callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: "999" }] }),
+      reviewCall({ verdict: "sound", findings: [], summary: "sound after objective-moving probe" }),
+    ]);
+    const gatedRes = await reviewDraft(gated.reader, {
+      ...target,
+      contract: objectiveContract,
+      verify: sensitiveVerify,
+      verifiedFixed: ["vacuous-pass on t-1, probe #1: fixed"],
+      priorFindings: [],
+      log: gated.log,
+    });
+    expect(gatedRes.verdict).toBe("sound");
+    expect(read(gated.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(3);
+    expect(gated.sent[0]).toContain("already mechanically verified fixed");
+
+    // `replayDraftProbes` flags persisting defects, verifies fixed ones at $0, and leaves inconclusive/missing probes unverified.
+    const sameStill = await replayDraftProbes(res, {
+      contract: objectiveContract,
+      verify: vacuousVerify,
+      tasks: [TASK],
+      controls: target.controls,
+    });
+    expect(sameStill.stillBroken).toHaveLength(3);
+    expect(sameStill.verifiedFixed).toEqual([]);
+    expect(sameStill.unverified).toEqual([]);
+
+    const fixedVerify: Verifier = async (_task, answer, _signal, files) => {
+      if ((files ?? []).length === 0) return { kind: "fail", blocking: ["files"] };
+      return { kind: "pass", objective: asRecord(answer)?.span === 999 ? 50 : 10 };
+    };
+    const fixedReplay = await replayDraftProbes(res, {
+      contract: objectiveContract,
+      verify: fixedVerify,
+      tasks: [TASK],
+      controls: target.controls,
+    });
+    expect(fixedReplay.stillBroken).toEqual([]);
+    expect(fixedReplay.verifiedFixed).toHaveLength(3);
+    expect(fixedReplay.unverified).toEqual([]);
+
+    const crashedVerify: Verifier = async () => ({ kind: "non-result", reason: "sandbox down" });
+    const crashedReplay = await replayDraftProbes(res, {
+      contract: objectiveContract,
+      verify: crashedVerify,
+      tasks: [TASK],
+      controls: target.controls,
+    });
+    expect(crashedReplay.stillBroken).toEqual([]);
+    expect(crashedReplay.verifiedFixed).toEqual([]);
+    expect(crashedReplay.unverified).toHaveLength(3);
   });
 });
 

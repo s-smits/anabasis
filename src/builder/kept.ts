@@ -73,6 +73,7 @@ export function copyHarness(state: string, into: string, trees?: string): void {
   }
   // A tree kept under a name never changes (`keptTree`), so a copy there is reused, and one is only
   // there whole: an interrupted copy is left under another name.
+  mkdirSync(trees, { recursive: true });
   const shared = join(trees, basename(tree));
   if (!existsSync(shared)) {
     cpSync(tree, `${shared}.part`, copy);
@@ -86,10 +87,11 @@ export function copyHarness(state: string, into: string, trees?: string): void {
  *  kept after it opened. The folder is there when it holds nothing, as the Builder is told it is. */
 export function seedKept(home: string, states: string, events: readonly LogEvent[], parent: string): void {
   mkdirSync(join(home, "kept"), { recursive: true });
+  const trees = join(home, ".kept-trees");
   for (const digest of namesOf(events).keys()) {
     const state = join(states, digest);
     const into = join(home, "kept", short(digest));
-    if (digest !== parent && existsSync(state) && !existsSync(into)) copyHarness(state, into);
+    if (digest !== parent && existsSync(state) && !existsSync(into)) copyHarness(state, into, trees);
   }
 }
 

@@ -57,6 +57,8 @@ const DETECTION_CHANCE = 0.8;
 export const UNMEASURED = "unmeasured" as const;
 /** Minimum relative objective improvement worth counting (`objectiveGain`, `informative`, `roomOf`). */
 export const GAP_FLOOR = 0.01;
+/** Floating-point dust floor below which two near-zero objectives read as tied rather than ±100% gain. */
+const ZERO_FLOOR = 1e-12;
 /** Part weights in `pointsOf`; each pairing contributes to validity or (if both valid) objective. */
 export const WEIGHTS: Measures = { validity: 0.6, objective: 0.3 };
 const POINTS_SCALE = 1000;
@@ -203,7 +205,7 @@ export function gainOver(
 ): number {
   if (!isNumber(one) || !isNumber(other)) return 0;
   const larger = Math.max(Math.abs(one), Math.abs(other));
-  if (larger === 0) return 0;
+  if (larger < ZERO_FLOOR) return 0;
   return Math.max(-1, Math.min(1, (rule.direction === "lower" ? other - one : one - other) / larger));
 }
 

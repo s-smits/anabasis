@@ -7,7 +7,13 @@ import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { openingOf } from "#src/campaign/opening.ts";
 import { type Examined, examine, type Session } from "#src/examiner/session.ts";
 import { read } from "#src/kernel/log.ts";
-import { type DraftAuditCase, type DraftAuditFinding, reviewDraft } from "#src/referee/draft-audit.ts";
+import {
+  type DraftAuditCase,
+  type DraftAuditFinding,
+  formatDraftFinding,
+  replayDraftProbes,
+  reviewDraft,
+} from "#src/referee/draft-audit.ts";
 import type { Reader } from "#src/referee/referee.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
@@ -38,6 +44,62 @@ const OPTIONS = {
   ...SETTING_OPTIONS,
   target: { type: "string" },
 } as const;
+
+type DraftSeen = NonNullable<Awaited<ReturnType<typeof draftReading>>["read"]>;
+
+/** Stateful Adversarial Judge gate over mechanically clean drafts: replays prior defect probes at
+ *  zero model cost before spending an audit pass or accepting a revision past `MAX_DRAFT_AUDITS`. */
+function draftAuditGate(given: {
+  readonly session: string;
+  readonly prompt: string;
+  readonly log: string;
+  readonly auditor: DraftAuditor | null;
+  readonly reader: Reader | null;
+}) {
+  let audits = 0;
+  let priorFindings: readonly string[] = [];
+  const priorReviews: DraftAuditFinding[] = [];
+  return async (seen: DraftSeen): Promise<readonly string[]> => {
+    const verifiedFixed: string[] = [];
+    const unverified: string[] = [];
+    for (const prior of priorReviews) {
+      const replay = await replayDraftProbes(prior, {
+        contract: seen.contract,
+        verify: seen.verify,
+        tasks: seen.tasks,
+        controls: seen.controls,
+      });
+      if (replay.stillBroken.length > 0) return replay.stillBroken;
+      verifiedFixed.push(...replay.verifiedFixed);
+      unverified.push(...replay.unverified);
+    }
+    if (priorReviews.length > 0) priorFindings = unverified;
+    if (audits >= MAX_DRAFT_AUDITS || given.auditor === null || given.reader === null) return [];
+    audits += 1;
+    const review = await given.auditor(given.reader, {
+      session: given.session,
+      pass: audits,
+      prompt: given.prompt,
+      contract: seen.contract,
+      checks: seen.checks,
+      verify: seen.verify,
+      tasks: seen.tasks,
+      controls: seen.controls,
+      notes: seen.reading.notes,
+      priorFindings,
+      verifiedFixed,
+      log: given.log,
+    });
+    if (review.verdict !== "defects" || review.findings.length === 0) {
+      priorReviews.length = 0;
+      priorFindings = [];
+      return [];
+    }
+    priorReviews.push(review);
+    priorFindings = review.findings.map(formatDraftFinding);
+    return priorFindings;
+  };
+}
 
 /** CLI entry point for `bun tools/d1b/draft.ts`. Accepts a `session` runner (defaulting to
  *  `examine`) and optional `audit` runner so tests can substitute model-free stubs. */
@@ -76,9 +138,8 @@ export async function draftCommand(
   const { wallSeconds, modelTurns } = setting.named.limits;
   /** Validation readings for each draft submitted in this session; the final entry corresponds to
    *  the accepted draft. */
-  const readings: (Awaited<ReturnType<typeof draftReading>>["read"] | undefined)[] = [];
-  let audits = 0;
-  let priorFindings: readonly string[] = [];
+  const readings: (DraftSeen | undefined)[] = [];
+  const auditClean = draftAuditGate({ session: id, prompt, log, auditor, reader: auditReader });
   stayAwake();
   const drafted = await session(
     {
@@ -89,37 +150,7 @@ export async function draftCommand(
       reading: async (draft, home) => {
         const { faults, read: seen } = await draftReading(dirname(log), draft, Number(values.jobs), home);
         readings.push(seen);
-        if (
-          faults.length > 0 ||
-          seen === undefined ||
-          audits >= MAX_DRAFT_AUDITS ||
-          auditor === null ||
-          auditReader === null
-        ) {
-          return faults;
-        }
-        // Run up to two bounded Adversarial Judge passes (initial audit + verify-after-fix),
-        // letting any subsequent clean draft stand unconditionally so supply can never stall.
-        audits += 1;
-        const review = await auditor(auditReader, {
-          session: id,
-          pass: audits,
-          prompt,
-          contract: seen.contract,
-          checks: seen.checks,
-          verify: seen.verify,
-          tasks: seen.tasks,
-          controls: seen.controls,
-          notes: seen.reading.notes,
-          priorFindings,
-          log,
-        });
-        if (review.verdict !== "defects" || review.findings.length === 0) return [];
-        priorFindings = review.findings.map(
-          ({ kind, task, check, probe, reason }) =>
-            `independent check audit (${kind} on ${task}${check === undefined ? "" : `, check ${check}`}, probe #${String(probe)}): ${reason}`,
-        );
-        return priorFindings;
+        return faults.length > 0 || seen === undefined ? faults : await auditClean(seen);
       },
       model: modelNamed(examiner),
       // SAFETY: effort is a pi thinking level; unsupported values are rejected by the backend.

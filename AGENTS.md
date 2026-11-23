@@ -40,7 +40,7 @@ Name target factor and empirical count (`docs/plan.md`):
 ### Trade-offs to keep in view
 
 See `design-and-seats` (`question-and-factors.md`, `stance.md`):
-- **Objective signal vs variance**: hard-constraint domains separate on validity; open-ended domains saturate validity so a non-hedgable objective governs. Near-100% passes on shallow self-checks while external transfer lags is an exam-grounding failure, not model mastery. Report carrying measure and A/A floor; raising `GAP_FLOOR` shifts noise and starves supply.
+- **Validity across domains & objective variance**: binary `valid` stays across domains because constrained ones (`buffer`, `truss`, `recode`, `esp32`) separate on physical feasibility while open-ended ones (`jobstat`) still need a feasibility floor against objective hacking. Open-ended domains saturate `valid` implicitly (multi-criteria `AND` gates hit 0–0 cliffs), so carry their headroom in a non-hedgable objective rather than tuning `valid` down; 100% passes with lagging transfer still flag weak grounding. Report carrying measure and A/A floor (`GAP_FLOOR` trades noise vs supply).
 - **Promotion vs confirmation**: owed starter read runs on next `compare` (`heldSince`); reading ahead leaves it unconfirmed (`test/decide-explore.test.ts`).
 - **Practice vs held-out supply**: practice takes ≤ half the held-out pool; watch `comparisonFloor` and treat untransferred practice gains as overfitting.
 - **Gate strictness vs capability**: refuse only measurement-breaking or wasted-compute actions; pass others as factual notes; err toward lenient sandboxing and Builder freedom.
@@ -48,7 +48,7 @@ See `design-and-seats` (`question-and-factors.md`, `stance.md`):
 
 ### Two sides and one wall
 
-Practice is training; held-out is test and never leaks. Examiner sees reference outcomes and winning harnesses; only five items cross to build: (1) contract public rules, scope, conventions, answer format and objective (quantity + direction); (2) public spec of released practice tasks; (3) practice solve outcome, kind, trajectory and coarse band vs author's best (no raw values); (4) aggregate comparison tally and reading without task names; (5) host limits, remaining budget, held-out/practice counts. Nothing else crosses: no held-out text/trajectory, check source, hidden values, refusing check list, Referee rationale or move-table recommendation (rule 3).
+Practice is training; held-out is test and never leaks. Examiner sees reference outcomes and winning harnesses; only five items cross to build: (1) public rules, scope, conventions, answer format and objective (quantity + direction); (2) public spec of released practice tasks; (3) practice solve outcome, kind, trajectory and coarse band vs author's best (no raw values); (4) aggregate comparison tally and reading without task names; (5) host limits, budget, task counts. Nothing else crosses: no held-out text/trajectory, check source, hidden values, refusing checks, Referee rationale or move-table advice (rule 3).
 
 ## 2. The stance: code owns the conditions, models own the content
 

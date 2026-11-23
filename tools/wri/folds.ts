@@ -285,6 +285,10 @@ export const TRIGGERS = {
   // Lane 23: Agentic component yield, handoffs and pause boundaries
   "SEAT BOUNDARY ANOMALY": 23,
   "ROLE YIELD SKEW": 23,
+  // Lane 24: Component reward hacking and specification gaming
+  "DRAFT RULE DROP": 24,
+  "PRACTICE HILL-CLIMBING": 24,
+  "SPECIFICATION GAMING LEAD": 24,
 } as const;
 
 export const text = (value: JsonValue | undefined): string => (isString(value) ? value : "");

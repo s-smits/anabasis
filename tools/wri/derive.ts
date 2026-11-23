@@ -1,20 +1,8 @@
 /**
- * Every deterministic reader of a campaign's record, run over its log into one folder a campaign, so
- * a person or a session opens a file instead of running forty commands. The operator asked for it:
- * the readers run quietly over every run whose log moved, while it runs and after it,
- * and an investigation's `start` runs them too. A folder is replaced whole with what the readers say
- * of the log as it stands, never appended to, so no file in it describes another moment of the log
- * than the rest; a folder whose log, and the commit that reads it, have not moved is left as it is.
- * A reader's code changed without a commit is not seen, so `--force` derives again.
- *
- * `READERS` is the one list of them, and `wri.ts reader <name>` prints any one. Most are a function
- * of the log's events, called in this process on one parse of the log, rather than a command of its
- * own that parses the log again, which on the largest logs takes minutes where one parse takes a
- * fraction of a second. A reader that needs more than the log
- * (a campaign found by its name in the registry, every campaign beside it, the embedding model, or
- * every kept harness) keeps a process of its own, named by its `args`, under a time limit, with no
- * credential in its environment and with `ANA_HOP=1`, under which it reaches no other host.
- * `pass.ts` runs for the pulse those that name a moment (`at`).
+ * Deterministic campaign readers (`READERS`, `wri.ts reader <name>`), written atomically into
+ * `data/derived/<campaign>@<path>/` (skipped unless log, reading commit, or reader list moved;
+ * `--force` re-derives). In-process readers share one parse of the log; external readers (`args`)
+ * run bounded with no credentials and `ANA_HOP=1`. `pass.ts` runs `at`-tagged readers for pulse.
  */
 import { conditionLines } from "#skills/campaign-mechanics/scripts/conditions.ts";
 import { campaignEnding, endingLines } from "#skills/campaign-mechanics/scripts/ending.ts";
@@ -62,6 +50,7 @@ import { draftRows } from "./drafted.ts";
 import { epochSpendLines } from "./epoch-spend.ts";
 import { executionRows } from "./execution.ts";
 import { indexOf, NO_TRACES } from "./folds.ts";
+import { gamingRows } from "./gaming.ts";
 import { launchLines } from "./launches.ts";
 import { nameRows } from "./names.ts";
 import { pairRows } from "./pairs.ts";
@@ -213,18 +202,8 @@ export function overviewText(log: string, events: readonly LogEvent[], repo: str
   return `${rendered(overview(events, receipts(log)))}\n\n${hostLine(log, events, repo)}\n`;
 }
 
-/** The readers that take one campaign and print what it holds, calling no paid model and writing
- *  nothing of the campaign's, the likeliest news first. Those marked `embeds` run a local model and
- *  keep their vectors in the reader store, and come after all but the readers of kept harnesses, as a
- *  first read is the longest and their news the least likely. Each moment's readers (`at`) come
- *  from what their text says of it; a `gist` stands where, on closed logs of several domains,
- *  naming the session or harness found none of the reader's lines: a summary row, a
- *  table's own row. A reader whose text is a block or a table over the whole log (a check's row, a
- *  pair's, a compaction, a launch, a sequence of calls) has no line of one moment and names none,
- *  so only `derive` runs it, as it does `aim` and `epoch-spend`, whose lines of a moment repeat
- *  what `ambition` and `cost` say there. A script that needs more than a campaign
- *  to say anything, reads no run or writes elsewhere is left out, and `whole-run-investigation` names
- *  each. */
+/** Single-campaign read-only readers, likeliest news first (`embeds` run a local model; `at`/`gist`
+ *  select moment-level pulse excerpts; whole-log tables stay `derive`-only). */
 export const READERS: readonly Reader[] = [
   at(
     {
@@ -543,6 +522,16 @@ export const READERS: readonly Reader[] = [
     },
     [PROMOTED, ENDED],
     /^seats:/,
+  ),
+  at(
+    {
+      name: "gaming",
+      answers:
+        "cross-component reward-hacking and specification-gaming leads across draft, referee.draft, examiner, builder, solver, and referee",
+      read: ({ events }) => gamingRows(events),
+    },
+    [FROZEN, REPORTED, ENDED],
+    /^gaming:/,
   ),
   {
     name: "wakes",

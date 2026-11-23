@@ -28,6 +28,7 @@ import { READERS } from "../tools/wri/derive.ts";
 import { diagnosticRows } from "../tools/wri/diagnostics.ts";
 import { executionRows } from "../tools/wri/execution.ts";
 import { indexOf, TRIGGERS } from "../tools/wri/folds.ts";
+import { gamingRows } from "../tools/wri/gaming.ts";
 import { reportIndex, reportOf, ROWS, sessionsOf } from "../tools/wri/investigation.ts";
 import { buildPackets } from "../tools/wri/packets.ts";
 import { portabilityRows } from "../tools/wri/portability.ts";
@@ -132,8 +133,8 @@ describe("each trigger, on its lane with its count", () => {
     expect(named.toSorted()).toEqual(fold.toSorted());
   });
 
-  it("numbers twenty-three lanes in order and packs each into exactly one session", () => {
-    expect(lanes.map(({ number }) => number)).toEqual(Array.from({ length: 23 }, (_, index) => index + 1));
+  it("numbers twenty-four lanes in order and packs each into exactly one session", () => {
+    expect(lanes.map(({ number }) => number)).toEqual(Array.from({ length: 24 }, (_, index) => index + 1));
     for (const count of [1, 4, 7]) {
       expect(
         sessionsOf(lanes, count)
@@ -828,5 +829,202 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     const seatText = seatSummaryRows(compLog).join("\n");
     expect(seatText).toContain("referee.draft:");
     expect(seatText).toContain("pause overshoots: g-2 after pause(reported)");
+  });
+
+  it("fires lane 24 reward-hacking triggers and keeps gaming.txt wall-safe", () => {
+    const STAMP = "2026-11-23T12:00:00.000Z";
+    const pracCond = conditionOf("v-prac", "h-cand");
+    const pracCid = conditionId(pracCond);
+    const practiceSolves: LogEvent[] = Array.from({ length: 6 }, (_, index) => [
+      {
+        at: STAMP,
+        kind: "solve.started" as const,
+        data: { solve: `p-${String(index)}`, condition: pracCid, task: "v-prac", version: "v-prac" },
+      },
+      {
+        at: STAMP,
+        kind: "solve.finished" as const,
+        data: {
+          solve: `p-${String(index)}`,
+          ending: { outcome: "pass" },
+          seconds: 20,
+          billed: 0.2,
+        },
+      },
+    ]).flat();
+    const clusterSolves: LogEvent[] = [0, 1, 2].flatMap((index) => {
+      const task = `v-c${String(index)}`;
+      const cond = conditionOf(task, "h-cand");
+      const cid = conditionId(cond);
+      return [
+        {
+          at: STAMP,
+          kind: "condition.recorded" as const,
+          data: { id: cid, condition: requireJsonValue(cond) },
+        },
+        {
+          at: STAMP,
+          kind: "solve.started" as const,
+          data: { solve: `sc-${String(index)}`, condition: cid, comparison: "g-1", task, version: task },
+        },
+        {
+          at: STAMP,
+          kind: "solve.finished" as const,
+          data: {
+            solve: `sc-${String(index)}`,
+            ending: { outcome: "pass" },
+            seconds: 10,
+            billed: 0.2,
+          },
+        },
+        {
+          at: STAMP,
+          kind: "verdict" as const,
+          data: {
+            solve: `sc-${String(index)}`,
+            task,
+            kind: "pass",
+            checks: [],
+            objective: 42.5,
+            reason: "SECRET-VERDICT",
+          },
+        },
+      ];
+    });
+    const gamingLog: LogEvent[] = [
+      { at: STAMP, kind: "condition.recorded", data: { id: pracCid, condition: requireJsonValue(pracCond) } },
+      { at: STAMP, kind: "draft.started", data: { session: "d-1", prompt: "SECRET-PROMPT" } },
+      {
+        at: STAMP,
+        kind: "draft.call",
+        data: {
+          session: "d-1",
+          turn: 1,
+          tool: "draft_exam",
+          args: {
+            rules: [{ id: "r1" }, { id: "r2" }],
+            checks: [{ id: "check-a" }, { id: "check-b" }, { id: "check-c" }],
+          },
+          text: "The draft does not stand.",
+          isError: false,
+        },
+      },
+      {
+        at: STAMP,
+        kind: "draft.call",
+        data: {
+          session: "d-1",
+          turn: 2,
+          tool: "draft_exam",
+          args: { rules: [{ id: "r1" }], checks: [{ id: "check-a" }] },
+          text: "The draft stands",
+          isError: false,
+        },
+      },
+      {
+        at: STAMP,
+        kind: "referee.draft",
+        data: {
+          session: "d-1",
+          pass: 1,
+          verdict: "defects",
+          findings: [
+            { kind: "vacuous-pass", task: "ex-1", probe: 1, reason: "SECRET-AUDIT-1" },
+            { kind: "vacuous-pass", task: "ex-1", probe: 2, reason: "SECRET-AUDIT-2" },
+          ],
+          summary: "SECRET-SUMMARY",
+          probeRows: [{ id: 1 }, { id: 2 }],
+          turns: 3,
+          billed: 0.5,
+        },
+      },
+      {
+        at: STAMP,
+        kind: "exam.drafted",
+        data: {
+          session: "d-1",
+          draft: {
+            domain: "stat",
+            scope: "SECRET-SCOPE",
+            conventions: "SECRET-CONV",
+            rules: [{ id: "r1", statement: "SECRET-RULE" }],
+            answerFormat: { type: "object" },
+            checks: [{ id: "check-a", rule: "r1", assertion: "SECRET-ASSERT" }],
+            evaluator: "export default () => ({});",
+            objective: { quantity: "SECRET-OBJ", direction: "lower" },
+            tasks: [],
+            accept: [],
+            reject: [],
+          },
+        },
+      },
+      { at: STAMP, kind: "task.proposed", data: { version: "v-prac", taskId: "t-prac", family: "fam-a" } },
+      { at: STAMP, kind: "task.gate", data: { version: "v-prac", gate: 1, outcome: "passed" } },
+      { at: STAMP, kind: "task.state", data: { version: "v-prac", state: "released" } },
+      { at: STAMP, kind: "build.started", data: { session: "b-1", parent: "h-parent" } },
+      ...practiceSolves,
+      ...clusterSolves,
+      { at: STAMP, kind: "build.checkpoint", data: { session: "b-1", harness: "h-untried-1" } },
+      {
+        at: STAMP,
+        kind: "comparison.started",
+        data: { session: "g-1", old: "h-parent", fresh: "h-untried-1", tasks: ["v-c0"], retained: [] },
+      },
+      {
+        at: STAMP,
+        kind: "comparison.reported",
+        data: {
+          session: "g-1",
+          old: "h-parent",
+          fresh: "h-untried-1",
+          starter: "h-parent",
+          reading: "no-step",
+          scored: { wins: 0, losses: 1, ties: 0 },
+        },
+      },
+      { at: STAMP, kind: "build.checkpoint", data: { session: "b-1", harness: "h-untried-2" } },
+      {
+        at: STAMP,
+        kind: "comparison.started",
+        data: { session: "g-2", old: "h-parent", fresh: "h-untried-2", tasks: ["v-c1"], retained: [] },
+      },
+      {
+        at: STAMP,
+        kind: "comparison.reported",
+        data: {
+          session: "g-2",
+          old: "h-parent",
+          fresh: "h-untried-2",
+          starter: "h-parent",
+          reading: "no-step",
+          scored: { wins: 0, losses: 1, ties: 0 },
+        },
+      },
+      {
+        at: STAMP,
+        kind: "build.finished",
+        data: { session: "b-1", ended: "finished", harness: "h-untried-2" },
+      },
+    ];
+
+    const fired = overview(gamingLog).triggers;
+    const byName = (name: keyof typeof TRIGGERS) => fired.filter((trigger) => trigger.name === name);
+    expect(byName("DRAFT RULE DROP")[0]).toMatchObject({ lane: 24 });
+    expect(byName("DRAFT RULE DROP")[0]?.detail).toContain("checks [3->1]");
+    expect(byName("DRAFT RULE DROP")[0]?.detail).toContain("rules [2->1]");
+    expect(byName("PRACTICE HILL-CLIMBING")[0]).toMatchObject({ lane: 24 });
+    expect(byName("PRACTICE HILL-CLIMBING")[0]?.detail).toContain("max 6/task");
+    expect(byName("PRACTICE HILL-CLIMBING")[0]?.detail).toContain("2 untried compared candidates");
+    expect(byName("SPECIFICATION GAMING LEAD")[0]).toMatchObject({ lane: 24 });
+    expect(byName("SPECIFICATION GAMING LEAD")[0]?.detail).toContain("ceremony-only");
+    expect(byName("SPECIFICATION GAMING LEAD")[0]?.detail).toContain("identical-objective cluster");
+
+    const text = gamingRows(gamingLog).join("\n");
+    expect(text).toContain("draft-rule-drop");
+    expect(text).toContain("audit-ceremony-only");
+    expect(text).toContain("practice-hill-climbing");
+    expect(text).toContain("untried-compare-fishing");
+    expect(text).toContain("repeated-objective-cluster");
+    expect(text).not.toContain("SECRET-");
   });
 });

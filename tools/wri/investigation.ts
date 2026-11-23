@@ -175,6 +175,9 @@ export const ROWS = {
   "WALL BOUNDARY SIGNAL": "wall-audit",
   "SEAT BOUNDARY ANOMALY": "seats",
   "ROLE YIELD SKEW": "seats",
+  "DRAFT RULE DROP": "gaming",
+  "PRACTICE HILL-CLIMBING": "gaming",
+  "SPECIFICATION GAMING LEAD": "gaming",
 } satisfies Partial<Record<keyof typeof TRIGGERS, string>>;
 
 /** A lane's file stem: `07` for lane 7. */

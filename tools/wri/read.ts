@@ -1,6 +1,6 @@
 /**
  * The deterministic read of one campaign's log for a whole-run investigation: six rows of
- * identities the primary reviewer settles, and the triggers that say which of the twenty-three
+ * identities the primary reviewer settles, and the triggers that say which of the twenty-four
  * lanes of `.claude/skills/whole-run-investigation/references/lanes.md` have something to read.
  *
  * The folds of the log, the catalogue of triggers and the lanes of the exam side (1 to 4 and 7 to
@@ -57,6 +57,7 @@ import {
 } from "./folds.ts";
 import { safeguardTriggers } from "./climb.ts";
 import { componentTriggers } from "./components.ts";
+import { gamingTriggers } from "./gaming.ts";
 import { promotionTriggers, testedOf } from "./promotion.ts";
 import { runTriggers } from "./run.ts";
 import { signalTriggers } from "./signals.ts";
@@ -782,6 +783,7 @@ export function overview(events: readonly LogEvent[], launches: readonly Receipt
       ...runTriggers(log, launches),
       ...signalTriggers(log),
       ...componentTriggers(log),
+      ...gamingTriggers(log),
     ],
   };
 }

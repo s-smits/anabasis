@@ -2,6 +2,8 @@
  * The two string states a truthiness test folds together.
  */
 
+const TOKEN_CHAR = /[A-Za-z0-9_-]/u;
+
 /** True when a string is present and holds something other than the empty string. */
 export function hasText(value: string | null | undefined): value is string {
   return value !== null && value !== undefined && value !== "";
@@ -22,6 +24,11 @@ export function textOr(value: string | null | undefined, fallback: string): stri
 
 /** True when `needle` appears in `haystack` bounded away from identifier characters (`[A-Za-z0-9_-]`). */
 export function hasWholeToken(haystack: string, needle: string): boolean {
-  const escaped = needle.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
-  return new RegExp(`(?<![A-Za-z0-9_-])${escaped}(?![A-Za-z0-9_-])`, "u").test(haystack);
+  if (needle === "") return false;
+  for (let at = haystack.indexOf(needle); at !== -1; at = haystack.indexOf(needle, at + 1)) {
+    if (!TOKEN_CHAR.test(haystack.charAt(at - 1)) && !TOKEN_CHAR.test(haystack.charAt(at + needle.length))) {
+      return true;
+    }
+  }
+  return false;
 }

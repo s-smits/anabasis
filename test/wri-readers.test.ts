@@ -19,6 +19,7 @@ import { isString } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
+import { hasWholeToken } from "../src/meta/text.ts";
 import { solvesIn } from "../src/kernel/solves.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import { catalogueText, type Lane, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
@@ -1201,5 +1202,40 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     expect(firedNames).not.toContain("PASSES AT A SMALL WALL SHARE");
     expect(firedNames).not.toContain("SHARED TEMPORARY FOLDER");
     expect(firedNames).not.toContain("EXAMINER NEVER FINISHED");
+  });
+
+  it("matches whole identifier-bounded tokens without regex escapes and detects pause overshoots across padded traces", () => {
+    for (const [haystack, needle, expected] of [
+      ["", "", false],
+      ["check-a.b+1", "check-a.b+1", true],
+      ["xcheck-a and check-a_1 and (check-a)!", "check-a", true],
+      ["prefix_tok and tok-suffix and 9tok", "tok", false],
+      ["$price[0] == 1", "$price[0]", true],
+    ] as const) {
+      expect(hasWholeToken(haystack, needle)).toBe(expected);
+    }
+
+    const padded: LogEvent[] = [
+      { at: AT, kind: "campaign.word", data: { word: "pause", after: "reported", base: 0 } },
+      ...Array.from(
+        { length: 200 },
+        (_, i): LogEvent => ({
+          at: AT,
+          kind: "solve.call",
+          data: { solve: `s-${String(i)}`, tool: "bash", text: "" },
+        }),
+      ),
+      {
+        at: AT,
+        kind: "comparison.reported",
+        data: { session: "g-1", old: "h0", fresh: "h1", starter: "h0", reading: "no-step" },
+      },
+      {
+        at: AT,
+        kind: COMPARISON_STARTED,
+        data: { session: "g-2", old: "h0", fresh: "h2", starter: "h0" },
+      },
+    ];
+    expect(seatSummaryRows(padded)[0]).toContain("pause overshoots: g-2 after pause(reported)");
   });
 });

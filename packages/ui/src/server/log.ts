@@ -3,17 +3,14 @@
  * happened, and one event whole, which the exam tier alone answers (`EXAM_ONLY`, refused by the
  * router before this is asked).
  *
- * A pane of every raw event a page at a time would be mostly a model's turns and calls, and on the
- * default tier an event would open to a line saying the exam side held it, so the pane would say
- * only that something happened. A line instead says what happened
- * in words from what the default tier serves (counts, ids, states, endings, readings, costs and
- * times; `models.ts`), and a session's or a solve's turns, calls and compactions are counted into
- * its own line, which runs from its start to its end, and so is a solve's wait for a loaded host (a
- * large share of a campaign's lines). The author's answer behind `task.feasible` is the exam
- * side's, so its line says only that one is on record. A check's verdict and a condition say
- * nothing the solve's ending does not, and a ruling is the exam side's, so neither has a line.
+ * A line says what happened in words from what the default tier serves (counts, ids, states,
+ * endings, readings, costs and times; `models.ts`), and a session's or a solve's turns, calls and
+ * compactions are counted into its own line, which runs from its start to its end, and so is a
+ * solve's wait for a loaded host. The author's answer behind `task.feasible` is the exam side's, so
+ * its line says only that one is on record. A check's verdict, a condition and a ruling have no line.
  */
 import type { LogEvent } from "../../../../src/kernel/log.ts";
+import type { Seat } from "../../../../src/kernel/trace.ts";
 import { isNumber, isRecord, isString } from "../../../../src/meta/json-shape.ts";
 import { plural } from "../../../../src/meta/text.ts";
 import type { LogEventDetail, Query, Timeline, TimelineGroup, TimelineRow } from "../models.ts";
@@ -22,45 +19,146 @@ import { type Reading, Unanswerable } from "./context.ts";
 import { once } from "./folds.ts";
 import { campaignAt } from "./logs.ts";
 
-/** A model seat's sessions, by the prefix of their events' kinds. */
-const SEATS = new Map([
-  ["build", "Builder session"],
-  ["exam", "Examiner session"],
-  ["draft", "Exam draft"],
-]);
-/** The kinds a line leaves out: what a solve's ending or the exam side already says. */
-const UNSAID: ReadonlySet<string> = new Set(["verdict", "condition.recorded", "referee.finding"]);
-
-/** Why the campaign waited, by a wait's `for` (`tools/d2/host.ts`, `src/solver/run.ts`). */
-const WAITS = new Map([
-  ["provider", "for the provider's limit to reset"],
-  ["network", "after the network failed a session"],
-]);
-
-/** A line while the log is read: its counts, filled in by the events after its start. */
+/** A line while the log is read: its counts and end time, filled in by events after its start. */
 interface Open {
-  row: TimelineRow;
+  readonly row: TimelineRow;
+  until: string | null;
   turns: number;
   calls: number;
   compactions: number;
   said: string;
 }
 
-/** How many a field holds: an array's length or a count. */
-function many(value: unknown): number | null {
-  if (Array.isArray(value)) return value.length;
-  return isNumber(value) ? value : null;
-}
+type LineFormatter = (data: LogEvent["data"], kind: string) => { group: TimelineGroup; what: string };
 
-/** A field that is text, or null. */
-function text(value: unknown): string | null {
-  return isString(value) ? value : null;
-}
+/** Exhaustive seat labels: build, exam and draft open session lines; solve and referee are handled apart. */
+const SEAT_LABELS = new Map<string, string | null>(
+  Object.entries({
+    build: "Builder session",
+    exam: "Examiner session",
+    draft: "Exam draft",
+    referee: null,
+    solve: null,
+  } satisfies Record<Seat, string | null>),
+);
+/** The kinds a line leaves out: what a solve's ending or the exam side already says. */
+const UNSAID: ReadonlySet<string> = new Set(["verdict", "condition.recorded", "referee.finding"]);
+/** Why the campaign waited, by a wait's `for` (`tools/d2/host.ts`, `src/solver/run.ts`). */
+const WAITS = new Map([
+  ["provider", "for the provider's limit to reset"],
+  ["network", "after the network failed a session"],
+]);
+const TRACE_PART = new Map<string, "turns" | "calls" | "compactions">([
+  ["turn", "turns"],
+  ["call", "calls"],
+  ["compacted", "compactions"],
+]);
+const TASK_NOTE = new Map<string, (data: LogEvent["data"]) => string | null>([
+  ["task.proposed", (data) => `proposed in ${text(data.session) ?? "?"}`],
+  ["task.state", (data) => text(data.state)],
+  ["task.feasible", () => "a valid answer on record"],
+]);
 
-/** The parts that are said, joined. */
-function joined(...parts: readonly (string | null)[]): string {
-  return parts.filter((part): part is string => part !== null && part !== "").join(" · ");
-}
+const many = (value: unknown): number | null =>
+  Array.isArray(value) ? value.length : isNumber(value) ? value : null;
+const text = (value: unknown): string | null => (isString(value) ? value : null);
+const joined = (...parts: readonly (string | null)[]): string =>
+  parts.filter((part): part is string => part !== null && part !== "").join(" · ");
+
+const checkerLine: LineFormatter = (data, kind) => {
+  const [checks, admitted, faults] = [many(data.checks), many(data.admitted), many(data.faults)];
+  return {
+    group: "campaign",
+    what: joined(
+      kind === "contract.frozen" ? "Contract frozen" : "Checks read",
+      checks === null ? null : plural(checks, "check"),
+      admitted === null ? null : `${String(admitted)} admitted`,
+      faults === null ? null : plural(faults, "fault"),
+    ),
+  };
+};
+
+/** Single-event timeline lines by kind. */
+const SAID = new Map<string, LineFormatter>(
+  Object.entries({
+    "campaign.opened": (data) => {
+      const solver = text(isRecord(data.solver) ? data.solver.model : data.solver);
+      return {
+        group: "campaign",
+        what: joined(
+          "Campaign opened",
+          text(data.project),
+          solver === null ? null : `solver ${solver}`,
+          isNumber(data.budget) ? `budget ${money(data.budget)}` : null,
+        ),
+      };
+    },
+    "campaign.setting": (data) => ({
+      group: "campaign",
+      what: joined(
+        "Setting fixed",
+        isNumber(data.modelTurns) ? plural(data.modelTurns, "model turn") : null,
+        isNumber(data.minutes) ? `${String(data.minutes)} min a solve` : null,
+        isNumber(data.solves) ? `${plural(data.solves, "solve")} a side` : null,
+      ),
+    }),
+    "campaign.move": (data) => ({
+      group: "campaign",
+      what: joined(`Move: ${text(data.move) ?? "?"}`, text(data.why)),
+    }),
+    "campaign.word": (data) => ({
+      group: "campaign",
+      what: joined(`The operator's word: ${text(data.word) ?? "?"}`, text(data.why)),
+    }),
+    "campaign.ended": (data) => ({
+      group: "campaign",
+      what: joined(`Campaign ended: ${text(data.ending) ?? "?"}`, text(data.why)),
+    }),
+    "campaign.waited": (data) => {
+      const waitedFor = text(data.for);
+      return {
+        group: "wait",
+        what: [
+          "Waited",
+          isNumber(data.ms) ? seconds(data.ms / 1000) : null,
+          waitedFor === null ? null : (WAITS.get(waitedFor) ?? `for ${waitedFor}`),
+        ]
+          .filter((part) => part !== null)
+          .join(" "),
+      };
+    },
+    "checker.read": checkerLine,
+    "contract.frozen": checkerLine,
+    "harness.version": (data) => ({
+      group: "harness",
+      what: joined("Harness version", text(data.version), text(data.note)),
+    }),
+    "harness.promoted": (data) => ({
+      group: "harness",
+      what: `Promoted ${text(data.harness)?.slice(0, 12) ?? "a harness"} to reference`,
+    }),
+    "harness.imported": (data) => ({
+      group: "harness",
+      what: `Imported ${text(data.harness)?.slice(0, 12) ?? "a harness"}`,
+    }),
+    "build.checkpoint": () => ({ group: "harness", what: "Harness kept before a comparison" }),
+    "comparison.started": (data) => {
+      const tasks = many(data.tasks);
+      return {
+        group: "session",
+        what: joined(
+          "Comparison started",
+          tasks === null ? null : plural(tasks, "task"),
+          isNumber(data.solves) ? `${plural(data.solves, "solve")} a side` : null,
+        ),
+      };
+    },
+    "comparison.reported": (data) => ({
+      group: "session",
+      what: `Comparison read ${text(data.reading) ?? "nothing"}`,
+    }),
+  } satisfies Record<string, LineFormatter>),
+);
 
 /** A solve's ending in the words its badge uses (`endingOf`, `drill.tsx`). */
 function endingWords(ending: unknown): string {
@@ -73,7 +171,6 @@ function endingWords(ending: unknown): string {
 /** What a finished session handed over, from its own fields. */
 function handedOver(seat: string, data: LogEvent["data"]): string | null {
   if (seat === "exam") {
-    // `held` and `refused` are lists of task versions, `proposed` a count.
     const tallies = [
       ["proposed", many(data.proposed)],
       ["held out", many(data.held)],
@@ -83,135 +180,39 @@ function handedOver(seat: string, data: LogEvent["data"]): string | null {
       .flatMap(([word, value]) => (value === null ? [] : [`${String(value)} ${word}`]))
       .join(", ");
   }
-  if (seat === "build") {
-    const solves = many(data.practiceSolves);
-    return joined(
-      data.changed === true ? "changed the harness" : data.changed === false ? "left the harness" : null,
-      solves === null ? null : plural(solves, "practice solve"),
-    );
-  }
-  return null;
+  if (seat !== "build") return null;
+  const solves = many(data.practiceSolves);
+  return joined(
+    data.changed === true ? "changed the harness" : data.changed === false ? "left the harness" : null,
+    solves === null ? null : plural(solves, "practice solve"),
+  );
 }
 
-/** The words of a line that stands for one event and runs over no other. */
-function said(kind: string, data: LogEvent["data"]): { group: TimelineGroup; what: string } | null {
-  switch (kind) {
-    case "campaign.opened": {
-      // A solver is its model's name, or the model and its effort.
-      const solver = text(isRecord(data.solver) ? data.solver.model : data.solver);
-      return {
-        group: "campaign",
-        what: joined(
-          "Campaign opened",
-          text(data.project),
-          solver === null ? null : `solver ${solver}`,
-          isNumber(data.budget) ? `budget ${money(data.budget)}` : null,
-        ),
-      };
-    }
-    case "campaign.setting": {
-      return {
-        group: "campaign",
-        what: joined(
-          "Setting fixed",
-          isNumber(data.modelTurns) ? plural(data.modelTurns, "model turn") : null,
-          isNumber(data.minutes) ? `${String(data.minutes)} min a solve` : null,
-          isNumber(data.solves) ? `${plural(data.solves, "solve")} a side` : null,
-        ),
-      };
-    }
-    case "campaign.move": {
-      return { group: "campaign", what: joined(`Move: ${text(data.move) ?? "?"}`, text(data.why)) };
-    }
-    case "campaign.word": {
-      return {
-        group: "campaign",
-        what: joined(`The operator's word: ${text(data.word) ?? "?"}`, text(data.why)),
-      };
-    }
-    case "campaign.ended": {
-      return {
-        group: "campaign",
-        what: joined(`Campaign ended: ${text(data.ending) ?? "?"}`, text(data.why)),
-      };
-    }
-    case "campaign.waited": {
-      // A load wait is said in its solve's line; these are the waits of the whole campaign.
-      const waitedFor = text(data.for);
-      return {
-        group: "wait",
-        what: [
-          "Waited",
-          isNumber(data.ms) ? seconds(data.ms / 1000) : null,
-          waitedFor === null ? null : (WAITS.get(waitedFor) ?? `for ${waitedFor}`),
-        ]
-          .filter((part) => part !== null)
-          .join(" "),
-      };
-    }
-    case "checker.read":
-    case "contract.frozen": {
-      const checks = many(data.checks);
-      const admitted = many(data.admitted);
-      const faults = many(data.faults);
-      return {
-        group: "campaign",
-        what: joined(
-          kind === "contract.frozen" ? "Contract frozen" : "Checks read",
-          checks === null ? null : plural(checks, "check"),
-          admitted === null ? null : `${String(admitted)} admitted`,
-          faults === null ? null : plural(faults, "fault"),
-        ),
-      };
-    }
-    case "harness.version": {
-      return { group: "harness", what: joined("Harness version", text(data.version), text(data.note)) };
-    }
-    case "harness.promoted":
-    case "harness.imported": {
-      const harness = text(data.harness)?.slice(0, 12) ?? "a harness";
-      return {
-        group: "harness",
-        what: kind === "harness.promoted" ? `Promoted ${harness} to reference` : `Imported ${harness}`,
-      };
-    }
-    case "build.checkpoint": {
-      return { group: "harness", what: "Harness kept before a comparison" };
-    }
-    case "comparison.started": {
-      const tasks = many(data.tasks);
-      return {
-        group: "session",
-        what: joined(
-          "Comparison started",
-          tasks === null ? null : plural(tasks, "task"),
-          isNumber(data.solves) ? `${plural(data.solves, "solve")} a side` : null,
-        ),
-      };
-    }
-    case "comparison.reported": {
-      return { group: "session", what: `Comparison read ${text(data.reading) ?? "nothing"}` };
-    }
-    default: {
-      return null;
-    }
-  }
-}
-
-/** The owner a turn, call or compaction counts into, and the line it opens: a session, a solve or
- *  a Referee's reading. */
-function ownerOf(kind: string, data: LogEvent["data"]): string | null {
-  const seat = kind.split(".")[0] ?? "";
+/** The owner a turn, call or compaction counts into, and the line it opens: a session, solve or Referee reading. */
+function ownerOf(seat: string, data: LogEvent["data"]): string | null {
   if (seat === "solve") return isString(data.solve) ? `solve ${data.solve}` : null;
   if (seat === "referee") return isString(data.reader) ? `referee ${data.reader}` : null;
   return isString(data.session) ? `${seat} ${data.session}` : null;
+}
+
+/** Fold one finished solve or session onto its open timeline line. */
+function finishLine(line: Open, seat: string, event: LogEvent): void {
+  const { data } = event;
+  const outcome =
+    seat === "solve" ? endingWords(data.ending) : joined(text(data.ended) ?? "ended", handedOver(seat, data));
+  line.said = joined(
+    line.said,
+    outcome,
+    isNumber(data.seconds) ? seconds(data.seconds) : null,
+    isNumber(data.billed) ? money(data.billed) : null,
+  );
+  line.until = event.at;
 }
 
 /** Every line of the log, in the order its first event stands. */
 const linesIn = once(({ events }) => {
   const lines: Open[] = [];
   const open = new Map<string, Open>();
-  // A solve's wait for a loaded host, said in the line of the solve it held back.
   const held = new Map<string, string>();
   const solveOf = (data: LogEvent["data"]) => `${text(data.task) ?? "?"} ${text(data.comparison) ?? ""}`;
   const start = (index: number, event: LogEvent, group: TimelineGroup, what: string, owner?: string) => {
@@ -227,6 +228,7 @@ const linesIn = once(({ events }) => {
         solve: text(data.solve),
         task: text(data.version) ?? (event.kind === "solve.started" ? text(data.task) : null),
       },
+      until: null,
       turns: 0,
       calls: 0,
       compactions: 0,
@@ -240,76 +242,60 @@ const linesIn = once(({ events }) => {
     const { kind, data } = event;
     if (UNSAID.has(kind)) continue;
     const [seat = "", part = ""] = kind.split(".");
-    const owner = ownerOf(kind, data);
-    const line = owner === null ? undefined : open.get(owner);
-    if (part === "turn" || part === "call" || part === "compacted") {
+    const owner = ownerOf(seat, data);
+    const counter = TRACE_PART.get(part);
+    if (counter !== undefined) {
       const counting =
-        line ??
+        (owner === null ? undefined : open.get(owner)) ??
         start(index, event, seat === "solve" ? "solve" : "session", owner ?? kind, owner ?? undefined);
-      if (part === "turn") counting.turns += 1;
-      else if (part === "call") counting.calls += 1;
-      else counting.compactions += 1;
-      counting.row = { ...counting.row, until: event.at };
+      counting[counter] += 1;
+      counting.until = event.at;
       continue;
     }
     if (kind === "campaign.waited" && data.for === undefined && isNumber(data.ms)) {
       held.set(solveOf(data), `waited ${seconds(data.ms / 1000)} for the host's load`);
       continue;
     }
-    if (kind === "solve.started" && owner !== null) {
-      const where = text(data.comparison) ?? "practice";
-      const waited = held.get(solveOf(data)) ?? null;
-      held.delete(solveOf(data));
-      start(index, event, "solve", joined(`Solve ${text(data.solve) ?? "?"}`, where, waited), owner);
-      continue;
-    }
-    if (kind === "solve.finished" && line !== undefined) {
-      line.said = joined(
-        line.said,
-        endingWords(data.ending),
-        isNumber(data.seconds) ? seconds(data.seconds) : null,
-        isNumber(data.billed) ? money(data.billed) : null,
-      );
-      line.row = { ...line.row, until: event.at };
-      continue;
-    }
-    const sessionOf = SEATS.get(seat);
-    if (sessionOf !== undefined && part === "started" && owner !== null) {
-      start(
-        index,
-        event,
-        "session",
-        joined(`${sessionOf} ${text(data.session) ?? "?"}`, text(data.model)),
-        owner,
-      );
-      continue;
-    }
-    if (sessionOf !== undefined && part === "finished" && line !== undefined) {
-      line.said = joined(
-        line.said,
-        text(data.ended) ?? "ended",
-        handedOver(seat, data),
-        isNumber(data.seconds) ? seconds(data.seconds) : null,
-        isNumber(data.billed) ? money(data.billed) : null,
-      );
-      line.row = { ...line.row, until: event.at };
-      continue;
-    }
-    if (kind.startsWith("task.") && isString(data.version)) {
-      const task = `task ${data.version}`;
-      const name = text(data.taskId) ?? data.version.slice(0, 12);
-      const known = open.get(task) ?? start(index, event, "task", `Task ${name}`, task);
-      if (kind === "task.proposed") {
-        known.said = joined(known.said, `proposed in ${text(data.session) ?? "?"}`);
+    const label = SEAT_LABELS.get(seat) ?? null;
+    const tracked = seat === "solve" || label !== null;
+    if (part === "started" && owner !== null && tracked) {
+      if (seat === "solve") {
+        const waited = held.get(solveOf(data)) ?? null;
+        held.delete(solveOf(data));
+        start(
+          index,
+          event,
+          "solve",
+          joined(`Solve ${text(data.solve) ?? "?"}`, text(data.comparison) ?? "practice", waited),
+          owner,
+        );
+      } else {
+        start(
+          index,
+          event,
+          "session",
+          joined(`${label} ${text(data.session) ?? "?"}`, text(data.model)),
+          owner,
+        );
       }
-      if (kind === "task.state") known.said = joined(known.said, text(data.state));
-      if (kind === "task.feasible") known.said = joined(known.said, "a valid answer on record");
-      if (known.row.index !== index) known.row = { ...known.row, until: event.at };
       continue;
     }
-    // A kind with no words of its own reads as its words: `exam.drafted` as "Exam drafted".
+    const line = owner === null ? undefined : open.get(owner);
+    if (part === "finished" && line !== undefined && tracked) {
+      finishLine(line, seat, event);
+      continue;
+    }
+    if (seat === "task" && isString(data.version)) {
+      const task = `task ${data.version}`;
+      const known =
+        open.get(task) ??
+        start(index, event, "task", `Task ${text(data.taskId) ?? data.version.slice(0, 12)}`, task);
+      known.said = joined(known.said, TASK_NOTE.get(kind)?.(data) ?? null);
+      if (known.row.index !== index) known.until = event.at;
+      continue;
+    }
+    const words = SAID.get(kind)?.(data, kind);
     const plain = kind.replaceAll(".", " ");
-    const words = said(kind, data);
     start(
       index,
       event,
@@ -317,8 +303,9 @@ const linesIn = once(({ events }) => {
       words?.what ?? `${plain.charAt(0).toUpperCase()}${plain.slice(1)}`,
     );
   }
-  return lines.map(({ row, turns, calls, compactions, said: what }) => ({
+  return lines.map(({ row, until, turns, calls, compactions, said: what }) => ({
     ...row,
+    until,
     what: joined(
       what,
       turns + calls === 0 ? null : `${plural(turns, "turn")}, ${plural(calls, "call")}`,

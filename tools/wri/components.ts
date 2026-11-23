@@ -82,6 +82,7 @@ const SEAT_ROLES = {
   solve: "solver",
   referee: REFEREE_ADJUDICATE,
 } satisfies Record<Seat, string>;
+const HARNESS_KINDS = new Set(["harness.promoted", "build.checkpoint", "build.finished"]);
 
 const passesText = (count: number) => (count === 1 ? "1 pass" : `${String(count)} passes`);
 
@@ -226,101 +227,103 @@ export function groundingRows(events: readonly LogEvent[], examsDir?: string): s
   ];
 }
 
-function wallScanOf(events: readonly LogEvent[]): WallScan {
+function wallTargetsOf(events: readonly LogEvent[]) {
   const checkIds = new Set<string>();
-  for (const check of draftOf(events)?.checks ?? []) {
-    if (CHECK_ID_RE.test(check.id)) checkIds.add(check.id);
-  }
-  const reading = events.findLast(({ kind }) => kind === "checker.read");
-  for (const row of items(reading?.data.rows)) {
-    const id = text(asRecord(row)?.id);
+  const draftChecks = (draftOf(events)?.checks ?? []).map(({ id }) => id);
+  const readChecks = items(events.findLast(({ kind }) => kind === "checker.read")?.data.rows).map((row) =>
+    text(asRecord(row)?.id),
+  );
+  for (const id of [...draftChecks, ...readChecks]) {
     if (CHECK_ID_RE.test(id)) checkIds.add(id);
   }
+  const starter = starterIn(events);
   const releasedAt = new Map<string, number>();
+  const proposed: { readonly version: string; readonly taskId: string }[] = [];
+  const harnessDigests = new Set<string>();
   for (const [index, { kind, data }] of events.entries()) {
-    if (kind !== "task.state" || data.state !== "released") continue;
     const version = text(data.version);
-    if (version !== "" && !releasedAt.has(version)) releasedAt.set(version, index);
-  }
-  const heldTasks: { readonly taskId: string; readonly releasedAt: number }[] = [];
-  for (const { kind, data } of events) {
-    if (kind !== "task.proposed") continue;
-    const version = text(data.version);
-    const taskId = text(data.taskId) || text(asRecord(data.task)?.taskId);
-    if (version !== "" && taskId.length >= MIN_TASK_ID_LEN) {
-      heldTasks.push({ taskId, releasedAt: releasedAt.get(version) ?? Number.POSITIVE_INFINITY });
+    if (kind === "task.state" && data.state === "released" && version !== "" && !releasedAt.has(version)) {
+      releasedAt.set(version, index);
+    } else if (kind === "task.proposed" && version !== "") {
+      const taskId = text(data.taskId) || text(asRecord(data.task)?.taskId);
+      if (taskId.length >= MIN_TASK_ID_LEN) proposed.push({ version, taskId });
+    } else if (HARNESS_KINDS.has(kind)) {
+      const digest = text(data.harness);
+      if (digest.length === FULL_DIGEST_LEN && digest !== starter) harnessDigests.add(digest);
     }
   }
-  const starter = starterIn(events);
-  const harnessDigests = new Set<string>();
-  for (const { kind, data } of events) {
-    if (kind !== "harness.promoted" && kind !== "build.checkpoint" && kind !== "build.finished") continue;
-    const digest = text(data.harness);
-    if (digest.length === FULL_DIGEST_LEN && digest !== starter) harnessDigests.add(digest);
-  }
-  const checkList = [...checkIds];
   const digestList = [...harnessDigests];
-  const shortDigests = [...new Set(digestList.map((digest) => digest.slice(0, SHORT_DIGEST_LEN)))];
+  return {
+    checkList: [...checkIds],
+    heldTasks: proposed.map(({ version, taskId }) => ({
+      taskId,
+      releasedAt: releasedAt.get(version) ?? Number.POSITIVE_INFINITY,
+    })),
+    digestList,
+    shortDigests: [...new Set(digestList.map((digest) => digest.slice(0, SHORT_DIGEST_LEN)))],
+  };
+}
 
+function wallSignalsOf(events: readonly LogEvent[]) {
+  const { checkList, heldTasks, digestList, shortDigests } = wallTargetsOf(events);
   let [buildCheckIds, buildHeldTasks, buildInternalKinds, examHarnessDigests, examInternalKinds] = [
     0, 0, 0, 0, 0,
   ];
-  for (const trace of tracesIn(events)) {
-    if (trace.part !== "call") continue;
-    if (trace.seat === "build") {
-      if (checkList.some((id) => hasWholeToken(trace.text, id))) buildCheckIds += 1;
-      if (
-        heldTasks.some(({ taskId, releasedAt: at }) => trace.index < at && hasWholeToken(trace.text, taskId))
-      ) {
+  for (const [index, { kind, data }] of events.entries()) {
+    if (kind === "build.call") {
+      const body = text(data.text);
+      if (checkList.some((id) => hasWholeToken(body, id))) buildCheckIds += 1;
+      if (heldTasks.some(({ taskId, releasedAt: at }) => index < at && hasWholeToken(body, taskId))) {
         buildHeldTasks += 1;
       }
-      if (INTERNAL_KIND_RE.test(trace.text)) buildInternalKinds += 1;
-    } else if (trace.seat === "exam") {
+      if (INTERNAL_KIND_RE.test(body)) buildInternalKinds += 1;
+    } else if (kind === "exam.call") {
+      const body = text(data.text);
       if (
-        digestList.some((digest) => trace.text.includes(digest)) ||
-        shortDigests.some((short) => hasWholeToken(trace.text, short))
+        digestList.some((digest) => body.includes(digest)) ||
+        shortDigests.some((short) => hasWholeToken(body, short))
       ) {
         examHarnessDigests += 1;
       }
-      if (trace.text.includes("campaign.word")) examInternalKinds += 1;
+      if (body.includes("campaign.word")) examInternalKinds += 1;
     }
   }
+  return { buildCheckIds, buildHeldTasks, buildInternalKinds, examHarnessDigests, examInternalKinds };
+}
 
+function networkParityOf(events: readonly LogEvent[]) {
   const comparisonBySolve = new Map<string, string>();
-  for (const { kind, data } of events) {
-    if (kind !== "solve.started") continue;
-    const comparison = text(data.comparison);
-    if (comparison !== "") comparisonBySolve.set(text(data.solve), comparison);
-  }
   const networks: string[] = [];
   const byComparison = new Map<string, Set<string>>();
   for (const { kind, data } of events) {
-    if (kind !== "solve.finished") continue;
-    const network = isString(data.network) ? data.network : "absent";
-    networks.push(network);
-    const comparison = comparisonBySolve.get(text(data.solve));
-    if (comparison !== undefined) {
-      const seen = byComparison.get(comparison) ?? new Set<string>();
-      seen.add(network);
-      byComparison.set(comparison, seen);
+    if (kind === "solve.started") {
+      const comparison = text(data.comparison);
+      if (comparison !== "") comparisonBySolve.set(text(data.solve), comparison);
+    } else if (kind === "solve.finished") {
+      const network = isString(data.network) ? data.network : "absent";
+      networks.push(network);
+      const comparison = comparisonBySolve.get(text(data.solve));
+      if (comparison !== undefined) {
+        const seen = byComparison.get(comparison) ?? new Set<string>();
+        seen.add(network);
+        byComparison.set(comparison, seen);
+      }
     }
   }
   const networkCounts = countBy(networks, (value) => value);
-  const recorded = networks.filter((value) => value !== "absent").length;
-  const mixedNetworkPresence = recorded > 0 && recorded < networks.length;
+  const recorded = networks.length - (networkCounts.absent ?? 0);
   const networkMismatches = [...byComparison].flatMap(([comparison, seen]) =>
     seen.size > 1 ? [`${comparison} (${[...seen].toSorted().join(" vs ")})`] : [],
   );
   return {
-    buildCheckIds,
-    buildHeldTasks,
-    buildInternalKinds,
-    examHarnessDigests,
-    examInternalKinds,
     networkCounts,
     networkMismatches,
-    mixedNetworkPresence,
+    mixedNetworkPresence: recorded > 0 && recorded < networks.length,
   };
+}
+
+function wallScanOf(events: readonly LogEvent[]): WallScan {
+  return { ...wallSignalsOf(events), ...networkParityOf(events) };
 }
 
 /** Lane 22 derived reader (`wall-audit.txt`). */
@@ -350,23 +353,24 @@ function pauseOvershoots(events: readonly LogEvent[]): string[] {
     if (event.kind !== "campaign.word" || event.data.word !== PAUSE) continue;
     const { after, base } = event.data;
     if (!isString(after) || after === "next" || !isNumber(base)) continue;
+    let kinds: readonly string[];
     try {
-      pauseKindsOf(after);
+      kinds = pauseKindsOf(after);
     } catch {
       continue;
     }
-    let reachedAt = -1;
-    for (let i = wordIndex + 1; i < events.length; i += 1) {
-      if (pausePointReached(events.slice(0, i + 1), after, base)) {
-        reachedAt = i;
-        break;
-      }
-    }
+    const affecting = new Set(kinds);
+    if (after === "reported") affecting.add("harness.promoted");
+    const reachedAt = events.findIndex(
+      ({ kind }, i) =>
+        i > wordIndex &&
+        (i === wordIndex + 1 || affecting.has(kind)) &&
+        pausePointReached(events.slice(0, i + 1), after, base),
+    );
     if (reachedAt === -1) continue;
-    for (let i = reachedAt + 1; i < events.length; i += 1) {
-      const later = events[i];
-      if (later?.kind === "campaign.opened") break;
-      if (later?.kind === "comparison.started") {
+    for (const later of events.slice(reachedAt + 1)) {
+      if (later.kind === "campaign.opened") break;
+      if (later.kind === "comparison.started") {
         overshoots.push(`${text(later.data.session) || "g-?"} after pause(${after})`);
       }
     }

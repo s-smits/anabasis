@@ -11,14 +11,14 @@
  * refuses it for good. Each may be given more than once, and each label is logged with the person's
  * `--note`.
  */
-import { contractHash } from "#src/kernel/contract.ts";
-import { append, type LogEvent, read } from "#src/kernel/log.ts";
-import { poolOf, releaseOrder } from "#src/kernel/reports.ts";
-import { SIZE, sizeLines } from "#src/kernel/size.ts";
-import { admissionsOf, packageGate, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { feasibleOf } from "#src/examiner/write.ts";
 import { textFiles } from "#src/kernel/answer-files.ts";
+import { contractHash } from "#src/kernel/contract.ts";
+import { append, type EventKind, type LogEvent, read } from "#src/kernel/log.ts";
+import { poolOf, releaseOrder } from "#src/kernel/reports.ts";
+import { SIZE, sizeLines } from "#src/kernel/size.ts";
+import { admissionsOf, packageGate, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { awaitingLines, openCampaign, PACK_OPTIONS, packNamed } from "./campaign.ts";
 import { exampleId } from "./exam.ts";
@@ -55,23 +55,29 @@ export async function prepareCommand(
   heldBack: (events: readonly LogEvent[]) => boolean = () => false,
 ): Promise<number> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
+  const practice = Number(values.practice);
+  if (!Number.isInteger(practice) || practice < 0) {
+    throw new Error(`--practice ${values.practice}: the practice tasks are a whole number`);
+  }
   const campaign = await openCampaign(packNamed(values));
   const { log, contract } = campaign;
 
-  const opened = read(log);
-  const known = taskStates(opened);
-  const fresh = ungated(campaign, opened);
+  let events = read(log);
+  const record = (kind: EventKind, data: Parameters<typeof append>[2]) =>
+    events.push(append(log, kind, data));
+  const known = taskStates(events);
+  const fresh = ungated(campaign, events);
   let refused = 0;
   for (const task of fresh) {
     const version = taskVersion(task);
     if (!known.has(version)) {
-      append(log, "task.proposed", { version, taskId: task.taskId, family: task.family });
+      record("task.proposed", { version, taskId: task.taskId, family: task.family });
     }
     const packaged = packageGate(contract, task);
-    append(log, "task.gate", { version, gate: 1, ...packaged });
+    record("task.gate", { version, gate: 1, ...packaged });
     if (packaged.outcome === "refused") {
       refused += 1;
-      append(log, "task.state", { version, state: "refused" });
+      record("task.state", { version, state: "refused" });
       console.log(`${task.taskId}: refused: ${packaged.reason}`);
     }
   }
@@ -82,51 +88,51 @@ export async function prepareCommand(
   }
 
   const packages = campaign.packages();
-  // Each held-out task an accept control of the drafted exam answers is rechecked for, under
-  // today's checks.
+  // Each held-out task an accept control of the drafted exam answers is rechecked under today's checks.
   const accepted = Map.groupBy(
-    (draftOf(opened)?.accept ?? []).map(({ task, answer, files }) => ({
+    (draftOf(events)?.accept ?? []).map(({ task, answer, files }) => ({
       taskId: exampleId(task),
       answer,
       files: textFiles(files ?? []),
     })),
     ({ taskId }) => taskId,
   );
-  const knownValid = poolOf(read(log)).feasible;
-  for (const version of taskSets(read(log)).held) {
+  let before = taskSets(events);
+  let currentPool = poolOf(events);
+  let awaited = false;
+  for (const version of before.held) {
     const task = packages.get(version);
-    if (task === undefined) continue;
-    const { taskId } = task;
-    if (knownValid.has(version) || !accepted.has(taskId)) continue;
-    for (const { answer, files } of accepted.get(taskId) ?? []) {
+    if (task === undefined || currentPool.feasible.has(version) || !accepted.has(task.taskId)) continue;
+    for (const { answer, files } of accepted.get(task.taskId) ?? []) {
+      awaited = true;
       const verdict = await campaign.verify(task, answer, undefined, files);
       if (verdict.kind !== "pass") continue;
-      append(log, "task.feasible", { version, ...feasibleOf(log, contract, verdict, answer, files) });
+      record("task.feasible", { version, ...feasibleOf(log, contract, verdict, answer, files) });
       console.log(
-        `${taskId}: an accepted answer passes today's verifier, so a valid answer to it is on record`,
+        `${task.taskId}: an accepted answer passes today's verifier, so a valid answer to it is on record`,
       );
       break;
     }
   }
+  if (awaited) {
+    events = read(log);
+    before = taskSets(events);
+    currentPool = poolOf(events);
+  }
 
   const labels = [
-    ...(values.keep ?? []).map((taskId) => ({ taskId, state: "held" })),
-    ...(values.infeasible ?? []).map((taskId) => ({ taskId, state: "refused" })),
+    ...(values.keep ?? []).map((taskId) => [taskId, "held", "feasible", "kept in the scored set"] as const),
+    ...(values.infeasible ?? []).map(
+      (taskId) => [taskId, "refused", "infeasible", "refused as infeasible"] as const,
+    ),
   ];
-  // The size it speaks of is the campaign's recorded one, where the command names none.
-  const recorded = recordedSetting(read(campaign.log));
+  const recorded = recordedSetting(events);
   const target = targetNamed(values.target ?? String(recorded?.target ?? SIZE.tasks));
-  const practice = Number(values.practice);
-  if (!Number.isInteger(practice) || practice < 0) {
-    throw new Error(`--practice ${values.practice}: the practice tasks are a whole number`);
-  }
-  const now = read(log);
-  const before = taskSets(now);
-  const pool = poolOf(now).practicePool;
-  const missing = labels.length > 0 || heldBack(now) ? 0 : Math.max(0, practice - before.released.length);
+  const pool = currentPool.practicePool;
+  const missing = labels.length > 0 || heldBack(events) ? 0 : Math.max(0, practice - before.released.length);
   const released = Math.min(missing, Math.floor(pool.length / 2));
-  for (const [version, why] of releaseOrder(now, pool, released, `${contractHash(contract)}:practice`)) {
-    append(log, "task.state", { version, state: "released" });
+  for (const [version, why] of releaseOrder(events, pool, released, `${contractHash(contract)}:practice`)) {
+    record("task.state", { version, state: "released" });
     console.log(`${packages.get(version)?.taskId ?? version}${why} released for practice, and never scored`);
   }
   if (released < missing) {
@@ -135,25 +141,22 @@ export async function prepareCommand(
     );
   }
 
-  // A person's labels of the tasks that went to them. Only a held-out task is labelled: a label
-  // on any other would return to the set, or refuse, a task no comparison has left out.
-  for (const { taskId, state } of labels) {
+  // Only a held-out task is labelled: a label on any other would return or refuse a task no comparison left out.
+  for (const [taskId, state, verdict, said] of labels) {
     const version = [...packages].find(([, task]) => task.taskId === taskId)?.[0];
-    if (version === undefined || !taskSets(read(log)).held.includes(version)) {
+    if (version === undefined || !taskSets(events).held.includes(version)) {
       throw new Error(`${taskId} is no held-out task of this campaign, and only one is labelled`);
     }
-    append(log, "task.state", {
+    record("task.state", {
       version,
       state,
-      reason: `a person read the task as ${state === "held" ? "feasible" : "infeasible"}${values.note === undefined ? "" : `: ${values.note}`}`,
+      reason: `a person read the task as ${verdict}${values.note === undefined ? "" : `: ${values.note}`}`,
     });
-    console.log(`${taskId}: ${state === "held" ? "kept in the scored set" : "refused as infeasible"}`);
+    console.log(`${taskId}: ${said}`);
   }
 
-  const events = read(log);
   const sets = taskSets(events);
   console.log(`${String(sets.held.length)} held out, ${String(sets.released.length)} released for practice`);
-  // What a comparison would score: the tasks the draw can take (`scoredSet`).
   const scored = Math.min(target, poolOf(events).scorable.length);
   for (const line of [...sizeLines(scored, Number(values.level)), ...awaitingLines(campaign)]) {
     console.log(line);

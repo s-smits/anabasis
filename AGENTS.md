@@ -16,7 +16,7 @@ Run skill scripts via `bun .claude/skills/<skill>/scripts/<name>.ts`. Current me
 2. **Replay before changing any decision rule.** Replay changes to admission, sampling, scoring, practice release or stopping over `data/runs/` (`promotion-tuner`, `system-path-simulation`) and report every flipped decision.
 3. **Subtract before adding.** Check existing owners (rule 12) and collapse seams before adding a flag, guard, branch, helper or prompt paragraph.
 4. **Verify every claim at the primary source.** Assert nothing about source, logs, remotes or the clock without reading it directly; correct inaccuracies immediately.
-5. **Stress-test your change.** Check the strongest objection, what refutes it, and which test or check fails before and passes after.
+5. **Stress-test your change.** Check the strongest objection, what refutes it, and which test or mutant fails before and passes after.
 
 Resolve routine ambiguity by choosing the most defensible option and stating what would overturn it. Pause only for missing permissions or a §3 decision, supplying analysis and a recommendation. Audits, reviews and plans stay read-only. Report the evidence rung (§9) and what remains open. Keep operator infrastructure (hosts, logins, accounts, scheduled jobs, full run names) out of tracked files, commits and PRs.
 
@@ -148,7 +148,7 @@ Comparisons pre-register terms before solving, run both harnesses afresh on the 
 
 ## 9. Status, evidence and claims
 
-Read `attribution-and-proof` before claiming improvement. Use exact evidence rungs instead of "built" or "done": `planned` < `present in source` (commit + live reader) < `proved without a model` (check, replay, rehearsal) < `exercised live` (real log event) < `shown in an outcome` (replicated on fresh solves), or `withdrawn`.
+Read `attribution-and-proof` before claiming improvement. Use exact evidence rungs instead of "built" or "done": `planned` < `present in source` (commit + live reader) < `proved without a model` (bounded check/property, replay, rehearsal) < `exercised live` (real log event) < `shown in an outcome` (replicated on fresh solves), or `withdrawn`.
 
 ```text
 log events > log fold > source & tests > printed line > PR text > agent's account
@@ -206,7 +206,15 @@ Label every PR with a category (`CATEGORIES`, `tools/runtime/land.ts`) and highe
 
 Read `tools/oxlint/HABITS.md` before writing code. Add zero strict-lint findings, never disable rules (`bun run not-slop` for single-site false positives; fix systematic ones in rule source), import `node:` only through `src/meta`, keep files ≤800 nonblank lines and functions ≤115 lines, and export only symbols imported elsewhere.
 
-**Tests** (`repository-practice`, `code-and-writing.md`): use bounded exhaustive checks, state-space exploration or seeded property tests for pure kernel/decision logic, and regression tests for real-run bugs, boundaries and refusals. Check mechanical mutants before deleting/replacing tests (`commit-r` step 8), assert observable behaviour not prose, verify exit codes directly, and treat missing-userns wall failures as real failures.
+### Tests
+
+State outcomes over an input space, not one-off examples (`code-and-writing.md`, `HABITS.md` §12.12). Prefer, in order:
+1. **Bounded exhaustive checks** against an independent count/rule (`compare-exhaustive`), ≤~10s via symmetry/canonical state before shrinking bounds.
+2. **State-space search** over reachable logs with cross-move invariants (`decide-explore`), or **seeded LCG generators** counting reached branches (`pairs-property`).
+3. **Shared perturbation walls** (`wri-walls`, `wall-practice`) and **pure invariant/view-model tables** (`runs-invariants`, `view-model`).
+4. **Named examples only** across process/file/provider boundaries, refusals/locks (nearest hostile case) or real-run regressions.
+
+Pin measured constants (`WEIGHTS`, `GAP_FLOOR`, `SIZE`, `PATIENCE`) once. Avoid report-wording or per-reader examples, per-rule lint fixtures (`rule-examples`), browser click-flow suites (view-model tables + smokes), module mocks, fixed sleeps and test-only exports; assert facts via live entry points. Delete/replace tests only against mechanical mutants of the owner (`commit-r` step 8). Verify full-change exit codes directly (unmasked by pipes); isolated passes are leads, and missing-userns wall failures are real failures.
 
 **Where a reader or helper lives** (search by behaviour first, delete dead guards/timers):
 

@@ -56,6 +56,8 @@ export const CAMPAIGNS = join(".ana", "d2");
 export const ARCHIVE = join("data", "runs");
 /** The archive's folder of this machine's own campaigns, and the word `runs move` names it by. */
 export const HERE = "here";
+/** Suffix stripped from a pack name to group prompt revisions under one domain family. */
+const PACK_REVISION = /(?:-anabasis)?(?:-v\d+[a-z0-9]*)?$/u;
 
 /** The harnesses campaigns hand over, one folder each, under the main worktree, which git ignores:
  *  `runs fresh` names a campaign's own there, and `close.ts` writes there by hand. */
@@ -98,6 +100,15 @@ export class Misused extends Error {}
 export function packOf(name: string): string {
   const fresh = name.indexOf("-fresh-");
   return fresh > 0 ? name.slice(0, fresh) : (name.split("-")[0] ?? name);
+}
+
+/** A campaign's domain family, derived from `packOf` by stripping trailing `-anabasis` or `-v<N>`
+ *  prompt-revision suffixes (so `jobstat-anabasis-v9` and `jobstat-anabasis-v6d` share `jobstat`,
+ *  while `buffer` stays `buffer`). */
+export function domainOf(name: string): string {
+  const pack = packOf(name);
+  const base = pack.replace(PACK_REVISION, "");
+  return base === "" ? pack : base;
 }
 /**
  * The script a process runs: Bun's first argument that is no option of its own, under `nice` where

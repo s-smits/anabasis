@@ -121,7 +121,7 @@ describe("the isolated-lane wall", () => {
   const ISOLATED = lanes.filter(({ isolated }) => isolated);
   const BLIND = lanes.filter(({ blind }) => blind);
   // Another lane's trigger, which only that lane and the open lanes' shared file may read.
-  const other: Trigger = { lane: 4, name: "RULINGS REFUSED", detail: "LEAD 3 of 3" };
+  const other: Trigger = { lane: 17, name: "RULINGS REFUSED", detail: "LEAD 3 of 3" };
 
   it("gives a lane that runs alone or grades blind the same prompt, whatever leads the others are given", () => {
     expect(ISOLATED.length).toBeGreaterThan(0);
@@ -154,7 +154,7 @@ describe("the isolated-lane wall", () => {
     // The nearest hostile case: an open lane is handed the leads, so the change is one it would show.
     expect(sharedPrompt(leading)).toContain("LEAD the Builder won");
     expect(sharedPrompt(leading)).toContain("LEAD 3 of 3");
-    expect(sharedPrompt(led(5))).toContain("REFUSED UNREAD (lane 4): LEAD ");
+    expect(sharedPrompt(led(20))).toContain("REFUSED UNREAD (lane 17): LEAD ");
   });
 
   it("gives an isolated lane the campaign's rows and its own trigger, and a blind lane neither", () => {

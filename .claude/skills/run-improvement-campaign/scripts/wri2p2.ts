@@ -381,7 +381,7 @@ function gatesOf(where: Where): Gate[] {
         return missing.length === 0
           ? null
           : [
-              `triggered isolated lane(s) (${missing.join(", ")}) run alone after the reports they wait on: build each where its \`Starts from\` paragraph opens it (lane 5 only where lane 4 left a check undecided) with${wri("lanes", ` --lanes ${missing.join(",")}`).slice(1)} and launch it alone, or record why not in ${at(DEVIATIONS)} as "| isolated | <reason> |"`,
+              `triggered isolated lane(s) (${missing.join(", ")}) run alone after the reports they wait on: build each where its \`Starts from\` paragraph opens it (isolated lane 20 only where lane 17 left a check undecided) with${wri("lanes", ` --lanes ${missing.join(",")}`).slice(1)} and launch it alone, or record why not in ${at(DEVIATIONS)} as "| isolated | <reason> |"`,
             ];
       }),
     ]),

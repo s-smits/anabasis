@@ -18,6 +18,7 @@ Examines one or more campaigns as equals from their append-only logs, producing 
 | Served-model degradations | `bun tools/runs/degradations.ts <name>` |
 | Sessions, parent harnesses & readings | `bun tools/wri/wri.ts read --log <log>` (row F, `CHAIN`) |
 | Side-by-side climb & `/tmp` crossings | `bun tools/wri/wri.ts climb --log <log>,<log>` |
+| Same-domain version backtracking (release-gap weighted) | `bun tools/wri/wri.ts backtrack (--log <log>[,<log>] \| --domain <domain>)` |
 | Progress by active hour (descriptive) | `bun tools/wri/wri.ts trajectory --log <log>,<log> [--grades <report>] [--hours 2,4,8]` |
 | Blind cross-campaign grading | `bun tools/wri/wri.ts packets --log <log>,<log> --out <dir> --graders 2` (then `--join`, `trajectory --grades`) |
 | Cross-investigation index & recurring vetted findings | `bun tools/wri/wri.ts index [--root <dir>]`; `bun tools/wri/wri.ts findings [--window 7]` |
@@ -32,18 +33,18 @@ Each `bun tools/wri/wri.ts <verb>` step gates on the previous one:
 | 0. Read | `read --log <log>` | Prints deterministic rows A–F, triggers and host-code digest |
 | 1. Start | `start --log <log>[,<log>...] --out <dir> [--snapshot]` | Writes `overview.md`, `shared-instructions.md` ([references/shared-instructions.template.md](references/shared-instructions.template.md)), `investigation.json` and `data/derived/`; checks out `anabasis-at-<commit>` if needed. Active logs need stop or `--snapshot`. Settle rows A–F before step 2 |
 | 2. Instruct | Edit `<dir>/shared-instructions.md` | Fill `## Orientation` (question & paths, never expected answer), `## The moved variable and prior state` (hypotheses + `predictions-<run>.md` with `id` and `lanes`), `## Already read by the primary` (or `"nothing"`). Keep `## Hard rules`; leave no blank `##` section |
-| 3. Build lanes | `lanes --out <dir> [--lanes 1-4,7] [--agents N] [--high K] [--regroup]` | Writes `lanes/NN-prompt.md`, `lanes/shared-<hash>.md`, `launch.json`. Opens triggered + 6 standing lanes (1, 2, 6, 7, 8, 14), balanced by `Importance:` (default 4 agents; ≤8 lanes/session); lists isolated lane 5 without building it |
-| 4. Launch & record | Run `launch.json` (`wri-lane` or `codex-gpt-swarm`) and `record --out <dir>` together | Lanes write `lanes/NN-report.md` (guarded by `tools/wri/lane-guard.ts`); `record` writes model-free reads into `record.md`. Check each session's model from its transcript |
-| 5. Collect (& lane 5) | `collect --out <dir>` | Validates `reportOf` (heading, `Verdict:`, balanced `Observation:`/`Cause:`/`Owner:`/`Reverses if:`/`Decision:`, `Seen in:`, valid owners, `Prediction <id>:`) and writes `reports.md`. If lane 4 leaves a check undecided, build `--lanes 5`, run alone (`launch-05.json`), and re-collect |
-| 6. Synthesise | `synthesis --out <dir>` | Renders `synthesis-prompt.md` ([references/synthesis.template.md](references/synthesis.template.md)); synthesis writes `synthesis.md` tagging each finding `<lane>.<n>` and a key from [references/standing-findings.md](references/standing-findings.md) or `new` |
+| 3. Build lanes | `lanes --out <dir> [--lanes 1-4,7] [--agents N] [--high K] [--regroup]` | Writes `lanes/NN-prompt.md`, `lanes/shared-<hash>.md`, `launch.json`. Opens triggered + 10 standing lanes (1, 2, 3, 4, 5, 6, 9, 11, 14, 16 in the importance-ranked 20-lane catalogue), balanced by `Importance:` (default 4 agents; ≤8 lanes/session); lists isolated lane 20 without building it |
+| 4. Launch & record | Run `launch.json` (`wri-lane` or `codex-gpt-swarm`) and `record --out <dir>` together | Lanes write `lanes/NN-report.md` (guarded by `tools/wri/lane-guard.ts`); `record` writes model-free cross-version and archive reads (`wri.ts backtrack --domain`, `trend.ts`, `table.ts`, `starter-reads.ts`, `replay.ts`, `findings`) into `record.md`. Check each session's model from its transcript |
+| 5. Collect (& lane 20) | `collect --out <dir>` | Validates `reportOf` (heading, `Verdict:`, balanced `Observation:`/`Cause:`/`Owner:`/`Reverses if:`/`Decision:`, `Seen in:`, valid owners, `Prediction <id>:`) and writes `reports.md`. If lane 17 leaves a check undecided, build `--lanes 20`, run alone (`launch-20.json`), and re-collect |
+| 6. Synthesise | `synthesis --out <dir>` | Renders `synthesis-prompt.md` ([references/synthesis.template.md](references/synthesis.template.md)) with same-domain version-gap history (`{history}`); synthesis writes `synthesis.md` starting with version-over-version progress and tagging each finding `<lane>.<n>` and a key from [references/standing-findings.md](references/standing-findings.md) or `new` |
 
-Other verbs: `derive (--log <log>... | --all) [--verbose] [--force] [--no-embed]` (`READERS`, `tools/wri/derive.ts`), `reader <name> --log <log>`, and `grade --log <log> (--task <id> --answer <file> | --solve <id> | --answers <dir>) [--set <path>=<json>]...` (lanes 1, 4, 5).
+Other verbs: `derive (--log <log>... | --all) [--verbose] [--force] [--no-embed]` (`READERS`, `tools/wri/derive.ts`), `reader <name> --log <log>`, `grade --log <log> (--task <id> --answer <file> | --solve <id> | --answers <dir>) [--set <path>=<json>]...` (lanes 4, 17, 20), and `bun tools/wri/rank-lanes.ts [--check]` (keeps `lanes.md` and `TRIGGERS` ordered strictly by descending `Importance:`).
 
 ## Hard rules
 
-- **Wall (no quotes)**: never quote task text, answers, hidden values, check messages, prompt text (except lane 14), traces or Referee prose (`test/wri-walls.test.ts`). Cite event kinds, ids, 8-char digests, counts, paths and lines. Never show WRI outputs to any seat.
+- **Wall (no quotes)**: never quote task text, answers, hidden values, check messages, prompt text (except lane 16), traces or Referee prose (`test/wri-walls.test.ts`). Cite event kinds, ids, 8-char digests, counts, paths and lines. Never show WRI outputs to any seat.
 - **Read-only**: never edit campaign folders, logs or verdicts, or launch solves/checks (except `wri.ts grade` where permitted).
-- **Isolation**: open every lane report with `# Lane <N>: <title>` and `Verdict: pending` before reading; never read another lane's prompt/report. Blind lane 8 runs first with no orientation/triggers; isolated lane 5 runs alone and freezes answer digests before reading checks or rulings.
+- **Isolation**: open every lane report with `# Lane <N>: <title>` and `Verdict: pending` before reading; never read another lane's prompt/report. Blind lane 1 runs first with no orientation/triggers; isolated lane 20 runs alone and freezes answer digests before reading checks or rulings.
 
 ## Vetting (`<dir>/vetting.md`, validated by `vettingFaults` in `tools/wri/findings.ts`)
 

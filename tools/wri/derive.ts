@@ -51,6 +51,7 @@ import { epochSpendLines } from "./epoch-spend.ts";
 import { executionRows } from "./execution.ts";
 import { indexOf, NO_TRACES } from "./folds.ts";
 import { gamingRows } from "./gaming.ts";
+import { WRI } from "./index.ts";
 import { launchLines } from "./launches.ts";
 import { nameRows } from "./names.ts";
 import { pairRows } from "./pairs.ts";
@@ -601,6 +602,12 @@ export const READERS: readonly Reader[] = [
     name: "chain",
     answers: "the harness lineage with outcomes withheld, for a blind review",
     args: (log) => [`${SKILLS}/harness-audit/scripts/harness-versions.ts`, log, "--blind"],
+  },
+  {
+    name: "history",
+    answers:
+      "same-domain version-over-version backtracking weighted by release gap (direct/near runs with stored syntheses & outside reads, mid cohort rollups, distant background)",
+    args: (log) => [WRI, "backtrack", "--log", log],
   },
 ];
 

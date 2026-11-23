@@ -5,7 +5,7 @@
  * instead of beginning with those reads. `wri.ts record --out <dir>` writes it, and an iteration's
  * `record` gate owes every read `recordOwed` still names (`wri2p2.ts`).
  */
-import { packOf } from "../runs/registry.ts";
+import { domainOf, packOf } from "../runs/registry.ts";
 import { WRI } from "./index.ts";
 
 /** One command's ending and what it printed. */
@@ -28,7 +28,9 @@ const READING = ".claude/skills/comparison-reading/scripts";
  */
 export function readsOf(names: readonly string[]): string[][] {
   const packs = [...new Set(names.map((name) => packOf(name)))];
+  const domains = [...new Set(names.map((name) => domainOf(name)))];
   return [
+    ...domains.map((domain) => [WRI, "backtrack", "--domain", domain]),
     ...packs.flatMap((pack) => [
       [`${TUNER}/trend.ts`, "--pack", pack],
       [`${TUNER}/table.ts`, "--name", pack, "--rows", "promotions"],

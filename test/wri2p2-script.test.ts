@@ -219,7 +219,7 @@ describe("WRI2P2 gate hygiene: isolated auto-skip, zero-PR plans, and opposed ca
     expect(nextOf(quiet, { root: join(root, "quiet") })[0]).toStartWith("step: synthesise");
 
     const loud = seedIteration(join(root, "loud"), {
-      overview: "FAILS ON ONE CHECK (lane 5): check-a refused 2 of 2\n",
+      overview: "FAILS ON ONE CHECK (lane 20): check-a refused 2 of 2\n",
     });
     expect(nextOf(loud, { root: join(root, "loud") })[0]).toStartWith("step: isolated");
   });

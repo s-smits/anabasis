@@ -30,6 +30,7 @@ import { READERS } from "../tools/wri/derive.ts";
 import { diagnosticRows } from "../tools/wri/diagnostics.ts";
 import { executionRows } from "../tools/wri/execution.ts";
 import { indexOf, TRIGGERS } from "../tools/wri/folds.ts";
+import { rankCatalogue } from "../tools/wri/rank-lanes.ts";
 import { gamingRows } from "../tools/wri/gaming.ts";
 import { reportIndex, reportOf, ROWS, sessionsOf } from "../tools/wri/investigation.ts";
 import { buildPackets } from "../tools/wri/packets.ts";
@@ -135,8 +136,13 @@ describe("each trigger, on its lane with its count", () => {
     expect(named.toSorted()).toEqual(fold.toSorted());
   });
 
-  it("numbers twenty-four lanes in order and packs each into exactly one session", () => {
-    expect(lanes.map(({ number }) => number)).toEqual(Array.from({ length: 24 }, (_, index) => index + 1));
+  it("numbers twenty lanes in descending importance order and matches rankCatalogue", () => {
+    expect(lanes.map(({ number }) => number)).toEqual(Array.from({ length: 20 }, (_, index) => index + 1));
+    for (let index = 1; index < lanes.length; index += 1) {
+      expect(lanes[index]?.importance ?? 0).toBeLessThanOrEqual(lanes[index - 1]?.importance ?? 1);
+    }
+    const foldsText = readFileSync(join(import.meta.dir, "..", "tools", "wri", "folds.ts"), "utf8");
+    expect(rankCatalogue(catalogueText(), foldsText).changed).toBe(false);
     for (const count of [1, 4, 7]) {
       expect(
         sessionsOf(lanes, count)
@@ -174,7 +180,15 @@ describe("a lane's report, as the synthesis collects it", () => {
       "could not read",
       [],
     ],
-    ["an omitted open lane", 4, `${head}\nVerdict: omitted, lane 13 covers it.\n`, one, "ok", "omitted", []],
+    [
+      "an omitted open lane",
+      3,
+      "# Lane 3: Rejection rulings and Referee calibration\nVerdict: omitted, lane 12 covers it.\n",
+      one,
+      "ok",
+      "omitted",
+      [],
+    ],
     [
       "a finding seen in every campaign",
       4,
@@ -233,8 +247,8 @@ describe("a lane's report, as the synthesis collects it", () => {
     ],
     [
       "an omitted isolated lane",
-      5,
-      "# Lane 5: x\nVerdict: omitted, covered.\n",
+      20,
+      "# Lane 20: x\nVerdict: omitted, covered.\n",
       one,
       "invalid",
       "omitted",
@@ -396,19 +410,23 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     ] as const;
     const fired = overview([...base, ...extra]).triggers;
     const byName = (name: keyof typeof TRIGGERS) => fired.filter((trigger) => trigger.name === name);
-    expect(byName("PASSES LABELLED")[0]).toMatchObject({ lane: 1 });
+    expect(byName("PASSES LABELLED")[0]).toMatchObject({ lane: TRIGGERS["PASSES LABELLED"] });
     expect(byName("PASSES LABELLED")[0]?.detail).toContain("wrong rate 50.0%");
-    expect(byName("DELIVERABLES CAPTURED")[0]).toMatchObject({ lane: 3 });
-    expect(byName("PRE-PROMOTION PRACTICE RELEASED")[0]).toMatchObject({ lane: 11 });
-    expect(byName("BUILT HARNESS FOR EXPORT")[0]).toMatchObject({ lane: 12 });
-    expect(byName("EXAMINER ZERO YIELD")[0]).toMatchObject({ lane: 13 });
+    expect(byName("DELIVERABLES CAPTURED")[0]).toMatchObject({ lane: TRIGGERS["DELIVERABLES CAPTURED"] });
+    expect(byName("PRE-PROMOTION PRACTICE RELEASED")[0]).toMatchObject({
+      lane: TRIGGERS["PRE-PROMOTION PRACTICE RELEASED"],
+    });
+    expect(byName("BUILT HARNESS FOR EXPORT")[0]).toMatchObject({
+      lane: TRIGGERS["BUILT HARNESS FOR EXPORT"],
+    });
+    expect(byName("EXAMINER ZERO YIELD")[0]).toMatchObject({ lane: TRIGGERS["EXAMINER ZERO YIELD"] });
     expect(byName("EXAMINER ZERO YIELD")[0]?.detail).toContain("x-2");
-    expect(byName("EXAMINER COMPACTED")[0]).toMatchObject({ lane: 15 });
-    expect(byName("SOLVER COMPACTED")[0]).toMatchObject({ lane: 15 });
-    expect(byName("INTERRUPTED HANDOVER")[0]).toMatchObject({ lane: 15 });
+    expect(byName("EXAMINER COMPACTED")[0]).toMatchObject({ lane: TRIGGERS["EXAMINER COMPACTED"] });
+    expect(byName("SOLVER COMPACTED")[0]).toMatchObject({ lane: TRIGGERS["SOLVER COMPACTED"] });
+    expect(byName("INTERRUPTED HANDOVER")[0]).toMatchObject({ lane: TRIGGERS["INTERRUPTED HANDOVER"] });
     expect(byName("INTERRUPTED HANDOVER")[0]?.detail).toContain("b-4 after b-3 (killed)");
-    expect(byName("UNDERPOWERED NO-STEPS")[0]).toMatchObject({ lane: 16 });
-    expect(byName("BILLING RESIDUAL")[0]).toMatchObject({ lane: 19 });
+    expect(byName("UNDERPOWERED NO-STEPS")[0]).toMatchObject({ lane: TRIGGERS["UNDERPOWERED NO-STEPS"] });
+    expect(byName("BILLING RESIDUAL")[0]).toMatchObject({ lane: TRIGGERS["BILLING RESIDUAL"] });
   });
 
   it("fires NO DELIVERABLES CAPTURED when a draft reads files, and ignores unused type declarations", () => {
@@ -420,7 +438,9 @@ describe("current-system WRI triggers and blind packet rendering", () => {
       },
       { at: AT, kind: "verdict", data: { solve: "s1", task: "v1", kind: "pass" } },
     ]).triggers;
-    expect(fired.find((trigger) => trigger.name === "NO DELIVERABLES CAPTURED")).toMatchObject({ lane: 3 });
+    expect(fired.find((trigger) => trigger.name === "NO DELIVERABLES CAPTURED")).toMatchObject({
+      lane: TRIGGERS["NO DELIVERABLES CAPTURED"],
+    });
     const silent = overview([
       {
         at: AT,
@@ -446,7 +466,7 @@ describe("current-system WRI triggers and blind packet rendering", () => {
       ] as const;
     }).flat();
     const trigger = overview(tasks).triggers.find((each) => each.name === "FAMILY CONCENTRATION");
-    expect(trigger).toMatchObject({ lane: 13 });
+    expect(trigger).toMatchObject({ lane: TRIGGERS["FAMILY CONCENTRATION"] });
     expect(trigger?.detail).toContain("6 of 8 held tasks across 2 families");
     expect(trigger?.detail).not.toContain("SECRET-FAMILY");
   });
@@ -462,10 +482,10 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     );
     expect(lines).toHaveLength(2);
     const prompt = readFileSync(join(dir, "grader-a.md"), "utf8");
-    expect(prompt).toContain("# Blind grades for lane 8");
+    expect(prompt).toContain("# Blind grades for lane 1");
     expect(prompt).toContain("**Reach** measures how difficult");
     expect(prompt).toContain("**Soundness** measures whether");
-    expect(prompt).toContain("08a-report.md");
+    expect(prompt).toContain("01a-report.md");
   });
 
   it("maps every ROWS entry to an existing derived reader", () => {
@@ -802,21 +822,23 @@ describe("current-system WRI triggers and blind packet rendering", () => {
 
     const fired = overview(compLog).triggers;
     const byName = (name: keyof typeof TRIGGERS) => fired.filter((trigger) => trigger.name === name);
-    expect(byName("DRAFT AUDITED")[0]).toMatchObject({ lane: 20 });
-    expect(byName("DRAFT AUDIT DEFECTS")[0]).toMatchObject({ lane: 20 });
+    expect(byName("DRAFT AUDITED")[0]).toMatchObject({ lane: TRIGGERS["DRAFT AUDITED"] });
+    expect(byName("DRAFT AUDIT DEFECTS")[0]).toMatchObject({ lane: TRIGGERS["DRAFT AUDIT DEFECTS"] });
     expect(byName("DRAFT AUDIT DEFECTS")[0]?.detail).toContain("unverified final pass");
-    expect(byName("DRAFT AUDIT REFUSED")[0]).toMatchObject({ lane: 20 });
-    expect(byName("DRAFT AUDIT SKIPPED")[0]).toMatchObject({ lane: 20 });
-    expect(byName("VERIFIER TOOL PROVENANCE")[0]).toMatchObject({ lane: 21 });
-    expect(byName("VERIFIER FAULTS")[0]).toMatchObject({ lane: 21 });
-    expect(byName("NETWORK PARITY MISMATCH")[0]).toMatchObject({ lane: 22 });
+    expect(byName("DRAFT AUDIT REFUSED")[0]).toMatchObject({ lane: TRIGGERS["DRAFT AUDIT REFUSED"] });
+    expect(byName("DRAFT AUDIT SKIPPED")[0]).toMatchObject({ lane: TRIGGERS["DRAFT AUDIT SKIPPED"] });
+    expect(byName("VERIFIER TOOL PROVENANCE")[0]).toMatchObject({
+      lane: TRIGGERS["VERIFIER TOOL PROVENANCE"],
+    });
+    expect(byName("VERIFIER FAULTS")[0]).toMatchObject({ lane: TRIGGERS["VERIFIER FAULTS"] });
+    expect(byName("NETWORK PARITY MISMATCH")[0]).toMatchObject({ lane: TRIGGERS["NETWORK PARITY MISMATCH"] });
     expect(byName("NETWORK PARITY MISMATCH")[0]?.detail).toContain("g-1 (unreached vs uv)");
-    expect(byName("WALL BOUNDARY SIGNAL")[0]).toMatchObject({ lane: 22 });
-    expect(byName("SEAT BOUNDARY ANOMALY")[0]).toMatchObject({ lane: 23 });
+    expect(byName("WALL BOUNDARY SIGNAL")[0]).toMatchObject({ lane: TRIGGERS["WALL BOUNDARY SIGNAL"] });
+    expect(byName("SEAT BOUNDARY ANOMALY")[0]).toMatchObject({ lane: TRIGGERS["SEAT BOUNDARY ANOMALY"] });
     expect(byName("SEAT BOUNDARY ANOMALY")[0]?.detail).toContain(
       "pause overshoot: g-2 after pause(reported)",
     );
-    expect(byName("ROLE YIELD SKEW")[0]).toMatchObject({ lane: 23 });
+    expect(byName("ROLE YIELD SKEW")[0]).toMatchObject({ lane: TRIGGERS["ROLE YIELD SKEW"] });
 
     const daText = draftAuditRows(compLog).join("\n");
     expect(daText).toContain("final-pass unverified defects: yes (1)");
@@ -1011,13 +1033,15 @@ describe("current-system WRI triggers and blind packet rendering", () => {
 
     const fired = overview(gamingLog).triggers;
     const byName = (name: keyof typeof TRIGGERS) => fired.filter((trigger) => trigger.name === name);
-    expect(byName("DRAFT RULE DROP")[0]).toMatchObject({ lane: 24 });
+    expect(byName("DRAFT RULE DROP")[0]).toMatchObject({ lane: TRIGGERS["DRAFT RULE DROP"] });
     expect(byName("DRAFT RULE DROP")[0]?.detail).toContain("checks [3->1]");
     expect(byName("DRAFT RULE DROP")[0]?.detail).toContain("rules [2->1]");
-    expect(byName("PRACTICE HILL-CLIMBING")[0]).toMatchObject({ lane: 24 });
+    expect(byName("PRACTICE HILL-CLIMBING")[0]).toMatchObject({ lane: TRIGGERS["PRACTICE HILL-CLIMBING"] });
     expect(byName("PRACTICE HILL-CLIMBING")[0]?.detail).toContain("max 6/task");
     expect(byName("PRACTICE HILL-CLIMBING")[0]?.detail).toContain("2 untried compared candidates");
-    expect(byName("SPECIFICATION GAMING LEAD")[0]).toMatchObject({ lane: 24 });
+    expect(byName("SPECIFICATION GAMING LEAD")[0]).toMatchObject({
+      lane: TRIGGERS["SPECIFICATION GAMING LEAD"],
+    });
     expect(byName("SPECIFICATION GAMING LEAD")[0]?.detail).toContain("ceremony-only");
     expect(byName("SPECIFICATION GAMING LEAD")[0]?.detail).toContain("identical-objective cluster");
 

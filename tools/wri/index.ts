@@ -71,6 +71,14 @@ interface PerRun {
   readonly conflicts: readonly string[];
 }
 
+/** Summary of one stored WRI synthesis mapped to a campaign, for cross-version backtracking. */
+export interface SynthesisRef {
+  readonly folder: string;
+  readonly date: string | null;
+  readonly summary: string;
+  readonly constraint: string | null;
+}
+
 /** Where the index reads beyond the investigations: the main checkout's `notes/`, the runs the
  *  registry finds, and the clock that dates the last fourteen days. */
 export interface Beyond {
@@ -528,6 +536,31 @@ function pullRows(root: string, entries: readonly Entry[], known: readonly strin
         held.map((fork) => `${fork.name}: ${carriedOf(fork, parents)}`).join("; "),
       ];
     });
+}
+
+/** Maps each campaign name to its newest stored synthesis under `root` (folder, file, and
+ *  one-line binding constraint), reusing `entryOf` without duplicating markdown scans. */
+export function synthesesByCampaign(root: string): Map<string, SynthesisRef> {
+  const found = new Map<string, SynthesisRef>();
+  if (!existsSync(root)) return found;
+  const folders = readdirSync(root)
+    .filter((name) => !name.startsWith(".") && isDirectory(join(root, name)))
+    .toSorted((one, other) => compareCodeUnits(other, one));
+  for (const folder of folders) {
+    const entry = entryOf(root, folder);
+    if (entry.summary === null) continue;
+    for (const campaign of entry.campaigns) {
+      if (!found.has(campaign)) {
+        found.set(campaign, {
+          folder: entry.folder,
+          date: entry.date,
+          summary: entry.summary,
+          constraint: entry.constraint,
+        });
+      }
+    }
+  }
+  return found;
 }
 
 /** The index of every investigation under `root`, every ledger there and in `notes`, and every

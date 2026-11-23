@@ -26,6 +26,7 @@ import {
   type Brief,
   decided,
   decides,
+  faultyOf,
   OBJECTIVE,
   objectiveOf,
   requiredToolsOf,
@@ -218,6 +219,12 @@ async function deliverableReading(
       verdict.kind === "pass" &&
       Math.abs(gainOver(rule, objectiveOf(verdict), objectiveOf(run.verdicts[0]))) < GAP_FLOOR,
   );
+  const faultyStrips = stripped.flatMap(({ run, verdict }) => {
+    const fault = faultyOf(verdict);
+    return fault !== null && fault.check !== OBJECTIVE.id
+      ? [`removing deliverable files caused check ${fault.check} to fault on ${run.taskId}: ${fault.reason}`]
+      : [];
+  });
   const partial = allValid
     ? []
     : stripped.flatMap(({ run, verdict }) =>
@@ -232,6 +239,7 @@ async function deliverableReading(
         ]
       : [],
     notes: [
+      ...faultyStrips,
       ...partial,
       ...(allValid && !blind
         ? [

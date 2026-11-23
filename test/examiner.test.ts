@@ -66,8 +66,9 @@ const SOLVER = "solver-canary-7f3a";
 const GOOD = { answer: "42", unit: "N" };
 /** What enters the exam, and by which tool, as each mode's shell is told it. */
 const ENTERS = {
-  draft: "a draft enters it through draft_exam alone",
-  write: "a task enters it through propose_tasks alone",
+  draft:
+    "A draft enters the exam through draft_exam, and .toolchain/ in your home is frozen beside it for declared verifier tools; nothing else in your home enters the exam",
+  write: "Nothing in your home enters the exam: a task enters it through propose_tasks alone",
 } as const;
 const TOOL_USE = { stopReason: "toolUse" } as const;
 /** A verifier that passes every answer whose `answer` is "42" and refuses any other. */
@@ -265,7 +266,7 @@ describe("a session of any mode", () => {
       const told = s.sent[0] ?? "";
       expect(told).toContain("but no repository or private data");
       expect(told).toMatch(/It has (no )?network access: a package index (was|could not be) reached/);
-      expect(told).toContain(`Nothing in your home enters the exam: ${ENTERS[mode]}.`);
+      expect(told).toContain(`${ENTERS[mode]}.`);
     }
   });
 });

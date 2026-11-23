@@ -8,6 +8,7 @@ import { authoredFaults } from "../src/kernel/acceptance.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { examinerSessions, solvesIn } from "../src/kernel/solves.ts";
 import { HOST_TOOLS_FILE, pinnedEngines } from "../src/kernel/verify.ts";
+import { TOOL_TREE_DIR } from "../src/meta/bundle-layout.ts";
 import { sha256OfFile } from "../src/meta/digest.ts";
 import {
   chmodSync,
@@ -511,19 +512,20 @@ describe("staging and offline reading", () => {
     expect(ok.read?.reading.notes).toEqual([HIDDEN_BLIND_NOTE]);
     const staged = stageExam(dir, hostEngined);
     // No shell wrappers are generated in `.toolchain/bin/`; provenance lives in `host-tools.json`.
-    expect(existsSync(join(staged.bundle, ".toolchain", "bin", "bash"))).toBe(false);
-    expect(existsSync(join(staged.bundle, ".toolchain", "bin", "python3"))).toBe(false);
+    expect(existsSync(join(staged.bundle, TOOL_TREE_DIR, "bin", "bash"))).toBe(false);
+    expect(existsSync(join(staged.bundle, TOOL_TREE_DIR, "bin", "python3"))).toBe(false);
     expect(
-      parseJsonAs<{ tools: string[] }>(
-        readFileSync(join(staged.bundle, ".toolchain", HOST_TOOLS_FILE), "utf8"),
+      parseJsonAs<{ origin: string; tools: string[] }>(
+        readFileSync(join(staged.bundle, TOOL_TREE_DIR, HOST_TOOLS_FILE), "utf8"),
       ),
     ).toEqual({
+      origin: "draft",
       tools: ["bash", "python3"],
     });
-    const pinned = pinnedEngines({ checks: staged.checks, tools: join(staged.bundle, ".toolchain") });
+    const pinned = pinnedEngines({ checks: staged.checks, tools: join(staged.bundle, TOOL_TREE_DIR) });
     expect(pinned.map((e) => e.name)).toEqual(["bash", "python3"]);
     for (const engine of pinned) {
-      expect(engine.path).not.toContain(".toolchain");
+      expect(engine.path).not.toContain(TOOL_TREE_DIR);
       expect(engine.sha256).toBe(sha256OfFile(realpathSync(engine.path)));
     }
 
@@ -569,11 +571,12 @@ describe("staging and offline reading", () => {
     expect(after?.sha256).not.toBe(before?.sha256);
 
     // Examiner-installed `.toolchain/` executables (and sibling files) freeze into the offline verifier cell
-    // ahead of host PATH, clear `authoredFaults`, refresh on retries, and run offline after `home` is deleted.
+    // ahead of host PATH, stay `author` under Rule 10 (`origin: "draft"`), refresh on retries, and run
+    // offline after `home` is deleted.
     const home = realpathSync(mkdtempSync(join(tmpdir(), "ana-draft-toolchain-")));
     const customDir = join(root, "custom-toolchain");
-    const binDir = join(home, ".toolchain", "bin");
-    const libDir = join(home, ".toolchain", "lib");
+    const binDir = join(home, TOOL_TREE_DIR, "bin");
+    const libDir = join(home, TOOL_TREE_DIR, "lib");
     mkdirSync(binDir, { recursive: true });
     mkdirSync(libDir, { recursive: true });
     writeFileSync(join(libDir, "factor.txt"), "5\n");
@@ -606,16 +609,61 @@ describe("staging and offline reading", () => {
     writeFileSync(join(libDir, "factor.txt"), "6\n");
     const customOk = await draftReading(customDir, customDraft, 2, home);
     expect(customOk.faults).toEqual([]);
-    expect(authoredFaults(customOk.read?.reading.checks ?? [], new Set())).toEqual([]);
+    // Rule 10: Examiner-installed tools cannot bypass operator admission (`authoredFaults` stays 1).
+    expect(authoredFaults(customOk.read?.reading.checks ?? [], new Set())).toHaveLength(1);
     rmSync(home, { recursive: true, force: true });
     // After `home` is gone, the frozen staged bundle still runs offline and pins the installed executable directly.
     const frozen = stageExam(customDir, customDraft);
-    expect(existsSync(join(frozen.bundle, ".toolchain", HOST_TOOLS_FILE))).toBe(false);
+    expect(
+      parseJsonAs<{ origin: string; tools: string[] }>(
+        readFileSync(join(frozen.bundle, ".toolchain", HOST_TOOLS_FILE), "utf8"),
+      ),
+    ).toEqual({ origin: "draft", tools: [] });
     const customPinned = pinnedEngines({ checks: frozen.checks, tools: join(frozen.bundle, ".toolchain") });
     expect(customPinned).toHaveLength(1);
     expect(customPinned[0]?.name).toBe("scale-engine");
+    expect(customPinned[0]?.external).toBe(false);
     expect(customPinned[0]?.sha256).toBe(sha256OfFile(customPinned[0]?.path ?? ""));
     expect((await draftReading(customDir, customDraft, 2)).faults).toEqual([]);
+
+    // Hostile `.toolchain/` shapes: broken symlink, symlinked `.toolchain`, and script naming `home` all fail cleanly.
+    const badHome = realpathSync(mkdtempSync(join(tmpdir(), "ana-draft-bad-toolchain-")));
+    mkdirSync(join(badHome, ".toolchain", "bin"), { recursive: true });
+    symlinkSync("/no/such/target", join(badHome, ".toolchain", "bin", "scale-engine"));
+    expect(() => stageExam(join(root, "broken-link"), customDraft, badHome)).toThrow("broken symlink");
+    rmSync(join(badHome, ".toolchain", "bin", "scale-engine"));
+    const namedScript = join(badHome, ".toolchain", "bin", "scale-engine");
+    writeFileSync(namedScript, `#!/bin/sh\ncat "${badHome}/x"\n`);
+    chmodSync(namedScript, 0o755);
+    expect(() => stageExam(join(root, "named-home"), customDraft, badHome)).toThrow("name your home");
+    rmSync(join(badHome, ".toolchain"), { recursive: true, force: true });
+    symlinkSync(root, join(badHome, ".toolchain"));
+    expect(() => stageExam(join(root, "symlink-tree"), customDraft, badHome)).toThrow("must be a directory");
+    rmSync(badHome, { recursive: true, force: true });
+
+    // Static evaluator scanner: regexes with quotes, strings inside `${...}`, and nested templates do not false-positive,
+    // while regex/template desyncs, bare Date()/Function(), indirect eval, process destructuring/optional chaining, and import() are caught.
+    for (const clean of [
+      `export const checks = { "check-product": (r) => /["']/.test("fetch()") || /\\/\\//.test(String(r.artifact.answer)) };\n`,
+      'export const checks = { "check-product": (r) => `${r.artifact.answer || "Date.now()"}`.length > 0 };\n',
+      'export const checks = { "check-product": () => `outer ${`inner Math.random()`}`.length > 0 };\n',
+    ]) {
+      expect(draftFaults({ ...SOUND, evaluator: clean })).toEqual([]);
+    }
+    for (const bypass of [
+      `export const checks = { "check-product": () => { const a = /'/; return Math.random() > 0 && "'".length > 0; } };\n`,
+      'export const checks = { "check-product": () => { const s = `${`}`}`; return Math.random() > 0; } };\n',
+      'export const checks = { "check-product": (r) => `${r.artifact.answer === "}" && Math.random()}`.length > 0 };\n',
+      `export const checks = { "check-product": () => Date().length > 0 };\n`,
+      `export const checks = { "check-product": () => new Date(...[]).getTime() > 0 };\n`,
+      `export const checks = { "check-product": () => Function("return true")() };\n`,
+      `export const checks = { "check-product": () => (0, eval)("true") };\n`,
+      `export const checks = { "check-product": () => Boolean(process?.env) };\n`,
+      `export const checks = { "check-product": () => { const { env } = process; return Boolean(env); } };\n`,
+      `export const checks = { "check-product": async () => Boolean(await import("node:fs")) };\n`,
+    ]) {
+      expect(draftFaults({ ...SOUND, evaluator: bypass }).length, bypass).toBeGreaterThan(0);
+    }
 
     // Undeclared tool invocation and missing host binary both fail cleanly.
     const undeclared = await draftReading(

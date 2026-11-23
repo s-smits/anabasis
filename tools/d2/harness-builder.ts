@@ -36,7 +36,7 @@ import { modelNamed, sweepOptions } from "../m0/stored-sweep.ts";
 import { draftCommand } from "../d1b/draft.ts";
 import { hostPython, nextRun, writeReceipt } from "../runs/receipt.ts";
 import { standing } from "../runs/registry.ts";
-import { campaignLog, openCampaign, packNamed, REPO, treeFault } from "./campaign.ts";
+import { campaignLog, LIMITS, openCampaign, packNamed, REPO, treeFault } from "./campaign.ts";
 import { awaitsOperator, type CampaignContext, campaignTools, releaseOwed } from "./campaign-actions.ts";
 import {
   comparisonOf,
@@ -60,7 +60,7 @@ import {
 } from "./campaign-terms.ts";
 import { checkpointCommand } from "./checkpoint.ts";
 import { closeCommand } from "./close.ts";
-import { gated as queued, HOST, waitCrashed } from "./host.ts";
+import { gated as queued, HOST, waitCrashed, waitPaused } from "./host.ts";
 import { type Campaign, solved } from "./round.ts";
 import { sessionCommand } from "./session.ts";
 import { type AskedSetting, firstRecord, keepSetting, recordedSetting, settingAsked } from "./setting.ts";
@@ -385,6 +385,30 @@ function pinFault(manifest: JsonValue, version: string): string | null {
     : `${capturedJsonStringify(pins)} must pin the executing Bun ${version}`;
 }
 
+/** Run one host move (`make`), recovering provider waits/crashes via `goesOn` or logging environment end. */
+async function runMade(decided: Made, turn: Turn, log: string, from: number): Promise<boolean> {
+  try {
+    await make(decided, turn, log);
+    // Inside the `try`, so a move that changed nothing ends the campaign as any other move that
+    // threw does, rather than the process exiting here with no ending on record.
+    if (read(log).length <= from + 1) {
+      throw new Error(`the move changed nothing in ${log}: made again it would change nothing again`);
+    }
+    return true;
+  } catch (error) {
+    // A move the provider's limit ended, or whose session crashed, is waited out and the campaign
+    // goes on: it counts against `--moves` as the move it was, since it is on record as one, and
+    // the table's crash rule ends the campaign where sessions crash in a row.
+    if (await goesOn(log, from, error, turn.seats.host)) return false;
+    // Any other move that began and threw is the environment's ending, and the campaign goes on
+    // from its log when it is run again. One refused before it began leaves the log alone.
+    if (read(log).length > from) {
+      append(log, ENDED, { ending: "environment", why: errorMessage(error), move: decided.move });
+    }
+    throw error;
+  }
+}
+
 /**
  * `bun tools/d2/harness-builder.ts`, and under a rehearsal's seats the same loop with a script in
  * each model seat. It returns the last thing move 7 said: the campaign's ending, or the move that
@@ -417,13 +441,15 @@ export async function harnessBuilder(
   let campaign: Campaign | null = null;
   const setting = settingOf(log, given);
   let opening = await served(opened(log, given, paid), paid, given.solver);
+  // Capture `began` before writing the launch receipt so a pre-armed `runs pause` that waits for
+  // this launch's receipt lands strictly after `began` for both the outer loop and `queued`.
+  const began = read(log).length;
   if (paid === "paid" && !given["dry-run"]) keepReceipt(log, args);
   if (!given["dry-run"] && existsSync(log)) await endCut(log);
   // Every move is made with the terms the opening keeps: this command's, and the record's for
   // each it does not name.
   const values: Values = { ...given, ...opening.terms };
-  const began = read(log).length;
-  const held = queued({ ...seats, loaded: values.loaded }, log);
+  const held = queued({ ...seats, loaded: values.loaded }, log, began);
   /** The move this run made last: an exam read here printed its faults as it was read. */
   let last: Decided["move"] | null = null;
   for (let made = 0; ; ) {
@@ -452,17 +478,6 @@ export async function harnessBuilder(
     console.log(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,
     );
-    // A Builder or an Examiner session the table names is the conversation's to make.
-    if (decided.move === "build" || decided.move === "examine") {
-      if (values["dry-run"] || made >= most) return decided;
-      campaign ??= await openCampaign(packNamed(values));
-      const turns = { maxMoves: most, used: made, failed: null, began };
-      const context: CampaignContext = { log, values, opening, seats, held, campaign, paid, ...turns };
-      const left = await lead(context, decided);
-      [made, { opening }] = [context.used, context];
-      if (left !== null) return left;
-      continue;
-    }
     if (decided.move === "end") {
       const faults = examLines(events, values, decided.ending, last === "accept" ? "printed" : "unprinted");
       for (const line of faults) console.log(line);
@@ -474,34 +489,34 @@ export async function harnessBuilder(
       return decided;
     }
     if (values["dry-run"] || made >= most) return decided;
+    // Hold at an active or reached boundary pause before opening a new conversation or host move
+    // (promotions still land so `unpromotedStep` clears before `runs pause` stops the run).
+    if (
+      decided.move !== "promote" &&
+      (await waitPaused(log, began, campaign?.limits.wallSeconds ?? LIMITS.wallSeconds, {
+        host: seats.host,
+      }))
+    ) {
+      continue;
+    }
+    // A Builder or an Examiner session the table names is the conversation's to make.
+    if (decided.move === "build" || decided.move === "examine") {
+      campaign ??= await openCampaign(packNamed(values));
+      const turns = { maxMoves: most, used: made, failed: null, began };
+      const context: CampaignContext = { log, values, opening, seats, held, campaign, paid, ...turns };
+      const left = await lead(context, decided);
+      [made, { opening }] = [context.used, context];
+      if (left !== null) return left;
+      continue;
+    }
     if (decided.move === "promote" && opening.attended) {
       console.log(awaitsOperator(name, decided.harness));
       return decided;
     }
-    try {
-      await make(decided, turn, log);
-      // Inside the `try`, so a move that changed nothing ends the campaign as any other move that
-      // threw does, rather than the process exiting here with no ending on record.
-      if (read(log).length <= from + 1) {
-        throw new Error(`the move changed nothing in ${log}: made again it would change nothing again`);
-      }
-    } catch (error) {
-      // A move the provider's limit ended, or whose session crashed, is waited out and the campaign
-      // goes on: it counts against `--moves` as the move it was, since it is on record as one, and
-      // the table's crash rule ends the campaign where sessions crash in a row.
-      if (await goesOn(log, from, error, seats.host)) {
-        made += 1;
-        continue;
-      }
-      // Any other move that began and threw is the environment's ending, and the campaign goes on
-      // from its log when it is run again. One refused before it began leaves the log alone.
-      if (read(log).length > from) {
-        append(log, ENDED, { ending: "environment", why: errorMessage(error), move: decided.move });
-      }
-      throw error;
-    }
-    last = decided.move;
+    const completed = await runMade(decided, turn, log, from);
     made += 1;
+    if (!completed) continue;
+    last = decided.move;
     await waitCrashed(log, seats.host);
   }
 }

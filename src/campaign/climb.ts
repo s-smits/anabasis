@@ -280,15 +280,11 @@ function againstStarter(
   };
 }
 
-/** Whether an A/A control had any validity flips on `side` (`validity`) or every task on `side`
+/** Whether an A/A control had any validity flips on the reference (`validity`) or every task
  *  was all-valid or all-invalid so only the objective could separate mirrored halves (`objective`). */
-function measureSliceOf(
-  data: JsonObject,
-  noise?: JsonObject,
-  side: "old" | "fresh" = "old",
-): "validity" | "objective" {
+function measureSliceOf(data: JsonObject, noise?: JsonObject): "validity" | "objective" {
   if (isNumber(noise?.flips)) return noise.flips > 0 ? "validity" : "objective";
-  const counts = asRecord(data.valid)?.[side];
+  const counts = asRecord(data.valid)?.old;
   return Array.isArray(counts) && counts.slice(1, -1).some((count) => isNumber(count) && count > 0)
     ? "validity"
     : "objective";
@@ -686,14 +682,7 @@ function starterNoiseLine(events: readonly LogEvent[]): string {
     const pairs = pairsReported(events, report, "fresh");
     return pairs.length === 0
       ? []
-      : [
-          controlOf(
-            report.index,
-            levelOf(report),
-            pairs.map(differenceOf),
-            measureSliceOf(report.data, undefined, "fresh"),
-          ),
-        ];
+      : [controlOf(report.index, levelOf(report), pairs.map(differenceOf), measureSliceOf(report.data))];
   });
   const head = "- Starter against itself:";
   if (read.length === 0) {

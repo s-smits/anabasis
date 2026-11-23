@@ -187,6 +187,7 @@ export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promi
       if (problem !== null) {
         append(target.log, "referee.draft.refused", {
           session: target.session,
+          ...keyIfDefined("pass", target.pass),
           ruling: args.verdict,
           why: problem,
           reason: boundText(args.summary, REASON_DISPLAY_BYTES).shown,

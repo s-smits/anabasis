@@ -127,7 +127,7 @@ export async function exportForClaudeCode(
   const note = [
     "# How this harness reaches you",
     "",
-    "The guide below was written for another runner, where a task came as `input.json`, the answer went into `answer.json` and a `submit` tool sent it. None of those is here: the task prompt is the whole task and says where the deliverable goes, and the files you leave are the answer, whatever the guide says of those three. Whatever it says of a limit on turns or time, of checking or submitting an answer, or of how an answer is scored also belongs to that runner and does not hold here.",
+    "The guide below was written for another runner, where a task came as `public/task.json`, the answer went into `answer.json` and a `submit` tool sent it. None of those is here: the task prompt is the whole task and says where the deliverable goes, and the files you leave are the answer, whatever the guide says of those three. Whatever it says of a limit on turns or time, of checking or submitting an answer, or of how an answer is scored also belongs to that runner and does not hold here.",
     ...(programs.length === 0
       ? []
       : [

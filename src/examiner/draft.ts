@@ -98,15 +98,56 @@ const EXAMPLES = 3;
  *  transpiled output first, and `Bun.Transpiler.scan` checks imports, syntax and exports. */
 const EVALUATOR_TRANSPILER = new Bun.Transpiler({ loader: "ts" });
 const OUTSIDE = [
-  [/\brequire\s*\(/, "an import"],
-  [/\b(?:Bun|process)\s*(?:\.|\[)/, "the runtime's own objects"],
-  [/\bfetch\s*\(/, "the network"],
+  [/\brequire\s*\(|\bimport\s*\(/u, "an import"],
   [
-    /\bMath\s*\.\s*random\b|\bDate\s*\.\s*now\b|\bnew\s+Date\b(?!\s*\(\s*[^)\s])|\bperformance\s*\.\s*now\b|\bcrypto\s*\.\s*(?:randomUUID|getRandomValues|randomBytes)\b/,
+    /(?<!\.)\b(?:Bun|process)\s*(?:\??\.|\[)|\b(?:const|let|var)\s*\{[^}]*\}\s*=\s*(?:Bun|process)\b/u,
+    "the runtime's own objects",
+  ],
+  [/\bfetch\s*\(/u, "the network"],
+  [
+    /\bMath\s*\.\s*random\b|\bDate\s*\.\s*now\b|\bnew\s+Date\b(?!\s*\(\s*[^)\s.])|(?<!\bnew\s+|\.)\bDate\s*\(\s*\)|\bperformance\s*\.\s*now\b|\bcrypto\s*\.\s*(?:randomUUID|getRandomValues|randomBytes)\b/u,
     "a random number or the clock",
   ],
-  [/\beval\s*\(|\bnew\s+Function\b/, "dynamic code evaluation"],
+  [/(?<!\.)\beval\s*\(|\(\s*0\s*,\s*eval\s*\)|(?<!\.)\bFunction\s*\(/u, "dynamic code evaluation"],
 ] as const;
+/** Keywords and punctuation after which `/` begins a JS regex literal rather than division. */
+const REGEX_PREV_KEYWORDS = new Set([
+  "return",
+  "case",
+  "throw",
+  "in",
+  "of",
+  "typeof",
+  "void",
+  "delete",
+  "await",
+  "yield",
+  "new",
+  "else",
+  "do",
+]);
+const REGEX_PREV_PUNCT = new Set([
+  "",
+  "(",
+  "[",
+  "{",
+  ",",
+  ";",
+  ":",
+  "=",
+  "!",
+  "&",
+  "|",
+  "?",
+  "+",
+  "-",
+  "*",
+  "%",
+  "^",
+  "~",
+  "<",
+  ">",
+]);
 const TEXT_FILE = Type.Object({ path: Type.String({ minLength: 1 }), text: Type.String() });
 /** Files beside an answer, as a control or a try gives them (`ControlFile`). */
 export const TEXT_FILES = Type.Optional(
@@ -235,7 +276,7 @@ const SYSTEM = [
   `A rule states a domain property every valid answer has, which a check decides from its argument: a coupled bound that holds, a quantity that is conserved, an equilibrium or state the field's own engine reaches, or a behavioural test the answer passes. The host already enforces \`answer_format\` JSON Schema (types, required keys, enums, structural bounds) before checks run, and a capable solver already satisfies syntax, compilation, file presence, catalogue membership and simple distinctness on its own; put structural constraints in \`answer_format\` and focus rules and checks on coupled domain invariants, competing limits and executable behaviour while keeping surface formatting (headings, ordering, equivalent notations) lenient unless the domain standard fixes it. Give each rule its source: the standard, specification, reference manual or textbook that defines the property, named precisely enough to look up, and one that states the limit as your rule does; a nominal or typical value is no limit. ${UNHELD} Name the standard rather than restating its tables, equations or working, which the solver can look up, and leave the way to the property to the solver. A rule, a convention or a task's input that states the procedure, its steps or the numbers it needs hands the solver the whole method, and every task becomes running it once; so does a rule met by matching a shape the scope spells out or by writing one exact text.`,
   "The scope bounds every task written later: a size it fixes is the ceiling on how hard a task can be made, and a class of problem it leaves out is one no task can pose. Draft a scope under which tasks can be written at every grade this field reaches, with the effects that decide answers near its limits. It names the classes of problem a task may pose, never a list of the faults tasks plant, and never says that an effect it leaves unnamed is absent: the solver reads the scope, and a list of plants turns finding a fault into matching one.",
   "The operator's prompt outranks your choice of rules. Every requirement it names, such as a limit, a quantity to meet or an analysis an answer has to pass, stays in the exam at the strength the prompt states, as a rule with its check, and a quantity it asks to minimise or maximise is the objective. Where no check can decide such a requirement from its argument alone, such as a step of the work, name it in the scope as not measured, and do not check a weaker property under its name. The same holds for the objective: a quantity declared because the prompt's own cannot be computed is a stand-in, so the scope names the prompt's quantity as not measured and the stand-in as what is measured in its place, and a step won on it measures the stand-in alone.",
-  `Write one check for each rule, and no other. The check program is one TypeScript module that exports \`checks\`, an object with a function under each check id. A function takes \`(request, runtime)\` and returns a boolean, or a promise of one: \`request.publicTask\` is \`{ taskId, family, publicInput }\`, \`request.artifact\` is the answer, and \`request.hidden\` is the task's hidden values. It runs offline in a closed cell and imports nothing, so it computes from its argument alone, and the same answer always gets the same verdict. Where a check or the objective needs an installed program or domain engine (such as \`python3\`, \`bash\`, a compiler, a simulator, or a Python/domain package you install yourself), declare each program name in its \`tools\` array (name any domain engine itself alongside a wrapper shell so it is pinned) and run it via \`await runtime.tools.run({ toolId, args, files, stdin })\`, which returns \`{ nonResult, exitCode, stdout, stderr }\` inside the same offline cell. Anything you install under \`.toolchain/\` in your home (with executable entrypoints in \`.toolchain/bin/\` locating sibling files via \`$(dirname "$0")\` so they stay relocatable) is frozen with the draft into the verifier cell and resolved ahead of host \`PATH\` binaries. A check that runs longer than ${String(PER_CHECK_MS / 60_000)} minutes is at fault, which drops the task as the check's defect. It returns true where the answer keeps its rule and false only where it breaks it: an answer that breaks another rule is that rule's check's to refuse, and where its own computation cannot reach a verdict on an answer the format allows—such as a solver that does not converge, an unexpected \`NaN\`, or a missing lookup entry—it throws rather than catching and returning \`false\` or \`0\`, dropping the task as the check's defect instead of misscoring the answer. It holds its rule's stated bounds without relaxing them—so a quantity a rule calls zero or absent refuses any non-zero amount—while allowing a small floating-point arithmetic epsilon (e.g. 1e-9) on sums or products of decimal inputs so IEEE-754 rounding never rejects an exact boundary value. It verifies the property its rule states, must be right on a task nobody has answered, and never compares the answer with an answer you worked out. A check that recomputes the one value its rule allows leaves each task one valid answer.`,
+  `Write one check for each rule, and no other. The check program is one TypeScript module that exports \`checks\`, an object with a function under each check id. A function takes \`(request, runtime)\` and returns a boolean, or a promise of one: \`request.publicTask\` is \`{ taskId, family, publicInput }\`, \`request.artifact\` is the answer, and \`request.hidden\` is the task's hidden values. It runs offline in a closed cell and imports nothing, so it computes from its argument alone, and the same answer always gets the same verdict. Where a check or the objective needs an installed program or domain engine (such as \`python3\` with any packages already installed in your shell's environment, \`bash\`, a compiler, a simulator, or a package you install yourself), declare each program name in its \`tools\` array and run it via \`await runtime.tools.run({ toolId, args, files, stdin })\`, which returns \`{ nonResult, exitCode, stdout, stderr }\` inside the same offline cell. Anything you install under \`.toolchain/\` in your home (using \`uv\` venvs or launchers locating sibling files via \`$(dirname "$0")\`, with no hardcoded home paths) is frozen with the draft into the verifier cell and resolved ahead of host \`PATH\` binaries. A check that runs longer than ${String(PER_CHECK_MS / 60_000)} minutes is at fault, which drops the task as the check's defect. It returns true where the answer keeps its rule and false only where it breaks it: an answer that breaks another rule is that rule's check's to refuse, and where its own computation cannot reach a verdict on an answer the format allows—such as a solver that does not converge, an unexpected \`NaN\`, or a missing lookup entry—it throws rather than catching and returning \`false\` or \`0\`, dropping the task as the check's defect instead of misscoring the answer. It holds its rule's stated bounds without relaxing them—so a quantity a rule calls zero or absent refuses any non-zero amount—while allowing a small floating-point arithmetic epsilon (e.g. 1e-9) on sums or products of decimal inputs so IEEE-754 rounding never rejects an exact boundary value. It verifies the property its rule states, must be right on a task nobody has answered, and never compares the answer with an answer you worked out. A check that recomputes the one value its rule allows leaves each task one valid answer.`,
   `Give at least ${plural(EXAMPLES, "example task")}, different in what they ask and not only in their numbers. Either every task carries hidden values or none does. For each example give one accept control: an answer that keeps every rule. You choose the task, so you can start from an answer and derive the task from it; where the exam declares an objective, an example leaves room on it only where the standard method's answer measures worse than that control by at least ${FLOOR}. For each check give at least one reject control: an answer to an example that follows the answer format, breaks that check's rule, and names the check. The smallest answer the format allows, such as empty strings and empty lists, has to be rejected on every task: where it would pass, the format or the rules ask too little.`,
   "draft_exam validates the whole draft and returns any faults; a fault-free draft becomes the campaign's fixed exam.",
 ].join("\n\n");
@@ -320,13 +361,44 @@ function controlFaults(draft: Draft): string[] {
   ];
 }
 
-/** Strip comments and quoted/template string chunks (keeping `${...}` code) from transpiled JS. */
-function codeOnly(source: string): string {
-  const parts: string[] = [];
-  let index = 0;
+/** Advance past a JS regex literal starting after its opening `/`, skipping `[...]` classes and flags. */
+function scanRegex(source: string, start: number): number {
+  let index = start;
+  let inClass = false;
+  while (index < source.length) {
+    const cur = source[index];
+    if (cur === "\\") {
+      index += 2;
+      continue;
+    }
+    if (cur === "[") inClass = true;
+    else if (cur === "]") inClass = false;
+    else if (cur === "/" && !inClass) {
+      index += 1;
+      while (index < source.length && /[a-z]/iu.test(source[index] ?? "")) index += 1;
+      return index;
+    } else if (cur === "\n") {
+      return index;
+    }
+    index += 1;
+  }
+  return index;
+}
+
+/** Whether `/` at the current position starts a regex literal given the preceding significant token. */
+function canStartRegex(prevToken: string): boolean {
+  return REGEX_PREV_PUNCT.has(prevToken) || REGEX_PREV_KEYWORDS.has(prevToken);
+}
+
+/** Strip comments, strings, regex literals and template text (recursing into `${...}`) from JS.
+ *  Under `"template"`, stops after consuming the unmatched closing `}` of `${...}`. */
+function stripCode(source: string, start: number, scope: "whole" | "template", parts: string[]): number {
+  let index = start;
+  let braceDepth = 0;
+  let prevToken = "";
   const end = source.length;
   while (index < end) {
-    const ch = source[index];
+    const ch = source[index] ?? "";
     const next = source[index + 1];
     if (ch === "/" && next === "/") {
       const eol = source.indexOf("\n", index + 2);
@@ -340,32 +412,51 @@ function codeOnly(source: string): string {
       parts.push(" ");
       continue;
     }
+    if (ch === "/" && canStartRegex(prevToken)) {
+      index = scanRegex(source, index + 1);
+      parts.push('""');
+      prevToken = '""';
+      continue;
+    }
     if (ch === '"' || ch === "'") {
       index += 1;
-      while (index < end && source[index] !== ch) {
-        index += source[index] === "\\" ? 2 : 1;
-      }
+      while (index < end && source[index] !== ch) index += source[index] === "\\" ? 2 : 1;
       index += 1;
       parts.push('""');
+      prevToken = '""';
       continue;
     }
     if (ch === "`") {
-      index += 1;
       parts.push('""');
-      index = scanTemplate(source, index, parts);
+      index = scanTemplate(source, index + 1, parts);
+      prevToken = '""';
       continue;
     }
-    parts.push(ch ?? "");
+    if (ch === "{") braceDepth += 1;
+    else if (ch === "}") {
+      if (scope === "template" && braceDepth === 0) return index + 1;
+      braceDepth = Math.max(0, braceDepth - 1);
+    }
+    if (/[A-Za-z_$]/u.test(ch)) {
+      let wordEnd = index + 1;
+      while (wordEnd < end && /[A-Za-z0-9_$]/u.test(source[wordEnd] ?? "")) wordEnd += 1;
+      const word = source.slice(index, wordEnd);
+      parts.push(word);
+      prevToken = word;
+      index = wordEnd;
+      continue;
+    }
+    parts.push(ch);
+    if (!/\s/u.test(ch)) prevToken = ch;
     index += 1;
   }
-  return parts.join("");
+  return index;
 }
 
-/** Advance past a template literal starting after its opening backtick, preserving `${...}` code. */
+/** Advance past a template literal starting after its opening backtick, lexing `${...}` recursively. */
 function scanTemplate(source: string, start: number, parts: string[]): number {
   let index = start;
-  const end = source.length;
-  while (index < end && source[index] !== "`") {
+  while (index < source.length && source[index] !== "`") {
     if (source[index] === "\\") {
       index += 2;
       continue;
@@ -374,16 +465,8 @@ function scanTemplate(source: string, start: number, parts: string[]): number {
       index += 1;
       continue;
     }
-    index += 2;
     parts.push(" ");
-    let depth = 1;
-    while (index < end && depth > 0) {
-      const cur = source[index];
-      if (cur === "{") depth += 1;
-      else if (cur === "}") depth -= 1;
-      if (depth > 0) parts.push(cur ?? "");
-      index += 1;
-    }
+    index = stripCode(source, index + 2, "template", parts);
     parts.push(" ");
   }
   return index + 1;
@@ -399,7 +482,9 @@ function evaluatorFaults(draft: Draft): string[] {
   } catch (error) {
     return [`the check program did not compile: ${errorMessage(error)}`];
   }
-  const code = codeOnly(transformed);
+  const parts: string[] = [];
+  stripCode(transformed, 0, "whole", parts);
+  const code = parts.join("");
   const reached = [
     ...(scanned.imports.length > 0 ? ["an import"] : []),
     ...OUTSIDE.flatMap(([spelled, what]) => (spelled.test(code) ? [what] : [])),
@@ -584,7 +669,7 @@ export function drafting(
       prompt: terms.prompt,
     },
     tools: [put],
-    enters: `a ${kind} enters it through ${put.name} alone`,
+    enters: `A ${kind} enters the exam through ${put.name}, and .toolchain/ in your home is frozen beside it for declared verifier tools; nothing else in your home enters the exam`,
     nudge: `Put a ${kind} with ${put.name}`,
     finish:
       "End the session without an exam, only where none can be drafted for the prompt. Say in one or two sentences why.",

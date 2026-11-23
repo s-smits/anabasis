@@ -642,7 +642,7 @@ export function writing(
       ...(verify === null ? [] : [tryTool(desk, verify)]),
       ...(probe === null ? [] : [tryReferenceTool(desk, within)]),
     ],
-    enters: "a task enters it through propose_tasks alone",
+    enters: "Nothing in your home enters the exam: a task enters it through propose_tasks alone",
     nudge: "Propose further tasks",
     finish: "End the session, with a sentence or two for the log on what you wrote.",
     // A session with no proposal left is not asked for more, which would spend turns that could

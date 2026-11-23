@@ -224,7 +224,8 @@ async function solve(ask: Asked) {
     submitTool(said),
   ];
   const programs = installedPrograms(harness.toolTree);
-  const guide = harness.guide === null ? null : portableGuide(harness.guide);
+  const stripped = harness.guide === null ? "" : portableGuide(harness.guide);
+  const guide = stripped.trim() === "" ? null : stripped;
   const prompt = [
     duty(ask, guide),
     `Working directory: ${cwd}`,

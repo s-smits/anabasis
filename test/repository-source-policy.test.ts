@@ -88,6 +88,7 @@ describe("source policy", () => {
 
   it("treats nested /test/ trees as helpers rather than production source", () => {
     expect(production("packages/ui/test/smoke.test.ts")).toBe(false);
+    expect(production("vendor/foo/test/x.ts")).toBe(true);
     expect(production("packages/ui/src/main.ts")).toBe(true);
     expect(
       breaches(["packages/ui/test/smoke.test.ts", "packages/ui/src/main.ts"], () => ["test/helpers/a.ts"]),

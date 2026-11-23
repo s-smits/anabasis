@@ -3,9 +3,10 @@
  * (`campaign.word`, written by `tools/d2/word.ts` and `tools/runs/manage.ts`).
  */
 import type { LogEvent } from "../kernel/log.ts";
+import { lastReports, referenceOf } from "../kernel/reports.ts";
 import { SEATS, traceKind } from "../kernel/trace.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";
-import { epochsOf } from "./climb.ts";
+import { epochsOf, starterIn } from "./climb.ts";
 
 /** The word `runs pause` leaves to let the campaign's open solves finish or hold at an armed
  *  boundary: no further solve or campaign action starts once it holds (`paused`, read by `queued`,
@@ -58,17 +59,38 @@ export function pauseKindsOf(after: string): readonly string[] {
 export const pauseCountOf = (events: readonly LogEvent[], kinds: readonly string[]): number =>
   events.filter(({ kind }) => kinds.includes(kind)).length;
 
+/** Whether a comparison against the current reference has reported a step whose promotion is not yet on record. */
+export function unpromotedStep(events: readonly LogEvent[]): boolean {
+  const reports = lastReports(events);
+  const reference = referenceOf(events);
+  if (reference === null) return false;
+  const starter = starterIn(events) ?? reports.map(({ data }) => data.starter).find(isString) ?? null;
+  const since = epochsOf(events).at(-1)?.from ?? 0;
+  return reports.some(
+    ({ index, data }) =>
+      index >= since &&
+      data.old === reference &&
+      isString(data.fresh) &&
+      data.fresh !== reference &&
+      data.fresh !== starter &&
+      data.reading === "step",
+  );
+}
+
 /** Whether `events` has crossed the armed boundary `(after, base)`, including waiting out an
- *  unread promotion against the starter when `after === "reported"`. */
+ *  unpromoted step or unread promotion against the starter when `after === "reported"`. */
 export function pausePointReached(events: readonly LogEvent[], after: string, base: number): boolean {
   if (pauseCountOf(events, pauseKindsOf(after)) <= base) return false;
   if (after !== "reported") return true;
+  if (unpromotedStep(events)) return false;
   const last = epochsOf(events).at(-1);
   return !(last?.starter_tally === null && last.reference !== "starter");
 }
 
 /** Timestamp (ms) when `event` at `index` became active in `events`, or null if its armed boundary
- *  has not yet been crossed. Unparameterized or `next` pauses activate at `event.at`. */
+ *  has not yet been crossed. Unparameterized or `next` pauses activate at `event.at`. For bounded
+ *  pauses, scans backward over events that can change `pausePointReached` to find the start of the
+ *  current contiguous reached suffix so pre-promotion arming latches onto starter confirmation. */
 function pauseReachedAt(events: readonly LogEvent[], event: LogEvent, index: number): number | null {
   const { after, base } = event.data;
   if (!isString(after) || after === "next" || !isNumber(base)) return Date.parse(event.at);
@@ -79,33 +101,46 @@ function pauseReachedAt(events: readonly LogEvent[], event: LogEvent, index: num
     return Date.parse(event.at);
   }
   if (!pausePointReached(events, after, base)) return null;
-  if (pausePointReached(events.slice(0, index + 1), after, base)) return Date.parse(event.at);
-  for (let i = index + 1; i < events.length; i += 1) {
+  let reachedAt = event.at;
+  for (let i = events.length - 1; i > index; i -= 1) {
     const step = events[i];
-    if (
-      step !== undefined &&
-      kinds.includes(step.kind) &&
-      pausePointReached(events.slice(0, i + 1), after, base)
-    ) {
-      return Date.parse(step.at);
+    if (step === undefined) continue;
+    const affects = kinds.includes(step.kind) || (after === "reported" && step.kind === "harness.promoted");
+    if (!affects) continue;
+    if (!pausePointReached(events.slice(0, i), after, base)) {
+      reachedAt = step.at;
+      break;
     }
   }
-  return Date.parse(event.at);
+  return Date.parse(reachedAt);
 }
 
 /** How long `runs pause --after next` lets the open solves of a campaign whose solves run
  *  `wallSeconds` finish: their limit and a minute to end and be recorded. */
 export const pauseWaitMs = (wallSeconds: number): number => wallSeconds * 1000 + 60_000;
 
-/** The newest active pause left since `since`, where the reading process began, as an older one was
- *  for a process that is gone, and an armed boundary pause whose point has not landed is not yet active. */
-export function pauseSince(events: readonly LogEvent[], since: number): LogEvent | undefined {
+/** The newest pause word left since `since` whose boundary (if any) has been reached, or null. */
+function latestReachedPause(events: readonly LogEvent[], since: number) {
   for (let i = events.length - 1; i >= since; i -= 1) {
     const event = events[i];
     if (event?.kind !== "campaign.word" || event.data.word !== PAUSE) continue;
-    if (pauseReachedAt(events, event, i) !== null) return event;
+    const reached = pauseReachedAt(events, event, i);
+    const bounded = isString(event.data.after) && event.data.after !== "next" && isNumber(event.data.base);
+    if (reached !== null) return { event, reached, bounded };
   }
-  return undefined;
+  return null;
+}
+
+/** The newest active pause left since `since`, where the reading process began, as an older one was
+ *  for a process that is gone, an armed boundary pause whose point has not landed is not yet active,
+ *  and an abandoned bounded pause whose window expired while events kept landing no longer stands. */
+export function pauseSince(events: readonly LogEvent[], since: number): LogEvent | undefined {
+  const found = latestReachedPause(events, since);
+  if (found === null) return undefined;
+  const lastAt = Date.parse(events.at(-1)?.at ?? "");
+  return found.bounded && Number.isFinite(lastAt) && lastAt - found.reached >= PAUSE_STOP_WINDOW_MS
+    ? undefined
+    : found.event;
 }
 
 /**
@@ -119,16 +154,10 @@ export function paused(
   now: number,
   wallSeconds: number,
 ): boolean {
-  for (let i = events.length - 1; i >= since; i -= 1) {
-    const event = events[i];
-    if (event?.kind !== "campaign.word" || event.data.word !== PAUSE) continue;
-    const reached = pauseReachedAt(events, event, i);
-    if (reached === null) continue;
-    const bounded = isString(event.data.after) && event.data.after !== "next" && isNumber(event.data.base);
-    const windowMs = bounded ? PAUSE_STOP_WINDOW_MS : pauseWaitMs(wallSeconds) + 60_000;
-    return now - reached < windowMs;
-  }
-  return false;
+  const found = latestReachedPause(events, since);
+  if (found === null) return false;
+  const windowMs = found.bounded ? PAUSE_STOP_WINDOW_MS : pauseWaitMs(wallSeconds) + 60_000;
+  return now - found.reached < windowMs;
 }
 
 /**

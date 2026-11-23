@@ -268,7 +268,9 @@ export async function probeWall(
  *  run reads as unreached. */
 async function probeReach(wall: CommandWall): Promise<NetworkReach> {
   let out = "";
-  await runWalled(wall, REACH_COMMAND, {
+  // Probe without the harness's `.toolchain/` on PATH so a candidate harness installing `uv` or
+  // shadowing `curl`/`python3` cannot contaminate `COMPARISON_REACH` / `REACH` for the other arm.
+  await runWalled({ ...wall, toolTree: null }, REACH_COMMAND, {
     onData: (data) => {
       out += data.toString();
     },

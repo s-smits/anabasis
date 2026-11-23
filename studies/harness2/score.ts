@@ -455,10 +455,11 @@ async function armOf(values: Values, out: string, baseHarness: string, place = H
     if (pi) {
       const part = `${into}.part-${String(runtimeProcess.pid)}`;
       const origin = await placeHarness(join(part, HARNESS_DIR), source);
+      // Hash the kept harness before cross-platform Python rebuilds mutate `.toolchain/`, matching claude-export.
+      const harnessDigest = (await openHarness(join(part, HARNESS_DIR))).digest;
       const toolTree = join(part, HARNESS_DIR, TOOL_TREE_DIR);
       const hasTools = existsSync(toolTree);
       const rebuilt = hasTools ? await rebuildForeignPython(toolTree, place, uvPython(place)) : null;
-      const harnessDigest = (await openHarness(join(part, HARNESS_DIR))).digest;
       writeFileSync(
         join(part, "export.json"),
         `${capturedJsonStringify(
@@ -477,7 +478,8 @@ async function armOf(values: Values, out: string, baseHarness: string, place = H
     } else await exportForClaudeCode(into, source, place);
   }
   const record = readJson(join(into, "export.json"));
-  const digest = pi ? (await openHarness(join(into, HARNESS_DIR))).digest : field(record, "harness");
+  const digest =
+    field(record, "harness") ?? (pi ? (await openHarness(join(into, HARNESS_DIR))).digest : null);
   // A rollout runs outside a container, on the programs its tree was exported with.
   const fallbackToolchain = pi ? join(HARNESS_DIR, TOOL_TREE_DIR) : null;
   const toolchain =

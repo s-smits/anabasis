@@ -107,10 +107,10 @@ export function parentToolTree(parent: string): string | null {
   return real;
 }
 
-/** Refuses the links and scripts in a copy of `harness/<under>` that name the session's home, where
- *  the copy is not: a launcher an install wrote with its own absolute path, a console script's
- *  interpreter, a link into the tree. Each would break where the harness is run. */
-function refuseNamingHome(dir: string, home: string, under: string): void {
+/** Refuses links and executable scripts in a frozen copy of `<under>` that name the session's
+ *  ephemeral home: a launcher an install wrote with its own absolute path, a console script's
+ *  interpreter, or an absolute link into the tree. Shared with drafted exam `.toolchain/` staging. */
+export function refuseNamingHome(dir: string, home: string, under: string): void {
   const forms = [...new Set([home, realpathSync(home)])];
   const named = pathsUnder(dir).filter((path) => {
     const full = join(dir, path);
@@ -122,7 +122,7 @@ function refuseNamingHome(dir: string, home: string, under: string): void {
   });
   if (named.length > 0) {
     throw new Error(
-      `${named.map((path) => join(under, path)).join(", ")} name your home, and a harness runs from elsewhere: a launcher finds its files from its own path, as "$(dirname "$0")" does, and a link names its target relatively`,
+      `${named.map((path) => join(under, path)).join(", ")} name your home, and frozen tools run from elsewhere: a launcher finds its files from its own path, as "$(dirname "$0")" does, and a link names its target relatively`,
     );
   }
 }

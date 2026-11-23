@@ -99,6 +99,7 @@ describe("going on with a campaign", () => {
     // that scored nothing is that read; it rests the run whatever it read, past the pause's own count;
     // an earlier promotion's read stands for no newer one.
     for (const [events, after, base, rests] of [
+      [promoted.slice(0, -1), "reported", 0, false],
       [promoted, "reported", 0, false],
       [promoted, "promoted", 0, true],
       [promoted, "reported|promoted", 0, true],

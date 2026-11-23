@@ -14,7 +14,7 @@ import { comparisonsTold } from "#src/builder/past.ts";
 import { seedKept, snapshot } from "#src/builder/kept.ts";
 import { type BuildRequest, layPractice } from "#src/builder/session.ts";
 import { type Bench, endingWith, waitTool } from "#src/builder/tools.ts";
-import { paused, pendingWords } from "#src/campaign/word.ts";
+import { pendingWords } from "#src/campaign/word.ts";
 import { conversing, type Examined, examine } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { latestBuilt, patienceOf, promoted as lastPromoted } from "#src/kernel/reports.ts";
@@ -28,7 +28,7 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { plural } from "#src/meta/text.ts";
 import { text, tool } from "#src/tools/answer.ts";
 import { publicView } from "#src/solver/prompt.ts";
-import { waiting, waitOut } from "#src/solver/run.ts";
+import { waitOut } from "#src/solver/run.ts";
 import { examineCommand } from "../d1b/examine.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
@@ -49,7 +49,7 @@ import {
   type Values,
 } from "./campaign-terms.ts";
 import { checkpointCommand } from "./checkpoint.ts";
-import { waitCrashed } from "./host.ts";
+import { waitCrashed, waitPaused } from "./host.ts";
 import { type Campaign, type Seated, solved } from "./round.ts";
 
 /** The two moves a live Builder makes by a tool, each under the tool's name. */
@@ -95,7 +95,6 @@ export interface CampaignContext {
   examiner?: ReturnType<typeof conversing>;
 }
 
-const PAUSE_POLL_MS = 5000;
 /** The code a move carries where the Builder chose it, and the table names another. */
 const LED = "led";
 const CHOSE = "the Builder's own move in its campaign conversation";
@@ -188,19 +187,11 @@ async function holdWhilePaused(
   bench: Bench,
   signal: AbortSignal | undefined,
 ): Promise<boolean> {
-  const { host } = context.seats;
-  const waitMs = Math.min(host?.waitMs ?? PAUSE_POLL_MS, PAUSE_POLL_MS);
-  const shouldWait = () =>
-    signal?.aborted !== true &&
-    paused(
-      read(context.log),
-      context.began ?? 0,
-      (host?.now ?? Date.now)(),
-      context.campaign.limits.wallSeconds,
-    );
-  while (shouldWait()) {
-    await bench.within(() => waiting(waitMs, signal, host?.sleep));
-  }
+  await waitPaused(context.log, context.began ?? 0, context.campaign.limits.wallSeconds, {
+    host: context.seats.host,
+    signal,
+    within: (work) => bench.within(work),
+  });
   return signal?.aborted === true;
 }
 

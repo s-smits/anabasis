@@ -26,7 +26,7 @@ import { CODING_TOOLS } from "../tools/coding.ts";
 
 /** The guide's last heading, for what holds only for this host's answer; an export stops at it. */
 export const HOST_ONLY = "## Validity and score";
-const HOST_ONLY_LINE = new RegExp(`(?:^|\\n)${HOST_ONLY}(?=\\n|$)`, "u");
+const HOST_ONLY_LINE = /(?:^|\r?\n)#{1,6}[ \t]+Validity and score[ \t]*(?:#+[ \t]*)?(?=\r?\n|$)/iu;
 
 /**
  * The Starter's two files: a spec that selects pi's four coding tools, and the starter instructions
@@ -203,13 +203,13 @@ You may revise, replace, or remove it, including the file itself.
 - Portable boundary: kept harnesses are exported and run outside this host on ordinary domain
   workspaces where public/task.json, public/files/, public/resources/, answer.json, submit, exam
   rule IDs, and campaign scoring do not exist. Export keeps the guide up to the heading
-  "${HOST_ONLY.slice(3)}" and strips everything below it (a guide without that heading is exported
-  whole under a host disclaimer). Sections above "${HOST_ONLY.slice(3)}" — Programs and tools,
-  Working with them, and Domain notes — therefore apply to general workspaces and ordinary files:
-  how to use your programs, reason from first principles, and verify work independently.
-- Host-only section ("${HOST_ONLY.slice(3)}"): campaign-specific workflow belongs strictly under
-  this heading — reading public/task.json, public/files/, and public/resources/, checking rules
-  against answer.json, campaign scoring notes, and calling submit.
+  "${HOST_ONLY}" and strips everything below it (a guide without that heading is exported whole
+  under a host disclaimer). Sections above "${HOST_ONLY}" — Programs and tools, Working with them,
+  and Domain notes — therefore apply to general workspaces and ordinary files: how to use your
+  programs, reason from first principles, and verify work independently.
+- Host-only section ("${HOST_ONLY}"): campaign-specific workflow belongs strictly under this
+  heading — reading public/task.json, public/files/, and public/resources/, checking rules against
+  answer.json, campaign scoring notes, and calling submit.
 - Conciseness and pruning: every paragraph sits in the system prompt of every solve. Long
   checklists, pasted code, or narrow formulas accumulated from individual practice families crowd
   out reading new tasks and break when an unseen task brings different structure; practice traces

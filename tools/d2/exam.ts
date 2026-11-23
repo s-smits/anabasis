@@ -8,6 +8,7 @@
  * to resolved host executables without shell wrappers while keeping drafted checks `authored` under
  * Rule 10 until admitted (`tools/d1b/draft.ts`).
  */
+import { refuseNamingHome } from "#src/builder/kept.ts";
 import { type Draft, draftOf } from "#src/examiner/draft.ts";
 import { readChecker } from "#src/kernel/acceptance.ts";
 import { contractHash } from "#src/kernel/contract.ts";
@@ -20,7 +21,7 @@ import {
   readBrief,
 } from "#src/kernel/verify.ts";
 import { CHECK_BRIEF, EVALUATOR_FILE, TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { cpSync, existsSync, lstatSync, mkdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
@@ -65,27 +66,43 @@ export function stagedExamOf(log: string): Staged | null {
 /** The id of an example task, by its place in the draft. */
 export const exampleId = (index: number): string => `ex-${String(index + 1).padStart(3, "0")}`;
 
-/** Freeze any Examiner-installed `.toolchain/` from `sourceHome` and record any remaining declared
- *  host executables in `.toolchain/host-tools.json` so `resolveVerifierTool` dispatches directly. */
+/** Freeze any Examiner-installed `.toolchain/` from `sourceHome` and write `.toolchain/host-tools.json`
+ *  with `origin: "draft"` plus any remaining declared host executables so `resolveVerifierTool`
+ *  dispatches directly while keeping drafted checks `author` under Rule 10. */
 function stageTools(bundle: string, draft: Draft, sourceHome?: string): void {
   const toolchain = join(bundle, TOOL_TREE_DIR);
   if (sourceHome !== undefined) {
     rmSync(toolchain, { recursive: true, force: true });
     const homeTools = join(sourceHome, TOOL_TREE_DIR);
-    if (existsSync(homeTools)) cpSync(homeTools, toolchain, { recursive: true, verbatimSymlinks: true });
+    const homeStat = lstatSync(homeTools, { throwIfNoEntry: false });
+    if (homeStat !== undefined) {
+      if (!homeStat.isDirectory()) {
+        throw new Error(`${TOOL_TREE_DIR} in your drafting home must be a directory, not a file or symlink`);
+      }
+      cpSync(homeTools, toolchain, { recursive: true, verbatimSymlinks: true });
+      refuseNamingHome(toolchain, sourceHome, TOOL_TREE_DIR);
+    }
   }
-  mkdirSync(join(toolchain, "bin"), { recursive: true });
+  const binDir = join(toolchain, "bin");
+  const binStat = lstatSync(binDir, { throwIfNoEntry: false });
+  if (binStat !== undefined && !binStat.isDirectory()) {
+    throw new Error(".toolchain/bin in your drafting home must be a directory, not a file or symlink");
+  }
+  mkdirSync(binDir, { recursive: true });
   const stagedPath = toolTreeSearchDirs(toolchain).join(":");
   const engines = [
     ...new Set([...draft.checks.flatMap(({ tools }) => tools ?? []), ...(draft.objectiveTools ?? [])]),
   ].filter(isSafePathSegment);
+  for (const engine of engines) {
+    const binEntry = join(binDir, engine);
+    if (lstatSync(binEntry, { throwIfNoEntry: false })?.isSymbolicLink() === true && !existsSync(binEntry)) {
+      throw new Error(`.toolchain/bin/${engine} is a broken symlink`);
+    }
+  }
   const hostOnly = engines.filter((engine) => Bun.which(engine, { PATH: stagedPath }) === null);
   const hostFile = join(toolchain, HOST_TOOLS_FILE);
-  if (hostOnly.length > 0) {
-    writeFileSync(hostFile, `${capturedJsonStringify({ tools: hostOnly }, null, 2)}\n`);
-  } else {
-    rmSync(hostFile, { force: true });
-  }
+  rmSync(hostFile, { recursive: true, force: true });
+  writeFileSync(hostFile, `${capturedJsonStringify({ origin: "draft", tools: hostOnly }, null, 2)}\n`);
 }
 
 /**

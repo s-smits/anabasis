@@ -6,7 +6,7 @@
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
 import { type AnswerFile, textFiles } from "../kernel/answer-files.ts";
-import { blockingOf, decides, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
+import { blockingOf, decides, faultyOf, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
 import { jsonPathTokens, resolveJsonPath } from "../meta/json-evidence.ts";
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
@@ -31,11 +31,11 @@ export type ProbeRow = {
     readonly value: string | null;
     readonly edit: ProbeEdit | null;
   }[];
-  /** Line and byte counts of each changed or added file text. */
+  /** Line and byte counts of each changed, added, or removed (`now: null`) file text. */
   readonly texts: readonly {
     readonly path: string;
     readonly was: { readonly lines: number; readonly bytes: number } | null;
-    readonly now: { readonly lines: number; readonly bytes: number };
+    readonly now: { readonly lines: number; readonly bytes: number } | null;
   }[];
   readonly original: Verdict;
   readonly changed: Verdict;
@@ -53,7 +53,7 @@ interface RawChange {
   readonly replace?: string | undefined;
 }
 
-type TextSize = ProbeRow["texts"][number]["now"];
+type TextSize = NonNullable<ProbeRow["texts"][number]["now"]>;
 
 /** Prefix for submitted deliverable file paths (`file:report.md`, `file:$`). */
 export const FILE = "file:";
@@ -144,7 +144,8 @@ function sideText(label: string, verdict: Verdict): string {
     const blocked = verdict.blocking.length === 0 ? "" : `, blocked by ${verdict.blocking.join(", ")}`;
     return `  ${label}: fail${blocked}`;
   }
-  const detail = verdict.kind === "faulty" ? `${verdict.check} ${verdict.reason}` : verdict.reason;
+  const fault = faultyOf(verdict);
+  const detail = fault === null ? verdict.reason : `${fault.check} ${fault.reason}`;
   return `  ${label}: ${verdict.kind}: ${detail}`;
 }
 
@@ -161,11 +162,13 @@ function rowText(row: ProbeRow): string {
       }
       return `  ${path} replaced with ${String(value)}`;
     }),
-    ...row.texts.map(({ path, was, now }) =>
-      was === null
-        ? `  ${path} is a file the answer did not hold: the changed side adds it, ${held(now)}`
-        : `  ${path} held ${held(was)} in the answer and holds ${held(now)} on the changed side`,
-    ),
+    ...row.texts.map(({ path, was, now }) => {
+      if (was === null) {
+        return `  ${path} is a file the answer did not hold: the changed side adds it, ${held(now ?? { lines: 0, bytes: 0 })}`;
+      }
+      if (now === null) return `  ${path} held ${held(was)} in the answer and is removed on the changed side`;
+      return `  ${path} held ${held(was)} in the answer and holds ${held(now)} on the changed side`;
+    }),
     sideText("original", row.original),
     sideText("changed", row.changed),
     row.moved.length === 0
@@ -352,6 +355,9 @@ async function executeProbe(given: {
   const changed =
     onFiles.length > 0 && onAnswer.length === 0 ? answer : probeAnswer(answer, onAnswer, accepted);
   const changedFiles = onFiles.reduce((at, change) => changedFile(at, change), files);
+  if (onFiles.length > 0 && onAnswer.length === 0 && hashJsonValue(changedFiles) === hashJsonValue(files)) {
+    throw new Error("the changes leave the files unchanged");
+  }
   if (
     readTogether !== undefined &&
     changes.length > 1 &&
@@ -363,10 +369,11 @@ async function executeProbe(given: {
   const after = await verify(task, changed, signal, changedFiles);
   const submitted = fileTexts(files);
   const updated = fileTexts(changedFiles);
+  const filePaths = [...new Set(onFiles.map(({ path }) => path))];
   return {
     id: used + 1,
     changes,
-    texts: onFiles.flatMap(({ path }) => {
+    texts: filePaths.flatMap((path) => {
       const was = submitted.get(path);
       const now = updated.get(path);
       if (was === undefined && now === undefined) return [];
@@ -374,7 +381,7 @@ async function executeProbe(given: {
         {
           path,
           was: was === undefined ? null : sizeOf(was),
-          now: now === undefined ? { lines: 0, bytes: 0 } : sizeOf(now),
+          now: now === undefined ? null : sizeOf(now),
         },
       ];
     }),

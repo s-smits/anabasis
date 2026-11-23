@@ -153,18 +153,34 @@ async function runnableAt(from: End, to: End, dir: string): Promise<void> {
   const [source, destination] = [from, to].map((end) => UNAME_PLACES.get(at(end, "uname -sm")));
   if (source === destination) return;
   if (destination === undefined) throw new Error(`${to.name} is no machine a harness is read for`);
-  const trees = ["--include=/states/", "--include=/states/*/", `--include=/states/*/${TOOL_TREE_DIR}/***`];
+  const trees = [
+    "--include=/states/",
+    "--include=/states/*/",
+    `--include=/states/*/${TOOL_TREE_DIR}/***`,
+    "--include=/exams/",
+    "--include=/exams/*/",
+    "--include=/exams/*/bundle/",
+    `--include=/exams/*/bundle/${TOOL_TREE_DIR}/***`,
+  ];
   const found = await readAt(from, dir, [...trees, "--exclude=*"], async (here) => {
-    const states = existsSync(join(here, "states")) ? readdirSync(join(here, "states")) : [];
-    const each = states.map(async (state) => {
-      const foreign = await foreignFiles(join(here, "states", state, TOOL_TREE_DIR), placeOf(destination));
-      return foreign.slice(0, 3).map(({ path, why }) => `${state.slice(0, 12)} ${path} (${why})`);
+    const entries = (root: string, tail: readonly string[], label: (name: string) => string) =>
+      (existsSync(root) ? readdirSync(root) : []).map((entry) => ({
+        tag: label(entry),
+        tree: join(root, entry, ...tail, TOOL_TREE_DIR),
+      }));
+    const dirs = [
+      ...entries(join(here, "states"), [], (state) => state.slice(0, 12)),
+      ...entries(join(here, "exams"), ["bundle"], (exam) => `exam/${exam}`),
+    ];
+    const each = dirs.map(async ({ tag, tree }) => {
+      const foreign = await foreignFiles(tree, placeOf(destination));
+      return foreign.slice(0, 3).map(({ path, why }) => `${tag} ${path} (${why})`);
     });
     return (await Promise.all(each)).flat();
   });
   if (found.length > 0) {
     throw new Error(
-      `kept harnesses hold programs ${to.name} cannot run, and a kept harness is never rebuilt: ${found.slice(0, 6).join(", ")}; move it to a machine of its own system and processor: nothing was stopped or moved`,
+      `kept harnesses or exam toolchains hold programs ${to.name} cannot run, and neither is rebuilt: ${found.slice(0, 6).join(", ")}; move it to a machine of its own system and processor: nothing was stopped or moved`,
     );
   }
 }

@@ -200,6 +200,11 @@ export function heldAs(
     );
   }
   const sameMode = (one: string) => (modes?.get(one) ?? "claude") === runtime;
+  if (held !== null && !sameMode(label)) {
+    throw new Error(
+      `${label}: the store holds that label as a ${modes?.get(label) ?? "claude"} tree, not ${runtime}; name another label`,
+    );
+  }
   const again =
     as === undefined
       ? [...store].filter(([one, of]) => of === harness && one !== label && sameMode(one))

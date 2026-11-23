@@ -298,12 +298,11 @@ let here: ReturnType<typeof codeOf> | undefined;
  */
 function recordedUnder({ contract, checks, tools, limits }: Standing) {
   const hostManifest = join(tools, HOST_TOOLS_FILE);
-  const verifierTools = existsSync(hostManifest)
-    ? hashJsonValue([
-        treeContent(tools),
-        pinnedEngines({ checks, tools }).map(({ name, sha256 }) => [name, sha256]),
-      ])
-    : hashJsonValue(treeContent(tools));
+  const engines = pinnedEngines({ checks, tools });
+  const verifierTools =
+    existsSync(hostManifest) || engines.some(({ external }) => external)
+      ? hashJsonValue([treeContent(tools), engines.map(({ name, sha256 }) => [name, sha256])])
+      : hashJsonValue(treeContent(tools));
   here ??= codeOf(REPO);
   const { runtime, host } = here;
   /** What every solve by `by` runs under whatever its task and harness: its condition less those. */

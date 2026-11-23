@@ -37,7 +37,14 @@
  */
 import { unfinished } from "#src/kernel/trace.ts";
 import { append, type LogEvent } from "#src/kernel/log.ts";
-import { PAUSE, pauseCountOf, pauseKindsOf, pausePointReached, pauseWaitMs } from "#src/campaign/word.ts";
+import {
+  PAUSE,
+  pauseCountOf,
+  pauseKindsOf,
+  pausePointReached,
+  pauseWaitMs,
+  unpromotedStep,
+} from "#src/campaign/word.ts";
 import { epochsOf } from "#src/campaign/climb.ts";
 import { mkdirSync, openSync, statSync } from "#src/meta/filesystem.ts";
 import { keysIf } from "#src/meta/optional-key.ts";
@@ -118,11 +125,13 @@ export function heldBy(events: readonly LogEvent[], after: string, base: number)
     `one more ${kinds.join(" or ")}, past ${String(base)}`,
   );
   if (after === "next") return [...more, ...held(open.has("solve"), "its open solves")];
+  const pendingStep = after === "reported" && unpromotedStep(events);
   const last = epochsOf(events).at(-1);
   const unread = after === "reported" && last?.starter_tally === null && last.reference !== "starter";
   const led = events.slice(events.findLastIndex(({ kind }) => kind === "build.started"));
   return [
     ...more,
+    ...held(pendingStep, "the promotion of a reported step"),
     ...held(unread, "a starter comparison that tallies a task under the newest promotion"),
     ...held(open.has("exam") || open.has("draft"), "the open Examiner session or draft"),
     ...held(openComparisons(events).length > 0, "the open comparison"),
@@ -158,11 +167,11 @@ async function pauseAt(run: Run, after: string, by: string, ready?: () => Promis
   const preArm = after === "next" || ready === undefined;
   let armedFor = "";
   const armLive = () => {
-    const live = writers(run, processes())
-      .map(({ pid }) => String(pid))
-      .toSorted()
-      .join(",");
-    if (live !== "" && live !== armedFor) {
+    const pids = writers(run, processes()).map(({ pid }) => pid);
+    const launched = lastLaunch(run.path)?.pid;
+    if (pids.length === 0 || (launched !== undefined && !pids.includes(launched))) return;
+    const live = pids.map(String).toSorted().join(",");
+    if (live !== armedFor) {
       append(run.path, "campaign.word", word);
       armedFor = live;
     }

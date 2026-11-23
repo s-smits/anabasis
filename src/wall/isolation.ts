@@ -106,8 +106,10 @@ function commandIsolationEnvironment(dirs: CommandDirectories): CommandIsolation
     HOME: dirs.home,
     TMPDIR: dirs.temp,
     LANG: "en_US.UTF-8",
-    // Allow pip --user installs into private HOME under PEP 668 (host Homebrew remains read-only).
+    // Allow pip --user installs into private HOME under PEP 668 (host Homebrew remains read-only),
+    // and make `uv venv` generate relocatable console scripts so frozen `.toolchain/` venvs survive moves.
     PIP_BREAK_SYSTEM_PACKAGES: "1",
+    UV_VENV_RELOCATABLE: "1",
   };
 }
 

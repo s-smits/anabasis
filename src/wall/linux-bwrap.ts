@@ -5,6 +5,7 @@
  */
 
 import { existsSync, lstatSync, realpathSync, statSync } from "../meta/filesystem.ts";
+import { homedir } from "../meta/os.ts";
 import { dirname, isAbsolute, join } from "../meta/path.ts";
 import { posixContainsPath } from "../meta/path-containment.ts";
 import type { OptionalEnvValues } from "../agent/backends/scrub-env.ts";
@@ -94,9 +95,15 @@ export function nodeRuntimeReadRoots(): string[] {
   } catch {
     // Ignore unresolvable executable paths.
   }
+  const home = homedir();
   for (const exe of candidates) {
-    const prefix = dirname(dirname(exe));
-    if (prefix !== "" && !underSystemRoot(prefix) && existsSync(prefix)) roots.add(prefix);
+    const grand = dirname(dirname(exe));
+    const parent = dirname(exe);
+    const fallback = parent === home ? exe : parent;
+    const prefix = grand === home ? fallback : grand;
+    if (prefix !== "" && prefix !== home && !underSystemRoot(prefix) && existsSync(prefix)) {
+      roots.add(prefix);
+    }
   }
   return [...roots].toSorted();
 }
@@ -282,26 +289,44 @@ export function bwrapWriteBinds(paths: readonly string[]): string[] {
   return paths.flatMap((path) => ["--bind", path, path]);
 }
 
-/** Overmounts each protected directory with an empty tmpfs (and each protected regular file with
- *  read-only `/dev/null`), keeping protected bytes inaccessible even if an ancestor is renamed. */
+/** Overmounts each protected directory with an empty tmpfs (and each protected regular file —
+ *  including symlinks targeting a regular file — with read-only `/dev/null`), also masking canonical
+ *  symlink targets that lie outside already-denied paths so protected bytes stay unreachable. */
 export function bwrapTmpfsDenies(paths: readonly string[]): string[] {
-  // Regular files are bound to read-only `/dev/null` so writes fail with EACCES and reads do not
-  // return host contents, while missing paths are skipped because `bwrap` cannot create
-  // mountpoints under a read-only `/` (for example, if a sibling worktree is removed mid-campaign).
-  return paths.flatMap((path) => {
+  const expanded: string[] = [];
+  const seen = new Set<string>();
+  const add = (candidate: string) => {
+    if (!seen.has(candidate)) {
+      seen.add(candidate);
+      expanded.push(candidate);
+    }
+  };
+  for (const path of paths) {
+    add(path);
+    try {
+      if (lstatSync(path).isSymbolicLink()) {
+        const real = realpathSync.native(path);
+        if (!paths.some((other) => posixContainsPath(real, other))) add(real);
+      }
+    } catch {
+      // Missing path or dangling symlink; skipped below.
+    }
+  }
+  return expanded.flatMap((path) => {
     if (isRegularFileDeny(path)) return ["--ro-bind", "/dev/null", path];
     return existsSync(path) ? ["--tmpfs", path] : [];
   });
 }
 
 /**
- * Reports whether `path` is an existing regular file that cannot accept a `--tmpfs` directory mount
- * (such as `~/.claude.json`, `~/.netrc`, or `~/.npmrc`). Uses `lstatSync` instead of `statSync` so
- * a symbolic link to a directory is not mistaken for a directory.
+ * Reports whether `path` resolves to an existing regular file that cannot accept a `--tmpfs`
+ * directory mount (such as `~/.claude.json`, `~/.netrc`, or `~/.npmrc`, whether plain or symlinked).
+ * Uses `statSync` so symlinks targeting regular files emit `--ro-bind /dev/null` instead of crashing
+ * `bwrap` with `ENOTDIR` on `--tmpfs`.
  */
 function isRegularFileDeny(path: string): boolean {
   try {
-    return lstatSync(path).isFile();
+    return statSync(path).isFile();
   } catch {
     return false;
   }

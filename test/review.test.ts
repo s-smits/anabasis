@@ -686,6 +686,13 @@ describe("adversarial draft audit", () => {
       callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: "-1" }] }),
       callTool(PROBE, { task: "t-1", changes: [{ path: "file:results.csv", value: "null" }] }),
       callTool(PROBE, { task: "t-1", changes: [{ path: "file:missing.csv", value: "null" }] }),
+      callTool(PROBE, {
+        task: "t-1",
+        changes: [
+          { path: "file:results.csv", value: "null" },
+          { path: "file:results.csv", value: JSON.stringify("a,b\n1,2\n") },
+        ],
+      }),
       reviewCall({
         verdict: "defects",
         findings: [{ kind: "vacuous-pass", task: "t-2", probe: 1, reason: "wrong task" }],
@@ -758,10 +765,12 @@ describe("adversarial draft audit", () => {
     expect(res.findings).toHaveLength(3);
     expect(res.probes).toHaveLength(3);
     expect(res.probes[2]?.texts).toEqual([
-      { path: "file:results.csv", was: { lines: 2, bytes: 8 }, now: { lines: 0, bytes: 0 } },
+      { path: "file:results.csv", was: { lines: 2, bytes: 8 }, now: null },
     ]);
     expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(0);
-    expect(read(s.log).filter(({ kind }) => kind === "referee.draft.refused")).toHaveLength(9);
+    const draftRefused = read(s.log).filter(({ kind }) => kind === "referee.draft.refused");
+    expect(draftRefused).toHaveLength(9);
+    expect(draftRefused.every(({ data }) => data.pass === 2)).toBe(true);
     expect(read(s.log).filter(({ kind }) => kind === "referee.draft")).toMatchObject([{ data: { pass: 2 } }]);
     expect(unfinished(read(s.log))).toEqual([]);
     expect(billedBetween(read(s.log), 0)).toBeGreaterThanOrEqual(0);

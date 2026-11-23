@@ -7,10 +7,12 @@ import {
   ANSWERED,
   PAUSE,
   PAUSE_STOP_WINDOW_MS,
+  pausePointReached,
   pauseSince,
   pauseWaitMs,
   paused,
   pendingWords,
+  unpromotedStep,
 } from "../src/campaign/word.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
@@ -105,5 +107,44 @@ describe("an operator's word", () => {
     expect(paused(reached, 0, START + 19_000, minutes)).toBe(true);
     expect(paused(reached, 0, START + 10_000 + PAUSE_STOP_WINDOW_MS - 1, minutes)).toBe(true);
     expect(paused(reached, 0, START + 10_000 + PAUSE_STOP_WINDOW_MS, minutes)).toBe(false);
+  });
+
+  it("holds across unpromoted steps, latches pre-promotion arming onto starter confirmation, and expires abandoned pauses in pauseSince", () => {
+    const minutes = 30 * 60;
+    const preArmed = [
+      event("campaign.opened", {}, 0),
+      word({ word: PAUSE, why: "runs pause --after reported", after: "reported", base: 0 }, 1000),
+      event("comparison.started", { session: "g-1", starter: "s" }, 2000),
+      event("comparison.reported", { session: "g-1", old: "s", fresh: "h1", reading: "step" }, 300_000),
+    ];
+    // Right after `comparison.reported` reads `step`, `unpromotedStep` prevents pausing before `harness.promoted`.
+    expect(unpromotedStep(preArmed)).toBe(true);
+    expect(pausePointReached(preArmed, "reported", 0)).toBe(false);
+    expect(paused(preArmed, 0, START + 301_000, minutes)).toBe(false);
+
+    // After promotion and starter confirmation 20 minutes later, the window starts at starter confirmation (1_500_000), not g-1 (300_000).
+    const confirmed = [
+      ...preArmed,
+      event("harness.promoted", { harness: "h1" }, 301_000),
+      event("comparison.started", { session: "g-2", starter: "s" }, 400_000),
+      event(
+        "comparison.reported",
+        { session: "g-2", old: "h1", fresh: "s", reading: "no-step", scored: { differences: [-1, 0] } },
+        1_500_000,
+      ),
+    ];
+    expect(unpromotedStep(confirmed)).toBe(false);
+    expect(pausePointReached(confirmed, "reported", 0)).toBe(true);
+    expect(paused(confirmed, 0, START + 1_510_000, minutes)).toBe(true);
+    expect(paused(confirmed, 0, START + 1_500_000 + PAUSE_STOP_WINDOW_MS - 1, minutes)).toBe(true);
+    expect(paused(confirmed, 0, START + 1_500_000 + PAUSE_STOP_WINDOW_MS, minutes)).toBe(false);
+    expect(pauseSince(confirmed, 0)?.data.after).toBe("reported");
+
+    // If `runs pause` died and events kept landing past the stop window, `pauseSince` stops claiming intentional pause.
+    const abandoned = [
+      ...confirmed,
+      event("build.call", { session: "b-2" }, 1_500_000 + PAUSE_STOP_WINDOW_MS),
+    ];
+    expect(pauseSince(abandoned, 0)).toBeUndefined();
   });
 });

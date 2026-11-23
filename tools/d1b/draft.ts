@@ -116,8 +116,8 @@ export async function draftCommand(
         });
         if (review.verdict !== "defects" || review.findings.length === 0) return [];
         priorFindings = review.findings.map(
-          ({ kind, task, probe, reason }) =>
-            `independent check audit (${kind} on ${task}, probe #${String(probe)}): ${reason}`,
+          ({ kind, task, check, probe, reason }) =>
+            `independent check audit (${kind} on ${task}${check === undefined ? "" : `, check ${check}`}, probe #${String(probe)}): ${reason}`,
         );
         return priorFindings;
       },

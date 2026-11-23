@@ -574,6 +574,20 @@ describe("cross-example and hidden-value probes (probeReading)", () => {
         : { kind: "fail", blocking: ["ok"] },
     );
     expect([checked.faults, checked.notes]).toEqual([[], []]);
+
+    // Validity check crashing on missing deliverables surfaces a factual note rather than staying silent.
+    const faultyStrip = await runWith(async (t, a, _s, files) => {
+      if (asRecord(a)?.v !== asRecord(t.publicInput)?.id) return { kind: "fail", blocking: ["ok"] };
+      return (files?.length ?? 0) > 0
+        ? { kind: "pass", objective: 10 }
+        : { kind: "faulty", check: "ok", reason: "TypeError: missing file" };
+    });
+    expect(faultyStrip.faults).toEqual([]);
+    expect(faultyStrip.notes).toEqual([
+      "removing deliverable files caused check ok to fault on ex-001: TypeError: missing file",
+      "removing deliverable files caused check ok to fault on ex-002: TypeError: missing file",
+      "removing deliverable files caused check ok to fault on ex-003: TypeError: missing file",
+    ]);
   });
 });
 

@@ -63,6 +63,7 @@ export const HOST: Host = {
 
 /** The looks at the load before a solve starts all the same: half an hour on `HOST`. */
 const LOOKS = 60;
+const PAUSE_POLL_MS = 5000;
 const NETWORK_WAITS_MS = [60_000, 300_000];
 const NETWORK =
   /\b(?:ENOTFOUND|EAI_AGAIN|ECONNRESET|ECONNREFUSED|ENETUNREACH|ETIMEDOUT|ConnectionRefused|FailedToOpenSocket|Cloudflare)\b/;
@@ -81,9 +82,11 @@ const SCRIPTED: Host = { load: () => 0, cores: 1, waitMs: 1000 };
  * a `runs pause` of a rehearsed campaign lets its open solves finish and stops, as a paid run's
  * does, rather than starting solves after its word and cutting them at its patience.
  */
-function queued({ seated, loaded, host = seated === solved ? HOST : SCRIPTED }: Queue, log: string): Seated {
-  // A pause left before this process began was for the one it stopped.
-  const began = read(log).length;
+function queued(
+  { seated, loaded, host = seated === solved ? HOST : SCRIPTED }: Queue,
+  log: string,
+  began = read(log).length,
+): Seated {
   const clock = host.now ?? Date.now;
   const pausing = (wallSeconds: number) => paused(read(log), began, clock(), wallSeconds);
   return (campaign, given) => {
@@ -156,4 +159,27 @@ export async function waitCrashed(log: string, host: Host = HOST): Promise<void>
   );
   append(log, WAITED, { for: "network", ms });
   await waiting(ms, undefined, host.sleep);
+}
+
+/** Wait while an active or reached pause holds this process, returning whether any wait ran. */
+export async function waitPaused(
+  log: string,
+  began: number,
+  wallSeconds: number,
+  options: {
+    readonly host?: Host | undefined;
+    readonly signal?: AbortSignal | undefined;
+    readonly within?: (<T>(work: () => Promise<T>) => Promise<T>) | undefined;
+  } = {},
+): Promise<boolean> {
+  const { host = HOST, signal, within = (work) => work() } = options;
+  const waitMs = Math.min(host.waitMs, PAUSE_POLL_MS);
+  const clock = host.now ?? Date.now;
+  const shouldWait = () => signal?.aborted !== true && paused(read(log), began, clock(), wallSeconds);
+  let waited = false;
+  while (shouldWait()) {
+    waited = true;
+    await within(() => waiting(waitMs, signal, host.sleep));
+  }
+  return waited;
 }

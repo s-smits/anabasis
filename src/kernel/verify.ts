@@ -99,6 +99,8 @@ export interface Engine {
   readonly name: string;
   readonly path: string;
   readonly sha256: string;
+  /** True when host-forwarded or resolving via symlink outside the pack's `.toolchain/`. */
+  readonly external: boolean;
 }
 
 /** What a check's wall closes beside the repository and the home, as a seat's does (`Walled`,
@@ -186,6 +188,13 @@ export function blockingOf(verdict: Verdict | null | undefined): readonly string
   return verdict?.kind === "fail" ? verdict.blocking : [];
 }
 
+/** The faulty check id and reason of `verdict`, or null for any other verdict kind. */
+export function faultyOf(
+  verdict: Verdict | null | undefined,
+): { readonly check: string; readonly reason: string } | null {
+  return verdict?.kind === "faulty" ? { check: verdict.check, reason: verdict.reason } : null;
+}
+
 /** True when a verdict decided pass or fail rather than faulty or non-result. */
 export function decides(verdict: Verdict): verdict is Extract<Verdict, { kind: "pass" | "fail" }> {
   return verdict.kind === "pass" || verdict.kind === "fail";
@@ -201,30 +210,47 @@ export function spelled(verdict: Verdict): string {
   return `non-result ${verdict.reason}`;
 }
 
-/** Ambient host tool names allowed by `toolsDir/host-tools.json`, or empty when absent. */
-function hostToolsIn(toolsDir: string): Set<string> {
+/** Ambient host tool names and draft provenance read from `toolsDir/host-tools.json`. */
+function hostManifestIn(toolsDir: string): { readonly draft: boolean; readonly tools: ReadonlySet<string> } {
   const manifest = join(toolsDir, HOST_TOOLS_FILE);
-  if (!existsSync(manifest)) return new Set();
+  if (!existsSync(manifest)) return { draft: false, tools: new Set() };
   const parsed = asRecord(parseJsonAs<JsonValue>(readFileSync(manifest, "utf8")));
   const listed = Array.isArray(parsed?.tools) ? parsed.tools : [];
-  return new Set(listed.filter((entry): entry is string => isString(entry) && isSafePathSegment(entry)));
+  return {
+    draft: parsed?.origin === "draft",
+    tools: new Set(listed.filter((entry): entry is string => isString(entry) && isSafePathSegment(entry))),
+  };
 }
 
-/** Resolve one declared verifier tool by provenance: a pack-installed binary under `toolsDir`
- *  takes precedence (`pack`), otherwise an ambient host binary named in `host-tools.json` (`host`).
- *  Preserves the lexical executable path (for Python PEP 405 venvs and argv0-relative tools) while
- *  hashing the canonical `realpathSync` target so host binary updates move the digest. */
+/** Strict subdirectory (or file) inside `home` for a resolved executable — never `home` itself. */
+function safeHomeRoot(real: string, home: string): string {
+  const grand = dirname(dirname(real));
+  if (grand !== home && containsPath(grand, home)) return grand;
+  const parent = dirname(real);
+  return parent !== home && containsPath(parent, home) ? parent : real;
+}
+
+/** Resolve one declared verifier tool by provenance: a binary under `toolsDir` takes precedence
+ *  (`pack` on operator-installed packs; `host` when staged from a drafted exam under Rule 10),
+ *  otherwise an ambient host binary named in `host-tools.json` (`host`). Preserves the lexical
+ *  executable path (for Python PEP 405 venvs and argv0-relative tools) while hashing the canonical
+ *  `realpathSync` target so binary updates move the digest. */
 export function resolveVerifierTool(
   toolsDir: string,
   name: string,
   hostPath = toolchainPathDirs().join(":"),
 ): ResolvedVerifierTool | null {
   if (!isSafePathSegment(name)) return null;
+  const manifest = hostManifestIn(toolsDir);
   const packBin = Bun.which(name, { PATH: toolTreeSearchDirs(toolsDir).join(":") });
   if (packBin !== null) {
-    return { kind: "pack", path: packBin, sha256: sha256OfFile(realpathSync(packBin)) };
+    return {
+      kind: manifest.draft ? "host" : "pack",
+      path: packBin,
+      sha256: sha256OfFile(realpathSync(packBin)),
+    };
   }
-  if (!hostToolsIn(toolsDir).has(name)) return null;
+  if (!manifest.tools.has(name)) return null;
   const hostBin = Bun.which(name, { PATH: hostPath });
   return hostBin === null
     ? null
@@ -241,6 +267,7 @@ export function requiredToolsOf(execution: CheckExecution): readonly string[] {
 /** Resolve and hash every declared verifier engine (`resolveVerifierTool`). */
 export function pinnedEngines({ checks, tools }: VerifierTree): Engine[] {
   const hostPath = toolchainPathDirs().join(":");
+  const toolsReal = existsSync(tools) ? realpathSync(tools) : null;
   const brief = readBrief(checks);
   const named = [
     ...brief.truthChecks.flatMap(({ execution }) => requiredToolsOf(execution)),
@@ -248,7 +275,9 @@ export function pinnedEngines({ checks, tools }: VerifierTree): Engine[] {
   ];
   return [...new Set(named)].flatMap((name) => {
     const resolved = resolveVerifierTool(tools, name, hostPath);
-    return resolved === null ? [] : [{ name, path: resolved.path, sha256: resolved.sha256 }];
+    if (resolved === null) return [];
+    const external = toolsReal === null || !containsPath(realpathSync(resolved.path), toolsReal);
+    return [{ name, path: resolved.path, sha256: resolved.sha256, external }];
   });
 }
 
@@ -385,6 +414,27 @@ export function readBrief(checks: string): Brief {
   return brief;
 }
 
+/** Safe `$HOME` read-allow roots for resolved engine binaries whose realpath lies under `$HOME`
+ *  outside `tools` (never reopening `$HOME` itself). Shared by `openVerifier` and `inExaminerWall`. */
+export function engineReadRoots(
+  tools: string,
+  paths: readonly string[],
+  home: string | undefined = closedHome(),
+): string[] {
+  if (home === undefined) return [];
+  const canonicalTools = existsSync(tools) ? realpathSync(tools) : null;
+  return [
+    ...new Set(
+      paths.flatMap((path) => {
+        const real = realpathSync(path);
+        if (!containsPath(real, home)) return [];
+        if (canonicalTools !== null && containsPath(real, canonicalTools)) return [];
+        return [safeHomeRoot(real, home)];
+      }),
+    ),
+  ];
+}
+
 /**
  * A verifier over one tree. The brief is read and the wall's base taken once, here, so every
  * verdict it gives is under the same checks and the same wall. The tree is resolved first: the wall
@@ -421,15 +471,10 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
     return resolved === null ? [] : [[name, resolved] as const];
   });
   const toolMap = Object.fromEntries(resolvedTools.map(([name, resolved]) => [name, resolved.path]));
-  const home = closedHome();
-  const homeToolRoots =
-    home === undefined
-      ? []
-      : resolvedTools.flatMap(([, resolved]) => {
-          if (resolved.kind !== "host") return [];
-          const real = realpathSync(resolved.path);
-          return containsPath(real, home) ? [dirname(dirname(real))] : [];
-        });
+  const homeToolRoots = engineReadRoots(
+    tree.tools,
+    resolvedTools.map(([, resolved]) => resolved.path),
+  );
   const wall: Wall = {
     tree,
     program: checkProgramFiles(tree.checks),

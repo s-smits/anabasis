@@ -1,5 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { checkEvaluationRequest, openVerifier, type Task, type Verdict } from "../src/kernel/verify.ts";
+import {
+  checkEvaluationRequest,
+  engineReadRoots,
+  openVerifier,
+  pinnedEngines,
+  type Task,
+  type Verdict,
+} from "../src/kernel/verify.ts";
 import {
   chmodSync,
   cpSync,
@@ -7,6 +14,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -56,6 +64,14 @@ export const checks = {
   hostShell: async (req) => (await req.runtime.tools.run({ toolId: "sh", args: ["-c", "exit 0"] })).exitCode === 0,
   slowTool: async (_req, runtime) => {
     await runtime.tools.run({ toolId: "sleeper", timeoutMs: 100 });
+    return true;
+  },
+  nanTimeout: async (_req, runtime) => {
+    await runtime.tools.run({ toolId: "sleeper", timeoutMs: Number.NaN });
+    return true;
+  },
+  hungTool: async (_req, runtime) => {
+    await runtime.tools.run({ toolId: "sleeper" });
     return true;
   },
   late: async () => {
@@ -141,6 +157,8 @@ const BRIEF = {
     check("throws", "throws"),
     check("says", "says"),
     check("slowTool", "slowTool", { tools: ["sleeper"] }),
+    check("nanTimeout", "nanTimeout", { tools: ["sleeper"] }),
+    check("hungTool", "hungTool", { tools: ["sleeper"] }),
     check("hostShell", "hostShell", { tools: ["sh"] }),
     check("late", "order"),
     check("early", "order"),
@@ -477,5 +495,51 @@ describe.skipIf(!osIsolationSupport().ok)("the objective", () => {
       check: "brief",
       reason: "no check applies to family unknown-family",
     });
+  });
+
+  it("faults on non-finite tool timeoutMs and default-timeout hangs, never reopens home itself, and marks external symlinks", async () => {
+    const quick = openVerifier({ checks: join(root, "checks"), tools, checkMs: 300 });
+    expect(await quick(task("nanTimeout"), { value: 1 })).toMatchObject({
+      kind: "faulty",
+      check: "nanTimeout",
+    });
+    expect(await quick(task("hungTool"), { value: 1 })).toMatchObject({
+      kind: "faulty",
+      check: "hungTool",
+    });
+
+    // `engineReadRoots` must never reopen `home` itself for depth-1 or depth-2 binaries under `home`.
+    const fakeHome = join(root, "fake-home");
+    const fakeTools = join(fakeHome, "bundle-tools");
+    mkdirSync(join(fakeHome, "bin"), { recursive: true });
+    mkdirSync(join(fakeHome, "opt", "pkg", "bin"), { recursive: true });
+    mkdirSync(join(fakeTools, "bin"), { recursive: true });
+    const d1 = join(fakeHome, "root-tool");
+    const d2 = join(fakeHome, "bin", "depth2-tool");
+    const d3 = join(fakeHome, "opt", "pkg", "bin", "depth3-tool");
+    const inside = join(fakeTools, "bin", "bundled");
+    for (const file of [d1, d2, d3, inside]) {
+      writeFileSync(file, "#!/bin/sh\nexit 0\n");
+      chmodSync(file, 0o755);
+    }
+    const realHome = realpathSync(fakeHome);
+    const roots = engineReadRoots(fakeTools, [d1, d2, d3, inside], realHome);
+    expect(roots).not.toContain(realHome);
+    expect(roots).toEqual([
+      realpathSync(d1),
+      realpathSync(join(fakeHome, "bin")),
+      realpathSync(join(fakeHome, "opt", "pkg")),
+    ]);
+
+    // `pinnedEngines` distinguishes external symlinked tools (`external: true`) from self-contained pack tools.
+    const linkTools = join(root, "link-tools");
+    mkdirSync(join(linkTools, "bin"), { recursive: true });
+    symlinkSync(d2, join(linkTools, "bin", "double"));
+    const ext = pinnedEngines({ checks: join(root, "checks"), tools: linkTools }).find(
+      (e) => e.name === "double",
+    );
+    const local = pinnedEngines({ checks: join(root, "checks"), tools }).find((e) => e.name === "double");
+    expect(ext?.external).toBe(true);
+    expect(local?.external).toBe(false);
   });
 });

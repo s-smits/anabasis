@@ -170,5 +170,9 @@ describe("runs bench", () => {
       again: [],
       held: null,
     });
+    // Reusing an existing label across different runtime modes refuses rather than mixing harnesses.
+    expect(() => heldAs(store, DIGEST, "pi-aaaaaaaa", { modes, runtime: "claude" })).toThrow(
+      "as a pi tree, not claude",
+    );
   });
 });

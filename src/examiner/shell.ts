@@ -13,7 +13,7 @@ import { validateToolArguments } from "@earendil-works/pi-ai/utils/validation";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 import type { TSchema } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
-import { type Engine, pinnedEngines, type VerifierTree } from "../kernel/verify.ts";
+import { type Engine, engineReadRoots, pinnedEngines, type VerifierTree } from "../kernel/verify.ts";
 import { read } from "../kernel/log.ts";
 import {
   chmodSync,
@@ -90,7 +90,7 @@ export async function examinerShell(shell: CommandWall | undefined, enters: stri
   if (shell === undefined) return [];
   const network = await networkReach(shell);
   const engines = installedPrograms(shell.toolTree);
-  const walls = ` The command runs in your home directory, which holds what earlier Examiner sessions of this campaign left there and is kept for the next. It can write there and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. ${network === "unreached" ? "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be installed." : `It has network access: a package index was reached from inside the wall when this process started.${INSTALLER_TOLD[network]}`}${engines.length === 0 ? "" : ` The engines the exam's checks run are installed, and run by name: ${engines.join(", ")}. They compute; try_answer alone runs the checks on an answer.`} Nothing a command starts runs on after it returns. Nothing in your home enters the exam: ${enters}.`;
+  const walls = ` The command runs in your home directory, which holds what earlier Examiner sessions of this campaign left there and is kept for the next. It can write there and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. ${network === "unreached" ? "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be installed." : `It has network access: a package index was reached from inside the wall when this process started.${INSTALLER_TOLD[network]}`}${engines.length === 0 ? "" : ` The engines the exam's checks run are installed, and run by name: ${engines.join(", ")}. They compute; try_answer alone runs the checks on an answer.`} Nothing a command starts runs on after it returns. ${enters}.`;
   return codingTools(shell, ["bash", "read", "write"]).map((each) =>
     each.name === "bash" ? { ...each, description: `${each.description}${walls}` } : each,
   );
@@ -114,7 +114,16 @@ export async function inExaminerWall<T>(
   const dirs = examinerDirs(log, id);
   const { engines, keep } = wall;
   const pinned = engines === undefined ? [] : pinnedEngines(engines);
-  const reopened = engines === undefined || pinned.length === 0 ? [] : [engines.tools];
+  const reopened =
+    engines === undefined || pinned.length === 0
+      ? []
+      : [
+          engines.tools,
+          ...engineReadRoots(
+            engines.tools,
+            pinned.map(({ path }) => path),
+          ),
+        ];
   const tree = join(dirs.kept, "engines");
   const release = await claimRoot(dirs.root);
   try {

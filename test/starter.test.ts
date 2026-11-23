@@ -84,6 +84,11 @@ describe("the Starter and its worked harness", () => {
     expect(portableGuide(`# Guide\n\n${HOST_ONLY} notes\nKeep\n`)).toBe(
       `# Guide\n\n${HOST_ONLY} notes\nKeep\n`,
     );
+    // Tolerates CRLF, trailing spaces, heading level variants, and title-case variants.
+    expect(portableGuide("# Guide\r\n\r\nKeep\r\n\r\n## Validity and score  \r\nhidden\r\n")).toBe(
+      "# Guide\r\n\r\nKeep\r\n",
+    );
+    expect(portableGuide("# Guide\n\nKeep\n\n### Validity and Score\nhidden\n")).toBe("# Guide\n\nKeep\n");
   });
 
   it.skipIf(!osIsolationSupport().ok)(

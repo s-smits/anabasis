@@ -136,6 +136,9 @@ async function runTool(cell: CellInput, port: Port, call: ToolCall): Promise<Too
     if (!isSafePathSegment(name)) throw new Error(`check ${port.check.checkId} names a tool file ${name}`);
     writeFileSync(join(folder, name), text);
   }
+  if (call.timeoutMs !== undefined && !Number.isFinite(call.timeoutMs)) {
+    throw new Error(`check ${port.check.checkId} passed a non-finite tool timeoutMs`);
+  }
   const child = capturedSpawn({
     cmd: [command, ...(call.args ?? [])],
     cwd: folder,
@@ -145,24 +148,30 @@ async function runTool(cell: CellInput, port: Port, call: ToolCall): Promise<Too
     stderr: "pipe",
   });
   port.live.add(child.pid);
-  const timeoutMs = Math.min(Math.max(1, call.timeoutMs ?? cell.toolCeilingMs), cell.toolCeilingMs);
+  // Only arm a tool-local timer when the check explicitly passed `timeoutMs`; otherwise `timed()`'s
+  // per-check deadline (`cell.checkMs`) owns expiry and settles cleanly as `faulty` without racing.
+  const timeoutMs =
+    call.timeoutMs === undefined ? null : Math.min(Math.max(1, call.timeoutMs), cell.toolCeilingMs);
   let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    killProcessGroupId(child.pid, "SIGKILL");
-  }, timeoutMs);
+  const timer =
+    timeoutMs === null
+      ? null
+      : setTimeout(() => {
+          timedOut = true;
+          killProcessGroupId(child.pid, "SIGKILL");
+        }, timeoutMs);
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
     child.exited,
   ]);
-  clearTimeout(timer);
+  if (timer !== null) clearTimeout(timer);
   // What the tool left running must not outlive its directory.
   await terminateAndReapProcessGroupId(child.pid);
   port.live.delete(child.pid);
   // The check resumes here, so it is the one that holds the thread now (`running`).
   markRunning(port);
-  if (timedOut) return lapse("timeout", `${call.toolId} ran past ${timeoutMs} ms`);
+  if (timedOut) return lapse("timeout", `${call.toolId} ran past ${String(timeoutMs)} ms`);
   // A signal the host did not send is no answer either; Bun reports it as the signal, not 128 + n.
   if (child.signalCode !== null) return lapse("crash", `${call.toolId} was ended by ${child.signalCode}`);
   if (programNeverRan(exitCode, stdout, stderr)) {

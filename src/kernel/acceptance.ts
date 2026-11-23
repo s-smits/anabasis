@@ -139,6 +139,20 @@ function runControls(
  * caller asks (`answerFormatFault`) before it puts the answer to a check. References are followed
  * so that a draft citing `#/$defs/...` is not refused on it.
  */
+/** Smallest scalar value for a primitive JSON Schema type. */
+function minimalPrimitive(
+  held: Record<string, JsonValue | undefined>,
+  type: JsonValue | undefined,
+): JsonValue {
+  if (type === "string") return "x".repeat(isNumber(held.minLength) ? held.minLength : 0);
+  if (type === "number" || type === "integer") {
+    if (isNumber(held.minimum)) return held.minimum;
+    return isNumber(held.exclusiveMinimum) ? held.exclusiveMinimum + 1 : 0;
+  }
+  return type === "boolean" ? false : null;
+}
+
+/** Smallest value a JSON Schema allows, following local `#` references. */
 function doNothingAnswer(
   schema: JsonValue | undefined,
   root: JsonValue | undefined = schema,
@@ -148,8 +162,9 @@ function doNothingAnswer(
   if (held === null) return null;
   const smallest = (inner: JsonValue | undefined) => doNothingAnswer(inner, root, following);
   if (isString(held.$ref) && held.$ref.startsWith("#")) {
-    if (following.includes(held.$ref)) return null;
-    return doNothingAnswer(asRecord(Pointer.Get(root, held.$ref.slice(1))), root, [...following, held.$ref]);
+    return following.includes(held.$ref)
+      ? null
+      : doNothingAnswer(asRecord(Pointer.Get(root, held.$ref.slice(1))), root, [...following, held.$ref]);
   }
   if (held.const !== undefined) return held.const;
   if (Array.isArray(held.enum)) return held.enum[0] ?? null;
@@ -164,12 +179,7 @@ function doNothingAnswer(
   if (type === "array") {
     return Array.from({ length: isNumber(held.minItems) ? held.minItems : 0 }, () => smallest(held.items));
   }
-  if (type === "string") return "x".repeat(isNumber(held.minLength) ? held.minLength : 0);
-  if (type === "number" || type === "integer") {
-    if (isNumber(held.minimum)) return held.minimum;
-    return isNumber(held.exclusiveMinimum) ? held.exclusiveMinimum + 1 : 0;
-  }
-  return type === "boolean" ? false : null;
+  return minimalPrimitive(held, type);
 }
 
 /**
@@ -294,14 +304,15 @@ function acceptance(
   });
   // The objective is read as a check is: its author's own computation, which the operator admits
   // by name, and seen to measure every valid answer or none.
+  const objTools = brief.objectiveTools ?? [];
   const measured: CheckReading[] =
     brief.objective === undefined
       ? []
       : [
           {
             id: OBJECTIVE.id,
-            instrument: AUTHOR,
-            missing: [],
+            instrument: objTools.join(", ") || AUTHOR,
+            missing: objTools.filter((tool) => !found(tool)),
             passed: graded.filter(({ verdict }) => objectiveOf(verdict) !== null).length,
             refused: 0,
             named: 0,
@@ -349,13 +360,14 @@ function acceptance(
             ...(refused > 0 && caught === 0 ? [`${id} has refused no reject control that names it`] : []),
           ]),
     ]),
-    ...measured.flatMap(({ id, passed }) =>
-      unrun.has(id)
+    ...measured.flatMap(({ id, missing, passed }) => [
+      ...missing.map((tool) => `${id} names ${tool}, which is not on the verifier's tool path`),
+      ...(unrun.has(id)
         ? [`${id} could not be measured on a valid answer: ${unrun.get(id) ?? ""}`]
         : passed === 0
           ? [`${id} has measured nothing in this reading`]
-          : [],
-    ),
+          : []),
+    ]),
   ];
   return { checks: [...checks, ...measured], faults };
 }

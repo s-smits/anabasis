@@ -2,27 +2,24 @@
  * The exam of a campaign that opened from a prompt, as files: the draft its log holds, staged as a
  * pack laid out the way a stored one is, so that every command reads it as it reads a v1 bundle.
  *
- * Every check of a staged exam declares its author's own computation as its evidence and names no
- * tool. Nothing installs an engine of the field for a drafted exam, so no check can run one, and
- * the acceptance reading names each check's instrument `author` and lists it as a fault until the
- * operator admits it: by name (`tools/c/accept.ts --admit`), or all at once by a launch without
- * `--hitl`, which the reading of a draft that stands records (`tools/d1b/draft.ts`). A check reads the whole answer and the whole public input: the paths a
- * v1 check declared kept a tool's operands inside what the check could read, and these checks
- * run no tool.
+ * A check that names host/toolchain `tools` (such as `python3`, `bash`, or a domain engine) declares
+ * external evidence backed by `.toolchain/bin` wrappers; a check with no tools declares author
+ * evidence until admitted by `--admit` or an unattended launch (`tools/d1b/draft.ts`).
  */
 import { type Draft, draftOf } from "#src/examiner/draft.ts";
-import { type Checker, readChecker } from "#src/kernel/acceptance.ts";
+import { readChecker } from "#src/kernel/acceptance.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
 import { CHECK_PROGRAM_CONTRACT, checkProgramVersion, openVerifier, readBrief } from "#src/kernel/verify.ts";
 import { CHECK_BRIEF, EVALUATOR_FILE } from "#src/meta/bundle-layout.ts";
-import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
+import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
-import type { Reading } from "../c/accept.ts";
+import { toolchainPathDirs } from "#src/wall/policy.ts";
 import { checkProgram, contractOf, packControls, readPack, toolOnPath } from "../m0/stored-sweep.ts";
 
 /** A draft as a pack on disk. */
@@ -61,16 +58,43 @@ export function stagedExamOf(log: string): Staged | null {
 export const exampleId = (index: number): string => `ex-${String(index + 1).padStart(3, "0")}`;
 
 /**
- * Stage a draft under a campaign's folder, and return where. The folder is named by the draft's
- * digest, so one draft is staged once, and the check program's copy is made last: a folder that
- * holds it was staged whole.
+ * Stage a draft under a campaign's folder, and return where. Any plain program name declared by a
+ * check or the objective (e.g. `python3`, `bash`, or a domain engine) that resolves on the wall's
+ * toolchain search path is wrapped inside `.toolchain/bin` so check cells can run it cleanly.
  */
 export function stageExam(dir: string, draft: Draft): Staged {
   const { bundle, checks } = examStaged(dir, draft);
   if (existsSync(checks)) return { bundle, checks };
   const model = join(bundle, "correctness-model");
+  const bin = join(bundle, ".toolchain", "bin");
   mkdirSync(model, { recursive: true });
-  mkdirSync(join(bundle, ".toolchain", "bin"), { recursive: true });
+  mkdirSync(bin, { recursive: true });
+  const hostPath = toolchainPathDirs().join(":");
+  const engines = [
+    ...new Set([...draft.checks.flatMap(({ tools }) => tools ?? []), ...(draft.objectiveTools ?? [])]),
+  ].filter(isSafePathSegment);
+  for (const engine of engines) {
+    if (Bun.which(engine, { PATH: hostPath }) === null) continue;
+    const wrapper = join(bin, engine);
+    // Strip lexical and canonical `.toolchain/bin` from PATH before `exec` so host/wall binaries
+    // resolve cleanly even across macOS `/var` -> `/private/var` symlinks.
+    writeFileSync(
+      wrapper,
+      [
+        "#!/bin/sh",
+        'raw="$(dirname -- "$0")"; self="$(CDPATH= cd -- "$raw" 2>/dev/null && pwd -P)"',
+        'rest=""; oldIFS="$IFS"; IFS=:',
+        "for d in $PATH; do",
+        '  [ -z "$d" ] || [ "$d" = "$raw" ] || [ "$d" = "$self" ] && continue',
+        '  [ "$(CDPATH= cd -- "$d" 2>/dev/null && pwd -P)" = "$self" ] && continue',
+        '  rest="${rest:+$rest:}$d"',
+        "done",
+        `IFS="$oldIFS"; PATH="$rest" exec ${engine} "$@"`,
+        "",
+      ].join("\n"),
+    );
+    chmodSync(wrapper, 0o755);
+  }
   const hidden = draft.tasks.some((task) => task.hidden !== null) ? "whole" : "none";
   const brief = {
     correctnessContract: CHECK_PROGRAM_CONTRACT,
@@ -78,20 +102,33 @@ export function stageExam(dir: string, draft: Draft): Staged {
     scope: draft.scope,
     conventions: draft.conventions,
     ruleDecisions: draft.rules.map((rule) => ({ ...rule, visibility: "public" })),
-    truthChecks: draft.checks.map(({ id, rule, assertion }) => ({
-      id,
-      assertion,
-      citedDecisionIds: [rule],
-      execution: {
-        families: "all",
-        artifactPaths: ["$"],
-        filePaths: ["$"],
-        publicInputPaths: ["$"],
-        hidden,
-        evidence: { kind: "authored" },
-      },
-    })),
+    truthChecks: draft.checks.map(({ id, rule, assertion, tools }) => {
+      const used = (tools ?? []).filter(isSafePathSegment);
+      const [first, ...more] = used;
+      const required: [string, ...string[]] | undefined = first === undefined ? undefined : [first, ...more];
+      return {
+        id,
+        assertion,
+        citedDecisionIds: [rule],
+        execution: {
+          families: "all",
+          artifactPaths: ["$"],
+          filePaths: ["$"],
+          publicInputPaths: ["$"],
+          hidden,
+          ...(required === undefined
+            ? { evidence: { kind: "authored" } }
+            : { requiredToolIds: required, evidence: { kind: "external", requiredToolIds: required } }),
+        },
+      };
+    }),
     ...keyIfDefined("objective", draft.objective),
+    ...keyIfDefined(
+      "objectiveTools",
+      draft.objective !== undefined && draft.objectiveTools !== undefined && draft.objectiveTools.length > 0
+        ? [...draft.objectiveTools]
+        : undefined,
+    ),
     artifactSchema: [],
     designRuleConstants: [],
   };
@@ -130,28 +167,30 @@ export function stageExam(dir: string, draft: Draft): Staged {
  * reads the draft's shape before it calls this (`draftFaults`), and the reading's notes are left
  * out, since on the reply that ends the session they would carry nothing to a model.
  */
-export async function draftReading(
-  dir: string,
-  draft: Draft,
-  width: number,
-): Promise<{ readonly faults: readonly string[]; readonly read?: { checker: Checker; reading: Reading } }> {
+export async function draftReading(dir: string, draft: Draft, width: number) {
   try {
     const { bundle, checks } = stageExam(dir, draft);
     const pack = readPack(bundle);
     const contract = contractOf(pack.brief, draft.answerFormat);
+    const controls = packControls(bundle);
+    const verify = openVerifier({ checks, tools: join(bundle, ".toolchain") });
     const reading = await readChecker({
-      verify: openVerifier({ checks, tools: join(bundle, ".toolchain") }),
+      verify,
       brief: readBrief(checks),
       contract,
       tasks: pack.tasks,
-      controls: packControls(bundle),
+      controls,
       found: toolOnPath(bundle),
       width,
     });
     // The checker as a campaign opens it (`openCampaign`), so that one frozen here is the one it runs.
     const checker = { contract: contractHash(contract), checks: hashJsonValue(checkProgramVersion(checks)) };
-    return { faults: reading.faults, read: { checker, reading } };
+    const faults: readonly string[] = reading.faults;
+    return { faults, read: { checker, reading } };
   } catch (error) {
-    return { faults: [`the check program could not be put to its controls: ${errorMessage(error)}`] };
+    const faults: readonly string[] = [
+      `the check program could not be put to its controls: ${errorMessage(error)}`,
+    ];
+    return { faults };
   }
 }

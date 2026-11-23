@@ -23,16 +23,8 @@ import type { Objective } from "./contract.ts";
 import type { AnswerFile } from "./answer-files.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 
-// Copied from v1 (github.com/s-smits/anabasis, 3f93d06b), verbatim: CHECK_PROGRAM_CONTRACT,
-// requiredToolsOf, applicableTruthChecks, projectPaths, projectJsonPaths and checkPublicInputs from
-// vendor/correctness-model-bundle/evaluation-public-task.ts, and checkEvaluationRequest from
-// vendor/correctness-model-bundle/evaluate.ts. Departure: the five types they read are declared
-// here, cut to the fields those functions and the shape check read, in place of v1's brief, contract
-// and task-split modules, which did not come over. A second: `checkEvaluationRequest` returns its
-// projection without v1's `structuredClone`, which kept a check run in v1's own process from
-// reaching the caller's objects. Here the projection is written to the check child's stdin as JSON
-// in the same synchronous stretch of `runCell`, and `task.ts` reads it only for its throw, so
-// nothing holds the projection long enough to share it with a writer.
+// Core check-projection primitives adapted from v1 (`evaluation-public-task.ts`, `evaluate.ts`),
+// omitting `structuredClone` because `runCell` serialises projections synchronously to child stdin.
 
 interface CheckExecution {
   families: "all" | string[];
@@ -62,6 +54,8 @@ export interface Brief {
   correctnessContract: string;
   truthChecks: BriefTruthCheck[];
   objective?: Objective;
+  /** External engines declared for `objective(request, runtime)` when it runs installed tools. */
+  objectiveTools?: readonly string[];
 }
 
 interface PublicTask<PublicInput> {
@@ -155,46 +149,30 @@ export const OBJECTIVE: BriefTruthCheck = {
   },
 };
 
-/** The check process, which reads these sources from where they stand: the wall closes the
- *  repository they lie in and opens them again by path. */
 const CHECK_CHILD = join(import.meta.dir, "check-child.ts");
 const CHECK_CHILD_SOURCES = [import.meta.dir, resolve(import.meta.dir, "..", "meta")];
 const REPO = resolve(import.meta.dir, "..", "..");
-
-/** v1's ceiling on one tool run, `DEFAULT_TOOL_TIMEOUT_MS` in its src/verify/host.ts. */
 const TOOL_CEILING_MS = 300_000;
-
-/**
- * The checks a cell runs at once. Running fourteen checks four at a time took about a third of the
- * time of one after another, and eight at a time little less than four. Four keeps the tools one
- * verdict runs at once within a four-core Linux host, where several solves are judged together.
- */
 const CHECKS_AT_ONCE = 4;
-
-/** One check's whole run, its tools included; past it the check is at fault, and the task is set
- *  aside as the check's defect instead of stopping the run (the operator's choice). It is well
- *  under the tool ceiling of ten minutes, which a tool may still ask for and no check reaches. */
+/** Per-check wall timeout including its tools; exceeding it marks the check faulty. */
 export const PER_CHECK_MS = 120_000;
 
-/** What the checker measured of a valid answer; null for any verdict but a pass with a measure.
- *  A comparison's objective, a Builder's practice record, an Examiner's room and the acceptance's
- *  count of measured answers read it here (rule 12). */
+/** Objective measure of a passing verdict, or null. */
 export function objectiveOf(verdict: Verdict | null | undefined): number | null {
   return verdict?.kind === "pass" ? (verdict.objective ?? null) : null;
 }
 
-/** The checks that refused an answer; none for any verdict but a fail. An answer some check
- *  refused is what a reviewer reads, a repair is held to and the Referee's replay is set against. */
+/** Blocking check ids of a failing verdict, or empty. */
 export function blockingOf(verdict: Verdict | null | undefined): readonly string[] {
   return verdict?.kind === "fail" ? verdict.blocking : [];
 }
 
-/** Whether the checks decided the answer, a pass or a fail, rather than ending faulty or as a non-result. */
+/** True when a verdict decided pass or fail rather than faulty or non-result. */
 export function decides(verdict: Verdict): verdict is Extract<Verdict, { kind: "pass" | "fail" }> {
   return verdict.kind === "pass" || verdict.kind === "fail";
 }
 
-/** A verdict in one line, a fail's checks in order, so that two verdicts can be set side by side. */
+/** One-line canonical spelling of a verdict for equality and display. */
 export function spelled(verdict: Verdict): string {
   if (verdict.kind === "fail") return `fail ${[...verdict.blocking].toSorted().join(",")}`;
   if (verdict.kind === "faulty") return `faulty ${verdict.check}: ${verdict.reason}`;
@@ -204,38 +182,28 @@ export function spelled(verdict: Verdict): string {
   return `non-result ${verdict.reason}`;
 }
 
-/** An external check names its tools inside its evidence declaration, because the tool is the
- *  instrument deciding it; an authored check names them at the execution level, where they are
- *  ordinary dependencies. Callers that only need to know what has to be installed and hashed ask
- *  here rather than branching on the kind themselves. */
+/** Tool ids a check requires, whether declared under external evidence or execution dependencies. */
 export function requiredToolsOf(execution: CheckExecution): readonly string[] {
   return execution.evidence.kind === "external"
     ? execution.evidence.requiredToolIds
     : (execution.requiredToolIds ?? []);
 }
 
-/**
- * The pinned list of a check program's engines: each program its checks name (`requiredToolsOf`),
- * resolved on the search path a check's cell is given (`runTool`, `check-child.ts`), in the order
- * the checks first name them, and named by its digest. The host reads it here, once, for every
- * side that is given the exam's instruments (the Examiner's shell, `src/examiner/shell.ts`). A
- * name the tree does not hold is the host's own and is left out, and a name that is no plain file
- * name is never looked up, as a check's cell never looks one up.
- */
+/** Resolve and hash every declared verifier engine found on the verifier tool tree's path. */
 export function pinnedEngines({ checks, tools }: VerifierTree): Engine[] {
   const path = toolTreeSearchDirs(tools).join(":");
-  const named = readBrief(checks).truthChecks.flatMap(({ execution }) => requiredToolsOf(execution));
+  const brief = readBrief(checks);
+  const named = [
+    ...brief.truthChecks.flatMap(({ execution }) => requiredToolsOf(execution)),
+    ...(brief.objectiveTools ?? []),
+  ];
   return [...new Set(named)].flatMap((name) => {
     const found = isSafePathSegment(name) ? Bun.which(name, { PATH: path }) : null;
     return found === null ? [] : [{ name, path: found, sha256: sha256OfFile(found) }];
   });
 }
 
-/** Declared family scope decides applicability, and nothing else does. In particular the hidden
- *  operand is not consulted here: a check that declares `hidden: "required"` and has no expectation
- *  for the task is still applicable, and `checkEvaluationRequest` throws when it comes to run it.
- *  The two outcomes have to stay distinguishable, because a check quietly dropped for want of its
- *  operand looks exactly like a check that was never meant to apply, and only one is a defect. */
+/** Truth checks whose declared family scope includes `task.family`. */
 export function applicableTruthChecks(brief: Brief, task: { family: string }): BriefTruthCheck[] {
   if (brief.correctnessContract !== CHECK_PROGRAM_CONTRACT) {
     throw new Error("unsupported-correctness-contract");
@@ -376,6 +344,22 @@ export function readBrief(checks: string): Brief {
 export function openVerifier(given: VerifierTree & Closed): Verifier {
   const tree: VerifierTree = { checks: resolve(given.checks), tools: resolve(given.tools) };
   const brief = readBrief(tree.checks);
+  const [firstTool, ...moreTools] = brief.objectiveTools ?? [];
+  const objectiveTools: [string, ...string[]] | undefined =
+    firstTool === undefined ? undefined : [firstTool, ...moreTools];
+  const objective: BriefTruthCheck | null =
+    brief.objective === undefined
+      ? null
+      : objectiveTools === undefined
+        ? OBJECTIVE
+        : {
+            ...OBJECTIVE,
+            execution: {
+              ...OBJECTIVE.execution,
+              requiredToolIds: objectiveTools,
+              evidence: { kind: "external", requiredToolIds: objectiveTools },
+            },
+          };
   const wall: Wall = {
     tree,
     program: checkProgramFiles(tree.checks),
@@ -398,7 +382,6 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
       ...keyIfDefined("files", files),
     };
     const checks = applicableTruthChecks(brief, task);
-    const objective = brief.objective === undefined ? null : OBJECTIVE;
     const ran = await runCell(wall, checks, objective, request, signal);
     if ("nonResult" in ran) return { kind: "non-result", reason: ran.nonResult };
     if ("held" in ran) return { kind: "faulty", check: ran.held, reason: ran.reason };

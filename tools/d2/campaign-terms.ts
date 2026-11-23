@@ -212,12 +212,110 @@ function counted(count: number, what: string): void {
   if (!Number.isInteger(count) || count < 1) throw new Error(`${what} are a whole number of at least one`);
 }
 
-/**
- * What the campaign runs by: its record, or what this command names where that is another, written
- * again where they differ or a word asked for it. A paid campaign needs its total and a Referee, and
- * a rehearsal's needs neither. A total the operator left as a word stands over the flag the command
- * was started with, which is older (`word.ts`), and the newest of several words over the rest.
- */
+/** Resolve one seat from CLI flags, falling back to the recorded opening. */
+function seatOf(
+  model: string | undefined,
+  effort: string | undefined,
+  kept: Seat | null | undefined,
+): Seat | null {
+  const named = model ?? kept?.model;
+  return named === undefined ? null : { model: named, effort: effort ?? kept?.effort ?? DEFAULTS.effort };
+}
+
+/** Serialise `opening` to its `campaign.opened` log payload, omitting absent optional keys. */
+function openingRecord(opening: Opening): JsonObject {
+  return {
+    project: opening.project,
+    budget: opening.budget === null ? null : { ...opening.budget },
+    patience: opening.patience,
+    seats: Object.fromEntries(
+      SEATS.map((each) => [each, opening.seats[each] === null ? null : { ...opening.seats[each] }]),
+    ),
+    ...keyIfDefined("attended", opening.attended || undefined),
+    ...keyIfDefined("prompt", opening.prompt ?? undefined),
+    ...keyIfDefined("solver", opening.solver === null ? undefined : { ...opening.solver }),
+    terms: { ...opening.terms },
+  };
+}
+
+/** Merge move terms from flags and prior opening, refusing any `--level` change after a comparison starts. */
+function resolveTerms(events: readonly LogEvent[], was: Opening | null, values: Values): Opening["terms"] {
+  const began = events.findLast(({ kind, data }) => kind === STARTED && isNumber(data.level))?.data.level;
+  if (isNumber(began) && values.level !== undefined && Number(values.level) !== began) {
+    throw new Error(
+      `--level ${values.level}: the campaign's comparisons began at level ${String(began)}, and a term is never moved after a result. Drop the flag; another level is another campaign`,
+    );
+  }
+  return {
+    level: COMPARISON_OPTIONS.level.default,
+    ...was?.terms,
+    ...Object.fromEntries(
+      TERMS.flatMap((term) => (values[term] === undefined ? [] : [[term, values[term]]])),
+    ),
+    ...keyIfDefined("level", isNumber(began) ? String(began) : undefined),
+  };
+}
+
+/** Validate opening invariants (`budget`, `reviewer`, `patience`, `promotions`) before recording. */
+function validateOpening(opening: Opening, values: Values, seats: "paid" | "scripted"): void {
+  if (seats === "paid" && opening.seats.reviewer === null) {
+    throw new Error("name --reviewer: a paid campaign needs a Referee to rule its rejections");
+  }
+  counted(
+    opening.patience,
+    `--patience ${String(values.patience)}: the moves without a gain the campaign bears in a row`,
+  );
+  const cap = opening.terms.promotions;
+  if (cap !== undefined && cap !== "none") {
+    counted(Number(cap), `--promotions ${cap}: the promotions before the campaign ends`);
+  }
+}
+
+/** Resolve campaign budget from operator words, flags, and prior opening. */
+function resolveBudget(
+  values: Values,
+  was: Opening | null,
+  seats: "paid" | "scripted",
+  heard: readonly Word[],
+): Opening["budget"] {
+  const dollars = heard.at(-1)?.dollars ?? values.budget ?? was?.budget?.dollars;
+  if (seats === "paid" && values.budget === undefined && was?.budget == null) {
+    throw new Error(
+      "name --budget, the dollars this campaign may bill in all: each move is held to what is left of it, and the campaign ends where less is left than one solve is held at",
+    );
+  }
+  const reserve = values.reserve ?? String(was?.budget?.reserve ?? DEFAULTS.reserve);
+  return dollars === undefined ? null : capRead(String(dollars), reserve);
+}
+
+/** Resolve all three campaign seats from flags and prior opening. */
+function resolveSeats(values: Values, was: Opening | null): Opening["seats"] {
+  return {
+    builder: seatOf(values.builder, values["builder-effort"], was?.seats.builder),
+    examiner: seatOf(values.examiner, values["examiner-effort"], was?.seats.examiner),
+    reviewer: seatOf(values.reviewer, values["reviewer-effort"], was?.seats.reviewer),
+  };
+}
+
+/** Persist `campaign.opened` when it changed or answered an operator word (unless `"dry-run"`). */
+function persistOpening(
+  log: string,
+  events: readonly LogEvent[],
+  opening: Opening,
+  mode: "write" | "dry-run",
+  heard: readonly Word[],
+): void {
+  const record = openingRecord(opening);
+  const { answers: _heard, led: _led, ...kept } = events.findLast(({ kind }) => kind === OPENED)?.data ?? {};
+  if (mode === "dry-run" || (heard.length === 0 && sameJsonValue(kept, record))) return;
+  mkdirSync(dirname(log), { recursive: true });
+  append(log, OPENED, {
+    ...record,
+    ...keyIfDefined("answers", heard.length === 0 ? undefined : heard.map(({ at }) => at)),
+  });
+}
+
+/** Resolve, validate, and (when changed) record `campaign.opened` for this run. */
 export function opened(
   log: string,
   values: Values,
@@ -226,23 +324,12 @@ export function opened(
 ): Opening {
   const events = read(log);
   const was = openingOf(events);
-  const dollars = heard.at(-1)?.dollars ?? values.budget ?? was?.budget?.dollars;
-  if (seats === "paid" && values.budget === undefined && was?.budget == null) {
-    throw new Error(
-      "name --budget, the dollars this campaign may bill in all: each move is held to what is left of it, and the campaign ends where less is left than one solve is held at",
-    );
-  }
-  /** A seat as this command names it, and as the record holds it where the command names none. */
-  const seat = (model: string | undefined, effort: string | undefined, kept: Seat | null | undefined) => {
-    const named = model ?? kept?.model;
-    return named === undefined ? null : { model: named, effort: effort ?? kept?.effort ?? DEFAULTS.effort };
-  };
+  const budget = resolveBudget(values, was, seats, heard);
   const prompt = promptOf(values, was);
   if (prompt === null) {
     throw new Error(`give the prompt the campaign opens from with --prompt: ${log} holds none`);
   }
-  // The recorded solver takes no effort from a command that does not name its model.
-  const solver = seat(
+  const solver = seatOf(
     values.solver,
     values.solver === undefined ? undefined : values["solver-effort"],
     was?.solver,
@@ -257,73 +344,19 @@ export function opened(
       "the campaign's exam was drafted from another prompt than this command gives: a prompt names one campaign, and another takes a name of its own",
     );
   }
-  const reserve = values.reserve ?? String(was?.budget?.reserve ?? DEFAULTS.reserve);
-  // The level is pinned whether or not a command named it, to the one the campaign's comparisons
-  // began under, as the setting is held to its first solves (`firstRecord`): a tree whose default
-  // moved would otherwise change the test of a campaign run on from it. A command that names another
-  // is refused before anything is written (rule 4), since it would move every later comparison's test.
-  const began = events.findLast(({ kind, data }) => kind === STARTED && isNumber(data.level))?.data.level;
-  if (isNumber(began) && values.level !== undefined && Number(values.level) !== began) {
-    throw new Error(
-      `--level ${values.level}: the campaign's comparisons began at level ${String(began)}, and a term is never moved after a result. Drop the flag; another level is another campaign`,
-    );
-  }
-  const named: Omit<Opening, "project"> = {
-    budget: dollars === undefined ? null : capRead(String(dollars), reserve),
+  const opening: Opening = {
+    project: projectOf(log, values.project, was),
+    budget,
     patience: values.patience === undefined ? (was?.patience ?? PATIENCE) : Number(values.patience),
-    seats: {
-      builder: seat(values.builder, values["builder-effort"], was?.seats.builder),
-      examiner: seat(values.examiner, values["examiner-effort"], was?.seats.examiner),
-      reviewer: seat(values.reviewer, values["reviewer-effort"], was?.seats.reviewer),
-    },
+    seats: resolveSeats(values, was),
     attended: values.hitl ?? was?.attended ?? false,
     prompt,
     solver,
-    terms: {
-      level: COMPARISON_OPTIONS.level.default,
-      ...was?.terms,
-      ...Object.fromEntries(
-        TERMS.flatMap((term) => (values[term] === undefined ? [] : [[term, values[term]]])),
-      ),
-      ...keyIfDefined("level", isNumber(began) ? String(began) : undefined),
-    },
+    terms: resolveTerms(events, was, values),
   };
-  if (seats === "paid" && named.seats.reviewer === null) {
-    throw new Error("name --reviewer: a paid campaign needs a Referee to rule its rejections");
-  }
-  counted(
-    named.patience,
-    `--patience ${String(values.patience)}: the moves without a gain the campaign bears in a row`,
-  );
-  const cap = named.terms.promotions;
-  if (cap !== undefined && cap !== "none") {
-    counted(Number(cap), `--promotions ${cap}: the promotions before the campaign ends`);
-  }
-  const project = projectOf(log, values.project, was);
-  // Absent keys stay absent, so that a record from before each of them reads as written.
-  const record: JsonObject = {
-    project,
-    budget: named.budget === null ? null : { ...named.budget },
-    patience: named.patience,
-    seats: Object.fromEntries(
-      SEATS.map((each) => [each, named.seats[each] === null ? null : { ...named.seats[each] }]),
-    ),
-    ...keyIfDefined("attended", named.attended || undefined),
-    ...keyIfDefined("prompt", named.prompt ?? undefined),
-    ...keyIfDefined("solver", named.solver === null ? undefined : { ...named.solver }),
-    terms: { ...named.terms },
-  };
-  // The record as it was written, less the words it answered and who led it (an older record's field).
-  const { answers: _heard, led: _led, ...kept } = events.findLast(({ kind }) => kind === OPENED)?.data ?? {};
-  if (!values["dry-run"] && (heard.length > 0 || !sameJsonValue(kept, record))) {
-    // A campaign that opens from a prompt has no folder until now.
-    mkdirSync(dirname(log), { recursive: true });
-    append(log, OPENED, {
-      ...record,
-      ...keyIfDefined("answers", heard.length === 0 ? undefined : heard.map(({ at }) => at)),
-    });
-  }
-  return { ...named, project };
+  validateOpening(opening, values, seats);
+  persistOpening(log, events, opening, values["dry-run"] ? "dry-run" : "write", heard);
+  return opening;
 }
 
 /**

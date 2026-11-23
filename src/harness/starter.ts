@@ -26,6 +26,7 @@ import { CODING_TOOLS } from "../tools/coding.ts";
 
 /** The guide's last heading, for what holds only for this host's answer; an export stops at it. */
 export const HOST_ONLY = "## Validity and score";
+const HOST_ONLY_LINE = new RegExp(`(?:^|\\n)${HOST_ONLY}(?=\\n|$)`, "u");
 
 /**
  * The Starter's two files: a spec that selects pi's four coding tools, and the starter instructions
@@ -113,8 +114,8 @@ process.exit(failed === 0 ? 0 : 1);
 
 ## Programs and tools
 - ${CHECKER} <rota.json> <limits.json>: tests a rota file against each person's hour limit and prints
-  one line a person; public/task.json serves as the second file. Exit 0 when every limit is met, 1
-  when one is not, 2 when it could not run. It tests the hour limits and no other rule.
+  one line a person. Exit 0 when every limit is met, 1 when one is not, 2 when it could not run. It
+  tests the hour limits and no other rule.
 
 ## Working with them
 A rota that ${CHECKER} passes has still to meet the rules it does not test.
@@ -123,7 +124,8 @@ A rota that ${CHECKER} passes has still to meet the rules it does not test.
 Hours count by the shift's length in the task, not by its clock times.
 
 ${HOST_ONLY}
-A rota that leaves a shift of the task unassigned is not valid.
+- Pass public/task.json as <limits.json> to ${CHECKER}.
+- A rota that leaves a shift of the task unassigned is not valid.
 `,
 };
 
@@ -133,14 +135,15 @@ A rota that leaves a shift of the task unassigned is not valid.
 export const HARNESS_ACCOUNT = `# The Built Harness
 
 A solver is pi's coding agent behind a command wall. Your harness is what you add under harness/.
-The host reads three paths there and nothing else. Put reusable computation in .toolchain/ rather
-than pasting code snippets into the guide: pasted code runs anonymously in traces and adds clutter
-to every solve.
+The host reads three paths there and nothing else. Reusable computation belongs in .toolchain/
+rather than pasted into the guide, where snippets run anonymously in traces and add clutter to every
+solve.
 
 ## What every solver receives
 
-- One persistent working directory (its home) containing public/task.json, task files under
-  public/files/, public domain rules under public/resources/, and public/answer-format.json.
+- One persistent working directory (its home) containing public/task.json, task files listed in
+  publicInput.files under public/files/, public domain rules under public/resources/, and
+  public/answer-format.json.
 - Submission via answer.json and submit: the host checks answer.json against the schema and
   refuses mismatches with the reason. An accepted submit ends the solve and returns no verdict.
 - A host system prompt giving its tools, duty, time and turn limits, working directory, wall
@@ -158,22 +161,20 @@ ${capturedJsonStringify(EXAMPLE.spec, null, 2)}
 ## .toolchain/
 
 Executables in .toolchain/bin (and any nested bin, shims, or sbin directory) run by name in the
-solver's commands, with .toolchain/bin first on PATH. The tree is read-only to the solver. Install
+solver's commands, with .toolchain/bin first on PATH. The tree is read-only to the solver. Installing
 any interpreter, engine, or package your programs or the solver's commands need inside .toolchain/
-so solves do not waste turns installing them and external exports stay self-contained without
-naming host paths.
+avoids per-solve installs and keeps external exports self-contained without naming host paths.
 
-Build programs around general, high-leverage domain operations (parsing inputs, modelling or
-searching candidates, and checking public rules) that work cleanly on any well-formed task input.
-If practice traces show a program is rarely used or does not address a real bottleneck, simplify or
-remove it instead of carrying dead tooling in PATH and the guide.
+General, high-leverage domain operations (parsing inputs, modelling or searching candidates, and
+independent checking) transfer cleanly across unseen tasks when they operate on plain data files.
+Practice traces show which programs are used and which sit idle in PATH and the guide.
 
-Keep every program to one predictable CLI convention:
+Predictable CLI conventions:
 
 - Verb-first lower-case name with hyphens: ${CHECKER}, simulate-mix.
 - Every input passed as a relative file argument; open no unnamed files.
-- Programs that compute also accept plain data (CSV or JSON of the values alone) so they work on
-  ordinary domain inputs outside this host.
+- Programs that compute accept plain data (CSV or JSON of the values alone) so they work on
+  ordinary domain workspaces outside this host as well as campaign tasks.
 - Readable result lines on stdout; diagnostics on stderr.
 - Exit 0 when what was tested holds, 1 when something fails, and 2 when the command could not run
   (missing file, bad arguments). Support --help (prints usage and exits 0).
@@ -191,19 +192,6 @@ The operating guide, read whole into the solver's system prompt once per task un
 stating that it cannot override the public task, tool authority, runtime limits, or submission
 rules. Without this file the solver reads no guide.
 
-Design the guide to sharpen how the solver works on unseen tasks:
-
-- Start from the task itself: orient the solver to read the task's own files and public/resources/
-  (never tell it to skip public documents), choose and run your programs, reason through domain
-  trade-offs from first principles, and verify its finished answer independently before submitting.
-- Keep it short and prune as you iterate: every paragraph sits in the system prompt of every solve.
-  Accumulating long checklists or narrow recipes for individual practice families crowds out the
-  solver's reading of new tasks and breaks down when an unseen task brings different inputs or
-  structure. Cut stale, redundant, or unused instructions when revising.
-- Let the host manage time and turn budgets: the host states the solve's limits and appends usage
-  to executed tool results. Guides that create urgency or prescribe a tight turn target push
-  solvers to submit under-verified answers with most of their budget still unused.
-
 Every campaign begins from the Starter guide:
 
 \`\`\`markdown
@@ -212,11 +200,24 @@ ${STARTER.guide.trimEnd()}
 
 You may revise, replace, or remove it, including the file itself.
 
-A kept harness is also exported and run outside this host on ordinary prompts and files, where
-public/task.json, answer.json, submit, and exam scoring do not exist. Export keeps the guide up to
-the heading "${HOST_ONLY.slice(3)}", where host-specific notes belong: what makes an answer valid
-here and how the declared objective is measured under the public rules. A guide without that
-heading is exported whole under a host disclaimer.
+- Portable boundary: kept harnesses are exported and run outside this host on ordinary domain
+  workspaces where public/task.json, public/files/, public/resources/, answer.json, submit, exam
+  rule IDs, and campaign scoring do not exist. Export keeps the guide up to the heading
+  "${HOST_ONLY.slice(3)}" and strips everything below it (a guide without that heading is exported
+  whole under a host disclaimer). Sections above "${HOST_ONLY.slice(3)}" — Programs and tools,
+  Working with them, and Domain notes — therefore apply to general workspaces and ordinary files:
+  how to use your programs, reason from first principles, and verify work independently.
+- Host-only section ("${HOST_ONLY.slice(3)}"): campaign-specific workflow belongs strictly under
+  this heading — reading public/task.json, public/files/, and public/resources/, checking rules
+  against answer.json, campaign scoring notes, and calling submit.
+- Conciseness and pruning: every paragraph sits in the system prompt of every solve. Long
+  checklists, pasted code, or narrow formulas accumulated from individual practice families crowd
+  out reading new tasks and break when an unseen task brings different structure; practice traces
+  show which instructions go unused.
+- Limits and public documents: the host states the solve's limits and appends usage to executed tool
+  results, and guides that prescribe tight turn targets or urgency push solvers to submit
+  under-verified work with most of their budget still unused. Skipping public/resources/ or task
+  documents leaves published domain rules unread.
 
 Worked guide with one program entry:
 
@@ -224,6 +225,12 @@ Worked guide with one program entry:
 ${EXAMPLE.guide.trimEnd()}
 \`\`\`
 `;
+
+/** The portable prefix of a harness guide before `HOST_ONLY` (used by external runners). */
+export function portableGuide(guide: string): string {
+  const match = HOST_ONLY_LINE.exec(guide);
+  return match === null ? guide : guide.slice(0, match.index);
+}
 
 /** Write the Starter Built Harness into `dir`, which is made if it is not there. */
 export function writeStarter(dir: string): void {

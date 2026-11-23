@@ -285,31 +285,29 @@ describe("a harness written out for Claude Code", () => {
       cat: "#!/bin/sh\necho the harness's cat\n",
       stage:
         "#!/bin/sh\n# stage [public/task.json] [--out DIR]\n#\n# Writes each input file of the task to DIR.\ncat public/task.json\n",
-      count:
-        "#!/bin/sh\n# count <file> [<file> ...] | count --task public/task.json\n#\n# Counts records.\necho 1\n",
       "python3.12": "#!/bin/sh\necho the harness's interpreter\n",
     };
-    const own = `# Operating Guide\n\n## Programs and tools\n- \`mark\`: prints marked.\n- \`stage\`: unpacks public/task.json.\n\n## Domain notes\nA mark counts once.\n\n${HOST_ONLY}\nAn answer over three lines is not valid.\n`;
+    const own = `# Operating Guide\n\n## Programs and tools\n- mark: prints marked.\n\n## Domain notes\nA mark counts once.\n\n${HOST_ONLY}\nAn answer over three lines is not valid.\n`;
     const made = await campaign("exported", () => undefined, { ...MARKED, programs, guide: own });
     const into = join(root, "claude-tooled");
     const record = await exportForClaudeCode(into, { campaign: made.log, harness: made.child });
     expect(record.harness).toBe(made.child);
     expect(record.dropped).toStrictEqual(["agent/tools-spec.json", "agent/tools.ts"]);
-    expect(record.hostOnlyPrograms).toStrictEqual(["stage"]);
     const guide = readFileSync(join(into, "CLAUDE.md"), "utf8");
-    expect(guide).toContain("These harness programs are on your PATH");
-    expect(guide).toContain("\n- cat\n- count: count <file> [<file> ...]\n- mark\n");
-    expect(guide).not.toContain("stage");
-    expect(guide).not.toContain("public/task.json");
+    expect(guide).toContain("Its programs run by name, as the guide names them; each is listed below");
+    expect(guide).toContain("This runner has no `input.json`, `public/` folder or `answer.json`");
+    // Each program in PATH order with the first line of its own account, and one that gives none by
+    // its name alone: what a program opens is said by the program, and no reading of its text decides it.
+    expect(guide).toContain("\n- cat\n- mark\n- stage: stage [public/task.json] [--out DIR]\n");
     expect(guide).not.toContain("Writes each input file");
-    expect(guide).toContain("(under `scripts/toolchain/bin`, behind system programs)");
+    expect(guide).toContain("(`scripts/toolchain/bin`) are on your PATH behind this machine's own programs");
     // No interpreter is named, the tool tree's own among its programs neither: a note that named
     // the harness's sent a solver to it for a look.
     expect(guide).not.toMatch(/python|interpreter/u);
     expect(guide).not.toContain("scripts/toolchain/bin/mark");
     expect(guide).not.toContain("export PATH");
     // What the guide keeps under its last heading, for the exam's own answer, stays behind.
-    expect(guide.endsWith("- `mark`: prints marked.\n\n## Domain notes\nA mark counts once.\n")).toBe(true);
+    expect(guide.endsWith("- mark: prints marked.\n\n## Domain notes\nA mark counts once.\n")).toBe(true);
     expect(guide).not.toContain("three lines");
     expect(readFileSync(join(into, "scripts", "toolchain", "bin", "mark"), "utf8")).toContain("echo marked");
     // The tree holds the programs once: the copy of the harness kept for provenance has none.
@@ -341,67 +339,6 @@ describe("a harness written out for Claude Code", () => {
       made.child,
     );
     expect(() => validate(readTree(into))).not.toThrow();
-  });
-
-  it("strips host-only prose and offloads large reference sections into installable Claude Code skills", async () => {
-    const programs = {
-      ...MARKED.programs,
-      "check-answer": "#!/bin/sh\n# check-answer [answer.json] [public/task.json]\nexit 0\n",
-      "profile-data": "#!/bin/sh\n# profile-data <file> [<file> ...] (e.g. public/files/*.csv)\nexit 0\n",
-    };
-    const notes = Array.from(
-      { length: 24 },
-      (_, index) =>
-        `- Topic ${String(index + 1)}: detailed domain methodology explaining how to handle measurement bias and variance across strata (${"x".repeat(60)}).`,
-    ).join("\n");
-    const own = [
-      "# Operating Guide",
-      "",
-      "Deliver estimates in answer.json. You have 20 model turns: batch work into few commands.",
-      "",
-      "## Programs and tools",
-      "- `profile-data public/files/*.csv`: inspects missing counts and ranges.",
-      "- `check-answer`: tests answer.json against R1-R3.",
-      "",
-      "## Workflow (aim for about 6-10 turns)",
-      "A good solve fits in 6-10 turns:",
-      "1. One command: `cat public/task.json public/answer-format.json; ls -la public/files` (public/resources/ only repeats rules; skip it), then read every non-data document whole.",
-      "2. Profile every table with `profile-data` before modelling.",
-      "3. Write answer.json, run `check-answer`, then submit.",
-      "",
-      "## Validity (rules R1-R5 made concrete)",
-      "- Every estimate must appear in answer.json with a workspace source_file.",
-      "",
-      "## Domain notes",
-      notes,
-      "",
-    ].join("\n");
-    const made = await campaign("exported-skills", () => undefined, { ...MARKED, programs, guide: own });
-    const into = join(root, "claude-skills");
-    const record = await exportForClaudeCode(into, { campaign: made.log, harness: made.child });
-    expect(record.hostOnlyPrograms).toStrictEqual(["check-answer"]);
-    expect(record.skills).toStrictEqual(["domain-notes"]);
-    const guide = readFileSync(join(into, "CLAUDE.md"), "utf8");
-    expect(guide).not.toContain("6-10 turns");
-    expect(guide).not.toContain("20 model turns");
-    expect(guide).not.toContain("public/resources/");
-    expect(guide).not.toContain("public/task.json");
-    expect(guide).not.toContain("answer.json");
-    expect(guide).not.toContain("check-answer");
-    expect(guide).not.toContain("Validity (rules R1-R5");
-    expect(guide).toContain("1. Read every non-data document whole.");
-    expect(guide).toContain("2. Profile every table with `profile-data` before modelling.");
-    expect(guide).toContain("- `profile-data *.csv`: inspects missing counts and ranges.");
-    expect(guide).toContain("use the `domain-notes` skill.");
-    expect(guide.length).toBeLessThan(2000);
-    const skillPath = join(into, ".claude", "skills", "domain-notes", "SKILL.md");
-    expect(existsSync(skillPath)).toBe(true);
-    expect(readFileSync(skillPath, "utf8")).toContain("Topic 24:");
-    // Valid under Harness²'s Claude Code surface validator and copied intact by installTree.
-    expect(() => validate(readTree(into))).not.toThrow();
-    const workspace = join(root, "claude-skills-workspace");
-    installTree(into, workspace);
-    expect(existsSync(join(workspace, ".claude", "skills", "domain-notes", "SKILL.md"))).toBe(true);
   });
 
   it("copies a tool tree whose programs run where it is exported byte for byte, asking no installer, and refuses it where they do not", async () => {
@@ -482,16 +419,16 @@ describe("a harness written out for Claude Code", () => {
     await expect(ownPython(linked, env)).rejects.toThrow(/bin\/python3 cannot start here/u);
   });
 
-  it("writes the starter's guide under the runtime header with no tool or skill line, and refuses a tree already made", async () => {
+  it("writes the starter's guide under the note with no tool or program line, and refuses a tree already made", async () => {
     const into = join(root, "claude-starter");
     const record = await exportForClaudeCode(into, "starter");
     expect(record).toMatchObject({ campaign: null, toolchain: null, searched: [] });
     const guide = readFileSync(join(into, "CLAUDE.md"), "utf8");
-    expect(guide.startsWith("# Runtime environment")).toBe(true);
-    expect(guide).toContain("Follow the task prompt and write all requested deliverables");
+    expect(guide.startsWith("# How this harness reaches you")).toBe(true);
+    expect(guide).not.toContain("not available here");
     expect(guide).not.toContain("scripts/toolchain");
+    expect(guide).toMatch(/limit on turns or time, .* does not hold here/u);
     expect(guide).not.toContain("on your PATH");
-    expect(guide).not.toContain("## On-demand skills");
     // The Starter's own host-only section is its last and holds nothing, so its export ends as it did.
     expect(guide.endsWith("## Domain notes\nNone yet.\n")).toBe(true);
     expect(existsSync(join(into, "scripts"))).toBe(false);

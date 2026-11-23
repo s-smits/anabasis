@@ -21,7 +21,7 @@ import { CODING_TOOLS, codingTools, selectedCodingTools } from "../src/tools/cod
 import { type CommandWall, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
 import { walledEnv } from "../src/tools/env.ts";
 import { openHarness } from "../src/harness/open.ts";
-import { EXAMPLE, HARNESS_ACCOUNT, writeStarter } from "../src/harness/starter.ts";
+import { EXAMPLE, HARNESS_ACCOUNT, HOST_ONLY, portableGuide, writeStarter } from "../src/harness/starter.ts";
 import { solveIsolationPolicy } from "../src/wall/base.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 import { writeHarness } from "./helpers/write-harness.ts";
@@ -75,6 +75,15 @@ describe("the Starter and its worked harness", () => {
     // commented on: the baseline of every campaign on record keeps its name.
     expect(starter.digest).toBe("26cefa2d376237cb521a8a312989495ed972ebc1fba098bc906a8a13ff14fc7f");
     expect(existsSync(join(dir, "agent", "tools.ts"))).toBe(false);
+    // The worked example models the portable boundary: no campaign-specific path above HOST_ONLY.
+    expect(portableGuide(EXAMPLE.guide)).not.toContain("public/task.json");
+    expect(EXAMPLE.guide).toContain("public/task.json");
+    // portableGuide strips HOST_ONLY at line start, mid-file, or EOF, without cutting prefix headings.
+    expect(portableGuide(`${HOST_ONLY}\nhidden\n`)).toBe("");
+    expect(portableGuide(`# Guide\n\nKeep\n\n${HOST_ONLY}`)).toBe("# Guide\n\nKeep\n");
+    expect(portableGuide(`# Guide\n\n${HOST_ONLY} notes\nKeep\n`)).toBe(
+      `# Guide\n\n${HOST_ONLY} notes\nKeep\n`,
+    );
   });
 
   it.skipIf(!osIsolationSupport().ok)(

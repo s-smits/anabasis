@@ -34,6 +34,8 @@ export interface Lane {
 
 const SKILL = resolve(import.meta.dir, "..", "..", ".claude", "skills", "whole-run-investigation");
 export const REFERENCES = join(SKILL, "references");
+/** File name of a WRI lane catalogue (core or per-domain extension). */
+export const LANES_FILE = "lanes.md";
 
 const HEADING = /^\*\*(\d+)\. (.+)\.\*\*$/;
 const TRIGGER = /`([A-Z][A-Z0-9 ,'-]+) \(lane (\d+)\)`/g;
@@ -53,7 +55,7 @@ function marksOf(number: string, line: string): Set<string> {
 }
 
 export function catalogueText(): string {
-  return readFileSync(join(REFERENCES, "lanes.md"), "utf8");
+  return readFileSync(join(REFERENCES, LANES_FILE), "utf8");
 }
 
 /** The text under one `## ` heading, up to the next. */

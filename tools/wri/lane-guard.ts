@@ -435,7 +435,7 @@ function commandRefusal(words: readonly string[], scope: Scope): string | null {
     }
     const runs = plain.findIndex((word) => word === "runs" || word.endsWith("runs/cli.ts"));
     if (runs !== -1 && plain.slice(runs + 1).some((word) => LIFE.has(word))) return "a run's life";
-    const wri = plain.findIndex((word) => basename(word) === "wri.ts");
+    const wri = plain.findIndex((word) => word === "wri" || basename(word) === "wri.ts");
     if (wri !== -1 && PRIMARY.has(plain[wri + 1] ?? "")) return "the primary's step";
     const loop = plain.findIndex((word) => basename(word) === "wri2p2.ts");
     if (loop !== -1 && plain[loop + 1] === "open") return "the primary's step";

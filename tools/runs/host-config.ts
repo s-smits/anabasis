@@ -41,14 +41,15 @@ export interface Host {
 }
 
 /** One outside benchmark: the machine that rolls it (undefined for this one), its score store and
- *  sitting command there, absolute or under `~/` where it was given relative, and the packs whose
- *  runs it reads. */
+ *  sitting command there, absolute or under `~/` where it was given relative, the packs whose
+ *  runs it reads, and optional minimum promotions before automatic WRI regression analysis. */
 export interface Bench {
   readonly name: string;
   readonly host: Host | undefined;
   readonly store: string;
   readonly sitting: string;
   readonly packs: readonly string[];
+  readonly minPromo?: number;
 }
 
 /** What every remote verb carries from this machine's environment, and all an entry's `settings` may
@@ -161,19 +162,42 @@ export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Hos
 /** The machine settings' file, `.env.runs`, which lies in the main worktree and in no other. */
 export const envRunsFile = (root: string): string => join(mainTree(root), ".env.runs");
 
+/** Reads selected keys from the main worktree's `.env.runs` via Bun's own `--env-file` parser so
+ *  standalone commands (`bun run wri`, check router) share fleet/bench config without loading `.env`. */
+function readEnvRuns(root: string, keys: readonly string[]): Record<string, string | undefined> {
+  const file = envRunsFile(root);
+  if (!existsSync(file)) return {};
+  const env = Object.fromEntries(Object.entries(runtimeProcess.env).filter(([name]) => !keys.includes(name)));
+  const expr = `process.stdout.write(JSON.stringify(Object.fromEntries(${JSON.stringify(keys)}.map((k) => [k, process.env[k] ?? ""]))))`;
+  const raw = runTextSyncOrThrow([capturedExecPath, `--env-file=${file}`, "-e", expr], { cwd: root, env });
+  const parsed = asRecord(capturedJsonParse(raw)) ?? {};
+  return Object.fromEntries(
+    keys.map((key) => [key, isString(parsed[key]) && parsed[key] !== "" ? parsed[key] : undefined]),
+  );
+}
+
 /**
  * The hosts for a command run in `root` that loaded no env file: the environment's `ANA_HOSTS` where
  * it holds a list, else the one in the main worktree's `.env.runs`, where the bun router finds it for
- * a check task (`tools/runtime/router/bun`). Bun's own `--env-file` reads that file, as for every
- * verb that names it, in a child that hands this one value back through a pipe.
+ * a check task (`tools/runtime/router/bun`).
  */
 export function hostsFor(root: string): readonly Host[] {
   if ((runtimeProcess.env.ANA_HOSTS ?? "") !== "") return hostsOf();
-  const file = envRunsFile(root);
-  if (!existsSync(file)) return [];
-  const env = Object.fromEntries(Object.entries(runtimeProcess.env).filter(([name]) => name !== "ANA_HOSTS"));
-  const read = ["-e", "process.stdout.write(process.env.ANA_HOSTS ?? '')"];
-  return hostsOf(runTextSyncOrThrow([capturedExecPath, `--env-file=${file}`, ...read], { cwd: root, env }));
+  return hostsOf(readEnvRuns(root, ["ANA_HOSTS"]).ANA_HOSTS ?? "");
+}
+
+/** The benchmarks for a standalone command run in `root` that loaded no env file (`bun run wri`):
+ *  uses `EVAL_RUNNER`/`ANA_HOSTS` from the current environment when set, else from `.env.runs`. */
+export function benchesForRoot(root: string): readonly Bench[] {
+  if ((runtimeProcess.env.EVAL_RUNNER ?? "") !== "") return benchesOf();
+  const fromFile = readEnvRuns(root, ["ANA_HOSTS", "EVAL_RUNNER"]);
+  if (fromFile.EVAL_RUNNER === undefined) return [];
+  return benchesOf({
+    ...runtimeProcess.env,
+    ANA_HOSTS:
+      (runtimeProcess.env.ANA_HOSTS ?? "") === "" ? fromFile.ANA_HOSTS : runtimeProcess.env.ANA_HOSTS,
+    EVAL_RUNNER: fromFile.EVAL_RUNNER,
+  });
 }
 
 export function configuredRuntime(host: Host) {
@@ -197,7 +221,7 @@ export function benchesOf(env: Readonly<Record<string, string | undefined>> = ru
   const known = hostsOf(env.ANA_HOSTS ?? "");
   const names = new Set<string>();
   return value.flatMap((entry): Bench[] => {
-    const { name, host = "here", store, sitting, packs } = asRecord(entry) ?? {};
+    const { name, host = "here", store, sitting, packs, minPromo } = asRecord(entry) ?? {};
     const given = (word: unknown): word is string => isString(word) && word !== "";
     if (!given(name) || !isSafePathSegment(name) || !given(host) || !given(store) || !given(sitting)) {
       throw new Error("each EVAL_RUNNER entry needs a safe name, a store and a sitting command");
@@ -207,11 +231,23 @@ export function benchesOf(env: Readonly<Record<string, string | undefined>> = ru
     if (!Array.isArray(packs) || packs.length === 0 || !packs.every(isString)) {
       throw new Error(`${name}: packs takes a list of the packs whose runs it reads`);
     }
+    if (minPromo !== undefined && (!isNumber(minPromo) || !Number.isSafeInteger(minPromo) || minPromo < 0)) {
+      throw new Error(`${name}: minPromo takes a non-negative integer`);
+    }
     if (host !== "here" && isLocalOnly(env)) return [];
     // A relative store or sitting is read from the home folder of its machine.
     const home = (path: string) => (isAbsolute(path) || path.startsWith("~/") ? path : `~/${path}`);
     const on = host === "here" ? undefined : hostNamed(host, known);
-    return [{ name, host: on, store: home(store), sitting: home(sitting), packs }];
+    return [
+      {
+        name,
+        host: on,
+        store: home(store),
+        sitting: home(sitting),
+        packs,
+        ...keyIfDefined("minPromo", minPromo),
+      },
+    ];
   });
 }
 

@@ -56,3 +56,6 @@ __pycache__/
 # A checkout's own working notes on where its work stands, kept beside the tracked plan
 # (`docs/plan.md` stays the status of record).
 /docs/progress/
+# Local per-domain WRI extensions (`domains/<domain>/{config.json,lanes.md}`) matched by campaign
+# domain via `domainOf`/`packOf` (e.g. private external benchmarks or hardware evaluations).
+/.wri/

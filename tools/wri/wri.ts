@@ -110,8 +110,10 @@ import {
   sourceOf,
 } from "./derive.ts";
 import { logAcross } from "../runs/snapshots.ts";
-import { catalogueText, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
+import { catalogueText, type Lane, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
 import { climbText } from "./climb.ts";
+import { domainReadinessOf, formatDomainCheck } from "./domains.ts";
+import { analyzeRegressions, formatRegressionReport } from "./regressions.ts";
 import {
   blankSections,
   type Campaign,
@@ -145,7 +147,7 @@ interface Investigation {
 
 const REPO = resolve(import.meta.dir, "..", "..");
 const USAGE =
-  "usage: bun tools/wri/wri.ts read | climb | trajectory | backtrack | start | lanes | collect | record | synthesis | findings | grade | derive | reader | index | packets";
+  "usage: bun run wri check | regressions | read | climb | trajectory | backtrack | start | lanes | collect | record | synthesis | findings | grade | derive | reader | index | packets";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -158,6 +160,10 @@ const { values, positionals } = parseArgs({
     agents: { type: "string" },
     high: { type: "string" },
     regroup: { type: "boolean" },
+    "min-promo": { type: "string" },
+    bench: { type: "string" },
+    arm: { type: "string" },
+    "with-evals": { type: "boolean" },
     task: { type: "string" },
     answer: { type: "string" },
     solve: { type: "string" },
@@ -335,8 +341,52 @@ async function start(): Promise<number> {
   );
   console.log(text);
   console.log(line);
+  for (const log of logs) {
+    console.log(formatDomainCheck(readinessOf(nameOf(log, logs), log)));
+  }
   console.log(`wrote ${join(out, SHARED)}: write its three blank sections, then run lanes`);
   return 0;
+}
+
+/** Parses optional `--min-promo <N>` as a non-negative integer. */
+function parseMinPromo(): number | undefined {
+  const raw = values["min-promo"];
+  if (raw === undefined) return undefined;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error(`--min-promo ${raw}: name a non-negative integer`);
+  }
+  return parsed;
+}
+
+/** Computes domain, `minPromo`, external benchmark, and custom-lane readiness for one campaign log. */
+function readinessOf(campaign: string, log: string) {
+  return domainReadinessOf({
+    campaign,
+    log,
+    events: read(log),
+    repo: REPO,
+    minPromo: parseMinPromo(),
+    benchName: values.bench,
+    armName: values.arm,
+    withEvals: values["with-evals"],
+  });
+}
+
+/** Merges core catalogue lanes with any applicable optional regression-eval and domain-extension lanes. */
+function allLanesFor(catalogue: string, campaigns: readonly Campaign[]): Lane[] {
+  const merged = [...lanesOf(catalogue)];
+  const seen = new Set(merged.map((lane) => lane.number));
+  for (const { name, log } of campaigns) {
+    const { regressionLane, customLanes } = readinessOf(name, log);
+    const extras = [...(regressionLane === null ? [] : [regressionLane]), ...customLanes];
+    for (const lane of extras) {
+      if (seen.has(lane.number)) continue;
+      seen.add(lane.number);
+      merged.push(lane);
+    }
+  }
+  return merged;
 }
 
 /** The investigation `start` wrote, each campaign read as its log stands now. */
@@ -372,7 +422,7 @@ function lanes(): number {
   const owners = ownersOf(catalogue);
   const named = values.lanes === undefined ? null : numbersOf(values.lanes);
   const { open, isolated, waiting } = selected(
-    lanesOf(catalogue),
+    allLanesFor(catalogue, campaigns),
     campaigns.flatMap(({ overview: { triggers } }) => triggers),
     named,
   );
@@ -477,7 +527,7 @@ function lanes(): number {
 function collected({ out, campaigns, shared }: Investigation) {
   const catalogue = catalogueText();
   const owners = ownersOf(catalogue);
-  return lanesOf(catalogue)
+  return allLanesFor(catalogue, campaigns)
     .filter((lane) => existsSync(promptPath(out, lane.number)))
     .map((lane) => {
       const path = reportPath(out, lane.number);
@@ -564,6 +614,17 @@ async function main(): Promise<number> {
   if (values.help === true) {
     console.log(USAGE);
     return 0;
+  }
+  if (verb === "check") {
+    needed("log");
+    console.log(resolvedLogs.map((log) => formatDomainCheck(readinessOf(nameOf(log), log))).join("\n\n"));
+    return 0;
+  }
+  if (verb === "regressions") {
+    needed("log");
+    const reports = resolvedLogs.map((log) => analyzeRegressions(readinessOf(nameOf(log), log), read(log)));
+    console.log(reports.map(formatRegressionReport).join("\n\n"));
+    return reports.some(({ status }) => status === "ablation-needed") ? 1 : 0;
   }
   if (verb === "read") {
     const log = oneLog();

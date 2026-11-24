@@ -8,44 +8,27 @@
  * Its `score.ts table` output is then written once to `scored/<label>.txt` alongside the records,
  * and one summary line is printed so the alerts job reports each completed evaluation once.
  */
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
 import { capturedExecPath } from "#src/meta/process.ts";
 import { runTextOrThrow } from "#src/meta/subprocess.ts";
+import { judgedFilesByArm, STARTER_PREFIX } from "./bench-store.ts";
 import { benchesOf } from "./host-config.ts";
 import { Misused } from "./registry.ts";
 import { recordsHere } from "./snapshots.ts";
 
 const SCORE = join(import.meta.dir, "..", "..", "studies", "harness2", "score.ts");
 
-/** Maps each judged arm directory in `store` to the set of task JSON filenames it contains. */
-function judgedIn(store: string): Map<string, Set<string>> {
-  const judged = join(store, "judged");
-  const arms = existsSync(judged) ? readdirSync(judged, { withFileTypes: true }) : [];
-  return new Map(
-    arms
-      .filter((arm) => arm.isDirectory())
-      .map((arm) => [
-        arm.name,
-        new Set(readdirSync(join(judged, arm.name)).filter((file) => file.endsWith(".json"))),
-      ]),
-  );
-}
-
 /** Returns labels in `store` whose reference and Starter arms are both fully judged and not yet scored. */
 export function completedBenchLabels(store: string): string[] {
-  const judged = judgedIn(store);
-  return [...judged.keys()]
-    .filter((arm) => arm.startsWith("starter-"))
-    .map((arm) => arm.slice("starter-".length))
+  const byArm = judgedFilesByArm(store);
+  return [...byArm.keys()]
+    .filter((arm) => arm.startsWith(STARTER_PREFIX))
+    .map((arm) => arm.slice(STARTER_PREFIX.length))
     .filter((label) => {
-      const own = judged.get(label);
-      const starter = judged.get(`starter-${label}`) ?? new Set<string>();
-      const done =
-        own !== undefined &&
-        own.size > 0 &&
-        own.size === starter.size &&
-        [...own].every((task) => starter.has(task));
+      const own = new Set(byArm.get(label));
+      const starter = new Set(byArm.get(`${STARTER_PREFIX}${label}`));
+      const done = own.size > 0 && own.size === starter.size && [...own].every((task) => starter.has(task));
       return done && !existsSync(join(store, "scored", `${label}.txt`));
     })
     .toSorted();

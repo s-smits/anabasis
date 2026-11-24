@@ -26,14 +26,15 @@ Examines one or more campaigns as equals from their append-only logs, producing 
 
 ## Procedure (`<dir>` = `.ana/wri/<date>-<campaign>/` on central host)
 
-Each `bun tools/wri/wri.ts <verb>` step gates on the previous one:
+Run standalone via `bun run wri <verb>` (wraps `tools/wri/wri.ts`, requires no `.env` credentials, and shares `packOf`/`domainOf` and `EVAL_RUNNER` from `.env.runs`). Each step gates on the previous one:
 
 | Step | Command | Purpose |
 | --- | --- | --- |
+| -1. Domain & eval check | `check --log <log> [--min-promo N]` / `regressions --log <log>` | Connects the run to its domain, checks `promotions >= minPromo` (default `1`), checks for paired external benchmark arms (`EVAL_RUNNER`) and gitignored `/.wri/domains/<domain>/` extensions, and prints deterministic rubric-miss + `.toolchain/bin` transfer tables (exits `1` if paired ablation is owed first; see [regression-evals-analyzer](../regression-evals-analyzer/SKILL.md)) |
 | 0. Read | `read --log <log>` | Prints deterministic rows A–F, triggers and host-code digest |
-| 1. Start | `start --log <log>[,<log>...] --out <dir> [--snapshot]` | Writes `overview.md`, `shared-instructions.md` ([references/shared-instructions.template.md](references/shared-instructions.template.md)), `investigation.json` and `data/derived/`; checks out `anabasis-at-<commit>` if needed. Active logs need stop or `--snapshot`. Settle rows A–F before step 2 |
+| 1. Start | `start --log <log>[,<log>...] --out <dir> [--snapshot] [--min-promo N]` | Writes `overview.md`, `shared-instructions.md` ([references/shared-instructions.template.md](references/shared-instructions.template.md)), `investigation.json` and `data/derived/`; prints domain/eval readiness; checks out `anabasis-at-<commit>` if needed. Active logs need stop or `--snapshot`. Settle rows A–F before step 2 |
 | 2. Instruct | Edit `<dir>/shared-instructions.md` | Fill `## Orientation` (question & paths, never expected answer), `## The moved variable and prior state` (hypotheses + `predictions-<run>.md` with `id` and `lanes`), `## Already read by the primary` (or `"nothing"`). Keep `## Hard rules`; leave no blank `##` section |
-| 3. Build lanes | `lanes --out <dir> [--lanes 1-4,7] [--agents N] [--high K] [--regroup]` | Writes `lanes/NN-prompt.md`, `lanes/shared-<hash>.md`, `launch.json`. Opens triggered + 10 standing lanes (1, 2, 3, 4, 5, 6, 9, 11, 14, 16 in the importance-ranked 20-lane catalogue), balanced by `Importance:` (default 4 agents; ≤8 lanes/session); lists isolated lane 20 without building it |
+| 3. Build lanes | `lanes --out <dir> [--lanes 1-4,7] [--agents N] [--high K] [--regroup] [--min-promo N] [--with-evals]` | Writes `lanes/NN-prompt.md`, `lanes/shared-<hash>.md`, `launch.json`. Opens triggered + 10 standing core lanes (1, 2, 3, 4, 5, 6, 9, 11, 14, 16) plus optional Lane 90 (when `promotions >= minPromo` and paired external bench records exist) and any standing gitignored `/.wri/domains/<domain>/lanes.md` lanes (`21`–`99`), balanced by `Importance:` (default 4 agents; ≤8 lanes/session); lists isolated lane 20 without building it |
 | 4. Launch & record | Run `launch.json` (`wri-lane` or `codex-gpt-swarm`) and `record --out <dir>` together | Lanes write `lanes/NN-report.md` (guarded by `tools/wri/lane-guard.ts`); `record` writes model-free cross-version and archive reads (`wri.ts backtrack --domain`, `trend.ts`, `table.ts`, `starter-reads.ts`, `replay.ts`, `findings`) into `record.md`. Check each session's model from its transcript |
 | 5. Collect (& lane 20) | `collect --out <dir>` | Validates `reportOf` (heading, `Verdict:`, balanced `Observation:`/`Cause:`/`Owner:`/`Reverses if:`/`Decision:`, `Seen in:`, valid owners, `Prediction <id>:`) and writes `reports.md`. If lane 17 leaves a check undecided, build `--lanes 20`, run alone (`launch-20.json`), and re-collect |
 | 6. Synthesise | `synthesis --out <dir>` | Renders `synthesis-prompt.md` ([references/synthesis.template.md](references/synthesis.template.md)) with same-domain version-gap history (`{history}`); synthesis writes `synthesis.md` starting with version-over-version progress and tagging each finding `<lane>.<n>` and a key from [references/standing-findings.md](references/standing-findings.md) or `new` |
@@ -68,6 +69,7 @@ When testing specific candidate improvements or open dilemmas on top of standard
 ## Related skills
 
 - Driving WRI2P2 cycles & landing fixes: [run-improvement-campaign](../run-improvement-campaign/SKILL.md), [stack-pr](../stack-pr/SKILL.md)
+- External benchmark regression analysis & domain WRI extensions: [regression-evals-analyzer](../regression-evals-analyzer/SKILL.md)
 - Deep comparison or external-bench diagnosis: [comparison-review](../comparison-review/SKILL.md), [compare-systems](../compare-systems/SKILL.md)
 - Examiner difficulty calibration or harness inspection: [examiner-complexity](../examiner-complexity/SKILL.md), [harness-audit](../harness-audit/SKILL.md)
 - Model-free path rehearsal & whole-codebase audit: [system-path-simulation](../system-path-simulation/SKILL.md), [system-audit](../system-audit/SKILL.md)

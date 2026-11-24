@@ -6,10 +6,9 @@
  */
 import { MISSING, printed } from "#skills/main/print.ts";
 import type { Promotion, Run } from "#skills/main/runs.ts";
-import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
-import { capturedJsonParse } from "#src/meta/json-runtime.ts";
-import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
+import { existsSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
+import { isCut, readJudgedStore } from "#tools/runs/bench-store.ts";
 
 /** One judged rollout: an arm's points on a task. */
 export interface Score {
@@ -45,31 +44,15 @@ type Verdict = (typeof VERDICTS)[number];
 export function scoresOf(store: string, only: readonly string[] | null = null): Score[] {
   const root = join(store, "judged");
   if (!existsSync(root)) throw new Error(`${root} is not there: --bench takes a score store`);
-  // Sorted, so that the table's rows come in one order on every filesystem.
-  const arms = readdirSync(root, { withFileTypes: true })
-    .flatMap((entry) => (entry.isDirectory() ? [entry.name] : []))
-    .toSorted();
-  const all = arms.flatMap((arm) =>
-    readdirSync(join(root, arm))
-      .toSorted()
-      .flatMap((file) => {
-        const record = asRecord(capturedJsonParse(readFileSync(join(root, arm, file), "utf8")));
-        if (record === null || !isString(record.task)) return [];
-        if (!isNumber(record.points) || !isNumber(record.total)) return [];
-        const of = asRecord(record.build)?.of;
-        return [
-          {
-            arm: isString(record.arm) ? record.arm : arm,
-            harness: isString(record.harness) ? record.harness : "",
-            task: record.task,
-            points: record.points,
-            total: record.total,
-            of: isString(of) ? of : null,
-            cut: Array.isArray(record.cut) && record.cut.length > 0,
-          },
-        ];
-      }),
-  );
+  const all: Score[] = readJudgedStore(store).map((record) => ({
+    arm: record.arm,
+    harness: record.harness,
+    task: record.task,
+    points: record.points,
+    total: record.total,
+    of: record.buildOf === STARTER ? STARTER : record.campaign,
+    cut: isCut(record),
+  }));
   if (only === null) return all;
   const absent = only.filter((task) => all.every((score) => score.task !== task));
   if (absent.length > 0) throw new Error(`no judged rollout on ${absent.join(", ")}`);

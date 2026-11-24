@@ -9,7 +9,7 @@
 import { readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
-import { type Lane, lanesOf, REFERENCES } from "./catalogue.ts";
+import { type Lane, LANES_FILE as LANES_NAME, lanesOf, REFERENCES } from "./catalogue.ts";
 
 /** Result of ranking `lanes.md` and `tools/wri/folds.ts` by importance. */
 interface RankedCatalogue {
@@ -21,7 +21,7 @@ interface RankedCatalogue {
 }
 
 const REPO = resolve(import.meta.dir, "..", "..");
-const LANES_FILE = join(REFERENCES, "lanes.md");
+const LANES_FILE = join(REFERENCES, LANES_NAME);
 const FOLDS_FILE = join(REPO, "tools", "wri", "folds.ts");
 const TIERS: readonly (readonly [number, string])[] = [
   [0.9, "### Tier 1: Core pillars (0.90–1.00)"],

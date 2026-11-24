@@ -1,25 +1,8 @@
 /**
- * A campaign: one log, one staged check program and one folder of harness states under
- * `.ana/d2/<name>`, over the exam its own log drafted. It is what the commands share, so that each builds
- * its conditions, its solves and its reviewers the same way:
- *
- *   bun tools/c/accept.ts      ... --name <name> [--freeze]          what the check program has been seen to do; the operator's word that it stands
- *   bun tools/d2/prepare.ts    ... --name <name>                     the pack's tasks, held out; the practice tasks, released; the scored tasks, confirmed
- *   bun tools/d2/settle.ts     ... --name <name> --session b-1       a comparison's rejections, labelled by a person
- *   bun tools/d2/session.ts    ... --name <name> --session b-2       a Builder session with no comparison after it
- *   bun tools/d2/checkpoint.ts ... --name <name> --id g2             one comparison of two kept harnesses
- *   bun tools/d1b/examine.ts   ... --name <name> --session x-1       an Examiner session, which writes further tasks
- *
- * Its code identity includes `tools/d2`, `tools/c` and `tools/d1b`, which execute the campaign.
- * Without them a changed `tools/d2` file would keep the same identity, allowing a comparison to
- * continue under changed execution code. Readers and development tools stay outside that identity.
- *
- * The campaign folder is inside the repository, which every solve's and every Builder's wall denies:
- * the log holds hidden values and the checks' verdicts. The contract is the drafted exam's, and a
- * campaign starts from the Starter Built Harness, which is also its first reference harness
- * (`src/harness/starter.ts`).
- *
- * It needs the command wall and a model login.
+ * Shared campaign state (`tools/d2/campaign.ts`): opens `.ana/d2/<name>` (`log.jsonl`, staged
+ * check program, and `states/` kept harnesses) for `tools/c/accept.ts`, `tools/d2/{prepare,settle,session,checkpoint}.ts`,
+ * and `tools/d1b/examine.ts`. Includes `tools/d2`, `tools/c`, and `tools/d1b` in the execution
+ * code digest so a comparison refuses to continue if campaign execution code changes mid-round.
  */
 import type { Api, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { type BackendOptions, backends, compactionMode } from "#src/agent/backends/models.ts";
@@ -41,7 +24,14 @@ import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
 import { latestBuilt, poolOf, promoted } from "#src/kernel/reports.ts";
 import { type TaskPackage, taskVersion } from "#src/kernel/task.ts";
-import { checkProgramVersion, openVerifier, type Task, type Verifier } from "#src/kernel/verify.ts";
+import {
+  checkProgramVersion,
+  HOST_TOOLS_FILE,
+  openVerifier,
+  pinnedEngines,
+  type Task,
+  type Verifier,
+} from "#src/kernel/verify.ts";
 import {
   cpSync,
   existsSync,
@@ -120,6 +110,7 @@ interface Solver {
  *  campaign's contract, the verifier's tool tree, and what every solve is held to. */
 interface Standing {
   readonly contract: Contract;
+  readonly checks: string;
   readonly tools: string;
   readonly limits: Limits;
 }
@@ -129,19 +120,7 @@ export const PROMOTED = "promoted";
 /** What names the programs ablation of a kept harness: `programs-of:latest`, `programs-of:<digest>`. */
 const PROGRAMS_OF = "programs-of:";
 
-/** What every solve is held to, whoever solves: a model turn limit of 20, which binds, and a deadline
- *  of 30 minutes, which stops a solve whose provider stalls. A command names another deadline or
- *  model turn limit (`setting.ts`), and another is another campaign. The prompt limit, `turns`, is every
- *  solve's (v1's cap on nudges); the shell's timeouts and four solves at a time are the stored
- *  sweep's. Concurrency is part of a condition.
- *
- *  One budget stands for every solver, with the turns at 20 (the operator's choice): at a short
- *  deadline, the turns bound and the clock almost never does.
- *
- *  The model turn limit is what leaves a task room: with it unlimited, task admission held out
- *  very few drafts, and at a turn limit about half. A harness's programs and guide show as an
- *  answer reached within the budget, which an unlimited solver reaches anyway.
- *  A turn is also the same on a loaded host, where a second is not. */
+/** Default solve resource limits (`20` model turns, `30` minutes wall clock, `24` total turns, `4` concurrent solves; overridden via `setting.ts`). */
 export const LIMITS = {
   wallSeconds: 1800,
   modelTurns: 20,
@@ -317,8 +296,13 @@ let here: ReturnType<typeof codeOf> | undefined;
  * Builder conversation, each tree is a walk of thousands of files, and a tree that moved between
  * two openings would name code the process never ran.
  */
-function recordedUnder({ contract, tools, limits }: Standing) {
-  const verifierTools = hashJsonValue(treeContent(tools));
+function recordedUnder({ contract, checks, tools, limits }: Standing) {
+  const hostManifest = join(tools, HOST_TOOLS_FILE);
+  const engines = pinnedEngines({ checks, tools });
+  const verifierTools =
+    existsSync(hostManifest) || engines.some(({ external }) => external)
+      ? hashJsonValue([treeContent(tools), engines.map(({ name, sha256 }) => [name, sha256])])
+      : hashJsonValue(treeContent(tools));
   here ??= codeOf(REPO);
   const { runtime, host } = here;
   /** What every solve by `by` runs under whatever its task and harness: its condition less those. */
@@ -385,7 +369,7 @@ export async function openCampaign(args: CampaignArgs) {
   // The drafted exam is staged under `.ana` here, closed with the repository.
   const verify = openVerifier({ checks, tools, otherTrees: trees });
   const limits = args.limits ?? LIMITS;
-  const { conditionOf, setting } = recordedUnder({ contract, tools, limits });
+  const { conditionOf, setting } = recordedUnder({ contract, checks, tools, limits });
   const pack = (task: Task): TaskPackage => packageOf(checks, task);
   /** Every task the pack holds or a session wrote into the log, by version. */
   const packages = (): Map<string, TaskPackage> =>
@@ -543,10 +527,6 @@ export async function keptAs(campaign: Keeping, flag: string, asked: string): Pr
  * tree and nothing else of it, kept under its own digest like any harness. Compared with the
  * starter it reads what the installed programs are worth by themselves, and compared with the
  * harness it was taken from, what the guide and the tools add to them.
- *
- * A harness that installs the field's engine and names a checker and an optimiser in its guide can
- * win a step at a short deadline that the starter matches at a long one, by installing the engine
- * itself. Which part of the harness a step was cannot be read from one comparison of the whole.
  */
 async function programsAblation(campaign: Keeping, source: Kept): Promise<Kept> {
   const tree = join(source.dir, ".toolchain");
@@ -595,12 +575,6 @@ export function awaitingLines(campaign: {
  * and a reviewer work from what they are shown, and a search of theirs would be read by nobody,
  * since the trace holds the host's tools alone. A solver's backends are the sweep's as they stand
  * (`solveOnce`), with the search.
- *
- * A Builder's and an Examiner's cache lives an hour, since they wait on practice solves: a few in a
- * hundred of their turns have come more than five minutes after the one before, and five-minute
- * writes would bill far more. An Examiner's own computing in its shell can run that long between
- * turns, so its hour stays. A
- * reviewer's ruling takes minutes, so its cache lives five.
  */
 function hostSession(seat: { readonly webSearch: boolean; readonly cacheTtl: "5m" | "1h" }) {
   return (home: string, shutdown: AbortSignal) =>

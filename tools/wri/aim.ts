@@ -33,8 +33,8 @@ import type { LogEvent } from "#src/kernel/log.ts";
 import { lastReports, pairsReported, type Reported, taskRecords } from "#src/kernel/reports.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { type Call, callsOf, tracesIn } from "#src/kernel/trace.ts";
-import { asRecord, isString, type JsonObject } from "#src/meta/json-shape.ts";
-import { median } from "#src/meta/tally.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
+import { countBy, median } from "#src/meta/tally.ts";
 
 /** Where a writing session's home held the reference harness, under code that laid a copy there. */
 const REFERENCE_HOME = "reference-harness";
@@ -70,6 +70,12 @@ interface ExamSession {
   readonly referenceShell: { readonly naming: number; readonly of: number } | null;
   readonly proposed: readonly string[];
   readonly admitted: readonly string[];
+  /** Distinct families across admitted tasks and the largest family's count (wall-safe: no names). */
+  readonly familySpread: { readonly distinct: number; readonly top: number };
+  /** Authoring tool friction: `try_answer` calls/errors and `bash` errors. */
+  readonly friction: { readonly tryAnswers: number; readonly tryErrors: number; readonly bashErrors: number };
+  /** Session billed dollars recorded on `exam.finished`, null when unrecorded. */
+  readonly billed: number | null;
   /** Each comparison that later tallied any of its admitted tasks, and how many. */
   readonly scoredIn: readonly {
     readonly comparison: string;
@@ -154,11 +160,22 @@ function sessionAt(events: readonly LogEvent[], index: number, session: string, 
     (event, at) => at > index && event.kind === "exam.finished" && event.data.session === session,
   );
   const until = end === -1 ? events.length : end;
-  const ended = events[end]?.data.ended;
-  const proposed = log.proposals.filter((each) => each.session === session).map(({ version }) => version);
+  const endData = events[end]?.data;
+  const ended = endData?.ended;
+  const billed = isNumber(endData?.billed) ? endData.billed : null;
+  const proposedRows = log.proposals.filter((each) => each.session === session);
+  const proposed = proposedRows.map(({ version }) => version);
   const admitted = proposed.filter((version) => log.admitted.has(version));
+  const admittedSet = new Set(admitted);
+  const famCounts = Object.values(
+    countBy(
+      proposedRows.filter(({ version, family }) => admittedSet.has(version) && isString(family)),
+      ({ family }) => family ?? "",
+    ),
+  );
   const own = log.calls.filter(({ id }) => id === session);
   const shells = own.filter(({ tool }) => tool === "bash");
+  const tryAnswers = own.filter(({ tool }) => tool === "try_answer");
   const lastReport = events.findLast(
     (event, at) => at < index && event.kind === "comparison.reported" && isString(event.data.session),
   )?.data.session;
@@ -195,6 +212,13 @@ function sessionAt(events: readonly LogEvent[], index: number, session: string, 
           },
     proposed,
     admitted,
+    familySpread: { distinct: famCounts.length, top: famCounts.length === 0 ? 0 : Math.max(...famCounts) },
+    friction: {
+      tryAnswers: tryAnswers.length,
+      tryErrors: tryAnswers.filter(({ isError }) => isError).length,
+      bashErrors: shells.filter(({ isError }) => isError).length,
+    },
+    billed,
     scoredIn: log.reported.flatMap(({ report, pairs }) => {
       const tasks = pairs.filter(({ task }) => admitted.includes(task)).length;
       return tasks === 0
@@ -240,10 +264,18 @@ function sessionLines(each: ExamSession, starter: string | null): string[] {
       )
       .join(", ") || "none";
   const span = each.finished === null ? "open" : `${String(each.finished)} (${each.ended ?? NOT_RECORDED})`;
+  const costPart =
+    each.billed === null
+      ? "billed n/a"
+      : `billed $${each.billed.toFixed(2)}${each.admitted.length > 0 ? ` ($${(each.billed / each.admitted.length).toFixed(2)}/held)` : " (zero-yield)"}`;
+  const famPart =
+    each.familySpread.distinct === 0
+      ? "families none"
+      : `${String(each.familySpread.distinct)} families (largest ${String(each.familySpread.top)}/${String(each.admitted.length)})`;
   return [
     `${each.session}: ${each.conversation === null ? "opens a conversation" : `continues ${each.conversation}`}; lines ${String(each.started)} to ${span}; reference ${label(reference.start)} at its start, ${finish}; ${promoted}; last report before it: ${each.lastReport ?? "none"}`,
-    `  reference copy in its home: ${String(each.referenceHome)}; try_reference calls: ${tryCalls === null ? NOT_RECORDED : String(tryCalls)}; tries solved: ${tries}; shell calls naming ${REFERENCE_HOME}/: ${shell}`,
-    `  admitted ${String(each.admitted.length)} of ${String(each.proposed.length)} proposed; tallied later in: ${scored}`,
+    `  reference copy in its home: ${String(each.referenceHome)}; try_reference calls: ${tryCalls === null ? NOT_RECORDED : String(tryCalls)}; tries solved: ${tries}; shell calls naming ${REFERENCE_HOME}/: ${shell}; try_answer ${String(each.friction.tryAnswers)} (${String(each.friction.tryErrors)} err), bash err ${String(each.friction.bashErrors)}`,
+    `  admitted ${String(each.admitted.length)} of ${String(each.proposed.length)} proposed (${famPart}; ${costPart}); tallied later in: ${scored}`,
   ];
 }
 

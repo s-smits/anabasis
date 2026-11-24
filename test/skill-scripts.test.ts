@@ -3,6 +3,7 @@
 // bundle and its folder of open pull requests, and the reading of a live seat.
 import { afterAll, describe, expect, it } from "bun:test";
 import { gitText } from "#src/meta/git.ts";
+import { analyzeStack, formatAnalysis, parseNumstat } from "#skills/consolidate-stack/scripts/analyze.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
 import { sanitised } from "#skills/oracle-handover/scripts/document.ts";
 import { pasted, pullsInto } from "#skills/oracle-handover/scripts/open-pulls.ts";
@@ -660,5 +661,46 @@ describe("an Oracle document's parts", () => {
       "~/.anabasis/AGENTS.md",
       "https://github.com/someone/anabasis/blob/a.ts",
     ]);
+  });
+});
+
+describe("consolidate-stack overlap and cache analyzer", () => {
+  it("flags churn hotspots, side PRs, checkerDigest, linux-bwrap, ledger ordering, tier inversions, and Mode A blocks", () => {
+    expect(parseNumstat("10\t2\tsrc/a.ts\n-\t-\tbin/logo.png\n")).toEqual(
+      new Map([
+        ["src/a.ts", { adds: 10, dels: 2 }],
+        ["bin/logo.png", { adds: 0, dels: 0 }],
+      ]),
+    );
+    const p1 = pull(10, "b-10", "main", ["importance:I2"]);
+    const p2 = pull(11, "b-11", "b-10", ["importance:I2"]);
+    const p3 = pull(12, "b-12", "b-11", ["importance:I1"]);
+    const side = pull(13, "b-side", "b-10", ["importance:I3"]);
+    const base = "0".repeat(40);
+    const diffs = new Map<string, string>([
+      [`${base}..${p1.headRefOid}`, "50\t0\tsrc/hot.ts\n5\t0\ttools/oxlint/rule.ts\n"],
+      [`${p1.headRefOid}..${p2.headRefOid}`, "5\t45\tsrc/hot.ts\n1\t0\ttools/oxlint/not-slop.tsv\n"],
+      [`${p2.headRefOid}..${p3.headRefOid}`, "3\t1\tsrc/wall/linux-bwrap.ts\n2\t1\ttools/runtime/gate.ts\n"],
+      [
+        `${base}..${p3.headRefOid}`,
+        "10\t0\tsrc/hot.ts\n5\t0\ttools/oxlint/rule.ts\n1\t0\ttools/oxlint/not-slop.tsv\n3\t1\tsrc/wall/linux-bwrap.ts\n2\t1\ttools/runtime/gate.ts\n",
+      ],
+    ]);
+    const report = analyzeStack([p1, p2, p3, side], "main", base, {
+      diffNumstat: (from, to) => diffs.get(`${from}..${to}`) ?? "",
+      commitCount: () => 2,
+    });
+    expect(report.spans.map(({ number }) => number)).toEqual([10, 11, 12]);
+    expect(report.sides.map(({ number }) => number)).toEqual([13]);
+    expect(report.modeABlocks).toEqual([[10, 11]]);
+    expect(report.hotspots[0]).toMatchObject({ path: "src/hot.ts", touches: 2, gross: 100, net: 10 });
+    const rendered = formatAnalysis(report);
+    expect(rendered).toContain("checkerDigest: #12");
+    expect(rendered).toContain("linux-ci: #12");
+    expect(rendered).toContain("ledger-order: #11");
+    expect(rendered).toContain("side-prs: #13");
+    expect(rendered).toContain("tier-order: higher-priority PRs above lower tiers: #12(I1)");
+    expect(rendered).toContain("mode-A adjacent blocks (0 cache invalidation): #10->#11");
+    expect(rendered).toContain("10.00x  2t  gross 100 / net 10  src/hot.ts  (#10,#11)");
   });
 });

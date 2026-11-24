@@ -6,33 +6,11 @@ import { isNode, type KeyedNode as AnyNode, nodeFields } from "../../anti-slop/s
 import { containsUnknownType } from "../shared/unknown-type.ts";
 
 /**
- * An `unknown` parameter the function never proves anything about.
- *
- * Upstream anti-slop ships `no-unknown-parameters`, which reports every `unknown` parameter and
- * exempts one name, `cause`. That is right for most code and wrong for the layer this repository
- * cannot avoid: the functions whose whole job is to check the type of arbitrary input. Typing
- * their input would make them assert the thing they exist to prove, so seventeen files sat in a
- * config exemption list, and a new unproven parameter added to any of them was reported by
- * nobody. `THIRD_PARTY_NOTICES.md` records that upstream rule as one of the three left out of the
- * copy, and this is what replaces it.
- *
- * This rule keeps the report and moves the exemption from the file to the evidence. An `unknown`
- * parameter is admitted when the function proves it: a type predicate, a narrowing guard, a value
- * handed to another prover, or one derived into a local that is itself proved. A function that
- * takes `unknown` and passes it straight on proves nothing and is still reported.
- *
- * Example: `stableJson(value: unknown)` opens with `isPlainFiniteJson(value, "allowed")` and is
- * admitted; `writeCompleted(path, value: unknown)` handed its value to `JSON.stringify` and was
- * reported until it declared `JsonValue`.
- *
- * A signature with no body (`TSFunctionType`, `TSMethodSignature`, an overload) can prove
- * nothing and is reported exactly as the upstream rule reports it. The one exception is a return
- * type that is itself the proof: `(value: unknown) => value is T` narrows the parameter it names,
- * which is the same evidence the body form is admitted for, so the two spellings of one contract
- * read alike.
- *
- * There is no fix: the repair is a predicate, a guard or a hand to another prover, and all three
- * are code nobody has written yet.
+ * Flags an `unknown` parameter that the function never narrows or proves (via a type predicate,
+ * a narrowing guard, a call to a recognised validator matching `PROVING_NAME` or `PROVING_CALLS`,
+ * or an alias that is itself proved). Signatures without a body (`TSFunctionType`,
+ * `TSMethodSignature`, overloads) are reported unless their return type is a type predicate on
+ * that parameter. There is no fix.
  */
 
 type Parameter = ESTree.ParamPattern;

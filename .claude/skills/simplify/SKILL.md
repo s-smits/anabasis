@@ -1,140 +1,83 @@
 ---
 name: simplify
-description: "Simplify Anabasis code using the whole-tree census method: run deterministic checks first (strict lint, `bun run simplify`, and the not-slop ledger), then inspect structural shapes that static scans cannot detect, resolving every site on a single verifiable sentence and measuring before and after with reduce-complexity scripts against explicit budgets. Use as /simplify on your own diff before committing, or when asked whether code is simple enough, why a mechanism exists, to move a fix one layer higher, or to remove something and find a cleaner alternative."
+description: "Use before committing source changes (as /simplify) or when asked whether code is simple enough, why a mechanism exists, to move a fix one layer higher, to remove something and find a cleaner alternative, or to audit `not-slop.tsv`. Routes invocations (escalating structural rewrites to `commit-r`), runs deterministic checks and single-command before/after `measure.py`, audits existing ledger answers, evaluates concepts/altitude/upstream primitives and eleven structural shapes (H1–H11), enforces explicit invariants and budgets, and closes with a mandatory hostile full-diff audit."
 ---
 
 # Simplify
 
-This skill is the repository's `/simplify` workflow;
-[reduce-complexity](../reduce-complexity/SKILL.md) owns the complexity measurements and
-[commit-r](../commit-r/SKILL.md) handles structural rewrites. Automated linters flag syntactic
-patterns; this pass evaluates why code exists, whether campaigns actually exercise it, and whether
-an existing owner already performs its job. Fix and report separately any bug uncovered along the
-way.
+Repository `/simplify` workflow ([reduce-complexity](../reduce-complexity/SKILL.md) owns complexity scripts; [commit-r](../commit-r/SKILL.md) owns compartment rewrites; [stack-pr](../stack-pr/SKILL.md) owns stack placement; `tools/oxlint/HABITS.md` owns lint rules). Work inline without touching another session's PR. Fix any correctness bug uncovered along the way under task authority and report it separately.
 
-## Read the invocation
+## 1. Route the invocation (and escalate early to `commit-r`)
 
-Scope defaults to the named arguments or your current working diff. Match the procedure to the
-operator's request:
+Scope defaults to named arguments (code, worktree, PR, commit, range, paths) or the working diff against the PR's base branch. Match the procedure to the request:
 
-| The operator wrote | Do this |
+| Request or trigger | Procedure |
 | --- | --- |
-| "remove X", "sloppy, find another way" | Deletion is decided: trace and remove the entire strand (step 4) rather than shrinking X |
-| a rewrite, "overkill", or edits leaving branch count unchanged | Use [commit-r](../commit-r/SKILL.md) |
-| "why do we even need X?" | Name the existing owner that covers it, or the root cause it patches, before touching code |
-| "one layer higher" | Revert the leaf patch and fix the single owning abstraction every path traverses |
-| "so the bug cannot happen again" | H4: fix the defect class in its owner, then delete the per-instance patch |
-| a list of declined simplifications | Apply the disagreement test (step 3) to every row |
-| "is it simple enough?" | State the verdict first; if no, show the simplified form |
-| "what looks most bloated?" | Rank by concepts a reader must learn (`measure.py` and the census) |
+| `"remove X"` / `"sloppy, find another way"` | Deletion is decided: cut the entire strand (step 5); never return a smaller X or a replacement wrapper |
+| `"too sloppy"` / `"rewrite from scratch"` / `"overkill"` | Route directly to [commit-r](../commit-r/SKILL.md) (no separate `/simplify` pass after `commit-r` squash; these shapes inform `commit-r` step 5) |
+| `"why do we even need X?"` / `"one layer higher"` | Name the owning abstraction or root cause before editing; revert leaf patches and fix the single layer every path traverses |
+| `"is it simple enough?"` / `"what looks most bloated?"` | Read-only verdict first (or rank by concepts a reader must learn from `measure.py` and the census) |
+| Bare `/simplify` on own diff or PR | Read the diff as if a colleague wrote it; apply steps 2–6 |
 
-Work inline. Named external boundaries hold (renaming a shim breaks them); if a boundary blocks the
-only clean cut, note that once. Never edit another session's pull request
-([stack-pr](../stack-pr/SKILL.md)).
+**Self-escalate to `commit-r`** instead of nibbling with local edits whenever: (a) a diff or file carries ≥3 interacting local patches/workarounds, (b) you are simplifying a hand-rolled adapter, rewriter, or implicit state machine, or (c) local cuts leave total concepts or branch count flat because the compartment's boundary itself is wrong. A named external boundary holds (a renamed shim breaks it); if it blocks the only clean cut, say so once and stop.
 
-## 1. Run deterministic checks first
+## 2. Run deterministic checks and audit the ledger first
 
-Never audit manually what a static tool already reports:
+Never audit manually what static tools already catch, and measure before touching code:
 
-- `bun run lint -- --strict` (`tools/oxlint/HABITS.md`, 12.4 and 12.5): fix the offending site or
-  tune the rule; never suppress it with a disable comment.
-- `bun run simplify`: runs the whole-tree scans (`HABITS` 12.9); pass `-- <kind>` for one shape or
-  `-- --all` for every site.
-- `bun tools/loc/source-policy.ts`: enforces 800 nonblank lines per file, 115 per function, and
-  zero unread exports.
-- Run `reduce-complexity`'s `scope.sh` and `measure.py` before and after; any **repeat** finding
-  signals calling the existing owner and deleting the duplicate.
+- `bun run lint -- --strict` (`tools/oxlint/HABITS.md` 12.4–12.5, 12.14): fix the site or tune the rule; never add disable comments.
+- `bun run simplify -- --gate` (`tools/oxlint/HABITS.md` 12.9): fix or answer every census site (`-- --all`, `-- <kind>`), and check standing registers (`tree/max-filesystem-imports`) plus staged rules (`tools/oxlint/staged-rules.json`) on touched files.
+- `bun tools/loc/source-policy.ts`: enforces 800 nonblank lines/file, 115 lines/function, `AGENTS.md` size, import direction, and zero unread exports.
+- Measure before editing (and again after with the same `<ref>`):
+  ```sh
+  python3 .claude/skills/reduce-complexity/scripts/measure.py --base <ref> [-C <worktree>]
+  ```
+  (Use `.claude/skills/reduce-complexity/scripts/scope.sh <target> -o <diff>` + `measure.py --diff <diff> --base <ref>` for a PR number or commit range.) Read `budget`, `repeats`, ranked function complexity, and `UNUSED`/`one-caller` exports first.
+- **Audit `tools/oxlint/not-slop.tsv` on touched files**: run `bun run not-slop -- prune` for stale rows, and challenge every existing answer touching your files or area under step 4's disagreement test — delete and fix any row rationalising convenience or admitting two spellings of one fact.
 
-Resolve each group completely: either fix every site, or record a justified answer with
-`bun run not-slop -- answer <id> "<reason>"` under step 3's test (`-- prune` removes answers whose
-sites vanished; auto-fixable rules reject answers per `HABITS` 12.2).
+## 3. Concept map, altitude, and structural shapes (H1–H11)
 
-## 2. Inspect structural shapes static scans miss
+Before editing, read **outside the diff**: every caller, the module head comment, sibling owners, and `git log origin/main..HEAD -- <files>` (when patching code introduced by an earlier PR in your own stack, fold into that owning PR rather than stacking a compensating layer). Then run three quick probes:
 
-Read the target code alongside its callers, tests, and head comment, then evaluate each shape in
-order, prioritising the largest removals first:
+1. **Concept inventory**: list every added or kept concept (types, functions, exports, flags, env knobs, files, branches, fallback paths, prose blocks).
+2. **Revert-to-Minimal Probe**: starting from `<base>`, what is the smallest edit that makes every behavioural test pass? Every line beyond that minimal diff must name the failure mode or invariant it prevents.
+3. **Upstream / platform check**: before keeping *any* custom rewriter, parser, lock/copy/retry shim, or hardcoded constant wrapping an external tool, CLI, dependency, or OS interface (`uv`, `rsync`, `git`, `ssh`, `bwrap`, `oxlint`, `biome`, Bun, installed packages), check upstream flags, env vars, or exported constants (`--help`, `node_modules`, docs). One native flag beats fifty lines of glue.
 
-| # | Shape | Settle it with |
+Evaluate structural shapes static scans miss, from largest removal to smallest:
+
+| # | Shape | Resolution |
 | --- | --- | --- |
-| H1 | **Unused in practice**: an option whose value never varies or a branch no log reaches | Count occurrences across all relevant logs and receipts; a single invariant value everywhere means delete it |
-| H2 | **Duplicate reading of one fact** | Call the authoritative fold that already computes it (`AGENTS.md`, section 5, habit 2) |
-| H3 | **Guard for an unreachable state** | Cite the upstream refusal or type invariant and its hostile test, then remove the guard |
-| H4 | **Instance-level patch**: fixes one trigger while leaving the defect class open | Fix the owning abstraction every instance passes through and delete the site patch |
-| H5 | **Single-caller helper inside one module** (the census inspects module boundaries only) | Inline it unless its name clarifies a non-trivial branch |
-| H6 | **Fact stated twice in prose** | Keep it in the authoritative location and cross-reference it elsewhere |
-| H7 | **Duplicate computation** | Retain the first computed result and pass it forward |
-| H8 | **Hand-rolled code where the platform provides it** (Bun, an existing dependency, `src/meta`, `HABITS` 12.8) | Cite the platform primitive and integrate it in the owner; never add a new dependency for a few lines |
+| H1 | **Unused or invariant in practice** (option never varies or branch never reached) | Count across callers and archived logs/receipts (`data/runs/`); delete if invariant while preserving historical `EVENT_KINDS` |
+| H2 | **Generational accretion** (two generations side by side, incident date-branch, or controller patch for a weak seat) | Delete the superseded stratum or fix the defect at the seat |
+| H3 | **Missing upstream or platform primitive** (custom glue where native tool flag/env var, Bun/OS primitive, dependency export, or `src/meta` suffices) | Verify upstream docs/exports and delegate natively (`tools/oxlint/HABITS.md` 12.8); never add a dependency for a few lines |
+| H4 | **Instance-level or low-altitude patch** (fixes one trigger/caller while leaving the defect class open) | Revert the leaf edit and fix the single owning abstraction every path traverses |
+| H5 | **Prose compensating for fixable code** (prompt warning, skill nudge, or manual flag guarding a trap code can prevent) | Auto-detect, default safely, or make the invalid state unrepresentable in code and delete the prose |
+| H6 | **Duplicate reader or scattered implicit state** (second fold of one fact, or coupled booleans / parallel maps / parsed names) | Call the authoritative production fold (`AGENTS.md` §5, rule 12) or collapse into one discriminated union (`tools/oxlint/HABITS.md` 12.14) |
+| H7 | **Guard for an unreachable state** (`null` check, `?? []`, or fallback ruled out upstream or by the OS primitive) | Cite the upstream refusal, type invariant, or primitive error and hostile test, then delete the guard |
+| H8 | **Wrapper reflex & abstraction laundering** (new helper, wrapper, or sibling module added just to pass a line ceiling or import cap) | Export/call the existing owner directly, inline, or cut branches in the owner so total concepts actually drop |
+| H9 | **Redundant I/O, repeated work, or excess transfer/memory** (re-reading files/processes in a loop, loading whole append-only logs, re-scanning unchanged items) | Stream, hoist, or compute once at the common caller and pass forward |
+| H10 | **Test & fixture bloat** (copy-pasted example tests, duplicated fixture builders, or implementation-pinning assertions) | Consolidate into bounded exhaustive checks or deterministic LCG properties over observable outcomes (`AGENTS.md` §12, `tools/oxlint/HABITS.md` 12.12; use `commit-r` mutation testing when replacing existing suites) |
+| H11 | **Prose & comment bloat** (essay comments restating code, drifted notes, or facts stated twice across docs/skills) | State once in the authoritative owner and cross-reference elsewhere |
 
-For each site, stop at the first rung of the simplification ladder that applies: (1) it does not
-need to exist because its rule 13 chain (`owner → live reader → decision it changes → evidence →
-hostile test`) has a missing link; (2) a higher layer already handles it; (3) the repository
-already implements it; (4) the runtime or platform provides it; (5) it collapses into one
-expression (two branches differing in one term, `ana/no-arms-differing-in-one-term`; a literal
-repeated three times, `HABITS` 12.3); (6) only then write the minimal implementation inside its
-owner. Prefer half the machinery for nearly all of the outcome, verifying both cost and outcome.
+**Simplification ladder** (stop at the first rung that holds): (1) broken rule-13 chain (`owner → live reader → decision it changes → evidence → hostile test`: delete); (2) handled one layer higher; (3) already owned in this repository; (4) provided natively by upstream tool, runtime, or dependency; (5) collapses into one expression (`ana/no-arms-differing-in-one-term`, table-driven fold); (6) minimal implementation inside its owner — preferring roughly half the machinery for nearly all of the outcome when both mechanism and outcome are measured.
 
-## 3. Apply the disagreement test
+## 4. Disagreement test, invariants, and budgets
 
-Operational heuristic: if you find yourself arguing against simplifying a site, it is usually too
-complex. A site may remain only on **one sentence a reviewer can verify** against a file, test, or
-log. Excuses such as "a test pins it" or "the fix touches many files" fail this test, and any
-argument that a fix is inconvenient rather than wrong confirms the site as a finding. Valid
-justifications include:
+- **Disagreement test**: if you find yourself arguing against simplifying a site, it is probably too complex. A site stays only on **one sentence a reviewer can verify** against a file, test, or log (e.g. `null` for unknown vs `0`, distinct error contracts, a helper name clarifying a non-trivial branch, or an `AGENTS.md` rule by number). `"A test pins it"`, `"touches many files"`, `"just a few lines"`, or `"as X.ts does"` all fail. Record retained scan sites via `bun run not-slop -- answer <id> "<reason>"` (fixable rules reject ledger answers).
+- **Must not cut**: (1) wall byte-identity (`AGENTS.md` rule 3; check with `bun .claude/skills/design-and-seats/scripts/seat-view.ts` and wall tests); (2) typed `null` for unknown (never collapse into `0`, `false`, or `""`); (3) historical log `EVENT_KINDS` readability (`AGENTS.md` §5); (4) code owns conditions / models own content (`AGENTS.md` §2) and measurement rules 4, 5, 7, 8; (5) protected paths (`AGENTS.md` §11: `.ana/` except `.ana/wri/`, `data/runs/`, `vendor/`, packs, check programs, kept harnesses).
+- **Budgets** (operator-stated budgets replace defaults): a bug fix adds ≤5 production lines, ≤1 new function, and 0 new modules; a pure simplification nets ≤0 production lines; each file adds ≤1 `src/meta/filesystem.ts` import (`tree/max-filesystem-imports`). Meet length ceilings (800 lines/file, 115 lines/function; `measure.py`'s `cx > 21` is an advisory lead) by cutting branches first, then local closures, then helpers — never split into a sibling module (`tools/loc/source-policy.json` stays empty).
 
-- a `null` representing an unknown value, or a re-read measuring a distinct point in time;
-- two readers of the same file exposing distinct error contracts (for example, returning `null`
-  versus throwing a refusal);
-- a single-caller helper whose name clarifies a complex branch;
-- an explicit rule in `AGENTS.md`, cited by number.
+## 5. Follow the strand and run the mandatory hostile full-diff audit
 
-Record every retained scan site in the not-slop ledger with its justifying sentence, and every
-retained manual site in the report.
+- **Follow the entire strand**: when removing X, remove or simplify its fields, guards (H7), callers, tests (re-fixturing tests that pinned unrelated behaviour through X), `not-slop.tsv` rows, and docs in the same pass. Any reader left without a producer becomes the next finding. If X patched an underlying bug, fix the owner (H4) or report it open.
+- **Mandatory post-`/simplify` hostile audit (before committing)**: read the **entire resulting `git diff <base>`** top to bottom with fresh eyes — disregarding your pass's own prior justifications — and check five gates:
+  1. Did this pass invent *any* new wrapper, helper, flag, or import (H8)?
+  2. Does every surviving hunk survive the Revert-to-Minimal Probe and one-sentence Disagreement Test?
+  3. Did total concepts, branches, and net production lines actually decrease rather than relocate?
+  4. Is any removed strand half-cleaned (orphaned fields, guards, tests, comments, or ledger rows)?
+  5. If patch-on-patch layers still remain, stop patching and escalate to `commit-r`.
 
-## 4. Fix by group and follow the entire strand
+## 6. Verify, report, and feed the census
 
-When removing X, remove or simplify its fields, guards (H3), tests, and callers in the same pass;
-any reader left without a producer becomes the next finding. If X patched an underlying bug, fix
-the bug in its owner (H4) or report it as open. Inlining a helper's body into three callers removes
-no complexity.
-
-## 5. Verify and measure
-
-- Re-run `measure.py` (net lines, new functions, imported names) and, for a commit or stack,
-  `git complexity <base> HEAD` (decision points, import edges, exports, optional fields); edits
-  that shift none of these metrics merely relocate code.
-- Replay any modified log producer or reader (`bun run runs replay`), counting outputs with the
-  owning reader and naming the logs checked; any unverified count is an estimate.
-- Run `bun run test -- <paths>` during editing, `bun run commit:check` before committing, and the
-  full CI gate once before delivery.
-
-## Budgets
-
-- A bug fix adds at most five production lines, one new function, and zero new modules; a pure
-  simplification nets zero or fewer production lines unless the operator specifies otherwise.
-- Each file preserves its count of imports from `src/meta/filesystem.ts`, adding at most one
-  (`max-filesystem-imports`, `HABITS` 12.9).
-- Satisfy file and function length ceilings by reducing branches first, then using a local closure,
-  then extracting a function; never split into a sibling module (`copiedFileLimits` in
-  `tools/loc/source-policy.json` remains empty). A `measure.py` branch count above 21 is a
-  diagnostic lead rather than a hard refusal.
-
-No simplification may violate `AGENTS.md`'s section 2 boundary, section 5 log invariants, section 8
-rules, section 11 protected files, or section 13 head-comment conventions, and `null` for unknown
-must stay distinct from zero.
-
-## Report in census format
-
-Lead with what became simpler and the commit SHA. Then report: (1) each site grouped by shape
-(largest first), marked `removed`, `folded into <owner>`, `kept: <sentence>`, or `open: <why>`;
-(2) budget and structural complexity rows before and after; (3) what the simpler form gives up,
-with replay and test counts; and (4) **For the census** (or `none`). If a pass yields no findings,
-name the site that came closest along with its justifying sentence.
-
-## Feed the census
-
-Whenever manual inspection reveals a pattern at three or more sites that a lint catcher (`HABITS`
-12.4, 12.5) or a `tree-*.ts` scan (12.9) could detect automatically, list it under **For the
-census**. New checks start in report-only mode (a strict-lint warning or a `tree-findings.ts` scan)
-and graduate into `.oxlintrc.json` only at zero remaining sites once every site has a clean
-alternative accepted by all other rules; heuristic checks never block. When the operator corrects a
-simplification pass, refine or replace the misleading rule rather than stacking another rule on top.
+- Re-run `measure.py --base <ref>` and `git complexity <base> HEAD`; replay any touched log producer/reader with `bun run runs replay` (label unverified counts as estimates); run owning `bun run test -- <paths>`, `bun run commit:check`, and `bun run gate` before delivery.
+- **Report**: lead with one sentence on what got simpler and the commit SHA. Follow with: (1) sites grouped by shape, largest first (`removed`, `folded into <owner>`, `kept: <verifiable sentence>`, `open: <why>` — or `"already the smallest honest form"`, naming the closest site); (2) before/after `measure.py` budget and `git complexity` rows; (3) `not-slop.tsv` audit result plus replay and test counts; (4) **For the census** (`none`, or any manual pattern recurring at ≥3 sites that a lint catcher or `tree/` scan can detect automatically — starting report-only in `tools/oxlint/staged-rules.json` and graduating to `.oxlintrc.json` only at zero sites).

@@ -1,29 +1,12 @@
 /**
  * Which run a name is and which process writes it: what every verb of `bun run runs` and the
  * operator's page (`packages/ui`) ask before they read or act on a log.
- *
- * A run is a log in one of the repository's worktrees: a campaign's `.ana/d2/<name>/log.jsonl`, or
- * a live solve's `.ana/live/<name>.jsonl`. It is open while a process that writes it runs in that
- * worktree, and a name is a campaign's whole name: two campaigns have run under one name in two
- * worktrees, so a verb that acts on one refuses a name that is two (`runNamed`).
- *
- * Every verb that acts on one run matches names here rather than its own way, since matching by
- * what a name holds, as `zip` and the pulse do, is a reader's convenience and no way to choose a
- * run to stop.
- *
- * A campaign that has left its worktree is in the archive, `data/runs/` of the main worktree
- * (`ARCHIVE`): this machine's own under `here/`, put there by `runs retire`, and a copy of one a
- * host holds under that host's name, put there by `runs fetch` and by `runs retire`. No verb acts
- * on an archived campaign, which no process writes, and the readers read it (`readable`,
- * `readNamed`), rather than a retired campaign going to the main worktree's `.ana/d2`, where
- * every verb would take it for a run.
  */
 import { EXAMINE } from "#src/campaign/admission.ts";
-import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
+import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports, startedComparisons } from "#src/kernel/reports.ts";
 import { existsSync, readdirSync, readFileSync, readlinkSync, statSync } from "#src/meta/filesystem.ts";
 import { gitText, mainTree, worktrees } from "#src/meta/git.ts";
-import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
@@ -73,6 +56,8 @@ export const CAMPAIGNS = join(".ana", "d2");
 export const ARCHIVE = join("data", "runs");
 /** The archive's folder of this machine's own campaigns, and the word `runs move` names it by. */
 export const HERE = "here";
+/** Suffix stripped from a pack name to group prompt revisions under one domain family. */
+const PACK_REVISION = /(?:-anabasis)?(?:-v\d+[a-z0-9]*)?$/u;
 
 /** The harnesses campaigns hand over, one folder each, under the main worktree, which git ignores:
  *  `runs fresh` names a campaign's own there, and `close.ts` writes there by hand. */
@@ -116,6 +101,15 @@ export function packOf(name: string): string {
   const fresh = name.indexOf("-fresh-");
   return fresh > 0 ? name.slice(0, fresh) : (name.split("-")[0] ?? name);
 }
+
+/** A campaign's domain family, derived from `packOf` by stripping trailing `-anabasis` or `-v<N>`
+ *  prompt-revision suffixes (so `jobstat-anabasis-v9` and `jobstat-anabasis-v6d` share `jobstat`,
+ *  while `buffer` stays `buffer`). */
+export function domainOf(name: string): string {
+  const pack = packOf(name);
+  const base = pack.replace(PACK_REVISION, "");
+  return base === "" ? pack : base;
+}
 /**
  * The script a process runs: Bun's first argument that is no option of its own, under `nice` where
  * `start` started it niced, and after `run` where it was named so, so that a shell whose command
@@ -138,10 +132,6 @@ export const runsAs = (args: readonly string[], tools: readonly string[]) => {
  * run nobody writes left mounted, so a writer missed here would lose its roots: unlisted, a
  * campaign command reads as closed, and `runs stop` answers "none of these is running" and counts
  * a live session's root as left behind.
- *
- * Any other verb of this CLI is none, whatever its command line carries, since a launch would
- * otherwise be refused as "already being written here" by the one process that matched, the
- * launcher itself.
  */
 function writesCampaign(args: readonly string[]): boolean {
   if (runsAs(args, [CLI])) return args.includes("rehearse");
@@ -237,10 +227,8 @@ export function wholeLines(path: string): string {
 
 /** The whole lines of a log an append may be writing to. */
 export function logEvents(path: string): LogEvent[] {
-  return wholeLines(path)
-    .split("\n")
-    .slice(0, -1)
-    .map((line) => parseJsonAs<LogEvent>(line));
+  if (!existsSync(path)) throw new Error(`no log at ${path}`);
+  return read(path);
 }
 
 /** A log's events and byte size, or null when the file vanished between listing and reading. */

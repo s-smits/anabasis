@@ -6,33 +6,10 @@ import { importTracker } from "../shared/import-fix.ts";
 import { isOneArgumentCall } from "../shared/statements.ts";
 
 /**
- * `cause instanceof Error ? cause.message : String(cause)` was written 88 times in this tree, and
- * `src/meta/runtime-values.ts` has held `errorMessage` (the same three terms, once) the whole
- * time. Ninety-one copies of one decision is not a style question: the decision is what a caught
- * value looks like to an operator, and a repository that spells it in 63 files cannot change it.
- * A non-Error cause that should read as `unreadable value` rather than `[object Object]` is one
- * edit at the owner and 88 edits everywhere else.
- *
- * Two shapes, two owners. The ternary above is `errorMessage(cause)`, which returns text. The
- * other, `cause instanceof Error ? cause : new Error(String(cause))`, is `asError(cause)`, which
- * returns an Error so a stack and a `cause` chain survive; it was written ten times.
- *
- * It fixes both, and the reason it once did not has gone: the fix needs an import, and
- * `shared/import-fix.ts` places one. That the expression and the import land together is the
- * whole of it (a rewrite that left the name undefined would be worse than the report) so the
- * import edit rides on every diagnostic rather than the first, because oxlint drops a fix
- * overlapping one it has already applied and a single carrier is lost exactly when it is the
- * one dropped.
- *
- * One tree is outside it. `packages/ui` builds a browser bundle, and the owner sits beside
- * `src/meta/process.ts` in a module that bundle should not pull in; its nine sites stay hand
- * spelled. v1 exempted its starters tree too, and v2 has none.
- *
- * The rule reads the subject as source text, so `result.error instanceof Error ?
- * result.error.message : String(result.error)` is caught as readily as a bare identifier, and
- * any mismatch between the three mentions leaves the expression alone: a ternary reading one
- * value and rendering another is doing something this rule has no opinion about. Only a bare
- * identifier is rewritten; any other subject is reported and left for a hand edit.
+ * Flags hand-rolled caught-error rendering (`cause instanceof Error ? cause.message : String(cause)`
+ * and `cause instanceof Error ? cause : new Error(String(cause))`) outside `src/meta/runtime-values.ts`
+ * and `packages/ui`, replacing them with `errorMessage(cause)` and `asError(cause)` from
+ * `src/meta/runtime-values.ts`. Auto-fixes bare identifier subjects and reports complex subjects.
  */
 /** The module that owns what a caught value reads as, and so the one file that spells it out. */
 const OWNER = "src/meta/runtime-values.ts";

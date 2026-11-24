@@ -3,10 +3,8 @@ import { capturedJsonStringify as stringify } from "./json-runtime.ts";
 import { isBoolean, isNumber, isObject, isString, type JsonValue } from "./json-shape.ts";
 
 const objectPrototype = Object.prototype;
-const arrayFrom = Array.from;
 const { isArray } = Array;
-const objectEntries = Object.entries;
-const objectValues = Object.values;
+const objectKeys = Object.keys;
 const prototypeOf = Object.getPrototypeOf;
 
 /** Deterministic UTF-16 code-unit order. Locale collation must not shape persisted identities. */
@@ -26,14 +24,19 @@ export function compareCodeUnits(left: string, right: string): number {
  * path from a path holding null.
  */
 function encodeSorted(value: unknown, undefinedValues: "omit" | "keep"): string {
-  if (isArray(value)) return `[${arrayFrom(value, (item) => encodeSorted(item, undefinedValues)).join(",")}]`;
+  if (isArray(value)) {
+    return `[${Array.from(value, (item) => encodeSorted(item, undefinedValues)).join(",")}]`;
+  }
   if (isObject(value)) {
-    const entries = objectEntries(
-      /* SAFETY: reached only when `isObject(value)`. */ value as Record<string, JsonValue>,
-    )
-      .filter(([, child]) => undefinedValues === "keep" || child !== undefined)
-      .toSorted(([a], [b]) => compareCodeUnits(a, b));
-    return `{${entries.map(([key, child]) => `${stringify(key)}:${encodeSorted(child, undefinedValues)}`).join(",")}}`;
+    const record = /* SAFETY: reached only when `isObject(value)`. */ value as Record<string, JsonValue>;
+    const parts: string[] = [];
+    for (const key of objectKeys(record).toSorted(compareCodeUnits)) {
+      const child = record[key];
+      if (undefinedValues === "keep" || child !== undefined) {
+        parts.push(`${stringify(key)}:${encodeSorted(child, undefinedValues)}`);
+      }
+    }
+    return `{${parts.join(",")}}`;
   }
   return stringify(value) ?? (undefinedValues === "keep" ? "undefined" : "null");
 }
@@ -54,12 +57,11 @@ function isPlainFiniteJson(
   if (isNumber(value)) return Number.isFinite(value);
   if (!isObject(value) || seen.has(value)) return false;
   seen.add(value);
+  const record = /* SAFETY: reached only when `isObject(value)`. */ value as Record<string, JsonValue>;
   const valid = isArray(value)
-    ? arrayFrom(value).every((item) => isPlainFiniteJson(item, undefinedValues, seen))
+    ? Array.from(value).every((item) => isPlainFiniteJson(item, undefinedValues, seen))
     : prototypeOf(value) === objectPrototype &&
-      objectValues(
-        /* SAFETY: the check above returned when `value === undefined`. */ value as Record<string, JsonValue>,
-      ).every((item) => isPlainFiniteJson(item, undefinedValues, seen));
+      objectKeys(record).every((key) => isPlainFiniteJson(record[key], undefinedValues, seen));
   seen.delete(value);
   return valid;
 }

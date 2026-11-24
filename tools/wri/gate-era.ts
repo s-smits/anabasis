@@ -1,10 +1,5 @@
 /**
  * An earlier log's gate readings, for the readers that study them (`climb.ts`, `live-seat.ts`).
- *
- * An older gate put each draft to the reference harness's room solves under `try_task` before
- * holding it; the gate now reads the package alone (`src/examiner/write.ts`), and a writing
- * session is told none of these readings. They stay readable here, out of production,
- * since an archived log still holds them.
  */
 import { conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";

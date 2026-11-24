@@ -1,142 +1,57 @@
 ---
 name: commit-r
-description: "Rewrite a single Anabasis compartment using the existing code or test suite as a behavioural oracle: test-first when an outcome or interface changes, as an oracle-verified refold when every output is preserved, or as a test pass verified by mechanical mutants when example tests give way to bounded checks and properties. Use when asked to rewrite, overhaul, rebuild, or accelerate code or tests, consolidate unit tests, or run Commit R; also within an authorised change when the existing shape requires another special case or roughly half the machinery would achieve the same behaviour. Whole-stack overhauls belong to stack-pr and consolidate-stack."
+description: "Use before rewriting, overhauling, rebuilding, or accelerating a single compartment, amputating low-value unit tests, or consolidating high-importance suites into bounded/property checks, or within an authorised change when the current shape requires another special case. Pairs existing code and real-input oracles with importance-triaged testing (AGENTS.md §12), scoped mutation verification on high-importance owners, and empirical prior triage against real campaign logs. Whole-stack overhauls belong to stack-pr and consolidate-stack."
 ---
 
 # Commit R
 
-A test suite tends to pin the incidental shape of the code it was written against. Commit R
-isolates one compartment, retains the existing code as a behavioural oracle, and replaces it with
-the minimal implementation that satisfies the required outcomes so that every deviation from the
-oracle is either an intended change, a retired boundary with an explicit rationale, or a detected
-regression. [simplify](../simplify/SKILL.md) routes structural rewrites here, and
-[reduce-complexity](../reduce-complexity/SKILL.md) owns the before-and-after measurements.
+Isolates one compartment, retains existing code and real inputs as a behavioural oracle, and replaces it with the minimal owner satisfying the required outcomes ([simplify](../simplify/SKILL.md) routes structural rewrites here; [reduce-complexity](../reduce-complexity/SKILL.md) owns `measure.py --base <ref>`).
 
-## When to start a pass
+## Testing protocol: fewer unit tests, concentrated on high-importance owners
 
-Start a Commit R pass whenever the operator asks to rewrite, overhaul, or rebuild code. Within an
-authorised task that already modifies a compartment, initiate one yourself when a fix adds another
-special case to a long patch history (`git log -L :<function>:<file>`), when roughly half the
-concepts would deliver the same outcome, when two owners decide the same fact (`AGENTS.md`, rule
-12), when tests pin internal structure rather than behaviour, or when a function already near 115
-lines or 21 decision points (`measure.py`) would grow further. Inform the operator in one sentence
-which compartment and metric you intend to improve, then proceed; propose rather than execute
-rewrites outside the assigned task scope.
+Before writing, rewriting, or mutating tests, triage **each surface/owner** inside the compartment (`AGENTS.md` §12, `tools/oxlint/HABITS.md` 12.12). Mixed compartments (such as `tools/runs/`, `tools/wri/`, `packages/ui/`, or a file mixing decision folds with summary prose) split by surface: amputate presentation tests and keep or upgrade only the high-importance boundaries.
+
+| Surface importance | Examples | Testing protocol | Mutation oracle (`mutate.ts`) |
+| --- | --- | --- | --- |
+| **High-importance owner** | Measurement/scoring/statistics, `decide`/admission/practice/stop state machines, Rule 3 wall & blindness, verifier/acceptance/referee/provenance/OS isolation, locks/refusals/git/landing safety, log durability | Follow `AGENTS.md` §12 in order: (1) bounded exhaustive checks against an independent rule/count (≤~10s via symmetry; cover real cutoffs/production sizes); (2) state-space search with cross-move invariants (never single-row mirrors) or seeded LCG generators counting reached branches; (3) shared perturbation walls and pure invariant/view-model tables; (4) named examples **only** at process/file/provider/OS-wall boundaries, nearest hostile refusal, or real-run regressions | **Required** when deleting or replacing tests (step 8); comparative (`--old`) when prod interface is shared, solo (no `--old`) on new owner files when interface changed |
+| **Low-importance / presentation surface** | Report or CLI wording & layout, per-reader/per-lane/per-script formatters, per-rule lint fixtures, browser click-flows, thin wrappers, convenience cases | **Write no new unit tests**; amputate wording/example suites outright, keeping only any wall/blindness, refusal, or numeric-decision boundary inside the file. Rely on types, strict lint, shared runners (`test/rule-examples.test.ts`, `test/lint-registry.test.ts`, view-model tables + smokes), and step 2/8's real-input oracle | **Skip** on pure low-importance amputations; verify surviving boundary tests, `bun run gate`, and real-input oracle/replay instead |
+
+Never write tautological properties (re-implementing the function under test or mirroring single table rows), report-wording assertions, module mocks, fixed sleeps, or test-only exports (`tree/no-test-only-export`). Pin measured constants (`WEIGHTS`, `GAP_FLOOR`, `SIZE`, `PATIENCE`) once.
 
 ## Three kinds of pass
 
-Select the target compartment by measured complexity (`measure.py`, plus a profile when performance
-is the goal) rather than raw file size, and declare the pass type in the opening frame:
+Declare the pass type, compartment importance, and complexity budget (`python3 .claude/skills/reduce-complexity/scripts/measure.py <files...>`) in the commit body of the first `R:` commit (the **frame**: compartment, importance tier, rule-13 concept map, hypothesis and falsifier, prod + test line/branch/export budget, and boundaries):
 
-- **Rewrite**: alters an observable outcome or external interface. **Rewrite and commit the tests
-  before deleting any production code**, then **implement production code to satisfy those tests**.
-  This prevents fitting tests to the new implementation and ensures running the new tests against
-  the old code distinguishes intended behavioural changes from regressions.
-- **Refold**: preserves every observable output (for example, caching a recomputed result or
-  folding a duplicate helper into its owner). Existing tests remain untouched, steps 3, 4, and 6
-  are skipped, and byte-identical output against the oracle verifies equivalence. The first
-  intended behavioural difference turns a refold into a rewrite.
-- **Test pass**: keeps production logic unchanged and replaces example-based tests with bounded
-  checks and properties (`AGENTS.md`, section 12). Steps 5 to 7 are skipped; the new tests must
-  pass against unchanged production code (any failure exposes a real defect, fixed in its own
-  commit), and step 8's mutation suite serves as the oracle. Production code may gain a narrow seam
-  for observability without altering any decision logic.
+- **Rewrite** (changes an observable outcome or interface): remove old tests (`R: <test paths>`); for **high-importance** owners commit concise property/boundary tests *before* deleting production code (classifying failures against old production code), or for **low-importance** surfaces skip new unit tests and lean on the real-input oracle; remove old production files (`R: <production paths>`), implement the minimal owner, and verify against the oracle (step 8).
+- **Refold** (preserves every observable output): keep existing boundary/property tests untouched (pruning only implementation-pinning or wording tests that block the refold), skip test replacement, and verify byte-identical output against the oracle on real inputs.
+- **Test pass** (keeps production logic unchanged — or with minimal boundary tuning — while shrinking and upgrading tests per `AGENTS.md` §12): either **amputate** low-importance wording/example suites outright, or **replace** high-importance example suites with bounded checks, state-space search, perturbation walls, or invariant tables. Target **≥~50% net test-line reduction** and **≤~10s** per bounded check; new tests pass against unchanged production code, and high-importance replacements clear step 8's mutation oracle.
 
-## The frame
+## Nine-step sequence
 
-Write the frame before deleting any code, as the commit body of the first `R:` commit (or of a
-refold's single commit):
+1. **Clean base**: commit work in flight in a dedicated worktree at the stack top ([stack-pr](../stack-pr/SKILL.md)).
+2. **Capture the oracle**: run existing tests and record read-only outputs on real inputs (`bun run runs replay`, `runs rehearse`, `--dry-run`, or a scratch reader) in the scratchpad. For behavioural rewrites or multi-commit overhauls, launch empirical prior triage in parallel (see below).
+3. **`R: <test paths>`** *(Rewrite / Test pass)*: `git rm` old tests and commit with the frame.
+4. **Write high-importance tests — or skip** *(Rewrite / Test pass)*: on **low-importance** surfaces, write zero new unit tests (keep only boundary/wall/refusal assertions). On **high-importance** owners, write the minimal space-based or boundary suite per the protocol table above, run against old production code, classify every failure (expected compile/import failure if signatures change; runtime failures where signatures match), and commit. Never inflate test LOC on a rewrite unless closing a newly proved high-importance boundary.
+5. **Design minimal owner** *(Rewrite / Refold)*: apply `simplify`'s shapes (H1–H11, including H10 test/fixture bloat) and ladder, dropping concepts with a broken rule-13 link, and incorporate prior-triage findings before editing (deviate fully from initial priors when real-run evidence points to better terms).
+6. **`R: <production paths>`** *(Rewrite)*: `git rm` replaced production files and commit.
+7. **Implement & clean the strand** *(Rewrite / Refold; strand check on Test pass too)*: implement the minimal owner, then verify `bun run typecheck`, `bun run lint -- --strict`, `bun tools/loc/source-policy.ts`, `bun run simplify -- --gate`, and affected suites (`bun run test -- <paths>`). On **Test passes**, unexport any production symbols that became test-only (`source-policy.ts` / `tree/no-test-only-export`) and delete orphaned test helpers. Never drop a required boundary to meet a line budget. When an overhaul spans multiple ordered commits, simulate each commit at the cheapest tier ([system-path-simulation](../system-path-simulation/SKILL.md)) before advancing, and send refined diffs to the same triage subagent for updated priors and cross-boundary checks.
+8. **Verify against the oracle**:
+   - Diff outputs on step 2's real inputs (empty diff for refolds; only intended diffs for rewrites) and close any open triage findings on the final diff.
+   - Scope `mutate.ts` by pass kind (`list` first to size the run; `run` refuses immediately if any suite fails unmutated; use `--only <ids>` on reruns after closing gaps):
+     ```sh
+     bun .claude/skills/commit-r/scripts/mutate.ts list <copy> <files...>
+     bun .claude/skills/commit-r/scripts/mutate.ts run <copy> <files...> --out <scratchpad>/kills.jsonl --suites <suites.json> --jobs 6 --stop-at-kill
+     bun .claude/skills/commit-r/scripts/mutate.ts report <scratchpad>/kills.jsonl [--old old] [--survivors]
+     ```
+     - **Test pass or interface-preserving Rewrite (high-importance owner)**: run comparative `old`, `new`, and `kept` suites on a `<base>` copy with old tests restored (`report --old old`). Classify every `O-` survivor into (a) **genuine invariant/boundary gap** — close by strengthening a bounded check, property, or hostile boundary case (never paste back old example boilerplate) — or (b) **intentionally retired / incidental** (report wording, CLI formatting, convenience case, dead path) — record as retired in the commit message instead of restoring a low-value test. Leaving **>15% of `O-` survivors unexplained** halts the pass.
+     - **Interface-changing Rewrite (high-importance owner)**: never mix incompatible `old` and `new` suites on one copy. Run solo `mutate.ts` on the **new** high-importance owner files against `new` + `kept` (`report` without `--old`), inspect `--survivors`, and close surviving mutants on critical decision, wall, or refusal branches.
+     - **Pure low-importance amputation**: skip `mutate.ts`; verify surviving boundary tests, `bun run gate`, and real-input oracle/replay instead.
+     Remove restored old tests from the copy and verify alternating old/new timings at least twice (bounded checks ≤~10s). (For filesystem-mutating code, test first on a `cp -cRp` copy-on-write clone with retargeted symlinks/gitdirs.)
+9. **Measure and squash**: run `python3 .claude/skills/reduce-complexity/scripts/measure.py --base <base>` and `git complexity <base> HEAD`, inspect the full `git diff <base>` with fresh eyes (confirming concepts, branches, and net test/prod lines actually shrank), save `git branch commit-r/<compartment> HEAD`, `git reset --soft <base>`, run `bun run commit:check`, and create a single squashed commit recording the frame, before/after prod + test metrics, oracle results, and mutation counts (closed vs intentionally retired `O-` survivors). No separate `/simplify` pass is needed after Commit R.
 
-- **Compartment**: one cohesive responsibility someone could ask to change, together with its
-  tests, owning modules, and immediate callers, sized to fit cleanly in one context.
-- **Concept map**: `owner → live reader → decision it changes → evidence → hostile test` for each
-  concept (`AGENTS.md`, rule 13); drop any concept with a missing link.
-- **Hypothesis**: why roughly half the machinery achieves the same outcome, what it sacrifices, and
-  the count that would refute it.
-- **Budget**: current and target values for nonblank lines, decision points, and exports
-  (`.claude/skills/reduce-complexity/scripts/measure.py <files...>`), plus runtime in seconds when
-  speed is an objective, estimating the target concept by concept from the map.
-- **Boundaries**: every edge case enforced by existing tests plus every untested guard (refusals,
-  pre-deletion checks, fallbacks), since untested guards are the easiest to drop inadvertently.
+## Empirical prior triage
 
-## The sequence
+Mechanical oracles verify preservation and high-importance test coverage; for **behavioural rewrites** (prompts, acceptance/verifier gates, scoring/decision rules, or redesigned high-importance test invariants), pair them with empirical prior triage against `data/runs/` and coupled adjacent files ([references/prior-triage.md](references/prior-triage.md)). Skip this for pure byte-identical refolds and low-importance test amputations.
 
-Commit each step locally; after context compaction, resume from `git log` starting at the first
-`R:` commit. Any test modified after production writing begins must state its reason in the commit
-message.
-
-1. **Commit work in flight** in your own worktree at the stack top ([stack-pr](../stack-pr/SKILL.md))
-   to establish a clean base.
-2. **Capture the oracle**: record the existing test suite and run the existing code on real inputs
-   in a read-only or non-mutating mode (`bun run runs replay`, `bun run runs rehearse`, a dry run,
-   or a scratch script reading closed campaigns under either tree). Store real outputs in the
-   scratchpad so campaign log excerpts never enter tracked files.
-3. **`R: <test paths>`**: remove the old tests with `git rm` and commit with the frame.
-4. **Write behavioural tests** targeting outcomes rather than internal structure
-   (`tools/oxlint/HABITS.md`, 12.12). Run them against the old production code and classify every
-   failure: a new case failing on behaviour confirms the hypothesis; an interface mismatch requires
-   a temporary `test/_sort-<name>.test.ts` adapter to verify against the old code; a failing
-   preserved boundary indicates a buggy test; a case intended to fail that passes needs sharpening.
-   Commit the tests with this classification.
-5. **Design the simpler implementation**: identify the true owning module and remove symbols that
-   existed solely for the old shape (`git grep -w` on each export), applying `simplify`'s shapes
-   and ladder to every concept. Drop a case only when its producer or contract is gone.
-6. **`R: <production paths>`**: remove the replaced production files with `git rm` and commit.
-7. **Write production code** using the smallest owner that satisfies the tests, rewriting any
-   neighbouring consumer that was contorted around the old interface. Run `bun run typecheck` (the
-   commit hook does not run it), `bun run lint -- --strict`, `bun tools/loc/source-policy.ts`, and
-   every test importing the compartment, checking each exit code. Never meet a complexity budget by
-   dropping a boundary: if a simplification breaks a test, restore the required behaviour.
-8. **Verify against the oracle**: restore the old tests as `<original directory>/_old-<name>.test.ts`,
-   run them with `bun run test --`, and diff outputs on step 2's inputs (requiring an empty `diff`
-   for text). Next, run mutation testing on the owning files in a base-commit worktree copy with
-   the old tests restored across three suites: `old` (restored tests), `new`, and `kept` (all other
-   tests importing the owner):
-
-   ```sh
-   bun .claude/skills/commit-r/scripts/mutate.ts run <copy> <files...> --out <scratchpad>/kills.jsonl --suites <suites.json> --jobs 6 --stop-at-kill
-   bun .claude/skills/commit-r/scripts/mutate.ts report <scratchpad>/kills.jsonl --old old [--survivors]
-   ```
-
-   Pass suite order `new`, `kept`, `old` with `--stop-at-kill` only when rerunning `--survivors`,
-   because the initial baseline needs every suite's verdict. Every `O-` mutant (killed by `old`
-   alone) must either be covered by a restored test case or accounted for in the commit message as
-   incidental (phrasing, internal layout) or an erroneous old test; leaving more than roughly 15%
-   of old kills unexplained halts the pass. Trash the restored old tests, then benchmark old and
-   new timings alternately at least twice, recording every measurement. Fold any regression fix
-   into step 7 (or step 4 for a test pass) via `git commit --fixup` and
-   `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <base>`.
-
-   For code that deletes or moves files on disk, execute first against a full copy-on-write clone
-   (`cp -cRp`) with all symlinks retargeted inside the copy; for git worktrees, rewrite each copied
-   `.git` file and admin `gitdir` manually and restore timestamps with `touch -h -r`, since
-   `git worktree repair` would mutate the real repository. Compare the copy's dry run with the real
-   tree's dry run, execute on the copy, verify that only the intended targets changed, and report
-   any real-tree aspects missing from the copy as untested.
-9. **Measure and squash**: run `reduce-complexity`'s
-   [One diff command](../reduce-complexity/SKILL.md#single-diff-budgets-and-per-function-branch-counts)
-   against the base, save a backup branch (`git branch commit-r/<compartment> HEAD`), run
-   `git reset --soft <base>`, verify with `bun run commit:check`, and create a single commit whose
-   body records the hypothesis, budget met or missed, intended failures, oracle findings, and
-   rewritten neighbours. Retain the backup branch until merge. Because the Commit R pass is itself
-   the simplification, no separate `/simplify` pass is needed: once checks pass, proceed to the
-   pull request.
-
-## Constraints
-
-- Never modify a pack, check program, kept harness, or log (`AGENTS.md`, rule 2), another session's
-  compartment, or a live run's worktree; `vendor/` changes only by a documented sed.
-- Never alter what a model seat reads without documenting the change and confirming
-  `test/builder.test.ts` and `test/builder-led.test.ts` still hold (rule 3); solver-facing changes
-  require operator authorisation.
-- Never silence a failing legacy test or skip oracle verification without an explicit explanation.
-- Never label a pass a refold to avoid updating tests when an observable output changes.
-- Do not push unless the task explicitly includes publishing via `stack-pr`.
-
-## Report
-
-For each compartment, report: pass type and hypothesis; complexity budget before, expected, and
-measured (`measure.py`, `git complexity <base> HEAD`), naming the boundary behind any miss;
-squashed commit SHA and backup branch name; test counts and failure classifications; any tests
-edited after production work started; oracle diffs with dispositions and alternating timings;
-copy-run results and gaps; and any capability or assumption traded away by the simpler design.
+- **Execution & model**: when subagent delegation is authorised by the operator or session config, launch **one persistent strictly read-only subagent**: `claude-opus-5-5` at `medium` effort in Claude sessions, or `gemini-4-neon` at `medium` effort (`research` subagent) in Gemini/Antigravity sessions (no write tools, no paid models, no `.env`, no `advisor`). When subagents are disabled, execute the same triage checklist inline before locking the design.
+- **Persistent loop**: brief your explicit initial priors and invite the subagent to refute or redirect them with primary-source `k/N` counts; keep the **same** subagent alive across build/tune iterations via follow-up messages to backtrack agent behaviour on refined diffs and validate coupled adjacent files (`VALIDATED` | `REQUIRES CO-TUNING` | `CONFLICT / REVISED`). Deviate fully whenever real-run evidence overturns initial terms.

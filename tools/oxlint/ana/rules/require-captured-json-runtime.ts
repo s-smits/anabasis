@@ -17,22 +17,9 @@ const MODULE = "src/meta/json-runtime.ts";
 const OWNER = [MODULE];
 
 /**
- * `src/meta/json-runtime.ts` binds `JSON.parse` and `JSON.stringify` at load. v1's controller
- * loaded Builder-authored modules into its own process, where a module that replaced `JSON` changed
- * what every later reader saw, and the captured binding was the one it could not move. Here no host
- * process imports a generated module: a harness's tools run in a walled process of their own, and
- * the one generated import, a check program's in `src/kernel/check-child.ts`, follows
- * `lockJsonGlobals`, which freezes `JSON` so that the ambient functions there are the captured ones.
- * What the bindings give every caller now is their types: `JsonValue` from a parse in place of
- * `any`, and `string | undefined` from a stringify that can answer `undefined`.
- *
- * The owner's own note records that this was swept by hand once, across 148 call sites. A sweep
- * holds until the next call site arrives, which is what this rule is for.
- *
- * The fix renames the call and imports the binding. `capturedJsonParse` returns `JsonValue` where
- * the global returned `any`, so a caller that relied on the widening stops compiling and picks
- * `parseJsonAs<T>` by hand. That is the intended remainder: a fix that cannot be silently wrong
- * is worth more than one that covers every site.
+ * Requires `src/` and `vendor/` modules (outside `src/meta/json-runtime.ts`) to call
+ * `capturedJsonParse` / `parseJsonAs<T>` and `capturedJsonStringify` instead of ambient
+ * `JSON.parse` (`any`) and `JSON.stringify`. Auto-fixes the call and adds the import.
  */
 export const requireCapturedJsonRuntimeRule = defineRule({
   meta: {

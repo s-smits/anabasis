@@ -4,50 +4,10 @@ import { crossings } from "../shared/crossed.ts";
 import { bindingName, identifierName, propertyName } from "../shared/statements.ts";
 
 /**
- * A call that passes two arguments the wrong way round, where the compiler cannot say so.
- *
- * `eslint/max-params` is registered at 5 as a proxy for this: a long parameter list is easy to
- * pass wrongly. It is the wrong instrument, and the tree says so: the transposable shape, two
- * parameters of one function declaring one type, stands at 963 pairs, of which 274 are in
- * two-parameter functions, 298 in three, 262 in four and 129 in five. A parameter ceiling moves a
- * function between those buckets; it removes nothing. What can be decided is the call itself.
- *
- * The evidence is the caller's own names. `writeRound(runId, campaignId)` against
- * `writeRound(campaignId: string, runId: string)` states the mistake twice (the argument names
- * are the parameter names, in the other order) and the compiler accepts it because both are
- * `string`. Nothing else in the tree reports it: the types match, both bindings are read, and a
- * test written from the same misreading passes.
- *
- * A call is reported where its arguments cross: each of two arguments named for the other's
- * parameter, or three or more rotated so that each is named for the next one's (`crossings`,
- * `tools/oxlint/ana/shared/crossed.ts`, which says when a name names a parameter). A name is a
- * bare identifier or the property ending a member read (`row.to`), and it names a parameter when
- * its words begin or end with the parameter's (`sourcePath` names `source`). The declared types are
- * not compared: a crossing that compiles has types the compiler takes among the positions, which
- * is the case the rule exists for. The callee is a function this file declares, a `const` bound to
- * a function, a method of the enclosing class called on `this`, a method of an object literal
- * bound to a `const`, or the constructor of a class this file declares, reached by `new`.
- *
- * An oxlint rule sees one file, and its plugin API offers no other module's declarations, so a
- * call into another file is read by the whole-tree scan `tree/no-transposed-argument`
- * (`tools/oxlint/tree-crossed-argument.ts`) with the same reading.
- *
- * One argument that carries another parameter's name is a coincidence, and the rule does not
- * report it. Measured across eight trees, that shape gave 6 to 10 findings a tree, every one a
- * correct call (`flag("name",
- * name)`, `addUsage(turn.usage, usage)`); requiring the caller to hold the displaced parameter's
- * name as well left only calls inside the callee itself. A chain of such pointers that never
- * closes is the same coincidence twice. The crossed shape, with every widening above, reported
- * nothing on any of the eight trees: the defect is rare, and the rule is the fence that keeps it
- * so.
- *
- * The callee is resolved through scope analysis, because a parameter list is needed to compare
- * against. A parameter that holds a function (`verify` in `decided(verify, task, answer)`) is not
- * resolved to the function that declares it.
- *
- * There is no fix. Swapping the two arguments back is mechanically available and wrong to apply:
- * the call may be right and the caller's two bindings misnamed, or the declaration's order may be
- * the thing to change. Writing either one silently changes what the program computes.
+ * Flags calls to functions, methods, or constructors declared in the same file whose argument names
+ * form a closed transposition cycle against the callee's parameter names (`crossings`,
+ * `tools/oxlint/ana/shared/crossed.ts`; cross-file calls are checked by
+ * `tree/no-transposed-argument` in `tools/oxlint/tree-crossed-argument.ts`). There is no fix.
  */
 type Callable = ESTree.Function | ESTree.ArrowFunctionExpression;
 

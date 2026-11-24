@@ -7,9 +7,6 @@
  *   bun run runs hosts [--all] [--health [--here]]
  *   bun run runs holds <name ...>
  *
- * `--health` is `health.ts`'s: each machine's load, disk and busiest processes, this one included,
- * and with `--here` this machine's alone as JSON, which is what each host is asked.
- *
  * The hosts are `ANA_HOSTS` in the environment, a JSON list, loaded as the credentials are by Bun's
  * `--env-file` from a file git ignores, so no machine is named in the repository. Each names the
  * host, its ssh destination, the worktree the verb runs in, the Bun there, and the env files there
@@ -20,14 +17,6 @@
  * once and prints each one's rows as they come, under a time limit a host, so a host that is slow or
  * does not answer holds up no other, where asking one after another would let a loaded runner hold
  * the rows of every host after it.
- *
- * A verb that acts on a run it names goes wherever the run is (`routesOf`): every host is asked
- * before acting, and unavailable hosts and duplicate originals refuse the route, so that a stop of
- * runs on several machines is one command and no verb takes a host's name by hand. Readers use
- * snapshots.ts instead of routing to another reader. The transport prepares a detached controller
- * at the caller's nearest published ancestor for ordinary verbs and skill scripts; all configured
- * paths remain literal shell words.
- * Live records belong to live.ts, shared by usage and placement.
  */
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";

@@ -97,5 +97,39 @@ describe("the harnesses a campaign kept, in a Builder's home", () => {
     expect(realpathSync(join(home, "three", ".toolchain", "bin", "run"))).toBe(
       join(home, "three", ".toolchain", "bin", "run"),
     );
+
+    // `seedKept` shares >100 MB trees under `home/.kept-trees` without polluting `home/kept/`.
+    const [largeTwo, parent] = ["e".repeat(64), "f".repeat(64)];
+    keep(states, largeTwo, null);
+    symlinkSync(join("..", "tree-1"), join(states, largeTwo, ".toolchain"));
+    keep(states, parent, null);
+    const seededHome = join(root, "seeded-large");
+    mkdirSync(seededHome);
+    seedKept(
+      seededHome,
+      states,
+      [
+        { at: "2026-10-19T00:00:00.000Z", kind: "build.finished", data: { session: "b-1", harness: large } },
+        {
+          at: "2026-10-19T00:00:01.000Z",
+          kind: "build.finished",
+          data: { session: "b-2", harness: largeTwo },
+        },
+      ],
+      parent,
+    );
+    expect(readdirSync(join(seededHome, "kept")).toSorted()).toEqual(
+      [large.slice(0, 8), largeTwo.slice(0, 8)].toSorted(),
+    );
+    expect(readdirSync(join(seededHome, ".kept-trees"))).toEqual(["tree-1"]);
+    for (const digest of [large, largeTwo]) {
+      expect(readlinkSync(join(seededHome, "kept", digest.slice(0, 8), ".toolchain"))).toBe(
+        join("..", "..", ".kept-trees", "tree-1"),
+      );
+      expect(
+        readFileSync(join(seededHome, "kept", digest.slice(0, 8), ".toolchain", "bin", "run"), "utf8"),
+      ).toBe("x".repeat(10));
+    }
+    expect(existsSync(join(home, ".kept-trees"))).toBe(false);
   });
 });

@@ -30,6 +30,7 @@ import {
   differenceOf,
   flipP,
   gainOver,
+  gapAgainst,
   type Paired,
   pointsOf,
   GAP_FLOOR,
@@ -39,15 +40,17 @@ import {
 } from "#src/kernel/compare.ts";
 import { familiesOf } from "#src/kernel/history.ts";
 import { lastReports, pairsReported, type Reported, startedComparisons } from "#src/kernel/reports.ts";
-import { solvesIn } from "#src/kernel/solves.ts";
+import { solvesIn, type Judged, verdictsOf } from "#src/kernel/solves.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
+import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { spareOf } from "./clearance.ts";
 import { pSaid, testedOf, testSaid } from "./promotion.ts";
 
 const LEVEL = 0.02;
 const STARTED = "comparison.started";
 const UNNAMED = "not recorded";
+const EXACTLY = 1e-6;
 
 type Measure = (pair: Paired) => number;
 const MEASURES: readonly (readonly [string, Measure])[] = [
@@ -157,8 +160,54 @@ function practisedLines(
   ];
 }
 
+/** Byte-identical answer and objective-measure repetition summary over `pairs` (replacing `answers.ts`). */
+function repeatLine(pairs: readonly Paired[], verdicts: ReadonlyMap<string, Judged>): string | null {
+  const tally = () => ({ same: 0, of: 0, exact: 0, near: 0, measured: 0 });
+  const [fresh, old] = [tally(), tally()];
+  let [acrossSame, acrossOf] = [0, 0];
+  const validDigests = (solves: readonly string[] | undefined, valid: readonly boolean[]) => {
+    const held = (solves ?? []).flatMap((solve) => {
+      const answer = verdicts.get(solve)?.answer;
+      return answer === undefined ? [] : [hashJsonValue(answer)];
+    });
+    return held.length >= 2 && held.length === valid.length && valid.every(Boolean) ? held : null;
+  };
+  const tickSide = (into: ReturnType<typeof tally>, pair: Paired, side: "old" | "fresh") => {
+    const digests = validDigests(pair.solves?.[side], pair[side]);
+    if (digests !== null) {
+      into.of += 1;
+      if (new Set(digests).size === 1) into.same += 1;
+    }
+    const measures = pair.objective?.[side].filter(isNumber) ?? [];
+    if (measures.length >= 2 && measures.length === pair[side].length) {
+      into.measured += 1;
+      if (Math.max(...measures) - Math.min(...measures) <= EXACTLY) into.exact += 1;
+      if (!gapAgainst(pair, side, [])) into.near += 1;
+    }
+    return digests;
+  };
+  for (const pair of pairs) {
+    const newer = tickSide(fresh, pair, "fresh");
+    const older = tickSide(old, pair, "old");
+    if (newer !== null && older !== null) {
+      acrossOf += 1;
+      if (new Set([...newer, ...older]).size === 1) acrossSame += 1;
+    }
+  }
+  if (fresh.of === 0 && old.of === 0 && fresh.measured === 0 && old.measured === 0) return null;
+  const obj =
+    fresh.measured === 0 && old.measured === 0
+      ? ""
+      : `; objective exact/near new ${String(fresh.exact)}/${String(fresh.near)} of ${String(fresh.measured)}, ref ${String(old.exact)}/${String(old.near)} of ${String(old.measured)}`;
+  return `repeat: identical answer new ${String(fresh.same)}/${String(fresh.of)}, ref ${String(old.same)}/${String(old.of)}, across ${String(acrossSame)}/${String(acrossOf)}${obj}`;
+}
+
 /** The block of one reported comparison. */
-function reportedLines(events: readonly LogEvent[], report: Reported): string[] {
+function reportedLines(
+  events: readonly LogEvent[],
+  report: Reported,
+  verdicts: ReadonlyMap<string, Judged>,
+): string[] {
   const { data, session } = report;
   const level = isNumber(data.level) ? data.level : LEVEL;
   const reading = isString(data.reading) ? data.reading : UNNAMED;
@@ -177,18 +226,25 @@ function reportedLines(events: readonly LogEvent[], report: Reported): string[] 
     noted.length === halves.length
       ? `${String(halves.filter((pair, at) => differenceOf(pair) !== noted[at]).length)} of ${String(halves.length)} A/A scores differ from the report's, by position (its A/A names no task; a report written before the mirrored split ran on from task to task split otherwise, pairsReported)`
       : `the report's A/A holds ${String(noted.length)} scores and this tree's halves ${String(halves.length)}`;
+  const [validityMeasure, objectiveMeasure] = [MEASURES[1]?.[1], MEASURES[2]?.[1]];
+  const valTally = validityMeasure === undefined ? "none" : tallied(tested.map(validityMeasure));
+  const objTally = objectiveMeasure === undefined ? "none" : tallied(tested.map(objectiveMeasure));
+  const step = readsStep(recorded, level);
+  const sparePart = step ? `; spare ${String(spareOf(recorded, level))} wins` : "";
+  const repeat = repeatLine(pairs, verdicts);
   const lines = [
-    head,
+    `${head} · validity ${valTally} · objective ${objTally} · A/A ${testSaid(data.noise)}${sparePart}`,
     `  recorded: ${tallied(differences)} over ${String(differences.length)} tested tasks; the report's A/A ${testSaid(data.noise)}`,
     `  recount: ${String(differing)} of ${String(tested.length)} tasks matched by task (${String(unmatched)} unmatched) score otherwise in this tree than the report recorded; the recorded tally and the step lines read the record, the tallies by measure read the recount`,
     `  ${aaDiffering}`,
     ...MEASURES.map(
       ([name, measure]) => `  ${name}: ${tallied(tested.map(measure))}; A/A halves ${aa(measure)}`,
     ),
+    ...(repeat === null ? [] : [`  ${repeat}`]),
     `  every new solve beat every reference solve: ${String(tested.filter(beatsAll).length)} of ${String(tested.length)} tasks`,
     ...practisedLines(events, report, tested, recorded),
   ];
-  return readsStep(recorded, level) ? [...lines, ...stepLines(recorded, level)] : lines;
+  return step ? [...lines, ...stepLines(recorded, level)] : lines;
 }
 
 /** The block of a comparison begun with no report: the solves it began, by harness, and how many ended. */
@@ -206,13 +262,14 @@ export function scoreRows(events: readonly LogEvent[]): string[] {
   const reports = new Map(lastReports(events).map((report) => [report.session, report]));
   const sessions = [...new Set([...startedComparisons(events), ...reports.keys()])];
   if (sessions.length === 0) return ["scores: no comparison on record"];
+  const verdicts = verdictsOf(events);
   return [
-    "scores (lanes 3 and 9): each comparison's task scores recounted by this tree's differenceOf and matched to the report's by task; tallies are wins-losses-ties and the one-sided sign-flip p.",
+    "scores (lane 6): each comparison's task scores recounted by this tree's differenceOf, measure splits, A/A halves, answer/objective repetition, practised-family split, and step sensitivity.",
     ...sessions.flatMap((session) => {
       const report = reports.get(session);
       return report === undefined || asRecord(report.data) === null
         ? absentLines(events, session)
-        : reportedLines(events, report);
+        : reportedLines(events, report, verdicts);
     }),
   ];
 }

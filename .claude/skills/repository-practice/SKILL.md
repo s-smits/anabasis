@@ -1,6 +1,6 @@
 ---
 name: repository-practice
-description: "Use when preparing commits or pull requests, writing PR descriptions, comments, or prompts, selecting tests and checks, or working near .ana/, .env, vendor/, or src/wall/. Explains evidence levels (present in source, proved without a model, exercised live), repository terminology, and directory ownership (AGENTS.md sections 9 to 14). preflight.ts reports the checks and labels required by a diff; direction.ts detects forbidden production-to-helper imports. Procedures belong to stack-pr, run-management, and attribution-and-proof; coding habits live in tools/oxlint/HABITS.md."
+description: "Use before preparing commits or PRs, writing PR descriptions, comments, or prompts, choosing tests or checks, citing evidence rungs, or working near .ana/, .env, vendor/, or src/wall/. Explains evidence levels (present in source, proved without a model, exercised live), repository terminology, and directory ownership (AGENTS.md sections 9 to 14). preflight.ts reports required checks and labels; direction.ts detects forbidden production-to-helper imports. Procedures belong to stack-pr, run-management, and attribution-and-proof; coding habits live in tools/oxlint/HABITS.md."
 ---
 
 # Repository practice
@@ -17,10 +17,7 @@ code, the source code is authoritative and the reference must be updated in the 
 | 13. Writing | `references/code-and-writing.md` | Complete prose and comment style rules |
 | 14. Terms and map | `references/terms-and-map.md` | Canonical terminology, the definition of a sed, and directory ownership |
 
-Operational procedures live in separate skills: branching, pushing, and landing in `stack-pr`;
-launching and managing runs in `run-management`; phrasing experimental claims in
-`attribution-and-proof`; coding conventions in `tools/oxlint/HABITS.md` (read in full before writing
-code); and seat reachability analysis in `design-and-seats` (`seat-view.ts`).
+Operational procedures live in separate skills: branching, pushing, and landing in [stack-pr](../stack-pr/SKILL.md) (whole-stack consolidation in [consolidate-stack](../consolidate-stack/SKILL.md)); launching and managing runs in [run-management](../run-management/SKILL.md); phrasing experimental claims in [attribution-and-proof](../attribution-and-proof/SKILL.md); code simplification and compartment rewrites in [simplify](../simplify/SKILL.md) and [commit-r](../commit-r/SKILL.md); coding conventions in `tools/oxlint/HABITS.md` (read in full before writing code); and seat reachability analysis in [design-and-seats](../design-and-seats/SKILL.md) (`seat-view.ts`).
 
 ## What a change requires: `scripts/preflight.ts`
 
@@ -39,10 +36,9 @@ determine what the diff requires:
 - each area of `tools/runtime/moments.ts` touched by the diff and its associated obligation (rule 3
   wall tests for `seats`, historical replay for `measurement`, rehearsal for `campaign`, and
   cross-platform verification for `wall`);
-- source files exceeding 800 nonblank lines or functions exceeding 115 lines
-  (`tools/loc/source-policy.ts`);
-- `AGENTS.md` section 13 style violations in changed Markdown prose: em dashes, banned hype words,
-  relative dates, exclamation marks, and American spellings;
+- source files exceeding 800 nonblank lines, functions exceeding 115 lines, or unused exports across
+  authored roots (`tools/loc/source-policy.ts`);
+- `AGENTS.md` section 13 prose findings in changed Markdown (`PROSE` in `scripts/preflight.ts`);
 - whether Git hooks are enabled, whether a paid run may launch from the current worktree
   (`treeFault`), and with `--stack`, where the branch sits on the open stack
   (`stack-pr/scripts/stack.ts`);
@@ -58,8 +54,4 @@ perform actual validation. Its test suite lives in `test/repository-practice-scr
 bun .claude/skills/repository-practice/scripts/direction.ts [--file <path>]...
 ```
 
-`AGENTS.md` section 12 enforces one-way dependencies that no lint rule currently checks. Using the
-gate's import parser (`importsOf`), this script flags any import from production code (`src/`,
-`vendor/`, `packages/`, and `tools/` outside `tools/wri/`, or each `--file` argument) into
-`.claude/`, `tools/wri/`, `studies/`, or `test/`, exiting with status 1 if any violation is found.
-Its tests live in `test/repository-practice-script.test.ts`.
+`AGENTS.md` section 12 enforces one-way dependencies, gated in `tools/loc/source-policy.ts` (`commit:check`, `gate`, `ci.yml`). This script wraps that check for targeted `--file` runs, flagging any import from production code (`src/`, `vendor/`, `packages/`, and `tools/` outside `tools/wri/`) into `.claude/`, `tools/wri/`, `studies/`, or `test/`, exiting with status 1 if any violation is found. Its tests live in `test/repository-practice-script.test.ts`.

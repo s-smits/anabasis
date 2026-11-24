@@ -4,18 +4,6 @@
  * AB and on. A digest is the identity that saved states,
  * comparisons, repeats and recovery go by; a letter is a name beside it, and every printed name
  * keeps the digest's first eight characters, so the hash stays there to inspect.
- *
- * The names are a fold over the log and nothing else: the log is append-only, so a harness keeps
- * its letter whatever is appended after it, a campaign run again reads the same names, and a
- * promotion changes which harness is the reference and not what it is called. No second store
- * holds them, and no saved state is renamed. A later letter means a harness the log named later;
- * it says nothing of how good it is.
- *
- * The Starter is A by role, as the log first names it: the digest a comparison names as its
- * starter, or the parent of a Builder session that the log has not named before, since a session
- * starts from the Starter, from a harness a session left or from one imported, and the log names
- * the last two before. A log whose host changed the Starter's files between commands names two
- * digests as the starter, and both read A.
  */
 import type { EventKind, LogEvent } from "../kernel/log.ts";
 import { isString } from "../meta/json-shape.ts";
@@ -33,6 +21,7 @@ const NAMING: Readonly<Partial<Record<EventKind, readonly string[]>>> = {
   "harness.imported": ["harness"],
   "comparison.started": ["starter", "old", "fresh"],
   "harness.promoted": ["harness"],
+  "harness.reverted": ["harness", "from"],
 };
 
 /** A whole digest, as a kept harness is named. */

@@ -2,14 +2,6 @@
  * A checker's acceptance: what an imported check program has been seen to do, before any task
  * counts on it.
  *
- * v1's record is why. Its passes were sound, the Judge vetoing 5 of 1,411, and its rejections were
- * not: of 47 rehearsal misses 36 were a check or its instrument refusing a right answer, and 24
- * of 32 firmware fails were an author's stand-in refusing valid code. A task's shape check reads only
- * its package's structure (`task.ts`), so this asks the checker as a whole whether every control answer gets
- * the verdict its author labelled it with, whether a second run agrees, whether every check has
- * been seen both to refuse an answer and to let one pass, and whether every instrument a check
- * names is there to run.
- *
  * Two readings ask what no control answer of the pack's does. The do-nothing answer, the smallest
  * the answer format allows, must be rejected on every
  * task: Anchor tests its generated verifiers so, and cites a benchmark on which an agent that did
@@ -20,11 +12,6 @@
  * by the tool it runs, never by a label its author writes, since an author's label can call a
  * check `authored` that runs the pack's engine. An exam with no engine behind any check stands only
  * once the operator admits each check by name.
- *
- * This reads and decides nothing: a fault is a sentence for the checker's owner, and what share of
- * faults a checker may carry is the operator's. One thing is not read here. A control answer tests the
- * faults its author thought of, so control answers cannot show that the answers a check refused were
- * wrong; that takes a reading of the refused answers themselves (`src/referee/rejections.ts`).
  */
 import { Pointer } from "typebox/value";
 import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
@@ -39,6 +26,7 @@ import {
   type Brief,
   decided,
   decides,
+  faultyOf,
   OBJECTIVE,
   objectiveOf,
   requiredToolsOf,
@@ -79,11 +67,16 @@ interface Idle {
   readonly verdict: Verdict;
 }
 
+/** Whether a declared verifier tool is installed inside the pack (`"pack"` or legacy `true`),
+ *  forwarded from the ambient host toolchain (`"host"`), or absent (`false`). Only pack-installed
+ *  engines qualify as independent instruments under Rule 10. */
+export type ToolAvailability = boolean | "pack" | "host";
+
 /** What one check has been seen to do. */
 interface CheckReading {
   readonly id: string;
-  /** What decides it, named by its tool: the engines it runs, as it names them, or `author`
-   *  where it runs none and its author's own computation decides it. */
+  /** What decides it, named by its pack-installed engines (`"pack"`), or `author` where it runs
+   *  none or only host-forwarded tools and its author's own code decides it. */
   readonly instrument: string;
   /** Declared tools the verifier's tool path does not hold. */
   readonly missing: readonly string[];
@@ -115,7 +108,7 @@ export interface Read {
   readonly contract: Contract;
   readonly tasks: readonly Task[];
   readonly controls: readonly Control[];
-  readonly found: (toolId: string) => boolean;
+  readonly found: (toolId: string) => ToolAvailability;
   /** Verifier runs in flight at once. */
   readonly width: number;
   /** False where the reading runs no probe of its tasks (`probeFaults`): the acceptance command's,
@@ -152,6 +145,20 @@ function runControls(
  * caller asks (`answerFormatFault`) before it puts the answer to a check. References are followed
  * so that a draft citing `#/$defs/...` is not refused on it.
  */
+/** Smallest scalar value for a primitive JSON Schema type. */
+function minimalPrimitive(
+  held: Record<string, JsonValue | undefined>,
+  type: JsonValue | undefined,
+): JsonValue {
+  if (type === "string") return "x".repeat(isNumber(held.minLength) ? held.minLength : 0);
+  if (type === "number" || type === "integer") {
+    if (isNumber(held.minimum)) return held.minimum;
+    return isNumber(held.exclusiveMinimum) ? held.exclusiveMinimum + 1 : 0;
+  }
+  return type === "boolean" ? false : null;
+}
+
+/** Smallest value a JSON Schema allows, following local `#` references. */
 function doNothingAnswer(
   schema: JsonValue | undefined,
   root: JsonValue | undefined = schema,
@@ -161,8 +168,9 @@ function doNothingAnswer(
   if (held === null) return null;
   const smallest = (inner: JsonValue | undefined) => doNothingAnswer(inner, root, following);
   if (isString(held.$ref) && held.$ref.startsWith("#")) {
-    if (following.includes(held.$ref)) return null;
-    return doNothingAnswer(asRecord(Pointer.Get(root, held.$ref.slice(1))), root, [...following, held.$ref]);
+    return following.includes(held.$ref)
+      ? null
+      : doNothingAnswer(asRecord(Pointer.Get(root, held.$ref.slice(1))), root, [...following, held.$ref]);
   }
   if (held.const !== undefined) return held.const;
   if (Array.isArray(held.enum)) return held.enum[0] ?? null;
@@ -177,28 +185,82 @@ function doNothingAnswer(
   if (type === "array") {
     return Array.from({ length: isNumber(held.minItems) ? held.minItems : 0 }, () => smallest(held.items));
   }
-  if (type === "string") return "x".repeat(isNumber(held.minLength) ? held.minLength : 0);
-  if (type === "number" || type === "integer") {
-    if (isNumber(held.minimum)) return held.minimum;
-    return isNumber(held.exclusiveMinimum) ? held.exclusiveMinimum + 1 : 0;
-  }
-  return type === "boolean" ? false : null;
+  return minimalPrimitive(held, type);
 }
 
 /**
- * Two probes of a drafted exam's examples, run without a model beside its controls, a fault each
- * where one finds the checks blind to which task an answer is for. Each accept control that passed
- * is run on every other example: a control that every other example's checks also pass answers any
- * task, so no check reads the task. Where every example carries hidden values, each such control is
- * run on its own example with each other example's differing hidden values in place of its own:
- * where no verdict moves and no measure moves by the comparison's floor (`GAP_FLOOR`), no check and no
- * objective is decided by them. A probe the verifier cannot decide is left unread, so a probe never stops
- * the reading its controls make.
+ * Probe deliverable-carrying accept controls with all deliverable files removed: faults when no
+ * check or objective reads deliverables, and surfaces factual notes when only the objective reads
+ * them or when some accept controls still pass without files.
  */
-async function probeFaults(
+async function deliverableReading(
   { verify, brief, tasks, width }: Read,
+  accepted: readonly ControlAnswerRun[],
+): Promise<{ readonly faults: readonly string[]; readonly notes: readonly string[] }> {
+  const byId = new Map(tasks.map((task) => [task.taskId, task]));
+  const withFiles = accepted.flatMap((run) => {
+    const task = (run.files?.length ?? 0) > 0 ? byId.get(run.taskId) : undefined;
+    return task === undefined ? [] : [{ run, task }];
+  });
+  if (withFiles.length === 0) return { faults: [], notes: [] };
+  const stripped = (
+    await pooled(withFiles, width, async ({ run, task }) => ({
+      run,
+      verdict: await verify(task, run.answer, undefined, []),
+    }))
+  ).filter(({ verdict }) => verdict.kind !== "non-result");
+  if (stripped.length === 0) return { faults: [], notes: [] };
+  const rule = { direction: brief.objective?.direction ?? "higher" } as const;
+  const allValid = stripped.every(
+    ({ verdict }) => verdict.kind === "pass" || (verdict.kind === "faulty" && verdict.check === OBJECTIVE.id),
+  );
+  const blind = stripped.every(
+    ({ run, verdict }) =>
+      verdict.kind === "pass" &&
+      Math.abs(gainOver(rule, objectiveOf(verdict), objectiveOf(run.verdicts[0]))) < GAP_FLOOR,
+  );
+  const faultyStrips = stripped.flatMap(({ run, verdict }) => {
+    const fault = faultyOf(verdict);
+    return fault !== null && fault.check !== OBJECTIVE.id
+      ? [`removing deliverable files caused check ${fault.check} to fault on ${run.taskId}: ${fault.reason}`]
+      : [];
+  });
+  const partial = allValid
+    ? []
+    : stripped.flatMap(({ run, verdict }) =>
+        verdict.kind === "pass"
+          ? [`the accept control of ${run.taskId} still passed with all deliverable files removed`]
+          : [],
+      );
+  return {
+    faults: blind
+      ? [
+          "deliverable files had no effect on any accept control: with all deliverables removed, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective reads them",
+        ]
+      : [],
+    notes: [
+      ...faultyStrips,
+      ...partial,
+      ...(allValid && !blind
+        ? [
+            "every validity check passed when each example's deliverable files were removed: only the objective read deliverables, so validity checks ignore submitted files",
+          ]
+        : []),
+    ],
+  };
+}
+
+/**
+ * Three probes of a drafted exam's examples, run without a model beside its controls: faults where
+ * checks are completely blind to the task, hidden values or deliverable files, and factual notes
+ * (never refusal gates) when validity checks alone pass every hidden-value swap or deliverable
+ * removal, or when an accept control passes some other examples.
+ */
+async function probeReading(
+  given: Read,
   runs: readonly ControlAnswerRun[],
-): Promise<string[]> {
+): Promise<{ readonly faults: readonly string[]; readonly notes: readonly string[] }> {
+  const { verify, brief, tasks, width } = given;
   const accepted = runs.filter(
     ({ refusedBy, verdicts: [first] }) => refusedBy === null && first.kind === "pass",
   );
@@ -215,28 +277,54 @@ async function probeFaults(
       return task === null ? [] : [{ run, task }];
     });
   const swaps = await judged(accepted.flatMap((run) => others(run, (other) => other)));
-  const swapped = accepted.flatMap((run) => {
+  const swapped: string[] = [];
+  const partialSwaps: string[] = [];
+  const faultySwaps: string[] = [];
+  for (const run of accepted) {
     const own = swaps.filter((swap) => swap.run === run);
-    return own.length > 0 && own.every(({ verdict }) => verdict.kind === "pass")
-      ? [`the accept control of ${run.taskId} passed every other example: its checks do not bind to the task`]
-      : [];
-  });
+    const passed = own.filter(({ verdict }) => verdict.kind === "pass").length;
+    if (own.length > 0 && passed === own.length) {
+      swapped.push(
+        `the accept control of ${run.taskId} passed every other example: its checks do not bind to the task`,
+      );
+    } else if (passed > 0) {
+      partialSwaps.push(
+        `the accept control of ${run.taskId} also passed ${String(passed)} of ${String(own.length)} other examples`,
+      );
+    }
+    const faulted = own.find(({ verdict }) => verdict.kind === "faulty");
+    if (faulted?.verdict.kind === "faulty") {
+      faultySwaps.push(
+        `the accept control of ${run.taskId} faulted ${faulted.verdict.check} on another example: ${faulted.verdict.reason}`,
+      );
+    }
+  }
   const byId = new Map(tasks.map((task) => [task.taskId, task]));
   const hiddenOf = (task: Task) => capturedJsonStringify(task.hidden ?? null);
   const carried = tasks.length > 1 && tasks.every(({ hidden }) => hidden !== null);
-  const moved = carried
-    ? await judged(
-        accepted.flatMap((run) => {
-          const own = byId.get(run.taskId);
-          return own === undefined
-            ? []
-            : others(run, (other) =>
-                hiddenOf(other) === hiddenOf(own) ? null : { ...own, hidden: other.hidden },
-              );
-        }),
-      )
-    : [];
+  const identicalHidden = carried && accepted.length > 0 && new Set(tasks.map(hiddenOf)).size === 1;
+  const moved =
+    carried && !identicalHidden
+      ? await judged(
+          accepted.flatMap((run) => {
+            const own = byId.get(run.taskId);
+            return own === undefined
+              ? []
+              : others(run, (other) =>
+                  hiddenOf(other) === hiddenOf(own) ? null : { ...own, hidden: other.hidden },
+                );
+          }),
+        )
+      : [];
   const rule = { direction: brief.objective?.direction ?? "higher" } as const;
+  // `objective` runs only after every truth check passed (`verify.ts`), so an objective-only
+  // fault on swapped hidden values still proves every validity check passed without reading hidden.
+  const allValidOnHiddenSwap =
+    moved.length > 0 &&
+    moved.every(
+      ({ verdict }) =>
+        verdict.kind === "pass" || (verdict.kind === "faulty" && verdict.check === OBJECTIVE.id),
+    );
   const blind =
     moved.length > 0 &&
     moved.every(
@@ -244,14 +332,31 @@ async function probeFaults(
         verdict.kind === "pass" &&
         Math.abs(gainOver(rule, objectiveOf(verdict), objectiveOf(run.verdicts[0]))) < GAP_FLOOR,
     );
-  return [
-    ...swapped,
-    ...(blind
-      ? [
-          "hidden values had no effect on any accept control: with another example's hidden values in place of its own, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective is decided by them",
-        ]
-      : []),
-  ];
+  const deliverables = await deliverableReading(given, accepted);
+  return {
+    faults: [
+      ...swapped,
+      ...(blind
+        ? [
+            "hidden values had no effect on any accept control: with another example's hidden values in place of its own, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective is decided by them",
+          ]
+        : []),
+      ...deliverables.faults,
+    ],
+    notes: [
+      ...partialSwaps,
+      ...faultySwaps,
+      ...(identicalHidden
+        ? ["every example carries identical hidden values, so hidden-value sensitivity could not be probed"]
+        : []),
+      ...(allValidOnHiddenSwap && !blind
+        ? [
+            "every validity check passed when each example's hidden values were swapped with another's: only the objective read hidden values, so validity checks test public properties alone",
+          ]
+        : []),
+      ...deliverables.notes,
+    ],
+  };
 }
 
 /** The do-nothing answer through every task's checks, `width` at once. */
@@ -298,23 +403,30 @@ function acceptance(
   brief: Brief,
   tasks: readonly Task[],
   runs: readonly ControlAnswerRun[],
-  found: (toolId: string) => boolean,
+  found: (toolId: string) => ToolAvailability,
 ): Acceptance {
   const byId = new Map(tasks.map((task) => [task.taskId, task]));
   const graded: Graded[] = runs.flatMap(({ taskId, verdicts: [verdict] }) => {
     const task = byId.get(taskId);
     return task === undefined ? [] : [{ task, verdict }];
   });
+  const packInstalled = (tools: readonly string[]) =>
+    tools.filter((tool) => {
+      const seen = found(tool);
+      return seen === true || seen === "pack";
+    });
+  const missingOf = (tools: readonly string[]) => tools.filter((tool) => found(tool) === false);
   // The objective is read as a check is: its author's own computation, which the operator admits
   // by name, and seen to measure every valid answer or none.
+  const objTools = brief.objectiveTools ?? [];
   const measured: CheckReading[] =
     brief.objective === undefined
       ? []
       : [
           {
             id: OBJECTIVE.id,
-            instrument: AUTHOR,
-            missing: [],
+            instrument: packInstalled(objTools).join(", ") || AUTHOR,
+            missing: missingOf(objTools),
             passed: graded.filter(({ verdict }) => objectiveOf(verdict) !== null).length,
             refused: 0,
             named: 0,
@@ -328,10 +440,11 @@ function acceptance(
     );
     const refused = seen.filter(({ verdict }) => verdict.kind === "fail" && verdict.blocking.includes(id));
     const naming = runs.filter((run) => run.refusedBy === id);
+    const required = requiredToolsOf(execution);
     return {
       id,
-      instrument: requiredToolsOf(execution).join(", ") || AUTHOR,
-      missing: requiredToolsOf(execution).filter((tool) => !found(tool)),
+      instrument: packInstalled(required).join(", ") || AUTHOR,
+      missing: missingOf(required),
       passed: seen.length - refused.length,
       refused: refused.length,
       named: naming.length,
@@ -362,13 +475,14 @@ function acceptance(
             ...(refused > 0 && caught === 0 ? [`${id} has refused no reject control that names it`] : []),
           ]),
     ]),
-    ...measured.flatMap(({ id, passed }) =>
-      unrun.has(id)
+    ...measured.flatMap(({ id, missing, passed }) => [
+      ...missing.map((tool) => `${id} names ${tool}, which is not on the verifier's tool path`),
+      ...(unrun.has(id)
         ? [`${id} could not be measured on a valid answer: ${unrun.get(id) ?? ""}`]
         : passed === 0
           ? [`${id} has measured nothing in this reading`]
-          : [],
-    ),
+          : []),
+    ]),
   ];
   return { checks: [...checks, ...measured], faults };
 }
@@ -379,11 +493,6 @@ function acceptance(
  * schema yields one that follows the format (`unformed` says why it does not). The acceptance
  * command records it (`tools/c/accept.ts`), and an Examiner's draft is held to the same reading
  * before it stands (`tools/d2/exam.ts`), so an exam is drafted against what it will be read by.
- *
- * A do-nothing answer that does not follow the format is a note, not a fault: the format refuses
- * it before a check reads it, as it refuses a solver's answer. As a fault it refused drafts over a
- * keyword the host's builder does not read, while a check that passes everything is still a fault
- * through its reject control.
  */
 export async function readChecker(given: Read) {
   const { verify, brief, tasks, width } = given;
@@ -392,17 +501,19 @@ export async function readChecker(given: Read) {
   const unformed = answerFormatFault(given.contract.answerFormat, idle);
   const rejected = unformed === null ? await runDoNothing(verify, tasks, idle, width) : [];
   const { checks, faults } = acceptance(brief, tasks, runs, given.found);
-  const probed = given.probes === false ? [] : await probeFaults(given, runs);
+  const probed = given.probes === false ? { faults: [], notes: [] } : await probeReading(given, runs);
   return {
     runs,
     checks,
-    faults: [...faults, ...(unformed === null ? doNothingFaults(rejected) : []), ...probed],
-    notes:
-      unformed === null
+    faults: [...faults, ...(unformed === null ? doNothingFaults(rejected) : []), ...probed.faults],
+    notes: [
+      ...(unformed === null
         ? []
         : [
             `the do-nothing answer ${capturedJsonStringify(idle)} does not follow the answer format (${unformed}), so the format refuses it before any check reads it: the host builds it from the schema's types, required properties, minimums, least lengths and counts, first enumerated or constant values, first choices and local references, and reads no other keyword`,
-          ],
+          ]),
+      ...probed.notes,
+    ],
     idle,
     unformed,
     rejected,

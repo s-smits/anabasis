@@ -3,11 +3,6 @@
  * ChatGPT login), OpenRouter (`OPENROUTER_API_KEY`), OpenAI-compatible endpoints declared in
  * `ENDPOINTS`, and Claude Code via OAuth (`CLAUDE_CODE_OAUTH_TOKEN`) or API key (`claude-api`,
  * `ANTHROPIC_API_KEY`). Both the Builder and solver seats resolve models here.
- *
- * Because `pi-ai`'s normalisation drops the served model identifier from Codex terminal responses,
- * `codexStream` preserves it as `responseModel` for trace logging and cost accounting. Codex usage
- * costs are estimated from the catalogue rather than reported by the backend, so Codex turns carry
- * no backend bill.
  */
 import {
   type Api,

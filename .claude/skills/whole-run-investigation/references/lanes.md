@@ -1,308 +1,114 @@
 # Whole-run investigation lanes
 
-This catalogue defines six deterministic rows settled directly by the primary reviewer and twenty-three investigative lanes, each posing a focused question for an independent session. `tools/wri/catalogue.ts` parses this file, and `test/wri-readers.test.ts` verifies its alignment with `TRIGGERS` (`tools/wri/folds.ts`): every trigger emitted by the log reader must appear in the `Starts from` paragraph of the lane it opens.
+Six deterministic rows settled by the primary reviewer and 20 investigative lanes parsed by `tools/wri/catalogue.ts` (verified against `TRIGGERS` in `tools/wri/folds.ts` by `test/wri-readers.test.ts`).
 
 ## Who holds which pen
 
-The Examiner authors the exam, drafted from the operator's prompt; the Builder develops the harness, the host's verifier decides validity, and the Referee rules on each rejection. `AGENTS.md` sections 1 to 8 specify the seats, their visibility boundaries, the evaluation wall, and the promotion rule; apply them to the conditions recorded in the log. No seat modifies the check program during a campaign, and a pass establishes only what its check actually verifies. Every row and lane applies six analytical principles:
+The Examiner drafts the exam and authors tasks, the Adversarial Draft Auditor probes mechanically clean drafts before freeze, the Builder develops the harness, the Solver answers tasks inside it, the Verifier decides validity in a fresh offline sandbox, the Referee adjudicates reproducible rejections, and the Host owns protocol, wall, statistics and pauses (`AGENTS.md` §1–8):
 
-- **Weigh each verdict by its instrument.** A check executing the domain's own reference engine carries stronger evidential weight than one relying on its author's custom computation. Identify the instrument before relying on a verdict.
-- **Verify byte-level identity.** Every solve runs under a fixed condition: contract, harness digest, task version (encoding the check program's hash), verifier tool tree, sandbox, and host code. Two solves whose conditions differ in anything other than the harness do not form a valid pair.
-- **Keep outcome categories separate.** A valid answer, a rejected answer, a solve that exhausted its resource limit without submitting, and a non-result are four distinct outcomes. Only a rejection provides evidence about a check, and non-results are retried and excluded from paired comparisons.
-- **Treat rulings as readings.** Referee agreement with human judgement remains unmeasured until blind human labels exist, and an `earned` ruling unsupported by an answer probe merely restates the check.
-- **Evaluate comparisons on untied tasks.** Tied tasks carry zero statistical weight, intra-harness flips reflect solver variance, and a task set aside due to one side's rejections removes a loss for that side.
-- **Separate observation from inference.** State the recorded observation and the proposed causal mechanism in two distinct sentences so a reader can accept the first while questioning the second. Treat every prior diagnosis as a hypothesis rather than a premise.
+| Component | Purpose | Inputs & Wall | Outputs & Events | Key Edge Cases | Lanes |
+| --- | --- | --- | --- | --- | --- |
+| Examiner Drafter (`d-N`) | Drafts rules, scope, conventions, `answerFormat`, `evaluator.ts`, objective, ≥3 controls, optional `.toolchain/` | Operator prompt, solve budget, drafting limits, `draftFaults`, `draftReading` | `draft.*`, `exam.drafted`, `checker.read`, `contract.frozen`, staged `exams/` | Recipe disclosure, scope narrowing, `from_file` faults, broken `.toolchain/` links | `3, 4, 11, 16` |
+| Adversarial Draft Auditor (`referee.draft`) | Pre-freeze judge (≤2 passes, 24 turns, 16 probes) trying to break accept controls and deliverables | Prompt, contract, check source, hidden values, accept controls, `priorFindings` (exam side only) | `referee.draft`, `referee.draft.refused`, findings fed back to `d-N` | Ceremony policing, pass-2 cap leak, drafting spend overhead, `skipped` | `3, 4, 11, 14, 18` |
+| Examiner Task Author (`x-N`) | Authors diverse feasible held-out tasks with room above reference in one resting conversation | Brief, contract, check assertions (not source), reference outcomes and winning harness; no targets or harness files | `exam.*`, `propose_tasks`, `try_answer`, `try_reference`, `task.proposed`, `task.gate` | Unique-family collapse, zero-yield sessions, `>=0.98` near-copies, reference targeting, wake drift | `3, 7, 13, 14, 16` |
+| Builder (`b-N`) | Builds Built Harness (`tools-spec.json`, `.toolchain/`, `BUILT_AGENTS.md`) and leads campaign moves | Wall (§1 five items only): contract, practice tasks, trajectories + coarse `bandOf` + `callsText`, tallies, budget | `build.*`, `build.checkpoint`, kept `states/<digest>/`, `MEMORY_FILE` | `HOST_ONLY` leaks, guide bloat, dead `.toolchain/bin`, untried freezes, `prac_fam` overfitting, compaction amnesia | `1, 3, 8, 10, 12, 13, 15, 16` |
+| Solver (`s-N`) | Solves one task inside Built Harness under host turn and wall limits | Public task/files/resources, harness guide + `.toolchain/bin`, pinned `COMPARISON_REACH` network | `solve.*`, `answer.json`, `deliverables/`, `solve.finished` (with `network`) | Cross-arm `network` drift, tool errors, asymmetric limits, `/tmp` sharing, model swap | `3, 9, 15, 16, 19` |
+| Verifier (code) | Evaluates submitted answer and deliverables inside fresh offline OS sandbox | Frozen `checks/`, `.toolchain/`, `host-tools.json` (`origin: "draft"`), hidden values, submitted files | `verdict` (`pass`/`fail`/`faulty`), check breakdown, objective, `toolCeilingMs` | Zero-applicable-check `faulty`, non-finite `timeoutMs`, offline `.toolchain/` denials, Rule-10 bypass | `4, 9, 17` |
+| Referee Adjudicator (`referee.finding`) | Adjudicates reproducible rejections on exam side with conclusive `probe_check` evidence | Contract, task, hidden values, refused answer/files, check source, replay verdict | `referee.finding` (`earned`/`check-defect`/`unclear`), `referee.refused` | Unprobed `earned` restatements, cap expiries, asymmetric set-asides, uncalibrated without human labels | `3, 14, 16, 17, 20` |
+| Host Controller (code) | Enforces append-only log, wall, epoch practice release, paired comparisons + A/A, `decide`, starter reads, pauses | Append-only `log.jsonl`, operator `campaign.word` (hidden from all seats), host load and locks | `campaign.*`, `comparison.*`, `harness.promoted`, `task.state`, `campaign.ended` | Pre-promo practice leaks, pause overshoot, fragile `spare === 0` steps, underpowered no-steps, billing residuals | `2, 5, 6, 9, 13, 14` |
+
+Six rules govern every lane:
+- **Weigh verdicts by instrument**: pinned domain engines outweigh author-computed checks.
+- **Verify condition identity**: paired solves must differ in the harness alone.
+- **Separate outcomes**: valid answers, earned rejections, limit expiries without submission, and non-results.
+- **Treat rulings as readings**: `earned` without a clearing probe merely restates the check; Referee accuracy and pass soundness stay unmeasured until blind human labels exist.
+- **Judge comparisons on untied tasks**: ties carry zero weight; intra-harness flips measure variance; set-asides drop rejected-arm losses.
+- **Separate observation from cause** in two distinct sentences.
 
 ## How the catalogue is read
 
-A trigger is the capitalised phrase preceding the first colon of a line printed by `bun tools/wri/wri.ts read`, followed by its lane number. A trigger indicates that a lane has evidence to inspect rather than dictating a conclusion; a lane that refutes its trigger has completed its task. Lanes 1, 4, 8, 12, 14, and 19 are standing: they open on every campaign regardless of whether a trigger fired. Lane 6 is isolated: it runs alone, opens only on its trigger, and freezes its constructed answers before inspecting anything that could bias it. Lane 14 grades blind, so any session assigned lane 14 executes it before all other lanes.
-
-No lane alters a verdict, a task state, or a comparison reading. Each finding names exactly one owner, cites its supporting evidence, and specifies the observation that would reverse it:
+Triggers from `bun tools/wri/wri.ts read` point where to look, never what to conclude; refuting a trigger from raw bytes completes the lane. Lanes 1, 2, 3, 4, 5, 6, 9, 11, 14, and 16 are `standing`; lane 20 runs `alone`; lane 1 runs `blind` before any other lane in its session; lanes 2 and 6 run `side-by-side` across campaigns. Name one owner from the table below and cite event kinds, solve ids, 8-char digests, check ids, and counts (never quote task text, answers, hidden values, check failure messages, or traces):
 
 | owner | what it is |
 | --- | --- |
-| `pack/evaluator`, `pack/brief`, `pack/controls`, `pack/tasks` | the exam, stored or drafted, by file |
-| `examiner/task` | a task instance as written by an Examiner session |
-| `harness/guide`, `harness/tools`, `harness/tool-tree`, `harness/config` | the Built Harness, by component |
-| `builder-prompt`, `examiner-prompt`, `reviewer-prompt` | instructions given to a seat, naming the owning file under `src/` |
-| `host` | host code, naming the owning file |
-| `environment` | the host machine or model provider |
-| `operator` | a decision reserved for human authority |
-
-Cite evidence using event kinds, solve ids, the first eight characters of a digest, check ids, and counts. Never quote task text, submitted answers, hidden values, or trace excerpts.
-
-Each lane entry includes `Label:`, `Importance:`, and `Marks:` metadata lines, which are stripped from session prompts. `Importance:` (from 0 to 1, where only relative ratios matter) weights each lane when `wri.ts lanes` packs area labels into sessions. `Marks:` (`standing`, `alone`, `blind`, and `side-by-side`, or `none`) governs how the host schedules the lane; the lane's prose communicates the same behaviour to the session. Immediately after these metadata lines comes a paragraph beginning with `Starts from`.
+| `pack/evaluator`, `pack/brief`, `pack/controls`, `pack/tasks` | exam files (drafted or stored) |
+| `examiner/task` | Examiner-authored task instance |
+| `harness/guide`, `harness/tools`, `harness/tool-tree`, `harness/config` | Built Harness component |
+| `builder-prompt`, `examiner-prompt`, `reviewer-prompt` | seat instructions (`src/` file) |
+| `host` | host code (`src/` or `tools/` file) |
+| `environment` | host machine or model provider |
+| `operator` | human-authority decision |
 
 ## Tools a lane runs
 
-Each tool runs from the repository checkout as `bun <path> ...`, operates read-only, and accepts a log path. The shared prompt file distributed to open lanes includes this table alongside the derived file manifest; isolated and blind lanes receive only the tools named in their own lane text.
+Run read-only as `bun <path> ...`:
 
-| question | command |
+| Question | Command |
 | --- | --- |
-| Which event kinds appear in a log, with which fields and on which lines? | `tools/wri/log.ts kinds --log <log> [--kind <kind>[,<kind>...]]` |
-| Which events of specified kinds, or across a line range, appear in log order, filtered or aggregated by field? | `tools/wri/log.ts events --log <log> (--kind <kind>[,<kind>...] \| --lines <from>[-<to>]) [--fields a,b.c] [--where f=v\|f!=v\|f~prefix\|f>n\|f>=n\|f<n\|f<=n]... [--count-by f[,g]] [--full]` (rows where a bounded field is absent or non-numeric are excluded and counted in the header) |
-| What is the summary of every solve (comparison, side, harness, task family, ending, turns, seconds, deadline share, load, and bill), filtered or grouped by column? | `tools/wri/log.ts solves --log <log> [--comparison <id>] [--role old\|new\|both\|try\|practice] [--where column<op>value]... [--count-by column[,column]]` |
-| What did a specific seat say and call, turn by turn? | `.claude/skills/oracle-handover/scripts/slice.ts <log> 'Solver:<id>'` (also supports `'Builder:b-2{1-3}'`, `'Builder:b-1[compare,wait,practice]'` for specific tool turns, `'Examiner:...'`, or an event kind; `--count '<phrase>'` counts occurrences in served results, and `--whole` lifts truncation) |
-| For one rejected solve, what were its refusing checks, Referee ruling, probes, and any human label? | `tools/wri/rejections.ts <log> --solve <id>` |
-| What is a task's full public input, the structural schema of all tasks without values, or the blind grading rows? | `tools/wri/tasks.ts <log> --task <id>`, `--shape`, `--rows` |
-| Which solves executed a program, accessed a path, or emitted a pattern (one row per call, omitting raw text)? | `tools/wri/calls.ts --log <log> --list (--command <re> \| --output <re>) [--harness <prefix>]` |
-| What changed between a kept harness and its parent or another digest, by file or by line? | `.claude/skills/harness-audit/scripts/harness-versions.ts <log> --diff <digest> [--against <digest>] [--files \| --lines]`; `--chain [--lines]` shows every version without outcomes |
-| Which programs did each winning solve execute on either side, and what had the candidate harness changed? | `tools/wri/parts.ts --log <log> --comparison g-N [--no-diff] [--all]` |
-| How does one starter comparison break down task by task, with each task's writer and origin? | `.claude/skills/comparison-reading/scripts/starter-reads.ts <log> --tasks` |
-| What move did the decision table recommend at each state transition compared with the move actually taken? | `tools/wri/table-timeline.ts <log>` (replays `decide` at every transition; may take up to a minute on a long log) |
-| What was the campaign's ending state at a given log line or timestamp? | `.claude/skills/campaign-mechanics/scripts/ending.ts <log> --at <line \| ISO time>` |
-| Which archived campaigns were drafted from the same prompt? | `tools/wri/drafted.ts <log> --siblings` |
-| What is the release summary table across an archive of runs without loading an env file? | `.claude/skills/promotion-tuner/scripts/table.ts --runs <dir>` |
-| Does the host's verifier accept a constructed answer, or a recorded answer with one field modified? | `tools/wri/wri.ts grade --log <log> (--task <taskId> --answer <file> \| --solve <id>) [--set <path>=<json>]...` (paths such as `cohort.x` or `$.cohort.x`), permitted only where a lane explicitly names it |
+| Event kinds/fields/lines | `tools/wri/log.ts kinds --log <log> [--kind <k,...>]` |
+| Filter/group events | `tools/wri/log.ts events --log <log> (--kind <k,...> \| --lines <a[-b]>) [--fields a,b.c] [--where f<op>v]... [--count-by f[,g]] [--full]` |
+| Filter/group solves | `tools/wri/log.ts solves --log <log> [--comparison <id>] [--role old\|new\|both\|try\|practice] [--where c<op>v]... [--count-by c[,c]]` |
+| Seat turns & calls | `.claude/skills/oracle-handover/scripts/slice.ts <log> 'Solver:<id>'` (`'Builder:b-2{1-3}'`, `'Builder:b-1[compare,wait,practice]'`, `--count`, `--whole`) |
+| Rejection checks/rulings/probes | `tools/wri/rejections.ts <log> --solve <id>` |
+| Public task input/schema/rows | `tools/wri/tasks.ts <log> --task <id>`, `--shape`, `--rows` |
+| Solves matching command/output | `tools/wri/calls.ts --log <log> --list (--command <re> \| --output <re>) [--harness <prefix>]` |
+| Harness diff / blind chain | `.claude/skills/harness-audit/scripts/harness-versions.ts <log> --diff <d> [--against <d>] [--files \| --lines]`; `--chain [--lines]` |
+| Winning-solve programs vs diff | `tools/wri/parts.ts --log <log> --comparison g-N [--no-diff] [--all]` |
+| Starter read by task origin | `.claude/skills/comparison-reading/scripts/starter-reads.ts <log> --tasks` |
+| Decision table vs actual moves | `tools/wri/table-timeline.ts <log>` |
+| Ending state at line/time | `.claude/skills/campaign-mechanics/scripts/ending.ts <log> --at <line \| ISO>` |
+| Sibling runs from same prompt | `tools/wri/drafted.ts <log> --siblings` |
+| Archive summary table | `.claude/skills/promotion-tuner/scripts/table.ts --runs <dir>` |
+| Same-domain version backtracking | `tools/wri/wri.ts backtrack (--log <log>[,<log>] \| --domain <domain>)` |
+| Re-grade answer (permitted lanes) | `tools/wri/wri.ts grade --log <log> (--task <id> --answer <f> \| --solve <id>) [--set <path>=<json>]...` |
 
-Prefer `log.ts`, `slice.ts`, and `calls.ts` over ad-hoc `jq` queries against a log: their output matches the host's own folds, and a report's observation line can cite the exact reproducible command.
-
-Any custom helper script written by a lane must live in its temporary directory rather than inside a campaign folder. The lane guard permits `jq` over a log, Bun scripts taking the log path (`bun <tmp>/x.ts <log>`), and Python scripts reading the log from standard input (`python3 -B <tmp>/x.py < <log>`). It blocks Python invoked with a log path or without `-B`, and any script placed inside a campaign directory.
+Place scratch scripts in a temporary directory (`bun <tmp>/x.ts <log>` or `python3 -B <tmp>/x.py < <log>`), never inside a campaign folder.
 
 ## Labels
 
-Every pull request carries an importance label and at least one area label covering the subsystems its files touch (`checkLabels`, `tools/runtime/land.ts`). Each lane carries the area label of the pull requests that modify what it inspects. Each run's `predictions-<run>.md` inherits its pull request's area labels and maps them to lanes (`run-improvement-campaign`, step 1).
+Maps PR and prediction labels (`checkLabels`, `tools/runtime/land.ts`) to lanes:
 
-| point | lanes | label | a pull request carries it when it changes |
+| point | lanes | label | changes |
 | --- | --- | --- | --- |
-| verdicts | 1, 2, 7 | `exam` | drafting, the check program, the verifier, controls, freeze or admission, public task text |
-| verdicts | 4 to 6 | `verdicts` | the Referee, set-asides, hand labels, and `settle.ts` |
-| supply | 20, 21 | `supply` | task writing and admission, practice release, room, and Examiner inputs |
-| climb | 15, 16 | `harness` | the Builder's session, prompt, tools, or practice, the harness contract, and the evaluation boundary to the Builder |
-| honesty | 3, 8 to 11 | `comparison` | comparison terms, pairing, scored set, tally, statistical test, A/A control, and conditions |
-| climb | 12 to 14, 17 to 19 | `climb` | the move table, campaign moves, starter comparisons, promotion, stop rule, endings, and operator words |
-| honesty | 22 | `solve` | solve execution, backends, sandbox wall, endings, non-results, slots, and host load |
-| economy | 23 | `economy` | billing, metering, budget, and timing readers |
-| honesty | 22 | `runs` | launching and moving runs, logins, hosts, and launch receipts |
-| honesty | rows A to F | `log` | the log schema, event kinds, conditions, shared folds, `view`, `replay`, and the status page |
-| none | none | `investigation` | `tools/wri/`, this catalogue, its skill, and lane scripts |
-| none | none | `landing` | the PR stack, `bun run land`, git hooks, and the CI gate |
-| none | none | `quality` | linting, the simplify census, size policy, and code style |
-| none | none | `docs` | `AGENTS.md`, `docs/`, and other prose of record |
-
-Labels without an associated lane are verified by their unit tests or dedicated readers. A change falling outside existing labels takes the label of the nearest subsystem; repeated pull requests on one unlabelled topic indicate that this table needs a new row.
+| verdicts | 4, 11, 16, 18 | `exam` | drafting, draft audit, checks, verifier grounding, deliverables, verifier, controls, freeze/admission, seat prompts |
+| verdicts | 17, 20 | `verdicts` | Referee, set-asides, hand labels, `settle.ts` |
+| supply | 7 | `supply` | task authoring, `try_reference`/`try_answer`, admission, Examiner inputs |
+| climb | 8, 10, 12, 15 | `harness` | Builder session/tools/practice/bands, harness contract, export portability |
+| honesty | 3, 5 | `comparison` | terms, pairing, scored set, tally, statistical test, A/A, conditions, cross-component reward hacking |
+| climb | 1, 2, 6, 13, 14 | `climb` | move table, campaign moves, starter reads, promotion, compaction/handover, pause boundaries, endings, economy, cross-release progress |
+| honesty | 19 | `solve` | solve execution, backends, tool friction, limits, non-results, solver prompt |
+| honesty | 9 | `runs` | sandbox wall, cross-seat wall, network parity, isolation, launching/moving runs, logins, hosts, launch receipts |
+| honesty | rows A to F | `log` | log schema, event kinds, conditions, folds, `view`, `replay`, UI |
+| none | none | `investigation` | `tools/wri/`, this catalogue, WRI skill & scripts |
+| none | none | `landing` | PR stack, `land`, git hooks, CI gate |
+| none | none | `quality` | lint, simplify census, size policy, style |
+| none | none | `docs` | `AGENTS.md`, `docs/`, prose |
 
 ## Deterministic rows A to F
 
-The primary reviewer settles these six rows directly from the log before launching any lane and never delegates them, as every downstream finding binds to them. `wri.ts read` prints all six.
-
-**A. campaign and log.** A campaign resides in `.ana/d2/<name>`, containing `log.jsonl`, staged `checks/` (or `exams/<digest>/checks/` for a drafted exam), and `states/`. Verify that the log folds cleanly (`read` throws on an inconsistent task history). Compare the last recorded condition's host hash against the active checkout: if they differ, every statement about source code refers to a different tree, and the report must state this upfront. Row A also reports billed dollars and wall hours by role, providing the baseline for lane 23.
-
-**B. checker identity.** A checker is uniquely identified by two hashes (the contract hash and the check program hash), read from `contract.frozen` and every `checker.read` event. A campaign lacking a `contract.frozen` event has no frozen checker, and any reading taken at different hashes evaluates a different checker. A `despite` field on a freeze records the operator's justification for freezing over faults: cite its count rather than quoting its text.
-
-**C. conditions.** Count the distinct values of every condition field broken down by arm and model; a clean comparison has a single contract, sandbox, verifier tool tree, and host hash. Count completed solves that omit `responseModels`, for which only the provider attests the served model.
-
-**D. task sets.** Partition task versions by origin (`pack`, `session`, `carried`) and by state (`held out`, `released`, `disputed`, `refused`). A round's sets must be disjoint: any task version that was both practised and scored fires `PRACTISED TASK MEASURED` (lane 15) and must be flagged immediately. A task receiving no valid answer across two comparisons in which none of its solves hit a resource limit leaves the scored set until a human labels it (lane 8).
-
-**E. case partition.** For each arm, tabulate passes, fails by kind, and non-results by kind from `solve.finished`, alongside solves started but never finished and solves still open at the end of the log. Only `rejected` fails carry refusing check ids. Count `flagged` outcomes separately, and recount any figure quoted by a downstream report.
-
-**F. sessions and the harness chain.** Summarise the campaign's moves, endings, and spend against budget. For each Builder session, record its parent digest, resulting digest, ending, whether it modified the harness or opened cleanly, its practice activity, and the reading of every comparison on its harness (indexed by session, `g-N`). For each Examiner session, record its ending, proposed tasks, and admitted tasks. Because moves are logged when they start, list every move still open at the end of the log on its own line and judge closure strictly by its ending event.
-
-## Lanes 1 to 23
-
-### Validity: the instrument, its review, and its draft
-
-**1. Verdict chain: what a pass observes.**
-
-Label: `exam`.
-Importance: 0.7.
-Marks: `standing`.
-
-Starts from `INSTRUMENT AUTHORED (lane 1)`, `REFUSALS BY CHECK (lane 1)`,
-`VERIFIER TOOLS MOVED (lane 1)`, the checker's own `NO CHECKER READING (lane 1)`,
-`CHECKER READ WITH FAULTS (lane 1)`, `CONTROL COVERAGE (lane 1)`, `CHECKER NOT FROZEN (lane 1)`,
-`FROZEN DESPITE FAULTS (lane 1)`, `READ AT ANOTHER VERSION (lane 1)` and `TASKS CARRIED (lane 1)`,
-and from `PASSES UNREAD (lane 1)`, which is standing: no reviewer reads a pass.
-
-What does a passing verdict actually establish? Because the Referee inspects only rejections, an under-specified or overly permissive check goes undetected. Align each check's row from the latest `checker.read` (instrument, control coverage, and refusal counts from `REFUSALS BY CHECK`) with its specification in `checks/brief.json`. Sample passing solves across task families and harnesses, weighted towards checks with zero refusals, and determine from the published rules what a passing answer could still get wrong (such as an unread output field, an unenforced rule, or an overly loose tolerance). An `author` instrument proves only agreement with the task author's own computation; a named external tool counts as a domain engine only if it performs the decisive verification. When no solve passed, the check rows constitute the full lane. For `VERIFIER TOOLS MOVED` or any checker trigger, specify under which tool tree or checker version each result was counted. Use `wri.ts grade` to test a constructed answer, and `grade --solve <id> --set <path>=<json>` to regrade a recorded solve with a single field perturbed. Tasks prefixed `try-`, or solves requested by an Examiner session, are rehearsals rather than scored tasks (`checks.txt` reports them under `examiner`). Do not read pass rates here. The decision: whether a pass indicates a genuinely correct answer or merely a syntactically valid one. Routes to `pack/evaluator`, `pack/brief`, `pack/controls`, and `operator` (when frozen `despite` faults).
-
-**2. The drafted exam against its prompt.**
-
-Label: `exam`.
-Importance: 0.7.
-Marks: none.
-
-Starts from `EXAM DRAFTED (lane 2)`.
-
-Does the drafted exam faithfully reflect the operator's prompt? The host's automated checks (`draftFaults` in `src/examiner/draft.ts`; `draftReading` in `tools/d2/exam.ts`) verify structural compliance only; they cannot judge whether a rule belongs to the domain, agrees with authoritative sources, leaves an answer field unchecked, or whether the objective aligns with the prompt's stated priorities. Read the prompt recorded in `campaign.opened` alongside the standing draft's rules, answer format, objective, and scope. Count how many earlier drafts failed validation by fault kind and determine whether the accepted draft fixed or simply deleted the offending rule (`drafted.txt` lists each drafting session's ending and each submitted draft with host faults parsed from `draft_exam` results, followed by the standing draft's counts and author-decided checks). If `draft.finished` reports that no measurement ran during drafting, lane 21's first admission is the first empirical check. Flag any author-decided check that a domain engine could decide instead (rule 10). The decision: whether the campaign actually measures the requested domain. Routes to `examiner-prompt` (`src/examiner/draft.ts`), `pack/brief` or `pack/evaluator`, and `operator` when the prompt itself is ambiguous.
-
-**3. Whether validity separates.**
-
-Label: `comparison`.
-Importance: 0.75.
-Marks: none.
-
-Starts from `TIES BETWEEN VALID ANSWERS (lane 3)` and
-`SAFEGUARD-9 PROMOTION BEYOND VALIDITY (lane 3)`.
-
-Which metric actually drove each comparison reading: validity, the continuous objective, or billing (`pointsOf`, `src/kernel/compare.ts`)? Report each comparison's tally and p-value as scored, without billing (`readsStep`, `unbilled`), and on validity alone. `TIES BETWEEN VALID ANSWERS` indicates that validity has saturated on most tasks, leaving only the objective (above `GAP_FLOOR`) and billing to break ties; `SAFEGUARD-9` flags a promotion that fails to clear on validity alone, so count the tasks won under each measure (`replay.txt`, while `scores.txt` reports validity-only and objective-only tallies beside the A/A splits). The check program lives at `<campaign folder>/exams/<exam hash>/checks/`. Distinguish whether a step rests on tasks the reference harness could not solve validly or on marginal objective improvements over mutually valid answers. Because a drafted exam's objective is implemented by its author, audit its arithmetic first. The decision: how a promotion should be qualified in reporting, and whether the objective genuinely reflects answer quality. Routes to `operator`, and to `host` (`src/kernel/compare.ts`) if recomputed tallies disagree with the logged report.
-
-**4. What each seat was told.**
-
-Label: `verdicts`.
-Importance: 0.7.
-Marks: `standing`.
-
-Starts from each seat's opening at the campaign's commit, and is standing.
-
-Did any seat's prompt prescribe a strategy, supply a numeric target or count, or present a false, missing, or duplicated fact (`AGENTS.md` section 2)? A prompt defect affects every session of that seat. At the launch receipt's commit, inspect the Examiner's prompts (`src/examiner/draft.ts`, `src/examiner/prompt.ts`, `examiner-view <name>`), the Builder's prompts (`src/builder/prompt.ts`, `builder-view <name>`, and its `build.call` tool results), and the Referee's prompt (`src/referee/referee.ts`). `wakes.txt` reconstructs each Examiner session's wake message (or opening task lines) under the current tree and diffs it against the logged text, separating code changes since the run from misserved facts; `slice.ts '<Seat>:<session>[<tool>]' --count '<phrase>'` counts phrase occurrences in tool results served to a seat. List every prescriptive sentence and every factual claim that influenced a subsequent move, citing the event that confirms or refutes it. Prescription appears as moves that follow an instruction regardless of evidence; a false fact appears as a move that the true fact would have altered. Prompt sentences may be quoted directly. Remedies consist of supplying a missing fact or deleting prescriptive text, never introducing a target. The decision: whether a seat's prompt or tool result requires revision. Routes to `examiner-prompt`, `builder-prompt`, or `reviewer-prompt` (naming the file), and `host` when a tool result reads the wrong fold (`src/builder/past.ts`). Any revision to Builder-facing text must remain byte-identical when hidden values change (rule 3).
-
-Verify from `build.call` that the Builder never observed a Referee ruling, check id, or refusal reason, and audit the Examiner's inputs against `AGENTS.md` section 3 (`src/builder/tools.ts`, `src/examiner/session.ts`).
-
-**5. False rejection among fails.**
-
-Label: `verdicts`.
-Importance: 0.5.
-Marks: none.
-
-Starts from `REFUSED UNREAD (lane 5)`, `CHECK DEFECT RULED (lane 5)`, `RULED UNCLEAR (lane 5)` and
-`REPLAY MOVED THE VERDICT (lane 5)`. It also starts from `SET ASIDE AND UNSETTLED (lane 5)`,
-`READING MOVES WITH THE SET-ASIDE (lane 5)`, `SET ASIDE BY SIDE (lane 5)`, `SETTLED BY HAND (lane
-5)`, `REVIEW FAULTS (lane 5)`, `EARNED WITHOUT A PROBE (lane 5)`, `RULINGS REFUSED (lane 5)` and
-`SCORED SET MOVED (lane 5)`.
-
-Was each rejected answer genuinely invalid, or was a valid answer wrongly refused? A false rejection creates a spurious win for the opposing arm and a spurious loss for the rejected arm. Group rejections by Referee ruling and evaluate whether each refusing check's published rule could reject a valid answer (for instance, a tolerance tighter than published rounding, an alternate unit convention, or an ambiguous phrasing). Audit the rulings against this criterion: an `earned` ruling must cite a specific rule and answer field, whereas a `check-defect` ruling must name the refusing check and cite a probe that cleared the refusal. Where human labels exist (recorded in `comparison.reported`'s `settled.labels`, printed beside the standing rulings in `rejections.txt`), compare the Referee's rulings against them and check whether the agreement bar of `AGENTS.md` section 1 is met; otherwise qualify the rulings as a single automated reader's output. `REPLAY MOVED THE VERDICT` indicates a non-deterministic check. Where public rules cannot decide validity, retain the existing ruling and refer the check to lane 6. Report counts per check id. The decision: whether failures reflect solver limitations or evaluation noise. Routes to `pack/evaluator`, `pack/brief`, and `operator` (when human labels are still pending).
-
-Also track the downstream effect of every rejection. Any rejection not ruled `earned` sets its task aside for both arms, so asymmetric set-asides bias the tally in favour of the side whose rejections were set aside (`SET ASIDE BY SIDE`). `READING MOVES WITH THE SET-ASIDE` indicates that `counted` and `scored` disagree on whether a step occurred, meaning the reading hinges on unlabelled disputes. `SCORED SET MOVED` indicates that tasks fixed in `comparison.started` dropped out of the tally; only `aside` can introduce directional bias (`src/campaign/round.ts`). For `SETTLED BY HAND` (`tools/d2/settle.ts`, `packetOf`), confirm that human labels came from blind packets and that any confirmed check defect was routed to the checker's owner. Count `earned` rulings lacking an answer probe as mere restatements of the check (`src/referee/agreement.ts`), and inspect each `referee.refused` alongside the ruling eventually recorded. A check repeatedly ruled defective across sessions requires repair. The decision: whether Referee rulings can be trusted without human review of each case. Routes to `operator`, `reviewer-prompt`, and `host`.
-
-**6. Valid-alternative rejection challenge.**
-
-Label: `verdicts`.
-Importance: 0.3.
-Marks: `alone`.
-
-Starts from `FAILS ON ONE CHECK (lane 6)` and `DEFECT RULED BESIDE PASSES (lane 6)`, and only when
-lane 5 left a check undecided. It runs alone.
-
-Does a check reject valid solutions, demonstrated constructively? Begin by reading only the public exam via `bun tools/wri/public-exam.ts <log>`, which outputs strictly what crosses the evaluation boundary: public rules, scope, answer format, released practice tasks, and practice passes. Before inspecting the check program, Referee probes, or any lane report, construct alternative answers that satisfy every published rule while differing from an accepted answer in a permitted way (an alternative valid design, allowed rounding, or equivalent unit), and record their digests. Only after freezing those digests, evaluate them with `wri.ts grade` (`--answers <dir>` grades a directory of candidates) and report the two-by-two table of constructively valid versus verifier-accepted answers, naming every refusing check. Exclude and count any constructed candidate whose validity cannot be proven solely from public rules, and never derive a candidate from a recorded held-out answer. The decision: whether the check requires repair. Routes to `pack/evaluator`, supplying the constructed corpus to the checker's owner as accept controls.
-
-**7. Public disclosure and one recipe.**
-
-Label: `exam`.
-Importance: 0.35.
-Marks: none.
-
-Starts from `PASSES AT A SMALL WALL SHARE (lane 7)`.
-
-Do the task statement, public resources, or tools disclose a mechanical recipe so that solving reduces to following fixed steps? Passes completed in a small fraction of the time limit serve as the initial signal. From `solve.call` (inspecting tool names and call order without quoting arguments), a single deterministic call sequence recurring across every pass in a family indicates a recipe (`sequences.txt` tabulates these sequences by family and harness using the programs invoked inside shell calls, since built harnesses funnel most actions through `bash`). Trace where the recipe originates: the published rules, reference resources, harness guide, or tool descriptions. In particular, a rule that spells out the exact acceptance arithmetic allows a solver to replicate every check locally. The decision: whether these tasks can meaningfully differentiate harnesses. Routes to `pack/brief`, `examiner/task`, and `harness/guide` (only when the Builder introduced the recipe).
-
-### The comparison
-
-**8. What the test could show at its size.**
-
-Label: `comparison`.
-Importance: 0.75.
-Marks: `standing`.
-
-Starts from `NOTHING SCORED (lane 8)`, `CUT BY ITS CAP (lane 8)` and `SET SHORT (lane 8)`, and is
-standing. It also starts from `TIED TASKS (lane 8)`, `NO VALID ANSWER (lane 8)` and `AWAITING A
-LABEL (lane 8)`.
-
-What effect size could each comparison detect given its sample size (`flipP`, `readsStep`, `src/kernel/compare.ts`; at significance level 0.02, a step requires at least 6-0, 8-1, 10-2, or 12-3)? For every comparison, report untied tasks, wins and losses, p-value, `detectable`, and `falseRate`, separating frontier and retained tasks, followed by a one-line interpretation: a `not-scored` comparison or one `CUT BY ITS CAP` tested nothing; an underpowered `no-step` provides no evidence of equivalence (state how many additional wins would have cleared the threshold); and a `step` rests strictly on its untied tasks. `readings.txt` reports each comparison's p-value, the reference's p-value, wins to spare or short of a step, wins needed to offset losses on equal margins, and the comparison cap relative to expected cost at the pre-comparison billing rate. Assess whether dropped tasks (`SET SHORT`) could have altered the reading. Every comparison carries false-step risk at the significance level, and comparison terms are never topped up after the fact (rule 4). The decision: whether the operator should increase comparison sample sizes. Routes to `operator`, and `host` only for an arithmetic bug.
-
-Also determine what fraction of tasks tied and why. The untied fraction governs statistical power for all subsequent comparisons; under the null with two solves per arm, roughly 38% of tasks tie at a 50% validity rate and 69% tie at a 90% validity rate (`SIZE`, `src/kernel/size.ts`). `pairs.txt` classifies each tie (`both-invalid`, `exact-repeat`, `within-room`, `both-valid`, or `cancelling`) without exposing hidden objective values. Summarise what tied tasks demand without prescribing specific instances. A task with zero valid answers may be genuinely hard, defectively checked, or infeasible, and no stronger solver may be used to decide which; `AWAITING A LABEL` lists tasks waiting for `tools/d2/prepare.ts --keep` or `--infeasible`. Inspect their solve endings (a check refusing every attempt suggests a check defect) and never label from counts alone. The decision: what task characteristics the Examiner should be prompted for, how large the next comparison should be, and how to label pending tasks. Routes to `examiner/task`, `pack/evaluator`, and `operator`.
-
-**9. What a step rests on.**
-
-Label: `comparison`.
-Importance: 0.7.
-Marks: none.
-
-Starts from `STEP CARRIERS (lane 9)`.
-
-Does a promoted step generalise across the held-out evaluation set, or does it rest on a narrow subset sharing a confounding feature? `STEP CARRIERS` reports each step's untied tasks and how many top wins it could lose while still clearing the significance threshold. Using `readings.txt`, `tasks.txt`, `scores.txt` (leave-one-out p-values and margin of safety), and `pairs.txt` (tallies grouped by writing session and task family, alongside `nearness.txt` for textually similar tasks):
-
-1. identify the smallest subset of wins whose removal pushes the step above its significance level;
-2. identify what those carrying tasks share: a unit or scale, a task family, a single writing session, a convention, or a reach grade;
-3. compare each carrying win against the reference's own A/A split (`REFERENCE AGAINST ITSELF`, lane 10), since a win on a task where the reference disagrees with itself is as likely to be variance as genuine improvement;
-4. juxtapose the carrying wins against the tied tasks, because gains restricted to one narrow task shape amidst broad ties indicate weak generalisation.
-
-The decision: whether to report a step as general, narrow, or variance-driven. Routes to `operator`, and `examiner/task` when carrying wins cluster in a repetitive task shape.
-
-**10. Flips and solver variance.**
-
-Label: `comparison`.
-Importance: 0.55.
-Marks: none.
-
-Starts from `FLIPS (lane 10)` and `REFERENCE AGAINST ITSELF (lane 10)`.
-
-How much of the observed tally is attributable to solver rollout variance? A flip occurs when a single harness produces both a valid and an invalid answer on the same task under identical conditions. `REFERENCE AGAINST ITSELF` reports the A/A control: `compared` splits the reference harness's solves into two time-mirrored halves, and `readsStepEitherWay` tests both directions at the significance level. Its untied rate defines the empirical noise floor a genuine effect must exceed, and its per-task differences measure the margins produced purely by chance: a candidate win no larger than the A/A difference on the same task lies inside the noise floor (lane 11). An A/A step is reported diagnostically without halting the campaign. `pairs.txt` places each task's margin beside its stored and rebuilt A/A difference along with per-arm flips and repeats, while `answers.txt` lists tasks where a side's passes produced identical answers. For each step, count wins occurring on tasks where the reference's own halves disagreed, and compare flip rates across arms (fewer flips on the candidate arm may indicate improved consistency). The decision: how many rollouts per arm each task requires. Routes to `operator`, and `environment` when flips cluster during high-load intervals.
-
-**11. What an objective-only step won by.**
-
-Label: `comparison`.
-Importance: 0.65.
-Marks: none.
-
-Starts from `MARGINS INSIDE THE NOISE (lane 11)`.
-
-For any step whose untied tasks all tied on validity, did the winning margins exceed the intra-harness rollout spread of both sides? Such steps are decided exclusively by continuous objective margins between mutually valid answers (`pointsOf`, `src/kernel/compare.ts`). `MARGINS INSIDE THE NOISE` flags every step in which more than half of the winning tasks have margins no larger than the wider of the two sides' own self-differences on the same task under identical settings (the reference's self-difference is that report's A/A `noise`), preventing a single outlier task from setting a global ceiling. A win on a task where both sides repeated their respective answers identically is a deterministic instance-level difference counted outside the noise; its generalisability is then assessed by lane 9. A win exceeding both sides' self-differences where only the reference repeated is likewise counted outside the noise, so steps not flagged here whose arms exhibit repeats should still be checked in `pairs.txt` by lane 9. Conversely, a win where the candidate repeated itself and lost no pairing remains inside the noise, because reliably reproducing the better of the reference's two answers captures half of the reference's spread; the trigger line counts these cases, which represent improved consistency against a noisy reference and require cross-task replication or a fresh starter comparison to confirm.
-
-For each objective-only step, compare the winning margins against the A/A distribution (`pairs.txt` provides per-task margins beside stored and rebuilt A/A values, A/A quantiles, first-solve-only and second-solve-only readings, counts of wins inside, equal to, and outside their task's A/A, and tallies by writing session and family; `answers.txt` lists repeated measures). Where the reference A/A tied completely, substitute the starter's own split (`Starter against itself`) or another report's A/A for the same reference and state the substitution explicitly. Inspect what the carrying tasks share (lane 9): a single family, a single writing session, or a high-variance quantity. Estimate the sample-size remedy in solves per side using `.claude/skills/comparison-reading/scripts/size.ts --scores <s,s,...>` (passing each task's `diff` from `pairs.txt` in its native unit; the script reads no log) together with its projected cost at the campaign's per-solve billing rate. Never propose raising `GAP_FLOOR`: doing so suppresses genuine small margins alongside reference noise and has been ruled out by the operator. The decision: whether objective-only steps should be reported as genuine effects, and whether to enlarge comparisons or author tasks where validity separates harnesses. Routes to `host` (`src/kernel/compare.ts`, comparison sizing), `examiner-prompt` (tasks where validity discriminates), and `operator`.
-
-### The climb
-
-**12. What a confirmation is made of.**
-
-Label: `climb`.
-Importance: 0.8.
-Marks: `standing`.
-
-Starts from every promotion that has a starter read, and is standing.
-
-Would the starter comparison still have confirmed this promotion if the harness's changes failed to transfer to new tasks? A starter comparison (`starterReads`, `src/campaign/climb.ts`) aggregates three task origins, and `confirmed` (`againstStarter`) runs a single `readsStep` over the combined tally: tasks from the promoting comparison (on which the harness was selected, introducing winner's curse) are pooled with tasks authored afterwards. Analyse four aspects separately:
-
-1. **Composition.** For each starter read, report the reference's win-loss-tie tally by task origin (`starter-reads.ts`) and each origin's summed margin and share of the total (`starter-reads.txt`, computed via `differenceOf`). `starter-reads.ts` also reports the standalone reading on tasks authored after the promotion (`after`); list every read where `confirmed` holds despite `after` failing to read `a step`.
-2. **Selection-only false confirmation rate.** Holding the margins of the two pre-promotion origins fixed as observed, assign random fair signs to the recorded margins of tasks authored after the promotion and count the fraction of sign assignments that still read `confirmed` at the significance level. This measures how often confirmation occurs purely by selection bias on the promoting tasks. `starter-reads.txt` computes this exact count over all sign draws of the untied post-promotion tasks (`stepCount`, `comparison-reading`'s `selection.ts`), and notes when pre-promotion tasks alone suffice to confirm even if all post-promotion tasks tie. Report both the draw count and denominator rather than a bare percentage.
-3. **Fleet summary.** Across all starter reads under review, compare total confirmed reads, reads confirmed on post-promotion tasks alone (`starter-reads.ts --all`), and the expected number of confirmations under the selection-only null. When observed confirmations sit close to the selection-only expectation, the `confirmed` flag does not reliably distinguish transferable gains from selection noise.
-4. **Carrying measure.** For each confirmed read, state whether validity or the objective carried it (`starter-reads.ts` splits each origin by validity differences; see lane 11), since objective-only confirmations rely purely on margins.
-
-Never propose lowering the significance level or raising `GAP_FLOOR`. State how many reads underpin each count, noting that a small read is a single sample. The decision: whether `confirmed` reflects transferable improvement or selection artefacts, and what the climb milestone in `AGENTS.md` section 1 should count. Routes to `host` (`src/campaign/climb.ts`) and `operator` (milestone definition).
-
-**13. Which link holds the next promotion.**
-
-Label: `climb`.
-Importance: 0.6.
-Marks: none.
-
-Starts from `CHAIN (lane 13)` and `NO TASK HELD OUT (lane 13)`. It also starts from `NO PRACTICE
-(lane 13)`, `FINAL BYTES NEVER PRACTISED (lane 13)`, `SESSION ENDED (lane 13)`, `PRACTICE FAILS
-(lane 13)`, `ENDED AND WENT ON (lane 13)` and `OPERATOR WORDS (lane 13)`.
-
-Which single link in the campaign pipeline currently blocks the next promotion, quantified by its count? Traverse the latest epoch's chain (`CHAIN`, row F) and stop at the first failing link:
-
-1. **Tasks.** Did the epoch hold out at least `comparisonFloor` informative tasks (`src/campaign/admission.ts`)? `NO TASK HELD OUT` breaks this link at the root.
-2. **Build.** Did a Builder session modify the harness (lane 15) and validate it on practice tasks (below)?
-3. **Comparison.** Did each comparison register enough untied tasks, and how many additional wins were needed to clear (lane 8)?
-4. **Move table.** Did the move recommended by the decision table execute (below)? A displaced starter comparison leaves a promotion permanently unconfirmed (lane 17).
-5. **Stop.** Did the campaign terminate via `stopRule`, budget exhaustion, or lack of room, and does the logged termination count match the log events?
-
-`tools/wri/table-timeline.ts <log>` replays the decision table at every state transition alongside the moves actually executed, reporting how long each recommended move waited, how much of that elapsed inside Builder `wait` calls, and what admission refused. Its `admissible` row marks when a first comparison first became eligible and the elapsed hours until one started (including Builder waits), which `ambition` juxtaposes against total time to first comparison to separate Examiner latency from Builder latency. Each `compare` row records held-out and released counts at launch, so Builder calls between `admissible` and `compare` show what the Builder prioritised instead of comparing. Any row lacking `=` ran under different code and represents a counterfactual replay. `readings.txt` reports each comparison's cap, reserve, test price, and whether it was truncated. Name the blocking link, its observed count versus requirement, its owner, and every change since the parent run sitting on that link (from the prior state), together with its trigger count and mechanism event count: a change whose event never fired on the blocking link remains unmeasured. Count promotions strictly within this campaign. The decision: what action runs next. Routes to `examiner-prompt`, `builder-prompt`, `operator` (sizing or stop policy), and `host` (`src/campaign/decide.ts`).
-
-Evaluate whether the Builder used practice solves effectively as empirical feedback, as practice is its sole outcome signal. From `build.call`, tabulate every practice solve (harness digest, task, ending, subsequent edit, and whether the edited harness was retested), counting practice solves per comparison, comparisons launched on unpractised harnesses, earned failures followed by edits and subsequent passes, flips without edits, and edits made without prior practice evidence (`practice.txt` provides one row per practice solve with its harness role, allowing starter practice to be counted without parsing raw call text). Adapting a harness around a failure ruled a check defect represents overfitting to an evaluation bug. For `SESSION ENDED`, note how much practice budget and how many turns remained. The decision: whether a `no-step` reflects an ineffective change or an untested one. Routes to `builder-prompt` (misleading feedback, without prescribing strategy) and `host` (`src/builder/tools.ts`, `src/builder/session.ts`).
-
-Finally, audit move-table adherence and ending integrity. Each `campaign.move` records either the decision table's code (`decide`) or `led` when the Builder chose differently (`asked` in older logs). Diff any repeated comparison of a non-latest harness against the same reference (lane 15): if only prose or an unread default changed, it constitutes a second statistical draw on the same pair, permitted only when explicitly requested by the table (`readAgainst`). `ENDED AND WENT ON` is valid after `operator`, `finished`, `environment`, or a crash, but represents a defect after `budget`, `stop`, or `no-room` without an intervening operator word. Recount ending criteria (`idleOf` in `tools/d2/campaign-terms.ts`; `roomless` in `src/campaign/decide.ts`). `OPERATOR WORDS` tallies `campaign.word` events and responses (`pendingWords`, `src/campaign/word.ts`), noting beside any pause the command that issued it (`runs pause --after next`, `runs continue on login N --after reported`) where logged; verify that no seat observed an operator word. `launches.txt` maps each launch to its log segment (last event, endings, unclosed steps, killed sessions and solves, and gap to the next launch) without attributing who stopped the run; `ending.ts --at` inspects the ending state at any line or timestamp. The decision: whether campaign moves and endings faithfully reflect the decision table. Routes to `host` (`src/campaign/decide.ts`, `tools/d2/harness-builder.ts`, `tools/d2/campaign-actions.ts`), `builder-prompt`, and `operator`.
-
-### The harness
-
-**14. Harness quality, version by version.**
+Settle from `bun tools/wri/wri.ts read --log <log>` before opening lanes:
+- **A. campaign & log**: `log.jsonl`, `exams/`, `states/`; verify clean fold, host hash vs checkout, billed USD and wall hours by role.
+- **B. checker identity**: contract and check hashes from `contract.frozen` and `checker.read` (+ `despite` fault count).
+- **C. conditions**: distinct condition values by arm/model + completed solves missing `responseModels` + served-model degradation line.
+- **D. task sets**: versions by origin (`session`/`carried`/draft) and state; practised and scored sets must stay disjoint (`PRACTISED TASK MEASURED`, lane 9).
+- **E. case partition**: per arm—passes, fails by kind (`rejected` with check ids), `flagged`, non-results, unfinished.
+- **F. sessions & chain**: moves (incl. open move), endings, spend vs cap, Builder parent/child digests, practice activity, comparison readings (`g-N`), Examiner proposed/admitted counts.
+
+## Lanes 1 to 20
+
+### Tier 1: Core pillars (0.90–1.00)
+
+**1. Blind reach and soundness grading.**
 
 Label: `climb`.
 Importance: 1.
 Marks: `standing`, `blind`.
 
-Starts from every harness version the campaign kept, and is standing. It grades blind, so a session
-that holds it reads it first.
+Starts from every kept harness version and scored task, and is standing. It grades blind, so any session holding it completes it before opening any other lane or outcome file.
 
-Did the harnesses genuinely improve domain capability, or merely learn to clear comparisons? A statistical step says nothing about task difficulty or whether a domain specialist would adopt the change. Complete all blind grades before inspecting any outcome file, recording each grade as it settles:
+Did the harnesses build genuine domain capability on hard tasks, or merely clear easy tasks and objective noise? Lock every blind grade before opening any outcome file: read `chain.txt` (`harness-versions.ts <log> --blind`) and diffs (`--chain --lines`, or `--diff <d> --lines` without outcomes) for soundness, listing missing local states (`versions.txt`) under `## Not read`; read `tasks.txt` (`tools/wri/tasks.ts`, `--shape`, `--task <id>`, `--rows`) beside `exams/` checks for reach. Only after locking all blind grades, unseal `versions.txt`, `readings.txt`, and rows D–E to check whether winning tasks match where diffs act and whether weight grew while soundness stood flat.
 
-1. Read `chain.txt` from the derived folder to see every kept version, its parent, its components, and what changed, with all outcomes withheld (`bun .claude/skills/harness-audit/scripts/harness-versions.ts <log> --blind`).
-2. Inspect the diffs (`--chain --lines`, or `--diff <digest> --lines` for a single version against its parent, without outcomes; see [harness-audit](../../harness-audit/SKILL.md)) and assign soundness grades. List any version absent from the local copy (`versions.txt`) under `## Not read` as ungraded; refreshing copies belongs to the primary.
-3. Read `tasks.txt` (public inputs of scored tasks with outcomes withheld via `tools/wri/tasks.ts`; `--shape` prints structures without values, `--task <id>` prints one full input, and `--rows` prints the grade rows to fill) together with the checks under `exams/`, and assign reach grades.
-4. Only after locking those grades, inspect `versions.txt`, `readings.txt`, rows D and E in `rows.txt`, and any remaining derived files (`practice.txt`, `calls.txt`, and `names.txt` all expose outcome information).
-
-Both scales run from 0 to 7. Grades are reviewer assessments never exposed to any seat.
+Both scales run from 0 to 7 and are reviewer assessments never exposed to any seat.
 
 **Reach** measures how difficult a held-out task is for a strong current model working in the domain, judged from its public text, rules, and checks:
 
@@ -315,12 +121,12 @@ Both scales run from 0 to 7. Grades are reviewer assessments never exposed to an
 - 6: work a specialist gets wrong on a first pass;
 - 7: the field's edge, where no published method fits whole.
 
-Begin by defining the domain-specific criteria corresponding to each rung so a second independent grader would agree. Afterwards, compare each grade against the reference's valid rate, regrading once any high-graded task that the starter consistently solves. A harness version's reach is the highest grade at which most of its solves are valid; where the reference solves every task validly, report instead how much objective wins improved the objective by grade.
+Define domain-specific criteria for each rung first so a second grader would agree. Once unsealed, compare each grade against the reference's valid rate and regrade once any task graded 5+ that the Starter consistently answers validly. Report version reach as the highest grade solved validly on most attempts (or objective gain by grade when validity saturated).
 
 **Soundness** measures whether a version's changes are appropriate for the domain, judged strictly from its diff against its parent:
 
 - 0: it breaks or misleads: the guide claims what no tool does, or a tool fails its own call;
-- 1: it is fitted: it names practice content or narrows to the practice set's shapes (lane 15);
+- 1: it is fitted: it names practice content or narrows to the practice set's shapes (lane 8);
 - 2: churn: rewording or reordering no solve could follow;
 - 3: plausible but narrow: it helps a few task shapes;
 - 4: sound for one part of the domain, stated generally;
@@ -328,162 +134,213 @@ Begin by defining the domain-specific criteria corresponding to each rung so a s
 - 6: a method a specialist would teach, with its own checks;
 - 7: what an expert would adopt unchanged.
 
-Once outcomes are unsealed, check whether winning tasks align with where the harness change actually acts. Growing harness weight (`chain.txt`) with flat soundness indicates bloat rather than progress.
+Place grading tables under `## Grades` between the verdict line and `## Findings` (version chain table, then comparison reach distribution of won vs lost tasks), and append tab-separated rows under `## Grade rows` (`task<TAB>campaign<TAB>id<TAB>grade`, `version<TAB>campaign<TAB>digest<TAB>grade`) for `wri.ts trajectory --grades`. Never sum reach and soundness. Decide whether the climb reflects genuine capability and merits external evaluation, routing to `operator`, `harness/guide`, `harness/tools`, `examiner-prompt`, or `builder-prompt`.
 
-Place the grading tables under `## Grades`, between the verdict line and `## Findings`: first one row per version in chain order (digest prefix, parent, tallies with and without billing, weight, soundness with a one-sentence rationale, and reach), followed by one row per comparison giving the reach distribution of won and lost tasks. Under `## Grade rows`, append one tab-separated line per grade (`task<TAB>campaign<TAB>id<TAB>grade` or `version<TAB>campaign<TAB>digest<TAB>grade`) for `wri.ts trajectory --log <logs> --grades <report>`. Never sum reach and soundness into a composite score. Cross-campaign blind grading is orchestrated via `wri.ts packets --log <logs> --out <dir> --graders 2`: launch its `launch.json`, run `wri.ts packets --out <dir> --join`, execute any reconciliation regrades once, and join again. The decision: whether a climb represents genuine domain capability or promotions on easy tasks or objective noise. Routes to `operator`, `harness/guide` or `harness/tools` (for grades 0 or 1), `examiner-prompt` (`src/examiner/prompt.ts`) when all scored tasks grade 2 or below, and `builder-prompt` (`src/builder/prompt.ts`) when soundness declines across successive promotions.
-
-**15. Harness delta against its note.**
-
-Label: `harness`.
-Importance: 0.8.
-Marks: none.
-
-Starts from `HARNESS CHANGED (lane 15)`, `BROKEN AT END (lane 15)`, `MEASURED AN EARLIER STATE (lane
-15)`, `TOOLS EDITED (lane 15)` and `PRACTISED TASK MEASURED (lane 15)`. It also starts from `NEVER
-CHECKED (lane 15)`, `TOOLS CALLED (lane 15)` and `TOOL CALLS ERRED (lane 15)`.
-
-What actually changed between parent and child harnesses, and do the measured bytes match the Builder's description? Diff the kept snapshots under `states/` component by component (`.claude/skills/harness-audit/scripts/harness-versions.ts <log> --diff <digest>` from [harness-audit](../../harness-audit/SKILL.md); the initial parent is the Starter) and summarise each change by kind and size without quoting source lines. Compare the diff against the note in `harness.version` or the preceding turns of a led conversation's `build.checkpoint`. When the final state failed to open, the round evaluated the last practised state; identify the unmeasured subsequent edits. Rely strictly on the diff rather than `edit` calls, because shell commands can modify files without emitting `edit` events, and remember that resource limits come from the host condition (`agent/config.yaml` is ignored). Audit every harness file against the Builder's sole content restriction: no task id, task text, or hardcoded answer, which would overfit to those specific instances (`names.txt` flags occurrences of task ids, prefixes, families, rare identifiers, or spans of six or more words copied from public task inputs, noting match length and task count; treat each hit as a lead to inspect, since short tokens and standard domain phrases recur naturally). General search and filtering against public rules are permitted, and the solver decides what to submit. The decision: what a step should be attributed to, and whether the harness assisted the solver or memorised answers. Routes to the modified `harness/` component, `builder-prompt` if the content limit was violated, and `host` (`src/builder/session.ts`, `src/builder/tools.ts`) if the evaluated state differs from the logged one.
-
-Also verify whether the harness guide's claims accurately describe the shipped tools and observed solver behaviour, because an inaccurate guide silently degrades every solve. Reconcile three sources:
-
-1. **Guide claims**: every method, verification check, default, limit, or workflow order promised by `BUILT_AGENTS.md`.
-2. **Shipped programs**: whether `.toolchain/` implements each claim completely, partially (for example, running a cross-check only on a subset of cases), or not at all.
-3. **Observed solves**: which tools solvers actually invoked, in what sequence, and which documented tools went unused (`TOOLS CALLED`, `TOOL CALLS ERRED`; inspect outputs because a non-zero exit code may be intentional). `calls.txt` traces invocations through wrappers (`bash -lc`, interpreters, paths, and pipelines) and reports unattributed call segments; imported helper libraries are credited to the calling script.
-
-Check the solver's system prompt (`src/solver/prompt.ts`) against the logged condition as well. Do not judge domain methodology here; lane 14 uses this lane's factual discrepancies when grading soundness. The decision: whether failed solves were misled by inaccurate instructions. Routes to `harness/guide` and `harness/tools` (for the Builder to repair), and `host` if a system prompt sentence contradicts the runtime condition.
-
-**16. What made each win.**
-
-Label: `harness`.
-Importance: 0.6.
-Marks: none.
-
-Starts from `WINS (lane 16)`. It also starts from `WIN AT A SMALL WALL SHARE (lane 16)`, where lane
-7 or 15 suspects a shortcut (won tasks passed in few calls at a small share of the deadline), and
-from `ANSWER FROM A PROGRAM (lane 16)`: solves whose one shell call was followed by `submit`, with
-the reference side printed as the control.
-
-Which harness component, if any, produced each winning task? Strictly speaking, only an ablation comparison against `programs-of:<digest>` attributes a step causally to code versus guide (`AGENTS.md` section 9); this lane identifies where to aim that ablation. Focus first on promoted steps and their tasks untied without billing (`readings.txt`, `STEP CARRIERS`). For each winning task, inspect both arms' solve traces and classify where their trajectories first diverge:
-
-1. the candidate invoked a newly added or modified tool;
-2. the candidate followed a guide instruction absent from the reference;
-3. the solver chose a different approach independent of any harness change;
-4. both arms used the same approach with different outcomes, indicating solver variance (lane 10).
-
-`parts.ts --comparison g-N` lists the programs invoked by each winning solve on both arms alongside what the candidate harness changed; map tasks to scores via `frontier.of` and `retained.of` in the report rather than by positional index. Read the traces before inspecting the harness diff, and tabulate win counts across the four categories. A component driving the majority of wins is the primary target for a `programs-of` ablation. The decision: which harness component receives provisional credit for a promotion. Routes to `operator`, and `harness/tools` or `harness/guide` for unused components.
-
-Trace the provenance of each deciding answer value. For every task won by the candidate (listed by `WINS`, including objective wins where both arms passed), read the candidate's `solve.turn` and `solve.call` events in chronological order to identify where the deciding value first appears: computed by a tool from public input, derived by the solver's own reasoning, stated in the guide, or absent from the trace. `bun tools/wri/provenance.ts --log <log> --wins g-N` locates the earliest verbatim appearance and numeric precision of each leaf in a winning answer by position (never quoting values), alongside the reference arm as a control; it inspects kept harness states automatically, and `nowhere` simply means no match at the tested precisions, which a full trace read (`slice.ts`) resolves. Flag any hardcoded constant a tool emits regardless of input. Tabulate counts by provenance source, citing up to three solve ids and turn indices per row, before inspecting lane 15's diff. The decision: whether a win reflects genuine problem solving or hardcoded knowledge. Routes to `harness/tools`, `harness/guide`, or `host`.
-
-### What the climb rests on
-
-**17. The starter.**
+**2. Longitudinal version backtracking and cross-release progress.**
 
 Label: `climb`.
-Importance: 0.65.
-Marks: none.
-
-Starts from `VALID BY HARNESS (lane 17)` and `PROMOTION UNCONFIRMED (lane 17)`. It also starts from
-`CHAIN AGAINST THE STARTER (lane 17)`.
-
-What baseline does the Starter provide, do the tasks leave headroom above it, and does every promoted harness still beat it? The Starter (`src/harness/starter.ts`) is pi's standard coding agent with four tools and a two-line guide following `EXAMPLE`. Using `VALID BY HARNESS`, compare the Starter's valid rate against the preceding release on the same pack and setting; a baseline near 100% leaves no validity headroom. Check whether built guides preserve or outgrow the Starter's template. A promotion is confirmed by its epoch's first starter comparison that tallies at least one task (`confirmed`, `src/campaign/climb.ts`). For each `PROMOTION UNCONFIRMED`, establish whether the epoch is still open, another move displaced the starter comparison (`comparedOf`), or the Starter matched the reference. Next, inspect each starter read's breakdown (`bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log>`): split by task origin (tasks that selected the harness, earlier unselected tasks, and tasks authored after the promotion), further separated by validity-decided versus objective-decided pairs and by writing session. Pay particular attention to the standalone reading on post-promotion tasks (`after`: `a step`, `a step for the starter`, `no step`, or `too few`), because post-promotion tasks are the only origin free from selection bias; a confirmation resting solely on earlier origins merely re-tests the promoting comparison.
-
-Check the Starter's internal variance on the `Starter against itself` line (`barLines`, `src/campaign/climb.ts`), which splits Starter solves into mirrored halves just as the A/A splits the reference; a reference lead within this noise floor is uninformative. The adjacent `Repetition` line identifies comparisons where each arm produced identical validity and objective values across all rollouts of every task: in such cases no split exposes variance, and an all-tie A/A is not a measured zero noise floor. Because post-promotion tasks are written by an Examiner that observes reference outcomes (lane 20), losses there may reflect Examiner targeting rather than genuine regression; when such losses recur across reads, perform the chain analysis below. The decision: whether the Starter's guide remains appropriate, whether tasks need replacement, and whether a promotion counts towards the milestone. Routes to `host` (`src/harness/starter.ts`; `tools/d2/campaign-actions.ts`, `comparedOf`), `operator`, and `harness/guide` or `harness/tools` where a promoted harness loses to the Starter.
-
-Does a chain of successive promotions, each beating its immediate parent, actually beat the Starter on tasks that selected none of them? `CHAIN AGAINST THE STARTER` fires when, aggregated across two or more starter reads, the reference lost more post-promotion tasks than it won; it prints each read's chronological tally on post-promotion tasks, sums on the other two origins, and how many reads clear as steps without the selecting tasks. Separate three competing explanations, citing the count that distinguishes each:
-
-1. **Selection on margin noise.** Because a promotion is chosen on tasks it won, its margins on those tasks exhibit winner's curse and regress to the mean on fresh tasks. Compare each promoting step's margins against its A/A (lane 11) and each starter read against `Starter against itself` (`barLines`); when both sit inside the noise floor, reversals on fresh tasks match chance expectations.
-2. **Examiner targeting.** Because the Examiner reads reference outcomes (`src/examiner/record.ts`) and authors tasks where the reference has not closed the frontier, post-promotion tasks may systematically challenge the reference without challenging the Starter (lane 20). Compare the Starter's valid rate and objective on post-promotion versus pre-promotion tasks and by writing session (`starter-reads.ts` per-writer lines, and `--tasks` for per-task origin, writer, solve endings, and ratios to the author's best): a stable Starter paired with a declining reference points to targeting, whereas both declining indicates genuinely harder tasks. Note which `comparison.reported` events preceded each writing session's `exam.started`.
-3. **Genuine harness regression.** What remains after accounting for the first two factors: losses exceeding both sides' noise floors on tasks where the Starter's performance did not improve, cross-referenced with lane 14's soundness grades and lane 15's diffs to locate where the chain degraded.
-
-Document any condition drift across reads (row C: setting, solver, host code, or load), as a confounder can mimic any of the three causes. State task counts per origin, since small sums carry high variance. A neutral held-out evaluation set authored blind to both harnesses (such as another campaign's held-out tasks run via [compare-systems](../../compare-systems/SKILL.md)) cleanly separates the first two explanations from the third; because it incurs model spend, propose it with a sample size for operator approval. Never propose raising `GAP_FLOOR`: it masks small margins symmetrically and resolves nothing about causal attribution. The decision: whether the promotion chain counts as a genuine climb and whether to request a neutral evaluation. Routes to `host` (`src/campaign/decide.ts`, `src/campaign/climb.ts`), `examiner-prompt`, and `operator`.
-
-**18. The promotion and the climb after it.**
-
-Label: `climb`.
-Importance: 0.75.
-Marks: `side-by-side`.
-
-Starts from `PROMOTED (lane 18)`, `STARTER BARE (lane 18)`, `AFTER THE PROMOTION (lane 18)` and
-`SHARED TEMPORARY FOLDER (lane 18)`. Where several campaigns are under review, it is given their
-climbs side by side, in the columns `wri.ts climb` prints.
-
-Did each promotion measure what the campaign is designed to measure, and did the campaign climb afterwards? Complete this lane before claiming a campaign improved a harness, keeping five parts separate:
-
-1. **Promotion rule.** `PROMOTED` reports the promoted harness, its parent, the promoting authority (the move table or `tools/d2/promote.ts` with any `despite` flag), and its comparisons with tally, p-value, significance level, and A/A control; the A/A provides variance evidence rather than a second promotion threshold. Separate candidate wins decided by validity from those decided solely by objective margins, and verify whether the starter comparison was the first comparison of its epoch to tally a task (a Builder comparison finishing first leaves the promotion permanently unconfirmed). Note whether lane 17 marks it confirmed and how post-promotion tasks read alone (`after`, `starter-reads.ts`); when all wins are objective margins, consult lane 11 before claiming an effect.
-2. **Baseline competence.** `STARTER BARE` indicates that the reference failed to answer most tasks, meaning the step demonstrates that having a working tool beats having none rather than quantifying domain sophistication. Cross-reference lane 15's diff and lane 16's win attribution.
-3. **Cross-arm contamination.** `SHARED TEMPORARY FOLDER` counts solves referencing paths under `/tmp` or `/var/tmp`, serving as a lead rather than proof of leakage. Wherever such a command succeeded, determine which arm benefited (`calls.ts --list --command '/tmp/'` prints one row per matching call without raw text).
-4. **Post-promotion trajectory.** From `AFTER THE PROMOTION`, track the reference's valid rate and objective gap epoch by epoch: new tasks the reference already solves produce ties (lane 8), whereas unsolvable tasks create false headroom (lane 8). Inspect starter comparisons epoch by epoch as well, comparing each control's tally on newly authored tasks against earlier ones (`starter-reads.ts` by origin). Recurring wins on selecting tasks paired with losses on new tasks indicate a chain that may not hold against the Starter (lane 17).
-5. **Spend by role.** Using `epoch-spend.txt` (lane 23), report billed dollars per epoch broken down by role and comparison cost, splitting any session that spanned a promotion across both epochs.
-
-When reviewing multiple campaigns jointly (with confounders catalogued in lane 22), open with `wri.ts climb`'s side-by-side table and any cross-campaign temporary path collisions (`crossings`). Compare cost to first promotion, tallies alongside A/A controls, tie rates, winning harness changes, practice exposure, and subsequent progress, aligning campaigns by move index rather than wall-clock hour. A code-tree difference is a plausible causal explanation only when other conditions match, and a single campaign per tree is a sample of one. The decision: whether to report a promotion as an improvement and whether to continue the campaign. Routes to `operator`, `host` (`src/campaign/decide.ts`), `examiner-prompt` (when new tasks fail to create headroom), and `environment`.
-
-**19. How many independent batches a read rests on.**
-
-Label: `climb`.
-Importance: 0.75.
+Importance: 1.
 Marks: `standing`, `side-by-side`.
 
-Starts from every starter read, and is standing. Where several campaigns are under review it is
-given their climbs side by side.
+Starts from `history.txt` and older fresh runs of the same domain (`domainOf`) in the archive, and is standing.
 
-Is the true unit of statistical evidence an individual task or a batch of tasks? Post-promotion tasks are authored by one or a few Examiner sessions, and tasks from the same session share their writer's prompt state, families, and difficulty profile, introducing intra-batch correlation. Analyse five components:
+Did this version actually beat older versions of the same domain (`runs fresh <pack>` / `--domain`), stay flat, or regress—and did the previous release's binding constraint move? Start from `history.txt` (`bun tools/wri/wri.ts backtrack --log <log>[,<log>]`), which groups same-domain, same-setting runs by git-ancestor release tag and decays attention monotonically with version gap (`weight = promptFactor / (1 + gap)`):
 
-1. **Batch structure.** For each starter read, count how many distinct Examiner writing sessions authored the post-promotion tasks and report the reference's win-loss tally on each session. `starter-reads.txt` gives one line per writer across the full read and slices post-promotion tasks by writing session (showing each session's majority direction and standalone test without testing across slices); flag separately any session that wrote tasks both before and after the promotion. A read backed by a single writing session represents a single batch draw.
-2. **Batch-level power and inflation.** A sign test across `k` independent sessions reaches significance level 0.02 only for `k >= 6` (`0.5^k`). With `k = 1`, under the null hypothesis where neither harness is better and a session shifts its tasks' scores by as much as per-task noise, an eleven-task slice falsely reads a step for the reference roughly a quarter of the time and for the Starter equally often, compared with roughly 2% for each in the absence of a session effect (confirmed by a 5,000-draw Monte Carlo simulation over `flipP`). Report each read's `k` and the minimum p-value achievable at the batch level.
-3. **Campaign slice tally.** Across each campaign, count how many post-promotion slices favoured the reference, the Starter, or neither (one count per promotion). Place sibling campaigns side by side and list confounders differing between them (lane 22: pack, host, commit, seats, budget, terms) before attributing differences to the domain.
-4. **Between-batch dispersion.** Assess whether slice win rates vary more across writing sessions than binomial sampling noise at the pooled rate would predict. Excess dispersion indicates that pooled task-level tallies overstate statistical precision; inspect what clustered writing sessions shared (lane 17 for targeting, lane 20 for instance evolution, lane 9 for shared task shapes).
-5. **What would settle it.** Estimate how many independently authored batches a campaign-level inference requires and the cost of a neutral batch authored blind to both harnesses ([compare-systems](../../compare-systems/SKILL.md)); because it is paid, propose it with its sample size for operator approval.
+- **Direct and near releases (`gap < 2`, primary attention — same-release siblings and the immediately preceding minor release):** compare all reported factors on matched active hours (`Supply` validity room, `Climb` promos/100 active h and promos/comparison, `Confirmation` confirmed rate and `written-after` win share, `Honesty` A/A steps, `Economy` repriced `$/promo` and active h/promo, and `outside-reads.md` transfer scores). Open the stored `.ana/wri/*/synthesis.md` files listed in `history.txt` for `direct` and `near` runs and state plainly whether their binding constraint improved, stayed unchanged, or worsened.
+- **Code-delta and regression audit (`git log <prev-release>..<run-commit>`):** separate changes inside the release tag from post-release stacked PRs. Call out which changes moved a factor, which added complexity with zero live effect, and which regressed behaviour relative to the prior release—recommending revert or simplification (`AGENTS.md` rule 13) before adding new machinery. Flag prompt-revision changes (`prior-prompt` runs where `pack` differs inside the domain) as confounders rather than ignoring them.
+- **Mid-gap releases (`2 <= gap < 3`, light trend check):** read cohort rollup rows and stored constraints only to check multi-release direction and chronic recurrence; do not spend deep budget on individual runs two releases back.
+- **Distant and other-setting runs (`gap >= 3` or `other-setting`, background only):** keep collapsed as one count and never pool different settings into causal deltas (`AGENTS.md` §9).
 
-Never propose raising `GAP_FLOOR`, which merely shifts noise to the next margin. The decision: whether to report batch counts alongside task tallies for each campaign's climb and whether to commission a neutral comparison. Routes to `host` (`src/campaign/climb.ts`, reporting), `examiner-prompt` (writing batches on the open frontier), and `operator`.
+Always separate code/hygiene gains (`exercised live`) from confirmed outcome shifts (`shown in an outcome`), and state plainly when sample size or inter-run spread leaves the version delta unproven. Decide whether this version beats the prior release on this domain and what should be reverted or rewritten next, routing to `operator`, `host`, `builder-prompt`, `examiner-prompt`, `reviewer-prompt`, or `pack/brief`.
 
-### Supply: the tasks
+**3. Component reward hacking and specification gaming.**
 
-**20. Pressure on the Examiner.**
+Label: `comparison`.
+Importance: 0.95.
+Marks: `standing`.
+
+Starts from `DRAFT RULE DROP (lane 3)`, `PRACTICE HILL-CLIMBING (lane 3)`, and `SPECIFICATION GAMING LEAD (lane 3)`, and is standing.
+
+Did any agentic seat satisfy its local gate or proxy score in a way that defeats the scientific measurement—including in-rules specification gaming that never breaches the OS wall, or shaping outputs to game a downstream seat? Treat `gaming.txt` strictly as coarse starting tripwires, never a ceiling, and spend most of this lane reading primary code and traces across seat boundaries:
+- **Drafter & check source (`slice.ts 'Draft:d-N'`, `referee.draft`, frozen `exams/<digest>/checks/`):** compare earlier `draft_exam` attempts against the frozen `evaluator.ts` for dropped constraints, probe-only patches, catch fallbacks, ceremony-only auditing, unread point estimates, or unverified pass-2 edits.
+- **Examiner authoring (`slice.ts 'Examiner:x-N'`, `tasks.ts`, `aim.txt`):** check whether `try_answer` uses hidden generator parameters unavailable from public inputs, whether distinct `task.family` names mask cloned DGPs, or whether post-promotion `try_reference` survivorship filtering skews tasks against the reference while Starter stays flat.
+- **Builder & harness bytes (`slice.ts 'Builder:b-N'`, `states/<digest>/`):** separate real domain tooling from practice-band inversion (`6+` practice solves on one task), compare-fishing, narrow interval/proxy hedging, or paraphrased `HOST_ONLY` smuggling above `## Validity and score`.
+- **Solver & Referee traces (`slice.ts 'Solver:<id>'`, `provenance.ts`, `slice.ts 'Referee:...'`):** separate efficient domain methods from objective hedging, boilerplate deliverables, tolerance exploitation, `/tmp` shortcuts, unprobed `earned` rubber-stamping, or asymmetric set-asides.
+
+Follow cross-seat chains wherever they lead (for example, Examiner generator quirk → Builder practice probing → Solver shortcut → `chosen` vs `written-after` reversal) while obeying the no-quote wall. Classify every probed vector cleanly (`attribution-and-proof`) into observed exploitation, not observed in the traces read, checker/exam gap, or legitimate domain method—never abbreviate a scoped check as "no reward hacking". Route to `pack/evaluator`, `pack/brief`, `harness/guide`, `harness/tools`, `examiner-prompt`, `builder-prompt`, `reviewer-prompt`, `host`, or `operator`.
+
+**4. Pass soundness, deliverables and verifier grounding.**
+
+Label: `exam`.
+Importance: 0.9.
+Marks: `standing`.
+
+Starts from `INSTRUMENT AUTHORED (lane 4)`, `PASSES UNREAD (lane 4)`, `PASSES LABELLED (lane 4)`, `REFUSALS BY CHECK (lane 4)`, `NO CHECKER READING (lane 4)`, `CHECKER READ WITH FAULTS (lane 4)`, `CONTROL COVERAGE (lane 4)`, `CHECKER NOT FROZEN (lane 4)`, `FROZEN DESPITE FAULTS (lane 4)`, `READ AT ANOTHER VERSION (lane 4)`, `TASKS CARRIED (lane 4)`, `DELIVERABLES CAPTURED (lane 4)`, `NO DELIVERABLES CAPTURED (lane 4)`, `VERIFIER TOOL PROVENANCE (lane 4)`, and `VERIFIER FAULTS (lane 4)`, and is standing.
+
+Does a passing verdict prove genuine domain work, or merely well-formed files and self-consistent arithmetic? Read `checks.txt`, `deliverables.txt`, `grounding.txt`, `exams/<digest>/checks/brief.json`, and the frozen check program source. Sample passing solves across families and harnesses—especially on 0-refusal checks—and actively break them with `wri.ts grade --solve <id> --set <path>=<json>` to expose unread fields, unenforced rules, loose tolerances, or existence-only deliverable checks (`states/deliverables/`, 64-file/16 MiB caps, `zipTexts`). Audit the objective arithmetic first whenever validity saturates: does it reward real domain quality, or width squeezing and tolerance hedging? Check verifier provenance (`exams/<digest>/bundle/.toolchain/host-tools.json` must stay `origin: "draft"` unless `--admit` ran), offline execution (`VERIFIER FAULTS`, `toolCeilingMs`, Seatbelt/Bubblewrap errors), and whether declared engines actually ran instead of author-computed JS (rule 10). When `PASSES LABELLED` fires, check `passAgreement` (`src/referee/agreement.ts`) against the ≥20 decided / ≤10% wrong bar; otherwise state that passes remain uncalibrated. Exclude Examiner `try-` solves from scored refusal counts. Decide whether a pass and its objective can be trusted, routing to `pack/evaluator`, `pack/brief`, `pack/controls`, `host` (`src/kernel/verify.ts`, `src/kernel/answer-files.ts`, `tools/d2/exam.ts`), or `operator`.
+
+**5. Comparison power, signal and noise.**
+
+Label: `comparison`.
+Importance: 0.9.
+Marks: `standing`.
+
+Starts from `NOTHING SCORED (lane 5)`, `CUT BY ITS CAP (lane 5)`, `SET SHORT (lane 5)`, `TIED TASKS (lane 5)`, `TIES BETWEEN VALID ANSWERS (lane 5)`, `NO VALID ANSWER (lane 5)`, `AWAITING A LABEL (lane 5)`, `SAFEGUARD-9 PROMOTION BEYOND VALIDITY (lane 5)`, `STEP CARRIERS (lane 5)`, `FLIPS (lane 5)`, `REFERENCE AGAINST ITSELF (lane 5)`, and `MARGINS INSIDE THE NOISE (lane 5)`, and is standing.
+
+What could each comparison actually detect, which measure carried it, and do winning margins clear rollout noise? From `readings.txt`, `scores.txt`, `pairs.txt`, `zone.txt`, `diagnostics.txt`, and `nearness.txt`, report untied tasks, wins/losses, p-value, `detectable`, `falseRate`, frontier vs retained split, tie classes, and unsolved tasks awaiting labels. Separate validity wins from objective-only wins (`SAFEGUARD-9`, `replay.txt`); when validity saturates, say so plainly. Read per-arm `FLIPS` and the A/A control split by validity versus objective (`src/campaign/climb.ts`); on objective-only steps, compare each win against the wider of both sides' own self-differences (`MARGINS INSIDE THE NOISE`), using `Starter against itself` where A/A tied completely. Find the smallest subset of wins whose removal breaks each step (`STEP CARRIERS`), check whether they share a family, writing session, or near-copy template (`nearness.txt`), and estimate required solves per side with `comparison-reading/scripts/size.ts --scores <s,s,...>` without proposing a higher `GAP_FLOOR` or post-hoc term edits (rule 4). Decide whether each reading is signal or noise, routing to `operator`, `host` (`src/kernel/compare.ts`), `examiner/task`, or `examiner-prompt`.
+
+**6. Climb, confirmation and batch generalisation.**
+
+Label: `climb`.
+Importance: 0.9.
+Marks: `standing`, `side-by-side`.
+
+Starts from `PROMOTED (lane 6)`, `STARTER BARE (lane 6)`, `AFTER THE PROMOTION (lane 6)`, `VALID BY HARNESS (lane 6)`, `PROMOTION UNCONFIRMED (lane 6)`, and `CHAIN AGAINST THE STARTER (lane 6)`, and is standing. Where several campaigns are under review, it receives `wri.ts climb` side by side.
+
+Did each promotion hold on unseen tasks that did not choose it, and how many independent Examiner batches support it? Read `starter-reads.txt`, `transfer.txt`, `climb.txt`, `epoch-spend.txt`, and `starter-reads.ts --tasks`. Verify each promotion's authority (`decide` vs manual `promote.ts --despite`), whether the owed starter read ran first (`heldSince`), and why any promotion went unconfirmed. Split every starter read by task origin (`chosen`, `before`, `after`) and by validity versus objective, reporting the selection-only false confirmation count (`stepCount`, `selection.ts`) beside standalone `after` tallies and fleet totals (`starter-reads.ts --all`). Count distinct post-promotion writing sessions (`k`), flagging sessions that straddle the promotion (`k = 1` is one batch draw; a batch sign test clears 0.02 only at `k >= 6`). When `CHAIN AGAINST THE STARTER` fires or `after` lags, separate selection-on-noise, Examiner targeting (stable Starter beside falling reference by writer), and genuine harness regression (cross-checked with lanes 1 and 8). When several campaigns are open together, align them by move index from `wri.ts climb` while noting lane 9 confounders. Decide whether the climb counts toward milestones or needs a neutral `compare-systems` read, routing to `host` (`src/campaign/climb.ts`, `src/campaign/decide.ts`), `examiner-prompt`, `harness/guide`, `harness/tools`, or `operator`.
+
+### Tier 2: Major structural owners (0.65–0.75)
+
+**7. Examiner supply, authoring and targeting.**
 
 Label: `supply`.
+Importance: 0.75.
+Marks: none.
+
+Starts from `OUTCOMES BY SESSION (lane 7)`, `SUPPLY THIN (lane 7)`, `GATE REFUSED (lane 7)`, `EXAMINER ZERO YIELD (lane 7)`, and `FAMILY CONCENTRATION (lane 7)`.
+
+Did the Examiner produce diverse held-out tasks with real headroom, or stall and skew post-promotion tasks? Read `exams.txt`, `ambition.txt`, `aim.txt`, `draw.txt`, `nearness.txt`, and `exam.call`. Audit `try_reference` spend and survivorship drops (`roomLine`, `src/examiner/write.ts`), `try_answer` failures, `from_file`/shell errors (`src/examiner/shell.ts`), `task.gate` refusals, and every `EXAMINER ZERO YIELD` session. Check `FAMILY CONCENTRATION` and `nearness.txt` for unique-family collapse (defeating the family cap) or cloned templates (`>=0.98` wording nearness). Track per-session Starter versus reference outcomes (`OUTCOMES BY SESSION`, `starter-reads.ts` per writer): a stable Starter paired with a falling reference points to adversarial targeting rather than genuine difficulty growth. Never propose numeric quotas or pass-rate targets (`AGENTS.md` §2). Route to `examiner-prompt` (`src/examiner/prompt.ts`, `src/examiner/write.ts`), `examiner/task`, `host` (`src/kernel/task.ts`, `src/examiner/shell.ts`, `src/examiner/record.ts`), or `operator`.
+
+**8. Harness delta, guide truth and memorisation.**
+
+Label: `harness`.
+Importance: 0.7.
+Marks: none.
+
+Starts from `HARNESS CHANGED (lane 8)`, `BROKEN AT END (lane 8)`, `MEASURED AN EARLIER STATE (lane 8)`, `TOOLS EDITED (lane 8)`, `NEVER CHECKED (lane 8)`, `TOOLS CALLED (lane 8)`, and `TOOL CALLS ERRED (lane 8)`.
+
+What exact bytes changed between parent and child harnesses, does `BUILT_AGENTS.md` tell the truth about shipped `.toolchain/` tools, and did anything violate the content rule? Diff kept states component by component (`harness-versions.ts --diff <d>`) rather than trusting Builder notes, flagging unmeasured edits after a broken end. Audit every harness file against the Builder's content rule (no task id, task text, or hardcoded answer) using `names.txt` as a lead. Reconcile guide claims, `.toolchain/` code, and observed solver calls (`calls.txt`, separating intentional non-zero exits from broken or dead bins), and verify `src/solver/prompt.ts` against the logged condition. Decide what changed in substance and whether dead tools or content violations slipped in, routing to `harness/guide`, `harness/tools`, `harness/tool-tree`, `builder-prompt`, or `host` (`src/builder/session.ts`, `src/builder/tools.ts`).
+
+**9. Evaluation wall, sandbox isolation, network parity and provenance.**
+
+Label: `runs`.
+Importance: 0.65.
+Marks: `standing`.
+
+Starts from `PRACTISED TASK MEASURED (lane 9)`, `SCORED AFTER RELEASE (lane 9)`, `SHARED TEMPORARY FOLDER (lane 9)`, `VERIFIER TOOLS MOVED (lane 9)`, `HOST CODE MOVED (lane 9)`, `STARTS OUT OF TURN (lane 9)`, `SERVED ANOTHER MODEL (lane 9)`, `HOST LOADED (lane 9)`, `LOAD MOVED (lane 9)`, `LAUNCHES (lane 9)`, `NO LAUNCH RECEIPT (lane 9)`, `LOG OUT OF ORDER (lane 9)`, `EXAMINER NEVER FINISHED (lane 9)`, `SESSION CRASHED (lane 9)`, `NETWORK PARITY MISMATCH (lane 9)`, and `WALL BOUNDARY SIGNAL (lane 9)`, and is standing.
+
+Did every evaluation wall, OS sandbox invariant, network condition, and launch-provenance rule hold across the entire run? Read `wall-audit.txt`, `source.txt`, `launches.txt`, `conditions.txt`, `degradations.txt`, `builder-view.txt`, `examiner-view.txt`, `wakes.txt`, and `calls.txt`. Treat `PRACTISED TASK MEASURED`, `SCORED AFTER RELEASE`, or any build-side/exam-side wall leak (check ids, Referee prose, raw hidden values, unreleased task ids, move-table advice, `campaign.word`, non-starter digests, numeric targets, or `referee.draft` leaks) as immediate `I0` breaches. Check `SHARED TEMPORARY FOLDER` (`calls.ts --list --command '/tmp/'`), `solve.finished.network` parity across arms (`COMPARISON_REACH`), single host/verifier-tool digests, mirrored slot order, served-model symmetry, host load stability, clean single-commit launch provenance (rule 15 quota resumes are normal; commit changes disqualify fresh climbs), and log/process integrity (`LOG OUT OF ORDER`, crashes). For multi-campaign reviews, list every confounder beyond the intended change. Route to `host` (`src/wall/`, `src/builder/tools.ts`, `src/examiner/record.ts`, `src/campaign/comparison.ts`, `src/tools/command.ts`, `tools/runs/`, `src/kernel/log.ts`), `environment`, or `operator`.
+
+**10. Harness portability and external-transfer readiness.**
+
+Label: `harness`.
 Importance: 0.65.
 Marks: none.
 
-Starts from `OUTCOMES BY SESSION (lane 20)`.
+Starts from `BUILT HARNESS FOR EXPORT (lane 10)`.
 
-Does the feedback loop steer the Examiner towards tasks that genuinely differentiate harnesses across sessions? Inspect the exact inputs (`AGENTS.md` section 3, `src/examiner/record.ts`) supplied to each Examiner session. `OUTCOMES BY SESSION` reports how often the reference solved each session's tasks alongside the comparison reports available before it opened; `aim.txt` records each session's starting and ending reference digest, its `try_reference` calls, and each harness's objective relative to the author's best. Review these chronologically alongside changes in proposed task structure (`task.proposed`, quoting no text) and lane 10's A/A variance, since high-variance tasks split randomly and add no signal. Because the Examiner observes reference outcomes and targets the open frontier, post-promotion tasks can become adversarial to the reference without troubling the Starter, skewing starter reads against the reference (lane 17). Compare the Starter's outcomes against the reference's for each writing session (`starter-reads.ts` per-writer lines and each starter comparison's `valid` count): stable Starter validity paired with falling reference validity indicates reference targeting, whereas both falling indicates genuinely harder tasks. Never propose giving the Examiner a numeric pass-rate target or quota. The decision: whether Examiner inputs require revision. Routes to `examiner-prompt` and `operator`.
+Will the promoted harness work cleanly outside this campaign's exam and host (for example in `runs bench`)? Read `portability.txt`, `diagnostics.txt`, and kept harnesses under `states/<digest>/`. Separate general domain tools and methodology from guide prose or scripts coupled to this exam's JSON keys, manifest paths, check wording, or turn-count coaching—paying special attention to exam coupling sitting above `## Validity and score` (`HOST_ONLY`). Check `.toolchain/` scripts for hardcoded host paths, unbundled Python packages (`ANA_PYTHON`, `uv`), broken relative imports, or dead bins, and judge whether `BUILT_AGENTS.md` grew bloated enough to distract a solver on unfamiliar tasks. Where `outside-reads.md` or `data/bench/` holds an external read for this run, compare internal wins against external scores without proposing benchmark-fitted prompts (`AGENTS.md` §1, rule 2). Route to `builder-prompt` (`src/builder/prompt.ts`, `src/harness/starter.ts`), `harness/guide`, `harness/tools`, `host` (`tools/runs/bench.ts`), or `operator`.
 
-**21. Supply and task admission.**
+### Tier 3: Focused diagnostics (0.35–0.50)
 
-Label: `supply`.
-Importance: 0.65.
-Marks: none.
+**11. Drafted exam against the prompt.**
 
-Starts from `SUPPLY THIN (lane 21)`, `GATE REFUSED (lane 21)` and `SCORED AFTER RELEASE (lane 21)`.
+Label: `exam`.
+Importance: 0.5.
+Marks: `standing`.
 
-Where is task supply lost between proposal and the scored set, and was every admission refusal justified? For each `task.gate` refusal (`packageGate`; `try_task` in older logs), verify whether it identified a genuine defect that the Examiner could fix. Account for tasks lost after admission, and compare remaining frontier supply against the comparison requirements (`SIZE`; `refusals` requires `sweepOf(level)`). Never propose relaxing admission gates merely to increase yield. `SCORED AFTER RELEASE` counts released practice tasks subsequently included in a scored comparison (including retained tasks), which violates the evaluation boundary. The decision: whether to budget another Examiner session before comparing. Routes to `examiner-prompt` (`src/examiner/prompt.ts`) and `host` (`src/kernel/task.ts`).
+Starts from `EXAM DRAFTED (lane 11)` and `PASSES AT A SMALL WALL SHARE (lane 11)`, and is standing.
 
-### Solve execution and economy
+Did the drafted exam faithfully measure the operator's prompt, or narrow scope and hand solvers a recipe? Compare `campaign.opened`'s prompt against the standing draft's rules, conventions, scope, answer format, objective (or `unmeasured` rationale), and checks (`drafted.txt`). Count failed drafts by fault kind (`draftFaults`, `draftReading`) and verify whether the accepted draft fixed each requirement or quietly dropped it. Check whether public inputs or conventions leak the check arithmetic or a one-step recipe (`PASSES AT A SMALL WALL SHARE`, `sequences.txt`), and note any author-computed check that a staged domain engine could decide instead. Decide whether the exam measures the requested domain at real difficulty, routing to `examiner-prompt` (`src/examiner/draft.ts`), `pack/brief`, `pack/evaluator`, or `operator`.
 
-**22. Does the budget bind, and how each solve ended.**
+**12. Practice feedback, band discipline and family transfer.**
 
-Label: `solve`.
+Label: `harness`.
 Importance: 0.45.
 Marks: none.
 
-Starts from `MISSES AT A LIMIT (lane 22)`, `WALL SHARE (lane 22)`, `HOST LOADED (lane 22)`, `LOAD
-MOVED (lane 22)`, `STARTS OUT OF TURN (lane 22)`, `NON-RESULTS (lane 22)`, `SOLVE NEVER FINISHED
-(lane 22)`, `EXAMINER NEVER FINISHED (lane 22)`, `MISSES WITHOUT A VERDICT (lane 22)`, `SESSION
-CRASHED (lane 22)`, `TOOL MISSING (lane 22)` and `SERVED ANOTHER MODEL (lane 22)`. It also starts
-from `LAUNCHES (lane 22)`, `NO LAUNCH RECEIPT (lane 22)`, `HOST CODE MOVED (lane 22)` and `LOG OUT
-OF ORDER (lane 22)`.
+Starts from `NO PRACTICE (lane 12)`, `FINAL BYTES NEVER PRACTISED (lane 12)`, `PRACTICE FAILS (lane 12)`, `PRACTICE CONCENTRATION (lane 12)`, and `PRE-PROMOTION PRACTICE RELEASED (lane 12)`.
 
-Does the solve resource budget (`LIMITS`, `tools/d2/campaign.ts`) differentiate the harnesses? An effective harness solves tasks within limits that the reference exhausts; limits that neither arm approaches leave only validity and the objective in play. By comparison and arm, inspect `MISSES AT A LIMIT`, `WALL SHARE` (wall-clock deadline and turn share), and effort on mutually solved tasks, classifying whether the budget binds on both arms, on the reference alone, or on neither (`budget.txt` tabulates per-arm endings, turn and time usage against limits, limit-terminated solves, shell calls meeting or exceeding the default timeout including those that explicitly requested a longer timeout and succeeded, queued hours, and load per core). Because deadlines measure wall-clock elapsed time, read host load (`HOST LOADED`, `LOAD MOVED`) and scheduling waits (`STARTS OUT OF TURN`, `campaign.waited`) alongside timeouts. Because non-results are retried while fails count, verify that each non-result classification is honest and that retries distributed evenly across arms (`NON-RESULTS`). Distinguish killed solves from still-running ones (`bun run runs pulse`), and check whether crashes, missing tools, or model fallbacks fell disproportionately on one arm. The decision: whether resource limits can measure efficiency gains and whether outcome counts are trustworthy. Routes to `operator` (limit configuration), `environment`, and `host` (`src/solver/run.ts`, `src/kernel/solve.ts`) when an ending category obscures its root cause.
+Did the Builder use practice solves honestly, did coarse bands hide raw hidden numbers, and did gains transfer outside practised task families? Read `practice.txt`, `transfer.txt`, and `build.call`. Count practice solves per comparison, untried freezes (`NO PRACTICE`, `FINAL BYTES NEVER PRACTISED`), `read_trace` / `check_harness` calls, and earned failures actually fixed on edited bytes. Confirm `build.call` practice results under an objective expose only coarse bands (`bandOf`, `src/builder/tools.ts`) without raw values, and inspect `PRACTICE CONCENTRATION` (4+ solves on one task) for parameter-inversion probing. Check `PRE-PROMOTION PRACTICE RELEASED` (`beforePromotion`, `newTasksLimit`) and split starter-read outcomes (`starter-reads.ts --tasks`) into practised versus unpractised families to separate transfer from overfitting. Route to `builder-prompt`, `host` (`src/builder/tools.ts`, `src/kernel/reports.ts`, `src/campaign/decide.ts`), `harness/guide`, or `operator`.
 
-Also verify experimental provenance: did the run start fresh from a prompt, at a single commit, from a clean worktree, continuing only after an authorised pause or login rotation (`AGENTS.md` section 10, item 9)? Each launch writes `launch-run-<n>.json` (`tools/runs/receipt.ts`). `LAUNCHES` counts launches, commits, dirty trees, logins (never named), Bun versions, and recorded solver Python environments (versions and packages); `NO LAUNCH RECEIPT` means the executed commit is unverified. `source.txt` records the initial launch flags followed by per-launch login changes and flag diffs, while `launches.txt` maps each launch to its log range. Continuing a run at a different commit disqualifies it as a fresh measured run; continuing after a credit or session limit is expected under rule 15. Inspect copies from separate hosts (`data/runs/<host>/<name>`) independently and never pool their counts. Check concurrent runs per login against caps (`bun run runs active`) without naming logins, and compare host load against core count. `HOST CODE MOVED` lists commits intervening between two host hashes and any comparisons straddling the change; `LOG OUT OF ORDER` usually indicates concurrent controllers writing to one log. For a fetched copy, count harness states flagged as absent in `versions.txt`. For multi-arm experiments, catalogue every difference beyond the manipulated variable (pack, host, commit, seats, budget, comparison terms) as a confounder. The decision: whether the run's promotions count towards milestones and whether a launch path permitted an invalid start. Routes to `operator`, `environment`, and `host` (`tools/runs/`, `tools/d2/harness-builder.ts`, `src/kernel/log.ts`).
+**13. Campaign control, decision-table adherence and continuity.**
 
-**23. Time, spend and silence.**
+Label: `climb`.
+Importance: 0.4.
+Marks: none.
 
-Label: `economy`.
+Starts from `CHAIN (lane 13)`, `NO TASK HELD OUT (lane 13)`, `ENDED AND WENT ON (lane 13)`, `OPERATOR WORDS (lane 13)`, `FIRST COMPARISON HELD OFF (lane 13)`, `UNDERPOWERED NO-STEPS (lane 13)`, `BUILDER COMPACTED (lane 13)`, `EXAMINER COMPACTED (lane 13)`, `SOLVER COMPACTED (lane 13)`, `SESSION ENDED (lane 13)`, and `INTERRUPTED HANDOVER (lane 13)`.
+
+Which pipeline link blocked the next promotion, did moves follow the decision table, and did long-lived seats survive compaction and restarts cleanly? Walk the latest epoch's chain (`CHAIN`, `table-timeline.ts`) and stop at the first failing link: frontier supply, Builder edits/practice, comparison power (`UNDERPOWERED NO-STEPS`, `FIRST COMPARISON HELD OFF`), move-table execution (`compare` serialization, `readAgainst`, `heldSince`, `OPERATOR WORDS`), or termination (`ENDED AND WENT ON`). Attach every prior-state change sitting on that blocking link with its trigger and event counts. Inspect `continuity.txt` and `launches.txt` for compaction recovery (`read_opening` cues, repeated edits or proposals after compaction), multi-ask Examiner wake drift (`guardAsk`), and interrupted Builder handovers (`startTold`, `MEMORY_FILE`). Route to `host` (`src/campaign/decide.ts`, `src/campaign/admission.ts`, `src/agent/session.ts`, `src/examiner/session.ts`, `src/builder/past.ts`, `tools/d2/harness-builder.ts`, `tools/d2/campaign-actions.ts`), `builder-prompt`, `examiner-prompt`, `environment`, or `operator`.
+
+**14. Agentic yield, pause boundaries and economy.**
+
+Label: `climb`.
+Importance: 0.35.
+Marks: `standing`.
+
+Starts from `SEAT BOUNDARY ANOMALY (lane 14)`, `ROLE YIELD SKEW (lane 14)`, `LONG SILENCES (lane 14)`, `SPEND LED BY A ROLE (lane 14)`, and `BILLING RESIDUAL (lane 14)`, and is standing.
+
+Where did compute hours and dollars go, did pause contracts hold, and does every agentic role earn its spend? Read `seats.txt`, `epoch-spend.txt`, `continuity.txt`, `table-timeline.ts`, and row F's `costLine`. Verify billing completeness (`BILLING RESIDUAL`, unpriced Claude compactions vs closed ledger) and separate active hours from recorded provider/load waits (`LONG SILENCES`). Check every `campaign.word` pause for zero overshoot comparisons (`pausePointReached`, `src/campaign/word.ts`). When non-solver spend exceeds 40% (`ROLE YIELD SKEW`) or an auxiliary seat stalls or hits caps repeatedly, name the wasteful handoff and whether removing or simplifying that layer raises yield. Project next-round spend and read the closing economy bar (`worthOf`). Route to `host` (`src/campaign/word.ts`, `src/kernel/meter.ts`, `src/kernel/trace.ts`, `tools/d2/harness-builder.ts`, `tools/d2/campaign-actions.ts`), `builder-prompt`, `examiner-prompt`, `reviewer-prompt`, `environment`, or `operator`.
+
+**15. Win attribution and answer provenance.**
+
+Label: `harness`.
 Importance: 0.35.
 Marks: none.
 
-Starts from `LONG SILENCES (lane 23)`, `SPEND LED BY A ROLE (lane 23)`,
-`FIRST COMPARISON HELD OFF (lane 23)` and `BUILDER COMPACTED (lane 23)`.
+Starts from `WINS (lane 15)`, `WIN AT A SMALL WALL SHARE (lane 15)`, and `ANSWER FROM A PROGRAM (lane 15)`.
 
-Where did compute hours and spend go, is the billing record complete, and what caused each extended idle gap? First verify billing completeness: a discrepancy exceeding a few percent between backend-reported totals and the host's meter (row F, `costLine`, `src/kernel/meter.ts`) indicates mispriced or unpriced calls. Compaction events price summary calls from their `usages` array (`Compaction.billed`, `src/kernel/trace.ts`): the pi backend populates `usages`, whereas the Claude CLI backend writes `usages: []` (`CLAUDE_COMPACTED`, `src/agent/session.ts`), causing compaction events to report 0 locally while their cost appears only in the backend session total (`compactions.txt` lists each compaction and its usages). For `BUILDER COMPACTED`, inspect `tokensBefore`, duration, `error`, and whether subsequent turns repeated an earlier move. Spend breakdowns come from `spendOf`, and row A aligns wall hours with dollars by role. `LONG SILENCES` lists the five longest idle intervals by terminating event and bounding log lines; verify each interval from surrounding events (`log.ts events --kind <kind>,<kind>`). `FIRST COMPARISON HELD OFF` fires when a first comparison remained admissible for at least 75 minutes before starting, reporting how much of that elapsed inside Builder `wait` calls: inspect `table-timeline.txt` between `admissible` and the first `compare` to see the table's recommended move and each `wait` response, distinguishing a host message that deterred an idle Builder from productive Builder work. Project the cost of the next round, and read the economy factor from the closing report (`tools/d2/close.ts`; `worthOf`, `src/campaign/climb.ts`). The decision: projected spend for the next round, billing trustworthiness, and whether each role justifies its compute budget. Routes to `operator`, `host`, and `environment`.
+Which harness part produced each winning task, and where did every deciding answer value come from? Read winning traces before opening the harness diff, focusing on promoted steps and untied wins (`readings.txt`, `parts.ts --comparison g-N`). Classify each win's first divergence into a new/edited tool, a guide instruction absent from the reference, a different solver method independent of the diff, or solver variance on the same method. Trace deciding leaf values chronologically with `tools/wri/provenance.ts --log <log> --wins g-N` (and `slice.ts` for `nowhere` entries) to spot hardcoded constants or shortcuts. Causal credit still requires a `programs-of:<digest>` ablation (`AGENTS.md` §9); use this lane to target it. Route to `operator`, `harness/tools`, `harness/guide`, or `host`.
+
+### Tier 4: Lightweight and conditional (0.10–0.25)
+
+**16. Seat prompts and tool surfaces.**
+
+Label: `exam`.
+Importance: 0.25.
+Marks: `standing`.
+
+Starts from each seat's opening at the campaign's commit, and is standing.
+
+Did any seat prompt or tool result prescribe a strategy, give a numeric target, print a stale or wrong fact (`AGENTS.md` §2), or leak across a boundary? At the launch receipt's commit, check Examiner prompts (`src/examiner/draft.ts`, `src/examiner/prompt.ts`, `examiner-view.txt`, `wakes.txt`), Builder prompts and `build.call` results (`src/builder/prompt.ts`, `builder-view.txt`), Solver prompts (`src/solver/prompt.ts`), and Referee prompts (`src/referee/referee.ts`). Prompt sentences may be quoted directly. Name only prescriptive lines or wrong folds that visibly changed a move, citing the confirming event; fix them by deleting directives or repairing folds, never by adding targets. Route to `examiner-prompt`, `builder-prompt`, `reviewer-prompt`, or `host` (`src/builder/past.ts`, `src/builder/tools.ts`, `src/examiner/session.ts`).
+
+**17. Rejection rulings and Referee calibration.**
+
+Label: `verdicts`.
+Importance: 0.2.
+Marks: none.
+
+Starts from `REFUSED UNREAD (lane 17)`, `CHECK DEFECT RULED (lane 17)`, `RULED UNCLEAR (lane 17)`, `REPLAY MOVED THE VERDICT (lane 17)`, `SET ASIDE AND UNSETTLED (lane 17)`, `READING MOVES WITH THE SET-ASIDE (lane 17)`, `SET ASIDE BY SIDE (lane 17)`, `SETTLED BY HAND (lane 17)`, `REVIEW FAULTS (lane 17)`, `EARNED WITHOUT A PROBE (lane 17)`, `RULINGS REFUSED (lane 17)`, and `SCORED SET MOVED (lane 17)`.
+
+Were rejected answers genuinely invalid, and did set-asides bias any tally? Group rejections by check id and ruling (`rejections.txt`, `restated.txt`), checking that `earned` rulings carry a clearing-probe test rather than restating the check (`EARNED WITHOUT A PROBE`) and `check-defect` rulings carry a probe that clears the refusal. Flag non-deterministic replays, asymmetric set-asides, readings that flip between `scored` and `counted`, tasks dropped after `comparison.started`, and `referee.refused` retries. Compare human labels (`SETTLED BY HAND`) against the `AGENTS.md` §1 agreement bar (`src/referee/agreement.ts`); without them, qualify rulings as one uncalibrated reader. Refer any check that public rules leave undecided to lane 20. Decide whether rejections and set-asides hold, routing to `pack/evaluator`, `pack/brief`, `reviewer-prompt`, `host`, or `operator`.
+
+**18. Adversarial draft audit and pre-freeze gate.**
+
+Label: `exam`.
+Importance: 0.2.
+Marks: none.
+
+Starts from `DRAFT AUDITED (lane 18)`, `DRAFT AUDIT DEFECTS (lane 18)`, `DRAFT AUDIT REFUSED (lane 18)`, and `DRAFT AUDIT SKIPPED (lane 18)`.
+
+Did the pre-freeze Adversarial Draft Auditor (`reviewDraft`, `src/referee/draft-audit.ts`) earn its latency and spend, or mostly police CSV ceremony and leak pass-2 fixes unverified? Read `draft-audit.txt` beside `drafted.txt`, `checks.txt`, and `rejections.txt`. Separate `referee.draft` turns, probes, and USD from post-solve Referee rulings; classify findings into real domain/objective holes versus formatting ceremony; verify with `wri.ts grade` whether any final-pass `defects` finding leaked unverified past `MAX_DRAFT_AUDITS`; and apply the keep-or-remove bar (`AGENTS.md` §2.7, rule 13) plainly—recommend simplifying or removing the auditor if it moved zero live verdicts. Route to `reviewer-prompt` (`src/referee/draft-audit.ts`), `host` (`tools/d1b/draft.ts`), `pack/evaluator`, or `operator`.
+
+**19. Solver execution, tool friction and resource limits.**
+
+Label: `solve`.
+Importance: 0.15.
+Marks: none.
+
+Starts from `MISSES AT A LIMIT (lane 19)`, `WALL SHARE (lane 19)`, `NON-RESULTS (lane 19)`, `MISSES WITHOUT A VERDICT (lane 19)`, `SOLVE NEVER FINISHED (lane 19)`, `TOOL MISSING (lane 19)`, and `HIGH TOOL ERROR RATE (lane 19)`.
+
+Did resource limits actually differentiate harnesses, or did solver friction and misclassified non-results distort outcomes? Read `execution.txt`, `calls.txt`, and sample failing traces (`slice.ts 'Solver:<id>'`). State whether turn and wall limits bound on both arms, the reference alone, or neither; diagnose high tool errors, `no-answer`/`broken-harness`/`malformed` endings, missing tools, Python/`uv` friction, and shell timeouts; and verify `NON-RESULTS` (`provider`, `sandbox-crash`, `killed`, `moved-files`, `check`, `verifier`) were retried symmetrically across arms. Route to `harness/tools`, `harness/guide`, `host` (`src/solver/run.ts`, `src/solver/prompt.ts`, `src/kernel/solve.ts`, `src/tools/command.ts`), `environment`, or `operator`.
+
+**20. Constructive valid-alternative challenge.**
+
+Label: `verdicts`.
+Importance: 0.1.
+Marks: `alone`.
+
+Starts from `FAILS ON ONE CHECK (lane 20)` and `DEFECT RULED BESIDE PASSES (lane 20)`, and only when lane 17 left a check undecided. It runs alone.
+
+Does a disputed check reject constructively valid answers? Read only the public exam via `bun tools/wri/public-exam.ts <log>`. Before opening the check program, Referee probes, or any lane report, construct valid alternative answers satisfying every published rule while differing in a permitted way (valid alternative design, allowed rounding, or equivalent unit) and record their SHA-256 digests. Only after freezing those digests, run `wri.ts grade --log <log> --answers <dir>` and report the 2×2 table of constructively valid versus verifier-accepted answers, naming every refusing check. Drop and count any candidate whose validity cannot be proven from public rules alone, and never derive candidates from recorded held-out answers. Decide whether the check must be repaired and hand over the corpus as accept controls, routing to `pack/evaluator` or `pack/controls`.

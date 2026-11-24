@@ -481,15 +481,18 @@ describe("bun run land", () => {
   });
   const hosts = JSON.stringify([host("alpha", 1), host("unset"), host("beta", 3)]);
 
-  it("spreads its proofs over every listed host where ANA_CHECK_HOST is unset, two on one that sets no checks, the whole gate on the first", () => {
-    const result = runLand(["12", "--sanitize"], { ANA_HOSTS: hosts, ANA_CHECK_HOST: undefined });
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("proving on alpha (1), unset (2), beta (3) at once");
-    expect(wherePassesRan(gateLog)).toContain(`${upper} alpha`);
-    expect(statuses(COMMIT)).toContain(`success ${upper}`);
+  it("spreads its proofs over every listed host where ANA_CHECK_HOST is unset or empty, sparing held benchmark hosts, two on one that sets no checks, the whole gate on the first", () => {
+    for (const checkHost of [undefined, "   "]) {
+      const result = runLand(["12", "--sanitize"], { ANA_HOSTS: hosts, ANA_CHECK_HOST: checkHost });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("proving on alpha (1), unset (2), beta (3) at once");
+      expect(wherePassesRan(gateLog)).toContain(`${upper} alpha`);
+      expect(logLines(gateLog)).toContain(`spare\t${upper}\talpha`);
+      expect(statuses(COMMIT)).toContain(`success ${upper}`);
+    }
   });
 
-  it("proves at the one place an explicit ANA_CHECK_HOST names, whatever the host list holds", () => {
+  it("proves at the one place an explicit ANA_CHECK_HOST names, without ANA_RUNNER_SPARE_HELD, whatever the host list holds", () => {
     const result = runLand(["12", "--sanitize"], { ANA_HOSTS: hosts, ANA_CHECK_HOST: "here" });
     expect(result.status).toBe(0);
     expect(result.stdout).not.toContain("proving on");
@@ -497,6 +500,7 @@ describe("bun run land", () => {
     const ran = wherePassesRan(gateLog);
     expect(ran.length).toBeGreaterThan(0);
     expect(ran.filter((line) => !line.endsWith(" here"))).toEqual([]);
+    expect(logLines(gateLog).filter((line) => line.startsWith("spare\t"))).toEqual([]);
   });
 
   it("replays a pull request whose parent was rewritten onto it with --sanitize, pushes it and proves it", () => {

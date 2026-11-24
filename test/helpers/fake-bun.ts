@@ -29,6 +29,7 @@ esac
 commit=$(git rev-parse HEAD)
 printf '%s\t%s\n' "$commit" "$*" >> "$ANA_FAKE_LOG"
 [ "$1" != install ] || [ -z "$ANA_CHECK_HOST" ] || printf 'where\t%s\t%s\n' "$commit" "$ANA_CHECK_HOST" >> "$ANA_FAKE_LOG"
+[ "$1" != install ] || [ -z "$ANA_RUNNER_SPARE_HELD" ] || printf 'spare\t%s\t%s\n' "$commit" "$ANA_CHECK_HOST" >> "$ANA_FAKE_LOG"
 [ "$1 $2" != "run test" ] || printf 'workers\t%s\t%s\t%s\n' "$commit" "$ANA_TEST_WORKERS" "$ANA_TEST_BAIL" >> "$ANA_FAKE_LOG"
 if [ "$1" = install ] && [ -n "$ANA_FAKE_TOGETHER" ]; then
   i=0

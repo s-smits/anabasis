@@ -6,6 +6,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
+import { importsOf } from "../runtime/gate.ts";
 import { countNonBlank } from "./nonblank-loc.ts";
 import sourcePolicy from "./source-policy.json" with { type: "json" };
 import { scanTokens } from "./token-facts.ts";
@@ -18,8 +19,14 @@ import { scanTokens } from "./token-facts.ts";
 // columns, so the ceilings were adjusted rather than widening the formatter.
 export const NEW_FILE_CEILING = 800;
 export const NEW_FUNCTION_CEILING = 115;
+export const AGENTS_MD_BYTE_CEILING = 24_000;
+const AGENTS_MD = "AGENTS.md";
 
 const SOURCE_ROOTS = ["src", "tools", "vendor", ".claude/skills"] as const;
+/** Production roots whose source files must not import helper or test trees (`AGENTS.md` §12). */
+export const PRODUCTION_ROOTS = ["src", "vendor", "packages", "tools"] as const;
+const HELPER_ROOTS = [".claude/", "tools/wri/", "studies/", "test/"] as const;
+const SOURCE_EXT = /\.[cm]?[jt]sx?$/u;
 
 /** Authored roots owned by this repository whose unused exports are reported as findings. `vendor`
  *  is pinned verbatim and `starters` is copied into Builder workspaces with external consumers, so
@@ -57,9 +64,36 @@ const refusedLiterals: ReadonlySet<string> = new Set(sourcePolicy.refusedLiteral
 const refusedCalls: ReadonlySet<string> = new Set(sourcePolicy.refusedCalls);
 
 interface SourcePolicyFinding {
-  check: "file-size" | "function-size" | "literal-cut" | "call-cut" | "stale-copy-limit" | "unused-export";
+  check:
+    | "file-size"
+    | "function-size"
+    | "literal-cut"
+    | "call-cut"
+    | "stale-copy-limit"
+    | "unused-export"
+    | "dependency-direction";
   path: string;
   detail: string;
+}
+
+const helperOf = (path: string): string | null =>
+  HELPER_ROOTS.find((root) => path.startsWith(root)) ??
+  (/^packages\/[^/]+\/test\//u.test(path) ? "test/" : null);
+
+/** Whether `path` is a production source file (`AGENTS.md` §12). */
+export const production = (path: string): boolean =>
+  SOURCE_EXT.test(path) &&
+  PRODUCTION_ROOTS.some((root) => path.startsWith(`${root}/`)) &&
+  helperOf(path) === null;
+
+/** Each import of `files` from production into a helper or test root, by `graph`. */
+export function breaches(files: readonly string[], graph: (file: string) => readonly string[]) {
+  return files.filter(production).flatMap((file) =>
+    graph(file).flatMap((imported) => {
+      const root = helperOf(imported);
+      return root === null ? [] : [{ file, imported, root }];
+    }),
+  );
 }
 
 function walkFiles(root: string): string[] {
@@ -86,11 +120,6 @@ function walkFiles(root: string): string[] {
 
 /**
  * Reports exported declarations that no other file references.
- *
- * Removing unused `export` modifiers narrows the public surface so subsequent changes do not need
- * to audit non-existent external callers. The scan is textual and intentionally fails open: names
- * declared in multiple files are skipped (attribution is ambiguous), and any textual occurrence in
- * another file (including comments or string literals) counts as a reference.
  */
 export function unusedExports(
   declaring: ReadonlyMap<string, string>,
@@ -134,6 +163,16 @@ export function corpus(roots: readonly string[], suffixes: readonly string[]): M
 
 function sizeFindings(path: string, text: string, copiedLimit?: number): SourcePolicyFinding[] {
   const findings: SourcePolicyFinding[] = [];
+  if (path === AGENTS_MD) {
+    const bytes = Buffer.byteLength(text, "utf8");
+    if (bytes > AGENTS_MD_BYTE_CEILING) {
+      findings.push({
+        check: "file-size",
+        path,
+        detail: `${bytes} bytes exceeds ${AGENTS_MD_BYTE_CEILING} (per-file rule cap)`,
+      });
+    }
+  }
   const fileLimit = copiedLimit ?? NEW_FILE_CEILING;
   const lines = countNonBlank(text);
   // Markdown documentation under source roots (such as oxlint decision ledgers) is exempt from the
@@ -226,12 +265,22 @@ export function unreadExports(base = ""): SourcePolicyFinding[] {
 }
 
 function sourcePolicyFindings(): SourcePolicyFinding[] {
+  const cwd = runtimeProcess.cwd();
   const paths = SOURCE_ROOTS.flatMap((root) => walkFiles(root));
   const onDisk = new Set(paths);
   return [
     ...paths.flatMap((path) => sourceTextFindings(path, readFileSync(path, "utf8"))),
+    ...(existsSync(AGENTS_MD) ? sourceTextFindings(AGENTS_MD, readFileSync(AGENTS_MD, "utf8")) : []),
     ...staleCopyLimits((path) => (onDisk.has(path) ? readFileSync(path, "utf8") : null)),
     ...unreadExports(),
+    ...breaches(
+      PRODUCTION_ROOTS.flatMap((root) => walkFiles(root)),
+      (file) => importsOf(cwd, file),
+    ).map(({ file, imported, root }) => ({
+      check: "dependency-direction" as const,
+      path: file,
+      detail: `imports ${imported} (${root})`,
+    })),
   ];
 }
 

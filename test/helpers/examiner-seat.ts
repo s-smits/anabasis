@@ -115,7 +115,11 @@ export const draftArgs = (draft: Draft): JsonObject => ({
   })),
   accept_controls: draft.accept.map((control) => ({ ...control })),
   reject_controls: draft.reject.map((control) => ({ ...control })),
-  objective: { ...draft.objective, ...keyIfDefined("none", draft.unmeasured) },
+  objective: {
+    ...draft.objective,
+    ...keyIfDefined("tools", draft.objectiveTools),
+    ...keyIfDefined("none", draft.unmeasured),
+  },
 });
 /** Wraps a `Draft` in a `draft_exam` tool call. */
 export const drafted = (draft: Draft) => call("draft_exam", draftArgs(draft));

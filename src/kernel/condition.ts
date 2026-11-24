@@ -144,7 +144,7 @@ export function settingId(setting: Setting): string {
  */
 export function recordCondition(log: string, condition: Condition): string {
   const id = conditionId(condition);
-  if (!read(log).some((event) => event.kind === RECORDED && event.data.id === id)) {
+  if (!read(log, (kind) => kind !== RECORDED).some((event) => event.data.id === id)) {
     append(log, RECORDED, { id, condition: requireJsonValue(condition) });
   }
   return id;
@@ -156,18 +156,22 @@ export function lastHost(events: readonly LogEvent[]): string | undefined {
   return isString(host) ? host : undefined;
 }
 
-/** Every condition the log records, by id. A record that does not hash to its id is refused: the id
- *  is what every solve names, and a record edited under it would describe solves it never ran. */
-export function conditionsOf(events: readonly LogEvent[]): Map<string, Condition> {
+/** Every condition the log records (or only those named in `ids`), by id. A record that does not
+ *  hash to its id is refused: the id is what every solve names, and a record edited under it would
+ *  describe solves it never ran. */
+export function conditionsOf(
+  events: readonly LogEvent[],
+  ids: ReadonlySet<string> | null = null,
+): Map<string, Condition> {
   const conditions = new Map<string, Condition>();
   for (const event of events) {
-    if (event.kind === RECORDED) {
-      // Only `recordCondition` writes the event, and the hash proves the record whole.
-      const condition = parseJsonAs<Condition>(asRecord(event.data.condition) ?? {});
-      const id = conditionId(condition);
-      if (id !== event.data.id) throw new Error(`${event.at}: a condition does not hash to its id`);
-      conditions.set(id, condition);
-    }
+    if (event.kind !== RECORDED) continue;
+    if (ids !== null && (!isString(event.data.id) || !ids.has(event.data.id))) continue;
+    // Only `recordCondition` writes the event, and the hash proves the record whole.
+    const condition = parseJsonAs<Condition>(asRecord(event.data.condition) ?? {});
+    const id = conditionId(condition);
+    if (id !== event.data.id) throw new Error(`${event.at}: a condition does not hash to its id`);
+    conditions.set(id, condition);
   }
   return conditions;
 }

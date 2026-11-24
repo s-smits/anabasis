@@ -27,9 +27,6 @@
  * tasks both harnesses exhausted, the outcome an Examiner hears, the size of the next comparison):
  * another solver, another deadline or model turn limit is another campaign.
  *
- * A record is written as a command begins its comparison and not before, so a command that is
- * refused records nothing (`keepSetting`).
- *
  * A campaign whose solves were made before a setting was recorded, as the oldest campaigns' were,
  * has a setting all the same: the one its last test-side solves ran under. The first command to
  * record one names that setting (`firstRecord`), and is refused otherwise, since a first command
@@ -46,10 +43,6 @@
  * keeps. The concurrency stays the sweep's: it is not what a harder task runs out of first, and it
  * is one more thing two comparisons could differ in. A rehearsal seats a script
  * where the solver sits and refuses `--solver`; its limits and its scored set are these.
- *
- * The shell's two timeouts are the sweep's as far as the deadline allows
- * (`commandSeconds`), since under a short deadline a command allowed 300 s by default and 900 s at
- * most could never be cut and handed back to the solver before the solve itself ended.
  */
 import { clampThinkingLevel, type ThinkingLevel } from "@earendil-works/pi-ai";
 import { THINKING_LEVELS } from "@earendil-works/pi-ai/providers/model-schema";

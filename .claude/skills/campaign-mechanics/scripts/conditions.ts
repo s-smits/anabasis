@@ -4,16 +4,6 @@
  *
  *   bun .claude/skills/campaign-mechanics/scripts/conditions.ts <log.jsonl | campaign name>
  *
- * Within a valid comparison, solves should differ only in the harness, its tool tree, and the
- * task. This script reads `condition.recorded` events via `conditionsOf` (verifying each content
- * hash), groups `solve.started` events by comparison or Examiner session, and reports:
- *
- * - distinct settings in order of first use, with solve counts and field-level changes from the
- *   preceding setting;
- * - per-comparison solve, harness, and setting counts, flagging any difference beyond harness,
- *   tools, and task;
- * - Examiner room solves grouped by session, plus practice and other solves without a session ID.
- *
  * Scalar fields (`model`, `effort`, `compaction`, `side`) are printed verbatim; changed keys in
  * `limits` and `runtime` are listed explicitly; remaining fields are represented by short digests.
  * A changed `host` digest indicates a host code change between conditions. Output omits tasks,

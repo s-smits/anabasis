@@ -4,64 +4,10 @@ import { withoutProse } from "../shared/masked.ts";
 import { statementBelow } from "../shared/statements.ts";
 
 /**
- * A `const` whose value is another name, or a part of one, and which is then used once:
- *
- *     const rows = bundle.rows;
- *     return rows.map(toCase);
- *
- *     return bundle.rows.map(toCase);
- *
- * A temporary earns its line in two ways: it holds work that would otherwise be repeated, or
- * its name says something the expression does not. A single use rules out the first, and an
- * initialiser that is only an identifier or a dotted path rules out the second: `rows` and
- * `bundle.rows` carry the same word.
- *
- * This is rung 5 of the simplify ladder read at its smallest: the line exists, and removing it
- * loses nothing. It is also the shape that grows: once a rename is in the file, the next edit
- * has a name to reach for and adds a second read of it, and then the temporary is load-bearing
- * for a reason that was never decided.
- *
- * A computed member, a call, an `await`, an object or anything with an operator in it all keep
- * their temporary, because each is either work or a decision. A binding with a type annotation
- * keeps it too: the annotation is a narrowing the expression does not carry.
- *
- * The single use has to be in the very next statement, and that is the rule's main defence. A
- * name read further down is often a snapshot rather than a rename (`const before = store.seq;`
- * three statements above the mutation it is measured against, or `const reader = activeReader;`
- * one statement above `activeReader = null`) and inlining either of those changes what the
- * code does. Adjacency is also where the reading cost actually is: two lines saying one thing.
- *
- * Uses are counted by name over the enclosing function's text, ignoring positions after a dot
- * and before a colon so a property with the same name does not read as a use. A spread is a
- * use: `[...hostScratchRoots]` was the second read of a binding this rule called single-use. That is a
- * heuristic, and a shadowed name inside a nested scope will read as a use and silence the
- * report, which is the safe direction for a catcher that a person reads.
- *
- * Two more exemptions, measured on 2026-09-20 over 13 sites.
- *
- * A name for a value the same scope then replaces is a moment, not a second name. `const original =
- * console.error` reads `console.error` once, in the `finally` that puts it back, and by then
- * `console.error` is the stub the test installed. The file assigning to that same path is what
- * separates the two, and it took three sites: the saved `globalThis.fetch`, `Bun.dns.lookup`
- * and `console.error` of three tests.
- *
- * It fixes what it reports: the value is an identifier or a dotted path, so it is atomic and
- * needs no parentheses wherever the name stood, and the name has exactly one read by
- * construction. The read is found in the statement below with its comments and quoted strings
- * blanked out, because a word matching the binding inside a string is not a read and editing it
- * would be the one kind of mistake nobody sees again.
- *
- * A narrowing does not cross into a closure, so a binding read inside a nested function below a
- * guard is carrying the guard. `const key = options.apiKey` under `if (options.apiKey !==
- * undefined)` is `string`; `options.apiKey` inside the `env` callback two lines down is
- * `string | undefined` again. Three sites, one of them (`start.credential` under a guard on
- * `start.credential.token`) narrowed a level deeper than the binding, which `narrowedIn`
- * admits on purpose: a missed narrowing is a finding a reader cannot act on.
- *
- * The report and the edit part at evaluation order. `const before = state.value;` then `return
- * state.value++ - before;` reads once in the next statement, and the edit would read after the
- * increment: 0 becomes -1. `return () => saved` turns a snapshot into a live lookup. Both are
- * still reported; the edit is left to the author.
+ * Flags a `const` without a type annotation whose initialiser is a bare identifier or dotted
+ * property path and whose only read in the enclosing function is in the immediately following
+ * statement (unless the path is later reassigned in the same scope or narrowed across a closure).
+ * Auto-fixes when evaluation order and closure capture are unaffected.
  */
 /** Each opening bracket against the closing one that would balance it. */
 const OPENS = new Map([

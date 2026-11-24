@@ -6,21 +6,7 @@
  * and `.err`, and the hours from its last event to the next launch.
  *
  *   bun tools/wri/wri.ts reader launches --log <log>
- *
- * For lanes 13, 18 and 22 where a run stopped after a promotion. A stop by hand writes no
- * `campaign.ended` and no `campaign.word`, only `killed` endings, so a session would otherwise
- * search transcripts and read the receipts and their output by hand to see how each launch ended.
- * This prints what the stretch holds and does not say who ended it.
- *
- * A stretch runs from the receipt's time to the next receipt's, so two launches a minute apart
- * each keep their own events; a launch writes its `campaign.opened` a few milliseconds before its
- * receipt, so an opening within a second before it is the launch's own. A session a stop left open
- * is closed `killed` by the launch after it, so its ending is counted in the next stretch. Events
- * before the first receipt are counted apart: a seed's, or a fork's parent's. It names no login,
- * path or env file, only whether the login changed, and it reads no line of the output files, only
- * counts them.
  */
-import { campaignOf, openSteps } from "#src/campaign/handover.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { type Solve, solvesIn } from "#src/kernel/solves.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
@@ -35,6 +21,8 @@ type Launch = Receipt & { readonly session: string };
 
 /** The session endings a stretch can hold, by the event that carries them. */
 const SESSION_ENDS = new Set(["build.finished", "exam.finished", "draft.finished"]);
+const STEP_STARTS: ReadonlySet<string> = new Set(["exam.started", "build.started"]);
+const STEP_ENDS: ReadonlySet<string> = new Set(["exam.finished", "build.finished"]);
 const KILLED = "killed";
 /** How long before its receipt a launch writes its `campaign.opened`: a few milliseconds. */
 const OPENED_MS = 1000;
@@ -66,12 +54,26 @@ function startOf(events: readonly LogEvent[], at: string, from: number): number 
   return opened ? start - 1 : start;
 }
 
-/** The steps open where `events` end: each session with no end that the campaign did not go past
- *  (`openSteps`), and each comparison with no report however the campaign stood, since a resumed
- *  one reads as gone past until it reports (`openComparisons`). */
+/** The steps open where `events` end: each session with no end that the campaign did not go past,
+ *  and each comparison with no report however the campaign stood, since a resumed one reads as gone
+ *  past until it reports (`openComparisons`). */
 export function openAt(events: readonly LogEvent[]): string[] {
-  const sessions = campaignOf(events).steps.filter(({ step }) => step !== "comparison");
-  return [...openSteps(sessions), ...openComparisons(events)];
+  const active = new Map<string, { id: string; at: number }>();
+  const unnamed: { id: string; at: number }[] = [];
+  for (const [at, { kind, data }] of events.entries()) {
+    if (kind === "campaign.ended") active.clear();
+    if (!isString(data.session)) continue;
+    const seat = kind.slice(0, 4);
+    if (STEP_STARTS.has(kind)) active.set(seat, { id: data.session, at });
+    const open = STEP_ENDS.has(kind) ? active.get(seat) : undefined;
+    if (open?.id !== data.session) continue;
+    active.delete(seat);
+    if (!isString(data.ended)) unnamed.push(open);
+  }
+  return [
+    ...[...active.values(), ...unnamed].toSorted((a, b) => a.at - b.at).map(({ id }) => id),
+    ...openComparisons(events),
+  ];
 }
 
 /** What one launch's stretch of the log, events `[from, to)`, holds. */
@@ -83,13 +85,12 @@ function stretchLines(
 ): string[] {
   const stretch = events.slice(from, to);
   const last = stretch.at(-1);
+  const named = (value: unknown) => (isString(value) ? value : "unnamed");
   const endings = stretch.flatMap(({ kind, data }) =>
-    kind === "campaign.ended" ? [isString(data.ending) ? data.ending : "unnamed"] : [],
+    kind === "campaign.ended" ? [named(data.ending)] : [],
   );
   const killed = stretch.flatMap(({ kind, data }) =>
-    SESSION_ENDS.has(kind) && data.ended === KILLED
-      ? [isString(data.session) ? data.session : "unnamed"]
-      : [],
+    SESSION_ENDS.has(kind) && data.ended === KILLED ? [named(data.session)] : [],
   );
   const solves = every.filter(({ started }) => started >= from && started < to);
   const solvesKilled = solves.filter(({ ending }) => ending?.kind === KILLED).length;

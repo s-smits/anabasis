@@ -3,12 +3,6 @@
  *
  *   bun .claude/skills/examiner-complexity/scripts/exams.ts <log or campaign folder>... > exams.csv
  *   bun .claude/skills/examiner-complexity/scripts/exams.ts --every <log or campaign folder>...
- *
- * By default, groups proposals by `(session, family)` in campaign order (or prints one row per
- * proposal under `--every`), reporting proposal count, held and refused counts, ceiling refusals
- * where every reference room solve was valid (`noroom`), zero-valid drafts (`none`), proved author
- * answers (`proved`), median JSON public-input length (`chars`), and the first draft's title.
- * Read-only and public-side: writes no events and reads no hidden values.
  */
 import { proposalsOf } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";

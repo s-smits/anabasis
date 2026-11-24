@@ -1,77 +1,52 @@
 /**
- * The solves a log holds: each attempt once, from its `solve.started` to its `solve.finished`, with
- * the condition it ran under and the verdict its answer was given.
- *
- * A solve is three records in the log. Its start names its condition by id alone, the condition
- * record says which task version, harness and side that was (`condition.ts`), and its ending and
- * its verdict name the solve. Every reader of a campaign joins them: a task's standing against a
- * harness, the pairs a comparison counts (`compare.ts`), a Builder's practice record,
- * the reviewers' packets, the pulse and the investigation's reader. Fourteen places that each made
- * the join for themselves had come to differ in small ways: one read a task's solves in the order
- * they started and another in the order they ended, which are not the same order when four run at
- * once.
- *
- * Here the join is made once. `solvesIn` is the solves as their own two events tell them and
- * resolves nothing, so a watcher can read a log whose conditions it has no use for; `ranUnder` adds
- * the condition; `ended` puts solves in the order they finished, which is the order every count of
- * "the latest so many" means; `verdictsOf` is the last verdict of each.
- * `rejectionAside` keeps unclear and unread rejections out of every practice failure reader,
- * under rule 8.
+ * Pure folds over a campaign log's solve attempts, conditions, verdicts, Referee rulings, and
+ * human settlement labels.
  */
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
+import { type FileManifest, manifestOf } from "./answer-files.ts";
 import { type Condition, conditionsOf, type Limits, limitsIn } from "./condition.ts";
 import type { LogEvent } from "./log.ts";
 import type { Verdict } from "./verify.ts";
-import { type FileManifest, manifestOf } from "./answer-files.ts";
 
-/** One solve attempt as its own events tell it. */
+/** One solve attempt from `solve.started` to `solve.finished` (null fields while still open). */
 export interface Solve {
   readonly id: string;
-  /** Where its start stands in the log, and its ending: null while the log holds none. */
   readonly started: number;
   readonly finished: number | null;
-  /** The condition its start names, by id; empty where it names none. */
   readonly condition: string;
-  /** How it ended, as `solve.ts` types an ending: its outcome, its kind and its reason. */
   readonly ending: JsonObject | null;
-  /** The two events' own fields: the task's id, the model and the limits at the start; the
-   *  seconds, the tokens, the dollars and the harness it opened at the end. */
   readonly start: JsonObject;
   readonly end: JsonObject | null;
 }
 
-/** A solve with the condition the log records for it. */
+/** A solve paired with the verified condition recorded for it. */
 export interface Ran extends Solve {
   readonly under: Condition;
 }
 
-/** A solve that has ended. */
 interface Ended {
   readonly finished: number;
   readonly end: JsonObject;
 }
 
-/** The verdict the log holds of a solve's answer. */
+type Stands = ReadonlyMap<string, string | null>;
+type Checked = Pick<Solve, "id" | "ending">;
+
+/** Last logged verdict for one solve's submitted answer. */
 export interface Judged {
   readonly solve: string;
-  /** The task by its id, which is how a verdict names its task; null where it names none. */
   readonly task: string | null;
-  /** The answer that was judged. */
   readonly answer: JsonValue | undefined;
   readonly files?: readonly FileManifest[];
-  /** The verdict's kind as logged: pass, fail, faulty or non-result. */
   readonly kind: string;
-  /** The host's refusal of the answer's format, when no check ran. */
   readonly fault: string | null;
-  /** The checker's own verdict, or null where no check gave one: an answer outside the contract's
-   *  format reached no check, and a non-result decided nothing. */
   readonly checker: Verdict | null;
 }
 
-/** Every solve a log holds, in the order they started. */
+/** Every solve attempt in log start order. */
 export function solvesIn(events: readonly LogEvent[]): Solve[] {
-  const solves = new Map<string, { -readonly [Key in keyof Solve]: Solve[Key] }>();
+  const solves = new Map<string, Solve>();
   for (const [index, { kind, data }] of events.entries()) {
     if (!isString(data.solve)) continue;
     if (kind === "solve.started") {
@@ -84,21 +59,17 @@ export function solvesIn(events: readonly LogEvent[]): Solve[] {
         start: data,
         end: null,
       });
-    }
-    const solve = kind === "solve.finished" ? solves.get(data.solve) : undefined;
-    if (solve !== undefined) {
-      solve.finished = index;
-      solve.ending = asRecord(data.ending);
-      solve.end = data;
+    } else if (kind === "solve.finished") {
+      const started = solves.get(data.solve);
+      if (started !== undefined) {
+        solves.set(data.solve, { ...started, finished: index, ending: asRecord(data.ending), end: data });
+      }
     }
   }
   return [...solves.values()];
 }
 
-/** The Examiner sessions a log holds, writing tasks or drafting the exam: a solve whose start
- *  names one was made at its asking, by a writing session to try an instance on the reference
- *  harness (`try_reference`), or, in an older log, by the gate (`try_task`) or a drafting session
- *  to try a draft task or a drafted exam's example. */
+/** Session ids of Examiner writing and drafting sessions (`exam.started`, `draft.started`). */
 export function examinerSessions(events: readonly LogEvent[]): Set<JsonValue | undefined> {
   return new Set(
     events.flatMap(({ kind, data }) =>
@@ -107,44 +78,31 @@ export function examinerSessions(events: readonly LogEvent[]): Set<JsonValue | u
   );
 }
 
-/** Every solve a log holds but those an Examiner session asked for (`examinerSessions`), whose
- *  starts name the session where a comparison's name the comparison. Those are the Examiner's:
- *  never scored, and no part of a task's record, its answers, a share or a tally. */
+/** Every solve except Examiner probes (`try_reference` / legacy `try_task`). */
 export function countedSolves(events: readonly LogEvent[]): Solve[] {
   const sessions = examinerSessions(events);
   return solvesIn(events).filter(({ start }) => !sessions.has(start.comparison));
 }
 
-/** The solves whose condition the log records, each with it, but the Examiner's (`countedSolves`).
- *  A condition that does not hash to its id is refused, as `conditionsOf` refuses it. A solve that
- *  opened another harness than its condition names ran under none: its runner stopped on it
- *  (`practised`), and what goes on from the log must not count it. */
-export function ranUnder(events: readonly LogEvent[]): Ran[] {
-  const conditions = conditionsOf(events);
-  return countedSolves(events).flatMap((solve) => {
+/** Counted solves paired with their verified condition, omitting any solve whose opened harness
+ *  disagreed with its condition. */
+export function ranUnder(events: readonly LogEvent[], solves = countedSolves(events)): Ran[] {
+  if (solves.length === 0) return [];
+  const conditions = conditionsOf(events, new Set(solves.map(({ condition }) => condition)));
+  return solves.flatMap((solve) => {
     const under = conditions.get(solve.condition);
     const opened = solve.end?.harness;
     return under === undefined || (isString(opened) && opened !== under.harness) ? [] : [{ ...solve, under }];
   });
 }
 
-/**
- * The practice solves of a log: the test-side solves that no comparison asked for. They are what a
- * Builder may be shown of a solve, by its record, its fails and its traces. A solve a comparison
- * made is the exam's, whatever becomes of its task: a held-out task that is scored and released
- * afterwards would otherwise bring its comparison's solves with it, and a Builder would read which
- * held-out task its harness had failed.
- */
+/** Practice solves: test-side counted solves that belong to no comparison (rule 3 boundary). */
 export function practiceRan(events: readonly LogEvent[]): Ran[] {
-  return ranUnder(events).filter(
-    ({ under, start }) => under.side === "test" && start.comparison === undefined,
-  );
+  const uncompared = countedSolves(events).filter(({ start }) => start.comparison === undefined);
+  return ranUnder(events, uncompared).filter(({ under }) => under.side === "test");
 }
 
-/** Who solved last on the test side of a log, and under what limits: the model, the effort and the
- *  limits of the condition its last test-side solve started under, or null before any. It is what a
- *  command about to solve as another solver, or under other limits, is set against
- *  (`tools/d2/setting.ts`). */
+/** Model, effort, and limits of the last test-side solve started in `events`, or null before any. */
 export function solverLast(
   events: readonly LogEvent[],
 ): { readonly model: string; readonly effort: string; readonly limits: Limits } | null {
@@ -159,42 +117,36 @@ export function solverLast(
   const started = events.findLast(
     ({ kind, data }) => kind === "solve.started" && isString(data.condition) && tested.has(data.condition),
   )?.data.condition;
-  const ran = tested.get(isString(started) ? started : "");
+  const ran = isString(started) ? tested.get(started) : undefined;
   const limits = limitsIn(ran?.limits);
   return ran !== undefined && isString(ran.model) && isString(ran.effort) && limits !== null
     ? { model: ran.model, effort: ran.effort, limits }
     : null;
 }
 
-/** The finished among `solves`, in the order they ended. */
+/** Finished solves from `solves`, ordered by `finished` event index. */
 export function ended<Each extends Solve>(solves: readonly Each[]): (Each & Ended)[] {
   return solves
-    .flatMap((solve) => {
-      const { finished, end } = solve;
-      return finished === null || end === null ? [] : [{ ...solve, finished, end }];
-    })
+    .flatMap((solve) =>
+      solve.finished === null || solve.end === null
+        ? []
+        : [{ ...solve, finished: solve.finished, end: solve.end }],
+    )
     .toSorted((a, b) => a.finished - b.finished);
 }
 
-/** Whether a solve passed: true for a pass, false for a fail of any kind and for a solver's flag
- *  that the task is malformed, which is the flagging side's own fail in every tally, and null for a
- *  non-result or a solve with no ending, which are no measurement. A flag counted nowhere would
- *  take a task its harness was losing out of the tally (rule 7's reason for a broken harness). */
+/** True for pass, false for fail or malformed flag, null for non-result or unfinished solve. */
 export function passed({ ending }: Pick<Solve, "ending">): boolean | null {
   if (ending?.outcome === "pass") return true;
   return ending?.outcome === "fail" || ending?.outcome === "flagged" ? false : null;
 }
 
-/** Whether an ending is an answer a check refused: the one ending the Referee rules, since only it
- *  has a check's refusal to recompute, and the one that sets its task aside until that ruling is
- *  earned (rule 8). A typed `Ending` and an ending as the log holds it are read alike. */
+/** True when `ending` is a check rejection (adjudicated by the Referee, rule 8). */
 export function rejected(ending: JsonObject | null | undefined): boolean {
   return ending?.outcome === "fail" && ending.kind === "rejected";
 }
 
-/** What the Referee's last finding of each solve it read ruled, by the solve: null where that reader
- *  gave no ruling, killed or failed before it ruled, which leaves the rejection unruled until it is
- *  put to the Referee again (`unruledOf`, `src/campaign/round.ts`). */
+/** Last Referee ruling per solve (null when the Referee session ended without ruling). */
 export function rulingsOf(events: readonly LogEvent[]): Map<string, string | null> {
   return new Map(
     events.flatMap(({ kind, data }) =>
@@ -205,8 +157,7 @@ export function rulingsOf(events: readonly LogEvent[]): Map<string, string | nul
   );
 }
 
-/** The provider's error on the Referee's last session of any of `solves` that recorded one, which a
- *  comparison's stop carries so that a limit it names is waited out like a solve's (`waitOut`). */
+/** Provider error from the last Referee finding touching any of `solves`, or null. */
 export function refereeErrorOf(events: readonly LogEvent[], solves: readonly string[]): string | null {
   const error = events.findLast(
     ({ kind, data }) =>
@@ -218,10 +169,12 @@ export function refereeErrorOf(events: readonly LogEvent[], solves: readonly str
   return isString(error) ? error : null;
 }
 
-/** A person's label of each rejected answer, by its solve, as its comparison's last report holds it
- *  once settled (`settleReading`, `src/campaign/round.ts`). Only a comparison's own rejections are
- *  labelled, so no practice solve carries one. */
-export function labelsIn(events: readonly LogEvent[]): Map<string, string> {
+/** Human labels per solve from each settled comparison's last `comparison.reported` event:
+ *  rejection labels (`"labels"`, default) or sampled pass labels (`"passes"`). */
+export function labelsIn(
+  events: readonly LogEvent[],
+  field: "labels" | "passes" = "labels",
+): Map<string, string> {
   const last = new Map(
     events.flatMap(({ kind, data }) =>
       kind === "comparison.reported" && isString(data.session) ? [[data.session, data] as const] : [],
@@ -229,48 +182,52 @@ export function labelsIn(events: readonly LogEvent[]): Map<string, string> {
   );
   return new Map(
     [...last.values()].flatMap((data) =>
-      Object.entries(asRecord(asRecord(data.settled)?.labels) ?? {}).flatMap(([solve, label]) =>
+      Object.entries(asRecord(asRecord(data.settled)?.[field]) ?? {}).flatMap(([solve, label]) =>
         isString(label) ? [[solve, label] as const] : [],
       ),
     ),
   );
 }
 
-/** What stands of each ruled or labelled rejection, by its solve: a person's label over the
- *  Referee's last ruling (rule 8). Every reader of a rejection's standing reads it here; the
- *  Referee's own ruling, which `agreement` sets against the labels, is `rulingsOf`'s. */
+/** Effective rejection standing per solve: human label overrides Referee ruling (rule 8). */
 export function standsOf(events: readonly LogEvent[]): Map<string, string | null> {
   return new Map([...rulingsOf(events), ...labelsIn(events)]);
 }
 
-/** A rejection is established only where what stands of it (`standsOf`) is earned; other endings
- *  need no ruling. */
-export function rejectionAside(events: readonly LogEvent[], solve: Pick<Solve, "id" | "ending">): boolean {
-  return rejected(solve.ending) && standsOf(events).get(solve.id) !== "earned";
+/** True when `solve` is a rejection not yet established as `earned` (`standsOf`). */
+export function rejectionAside(
+  events: readonly LogEvent[],
+  solve: Checked,
+  stands: Stands | null = null,
+): boolean {
+  return rejected(solve.ending) && (stands ?? standsOf(events)).get(solve.id) !== "earned";
 }
 
-/** The last verdict a log holds for each solve, by the solve. */
+/** Last `verdict` event recorded for each solve. */
 export function verdictsOf(events: readonly LogEvent[]): Map<string, Judged> {
   return new Map(
-    events.flatMap(({ kind, data }) => {
-      if (kind !== "verdict" || !isString(data.solve)) return [];
-      const judged: Judged = {
-        solve: data.solve,
-        task: isString(data.task) ? data.task : null,
-        answer: data.answer,
-        ...keyIfDefined("files", data.files === undefined ? undefined : manifestOf(data.files)),
-        kind: isString(data.kind) ? data.kind : "",
-        fault: isString(data.fault) ? data.fault : null,
-        checker: checkerVerdict(data),
-      };
-      return [[data.solve, judged] as const];
-    }),
+    events.flatMap(({ kind, data }) =>
+      kind !== "verdict" || !isString(data.solve)
+        ? []
+        : [
+            [
+              data.solve,
+              {
+                solve: data.solve,
+                task: isString(data.task) ? data.task : null,
+                answer: data.answer,
+                ...keyIfDefined("files", data.files === undefined ? undefined : manifestOf(data.files)),
+                kind: isString(data.kind) ? data.kind : "",
+                fault: isString(data.fault) ? data.fault : null,
+                checker: checkerVerdict(data),
+              },
+            ] as const,
+          ],
+    ),
   );
 }
 
-/** The checker's own verdict a `verdict` event holds, with its measure where one was taken, or
- *  null where no check gave one. The acceptance's regrading reads the same event through this
- *  (rule 12), so that no copy of it drops the measure. */
+/** Parse the checker's verdict and objective measure from a `verdict` event payload. */
 export function checkerVerdict(data: JsonObject): Verdict | null {
   if (data.kind === "pass") {
     return {

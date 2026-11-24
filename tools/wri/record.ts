@@ -4,13 +4,8 @@
  * written under a heading of its own in `<dir>/record.md`, so the vetting recounts against one file
  * instead of beginning with those reads. `wri.ts record --out <dir>` writes it, and an iteration's
  * `record` gate owes every read `recordOwed` still names (`wri2p2.ts`).
- *
- * Each read says under its heading when it ran, how many lane reports were written then, and its
- * exit code, so a later reading of the investigations counts whether the reads were made while the
- * lanes were out instead of inferring it from file times, which rarely shows them made in the
- * lanes' hours.
  */
-import { packOf } from "../runs/registry.ts";
+import { domainOf, packOf } from "../runs/registry.ts";
 import { WRI } from "./index.ts";
 
 /** One command's ending and what it printed. */
@@ -33,7 +28,9 @@ const READING = ".claude/skills/comparison-reading/scripts";
  */
 export function readsOf(names: readonly string[]): string[][] {
   const packs = [...new Set(names.map((name) => packOf(name)))];
+  const domains = [...new Set(names.map((name) => domainOf(name)))];
   return [
+    ...domains.map((domain) => [WRI, "backtrack", "--domain", domain]),
     ...packs.flatMap((pack) => [
       [`${TUNER}/trend.ts`, "--pack", pack],
       [`${TUNER}/table.ts`, "--name", pack, "--rows", "promotions"],

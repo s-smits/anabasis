@@ -5,12 +5,6 @@
  * launches that ran it (lane 22), and whether its log reads in order (lane 22 too). Lane 5's count
  * of the Referee's refused evidence sits here too, since `read.ts` stands near the size policy's
  * ceiling.
- *
- * Every pull request carries an area label (`references/lanes.md`, "Labels"), and a label with no
- * lane lets a prediction about the campaign command, a launch or the log be written and never read
- * back from a report. Every measured run opens
- * from a prompt and is led by a Builder's conversation (`AGENTS.md`, sections 4 and 10), and until
- * then no lane read either.
  */
 import { ANSWERED, PAUSE, pendingWords } from "#src/campaign/word.ts";
 import type { LogEvent } from "#src/kernel/log.ts";

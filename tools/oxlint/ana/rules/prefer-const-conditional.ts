@@ -4,73 +4,12 @@ import { holdsProse, withoutProse } from "../shared/masked.ts";
 import { everyStatementList, onlyStatement, plainAssignment } from "../shared/statements.ts";
 
 /**
- * A `let` declared with one value and immediately overwritten in one branch is a `const` and a
- * conditional expression:
- *
- *     let width = DEFAULT_WIDTH;
- *     if (options.width !== undefined) width = options.width;
- *
- *     const width = options.width ?? DEFAULT_WIDTH;
- *
- * Two things are wrong with the first spelling, and neither is style. The binding is mutable
- * for the rest of the function, so a reader arriving at the tenth line below cannot tell from
- * the declaration whether it still holds what it was given; and the decision is spread over two
- * statements, so a third branch can be added later without anyone noticing that the name now
- * means three things.
- *
- * Recorded simplify passes made this cut twice, and `no-useless-assignment` (on, five sites)
- * catches the neighbouring case where the first value is never read at all.
- * This one is the case where it *is* read: the initialiser is the default.
- *
- * The second spelling is the same decision with no default to start from:
- *
- *     let profile: string;
- *     if (support.platform === "linux") profile = LINUX_PROFILE;
- *     else profile = seatbeltProfile(reads, writes);
- *
- *     const profile = support.platform === "linux" ? LINUX_PROFILE : seatbeltProfile(reads, writes);
- *
- * This one was left to `ana/no-arms-differing-in-one-term` when the rule was written, and that
- * was wrong: it reads two arms that differ in *one term*, and two arms that share nothing are
- * exactly the case it passes over. `unicorn/prefer-ternary` found the gap in one site on
- * 2026-09-20 and was refused for the other three it found, where both arms are `await` statements
- * and the ternary reads worse. The shape with an owner is the declaration, so it went here.
- *
- * The shape is read strictly. The `if` must be the statement immediately after the declaration,
- * and its whole body must be one assignment to that same name with `=`. A declaration with a
- * default needs one arm and no `else`, because the `if` supplies the other; one with no value
- * needs both arms, since a single `if` would leave the name undefined on the other path and that
- * is a different program. A declaration with a default *and* an `else` is a dead initialiser,
- * which `no-useless-assignment` already owns. A declaration of two bindings is skipped, because
- * moving one of them changes where the other is declared, and a compound assignment is an
- * accumulation, not a decision.
- *
- * Two more exemptions came from the rule's own census (2026-09-20), where two of its three sites
- * were not this shape. A name a later statement assigns again is a cascade, not a decision:
- * `harness-trial.ts` opens `status` on the accepted submit and then overrides it four times, and
- * one `const` holding those five cases is a worse sentence than the five lines. And an assignment
- * that reads the name it is assigning is a refinement of the value, not a choice between two:
- * `review-sources.ts` takes a slice and then drops a trailing lone surrogate from it, which as one
- * expression needs the slice twice or a second name.
- *
- * It fixes the two-arm shape and reports the other. With a default, `c ? b : a` and `a ?? b`
- * are different programs when the default is falsy, and which one the site wants is not
- * readable from the assignment. With both arms written out there is nothing to choose: the
- * condition and both values are already on the page, so the rewrite is the same program with
- * one statement instead of three. The annotation travels with it, because dropping `let
- * handler: (a: string) => void` would leave the arms' parameters contextually untyped, and the
- * fix edits the two statements separately rather than replacing the span between them, so a
- * comment written on the declaration's line or between the two survives the rewrite.
+ * Flags a `let` declaration immediately followed by an `if` (or `if`/`else` when declared without
+ * an initialiser) whose body is a single `=` assignment to that same binding, provided no later
+ * statement reassigns it and the assignment does not read the binding itself. Auto-fixes the
+ * two-arm (`if`/`else`) form into a `const` ternary and reports the single-arm default form.
  */
-/**
- * Expressions binding looser than a conditional, whose text needs parentheses as a test.
- *
- * This is the whole grammar, not a sample: a conditional's test accepts a short-circuit
- * expression, so the five forms that bind looser are assignment, arrow, yield, sequence and a
- * conditional itself. The last one is the one that bites, because `?:` is right-associative:
- * `a ? b : c` dropped unparenthesised into the test of `? p : q` reads as `a ? b : (c ? p : q)`,
- * which is a different program that still compiles.
- */
+/** Expressions binding looser than a conditional, whose text needs parentheses as a test. */
 const LOOSER_THAN_CONDITIONAL = new Set([
   "ArrowFunctionExpression",
   "AssignmentExpression",
@@ -116,10 +55,6 @@ export const preferConstConditionalRule = defineRule({
 
     /**
      * The right-hand sides the `if` decides `name` with, or null when it decides something else.
-     *
-     * The arm count is what the declaration asks for: a default needs one and refuses an `else`,
-     * no value needs both. An `else if` returns null here, because `onlyStatement` hands back the
-     * nested `if` and that assigns nothing.
      */
     function decidedValues(
       next: ESTree.IfStatement,

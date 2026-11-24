@@ -7,12 +7,6 @@
  * rule 11), so a harness's own figures for turns, minutes or command seconds change nothing.
  * `presets` names pi's coding tools, any of `read`, `bash`, `edit` and `write`
  * (`src/tools/coding.ts`).
- *
- * The host reads the guide and the spec and builds or runs nothing from a harness's files: what a
- * harness computes is a program under `.toolchain/bin`, which the solver starts in its shell. An
- * older harness may also hold `agent/tools.ts`, a module of tools of its own that the host once
- * bundled; few harnesses ever declared a tool, and an export dropped them. Nobody reads the file
- * now, and a harness that declares a tool is refused by the names it declares.
  */
 import { AGENT_DIR, BYTECODE, GUIDE_FILE, TOOLS_SPEC_FILE, TOOL_TREE_DIR } from "../meta/bundle-layout.ts";
 import { sha256OfFile } from "../meta/digest.ts";

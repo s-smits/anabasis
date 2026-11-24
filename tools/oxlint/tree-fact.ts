@@ -2,25 +2,6 @@
  * One fact about a value (a field tested against a literal, read together with another field of
  * the same value) written out as an expression in three or more production files, where no
  * function owns it.
- *
- * Recorded case: "what the checker measured of a valid answer", `checker?.kind === "pass" ?
- * checker.objective ?? null : null` and its variants, stood in src/kernel/compare.ts,
- * src/builder/tools.ts (twice) and tools/wri/gate-era.ts until it was given one owner, now
- * `objectiveOf` in src/kernel/verify.ts, beside the type. `tree/no-duplicate-block` missed it: each copy was one
- * expression, not consecutive statements, and the spellings differed.
- *
- * A unit is an outermost condition or derivation: a `?:`, `&&`, `||` or `??` expression whose
- * parent is not one, and nothing inside a nested function. Within it each member chain is read off
- * its root (a name, a call, `this`), with `?.`, `!`, `as` and parentheses dropped, and the chains
- * of one root are re-rooted at the longest path they share, so `verdict?.checker?.kind` read beside
- * `verdict.checker.objective` and a local `checker.kind` beside `checker.objective` read alike. A
- * chain compared with a literal is a test (`kind = "pass"`, either equality); a comparison with
- * `undefined` or `null` is only a read, so `x.objective !== undefined` and `x.objective ?? null`
- * spell one fact. A root's fact is its set of tests and reads, and it counts only where it holds a
- * test and a read of another field: two fields of one value, one of them a discriminant.
- *
- * Precision over recall, as a heuristic reports and never blocks (the operator's choice). Tests,
- * vendored and generated files are not read, and only src/ and tools/ count as production.
  */
 import * as ts from "typescript5";
 import { OPTED_OUT } from "./tree-copied-block.ts";
@@ -123,14 +104,13 @@ function testOf(chain: ts.Expression): string | null | undefined {
 /** A root's reads re-rooted at the path they all share, each chain once at its longest, as one
  *  fact; null where the root holds no test beside a read of another field. */
 function factOf(reads: readonly Read[]): string | null {
-  const joined = (read: Read): string => read.path.join(".");
-  const kept = reads.filter(
+  const withText = reads.map((read) => ({ ...read, text: read.path.join(".") }));
+  const kept = withText.filter(
     (read) =>
       read.test !== null ||
-      !reads.some(
+      !withText.some(
         (other) =>
-          joined(other).startsWith(`${joined(read)}.`) ||
-          (other.test !== null && joined(other) === joined(read)),
+          other.text.startsWith(`${read.text}.`) || (other.test !== null && other.text === read.text),
       ),
   );
   // How many leading fields every chain shares, leaving each at least its last.
@@ -200,13 +180,11 @@ function unitsOf(path: string, file: ts.SourceFile, into: Map<string, Site[]>): 
 
 /** One row per fact standing in three or more production files, at its first place, naming the
  *  others and the function that already returns it, where one does. */
-export function factsWithoutOwner(files: ReadonlyMap<string, string>): TreeFinding[] {
+export function factsWithoutOwner(parsed: ReadonlyMap<string, ts.SourceFile>): TreeFinding[] {
   const groups = new Map<string, Site[]>();
-  for (const [path, text] of [...files].toSorted(([a], [b]) => (a < b ? -1 : 1))) {
-    if (!PRODUCTION.test(path) || SKIPPED_PATH.test(path) || /\.d\.m?ts$/u.test(path)) continue;
-    const kind = path.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-    const file = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, kind);
-    if (!OPTED_OUT.test(text.slice(0, file.statements[0]?.getStart(file)))) unitsOf(path, file, groups);
+  for (const [path, file] of [...parsed].toSorted(([a], [b]) => (a < b ? -1 : 1))) {
+    if (!PRODUCTION.test(path) || SKIPPED_PATH.test(path)) continue;
+    if (!OPTED_OUT.test(file.text.slice(0, file.statements[0]?.getStart(file)))) unitsOf(path, file, groups);
   }
   return [...groups].flatMap(([fact, sites]): TreeFinding[] => {
     const [first, ...others] = sites;
@@ -215,7 +193,8 @@ export function factsWithoutOwner(files: ReadonlyMap<string, string>): TreeFindi
     const named = others.slice(0, NAMED_PLACES).map((site) => `${site.path}:${site.line}`);
     const rest = others.length > NAMED_PLACES ? ` and ${others.length - NAMED_PLACES} more` : "";
     const owner = sites.find((site) => site.owner !== null);
-    const owned = owner === undefined ? "" : `; \`${owner.owner ?? ""}\` in ${owner.path} already returns it`;
+    const owned =
+      owner === undefined ? "" : `; \`${String(owner.owner)}\` in ${owner.path} already returns it`;
     const detail = `\`${fact}\` of one value, in ${count} files; also ${named.join(", ")}${rest}${owned}`;
     const places = sites.map(({ path, line, end }) => ({ path, line, end }));
     return [{ kind: "no-unowned-fact", path: first.path, line: first.line, detail, places }];

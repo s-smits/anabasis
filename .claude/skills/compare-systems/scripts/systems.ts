@@ -18,15 +18,6 @@
  * wall. Its log is read back by the log's own folds (`ranUnder`, `verdictsOf`, `billedAll`). Two
  * systems are scored as a comparison scores its pairs (`scored`, `readsStep`, `detectable`,
  * `carriedBy`, `src/kernel/compare.ts`).
- *
- * Both of a comparison's judges rule every solve: the campaign's checks, and the Referee `--reviewer`
- * names on every rejection, which counts as a fail only once ruled earned and otherwise sets its task
- * aside for every system (`rejectionAside`), as a comparison's does. At two solves or more, an even
- * count, the baseline is read against itself on halves of its solves mirrored in time, the comparison's A/A,
- * so a reading has its own noise beside it. A table sets the systems side by side on averages a solve
- * (cost, wall time, slowest solve, model turns), since the operator asked for time
- * beside cost: a built system that costs a fifteenth can still take twice as long. The trial logs hold hidden values, so they stay under
- * `.ana/compare/`, behind the wall and outside `.ana/d2/`, where `runs retire` sweeps idle seeds.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import {

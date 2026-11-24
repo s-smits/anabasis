@@ -1,24 +1,8 @@
 /**
- * What the comparisons on record say about a campaign: which harness is the reference, how each
- * comparison read, where each held-out task stands and what its author may hear of it (`poolOf`),
- * and which tasks a practice release takes first (`releaseOrder`).
- *
- * A comparison ends in a `comparison.reported` event under its id (a round's session id, or a
- * standalone comparison's own). A person's settling writes the same id's report again, so a
- * comparison is read from its last report but keeps the place of its first: a settling made weeks
- * later does not move a comparison behind the ones run since. A comparison's solves are the ones
- * whose start names it (`compare.ts`).
- *
- * The reference harness is the one comparisons are made against: the Starter Built Harness until
- * the operator promotes another, then the one last promoted (`promoted`). The Builder carries on
- * from the harness its last session left (`latestBuilt`), whether or not that session's comparison
- * read a step.
- *
- * Pass labels a person settled as wrong count as fails everywhere here (`history.ts`), so a wrong
- * pass is neither a valid answer on record nor a win in a reported pair. The patience a campaign
- * keeps is `patienceOf`'s; the stop rule that counts against it is admission's (`stopRule`).
- *
- * Nothing here decides a comparison or makes a solve.
+ * Campaign comparison folds (`src/kernel/reports.ts`): derives the current reference harness
+ * (`referenceOf`), each comparison's latest report at its first-reported index (`lastReports`),
+ * paired task readings (`pairsReported`), held-out task pool partitions (`poolOf`), and practice
+ * release order (`releaseOrder`). Passes settled as wrong (`history.ts`) count as failures everywhere.
  */
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import {
@@ -33,12 +17,11 @@ import {
   gapAgainst,
 } from "./compare.ts";
 import { failWrongPasses, wrongPasses, wrongPassesIn } from "./history.ts";
-import type { LogEvent } from "./log.ts";
+import { isReferenceChange, type LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
 import { passed, ranUnder, rejected, standsOf } from "./solves.ts";
 import { READINGS_IN_A_ROW, howOftenValid } from "./size.ts";
 import { taskSets } from "./task.ts";
-import { tracesIn } from "./trace.ts";
 
 /** A comparison's last report, placed in the log where its first report stands. */
 export interface Reported {
@@ -143,7 +126,6 @@ export const AT_A_LIMIT: ReadonlySet<unknown> = new Set(["wall-ended", "turns-en
  *  the host crashed it, or a stop killed it. */
 export const INTERRUPTED: ReadonlySet<unknown> = new Set(["killed", "crashed"]);
 const REPORTED = "comparison.reported";
-const PROMOTED = "harness.promoted";
 const STARTED = "comparison.started";
 const BUILD_FINISHED = "build.finished";
 /** Whether a cap can hold anything: both its dollars and its reserve are positive numbers. A value
@@ -171,13 +153,11 @@ export function lastReports(events: readonly LogEvent[], read: "all" | "current"
 
 /** Each non-ladder comparison session started in `events`, in the order it first began. */
 export function startedComparisons(events: readonly LogEvent[]): string[] {
-  return [
-    ...new Set(
-      events.flatMap(({ kind, data }) =>
-        kind === "comparison.started" && data.ladder !== true && isString(data.session) ? [data.session] : [],
-      ),
-    ),
-  ];
+  const seen = new Set<string>();
+  for (const { kind, data } of events) {
+    if (kind === STARTED && data.ladder !== true && isString(data.session)) seen.add(data.session);
+  }
+  return [...seen];
 }
 
 /**
@@ -194,23 +174,23 @@ export function latestBuilt(events: readonly LogEvent[]): string | null {
       kind === BUILD_FINISHED && data.changed === false && !INTERRUPTED.has(data.ended) ? [data.session] : [],
     ),
   );
-  const made = new Set(events.flatMap(({ kind, data }) => (kind === PROMOTED ? [data.harness] : [])));
+  const made = new Set(events.flatMap(({ kind, data }) => (isReferenceChange(kind) ? [data.harness] : [])));
   const left = events.findLast(
     ({ kind, data }) =>
       ((kind === "build.checkpoint" && (!undone.has(data.session) || made.has(data.harness))) ||
-        (kind === BUILD_FINISHED && data.changed === true && !INTERRUPTED.has(data.ended))) &&
+        (kind === BUILD_FINISHED && data.changed === true && !INTERRUPTED.has(data.ended)) ||
+        kind === "harness.reverted") &&
       isString(data.harness),
   )?.data.harness;
   return isString(left) ? left : null;
 }
 
 /**
- * The digest of the harness the operator last promoted, or null while none has been, in which case
- * the reference is the starter. A promotion is an event the operator authorised
- * (`tools/d2/promote.ts`); one that names the starter returns the campaign to it.
+ * The digest of the harness the operator last promoted (or the host reverted to), or null while
+ * none has been installed, in which case the reference is the starter.
  */
 export function promoted(events: readonly LogEvent[]): string | null {
-  const harness = events.findLast(({ kind }) => kind === PROMOTED)?.data.harness;
+  const harness = events.findLast(({ kind }) => isReferenceChange(kind))?.data.harness;
   return isString(harness) ? harness : null;
 }
 
@@ -226,9 +206,10 @@ export const endingOf = (events: readonly LogEvent[]): string | null => endedOf(
 /** The campaign's reference: the last promoted harness, else its recorded starter, else the old
  *  side of the first report where an older log names no starter. */
 export function referenceOf(events: readonly LogEvent[]): string | null {
+  const current = promoted(events);
+  if (current !== null) return current;
   const reports = lastReports(events);
-  const harness =
-    promoted(events) ?? reports.map(({ data }) => data.starter).find(isString) ?? reports[0]?.data.old;
+  const harness = reports.map(({ data }) => data.starter).find(isString) ?? reports[0]?.data.old;
   return isString(harness) ? harness : null;
 }
 
@@ -274,13 +255,6 @@ export function patienceOf(events: readonly LogEvent[]): number {
  * task it was, under the report's own harnesses and setting, with each side cut to the solves it
  * asked for. Empty for a report that compared nothing. Passes a person settled as wrong count as
  * that side's fails.
- *
- * With `sides` set to "old" or "fresh", that side's harness is read against itself instead (an
- * A/A control): its solves of each task are split into two halves mirrored in time, and "old" is
- * the reference's A/A (`noise`, `comparison.ts`). Empty where a side's solves do not split evenly.
- * A report of two solves a side written before the mirror ran across tasks (`pairsOf`) recorded an
- * older split, so this can differ from that report's own `noise`, which stays as written. An older
- * `--noise` log holds only the reference's A/A, on its first mirrored half.
  */
 export function pairsReported(
   events: readonly LogEvent[],
@@ -355,43 +329,36 @@ export function taskRecords(events: readonly LogEvent[]) {
     records.set(version, made);
     return made;
   };
+  /** Each solve's last recorded turn payload, by the solve's id. */
+  const lastTurn = new Map<string, JsonObject>();
+  // Every harness that has been the reference: a former reference's valid answer still counts as a
+  // reference's after a promotion, so a task it answered never goes to a person as possibly
+  // infeasible.
+  const references = new Set<unknown>([referenceOf(events)]);
   for (const [index, { kind, data }] of events.entries()) {
+    if (kind === "solve.turn" && isString(data.solve)) {
+      lastTurn.set(data.solve, data);
+      continue;
+    }
+    if (isReferenceChange(kind)) {
+      references.add(data.harness);
+      references.add(data.from);
+      continue;
+    }
     if (!isString(data.version)) continue;
     if (kind === "task.state" && data.state === "held") recordOf(data.version).keptAt = index;
     const referenceValidAtGate = kind === "task.gate" ? asRecord(data.reference)?.valid : undefined;
     if (kind === "task.feasible" || (isNumber(referenceValidAtGate) && referenceValidAtGate > 0)) {
       recordOf(data.version).validAnswer = "independent";
     }
+    if (kind !== "task.feasible") continue;
     const { measure, direction } = asRecord(data.objective) ?? {};
-    if (kind !== "task.feasible" || !isNumber(measure)) continue;
+    if (!isNumber(measure)) continue;
     const record = recordOf(data.version);
     record.best = (direction === "lower" ? Math.min : Math.max)(measure, record.best ?? measure);
   }
-  /**
-   * The solves a limit cut short, keyed by comparison, task and harness (`solveKey`): what such a
-   * solve would have answered is unknown (rule 7). A deadline runs on the host's clock, which load
-   * moves, and a full context is no number the solver is told, so neither says anything about the
-   * task. A solve that used every model turn its condition names is the opposite case: the solver
-   * is told the turns left on every tool result, so using them all without an answer is the
-   * budget's verdict, as a wrong answer is. Counting those as cuts once kept unanswerable tasks in
-   * the draw for good, scored again and again as a tie of two fails. A turn budget ended by the
-   * provider window or a provider failure on the last turn (older logs record those as
-   * `turns-ended` too) still counts as a cut.
-   */
+  /** Solves cut short by a wall-clock or context-window limit (`solveKey`; full model-turn budgets are not cuts unless the last turn hit a window or provider error). */
   const cut = new Set<string>();
-  /** Each solve's last recorded turn, by the solve's id. */
-  const lastTurn = new Map(
-    tracesIn(events).flatMap((trace) =>
-      trace.seat === "solve" && trace.part === "turn" ? [[trace.id, trace]] : [],
-    ),
-  );
-  // Every harness that has been the reference: a former reference's valid answer still counts as a
-  // reference's after a promotion, so a task it answered never goes to a person as possibly
-  // infeasible.
-  const references = new Set([
-    referenceOf(events),
-    ...events.flatMap(({ kind, data }) => (kind === PROMOTED ? [data.harness, data.from] : [])),
-  ]);
   const wrong = wrongPassesIn(events);
   /** Each comparison's rejected solves, keyed as `solveKey` keys them. */
   const rejectedIn = new Map<string, string[]>();
@@ -399,22 +366,22 @@ export function taskRecords(events: readonly LogEvent[]) {
     const { task, limits, harness } = solve.under;
     const { comparison } = solve.start;
     const kind = solve.ending?.kind;
-    const turn = lastTurn.get(solve.id);
-    const last = { stopReason: turn?.stopReason, errorMessage: turn?.error };
-    const interrupted = windowEnded(last) || providerFailed(last);
-    const ranOutOfTurns = kind === "turns-ended" && isNumber(limits.modelTurns) && !interrupted;
     if (passed(solve) === true && !wrong.has(solve.id)) {
       const record = recordOf(task);
       record.validAnswer =
         references.has(harness) || record.validAnswer === "independent" ? "independent" : "known";
     }
-    if (isString(comparison) && AT_A_LIMIT.has(kind) && !ranOutOfTurns) {
-      cut.add(solveKey(comparison, task, harness));
-    }
-    if (isString(comparison) && rejected(solve.ending)) {
-      const key = solveKey(comparison, task, harness);
-      rejectedIn.set(key, [...(rejectedIn.get(key) ?? []), solve.id]);
-    }
+    if (!isString(comparison)) continue;
+    const turn = lastTurn.get(solve.id);
+    const last = {
+      stopReason: isString(turn?.stopReason) ? turn.stopReason : null,
+      errorMessage: isString(turn?.error) ? turn.error : null,
+    };
+    const ranOutOfTurns =
+      kind === "turns-ended" && isNumber(limits.modelTurns) && !(windowEnded(last) || providerFailed(last));
+    const key = solveKey(comparison, task, harness);
+    if (AT_A_LIMIT.has(kind) && !ranOutOfTurns) cut.add(key);
+    if (rejected(solve.ending)) rejectedIn.set(key, [...(rejectedIn.get(key) ?? []), solve.id]);
   }
   addReportReadings(events, recordOf, { cut, rejectedIn });
   return { records: [...records.values()], held: heldOut };
@@ -471,74 +438,16 @@ function addReportReadings(
 }
 
 /**
- * Where each held-out task stands, and what its author may hear of each task a comparison read.
- * Every reader of a task's state reads it here, from one pass over the log.
- *
- * **Scorable** tasks are the held-out ones not taken out for review or doubt, in the order they
- * were held out. They split into **retained** and **frontier**: the step reads both, the supply
- * counts only the frontier (`supplyOf`, `admission.ts`).
- *
- * **Awaiting** tasks go to a person as possibly infeasible. No independent valid answer is on
- * record (the author's proof, the gate's, or a reference's solve), and the reference failed them
- * in two comparisons (counted from the last time a person kept the task). Such a task ties
- * whatever the harnesses are and costs solves at every comparison. It may be hard, wrongly
- * checked, or impossible, and only a person can tell the last apart, so it leaves the scored set
- * until it is labelled
- * (`tools/d2/prepare.ts`). Two guards keep a short budget from sending an answerable task there:
- * an independent valid answer (`TaskRecord.validAnswer`) settles the question for good, and a
- * comparison where a limit cut the reference's own solve short is not counted. A solve that used
- * every model turn was not cut, and its comparison counts. A label that keeps the task holds it
- * again and restarts the count; a label that calls it infeasible refuses it. Only the reference's
- * side is read: a candidate's pass is no independent answer and a candidate's cut solve passes no
- * comparison over, since the frontier sets the size the Builder is told and must not move with how
- * another harness did on a held-out task (rule 3). The practice allowance leaves these tasks out too.
- *
- * **Doubted** tasks leave the scored set and the practice allowance too: the last comparison that
- * read the task set it aside, and a rejection of the reference's own solve there stands unearned
- * (ruled a check defect, unclear or not ruled) with no person's label calling it earned. Drawn
- * again, such tasks were set aside again and their solves and rulings paid for nothing. A settling
- * that labels the rejection earned returns the task, as does a person keeping it afterwards. Only
- * the reference's own rejections count: a candidate's moves nothing the Builder is told (rule 3).
- * Only the log page reads the list.
- *
- * **Exhausted** tasks are the ones the reference has been read easy on: its newest
- * `READINGS_IN_A_ROW.easy` readings of the task were each valid in every one of its own solves,
- * with no room by the objective (`gapAgainst`: its own measures and its author's, never the other
- * harness's). A reading counts only where no limit cut the reference's own solve short. Only the
- * reference's solves count because the frontier sets the size the Builder is told, which must not
- * move with which task the other harness failed (rule 3). The rule uses every, some and none rather
- * than a ratio, so it reads the same at any number of solves, and it is re-derived against
- * whichever harness is the reference now, so a promotion resets it at once.
- *
- * **Retained** tasks are the exhausted ones plus every task held out before the last promotion:
- * those were written for the harness it replaced, and the comparison that chose the new reference
- * read them, so drawing them again as frontier would let its starter comparison confirm it on its
- * own draw. Retained tasks stay scorable, so a harness that breaks what the reference answers
- * still shows its losses; reported apart they show a regression. **Frontier** is the rest.
- *
- * Scorable tasks include a family's siblings; families are reported beside the test
- * (`compared`'s `families`) and decide nothing.
- *
- * **Feasible** tasks are the versions with any valid answer on record, under any harness and at
- * any limits. It is the one fact an author may hear beside an outcome that names no side: it tells
- * a task the reference never answers apart from one nobody has answered. **Bests** are the best
- * objective value of an author's answer on record for each task that carries one, so a task the
- * reference answers alike every time can still leave room (`informative`, `compare.ts`).
- *
- * **Outcomes** give each task some comparison scored or set aside, by version, how the reference
- * did in the last such comparison: valid in every counted solve, in some, or in none. An author
- * may hear this because without it they would hear nothing, and
- * v1 found that authors write towards a difficulty zone. Only the reference's side is read: which
- * other harness was compared and what it answered are not the author's to hear. The outcome comes
- * from the last report whatever setting id it carries, since a campaign runs at one setting and the
- * id also names the host's code, which moves with the tree's commit. The reference's side is the
- * one `TaskReading.reference` names; a comparison between two other harnesses (a standalone one, or
- * one made before a third was promoted) gives `earlier-reference`.
- *
- * **Standings** give, by version, who won each task the last time it was compared with the
- * reference on one side, and on which measure (`Standing`). They come from the same reading as the
- * outcome (`lastReading`), so the two always agree; a task last compared between two other harnesses,
- * or last set aside, has none.
+ * Partition held-out tasks and derive Examiner feedback from a single pass over the log:
+ * - `scorable`: held-out tasks not excluded by `awaiting` or `doubted`, split into `retained`
+ *   (`exhausted` tasks plus tasks held out before the latest promotion) and `frontier` (the rest).
+ * - `awaiting`: held-out tasks lacking any `independent` valid answer that the reference failed in
+ *   `READINGS_IN_A_ROW.unsolved` comparisons (excluding reference-cut solves) since last kept.
+ * - `doubted`: held-out tasks whose latest report set them aside with an unearned reference rejection.
+ * - `exhausted`: scorable tasks where the reference's newest `READINGS_IN_A_ROW.easy` uncapped
+ *   readings were valid on every solve with no objective headroom (`gapAgainst`).
+ * - `practiceFrontier` / `practicePool`: current-epoch held-out candidates for practice release.
+ * - `feasible`, `bests`, `outcomes`, `standings`: reference-only task facts exposed to the Examiner (rule 3).
  */
 export function poolOf(events: readonly LogEvent[]) {
   const { records, held } = taskRecords(events);
@@ -565,25 +474,28 @@ export function poolOf(events: readonly LogEvent[]) {
   const leftOut = new Set([...awaiting, ...doubted]);
   const heldBeforePromotion = new Set(beforePromotion(events).held);
   const exhausted = easy.filter((task) => !leftOut.has(task));
-  const inherited = held.filter((task) => heldBeforePromotion.has(task) && !leftOut.has(task));
-  const retained = [...new Set([...exhausted, ...inherited])];
+  const retained = new Set([
+    ...exhausted,
+    ...held.filter((task) => heldBeforePromotion.has(task) && !leftOut.has(task)),
+  ]);
+  const doubtedSet = new Set(doubted);
   const scorable = held.filter((task) => !leftOut.has(task));
-  const practiceOut = new Set([...easy, ...doubted, ...awaiting]);
+  const practiceOut = new Set([...easy, ...leftOut]);
   const firstSeen = ({ tallied, asideOrder }: TaskRecord) =>
     Math.min(tallied[0]?.order ?? asideOrder, asideOrder);
   return {
     scorable,
-    frontier: scorable.filter((task) => !retained.includes(task)),
+    frontier: scorable.filter((task) => !retained.has(task)),
     practiceFrontier: held.filter((task) => !heldBeforePromotion.has(task) && !practiceOut.has(task)),
     // What a practice release draws from: current-epoch held tasks not in doubt. Tasks held
     // before the latest promotion stay held for regression scoring rather than filling post-promotion
     // practice. Doubt is read from the reference's own solves alone, so which task another harness
     // won moves nothing here (rule 3).
-    practicePool: held.filter((task) => !heldBeforePromotion.has(task) && !doubted.includes(task)),
+    practicePool: held.filter((task) => !heldBeforePromotion.has(task) && !doubtedSet.has(task)),
     awaiting,
     doubted,
     exhausted,
-    retained,
+    retained: [...retained],
     feasible: new Set(
       records.flatMap(({ version, validAnswer }) => (validAnswer === "none" ? [] : [version])),
     ),
@@ -624,35 +536,36 @@ function standingOf(record: TaskRecord): [string, Standing][] {
   return [[record.version, { won: won === null ? null : won === reference ? "reference" : "other", by }]];
 }
 
-/** Task sets held and released just before the latest promotion, or empty before any promotion. */
+/** Log index of the non-revert `harness.promoted` that installed the active reference, or -1 if starter. */
+export function activePromotionAt(events: readonly LogEvent[]): number {
+  const installed = new Map<string, number>();
+  let current = -1;
+  for (const [index, { kind, data }] of events.entries()) {
+    if (!isReferenceChange(kind) || !isString(data.harness)) continue;
+    if (kind === "harness.reverted") {
+      current = installed.get(data.harness) ?? -1;
+    } else {
+      installed.set(data.harness, index);
+      current = index;
+    }
+  }
+  return current;
+}
+
+/** Task sets held and released just before the latest active promotion, or empty before any promotion. */
 function beforePromotion(events: readonly LogEvent[]) {
-  const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
+  const promotedAt = activePromotionAt(events);
   return taskSets(events.slice(0, Math.max(0, promotedAt)));
 }
 
 /**
- * The `count` tasks of `pool` a practice release takes, each with the reason, in the order taken.
- *
- * First come the tasks the reference never answered: current-epoch held-out tasks it gave no valid
- * answer in `READINGS_IN_A_ROW.unsolved` or more comparisons it stood in, whether or not a limit
- * cut them short. They are what a Builder session has to work on, when every released task already
- * passes. A task only another harness answered goes too, since letting another harness's answer
- * keep it off the list would tell the Builder which held-out task its harness won (rule 3).
- *
- * Next, half (rounded down) of the current-epoch tasks the reference failed or left room on in its
- * last reading: a task whose last scored result has a failed reference solve, or where an answer
- * of its own or its author's on record beats it by at least the gap floor (`room`). In an
- * objective domain every solve is valid, so room is the only way such a task reaches this list.
- * Half are kept back so the comparison keeps tasks it can untie; rounding up once released the
- * only failed task of one. The half is drawn from the current epoch's reading, released tasks
- * included, so repeated one-task releases keep the same half held and prior-epoch tasks never
- * crowd current-epoch tasks out of practice. Disputed and refused tasks have no place in it.
- *
- * The rest is the contract's seeded draw over every task neither list holds, those the reference
- * answers every time included, since a practice pass still reports the objective's measure. Room
- * is read from the reference's own solves and its author's answers only, never another harness's,
- * so which held-out task a new harness won changes nothing the Builder reads (rule 3). The release
- * in `tools/d2/prepare.ts` calls this.
+ * Select `count` tasks from `pool` for practice release (`tools/d2/prepare.ts`), in priority order:
+ * 1. Current-epoch tasks the reference answered validly in no solve across `READINGS_IN_A_ROW.unsolved`
+ *    or more comparisons (`unanswered`).
+ * 2. The first half (rounded down) of remaining current-epoch tasks where the reference failed a
+ *    solve or left objective headroom (`room`) in its latest reading (`failed`).
+ * 3. A seeded draw (`draw`) over the remaining tasks in `pool`.
+ * Depends only on reference solves and author answers so candidate performance never crosses the wall (rule 3).
  */
 export function releaseOrder(
   events: readonly LogEvent[],

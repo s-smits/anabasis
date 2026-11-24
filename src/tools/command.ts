@@ -4,20 +4,6 @@
  * (`stageCommandIsolation`), on durable's local shell backend, which kills the command's process group on
  * a timeout or an abort. Whatever else the command left in its group, below it or working in the
  * seat's root is ended here.
- *
- * A seat (a solve, a Builder's session, an Examiner's) owns two directories under the shared
- * scratch parent, which the command wall closes to every seat but its own:
- * - `root`, claimed for the seat (`claimRoot`), which its commands write whole: `home`, kept between
- *   commands and never read back, and `tmp`, their `TMPDIR` for the seat's whole life. The one part
- *   they may not write is `kept`, where the host stages what a command brings before it starts,
- *   without following a link a command made. Long shell output is written under the wall in home.
- * - `host`, beside it, which no command can read: the staged profile and the
- *   model backend's own state, such as Claude Code's configuration and transcripts.
- *
- * A command starts in the home, the one working directory pi's coding tools share: when each
- * started in a folder of its own, nine in ten of the solver's began with `cd ~` (the Starter
- * solves of six campaigns, `docs/transfer.md`). A command that brings files, a harness's tool call
- * or a file tool's write, starts in a folder of its own beside a copy of them (`runWalled`).
  */
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
@@ -109,6 +95,9 @@ export const UNREACHED_MS = 10 * 60_000;
 /** The reach of each policy this process has probed, by its hash, with when the probe began: the
  *  promise, so that solves that start together wait on one probe. */
 const REACH = new Map<string, { readonly at: number; readonly probe: Promise<NetworkReach> }>();
+/** Reach pinned per `(comparison, policyHash)` so both arms of one comparison see identical network
+ *  and installer prompt text even if an `unreached` reading expires mid-comparison (rule 5). */
+const COMPARISON_REACH = new Map<string, Promise<NetworkReach>>();
 const REACH_MARK = "ANA-NETWORK-REACHED";
 /** The index pip reads; curl first, and the resolver pip itself uses where curl is not on the host. */
 const UV_MARK = "ANA-UV-FOUND";
@@ -197,11 +186,6 @@ export function makeSeatDirs(dirs: SolveDirs): void {
  * The base of a wall over `dirs`, with its folders made: the solver's, the Builder's and the
  * Examiner's are built the same way, here. `who` names the actor in the refusal of a host that
  * cannot wall one.
- *
- * The wall is a test and no convention (`AGENTS.md`, rule 3): before its first use in a process
- * each policy runs its wall test (`probeWall`), and a failed test refuses the start with its own
- * lines, since a wall test run in the test suite alone would not catch a live policy that leaves a
- * sibling worktree's log readable.
  */
 export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Promise<SolveIsolationPolicy> {
   makeSeatDirs(dirs);
@@ -232,9 +216,6 @@ export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Pr
  * a file the host staged for it reaches its own folder, is written there and reads back. Null where
  * all four held, and otherwise the command's output, a line a step. The last step tests its own
  * write and read: a launch that refuses everything fails it, as one that refuses nothing fails the first.
- *
- * Nothing is written in the sibling, which another user may own, so a rehearsal as another user
- * does not refuse every solve on EACCES when the wall test would write a canary there.
  */
 export async function probeWall(
   wall: CommandWall,
@@ -287,7 +268,9 @@ export async function probeWall(
  *  run reads as unreached. */
 async function probeReach(wall: CommandWall): Promise<NetworkReach> {
   let out = "";
-  await runWalled(wall, REACH_COMMAND, {
+  // Probe without the harness's `.toolchain/` on PATH so a candidate harness installing `uv` or
+  // shadowing `curl`/`python3` cannot contaminate `COMPARISON_REACH` / `REACH` for the other arm.
+  await runWalled({ ...wall, toolTree: null }, REACH_COMMAND, {
     onData: (data) => {
       out += data.toString();
     },
@@ -299,12 +282,25 @@ async function probeReach(wall: CommandWall): Promise<NetworkReach> {
 
 /** The reach of the wall `wall` stands for (`NetworkReach`), as this process last probed it at
  *  `now`: a reached reading stands, and an unreached one is probed again once `UNREACHED_MS` old.
- *  An unreached probe that stood for the process's life would hold for a whole Builder session. */
+ *  When `comparison` is named, the first reading for `(comparison, policyHash)` is pinned for the
+ *  whole comparison so both arms receive identical network/installer prompt text (rule 5). */
 export async function networkReach(
   wall: CommandWall,
-  { now = Date.now(), probe = probeReach }: { now?: number; probe?: typeof probeReach } = {},
+  {
+    now = Date.now(),
+    probe = probeReach,
+    comparison,
+  }: { now?: number; probe?: typeof probeReach; comparison?: string } = {},
 ): Promise<NetworkReach> {
   const key = wall.base.policyHash;
+  if (comparison !== undefined) {
+    const pinnedKey = `${comparison}\0${key}`;
+    const pinned = COMPARISON_REACH.get(pinnedKey);
+    if (pinned !== undefined) return pinned;
+    const reading = networkReach(wall, { now, probe });
+    COMPARISON_REACH.set(pinnedKey, reading);
+    return reading;
+  }
   const known = REACH.get(key);
   if (known !== undefined && (now - known.at < UNREACHED_MS || (await known.probe) !== "unreached")) {
     return known.probe;
@@ -319,11 +315,6 @@ export async function networkReach(
 
 /**
  * Runs `command` on `wall`, in the seat's home, or beside a copy of what it brings (`stage`).
- *
- * A command that brings nothing makes nothing to start, so a seat that fills its disk can still run
- * the `rm` that frees it, which a command that made a folder of its own first could not. One that
- * brings files has nowhere to stage them on
- * a full disk, and fails as the full disk it is.
  */
 export async function runWalled(
   wall: CommandWall,

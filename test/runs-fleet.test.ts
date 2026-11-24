@@ -264,6 +264,86 @@ describe("campaign snapshots", () => {
     expect(collection.err).toContain("runner");
     expect(made.recorded().filter((call) => call.tool === "rsync")).toHaveLength(1);
   });
+
+  it("skips unchanged archived whole snapshots, never skips open or unarchived ones, and isolates failed delta refreshes", () => {
+    const { made, there, resting, here, listed } = ablation();
+    const archived = listed("sealed", there);
+    const live = listed("active", resting);
+    mkdirSync(there("sealed", "node_modules/pkg"), { recursive: true });
+    writeFileSync(there("sealed", "node_modules/pkg/index.js"), "ignored");
+    mkdirSync(there("sealed", "own"), { recursive: true });
+    writeFileSync(there("sealed", "own/kept.py"), "kept");
+    const env = {
+      FAKE_CATALOGUE: JSON.stringify([archived, live]),
+      FAKE_LISTED: "1",
+    };
+    const count = (tool: string) => made.recorded().filter((call) => call.tool === tool).length;
+    const findCalls = () =>
+      made.recorded().filter((call) => call.tool === "ssh" && call.args.at(-1)?.includes("find . ") === true)
+        .length;
+
+    // A record refresh first must not satisfy a subsequent whole refresh.
+    expect(
+      made.run(
+        'import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts"; await syncRuns(["sealed"], {match:"exact",depth:"record"});',
+        env,
+      ).code,
+    ).toBe(0);
+    expect(existsSync(here("runner", "sealed", "own/kept.py"))).toBe(false);
+
+    // First whole refresh transfers non-derived files, prunes node_modules, and seals wholeBytes.
+    expect(
+      made.run(
+        'import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts"; await syncRuns(["sealed"], {match:"exact",depth:"whole"});',
+        env,
+      ).code,
+    ).toBe(0);
+    expect(readFileSync(here("runner", "sealed", "own/kept.py"), "utf8")).toBe("kept");
+    expect(existsSync(here("runner", "sealed", "node_modules"))).toBe(false);
+    const [rsyncAfterWhole, findAfterWhole] = [count("rsync"), findCalls()];
+
+    // Repeat whole refresh on unchanged archived closed run skips both find and rsync.
+    expect(
+      made.run(
+        'import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts"; await syncRuns(["sealed"], {match:"exact",depth:"whole"});',
+        env,
+      ).code,
+    ).toBe(0);
+    expect([count("rsync"), findCalls()]).toEqual([rsyncAfterWhole, findAfterWhole]);
+
+    // Marking the same archived run open forces a whole refresh rather than reusing wholeBytes.
+    expect(
+      made.run(
+        'import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts"; await syncRuns(["sealed"], {match:"exact",depth:"whole"});',
+        { FAKE_CATALOGUE: JSON.stringify([{ ...archived, open: true }, live]), FAKE_LISTED: "1" },
+      ).code,
+    ).toBe(0);
+    expect(count("rsync")).toBe(rsyncAfterWhole + 1);
+
+    // An unarchived worktree run is never skipped on whole refresh, and a failed grown-log refresh leaves the prior copy intact.
+    const syncActive =
+      'import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts"; await syncRuns(["active"], {match:"exact",depth:"whole"});';
+    expect(made.run(syncActive, env).code).toBe(0);
+    const rsyncAfterFirstActive = count("rsync");
+    expect(made.run(syncActive, env).code).toBe(0);
+    expect(count("rsync")).toBe(rsyncAfterFirstActive + 1);
+
+    const beforeGrow = readFileSync(here("runner", "active", LOG_FILE), "utf8");
+    append(resting("active", LOG_FILE), "campaign.ended", { ending: "finished", why: "grown" });
+    const grownEnv = {
+      FAKE_CATALOGUE: JSON.stringify([
+        archived,
+        { ...live, bytes: lstatSync(resting("active", LOG_FILE)).size },
+      ]),
+      FAKE_LISTED: "1",
+    };
+    expect(made.run(syncActive, { ...grownEnv, FAKE_TRANSFER_FAIL: "1" }).code).toBe(1);
+    expect(readFileSync(here("runner", "active", LOG_FILE), "utf8")).toBe(beforeGrow);
+    expect(made.run(syncActive, grownEnv).code).toBe(0);
+    expect(readFileSync(here("runner", "active", LOG_FILE), "utf8")).toBe(
+      readFileSync(resting("active", LOG_FILE), "utf8"),
+    );
+  });
 });
 
 /** A host kept for ablations: where a campaign its retire archived lies there, where one still in

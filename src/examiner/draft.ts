@@ -1,89 +1,7 @@
 /**
- * Move 2 of a campaign that opens from a prompt: the Examiner drafts the exam.
- *
- * A campaign opens from a prompt. The operator's prompt names a domain, and one session
- * drafts what a campaign needs before its first task is solved: the public rules, each with the
- * source that states it, the answer format, one check for each rule, the objective or why there is
- * none, a few example tasks, and control answers, which are answers to those examples with a known
- * label.
- *
- * The session is `examine`'s in its drafting mode (`session.ts`), and this file is what that mode
- * is made of (`drafting`): what the Examiner is told, the tool it puts a whole draft by, and the two
- * readings a draft is held to without a model. The first is its shape (`draftFaults`), which the
- * session reads itself, so no caller can let a draft out of shape stand. The second is the
- * caller's (`reading`, `tools/d2/exam.ts`): every control answer through the checks, twice, and the
- * smallest answer the format allows on every example. The Examiner is told the faults and puts the
- * draft again. A draft with no fault stands: it goes into the log whole, as `exam.drafted`, and the
- * session ends. The campaign reads its exam from that event (`draftOf`). Validation and acceptance
- * stay together here because only drafting submits a whole exam.
- *
- * What the readings cannot say is whether a rule is the field's and its source real. The source
- * is on record beside the rule for a person to look up, and the host holds a draft only to
- * naming one.
- *
- * Every check a draft holds is its author's own computation, since nothing installs an engine of
- * the field for a campaign yet. The acceptance reading lists each such check as a fault until the
- * operator admits it by name (`tools/c/accept.ts --admit`), so a drafted exam is frozen on the
- * operator's word and never by this session (`AGENTS.md`, rule 10). A campaign launched without
- * `--hitl` is that word for every check of its draft (`planOf`, `src/campaign/opening.ts`; the
- * operator's choice).
- *
- * The prompt is built around the comparison's two ways of telling harnesses apart, validity and
- * the objective (`GAP_FLOOR`, `src/kernel/compare.ts`), since the draft fixes which a campaign can ever
- * use. Exams drafted with an objective untied most of their compared tasks, and exams without one
- * tied nearly all and promoted nothing: in one domain each convention named a data defect's repair
- * and each task's input named every step, and one program answered every solve. So the session is
- * asked what a practitioner prefers between two valid answers, and a draft gives a quantity with
- * its direction or its author's reason for none (`unmeasured`, kept on the exam side), a decision
- * the shape requires rather than one optional paragraph it may silently omit. The prompt names
- * conventions and a task's input beside rules as what can hand over the whole method, since drafts
- * told that nothing a solver needs is hidden published every planted defect with its repair;
- * validity rests on `FAIR` alone.
- *
- * An objective read as the share of an answer's values agreeing with a recomputation from the
- * input scores nearly every solve at exactly 1 and ties every task, so the prompt names that measure
- * as one the standard method reaches, beside one read against what the task was built from. A rule
- * requiring hidden values whenever an objective is declared was weighed and not taken: truss's mass
- * reads none, and the standard method does not reach its best.
- *
- * A declared stand-in is named as one in the scope, beside the quantity it stands in for, which is
- * named as not measured, so a reader of a step knows what it measured: a draft whose prompt named a
- * quantity no check could compute declared an extra-channel count in its place, and a step promoted
- * on it alone.
- *
- * The scope names classes of problem rather than what tasks plant, and calls no unnamed effect
- * absent. One of the 214 drafts on record listed the faults its tasks would plant and called every
- * other effect absent, and each of the 16 guides built on it repeated 14 or 15 of the listed terms,
- * against 3 or 4 in each of the 26 of a fork of the same query whose scope named two of them.
- *
- * Whether valid answers differ is decided by the answer format and the scope, which the prompt
- * says, and a reason for no objective is taken only where no task of the domain could leave that
- * choice. Exams whose own tasks fixed every part gave a reason true of the draft and not of the
- * field: the reference answered every compared task validly, all tied, and the campaigns ended
- * `no-room`, while exams that left the answer a choice of parts declared its count or cost and
- * promoted.
- *
- * The Examiner is told the prompt, its limits and what the host found in each draft, and no count
- * of tasks, since an author told a target writes towards it. It reads the reach scale and who the
- * grades are for (`REACH`, `ladder.ts`), not the worked fields, which teach how hard a task is and
- * belong to writing. It is told that a lookup, a matching or a search meets any rules that leave
- * them, since task admission refused most early drafts as answered in all three solves. A rule
- * states its property and names its public standard: drafts told to choose rules that act together
- * restated the field's tables and formulas, and the reference answered nearly all of them.
- *
- * It is told that the prompt's requirements stay in the exam at the strength the prompt states,
- * since a draft asked for trusses "within strict mass limits" can leave mass unchecked, and the
- * host's reading cannot see a requirement a draft leaves out. Where it has a shell (`shell.ts`) it
- * is told what the shell is and what the wall test found of the network, and not what to use it
- * for; nothing hidden exists at drafting, and the wall closes the repository, where the log lies.
- *
- * No solve runs at drafting: solving a draft before it stood, or refusing one the Starter Built
- * Harness answered on every solve, ended campaigns `exam` with nothing compared, and the operator
- * asked for gates that trust a capable model. The reading's notes, facts a draft stood with, ride
- * on the reply that ends the session (`ending`, `src/tools/answer.ts`), so no model reads them.
- *
- * The account of proper losses and their scales, and what the host's reading of a draft checks,
- * are one sentence each (the operator's choice); the reading's faults name the rest.
+ * Drafting mode for `examine` (`session.ts`): prompts the Examiner to draft a campaign's rules,
+ * answer format, check program, optional objective, example tasks, and controls, validates draft
+ * shape (`draftFaults`) and installed verifier engines, and records accepted drafts as `exam.drafted`.
  */
 import { type Static, Type } from "typebox";
 import { answerFormatFault, type Objective } from "../kernel/contract.ts";
@@ -97,6 +15,8 @@ import { append, type LogEvent } from "../kernel/log.ts";
 import { capturedJsonStringify, decodedJsonText, parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
+import { isSafePathSegment } from "../meta/path-segment.ts";
+import { errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import { ending, text, tool } from "../tools/answer.ts";
 
@@ -124,14 +44,22 @@ export interface Draft {
   readonly rules: readonly DraftedRule[];
   /** The JSON Schema every answer follows. */
   readonly answerFormat: JsonValue;
-  /** One check a rule: its id, the rule it enforces, and the property it verifies, in words. */
-  readonly checks: readonly { readonly id: string; readonly rule: string; readonly assertion: string }[];
+  /** One check a rule: its id, the rule it enforces, the property it verifies, and any installed
+   *  verifier engines it runs through `runtime.tools.run`. */
+  readonly checks: readonly {
+    readonly id: string;
+    readonly rule: string;
+    readonly assertion: string;
+    readonly tools?: readonly string[];
+  }[];
   /** The check program's source: a module that exports `checks`, a function for each check id,
    *  and `objective` where the draft declares one. */
   readonly evaluator: string;
   /** The objective two valid answers are compared by, where the field has one: absent, two valid
    *  answers to one task are even. */
   readonly objective?: Objective;
+  /** Installed verifier engines declared for `objective(request, runtime)`, when it runs any. */
+  readonly objectiveTools?: readonly string[];
   /** Why the draft declares no objective, in its author's words, where it declares none. Kept on
    *  the exam side: `stageExam` stages it nowhere, so no solver, Builder or writing session reads
    *  it. Absent from the oldest drafts, which `draftOf` reads as they are. */
@@ -157,22 +85,30 @@ interface DraftingTerms {
   /** The budget the exam's solves will be held to, as the campaign's setting names it. */
   readonly budget: SolveBudget;
   /** What the host reads of a draft whose shape holds, a fault a sentence: its control answers
-   *  through its checks. */
-  readonly reading: (draft: Draft) => Promise<readonly string[]>;
+   *  through its checks. Receives the drafting session's `home` when walled so `.toolchain/` tools
+   *  installed by the Examiner are frozen with the draft. */
+  readonly reading: (draft: Draft, home?: string) => Promise<readonly string[]>;
 }
 
 /** The fewest example tasks a draft holds: the reading needs each check seen to pass and to
  *  refuse, and the campaign's first practice tasks are drawn from them. */
 const EXAMPLES = 3;
-/** What a check program may not spell: a way out of its argument, or a value that differs from
- *  one run to the next. A check that read its host's files or its clock would give one answer two
- *  verdicts on two hosts. The verifier's wall is what confines a check, and it is not the same on
- *  every host; this is what the host can say of the source before it runs. */
+/** What a check program may not spell in executable code: a way out of its argument, or a value
+ *  that differs from one run to the next. Comments and string literals are stripped from the
+ *  transpiled output first, and `Bun.Transpiler.scan` checks imports, syntax and exports. */
+const EVALUATOR_TRANSPILER = new Bun.Transpiler({ loader: "ts" });
 const OUTSIDE = [
-  [/^\s*import\s|\bimport\s*\(|\brequire\s*\(/m, "an import"],
-  [/\b(?:Bun|process)\s*\./, "the runtime's own objects"],
-  [/\bfetch\s*\(/, "the network"],
-  [/\bMath\s*\.\s*random\b|\bDate\s*\.\s*now\b/, "a random number or the clock"],
+  [/(?<!\.)\brequire\s*\(|\bimport\s*\(/u, "an import"],
+  [
+    /(?<!\.)\b(?:Bun|process)\s*(?:\??\.|\[)|\b(?:const|let|var)\s*\{[^}]*\}\s*=\s*(?:Bun|process)\b/u,
+    "the runtime's own objects",
+  ],
+  [/(?<!\.)\bfetch\s*\(/u, "the network"],
+  [
+    /\bMath\s*\.\s*random\b|\bDate\s*\.\s*now\b|\bnew\s+Date\b(?!\s*\(\s*[^)\s.])|(?<!\bnew\s+|\.)\bDate\s*\(\s*\)|\bperformance\s*\.\s*now\b|\bcrypto\s*\.\s*(?:randomUUID|getRandomValues|randomBytes)\b/u,
+    "a random number or the clock",
+  ],
+  [/(?<!\.)\beval\s*\(|\(\s*0\s*,\s*eval\s*\)|(?<!\.)\bFunction\s*\(/u, "dynamic code evaluation"],
 ] as const;
 const TEXT_FILE = Type.Object({ path: Type.String({ minLength: 1 }), text: Type.String() });
 /** Files beside an answer, as a control or a try gives them (`ControlFile`). */
@@ -229,6 +165,12 @@ const DRAFT_PARAMETERS = Type.Object({
         minLength: 1,
         description: "The property it verifies, in a sentence a solver may read.",
       }),
+      tools: Type.Optional(
+        Type.Array(Type.String({ minLength: 1 }), {
+          description:
+            "Installed programs this check invokes via `runtime.tools.run` (e.g. `python3`, `bash`, or a domain engine installed in the environment).",
+        }),
+      ),
     }),
     { minItems: 1 },
   ),
@@ -255,6 +197,12 @@ const DRAFT_PARAMETERS = Type.Object({
           pattern: "\\S",
           description:
             "Where the exam declares no objective: why no task of the domain could leave valid answers that differ to a practitioner.",
+        }),
+      ),
+      tools: Type.Optional(
+        Type.Array(Type.String({ minLength: 1 }), {
+          description:
+            "Installed programs `objective` invokes via `runtime.tools.run` (e.g. `python3`, `bash`, or a domain engine installed in the environment).",
         }),
       ),
     },
@@ -285,12 +233,12 @@ const SYSTEM = [
   `A public input may in turn list under files what a practitioner is handed as files, such as a table, a log or a memo, as rows of { path, text } with relative paths: the solver's home then holds each as a file under public/files/ at its path, beside the JSON that lists it.`,
   `Two harnesses for the solver are compared on tasks neither was built on, each task solved afresh under each harness. A task tells them apart in two ways only. On validity: some of its solves are valid and some are not, and a valid answer beats one that is not. On the objective, where the exam declares one: two answers are both valid and one is better by it than the other by at least ${FLOOR} of the larger measure. Any other task is a tie, and a tie leaves the test, so an exam on which every solve is valid and nothing chooses between valid answers tells no harness from another, however many tasks it holds.`,
   `Who solves, and how hard a task can be for it:\n\n${REACH}`,
-  "Which of the two ways the exam's tasks can use is decided here, and nothing written later adds the other. Validity tells harnesses apart only on tasks in one of the three places above, so it needs rules and a scope that leave the solver a method to find. The objective tells them apart on a task with more than one valid answer where the field's standard method, applied to the input, falls short of the best measure; where it reaches it, every careful solve submits that answer and the task ties. So ask of the domain what makes one valid answer better than another to a practitioner: what they pay for, save, minimise or maximise while meeting the requirements, such as a cost, a mass, a length, a count, a time, an error or a margin to a limit. Whether valid answers differ on it is decided here too, by what the answer format and the scope leave to the answer: where a task fixes everything the quantity depends on, every valid answer measures the same and none is better, and where the answer chooses some of it, such as the parts, the sizes, the amounts or the estimates, they differ. Where the domain has such a quantity, leave the answer what it depends on and declare it as the objective. Declare none only where no task of the domain could leave an answer that choice, and say why under the objective's `none`; the exam then measures by validity alone.",
-  "The check program computes the objective in an `objective` export: a function that takes the same `request` as a check and returns the quantity of a valid answer as a finite number. It is your own computation, as each check is, and it may read the hidden values and measure the answer against what you built the task from. A share of the answer's values that agree with a recomputation from the public input is a measure the standard method reaches, so careful solves tie on it; a measure against the parameters a task's data were generated from, or another value you built the task from, is one a method that misses a defect in the data falls short of. Score each quantity on its estimation scale using only a public-input scale; avoid hidden denominators or metrics that reward trivial hedges.",
-  `A rule states a property every valid answer has, which a check decides from its argument: a bound that holds, a quantity that is conserved, a state the field's own engine reaches, a test the answer passes. Give each rule its source: the standard, specification, reference manual or textbook that defines the property, named precisely enough to look up, and one that states the limit as your rule does; a nominal or typical value is no limit. ${UNHELD} Name the standard rather than restating its tables, equations or working, which the solver can look up, and leave the way to the property to the solver. A rule, a convention or a task's input that states the procedure, its steps or the numbers it needs hands the solver the whole method, and every task becomes running it once; so does a rule met by matching a shape the scope spells out or by writing one exact text.`,
+  "Which of the two ways the exam's tasks can use is decided here, and nothing written later adds the other. How much gradient validity carries differs by domain: hard-constraint domains (physical feasibility, compilers, simulators) separate harnesses on binary validity, whereas open-ended or multi-criteria domains keep prompt-stated requirements as a binary feasibility floor while the objective separates valid answers. Validity tells harnesses apart only on tasks in one of the three places above, so it needs rules and a scope that leave the solver a method to find. The objective tells them apart on a task with more than one valid answer where the field's standard method, applied to the input, falls short of the best measure; where it reaches it, every careful solve submits that answer and the task ties. So ask of the domain what makes one valid answer better than another to a practitioner: what they pay for, save, minimise or maximise while meeting the requirements, such as a cost, a mass, a length, a count, a time, an error, a margin to a limit, or in multi-criteria analytical domains a proper score or penalised count over independent hidden-ground-truth domain criteria (penalising wrong or hedged claims so a broad guess cannot score high). Whether valid answers differ on it is decided here too, by what the answer format and the scope leave to the answer: where a task fixes everything the quantity depends on, every valid answer measures the same and none is better, and where the answer chooses some of it, such as the parts, the sizes, the amounts or the estimates, they differ. Where the domain has such a quantity, leave the answer what it depends on and declare it as the objective. Declare none only where no task of the domain could leave an answer that choice, and say why under the objective's `none`; the exam then measures by validity alone.",
+  "The check program computes the objective in an `objective` export: a function that takes the same `request` as a check and returns the quantity of a valid answer as a finite number. It is your own computation, as each check is, and it may read the hidden values and measure the answer against what you built the task from. A share of the answer's values that agree with a recomputation from the public input is a measure the standard method reaches, so careful solves tie on it; a measure against the parameters a task's data were generated from, or another value you built the task from, is one a method that misses a defect in the data falls short of. Score each quantity on its estimation scale using only a public-input scale; avoid hidden denominators or metrics that reward trivial hedges. When valid answers submit both point estimates and uncertainty bounds, combine point-estimate accuracy with uncertainty calibration so every submitted component is scored rather than leaving point estimates unread or letting a single tail penalty dominate. Where public rules require excluding or flagging invalid records, verify that integrity property directly rather than checking surface formatting alone.",
+  `A rule states a domain property every valid answer has, which a check decides from its argument: a coupled bound that holds, a quantity that is conserved, an equilibrium or state the field's own engine reaches, or a behavioural test the answer passes. The host already enforces \`answer_format\` JSON Schema (types, required keys, enums, structural bounds) before checks run, and a capable solver already satisfies syntax, compilation, file presence, catalogue membership and simple distinctness on its own; put structural constraints in \`answer_format\` and focus rules and checks on coupled domain invariants, competing limits and executable behaviour while keeping surface formatting (headings, ordering, equivalent notations) lenient unless the domain standard fixes it. Give each rule its source: the standard, specification, reference manual or textbook that defines the property, named precisely enough to look up, and one that states the limit as your rule does; a nominal or typical value is no limit. ${UNHELD} Name the standard rather than restating its tables, equations or working, which the solver can look up, and leave the way to the property to the solver. A rule, a convention or a task's input that states the procedure, its steps or the numbers it needs hands the solver the whole method, and every task becomes running it once; so does a rule met by matching a shape the scope spells out or by writing one exact text.`,
   "The scope bounds every task written later: a size it fixes is the ceiling on how hard a task can be made, and a class of problem it leaves out is one no task can pose. Draft a scope under which tasks can be written at every grade this field reaches, with the effects that decide answers near its limits. It names the classes of problem a task may pose, never a list of the faults tasks plant, and never says that an effect it leaves unnamed is absent: the solver reads the scope, and a list of plants turns finding a fault into matching one.",
   "The operator's prompt outranks your choice of rules. Every requirement it names, such as a limit, a quantity to meet or an analysis an answer has to pass, stays in the exam at the strength the prompt states, as a rule with its check, and a quantity it asks to minimise or maximise is the objective. Where no check can decide such a requirement from its argument alone, such as a step of the work, name it in the scope as not measured, and do not check a weaker property under its name. The same holds for the objective: a quantity declared because the prompt's own cannot be computed is a stand-in, so the scope names the prompt's quantity as not measured and the stand-in as what is measured in its place, and a step won on it measures the stand-in alone.",
-  `Write one check for each rule, and no other. The check program is one TypeScript module that exports \`checks\`, an object with a function under each check id. A function takes one argument, \`request\`, and returns a boolean, or a promise of one: \`request.publicTask\` is \`{ taskId, family, publicInput }\`, \`request.artifact\` is the answer, and \`request.hidden\` is the task's hidden values. It runs offline in a closed cell and imports nothing, so it computes from its argument alone, and the same answer always gets the same verdict. A check that runs longer than ${String(PER_CHECK_MS / 60_000)} minutes is at fault, which drops the task as the check's defect. It returns true where the answer keeps its rule and false only where it breaks it: an answer that breaks another rule is that rule's check's to refuse, and where its own computation cannot reach a verdict on an answer the format allows, such as a solver that does not converge, it throws, which drops the task as the check's defect instead of refusing the answer. It holds its rule exactly, allowing no tolerance the rule does not state, so a check of a quantity a rule calls zero or absent refuses any trace of it. It verifies the property its rule states, must be right on a task nobody has answered, and never compares the answer with an answer you worked out. A check that recomputes the one value its rule allows leaves each task one valid answer.`,
+  `Write one check for each rule, and no other. The check program is one TypeScript module that exports \`checks\`, an object with a function under each check id. A function takes \`(request, runtime)\` and returns a boolean, or a promise of one: \`request.publicTask\` is \`{ taskId, family, publicInput }\`, \`request.artifact\` is the answer, and \`request.hidden\` is the task's hidden values. It runs offline in a closed cell and imports nothing, so it computes from its argument alone, and the same answer always gets the same verdict. Where a check or the objective needs an installed program or domain engine (such as \`python3\` with any packages already installed in your shell's environment, \`bash\`, a compiler, a simulator, or a package you install yourself), declare each program name in its \`tools\` array and run it via \`await runtime.tools.run({ toolId, args, files, stdin })\`, which returns \`{ nonResult, exitCode, stdout, stderr }\` inside the same offline cell. Anything you install under \`.toolchain/\` in your home (using \`uv\` venvs or launchers locating sibling files via \`$(dirname "$0")\`, with no hardcoded home paths) is frozen with the draft into the verifier cell and resolved ahead of host \`PATH\` binaries. A check that runs longer than ${String(PER_CHECK_MS / 60_000)} minutes is at fault, which drops the task as the check's defect. It returns true where the answer keeps its rule and false only where it breaks it: an answer that breaks another rule is that rule's check's to refuse, and where its own computation cannot reach a verdict on an answer the format allows—such as a solver that does not converge, an unexpected \`NaN\`, or a missing lookup entry—it throws rather than catching and returning \`false\` or \`0\`, dropping the task as the check's defect instead of misscoring the answer. It holds its rule's stated bounds without relaxing them—so a quantity a rule calls zero or absent refuses any non-zero amount—while allowing a small floating-point arithmetic epsilon (e.g. 1e-9) on sums or products of decimal inputs so IEEE-754 rounding never rejects an exact boundary value. It verifies the property its rule states, must be right on a task nobody has answered, and never compares the answer with an answer you worked out. A check that recomputes the one value its rule allows leaves each task one valid answer.`,
   `Give at least ${plural(EXAMPLES, "example task")}, different in what they ask and not only in their numbers. Either every task carries hidden values or none does. For each example give one accept control: an answer that keeps every rule. You choose the task, so you can start from an answer and derive the task from it; where the exam declares an objective, an example leaves room on it only where the standard method's answer measures worse than that control by at least ${FLOOR}. For each check give at least one reject control: an answer to an example that follows the answer format, breaks that check's rule, and names the check. The smallest answer the format allows, such as empty strings and empty lists, has to be rejected on every task: where it would pass, the format or the rules ask too little.`,
   "draft_exam validates the whole draft and returns any faults; a fault-free draft becomes the campaign's fixed exam.",
 ].join("\n\n");
@@ -375,6 +323,96 @@ function controlFaults(draft: Draft): string[] {
   ];
 }
 
+/** Strip comments, string literals, and template text (recursing into `${...}`) before static
+ *  purity checks; `openVerifier`'s OS sandbox remains the hard runtime backstop. */
+function stripCode(source: string, start: number, scope: "whole" | "template", parts: string[]): number {
+  let [index, braceDepth] = [start, 0];
+  const end = source.length;
+  while (index < end) {
+    const [ch, next] = [source[index] ?? "", source[index + 1]];
+    if (ch === "/" && next === "/") {
+      const eol = source.indexOf("\n", index + 2);
+      index = eol === -1 ? end : eol + 1;
+      parts.push("\n");
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      const close = source.indexOf("*/", index + 2);
+      index = close === -1 ? end : close + 2;
+      parts.push(" ");
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      index += 1;
+      while (index < end && source[index] !== ch) index += source[index] === "\\" ? 2 : 1;
+      index += 1;
+      parts.push('""');
+      continue;
+    }
+    if (ch === "`") {
+      parts.push('""');
+      index = scanTemplate(source, index + 1, parts);
+      continue;
+    }
+    if (ch === "{") braceDepth += 1;
+    else if (ch === "}") {
+      if (scope === "template" && braceDepth === 0) return index + 1;
+      braceDepth = Math.max(0, braceDepth - 1);
+    }
+    parts.push(ch);
+    index += 1;
+  }
+  return index;
+}
+
+/** Advance past a template literal starting after its opening backtick, lexing `${...}` recursively. */
+function scanTemplate(source: string, start: number, parts: string[]): number {
+  let index = start;
+  while (index < source.length && source[index] !== "`") {
+    if (source[index] === "\\") {
+      index += 2;
+      continue;
+    }
+    if (source[index] !== "$" || source[index + 1] !== "{") {
+      index += 1;
+      continue;
+    }
+    parts.push(" ");
+    index = stripCode(source, index + 2, "template", parts);
+    parts.push(" ");
+  }
+  return index + 1;
+}
+
+/** Static syntax, export and purity faults of `draft.evaluator`, checked before staging any cell. */
+function evaluatorFaults(draft: Draft): string[] {
+  let scanned: ReturnType<typeof EVALUATOR_TRANSPILER.scan>;
+  let transformed: string;
+  try {
+    scanned = EVALUATOR_TRANSPILER.scan(draft.evaluator);
+    transformed = EVALUATOR_TRANSPILER.transformSync(draft.evaluator);
+  } catch (error) {
+    return [`the check program did not compile: ${errorMessage(error)}`];
+  }
+  const parts: string[] = [];
+  stripCode(transformed, 0, "whole", parts);
+  const code = parts.join("");
+  const reached = [
+    ...(scanned.imports.length > 0 ? ["an import"] : []),
+    ...OUTSIDE.flatMap(([spelled, what]) => (spelled.test(code) ? [what] : [])),
+  ];
+  return [
+    ...[...new Set(reached)].map(
+      (what) =>
+        `the check program reaches for ${what}: a check computes from its request alone, so that one answer gets one verdict on every host`,
+    ),
+    ...(scanned.exports.includes("checks") ? [] : ["the check program does not export `checks`"]),
+    ...(draft.objective !== undefined && !scanned.exports.includes("objective")
+      ? ["the draft declares an objective, and the check program does not export `objective`"]
+      : []),
+  ];
+}
+
 /**
  * What the host can say of a draft before anything runs, one sentence a fault: its shape. The
  * answer format's own fault comes first and alone, since nothing below reads without it.
@@ -389,13 +427,7 @@ export function draftFaults(draft: Draft): string[] {
   const again = twice(ruleIds) ?? twice(draft.checks.map(({ id }) => id));
   const hidden = draft.tasks.filter((task) => task.hidden !== null).length;
   return [
-    ...OUTSIDE.flatMap(([spelled, what]) =>
-      spelled.test(draft.evaluator)
-        ? [
-            `the check program reaches for ${what}: a check computes from its request alone, so that one answer gets one verdict on every host`,
-          ]
-        : [],
-    ),
+    ...evaluatorFaults(draft),
     ...(again === undefined ? [] : [`${again} is named twice: an id names one rule or one check`]),
     ...draft.rules.flatMap(({ id }) => {
       const checked = draft.checks.filter((check) => check.rule === id).length;
@@ -403,6 +435,14 @@ export function draftFaults(draft: Draft): string[] {
     }),
     ...draft.checks.flatMap(({ id, rule }) =>
       ruleIds.includes(rule) ? [] : [`check ${id} enforces ${rule}, and the draft holds no such rule`],
+    ),
+    ...draft.checks.flatMap(({ id, tools }) =>
+      (tools ?? []).flatMap((toolId) =>
+        isSafePathSegment(toolId) ? [] : [`check ${id} names invalid verifier tool ${toolId}`],
+      ),
+    ),
+    ...(draft.objectiveTools ?? []).flatMap((toolId) =>
+      isSafePathSegment(toolId) ? [] : [`objective names invalid verifier tool ${toolId}`],
     ),
     ...((draft.objective === undefined) === (draft.unmeasured === undefined)
       ? [
@@ -426,7 +466,7 @@ export function draftFaults(draft: Draft): string[] {
 
 /** The draft as `draft_exam`'s arguments carry it, under the names `Draft` and `exam.drafted` use. */
 function draftedFrom(args: Static<typeof DRAFT_PARAMETERS>): Draft {
-  const { quantity, direction, none } = args.objective;
+  const { quantity, direction, none, tools } = args.objective;
   // A quantity without its direction, or a direction without its quantity, is no decision, whatever
   // reason for none stands beside it, so the draft is held to give one (`draftFaults`).
   const half = (quantity === undefined) !== (direction === undefined);
@@ -437,13 +477,19 @@ function draftedFrom(args: Static<typeof DRAFT_PARAMETERS>): Draft {
     rules: args.rules,
     // SAFETY: a tool's arguments are JSON the provider parsed, here and for each value below.
     answerFormat: args.answer_format as JsonValue,
-    checks: args.checks,
+    checks: args.checks.map(({ id, rule, assertion, tools: checkTools }) => ({
+      id,
+      rule,
+      assertion,
+      ...keyIfDefined("tools", checkTools !== undefined && checkTools.length > 0 ? checkTools : undefined),
+    })),
     // SAFETY: `fromHome` has read a `from_file` object into the text its file holds before this runs.
     evaluator: args.evaluator as string,
     ...keyIfDefined(
       "objective",
       quantity !== undefined && direction !== undefined ? { quantity, direction } : undefined,
     ),
+    ...keyIfDefined("objectiveTools", tools !== undefined && tools.length > 0 ? tools : undefined),
     ...keyIfDefined("unmeasured", half ? undefined : none),
     tasks: args.tasks.map(({ family, public_input, hidden }) => ({
       family,
@@ -503,7 +549,8 @@ export function drafting(
         desk.tries += 1;
         const seen = capturedJsonStringify(draft);
         const unformed = draftFaults(draft);
-        const faults = unformed.length > 0 ? unformed : await within(async () => await terms.reading(draft));
+        const faults =
+          unformed.length > 0 ? unformed : await within(async () => await terms.reading(draft, home));
         if (faults.length === 0) {
           append(terms.log, "exam.drafted", {
             session: terms.id,
@@ -534,7 +581,7 @@ export function drafting(
       prompt: terms.prompt,
     },
     tools: [put],
-    enters: `a ${kind} enters it through ${put.name} alone`,
+    enters: `A ${kind} enters the exam through ${put.name}, and .toolchain/ in your home is frozen beside it for declared verifier tools; nothing else in your home enters the exam`,
     nudge: `Put a ${kind} with ${put.name}`,
     finish:
       "End the session without an exam, only where none can be drafted for the prompt. Say in one or two sentences why.",

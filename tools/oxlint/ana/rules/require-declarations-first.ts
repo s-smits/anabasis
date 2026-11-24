@@ -3,57 +3,11 @@ import type { RuleExample } from "../../rule-examples.ts";
 import { declaredBy, identifierName, isConstDeclaration, isNamedMember } from "../shared/statements.ts";
 
 /**
- * Every type, interface and module constant at the front of the file, then the code.
- *
- * What the tree does instead is alternate: a function, the interface it returns, another function,
- * the union that interface joins. `5bc9988:src/solve/built-starter.ts` had 23 declarations after its first
- * function and `5bc9988:src/builder/command-guard.ts` 18. A reader looking for the shape of
- * `GeneratedToolStart` has to read the whole file to learn whether it is there at all, and a reader
- * looking for the constant a default came from has the same problem.
- *
- * A `type` and an `interface` move unconditionally: both are erased, so their position is a reading
- * decision and nothing else. A `const` has an initialisation order to break, so it moves only when
- * hoisting it to the front cannot be observed. Two things make that observable and the rule tests
- * for both:
- *
- *  - an **effect** in the initialiser (a call, `new`, `await`, a tagged template, an assignment or
- *    an update) unless it is one of the pure builders below, which have no result but their value;
- *  - a **read of a name whose value depends on where the read happens**. A name is safe when
- *    nothing can change it between the front of the file and here: an import, a function
- *    declaration (hoisted, so it exists before any statement runs), a built-in namespace, and any
- *    `const`, `class` or `enum` the file already declares above the first line of code. A module
- *    `let`, a `var`, and a `const` still sitting below the code are not safe, because a statement
- *    in between can assign to the first two and the last two have not been initialised yet.
- *
- * So `const cwd = process.cwd()` fails on the call and `const flag = process.env.CI` on the
- * global read. `const SIZE = LATER.one` fails on a third test: `const` fixes the binding and not
- * what it holds, so a part of a name this file declares can be written to by a statement in
- * between, and the read is barred whether or not `LATER` has moved yet. `let`, `var` and a
- * `const` holding a function are left alone.
- *
- * Two more refusals came out of reading what the rule caught once the read test was widened.
- * A **narrowed** read is position-dependent in the type system rather than at runtime: after
- * `if (runner === undefined) throw …`, `const bun: string = runner` compiles only below the guard,
- * so a read of a name some test above it narrows is barred exactly like an unsafe one. And a
- * const wedged into a run of module `let`s is part of a block of state, not a constant a reader
- * goes looking for at the front; `5bc9988:src/backends/pi-built-child.ts` had three of them among six
- * `let`s, and hoisting those three alone left the block worse than it was found.
- *
- * Declarations that stand one after another below the code are one finding and move as one block.
- * Read one by one, a single arrow constant written above a file's declarations has read as
- * fourteen errors, each naming a declaration that stood where it always had, and the sweep needed
- * a pass for each; by runs the same file reads three. The report lands once a
- * run, on its first declaration, and names the rest; the fix carries the run across the code in
- * one replacement, with the comments and blank lines between its members where they were.
- *
- * `as const` is no read. The assertion's `const` arrives as a reference to a name nothing can
- * declare, and barred as a global whose value depends on where it is read it would leave
- * `const BY = ["release", "pack"] as const` under the code unreported while the plain array
- * beside it moved.
- *
- * The fixer is the reason the rule is worth having: this is a reordering pass, not a set of
- * judgements. The comment is the part a hand edit gets wrong: a JSDoc block left behind above the
- * next function now documents the wrong thing, and nothing fails.
+ * Requires module-level `type` aliases, `interface` declarations, and pure `const` value
+ * declarations (those with side-effect-free initialisers that depend only on imports, hoisted
+ * functions, constant globals, or earlier top-of-file constants, and are not narrowed by an earlier
+ * guard or wedged between module `let`s) to appear before the first executable statement or
+ * function in the file. Reports and auto-fixes contiguous runs of misplaced declarations as a block.
  */
 
 /** An initialiser that makes a binding a function rather than a value. */
@@ -121,12 +75,6 @@ interface Read {
 
 /**
  * Whether this statement only declares a name, which is the question "has the code started yet".
- *
- * Asked from this side it is exhaustive: an import, a re-export, a type, an enum, a directive and
- * a constant are declarations, and everything else (a function, a class, an `if`, a loop, a
- * `try`, a bare call) is the code. A `const` holding an arrow is a function under another
- * spelling, so it starts the code too, and a computed `const` does not: `const REPO = resolve(…)`
- * is still one of the declarations a reader expects to find at the front.
  */
 function declaresOnly(statement: ESTree.Node): boolean {
   if (statement.type === "ExportAllDeclaration") return true;
@@ -215,17 +163,6 @@ function moduleReads(scope: Scope): Read[] {
 /**
  * Where an initialiser must not read: a name nothing keeps still, or one a test above has narrowed.
  *
- * The second is the type system rather than the runtime, and it is the reason a read of a name
- * this file itself declares is not automatically safe. `const runner = Bun.argv[0]` is a `string |
- * undefined` above the code; `if (runner === undefined) throw …` is the first line of code; and
- * `const bun: string = runner` below it compiles only because of that guard. Hoisting it is a
- * clean runtime move and a type error, so a read inside a guarded name's shadow is barred too.
- *
- * Only a binding this file declares is narrowable. A test mentions plenty of names it cannot
- * narrow, `if (isBoolean(value))` names the imported predicate it calls, and `if (x ===
- * undefined)` names the global, and barring a later read of those refuses a constant for no
- * reason. Two of the first ten refusals were exactly that.
- *
  * The third bar is what `const` does not promise. The binding cannot be reassigned; what it holds
  * can be written to all day. `const CONFIG = { limit: 1 }` above the code, `CONFIG.limit =
  * measured()` in the code, and `export const SIZE = CONFIG.limit` below it reads the measured
@@ -233,11 +170,6 @@ function moduleReads(scope: Scope): Read[] {
  * and nothing to compile against. So a read that takes a *part* of a name this file declares is
  * barred, while the name itself still reads safely. `Object.freeze({…})`, `Math.max(…)` and a
  * part of an imported namespace are untouched, because none of those is a binding this file owns.
- *
- * A pure builder does the same read without a member expression. `VALUES.add(2)` in the code and
- * `export const SNAPSHOT = new Set(VALUES)` below it copies two values today and one once hoisted:
- * the builder has no effect, but its result depends on when it reads what it was given. So a name
- * this file owns handed whole to a call, a constructor or a spread is barred like a part of it.
  */
 function barredReadPositions(
   reads: readonly Read[],
@@ -261,12 +193,6 @@ function barredReadPositions(
 
 /**
  * Whether this declaration stands directly beside module mutable state, which it is part of.
- *
- * `5bc9988:src/backends/pi-built-child.ts` keeps six `let`s and four collections in one block under its
- * bootstrap call, and the rule never moves a `let`. Hoisting the collections out of the middle of
- * that block leaves it worse than it was found, so a `const` whose neighbour is a module `let` or
- * `var` stays where it is. A blank line between them says the author meant two blocks, and a
- * comment between them does not: two of those six `let`s are documented in place.
  */
 function besideMutableState(text: string, body: readonly ESTree.Node[], index: number): boolean {
   const here = body[index];
@@ -322,11 +248,6 @@ function withLeadingComments(
 
 /**
  * The end of the declaration's own line, plus the blank lines under it.
- *
- * The move carries the author's vertical spacing rather than dropping it at the old site. The
- * first sweep did not, and the arithmetic says what that costs: it came out 660 lines shorter than
- * it went in, and left the front of a file as one wall of declarations with an interface body
- * abutting the constant above it. A blank line under a declaration is part of how it reads.
  */
 function throughBlankLines(text: string, end: number): number {
   const first = text.indexOf("\n", end);

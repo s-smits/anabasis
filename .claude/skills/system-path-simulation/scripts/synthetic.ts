@@ -7,17 +7,6 @@
  *   bun .claude/skills/system-path-simulation/scripts/synthetic.ts --list
  *   bun .claude/skills/system-path-simulation/scripts/synthetic.ts pool [--tree <worktree>]
  *   bun .claude/skills/system-path-simulation/scripts/synthetic.ts <scenario.ts> [--tree <worktree>]
- *
- * A scenario is a function of the kit (`Kit`): a log builder (`Log`), the tree's readers already
- * loaded (`readers`), the tree's root (`tree`, to import any other module of it) and `table`. The
- * examples at the foot of this file are scenarios: run one by name, or copy it into a scratch file
- * that default-exports a scenario, change its constants, and run that. The readers come from
- * `--tree` (the working directory by default), so one scenario read on two trees shows what a
- * change between them does to the reader.
- *
- * The events stay in memory: rule 3 of the skill keeps hand-built events out of every seed and
- * campaign folder. It reads a change on patterns no log holds yet (0/2 twice, 2/2 then 1/2, a
- * promotion between readings), such as a new size of a side or a new count.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import type { Plan } from "#src/campaign/ground.ts";

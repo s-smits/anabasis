@@ -3,21 +3,6 @@
  *
  *   bun tools/wri/wri.ts packets --log <log>,<log>[,...] --out <dir> [--graders 2]
  *   bun tools/wri/wri.ts packets --out <dir> --join
- *
- * A grade read across campaigns must not follow a campaign's age or result. Hand-written grading
- * scripts carry two faults into the packets: a long requirement reduced to its keys, and diffs cut
- * at a few hundred lines. So
- * here each campaign gets an opaque label, a grader holds half of them with old and new alternating
- * and tasks shuffled across them, a value is shown whole up to `VALUE_BYTES`, which every requirement
- * in those logs fits and a long table does not, and a diff is cut only past `DIFF_LINES`, which none
- * there reaches. The verb prints each grader's size, since a session has only so much room.
- *
- * Each grader also holds `ANCHORS` tasks of the others' campaigns, unmarked, so the join can say how
- * far the graders differ before anyone sets their grades side by side. No packet reads an outcome.
- * The join writes `grades.tsv` under the campaigns' names for `wri.ts trajectory --grades`, and only
- * then asks each grader to regrade, once, a task it graded high that the Starter answered every time
- * (the lane's own rule). Each grade changes no verdict, reading, promotion or move, and no seat is told it.
- * `key.json` names the campaigns, so it stays with the primary.
  */
 import { starterIn } from "#src/campaign/climb.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -26,14 +11,15 @@ import { sha256 } from "#src/meta/digest.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
-import { catalogueText, lanesOf } from "./catalogue.ts";
+import { catalogueText, type Lane, lanesOf } from "./catalogue.ts";
 import { LAUNCH } from "./index.ts";
+import { stem } from "./investigation.ts";
 import { scoredTasks, VALUE_BYTES } from "./tasks.ts";
 import { diffOf, madeOf, weightOf } from "./trajectory.ts";
 
 const DIFF_LINES = 3000;
 const ANCHORS = 6;
-/** The grade from which a task the Starter answers every time is regraded: specialist work (lane 14). */
+/** The grade from which a task the Starter answers every time is regraded: specialist work. */
 const HIGH = 5;
 
 export interface Campaign {
@@ -64,7 +50,13 @@ interface Packed {
 }
 
 const graderName = (index: number) => String.fromCodePoint(97 + index);
-const reportOf = (out: string, grader: string) => join(out, "lanes", `14${grader}-report.md`);
+function blindLane(): Lane {
+  const found = lanesOf(catalogueText()).find(({ blind }) => blind);
+  if (found === undefined) throw new Error("the catalogue holds no blind grading lane");
+  return found;
+}
+const reportOf = (out: string, grader: string, laneNumber: number) =>
+  join(out, "lanes", `${stem(laneNumber)}${grader}-report.md`);
 const salted = <T>(items: readonly T[], salt: string, key: (item: T) => string): T[] =>
   items.toSorted((a, b) => sha256(`${salt}${key(a)}`).localeCompare(sha256(`${salt}${key(b)}`)));
 
@@ -118,16 +110,17 @@ function versionsOf({ log, events }: Campaign, label: string): Packed[] {
   });
 }
 
-function between(text: string, from: string, to: string): string {
+function between(text: string, from: string, to: string, laneNumber: number): string {
   const start = text.indexOf(from);
   const stop = text.indexOf(to, start);
-  if (start === -1 || stop === -1) throw new Error(`lane 14's text no longer holds "${from}"`);
+  if (start === -1 || stop === -1) {
+    throw new Error(`lane ${String(laneNumber)}'s text no longer holds "${from}"`);
+  }
   return text.slice(start, stop).trim();
 }
 
-function graderPrompt(out: string, grader: string, tasks: number, versions: number): string {
-  const lane = lanesOf(catalogueText()).find(({ blind }) => blind)?.body ?? "";
-  return `# Blind grades for lane 14 of a whole-run investigation
+function graderPrompt(out: string, grader: string, tasks: number, versions: number, lane: Lane): string {
+  return `# Blind grades for lane ${String(lane.number)} of a whole-run investigation
 
 You grade tasks and harness versions. A harness is a guide and programs that a fixed solver model uses to answer a domain's tasks. Your grades are a reviewer's reading: they change no verdict, reading, promotion or move, and no seat is told them.
 
@@ -142,18 +135,18 @@ Grades must not follow a result or a campaign's age. Campaigns appear under opaq
 ## Hard rules
 
 - Quote nothing in the report: no task text and no line of a harness. A sentence names parts, kinds and counts.
-- Write one file only, \`${reportOf(out, grader)}\`. Start no solve, session or check. Launch no subagent.
+- Write one file only, \`${reportOf(out, grader, lane.number)}\`. Start no solve, session or check. Launch no subagent.
 - Open the report early and write each grade as it settles, so nothing is lost if you run out of room.
 
 ## Tasks
 
-${between(lane, "**Reach** is how hard", "Then set each grade beside")}
+${between(lane.body, "**Reach** measures how difficult", "Define domain-specific criteria", lane.number)}
 
 The tasks packet shows each task's public part, shuffled across campaigns. Grade all ${String(tasks)}, once, on what each asks. Use the top of the scale when a task earns it and the bottom when it does.
 
 ## Harness versions
 
-${between(lane, "**Soundness** is whether", "Then read whether the step's wins")}
+${between(lane.body, "**Soundness** measures whether", "Place grading tables under", lane.number)}
 
 The versions packet shows each of ${String(versions)} versions' diff against its parent, leaving out what it installed. A cut diff says so: grade what you can read, and name the cut in the sentence.
 
@@ -162,7 +155,7 @@ The versions packet shows each of ${String(versions)} versions' diff against its
 In this shape and order, with real tabs in the rows:
 
 \`\`\`
-# Lane 14: Harness quality, version by version
+# Lane ${String(lane.number)}: ${lane.title}
 
 Verdict: no finding
 
@@ -194,6 +187,7 @@ function launch(
   out: string,
   file: string,
   sessions: readonly { readonly grader: string; readonly prompt: string }[],
+  laneNumber: number,
 ): void {
   const manifest = {
     workdir: process.cwd(),
@@ -202,7 +196,7 @@ function launch(
     sessions: sessions.map(({ grader, prompt }) => ({
       name: `grader_${grader}`,
       task: `Read \`${prompt}\` and do exactly what it says.`,
-      ownedPaths: [reportOf(out, grader)],
+      ownedPaths: [reportOf(out, grader, laneNumber)],
     })),
   };
   writeFileSync(join(out, file), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -214,6 +208,7 @@ export function buildPackets(campaigns: readonly Campaign[], outDir: string, cou
   if (!Number.isInteger(count) || count < 2) {
     throw new Error("--graders takes a whole number from 2: one grader has no one to differ from");
   }
+  const lane = blindLane();
   mkdirSync(join(out, "lanes"), { recursive: true });
   const inOrder = campaigns.toSorted((a, b) => (a.events[0]?.at ?? "").localeCompare(b.events[0]?.at ?? ""));
   const width = String(campaigns.length).length;
@@ -248,7 +243,7 @@ export function buildPackets(campaigns: readonly Campaign[], outDir: string, cou
     );
     writeFileSync(
       join(out, `grader-${grader}.md`),
-      graderPrompt(out, grader, shuffled.length, versions.length),
+      graderPrompt(out, grader, shuffled.length, versions.length, lane),
     );
     key.graders[grader] = {
       tasks: own.map((row) => row.key),
@@ -266,6 +261,7 @@ export function buildPackets(campaigns: readonly Campaign[], outDir: string, cou
     out,
     LAUNCH,
     graders.map((grader) => ({ grader, prompt: join(out, `grader-${grader}.md`) })),
+    lane.number,
   );
   return lines;
 }
@@ -297,25 +293,26 @@ function starterAnswers(events: readonly LogEvent[]): Set<string> {
   );
 }
 
-function regradePrompt(out: string, grader: string, owed: readonly string[]): string {
-  return `# Regrade, once, for lane 14
+function regradePrompt(out: string, grader: string, owed: readonly string[], laneNumber: number): string {
+  return `# Regrade, once, for lane ${String(laneNumber)}
 
 Each task below is one you graded high, and the Starter, the plainest harness, answered it validly on every solve. That says the grade may be too high for this solver. Read each again in \`${join(out, `packet-${grader}-tasks.md`)}\`, on that reason alone, and keep the grade where the reason does not move it.
 
 ${owed.map((row) => `- ${row.replace("\t", " ")}`).join("\n")}
 
-Append one row each to \`${reportOf(out, grader)}\`, changing nothing above it: \`regrade<TAB>label<TAB>id<TAB>grade\`. The hard rules of \`${join(out, `grader-${grader}.md`)}\` hold. Read nothing else.
+Append one row each to \`${reportOf(out, grader, laneNumber)}\`, changing nothing above it: \`regrade<TAB>label<TAB>id<TAB>grade\`. The hard rules of \`${join(out, `grader-${grader}.md`)}\` hold. Read nothing else.
 `;
 }
 
 /** Joins the graders' rows under the campaigns' names and reads how far the graders differ. */
 export function joinPackets(outDir: string, read: (log: string) => readonly LogEvent[]): string[] {
   const out = resolve(outDir);
+  const laneNumber = blindLane().number;
   // SAFETY: `buildPackets` above is the one writer of `key.json`, in this shape.
   const key = JSON.parse(readFileSync(join(out, "key.json"), "utf8")) as Key;
   const reports = new Map(
     Object.keys(key.graders).map((grader) => {
-      const path = reportOf(out, grader);
+      const path = reportOf(out, grader, laneNumber);
       return [grader, existsSync(path) ? readFileSync(path, "utf8") : ""];
     }),
   );
@@ -363,12 +360,12 @@ export function joinPackets(outDir: string, read: (log: string) => readonly LogE
     );
     if (owed.length > 0) {
       const prompt = join(out, `regrade-${grader}.md`);
-      writeFileSync(prompt, regradePrompt(out, grader, owed));
+      writeFileSync(prompt, regradePrompt(out, grader, owed, laneNumber));
       regrades.push({ grader, prompt });
     }
   }
   writeFileSync(join(out, "grades.tsv"), `${rows.join("\n")}\n`);
-  if (regrades.length > 0) launch(out, "launch-regrade.json", regrades);
+  if (regrades.length > 0) launch(out, "launch-regrade.json", regrades, laneNumber);
   return [
     ...lines,
     `${String(rows.length)} rows in ${join(out, "grades.tsv")}; ${String(regrades.length)} regrade sessions owed, in launch-regrade.json`,

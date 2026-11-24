@@ -27,21 +27,10 @@ const ATOMIC = new Set([
 
 /**
  * The shapes a rule in this plugin keeps having to spell.
- *
- * Each was written out inside `create(context)` in several rules, and none reads `context`, so
- * the copies were never anything but copies: `onlyStatement` three times byte for byte, the
- * visitor twice. A line-based copy scan reaches them once it stops requiring six identical lines,
- * and the syntax-based scan reaches the enclosing body, the single `const`, the one-argument
- * method call and the function argument in two rules each. The four node facts below them (a
- * member by its written name, an identifier's name, a `const` and a call of one argument) would
- * otherwise stand in three to eleven files each, which `tree/no-unowned-fact` reports.
  */
 
 /**
  * The single statement a body holds, or null when it holds none or several.
- *
- * A rule that asks "does this `if` do one thing?" has to accept both spellings of one thing,
- * `if (x) return;` and `if (x) { return; }`, and a brace-free statement is already its own body.
  */
 export function onlyStatement(node: ESTree.Statement): ESTree.Statement | null {
   if (node.type !== "BlockStatement") return node;
@@ -51,10 +40,6 @@ export function onlyStatement(node: ESTree.Statement): ESTree.Statement | null {
 
 /**
  * The statement written directly below this one, or null when it is the last of its list.
- *
- * A rule that reads a statement against the one after it can visit each list with
- * `everyStatementList`; one that has already found its subject in the tree asks this instead,
- * and gets back the node rather than an index, because a fixer needs the range.
  */
 export function statementBelow(statement: ESTree.Node): ESTree.Statement | null {
   const block = statement.parent;
@@ -178,10 +163,6 @@ function below(body: readonly ESTree.Statement[], statement: ESTree.Node): ESTre
 
 /**
  * Every statement list in the file, for a rule that reads a statement against the one after it.
- *
- * Three node types hold one: a module body, a block and a `switch` case. A rule that visits
- * statements individually instead cannot see what follows, and a rule that walks the tree itself
- * visits the same list under two parents.
  */
 export function everyStatementList(scan: (body: readonly ESTree.Statement[]) => void): StatementLists {
   return {

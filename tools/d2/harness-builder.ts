@@ -1,104 +1,12 @@
 /**
- * The Harness Builder's controller: one campaign run by its log, move after move.
- * Launches, dry runs and continuations require the executing Bun to match this tree's exact
- * packageManager pin and engines.bun, before opening a campaign, keeping a receipt or recovery.
+ * Campaign controller (`tools/d2/harness-builder.ts`): drives a campaign from its append-only log
+ * until it reaches a terminal state (`budget`, `stop`, `exam`, `no-room`, `environment`, `operator`,
+ * or `finished` after `IDLE` consecutive Builder conversations without a campaign move) or completes
+ * `--moves`. Requires the executing Bun to match `packageManager` and `engines.bun` in `package.json`.
  *
  *   bun tools/d2/harness-builder.ts --name queues --prompt "<the domain, in the operator's words>" \
  *     --solver claude/claude-sonnet-5-5 --budget 60 --builder claude/claude-opus-5-5 \
  *     --examiner claude/claude-opus-5-5 --reviewer claude/claude-opus-5-5 [--moves 1] [--dry-run] [--hitl]
- *
- * A campaign is a loop of moves over one log. Rather than a session carrying each one by hand,
- * reading the view, choosing a move by a skill's walk and typing the command with its flags, this
- * command does that. It reads the log, asks move 7 for the one
- * move that follows (`decide`, `src/campaign/decide.ts`), prints it with its reason, makes it by
- * the command an operator would run, and reads the log again, until the campaign ends or `--moves`
- * are made. It chooses nothing of its own: the table chooses, and every refusal is the command's.
- *
- * **The Builder makes the moves after set-up.** The host drafts and reads the exam, sets the tasks
- * apart, makes the promotion the rule names and the comparison it owes (`converse`), and from there
- * one live Builder conversation makes the moves through its campaign tools: an Examiner session
- * and a comparison (`campaign-actions.ts`). The host releases the practice owed and makes the
- * promotion a step names, and every condition above stays the host's at each action. A conversation that ends at its own
- * limits is followed by another on the Builder's notes, and so is one the Builder ends with
- * `finish`, until three in a row have made no campaign move (`finished`). Every ending the table
- * names ends a live conversation too, a lack of room among them, since as advice a Builder could
- * buy an Examiner session past its supply patience. An older log whose host made every move
- * (`--no-builder-led`) runs led like any other.
- *
- * **A campaign opens from a prompt.** The prompt and who solves are part of what it runs by, its
- * first move is the Examiner's draft of the exam, and from there every command opens the campaign
- * by its name alone, over the exam its log holds. Every check of a drafted exam is its author's
- * own computation, and the launch is the operator's word for each: the exam is read with every
- * check its author decides admitted, the objective among them (`--admit-authored`), and frozen
- * where nothing else is at fault. Under `--hitl` they wait for `--admit`.
- *
- * What it runs each move as:
- *
- *   draft the exam      tools/d1b/draft.ts, under `d-N`, for a campaign that opened from a prompt;
- *                       a draft that stands keeps its reading, and is frozen unless `--hitl`
- *   read the exam       tools/c/accept.ts, for the checks a reading under `--hitl` left
- *                       unadmitted (`planOf`, `opening.ts`)
- *   set the tasks apart tools/d2/prepare.ts
- *   a conversation      tools/d2/session.ts with the campaign's tools, under `b-N`, where the
- *                       table names a Builder or an Examiner session (`converse`)
- *   a comparison        tools/d2/checkpoint.ts, under `g-N`; one that began goes on under its id
- *                       and its own terms
- *   a promotion         tools/d2/promote.ts `--yes`
- *
- * **What it runs by** is recorded once, as `campaign.opened`: its project (`--project`, required at
- * the opening: `projectOf`, `campaign.ts`), the total budget in dollars and the
- * reserve one solve is held at (`--budget`, `--reserve`), the
- * campaign's improvement patience and supply patience (`--patience`: moves without a gain, and
- * readings that left nothing to gain, it bears in a row before it ends, six by default while the system is
- * built, since a patience of three ends campaigns before their tasks are measured), who sits in
- * each seat, and the terms of its moves as a command last named them
- * (`TERMS`, `src/campaign/opening.ts`): a session's limits, a comparison's size, the practice tasks.
- * A later run that names nothing runs by the record, and one that names another records it again:
- * these are the operator's conditions, and a comparison logs its own terms at its start. The
- * setting (who solves, a solve's deadline and model turns, the scored tasks and the solves a side)
- * is recorded once, as the first run that is no dry run starts (`campaign.setting`, `settingOf`),
- * and every command refuses another.
- *
- * **The budget is one total.** Each move's cap is what is left of it:
- * the total less every billed dollar the log holds, and where less is left than one solve is held
- * at, the campaign ends on its budget. **What it risks** is said as it opens: what one reading of
- * its target can show and its per-comparison rate (`sizeLines`, `src/kernel/size.ts`), and a paid
- * campaign whose target is too small for a step at its level is refused there.
- *
- * **A campaign runs unattended** (the operator's choice): it admits every check
- * its author's own computation decides, a drafted exam's objective among them, freezes an exam whose reading holds no fault and promotes a harness a comparison
- * against the reference read as a step. Under `--hitl`, the operator in the loop, kept by the opening until
- * `--no-hitl`, all three wait for the operator's word and a promotion stops the command. Going on past the stop rule takes `--past-stop "<why>"` either way.
- *
- * **A word the operator leaves** (`word.ts`) is read at each move's boundary: a stop
- * ends the campaign there, other tasks are written first, and another total is what the campaign
- * runs by from that move on. A word changes nothing in the move that was running when it came.
- *
- * **Endings.** A campaign ends on its budget, on the stop rule, on an exam that was not accepted,
- * on tasks that could not be made to leave room, on its environment, on the operator's word, or
- * once three of its Builder's conversations in a row made no campaign move (`idleOf`), and
- * its log's last event says which (`campaign.ended`). With `--handover <dir>` it then writes what
- * it hands over there: the reference harness as a directory that stands by itself, the public rules
- * and the closing report (`close.ts`). A move that threw after it had begun is the
- * environment's ending, and run again the command goes on from the log; one whose session is on
- * record as crashed is the provider's failure, which the campaign goes on from (`goesOn`). A
- * session a stopped run left open is ended on record as killed before the next run's first move
- * (`endCut`), keeping its last practised harness where the saved state opens. A move refused before
- * it began is no ending: the refusal is printed, nothing kept.
- *
- * A move is recorded as it begins (`campaign.move`), with the code of the table's row that chose it and its
- * reason, so the log holds what was decided before what was done. Each run of the command keeps a receipt beside the
- * log, `launch-run-<n>.json`: its flags, the commit it stands at and the load it started under
- * (`keepReceipt`, `tools/runs/receipt.ts`).
- *
- * **A solve waits for the host.** Each solve of a Builder session or a comparison starts once the
- * host's one-minute load is at or under its cores, and a wait is on record (`queued`, `host.ts`).
- * `--loaded` starts them all the same.
- *
- * `--dry-run` prints the next move and makes none. Under a rehearsal's seats (`tools/runs/`) the
- * same loop runs with a script in each model seat, no budget and no model.
- *
- * Not run here: see `campaign.ts`.
  */
 import { backends } from "#src/agent/backends/models.ts";
 import { decide } from "#src/campaign/decide.ts";
@@ -115,7 +23,7 @@ import { endedOf, latestBuilt, promoted } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import { cutSessions } from "#src/kernel/trace.ts";
 import { sizeLines } from "#src/kernel/size.ts";
-import { existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
+import { mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -128,7 +36,7 @@ import { modelNamed, sweepOptions } from "../m0/stored-sweep.ts";
 import { draftCommand } from "../d1b/draft.ts";
 import { hostPython, nextRun, writeReceipt } from "../runs/receipt.ts";
 import { standing } from "../runs/registry.ts";
-import { campaignLog, openCampaign, packNamed, REPO, treeFault } from "./campaign.ts";
+import { campaignLog, LIMITS, openCampaign, packNamed, REPO, treeFault } from "./campaign.ts";
 import { awaitsOperator, type CampaignContext, campaignTools, releaseOwed } from "./campaign-actions.ts";
 import {
   comparisonOf,
@@ -143,6 +51,7 @@ import {
   packOf,
   prepared,
   promoteMade,
+  revertMade,
   type Seats,
   sharedOf,
   type Turn,
@@ -152,7 +61,7 @@ import {
 } from "./campaign-terms.ts";
 import { checkpointCommand } from "./checkpoint.ts";
 import { closeCommand } from "./close.ts";
-import { gated as queued, HOST, waitCrashed } from "./host.ts";
+import { gated as queued, HOST, waitCrashed, waitPaused } from "./host.ts";
 import { type Campaign, solved } from "./round.ts";
 import { sessionCommand } from "./session.ts";
 import { type AskedSetting, firstRecord, keepSetting, recordedSetting, settingAsked } from "./setting.ts";
@@ -166,8 +75,8 @@ const WHOLE: ReadonlySet<unknown> = new Set(["finished", "wall", "turns"]);
 const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
 
 /** The moves the host makes itself, by the command an operator would run: the exam's draft and
- *  reading, the tasks set apart, a comparison and a promotion. Every other is a conversation's. */
-type Made = Extract<Decided, { move: "draft" | "accept" | "prepare" | "compare" | "promote" }>;
+ *  reading, the tasks set apart, a comparison, a promotion, and a revert. Every other is a conversation's. */
+type Made = Extract<Decided, { move: "draft" | "accept" | "prepare" | "compare" | "promote" | "revert" }>;
 
 /**
  * Whether the campaign goes on from a move that threw, which began where the log held `from`
@@ -210,6 +119,10 @@ async function make(decided: Made, turn: Turn, log: string): Promise<void> {
   }
   if (decided.move === "promote") {
     await promoteMade(log, values.name, decided);
+    return;
+  }
+  if (decided.move === "revert") {
+    revertMade(log, decided);
     return;
   }
   if (decided.move === "draft") {
@@ -422,7 +335,7 @@ async function lead(
  * or the model turns, which would be two records of one fact.
  */
 function settingOf(log: string, given: Values): AskedSetting {
-  const events = existsSync(log) ? read(log) : [];
+  const events = read(log);
   const recorded = recordedSetting(events);
   const solver = recorded === null ? openingOf(events)?.solver : undefined;
   const asked = settingAsked(
@@ -477,6 +390,30 @@ function pinFault(manifest: JsonValue, version: string): string | null {
     : `${capturedJsonStringify(pins)} must pin the executing Bun ${version}`;
 }
 
+/** Run one host move (`make`), recovering provider waits/crashes via `goesOn` or logging environment end. */
+async function runMade(decided: Made, turn: Turn, log: string, from: number): Promise<boolean> {
+  try {
+    await make(decided, turn, log);
+    // Inside the `try`, so a move that changed nothing ends the campaign as any other move that
+    // threw does, rather than the process exiting here with no ending on record.
+    if (read(log).length <= from + 1) {
+      throw new Error(`the move changed nothing in ${log}: made again it would change nothing again`);
+    }
+    return true;
+  } catch (error) {
+    // A move the provider's limit ended, or whose session crashed, is waited out and the campaign
+    // goes on: it counts against `--moves` as the move it was, since it is on record as one, and
+    // the table's crash rule ends the campaign where sessions crash in a row.
+    if (await goesOn(log, from, error, turn.seats.host)) return false;
+    // Any other move that began and threw is the environment's ending, and the campaign goes on
+    // from its log when it is run again. One refused before it began leaves the log alone.
+    if (read(log).length > from) {
+      append(log, ENDED, { ending: "environment", why: errorMessage(error), move: decided.move });
+    }
+    throw error;
+  }
+}
+
 /**
  * `bun tools/d2/harness-builder.ts`, and under a rehearsal's seats the same loop with a script in
  * each model seat. It returns the last thing move 7 said: the campaign's ending, or the move that
@@ -495,8 +432,10 @@ export async function harnessBuilder(
   const given = flagsOf(args);
   const paid = seats.seated === solved ? "paid" : "scripted";
   const refusedTree = paid === "paid" ? treeFault(REPO) : null;
-  if (refusedTree !== null && given["dry-run"]) console.error(`a real run here is refused: ${refusedTree}`);
-  else if (refusedTree !== null) throw new Error(refusedTree);
+  if (refusedTree !== null) {
+    if (given["dry-run"]) console.error(`a real run here is refused: ${refusedTree}`);
+    else throw new Error(refusedTree);
+  }
   const { name } = given;
   if (name === undefined) throw new Error("name --name, the campaign");
   const most = given.moves === undefined ? Number.POSITIVE_INFINITY : Number(given.moves);
@@ -509,20 +448,26 @@ export async function harnessBuilder(
   let campaign: Campaign | null = null;
   const setting = settingOf(log, given);
   let opening = await served(opened(log, given, paid), paid, given.solver);
+  // Capture `began` before writing the launch receipt so a pre-armed `runs pause` that waits for
+  // this launch's receipt lands strictly after `began` for both the outer loop and `queued`.
+  const began = read(log).length;
   if (paid === "paid" && !given["dry-run"]) keepReceipt(log, args);
-  if (!given["dry-run"] && existsSync(log)) await endCut(log);
+  if (!given["dry-run"]) await endCut(log);
   // Every move is made with the terms the opening keeps: this command's, and the record's for
   // each it does not name.
   const values: Values = { ...given, ...opening.terms };
-  const held = queued({ ...seats, loaded: values.loaded }, log);
+  const held = queued({ ...seats, loaded: values.loaded }, log, began);
   /** The move this run made last: an exam read here printed its faults as it was read. */
   let last: Decided["move"] | null = null;
   for (let made = 0; ; ) {
     // A total the operator left as a word rules from this move on: the newest stands, and the record
     // answers every one, so that no older one applies at the next move.
-    const totals = pendingWords(read(log)).filter(({ word }) => word === "budget");
-    if (totals.length > 0) opening = opened(log, values, paid, totals);
-    const events = existsSync(log) ? read(log) : [];
+    let events = read(log);
+    const totals = pendingWords(events).filter(({ word }) => word === "budget");
+    if (totals.length > 0) {
+      opening = opened(log, values, paid, totals);
+      events = read(log);
+    }
     campaign ??= draftOf(events) === null ? null : await openCampaign(packNamed(values));
     const turn = turnOf({ log, values, opening, seats, held, campaign });
     const { plan } = turn;
@@ -538,61 +483,52 @@ export async function harnessBuilder(
       if (!values["dry-run"]) keepSetting(log, setting);
     }
     // Where the log stands as the move begins: the setting a first run just kept is no part of it.
-    const from = existsSync(log) ? read(log).length : 0;
+    const from = made === 0 && !values["dry-run"] ? read(log).length : events.length;
     const decided = decide(events, plan);
     console.log(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,
     );
+    if (decided.move === "end") {
+      const faults = examLines(events, values, decided.ending, last === "accept" ? "printed" : "unprinted");
+      for (const line of faults) console.log(line);
+      if (values["dry-run"]) return decided;
+      ended(log, events, decided);
+      // What the campaign hands over, once it has an exam to open over (`close.ts`).
+      if (values.handover !== undefined && campaign !== null) {
+        await closeCommand([...packOf(values), "--to", values.handover]);
+      }
+      return decided;
+    }
+    if (values["dry-run"] || made >= most) return decided;
+    // Hold at an active or reached boundary pause before opening a new conversation or host move
+    // (promotions and reverts still land so reference state settles before `runs pause` stops the run).
+    if (
+      decided.move !== "promote" &&
+      decided.move !== "revert" &&
+      (await waitPaused(log, began, campaign?.limits.wallSeconds ?? LIMITS.wallSeconds, {
+        host: seats.host,
+      }))
+    ) {
+      continue;
+    }
     // A Builder or an Examiner session the table names is the conversation's to make.
     if (decided.move === "build" || decided.move === "examine") {
-      if (values["dry-run"] || made >= most) return decided;
       campaign ??= await openCampaign(packNamed(values));
-      const turns = { maxMoves: most, used: made, failed: null };
+      const turns = { maxMoves: most, used: made, failed: null, began };
       const context: CampaignContext = { log, values, opening, seats, held, campaign, paid, ...turns };
       const left = await lead(context, decided);
       [made, { opening }] = [context.used, context];
       if (left !== null) return left;
       continue;
     }
-    if (decided.move === "end") {
-      const faults = examLines(events, values, decided.ending, last === "accept" ? "printed" : "unprinted");
-      for (const line of faults) console.log(line);
-      if (!values["dry-run"]) ended(log, events, decided);
-      // What the campaign hands over, once it has an exam to open over (`close.ts`).
-      if (!values["dry-run"] && values.handover !== undefined && campaign !== null) {
-        await closeCommand([...packOf(values), "--to", values.handover]);
-      }
-      return decided;
-    }
-    if (values["dry-run"] || made >= most) return decided;
     if (decided.move === "promote" && opening.attended) {
       console.log(awaitsOperator(name, decided.harness));
       return decided;
     }
-    try {
-      await make(decided, turn, log);
-      // Inside the `try`, so a move that changed nothing ends the campaign as any other move that
-      // threw does, rather than the process exiting here with no ending on record.
-      if (read(log).length <= from + 1) {
-        throw new Error(`the move changed nothing in ${log}: made again it would change nothing again`);
-      }
-    } catch (error) {
-      // A move the provider's limit ended, or whose session crashed, is waited out and the campaign
-      // goes on: it counts against `--moves` as the move it was, since it is on record as one, and
-      // the table's crash rule ends the campaign where sessions crash in a row.
-      if (await goesOn(log, from, error, seats.host)) {
-        made += 1;
-        continue;
-      }
-      // Any other move that began and threw is the environment's ending, and the campaign goes on
-      // from its log when it is run again. One refused before it began leaves the log alone.
-      if (read(log).length > from) {
-        append(log, ENDED, { ending: "environment", why: errorMessage(error), move: decided.move });
-      }
-      throw error;
-    }
-    last = decided.move;
+    const completed = await runMade(decided, turn, log, from);
     made += 1;
+    if (!completed) continue;
+    last = decided.move;
     await waitCrashed(log, seats.host);
   }
 }

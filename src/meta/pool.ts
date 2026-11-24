@@ -4,9 +4,6 @@ import { asError } from "./runtime-values.ts";
  * `run` over `items`, at most `width` at once, each started as a place frees, with the results in
  * the items' order. A wave that waits for its slowest member before the next begins leaves places
  * idle, and a solve runs from two minutes to two hours.
- *
- * A `run` that throws rejects the whole, with the first thing thrown, once the runs in flight have
- * settled; no further item is started. Nothing is left running behind a rejection.
  */
 export async function pooled<Item, Result>(
   items: readonly Item[],

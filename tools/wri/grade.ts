@@ -18,17 +18,6 @@
  * - `--answers` grades every `.json` file of a folder in name order, each against the task its name
  *   begins with (`<taskId>.json` or `<taskId>--<label>.json`), and prints the sha256 of the bytes it
  *   graded, so a lane's frozen digests can be set against what was graded.
- *
- * Without it lane sessions pull answers out of verdicts by hand, write their own one-field
- * mutations and grade a corpus in a shell loop, and a defect several lanes find is vetted plausible
- * only, since no session prints a repeatable grade of it.
- *
- * An answer outside a drafted exam's answer format is refused first, as `judge` refuses a solver's,
- * and no check reads it (`src/solver/run.ts`). The format is the draft's, which the campaign's
- * contract holds (`packOpened`, `tools/d2/campaign.ts`). Putting every answer to the checks alone
- * would let a lane read the evaluator's leniency on keys the format refuses as a gap of the exam,
- * where the host refuses such an answer before any check. The exam is read where the campaign
- * staged it (`exams/<digest>/`, `tools/d2/exam.ts`).
  */
 import { draftOf } from "#src/examiner/draft.ts";
 import { type AnswerFile, readAnswerFiles } from "#src/kernel/answer-files.ts";

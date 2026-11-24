@@ -4,40 +4,6 @@
  * weighted measures from the recorded solves; and, with `--try`, `--mechanism` or `--against`, any
  * other promotion mechanism read beside the tree's own on one panel. It starts no solve, calls no
  * model and writes nothing of a campaign's.
- *
- * For each pair of harnesses a campaign compared, the tree's `pairsReported` reads each comparison's
- * pairs again, and the tree's `pointsOf` scores each task by validity, the objective and the bill.
- * One reading at or under the level over the frontier and retained tasks together promotes only where
- * the tree's own rule reads a step (`readsStep`, by `stepOf`: without the bill from 31 October, both
- * ways from 25 October), at the recorded level.
- *
- * Beside each promotion it prints the tally and p it rests on, as scored and without the bill,
- * which measure won each task, the A/A of that comparison (the reference against itself on halves
- * of its own solves mirrored in time, read either way at the level by `readsStepEitherWay`), and
- * every later reading of the pair.
- * For each epoch that ended in a promotion it prints the hours and dollars (`time.ts`).
- *
- * A report written under the weights holds its points (`points`), and its differences are the
- * tree's own to reconcile; a report from before 21 October was tallied rule by rule, and the replay
- * says how many of those the weights read otherwise.
- *
- * A panel reads each mechanism (`mechanisms.ts`: knobs over today's values, free code in a file, or
- * a candidate tree's own rule) on the reduced record of `record.ts`, which counts a fork's copies of
- * a comparison once, on everything the rule can be wanted for: steps added and dropped against the
- * tree and what each added step had by the tree's own tally; A/A either way beside how many A/As
- * could read a step at all, since a rate over all of them flatters any rule; the starter reads, the
- * sign repeat on the disjoint solves of one comparison and the tasks that moved; what became of each
- * added step, with runs that never read again counted apart; the promotions on record whose starter
- * read confirmed them, among those a row steps on and those it does not; the resources of the
- * harnesses it would promote; and every row by pack, since a pooled rate reads the mix of packs.
- *
- * Tuning runs it on `main`'s tree and on a candidate (SKILL.md). Replaying the record counts
- * readings and says nothing of the path a campaign would have taken, since an earlier promotion
- * changes every reference after it, so it never establishes a gain. It prints counts, session ids,
- * short digests and campaign names, and never a task, an answer, a measure or a check.
- *
- * It reads no margin, trigger or two-stage rule of older trees and no rule-by-rule tally, none of
- * which `main` holds.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type Found, campaignLogs, rehearsed } from "#skills/main/logs.ts";

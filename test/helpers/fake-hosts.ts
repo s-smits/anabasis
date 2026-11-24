@@ -28,7 +28,7 @@ const SCRIPTS = {
   "ssh": `${RECORD}
 const script = args.at(-1);
 const peer = JSON.parse(process.env.FAKE_FLEET ?? "{}")[args.at(-2)] ?? {};
-if (process.env.FAKE_OFFLINE === "1" || peer.offline) process.exit(255);
+if (fake("FAKE_OFFLINE") === "1" || peer.offline) process.exit(255);
 if (peer.timeout && script.includes("ANA_HOP")) await Bun.sleep(50000);
 if (peer.freshExit && script.includes("ANA_HOP") && script.includes("fresh")) process.exit(peer.freshExit);
 if (peer.active !== undefined && peer.execute && script.includes("'active'")) { console.log(peer.active); process.exit(0); }

@@ -2,10 +2,6 @@
  * A reference in prose to something the tree no longer holds: a backticked repository path that
  * names no file or directory, or an `ANA_*` setting documented for the operator that no code reads.
  *
- * Prose outlives the code it describes: backticked paths in tracked Markdown come to name files
- * that do not exist, and an example settings file can describe a setting as read by a script
- * already deleted. A reader who follows such a path finds nothing, or trusts a setting that does nothing.
- *
  * What is read: every Markdown file and every comment line of a TypeScript file, outside the
  * vendored trees and the documents whose subject is v1's record (`AGENTS.md`: `docs/transfer.md`,
  * `docs/v1.md` and `studies/`). A ledger elsewhere cites a gone file as `<sha>:path`, the

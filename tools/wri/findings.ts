@@ -6,13 +6,6 @@
  * into one ledger (`findingsLedger`): each standing finding by the investigations that hold it, the
  * confirmed rows by importance and by what became of them, and each lane by the rows it fed, the
  * newest window beside the one before it.
- *
- * A findings table is read by its fixed columns, in any order, rather than only where its first
- * header cell is `#` and a row as confirmed only where a cell begins with the bare word, which
- * misses tables headed `id`, `vet` or `row`, or verdicts written in bold.
- *
- * The ledger prints counts, keys of the register, lane numbers and folder dates, never a finding's
- * text: a vetting row can quote a task.
  */
 import { DAY_MS } from "#src/meta/clock.ts";
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";

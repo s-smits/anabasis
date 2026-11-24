@@ -27,14 +27,6 @@
  * section 9). Named runs use the same predicate before printing their details, so neither `--has`
  * is ignored nor mixed launches printed for `--holds`. More than one name is refused: otherwise the
  * first name would silently discard the others.
- *
- * A solve's `python3` is the host's own, the first on the wall's path (`toolchainPathDirs`), and no
- * condition names it, since a condition that did would set every solve aside when a run moves host.
- * So the receipt keeps what a launch found there (`hostPython`), and `source` prints it, which lets
- * two runs be set side by side knowing whether their solvers had the same libraries to hand. Two
- * campaigns of one domain can differ by a host's Python and its packages, so that one's solves
- * report a library missing nearly every time, while a login shell's Python on that host, which
- * holds it, says otherwise.
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { gitMaybe } from "#src/meta/git.ts";

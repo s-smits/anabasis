@@ -64,6 +64,10 @@ function run(over: Partial<Run> & { readonly promoted?: number }): Run {
     after: { wins: 0, losses: 0, ties: 0 },
     controls: 0,
     aaSteps: 0,
+    aaValidityControls: 0,
+    aaValiditySteps: 0,
+    aaObjectiveControls: 0,
+    aaObjectiveSteps: 0,
     ending: "budget",
     ...rest,
   };

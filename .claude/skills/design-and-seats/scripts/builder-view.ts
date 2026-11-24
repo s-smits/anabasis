@@ -4,13 +4,6 @@
  *
  *   bun .claude/skills/design-and-seats/scripts/builder-view.ts <log.jsonl | campaign name>
  *     [--parent <digest>]
- *
- * Calls `startTold`, `comparisonsTold`, and `failsTold` (`src/builder/past.ts`) over `campaignOf`
- * so changes to the Builder's opening view can be inspected through the exact production readers.
- * Any held-out task id, check name, or Referee reason in this output would violate Rule 3.
- *
- * `--parent` selects the starting harness (defaulting to `latestBuilt`, or the starter `A` from
- * `namesOf`). Counterpart to `examiner-view.ts` on the exam side.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { comparisonsTold, failsTold, startTold } from "#src/builder/past.ts";

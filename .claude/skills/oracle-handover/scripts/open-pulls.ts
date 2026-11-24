@@ -10,9 +10,6 @@
  * stack (so reading the diffs in order reconstructs the stack top against trunk). Unless `--diffs`
  * is passed, `code/<top>/` also snapshots the changed files, their direct imports, and nearby tests
  * (`importsOf`, `testsNear`, `tools/runtime/gate.ts`) at each chain's top commit.
- *
- * The folder is then scanned, compressed, and verified via `zipped` (`bundle.ts`), and `<folder>.md`
- * is written alongside the archive as a single pasteable Markdown document (`pasted`).
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import {

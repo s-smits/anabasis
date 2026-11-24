@@ -28,7 +28,9 @@ reason about an unseen technical domain. The seven consequences and their justif
    whether admission conditions allow it to start. Whenever a model's output informs a host decision
    (such as a Referee ruling), code specifies the required evidence structure and refuses outputs
    that omit it.
-6. **Permissive defaults within strict boundaries.** The wall protects hidden values, credentials,
+6. **Permissive defaults within strict boundaries.** When in doubt about strictness, err toward more
+   lenient sandboxing (hiding only hidden values, credentials, and other seats' private files) and
+   greater agent freedom in harness building. The wall protects hidden values, credentials,
    and per-seat state. Reads remain open except for explicitly blocked protected roots, and each
    seat writes freely within its own root directory, excluding the host's private folder inside it
    (`SolveDirs`, `src/tools/command.ts`). Every narrower grant creates an additional sandbox policy

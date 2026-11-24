@@ -2,10 +2,10 @@
 """Measure the files a /simplify pass touches, so the pass argues from counts.
 
   measure.py <files...>                 functions by branch count and length, exports by caller count
+  measure.py --base <ref> [files...]    working diff against merge-base of <ref>: before -> after,
+                                        budget ledger, and repeats in one command
   measure.py --diff <scope.diff>        the source files in that diff (from scope.sh), and the
                                         names the diff introduces
-  measure.py --base <ref> <files...>    the same measurement on <ref>'s version, printed as
-                                        before -> after per function (run after editing)
   --diff <d> --base <ref>               both, plus the budget ledger against <ref>
   -C <dir>                              measure another worktree; the ledger reads the after-state
                                         from its files, so check out the commit being measured
@@ -137,15 +137,15 @@ def base_snapshot(root, ref, files):
     return tmp, present
 
 
-def diff_files_and_names(path):
+def diff_files_and_names(diff_lines):
     files, names = [], []
-    for line in open(path, errors="replace"):
+    for line in diff_lines:
         if line.startswith("diff --git"):
-            m = re.search(r" b/(.+)$", line.rstrip("\n"))
+            m = re.search(r" b/(.+)$", line)
             if m and SRC.search(m.group(1)) and "node_modules" not in m.group(1):
                 files.append(m.group(1))
         elif line.startswith("+") and not line.startswith("+++"):
-            m = ADDED_NAME.match(line.rstrip("\n"))
+            m = ADDED_NAME.match(line)
             if m:
                 names.append(m.group(1) or m.group(2))
     return files, sorted(set(names))
@@ -175,11 +175,10 @@ def function_names(text):
     return {next(filter(None, names)) for names in FUNC_NAME.findall(text)}
 
 
-def diff_sections(path):
-    """[[file, status, [(new_lineno, text)], [removed text]]] from a unified diff."""
+def diff_sections(diff_lines):
+    """[[file, status, [(new_lineno, text)], [removed text]]] from unified diff lines."""
     rows, cur, new_no = [], None, 0
-    for raw in open(path, errors="replace"):
-        line = raw.rstrip("\n")
+    for line in diff_lines:
         if line.startswith("diff --git"):
             m = re.search(r" b/(.+)$", line)
             cur = [m.group(1) if m else "?", "modified", [], []]
@@ -321,20 +320,31 @@ def main():
     root = os.path.abspath(a.root)
     files = list(a.files)
     names = []
+    base = a.base
+    diff_lines = None
     if a.diff:
-        df, names = diff_files_and_names(a.diff)
+        diff_lines = open(a.diff, errors="replace").read().splitlines()
+    elif base:
+        mb = run(["git", "merge-base", base, "HEAD"], cwd=root)
+        if mb.returncode == 0 and mb.stdout.strip():
+            base = mb.stdout.strip()
+        out = run(["git", "diff", "--no-ext-diff", base, *(("--", *files) if files else ())], cwd=root)
+        if out.returncode == 0:
+            diff_lines = out.stdout.splitlines()
+    if diff_lines is not None:
+        df, names = diff_files_and_names(diff_lines)
         files = files or df
     files = [f for f in files if os.path.exists(os.path.join(root, f))]
     if not files:
         print("measure: no source files to measure")
-        if a.diff:
-            budget(root, diff_sections(a.diff), a.base)
+        if diff_lines is not None:
+            budget(root, diff_sections(diff_lines), base)
         return 0
 
     now = oxlint_measure(root, files)
     before = None
-    if a.base:
-        tmp, present = base_snapshot(root, a.base, files)
+    if base:
+        tmp, present = base_snapshot(root, base, files)
         try:
             before = oxlint_measure(tmp, present, binary_root=root) if present else {}
         finally:
@@ -348,7 +358,7 @@ def main():
         lines = nonblank(text)
         base_lines = None
         if before is not None and f in before:
-            b = run(["git", "show", f"{a.base}:{f}"], cwd=root)
+            b = run(["git", "show", f"{base}:{f}"], cwd=root)
             base_lines = nonblank(b.stdout) if b.returncode == 0 else None
         head = f"{f}: {lines} nonblank lines" + (f" (was {base_lines})" if base_lines is not None else "")
         if lines > a.file_lines:
@@ -400,9 +410,9 @@ def main():
         print("over a ceiling:")
         for row in flagged:
             print("  " + row)
-    if a.diff:
-        sections = diff_sections(a.diff)
-        budget(root, sections, a.base)
+    if diff_lines is not None:
+        sections = diff_sections(diff_lines)
+        budget(root, sections, base)
         repeats(root, sections)
     return 0
 

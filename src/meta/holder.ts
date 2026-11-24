@@ -8,23 +8,10 @@
  * take one (`pulse-readers.ts`, `snapshots.ts`), and a controller's preparation follows the rule in
  * shell (`code.ts`). A landing holds its clone the same way (`holdAlone`, `landing.ts`), with a note
  * after the record that says what it lands.
- *
- * Only processes of the host that keeps the folder take these locks, so a record that names another
- * host came with a copied folder and holds nothing. A process that holds a lock is refused it again
- * like any other taker: the pass takes its one lock once, and a fetch waits by polling, so a second
- * refresh of one copy in the process waits for the first to release it.
- *
- * A lock held by its taker's life, rather than lapsing at an age, keeps a slow pass, a cold
- * install or a fetch from losing its lock to a second taker while it still runs, and leaves no
- * stage behind a killed one. Taking a lock over is the one step two processes could
- * race at, so it runs under a `flock` of the folder, which closes with the process.
- *
- * A file a writer fills before renaming it into place names its writer by pid alone (`remember`'s
- * `<file>.<pid>.tmp`, the model library's `.tmp.<pid>.<suffix>`), and is the writer's while that pid
- * lives (`dropCutWrites`), rather than by its age, which would take the part from a slow download.
  */
 import {
   closeSync,
+  existsSync,
   lockExclusiveSync,
   openSync,
   readdirSync,
@@ -42,9 +29,11 @@ const own = new Map<number, string>();
 
 /** The record the process `pid` of this host would hold a lock by, `<pid> <host> <start>`, or ""
  *  where none has that pid. `ps` is named by its full path, since the host fakes put their own first
- *  on the path. */
-function recordOf(pid: number): string {
-  const start = decodeOutput(runSync(["/bin/ps", "-o", "lstart=", "-p", String(pid)]).stdout).trim();
+ *  on the path. `utc` pins `TZ=UTC LC_ALL=C` (default); `ambient` queries ambient TZ to recognize
+ *  live locks written by pre-UTC commits on non-UTC hosts. */
+function recordOf(pid: number, tz: "utc" | "ambient" = "utc"): string {
+  const env = tz === "utc" ? { ...runtimeProcess.env, TZ: "UTC", LC_ALL: "C" } : runtimeProcess.env;
+  const start = decodeOutput(runSync(["/bin/ps", "-o", "lstart=", "-p", String(pid)], { env }).stdout).trim();
   return start === "" ? "" : `${String(pid)} ${hostname()} ${start}`;
 }
 
@@ -52,10 +41,16 @@ function recordOf(pid: number): string {
  *  claim for every solve and every check, each of which would otherwise start a `ps`. */
 function ownRecord(): string {
   const { pid } = runtimeProcess;
-  const record = own.get(pid) ?? recordOf(pid);
-  own.set(pid, record);
+  const cached = own.get(pid);
+  if (cached !== undefined && cached !== "") return cached;
+  const record = recordOf(pid);
+  if (record !== "") own.set(pid, record);
   return record;
 }
+
+/** Whether `record` matches `live` (exact match or followed by a space-delimited note). */
+const matchesRecord = (record: string, live: string): boolean =>
+  live !== "" && (record === live || record.startsWith(`${live} `));
 
 /** The record `file` holds, or "" where it is no link. */
 export function recordIn(file: string): string {
@@ -67,13 +62,16 @@ export function recordIn(file: string): string {
 }
 
 /** The live process that holds `file` and the note it wrote after its record, or null where none
- *  does: the record must name a process of this host still with that start. */
+ *  does: the record must name a process of this host still with that start (UTC or ambient TZ). */
 export function holderOf(file: string): { readonly pid: number; readonly note: string } | null {
   const record = recordIn(file);
+  if (record === "") return null;
   const pid = Number.parseInt(record, 10);
-  const live = record === "" ? "" : recordOf(pid);
-  if (live === "" || (record !== live && !record.startsWith(`${live} `))) return null;
-  return { pid, note: record.slice(live.length + 1) };
+  const utc = recordOf(pid, "utc");
+  if (matchesRecord(record, utc)) return { pid, note: record.slice(utc.length + 1) };
+  const ambient = recordOf(pid, "ambient");
+  if (matchesRecord(record, ambient)) return { pid, note: record.slice(ambient.length + 1) };
+  return null;
 }
 
 /** Whether a live process holds `file`. */
@@ -82,12 +80,14 @@ export const held = (file: string): boolean => holderOf(file) !== null;
 /** Take `file`, in a folder that exists, for this process where no live process holds it, and say
  *  whether it did. A `note` follows the record, for whoever finds the lock held. */
 export function hold(file: string, note = ""): boolean {
+  const mine = ownRecord();
+  if (mine === "") return false;
   const guard = openSync(dirname(file), "r");
   try {
     lockExclusiveSync(guard);
     if (held(file)) return false;
     rmSync(file, { force: true });
-    symlinkSync([ownRecord(), ...(note === "" ? [] : [note])].join(" "), file);
+    symlinkSync([mine, ...(note === "" ? [] : [note])].join(" "), file);
     return true;
   } finally {
     closeSync(guard);
@@ -104,7 +104,21 @@ export function dropCutWrites(folder: string, named: RegExp, { deep = false } = 
   }
 }
 
-/** Give `file` up, where this process holds it. */
+/** Give `file` up, where this exact process record holds it, serialized by the folder lock. */
 export function release(file: string): void {
-  if (Number.parseInt(recordIn(file), 10) === runtimeProcess.pid) rmSync(file, { force: true });
+  const dir = dirname(file);
+  if (!existsSync(dir)) return;
+  let guard: number;
+  try {
+    guard = openSync(dir, "r");
+  } catch {
+    return;
+  }
+  try {
+    lockExclusiveSync(guard);
+    const record = recordIn(file);
+    if (matchesRecord(record, ownRecord())) rmSync(file, { force: true });
+  } finally {
+    closeSync(guard);
+  }
 }

@@ -18,10 +18,6 @@
  * once per lockfile (`task.sh`). The snapshot keeps `HEAD`'s parents, so a static gate there chooses
  * the tests it would choose here, where a parentless snapshot would read every file as changed.
  *
- * **Slots.** A host takes as many tasks at once from this machine as its `checks` says (two where it
- * says nothing), and this machine one. A slot is a link in the temp folder whose target is its holder's PID, made in one
- * step, so a holder that died holds nothing; a task that finds none free looks again each second.
- *
  * Settings, each optional, in seconds unless said: `ANA_RUNNER_WALL` (a task's deadline, 3600),
  * `ANA_RUNNER_QUEUE_WAIT` (the wait for a slot, 2400; exit 75 past it), `ANA_RUNNER_MIN_FREE_GB`
  * (free space a host must have, 3; exit 69 below it or where it does not answer),
@@ -43,7 +39,7 @@ import { hostTool } from "#src/meta/host-tool.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { join } from "#src/meta/path.ts";
 import { capturedSpawn, processAnswers, runtimeProcess } from "#src/meta/process.ts";
-import { errorMessage } from "#src/meta/runtime-values.ts";
+import { errorCode, errorMessage } from "#src/meta/runtime-values.ts";
 import { sshOptions } from "#src/meta/ssh.ts";
 import { killProcessGroup, runCaptured, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { quoted, shellPath, sshCommand } from "../../runs/host-command.ts";
@@ -61,7 +57,14 @@ import { minuteLoads } from "../../runs/load.ts";
 
 const TASKS = ["test", "typecheck", "lint", "secrets", "gate"];
 /** What a check reads from its caller, sent by name since ssh carries no environment. */
-const FORWARDED = ["ANA_LINT_STRICT", "ANA_TEST_BAIL", "ANA_TEST_WORKERS"];
+const FORWARDED = [
+  "ANA_LINT_STRICT",
+  "ANA_LINT_PATHS",
+  "ANA_TEST_BAIL",
+  "ANA_TEST_WORKERS",
+  "ANA_TEST_HOST_LOAD",
+  "ANA_CLIMB",
+];
 /** Exits that say nothing about the tree (`NO_VERDICT`, `tools/runtime/gate.ts`), and the others. */
 const EXIT = { usage: 2, unavailable: 69, noSlot: 75, interrupted: 130, noVerdict: 255 } as const;
 const TASK_SCRIPT = join(import.meta.dir, "task.sh");
@@ -126,13 +129,35 @@ function listed(choice: string): { hosts: readonly Host[]; benches: readonly Ben
  * sitting whose `status` does not answer `idle` on its first line (`bench.ts`) holds it, a silent
  * one too. A held host is said with `then`, what the runner does about it.
  */
-async function armHolds({ name, ssh }: Host, benches: readonly Bench[], then: string): Promise<boolean> {
+async function armHolds(
+  { name, ssh }: Host,
+  benches: readonly Bench[],
+  then: string,
+  timeoutMs: number,
+): Promise<boolean> {
   const asked = benches
     .filter((bench) => bench.host?.name === name)
-    .map(({ sitting }) => runCaptured(["ssh", ...sshOptions(ssh), ssh, `${shellPath(sitting)} status`]));
-  const holds = (await Promise.all(asked)).some(
-    ({ exitCode, stdout }) => exitCode !== 0 || stdout.split("\n")[0] !== "idle",
-  );
+    .map(async ({ sitting }) => {
+      const child = capturedSpawn(["ssh", ...sshOptions(ssh), ssh, `${shellPath(sitting)} status`], {
+        detached: true,
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "ignore",
+      });
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        killProcessGroup(child, "SIGKILL");
+      }, timeoutMs);
+      timer.unref();
+      try {
+        const [stdout, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+        return timedOut || exitCode !== 0 || stdout.split("\n")[0]?.trim() !== "idle";
+      } finally {
+        clearTimeout(timer);
+      }
+    });
+  const holds = (await Promise.all(asked)).some(Boolean);
   if (holds) say(`a benchmark's arm holds ${name}: ${then}`);
   return holds;
 }
@@ -143,21 +168,35 @@ async function armHolds({ name, ssh }: Host, benches: readonly Bench[], then: st
  * by one-minute load a core, least loaded first (`minuteLoads`, as `runs loadwatch` orders
  * them). A machine that has not answered within `ANA_RUNNER_PICK_WAIT` is left out, never read as
  * idle, and where none answers the task runs here. A host a benchmark's arm holds (`armHolds`) is
- * left out of `auto` and warned of when named explicitly.
+ * left out of `auto`, refused with `EXIT.unavailable` when a landing placed it (`ANA_RUNNER_SPARE_HELD`),
+ * and warned of when named explicitly.
  */
 async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean }> {
-  const choice = checkHost() ?? "";
+  const choice = checkHost()?.trim() ?? "";
   const here = { places: [undefined], picked: false };
   if (choice === "here") return here;
   const { hosts, benches } = listed(choice);
   if (choice === "" && hosts.length === 0) return here;
+  const waitMs = setting("ANA_RUNNER_PICK_WAIT", 5) * 1000;
   if (choice === "" || choice === "auto") {
     const started = performance.now();
-    const holds = await Promise.all(hosts.map((host) => armHolds(host, benches, "no check goes there now")));
-    const { order, silent } = await minuteLoads(
-      [undefined, ...hosts.filter((_, index) => holds[index] !== true)],
-      setting("ANA_RUNNER_PICK_WAIT", 5) * 1000,
+    const benchedNames = new Set(
+      benches.flatMap((bench) => (bench.host === undefined ? [] : [bench.host.name])),
     );
+    const benched = hosts.filter((host) => benchedNames.has(host.name));
+    const unbenched = hosts.filter((host) => !benchedNames.has(host.name));
+    const basePromise = minuteLoads([undefined, ...unbenched], waitMs);
+    const holds = await Promise.all(
+      benched.map((host) => armHolds(host, benches, "no check goes there now", waitMs)),
+    );
+    const freeBenched = benched.filter((_, index) => holds[index] !== true);
+    const extra =
+      freeBenched.length === 0
+        ? { order: [], silent: [] }
+        : await minuteLoads(freeBenched, Math.max(250, waitMs - (performance.now() - started)));
+    const base = await basePromise;
+    const order = [...base.order, ...extra.order].toSorted((a, b) => a.share - b.share);
+    const silent = [...base.silent, ...extra.silent];
     const read = order.map(({ label, share }) => `${label} ${share.toFixed(2)}`);
     const took = ((performance.now() - started) / 1000).toFixed(1);
     say(
@@ -169,7 +208,16 @@ async function placesFor(): Promise<{ places: readonly Place[]; picked: boolean 
   }
   const host = hosts.find((each) => each.name === choice || each.ssh === choice);
   if (host !== undefined) {
-    await armHolds(host, benches, "running there because ANA_CHECK_HOST named it");
+    const spare = runtimeProcess.env.ANA_RUNNER_SPARE_HELD === "1";
+    const held = await armHolds(
+      host,
+      benches,
+      spare ? "no check goes there now" : "running there because ANA_CHECK_HOST named it",
+      waitMs,
+    );
+    if (held && spare) {
+      throw new Refusal(`no task started on ${host.name}; an arm holds it`, EXIT.unavailable);
+    }
     return { places: [host], picked: false };
   }
   const names = hosts.map((each) => each.name).join(", ");
@@ -193,17 +241,23 @@ function takeSlot(folder: string, count: number): Slot | null {
     holder !== mine && /^[1-9]\d*$/u.test(holder) && processAnswers(Number(holder));
   for (let number = 1; number <= count; number++) {
     const path = join(folder, `slot-${String(number)}`);
+    let linkTarget: string | null = null;
+    try {
+      linkTarget = readlinkSync(path);
+    } catch {
+      // Not a symlink (absent, a slot folder, or a stray file).
+    }
+    if (linkTarget !== null) {
+      // A runner from before the slots were folders left a link, which its live task still holds.
+      if (live(linkTarget)) continue;
+      rmSync(path, { force: true });
+    }
     let held: string[] = [];
     try {
-      // A runner from before the slots were folders left a link, which its live task still holds.
-      if (live(readlinkSync(path))) continue;
-      rmSync(path, { force: true });
-    } catch {
-      try {
-        held = readdirSync(path);
-      } catch {
-        // Nothing there yet.
-      }
+      held = readdirSync(path);
+    } catch (error) {
+      // A stray regular file at the slot path would otherwise reject renameSync with ENOTDIR forever.
+      if (errorCode(error) === "ENOTDIR") rmSync(path, { force: true });
     }
     if (held.some(live)) continue;
     for (const dead of held) rmSync(join(path, dead), { recursive: true, force: true });
@@ -310,14 +364,20 @@ async function attached(cmd: string[], release: () => void): Promise<number> {
   // A group of its own, so the signal reaches the task whole and this command once. No check reads
   // its input, and a group without the terminal could not.
   const child = capturedSpawn(cmd, { detached: true, stdin: "ignore", stdout: "inherit", stderr: "inherit" });
-  for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
-    runtimeProcess.on(signal, () => {
+  const handlers = (["SIGHUP", "SIGINT", "SIGTERM"] as const).map((signal) => {
+    const onSignal = (): void => {
       killProcessGroup(child, signal);
       release();
       runtimeProcess.exit(EXIT.interrupted);
-    });
+    };
+    runtimeProcess.on(signal, onSignal);
+    return [signal, onSignal] as const;
+  });
+  try {
+    return await child.exited;
+  } finally {
+    for (const [signal, onSignal] of handlers) runtimeProcess.off(signal, onSignal);
   }
-  return await child.exited;
 }
 
 /**
@@ -348,7 +408,13 @@ function carried(root: string): string[] {
 
 /** The task on `host`, in a slot folder that names this machine too, so two machines that share a
  *  host never share a slot. */
-async function onHost(host: Host, slot: number, job: Job, release: () => void): Promise<number> {
+async function onHost(
+  host: Host,
+  slot: number,
+  job: Job,
+  release: () => void,
+  commitOf: () => string,
+): Promise<number> {
   const { root, pin } = job;
   if (pin === "") throw new Refusal(`${root} pins no Bun in package.json's packageManager`, EXIT.usage);
   const dir = `${RUNNER_SLOTS}/${ownName()}-slot-${String(slot)}`;
@@ -362,7 +428,7 @@ async function onHost(host: Host, slot: number, job: Job, release: () => void): 
       EXIT.unavailable,
     );
   }
-  const commit = snapshot(root);
+  const commit = commitOf();
   // The slot is no remote of the tree, so the tree's hooks, the pre-push gate among them, have no say.
   const push = ["push", "--quiet", "--no-verify", "--force", `${host.ssh}:${dir}`];
   const sent = await retried("the push", () =>
@@ -407,17 +473,30 @@ async function main(argv: readonly string[]): Promise<number> {
   }
   const job: Job = { root, pin, task, wall: setting("ANA_RUNNER_WALL", 3600) || 3600 };
   const { places, picked } = await placesFor();
-  const { place: host, slot } = await slotAmong(places);
-  if (picked) {
-    say(`auto: runs on ${host?.name ?? `${ownName()}, this machine`}`);
-  }
-  const release = (): void => rmSync(slot.path, { recursive: true, force: true });
-  try {
-    if (host !== undefined) return await onHost(host, slot.number, job, release);
-    const here = ["/bin/bash", "--norc", TASK_SCRIPT, "here", root, pin, String(job.wall), ...task];
-    return await attached(here, release);
-  } finally {
-    release();
+  let remaining = [...places];
+  let commit: string | null = null;
+  for (;;) {
+    const { place: host, slot } = await slotAmong(remaining);
+    if (picked) {
+      say(`auto: runs on ${host?.name ?? `${ownName()}, this machine`}`);
+    }
+    const release = (): void => rmSync(slot.path, { recursive: true, force: true });
+    try {
+      if (host !== undefined) {
+        return await onHost(host, slot.number, job, release, () => (commit ??= snapshot(root)));
+      }
+      const here = ["/bin/bash", "--norc", TASK_SCRIPT, "here", root, pin, String(job.wall), ...task];
+      return await attached(here, release);
+    } catch (error) {
+      if (!picked || !(error instanceof Refusal) || error.code !== EXIT.unavailable || host === undefined) {
+        throw error;
+      }
+      remaining = remaining.filter((each) => each !== host);
+      if (remaining.length === 0) throw error;
+      say(`${error.message}; trying another place`);
+    } finally {
+      release();
+    }
   }
 }
 

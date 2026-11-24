@@ -1,14 +1,6 @@
 /**
  * Shared command-line front end for repository skill scripts: strict option parsing via
  * production's `parseArgs` (`src/meta/process.ts`) and uniform one-line diagnostic exits.
- *
- * Strict parsing rejects misspelled or malformed flags before any work begins, preventing ad-hoc
- * `argv` lookups from silently measuring an unintended condition. `--name=value` supports option
- * values beginning with `-`, and a bare `--` terminates option parsing. Non-list options passed
- * more than once and positional counts outside the declared bounds are both rejected.
- *
- * Passing `--host <name>` executes any `runCommand` script on a configured `ANA_HOSTS` peer via
- * `scriptOn`, rewriting paths under the local home directory to `~/` on the target host.
  */
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
@@ -19,9 +11,6 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 
 /**
  * Prints the script name and one-line diagnostic to stderr, then exits with `code`.
- *
- * The trailing `throw` satisfies the `never` return type and ensures tests stubbing
- * `runtimeProcess.exit` abort immediately rather than continuing execution.
  */
 type ExitWith = (message: string, code?: number) => never;
 

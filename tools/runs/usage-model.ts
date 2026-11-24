@@ -7,39 +7,6 @@
  * applied to each login's own state. A longer window holds more weeks, a shorter one only the
  * pattern of the present release and its runs.
  *
- * A row is one login at one reading and one horizon of 1 to `HORIZON` hours: its rise over that
- * horizon, in % of its week, read at the reading nearest that hour, half an hour either side, in
- * the same weekly window. Its features are the horizon, the login's live runs, the runs live on
- * every login, the local hour now and at the horizon, whether it is a weekend, the share of its
- * week left, its rise an hour over the hours before (`NONE` with no reading 3 to 6 hours back), and
- * how many logins have room.
- * Each horizon is learnt directly rather than an hour stepped with the runs held, because runs stop
- * and start: a model that holds them reads a login busy for the last five hours as busy all day,
- * and a login idle at 21:00 whose runs come at night as idle. A week's use is read in whole
- * percents, so one hour's rise is mostly rounding (about half of the pairs of readings an hour or
- * so apart read none); the trees average it over the rows that share a horizon.
- *
- * It speaks only where it beats both older paces on the rows of the last `HELD` hours, held out of
- * a fit on the rows that end before them: the week pace (`weekPace` times the horizon) and the
- * per-run rate (`perRunRate` times the login's runs and the horizon, as if they kept going). The
- * held-out test against both is the gate, rather than a share of hours holding a reading, since
- * the model beat both paces on a sparse record too; the record kept so far is the start (the
- * operator's choice). That test scores logins with room only, since a spent login's rise is none
- * whichever forecast reads it, and counting them would flatter the model's error without changing
- * its forecasts or when it speaks.
- *
- * The hour a login's week ends is a question of its own (`weekEnd`). The curve stays the trees' own,
- * for the reason above, but they read a mean, and a login busy now that goes on being busy runs out
- * before its mean does, so the end also asks what its live runs would spend if they kept going, and
- * says so where that decides it. Past the horizon it goes on at the day's mean rate. Walked forward
- * over the record, forecasting only from the readings up to each hour and speaking only where the
- * gate let it, this catches more of the weeks that end within a day without more false alarms.
- * Every window that closed on that record ran out, so only the day's call can show a false alarm,
- * and nothing tests an end named days ahead, which is off by many hours. The count of logins with
- * room is a feature because a spent login's runs move to the others, which lowers the curve's error.
- * These were chosen on this record from overlapping hourly forecasts, so they are estimates until
- * later readings repeat them.
- *
  * The pool (`modelLines`, printed by `bun run runs usage`): a run moves to another login when one is
  * spent, so demand is one rate, in % of one login's week an hour, summed over the logins with room
  * left; the forecast spends it in five-minute steps for the next 4 weeks from the login whose week

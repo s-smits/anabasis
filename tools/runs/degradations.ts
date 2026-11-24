@@ -5,16 +5,7 @@
  * (`runs fetch` without a name) updates these files for every fetched log and every local campaign
  * modified in the last hour, printing a summary line whenever a campaign's record changes.
  *
- * A provider may silently serve a different model than the one requested for thousands of turns;
- * recording this continuously prevents degraded runs from being pooled unknowingly with clean runs.
- * Storing flat TSV files rather than campaign subdirectories ensures archive readers (`campaignsIn`)
- * never mistake `degradations/` for a host directory.
- *
  *   bun tools/runs/degradations.ts <log or campaign name>...
- *
- * Prints the per-campaign summary used by whole-run investigations (`READERS`, `tools/wri/derive.ts`):
- * the fraction of each seat's turns served by a different model, the comparisons affected, and a
- * per-session or per-solve breakdown.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { type Degradation, degradations, SEATS, tracesIn } from "#src/kernel/trace.ts";

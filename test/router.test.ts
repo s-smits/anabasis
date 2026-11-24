@@ -90,8 +90,8 @@ const RECORDING_BUN = `#!/bin/bash
 case "$*" in *run.js*) exec ${capturedExecPath} "$@" ;; esac
 if [[ "\${1-}" == --version ]]; then echo 1.4.2; exit 0; fi
 if [[ "\${1-}" == install ]]; then exit 0; fi
-printf 'bun=%s\\tactive=%s\\tstrict=%s\\tworkers=%s\\tbail=%s\\targs=%s\\n' "$0" "\${ANA_RUNNER_ACTIVE-}" \\
-  "\${ANA_LINT_STRICT-}" "\${ANA_TEST_WORKERS-}" "\${ANA_TEST_BAIL-}" "$*" >>"$HOME/bun.log"
+printf 'bun=%s\\tactive=%s\\tstrict=%s\\tworkers=%s\\tbail=%s\\tclimb=%s\\tpaths=%s\\thostLoad=%s\\targs=%s\\n' "$0" "\${ANA_RUNNER_ACTIVE-}" \\
+  "\${ANA_LINT_STRICT-}" "\${ANA_TEST_WORKERS-}" "\${ANA_TEST_BAIL-}" "\${ANA_CLIMB-}" "\${ANA_LINT_PATHS-}" "\${ANA_TEST_HOST_LOAD-}" "$*" >>"$HOME/bun.log"
 status=0
 for arg in "$@"; do
   case "$arg" in
@@ -164,9 +164,13 @@ const quiet = { ...Bun.env };
 for (const name of [
   "ANA_CHECK_HOST",
   "ANA_RUNNER_ACTIVE",
+  "ANA_RUNNER_SPARE_HELD",
   "ANA_TEST_WORKERS",
+  "ANA_TEST_HOST_LOAD",
   "ANA_LINT_STRICT",
+  "ANA_LINT_PATHS",
   "ANA_TEST_BAIL",
+  "ANA_CLIMB",
   "GIT_INDEX_FILE",
   "EVAL_RUNNER",
 ]) {
@@ -293,10 +297,10 @@ async function waitFor(check: () => boolean, seconds = 20): Promise<void> {
 
 describe("the router on the command line", () => {
   /** What `bun <args>` ran: whether the runner took a slot here, and the Bun that was called with what. */
-  function routed(args: readonly string[]) {
+  function routed(args: readonly string[], cwd = source) {
     const scratch = mkdtempSync(join(root, "route-"));
     rmSync(join(home, "bun.log"), { force: true });
-    const result = run(args, { TMPDIR: scratch, ANA_TEST_TMPDIR: scratch });
+    const result = run(args, { TMPDIR: scratch, ANA_TEST_TMPDIR: scratch }, cwd);
     expect(result.status, result.stderr).toBe(0);
     return { queued: existsSync(join(scratch, "ana-runner", "local")), ...lastCall(home) };
   }
@@ -320,6 +324,53 @@ describe("the router on the command line", () => {
         bun: pinned,
         active: queued ? "1" : "",
       });
+    }
+  });
+
+  it("runs a nested package's own scripts, and routes from a folder of the root's package", () => {
+    const nested = join(source, "packages", "nested");
+    mkdirSync(nested, { recursive: true });
+    writeFileSync(join(nested, "package.json"), '{\n  "name": "nested"\n}\n');
+    try {
+      for (const [cwd, queued] of [
+        [nested, false],
+        [join(nested, "src"), false],
+        [join(source, "tools", "runs"), true],
+      ] as const) {
+        mkdirSync(cwd, { recursive: true });
+        expect(routed(["run", "typecheck"], cwd), cwd).toMatchObject({ queued, args: "run typecheck" });
+      }
+    } finally {
+      rmSync(join(source, "packages"), { recursive: true, force: true });
+    }
+  });
+
+  it("routes check tasks given through --cwd or a symlinked worktree path, and keeps non-check --cwd arguments intact", () => {
+    const nested = join(source, "packages", "nested");
+    const link = join(root, "source-link");
+    mkdirSync(nested, { recursive: true });
+    writeFileSync(join(nested, "package.json"), '{\n  "name": "nested"\n}\n');
+    symlinkSync(source, link);
+    try {
+      const cases: [readonly string[], string, boolean, string][] = [
+        [["--cwd", source, "run", "typecheck"], root, true, "run typecheck"],
+        [[`--cwd=${source}`, "test", "test/a.test.ts"], root, true, "run test test/a.test.ts"],
+        [["--cwd", source, "run", "test", "--", "x.test.ts"], root, true, "run test x.test.ts"],
+        [["--cwd", nested, "run", "typecheck"], root, false, `--cwd ${nested} run typecheck`],
+        [["--cwd", source, "fmt"], root, false, `--cwd ${source} fmt`],
+        [["run", "typecheck"], link, true, "run typecheck"],
+      ];
+      for (const [args, cwd, queued, said] of cases) {
+        expect(routed(args, cwd), `${cwd}: ${args.join(" ")}`).toMatchObject({
+          queued,
+          args: said,
+          bun: pinned,
+          active: queued ? "1" : "",
+        });
+      }
+    } finally {
+      rmSync(join(source, "packages"), { recursive: true, force: true });
+      rmSync(link, { force: true });
     }
   });
 
@@ -411,11 +462,69 @@ describe("which host runs a task", () => {
       expect(idle.status, idle.stderr).toBe(0);
       expect(idle.stderr).not.toContain("arm holds");
       expect(ran("fake-linux")).toBe(true);
+      // A landing-placed check (ANA_RUNNER_SPARE_HELD=1) refuses a held host with 69 so proveCommits evicts it.
+      says("an arm holds the lock: pid 1");
+      fresh();
+      const spared = run(["test"], { ANA_CHECK_HOST: "zbook", ANA_RUNNER_SPARE_HELD: "1", EVAL_RUNNER });
+      expect(spared.status, spared.stderr).toBe(69);
+      expect(spared.stderr).toContain("runner: a benchmark's arm holds zbook: no check goes there now");
+      expect(calls(hostHome("fake-linux"))).toEqual([]);
+      // A hung sitting script is bounded by ANA_RUNNER_PICK_WAIT, treated as held, and does not stall auto.
+      script(sitting, "#!/bin/sh\nsleep 30\necho idle\n");
+      fresh();
+      loaded("fake-mac", 2, 1);
+      const started = performance.now();
+      const hung = run(["test"], { ANA_CHECK_HOST: "auto", ANA_RUNNER_PICK_WAIT: "1", EVAL_RUNNER });
+      expect(hung.status, hung.stderr).toBe(0);
+      expect(performance.now() - started).toBeLessThan(8000);
+      expect(hung.stderr).toContain("runner: a benchmark's arm holds zbook");
+      expect(calls(hostHome("fake-linux"))).toEqual([]);
       // A benchmark list that cannot be read refuses the task that would have gone to a host.
       expect(run(["test"], { ANA_CHECK_HOST: "zbook", EVAL_RUNNER: "not a list" }).status).toBe(2);
     } finally {
       rmSync(sitting, { force: true });
     }
+  });
+
+  it("fails over under auto when the chosen host fails pre-task setup, releasing its slot, and trims whitespace on ANA_CHECK_HOST", () => {
+    fresh();
+    spreadLoads();
+    // m1 is least loaded (0.0) but fails free-space check (exit 69); auto must release m1's slot and run elsewhere.
+    writeFileSync(join(hostHome("fake-mac"), "garbled"), "");
+    const failedOver = run(["test"], { ANA_CHECK_HOST: "auto" });
+    expect(failedOver.status, failedOver.stderr).toBe(0);
+    expect(failedOver.stderr).toContain("trying another place");
+    expect(calls(hostHome("fake-mac"))).toEqual([]);
+    expect(heldIn(queueOf("fake-mac"))).toEqual([]);
+    expect(ran("fake-linux") || calls(home).length > 0).toBe(true);
+    // When every remote host fails pre-task under auto, it falls back cleanly to this machine.
+    fresh();
+    spreadLoads();
+    writeFileSync(join(hostHome("fake-mac"), "garbled"), "");
+    writeFileSync(join(hostHome("fake-linux"), "garbled"), "");
+    const toLocal = run(["test"], { ANA_CHECK_HOST: "  auto  " });
+    expect(toLocal.status, toLocal.stderr).toBe(0);
+    expect(calls(home).some((call) => call.args?.startsWith("run test") === true)).toBe(true);
+    // Whitespace around `here` runs locally without touching remote hosts.
+    fresh();
+    expect(run(["test"], { ANA_CHECK_HOST: "  here  " }).status).toBe(0);
+    expect(connections()).toEqual([]);
+  });
+
+  it("forwards check environment overrides across ssh to the remote host", () => {
+    fresh();
+    const result = run(["test"], {
+      ANA_CHECK_HOST: "m1",
+      ANA_CLIMB: "1",
+      ANA_LINT_PATHS: "src/a.ts",
+      ANA_TEST_HOST_LOAD: "2",
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(lastCall(hostHome("fake-mac"))).toMatchObject({
+      climb: "1",
+      paths: "src/a.ts",
+      hostLoad: "2",
+    });
   });
 
   it("refuses a setting that is no count, and a tree that pins no Bun, before any host is asked", () => {
@@ -640,6 +749,12 @@ describe("the slots", () => {
       rmSync(join(queue, "slot-2"), { recursive: true, force: true });
       symlinkSync(String(runtimeProcess.pid), join(queue, "slot-2"));
       expect(run(["test"], { ANA_CHECK_HOST: "m1", ANA_RUNNER_QUEUE_WAIT: "0" }).status).toBe(75);
+      // A stray regular file at a slot path is cleared instead of permanently wedging the slot with ENOTDIR.
+      rmSync(join(queue, "slot-1"), { recursive: true, force: true });
+      rmSync(join(queue, "slot-2"), { recursive: true, force: true });
+      writeFileSync(join(queue, "slot-1"), "stray");
+      writeFileSync(join(queue, "slot-2"), "stray");
+      expect(run(["test"], { ANA_CHECK_HOST: "m1", ANA_RUNNER_QUEUE_WAIT: "0" }).status).toBe(0);
     } finally {
       git(source, "checkout", "-q", "--", "edited");
       await released();

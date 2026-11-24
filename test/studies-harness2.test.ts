@@ -11,7 +11,7 @@ import { foreignHead, foreignPrograms } from "../src/harness/place.ts";
 import { exportForClaudeCode, ownPython } from "../studies/shared/claude-export.ts";
 import { keyless, RESULT_FILE, TRACE_FILE } from "../studies/shared/pi-solve.ts";
 import { type Agent, type Claude, inGroup, REFUSED, rollout } from "../studies/harness2/h2/claude.ts";
-import { installTree } from "../studies/harness2/h2/tree.ts";
+import { installTree, readTree, validate } from "../studies/harness2/h2/tree.ts";
 import { piAgent } from "../studies/harness2/score.ts";
 import { append } from "../src/kernel/log.ts";
 import {
@@ -286,8 +286,9 @@ describe("a harness written out for Claude Code", () => {
       stage:
         "#!/bin/sh\n# stage [public/task.json] [--out DIR]\n#\n# Writes each input file of the task to DIR.\ncat public/task.json\n",
       "python3.12": "#!/bin/sh\necho the harness's interpreter\n",
+      "write-answer": "#!/bin/sh\n# write-answer: campaign-only answer writer\necho answer\n",
     };
-    const own = `# Operating Guide\n\n## Programs and tools\n- mark: prints marked.\n\n## Domain notes\nA mark counts once.\n\n${HOST_ONLY}\nAn answer over three lines is not valid.\n`;
+    const own = `# Operating Guide\n\n## Programs and tools\n- mark: prints marked.\n\n## Domain notes\nA mark counts once.\n\n${HOST_ONLY}\nRun write-answer before submit. An answer over three lines is not valid.\n`;
     const made = await campaign("exported", () => undefined, { ...MARKED, programs, guide: own });
     const into = join(root, "claude-tooled");
     const record = await exportForClaudeCode(into, { campaign: made.log, harness: made.child });
@@ -299,6 +300,7 @@ describe("a harness written out for Claude Code", () => {
     // Each program in PATH order with the first line of its own account, and one that gives none by
     // its name alone: what a program opens is said by the program, and no reading of its text decides it.
     expect(guide).toContain("\n- cat\n- mark\n- stage: stage [public/task.json] [--out DIR]\n");
+    expect(guide).not.toContain("write-answer");
     expect(guide).not.toContain("Writes each input file");
     expect(guide).toContain("(`scripts/toolchain/bin`) are on your PATH behind this machine's own programs");
     // No interpreter is named, the tool tree's own among its programs neither: a note that named
@@ -338,6 +340,7 @@ describe("a harness written out for Claude Code", () => {
     expect(parseJsonAs<{ harness: string }>(readFileSync(join(into, "export.json"), "utf8")).harness).toBe(
       made.child,
     );
+    expect(() => validate(readTree(into))).not.toThrow();
   });
 
   it("copies a tool tree whose programs run where it is exported byte for byte, asking no installer, and refuses it where they do not", async () => {
@@ -432,6 +435,7 @@ describe("a harness written out for Claude Code", () => {
     expect(guide.endsWith("## Domain notes\nNone yet.\n")).toBe(true);
     expect(existsSync(join(into, "scripts"))).toBe(false);
     expect(existsSync(join(into, ".claude"))).toBe(false);
+    expect(() => validate(readTree(into))).not.toThrow();
     await expect(exportForClaudeCode(into, "starter")).rejects.toThrow(/there already/u);
   });
 });
@@ -587,12 +591,24 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     const tree = join(out, "trees", "pi-tooled");
     expect((await openHarness(join(tree, "harness"))).digest).toBe(made.child);
     expect(existsSync(join(tree, "CLAUDE.md"))).toBe(false);
+    expect(
+      parseJsonAs<{ harness: string; mode: string }>(readFileSync(join(tree, "export.json"), "utf8")),
+    ).toMatchObject({ harness: made.child, mode: "pi" });
     // The tree and its build's price are all another machine needs: no campaign is read again.
     const elsewhere = ["--arm", `pi:${join(place, "no-campaign")}`, "--name", "pi-tooled"];
     expect(score(...elsewhere, "--dry-run").exitCode).toBe(0);
     renameSync(`${tree}.build.json`, `${tree}.build.kept`);
     expect(score(...elsewhere, "--dry-run").exitCode).not.toBe(0);
     renameSync(`${tree}.build.kept`, `${tree}.build.json`);
+    // `pi:starter` has no `.toolchain` and records `toolchain: null`; dry-running it must respect null instead of probing a missing toolchain dir.
+    const piStarter = ["--arm", "pi:starter", "--name", "pi-bare"];
+    expect(score(...piStarter, "--dry-run").exitCode).toBe(0);
+    expect(
+      parseJsonAs<{ mode: string; toolchain: string | null }>(
+        readFileSync(join(out, "trees", "pi-bare", "export.json"), "utf8"),
+      ),
+    ).toMatchObject({ mode: "pi", toolchain: null });
+    expect(score(...piStarter, "--dry-run").exitCode).toBe(0);
     const unsaid = score(...arm);
     expect(unsaid.exitCode).not.toBe(0);
     expect(decodeOutput(unsaid.stderr)).toContain("--yes");
@@ -613,6 +629,39 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     expect(existsSync(join(out, "dataset", task, "model_output"))).toBe(false);
     expect(readdirSync(join(place, "tmp"))).toStrictEqual([]);
   }, 240_000);
+
+  it("strips Host-only from pi-solve prompts, stages harness into logs, and honors ANA_SOLVER_WRAP", async () => {
+    const made = await campaign("pi-host-only", () => undefined, {
+      ...MARKED,
+      guide: `# Operating Guide\n\nKeep general method.\n\n${HOST_ONLY}\nExam-only rule never shown outside.\n`,
+    });
+    const tree = join(root, "pi-wrapped-tree");
+    mkdirSync(join(tree, "harness"), { recursive: true });
+    cpSync(join(made.states, made.child), join(tree, "harness"), { recursive: true });
+    const prevWrap = runtimeProcess.env.ANA_SOLVER_WRAP;
+    runtimeProcess.env.ANA_SOLVER_WRAP = "/usr/bin/env";
+    try {
+      const traj = join(root, `pi-wrap-${String(runtimeProcess.pid)}.jsonl`);
+      const argv = piAgent(pilot).argv({ prompt: "Solve task.", treeDir: tree, workspace: root, traj });
+      expect(argv[0]).toBe("/usr/bin/env");
+      const staged = argv[argv.indexOf("--harness") + 1] ?? "";
+      expect(staged).not.toBe(join(tree, "harness"));
+      expect(existsSync(join(staged, "agent", "BUILT_AGENTS.md"))).toBe(true);
+      const logs = argv[argv.indexOf("--logs") + 1] ?? "";
+      const dry = runSync([...argv, "--dry-run"], { cwd: root });
+      expect(dry.exitCode).toBe(0);
+      const result = parseJsonAs<{ ending: string; tools: string[]; prompt: string }>(
+        readFileSync(join(logs, RESULT_FILE), "utf8"),
+      );
+      expect(result.ending).toBe("dry-run");
+      expect(result.tools).toStrictEqual(["bash", "submit"]);
+      expect(result.prompt).toContain("Keep general method.");
+      expect(result.prompt).not.toContain("Exam-only rule never shown outside.");
+    } finally {
+      if (prevWrap === undefined) delete runtimeProcess.env.ANA_SOLVER_WRAP;
+      else runtimeProcess.env.ANA_SOLVER_WRAP = prevWrap;
+    }
+  });
 });
 
 describe("the arms table over a store of judged records", () => {

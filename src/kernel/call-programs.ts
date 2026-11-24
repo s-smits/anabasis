@@ -1,15 +1,10 @@
 /**
- * Static command-to-program attribution for solve tool calls (`programsOf`). Shared by the calls
- * table (`calls.ts`), harness component attribution (`parts.ts`), provenance checks, and the solve
- * fold (`Solve.programs`, `folds.ts`).
- *
- * Splits `bash` commands into pipeline/list/subshell segments, strips heredoc bodies, redirections,
- * variable assignments, shell keywords, and wrapper prefixes (`env`, `timeout`, `sudo`, etc.), and
- * extracts the invoked executable name (recursing into `sh -c` strings and resolving script/module
- * arguments for interpreters such as `python`, `bun`, and `node`). Segments whose command token is
- * dynamically expanded or unrecognised increment `unattributed`.
+ * Static command-to-program attribution for solve tool calls (`callPrograms`). Read by the Builder's
+ * practice results (`callsText`, `src/builder/tools.ts`) and by the investigation: the calls table
+ * (`tools/wri/calls.ts`), harness component attribution (`parts.ts`), provenance checks, and the
+ * solve fold (`Solve.programs`, `folds.ts`).
  */
-import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
+import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 
 /** A shell word a segment may open with that runs no program of its own. */
 const SHELL_WORDS: ReadonlySet<string> = new Set([
@@ -193,7 +188,7 @@ function programsIn(command: string): CallPrograms {
 }
 
 /** The programs one call ran (`CallPrograms`). */
-export function programsOf(call: { readonly tool: string; readonly args: JsonValue }): CallPrograms {
+export function callPrograms(call: { readonly tool: string; readonly args: JsonValue }): CallPrograms {
   if (call.tool !== "bash") return { programs: [call.tool], unattributed: 0 };
   const command = asRecord(call.args)?.command;
   return isString(command) ? programsIn(command) : { programs: [], unattributed: 1 };

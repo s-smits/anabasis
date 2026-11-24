@@ -1,8 +1,5 @@
 /**
  * How many values fall under each name.
- *
- * A hand-written copy of the loop is the one that drifts: a `Map` here and a record there, and two
- * counts in the same report stop being comparable for a reason no reader of that report can see.
  */
 export function countBy<T>(values: readonly T[], key: (value: T) => string) {
   const out: Record<string, number> = {};

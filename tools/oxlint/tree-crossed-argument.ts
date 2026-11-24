@@ -1,19 +1,10 @@
 /**
  * A call into another file whose arguments are named for one another's parameters, crossed.
- *
- * `ana/no-transposed-argument` reads this shape where the callee is declared in the calling file,
- * since an oxlint rule sees one file and its plugin API offers no other module's declarations. Most
- * calls go to an import, so this scan reads the rest: a call by a named or namespace import of a
- * top-level function or `const` function, `new` of an imported class (its constructor's
- * parameters), and a call of a method of an imported object literal (`paths.relative(a, b)`). What
- * counts as crossed is the rule's own reading (`crossings`, `tools/oxlint/ana/shared/crossed.ts`),
- * so the two never disagree about a name. A call within one file is the rule's and is not read
- * here. A name declared twice in its file (overloads) has no one parameter list and is skipped.
  */
 import * as ts from "typescript5";
 import { crossings } from "./ana/shared/crossed.ts";
 import type { TreeFinding } from "./tree-findings.ts";
-import { parsedSources, resolved } from "./tree-overwritten-key.ts";
+import { resolved } from "./tree-overwritten-key.ts";
 
 /** One parameter list a file declares, under the name a caller reaches it by. */
 interface Declared {
@@ -72,13 +63,16 @@ function signaturesOf(file: ts.SourceFile): [string, ts.SignatureDeclarationBase
 
 /** Each file's parameter lists by the name a caller reaches them by, a name declared twice left out. */
 function declaredIn(path: string, file: ts.SourceFile): Map<string, Declared> {
-  const all = signaturesOf(file);
   const declared = new Map<string, Declared>();
-  for (const [name, fn] of all) {
-    if (all.filter(([other]) => other === name).length > 1) continue;
-    const line = file.getLineAndCharacterOfPosition(fn.getStart(file)).line + 1;
-    const params = fn.parameters.map((one) => (ts.isIdentifier(one.name) ? one.name.text : null));
-    declared.set(name, { path, line, params });
+  for (const [name, list] of Map.groupBy(signaturesOf(file), ([each]) => each)) {
+    const [only] = list;
+    if (list.length > 1 || only === undefined) continue;
+    const fn = only[1];
+    declared.set(name, {
+      path,
+      line: file.getLineAndCharacterOfPosition(fn.getStart(file)).line + 1,
+      params: fn.parameters.map((one) => (ts.isIdentifier(one.name) ? one.name.text : null)),
+    });
   }
   return declared;
 }
@@ -113,8 +107,7 @@ function reachOf(node: ts.CallExpression | ts.NewExpression): { local: string; r
 }
 
 /** Every call into another file whose arguments cross the callee's parameters. */
-export function crossedArguments(files: ReadonlyMap<string, string>): TreeFinding[] {
-  const parsed = parsedSources(files);
+export function crossedArguments(parsed: ReadonlyMap<string, ts.SourceFile>): TreeFinding[] {
   const paths = new Set(parsed.keys());
   const byFile = new Map([...parsed].map(([path, file]) => [path, declaredIn(path, file)]));
   const rows: TreeFinding[] = [];
@@ -123,8 +116,9 @@ export function crossedArguments(files: ReadonlyMap<string, string>): TreeFindin
     if (bound.size === 0) continue;
     const lookUp = (node: ts.CallExpression | ts.NewExpression): Declared | undefined => {
       const reach = reachOf(node);
-      const from = reach === null ? undefined : bound.get(reach.local);
-      if (reach === null || from === undefined) return undefined;
+      if (reach === null) return undefined;
+      const from = bound.get(reach.local);
+      if (from === undefined) return undefined;
       const prefix = ts.isNewExpression(node) ? "new " : "";
       const name = from.name === "*" ? reach.rest : [from.name, reach.rest].filter(Boolean).join(".");
       return name === "" ? undefined : byFile.get(from.home)?.get(`${prefix}${name}`);

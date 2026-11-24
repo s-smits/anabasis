@@ -420,9 +420,11 @@ describe("proveCommits", () => {
 });
 
 describe("one landing of a clone at a time", () => {
-  /** The record a live process of this host holds a lock by (`holder.ts`). */
+  /** The record a live process of this host holds a lock by (`holder.ts`, pinned to UTC). */
   const recordOf = (pid: number): string =>
-    `${String(pid)} ${hostname()} ${execTextSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)]).trim()}`;
+    `${String(pid)} ${hostname()} ${execTextSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
+      env: { ...runtimeProcess.env, TZ: "UTC", LC_ALL: "C" },
+    }).trim()}`;
 
   it("waits while a live process holds the clone, and takes the lock over once its holder is gone", async () => {
     const clone = mkdtempSync(join(fixture, "alone-"));

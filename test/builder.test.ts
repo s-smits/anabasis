@@ -5,6 +5,7 @@
 // Restores distinguish counted practice, including failure, from snapshots and non-results.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
+  createAssistantMessageEventStream,
   createModels,
   type FauxResponseStep,
   fauxAssistantMessage,
@@ -12,15 +13,18 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
+import { CLAUDE_COMPACTED } from "../src/agent/backends/claude.ts";
 import { crashedRun } from "../src/campaign/ground.ts";
 import { type BuildRequest, build, layPractice, type PracticeTask, session } from "../src/builder/session.ts";
 import { HOME_TOOL_TREE, snapshot } from "../src/builder/kept.ts";
 import { type Bench, practiceLeft, record } from "../src/builder/tools.ts";
+import { formatKeys, namedTasks, readHarnessFiles } from "../src/harness/files.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
 import { latestBuilt } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
+import { TOOL_TREE_DIR } from "../src/meta/bundle-layout.ts";
 import {
   chmodSync,
   cpSync,
@@ -1792,9 +1796,23 @@ describe("what crosses to the Builder", () => {
 });
 
 describe("what a practice solve used", () => {
-  it("is its time of its limit, the model's turns and the tokens it read and wrote, and nothing where the log holds no limits", async () => {
-    const s = await setup([call("practice", { tasks: ["t-1", "t-2", "t-1"] }), finish]);
+  it("is its time of its limit, the model's turns, the tokens it read and wrote, its failed calls and the calls that ran each program, and nothing the log does not hold", async () => {
+    const s = await setup([call("practice", { tasks: ["t-1", "t-2", "t-1"] }), finish], [], true);
     const limits = { ...LIMITS, wallSeconds: 480 };
+    // Each solve's own calls, as `read_trace` numbers them. The harness installs `hello`: a call
+    // runs it by name or by path, and a word that only holds the name runs nothing. The third
+    // solve has no call on record.
+    const traced: readonly (readonly (readonly [string, string, boolean])[])[] = [
+      [
+        ["bash", "hello --fit data.csv", false],
+        ["bash", "cd work && ./.toolchain/bin/hello", true],
+        ["bash", "python3 fit.py", true],
+        ["bash", "echo helloworld say-hello", false],
+        ["read", "", false],
+      ],
+      [["bash", "ls", false]],
+      [],
+    ];
     // As a live runner logs them: the limits on the start, the usage on the end. A live solve's end
     // carries its tokens, the one measure of what a tool or a program costs a solve that a Builder
     // can act on. The third start holds no limits.
@@ -1816,10 +1834,15 @@ describe("what a practice solve used", () => {
         ...s.request,
         practise: async (task, _dir, harness) => {
           const { started, finished } = used[n] ?? { started: {}, finished: {} };
+          const calls = traced[n] ?? [];
           n += 1;
           const solve = `s-used-${String(n)}`;
           const condition = recordCondition(s.request.log, s.condition(task.version, harness));
           append(s.request.log, SOLVE_STARTED, { solve, condition, task: "t", ...started });
+          for (const [turn, [name, command, isError]] of calls.entries()) {
+            const args = name === "bash" ? { command } : { path: "task.json" };
+            append(s.request.log, "solve.call", { solve, turn, tool: name, args, isError, text: "" });
+          }
           append(s.request.log, SOLVE_FINISHED, { solve, ending: { outcome: "pass" }, ...finished });
           return { solve, ending: { outcome: "pass" } };
         },
@@ -1831,11 +1854,148 @@ describe("what a practice solve used", () => {
     const line = (said: string) => JSON.stringify(`${said}\n`).slice(1, -1);
     expect(s.sent[1]).toContain(
       line(
-        "t-1: pass. Solve s-used-1. It took 0:04 of 8:00 and 2 model turns of 10, and read 8394 tokens and wrote 131.",
+        "t-1: pass. Solve s-used-1. It took 0:04 of 8:00 and 2 model turns of 10, and read 8394 tokens and wrote 131. It made 5 tool calls; failed: 2, 3. Harness programs run: hello 2 (1 failed).",
       ),
     );
-    expect(s.sent[1]).toContain(line("t-2: pass. Solve s-used-2. It took 3:42 of 8:00 and 14 model turns."));
+    expect(s.sent[1]).toContain(
+      line(
+        "t-2: pass. Solve s-used-2. It took 3:42 of 8:00 and 14 model turns. It made 1 tool call; failed: none. Harness programs run: none of 1.",
+      ),
+    );
     expect(s.sent[1]).toContain(line("t-1: pass. Solve s-used-3."));
+    expect(s.sent[1]).not.toContain("unused)");
+  });
+
+  it("appends a factual concentration note once a single practice task reaches 4 solves in the session without refusing it", async () => {
+    const s = await setup(
+      [
+        call("practice", { tasks: ["t-1", "t-1", "t-1", "t-2"] }),
+        call("practice", { tasks: ["t-1"] }),
+        finish,
+      ],
+      [],
+      true,
+    );
+    await session({ ...s.request, limits: { ...s.request.limits, practiceSolves: 6 } }, s, s.walled);
+    const practiceReplies = read(s.request.log)
+      .filter(({ kind, data }) => kind === "build.call" && data.tool === "practice")
+      .map(({ data }) => (isString(data.text) ? data.text : ""));
+    expect(practiceReplies).toHaveLength(2);
+    expect(practiceReplies[0]).not.toContain("further single-task tuning risks overfitting");
+    expect(practiceReplies[1]).toContain(
+      "Note: t-1 has now been practised 4 times in this session; further single-task tuning risks overfitting.",
+    );
+    expect(practiceReplies[1]).not.toContain("Note: t-2");
+  });
+
+  it("omits per-solve unused noise on multi-bin harnesses", async () => {
+    const s = await setup([call("practice", { tasks: ["t-1", "t-2"] }), finish], [], true);
+    const binDir = join(s.home, HOME_TOOL_TREE, "bin");
+    mkdirSync(binDir, { recursive: true });
+    for (const bin of ["alpha", "beta", "gamma"]) {
+      const path = join(binDir, bin);
+      writeFileSync(path, "#!/bin/sh\necho ok\n");
+      chmodSync(path, 0o755);
+    }
+    const calls = [[["bash", "alpha data.csv", false] as const], [["bash", "beta data.csv", false] as const]];
+    let n = 0;
+    await session(
+      {
+        ...s.request,
+        practise: async (task, _dir, harness) => {
+          const solve = `s-multi-${String(n + 1)}`;
+          const runCalls = calls[n] ?? [];
+          n += 1;
+          const condition = recordCondition(s.request.log, s.condition(task.version, harness));
+          append(s.request.log, SOLVE_STARTED, {
+            solve,
+            condition,
+            task: task.task.taskId,
+            side: "practice",
+          });
+          for (const [turn, [toolName, command, isError]] of runCalls.entries()) {
+            append(s.request.log, "solve.call", {
+              solve,
+              turn,
+              tool: toolName,
+              args: { command },
+              isError,
+              text: "",
+            });
+          }
+          append(s.request.log, SOLVE_FINISHED, { solve, ending: { outcome: "pass" }, turns: 2, seconds: 5 });
+          return { solve, ending: { outcome: "pass" } };
+        },
+      },
+      s,
+      s.walled,
+    );
+    const result = s.of(BUILD_CALL).find(({ tool: name }) => name === "practice")?.text ?? "";
+    expect(result).toContain("Harness programs run: alpha 1.");
+    expect(result).toContain("Harness programs run: beta 1.");
+    expect(result).not.toContain("unused)");
+  });
+
+  it("persists the read_opening cue after Builder compaction until read_opening runs and preserves reusability facts in systemPrompt", async () => {
+    const s = await setup(
+      [
+        call("practice", { tasks: ["t-1"] }),
+        call("practice", { tasks: ["t-2"] }),
+        call("read_opening", {}),
+        call("practice", { tasks: ["t-1"] }),
+        finish,
+      ],
+      [],
+      true,
+    );
+    let firstTurn = true;
+    await session(
+      {
+        ...s.request,
+        models: (home, shutdown) => {
+          const baseModels = s.request.models(home, shutdown);
+          // SAFETY: inherited instance supplies every method; streamSimple attaches compaction diagnostics on turn 1.
+          const compactedModels = Object.create(baseModels) as typeof baseModels;
+          compactedModels.streamSimple = (...asked: Parameters<typeof baseModels.streamSimple>) => {
+            const streamed = createAssistantMessageEventStream();
+            (async () => {
+              for await (const event of baseModels.streamSimple(...asked)) {
+                if (event.type === "done" && firstTurn) {
+                  firstTurn = false;
+                  streamed.push({
+                    ...event,
+                    message: {
+                      ...event.message,
+                      diagnostics: [
+                        {
+                          type: CLAUDE_COMPACTED,
+                          timestamp: Date.now(),
+                          details: { tokensBefore: 1000, seconds: 1 },
+                        },
+                      ],
+                    },
+                  });
+                } else {
+                  streamed.push(event);
+                }
+              }
+            })().catch(() => undefined);
+            return streamed;
+          };
+          return compactedModels;
+        },
+      },
+      s,
+      s.walled,
+    );
+    const texts = s.of(BUILD_CALL).map(({ text: body }) => (isString(body) ? body : ""));
+    const cue = "Context compacted; read_opening holds the opening record and limits.";
+    expect(texts[0]).toContain(cue);
+    expect(texts[1]).toContain(cue);
+    expect(texts[2]).not.toContain(cue);
+    expect(texts[3]).not.toContain(cue);
+    expect(s.sent[0]).toContain("General, composable programs under .toolchain/");
+    expect(s.sent[0]).toContain("## Validity and score");
   });
 });
 
@@ -1903,8 +2063,10 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
     expect(calls[6]).toContain("harness/.toolchain/bin/named name your home");
     // A line for each part of the harness.
     expect(calls[8]).toContain(
-      String.raw`The harness opens.\npi's tools: bash.\nPrograms: greet, hello, real.\nGuide: 28 characters.`,
+      String.raw`The harness opens.\npi's tools: bash.\nPrograms: greet, hello, real.\nGuide: 1 line (28 characters; no \"## Validity and score\" heading).\nYour files under .toolchain/: 3 files, 6 lines.`,
     );
+    expect(calls[8]).not.toContain("Files in harness/ carry");
+    expect(calls[8]).not.toContain("Matches a practice task:");
     expect(calls[9]).toContain(String.raw`/home\n# The Built Harness`);
     expect(calls[10]).toContain("Successfully replaced 1 block(s)");
     expect(calls[11]).toContain("Always multiply before you record.");
@@ -1937,4 +2099,97 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
       expect(linked).toContain(join("..", name));
     }
   }, 120_000);
+});
+
+describe("harness file checks and practice task mentions", () => {
+  it("reports host paths, heading leaks, and named or quoted practice tasks while staying silent on clean harnesses", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ana-harness-files-"));
+    try {
+      const clean = join(dir, "clean");
+      mkdirSync(join(clean, "agent"), { recursive: true });
+      mkdirSync(join(clean, TOOL_TREE_DIR, "bin"), { recursive: true });
+      writeFileSync(
+        join(clean, "agent", "BUILT_AGENTS.md"),
+        "# Guide\nUse tool.\n\n## Validity and score\nWrite answer.json.\n",
+      );
+      writeFileSync(join(clean, TOOL_TREE_DIR, "bin", "run-tool"), "#!/usr/bin/env sh\necho ok\n");
+      chmodSync(join(clean, TOOL_TREE_DIR, "bin", "run-tool"), 0o755);
+
+      const answerKeys = formatKeys({ properties: { estimateValue: { type: "number" } } });
+      const shared = "logistic model with exposure and age as linear terms";
+      const tasks = [
+        {
+          taskId: "task-alpha-1",
+          publicInput: {
+            prompt: `follow up from the later of entry for subject S01-007 (Kaplan-Meier, 365.25, 2024-3-5, age_group) and compute the quarterly regional payroll total accurately every month using ${shared}`,
+          },
+        },
+        {
+          taskId: "task-beta-2",
+          publicInput: { prompt: `estimate annual warehouse throughput under peak load using ${shared}` },
+        },
+        {
+          taskId: "task-gamma-3",
+          publicInput: { prompt: `reconcile laboratory assay batches across clinics using ${shared}` },
+        },
+      ];
+      const cleanInfo = readHarnessFiles(clean, answerKeys, ["R-1"]);
+      expect(cleanInfo).toMatchObject({
+        hasSplit: true,
+        keptLines: 2,
+        keptHostRefs: 0,
+        keptFormatKeys: 0,
+        keptRuleIds: 0,
+        hostPaths: 0,
+        hostShebangs: 0,
+        plainBins: 0,
+        brokenLinks: 0,
+      });
+      expect(namedTasks(cleanInfo.written, tasks)).toEqual([]);
+
+      // Six-word generic prose, ordinary domain tokens/dates, and boilerplate shared across >2 tasks
+      // stay silent; rare task codes and rare 8-word quotes carry exact line numbers and text.
+      const proseOnly = [
+        {
+          path: "guide",
+          text: `Follow-up from the later of entry; Kaplan-Meier over 365.25 days, 2024-3-5, age_group; fit ${shared}.\n`,
+          executable: false,
+        },
+      ];
+      expect(namedTasks(proseOnly, tasks)).toEqual([]);
+
+      const dirty = join(dir, "dirty");
+      mkdirSync(join(dirty, "agent"), { recursive: true });
+      mkdirSync(join(dirty, TOOL_TREE_DIR, "bin"), { recursive: true });
+      writeFileSync(
+        join(dirty, "agent", "BUILT_AGENTS.md"),
+        "# Guide\nRead public/task.json for estimateValue under R-1 on task-alpha-1 (drop S01-007): compute the quarterly regional payroll total accurately every month.\n",
+      );
+      writeFileSync(
+        join(dirty, TOOL_TREE_DIR, "bin", "bad-bin"),
+        "#!/Users/dev/python3\nprint('/opt/homebrew/bin')\n",
+      );
+      chmodSync(join(dirty, TOOL_TREE_DIR, "bin", "bad-bin"), 0o644);
+      symlinkSync("/no/such/target", join(dirty, TOOL_TREE_DIR, "bin", "broken"));
+
+      const dirtyInfo = readHarnessFiles(dirty, answerKeys, ["R-1"]);
+      expect(dirtyInfo).toMatchObject({
+        hasSplit: false,
+        keptHostRefs: 1,
+        keptFormatKeys: 1,
+        keptRuleIds: 1,
+        hostPaths: 2,
+        hostShebangs: 1,
+        plainBins: 1,
+        brokenLinks: 1,
+      });
+      expect(namedTasks(dirtyInfo.written, tasks)).toEqual([
+        "guide names task-alpha-1",
+        'guide:2 uses code "S01-007" from task-alpha-1',
+        'guide:2 quotes task-alpha-1 ("compute the quarterly regional payroll total accurately every month")',
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

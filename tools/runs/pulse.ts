@@ -1,42 +1,19 @@
 /**
- * The runs pulse: v1's `bun run runs pulse`, on v2's log. One look reads the run logs of the
- * repository's worktrees (`registry.ts`) and says one status line for each and what happened since
- * the last look: `◆` a milestone, `⚠` something to look at, `·` the rest. Each log is the run's
- * whole record, so the pulse keeps only how far it read and what it last said, in `--state`.
+ * Campaign status and incremental event pulse (`bun run runs pulse` and `bun run runs status`):
  *
  *   bun run runs pulse [<part of a name> ...] [--every 290] [--state .ana/runs-pulse.json]
  *     [--here] [--no-readers] [--ack <token>]
  *   bun run runs status [--all]
  *
- * One look and out, unless `--every <seconds>` asks it to keep looking, so that a session reading one
- * run through a pipe does not wait for an end that never comes.
- *
- * With no names a look covers the open runs and those open at the last look, so a run's ending is
- * said once; an observer's first look of a run also covers one stopped in the last day without an
- * ending, and later looks do not, which would repeat each stopped run's "process gone" and its
- * stderr for a day. A name matches every run whose name holds it. Quiet, no event for 20 minutes in an
- * open run, counted from a named reset it waits out where that is later, is said when it starts and
- * when it ends. Each look also polls every configured host once, with a cursor for
- * this observer, unless --here is named. A missing peer is a warning and exit 0, since the anti-stall
- * hook reads any other exit as a failed look. No local state path is sent to another machine.
- *
- * What an event says is `said.ts`'s, which the alerts and the iteration's script read too. A look also
- * says, under each moment among its new events (an opening, the contract's freeze, a comparison's
- * start, a report, a promotion, a session's or a campaign's end), what the deterministic readers that
- * name it found (`at`, `tools/wri/derive.ts`; `pulse-readers.ts`), which `--no-readers` leaves out, and
- * the triggers come from their `rows`. No reader of a moment loads the embedding model, so the look
- * has no flag for it.
- *
- * Nothing a look read is lost to a kill, and the hook's `timeout 40` kills it whole. A look remembers
- * only after it has printed, so a kill before that says the same events again, and a look over ssh
- * cannot know its caller read it: a peer holds what it would remember in `<state>.pending` until the
- * caller's next look returns the token it printed last (`--ack`), and looks again from the old cursor
- * if it does not. A host that has not answered within `PEERS_MS` is said to have left its lines for the
- * next look, on stdout, where the hook's filter keeps them.
+ * Polls local and remote (`ANA_HOSTS`, unless `--here`) campaign logs, printing a status line and
+ * new milestones (`◆`), warnings (`⚠`), routine events (`·`), 20-minute quiet intervals, and
+ * deterministic moment-reader findings (`tools/wri/derive.ts`, `pulse-readers.ts`, unless
+ * `--no-readers`). Persists cursor state in `--state` only after printing, using `<state>.pending`
+ * and `--ack <token>` over SSH so interrupted polls never drop events.
  */
-import type { EventKind, LogEvent } from "#src/kernel/log.ts";
+import { type EventKind, type LogEvent, read as readEvents } from "#src/kernel/log.ts";
 import { endingOf } from "#src/kernel/reports.ts";
-import { degradations, traceKind, tracesIn } from "#src/kernel/trace.ts";
+import { degradations, traceKind } from "#src/kernel/trace.ts";
 import { billedAll } from "#src/kernel/meter.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { DAY_MS, HOUR_MS } from "#src/meta/clock.ts";
@@ -68,6 +45,7 @@ import {
   REPORTED,
   SAID,
   short,
+  TRIGGER_AT,
   triggerOf,
   word,
 } from "./said.ts";
@@ -114,9 +92,10 @@ interface Seen {
   readonly moments?: readonly Moment[];
   /** The hashes of the readers' lines this observer has said. */
   readonly said?: readonly string[];
-  /** Whether an investigation was due at the last look, so that it is said at the look that finds
-   *  it so; an older state holds none, and its first look only remembers. */
-  readonly due?: boolean;
+  /** Last due trigger key (`false` when none, `"hours"` / `"tied"` / `"closed"` / `"<N> promotion(s)"`,
+   *  or legacy `true`), so each new promotion checkpoint (`1` through `5`) surfaces once without
+   *  re-firing on clock ticks. */
+  readonly due?: boolean | string;
   /** The run's state at the last look (`RunState`), whose reason is said when it changes. */
   readonly state?: string;
 }
@@ -184,19 +163,32 @@ const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
   ["AWAITING A LABEL", ["supply", "alarm"]],
   ["GATE REFUSED", ["supply", "reading"]],
   ["OUTCOMES BY SESSION", ["supply", "reading"]],
+  ["EXAMINER ZERO YIELD", ["supply", "alarm"]],
+  ["FAMILY CONCENTRATION", ["supply", "reading"]],
+  ["EXAMINER NEVER FINISHED", ["supply", "alarm"]],
   ["CHAIN AGAINST THE STARTER", ["climb", "reading"]],
   ["MARGINS INSIDE THE NOISE", ["honesty", "reading"]],
   ["BROKEN AT END", ["climb", "alarm"]],
   ["STEP CARRIERS", ["climb", "reading"]],
   ["CHAIN", ["climb", "reading"]],
+  ["PRACTICE CONCENTRATION", ["climb", "reading"]],
+  ["INTERRUPTED HANDOVER", ["climb", "alarm"]],
+  ["UNDERPOWERED NO-STEPS", ["climb", "alarm"]],
   ["SCORED SET MOVED", ["honesty", "alarm"]],
   ["HOST CODE MOVED", ["honesty", "alarm"]],
+  ["VERIFIER TOOLS MOVED", ["honesty", "alarm"]],
   ["PRACTISED TASK MEASURED", ["honesty", "alarm"]],
+  ["SCORED AFTER RELEASE", ["honesty", "alarm"]],
+  ["PRE-PROMOTION PRACTICE RELEASED", ["honesty", "alarm"]],
+  ["SHARED TEMPORARY FOLDER", ["honesty", "alarm"]],
   ["MEASURED AN EARLIER STATE", ["honesty", "alarm"]],
   ["STARTS OUT OF TURN", ["honesty", "alarm"]],
   ["LOG OUT OF ORDER", ["honesty", "alarm"]],
+  ["ENDED AND WENT ON", ["honesty", "alarm"]],
   // A reading: it names most promotions on record under this score.
   ["SAFEGUARD-9 PROMOTION BEYOND VALIDITY", ["honesty", "reading"]],
+  ["NO DELIVERABLES CAPTURED", ["verdicts", "alarm"]],
+  ["PASSES LABELLED", ["verdicts", "reading"]],
   ["CHECK DEFECT RULED", ["verdicts", "alarm"]],
   ["RULED UNCLEAR", ["verdicts", "alarm"]],
   ["RULINGS REFUSED", ["verdicts", "alarm"]],
@@ -205,6 +197,17 @@ const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
   ["SET ASIDE AND UNSETTLED", ["verdicts", "alarm"]],
   ["REPLAY MOVED THE VERDICT", ["verdicts", "alarm"]],
   ["SESSION CRASHED", ["economy", "alarm"]],
+  ["EXAMINER COMPACTED", ["economy", "reading"]],
+  ["SOLVER COMPACTED", ["economy", "reading"]],
+  ["HIGH TOOL ERROR RATE", ["economy", "alarm"]],
+  ["BILLING RESIDUAL", ["economy", "alarm"]],
+  ["LONG SILENCES", ["economy", "reading"]],
+]);
+/** Triggers whose detail numbers move continuously (dollars/counts) and should fire once per run. */
+const ONCE_TRIGGERS: ReadonlySet<string> = new Set([
+  "SUPPLY THIN",
+  "FAMILY CONCENTRATION",
+  "BILLING RESIDUAL",
 ]);
 /** The triggers a look says in the line of the event that fires them (`said.ts`): a promotion until
  *  its starter comparison reads, a checker read with a fault and a freeze despite one. They came a
@@ -230,7 +233,7 @@ const count = (log: readonly LogEvent[], kind: EventKind) =>
  * solve, again at nearly every look; it is said once.
  */
 function keyOf(name: string, detail: string): string {
-  if (name === "SUPPLY THIN") return "";
+  if (ONCE_TRIGGERS.has(name)) return "once";
   const ids = detail.match(NAMED);
   return ids === null ? (/\d+/.exec(detail)?.[0] ?? detail) : [...new Set(ids)].join(",");
 }
@@ -255,7 +258,8 @@ function triggersSaid(
     ? []
     : [...read].flatMap(([name, { lane, details }]) => {
         const [factor, kind] = WATCHED.get(name) ?? ["", "alarm"];
-        const known = new Set((kept[name] ?? "").split("\n"));
+        const prior = kept[name];
+        const known = new Set(prior === undefined ? [] : prior.split("\n"));
         return details
           .filter((detail) => !known.has(keyOf(name, detail)))
           .map(
@@ -274,23 +278,6 @@ function triggersSaid(
 
 /**
  * Where the process that writes `log` stands now, read once for the status line and the look.
- *
- * Its launch begins at the first event at or after its launch receipt, or the start where none is
- * kept, and a solve or a wait before it belongs to a process that is gone. Otherwise a campaign
- * continued after a provider wait would read its cut solves as running and its new invocation as
- * waiting out that reset, so a stall after it would not read quiet until the reset.
- *
- * A run stands where the last thing it started does (a Builder session, an Examiner session or a
- * comparison), or at its last solve where that is later: a comparison gone on from its log writes no
- * second start, so the solves it makes after another comparison's report say it has not reported.
- * That work ends in its run's end, or `exam.finished` after an Examiner session: an Examiner session
- * writes no report, and one that ended whole would otherwise be said to be gone before one. A
- * campaign that wrote its ending is done whatever it was doing, even one that ended while drafting
- * its exam, which none of these starts covers.
- *
- * A run waiting out a named reset is silent by design, so its quiet is counted from the reset, and
- * neither the minute between the reset and its next event nor other seats writing after the wait
- * makes it quiet.
  */
 function standing(run: Run, log: readonly LogEvent[]) {
   const solves = solvesIn(log);
@@ -381,8 +368,9 @@ function troubles(log: readonly LogEvent[], from: number): string[] {
       `⚠ ${plural(loaded.length, "solve")} waited over ${minutes(LOAD_WAIT_MS)} for the load, the longest ${minutes(Number(longest.ms))} at load ${isNumber(longest.load) ? longest.load.toFixed(1) : "?"} on ${word(longest.cores)} cores`,
     );
   }
-  const turns = tracesIn(fresh).flatMap((each) => (each.part === "turn" ? [each] : []));
-  const errors = turns.flatMap(({ error }) => (error === null ? [] : [error]));
+  const errors = fresh.flatMap((e) =>
+    e.kind.endsWith(".turn") && isString(e.data.error) ? [e.data.error] : [],
+  );
   if (errors.length > 0) {
     lines.push(`⚠ ${plural(errors.length, "failed turn")}: ${[...new Set(errors)].map(short).join("; ")}`);
   }
@@ -443,11 +431,6 @@ function standsSaid(
  * what happened since `before`, and what to remember. A first look says only the status and a quiet
  * already under way. `alarms` are the investigation's triggers where the readers' rows moved since the
  * last look, which reads past a moment, and `under` the readers' lines by each new event's place.
- *
- * A campaign's look also says the step it has come to owe, once, at the look that finds it so: an
- * investigation at its trigger (`triggerOf`), with the command that opens one on a stopped run and
- * the driver's `due` for a live one, so that a session that watches the pulse alone does not run a
- * campaign past twelve hours unread.
  */
 export function pulse(
   run: Run,
@@ -471,12 +454,29 @@ export function pulse(
   // The trigger is a campaign's: a round or a seed measures no climb an investigation could read.
   const read = isCampaign(run) && run.seed !== true;
   const live = open || life.kept;
-  const due = read ? triggerOf(progressOf({ live }, log, now)) : null;
-  if (due !== null && before?.due === false) {
+  const progress = read ? progressOf({ live }, log, now) : null;
+  const due = progress === null ? null : triggerOf(progress);
+  let dueKey: boolean | string = false;
+  if (due !== null && progress !== null) {
+    if (progress.promotions > 0) dueKey = due;
+    else if (progress.allTied) dueKey = "tied";
+    else dueKey = live ? "hours" : "closed";
+  }
+  if (
+    due !== null &&
+    progress !== null &&
+    before?.due !== undefined &&
+    before.due !== dueKey &&
+    !(before.due === true && progress.promotions === 0)
+  ) {
     // A live run's step has one reader, the driver's `due`: it alone reads the deviation that keeps
     // a run past its trigger, and a peer that says this line holds no investigation's folder.
     const step = live ? `bun ${DRIVER} due` : openingCommand({ name: run.name, live });
-    lines.push(`⚠ investigation due, ${due}: ${step}`);
+    const label =
+      live && progress.promotions > 0 && progress.promotions < TRIGGER_AT.ceilingPromotions
+        ? "decision point"
+        : "investigation due";
+    lines.push(`⚠ ${label}, ${due}: ${step}`);
   }
   // A first comparison admission would begin and none has, said once where a look finds it long:
   // otherwise one can stand so for hours and no look says it.
@@ -497,7 +497,7 @@ export function pulse(
       open,
       quiet: state.kind === "quiet",
       state: state.kind,
-      ...keyIfDefined("due", read ? due !== null : undefined),
+      ...keyIfDefined("due", read ? dueKey : undefined),
       ...keyIfDefined("heldOff", held?.long === true ? true : undefined),
       ...keyIfDefined("triggers", triggers.now),
     },
@@ -569,7 +569,7 @@ async function look(
           (before === undefined &&
             !unlaunchedSeed(run) &&
             Date.now() - (fileStat(run.path)?.mtimeMs ?? 0) < RECENT_MS &&
-            logEvents(run.path).at(-1)?.kind !== ENDED),
+            readEvents(run.path, (k) => k.endsWith(".call") || k === "verdict").at(-1)?.kind !== ENDED),
     )
     // The bytes are read after the events, so a moment's size covers it.
     .flatMap((each) => {
@@ -779,9 +779,7 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
       open || ending === null ? "" : `ended ${ending}`,
       open || age > RECENT_MS ? "" : `off status in ${String(Math.ceil((RECENT_MS - age) / HOUR_MS))}h`,
     ];
-    console.log(
-      `${status(run, log, standing(run, log), open, now)}\n  ${where.filter((part) => part !== "").join(" · ")}`,
-    );
+    console.log(`${status(run, log, standing(run, log), open, now)}\n  ${where.filter(Boolean).join(" · ")}`);
   }
   console.log(`${plural(promoted, "promotion")} in ${plural(compared, "comparison")} over the runs shown`);
   // This machine's own: a host's copy is said by that host's `status`, as its rows are.
@@ -794,7 +792,7 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
     .map(({ run, at }) => ({
       name: run.name,
       days: (now - at) / DAY_MS,
-      promoted: count(logEvents(run.path), PROMOTED),
+      promoted: readEvents(run.path, (kind) => kind !== PROMOTED).length,
     }));
   for (const line of leftOut(quiet, archive.length, newest)) console.log(line);
   await away;

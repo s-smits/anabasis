@@ -3,34 +3,6 @@
  * a domain is not read by opening each synthesis in turn. This reads every
  * folder as it stands and renders one row a folder, newest first, then each campaign group's
  * investigations in time order, so a domain's binding constraints show side by side.
- *
- * The page is a view over the folders, written whole each time and never edited, so it is no second
- * store (`AGENTS.md` section 5, habit 1). The files it reads hold hidden values, so it quotes only
- * the first sentence of each binding constraint, cut at about 300 characters, and counts, and it
- * belongs under `.ana/` beside them. It copies no lane prose.
- *
- * Reading is lenient because the folders span every shape the procedure has had:
- * `investigation.json` named one `log` and its `peers` before it named `logs`, a synthesis written
- * before the template has no section 2 or no findings table, an A/B synthesis or a review stands in
- * for one in older folders, some folders hold collected lanes and no synthesis, and some hold notes
- * alone. A part that is missing reads as none and the row says so; nothing here throws on a folder.
- *
- * The operator asked to "backtrack the older runs ... from last 2 weeks to centralize the
- * summaries", so two more sections follow the investigations. One lists each cycle folder and
- * prediction ledger, under `.ana/wri/` and in the main checkout's `notes/`, with its predictions
- * counted by resolution. The other lists every campaign whose log moved in the last fourteen days,
- * from the run registry's local worktrees and archive, with its ending, its promotions through
- * `epochsOf`, and the investigations and ledgers that name it, so a run nobody investigated or
- * predicted shows as such.
- *
- * Each run keeps its own ledgers in a cycle folder (`predictions-<run>.md` and `outcomes-<run>.md`,
- * read by `tools/wri/ledger.ts`, and in older folders a hand-written `still-missing-<run>.md`; now
- * the plan says what is left out on purpose), and an investigation's `plan.md` names its pull
- * request as `Pull request: #N`, measured by the forks named `...forkedPR<N>`. So that whether each
- * fix held is recorded across iterations, a last section rows each pull request with its forks,
- * their outcomes, the predictions still
- * unresolved, what each fork leaves out on purpose, and whether each fork carried the ids its
- * parent's runs did not hold. A fork from before the per-run files reads as "no per-run files".
  */
 import { DAY_MS } from "#src/meta/clock.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
@@ -99,6 +71,14 @@ interface PerRun {
   readonly conflicts: readonly string[];
 }
 
+/** Summary of one stored WRI synthesis mapped to a campaign, for cross-version backtracking. */
+export interface SynthesisRef {
+  readonly folder: string;
+  readonly date: string | null;
+  readonly summary: string;
+  readonly constraint: string | null;
+}
+
 /** Where the index reads beyond the investigations: the main checkout's `notes/`, the runs the
  *  registry finds, and the clock that dates the last fourteen days. */
 export interface Beyond {
@@ -121,6 +101,7 @@ export const LAUNCH = "launch.json";
 /** What `start` writes: the logs an investigation reads, and the instructions every lane carries. */
 export const INVESTIGATION = "investigation.json";
 export const SHARED = "shared-instructions.md";
+export const OVERVIEW = "overview.md";
 const INDEX = "INDEX.md";
 /** The quoted sentence's length, so a constraint is named and no hidden value is carried whole. */
 const QUOTE = 300;
@@ -178,7 +159,7 @@ function campaignsOf(dir: string): string[] {
   const listed = [read?.logs, read?.peers].flatMap((each) => (Array.isArray(each) ? each : []));
   const logs = [read?.log, ...listed].filter(isString);
   if (logs.length > 0) return [...new Set(logs.map((log) => basename(dirname(log))))];
-  const overview = textAt(join(dir, "overview.md")) ?? "";
+  const overview = textAt(join(dir, OVERVIEW)) ?? "";
   return [...overview.matchAll(/^## (\S+)$/gmu)].flatMap(([, name]) => name ?? []);
 }
 
@@ -468,14 +449,15 @@ function opposedOf(text: string): number | null {
 }
 
 /** Whether `fork`'s `## Carried` names what its parents owe it, read as `wri2p2.ts next` reads it. */
-function carriedOf(fork: PerRun, parents: readonly PerRun[]): string {
+function carriedOf(fork: PerRun, parents: readonly (PerRun & { readonly plan: string })[]): string {
   if (parents.every(({ files }) => files.predictions === undefined)) return "parents: no per-run files";
   const { owed, missing } = carryOf(
     fork.files.predictions ?? "",
-    parents.map(({ name, files }) => ({
+    parents.map(({ name, files, plan }) => ({
       name,
       predictions: files.predictions ?? "",
       outcomes: files.outcomes ?? "",
+      plan,
     })),
   );
   if (linesUnder(fork.files.predictions ?? "", "Carried") === null) {
@@ -500,9 +482,10 @@ function pullRows(root: string, entries: readonly Entry[], known: readonly strin
     .map((pull) => {
       const planned = entries.filter((entry) => entry.pull === pull);
       const dirs = [root, ...planned.map(({ folder }) => join(root, folder))];
-      const parents = planned.flatMap(({ folder, campaigns }) =>
-        campaigns.map((run) => perRunOf(root, [root, join(root, folder)], run)),
-      );
+      const parents = planned.flatMap(({ folder, campaigns }) => {
+        const plan = textAt(join(root, folder, "plan.md")) ?? "";
+        return campaigns.map((run) => ({ ...perRunOf(root, [root, join(root, folder)], run), plan }));
+      });
       // A fork at a child of the pull request is named by its iteration's `launch` deviation (`madeBy`).
       const deviated = planned.flatMap(({ folder }) =>
         launchForks(textAt(join(root, folder, "deviations.md")) ?? ""),
@@ -553,6 +536,31 @@ function pullRows(root: string, entries: readonly Entry[], known: readonly strin
         held.map((fork) => `${fork.name}: ${carriedOf(fork, parents)}`).join("; "),
       ];
     });
+}
+
+/** Maps each campaign name to its newest stored synthesis under `root` (folder, file, and
+ *  one-line binding constraint), reusing `entryOf` without duplicating markdown scans. */
+export function synthesesByCampaign(root: string): Map<string, SynthesisRef> {
+  const found = new Map<string, SynthesisRef>();
+  if (!existsSync(root)) return found;
+  const folders = readdirSync(root)
+    .filter((name) => !name.startsWith(".") && isDirectory(join(root, name)))
+    .toSorted((one, other) => compareCodeUnits(other, one));
+  for (const folder of folders) {
+    const entry = entryOf(root, folder);
+    if (entry.summary === null) continue;
+    for (const campaign of entry.campaigns) {
+      if (!found.has(campaign)) {
+        found.set(campaign, {
+          folder: entry.folder,
+          date: entry.date,
+          summary: entry.summary,
+          constraint: entry.constraint,
+        });
+      }
+    }
+  }
+  return found;
 }
 
 /** The index of every investigation under `root`, every ledger there and in `notes`, and every

@@ -1,24 +1,23 @@
-// The pre-commit slop report: the whole-tree scans, narrowed to the lines this commit changes.
+// The pre-commit slop gate: the whole-tree simplify scans, narrowed to the lines this commit changes.
 //
 // `bun run simplify` prints every site in the tree, a census a person reads once and finishes. At
 // commit time the question is narrower (did this change add one) and the reader is often an
-// agent that sees the hook's output and nothing else. So this prints the sites with a place on a
-// changed line, numbered, each with the id `bun run not-slop -- answer` takes; writes the whole
-// report, with each shape's argument, into the git directory, where it is never committed; and
-// says what to do.
-//
-// It never refuses a commit. The best measured scan is right about seven times in ten, and the
-// census contract is that a heuristic may report and must never block. The lines are read from
-// the working tree against HEAD, as the linter before it reads the files, so a partially staged
-// file is judged on what is on disk.
+// agent that sees the hook's output and nothing else. So this prints actionable sites (excluding
+// standing registers) with a place on a changed line, numbered, each with the id `bun run not-slop --
+// answer` takes; writes the whole report, with each shape's argument, into the git directory, where
+// it is never committed; and exits 1 so new census findings are resolved or answered at commit time
+// rather than waiting for `bun run gate`. The lines are read from the working tree against HEAD, as
+// the linter before it reads the files, so a partially staged file is judged on what is on disk.
 
 import { boundText } from "../../src/meta/bounded-text.ts";
 import { resolve } from "../../src/meta/path.ts";
+import { runtimeProcess } from "../../src/meta/process.ts";
 import { runTextSyncOrThrow } from "../../src/meta/subprocess.ts";
 import { renderedExamples } from "./rule-examples.ts";
 import {
   TREE_FINDING_ARGUMENTS,
   TREE_FINDING_EXAMPLES,
+  TREE_REGISTER_KINDS,
   type TreeSite,
   treeFindings,
 } from "./tree-findings.ts";
@@ -110,22 +109,24 @@ function message(first: TreeSite, touched: readonly TreeSite[], log: string): st
     );
   const more = touched.length > PRINTED ? [`  … and ${touched.length - PRINTED} more in the report.`] : [];
   return [
-    `slop: ${touched.length} ${touched.length === 1 ? "site touches" : "sites touch"} lines this commit changes. Advisory: the commit is not stopped.`,
+    `slop: ${touched.length} ${touched.length === 1 ? "site touches" : "sites touch"} lines this commit changes.`,
     ...shown,
     ...more,
     ...examplesOf(touched.slice(0, PRINTED)),
     `Full report, with why each shape counts as slop: ${log}`,
-    "Judge each site: these are heuristics, and the best measured is wrong about three times in ten.",
-    "Real: fix it before this commit, or amend it after (git commit --amend).",
-    "Not slop: answer it with a reason a reviewer can check, and commit the ledger row it writes;",
+    "Judge each site before committing:",
+    "Real: fix it and stage the change.",
+    "Not slop: answer it with a reason a reviewer can check, and stage tools/oxlint/not-slop.tsv;",
     "the scans then skip that site here and in bun run simplify. Do not change code only to silence one.",
     `  ${answer(first)}`,
   ].join("\n");
 }
 
 const changed = changedLines();
-const sites = treeFindings().filter((site) =>
-  (site.places ?? [site]).some((place) => changed.has(place.path)),
+const sites = treeFindings().filter(
+  (site) =>
+    !TREE_REGISTER_KINDS.includes(site.kind) &&
+    (site.places ?? [site]).some((place) => changed.has(place.path)),
 );
 const touched = sites.filter((site) => touches(site, changed));
 const [first] = touched;
@@ -139,4 +140,5 @@ if (first !== undefined) {
     ),
   );
   console.error(message(first, touched, log));
+  runtimeProcess.exitCode = 1;
 }

@@ -1,6 +1,6 @@
 ---
 name: design-and-seats
-description: "Use before editing src/{builder,examiner,solver,referee,harness}/, a seat's prompt, tool description, tool result, or home files, HARNESS.md, or the starter. Explains what the evaluation measures (supply, climb, honesty, verdicts, economy), the information wall (rule 3), code versus model authority, what each seat may read, and the operator's decisions (AGENTS.md sections 1 to 3). seat-view.ts identifies the wall tests required by a diff; examiner-view.ts and builder-view.ts print what the next session opening would receive."
+description: "Use before editing or answering questions about src/{builder,examiner,solver,referee,harness}/, a seat's prompt, tool description, tool result, home files, HARNESS.md, the starter, or the information wall. Explains what the evaluation measures (supply, climb, honesty, verdicts, economy), the wall (rule 3), code versus model authority, what each seat may read, and the operator's decisions (AGENTS.md sections 1 to 3). seat-view.ts identifies required wall tests; examiner-view.ts and builder-view.ts print what the next session opening would receive."
 ---
 
 # Design and seats
@@ -20,8 +20,8 @@ the source code is authoritative and the reference must be updated in the same c
 Before modifying anything a Builder or solver can read, consult `wall.md` and `seats.md`, then run
 `seat-view.ts`. Before introducing a new limit, classifier, or narrower permission grant, verify it
 against `stance.md` (consequences 3, 4, and 6). Changes to a factor's reader or threshold belong
-under `question-and-factors.md`. Changes to harness components or the starter are described in
-`operator-and-harness.md` and audited through `harness-audit`.
+under `question-and-factors.md` (and are audited across the system via [system-audit](../system-audit/SKILL.md)). When calibrating Examiner task difficulty (`src/examiner/ladder.ts`, `draft.ts`, `prompt.ts`), use [examiner-complexity](../examiner-complexity/SKILL.md) and paired live-seat rounds in [system-path-simulation](../system-path-simulation/cases/optimize.md). Changes to harness components or the starter are described in
+`operator-and-harness.md` and audited through [harness-audit](../harness-audit/SKILL.md).
 
 ## Scripts
 

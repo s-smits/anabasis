@@ -16,9 +16,6 @@
  *   reach, the volume, the command limits, and the programs the harness installed.
  * - The project context holds the harness's guide as a project's own instructions,
  *   under one sentence on what a guide cannot override (v1's `BUILT_GUIDE_PREAMBLE`).
- *
- * Nothing here says how to reach an answer, which is the harness's to say. Under the Claude backend
- * too a solver reads this prompt alone, with no other in front of it (`src/agent/backends/claude.ts`).
  */
 import type { SeatTool } from "../agent/session.ts";
 import type { Limits } from "../kernel/condition.ts";

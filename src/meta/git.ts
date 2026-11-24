@@ -1,12 +1,5 @@
 /**
  * One git question asked of one checkout, answered as trimmed text.
- *
- * Skill scripts and tools each wrote this as a local helper, and they had drifted in the two
- * places a helper this small can: some spelled the executable as bare `git` and paid the Darwin
- * xcrun shim on every call, which `hostTool` exists to skip, and some left the capture unbounded, so
- * a runaway listing ended as a short read rather than as a refusal that says it filled its cap.
- * It lives in production rather than in a skill, which production code cannot import, so the run
- * registry and the campaign command share one spelling of git and one listing of the worktrees.
  */
 import { hostTool } from "./host-tool.ts";
 import { CAPTURE_MAX_BYTES, runTextSyncOrThrow } from "./subprocess.ts";

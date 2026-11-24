@@ -2,11 +2,6 @@
  * Summarises Examiner session activity and campaign progression per log.
  *
  *   bun .claude/skills/examiner-complexity/scripts/ambition.ts <log or campaign folder>...
- *
- * Prints one line per Examiner session (`readingOf` under the reference harness in force at session
- * start, tasks requested, active writing hours excluding provider/network waits, proposals by family
- * and turn, and session spend) followed by one campaign summary line (hours, solves, and dollars to
- * first comparison and first promotion, plus validity room and validity-won steps). Names no task.
  */
 import { campaignOf, type Handover } from "#src/campaign/handover.ts";
 import { familySizes, proposalsOf } from "#src/kernel/history.ts";

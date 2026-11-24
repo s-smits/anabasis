@@ -4,55 +4,10 @@ import { holdsProse } from "../shared/masked.ts";
 import { asSubject, identifierName, onlyStatement, statementBelow } from "../shared/statements.ts";
 
 /**
- * Rung 4 of the simplify skill's ladder: the platform already owns this. A `for … of` whose
- * whole body is one conditional `return` of the element, or of a plain yes or no, is `find`,
- * `some` or `every` with the predicate written out long-hand around it.
- *
- *     for (const row of rows) if (row.runId === runId) return row;      // rows.find(…)
- *     for (const row of rows) if (!row.settled) return false;           // rows.every(…)
- *
- * Four of the recorded simplify passes made this cut by hand, one of which also turned
- * `filter(p).at(-1)` into `findLast`. `unicorn/prefer-array-find` is on the built-in list and
- * reports a different slice, `xs.filter(p)[0]`; it has nothing to say about a written-out loop.
- *
- * Five shapes keep their loop, each because the array method cannot express it. A body holding
- * `await` keeps it, because `find` takes no async predicate and `Promise.all` over the whole
- * array is a different program. A loop over an index or an entry pair keeps it, because the
- * predicate would have to reconstruct what the destructuring already gave it. A loop whose `if`
- * has an `else`, or whose body holds anything beside the conditional, is doing a second thing
- * the method has no room for.
- *
- * The last two came from the census the rule itself produced, where six of its eight sites were
- * asking for a spelling that does not exist (2026-09-20). A loop that returns something built
- * from the element keeps it: `case-record.ts` walks a key list and returns
- * `` `${key} must be a non-empty string` ``, so the rewrite is a `find` *and* a second statement,
- * which is not shorter and is not what the message promised. And a `Set` or a `Map` has no
- * `find` at all, even where the module walks one and asks it `.has(…)` two lines later. The rule
- * reads both from the file: a name declared `new Set(…)` or `new Map(…)`, or asked `.has(…)`
- * anywhere in the same module, or annotated as a `string`, a `Set`, a `Map`, an `Iterable` or an
- * `IterableIterator` (a `ReadonlySet` parameter fixed into a `find` does not compile), is not an
- * array, so that the admission test holds at every site it reports: the method is legal where the
- * loop was, it is shorter, and no other rule in this tree asks for a loop.
- *
- * It fixes what it reports. A fixer that guessed `find` where the author wanted `some` would be
- * rewriting the return type, but `method` reads the answer off the `return`, and a loop returning
- * the element cannot be `some`.
- *
- * What the fix does have to read is the statement the loop falls through to, because that is
- * where the two programs can part. `find` yields `undefined` on no match, `some` yields `false`
- * and `every` yields `true`, so each rewrite stands only where the line below already says the
- * same thing, or, for `find` alone, where the loop ends a function body and falling off it
- * yields `undefined` anyway. Anything else below the loop keeps it, since a rewrite there would
- * change what the function returns on no match.
- *
- * A loop whose match returns nothing is the exception, and it is also the shape the old message
- * described worst: `for (const row of rows) if (p(row)) return;` is not `rows.some(…)`, it is
- * `if (rows.some(…)) return;`, which is exact with nothing below it to check. It has its own
- * message for that reason.
- *
- * The loop and the line below it are edited separately rather than as one span, so a comment
- * between them survives; and `every` takes the test with its sense reversed, which is the `!`
- * dropped where the author wrote one and added around the whole test where they did not.
+ * Rung 4 of the simplify ladder: flags a `for...of` loop over an array (excluding `string`, `Set`,
+ * `Map`, and `Iterable` bindings) whose sole body statement is `if (test) return <element | true | false | void>`
+ * when the fallthrough statement returns the matching default (`undefined`, `false`, or `true`).
+ * Auto-fixes into `.find()`, `.some()`, `.every()`, or `if (xs.some(...)) return;`.
  */
 /** What a loop that is a search hands back, and everything the rewrite needs to replace it. */
 interface Search {
@@ -156,11 +111,6 @@ export const preferFindOverLoopRule = defineRule({
 
     /**
      * The edits that put the method where the loop stands, or null where the two would differ.
-     *
-     * Everything the method returns on no match is decided by the statement below, so that is
-     * what this reads: a `find` needs `undefined` there or a function body ending, a `some`
-     * needs `false` and an `every` needs `true`. The one shape with nothing to check is the
-     * loop that returns nothing, which is a guard and is exact on its own.
      */
     function rewrite(fixer: Fixer, search: Search): Fix[] | null {
       // The loop's own body becomes an arrow, and a sentence written inside it would have to be

@@ -162,7 +162,7 @@ export function whereToProve(
   say: (line: string) => void,
 ): readonly Place[] | null {
   const one = [{ slots: jobs ?? 1 }];
-  if (checkHost() !== undefined) return one;
+  if ((checkHost()?.trim() ?? "") !== "") return one;
   let listed: readonly Host[];
   try {
     listed = hostsFor(root);

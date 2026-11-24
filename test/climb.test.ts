@@ -14,7 +14,11 @@
 // epoch ends with a promotion and the next one's tasks are harder?
 
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
+import { stopRule } from "../src/campaign/admission.ts";
 import { barLines, type Epoch, epochLine, epochsOf, riskLines } from "../src/campaign/climb.ts";
+import { decide } from "../src/campaign/decide.ts";
+import type { Plan } from "../src/campaign/ground.ts";
+import { heard } from "../src/examiner/record.ts";
 import { examine } from "../src/examiner/session.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import { type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
@@ -413,6 +417,32 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
       incapable: 1,
     });
   });
+
+  it("splits able A/A controls and steps by whether the reference's own validity flipped", () => {
+    const valStep = event(REPORTED, {
+      ...attempt("g-val", "S", "h2", [1, 1, 1, 1]).data,
+      points: { validity: 120, objective: 10 },
+      valid: { old: [1, 1, 2], fresh: [0, 0, 4] },
+    });
+    // Candidate fails validity while the reference passed every solve: its A/A is objective-only.
+    const freshOnlyFail = event(REPORTED, {
+      ...attempt("g-fresh-fail", "S", "h2", [1, 1, 1, 1]).data,
+      noise: { differences: [1, 1, 1, 1], flips: 0 },
+      points: { validity: -80, objective: 25 },
+      valid: { old: [0, 0, 4], fresh: [1, 1, 2] },
+    });
+    // Reference has only all-fail and all-pass tasks (no partial validity): its A/A is objective-only.
+    const allOrNoneOld = event(REPORTED, {
+      ...attempt("g-obj", "S", "h2", [1, -1, 1, -1]).data,
+      points: { validity: 0, objective: 25 },
+      valid: { old: [2, 0, 2], fresh: [0, 0, 4] },
+    });
+    const log = [started, valStep, freshOnlyFail, allOrNoneOld];
+    expect(epochsOf(log)[0]?.falsePromotion.byMeasure).toEqual({
+      validity: { controls: 1, errors: 1 },
+      objective: { controls: 2, errors: 1 },
+    });
+  });
 });
 
 describe("the starter comparison in an epoch's row", () => {
@@ -712,5 +742,80 @@ describe("a campaign against its bars", () => {
     expect(economy(attempts("S", 9))).toContain(
       "0 epochs after set-up against a bar of 3 promotion attempts each, 0 over it.",
     );
+  });
+
+  it("reverts an unconfirmed second promotion to the confirmed ancestor without a repeat starter read, counts it against patience, and ignores not-scored starter reads", () => {
+    const plan: Plan = {
+      patience: 2,
+      unprepared: false,
+      practice: 0,
+      wanted: { target: 6, level: 0.1, solves: 2 },
+      pastStop: null,
+      prompted: false,
+      admits: [],
+      left: null,
+      promotions: null,
+    };
+    const tasks6 = ["t1", "t2", "t3", "t4", "t5", "t6"];
+    const report = (
+      session: string,
+      old: string,
+      fresh: string,
+      reading: string,
+      diffs: readonly number[],
+    ) => [
+      event("comparison.started", { session, old, fresh, starter: "S" }),
+      event(REPORTED, {
+        session,
+        old,
+        fresh,
+        starter: "S",
+        level: 0.1,
+        reading,
+        versions: tasks6,
+        scored: { differences: [...diffs] },
+        valid: { old: [2, 2, 2], fresh: [2, 2, 2], informative: { old: 2, fresh: 2 } },
+      }),
+    ];
+    const base: LogEvent[] = [
+      event("campaign.opened", { patience: 2 }),
+      event("checker.read", { contract: "c", checks: "k", faults: [] }),
+      ...tasks6.flatMap(heldOut),
+      event("build.finished", { session: "b-1", harness: "h1", changed: true, ended: "finished" }),
+      ...report("g-1", "S", "h1", "step", [1, 1, 1, 1, 1, 0]),
+      promotedTo("h1", "S"),
+      ...["x1", "x2", "x3", "x4", "x5", "x6"].flatMap(heldOut),
+      ...report("g-2", "h1", "S", "no-step", [-1, -1, -1, -1, -1, 0]),
+      event("build.finished", { session: "b-2", harness: "h2", changed: true, ended: "finished" }),
+      ...report("g-3", "h1", "h2", "step", [1, 1, 1, 1, 1, 0]),
+      promotedTo("h2", "h1"),
+      ...["y1", "y2", "y3", "y4", "y5", "y6"].flatMap(heldOut),
+    ];
+    // A not-scored starter comparison must not trigger a revert.
+    const notScored = [...base, ...report("g-4", "h2", "S", "not-scored", [])];
+    expect(decide(notScored, plan).move).not.toBe("revert");
+    // An underpowered positive starter comparison (reference leads 3-0-3 at level 0.1, incapable of clearing) must not revert.
+    const underpowered = [...base, ...report("g-4", "h2", "S", "no-step", [-1, -1, -1, 0, 0, 0])];
+    expect(epochsOf(underpowered).at(-1)).toMatchObject({ confirmed: false, starter_able: false });
+    expect(decide(underpowered, plan).move).not.toBe("revert");
+    // An all-tied starter comparison (0-0-6, zero advantage over starter) still reverts.
+    const allTied = [...base, ...report("g-4", "h2", "S", "no-step", [0, 0, 0, 0, 0, 0])];
+    expect(decide(allTied, plan)).toMatchObject({ move: "revert", harness: "h1" });
+    // A powered failing starter comparison reverts h2 back to confirmed h1 (not S).
+    const failedStarter = [...base, ...report("g-4", "h2", "S", "no-step", [1, 1, -1, -1, 0, 0])];
+    expect(decide(failedStarter, plan)).toMatchObject({ move: "revert", harness: "h1" });
+    const reverted = [...failedStarter, event("harness.reverted", { harness: "h1", from: "h2" })];
+    const epochs = epochsOf(reverted);
+    expect(epochs.at(-1)).toMatchObject({ reference: "h1", confirmed: true, reverted: true });
+    // Reverted h1 is already confirmed: no redundant starter compare and no re-promotion of h2.
+    expect(decide(reverted, plan).move).toBe("build");
+    expect(stopRule(reverted)).toMatchObject({ sinceStep: 1, stop: false });
+    expect(barLines(reverted)[0]).toContain("2 promotions, 1 confirmed");
+    expect(barLines(reverted)[2]).toContain("2 epochs after set-up");
+    // Downstream readers that count harness.promoted never conflate a revert with a promotion,
+    // and the Examiner's record distinguishes a revert from a promotion.
+    expect(reverted.filter(({ kind }) => kind === "harness.promoted")).toHaveLength(2);
+    expect(reverted.filter(({ kind }) => kind === "harness.reverted")).toHaveLength(1);
+    expect(heard(reverted, []).promoted).toContain("reverted to an earlier harness");
   });
 });

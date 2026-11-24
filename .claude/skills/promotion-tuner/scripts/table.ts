@@ -3,35 +3,6 @@
  * The campaigns on record as rows: when each reached its first comparison and its first promotion,
  * and what each promotion took in elapsed, active and unloaded hours and in dollars. It starts no
  * solve, calls no model and writes nothing.
- *
- * `--runs <dir>` reads the campaigns under one folder (an archive such as `data/runs`, one host's
- * folder of it, or a folder of worktrees) instead of every campaign the registry reaches across the
- * hosts, so it needs no env file and runs under the lane guard, which refuses one; without it a
- * lane session could not set a run's starter against the previous release's. A
- * campaign two folders below `<dir>` is placed on the host its first folder names.
- *
- * The default view is `recent`: every run still going, whatever it has promoted, then the latest
- * `--last` (20) finished runs that got at least one promotion. A finished run that never promoted
- * says nothing about how long a promotion takes, so it leaves this view (`--rows runs` lists it).
- * Each row gives the time to the first promotion, which is set-up, the promotions the run reached,
- * and the hours and dollars a rung after set-up, kept apart because set-up takes longer than a
- * rung and one number for both would be skewed by it; the all-in hours a promotion stand beside them.
- *
- * `--rows cost` sets each run's recorded dollars beside its turns repriced on today's meter, a
- * promotion and a confirmed promotion, since the meter moved and only the repriced dollars compare
- * across it; `trend.ts` pools them by window.
- *
- * A row is one campaign as `.claude/skills/main/runs.ts` folds it from its log and receipts; that
- * module's head comment says what places a run and what the hours, the room on validity and a
- * confirmed promotion are. `--has` and `--holds` keep the runs whose every launch ran with a
- * mechanism (`ranWith`). A run's own counts are those of `trend.ts`'s measures, and setting groups
- * of runs against each other is that script's, so this one pools no runs by release, pack or
- * setting, which would be a second comparison of groups with no test of the spread between runs.
- *
- * It is the one place to compare the runs of one cycle with those of the last, assembled across
- * campaigns.
- *
- * It prints counts, short digests and campaign names, and never a task, an answer or a check.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { formatOf, MISSING, money, printed } from "#skills/main/print.ts";
@@ -77,6 +48,8 @@ const COUNTED = [
   MEASURES.room,
   MEASURES.onValidity,
   MEASURES.aa,
+  MEASURES.aaValidity,
+  MEASURES.aaObjective,
 ];
 const RUN_HEAD = [
   "run",

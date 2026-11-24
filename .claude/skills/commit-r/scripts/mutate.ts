@@ -1,16 +1,15 @@
 #!/usr/bin/env bun
 /**
- * Mutation oracle for a commit-r pass (step 8): generates syntactic mutants of the owner's files,
- * executes each against named test suites, and records which suites kill it. A test pass deletes or
- * replaces tests only when every mutant killed by the old suite is still killed by the new or
- * retained suite.
+ * Mutation oracle for a commit-r pass (step 8): generates syntactic mutants of high-importance
+ * owner files, verifies every named suite passes on the unmutated copy first, executes each mutant
+ * against the suites, and records which suites kill it.
  *
  * `list` counts the mutants of each file. `run` appends one JSON line per mutant to `--out` and
  * skips mutants already recorded, allowing an interrupted run to resume; each worker mutates its own
- * worktree clone (`<out>.clone-<k>`), and each suite's `bun test` runs through the check runner on
- * `ANA_CHECK_HOST`. A run that outputs no pass or fail count records `null` rather than a kill.
- * `report` tabulates per-file kills across the `--old` suite and the remaining suites, or prints the
- * IDs killed solely by the old suite when `--survivors` is passed.
+ * worktree clone (`<out>.clone-<k>`) and runs `bun test --bail`. A run that outputs no pass, fail,
+ * or bail count records `null` rather than a kill. `report` tabulates per-file kills across `--old`
+ * and the remaining suites (or solo `killed / survived / unread` counts when `--old` is omitted),
+ * and `--survivors` prints `O-` IDs (comparative) or surviving mutant IDs (solo).
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { appendFileSync, cpSync, existsSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
@@ -145,7 +144,9 @@ async function verdict(clone: string, paths: readonly string[], seconds: number)
   );
   const code = await run.exited;
   if (run.signalCode !== null) return true;
-  return /\n *\d+ (pass|fail)/.test(said) ? code !== 0 : null;
+  // A full run ends on its pass and fail counts; a run `--bail` stopped ends on the line saying so
+  // and prints no counts (Bun 1.4).
+  return /\n *\d+ (pass|fail)|\nBailed out after \d+ failures?/.test(said) ? code !== 0 : null;
 }
 
 async function runMutants(args: CommandArgs, root: string, files: readonly string[]): Promise<void> {
@@ -169,6 +170,16 @@ async function runMutants(args: CommandArgs, root: string, files: readonly strin
     for (const [file, text] of originals) writeFileSync(join(clone, file), text);
   }
   const seconds = args.int("timeout") ?? 300;
+  const probe = free[0];
+  if (probe !== undefined && todo.length > 0) {
+    for (const [name, paths] of suites) {
+      const baseline = await verdict(probe, paths, seconds);
+      if (baseline === false) continue;
+      args.die(
+        `baseline suite "${name}" did not pass unmutated (${baseline === true ? "failed" : "no verdict"})`,
+      );
+    }
+  }
   await pooled(todo, free.length, async (mutant) => {
     const clone = free.pop() ?? "";
     const original = originals.get(mutant.file) ?? "";
@@ -194,21 +205,30 @@ async function runMutants(args: CommandArgs, root: string, files: readonly strin
 }
 
 function report(args: CommandArgs, results: readonly string[]): void {
-  const old = args.required("old");
+  const old = args.value("old");
   // SAFETY: every line is one `run` appended, a `Result`.
   const rows = results.flatMap(linesOf).map((line) => JSON.parse(line) as Result);
-  const cell = ({ killed }: Result) => {
-    const others = Object.entries(killed).filter(([name]) => name !== old);
-    return `${killed[old] === true ? "O" : "-"}${others.some(([, kill]) => kill === true) ? "N" : "-"}`;
-  };
+  const classify =
+    old === null
+      ? ({ killed }: Result) => {
+          const verdicts = Object.values(killed);
+          if (verdicts.includes(true)) return "killed";
+          return verdicts.includes(false) ? "survived" : "unread";
+        }
+      : ({ killed }: Result) => {
+          const others = Object.entries(killed).filter(([name]) => name !== old);
+          return `${killed[old] === true ? "O" : "-"}${others.some(([, kill]) => kill === true) ? "N" : "-"}`;
+        };
+  const survivorKind = old === null ? "survived" : "O-";
   if (args.flag("survivors")) {
-    for (const row of rows) if (cell(row) === "O-") console.log(row.id);
+    for (const row of rows) if (classify(row) === survivorKind) console.log(row.id);
     return;
   }
-  console.log("file  ON  O-  -N  --");
+  const columns = old === null ? ["killed", "survived", "unread"] : ["ON", "O-", "-N", "--"];
+  console.log(["file", ...columns].join("  "));
   for (const [file, group] of Map.groupBy(rows, (row) => row.file)) {
-    const count = (kind: string) => String(group.filter((row) => cell(row) === kind).length);
-    console.log([file, count("ON"), count("O-"), count("-N"), count("--")].join("  "));
+    const counts = columns.map((kind) => String(group.filter((row) => classify(row) === kind).length));
+    console.log([file, ...counts].join("  "));
   }
 }
 
@@ -216,7 +236,7 @@ if (import.meta.main) {
   const usage = [
     "usage: mutate.ts list <worktree> <file>...",
     "       mutate.ts run <worktree> <file>... --out <jsonl> --suites <json> [--jobs N] [--only <ids>] [--stop-at-kill] [--timeout s]",
-    "       mutate.ts report <jsonl>... --old <suite> [--survivors]",
+    "       mutate.ts report <jsonl>... [--old <suite>] [--survivors]",
   ].join("\n");
   await runCommand(
     {

@@ -2,35 +2,8 @@
  * What a promotion mechanism is, so that one can be tried without a candidate tree: a task's score,
  * a test over the scores, and a guard that may refuse a step. Any of them may be free code in a file
  * (`--mechanism`); most are written as knobs (`--try bill=0.05,when=tied`).
- *
- * The knobs start from production's weights and floor, and `replay.ts`'s panel counts every task on
- * which their score at those values differs from the tree's own, so they cannot drift from it
- * unseen. Each knob is one the record has been asked about:
- *
- * - `validity`, `objective`: the weights. They set a task's margin and never whether a tied task
- *   counts, so a change moves many scores and few readings.
- * - `bill`, `turns`, `seconds`: a resource as a gain, its log ratio between two valid answers, nothing
- *   under `floor`, at most one either way. Any weight above a small one adds nearly the same steps,
- *   since a task otherwise tied now leans, and the test counts the lean more than its size.
- * - `when`: where a resource gain counts: `always`, `tied` (only a task the answers tie) or
- *   `no-objective` (only an exam with no objective).
- * - `side`: `cheaper` counts only what the new side saved, `dearer` only what it spent over. Either
- *   leans between identical sides, since their solves differ by noise, and the test assumes a score
- *   that negates when the sides swap, so read such a row's A/A before its steps.
- * - `lead`: `answers` refuses a step unless the answers alone won more tasks than they lost, so that a
- *   resource can tip a comparison and never carry one.
- * - `mostBill`, `mostTurns`, `mostSeconds`: a resource as a guard: a step is refused where the new side
- *   used more than this many times the reference on tasks both answered in every solve. A guard can
- *   only remove a step, and it reads no A/A, since a guard is no part of the test.
- * - `room`: the objective's floor. `gain`: `share` as production, `sign`, or `log`.
- * - `test`: `flip` as production, `sign` (margins ignored) or `rank` (signed ranks). `level`: in place
- *   of the recorded one. `untied`: the fewest untied tasks a step may rest on.
- * - `retained`: `out` leaves the retained tasks out of the score.
- * - `unit`: what the test counts once: each `task` as production, or each family (siblings repeat one
- *   effect), by its mean score or its `first` task's, or each family's first two or three tasks
- *   (`cap2`, `cap3`); a task of no family stands alone.
  */
-import { flipP, GAP_FLOOR, WEIGHTS, wholePoints } from "#src/kernel/compare.ts";
+import { flipP, GAP_FLOOR, rawFlipP, WEIGHTS, wholePoints } from "#src/kernel/compare.ts";
 import type { Solve, Task } from "./record.ts";
 
 export interface Mechanism {
@@ -87,7 +60,7 @@ export const TODAY: Knobs = {
   when: "always",
   side: "both",
   lead: "any",
-  test: "flip",
+  test: "rank",
   retained: "in",
   unit: "task",
 };
@@ -200,19 +173,6 @@ function answersLead(tasks: readonly Task[], knobs: Knobs): boolean {
   return signs.reduce<number>((all, one) => all + one, 0) > 0;
 }
 
-/** The signed-rank statistic through `flipP`: ranks doubled, so that a tie's mean is a whole number. */
-function rankP(scores: readonly number[]): number {
-  const untied = scores.filter((one) => one !== 0);
-  const sizes = untied.map(Math.abs).toSorted((one, other) => one - other);
-  return flipP(
-    untied.map((one) => {
-      const first = sizes.indexOf(Math.abs(one));
-      const last = sizes.lastIndexOf(Math.abs(one));
-      return Math.sign(one) * (first + last + 2);
-    }),
-  );
-}
-
 /** The new side's use of `resource` over the reference's, on tasks both answered in every solve and
  *  every solve of which holds it; null where none does. */
 export function ratioOf(tasks: readonly Task[], resource: Resource): number | null {
@@ -255,7 +215,7 @@ function unitsOf(scores: readonly number[], tasks: readonly Task[], unit: Knobs[
 export function knobbed(knobs: Knobs, name: string): Mechanism {
   const pOf = (scores: readonly number[]) => {
     if (knobs.test === "sign") return flipP(scores.map(Math.sign));
-    return knobs.test === "rank" ? rankP(scores) : flipP(scores);
+    return knobs.test === "flip" ? rawFlipP(scores) : flipP(scores);
   };
   return {
     name,

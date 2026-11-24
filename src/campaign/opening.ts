@@ -10,10 +10,6 @@
  * one record of a solve's limits, the scored tasks and the solves a side: the campaign command
  * records it as it starts (`tools/d2/harness-builder.ts`), so the opening keeps no copy of them.
  *
- * It names the project the campaign belongs to (`--project`), so the operator's page can group
- * campaigns by project rather than by prompts that differ in a word. The project is the operator's
- * choice at the opening and stays the campaign's; the oldest openings name none.
- *
  * It also keeps the terms of the campaign's moves as a command last named them (`TERMS`): the
  * limits of a Builder conversation, the comparison's level, the practice tasks and the operator's
  * cap of promotions. Without them, a campaign continued by its name alone would run each move by
@@ -71,6 +67,7 @@ export type Terms = Readonly<Partial<Record<(typeof TERMS)[number], string>>>;
 /** The seats a campaign names a model for. The solver's is the setting's (`tools/d2/setting.ts`). */
 export const SEATS = ["builder", "examiner", "reviewer"] as const;
 const SETTING = "campaign.setting";
+const UNBILLED = /\.call$|^verdict$|^task\.|^condition\.|^exam\.drafted$/u;
 
 /** The paid solves of each campaign in flight in this process, by its log: a Builder's practice
  *  and a comparison's solves share one budget, so every solve in flight holds a reserve and two
@@ -93,7 +90,7 @@ export function budgetLeft(events: readonly LogEvent[], opening = openingOf(even
 /** Whether the campaign whose log is `log` holds a reserve for `count` more solves beside those in
  *  flight. A log whose opening names no budget holds every one. */
 export function affords(log: string, count: number): boolean {
-  const left = budgetLeft(read(log));
+  const left = budgetLeft(read(log, (kind) => UNBILLED.test(kind)));
   return left === null || left.dollars >= (inFlight(log) + count) * left.reserve;
 }
 

@@ -22,8 +22,14 @@ import { type CommandWall, solveDirs, walledBase } from "../src/tools/command.ts
 import { walledEnv } from "../src/tools/env.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 import { claimRoot } from "../src/wall/seat-root.ts";
+import type { LogEvent } from "../src/kernel/log.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
-import { pruneObservers, underLock } from "../tools/runs/pulse-readers.ts";
+import { pulse } from "../tools/runs/pulse.ts";
+import { pruneObservers, readersSaid, resultOf, underLock } from "../tools/runs/pulse-readers.ts";
+import type { Run } from "../tools/runs/registry.ts";
+import { READERS } from "../tools/wri/derive.ts";
+import { passOver } from "../tools/wri/pass.ts";
+import { wriCampaign } from "./helpers/wri-campaign.ts";
 
 const folders: string[] = [];
 afterAll(() => {
@@ -50,13 +56,13 @@ describe("what a pass costs a host", () => {
 
   it("keeps the state whole while several looks remember it at once", async () => {
     const state = join(scratch(), "runs-pulse.json");
-    const pulse = JSON.stringify(join(import.meta.dir, "..", "tools", "runs", "pulse-readers.ts"));
+    const pulseMod = JSON.stringify(join(import.meta.dir, "..", "tools", "runs", "pulse-readers.ts"));
     const writers = Array.from({ length: 4 }, (_, one) =>
       capturedSpawn(
         [
           capturedExecPath,
           "-e",
-          `import { remember } from ${pulse}; const text = JSON.stringify({ writer: ${String(one)}, pad: "x".repeat(200_000) }); for (let i = 0; i < 100; i++) remember(${JSON.stringify(state)}, text);`,
+          `import { remember } from ${pulseMod}; const text = JSON.stringify({ writer: ${String(one)}, pad: "x".repeat(200_000) }); for (let i = 0; i < 100; i++) remember(${JSON.stringify(state)}, text);`,
         ],
         { stdout: "ignore", stderr: "ignore" },
       ),
@@ -78,6 +84,86 @@ describe("what a pass costs a host", () => {
     expect(readdirSync(folder).toSorted()).toEqual(["gone.json", "notes.txt", `slow.json.${live}.tmp`]);
     pruneObservers(join(folder, "observer.json"), Date.now() + 8 * 24 * 60 * 60_000);
     expect(readdirSync(folder).toSorted()).toEqual(["notes.txt", `slow.json.${live}.tmp`]);
+  });
+
+  it("runs moment-wrapped WRI readers through passOver + readersSaid and surfaces watched pulse alarms", async () => {
+    const root = scratch();
+    const camp = join(root, "camp");
+    const store = join(root, "store");
+    const files = join(root, "files");
+    const digest = "b".repeat(64);
+    mkdirSync(join(camp, "states", digest, "agent"), { recursive: true });
+    writeFileSync(join(camp, "states", digest, "agent", "BUILT_AGENTS.md"), "Use /Users/x/bin.\n");
+    const AT = "2026-11-22T12:00:00.000Z";
+    const events: readonly LogEvent[] = [
+      ...wriCampaign((tag) => `secret ${tag}`),
+      { at: AT, kind: "contract.frozen", data: { checks: "chk1", admitted: [] } },
+      { at: AT, kind: "harness.promoted", data: { harness: digest, from: "hd" } },
+      {
+        at: AT,
+        kind: "build.compacted",
+        data: { session: "b-1", tokensBefore: 40_000, seconds: 2, usages: [] },
+      },
+      {
+        at: AT,
+        kind: "build.call",
+        data: { session: "b-1", turn: 9, tool: "bash", args: {}, text: "", isError: false, ms: 1 },
+      },
+      { at: AT, kind: "build.finished", data: { session: "b-1", ended: "finished" } },
+    ];
+    const log = join(camp, "log.jsonl");
+    writeFileSync(log, events.map((each) => `${JSON.stringify(each)}\n`).join(""));
+
+    const inProcess = READERS.filter((each) => !("args" in each) && each.at !== undefined);
+    await passOver(store, [log], { budgetMs: 30_000, roomNow: () => true, readers: inProcess });
+    for (const name of [
+      "diagnostics",
+      "execution",
+      "continuity",
+      "scores",
+      "deliverables",
+      "transfer",
+      "portability",
+      "checks",
+      "epoch-spend",
+    ]) {
+      expect({ name, ok: resultOf(store, log, name)?.ok }).toEqual({ name, ok: true });
+    }
+    const read = readersSaid({
+      store,
+      log,
+      size: Bun.file(log).size,
+      fresh: events.slice(-4),
+      owed: undefined,
+      said: undefined,
+      files,
+      spare: 30,
+      watched: new Set(),
+    });
+    const surfaced = [...read.placed.flatMap(({ lines }) => lines), ...read.lines].join("\n");
+    expect(surfaced).toContain("portability:");
+    expect(surfaced).toContain("host-paths 1");
+    expect(surfaced).toContain("diagnostics:");
+    expect(surfaced).toContain("compaction amnesia");
+
+    const run: Run = { name: "camp", path: log, tree: root, end: "comparison.reported" };
+    const life = { writing: true, kept: false };
+    const first = pulse(run, events, life, undefined, { now: Date.parse(AT), alarms: [] });
+    const second = pulse(run, events, life, first.seen, {
+      now: Date.parse(AT),
+      alarms: [
+        { name: "EXAMINER ZERO YIELD", lane: 13, detail: "x-2 (finished, 0 proposed, 3 try_reference)" },
+        { name: "BILLING RESIDUAL", lane: 19, detail: "billed $10.00 (+12%)" },
+      ],
+    });
+    expect(second.said.join("\n")).toContain("⚠ supply: EXAMINER ZERO YIELD (lane 13)");
+    expect(second.said.join("\n")).toContain("⚠ economy: BILLING RESIDUAL (lane 19)");
+    // ONCE_TRIGGERS suppresses re-firing BILLING RESIDUAL when only the dollar figure moves.
+    const third = pulse(run, events, life, second.seen, {
+      now: Date.parse(AT),
+      alarms: [{ name: "BILLING RESIDUAL", lane: 19, detail: "billed $25.00 (+14%)" }],
+    });
+    expect(third.said.join("\n")).not.toContain("BILLING RESIDUAL");
   });
 });
 

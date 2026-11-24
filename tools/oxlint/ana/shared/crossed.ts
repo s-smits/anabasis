@@ -1,15 +1,6 @@
 /**
  * Which arguments of a call are each named for another position's parameter, read the same way by
  * the per-file rule `ana/no-transposed-argument` and the whole-tree scan `tree/no-transposed-argument`.
- *
- * An argument names a parameter when its words begin or end with the parameter's words
- * (`sourcePath` names `source`). An argument points at another position when it names that
- * position's parameter, names no other parameter of the call and does not name its own. A crossing
- * is a cycle of such pointers: two arguments swapped, or three or more rotated (`f(b, c, a)` for
- * `f(a, b, c)`). One argument pointing elsewhere is a coincidence, and so is a chain of pointers
- * that never closes; an argument whose pointer leads into a cycle is not part of it. A crossing
- * among parameters one of whose names names another's (`path` and `basePath`) is not reported,
- * since neither name then decides.
  */
 
 /** The lower-case words of a camel-case or snake-case name. */

@@ -1,84 +1,14 @@
 /**
- * A comparison: one comparison of a new harness with the reference harness, on held-out tasks.
- *
- * A comparison is three steps over one log.
- * 1. Solving. Each task of the scored set is solved `solves` times under each of the two
- *    harnesses, all of it afresh. The scored set is the caller's, fixed before any solve
- *    (`scoredSet`), so no result of this comparison chooses it, though the reference harness's
- *    results in earlier ones do (`poolOf`, `reports.ts`); so are its two sets, retained and
- *    frontier. Workers take whole tasks in an order a hash draws. Within each task the harness
- *    that goes first is mirrored (`unsolvedJobs`), and each solve call, including its load waits,
- *    provider retries and ruling, returns before the next slot starts. One outer retry runs at
- *    the same slot; a second non-result leaves the task short. Counted starts therefore form a
- *    prefix of the mirror. Different tasks run concurrently; mirroring guarantees neither equal
- *    start times nor equal load or cache exposure.
- * 2. The comparison (`src/kernel/compare.ts`): every solve of the new harness paired with every
- *    solve of the reference one, a valid answer over one that is not, each task counted once, and
- *    the paired sign-flip test over the tasks' scores.
- * 3. The reading, logged as `comparison.reported`.
- *
- * What is fixed before the first solve. A comparison writes `comparison.started` with its
- * harnesses, its setting, its scored tasks, its solves a side, its level and its dollar cap, so
- * that what it compares is on record before any result is. One gone on from its log goes on with
- * the same tasks, and one asked for again on other terms is refused.
- * Every solve the comparison starts names it at its start, and a solve counts when it names the
- * comparison and ran under one of its harnesses and its setting. No other solve is counted, made
- * before it or beside it by another comparison: a condition names the host's code, which changes
- * between comparisons, and one frozen draw of the reference harness's solves would bias every
- * later comparison read against it.
- *
- * The Starter Built Harness is the reference harness until a step is promoted
- * (`src/harness/starter.ts`). Once another reference is promoted, the starter is read in a starter
- * comparison after a promotion (`decide.ts`), and no side of a comparison between two others.
- *
- * The reference is read against itself as the test is (the A/A control): its solves of a task
- * split into two halves mirrored in time, read as two harnesses are, with how often two of them
- * disagree (`flips`, `comparison.ts`). The test's own solves hold it: at two solves a side, the
- * first of each task against the second. It should read no step, and decides nothing here.
- *
- * `cap` is the comparison's dollar cap. Before each solve the dollars the log holds as billed for
- * the comparison are summed (`billedFor`): its own solves and their rulings; a solve of the comparison with no end on record, killed in an earlier
- * run or still running, by what its turns and compactions have metered. The solve is not started
- * when a reserve for it and for each solve still running would take the sum past the cap. A lane
- * that cannot start a solve while others are in flight steps aside, since what they bill may be
- * under their reserve; when none is in flight and the next solve still cannot start, the cap is
- * reached. A comparison the cap cuts short of its test reads `not-scored` and is finished: its
- * tally would be of the tasks that happened to come first.
- *
- * Rejections. A rejected answer counts as not valid only once the rejection is ruled a true fail
- * (`earned`), by the Referee where the caller seats one. One ruled a check defect or unclear, and
- * one no ruling was made on, sets its task aside: the task is left out of every tally of the
- * comparison, for both harnesses, and named in `aside` (`compare.ts`). The
- * report also holds `counted`, the tally were every such rejection to stand, so a person sees what
- * the labels can move. A person's labels settle it (`settleReading`): a task whose set-aside
- * rejections are all labelled earned is restored, one labelled a check defect is disputed for
- * good, and one labelled unclear stays out. A solve that ended at its limits or gave no answer has
- * nothing to recompute and needs no ruling. A check that could not run on the reference's answer
- * disputes its task at once; on the other side's it leaves the task short of solves.
- * Past `defects` tasks with a check that could not run or a rejection the Referee ruled a check
- * defect, the comparison stops, since the check program then needs its owner before more is spent.
- * A task a person released or refused while the comparison ran is left out and named
- * (`withdrawn`), and no further solve of it is started. A rejection left unruled, by an earlier
- * run killed before its ruling or by a reader that failed or gave no answer, is put to the Referee
- * again before the report, and one still unruled stops the comparison, to go on from its log.
- *
- * A comparison that wrote its report is finished, and run again it returns that report and does
- * nothing: topping up a set a dispute thinned, after the tallies could be seen, would be a second
- * look at the data. It also stops, to go on the same way, when the provider has stopped answering:
- * `SILENT` tasks in a row whose solve ended, after its reruns, with nothing written for it. A login
- * at its session limit does that to every solve in seconds; named resets wait inside `solve`.
- *
- * A held-out task's trace is never shown: it would carry the task to the Builder.
- *
- * Nothing here decides what happens next (`decide.ts`). What the log holds of a comparison, and how
- * it is read back, is `comparison.ts`; this file keeps what runs one and what it writes.
- * Stopped reports retain completion facts and can be labelled. Settlement preserves their absent
- * test: the completed prefix never becomes a tally, and the comparison starts no further solves.
+ * Paired comparison execution (`src/campaign/round.ts`): pre-registers experimental terms in
+ * `comparison.started` (`begin`, `refuseTerms`), samples frontier and retained tasks (`scoredSet`),
+ * runs time-mirrored fresh solves for both harnesses under the dollar cap and check-defect ceiling
+ * (`floor`, `unsolvedJobs`), puts reproducible rejections to the Referee (`ruleLeft`), and writes
+ * `comparison.reported` (`checkpoint`).
  */
 import { draw, type ObjectiveRule } from "../kernel/compare.ts";
 import { familiesOf } from "../kernel/history.ts";
-import { append, type LogEvent, read } from "../kernel/log.ts";
-import { type Cap, capHolds, poolOf } from "../kernel/reports.ts";
+import { append, isReferenceChange, type LogEvent, read } from "../kernel/log.ts";
+import { type Cap, capHolds, lastReports, poolOf } from "../kernel/reports.ts";
 import { billedFor } from "../kernel/meter.ts";
 import { checkCouldNotRun, type Ending, nonRetryableProvider } from "../kernel/solve.ts";
 import { ranUnder, refereeErrorOf, rejected, solvesIn } from "../kernel/solves.ts";
@@ -186,6 +116,9 @@ interface Job {
 const SILENT = 3;
 /** The most of a scored set one family takes where the frontier holds three or more (`scoredSet`). */
 const FAMILY_SHARE = 0.4;
+/** Maximum projected frontier overlap allowed between consecutive scored candidate comparisons on
+ *  the same reference after a `no-step` reading (`frontierOverlap`). */
+export const OVERLAP_LIMIT = 0.8;
 const TASK_STATE = "task.state";
 /** The states a comparison's finding may dispute a task from. */
 const DISPUTABLE: ReadonlySet<string> = new Set(["held", "released"]);
@@ -203,11 +136,6 @@ const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]
  * Within a tier the families take turns, and where the frontier holds three or more one takes at
  * most `FAMILY_SHARE` of the set unless the others cannot fill it; where the whole frontier is
  * scored, no draw can change which tasks enter.
- *
- * The starter comparison after a promotion draws alike. Every task held before the promotion is
- * retained (`poolOf`), so its frontier is the tasks written since, which the Examiner writes above
- * the new reference's grade, and which the new reference can lose to the starter while it wins
- * the older ones.
  */
 export function scoredSet(events: readonly LogEvent[], target: number, contract: string) {
   const pool = poolOf(events);
@@ -254,6 +182,50 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
     }
   }
   return { tasks: [...tasks, ...picked], retained: picked };
+}
+
+/**
+ * Projected frontier overlap between the next candidate comparison (`scoredSet`) and the
+ * immediately preceding scored candidate `no-step` comparison on `reference` in the current epoch.
+ * Reads pre-registered `comparison.started` task sets alone so candidate outcomes never cross the
+ * wall (rule 3). Returns null when no qualifying prior `no-step` comparison exists or the projected
+ * frontier is empty.
+ */
+export function frontierOverlap(
+  events: readonly LogEvent[],
+  target: number,
+  contract: string,
+  reference: string,
+): {
+  readonly ratio: number;
+  readonly overlap: number;
+  readonly total: number;
+  readonly priorSession: string;
+} | null {
+  const promotedAt = events.findLastIndex(({ kind }) => isReferenceChange(kind));
+  const prior = lastReports(events).findLast(
+    ({ index, data }) =>
+      index > promotedAt &&
+      data.old === reference &&
+      data.fresh !== data.starter &&
+      data.reading !== "not-scored",
+  );
+  if (prior?.data.reading !== "no-step") return null;
+  const priorStart = events.findLast(
+    ({ kind, data }) => kind === STARTED && data.session === prior.session && data.ladder !== true,
+  )?.data;
+  const priorTasks = Array.isArray(priorStart?.tasks) ? priorStart.tasks.filter(isString) : [];
+  const priorRetained = new Set(
+    Array.isArray(priorStart?.retained) ? priorStart.retained.filter(isString) : [],
+  );
+  const priorFrontier = new Set(priorTasks.filter((task) => !priorRetained.has(task)));
+  if (priorFrontier.size === 0) return null;
+  const projected = scoredSet(events, target, contract);
+  const projectedRetained = new Set(projected.retained);
+  const frontier = projected.tasks.filter((task) => !projectedRetained.has(task));
+  if (frontier.length === 0) return null;
+  const overlap = frontier.filter((task) => priorFrontier.has(task)).length;
+  return { ratio: overlap / frontier.length, overlap, total: frontier.length, priorSession: prior.session };
 }
 
 /**
@@ -336,11 +308,6 @@ function refuseUnreadable(terms: Terms): void {
 /**
  * Refuse the terms a comparison is asked for on: terms no comparison could be read on, and, for
  * one that has not begun, tasks that could not be scored. A comparison that reported is asked nothing.
- *
- * A comparison asks this of itself before its first event. A command asks it before it records
- * anything, so that a refused command leaves the log as it was: a comparison refused for a mistyped
- * task after it had recorded the campaign's setting would have the corrected command refused as
- * another setting.
  */
 export function refuseTerms(terms: Terms, of: { readonly log: string; readonly id: string }): void {
   const events = read(of.log);

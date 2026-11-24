@@ -25,10 +25,6 @@ const scopes = new Map<string, Scope | null>();
 
 /**
  * The wildcard aliases a manifest declares, the most specific tree first.
- *
- * A conditional target (`{ "types": …, "default": … }`), a fallback array and a key that is not
- * one trailing wildcard are skipped rather than guessed at: which file they reach depends on the
- * resolver's conditions, and a rewrite that is right under one condition is wrong under another.
  */
 function aliasesOf(manifestText: string): Alias[] {
   const manifest: unknown = JSON.parse(manifestText);
@@ -64,11 +60,6 @@ function scopeOf(directory: string): Scope | null {
 
 /**
  * The alias a file at `filename` spells `specifier` as, or null where the relative form stays.
- *
- * Null for a specifier that climbs fewer than three levels, one that climbs out of the package
- * (a subpath import resolves inside its own package only), one that lands in no aliased tree, and
- * any file under a `relativeOnly` tree: a directory, relative to the package root, whose files
- * are also resolved some other way the alias would not survive.
  */
 export function subpathAlias(
   filename: string,

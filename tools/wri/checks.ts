@@ -5,18 +5,6 @@
  * belong to: the check program on disk, the one the rows were read at and the frozen one.
  *
  *   bun tools/wri/wri.ts reader checks --log <log | campaign folder | name>
- *
- * Lanes 1 and 5 read it first. Without it a session finds the exam's files by hand and sets each
- * `checker.read` row beside its `brief.json` entry, in many calls, and `REFUSALS BY CHECK` gives one
- * count a check and no split by side, by who asked or by version.
- *
- * The rows are the last `checker.read` at the frozen check program (`frozenChecker`), or the last
- * reading where none is frozen. A solve is counted under the program of the last reading before it
- * started, so an answer judged under an earlier draft is counted apart, as is one judged before any
- * reading. A refusal by several checks counts under each (`refusalsByCheck`, which `REFUSALS BY
- * CHECK` reads), so a column can sum past the answers. What stands is `standsOf`'s, a label over the
- * ruling (rule 8). A check the verdicts name and the reading does not gets a row of its own, marked.
- * It prints counts; no row says which check to read.
  */
 import { frozenChecker } from "#src/kernel/acceptance.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -29,6 +17,7 @@ import { dirname, join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { countBy } from "#src/meta/tally.ts";
+import { passAgreement, settledPassLabels } from "#src/referee/agreement.ts";
 import { stagedExamOf } from "#tools/d2/exam.ts";
 import { count, indexOf, items, refusals, refusalsByCheck, type Solve, strings, text } from "./folds.ts";
 import { askedOf, sideOf } from "./rejections.ts";
@@ -145,17 +134,29 @@ export function checkRows(events: readonly LogEvent[], disk: OnDisk): string[] {
     judged.filter((solve) => !under(solve)),
     (solve) => short(programOf(solve)),
   );
+  const passSummary = passAgreement(settledPassLabels(events));
+  const passLine =
+    passSummary.total === 0
+      ? "pass soundness: 0 labelled passes (uncalibrated by a human)"
+      : `pass soundness: ${String(passSummary.total)} labelled (sound ${String(passSummary.counts.sound)}, wrong ${String(passSummary.counts.wrong)}, unclear ${String(passSummary.counts.unclear)}), wrong rate ${passSummary.wrongRate === null ? "none" : `${(passSummary.wrongRate * 100).toFixed(1)}%`}, bar ${passSummary.clears ? "clears" : "unmet"}`;
+  const scoredJudged = judged.filter((solve) => under(solve) && asked(solve) === "scored");
+  const scoredPasses = scoredJudged.filter((solve) => log.verdicts.get(solve.id)?.kind === "pass").length;
+  const passRate =
+    scoredJudged.length === 0
+      ? "none"
+      : `${String(scoredPasses)}/${String(scoredJudged.length)} (${String(Math.round((100 * scoredPasses) / scoredJudged.length))}%)`;
   return [
     headOf(events, reading, disk),
     "id  instrument  rules  evidence  controls caught/named  refused in all  scored ref/new  examiner  practice  under another program  scored stands earned/defect/unclear/unread  labelled  every control passed/refused",
     ...lines,
-    `verdicts under ${short(program)}: ${verdicts.join(", ")}; under another program or before any reading: ${
+    `verdicts under ${short(program)}: ${verdicts.join(", ")}; scored pass rate ${passRate}; under another program or before any reading: ${
       Object.keys(elsewhere).length === 0
         ? "none"
         : Object.entries(elsewhere)
             .map(([at, n]) => `${at} ${String(n)}`)
             .join(", ")
     }`,
+    passLine,
     controlsLine(reading),
     ...(strings(reading?.faults).length > 0
       ? [`the reading's faults: ${String(strings(reading?.faults).length)}`]

@@ -7,6 +7,7 @@ import { append, type LogEvent, read } from "../kernel/log.ts";
 import { ranUnder } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import { asRecord } from "../meta/json-shape.ts";
+import type { PassLabel } from "../referee/agreement.ts";
 import type { Ruling } from "../referee/referee.ts";
 import {
   compared,
@@ -14,7 +15,6 @@ import {
   DEFECT,
   type Fixed,
   fixedIn,
-  type PassLabel,
   passesIn,
   type Report,
   REPORTED,
@@ -41,22 +41,6 @@ function restopped(
 
 /**
  * Settle a comparison's reading on a person's answer to its packet (`settle.ts`), and report again.
- *
- * `labels` holds a ruling a rejected answer, and a person's label stands over the Referee's ruling
- * of the same rejection. A task whose rejections then all stand as earned is restored to the tally.
- * One labelled a check defect disputes its task, which leaves every comparison from then on. One
- * labelled unclear, and one set aside on a rejection the packet did not draw, stays out of this
- * comparison. `passes` holds a person's word on a drawn answer that passed: one labelled wrong
- * counts as its side's fail, as an earned rejection does, and sound or unclear change nothing.
- * The tests are read again from the same solves and logged as the comparison's last report, with
- * what was settled and the labels themselves. Run again with the same labels it returns that
- * report. A comparison is settled once: other labels for one already settled are refused.
- *
- * A settling makes no solve. A stopped comparison records its labels and completion facts while
- * retaining its original reading and absent test; no task can be restored to a tally it never had.
- *
- * The comparison is read as its own report found it (`asReported`), so the labels settle the same
- * reading whether they come at once or after later comparisons have solved the same tasks.
  */
 export function settleReading(
   log: string,

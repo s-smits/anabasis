@@ -1,13 +1,6 @@
 /**
  * `bun run runs netwatch [<seconds>] [--once | -s|--short]`: live Tailscale traffic monitor across
  * configured hosts, driven by `watch.ts` and refreshed every `<seconds>` (default 2).
- *
- * Each host streams `tailscale status --json`, computing per-peer rx/tx byte rates between
- * successive samples, direct-vs-relay routing, and cumulative bytes transferred since the watch
- * started. The aggregate intranet line counts each peer pair once at the higher of its two
- * endpoints' readings and tracks peak throughput. `--once` prints a single frame after two samples
- * per host; `-s` prints a single summary line ordered by link throughput. Non-Tailscale traffic
- * (e.g. direct LAN or Thunderbolt) is not included.
  */
 import { Type } from "typebox";
 import { Value } from "typebox/value";

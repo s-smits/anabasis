@@ -12,10 +12,13 @@ def fail(error):
 
 
 def packaged():
+    derived = set(sys.argv[1:])
     owned = set()
     directories = {}
     candidates = set()
     for folder, dirs, files in os.walk(".", onerror=fail):
+        if derived:
+            dirs[:] = [name for name in dirs if name not in derived]
         folder = os.path.normpath(folder)
         directories[folder] = [os.path.normpath(os.path.join(folder, n)) for n in dirs + files]
         if not folder.endswith(".dist-info") or "RECORD" not in files:

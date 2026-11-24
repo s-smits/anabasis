@@ -12,6 +12,8 @@ interface Observation {
   /** Whether a keeper was attached on the remote host; omitted in observations written by older checkouts. */
   readonly kept?: boolean;
   readonly stderr: string | null;
+  /** Log byte length when the last `"whole"` snapshot completed; used to skip unchanged closed runs. */
+  readonly wholeBytes?: number;
 }
 const OBSERVATION = "observation.json";
 
@@ -43,12 +45,17 @@ export async function stderrTail(log: string): Promise<string | null> {
 export const keepObservation = (folder: string, observation: Observation) =>
   remember(join(folder, OBSERVATION), capturedJsonStringify(observation));
 
+/** Reads the cached observation metadata inside `folder`, or null if absent. */
+export function observationAt(folder: string): Observation | null {
+  const stored = join(folder, OBSERVATION);
+  return existsSync(stored) ? parseJsonAs<Observation>(readFileSync(stored, "utf8")) : null;
+}
+
 /** Reads the cached remote liveness observation for a fetched peer campaign, or returns null for
  *  local runs so local PIDs are never confused with remote liveness. */
 export function observationOf(run: Run): Observation | null {
-  const stored = join(dirname(run.path), OBSERVATION);
   const remote = run.archived !== undefined && run.archived !== HERE;
-  return remote && existsSync(stored) ? parseJsonAs<Observation>(readFileSync(stored, "utf8")) : null;
+  return remote ? observationAt(dirname(run.path)) : null;
 }
 
 /** Determines whether `run` currently has a live writer or keeper process. */

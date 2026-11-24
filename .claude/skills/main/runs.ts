@@ -1,11 +1,6 @@
 /**
  * Per-campaign summary fold shared across archive analysis tools (`table.ts`, `trend.ts`).
  *
- * Aggregates each campaign's timeline, promotions, elapsed/active/unloaded hours, billed and
- * repriced dollars, validity room, starter-read confirmation tallies, and A/A control rates from
- * production folds over the log and launch receipts (`comparisonsOf`, `epochsOf`, `starterReads`,
- * `billedBetween`, `waitsOf`).
- *
  * - **Release**: the latest release tag preceding the campaign's first launch.
  * - **Elapsed / Active / Unloaded hours**: total wall time from the first event; wall time minus
  *   recorded waits (provider resets, network, solve queue); and active hours minus estimated CPU
@@ -138,9 +133,14 @@ export interface Run {
   readonly reads: number;
   readonly confirmed: number;
   readonly after: Tally;
-  /** The A/A comparisons able to read a step, and those that did (`falsePromotion`). */
+  /** The A/A comparisons able to read a step, and those that did (`falsePromotion`), pooled and
+   *  split by whether the reference's own validity flipped (`validity`) or only the objective varied (`objective`). */
   readonly controls: number;
   readonly aaSteps: number;
+  readonly aaValidityControls: number;
+  readonly aaValiditySteps: number;
+  readonly aaObjectiveControls: number;
+  readonly aaObjectiveSteps: number;
   readonly ending: string;
 }
 
@@ -378,6 +378,10 @@ function runOf(
     confirmed: epochs.filter((epoch) => epoch.confirmed === true).length,
     controls: noise?.controls ?? 0,
     aaSteps: noise?.errors ?? 0,
+    aaValidityControls: noise?.byMeasure.validity.controls ?? 0,
+    aaValiditySteps: noise?.byMeasure.validity.errors ?? 0,
+    aaObjectiveControls: noise?.byMeasure.objective.controls ?? 0,
+    aaObjectiveSteps: noise?.byMeasure.objective.errors ?? 0,
     ending: ended ?? "no ending",
   };
 }

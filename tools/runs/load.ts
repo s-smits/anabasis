@@ -3,11 +3,6 @@
  * `keepFollowing`, `firstReadings`, `minuteLoads`). Powers both `bun run runs loadwatch` and
  * `ANA_CHECK_HOST=auto` host selection so interactive monitoring and automated task placement read
  * identical metrics.
- *
- * Each host runs a single sampling loop over `shellOn` (sharing the SSH control socket from
- * `sshOptions`). Linux hosts sample `/proc/stat` and `/proc/loadavg` deltas; macOS hosts stream
- * `iostat` tick deltas, which capture short-lived processes missed by decaying `ps %cpu` averages.
- * Streams silent for longer than their interval plus `SILENT_MS` transition to `"unreachable"`.
  */
 import { capturedSpawn } from "#src/meta/process.ts";
 import { killProcessGroup } from "#src/meta/subprocess.ts";
@@ -58,6 +53,18 @@ else
   emit='$1 ~ /^[0-9]+$/ && ++k > 1 { print n; print $4 " " $5 " " $6; print $3; print "---"; fflush() }'
   iostat -n0 -w 1 -c 2 | awk -v n="$n" "$emit"
   iostat -n0 -w @W@ | awk -v n="$n" "$emit"
+fi
+`;
+// One-shot load reading for `minuteLoads`: same block format as `LOOP`, without `iostat`'s 1s or
+// `/proc/stat`'s 0.3s CPU-busy sleep, which `minuteLoads` never reads.
+const ONCE = String.raw`
+if [ -r /proc/loadavg ]; then
+  read -r a b c _ < /proc/loadavg
+  printf '%s\n%s %s %s\n0\n---\n' "$(nproc)" "$a" "$b" "$c"
+else
+  n=$(sysctl -n hw.ncpu 2>/dev/null || true)
+  l=$(sysctl -n vm.loadavg 2>/dev/null | tr -d '{}' || true)
+  printf '%s\n%s\n0\n---\n' "$n" "$l"
 fi
 `;
 
@@ -196,7 +203,7 @@ export async function minuteLoads(
   hosts: readonly (Host | undefined)[],
   waitMs: number,
 ): Promise<{ order: { label: string; host: Host | undefined; share: number }[]; silent: string[] }> {
-  const watched = watchersOf(hosts, watchedScript(1), sampleOf);
+  const watched = watchersOf(hosts, ONCE, sampleOf);
   await firstReadings(watched, 1000, () => true, waitMs);
   const order = byLoad(watched, WINDOWS["1m"]).map(({ label, host, load, cores }) => ({
     label,

@@ -1,15 +1,22 @@
 import {
   chmodSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
-import { bwrapOpenReadArgs, linuxBwrapSupport, nodeRuntimeReadRoots } from "../src/wall/linux-bwrap.ts";
+import {
+  bwrapOpenReadArgs,
+  bwrapTmpfsDenies,
+  linuxBwrapSupport,
+  nodeRuntimeReadRoots,
+} from "../src/wall/linux-bwrap.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ana-linux-bwrap-reuse-"));
@@ -73,5 +80,29 @@ describe("the runtime prefix a wall reopens", () => {
     } finally {
       if (descriptor) Object.defineProperty(runtimeProcess, "execPath", descriptor);
     }
+  });
+
+  it("masks symlinked denied regular files with /dev/null rather than --tmpfs and hides external targets", () => {
+    const dir = join(root, "denies");
+    const targetFile = join(root, "real-secret.json");
+    const targetDir = join(root, "real-secret-dir");
+    mkdirSync(dir, { recursive: true });
+    mkdirSync(targetDir, { recursive: true });
+    writeFileSync(targetFile, '{"token":"secret"}\n');
+    const fileLink = join(dir, "secret.json");
+    const dirLink = join(dir, "secret-dir");
+    symlinkSync(targetFile, fileLink);
+    symlinkSync(targetDir, dirLink);
+
+    const args = bwrapTmpfsDenies([fileLink, dirLink]);
+    // Symlink to a regular file must use --ro-bind /dev/null (never --tmpfs, which fails ENOTDIR on Linux),
+    // and must also mask the canonical target outside denied roots.
+    expect(args).toContain("/dev/null");
+    expect(args.join(" ")).toContain(`--ro-bind /dev/null ${fileLink}`);
+    expect(args.join(" ")).toContain(`--ro-bind /dev/null ${realpathSync.native(targetFile)}`);
+    expect(args.join(" ")).not.toContain(`--tmpfs ${fileLink}`);
+    // Symlink to a directory mounts --tmpfs on both the link and its external target.
+    expect(args.join(" ")).toContain(`--tmpfs ${dirLink}`);
+    expect(args.join(" ")).toContain(`--tmpfs ${realpathSync.native(targetDir)}`);
   });
 });

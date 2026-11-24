@@ -1,24 +1,8 @@
 /**
- * Every deterministic reader of a campaign's record, run over its log into one folder a campaign, so
- * a person or a session opens a file instead of running forty commands. The operator asked for it:
- * the readers run quietly over every run whose log moved, while it runs and after it,
- * and an investigation's `start` runs them too. A folder is replaced whole with what the readers say
- * of the log as it stands, never appended to, so no file in it describes another moment of the log
- * than the rest; a folder whose log, and the commit that reads it, have not moved is left as it is.
- * A reader's code changed without a commit is not seen, so `--force` derives again.
- *
- * `READERS` is the one list of them, and `wri.ts reader <name>` prints any one. Most are a function
- * of the log's events, called in this process on one parse of the log, rather than a command of its
- * own that parses the log again, which on the largest logs takes minutes where one parse takes a
- * fraction of a second. A reader that needs more than the log
- * (a campaign found by its name in the registry, every campaign beside it, the embedding model, or
- * every kept harness) keeps a process of its own, named by its `args`, under a time limit, with no
- * credential in its environment and with `ANA_HOP=1`, under which it reaches no other host.
- * `pass.ts` runs for the pulse those that name a moment (`at`).
- *
- * The folders sit under the main worktree's `data/derived/`, which git ignores: the readers print
- * hidden values as the log holds them, so they stay on the exam side with the archive. A reader that
- * fails leaves its failure in its file and is named; the others still run.
+ * Deterministic campaign readers (`READERS`, `wri.ts reader <name>`), written atomically into
+ * `data/derived/<campaign>@<path>/` (skipped unless log, reading commit, or reader list moved;
+ * `--force` re-derives). In-process readers share one parse of the log; external readers (`args`)
+ * run bounded with no credentials and `ANA_HOP=1`. `pass.ts` runs `at`-tagged readers for pulse.
  */
 import { conditionLines } from "#skills/campaign-mechanics/scripts/conditions.ts";
 import { campaignEnding, endingLines } from "#skills/campaign-mechanics/scripts/ending.ts";
@@ -55,25 +39,29 @@ import { receipts } from "#tools/runs/receipt.ts";
 import { CLI, logEvents, readNamed } from "#tools/runs/registry.ts";
 import { hostOf } from "#tools/runs/seed.ts";
 import { aimRows } from "./aim.ts";
-import { answerRows } from "./answers.ts";
-import { budgetRows } from "./budget.ts";
 import { callRows, sequenceRows } from "./calls.ts";
 import { checkRows, programOnDisk } from "./checks.ts";
 import { climbText } from "./climb.ts";
-import { compactionRows } from "./compactions.ts";
+import { draftAuditRows, groundingRows, seatSummaryRows, wallAuditRows } from "./components.ts";
+import { continuityRows } from "./continuity.ts";
+import { deliverableRows } from "./deliverables.ts";
+import { diagnosticRows } from "./diagnostics.ts";
 import { draftRows } from "./drafted.ts";
 import { epochSpendLines } from "./epoch-spend.ts";
+import { executionRows } from "./execution.ts";
 import { indexOf, NO_TRACES } from "./folds.ts";
+import { gamingRows } from "./gaming.ts";
+import { WRI } from "./index.ts";
 import { launchLines } from "./launches.ts";
 import { nameRows } from "./names.ts";
 import { pairRows } from "./pairs.ts";
+import { portabilityRows } from "./portability.ts";
 import { practiceRows } from "./practice.ts";
 import { overview, rendered } from "./read.ts";
 import { rejectionRows } from "./rejections.ts";
-import { routeRows } from "./routes.ts";
 import { scoreRows } from "./scores.ts";
 import { tasksLines } from "./tasks.ts";
-import { waitRows } from "./waits.ts";
+import { transferRows } from "./transfer.ts";
 
 /** One parse of a log, which every reader of this process is handed. */
 interface Parsed {
@@ -145,6 +133,7 @@ const ENDED = "campaign.ended";
 const EXAMINED = "exam.finished";
 const STARTED = "comparison.started";
 const BUILT = "build.finished";
+const FROZEN = "contract.frozen";
 /** No call left out, as `calls.ts` reads without a flag. */
 const EVERY_CALL = { harness: null, program: null, command: null, output: null };
 
@@ -214,18 +203,8 @@ export function overviewText(log: string, events: readonly LogEvent[], repo: str
   return `${rendered(overview(events, receipts(log)))}\n\n${hostLine(log, events, repo)}\n`;
 }
 
-/** The readers that take one campaign and print what it holds, calling no paid model and writing
- *  nothing of the campaign's, the likeliest news first. Those marked `embeds` run a local model and
- *  keep their vectors in the reader store, and come after all but the readers of kept harnesses, as a
- *  first read is the longest and their news the least likely. Each moment's readers (`at`) come
- *  from what their text says of it; a `gist` stands where, on closed logs of several domains,
- *  naming the session or harness found none of the reader's lines: a summary row, a
- *  table's own row. A reader whose text is a block or a table over the whole log (a check's row, a
- *  pair's, a compaction, a launch, a sequence of calls) has no line of one moment and names none,
- *  so only `derive` runs it, as it does `aim` and `epoch-spend`, whose lines of a moment repeat
- *  what `ambition` and `cost` say there. A script that needs more than a campaign
- *  to say anything, reads no run or writes elsewhere is left out, and `whole-run-investigation` names
- *  each. */
+/** Single-campaign read-only readers, likeliest news first (`embeds` run a local model; `at`/`gist`
+ *  select moment-level pulse excerpts; whole-log tables stay `derive`-only). */
 export const READERS: readonly Reader[] = [
   at(
     {
@@ -234,6 +213,16 @@ export const READERS: readonly Reader[] = [
       read: ({ log, events, repo }) => [overviewText(log, events, repo)],
     },
     [REPORTED, PROMOTED, EXAMINED, BUILT, ENDED],
+  ),
+  at(
+    {
+      name: "diagnostics",
+      answers:
+        "cross-cutting structural warnings: dead harness bins, compaction amnesia, patience burn, validity saturation, step SNR and fragility, Examiner efficiency",
+      read: ({ log, events }) => diagnosticRows(events, join(dirname(log), "states")),
+    },
+    [REPORTED, PROMOTED, EXAMINED, BUILT, ENDED],
+    /^\[WARN\]/,
   ),
   at(
     {
@@ -253,11 +242,33 @@ export const READERS: readonly Reader[] = [
     },
     [REPORTED],
   ),
-  {
-    name: "starter-reads",
-    answers: "each starter comparison after a promotion, its tally split by where each task came from",
-    read: ({ events }) => starterLines(events),
-  },
+  at(
+    {
+      name: "scores",
+      answers:
+        "each comparison recounted by task: validity vs objective, A/A halves, answer/objective repetition, practised-family split, and step removals",
+      read: ({ events }) => scoreRows(events),
+    },
+    [REPORTED],
+  ),
+  at(
+    {
+      name: "starter-reads",
+      answers: "each starter comparison after a promotion, its tally split by where each task came from",
+      read: ({ events }) => starterLines(events),
+    },
+    [REPORTED],
+  ),
+  at(
+    {
+      name: "transfer",
+      answers:
+        "2x2 starter-read matrix (task origin x practised family before promotion), post-promotion batches, and Builder practice/band discipline",
+      read: ({ events }) => transferRows(events),
+    },
+    [REPORTED, PROMOTED],
+    /^transfer totals/,
+  ),
   {
     name: "degradations",
     answers: "each session or solve a model other than the one asked for served",
@@ -302,7 +313,6 @@ export const READERS: readonly Reader[] = [
     ["campaign.opened"],
     /^run-\d+ /,
   ),
-  namedReader("logged", "the log's counts as this tree's folds replay it, in one line", CLI, ["replay"]),
   at(
     namedReader(
       "cost",
@@ -402,28 +412,24 @@ export const READERS: readonly Reader[] = [
   ),
   at(
     {
-      name: "answers",
+      name: "deliverables",
       answers:
-        "per comparison, tasks where a side's passes repeated one answer, and the objective's repeat spread",
-      read: ({ quiet }) => answerRows(quiet),
+        "deliverable file-artifact capture per comparison arm and role, draft file references, cap hits, and file:* Referee probes",
+      read: ({ quiet }) => deliverableRows(quiet),
     },
-    [REPORTED],
+    [REPORTED, FROZEN],
+    /^draft deliverables:/,
   ),
-  {
-    name: "waits",
-    answers: "per comparison, the median share of a solve spent inside tool calls, by side and ending",
-    read: ({ events }) => waitRows(indexOf(events)),
-  },
-  {
-    name: "routes",
-    answers: "per comparison, the median calls a pass and the distinct tool orders, by side",
-    read: ({ events }) => routeRows(indexOf(events)),
-  },
-  {
-    name: "checks",
-    answers: "one row a check: rating, rules, controls, refusals by side and asker, whether it stands",
-    read: ({ log, quiet }) => checkRows(quiet, programOnDisk(log)),
-  },
+  at(
+    {
+      name: "checks",
+      answers:
+        "one row a check (instrument, rules, controls, refusals, standings), scored pass rate, and human pass-soundness calibration",
+      read: ({ log, quiet }) => checkRows(quiet, programOnDisk(log)),
+    },
+    [FROZEN],
+    /^(checks:|pass soundness:|controls read:|the reading's faults:)/,
+  ),
   at(
     {
       name: "rejections",
@@ -441,31 +447,31 @@ export const READERS: readonly Reader[] = [
   },
   at(
     {
-      name: "budget",
-      answers: "each comparison side's endings, turns and seconds against the bound, long calls, queue, load",
-      read: ({ events }) => budgetRows(indexOf(events)),
+      name: "execution",
+      answers:
+        "per comparison side: endings, turns, wall share, tool errors/non-zero exits, compactions, inside-call wait share, pass routes, long calls, queue and load",
+      read: ({ events }) => executionRows(indexOf(events)),
     },
     [REPORTED],
   ),
-  {
-    name: "compactions",
-    answers: "each compaction's tokens, seconds, error and priced usages, and each session's sum",
-    read: ({ events }) => compactionRows(events),
-  },
+  at(
+    {
+      name: "continuity",
+      answers:
+        "compactions with read_opening recovery, resting Examiner multi-ask conversations, and interrupted Builder handovers",
+      read: ({ events }) => continuityRows(events),
+    },
+    [BUILT, EXAMINED, REPORTED],
+  ),
   {
     name: "launches",
     answers: "each launch beside its stretch of the log: last event, steps left open, killed endings, gap",
     read: ({ log, events }) => launchLines(log, events),
   },
   {
-    name: "scores",
-    answers: "each comparison recounted by task: tallies by measure, A/A halves, a step's removals",
-    read: ({ events }) => scoreRows(events),
-  },
-  {
     name: "aim",
     answers:
-      "what each Examiner session could read and wrote, and each side's measures against the author's best",
+      "each Examiner session's reference, friction, family spread, cost per held task, and each side's measures against the author's best",
     read: ({ events }) => aimRows(events),
   },
   at(
@@ -475,8 +481,58 @@ export const READERS: readonly Reader[] = [
         "how the exam was drafted: each draft and its faults, the standing draft's counts, admitted checks",
       read: ({ events }) => draftRows(events),
     },
-    ["contract.frozen"],
+    [FROZEN],
     /^(standing draft|shape faults|checks:)/,
+  ),
+  at(
+    {
+      name: "draft-audit",
+      answers:
+        "adversarial draft auditor passes (`referee.draft`), finding kinds, refusals, spend/turns, and unverified final-pass cap leaks",
+      read: ({ events }) => draftAuditRows(events),
+    },
+    [FROZEN],
+    /^draft-audit:/,
+  ),
+  at(
+    {
+      name: "grounding",
+      answers:
+        "verifier tool provenance (`host-tools.json`, staged `.toolchain/bin/`, author vs admitted checks) and `faulty`/verifier non-result counts",
+      read: ({ log, events }) => groundingRows(events, join(dirname(log), "exams")),
+    },
+    [FROZEN, REPORTED],
+    /^grounding:/,
+  ),
+  at(
+    {
+      name: "wall-audit",
+      answers:
+        "runtime cross-seat wall boundary signals in Builder/Examiner traces and cross-arm `solve.finished.network` parity",
+      read: ({ events }) => wallAuditRows(events),
+    },
+    [REPORTED, ENDED],
+    /^(wall-audit|network-parity):/,
+  ),
+  at(
+    {
+      name: "seats",
+      answers:
+        "unified per-role agentic component ledger (runs, turns, calls, errors, anomalies, spend share) and post-pause comparison overshoots",
+      read: ({ events }) => seatSummaryRows(events),
+    },
+    [PROMOTED, ENDED],
+    /^seats:/,
+  ),
+  at(
+    {
+      name: "gaming",
+      answers:
+        "cross-component reward-hacking and specification-gaming leads across draft, referee.draft, examiner, builder, solver, and referee",
+      read: ({ events }) => gamingRows(events),
+    },
+    [FROZEN, REPORTED, ENDED],
+    /^gaming:/,
   ),
   {
     name: "wakes",
@@ -498,11 +554,16 @@ export const READERS: readonly Reader[] = [
     answers: "test-side passes by family and harness: distinct program sequences and the commonest's share",
     read: ({ events }) => sequenceRows(events, EVERY_CALL),
   },
-  {
-    name: "epoch-spend",
-    answers: "each epoch's billed dollars by role, and what the comparisons it reported billed",
-    read: ({ events }) => epochSpendLines(events),
-  },
+  at(
+    {
+      name: "epoch-spend",
+      answers:
+        "each epoch's billed dollars by role, active vs wall hours, billing residual, unpriced compactions, and $/promotion",
+      read: ({ events }) => epochSpendLines(events),
+    },
+    [PROMOTED, ENDED],
+    /^economy summary:/,
+  ),
   {
     name: "restated",
     answers: "which Referee reasons say the same thing",
@@ -523,6 +584,15 @@ export const READERS: readonly Reader[] = [
     },
     [PROMOTED],
   ),
+  at(
+    {
+      name: "portability",
+      answers:
+        "static export-readiness audit of each kept harness: host paths, shebangs, bin modes, broken links, exam-key coupling, and guide/tool weight",
+      read: ({ log, events }) => portabilityRows(events, join(dirname(log), "states")),
+    },
+    [PROMOTED],
+  ),
   {
     name: "versions",
     answers: "each kept harness, its parent, and what moved between them",
@@ -532,6 +602,12 @@ export const READERS: readonly Reader[] = [
     name: "chain",
     answers: "the harness lineage with outcomes withheld, for a blind review",
     args: (log) => [`${SKILLS}/harness-audit/scripts/harness-versions.ts`, log, "--blind"],
+  },
+  {
+    name: "history",
+    answers:
+      "same-domain version-over-version backtracking weighted by release gap (direct/near runs with stored syntheses & outside reads, mid cohort rollups, distant background)",
+    args: (log) => [WRI, "backtrack", "--log", log],
   },
 ];
 
@@ -695,7 +771,7 @@ function linesOf(file: string): string {
 /**
  * What each derived file answers, and how many lines it holds for each campaign, as a table for a
  * lane's prompt; "" where no folder of `folders` stands. Naming the folders and no file in them
- * leaves lanes rebuilding what a file such as `answers.txt` or `nearness.txt` already holds. A
+ * leaves lanes rebuilding what a file such as `scores.txt` or `nearness.txt` already holds. A
  * length beside each name lets a session open a short file whole and search a long one.
  */
 export function derivedMap(

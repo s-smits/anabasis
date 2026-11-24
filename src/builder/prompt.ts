@@ -1,75 +1,15 @@
 /**
- * Continuations read counted practice for the current exact digest, so restoring an earlier state
- * keeps its evidence; the latest harness snapshot alone cannot establish that it was practised.
- * What a Builder reads before its first call: the system prompt, the opening message, and its
- * shell's description.
- * The solver's limit reminders cover tools that execute, including errors, but not argument
- * refusals or unavailable tools; diagnostics may follow the reminder.
+ * Builder system prompt, opening message, and shell description (`src/builder/prompt.ts`).
  *
- * v1's Builder wrote the exam beside the harness, and most of its prompt was about the exam. What is
- * taken here is what bore on the harness, from harness-builder-v4: the role sentence
- * (`7af7315:src/author/builder-start-prompt.ts`, `INTENT_CLAUSE`), the ceiling on what a solver's
- * tools may do (`NO_GRADER_IN_REACH`), and the three files' contracts in brief
- * (`7af7315:starters/pi-built-harness/starter-pack/contract.md`, the agent sections). Their shapes
- * in full, with a worked example, are `HARNESS.md` in the session's home (`src/harness/starter.ts`).
- *
- * Each part of a harness is given one purpose, here as there: the presets select pi's tools, the
- * programs compute, and the guide is words about them. v1's sentence, "useful computation belongs
- * in the solver's tools", was written for a solver whose only way to a computation was a tool. A
- * v2 solver has a shell, so a computation is a program, and a harness declares no tools of its own
- * (`src/harness/open.ts`).
- *
- * The one limit on a harness is the one against cheating: nothing in it names a task, copies its
- * text or holds its answer. v1 also forbade a tool that judged a candidate or answered a case the
- * solver names, as "a check's work", because its Builder had written the checks. This Builder is
- * never shown a check, a solver does the same search unaided, and both harnesses are solved under
- * the same limits, which price the search. A rule against composing a domain engine, a judge and a
- * search in one program was tried and lifted, leaning to the Builder's freedom: no reader of a
- * harness can tell a program that filters its own candidates against the public rules from one
- * that hands over a finished answer it judged, and a comparison prices whatever a harness does. A
- * separated search and test is still an engine against a Starter that has none, so the comparison
- * does not attribute the gain to a part; `ANSWER FROM A PROGRAM` in `tools/wri/read.ts` reads
- * whether a harness answered for its solver, against the reference.
- *
- * A session is a new conversation, so the opening message carries what stands in for a Builder's
- * lost conversation: the notes its earlier sessions left (`memory.ts`),
- * and, from the log, every failed practice solve so far and each comparison's tally (`past.ts`).
- *
- * New here: what the harness is measured on, and how a practice result is to be read. It is
- * measured against the reference harness, which is the Starter Built Harness until a step is
- * promoted and so need not be the harness a later session starts from. v1 gave its Builder one
- * pass bit a rehearsal and no trace; a v2 Builder gets each task's record, the solver's trace and
- * the reviewers' readings, and is told that one solve is weak evidence, because in v1's record a
- * fail repeated on the same bytes 5 times in 21.
- *
- * It is told that any part may be rewritten whole, since a harness that only amends its parent
- * carries every margin its chain was chosen on, and nothing measures how harness/ came to hold what
- * it holds. That is a fact, not a course: which part to keep, amend or rewrite stays the Builder's.
- *
- * It hears no count from other campaigns, since a number fixed in a prompt goes stale while the
- * Builder reads its own campaign's tallies in its opening. The system prompt is written as
- * paragraphs, with the harness's three parts as a list.
- *
- * The texts are written for a model that follows a prompt literally, so each sentence is a fact
- * and not a course or a second limit: phrasings such as "leaves the solving method to the solver"
- * or "answers a particular task" read as bans on a method in the guide and on a program that
- * computes a candidate, against the search this prompt permits, so the one limit is stated once.
- * The time-and-turns rule and "keep it to words" are stated once, in `HARNESS.md`
- * (`src/harness/starter.ts`). Two facts the Builder would otherwise lack are stated: one retained
- * task, exhausted or held before the reference's promotion, is scored for every three others
- * (`scoredSet`, `src/campaign/round.ts`; `poolOf`, `src/kernel/reports.ts`), and a solve cut at
- * its limit fails.
- *
- * Each fact is stated once, where the Builder reads it. A tool's own behaviour is in its
- * description, so this prompt does not describe `check_harness`, `preview_harness`, `practice`,
- * `read_trace`, `read_opening` or `finish`; the shape of each harness part (the programs'
- * convention, the guide's place in the solver's prompt) is in `HARNESS.md`. This prompt keeps a map
- * of the three parts and the one fact no section there holds: a harness whose scripts or links name
- * the home is not frozen. The host tells the solver its limits (`HARNESS.md`), so no file of the
- * harness sets them.
+ * Supplies only the facts permitted across the evaluation wall (`AGENTS.md` section 1): the public
+ * contract and objective (`GAP_FLOOR`), the harness's three components (`HARNESS.md`,
+ * `src/harness/starter.ts`), the single prohibition on task/answer embedding, prior session notes
+ * (`memory.ts`), failed practice solves and comparison tallies (`past.ts`), and practice-task
+ * records for the current exact digest.
  */
-import { GAP_FLOOR, WEIGHTS } from "../kernel/compare.ts";
+import { GAP_FLOOR } from "../kernel/compare.ts";
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
+import { HOST_ONLY } from "../harness/starter.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
 import type { Limits } from "../kernel/condition.ts";
@@ -234,18 +174,20 @@ export const shellWalls = (network: NetworkReach): string =>
 
 export function systemPrompt(said: Said): string {
   return [
-    "You are the Builder. You improve a Built Harness (programs and guide) for a separate solving model in one domain. The host owns verification, acceptance, and scoring.",
-    `${GOAL} Measured tasks are never practice tasks and may come from families not seen in practice. The one limit: nothing in the harness may name a task, copy its text, or hold its answer, and such a line moves nothing that is measured.`,
+    "You are the Builder. You build and refine a Built Harness (programs and operating guide) for a separate solving model in one domain. The host owns verification, acceptance, and scoring.",
+    `${GOAL} Measured tasks are never practice tasks and include families not seen in practice. One hard rule: nothing in harness/ may name a task, copy its text, or embed its answer.`,
     [
-      "The solver is pi's coding agent. The harness lives in harness/ (see HARNESS.md for shapes, a worked example, and the starter guide). It has three parts:",
+      "Practice tasks are diagnostic samples of how the solver behaves in this domain; reading solver traces alongside task inputs and public rules exposes general gaps in method, tooling, or verification. One practice solve is noisy (the same harness can fail and then pass), anything edited after your last practice solve is measured untried, and narrow recipes or constants fitted to practice tasks fail to transfer to unseen tasks and families. General, composable programs under .toolchain/ transfer across unseen tasks and families, whereas single-family scripts sit idle outside the family they were written for. Every line of agent/BUILT_AGENTS.md enters every solve's prompt, so concise guides and pruning uninvoked programs or stale prose leave room for reading new tasks.",
+      `Kept harnesses are also exported and run on ordinary domain workspaces where public/task.json, public/files/, public/resources/, answer.json, submit, and campaign scoring do not exist. Export keeps agent/BUILT_AGENTS.md up to the heading "${HOST_ONLY}" and strips everything under it, so sections above that heading describe general domain tools and method over ordinary files while campaign-specific paths, rule IDs, checking, and submission belong under "${HOST_ONLY}".`,
+      "",
+      "The solver is pi's coding agent. Your harness lives in harness/ (see HARNESS.md for shapes, conventions, a worked example, and the starter guide) and has three parts:",
       "- agent/tools-spec.json: selects pi coding tools for the solver (read, bash, edit, write).",
-      "- .toolchain/: programs runnable by name in both your shell and the solver's.",
-      "- agent/BUILT_AGENTS.md: the guide: what each program is for, how they combine, and how a result informs the next decision.",
-      'You may rewrite any part from scratch, from kept/, or from the starter; only harness/ at freeze is measured. The harness runs from another place than your home, so launchers resolve paths relative to themselves (as "$(dirname "$0")" does) and links name their targets relatively: a script or link naming your home is refused at freeze.',
+      "- .toolchain/: executables runnable by name in both your shell and the solver's.",
+      "- agent/BUILT_AGENTS.md: the operating guide read into the solver's system prompt.",
+      'You may revise or rewrite any part from scratch, from kept/, or from the starter; only harness/ at freeze is measured. Harnesses run from another directory than your home, so launchers resolve paths relative to themselves (as "$(dirname "$0")" does) and symlinks use relative targets; any script or link naming your home is refused at freeze.',
+      "Hidden checks enforce the public rules. Your programs spend the solve's shared turn and time budget; the solver always decides what it writes to answer.json and submits.",
     ].join("\n"),
-    "Hidden checks enforce the public rules. Programs may run domain compilers or simulators, search for candidates, test them against the public rules and report which meet them, spending the solve's shared turn and time budget. The solver decides what it writes to answer.json, which the host reads when it submits: nothing of yours takes the answer.",
-    "One practice solve is noisy: the same harness can fail and then pass. Read the full record, not just the last run: a change shows in practice only on the tasks it moves, and anything changed after your last practice solve is measured untried.",
-    `Tasks are scored over all candidate-vs-reference solve pairings using validity (weight ${String(WEIGHTS.validity * 100)}) and, between two valid answers when an objective exists, objective gain of at least ${String(GAP_FLOOR * 100)}% of the larger magnitude (weight ${String(WEIGHTS.objective * 100)}). An invalid answer never beats a valid one. Retained tasks are those the reference answered on every solve of its last two comparisons or that were held out before it became the reference; up to one of them is scored per three others, rounded up, so a change that breaks an easy task can lose it. A comparison reads a step when its test clears the level. Cost and turns are reported but unscored; hitting a turn, time, or context limit without submitting, or flagging a task malformed, counts as a fail. A fail ruled a check defect does not count and is not yours to build around.`,
+    `Comparisons pair your candidate against the reference on each task. Validity comes first: an invalid answer never beats a valid one. Between valid answers, an objective gain of at least ${String(GAP_FLOOR * 100)}% of the larger magnitude breaks ties. Earlier solved tasks remain in comparisons alongside new ones, so regressions on easy tasks cost comparisons. Cost and turns are reported but unscored; running out of turns, time, or context without submitting, or flagging a task malformed, counts as a fail. Check-defect fails are excluded and not yours to build around.`,
     "Use read, edit, and write with paths relative to your home (such as harness/agent/BUILT_AGENTS.md), and bash for everything else: searching, listing, running and installing. Each reply counts as one turn, with or without a tool call.",
     [
       said.closing,
@@ -282,11 +224,6 @@ export function usedLine(used: Used, limits: Pick<Told, "wallSeconds" | "turns">
  * the opening facts are served again. It is v1's continuation (`continuePrompt`,
  * `3f93d06:src/author/builder-continuation.ts`), which restated the goal and the round's facts
  * at every turn boundary so that a compaction needed no signal.
- *
- * One part of v1's is left out on purpose: the line that named the next action. v1's Builder had a
- * submission refusal to be steered to. Here the host states facts and the Builder chooses the response
- * (`AGENTS.md`, section 2): which fact matters is its to weigh, and a prescribed course was what a
- * v1 campaign followed for four test sets while it changed only its published magnitudes.
  */
 export function continuation(
   used: Used,

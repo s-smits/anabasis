@@ -6,23 +6,12 @@
  *   bun --env-file=<file> run runs usage [N ...] [--json] [--open] [--closed]
  *   bun run runs active [--here [--login N]]
  *
- * A login is `CLAUDE_CODE_OAUTH_TOKEN<N>` in this process's environment, which Bun's own
- * `--env-file` loads: the verb opens no file of credentials, and prints no token. With no number it
- * reads every login the environment holds. A full report refreshes the history on each configured
- * host using that host's own credentials. `--open` and `--closed` are `login-state.ts`'s.
- *
  * Two routes, the first taken from steipete/CodexBar@afeb28146cec
  * (Sources/CodexBarCore/Providers/Claude/ClaudeOAuth/ClaudeOAuthUsageFetcher.swift): GET
  * /api/oauth/usage with its headers, window keys, `limits` entries and `extra_usage`. That endpoint
  * needs the `user:profile` scope, and a `claude setup-token` token carries only `user:inference`
  * (403 oauth_scope_insufficient), so for those the verb reads the `anthropic-ratelimit-unified-*`
  * headers off a one-token Haiku call instead: the numbers the CLI shows, for one output token.
- *
- * When the pool runs out is `usage-model.ts`'s, from the readings kept in the main worktree's
- * `.ana/logins-history.jsonl` (28 days). The 5-hour windows are left out: they cap how fast one
- * login spends, not what a week holds. These forecasts are printed for a person and feed no choice;
- * a keeper asks of one login's five hours by themselves, with the run it would move there added
- * (`fiveHourWith`).
  *
  * `bun run runs active` names the runs a process writes, by the login each run's last launch named,
  * and the live seats of `system-path-simulation`, by the login each seat names (`liveHere`), on this
@@ -31,17 +20,6 @@
  * machine's environment holds that login. `usage` puts
  * each login's count on its head line, out of the most `ANA_LOGIN_RUNS` or its subscription in
  * `ANA_LOGIN_SUBS` lets that login carry (`capOf`), and sums the subscriptions' most under the logins.
- *
- * Each reading keeps that count beside each login's week, and the rises between readings over the
- * runs counted give the share of a week a run spends an hour (`perRunRate`). The most a login can
- * carry is then the lower of its cap and the runs its week left fits over a run's twelve hours, or
- * until the reset where that comes sooner, each run active 16 of 24 hours (`fitOf`), and a login with
- * more live runs than that reads oversubscribed (`carried`), so a cap of two does not read 0/2 on a
- * login at 92% of its week with 11 hours of it left. Until that rate is measured, a login with live
- * runs reads its own week's pace shared over them (`perRunHour`).
- *
- * `ANA_LOGINS` in the environment, such as `2,3,4`, names the logins a run may take (`allowedLogins`),
- * every login the environment holds where it is unset.
  */
 import { openingOf, SEATS } from "#src/campaign/opening.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -524,7 +502,7 @@ function weeksFor(weeks: readonly Week[], kept: readonly Snapshot[], now: number
  *  between two readings a quarter of an hour to 3 hours apart in one window, over the runs the
  *  earlier reading counted on it. A person's own session on a login is charged to its runs, so the
  *  rate errs high. Null below `LEAST_RUN_HOURS`. */
-export function perRunRate(history: readonly Snapshot[]): number | null {
+function perRunRate(history: readonly Snapshot[]): number | null {
   const sorted = byTime(history);
   const spans = sorted.flatMap((then, at) => {
     const next = sorted[at + 1];

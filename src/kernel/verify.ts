@@ -1,33 +1,16 @@
 /**
  * The verifier: whether an answer passes a task's checks, decided on the verifier's own tree and
  * nowhere else. Answers are stored, so a verdict can be recomputed at any time.
- *
- * Every applicable check runs in a fresh cell, as its own process with only its declared projection
- * of the answer and the task, under the wall a seat's commands run under with the network closed. A
- * check's tools run in that same wall. No wall of the verifier's own is needed, as v1's was while
- * its Builder wrote the checks: here an answer is data and a check is the exam side's code.
- *
- * The verdict is a pass, a fail naming the checks that refused the answer, faulty when a check
- * itself failed on the request (it threw, returned no boolean, or is missing), or a non-result when
- * the wall, a tool or the program's loading could not decide. No answer is a fail. A faulty check is
- * the task's defect and drops the task; a non-result is the verifier's and stops the run.
- * The verifier accepts the reader's abort signal, races a check's result against it, reaps the
- * check group and its cell's holders, and returns a non-result, so a reader's deadline also ends
- * an answer probe and a detached check child cannot hold stderr open.
- *
- * The contract is v1's check-program/v1, the format of the experiment's stored answers: a
- * `brief.json` declaring the checks and an `evaluator.ts` exporting them as `checks`. A check
- * program is its whole directory, nested directories included, and each check's cell gets a copy,
- * since a check program may import a helper beside `evaluator.ts`, which a copy of that file alone
- * would leave behind. The hidden values are the task's, not the program's, so they
- * reach a check only as its request carries them; a directory that keeps them, as a v1 bundle's
- * `tasks.json` does, hands every task's to every check, and the caller leaves such files out.
- *
- * A check's tools resolve only from the verifier's tool tree. The condition pins that tree's digest,
- * and a tool missing from it once ran the host's copy off the search path's later directories.
  */
 import { CHECK_BRIEF, EVALUATOR_FILE } from "../meta/bundle-layout.ts";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "../meta/filesystem.ts";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+} from "../meta/filesystem.ts";
 import { sha256OfFile } from "../meta/digest.ts";
 import { jsonPathTokens } from "../meta/json-evidence.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
@@ -38,25 +21,18 @@ import { capturedExecPath, capturedSpawn } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { killProcessGroupId, terminateAndReapProcessGroupId } from "../meta/subprocess.ts";
+import { containsPath } from "../meta/path-containment.ts";
 import { commandIsolationPolicy, isolatedArgv, toolTreeSearchDirs } from "../wall/isolation.ts";
 import { hostFolder, releaseRoot } from "../wall/seat-root.ts";
 import { type SolveIsolationPolicy, solveIsolationPolicy } from "../wall/base.ts";
-import { hostScratch } from "../wall/policy.ts";
+import { closedHome, hostScratch, toolchainPathDirs } from "../wall/policy.ts";
 import type { CellInput, CellResult, CheckInput, CheckResult } from "./check-child.ts";
 import type { Objective } from "./contract.ts";
 import type { AnswerFile } from "./answer-files.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 
-// Copied from v1 (github.com/s-smits/anabasis, 3f93d06b), verbatim: CHECK_PROGRAM_CONTRACT,
-// requiredToolsOf, applicableTruthChecks, projectPaths, projectJsonPaths and checkPublicInputs from
-// vendor/correctness-model-bundle/evaluation-public-task.ts, and checkEvaluationRequest from
-// vendor/correctness-model-bundle/evaluate.ts. Departure: the five types they read are declared
-// here, cut to the fields those functions and the shape check read, in place of v1's brief, contract
-// and task-split modules, which did not come over. A second: `checkEvaluationRequest` returns its
-// projection without v1's `structuredClone`, which kept a check run in v1's own process from
-// reaching the caller's objects. Here the projection is written to the check child's stdin as JSON
-// in the same synchronous stretch of `runCell`, and `task.ts` reads it only for its throw, so
-// nothing holds the projection long enough to share it with a writer.
+// Core check-projection primitives adapted from v1 (`evaluation-public-task.ts`, `evaluate.ts`),
+// omitting `structuredClone` because `runCell` serialises projections synchronously to child stdin.
 
 interface CheckExecution {
   families: "all" | string[];
@@ -86,6 +62,8 @@ export interface Brief {
   correctnessContract: string;
   truthChecks: BriefTruthCheck[];
   objective?: Objective;
+  /** External engines declared for `objective(request, runtime)` when it runs installed tools. */
+  objectiveTools?: readonly string[];
 }
 
 interface PublicTask<PublicInput> {
@@ -121,6 +99,8 @@ export interface Engine {
   readonly name: string;
   readonly path: string;
   readonly sha256: string;
+  /** True when host-forwarded or resolving via symlink outside the pack's `.toolchain/`. */
+  readonly external: boolean;
 }
 
 /** What a check's wall closes beside the repository and the home, as a seat's does (`Walled`,
@@ -151,8 +131,8 @@ interface Wall {
   readonly tree: VerifierTree;
   /** The check program's files, as `checkProgramFiles` lists them. */
   readonly program: readonly string[];
-  /** The tool tree's search directories, joined as a search path. */
-  readonly toolPath: string;
+  /** Declared tool ids pre-resolved to their direct executable paths (`resolveVerifierTool`). */
+  readonly toolMap: Readonly<Record<string, string>>;
   /** The base of every check's command wall, or why this host has none. */
   readonly base: SolveIsolationPolicy | { readonly unsupported: string };
   readonly checkMs: number;
@@ -179,46 +159,48 @@ export const OBJECTIVE: BriefTruthCheck = {
   },
 };
 
-/** The check process, which reads these sources from where they stand: the wall closes the
- *  repository they lie in and opens them again by path. */
+/** Manifest listing ambient host tool names a drafted exam (`tools/d2/exam.ts`) is permitted to
+ *  invoke inside the verifier cell; stored packs install binaries directly under `.toolchain/bin/`. */
+export const HOST_TOOLS_FILE = "host-tools.json";
+
+/** Resolved verifier executable with its provenance: physically installed inside the pack's
+ *  `.toolchain/` (`pack`) or forwarded from the ambient host toolchain path (`host`). */
+interface ResolvedVerifierTool {
+  readonly kind: "pack" | "host";
+  readonly path: string;
+  readonly sha256: string;
+}
+
 const CHECK_CHILD = join(import.meta.dir, "check-child.ts");
 const CHECK_CHILD_SOURCES = [import.meta.dir, resolve(import.meta.dir, "..", "meta")];
 const REPO = resolve(import.meta.dir, "..", "..");
-
-/** v1's ceiling on one tool run, `DEFAULT_TOOL_TIMEOUT_MS` in its src/verify/host.ts. */
-const TOOL_CEILING_MS = 300_000;
-
-/**
- * The checks a cell runs at once. Running fourteen checks four at a time took about a third of the
- * time of one after another, and eight at a time little less than four. Four keeps the tools one
- * verdict runs at once within a four-core Linux host, where several solves are judged together.
- */
 const CHECKS_AT_ONCE = 4;
-
-/** One check's whole run, its tools included; past it the check is at fault, and the task is set
- *  aside as the check's defect instead of stopping the run (the operator's choice). It is well
- *  under the tool ceiling of ten minutes, which a tool may still ask for and no check reaches. */
+/** Per-check wall timeout including its tools; exceeding it marks the check faulty. */
 export const PER_CHECK_MS = 120_000;
 
-/** What the checker measured of a valid answer; null for any verdict but a pass with a measure.
- *  A comparison's objective, a Builder's practice record, an Examiner's room and the acceptance's
- *  count of measured answers read it here (rule 12). */
+/** Objective measure of a passing verdict, or null. */
 export function objectiveOf(verdict: Verdict | null | undefined): number | null {
   return verdict?.kind === "pass" ? (verdict.objective ?? null) : null;
 }
 
-/** The checks that refused an answer; none for any verdict but a fail. An answer some check
- *  refused is what a reviewer reads, a repair is held to and the Referee's replay is set against. */
+/** Blocking check ids of a failing verdict, or empty. */
 export function blockingOf(verdict: Verdict | null | undefined): readonly string[] {
   return verdict?.kind === "fail" ? verdict.blocking : [];
 }
 
-/** Whether the checks decided the answer, a pass or a fail, rather than ending faulty or as a non-result. */
+/** The faulty check id and reason of `verdict`, or null for any other verdict kind. */
+export function faultyOf(
+  verdict: Verdict | null | undefined,
+): { readonly check: string; readonly reason: string } | null {
+  return verdict?.kind === "faulty" ? { check: verdict.check, reason: verdict.reason } : null;
+}
+
+/** True when a verdict decided pass or fail rather than faulty or non-result. */
 export function decides(verdict: Verdict): verdict is Extract<Verdict, { kind: "pass" | "fail" }> {
   return verdict.kind === "pass" || verdict.kind === "fail";
 }
 
-/** A verdict in one line, a fail's checks in order, so that two verdicts can be set side by side. */
+/** One-line canonical spelling of a verdict for equality and display. */
 export function spelled(verdict: Verdict): string {
   if (verdict.kind === "fail") return `fail ${[...verdict.blocking].toSorted().join(",")}`;
   if (verdict.kind === "faulty") return `faulty ${verdict.check}: ${verdict.reason}`;
@@ -228,38 +210,78 @@ export function spelled(verdict: Verdict): string {
   return `non-result ${verdict.reason}`;
 }
 
-/** An external check names its tools inside its evidence declaration, because the tool is the
- *  instrument deciding it; an authored check names them at the execution level, where they are
- *  ordinary dependencies. Callers that only need to know what has to be installed and hashed ask
- *  here rather than branching on the kind themselves. */
+/** Ambient host tool names and draft provenance read from `toolsDir/host-tools.json`. */
+function hostManifestIn(toolsDir: string): { readonly draft: boolean; readonly tools: ReadonlySet<string> } {
+  const manifest = join(toolsDir, HOST_TOOLS_FILE);
+  if (!existsSync(manifest)) return { draft: false, tools: new Set() };
+  const parsed = asRecord(parseJsonAs<JsonValue>(readFileSync(manifest, "utf8")));
+  const listed = Array.isArray(parsed?.tools) ? parsed.tools : [];
+  return {
+    draft: parsed?.origin === "draft",
+    tools: new Set(listed.filter((entry): entry is string => isString(entry) && isSafePathSegment(entry))),
+  };
+}
+
+/** Strict subdirectory (or file) inside `home` for a resolved executable — never `home` itself. */
+function safeHomeRoot(real: string, home: string): string {
+  const grand = dirname(dirname(real));
+  if (grand !== home && containsPath(grand, home)) return grand;
+  const parent = dirname(real);
+  return parent !== home && containsPath(parent, home) ? parent : real;
+}
+
+/** Resolve one declared verifier tool by provenance: a binary under `toolsDir` takes precedence
+ *  (`pack` on operator-installed packs; `host` when staged from a drafted exam under Rule 10),
+ *  otherwise an ambient host binary named in `host-tools.json` (`host`). Preserves the lexical
+ *  executable path (for Python PEP 405 venvs and argv0-relative tools) while hashing the canonical
+ *  `realpathSync` target so binary updates move the digest. */
+export function resolveVerifierTool(
+  toolsDir: string,
+  name: string,
+  hostPath = toolchainPathDirs().join(":"),
+): ResolvedVerifierTool | null {
+  if (!isSafePathSegment(name)) return null;
+  const manifest = hostManifestIn(toolsDir);
+  const packBin = Bun.which(name, { PATH: toolTreeSearchDirs(toolsDir).join(":") });
+  if (packBin !== null) {
+    return {
+      kind: manifest.draft ? "host" : "pack",
+      path: packBin,
+      sha256: sha256OfFile(realpathSync(packBin)),
+    };
+  }
+  if (!manifest.tools.has(name)) return null;
+  const hostBin = Bun.which(name, { PATH: hostPath });
+  return hostBin === null
+    ? null
+    : { kind: "host", path: hostBin, sha256: sha256OfFile(realpathSync(hostBin)) };
+}
+
+/** Tool ids a check requires, whether declared under external evidence or execution dependencies. */
 export function requiredToolsOf(execution: CheckExecution): readonly string[] {
   return execution.evidence.kind === "external"
     ? execution.evidence.requiredToolIds
     : (execution.requiredToolIds ?? []);
 }
 
-/**
- * The pinned list of a check program's engines: each program its checks name (`requiredToolsOf`),
- * resolved on the search path a check's cell is given (`runTool`, `check-child.ts`), in the order
- * the checks first name them, and named by its digest. The host reads it here, once, for every
- * side that is given the exam's instruments (the Examiner's shell, `src/examiner/shell.ts`). A
- * name the tree does not hold is the host's own and is left out, and a name that is no plain file
- * name is never looked up, as a check's cell never looks one up.
- */
+/** Resolve and hash every declared verifier engine (`resolveVerifierTool`). */
 export function pinnedEngines({ checks, tools }: VerifierTree): Engine[] {
-  const path = toolTreeSearchDirs(tools).join(":");
-  const named = readBrief(checks).truthChecks.flatMap(({ execution }) => requiredToolsOf(execution));
+  const hostPath = toolchainPathDirs().join(":");
+  const toolsReal = existsSync(tools) ? realpathSync(tools) : null;
+  const brief = readBrief(checks);
+  const named = [
+    ...brief.truthChecks.flatMap(({ execution }) => requiredToolsOf(execution)),
+    ...(brief.objectiveTools ?? []),
+  ];
   return [...new Set(named)].flatMap((name) => {
-    const found = isSafePathSegment(name) ? Bun.which(name, { PATH: path }) : null;
-    return found === null ? [] : [{ name, path: found, sha256: sha256OfFile(found) }];
+    const resolved = resolveVerifierTool(tools, name, hostPath);
+    if (resolved === null) return [];
+    const external = toolsReal === null || !containsPath(realpathSync(resolved.path), toolsReal);
+    return [{ name, path: resolved.path, sha256: resolved.sha256, external }];
   });
 }
 
-/** Declared family scope decides applicability, and nothing else does. In particular the hidden
- *  operand is not consulted here: a check that declares `hidden: "required"` and has no expectation
- *  for the task is still applicable, and `checkEvaluationRequest` throws when it comes to run it.
- *  The two outcomes have to stay distinguishable, because a check quietly dropped for want of its
- *  operand looks exactly like a check that was never meant to apply, and only one is a defect. */
+/** Truth checks whose declared family scope includes `task.family`. */
 export function applicableTruthChecks(brief: Brief, task: { family: string }): BriefTruthCheck[] {
   if (brief.correctnessContract !== CHECK_PROGRAM_CONTRACT) {
     throw new Error("unsupported-correctness-contract");
@@ -273,15 +295,6 @@ export function applicableTruthChecks(brief: Brief, task: { family: string }): B
  * Rebuild a value carrying only the declared paths. A declared path grants the value at that path,
  * whole: `$.system` hands over its subtree, which is what a collection predicate naming a root
  * already means. Declaring a parent therefore grants its whole subtree.
- *
- * Two grants are wider than "the declared leaf" and belong to the contract. An array keeps its
- * length, with undeclared positions as null, so an index rule and a cardinality rule both still
- * work: declaring one element reveals its array's length. Absent is distinguishable
- * from present-and-null only where some rule declared the path.
- *
- * Traversal follows the source, so key order is the task's own and the bytes are stable under brief
- * reordering. `Object.fromEntries` defines rather than assigns, so a model-authored `__proto__` key
- * lands as an own property instead of reaching a prototype.
  */
 function projectPaths(value: JsonValue, paths: readonly string[][]): JsonValue {
   if (paths.some((path) => path.length === 0)) return value;
@@ -401,6 +414,27 @@ export function readBrief(checks: string): Brief {
   return brief;
 }
 
+/** Safe `$HOME` read-allow roots for resolved engine binaries whose realpath lies under `$HOME`
+ *  outside `tools` (never reopening `$HOME` itself). Shared by `openVerifier` and `inExaminerWall`. */
+export function engineReadRoots(
+  tools: string,
+  paths: readonly string[],
+  home: string | undefined = closedHome(),
+): string[] {
+  if (home === undefined) return [];
+  const canonicalTools = existsSync(tools) ? realpathSync(tools) : null;
+  return [
+    ...new Set(
+      paths.flatMap((path) => {
+        const real = realpathSync(path);
+        if (!containsPath(real, home)) return [];
+        if (canonicalTools !== null && containsPath(real, canonicalTools)) return [];
+        return [safeHomeRoot(real, home)];
+      }),
+    ),
+  ];
+}
+
 /**
  * A verifier over one tree. The brief is read and the wall's base taken once, here, so every
  * verdict it gives is under the same checks and the same wall. The tree is resolved first: the wall
@@ -409,15 +443,47 @@ export function readBrief(checks: string): Brief {
 export function openVerifier(given: VerifierTree & Closed): Verifier {
   const tree: VerifierTree = { checks: resolve(given.checks), tools: resolve(given.tools) };
   const brief = readBrief(tree.checks);
+  const [firstTool, ...moreTools] = brief.objectiveTools ?? [];
+  const objectiveTools: [string, ...string[]] | undefined =
+    firstTool === undefined ? undefined : [firstTool, ...moreTools];
+  const objective: BriefTruthCheck | null =
+    brief.objective === undefined
+      ? null
+      : objectiveTools === undefined
+        ? OBJECTIVE
+        : {
+            ...OBJECTIVE,
+            execution: {
+              ...OBJECTIVE.execution,
+              requiredToolIds: objectiveTools,
+              evidence: { kind: "authored" },
+            },
+          };
+  const hostPath = toolchainPathDirs().join(":");
+  const declared = [
+    ...new Set([
+      ...brief.truthChecks.flatMap(({ execution }) => requiredToolsOf(execution)),
+      ...(brief.objectiveTools ?? []),
+    ]),
+  ];
+  const resolvedTools = declared.flatMap((name) => {
+    const resolved = resolveVerifierTool(tree.tools, name, hostPath);
+    return resolved === null ? [] : [[name, resolved] as const];
+  });
+  const toolMap = Object.fromEntries(resolvedTools.map(([name, resolved]) => [name, resolved.path]));
+  const homeToolRoots = engineReadRoots(
+    tree.tools,
+    resolvedTools.map(([, resolved]) => resolved.path),
+  );
   const wall: Wall = {
     tree,
     program: checkProgramFiles(tree.checks),
-    toolPath: toolTreeSearchDirs(tree.tools).join(":"),
+    toolMap,
     base: solveIsolationPolicy({
       repoRoot: REPO,
       otherTrees: given.otherTrees ?? [],
       packRoots: given.packRoots ?? [],
-      readAllowRoots: CHECK_CHILD_SOURCES,
+      readAllowRoots: [...CHECK_CHILD_SOURCES, ...new Set(homeToolRoots)],
       network: false,
     }),
     checkMs: given.checkMs ?? PER_CHECK_MS,
@@ -431,7 +497,9 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
       ...keyIfDefined("files", files),
     };
     const checks = applicableTruthChecks(brief, task);
-    const objective = brief.objective === undefined ? null : OBJECTIVE;
+    if (checks.length === 0) {
+      return { kind: "faulty", check: "brief", reason: `no check applies to family ${task.family}` };
+    }
     const ran = await runCell(wall, checks, objective, request, signal);
     if ("nonResult" in ran) return { kind: "non-result", reason: ran.nonResult };
     if ("held" in ran) return { kind: "faulty", check: ran.held, reason: ran.reason };
@@ -550,8 +618,8 @@ async function runCell(
     }
     const input: CellInput = {
       program: join(copy, EVALUATOR_FILE),
-      toolPath: wall.toolPath,
-      toolCeilingMs: TOOL_CEILING_MS,
+      tools: wall.toolMap,
+      toolCeilingMs: wall.checkMs,
       checkMs: wall.checkMs,
       width: CHECKS_AT_ONCE,
       checks: checks.map((check) => inputOf(check, request)),

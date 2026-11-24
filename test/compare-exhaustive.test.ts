@@ -16,6 +16,7 @@ import {
   type Paired,
   pointsOf,
   power,
+  rawFlipP,
   readsStep,
   readsStepEitherWay,
   scored,
@@ -53,9 +54,21 @@ function multisets(alphabet: readonly number[], length: number): number[][] {
 const upTo = (alphabet: readonly number[], most: number) =>
   Array.from({ length: most + 1 }, (_, length) => multisets(alphabet, length)).flat();
 
-/** Each sign pattern over the untied margins of `scores`, with how many of them are positive. */
+/** Independent doubled mid-rank definition over nonzero scores for exhaustive verification. */
+function doubledRanks(scores: readonly number[]): number[] {
+  const nonzero = scores.filter((one) => one !== 0);
+  const abs = nonzero.map(Math.abs);
+  return nonzero.map((one) => {
+    const size = Math.abs(one);
+    const smaller = abs.filter((other) => other < size).length;
+    const equal = abs.filter((other) => other === size).length;
+    return Math.sign(one) * (2 * smaller + equal + 1);
+  });
+}
+
+/** Each sign pattern over the untied doubled mid-ranks of `scores`, with how many of them are positive. */
 function patterns(scores: readonly number[]) {
-  const margins = scores.filter((one) => one !== 0).map(Math.abs);
+  const margins = doubledRanks(scores).map(Math.abs);
   return Array.from({ length: 2 ** margins.length }, (_, bits) => {
     const flipped = margins.map((margin, at) => ((bits >> at) & 1 ? margin : -margin));
     return { flipped, wins: flipped.filter((one) => one > 0).length, untied: margins.length };
@@ -64,17 +77,19 @@ function patterns(scores: readonly number[]) {
 
 const sum = (values: readonly number[]) => values.reduce((total, one) => total + one, 0);
 
-/** The sign-flip p from its definition: the share of sign patterns of the untied margins whose sum
- *  is at least the observed one. */
+/** The Wilcoxon signed-rank p from its definition: the share of sign patterns over untied mid-ranks
+ *  whose sum is at least the observed rank sum. */
 const countedP = (scores: readonly number[]) => {
+  const observed = sum(doubledRanks(scores));
   const all = patterns(scores);
-  return all.filter(({ flipped }) => sum(flipped) >= sum(scores)).length / all.length;
+  return all.filter(({ flipped }) => sum(flipped) >= observed).length / all.length;
 };
 
-/** The same share without listing the patterns: every reachable sum of the signed margins, with
- *  its count of patterns in exact integers. */
+/** The same share without listing the patterns: every reachable sum of the signed doubled ranks,
+ *  with its count of patterns in exact integers. */
 function talliedP(scores: readonly number[]): number {
-  const margins = scores.filter((one) => one !== 0).map(Math.abs);
+  const ranked = doubledRanks(scores);
+  const margins = ranked.map(Math.abs);
   let sums = new Map<number, bigint>([[0, 1n]]);
   for (const margin of margins) {
     const reached = new Map<number, bigint>();
@@ -85,7 +100,7 @@ function talliedP(scores: readonly number[]): number {
     }
     sums = reached;
   }
-  const observed = sum(scores);
+  const observed = sum(ranked);
   const atLeast = [...sums].reduce((total, [at, ways]) => (at >= observed ? total + ways : total), 0n);
   return Number(atLeast) / 2 ** margins.length;
 }
@@ -155,6 +170,10 @@ describe("the sign-flip p", () => {
     }
     // A task the candidate lost need not keep it from a step, so the boundary is met, not avoided.
     expect(mixed).toBeGreaterThan(0);
+    // Heavy-tailed single-task loss compresses under signed-rank while raw sign-flip lets it veto.
+    const outlier = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, -300];
+    expect(flipP(outlier)).toBeLessThanOrEqual(0.02);
+    expect(rawFlipP(outlier)).toBeGreaterThan(0.5);
   });
 });
 
@@ -376,6 +395,15 @@ describe("how much better one measure is than another", () => {
           expect(gainOver({ direction }, other, one)).toBeCloseTo(-gain, 12);
         }
       }
+      // Sub-1e-12 floating-point dust around zero reads as tied rather than a ±100% gain.
+      for (const [one, other] of [
+        [0, 1e-13],
+        [1e-13, 0],
+        [-5e-13, 5e-13],
+      ] as const) {
+        expect(gainOver({ direction }, one, other)).toBe(0);
+      }
+      expect(gainOver({ direction }, 0, 1e-9)).toBe(direction === "lower" ? 1 : -1);
     }
   });
 });

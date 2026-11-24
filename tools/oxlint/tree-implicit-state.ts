@@ -3,25 +3,6 @@
  * hand in many files. An oxlint rule sees one file, so it cannot tell a union's owner from its
  * readers.
  *
- * `no-scattered-state-literals` (generic). The scan infers each declared set of states from the syntax:
- * a type alias or an inline union of two or more string literals, an `as const` array or object of
- * string literals, a string `enum`, and a `Set` of string literals. The file declaring it owns it.
- * A reader groups states when one condition compares one subject with two or more of them
- * (`s === "done" || s === "failed"`, `s !== "a" && s !== "b"`, `["done", "failed"].includes(s)`,
- * or `case` labels falling through to one body in a switch that is not exhaustive). A grouping
- * written outside the owner names a derived state ("ended") that only the reader knows, so each
- * reader re-derives it and their sets drift. Reported: a declared set grouped by hand in two or
- * more files besides its owner, at the owner, with every grouping as a place. A grouping maps to the
- * smallest declared set holding all its literals; an exhaustive switch maps every state and does
- * not count. The remedy is a predicate or a table in the owner that each reader calls.
- *
- * `no-unowned-state-literals` (opinionated: every status literal comes from a declared owner). A
- * grouping of word-like literals that no type, `as const`, `enum` or `Set` in the tree spells,
- * written in two or more files (the same `--readers`). Nobody owns those states: a typo in one copy
- * is a state no other reads. Contested where the literals are another program's protocol
- * (`process.platform`, an error `code`), which a tree that declares no type for them cannot tell
- * apart.
- *
  * Not read: tests, declaration files, vendored and generated trees. `typeof x === "string"` is no
  * state. The scan is syntactic and leans to silence; it runs on any folder as
  * `bun tools/oxlint/tree-implicit-state.ts <root> [--json] [--readers <n>]`, which also prints
@@ -107,9 +88,7 @@ const textOf = (file: ts.SourceFile, node: ts.Node): string => node.getText(file
 function tagsOf(members: readonly ts.TypeElement[]): Map<string, string> {
   const tags = new Map<string, string>();
   for (const member of members) {
-    if (!ts.isPropertySignature(member) || !ts.isIdentifier(member.name)) {
-      continue;
-    }
+    if (!ts.isPropertySignature(member) || !ts.isIdentifier(member.name)) continue;
     const { type } = member;
     if (type !== undefined && ts.isLiteralTypeNode(type) && ts.isStringLiteral(type.literal)) {
       tags.set(member.name.text, type.literal.text);
@@ -118,23 +97,34 @@ function tagsOf(members: readonly ts.TypeElement[]): Map<string, string> {
   return tags;
 }
 
+/** Names re-exported via top-level `export { ... }` statements in `file`. */
+function namedExportsOf(file: ts.SourceFile): Set<string> {
+  return new Set(
+    file.statements.flatMap((one) =>
+      ts.isExportDeclaration(one) &&
+      one.moduleSpecifier === undefined &&
+      one.exportClause !== undefined &&
+      ts.isNamedExports(one.exportClause)
+        ? one.exportClause.elements.map((element) => (element.propertyName ?? element.name).text)
+        : [],
+    ),
+  );
+}
+
 /**
  * Whether the top-level statement holding a node is exported, by its modifier or by name in an
  * `export { }` list. Only an exported set can own states another file reads; a file's private
  * table of the platform's own names (`new Set(["ArrowFunctionExpression", ...])`) owns nothing.
  */
-function exported(node: ts.Node, file: ts.SourceFile): boolean {
+function exported(node: ts.Node, file: ts.SourceFile, named: ReadonlySet<string>): boolean {
   let top = node;
   while (top.parent !== undefined && !ts.isSourceFile(top.parent)) {
-    if (ts.isFunctionLike(top) || ts.isBlock(top)) {
-      return false;
-    }
+    if (ts.isFunctionLike(top) || ts.isBlock(top)) return false;
     top = top.parent;
   }
   const modifiers = ts.canHaveModifiers(top) ? (ts.getModifiers(top) ?? []) : [];
-  if (modifiers.some((one) => one.kind === ts.SyntaxKind.ExportKeyword)) {
-    return true;
-  }
+  if (modifiers.some((one) => one.kind === ts.SyntaxKind.ExportKeyword)) return true;
+  if (named.size === 0) return false;
   const names = ts.isVariableStatement(top)
     ? top.declarationList.declarations.map((one) => one.name.getText(file))
     : [
@@ -142,36 +132,7 @@ function exported(node: ts.Node, file: ts.SourceFile): boolean {
           ? top.name.text
           : "",
       ];
-  return file.statements.some(
-    (one) =>
-      ts.isExportDeclaration(one) &&
-      one.moduleSpecifier === undefined &&
-      one.exportClause !== undefined &&
-      ts.isNamedExports(one.exportClause) &&
-      one.exportClause.elements.some((element) =>
-        names.includes((element.propertyName ?? element.name).text),
-      ),
-  );
-}
-
-/** Records a named object type's tags, and a union of object types to resolve later. */
-function noteTags(node: ts.Node, census: Census, path: string, file: ts.SourceFile): void {
-  if (ts.isInterfaceDeclaration(node)) {
-    census.tagged.set(node.name.text, tagsOf(node.members));
-  }
-  if (!ts.isTypeAliasDeclaration(node)) {
-    return;
-  }
-  const { type } = node;
-  if (ts.isTypeLiteralNode(type)) {
-    census.tagged.set(node.name.text, tagsOf(type.members));
-  }
-  const objects =
-    ts.isUnionTypeNode(type) &&
-    type.types.every((one) => ts.isTypeLiteralNode(one) || ts.isTypeReferenceNode(one));
-  if (objects && exported(node, file)) {
-    census.variants.push({ name: node.name.text, members: type.types, path, line: lineOf(file, node) });
-  }
+  return names.some((name) => named.has(name));
 }
 
 /** The states of a discriminated union: a property every member types by its own literal. */
@@ -181,34 +142,22 @@ function discriminated(variants: Variants, tagged: Census["tagged"]): Declared[]
       ? tagsOf(one.members)
       : tagged.get(ts.isTypeReferenceNode(one) ? one.typeName.getText() : ""),
   );
-  const [first, ...rest] = resolved;
-  if (first === undefined || resolved.includes(undefined)) {
-    return [];
-  }
+  const maps = resolved.filter((tags): tags is Map<string, string> => tags !== undefined);
+  const [first] = maps;
+  if (first === undefined || maps.length !== resolved.length || maps.length < 2) return [];
+  const { name, path, line } = variants;
   return [...first.keys()].flatMap((property) => {
-    const values = new Set(resolved.map((tags) => tags?.get(property)));
-    if (values.has(undefined) || values.size < 2 || rest.length === 0) {
-      return [];
-    }
+    const values = new Set(maps.map((tags) => tags.get(property)));
+    if (values.has(undefined) || values.size < 2) return [];
     const states = new Set([...values].filter((value) => value !== undefined));
-    return [
-      {
-        name: `${variants.name}.${property}`,
-        values: states,
-        path: variants.path,
-        line: variants.line,
-        property,
-      },
-    ];
+    return [{ name: `${name}.${property}`, values: states, path, line, property }];
   });
 }
 
 /** The string literals of a union type, or null where a member is anything else but `null`,
  *  `undefined` or `(typeof LIST)[number]` over an `as const` list of the file (`lists`). */
 function unionValues(node: ts.TypeNode, lists: ReadonlyMap<string, readonly string[]>): string[] | null {
-  if (!ts.isUnionTypeNode(node)) {
-    return null;
-  }
+  if (!ts.isUnionTypeNode(node)) return null;
   const values: string[] = [];
   for (const member of node.types) {
     const empty = ts.isLiteralTypeNode(member)
@@ -218,13 +167,9 @@ function unionValues(node: ts.TypeNode, lists: ReadonlyMap<string, readonly stri
       ts.isIndexedAccessTypeNode(member) && ts.isParenthesizedTypeNode(member.objectType)
         ? lists.get(member.objectType.type.getText().replace(/^typeof /u, ""))
         : undefined;
-    if (ts.isLiteralTypeNode(member) && ts.isStringLiteral(member.literal)) {
-      values.push(member.literal.text);
-    } else if (listed !== undefined) {
-      values.push(...listed);
-    } else if (!empty) {
-      return null;
-    }
+    if (ts.isLiteralTypeNode(member) && ts.isStringLiteral(member.literal)) values.push(member.literal.text);
+    else if (listed !== undefined) values.push(...listed);
+    else if (!empty) return null;
   }
   return values;
 }
@@ -233,22 +178,14 @@ function unionValues(node: ts.TypeNode, lists: ReadonlyMap<string, readonly stri
 function constValues(node: ts.Node): string[] | null {
   let inner = node;
   const asConst = ts.isAsExpression(inner) && inner.type.getText() === "const";
-  if (ts.isAsExpression(inner) || ts.isSatisfiesExpression(inner)) {
-    inner = inner.expression;
-  }
+  if (ts.isAsExpression(inner) || ts.isSatisfiesExpression(inner)) inner = inner.expression;
   if (ts.isNewExpression(inner) && inner.expression.getText() === "Set") {
     const [items] = inner.arguments ?? [];
     return items !== undefined && ts.isArrayLiteralExpression(items) ? literalsOf(items.elements) : null;
   }
-  if (!asConst) {
-    return null;
-  }
-  if (ts.isArrayLiteralExpression(inner)) {
-    return literalsOf(inner.elements);
-  }
-  if (!ts.isObjectLiteralExpression(inner)) {
-    return null;
-  }
+  if (!asConst) return null;
+  if (ts.isArrayLiteralExpression(inner)) return literalsOf(inner.elements);
+  if (!ts.isObjectLiteralExpression(inner)) return null;
   return literalsOf(
     inner.properties.flatMap((one) => (ts.isPropertyAssignment(one) ? [one.initializer] : [])),
   );
@@ -266,9 +203,7 @@ function nameOf(node: ts.Node, file: ts.SourceFile): string {
     if ((ts.isTypeAliasDeclaration(at) || ts.isEnumDeclaration(at)) && ts.isIdentifier(at.name)) {
       return at.name.text;
     }
-    if (ts.isParameter(at) || ts.isFunctionLike(at)) {
-      return INLINE;
-    }
+    if (ts.isParameter(at) || ts.isFunctionLike(at)) return INLINE;
     if (ts.isPropertySignature(at) || ts.isPropertyDeclaration(at) || ts.isVariableDeclaration(at)) {
       const owner = at.parent;
       const prefix =
@@ -282,6 +217,7 @@ function nameOf(node: ts.Node, file: ts.SourceFile): string {
 /** Every declared set of states in one file, and every string literal it types anywhere. */
 function declaredIn(path: string, file: ts.SourceFile, census: Census): Declared[] {
   const found: Declared[] = [];
+  const named = namedExportsOf(file);
   const lists = new Map(
     file.statements.flatMap((one) =>
       ts.isVariableStatement(one)
@@ -293,31 +229,33 @@ function declaredIn(path: string, file: ts.SourceFile, census: Census): Declared
     ),
   );
   const add = (node: ts.Node, values: readonly string[] | null): void => {
-    for (const value of values ?? []) {
-      census.typed.add(value);
-    }
+    for (const value of values ?? []) census.typed.add(value);
     const name = nameOf(node, file);
     if (values === null || new Set(values).size < 2) return;
     const set = { name, values: new Set(values), path, line: lineOf(file, node) };
-    if (name !== INLINE && exported(node, file)) found.push(set);
+    if (name !== INLINE && exported(node, file, named)) found.push(set);
     else census.local.push(set);
   };
   const visit = (node: ts.Node): void => {
-    if (ts.isLiteralTypeNode(node) && ts.isStringLiteral(node.literal)) {
-      census.typed.add(node.literal.text);
-    }
-    if (ts.isUnionTypeNode(node) && !ts.isUnionTypeNode(node.parent)) {
+    if (ts.isLiteralTypeNode(node) && ts.isStringLiteral(node.literal)) census.typed.add(node.literal.text);
+    else if (ts.isUnionTypeNode(node) && !ts.isUnionTypeNode(node.parent)) {
       add(node, unionValues(node, lists));
-    }
-    noteTags(node, census, path, file);
-    if (ts.isVariableDeclaration(node) && node.initializer !== undefined) {
+    } else if (ts.isInterfaceDeclaration(node)) census.tagged.set(node.name.text, tagsOf(node.members));
+    else if (ts.isTypeAliasDeclaration(node)) {
+      const { type } = node;
+      if (ts.isTypeLiteralNode(type)) census.tagged.set(node.name.text, tagsOf(type.members));
+      else if (
+        ts.isUnionTypeNode(type) &&
+        type.types.every((one) => ts.isTypeLiteralNode(one) || ts.isTypeReferenceNode(one)) &&
+        exported(node, file, named)
+      ) {
+        census.variants.push({ name: node.name.text, members: type.types, path, line: lineOf(file, node) });
+      }
+    } else if (ts.isVariableDeclaration(node) && node.initializer !== undefined) {
       add(node.initializer, constValues(node.initializer));
-    }
-    if (ts.isEnumDeclaration(node)) {
-      add(
-        node.members[0] ?? node,
-        literalsOf(node.members.flatMap((one) => (one.initializer === undefined ? [] : [one.initializer]))),
-      );
+    } else if (ts.isEnumDeclaration(node)) {
+      const inits = node.members.flatMap((one) => (one.initializer === undefined ? [] : [one.initializer]));
+      add(node.members[0] ?? node, literalsOf(inits));
     }
     ts.forEachChild(node, visit);
   };
@@ -327,16 +265,12 @@ function declaredIn(path: string, file: ts.SourceFile, census: Census): Declared
 
 /** The subject and literal of `subject === "literal"` (either way round), or null. */
 function compared(node: ts.Expression, file: ts.SourceFile, equal: boolean): [string, string] | null {
-  if (!ts.isBinaryExpression(node)) {
-    return null;
-  }
+  if (!ts.isBinaryExpression(node)) return null;
   const kind = node.operatorToken.kind;
   const operators = equal
     ? [ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.EqualsEqualsToken]
     : [ts.SyntaxKind.ExclamationEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken];
-  if (!operators.includes(kind)) {
-    return null;
-  }
+  if (!operators.includes(kind)) return null;
   const [subject, literal] = ts.isStringLiteralLike(node.right)
     ? [node.left, node.right]
     : [node.right, node.left];
@@ -359,13 +293,9 @@ function chain(node: ts.Expression, operator: ts.SyntaxKind): ts.Expression[] {
 function chainGroupings(node: ts.BinaryExpression, file: ts.SourceFile, path: string): Grouping[] {
   const operator = node.operatorToken.kind;
   const equal = operator === ts.SyntaxKind.BarBarToken;
-  if (!equal && operator !== ts.SyntaxKind.AmpersandAmpersandToken) {
-    return [];
-  }
+  if (!equal && operator !== ts.SyntaxKind.AmpersandAmpersandToken) return [];
   const parent = ts.isParenthesizedExpression(node.parent) ? node.parent.parent : node.parent;
-  if (ts.isBinaryExpression(parent) && parent.operatorToken.kind === operator) {
-    return [];
-  }
+  if (ts.isBinaryExpression(parent) && parent.operatorToken.kind === operator) return [];
   const pairs = chain(node, operator).flatMap((one) =>
     [compared(one, file, equal)].filter((pair) => pair !== null),
   );
@@ -379,9 +309,7 @@ function chainGroupings(node: ts.BinaryExpression, file: ts.SourceFile, path: st
 function membershipGrouping(node: ts.CallExpression, file: ts.SourceFile, path: string): Grouping | null {
   const callee = node.expression;
   const [subject] = node.arguments;
-  if (!ts.isPropertyAccessExpression(callee) || subject === undefined) {
-    return null;
-  }
+  if (!ts.isPropertyAccessExpression(callee) || subject === undefined) return null;
   const method = callee.name.text;
   const list =
     method === "includes" && ts.isArrayLiteralExpression(callee.expression) ? callee.expression : null;
@@ -401,9 +329,7 @@ function switchGroupings(node: ts.SwitchStatement, file: ts.SourceFile, path: st
       covers.add(clause.expression.text);
       groups.at(-1)?.push(clause.expression.text);
     }
-    if (clause.statements.length > 0) {
-      groups.push([]);
-    }
+    if (clause.statements.length > 0) groups.push([]);
   }
   const subject = textOf(file, node.expression);
   return groups
@@ -414,16 +340,11 @@ function switchGroupings(node: ts.SwitchStatement, file: ts.SourceFile, path: st
 function groupingsIn(path: string, file: ts.SourceFile): Grouping[] {
   const found: Grouping[] = [];
   const visit = (node: ts.Node): void => {
-    if (ts.isBinaryExpression(node)) {
-      found.push(...chainGroupings(node, file, path));
-    }
-    const membership = ts.isCallExpression(node) ? membershipGrouping(node, file, path) : null;
-    if (membership !== null) {
-      found.push(membership);
-    }
-    if (ts.isSwitchStatement(node)) {
-      found.push(...switchGroupings(node, file, path));
-    }
+    if (ts.isBinaryExpression(node)) found.push(...chainGroupings(node, file, path));
+    else if (ts.isCallExpression(node)) {
+      const membership = membershipGrouping(node, file, path);
+      if (membership !== null) found.push(membership);
+    } else if (ts.isSwitchStatement(node)) found.push(...switchGroupings(node, file, path));
     ts.forEachChild(node, visit);
   };
   visit(file);
@@ -444,9 +365,7 @@ function unownedLiterals(
   return [...Map.groupBy(unowned, (one) => quoted(one.values.toSorted()))].flatMap(([values, under]) => {
     const readerFiles = new Set(under.map((one) => one.path));
     const [first] = under;
-    if (first === undefined || readerFiles.size < readers) {
-      return [];
-    }
+    if (first === undefined || readerFiles.size < readers) return [];
     const row: TreeFinding = {
       kind: "no-unowned-state-literals",
       path: first.path,
@@ -474,8 +393,7 @@ function stateLiterals(
   { declared, typed }: ReturnType<typeof censusOf>,
   readers: number,
 ): TreeFinding[] {
-  const parsed = [...sources];
-  const groupings = parsed.flatMap(([path, file]) => groupingsIn(path, file));
+  const groupings = [...sources].flatMap(([path, file]) => groupingsIn(path, file));
   const owned = new Map<Declared, Grouping[]>();
   for (const grouping of groupings) {
     // The smallest declared set outside the grouping's file that holds every literal of it, one
@@ -493,21 +411,17 @@ function stateLiterals(
           Number(b.property !== undefined) - Number(a.property !== undefined) ||
           a.values.size - b.values.size,
       )[0];
+    if (owner === undefined) continue;
     // A switch that names every state maps them all. A chain or a list that spells a whole set is
     // the grouping that set already names (`isLinear` beside `"arrow" | "line"`), so it counts.
     const covers = grouping.switchCovers;
-    const exhaustive =
-      owner !== undefined && covers !== undefined && [...owner.values].every((value) => covers.has(value));
-    if (owner !== undefined && !exhaustive) {
-      owned.set(owner, [...(owned.get(owner) ?? []), grouping]);
-    }
+    const exhaustive = covers !== undefined && [...owner.values].every((value) => covers.has(value));
+    if (!exhaustive) owned.set(owner, [...(owned.get(owner) ?? []), grouping]);
   }
   const found: Found[] = [];
   for (const [owner, groupedBy] of owned) {
     const readerFiles = new Set(groupedBy.map((one) => one.path));
-    if (readerFiles.size < readers) {
-      continue;
-    }
+    if (readerFiles.size < readers) continue;
     const sets = new Set(groupedBy.map((one) => quoted(one.values.toSorted())));
     const row: TreeFinding = {
       kind: "no-scattered-state-literals",
@@ -520,7 +434,7 @@ function stateLiterals(
   }
   found.push(...unownedLiterals(groupings, typed, readers));
   const stateful = statefulSets(
-    new Map(parsed),
+    sources,
     found.map((one) => one.set),
   );
   return found.map(({ row }, index) =>
@@ -541,10 +455,9 @@ function stateLiterals(
  * function. So they share the parse and keep their own walk.
  */
 export function implicitStateFindings(
-  files: ReadonlyMap<string, string>,
+  parsed: ReadonlyMap<string, ts.SourceFile>,
   readers = READER_FLOOR,
 ): TreeFinding[] {
-  const parsed = parsedSources(files);
   const owned = new Map([...parsed].filter(([path]) => !TEST_PATH.test(path)));
   const sets = censusOf(owned);
   return [
@@ -559,9 +472,8 @@ export function implicitStateFindings(
 function sourcesUnder(root: string, at = root, files = new Map<string, string>()): Map<string, string> {
   for (const entry of readdirSync(at, { withFileTypes: true })) {
     const path = join(at, entry.name);
-    if (entry.isDirectory() && !SKIPPED_DIRECTORY.test(entry.name)) {
-      sourcesUnder(root, path, files);
-    } else if (entry.isFile() && SOURCE.test(entry.name) && !DECLARATION.test(entry.name)) {
+    if (entry.isDirectory() && !SKIPPED_DIRECTORY.test(entry.name)) sourcesUnder(root, path, files);
+    else if (entry.isFile() && SOURCE.test(entry.name) && !DECLARATION.test(entry.name)) {
       files.set(relative(root, path), readFileSync(path, "utf8"));
     }
   }
@@ -575,13 +487,13 @@ if (import.meta.main) {
   const root =
     argv.find((argument, index) => !argument.startsWith("--") && (at === -1 || index !== at + 1)) ?? ".";
   const files = sourcesUnder(root);
-  const rows = implicitStateFindings(files, readers);
+  const rows = implicitStateFindings(parsedSources(files), readers);
   if (argv.includes("--json")) {
-    const found = rows.map((row) => ({
-      rule: row.kind,
-      file: row.path,
-      line: row.line,
-      message: row.detail,
+    const found = rows.map(({ kind: rule, path: file, line, detail: message }) => ({
+      rule,
+      file,
+      line,
+      message,
     }));
     await Bun.write(Bun.stdout, `${JSON.stringify(found)}\n`);
     runtimeProcess.exit(0);

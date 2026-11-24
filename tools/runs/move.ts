@@ -24,42 +24,9 @@
  * reads where each end stands and moves nothing.
  * Remote receipts are read here, since the source worktree may predate the receipt reader.
  *
- * A log is never copied by hand (the operator's rule), and `runs copy` moves a folder only between
- * worktrees of one machine, so this verb is the way to another host: stopping a campaign and
- * launching a new one there instead would leave a second campaign that ends in its draft, where
- * its own log could have gone on. A change of login on one machine needs no move:
- * `runs continue --after <event> --login N`.
- *
- * The run's states link their programs by relative paths, which hold in the new folder. A kept
- * harness is its digest and is never rebuilt, so a move to another system or processor is refused
- * where a state's tool tree holds a program the destination cannot run, by the test the outside read
- * exports with (`foreignFiles`, `src/harness/place.ts`); and the destination's Python and tools are
- * brought level with the table as `runs sync --yes` would (`outOfStep`), the move refused where a
- * seat would still find one out of step, both before the pause. What an Examiner's or a Builder's
- * shell left in its home links where that machine's tools are, and the next session there builds
- * its own again. A `runs keep` that keeps the campaign at its source ends with the pause
- * (`pauseAt`), whether or not a process still wrote the log.
- *
  *   bun run runs copy <name> --to <worktree> [--yes]
  *
- * `copy` takes a campaign no process writes or keeps, its folder whole, to another worktree of the
- * repository, from a worktree or from this machine's archive (`runs retire`), and sets the folder it
- * leaves aside under `.ana/moved/` of the tree it was in, so that one worktree holds the name;
- * `continue` then goes on with it there. It is the one way a campaign's folder moves on one machine
- * (the operator's rule), since a log is never copied by hand.
- *
  *   bun --env-file=.env.runs run runs fetch [<name>] [--from <host>] [--whole]
- *
- * `fetch` takes a copy of a campaign another machine holds, to read here: its folder whole, into
- * the archive as `data/runs/<host>/<name>/` of the main worktree (`ARCHIVE`), where the readers read
- * it and no verb acts on it, so the name stays one run. It asks every host which holds the name
- * unless `--from` names one, prints the copy's log, and run again brings the copy level with its
- * source. The run is left as it is. A copy goes where the readers read it, so that an investigation
- * of runs on another host need make no copy by hand.
- * With no name it brings the record of every campaign whose log grew, and with `--whole` their
- * folders too, as a named campaign always comes; it then records where another model served a seat
- * than it asked for (`degradations.ts`) and copies each benchmark's score store from the machine
- * that rolls it (`fetchBenches`).
  */
 import { foreignFiles, placeOf, UNAME_PLACES } from "#src/harness/place.ts";
 import { LOG_FILE } from "#src/kernel/log.ts";
@@ -186,18 +153,34 @@ async function runnableAt(from: End, to: End, dir: string): Promise<void> {
   const [source, destination] = [from, to].map((end) => UNAME_PLACES.get(at(end, "uname -sm")));
   if (source === destination) return;
   if (destination === undefined) throw new Error(`${to.name} is no machine a harness is read for`);
-  const trees = ["--include=/states/", "--include=/states/*/", `--include=/states/*/${TOOL_TREE_DIR}/***`];
+  const trees = [
+    "--include=/states/",
+    "--include=/states/*/",
+    `--include=/states/*/${TOOL_TREE_DIR}/***`,
+    "--include=/exams/",
+    "--include=/exams/*/",
+    "--include=/exams/*/bundle/",
+    `--include=/exams/*/bundle/${TOOL_TREE_DIR}/***`,
+  ];
   const found = await readAt(from, dir, [...trees, "--exclude=*"], async (here) => {
-    const states = existsSync(join(here, "states")) ? readdirSync(join(here, "states")) : [];
-    const each = states.map(async (state) => {
-      const foreign = await foreignFiles(join(here, "states", state, TOOL_TREE_DIR), placeOf(destination));
-      return foreign.slice(0, 3).map(({ path, why }) => `${state.slice(0, 12)} ${path} (${why})`);
+    const entries = (root: string, tail: readonly string[], label: (name: string) => string) =>
+      (existsSync(root) ? readdirSync(root) : []).map((entry) => ({
+        tag: label(entry),
+        tree: join(root, entry, ...tail, TOOL_TREE_DIR),
+      }));
+    const dirs = [
+      ...entries(join(here, "states"), [], (state) => state.slice(0, 12)),
+      ...entries(join(here, "exams"), ["bundle"], (exam) => `exam/${exam}`),
+    ];
+    const each = dirs.map(async ({ tag, tree }) => {
+      const foreign = await foreignFiles(tree, placeOf(destination));
+      return foreign.slice(0, 3).map(({ path, why }) => `${tag} ${path} (${why})`);
     });
     return (await Promise.all(each)).flat();
   });
   if (found.length > 0) {
     throw new Error(
-      `kept harnesses hold programs ${to.name} cannot run, and a kept harness is never rebuilt: ${found.slice(0, 6).join(", ")}; move it to a machine of its own system and processor: nothing was stopped or moved`,
+      `kept harnesses or exam toolchains hold programs ${to.name} cannot run, and neither is rebuilt: ${found.slice(0, 6).join(", ")}; move it to a machine of its own system and processor: nothing was stopped or moved`,
     );
   }
 }
@@ -231,7 +214,7 @@ export async function move(args: readonly string[]): Promise<void> {
   const folder = (root: string) => join(root, CAMPAIGNS, name);
   const login = values.login === undefined ? [] : ["--login", values.login];
   const size = (end: End, root: string) =>
-    Number(at(end, `cat ${quoted(join(folder(root), LOG_FILE))} 2>/dev/null | wc -c`));
+    Number(at(end, `{ wc -c < ${quoted(join(folder(root), LOG_FILE))}; } 2>/dev/null || echo 0`));
   // Read before anything stops: a pause that a taken destination then refuses leaves the run stopped.
   const taken = at(
     to,

@@ -1,24 +1,6 @@
 /**
  * One name this repository owns (a bundle path, an evidence file, a schema tag) spelled as a
  * double-quoted literal in more than one file, with no constant every copy imports.
- *
- * The scan has to decide what counts as a name. A literal is one when it has no whitespace, holds
- * a `/` or a `.`, is not an interpolation fragment, an assignment or a slug, is no other program's
- * name (`literal-owner.ts`), and is at least 15 characters or a file name with a stem and an
- * extension. A short file name such as `battery.json` can stand in many files, so it counts too,
- * at three files rather than two, because two files agreeing on
- * `index.ts` share a word rather than a layout.
- *
- * What is not a second copy: an import line, a comment, a quote inside another string or a
- * template's text (an example in a message is prose), the path a loader spells beside its
- * `import("…")` type, and a literal the compiler already checks. The last is a type, a member's
- * declared type (`schema: "tag/v2";`), a TypeBox literal, and a constant table that `satisfies` a
- * non-string type or is read with `typeof`: mistyping one copy then fails the build. `join(dir,
- * "a", "b.ts")` is read as `a/b.ts`, since reading the pieces apart hides about a quarter of the
- * sites.
- *
- * One tokenizer reads each line, rather than a regex and a state machine run on the text before
- * every match.
  */
 import manifest from "../../package.json" with { type: "json" };
 import { ownedElsewhere } from "./ana/shared/literal-owner.ts";

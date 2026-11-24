@@ -18,14 +18,6 @@ import {
  * the phase (a state field written once per transition, or an append-only log folded to the
  * latest state) gives the phase one owner.
  *
- * Reported: a function in which two or more existence checks of distinct files in one folder each
- * decide something (an `if`, a loop or ternary test, a comparison, a return, or a `const` holding
- * the answer). An existence check is a platform form: `existsSync`, `pathExists` and
- * `pathExistsSync` by any receiver, `Bun.file(p).exists()`, or a function of this file whose body
- * only returns one of those of its parameter. The folder is read from the path: `join(dir, "a")`
- * or `resolve(dir, "a")`, a template `${dir}/a`, `dir + "/a"`, a property of one object
- * (`paths.lock`, `paths.report`), or a `const` this file binds to one of those.
- *
  * Not reported: a single guard (`if (!existsSync(dir)) mkdirSync(dir)`), checks of files in two
  * different folders, one file checked twice, and files this module never writes, copies, makes or
  * removes (a call naming one of them), which are input it probes, such as which lockfile a project

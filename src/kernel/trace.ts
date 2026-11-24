@@ -2,18 +2,6 @@
  * A model's trace as the log holds it, and as its readers page it: every turn, tool call and
  * compaction of a solve or of a session, each under its seat's prefix (`solve.turn`, `build.call`,
  * `exam.compacted`), as `traceSink` and `sit` write them (`src/agent/session.ts`).
- *
- * Every reader of these events reads them here, once, into a typed record: the dollars of a
- * session that never ended, the last turn of a solve, the Builder's `read_trace`, the campaign
- * page's turns, calls and call counts, the pulse's failed turns and the whole-run reader's lanes.
- * None spells the kinds, the field that names whose a trace is or the price of a usage again.
- *
- * The Builder reads a practice solve's calls through `callList` and `callText` and nothing wider;
- * a verdict's checks and the Referee's reasons share the log and never enter a practice trace.
- * The list shows each call's arguments and size, since a list of tool names alone showed most
- * calls only as "bash", and a call comes back whole, since a Builder rarely paged past a cut
- * window: the seat tool's own cap spills a longer one to a file.
- * The same records bill completed and unfinished sessions (`billedAll`, `src/kernel/meter.ts`).
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import {
@@ -129,6 +117,20 @@ export const METERED = SEATS.map((of) => ({ of, id: whose(of) }));
 /** The kind seat `seat` logs part `part` under. */
 export const traceKind = (seat: Seat, part: Traced["part"]) => `${seat}.${part}` as const;
 
+const TRACE_KINDS = new Map<string, readonly [Seat, Traced["part"], string]>(
+  SEATS.flatMap((seat) =>
+    (["turn", "call", "compacted"] as const).map((part) => [`${seat}.${part}`, [seat, part, whose(seat)]]),
+  ),
+);
+const SEAT_START = new Map<string, Seat>(
+  SEATS.map((s) => [s === "referee" ? "referee.turn" : `${s}.started`, s]),
+);
+const SEAT_END = new Map<string, Seat>([
+  ...SEATS.filter((s) => s !== "referee").map((s): [string, Seat] => [`${s}.finished`, s]),
+  ["referee.finding", "referee"],
+  ["referee.draft", "referee"],
+]);
+
 /** The host's price of one usage, `cost.total`, or null where it holds none. */
 function costOf(usage: JsonValue | undefined): number | null {
   const total = asRecord(asRecord(usage)?.cost)?.total;
@@ -141,10 +143,10 @@ const orNull = <T>(value: JsonValue | undefined, is: (value: unknown) => value i
 
 /** Event `event`, at `index` in its log, read as a part of a trace; null for any other event. */
 export function traced({ kind, at, data }: LogEvent, index: number): Traced | null {
-  const [prefix, part] = kind.split(".");
-  const seat = SEATS.find((each) => each === prefix);
-  if (seat === undefined) return null;
-  const mark = { index, at, seat, id: textOf(data[whose(seat)]) };
+  const matched = TRACE_KINDS.get(kind);
+  if (matched === undefined) return null;
+  const [seat, part, field] = matched;
+  const mark = { index, at, seat, id: textOf(data[field]) };
   if (part === "turn") {
     const { usage, turn, text, stopReason, error, responseModel } = data;
     return {
@@ -161,22 +163,18 @@ export function traced({ kind, at, data }: LogEvent, index: number): Traced | nu
   }
   if (part === "call") {
     const { toolCallId, turn, tool, args, isError, text, ms } = data;
-    const call = {
+    return {
+      ...mark,
+      part,
       callId: orNull(toolCallId, isString),
       turn: orNull(turn, isNumber),
       tool: textOf(tool),
       args: args ?? null,
-    };
-    return {
-      ...mark,
-      part,
-      ...call,
       isError: isBoolean(isError) && isError,
       text: textOf(text),
       ms: orNull(ms, isNumber),
     };
   }
-  if (part !== "compacted") return null;
   const usages = Array.isArray(data.usages) ? data.usages : [];
   return { ...mark, part, billed: usages.reduce<number>((sum, usage) => sum + (costOf(usage) ?? 0), 0) };
 }
@@ -185,7 +183,7 @@ export function traced({ kind, at, data }: LogEvent, index: number): Traced | nu
 export function askedOf(events: readonly LogEvent[]): Map<string, string> {
   const asked = new Map<string, string>();
   for (const { kind, data } of events) {
-    const seat = SEATS.find((each) => kind === `${each}.started`);
+    const seat = kind === "referee.turn" ? undefined : SEAT_START.get(kind);
     const id = seat === undefined ? undefined : data[whose(seat)];
     if (isString(id) && isString(data.model)) asked.set(id, data.model);
   }
@@ -224,10 +222,12 @@ export function degradations(events: readonly LogEvent[], from = 0): Degradation
 
 /** Every part of every trace in `events`, in the order logged. */
 export function tracesIn(events: readonly LogEvent[]): Traced[] {
-  return events.flatMap((event, index) => {
+  const out: Traced[] = [];
+  for (const [index, event] of events.entries()) {
     const found = traced(event, index);
-    return found === null ? [] : [found];
-  });
+    if (found !== null) out.push(found);
+  }
+  return out;
 }
 
 /** The tool calls of seat `seat` among `traces`, in their order. */
@@ -295,26 +295,27 @@ export function callText(calls: readonly Call[], number: number): string {
  * long log.
  */
 export function unfinished(events: readonly LogEvent[]): Unfinished[] {
-  const seats = METERED.map(({ of, id }) => ({
-    of,
-    id,
-    starts: `${of}.started`,
-    ends: of === "referee" ? "referee.finding" : `${of}.finished`,
-    ended: new Set<JsonValue | undefined>(),
-    open: new Map<JsonValue | undefined, Unfinished>(),
-  }));
+  const bySeat = new Map(
+    METERED.map(({ of, id }) => [
+      of,
+      { of, id, ended: new Set(), started: new Set(), open: new Map<JsonValue | undefined, Unfinished>() },
+    ]),
+  );
   for (const { kind, data } of events) {
-    for (const { id, ends, ended } of seats) if (kind === ends) ended.add(data[id]);
+    const [end, start] = [SEAT_END.get(kind), SEAT_START.get(kind)];
+    if (end !== undefined) bySeat.get(end)?.ended.add(data[WHOSE[end]]);
+    if (start !== undefined) bySeat.get(start)?.started.add(data[WHOSE[start]]);
   }
+  const active = [...bySeat.values()].filter(({ started, ended }) =>
+    [...started].some((which) => !ended.has(which)),
+  );
+  if (active.length === 0) return [];
   for (const [index, event] of events.entries()) {
     const { at, kind, data } = event;
     let part: ReturnType<typeof traced> | undefined;
-    for (const { of, id, starts, ended, open } of seats) {
+    for (const { of, id, ended, open } of active) {
       const which = data[id];
-      if (
-        (kind === starts || (of === "referee" && kind === "referee.turn" && !open.has(which))) &&
-        !ended.has(which)
-      ) {
+      if (SEAT_START.get(kind) === of && !ended.has(which) && (of !== "referee" || !open.has(which))) {
         open.set(which, { of, id: which, dollars: 0, turns: 0, began: at, last: at });
       }
       const found = open.get(which);
@@ -326,7 +327,7 @@ export function unfinished(events: readonly LogEvent[]): Unfinished[] {
       found.turns += part.part === "turn" ? 1 : 0;
     }
   }
-  return seats.flatMap(({ open }) => [...open.values()]);
+  return active.flatMap(({ open }) => [...open.values()]);
 }
 
 /** Open Builder and Examiner sessions, including drafts, with their recorded spend and duration.

@@ -1,9 +1,7 @@
 #!/usr/bin/env bun
 /**
- * WRI2P2, the iteration of the skill's "The iteration", read as one step at a time from what is on
- * disk, so a session or a timer runs one line and takes the step it prints. It writes nothing but an
- * investigation's own files, through `wri.ts`, and the marker `open` leaves; it stops, launches and
- * merges nothing.
+ * WRI2P2 iteration driver (`run-improvement-campaign/SKILL.md`): reads on-disk campaign logs and
+ * investigation ledgers, printing one actionable step at a time. Never pauses, launches, or merges.
  *
  *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts [<part> ...] [--days 2]
  *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts due [<part> ...] [--days 2]
@@ -11,44 +9,13 @@
  *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts next <dir>
  *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts ledger <dir>
  *
- * - With no verb it reads every campaign this machine reads that is live or whose last event lies in
- *   the last `--days` (`readable`: the worktrees' and the copies the central host's ten-minute gather
- *   keeps of every peer's, live ones included, each with the liveness its host last reported) and
- *   prints one row a run and its step: `run` while no trigger fired, `pause` once one did on a live
- *   run, `open` once the run has stopped, or the investigation's next step once one reads it. The
- *   trigger is whichever comes first (the operator's rule; `triggerOf`): the promotions, the hours
- *   since the opening, a scored comparison that left no task untied ("they likely won't promote so
- *   that's a bit ironic that we need to wait"), or an ending. At a live run's trigger the step is a
- *   pause at the first clean point after its next comparison (`runs pause --after reported`, which
- *   waits for no session to be open), and the investigation opens once the run has stopped, so its
- *   synthesis reads that comparison (the operator's words: "pause it after next comparison (ensure
- *   the comparison pause actually includes the synthesis of this)", "not directly after solves").
- * - `due` is the same reading as a timer takes it (`dueLines`): a head line with the count of steps
- *   owed and the oldest's hours, one line a step, one line for each outside read a cycle still holds
- *   as owed (`outsideOwed`; `next` says an iteration's own once it is done), and for each live run
- *   the count of files of the code a solve runs (`codeOf`, `tools/d2/campaign.ts`) that differ at
- *   the commit the command runs from, which it does not measure.
- * - `open` starts the investigation of one run, or of several as equals, under `.ana/wri/` of the
- *   main checkout, reading a frozen copy of any one still live (`wri.ts start --snapshot`), and marks
- *   the folder an iteration (`iteration.json`). It names each run to `start`, which fetches a
- *   peer's campaign whole. Opening a live run is a deviation from the `pause`
- *   step, kept for a run the operator leaves running. A live run kept past its trigger has no folder
- *   yet, so its row `| pause:<run> | <reason> |` stands in any investigation's `deviations.md`
- *   (`keptIn`): its step is then `kept`, which owes nothing, until the row goes, the run stops or
- *   it reaches a count of promotions the row's reason does not name.
- * - `next` reads an investigation's folder and prints the one step left, the first owed of the
- *   gates `gatesOf` lists in the iteration's order. Every folder passes the shared instructions, the
- *   lanes, their reports, the synthesis, the vetting, the plan, the pull request (`Pull request: #N`
- *   in `plan.md`) and the fresh runs at its head, which are launched without asking; an iteration's
- *   folder (`iteration.json`) passes the others too, and one opened under protocol 2 (`fixed`) owes
- *   each read of the record (`recordOwed`) and its vetting's fixed columns (`vettingFaults`).
- * - `ledger` prints the views derived from those files and never written by hand: the cycle view,
- *   the dropped view and each run's still-missing view (`tools/wri/ledger.ts`).
- *
- * Every gate is a default, never a wall (the operator's words: "to-be-deviated-from each time"): a
- * row `| <step> | <reason> |` in the folder's `deviations.md` passes it, and `next` prints the
- * deviation with the step it reaches, so a session's judgment is kept on the record beside the rule
- * it set aside.
+ * - Default / `due`: surfaces per-promotion decision checkpoints (`decide` at 1–4, `pause` ceiling
+ *   at 5, or non-promotion triggers at 0), reading `pause:<run>` continuation rows from both cycle
+ *   and investigation `deviations.md` files (`keptIn`).
+ * - `open`: snapshots and opens one or more campaigns as equals (`iteration.json`).
+ * - `next`: prints the first owed gate (`open` → `done`), auto-skipping untriggered isolated lanes
+ *   and supporting `Pull request: none — <reason>` when vetting leaves no code repair.
+ * - `ledger`: prints derived cycle, dropped, and still-missing views (`tools/wri/ledger.ts`).
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { lastAt } from "#skills/main/logs.ts";
@@ -88,11 +55,12 @@ import {
   openingCommand,
   type Progress,
   progressOf,
+  TRIGGER_AT,
   triggerOf,
 } from "#tools/runs/said.ts";
 import { catalogueText, lanesOf } from "#tools/wri/catalogue.ts";
 import { confirmedIn, vettingFaults } from "#tools/wri/findings.ts";
-import { INVESTIGATION, REPORTS, SHARED, SYNTHESIS, VETTING, WRI } from "#tools/wri/index.ts";
+import { INVESTIGATION, OVERVIEW, REPORTS, SHARED, SYNTHESIS, VETTING, WRI } from "#tools/wri/index.ts";
 import { blankSections, reportPath } from "#tools/wri/investigation.ts";
 import {
   carriedIn,
@@ -137,6 +105,8 @@ const STEP = /^step: (?<name>[a-z]+)(?: · (?<rest>.*))?$/u;
 const QUIET = new Set(["", "run", "kept", "waits", "done"]);
 const OPPOSED =
   '"## Intentionally opposed" with at least one line ("none" counts): what stays missing on purpose, each as a trade-off, what leaving it out buys, what it costs and why (a trade-off of AGENTS.md section 1, a principle or the operator\'s word)';
+/** A plan that explicitly closes with no code repair (`Pull request: none — <reason>`). */
+const NO_PULL = /^Pull request:\s*none\b.*\S/mu;
 
 /** One run as its log reads. */
 type Row = Progress & { readonly name: string; readonly host: string };
@@ -203,9 +173,22 @@ function investigations(root: string): { dir: string; names: string[] }[] {
 /** The manifests `wri.ts lanes` wrote in `dir`. */
 const manifests = (dir: string) => readdirSync(dir).filter((file) => /^launch(-\d+)*\.json$/u.test(file));
 /** The lanes that run alone, as the catalogue says, so a renumbering moves the gate with it. */
-const LONE = lanesOf(catalogueText())
-  .filter(({ isolated }) => isolated)
-  .map(({ number }) => number);
+const LONE_LANES = lanesOf(catalogueText()).filter(({ isolated }) => isolated);
+
+/** Isolated lanes triggered in `overview.md` (or all isolated lanes if `overview.md` is absent)
+ *  that no manifest session in `dir` has claimed yet. */
+function missingIsolated(dir: string): readonly number[] {
+  const overview = read(join(dir, OVERVIEW));
+  const needed =
+    overview === ""
+      ? LONE_LANES.map(({ number }) => number)
+      : LONE_LANES.filter(({ number, triggers }) =>
+          triggers.some((name) => overview.includes(`${name} (lane ${String(number)}):`)),
+        ).map(({ number }) => number);
+  if (needed.length === 0) return [];
+  const ran = new Set(sessionsIn(dir).flatMap(({ ownedPaths = [] }) => ownedPaths));
+  return needed.filter((lane) => !ran.has(reportPath(dir, lane)));
+}
 
 /** The lane sessions the manifests of `dir` launched. */
 const sessionsIn = (dir: string) =>
@@ -241,12 +224,15 @@ function outcomesOwed({ root, dir, lengthOf }: Where, run: string, path: string)
 function carryOwed({ root }: Where, run: string, path: string): string[] | null {
   const parents = investigations(root)
     .filter(({ dir }) => madeBy(read(join(dir, PLAN)), read(join(dir, DEVIATIONS)), run))
-    .flatMap(({ dir, names: runs }) => runs.map((name) => ledgersOf(root, dir, name)));
+    .flatMap(({ dir, names: runs }) => {
+      const plan = read(join(dir, PLAN));
+      return runs.map((name) => ({ ...ledgersOf(root, dir, name), plan }));
+    });
   const { missing } = carryOf(read(path), parents);
   return missing.length === 0
     ? null
     : [
-        `the "## Carried" section of ${path} names ${missing.join(", ")}: each id the iteration that made this fork did not hold`,
+        `the "## Carried" section of ${path} names ${missing.join(", ")}: each id the iteration that made this fork did not hold or retire under "## Intentionally opposed"`,
       ];
 }
 
@@ -293,7 +279,7 @@ function runGates(where: Where, run: string, group: readonly string[] = []): Gat
  *  aim"): a row that names it in a cycle's `outside-reads.md`, scored, skipped or still owed. */
 function outsideGate({ root, dir }: Where, run: string): Gate[] {
   if (!run.startsWith("jobstat")) return [];
-  const owed = `${run} has no row in ${OUTSIDE} of its cycle's folder under ${root}: read its newest promoted reference on the eight tasks beside a fresh Starter (run-improvement-campaign, "A reference's read"), then add the row whose first cell is the run's name, with its scores, "skipped" with lane 14's grade or no promotion, or "owed" with what the read waits for`;
+  const owed = `${run} has no row in ${OUTSIDE} of its cycle's folder under ${root}: read its newest promoted reference on the eight tasks beside a fresh Starter (run-improvement-campaign/references/outside.md), then add the row whose first cell is the run's name, with its scores, "skipped" with lane 8's grade or no promotion, or "owed" with what the read waits for`;
   return [
     {
       step: "outside",
@@ -348,8 +334,7 @@ function unanswered({ root, dir }: Where, runs: readonly string[]): string[] | n
   return parts.length === 0 ? null : [`${join(dir, PLAN)}: ${parts.join("; ")}`];
 }
 
-/** The iteration's gates for the folder `where.dir`, in order; an unmarked folder takes the shared
- *  ones, as the sequence it was started under had them. */
+/** Ordered gates for the investigation folder `where.dir`. */
 function gatesOf(where: Where): Gate[] {
   const { dir } = where;
   const at = (file: string) => join(dir, file);
@@ -362,16 +347,12 @@ function gatesOf(where: Where): Gate[] {
   const plan = read(at(PLAN));
   const deviations = read(at(DEVIATIONS));
   const pull = String(pullOf(plan) ?? 0);
-  // The forks of this iteration: each campaign read here that forks its plan's pull request, and
-  // each its `launch` deviation names, which this machine need not read.
+  const noPull = pull === "0" && NO_PULL.test(plan);
   const forks = [...new Set([...where.campaigns, ...launchForks(deviations)])].filter((name) =>
     madeBy(plan, deviations, name),
   );
-  // The primary's own reads, which no lane makes; a folder opened under an earlier protocol owes them
-  // only until its synthesis is there.
   const owing = marked(dir) && (fixed(dir) || !existsSync(at(SYNTHESIS)));
   const record = recordStep(owing ? recordOwed(read(at(RECORD)), runs).length : 0, dir);
-  // An outside read its gate let pass as owed is said again once nothing else is.
   const unread = () => outsideOwed(outsideOf(where.root, dir), [...runs, ...forks]);
   return [
     gate("instruct", () => {
@@ -382,8 +363,6 @@ function gatesOf(where: Where): Gate[] {
     }),
     gate("lanes", () => (manifests(dir).length > 0 ? null : ["", wri("lanes", " --agents 4")])),
     gate("reports", () => {
-      // A session that names no report it owns can never be seen to finish, so it owes until a
-      // deviation says it ran.
       const owed = sessionsIn(dir).filter(
         ({ ownedPaths = [] }) => ownedPaths.length === 0 || ownedPaths.some((path) => !existsSync(path)),
       );
@@ -397,17 +376,14 @@ function gatesOf(where: Where): Gate[] {
     }),
     gate("record", () => (record.length === 0 ? null : record)),
     ...only([
-      gate("isolated", () =>
-        // A lane by the report its session owns, at the path `wri.ts lanes` gave it, whatever its
-        // manifest is named.
-        sessionsIn(dir).some(({ ownedPaths = [] }) =>
-          ownedPaths.some((path) => LONE.some((lane) => path === reportPath(dir, lane))),
-        )
+      gate("isolated", () => {
+        const missing = missingIsolated(dir);
+        return missing.length === 0
           ? null
           : [
-              `the isolated lanes (${LONE.join(", ")}) run alone, after the reports they wait on: build each where its \`Starts from\` paragraph opens it (lane 6 only where lane 5 left a check undecided) with${wri("lanes", " --lanes <n>").slice(1)} and launch it alone, or record why not in ${at(DEVIATIONS)} as "| isolated | <reason> |"`,
-            ],
-      ),
+              `triggered isolated lane(s) (${missing.join(", ")}) run alone after the reports they wait on: build each where its \`Starts from\` paragraph opens it (isolated lane 20 only where lane 17 left a check undecided) with${wri("lanes", ` --lanes ${missing.join(",")}`).slice(1)} and launch it alone, or record why not in ${at(DEVIATIONS)} as "| isolated | <reason> |"`,
+            ];
+      }),
     ]),
     present(
       "synthesise",
@@ -440,25 +416,36 @@ function gatesOf(where: Where): Gate[] {
     ),
     ...only([gate("plan", () => unanswered(where, runs))]),
     gate("implement", () =>
-      pull === "0"
-        ? [`one pull request on the top of the stack, then name it in plan.md as "Pull request: #N"`]
-        : null,
-    ),
-    gate("launch", () =>
-      forks.length > 0
+      pull !== "0" || noPull
         ? null
         : [
-            `take each run's name from the dry run, write its predictions-<run>.md in the cycle's folder (a "## Carried" section for what this iteration did not hold), then fork at #${pull}'s head on the host and login with room`,
-            `  bun run runs fresh <pack> --at <#${pull} head> --as forkedPR${pull} --yes`,
+            `one pull request on the top of the stack, then name it in plan.md as "Pull request: #N" (or "Pull request: none — <reason>" when vetting leaves no code repair)`,
           ],
     ),
-    // A fork owes its own predictions and what it carries; its outcomes are its own iteration's.
-    ...only(
-      forks.flatMap((fork) => runGates(where, fork, [FORKS]).filter(({ step }) => step !== "outcomes")),
-    ),
-    // The plan's own predictions are carried as its runs' are, and only a reason of their own passes it.
-    ...only([{ step: "carry", keys: ["carry:plan"], owed: () => planOwed(where, plan, forks) }]),
-    { step: "done", keys: [], owed: () => [`#${pull} is measured by ${forks.join(", ")}`, ...unread()] },
+    ...(noPull
+      ? []
+      : [
+          gate("launch", () =>
+            forks.length > 0
+              ? null
+              : [
+                  `take each run's name from the dry run, write its predictions-<run>.md in the cycle's folder (a "## Carried" section for what this iteration did not hold), then fork at #${pull}'s head on the host and login with room`,
+                  `  bun run runs fresh <pack> --at <#${pull} head> --as forkedPR${pull} --yes`,
+                ],
+          ),
+          ...only(
+            forks.flatMap((fork) => runGates(where, fork, [FORKS]).filter(({ step }) => step !== "outcomes")),
+          ),
+          ...only([{ step: "carry", keys: ["carry:plan"], owed: () => planOwed(where, plan, forks) }]),
+        ]),
+    {
+      step: "done",
+      keys: [],
+      owed: () => [
+        noPull ? "no code change (see plan.md)" : `#${pull} is measured by ${forks.join(", ")}`,
+        ...unread(),
+      ],
+    },
   ];
 }
 
@@ -535,10 +522,7 @@ function held<T>(path: string, reader: (path: string) => T): T | null {
   }
 }
 
-/** The campaigns of `known` that are live or whose log's last event lies in the last `days`, each
- *  with whether it is live, and only those whose name holds one of `parts` where any is given. A
- *  log's last event is read from its tail (`lastAt`), never its file's time, which a fetch moves, so
- *  a view opens only the logs it shows. A campaign whose log has gone is left out (`held`). */
+/** Live campaigns or those with a last event (`lastAt`) within `days`, filtered by `parts`. */
 export const movedIn = (
   known: readonly Run[],
   running: readonly Running[],
@@ -556,29 +540,24 @@ export const movedIn = (
       return moved ? [{ run, live }] : [];
     });
 
-/** The reason the first row `pause:<run>` among these `deviations.md` texts gives for keeping the
- *  live run `name` past `trigger`, or null: a row with no reason records no judgment, and a count of
- *  promotions is kept past only by a reason that names it, since each promotion is a decision of
- *  its own and a row written at the clock says nothing of the second. */
-export const keptIn = (deviations: readonly string[], name: string, trigger: string): string | null =>
+/** First `pause:<run>` reason keeping `name` past `trigger` (promotion counts require naming `trigger`). */
+export const keptIn = (
+  deviations: readonly string[],
+  name: string,
+  trigger: string,
+  promotions = 0,
+): string | null =>
   deviations
     .flatMap((text) => rowsOf(text, "step"))
     .find(
       ([step, reason = ""]) =>
-        step === `pause:${name}` &&
-        reason !== "" &&
-        (!trigger.endsWith(" promotions") || reason.includes(trigger)),
+        step === `pause:${name}` && reason !== "" && (promotions === 0 || reason.includes(trigger)),
     )?.[1] ?? null;
 
-/** The step of a run no investigation reads yet: `run` before its trigger, with the second a live
- *  run's clock trigger `turns` where the caller read it (`clockTurns`); at the trigger of a live
- *  run, a pause after its next comparison, `waits` once a pause of it is armed here, or `kept` where
- *  a deviation keeps it (`keptIn`); and `open` once it has stopped, so the investigation reads the
- *  comparison the pause waited for. A `continue --after` that waits on the run is its one waiter
- *  (`waiters`) and no pause: it starts the run again and a pause is refused beside it, so the pause
- *  stays owed and the step names the process that holds it. */
+/** Pre-investigation step for a run: `run`, `decide` (promos 1–4), `pause` (ceiling 5 or non-promo),
+ *  `waits`, `kept`, or `open` once stopped. */
 export function openingOf(
-  row: { readonly name: string; readonly host: string; readonly live: boolean },
+  row: { readonly name: string; readonly host: string; readonly live: boolean; readonly promotions?: number },
   trigger: string | null,
   running: readonly Running[],
   kept: string | null = null,
@@ -596,11 +575,25 @@ export function openingOf(
   }
   if (kept !== null) return [`step: kept · ${trigger}`, `deviated: pause:${row.name} · ${kept}`];
   const [moving] = holders;
-  const owed =
-    moving === undefined
-      ? "the investigation opens once the run stops after its next comparison"
-      : `a continue --after of it waits in process ${String(moving.pid)} and starts it again, so no pause is armed and one is refused while it waits`;
-  return [`step: pause · ${trigger}; ${owed}`, command];
+  const promos = row.promotions ?? 0;
+  const ceiling = TRIGGER_AT.ceilingPromotions;
+  if (moving !== undefined) {
+    return [
+      `step: pause · ${trigger}; a continue --after of it waits in process ${String(moving.pid)} and starts it again, so no pause is armed and one is refused while it waits`,
+      command,
+    ];
+  }
+  if (promos >= TRIGGER_AT.firstPromotion && promos < ceiling) {
+    return [
+      `step: decide · ${trigger}; backtrack predictions — pause after the next comparison if enough evidence, or log pause:${row.name} naming "${trigger}" in deviations.md to continue (up to ${String(ceiling)})`,
+      command,
+    ];
+  }
+  const note =
+    promos >= ceiling
+      ? `ceiling reached (${String(ceiling)} promotions) — the investigation opens once the run stops after its next comparison`
+      : "the investigation opens once the run stops after its next comparison";
+  return [`step: pause · ${trigger}; ${note}`, command];
 }
 
 /** Where every campaign that moved in the last `--days` stands, and how many closed comparing nothing. */
@@ -610,7 +603,11 @@ function standings(args: CommandArgs, repo: string, known: readonly Run[], parts
   const running = processes();
   const iteration = knownIn(repo, known, () => running);
   const folders = investigations(iteration.root);
-  const deviations = folders.map(({ dir }) => read(join(dir, DEVIATIONS)));
+  const deviationPaths = new Set([
+    ...folders.map(({ dir }) => join(dir, DEVIATIONS)),
+    ...ledgerFiles(iteration.root, iteration.root, DEVIATIONS),
+  ]);
+  const deviations = [...deviationPaths].map((path) => read(path));
   const all = movedIn(known, running, now, days, parts).flatMap(({ run, live }): Standing[] => {
     // A log can also go between the look at its tail and this read of it.
     const events = held(run.path, logEvents);
@@ -620,7 +617,13 @@ function standings(args: CommandArgs, repo: string, known: readonly Run[], parts
     const trigger = triggerOf(row);
     const step =
       folder === undefined
-        ? openingOf(row, trigger, running, keptIn(deviations, row.name, trigger ?? ""), clockTurns(row, now))
+        ? openingOf(
+            row,
+            trigger,
+            running,
+            keptIn(deviations, row.name, trigger ?? "", row.promotions),
+            clockTurns(row, now),
+          )
         : nextOf(folder.dir, iteration);
     const commit = lastLaunch(run.path)?.commit ?? null;
     return [{ row, last: Date.parse(events.at(-1)?.at ?? ""), commit, dir: folder?.dir ?? null, step }];

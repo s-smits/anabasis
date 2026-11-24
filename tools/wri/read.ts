@@ -1,19 +1,7 @@
 /**
  * The deterministic read of one campaign's log for a whole-run investigation: six rows of
- * identities the primary reviewer settles, and the triggers that say which of the twenty-three
+ * identities the primary reviewer settles, and the triggers that say which of the twenty-four
  * lanes of `.claude/skills/whole-run-investigation/references/lanes.md` have something to read.
- *
- * v1's readers walked a campaign folder of some forty record kinds: claims, promotions, epochs,
- * task sets, case records, Builder executions, reviews. v2 keeps one append-only log, and everything
- * a lane starts from is a fold of it. This file replaces v1's thirteen readers; the overview also
- * reads launch receipts for host and launch provenance, without reading a harness or a pack.
- *
- * A trigger is a capitalised name, the lane it starts and one line of counts. It says a lane has
- * something to read and never what the answer is: a lane that contradicts its trigger from the
- * bytes has done its job. A trigger that did not fire says this arithmetic found nothing, and not
- * that the property is absent. No trigger carries an answer, a task's text or a hidden value.
- * Lane 8 reads the recorded tally and power at its margins. Reversing one win establishes
- * neither a small sample nor dependence on winning every task, so it starts no trigger.
  *
  * The folds of the log, the catalogue of triggers and the lanes of the exam side (1 to 4 and 7 to
  * 11) are `folds.ts`, which keeps this file within the size policy's ceiling. This file
@@ -68,8 +56,11 @@ import {
   unprobedEarned,
 } from "./folds.ts";
 import { safeguardTriggers } from "./climb.ts";
+import { componentTriggers } from "./components.ts";
+import { gamingTriggers } from "./gaming.ts";
 import { promotionTriggers, testedOf } from "./promotion.ts";
 import { runTriggers } from "./run.ts";
+import { signalTriggers } from "./signals.ts";
 import { degradationLines } from "../runs/degradations.ts";
 import type { Receipt } from "../runs/receipt.ts";
 import { costTriggers, hoursLine, deadlineTriggers } from "./time.ts";
@@ -555,7 +546,11 @@ function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
       ].join("; "),
     ),
     ...firedIf(cut + open > 0, "SOLVE NEVER FINISHED", apart(solves(cut), solves(open))),
-    ...firedIf(unended.length > 0, "EXAMINER NEVER FINISHED", apart(ids("cut"), ids("open"))),
+    ...firedIf(
+      ids("cut") !== "" || (log.of("campaign.ended").length > 0 && ids("open") !== ""),
+      "EXAMINER NEVER FINISHED",
+      apart(ids("cut"), ids("open")),
+    ),
     ...firedIf(Object.keys(unjudged).length > 0, "MISSES WITHOUT A VERDICT", tally(unjudged)),
     ...firedIf(crashed.length > 0, "SESSION CRASHED", crashed.join(", ")),
     ...costTriggers(log),
@@ -790,6 +785,9 @@ export function overview(events: readonly LogEvent[], launches: readonly Receipt
       ...promotionTriggers(log),
       ...safeguardTriggers(log),
       ...runTriggers(log, launches),
+      ...signalTriggers(log),
+      ...componentTriggers(log),
+      ...gamingTriggers(log),
     ],
   };
 }

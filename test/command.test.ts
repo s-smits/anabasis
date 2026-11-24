@@ -559,4 +559,26 @@ describe("a wall's network reach", () => {
       }
     },
   );
+
+  it.skipIf(!osIsolationSupport().ok)(
+    "pins one network reach reading across a named comparison even past UNREACHED_MS, while a later comparison probes fresh",
+    async () => {
+      const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-comp-reach-")));
+      try {
+        await inSeat(repoRoot, async (wall) => {
+          let probes = 0;
+          const probe = async (): Promise<NetworkReach> => (probes++ === 0 ? "unreached" : "uv");
+          expect(await networkReach(wall, { now: 0, probe, comparison: "g-1" })).toBe("unreached");
+          expect(await networkReach(wall, { now: UNREACHED_MS + 1, probe, comparison: "g-1" })).toBe(
+            "unreached",
+          );
+          expect(probes).toBe(1);
+          expect(await networkReach(wall, { now: UNREACHED_MS + 1, probe, comparison: "g-2" })).toBe("uv");
+          expect(probes).toBe(2);
+        });
+      } finally {
+        rmSync(repoRoot, { recursive: true, force: true });
+      }
+    },
+  );
 });

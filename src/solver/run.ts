@@ -10,11 +10,6 @@
  * completed turn for `SILENT_SECONDS`, with none of its tools running.
  * `waiting` ends sleeps at cancellation, including injected host sleeps before a solve starts.
  *
- * The loop runs in this process and so does the model's own process: under the Claude backend,
- * Claude Code runs on the host with a home of its own outside the command wall. v1 confined the
- * model process too; here only the commands are walled: the solver's bash and its file tools alike
- * (`command.ts`).
- *
  * The loop is v1's: tools run one at a time, a
  * model that stops without submitting is nudged, and the prompt limit counts the opening prompt
  * and each nudge. Departures, beside those named in the tools and the prompt:
@@ -52,6 +47,7 @@ import { codingTools, selectedCodingTools, wallExec } from "../tools/coding.ts";
 import { walledEnv } from "../tools/env.ts";
 import {
   type CommandWall,
+  type NetworkReach,
   networkReach,
   type SolveClock,
   solveDirs,
@@ -147,6 +143,7 @@ export interface Played {
   readonly turnsEnded: boolean;
   readonly moved: boolean;
   readonly homeBytes: number | null;
+  readonly network?: NetworkReach;
 }
 
 const RERUNS = 3;
@@ -242,6 +239,7 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
     responseModels: [...new Set(played.turns.flatMap((turn) => turn.responseModel ?? []))],
     harness: played.harness,
     homeBytes: played.homeBytes,
+    ...keyIfDefined("network", played.network),
     seconds: (performance.now() - started) / 1000,
     load: loadavg(),
   });
@@ -278,6 +276,7 @@ async function play(
   let crash: string | null = null;
   let broken: string | null = null;
   let digest: string | null = null;
+  let network: NetworkReach | undefined;
   let prompts = 0;
   try {
     release = await claimRoot(dirs.root);
@@ -294,6 +293,9 @@ async function play(
     const defined = await Promise.resolve()
       .then(() => solverTools(request, harness, commandWall, desk))
       .catch(brokenHarness);
+    network = await networkReach(commandWall, {
+      ...keyIfDefined("comparison", request.comparison),
+    });
     const prompt = systemPrompt({
       tools: defined,
       home: dirs.home,
@@ -302,7 +304,7 @@ async function play(
       limits,
       ...seeded,
       programs: installedPrograms(harness.toolTree),
-      network: await networkReach(commandWall),
+      network,
     });
     prompts = 1;
     // The deadline counts the solver's time, so it starts with the first turn rather than the setup.
@@ -366,6 +368,7 @@ async function play(
     turnsEnded: limits.modelTurns !== undefined && turns.length >= limits.modelTurns,
     moved: treeStamp(request.harness) !== before,
     homeBytes,
+    ...keyIfDefined("network", network),
     released,
   };
 }

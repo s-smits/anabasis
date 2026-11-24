@@ -5,19 +5,6 @@
  * launches ran. It reads: it writes nothing of a campaign's and calls no model.
  *
  *   bun .claude/skills/system-audit/scripts/recent.ts [--limit 12] [--min-events 50] [--json]
- *
- * The campaigns are the registry's `readable` set, the worktrees' and one archived copy of each name,
- * so a host's copy that `runs fetch` or the gather job keeps is read once. Seeds, rehearsals and live
- * seats are left out: a seed carries `seed.json`, and a log that does not open with
- * `campaign.opened` is no campaign's, and one under `--min-events` ended before it did any work (a
- * refused login or provider leaves about 14). Newest last event first: a file's time is no guide,
- * since the gather job and `retire` rewrite an archive copy whose campaign ended days before. The
- * order reads each log's tail only (`lastAt`, `main/logs.ts`), as 176 logs hold 1.7 GB.
- *
- * Written by hand, this inventory holds copies of one campaign under several paths, and every
- * session must deduplicate them and record each log's event count, last time and hash itself,
- * because live logs grow while they are read. This prints those identities once, so every session
- * cites the same snapshot.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { lastAt } from "#skills/main/logs.ts";

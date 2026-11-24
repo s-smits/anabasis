@@ -6,14 +6,6 @@
  * `-s` (`--short`) prints only one line, `last 5m:` and then each machine's load a core over that
  * window out of 100, least loaded first, and `-w` (`--window`) names the one- or fifteen-minute
  * window instead.
- *
- * A deadline counts elapsed time, so a solve on a loaded host has less of the machine than one on a
- * quiet host under the same setting (`AGENTS.md`, section 10, item 4), and the solve queue only
- * holds a solve back for half an hour (`tools/d2/host.ts`). This is where an operator sees that
- * load before placing a run. It ports the operator's own `ana-loadwatch`, whose host
- * list was written into the script, to the host list every other verb reads.
- *
- * The driver, its options and the screen are `watch.ts`'s; this file says what a load frame shows.
  */
 import { byLoad, sampleOf, watchedScript, WINDOWS, type Watched } from "./load.ts";
 import { BAR, bar, DIM, headOf, RED, RESET, waitingOf, watch } from "./watch.ts";

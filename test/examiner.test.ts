@@ -66,8 +66,9 @@ const SOLVER = "solver-canary-7f3a";
 const GOOD = { answer: "42", unit: "N" };
 /** What enters the exam, and by which tool, as each mode's shell is told it. */
 const ENTERS = {
-  draft: "a draft enters it through draft_exam alone",
-  write: "a task enters it through propose_tasks alone",
+  draft:
+    "A draft enters the exam through draft_exam, and .toolchain/ in your home is frozen beside it for declared verifier tools; nothing else in your home enters the exam",
+  write: "Nothing in your home enters the exam: a task enters it through propose_tasks alone",
 } as const;
 const TOOL_USE = { stopReason: "toolUse" } as const;
 /** A verifier that passes every answer whose `answer` is "42" and refuses any other. */
@@ -265,7 +266,7 @@ describe("a session of any mode", () => {
       const told = s.sent[0] ?? "";
       expect(told).toContain("but no repository or private data");
       expect(told).toMatch(/It has (no )?network access: a package index (was|could not be) reached/);
-      expect(told).toContain(`Nothing in your home enters the exam: ${ENTERS[mode]}.`);
+      expect(told).toContain(`${ENTERS[mode]}.`);
     }
   });
 });
@@ -963,12 +964,13 @@ describe("one Examiner conversation across the host's asks", () => {
     ]);
   });
 
-  it("cues read_opening once on the first tool result after compaction and skips trailing calls once a turn moved to a new ask", async () => {
+  it("persists the read_opening cue after compaction until read_opening runs and skips trailing calls on a new ask", async () => {
     const multiSupplyThenTrailing = fauxAssistantMessage(
       [fauxToolCall(PROPOSE, { tasks: [instance(3)] }), fauxToolCall(PROPOSE, { tasks: [instance(4)] })],
       { stopReason: "toolUse" },
     );
-    const s = seat("write", [propose(2), multiSupplyThenTrailing, finish, finish]);
+    const reread = call("read_opening", {});
+    const s = seat("write", [propose(2), propose(5), reread, multiSupplyThenTrailing, finish, finish]);
     const baseModels = s.request.models();
     // SAFETY: the inherited instance supplies every method; streamSimple alone attaches compaction diagnostics on turn 1.
     const compactedModels = Object.create(baseModels) as typeof baseModels;
@@ -1003,15 +1005,18 @@ describe("one Examiner conversation across the host's asks", () => {
     await examine({
       ...s.request,
       models: () => compactedModels,
-      wanted: 2,
+      wanted: 3,
       rest: async () => asks.shift() ?? null,
     });
     const texts = s.of(CALLED).map(({ text }) => (isString(text) ? text : ""));
-    expect(texts[0]).toContain("Context compacted; read_opening holds the ask's opening record and limits.");
-    expect(texts[1]).not.toContain(
-      "Context compacted; read_opening holds the ask's opening record and limits.",
-    );
-    expect(texts[2]).toContain("The previous ask ended and the host moved to a new ask");
+    const cue = "Context compacted; read_opening holds the ask's opening record and limits.";
+    expect(texts[0]).toContain(cue);
+    // Cue persists on the second turn because read_opening has not run yet.
+    expect(texts[1]).toContain(cue);
+    // Once read_opening executes on turn 3, the cue clears.
+    expect(texts[2]).not.toContain(cue);
+    expect(texts[3]).not.toContain(cue);
+    expect(texts[4]).toContain("The previous ask ended and the host moved to a new ask");
   });
 
   it("skips trailing calls in a multi-tool turn when rest closes the conversation", async () => {

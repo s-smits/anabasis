@@ -3,19 +3,6 @@
  * campaign's own held-out tasks is checked against a grader the campaign never saw: promotions
  * that come faster while their harnesses score no higher outside than the Starter are fitted to
  * the campaign's comparisons (the operator's rule: "link the evals to the promotion ratio").
- *
- * The scores are the records `studies/harness2/score.ts` writes under `<store>/judged/<arm>/`,
- * one a task and arm. This reader is kept apart from that script on purpose, since a change to
- * `score.ts` makes every arm's stored rollouts another condition.
- *
- * An arm is joined to the promotion that promoted the digest its records name, among the campaigns
- * a caller folded; two arms can name one promotion, so the counts are of arms. Its points are
- * summed over the tasks a Starter rollout also holds and read against the lowest and highest sum
- * among the Starter arms that hold them all: inside that spread is no reading (rule 6).
- *
- * It prints counts, arm labels and task counts, never a rubric or a deliverable. Nothing here
- * reaches a seat, a prompt, a check or a query, and a bench score promotes nothing (`AGENTS.md`,
- * section 1, "An outside benchmark against fitting the query to it").
  */
 import { MISSING, printed } from "#skills/main/print.ts";
 import type { Promotion, Run } from "#skills/main/runs.ts";

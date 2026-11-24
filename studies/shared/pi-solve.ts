@@ -61,6 +61,7 @@ import { ending, text, tool } from "#src/tools/answer.ts";
 import type { SolveClock } from "#src/tools/command.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { installedPrograms } from "#src/harness/programs.ts";
+import { portableGuide } from "#src/harness/starter.ts";
 import { NUDGE } from "#src/solver/prompt.ts";
 import { raiseWall, timed, type Wall } from "#src/solver/run.ts";
 import { type Seat, type SeatTool, sit } from "#src/agent/session.ts";
@@ -223,15 +224,15 @@ async function solve(ask: Asked) {
     submitTool(said),
   ];
   const programs = installedPrograms(harness.toolTree);
+  const stripped = harness.guide === null ? "" : portableGuide(harness.guide);
+  const guide = stripped.trim() === "" ? null : stripped;
   const prompt = [
-    duty(ask, harness.guide),
+    duty(ask, guide),
     `Working directory: ${cwd}`,
     ...(programs.length === 0
       ? []
       : [`Programs this harness installed run by name: ${programs.join(", ")}.`]),
-    ...(harness.guide === null
-      ? []
-      : [`Project-specific instructions and guidelines (${GUIDE_FILE}):\n${harness.guide}`]),
+    ...(guide === null ? [] : [`Project-specific instructions and guidelines (${GUIDE_FILE}):\n${guide}`]),
   ].join("\n\n");
   const { route } = ask;
   // A model of the campaign's own backends is served as a campaign's solve is (`practised`).

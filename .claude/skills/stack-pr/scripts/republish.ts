@@ -7,10 +7,6 @@
  *   bun .claude/skills/stack-pr/scripts/republish.ts --onto-main <pr> [--yes] [--no-verify]
  *   bun .claude/skills/stack-pr/scripts/republish.ts --resume [--yes]
  *
- * With `--yes` the plan is kept in `ana-republish.json` under the common Git directory from the first
- * write to the last, and a run cut short leaves it: a new plan is then refused, and `--resume` runs
- * the kept one again, skipping the detaching and the push where origin holds every new head.
- *
  * `--onto-main` replays the open stack holding <pr> onto origin/main and names every head itself:
  * the repair once what the stack stood on has landed (`replayedHeads`). A parent rewritten within
  * the stack `bun run land --sanitize` replays itself, without unstacking.

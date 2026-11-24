@@ -4,8 +4,8 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
-import { breaches } from "#skills/repository-practice/scripts/direction.ts";
 import { gitText } from "#src/meta/git.ts";
+import { breaches } from "../tools/loc/source-policy.ts";
 import {
   existsSync,
   mkdirSync,

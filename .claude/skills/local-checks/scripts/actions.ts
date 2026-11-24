@@ -4,9 +4,6 @@
  * it, with the first run each made in the window.
  *
  *   bun .claude/skills/local-checks/scripts/actions.ts [--hours 24]
- *
- * A workflow younger than the window shows a first run after its start, so its count is read against
- * the hours it existed, since a new workflow's first day otherwise reads as a quieter one.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";

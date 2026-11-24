@@ -562,8 +562,8 @@ describe("a campaign run by its log", () => {
       reading: "no-step",
       valid: { old: [11, 0, 0], fresh: [11, 0, 0], informative: { old: 3, fresh: 3 } },
     });
-    // The practice owed is released, so the Builder builds.
-    expect(after).toMatchObject({ move: "build" });
+    // The starter comparison did not confirm the promoted reference, so the table reverts it to the starter.
+    expect(after).toMatchObject({ move: "revert", harness: first?.starter });
     expect(strayed).toEqual([]);
 
     // A person answers g-1's packet, drawn by the comparison's id, so asked again it is the same:
@@ -609,6 +609,7 @@ describe("a campaign run by its log", () => {
     expect(lines).toContain(
       "the Referee against 0 labelled rejections, 0 of them unruled: agreement of each kind earned none, check-defect none, unclear none; over all three none, PABAK none beside kappa none",
     );
+    expect(lines).toContain("3 labelled passes: sound 2, wrong 1, unclear 0; wrong rate 0.33 (1/3 decided)");
     expect(lines.find((line) => line.startsWith("g-1: "))).toMatch(
       /^g-1: decided step, and step at 8-0-0 .*: it holds$/,
     );

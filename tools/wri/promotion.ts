@@ -3,19 +3,6 @@
  * what it measured, what touched both sides of it, and what the campaign did after it.
  * Validity percentages require a profile with a task and solve denominator; missing measurements
  * read unmeasured, while a nonempty profile of failed solves reads zero.
- *
- * A promotion can rest on comparisons against a starter that answers none of the solves on most
- * tasks, so these lanes ask whether a promotion was the table's rule followed, what it showed beyond
- * "the starter carries no engine", and whether the room Examiner, the control and the next Builder
- * followed it, rather than leaving a reader to rebuild each from thousands of events. They also
- * read a solve that found and ran a program another campaign's seat had left under a shared
- * temporary folder.
- *
- * Private seat paths and denied calls are not possible shared use: only successful calls outside
- * the seats' parent (`BUILT_COMMAND_SCRATCH_ROOT`, `src/wall/policy.ts`) count here.
- *
- * Split from `read.ts`, which stands near the size policy's ceiling, as `time.ts` and `folds.ts`
- * were. Nothing here reads a file beside the log.
  */
 import { epochsOf as epochsRead, ORIGINS, type Origin, starterReads } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
@@ -56,6 +43,8 @@ interface Epoch {
 const [CHOSEN, BEFORE, AFTER] = ORIGINS;
 /** The units a budget on record may name (`folds.ts`). */
 const UNITS = ["turns", "prompts", "cpu", "seconds"] as const;
+/** OS-wall denial messages excluded from `SHARED TEMPORARY FOLDER` (`sharedTmpTrigger`). */
+const WALL_DENIED_RE = /\b(?:Operation not permitted|EPERM|Read-only file system)\b/u;
 /** The share of tasks a reference answers on none of its solves above which a step is read as an
  *  engine against none. */
 const BARE = 0.5;
@@ -345,10 +334,14 @@ function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): 
 
 /** `SHARED TEMPORARY FOLDER`: successful calls naming a path outside the seats' roots under the
  *  host's temporary folders, by role, solves by side and practice apart, with paths named by more
- *  than one seat. */
+ *  than one seat. Calls blocked by the OS wall (`Operation not permitted` / `EPERM`) are excluded. */
 function sharedTmpTrigger(log: Index): Trigger[] {
   const calls = log.traces.filter(
-    (each): each is Call => each.part === "call" && !each.isError && sharedPaths(each).length > 0,
+    (each): each is Call =>
+      each.part === "call" &&
+      !each.isError &&
+      !WALL_DENIED_RE.test(each.text) &&
+      sharedPaths(each).length > 0,
   );
   const of = (seat: Seat) => calls.filter((call) => call.seat === seat);
   const solves = new Map(log.solves.map((solve) => [solve.id, solve]));
@@ -512,7 +505,7 @@ function marginTrigger(log: Index): Trigger[] {
       (pair) =>
         differenceOf(pair) <= Math.max(reference.get(pair.task) ?? -1, candidate.get(pair.task) ?? -1),
     );
-    if (inside.length * 2 <= wins.length) return [];
+    if (inside.length * 2 < wins.length) return [];
     const steady = inside.filter(
       ({ task, objective: rule }) =>
         candidate.get(task) === 0 &&

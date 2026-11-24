@@ -4,9 +4,12 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { countNonBlank } from "../tools/loc/nonblank-loc.ts";
 import {
+  AGENTS_MD_BYTE_CEILING,
+  breaches,
   corpus,
   NEW_FILE_CEILING,
   NEW_FUNCTION_CEILING,
+  production,
   sourceTextFindings,
   unusedExports,
 } from "../tools/loc/source-policy.ts";
@@ -26,6 +29,10 @@ describe("source policy", () => {
       "}",
     ].join("\n");
     expect(checks(longFunction)).toContain("function-size");
+    expect(sourceTextFindings("AGENTS.md", "a".repeat(AGENTS_MD_BYTE_CEILING))).toEqual([]);
+    expect(
+      sourceTextFindings("AGENTS.md", "a".repeat(AGENTS_MD_BYTE_CEILING + 1)).map((f) => f.check),
+    ).toEqual(["file-size"]);
   });
 
   it("reads a root's own files and skips a nested checkout under it", () => {
@@ -77,5 +84,14 @@ describe("source policy", () => {
     expect(hashed.calls.has("seen")).toBe(true);
     expect(hashed.literals.has("late")).toBe(true);
     expect(countNonBlank("a\n\n  \nb\n")).toBe(2);
+  });
+
+  it("treats nested /test/ trees as helpers rather than production source", () => {
+    expect(production("packages/ui/test/smoke.test.ts")).toBe(false);
+    expect(production("vendor/foo/test/x.ts")).toBe(true);
+    expect(production("packages/ui/src/main.ts")).toBe(true);
+    expect(
+      breaches(["packages/ui/test/smoke.test.ts", "packages/ui/src/main.ts"], () => ["test/helpers/a.ts"]),
+    ).toEqual([{ file: "packages/ui/src/main.ts", imported: "test/helpers/a.ts", root: "test/" }]);
   });
 });

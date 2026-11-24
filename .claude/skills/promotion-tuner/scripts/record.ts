@@ -3,9 +3,6 @@
  * since a release tag or date, reduced to per-solve evaluation fields (validity, objective measure,
  * billed dollars, turns, and wall-clock seconds). Forked campaigns inherit parent comparisons, so
  * `once` deduplicates comparisons to the earliest campaign that recorded them.
- *
- * Because this record includes exam-side objective measures, any `--record` cache file must live
- * under git-ignored `data/derived/` and never enter prompts, pull requests, or transcripts.
  */
 import { epochsOf } from "#src/campaign/climb.ts";
 import { startOf } from "#src/campaign/comparison.ts";

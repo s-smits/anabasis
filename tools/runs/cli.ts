@@ -6,14 +6,6 @@
  * (`usageOf`); `help <verb> ...` prints multiple verbs and `help all` prints all of them. Verbs
  * targeting a campaign held on another host are forwarded to that host (`routed`), discovered via
  * `holds`.
- *
- * Invalid arguments (`Misused` or `parseArgs` errors) print the verb's usage alongside the error;
- * unrecognised verb names suggest the closest matches (`unknown`).
- *
- * `here` always refers to the local host: `--here` is accepted by every verb and prevents contacting
- * remote hosts for that invocation (equivalent to `ANA_HOP` on incoming peer calls in `hostsOf`),
- * except for verbs with bespoke `--here` handling. Expected refusals print a single error line and
- * exit 1 without a stack trace; unexpected errors propagate with their trace intact.
  */
 import { readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";

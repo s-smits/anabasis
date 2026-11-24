@@ -1,19 +1,9 @@
 /**
  * Which part of the repository a file belongs to.
- *
- * Several of these rules speak to one part only: a test-strength rule has nothing to say about
- * production, a runtime-surface rule must not report the wrapper that owns the surface, and an
- * ownership rule must not report the owner. Each rule deciding its own scope from a path string
- * is how two rules end up disagreeing about what "the owner" is, so the question is answered
- * here once and every rule asks it the same way.
  */
 
 /**
  * Paths arrive absolute; compare on the repository-relative tail so a worktree name cannot matter.
- *
- * The earliest root wins, not the first one named. `packages/ui/src/server/api.ts` contains both
- * `/packages/` and `/src/`, and taking `/src/` made the UI package read as controller source,
- * which is how eleven of its files first came back as isolation defects.
  */
 export function repoRelative(filename: string): string {
   // A worktree under `.claude/worktrees/<name>/` is a whole checkout, so the search starts past

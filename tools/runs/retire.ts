@@ -3,18 +3,6 @@
  *
  *   bun --env-file=.env.runs run runs retire [--days 1] [--yes]
  *
- * A campaign no process writes or keeps (`writers`, `keepers`), whose log has not grown for
- * `--days`, leaves its worktree whole for the archive, `data/runs/here/<name>/` under the main
- * worktree (`ARCHIVE`), which git ignores; where the archive has the name already, it is filed
- * under `<name>.<its tree's folder>` (recode ran under one name in two trees). A live solve's log
- * goes to `here/.live/`. The readers read the archive, and `runs copy <name> --to <worktree>` brings
- * a campaign back to go on with, so one paused for longer than `--days` without a keeper is copied
- * back before `continue`.
- *
- * A seed (`seed.json` beside its log) is deleted instead, in a worktree or in the archive, once its
- * log has not grown for `--days`: it is a copy of a cut log made to rehearse on, and its source keeps
- * the record, and the suite leaves hundreds of them.
- *
  * A worktree other than the main one is then deleted once nothing has used it for `TREE_DAYS`: no
  * process works in it or names it on its command line, it holds no run log, and its last commit and
  * its top entries are older. One with a change no commit names stays for `DIRTY_DAYS`. Its
@@ -33,24 +21,6 @@
  * every such commit of a sweep, and the sweep reads the process table, the worktree listing and
  * every head's commit time once, rather than asking `ps`, `lsof` and `git log` once per tree and
  * `branch --contains` once per deleted tree, which took seconds for a dry run.
- *
- * First of all, the seats' roots and the host's scratch folders that nobody will release go
- * (`releaseScratch`): what a killed campaign's solves, sessions, verifier cells and model homes left
- * in the temporary folder, and the root a killed test suite left (`SUITE_SCRATCH_ROOT`), told from
- * what a live process holds by its claim. What a run's log names as open goes as the archive takes
- * the run.
- *
- * A check runner's slot in this machine's home that no check has used for `TREE_DAYS` goes to the
- * Trash with the files beside it (`trashIdleSlots`), never deleted outright.
- *
- * Only the repository's worktrees are swept, so a separate clone is never read. Every host sweeps
- * its own originals with its own daily job, and this one then refreshes each configured host's
- * records through snapshots.ts and brings every campaign no process writes there whole but for
- * what it installed (`installs`), so the central host holds all a zip of a closed run can hold and
- * the zip fetches nothing. A host that does not answer is skipped with its copies as they were, and
- * the next sweep asks it again, so a Mac asleep for a night or a week catches up when it answers.
- * No original is deleted but on a machine that rolls a benchmark (`EVAL_RUNNER`), kept clear for outside evaluations
- * (`takeRetired`). Without --yes it describes the sweep and changes nothing.
  */
 import { DAY_MS } from "#src/meta/clock.ts";
 import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync } from "#src/meta/filesystem.ts";
@@ -138,12 +108,6 @@ export async function archiveIdle(sweep: Sweep, open: Open): Promise<Set<string>
  * takes the run (`archiveIdle`). A root a run here still names as open is that run's and is spared
  * until then. The rest go by their claims: a dead claimant's at once, an unclaimed one after
  * `TREE_DAYS` without a write, their count said before they go, as every line of the sweep is.
- *
- * Without this sweep only a stop releases any: a campaign that was killed, or continued after a
- * kill, would leave its roots for good, and so would every verifier cell and model home a killed
- * process held, with the check programs and hidden values in them. A run's own roots are spared
- * while it names them open, not merely while a process writes it, so a rehearsal's seed keeps its
- * roots, and the count of folders nobody holds is said before they go.
  */
 export async function releaseScratch(sweep: Sweep, parents: readonly string[]): Promise<Open> {
   const open: Open = new Map();

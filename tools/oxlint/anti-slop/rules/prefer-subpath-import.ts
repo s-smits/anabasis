@@ -6,25 +6,6 @@ import type { RuleExample } from "../../rule-examples.ts";
 /**
  * An import that climbs three or more directories is spelled through its package's subpath alias:
  * `#src/meta/path.ts`, not `../../../../src/meta/path.ts`.
- *
- * The relative form encodes where the importing file sits, so it is right only at one depth. A
- * reader counts the dots to learn which tree it reaches, a moved file breaks every such line, and
- * a codebase grown by pasting imports between files of different depths collects hundreds of them:
- * 570 stood under this repository's `.claude` on 2026-09-21, most at four levels. `package.json`'s
- * `imports` field is the form Node, Bun, TypeScript's NodeNext and bundler resolution and the oxc
- * resolver all read without further configuration; `paths` in `tsconfig.json` would satisfy the
- * type checker and leave the runtime unable to load the file.
- *
- * The aliases come from the nearest `package.json` above the linted file, which is where every one
- * of those resolvers looks, so a package with a manifest of its own is judged by its own `imports`
- * and never handed its parent's. One and two levels stay relative: a sibling or a parent's
- * neighbour is local, and spelling it from the root would hide that. `relativeOnly` names trees,
- * relative to the package root, whose files are also loaded some other way (copied under a
- * manifest without `imports`, or resolved as plain paths) where an alias would not resolve.
- *
- * The fix is the alias itself, in the quote the line already used. The target is the same file by
- * construction: the alias is read off the manifest that resolves it, and a key the manifest does
- * not map is never written.
  */
 export const preferSubpathImportRule = defineRule({
   meta: {

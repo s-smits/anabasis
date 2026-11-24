@@ -1,33 +1,12 @@
 /**
  * `bun run lint`, without a Node binary underneath it, and with the not-slop ledger applied.
  *
- * `.oxlintrc.json` sets `options.typeAware`, so oxlint has always run the type-aware rules here.
- * It runs them in a child process, `tsgolint`, which it looks for at
- * `node_modules/.bin/tsgolint`, and that entry is a `#!/usr/bin/env node` shim. So the lint step,
- * and therefore every push, depended on a Node binary being on PATH. The machine this was written
- * on had one through a shell-scoped version manager; a detached `env -i` launch does not, and
- * there the whole CI gate stops on `env: node: No such file or directory` followed by
- * `Error running tsgolint: "exit status: exit status: 127"`.
- *
- * `OXLINT_TSGOLINT_PATH` skips the shim. The real linter is a native executable shipped in a
- * per-platform package, so pointing at it directly removes the dependency rather than documenting
- * it. An absent package is reported here, where the missing name is known, instead of arriving as
- * `exit status: 127` from a child two processes away.
- *
  * oxlint has no store for an answered finding but the inline `oxlint-disable` comment, so this
  * reads its JSON report and applies `tools/oxlint/not-slop.tsv` (`not-slop-ledger.ts` says why a
  * ledger). A finding the ledger answers is dropped; the rest print in oxlint's own one-line
  * spelling, which the pre-push hook reads, each heuristic one with the id that answers it. A row
  * that no longer names a finding fails the run, as an unused disable comment does: an answer that
  * outlives its site is debt, and a later site with the same text would inherit it unread.
- *
- * The repository plugins are optional. `anti-slop`, `ana` and the two `implicit-state` tiers,
- * whose rules are the `/simplify` catchers, run every time, but their findings and the ledger that
- * answers them fail the run only under `--strict` or `ANA_LINT_STRICT=1`. Without it a contributor
- * is held to oxlint's own rules and told how many optional findings there are. A clone that sets
- * `git config ana.lintStrict true` is strict by default: the key lives in that clone's
- * `.git/config`, which its worktrees share and no push publishes, so a maintainer's checkout keeps
- * the CI gate a fresh clone does not have.
  */
 import { existsSync } from "../../src/meta/filesystem.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
@@ -99,9 +78,6 @@ export function tsgolintPath(): string {
 
 /**
  * oxlint's whole JSON report for `args`, read from the root to the end of its output.
- *
- * Read as a stream to its end. `Bun.spawnSync` with a pipe returned 547,240 of a 547,506-byte
- * report once: enough to look like a complete document and fail on the last string.
  */
 export async function oxlintDiagnostics(
   args: readonly string[],
@@ -127,11 +103,6 @@ export function ruleOf(diagnostic: Diagnostic): string {
 
 /**
  * The site a heuristic finding reports, or null for a finding the ledger cannot answer.
- *
- * The site is the line the span starts on and the span's own first line. A span can be a whole
- * function, and hashing all of it would bring the answer back at every edit to the body; the line
- * a report points at is what the reader judged, and the span's head keeps two reports on one line
- * apart.
  */
 export function lintSite(diagnostic: Diagnostic, bytes: Uint8Array): LintSite | null {
   const rule = ruleOf(diagnostic);
@@ -171,10 +142,6 @@ export async function withSites(
 
 /**
  * True for a finding of an optional plugin.
- *
- * An unused disable comment carries no code, and its message names no rule when the whole comment
- * went unused. Its span does: the whole comment then, whose rules must all be optional ones, or the
- * one rule name that went unused when the rest of the comment still suppresses something.
  */
 export function optionalFinding(diagnostic: Diagnostic, bytes: Uint8Array): boolean {
   const plugin = /^([\w-]+)\(/u.exec(diagnostic.code ?? "")?.[1];
@@ -230,10 +197,6 @@ export function sitesCachePath(): string | null {
 /**
  * The ledger's own failures: rows it could not read, rows no finding in this run bears out, and
  * rows naming a register.
- *
- * A lint row is judged where its file was linted under the ordinary rules, not under a one-rule
- * config, where every other row would read as stale. A tree row is judged only after a whole-tree
- * run, which also scans the tree.
  */
 function ledgerProblems(
   ledger: Ledger,

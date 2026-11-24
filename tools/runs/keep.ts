@@ -3,10 +3,6 @@
  *
  *   bun --env-file=<file> run runs keep <name> [--logins 2,3,4] [--wait-hours 0.25] [--yes | --here]
  *
- * `launch`, `continue` and so `fresh` and `move` leave a run on a numbered login its keeper by
- * themselves (`keepsItself`, `manage.ts`); this verb attaches one to a run already live, or to a run
- * started under `ANA_KEEP=off`.
- *
  * A keeper looks at the run once a minute and takes one of four turns (`turnOf`). While the run's
  * process lives and its log ends on a provider wait (`campaign.waited`, `for: "provider"`), whichever
  * limit named it, the week's or the five hours', and more than `--wait-hours` of it is left, it stops
@@ -17,20 +13,6 @@
  * ending at all, a process that died. Any other
  * ending is the campaign's own, and the keeper leaves. A run goes on from its log at the commit
  * its worktree stands at, on its kept flags, through the refusals of `runs continue`.
- *
- * The next login is the one with capacity whose week resets soonest, of those this keeper has not seen
- * spent (`room`, `logins.ts`), those below their cap of live runs on every host (`atCap`), and those
- * whose five hours are read to last to their reset with this run added (`fiveHourWith`). A login that
- * could not be read is not taken: a move spends on another login, so it needs a reading to say it
- * may. `--logins` defaults to `ANA_LOGINS`, read again before each move (`poolOf`). With none it says
- * why once and waits, and asks again every `ASK_MS`. Its own login goes unasked on a continue, since its runs are already in its pace.
- * A run none of whose seats is a `claude/` model bills no login and goes on without one
- * (`billsLogin`), and so does every run on a machine that holds only the plain login (`plainOnly`). A run that goes on three times in a row without a model turn of any seat that the
- * provider answered (`turnsIn`) is left: something the keeper cannot mend ends it each time.
- *
- * With `--yes` the verb leaves a keeper running by itself, its output in `keep.out` beside the log,
- * and ends: one keeper a run, and `runs stop`, `pause` or `continue --after` of the run end it. That
- * keeper is this verb under `--here` (`KEEPING`), which keeps the run in this process.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { endedOf } from "#src/kernel/reports.ts";

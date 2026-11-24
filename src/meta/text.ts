@@ -1,18 +1,8 @@
 /**
  * The two string states a truthiness test folds together.
- *
- * `if (name)` over a `string | undefined` is false when the name is absent and false when it is
- * `""`, and the line does not say which the author meant. Both spellings of nothing are real here:
- * an environment variable set to blank arrives as `""`, `searchParams.get("code")` returns `""` for
- * `?code=`, and a model can send `""` for a required tool argument. Where either means nothing,
- * that is the right condition and `hasText` is its name. Where only presence is in question (an
- * identifier, the *name* of an environment variable, a value reached through an optional chain)
- * `!== undefined` says so, and is not this function.
- *
- * `hasText(value)` is exactly `Boolean(value)` for a string, so exchanging one for the other
- * changes no behaviour. It narrows to `string`, so it also serves where the old condition guarded
- * a use.
  */
+
+const TOKEN_CHAR = /[A-Za-z0-9_-]/u;
 
 /** True when a string is present and holds something other than the empty string. */
 export function hasText(value: string | null | undefined): value is string {
@@ -30,4 +20,15 @@ export function plural(count: number, noun: string): string {
  *  unset", written so the reader can see that is what it meant. */
 export function textOr(value: string | null | undefined, fallback: string): string {
   return hasText(value) ? value : fallback;
+}
+
+/** True when `needle` appears in `haystack` bounded away from identifier characters (`[A-Za-z0-9_-]`). */
+export function hasWholeToken(haystack: string, needle: string): boolean {
+  if (needle === "") return false;
+  for (let at = haystack.indexOf(needle); at !== -1; at = haystack.indexOf(needle, at + 1)) {
+    if (!TOKEN_CHAR.test(haystack.charAt(at - 1)) && !TOKEN_CHAR.test(haystack.charAt(at + needle.length))) {
+      return true;
+    }
+  }
+  return false;
 }

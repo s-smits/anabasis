@@ -19,6 +19,7 @@
  * guard refuses their greps of the kept states this opens itself.
  */
 import { draftOf } from "#src/examiner/draft.ts";
+import { ownFiles } from "#src/harness/files.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports } from "#src/kernel/reports.ts";
@@ -34,10 +35,9 @@ import { parseArgs } from "#src/meta/process.ts";
 import { exampleId } from "#tools/d2/exam.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { countBy } from "#src/meta/tally.ts";
-import { programsOf } from "./programs.ts";
+import { callPrograms } from "#src/kernel/call-programs.ts";
 import { indexOf } from "./folds.ts";
 import { wonOf } from "./read.ts";
-import { ownFilesOf } from "./trajectory.ts";
 
 /** One value of an answer: where it stands, what it is, and its significant digits or length. */
 interface Leaf {
@@ -272,7 +272,7 @@ function harnessPlaces(log: string, harness: string): Place[] {
   const state = join(dirname(log), "states", harness);
   if (!existsSync(state)) return [];
   const guide = fileText(join(state, AGENT_DIR, GUIDE_FILE));
-  const own = ownFilesOf(state);
+  const own = ownFiles(state);
   const tools = [
     ...[GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE].map((file) => ({
       where: file,
@@ -340,9 +340,9 @@ function tracePlaces(trace: readonly (Call | Turn)[]): Place[] {
   });
 }
 
-/** What a call ran, as `programsOf` reads it, or its tool where that names none. */
+/** What a call ran, as `callPrograms` reads it, or its tool where that names none. */
 function ranBy(call: Call): string {
-  const { programs } = programsOf(call);
+  const { programs } = callPrograms(call);
   return programs.length === 0 ? call.tool : `${call.tool}(${[...new Set(programs)].join("+")})`;
 }
 

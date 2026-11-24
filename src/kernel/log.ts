@@ -1,34 +1,21 @@
 /**
  * The log: one append-only JSONL file, one event per line. Every state and every report is a view
  * over it, and nothing else is stored as truth.
- *
- * An append is written and synced before it returns, so an event the host acted on survives a crash.
- * A read refuses an unknown line instead of skipping it: a view over a log with a hole in it would be
- * a view over a different history. A last line without its newline is no hole but an append in
- * flight or one a killed process left, which the host never acted on (`append` returns only once
- * the whole line is synced), so a read ends at the last whole line.
- *
- * An append refuses, writing nothing, an event the task states read when folding it onto the log so
- * far throws (a probe's second `task.proposed` made every later read throw); only those events can
- * break the fold, so the frequent ones skip the read. One exclusive descriptor lock covers that
- * validation, the whole line's write and its sync, since two processes writing at once can leave an
- * unreadable history. A short write throws and is cut back, and so is a dead writer's tail without its
- * newline, since under the lock no other append is in flight.
  */
 import {
   closeSync,
+  detachHardlink,
   existsSync,
   fstatSync,
   fsyncSync,
   ftruncateSync,
   lockExclusiveSync,
   openSync,
-  readFileSync,
   readSync,
   writeSync,
 } from "../meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
-import { asRecord, type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
+import { asRecord, isFunction, type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
 import { foldsEvent, taskStates } from "./task.ts";
 
 /** The kinds of event a log holds. A kind that no command writes any more stays in the list where a
@@ -72,8 +59,10 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  accepted answer passes today's checks on (`tools/d2/prepare.ts`), by version and sweep. An
  *  optional `objective` holds the contract's quantity, its direction and the answer's measure: the
  *  Examiner's two paths write it where the contract declares an objective (`measureOf`,
- *  `src/examiner/write.ts`), and `prepare.ts` never does. `referee.refused` is a ruling the host
- *  refused the Referee for want of its evidence, with why (`src/referee/referee.ts`). */
+ *  `src/examiner/write.ts`), and `prepare.ts` never does. `referee.refused` is a rejection ruling
+ *  the host refused the Referee for want of its evidence (`src/referee/referee.ts`);
+ *  `referee.draft.refused` is the matching refusal for an upstream draft-audit verdict
+ *  (`src/referee/draft-audit.ts`). */
 const EVENT_KINDS = [
   "campaign.opened",
   "campaign.setting",
@@ -86,6 +75,7 @@ const EVENT_KINDS = [
   "condition.recorded",
   "harness.version",
   "harness.promoted",
+  "harness.reverted",
   "harness.imported",
   "build.started",
   "build.checkpoint",
@@ -119,6 +109,8 @@ const EVENT_KINDS = [
   "referee.compacted",
   "referee.finding",
   "referee.refused",
+  "referee.draft",
+  "referee.draft.refused",
   "diagnosis.recorded",
   "comparison.started",
   "comparison.reported",
@@ -132,9 +124,9 @@ export type EventKind = (typeof EVENT_KINDS)[number];
  *  `no-unowned-identity` reported. */
 export const LOG_FILE = "log.jsonl";
 
-const NEWLINE = 0x0a;
+const [NEWLINE, QUOTE, CHUNK, EMPTY] = [0x0a, 0x22, 256 * 1024, Buffer.alloc(0)];
 /** Where `{"at":"<24 characters>` ends and `","kind":"` begins, in every line `append` writes. */
-const [AT_END, KIND_AT] = [31, `","kind":"`];
+const [AT_END, KIND_BYTES] = [31, Buffer.from(`","kind":"`, "utf8")];
 
 export interface LogEvent {
   /** ISO 8601, as the host's clock read it at the append. */
@@ -143,17 +135,23 @@ export interface LogEvent {
   readonly data: JsonObject;
 }
 
+type KindFilter = ReadonlySet<EventKind> | ((kind: EventKind) => boolean);
+
 const KINDS: ReadonlySet<string> = new Set(EVENT_KINDS);
 export const isKind = (value: unknown): value is EventKind => isString(value) && KINDS.has(value);
+/** Whether an event installs a new reference harness (either a promotion or an automatic revert). */
+export const isReferenceChange = (kind: EventKind): boolean =>
+  kind === "harness.promoted" || kind === "harness.reverted";
 
 export function append(path: string, kind: EventKind, data: JsonObject): LogEvent {
   const event: LogEvent = { at: new Date().toISOString(), kind, data };
   const fd = openSync(path, "a+");
   try {
     lockExclusiveSync(fd);
-    if (foldsEvent(kind)) taskStates([...read(path), event]);
-    const size = wholeSize(fd);
-    if (size !== fstatSync(fd).size) ftruncateSync(fd, size);
+    if (foldsEvent(kind)) taskStates([...read(path, (each) => !foldsEvent(each)), event]);
+    const full = fstatSync(fd).size;
+    const size = wholeSize(fd, full);
+    if (size !== full) ftruncateSync(fd, size);
     const line = Buffer.from(`${capturedJsonStringify(event)}\n`, "utf8");
     let written = 0;
     try {
@@ -171,9 +169,9 @@ export function append(path: string, kind: EventKind, data: JsonObject): LogEven
 
 /** The log's size up to its last whole line, read back from its end a block at a time through the
  *  locked descriptor, so the cut is of the file the lock holds whatever its path names by then. */
-function wholeSize(fd: number): number {
+function wholeSize(fd: number, total: number): number {
   const block = Buffer.alloc(65_536);
-  let end = fstatSync(fd).size;
+  let end = total;
   while (end > 0) {
     const from = Math.max(0, end - block.length);
     const newline = block.subarray(0, readSync(fd, block, 0, end - from, from)).lastIndexOf(NEWLINE);
@@ -183,36 +181,71 @@ function wholeSize(fd: number): number {
   return 0;
 }
 
-/** Every event in append order. A missing log is an empty history. A reader that reads no event of
- *  some kinds names them in `without`, and their lines are passed over unparsed: the calls of
- *  solves and sessions are most of a campaign log's bytes, and the table of runs reads about three
- *  times faster without them. `append` writes `at` first, a fixed 24 characters,
- *  and `kind` next, so the kind is read at its place. */
-export function read(path: string, without?: ReadonlySet<EventKind>): LogEvent[] {
+/** Truncates `path` to its last complete newline-terminated line, returning the whole byte length.
+ *  When already whole, reads only the tail without writing (safe on read-only or hardlinked files);
+ *  otherwise detaches a shared hard link before truncating in place. */
+export function truncatePartial(path: string): number {
+  const fd = openSync(path, "r");
+  let stat: ReturnType<typeof fstatSync>;
+  let size: number;
+  try {
+    stat = fstatSync(fd);
+    size = wholeSize(fd, stat.size);
+  } finally {
+    closeSync(fd);
+  }
+  if (size === stat.size) return size;
+  if (stat.nlink > 1) detachHardlink(path);
+  const writable = openSync(path, "r+");
+  try {
+    ftruncateSync(writable, size);
+  } finally {
+    closeSync(writable);
+  }
+  return size;
+}
+
+/** Every event in append order. Missing logs are empty; kinds matched by `without` are skipped
+ *  straight from fixed byte chunks without decoding or parsing. */
+export function read(path: string, without?: KindFilter): LogEvent[] {
   if (!existsSync(path)) return [];
-  const text = readFileSync(path, "utf8");
+  const skip =
+    without === undefined ? null : isFunction(without) ? without : (kind: EventKind) => without.has(kind);
   const events: LogEvent[] = [];
-  // What follows the last newline is no event (the head comment), and the split leaves it out.
-  for (const [index, line] of text.split("\n").slice(0, -1).entries()) {
-    const passed = without === undefined ? undefined : kindAt(line);
-    if (passed !== undefined && without?.has(passed) === true) continue;
-    const event = asRecord(parsed(line));
-    const kind = isKind(event?.kind) ? event.kind : undefined;
-    const data = asRecord(event?.data);
-    if (!isString(event?.at) || kind === undefined || data === null) {
-      throw new Error(`${path}:${index + 1} is not a log event`);
+  const [block, fd] = [Buffer.allocUnsafe(CHUNK), openSync(path, "r")];
+  let [carry, lineNo] = [EMPTY, 0];
+  try {
+    for (let got = readSync(fd, block, 0, CHUNK, null); got > 0; got = readSync(fd, block, 0, CHUNK, null)) {
+      const chunk =
+        carry.length === 0 ? block.subarray(0, got) : Buffer.concat([carry, block.subarray(0, got)]);
+      let start = 0;
+      for (let nl = chunk.indexOf(NEWLINE); nl !== -1; nl = chunk.indexOf(NEWLINE, start)) {
+        const from = start;
+        start = nl + 1;
+        lineNo += 1;
+        if (skip !== null && skipAt(chunk, from, nl, skip)) continue;
+        const event = asRecord(parsed(chunk.toString("utf8", from, nl)));
+        const kind = isKind(event?.kind) ? event.kind : undefined;
+        const data = asRecord(event?.data);
+        if (!isString(event?.at) || kind === undefined || data === null) {
+          throw new Error(`${path}:${lineNo} is not a log event`);
+        }
+        if (skip === null || !skip(kind)) events.push({ at: event.at, kind, data });
+      }
+      carry = start < chunk.length ? Buffer.from(chunk.subarray(start)) : EMPTY;
     }
-    // A line written in another order is parsed whole, and left out all the same.
-    if (without?.has(kind) !== true) events.push({ at: event.at, kind, data });
+  } finally {
+    closeSync(fd);
   }
   return events;
 }
 
-function kindAt(line: string): EventKind | undefined {
-  if (!line.startsWith(KIND_AT, AT_END)) return undefined;
-  const from = AT_END + KIND_AT.length;
-  const kind = line.slice(from, line.indexOf(`"`, from));
-  return isKind(kind) ? kind : undefined;
+function skipAt(chunk: Buffer, start: number, end: number, skip: (kind: EventKind) => boolean): boolean {
+  const [at, from] = [start + AT_END, start + AT_END + KIND_BYTES.length];
+  if (end <= from || chunk.compare(KIND_BYTES, 0, KIND_BYTES.length, at, from) !== 0) return false;
+  const close = chunk.indexOf(QUOTE, from);
+  const kind = close > from && close < end ? chunk.toString("utf8", from, close) : "";
+  return isKind(kind) && skip(kind);
 }
 
 function parsed(line: string): JsonValue | undefined {

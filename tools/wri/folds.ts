@@ -1,23 +1,6 @@
 /**
  * What every lane of a whole-run investigation starts from: the folds of one campaign's log, the
  * catalogue of triggers, and the lanes of the exam side.
- *
- * The folds (`indexOf`) read the log once into what the lanes ask of it: each solve with what it
- * ran under and how it ended, each Builder session with the window of the log that is its round,
- * each comparison with the solves it could count, and the last verdict and ruling of each solve.
- * A solve reached its turn bound where its end records as many turns as its start allowed.
- * `TRIGGERS` names only the triggers a live reader can print and the lane each starts, and
- * `fired` makes one. Lanes 1 and 4 to 6 read the exam's instrument, which is the pack author's, and
- * lanes 3, 7, 8, 20 and 21 the tasks, which are the Examiner's and the pack's; both sit here, below
- * the lanes of the build side and the host, which `read.ts` keeps with the rows and the overview,
- * and the lanes that read the clock, which are `time.ts`.
- *
- * Split from `read.ts`, which would otherwise stand far over the size policy's ceiling of 800
- * nonblank lines (`tools/loc/source-policy.ts`). The lanes
- * need the folds, so the folds sit below every lane, and the exam side's lanes sit with them so
- * that each of the two files is under the ceiling. Every function keeps the name and the body it
- * had in `read.ts`; `taskTriggers` alone was split at its tallies (`tallyTriggers`), which held it
- * at 147 lines against the policy's 115.
  */
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
@@ -35,7 +18,7 @@ import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#
 import { runtimeProcess } from "#src/meta/process.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
-import { programsOf } from "./programs.ts";
+import { callPrograms } from "#src/kernel/call-programs.ts";
 
 export interface Trigger {
   readonly lane: number;
@@ -70,7 +53,7 @@ export interface Solve {
   readonly cancelledBy: string | null;
   readonly seconds: number;
   readonly calls: string[];
-  /** The programs its `bash` calls ran (`programsOf`, `programs.ts`): a harness's `.toolchain/bin`
+  /** The programs its `bash` calls ran (`callPrograms`, `src/kernel/call-programs.ts`): a harness's `.toolchain/bin`
    *  programs are reached on the shell's path, so they show only here. */
   readonly programs: string[];
   errors: number;
@@ -152,8 +135,9 @@ export interface Index {
   readonly of: (kind: LogEvent["kind"]) => JsonObject[];
 }
 
-/** A pass under this share of its deadline, on few calls, is the lead v1 read for a published recipe. */
+/** A pass under this share of its deadline, on few turns, is the lead v1 read for a published recipe. */
 export const SMALL_DEADLINE_SHARE = 0.05;
+const SMALL_DEADLINE_TURNS = 3;
 /** What a reader of no seat's words reads a large log without. */
 export const NO_TRACES: ReadonlySet<LogEvent["kind"]> = new Set(
   SEATS.flatMap((seat) => [traceKind(seat, "call"), traceKind(seat, "turn")]),
@@ -168,95 +152,139 @@ export const REPORTED = "comparison.reported";
 /** Every trigger this reader can print, and the lane it starts. `lanes.md` names each one in the
  *  `Starts from` paragraph of that lane, and `test/wri-readers.test.ts` holds the two together. */
 export const TRIGGERS = {
-  "INSTRUMENT AUTHORED": 1,
-  "PASSES UNREAD": 1,
-  "REFUSALS BY CHECK": 1,
-  "VERIFIER TOOLS MOVED": 1,
-  "TOOL MISSING": 22,
-  "NO CHECKER READING": 1,
-  "CHECKER READ WITH FAULTS": 1,
-  "CONTROL COVERAGE": 1,
-  "REFUSED UNREAD": 5,
-  "CHECK DEFECT RULED": 5,
-  "RULED UNCLEAR": 5,
-  "FAILS ON ONE CHECK": 6,
-  "DEFECT RULED BESIDE PASSES": 6,
-  "CHECKER NOT FROZEN": 1,
-  "FROZEN DESPITE FAULTS": 1,
-  "READ AT ANOTHER VERSION": 1,
-  "TASKS CARRIED": 1,
-  "SUPPLY THIN": 21,
-  "GATE REFUSED": 21,
-  "SCORED AFTER RELEASE": 21,
-  "NO VALID ANSWER": 8,
-  "AWAITING A LABEL": 8,
-  "TIES BETWEEN VALID ANSWERS": 3,
-  "TIED TASKS": 8,
-  "PASSES AT A SMALL WALL SHARE": 7,
-  "OUTCOMES BY SESSION": 20,
-  "HARNESS CHANGED": 15,
-  "BROKEN AT END": 15,
-  "MEASURED AN EARLIER STATE": 15,
-  "NEVER CHECKED": 15,
-  "TOOLS CALLED": 15,
-  "TOOL CALLS ERRED": 15,
-  "TOOLS EDITED": 15,
-  "NO PRACTICE": 13,
-  "FINAL BYTES NEVER PRACTISED": 13,
-  "SESSION ENDED": 13,
-  "PRACTICE FAILS": 13,
-  "PRACTISED TASK MEASURED": 15,
-  "WIN AT A SMALL WALL SHARE": 16,
-  WINS: 16,
-  "ANSWER FROM A PROGRAM": 16,
-  "SCORED SET MOVED": 5,
-  "NOTHING SCORED": 8,
-  "CUT BY ITS CAP": 8,
-  "SET SHORT": 8,
-  "VALID BY HARNESS": 17,
-  "PROMOTION UNCONFIRMED": 17,
-  "CHAIN AGAINST THE STARTER": 17,
-  "MARGINS INSIDE THE NOISE": 11,
-  "STEP CARRIERS": 9,
-  "FLIPS": 10,
-  "REFERENCE AGAINST ITSELF": 10,
-  "HOST CODE MOVED": 22,
-  "STARTS OUT OF TURN": 22,
-  "SERVED ANOTHER MODEL": 22,
-  "CHAIN": 13,
+  // Lane 3: Component reward hacking and specification gaming
+  "DRAFT RULE DROP": 3,
+  "PRACTICE HILL-CLIMBING": 3,
+  "SPECIFICATION GAMING LEAD": 3,
+  // Lane 4: Pass soundness, deliverables and verifier grounding
+  "INSTRUMENT AUTHORED": 4,
+  "PASSES UNREAD": 4,
+  "PASSES LABELLED": 4,
+  "REFUSALS BY CHECK": 4,
+  "NO CHECKER READING": 4,
+  "CHECKER READ WITH FAULTS": 4,
+  "CONTROL COVERAGE": 4,
+  "CHECKER NOT FROZEN": 4,
+  "FROZEN DESPITE FAULTS": 4,
+  "READ AT ANOTHER VERSION": 4,
+  "TASKS CARRIED": 4,
+  "DELIVERABLES CAPTURED": 4,
+  "NO DELIVERABLES CAPTURED": 4,
+  "VERIFIER TOOL PROVENANCE": 4,
+  "VERIFIER FAULTS": 4,
+  // Lane 5: Comparison power, signal and noise
+  "NOTHING SCORED": 5,
+  "CUT BY ITS CAP": 5,
+  "SET SHORT": 5,
+  "TIED TASKS": 5,
+  "TIES BETWEEN VALID ANSWERS": 5,
+  "NO VALID ANSWER": 5,
+  "AWAITING A LABEL": 5,
+  "SAFEGUARD-9 PROMOTION BEYOND VALIDITY": 5,
+  "STEP CARRIERS": 5,
+  FLIPS: 5,
+  "REFERENCE AGAINST ITSELF": 5,
+  "MARGINS INSIDE THE NOISE": 5,
+  // Lane 6: Climb, confirmation and batch generalisation
+  PROMOTED: 6,
+  "STARTER BARE": 6,
+  "AFTER THE PROMOTION": 6,
+  "VALID BY HARNESS": 6,
+  "PROMOTION UNCONFIRMED": 6,
+  "CHAIN AGAINST THE STARTER": 6,
+  // Lane 7: Examiner supply, authoring and targeting
+  "OUTCOMES BY SESSION": 7,
+  "SUPPLY THIN": 7,
+  "GATE REFUSED": 7,
+  "EXAMINER ZERO YIELD": 7,
+  "FAMILY CONCENTRATION": 7,
+  // Lane 8: Harness delta, guide truth and memorisation
+  "HARNESS CHANGED": 8,
+  "BROKEN AT END": 8,
+  "MEASURED AN EARLIER STATE": 8,
+  "TOOLS EDITED": 8,
+  "NEVER CHECKED": 8,
+  "TOOLS CALLED": 8,
+  "TOOL CALLS ERRED": 8,
+  // Lane 9: Evaluation wall, sandbox isolation, network parity and provenance
+  "PRACTISED TASK MEASURED": 9,
+  "SCORED AFTER RELEASE": 9,
+  "SHARED TEMPORARY FOLDER": 9,
+  "VERIFIER TOOLS MOVED": 9,
+  "HOST CODE MOVED": 9,
+  "STARTS OUT OF TURN": 9,
+  "SERVED ANOTHER MODEL": 9,
+  "HOST LOADED": 9,
+  "LOAD MOVED": 9,
+  LAUNCHES: 9,
+  "NO LAUNCH RECEIPT": 9,
+  "LOG OUT OF ORDER": 9,
+  "EXAMINER NEVER FINISHED": 9,
+  "SESSION CRASHED": 9,
+  "NETWORK PARITY MISMATCH": 9,
+  "WALL BOUNDARY SIGNAL": 9,
+  // Lane 10: Harness portability and external-transfer readiness
+  "BUILT HARNESS FOR EXPORT": 10,
+  // Lane 11: Drafted exam against the prompt
+  "EXAM DRAFTED": 11,
+  "PASSES AT A SMALL WALL SHARE": 11,
+  // Lane 12: Practice feedback, band discipline and family transfer
+  "NO PRACTICE": 12,
+  "FINAL BYTES NEVER PRACTISED": 12,
+  "PRACTICE FAILS": 12,
+  "PRACTICE CONCENTRATION": 12,
+  "PRE-PROMOTION PRACTICE RELEASED": 12,
+  // Lane 13: Campaign control, decision-table adherence and continuity
+  CHAIN: 13,
   "NO TASK HELD OUT": 13,
-  "WALL SHARE": 22,
-  "HOST LOADED": 22,
-  "LOAD MOVED": 22,
-  "MISSES AT A LIMIT": 22,
-  "NON-RESULTS": 22,
-  "SOLVE NEVER FINISHED": 22,
-  "EXAMINER NEVER FINISHED": 22,
-  "MISSES WITHOUT A VERDICT": 22,
-  "SESSION CRASHED": 22,
-  "LONG SILENCES": 23,
-  "SPEND LED BY A ROLE": 23,
-  "FIRST COMPARISON HELD OFF": 23,
-  "REPLAY MOVED THE VERDICT": 5,
-  "SET ASIDE AND UNSETTLED": 5,
-  "READING MOVES WITH THE SET-ASIDE": 5,
-  "SET ASIDE BY SIDE": 5,
-  "SETTLED BY HAND": 5,
-  "REVIEW FAULTS": 5,
-  "EARNED WITHOUT A PROBE": 5,
-  "RULINGS REFUSED": 5,
-  "PROMOTED": 18,
-  "STARTER BARE": 18,
-  "AFTER THE PROMOTION": 18,
-  "SHARED TEMPORARY FOLDER": 18,
   "ENDED AND WENT ON": 13,
   "OPERATOR WORDS": 13,
-  "BUILDER COMPACTED": 23,
-  "EXAM DRAFTED": 2,
-  "LAUNCHES": 22,
-  "NO LAUNCH RECEIPT": 22,
-  "LOG OUT OF ORDER": 22,
-  "SAFEGUARD-9 PROMOTION BEYOND VALIDITY": 3,
+  "FIRST COMPARISON HELD OFF": 13,
+  "UNDERPOWERED NO-STEPS": 13,
+  "BUILDER COMPACTED": 13,
+  "EXAMINER COMPACTED": 13,
+  "SOLVER COMPACTED": 13,
+  "SESSION ENDED": 13,
+  "INTERRUPTED HANDOVER": 13,
+  // Lane 14: Agentic yield, pause boundaries and economy
+  "SEAT BOUNDARY ANOMALY": 14,
+  "ROLE YIELD SKEW": 14,
+  "LONG SILENCES": 14,
+  "SPEND LED BY A ROLE": 14,
+  "BILLING RESIDUAL": 14,
+  // Lane 15: Win attribution and answer provenance
+  WINS: 15,
+  "WIN AT A SMALL WALL SHARE": 15,
+  "ANSWER FROM A PROGRAM": 15,
+  // Lane 17: Rejection rulings and Referee calibration
+  "REFUSED UNREAD": 17,
+  "CHECK DEFECT RULED": 17,
+  "RULED UNCLEAR": 17,
+  "REPLAY MOVED THE VERDICT": 17,
+  "SET ASIDE AND UNSETTLED": 17,
+  "READING MOVES WITH THE SET-ASIDE": 17,
+  "SET ASIDE BY SIDE": 17,
+  "SETTLED BY HAND": 17,
+  "REVIEW FAULTS": 17,
+  "EARNED WITHOUT A PROBE": 17,
+  "RULINGS REFUSED": 17,
+  "SCORED SET MOVED": 17,
+  // Lane 18: Adversarial draft audit and pre-freeze gate
+  "DRAFT AUDITED": 18,
+  "DRAFT AUDIT DEFECTS": 18,
+  "DRAFT AUDIT REFUSED": 18,
+  "DRAFT AUDIT SKIPPED": 18,
+  // Lane 19: Solver execution, tool friction and resource limits
+  "MISSES AT A LIMIT": 19,
+  "WALL SHARE": 19,
+  "NON-RESULTS": 19,
+  "MISSES WITHOUT A VERDICT": 19,
+  "SOLVE NEVER FINISHED": 19,
+  "TOOL MISSING": 19,
+  "HIGH TOOL ERROR RATE": 19,
+  // Lane 20: Constructive valid-alternative challenge (isolated)
+  "FAILS ON ONE CHECK": 20,
+  "DEFECT RULED BESIDE PASSES": 20,
 } as const;
 
 export const text = (value: JsonValue | undefined): string => (isString(value) ? value : "");
@@ -372,7 +400,7 @@ function solvesOf(
     const solve = call.seat === "solve" ? solves.get(call.id) : undefined;
     if (solve === undefined || call.part !== "call") continue;
     solve.calls.push(call.tool);
-    if (call.tool === "bash") solve.programs.push(...programsOf(call).programs);
+    if (call.tool === "bash") solve.programs.push(...callPrograms(call).programs);
     solve.errors += call.isError ? 1 : 0;
   }
   return [...solves.values()];
@@ -720,7 +748,12 @@ export function taskTriggers(log: Index): Trigger[] {
   const unanswered = [...scored.values()].filter(Boolean).length;
   const [{ outcomes, awaiting }, by] = [poolOf(log.events), short(referenceOf(log.events) ?? "none")];
   const done = log.solves.filter((solve) => solve.side === TEST && solve.outcome === "pass");
-  const quick = done.filter((solve) => solve.seconds < solve.wallSeconds * SMALL_DEADLINE_SHARE);
+  const quick = done.filter(
+    (solve) =>
+      solve.seconds < solve.wallSeconds * SMALL_DEADLINE_SHARE &&
+      solve.turns !== null &&
+      solve.turns <= SMALL_DEADLINE_TURNS,
+  );
   const sequences = new Set(quick.map((solve) => solve.calls.join(">"))).size;
   // Each Examiner session's tasks still held at the end, under the reference then, and the reports before it.
   const bySession = Map.groupBy(proposed, (data) => text(data.session));

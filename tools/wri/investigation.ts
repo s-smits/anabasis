@@ -2,22 +2,6 @@
  * What a whole-run investigation is made of once the log has been read: which lanes open, the
  * prompt each session is given, and whether a report has the shape the synthesis can use. Nothing
  * here touches a file; `tools/wri/wri.ts` does the reading and the writing.
- *
- * What every open lane shares (the shared instructions, the overview, what is already counted, the
- * catalogue's stance and the report's form) is one file a session reads once (`sharedPrompt`), and
- * an open lane's prompt carries its question, its own triggers whole, the predictions that name it
- * and where its report goes, rather than each prompt carrying the shared part too, which made most
- * of every prompt the same text and left a session given a dozen of them compacting before its last
- * lanes. An isolated lane's prompt stands alone and carries the campaigns' rows, the hard rules, the
- * deterministic rows, its own triggers, the lane and the reporting rules: it is told neither the
- * operator's question nor what any other lane was started by, because it freezes its result before
- * it reads anything that could lead it. A blind lane's carries the campaigns' rows and the hard rules
- * alone, since a blind lane handed the orientation, the readings and every trigger grades sighted.
- *
- * An investigation reads one campaign or several as equals, and each lane reads every one of them.
- * Reading one campaign under review and the others as peers would find a shared defect once per
- * campaign, and a defect one campaign holds alone only by that campaign's sessions. So every
- * finding says on its `Seen in:` line which campaigns show it.
  */
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
@@ -126,6 +110,9 @@ export const ROWS = {
   "REFUSALS BY CHECK": "checks",
   "CONTROL COVERAGE": "checks",
   "CHECKER READ WITH FAULTS": "checks",
+  "PASSES LABELLED": "checks",
+  "DELIVERABLES CAPTURED": "deliverables",
+  "NO DELIVERABLES CAPTURED": "deliverables",
   "REFUSED UNREAD": "rejections",
   "CHECK DEFECT RULED": "rejections",
   "RULED UNCLEAR": "rejections",
@@ -147,23 +134,50 @@ export const ROWS = {
   "NO PRACTICE": "practice",
   "PRACTICE FAILS": "practice",
   "FINAL BYTES NEVER PRACTISED": "practice",
+  "PRACTICE CONCENTRATION": "transfer",
+  "PRE-PROMOTION PRACTICE RELEASED": "transfer",
+  "BUILT HARNESS FOR EXPORT": "portability",
   "STEP CARRIERS": "scores",
   "NOTHING SCORED": "readings",
   "CUT BY ITS CAP": "readings",
   "SET SHORT": "readings",
   "PROMOTION UNCONFIRMED": "starter-reads",
-  "CHAIN AGAINST THE STARTER": "starter-reads",
+  "CHAIN AGAINST THE STARTER": "transfer",
   CHAIN: "climb",
   "AFTER THE PROMOTION": "epoch-spend",
   "SPEND LED BY A ROLE": "epoch-spend",
-  "MISSES AT A LIMIT": "budget",
-  "HOST LOADED": "budget",
-  "LOAD MOVED": "budget",
-  "BUILDER COMPACTED": "compactions",
+  "BILLING RESIDUAL": "epoch-spend",
+  "MISSES AT A LIMIT": "execution",
+  "WALL SHARE": "execution",
+  "NON-RESULTS": "execution",
+  "HOST LOADED": "execution",
+  "LOAD MOVED": "execution",
+  "HIGH TOOL ERROR RATE": "execution",
+  "BUILDER COMPACTED": "continuity",
+  "EXAMINER COMPACTED": "continuity",
+  "SOLVER COMPACTED": "continuity",
+  "INTERRUPTED HANDOVER": "continuity",
+  "SESSION ENDED": "continuity",
+  "EXAMINER ZERO YIELD": "aim",
+  "FAMILY CONCENTRATION": "aim",
+  "UNDERPOWERED NO-STEPS": "readings",
   "SERVED ANOTHER MODEL": "degradations",
   "HOST CODE MOVED": "source",
   LAUNCHES: "launches",
   "ENDED AND WENT ON": "launches",
+  "DRAFT AUDITED": "draft-audit",
+  "DRAFT AUDIT DEFECTS": "draft-audit",
+  "DRAFT AUDIT REFUSED": "draft-audit",
+  "DRAFT AUDIT SKIPPED": "draft-audit",
+  "VERIFIER TOOL PROVENANCE": "grounding",
+  "VERIFIER FAULTS": "grounding",
+  "NETWORK PARITY MISMATCH": "wall-audit",
+  "WALL BOUNDARY SIGNAL": "wall-audit",
+  "SEAT BOUNDARY ANOMALY": "seats",
+  "ROLE YIELD SKEW": "seats",
+  "DRAFT RULE DROP": "gaming",
+  "PRACTICE HILL-CLIMBING": "gaming",
+  "SPECIFICATION GAMING LEAD": "gaming",
 } satisfies Partial<Record<keyof typeof TRIGGERS, string>>;
 
 /** A lane's file stem: `07` for lane 7. */

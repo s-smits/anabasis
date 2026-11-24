@@ -1,46 +1,18 @@
 /**
- * A solve's ending: every solve ends in exactly one, and the log records which.
- *
- * A pass is an answer the verifier accepted. A fail is any other ending the solver owns, by kind:
- * the verifier rejected the submitted answer, the host's deadline ended the solve, the model's context
- * ran out, the model turn limit was reached where the solve has one, the solve
- * stopped without submitting one, at the prompt limit or by giving up, or the harness's tools could
- * not be bundled or listed, so it never began. A broken harness is the
- * harness's own fail: a non-result would be rerun into the same break and then dropped, and the
- * harness would leave the score with it. A context
- * that outgrows the model is the solver's own ending, never the provider's, though the provider
- * reports it as an error. Solvers check their answer with the grading engine before submitting,
- * so rejected answers are expected to be the rare kind, and a report that counts fails without
- * their kinds would hide where supply comes from.
- *
- * A non-result is an ending the solver does not own: the provider failed the turn (it refused, was
- * overloaded or closed the connection), the sandbox crashed, its caller cancelled it, files or
- * tools moved during the solve, the
- * task's own check failed on the answer (it threw or returned no verdict), or the verifier could
- * not decide. It is never counted as a pass
- * or a fail. One from the solve's side is run again, up to three times with backoff. A faulty check
- * is the task's defect: the task is dropped and the run goes on. One from the verifier stops the
- * run, since a broken verifier makes one of every check: a relative tree path once turned every
- * verdict of a regrade into one.
- *
- * A killed ending carries the first host cancellation origin when recorded. The typed abort
- * reason travels with the existing signal; an unlabelled caller abort remains caller cancellation.
- *
- * A flag is the solver's word that the task is malformed, given in `submit`'s place of an answer
- * (`src/tools/answer.ts`), with why. It is its own outcome, reported apart, and in every tally the
- * flagging side's own fail (`passed`, `src/kernel/solves.ts`), for rule 7's reason for a broken
- * harness: counted nowhere, a flag would take a task its harness was losing out of the tally. So a
- * task that really is malformed costs nothing, both sides flag it and it ties, and a harness that
- * flags a task the other side answers loses it. It is not run again inside the solve, since the
- * solver chose it. Offered such an outcome, solvers that cheated on impossible tasks in 54% of
- * them did so in 9% (ImpossibleBench).
+ * Solve endings (`Ending`, `CancellationOrigin`, `unanswered`), partitioning every solve into:
+ * - `pass`: accepted by the verifier;
+ * - `fail`: owned by the solver or its harness (`rejected`, `wall-ended`, `turns-ended`,
+ *   `context-ended`, `no-answer`, `broken-harness`);
+ * - `flagged`: solver reported a malformed task via `submit` (`src/tools/answer.ts`), counted as a
+ *   failure for the flagging side (`passed`, `src/kernel/solves.ts`) so genuinely malformed tasks
+ *   tie when flagged by both sides;
+ * - `non-result`: external failure (`provider`, `sandbox-crash`, `moved-files`, `check`, `verifier`,
+ *   `killed`), retried and excluded from all denominators (rule 7).
  */
 import { type AssistantMessage, isContextOverflow } from "@earendil-works/pi-ai";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
 
-/** Who cancelled a piece of work. `admission` was the gate's own cut of the room solves still
- *  running once a reading left room, from when the gate still solved; it stays for the logs that
- *  hold it, so such a designed cut is not read as a kill. */
+/** Who cancelled a piece of work (`admission` is preserved for historical gate room-solve logs). */
 export type CancellationOrigin = "session-wall" | "campaign-budget" | "caller" | "invocation" | "admission";
 
 export type Ending =
@@ -69,17 +41,7 @@ interface LastTurn {
   readonly errorMessage?: JsonValue | undefined;
 }
 
-/**
- * Time without a completed model turn or tool activity, with none of its tools running, at the
- * deadline before it is read as the provider's. Solves on record went silent for 22 to 30 minutes
- * until the deadline ended them, and were counted as the solver's fail (`wall-ended`), on both
- * sides of a comparison and on GPT and Claude alike. A stalled stream is the provider's failure
- * (rule 7), and as a fail it hands the other side a win by
- * validity, or a draft room through task admission.
- * This threshold is an elapsed-time heuristic, not an upper bound on returning turns: fifteen
- * completed GPT turns on record took 14.6 to 22.3 minutes before their first tool began. Their
- * completions restart the clock; partial streams do not.
- */
+/** Silence threshold (10 minutes with no completed turn or active tool) at deadline expiry before classifying the ending as a `provider` stall rather than `wall-ended` (rule 7). */
 export const SILENT_SECONDS = 10 * 60;
 
 /** The host's first cancellation source, carried through parent and invocation signals. */
@@ -92,23 +54,12 @@ export class Cancellation extends Error {
   }
 }
 
-/** Whether a non-result was the task's own check, which could not run on the answer: the task's
- *  fault rather than the solve's, so no solve of it is run again, and a round disputes the task
- *  where the answer was the reference's (`floor`, `src/campaign/round.ts`). */
+/** Whether a non-result was caused by the task's check failing to run (`floor`, `src/campaign/round.ts`). */
 export function checkCouldNotRun(ending: Ending): boolean {
   return ending.outcome === "non-result" && ending.kind === "check";
 }
 
-/**
- * Whether the model's window ended a solve's last turn: a reply cut at its length, or a context
- * that outgrew the model, which the provider reports as an error. The one reading of it: `judge`
- * (`src/solver/run.ts`) asks it of the last turn it holds, and the pool (`taskRecords`,
- * `src/kernel/reports.ts`) of the last `solve.turn` the log records, its `stopReason` and its
- * `error`. A solve the window ended is cut, whatever its turns: the solver is told its turns and
- * never its window. An old `judge` read spent turns first and wrote `turns-ended` for a window
- * filled on the last allowed turn, so old logs hold such solves, and the pool reads them by their
- * last turn as it reads newer ones.
- */
+/** Whether the model's context window ended the last turn (`stopReason === "length"` or a provider context-overflow error; used by `judge` in `src/solver/run.ts` and `taskRecords` in `src/kernel/reports.ts`). */
 export function windowEnded(last: LastTurn): boolean {
   const { stopReason, errorMessage } = last;
   if (stopReason === "length") return true;
@@ -118,35 +69,19 @@ export function windowEnded(last: LastTurn): boolean {
   return isContextOverflow({ stopReason, errorMessage } as AssistantMessage);
 }
 
-/**
- * Whether the provider failed a solve's last turn: an error that is not the window's. `judge` ends
- * such a solve a non-result (`provider`), and the pool reads one a log holds as `turns-ended` as a
- * cut, since an old `judge` wrote `turns-ended` for a provider failure on the last allowed turn
- * (`src/solver/run.ts`), and an old log must read as it did.
- */
+/** Whether the provider failed a solve's last turn with a non-window error (`provider` non-result). */
 export function providerFailed(last: LastTurn): boolean {
   return last.stopReason === "error" && !windowEnded(last);
 }
 
-/**
- * Whether a provider's refusal names a state no retry clears: a subscription an organisation
- * disabled, a provider never configured, credits too few for the request, or a model the account
- * does not support. Each came back on every solve of runs on record (276 across the archive). A
- * bare 403 is no such state: Cloudflare's came and went.
- */
+/** Whether a provider error message names a permanent account/model refusal that no retry clears. */
 export function nonRetryableProvider(reason: string): boolean {
   return /disabled Claude subscription access|Provider is not configured|requires more credits|model is not supported/u.test(
     reason,
   );
 }
 
-/**
- * How a solve that left no answer ended: the deadline's, unless the model had been silent at it for
- * `SILENT_SECONDS`, its last turn's (the provider's failure or the window's), its spent turns', or
- * no answer. The one reading of it, which `judge` (`src/solver/run.ts`) asks once an answer, a flag,
- * a crash and a broken harness are ruled out, and which any other runner of a solve asks of the
- * solve it ran, so that both read one ending alike.
- */
+/** Classify an unanswered solve ending once an answer, flag, crash, and broken harness are ruled out (`judge`, `src/solver/run.ts`). */
 export function unanswered(stopped: {
   readonly wallEnded: boolean;
   /** How long the model had been silent, with no tool of its running, when the deadline was reached. */

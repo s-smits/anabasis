@@ -1,21 +1,10 @@
 /**
  * How far the Referee's rulings agree with a person's labels of the same fails.
  *
- * The plan has every failing answer of the pilot and of D1 read by hand, as a wrong answer, a check
- * that refuses a right answer, or unclear: the Referee's three rulings. Those labels are the only set
- * the Referee can be measured on before it decides anything, and v1's equivalent reader failed the
- * bar frozen for it. So the bar is an argument the operator writes down before the Referee runs on
- * the labelled fails, and this file only counts.
- *
  * Two rates carry the risk, and they pull apart. A check defect the Referee lets stand turns a broken
  * check into a scored task; an earned fail it voids removes a real limit from the count. A fail is
  * voided by any ruling but `earned`, since `unclear` sets its task aside as `check-defect` does, so
  * a Referee that ruled every earned fail unclear does not read as voiding none of them.
- *
- * Beside them, the agreement of each kind and over all three: on kinds as uneven as these, most
- * fails earned, Cohen's kappa can be low while
- * the share read alike is high, so kappa is reported beside PABAK, the share read alike corrected
- * for three kinds and not for how they are spread, and never alone.
  *
  * No bar is read on fewer than thirty labelled fails (`LEAST_LABELS`), whatever
  * else the operator sets. And where a person
@@ -29,9 +18,16 @@ import type { Ruling } from "./referee.ts";
 
 /** The Referee's three rulings, which are a person's three labels too. */
 export const RULINGS = ["earned", "check-defect", "unclear"] as const;
+/** Human review labels for passing answers: `sound` (valid), `wrong` (invalid answer that slipped
+ *  past checks, treated as a side failure via `wrongAsFailed`), or `unclear`. */
+export const PASS_LABELS = ["sound", "wrong", "unclear"] as const;
+export type PassLabel = (typeof PASS_LABELS)[number];
 
 /** The fewest labelled fails any bar is read on. */
 const LEAST_LABELS = 30;
+/** The fewest labelled passes, and highest wrong-pass share, for the pass-soundness bar. */
+const LEAST_PASS_LABELS = 20;
+const MAX_WRONG_PASS = 0.1;
 /** The share of `unclear` rulings labelled earned past which the report speaks. */
 const UNCLEAR_EARNED = 1 / 4;
 
@@ -139,4 +135,34 @@ export function unclearReport({ table, unclearEarned }: Agreement): string | nul
   if (unclearEarned === null || unclearEarned <= UNCLEAR_EARNED) return null;
   const ruled = RULINGS.reduce((sum, label) => sum + table[label].unclear, 0);
   return `a person labelled earned ${String(table.earned.unclear)} of the Referee's ${String(ruled)} unclear rulings, more than one in four: an unclear ruling sets aside a task a person reads as a real limit`;
+}
+
+/** A person's label of each sampled passing answer on record (`labelsIn`), where it is one of
+ *  `PASS_LABELS`. */
+export function settledPassLabels(events: readonly LogEvent[]): Map<string, PassLabel> {
+  return new Map(
+    [...labelsIn(events, "passes")].flatMap(([solve, label]) => {
+      const known = PASS_LABELS.find((word) => word === label);
+      return known === undefined ? [] : [[solve, known] as const];
+    }),
+  );
+}
+
+/** Pass-soundness summary over blind pass labels (from one campaign or pooled across several):
+ *  counts by label, total and decided (`sound` + `wrong`) labelled passes, wrong-pass share among
+ *  decided passes, and whether the set clears the pass bar (at least 20 decided passes and at most
+ *  1 in 10 wrong, so `unclear` passes neither inflate the sample nor dilute the wrong-pass rate). */
+export function passAgreement(labels: ReadonlyMap<string, PassLabel>) {
+  const counts: Record<PassLabel, number> = { sound: 0, wrong: 0, unclear: 0 };
+  for (const label of labels.values()) counts[label] += 1;
+  const total = labels.size;
+  const decided = counts.sound + counts.wrong;
+  const wrongRate = decided === 0 ? null : counts.wrong / decided;
+  return {
+    counts,
+    total,
+    decided,
+    wrongRate,
+    clears: decided >= LEAST_PASS_LABELS && wrongRate !== null && wrongRate <= MAX_WRONG_PASS,
+  };
 }

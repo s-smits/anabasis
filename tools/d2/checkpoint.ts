@@ -2,43 +2,6 @@
  * One comparison of two harnesses a campaign keeps, on its held-out tasks, with no Builder session.
  *
  *   bun tools/d2/checkpoint.ts --name truss --id g-2 --target 8 --cap 437
- *
- * With no `--reference` and no `--new` it compares the latest harness a Builder session left with
- * the Starter Built Harness, which is the standalone comparison: several sessions, then one comparison
- * on fresh solves. While no session has left a harness there is nothing to compare, and the command
- * says so. A campaign's first comparison is no standalone one: it is the first round (`round.ts`).
- *
- * `--reference` and `--new` each name a harness the campaign keeps (`campaign.ts`, `keptAs`):
- * `starter`, `latest`, or the whole digest of one a session froze. So the same command compares a
- * harness with a promoted reference, and reads a harness against the starter where a settling, a stop or the cap left a step unread
- * against it (`--reference starter --new <digest>`).
- *
- * `programs-of:` before a name is that harness's programs ablation: the starter with the harness's installed
- * programs and nothing else of it. `--reference starter --new programs-of:latest` reads what the
- * programs are worth by themselves, and `--reference programs-of:latest --new latest` what the
- * guide and the tools add to them. A step is the whole harness's until those two are read.
- *
- * The report also reads the reference harness against itself,
- * an A/A comparison, on halves of its own solves mirrored in time (`comparison.ts`). With
- * the starter as the reference and a fixed budget, this command reads the starter's A/A comparison.
- * The A/A comparison
- * should read no step, and its tie share is the noise every later comparison has to exceed.
- *
- * The scored set and the solver's setting are the campaign's, read from its log as a round reads
- * them (`setting.ts`): `--target`, and the solver's flags, name them only where the
- * campaign has recorded none. One reading promotes, with no repeat over the same two harnesses'
- * untied tasks. The solves a side, the level, the Referee and the cap are a round's, with a round's defaults
- * (`round.ts`), and `--cap` is required as it is there. With no `--reviewer`, every rejection
- * waits for a person and sets its task aside until `tools/d2/settle.ts` has its labels.
- *
- * Before its first event it asks whether the comparison may start, as a round does
- * (`src/campaign/admission.ts`). `--past-stop "<why>"` goes on past the
- * stop rule, and the reason is logged.
- *
- * Run again with the same `--id`, it goes on from its log, and once it has reported it says what
- * it said.
- *
- * Not run here: see `campaign.ts`.
  */
 import { admitComparison } from "#src/campaign/admission.ts";
 import type { Report } from "#src/campaign/comparison.ts";

@@ -5,19 +5,19 @@
  * `predictions-<run>.md`, its outcome its `outcomes-<run>.md`, and what stays undone or opposed the
  * `plan.md` of the iteration that read the run (an older run's `still-missing-<run>.md` is still
  * read). The cycle, dropped and still-missing views are derived here and never written by hand.
- *
- * A table counts only where its header's first cell names it (`id` for a ledger), so a second
- * table, a heading or prose is never read as a prediction; comments and code fences are skipped,
- * so a heading inside an example does not count as the section.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
 
-/** One parent run's name and its two ledgers' text, for what a fork of it carries. */
+/** One parent run's name, its two ledgers' text, and optionally its iteration's `plan.md`, for
+ *  what a fork of it carries. */
 export interface Parent {
   readonly name: string;
   readonly predictions: string;
   readonly outcomes: string;
+  /** The parent iteration's `plan.md`; ids named under `## Intentionally opposed` are deliberately
+   *  retired and excluded from child forks' owed carry list (matching `droppedOf`). */
+  readonly plan?: string;
 }
 
 /** What one predictions ledger's `## Carried` section names (`carriedOf`), and the run whose ledger it is. */
@@ -54,6 +54,8 @@ const COUNTED = /^Log events at resolution: (\d+)\.?$/mu;
 export const OUTSIDE = "outside-reads.md";
 /** The group of a prediction that a count of the run's outside read settles, and no event of its log. */
 const OUTSIDE_GROUP = "outside";
+/** Heading name of a plan's deliberate trade-offs and retired predictions section. */
+const OPPOSED = "Intentionally opposed";
 
 /** `text` without HTML comments and fenced code blocks. */
 const stripped = (text: string) =>
@@ -256,7 +258,7 @@ export function droppedOf(runs: readonly RunLedgers[], carried: readonly Carried
   const linesOf = (among: readonly RunLedgers[]) =>
     among.flatMap((run) => {
       const outcome = outcomesOf(run.outcomes);
-      const opposed = (sectionOf(run.plan, "Intentionally opposed") ?? []).join("\n");
+      const opposed = (sectionOf(run.plan, OPPOSED) ?? []).join("\n");
       const others = new Set(
         carried.filter((each) => each.run !== run.name).flatMap(({ tokens }) => [...tokens]),
       );
@@ -306,25 +308,26 @@ export function stillMissingOf(run: RunLedgers): string[] {
     "",
     "## Intentionally opposed",
     "",
-    ...listed(
-      sectionOf(run.plan, "Intentionally opposed") ?? sectionOf(run.older, "Intentionally opposed") ?? [],
-    ),
+    ...listed(sectionOf(run.plan, OPPOSED) ?? sectionOf(run.older, OPPOSED) ?? []),
   ];
 }
 
 /**
  * What a fork's `predictions` owes its parents in its `## Carried` section, and what that section
- * leaves out: each id a parent did not hold, as `carriedName` names it. Matched as whole tokens
- * (`carriedOf`), so `r:P2` is not carried by `r:P20`. What a parent leaves out on purpose is its
- * iteration's plan's, which the still-missing view reads, so the section owes no file.
+ * leaves out: each id a parent did not hold and did not deliberately retire under its iteration
+ * plan's `## Intentionally opposed` (matching `droppedOf`), as `carriedName` names it. Matched as
+ * whole tokens (`carriedOf`), so `r:P2` is not carried by `r:P20`.
  */
 export function carryOf(
   predictions: string,
   parents: readonly Parent[],
 ): { owed: string[]; missing: string[] } {
-  const owed = parents.flatMap(({ name, predictions: theirs, outcomes }) =>
-    unheldOf(idsOf(theirs), outcomes).map((id) => carriedName(name, id)),
-  );
+  const owed = parents.flatMap(({ name, predictions: theirs, outcomes, plan = "" }) => {
+    const opposed = (sectionOf(plan, OPPOSED) ?? []).join("\n");
+    return unheldOf(idsOf(theirs), outcomes)
+      .filter((id) => !names(opposed, id))
+      .map((id) => carriedName(name, id));
+  });
   const carried = carriedOf(predictions);
   return { owed, missing: owed.filter((token) => !carried.has(token)) };
 }

@@ -4,33 +4,11 @@
  * working directory, its home. On top of them are the tools that are a Builder's alone. Two ask
  * the host about `harness/` as it stands and run on the same wall: `check_harness` and
  * `preview_harness`. Four are the host's: `practice`, `read_trace`, `read_opening` and `finish`.
- *
- * v1's Builder had pi's file tools too. A Builder with the shell and one `write_file` alone rewrote
- * a 30 KB tools file through a heredoc to change a line and could not see what a solver would be
- * shown (`7af7315:src/builder/tools.ts`). The shell is the whole of its action space beyond these,
- * and no tool is given for what a command already does.
- *
- * The wall is the solver's, so the repository, the operator's home and every other solve's scratch
- * are closed to the Builder by the operating system and not by a path check in this process: a guard
- * in the process it constrains is a convention and not a wall (`7af7315:src/builder/candidate-isolation.ts`).
- * So every file tool here works through a walled command.
- *
- * One read is the host's own: the host opens a harness snapshot, as a solve opens any harness.
- * `openHarness` reads the guide and the spec alone, refusing either where it links out of the
- * harness, so nothing here asks that again.
- *
- * `practice` is where the Referee meets the Builder. A rejected answer goes to it, as in a
- * comparison; a check defect's task leaves the session, and an unclear or unread rejection is not
- * shown as a failure. What comes back names the ending and the
- * task's record, and never a check, a verdict's detail or the Referee's reasons. A practice solve
- * that could not be run at all, the verifier failing to decide for one, ends the session: its
- * error can name a check, so it is kept for the host and the Builder is told only that the session ends.
- * Finish reads counted practice for the exact current digest, including restored states; a frozen
- * harness snapshot alone supplies no practice evidence. The same record supplies continuation facts.
  */
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
+import { callPrograms } from "../kernel/call-programs.ts";
 import { checkCouldNotRun, type Ending } from "../kernel/solve.ts";
 import { limitsIn } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
@@ -58,8 +36,10 @@ import { plural } from "../meta/text.ts";
 import { ending as endSession, openDesk, text, tool } from "../tools/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../tools/coding.ts";
 import { type CommandWall, type NetworkReach, networkReach } from "../tools/command.ts";
+import { namedTasks, readHarnessFiles } from "../harness/files.ts";
 import type { Harness } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
+import { HOST_ONLY } from "../harness/starter.ts";
 import { homeHolds, systemPrompt } from "../solver/prompt.ts";
 import { clockText, solverTools } from "../solver/run.ts";
 import { STARTED as COMPARISON_STARTED } from "../campaign/comparison.ts";
@@ -114,6 +94,8 @@ interface Against {
 const SOLVE_HOME = "(the solve's own home directory)";
 /** Where a band of the gain over the author's answer begins, after the tie floor. */
 const BAND_EDGES = [GAP_FLOOR, 0.1, 0.5, 0.9] as const;
+/** Session practice-solve count on one task at which a factual concentration note is appended. */
+const PRACTICE_NOTE_AT = 4;
 const percent = (share: number): string => String(Math.round(share * 100));
 
 /**
@@ -220,6 +202,29 @@ function usedText(events: readonly LogEvent[], solve: string): string {
       ? ""
       : `, and read ${String(readTokens)} tokens and wrote ${String(count(tokens.output))}`;
   return ` It took ${clockText(end.seconds)} of ${clockText(limits.wallSeconds)} and ${plural(end.turns, "model turn")}${given}${counted}.`;
+}
+
+/** A finished solve's calls, as a sentence after its usage: how many, which failed by the numbers
+ *  `read_trace` gives them, and which of the harness's programs ran (`callPrograms`), with how
+ *  many calls ran and failed each. */
+function callsText(events: readonly LogEvent[], solve: string, programs: readonly string[]): string {
+  const { calls } = traceOf(events, "solve", solve);
+  if (calls.length === 0) return "";
+  const failed = calls.flatMap(({ isError }, at) => (isError ? [at + 1] : []));
+  const ran = calls.map((call) => ({ ...callPrograms(call), isError: call.isError }));
+  const used = programs.flatMap((name) => {
+    const by = ran.filter((call) => call.programs.includes(name));
+    if (by.length === 0) return [];
+    const broke = by.filter(({ isError }) => isError).length;
+    return [`${name} ${String(by.length)}${broke === 0 ? "" : ` (${String(broke)} failed)`}`];
+  });
+  const shown =
+    programs.length === 0
+      ? ""
+      : used.length === 0
+        ? ` Harness programs run: none of ${String(programs.length)}.`
+        : ` Harness programs run: ${used.join(", ")}.`;
+  return ` It made ${plural(calls.length, "tool call")}; failed: ${failed.join(", ") || "none"}.${shown}`;
 }
 
 /** One practice solve and what the Referee read of its fail. Throws only what the solve itself
@@ -349,11 +354,39 @@ function recordText(
     .join(" ");
 }
 
+/** Record line plus factual concentration note once a task reaches `PRACTICE_NOTE_AT` solves in this
+ *  session; never refuses and reads practice solves alone (rule 3). */
+function practiceTaskNotes(
+  events: readonly LogEvent[],
+  task: PracticeTask,
+  info: {
+    readonly sessionId: string;
+    readonly roles: readonly (readonly [string | null, string])[];
+    readonly against: Against | null;
+    readonly name: () => string;
+  },
+): string[] {
+  const sessionStart = events.findLastIndex(
+    ({ kind, data }) => kind === "build.started" && data.session === info.sessionId,
+  );
+  const count = ended(
+    practiceRan(events).filter(({ started, under }) => started > sessionStart && under.task === task.version),
+  ).filter((solve) => passed(solve) !== null).length;
+  return [
+    recordText(events, task.version, info.roles, info.against, info.name),
+    ...(count >= PRACTICE_NOTE_AT
+      ? [
+          `Note: ${task.task.taskId} has now been practised ${String(count)} times in this session; further single-task tuning risks overfitting.`,
+        ]
+      : []),
+  ];
+}
+
 export function practiceTool(bench: Bench): SeatTool {
   const { request } = bench;
   return tool({
     name: "practice",
-    description: `Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits: a practice solve takes as long as any solve. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, what the solve used of its limits and the tokens it read and wrote, the task's record of practice solves under each harness the result names, the reference harness among them, the solve's id for read_trace and, for a rejection the Referee set aside, that it was set aside; never which check refused an answer. Under an objective a valid answer's measure is given as a band against the task author's answer on record: ${BANDS_TOLD}; a task with no author's answer on record shows none. A harness that does not open spends no solve. \`under: "reference"\` costs the same solves and shows what your change is measured against.`,
+    description: `Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits: a practice solve takes as long as any solve. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, what the solve used of its limits and the tokens it read and wrote, how many tool calls it made, which failed and how many ran each of the harness's programs, the task's record of practice solves under each harness the result names, the reference harness among them, the solve's id for read_trace and, for a rejection the Referee set aside, that it was set aside; never which check refused an answer. Under an objective a valid answer's measure is given as a band against the task author's answer on record: ${BANDS_TOLD}; a task with no author's answer on record shows none. A harness that does not open spends no solve. \`under: "reference"\` costs the same solves and shows what your change is measured against.`,
     parameters: Type.Object({
       tasks: Type.Array(Type.String(), {
         minItems: 1,
@@ -437,14 +470,17 @@ export function practiceTool(bench: Bench): SeatTool {
       // A task's record is read once all its solves finished, so it follows its last solve alone.
       const flat = solved.flat();
       const last = new Map(flat.map(({ task }, at) => [task.version, at]));
+      const programs = installedPrograms(ran.harness.toolTree);
       const said = flat.map(({ task, solve, ending, lines }, at) => {
         const shown = rejectionAside(events, { id: solve, ending })
           ? "rejection set aside"
           : endingText(ending);
         const against = againstFor(task.version);
         return [
-          `${task.task.taskId}${under === "reference" ? " under the reference harness" : ""}: ${shown}. Solve ${solve}.${usedText(events, solve)}${measuredText(events, solve, against, name)}`,
-          ...(last.get(task.version) === at ? [recordText(events, task.version, roles, against, name)] : []),
+          `${task.task.taskId}${under === "reference" ? " under the reference harness" : ""}: ${shown}. Solve ${solve}.${usedText(events, solve)}${callsText(events, solve, programs)}${measuredText(events, solve, against, name)}`,
+          ...(last.get(task.version) === at
+            ? practiceTaskNotes(events, task, { sessionId: request.id, roles, against, name })
+            : []),
           ...lines,
         ].join("\n");
       });
@@ -515,11 +551,6 @@ export function traceTool(bench: Bench): SeatTool {
  * practice solve run on it, the solves spent on earlier versions, which is why `practice` says when
  * the last one is gone. A session that never
  * practised chose so and is told nothing here. A second `finish` ends the session as it is.
- *
- * A Builder that leads its campaign is also told that no comparison has read the harness it would
- * leave, since a Builder that finishes while an Examiner session writes can end the campaign
- * `finished` with no comparison. One that would finish on the harness last promoted is told the
- * move the table names next, since finishing there stops the climb.
  */
 async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<string | null> {
   const { request, told } = bench;
@@ -623,19 +654,63 @@ export function finishTool(bench: Bench, unmeasured?: Unmeasured): SeatTool {
   });
 }
 
-/** What a harness that opens gives a solver, a line for each of its three parts, and a note where
- *  one part makes another unreachable: programs under a solver with no shell. */
-function opens(harness: Harness): string {
+/** Joins English phrases with commas and "and" (`a`, `a and b`, `a, b, and c`). */
+function listText(parts: readonly string[]): string {
+  if (parts.length <= 1) return parts[0] ?? "";
+  if (parts.length === 2) return `${parts[0] ?? ""} and ${parts[1] ?? ""}`;
+  return `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1) ?? ""}`;
+}
+
+/** Formats positive `[count, singular, suffix?]` rows as plain English clauses. */
+function countPhrases(rows: readonly (readonly [number, string, string?])[]): string[] {
+  return rows.flatMap(([count, unit, suffix = ""]) => (count > 0 ? [`${plural(count, unit)}${suffix}`] : []));
+}
+
+/** What a harness that opens gives a solver, plus plain facts about its guide, written files,
+ *  host-specific paths, and any practice task named or quoted (wall-safe: reads only the frozen
+ *  harness, the public contract, and released practice tasks). */
+function opens(harness: Harness, dir: string, contract: Contract, tasks: readonly PracticeTask[]): string {
   const presets = selectedCodingTools(harness.presets);
   const programs = installedPrograms(harness.toolTree);
+  const ruleIds = [...new Set(contract.rules.map(({ id }) => id).filter((id) => id !== ""))];
+  const info = readHarnessFiles(dir, [], ruleIds);
+  const { guide, files: toolFiles, lines: toolLines } = info.size ?? { guide: 0, files: 0, lines: 0 };
+  const chars = harness.guide?.length ?? 0;
+  const split = info.hasSplit
+    ? `${String(info.keptLines)} before "${HOST_ONLY}", ${String(Math.max(0, guide - info.keptLines))} under it; ${String(chars)} characters`
+    : `${String(chars)} characters; no "${HOST_ONLY}" heading`;
+  const guideLine = harness.guide === null ? "Guide: none." : `Guide: ${plural(guide, "line")} (${split}).`;
+  const fileIssues = countPhrases([
+    [info.hostPaths, "path", " to this machine"],
+    [info.hostShebangs, "host-specific shebang"],
+    [info.plainBins, "non-executable file", " in bin/"],
+    [info.brokenLinks, "broken link"],
+  ]);
+  const guideIssues = countPhrases([
+    [info.keptHostRefs, "host reference"],
+    [info.keptRuleIds, "rule id"],
+  ]);
+  const exportNote = info.hasSplit
+    ? `Before "${HOST_ONLY}", the guide names ${listText(guideIssues)}; text before that heading stays in exported harnesses.`
+    : `The guide names ${listText(guideIssues)}, with no "${HOST_ONLY}" heading to separate them on export.`;
+  const mentions = namedTasks(
+    info.written,
+    tasks.map(({ task }) => task),
+  );
   return [
     "The harness opens.",
     `pi's tools: ${presets.join(", ") || "none"}.`,
     `Programs: ${programs.join(", ") || "none"}.`,
-    `Guide: ${String(harness.guide?.length ?? 0)} characters.`,
+    guideLine,
+    ...(toolFiles > 0
+      ? [`Your files under .toolchain/: ${plural(toolFiles, "file")}, ${plural(toolLines, "line")}.`]
+      : []),
     ...(programs.length > 0 && !presets.includes("bash")
       ? ["The solver has no shell, so it can run none of the programs itself."]
       : []),
+    ...(fileIssues.length > 0 ? [`Files in harness/ carry ${listText(fileIssues)}.`] : []),
+    ...(guideIssues.length > 0 ? [exportNote] : []),
+    ...(mentions.length > 0 ? [`Matches a practice task: ${mentions.join("; ")}.`] : []),
   ].join("\n");
 }
 
@@ -645,9 +720,12 @@ function checkTool(bench: Bench): SeatTool {
   return tool({
     name: "check_harness",
     description:
-      "Open harness/ as a solve would. Reports pi's tools it selects, its programs by name and the guide's length, or the error a solve would stop on. Spends no practice solve.",
+      "Open harness/ as a solve would. Reports pi's tools, its programs, the guide's length and heading split, any host-specific paths or campaign references that break outside this host, and any practice task named or quoted in your files, or the error a solve would stop on. Spends no practice solve.",
     parameters: Type.Object({}),
-    execute: async () => await frozen(bench, ({ harness }) => text(opens(harness))),
+    execute: async () =>
+      await frozen(bench, ({ dir, harness }) =>
+        text(opens(harness, dir, bench.request.contract, bench.tasks)),
+      ),
   });
 }
 

@@ -43,12 +43,6 @@ export function decodedJsonText(value: JsonValue): JsonValue {
 
 /**
  * Read JSON bytes, or an object a log reader already parsed from them, as a declared contract.
- *
- * `JSON.parse` returns `any`, and a logged event's fields are `JsonValue`, so every reader in the
- * tree ended in `as T` or `as unknown as T`. The type parameter says
- * the same thing in one place. It remains a declaration about whoever wrote those bytes and not a
- * check on them: this owner narrows `any` and can observe no mismatch. A reader that must refuse
- * damaged bytes validates them itself, as `read` in src/kernel/log.ts does when it refuses a line.
  */
 // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- `T` is the caller's declared contract, narrowed once here for every reader of a log or a pack
 export function parseJsonAs<T>(source: string | JsonObject): T {

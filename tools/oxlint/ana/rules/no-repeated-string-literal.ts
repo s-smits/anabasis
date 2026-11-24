@@ -4,87 +4,15 @@ import { isTestFile } from "../shared/file-role.ts";
 import { ownedElsewhere } from "../shared/literal-owner.ts";
 
 /**
- * One string the compiler does not own, spelled four times in a file, is four places to edit and
- * four chances to disagree.
- *
- *     spawn(["bwrap", "--ro-bind", from, to]);  // and three more, spelled out
- *     readFileSync(join(dir, "opening.json"));  // and three more
- *
- * The first version of this rule reported every repeat that carried meaning, and it was wrong
- * about most of them. Measured over the whole tree on 2026-09-20: 158 sites, of which 138 across
- * 98 distinct values were bare tags: `"non-result"`, `"completed"`, `"blocking"`, `"Identifier"`.
- * Those are union members. A typo in one is a build failure rather than a branch that quietly
- * never runs, so the risk this rule exists to remove is already removed there, by a mechanism
- * stronger than a local `const`. The repair the old message asked for did not exist either: the
- * union is a type, so there is no member to import and the `const` beside the four uses would
- * only move the characters.
- *
- * The 20 that remain are the strings nothing checks: a file this repository writes and reads
- * (`opening.json`, `battery.json`, `agent/tools.ts`), a flag handed to a sandbox (`--ro-bind`,
- * `--tmpfs`), an identifier crossing a process boundary (`verifier_workshop`), a sentence a
- * reader will grep for. `generated-tool-worker-child.ts` spells its wire form `non_result` while
- * the whole rest of the tree spells the case kind `non-result`; nothing but a reader catches
- * that, and that is the finding.
- *
- * A bare tag is one word of letters, digits and hyphens. The test is a proxy for "the type checker
- * has no opinion here" and a blunt one, but it is decidable from the characters, and it selects the
- * class where a named constant is the repair rather than a second copy. It is wrong about
- * underscores, and knowingly: `materialization_result`, `apply_files_result` and
- * `turn_permit_request` are declared members of the worker protocol union in
- * `5bc9988:src/solve/generated-tool-worker-protocol.ts`, so the rule reports a repeat the compiler already
- * owns. Widening the tag to admit `_` would also admit the wire identifiers the same file crosses a
- * process boundary with, which is the one class this rule exists to catch: `non_result` against
- * `non-result` is the recorded instance. The mismatch is left in the narrower direction on purpose. It admits a leading digit, which it did not until 2026-09-20: `"2-digit"` is a
- * member of `Intl.DateTimeFormatOptions`, spelled six times in one formatter and five in
- * another, and the five `introduced: "2026-09-15"` rows of the safeguard inventory are a
- * hyphenated word by the same reading: naming either is not a repair.
- *
- * The bare-tag test reads a union member from its characters, and a member with a space or a comma
- * in it fails that test: `"no value"` beside `"moved, better"` in one verdict union. Where the file
- * itself writes the spelling as a literal type, the union is in view, and the copies in value
- * position are the ones the compiler holds to it: a returned `{ verdict: "no valeu" }` and a
- * comparison `verdict === "no valeu"` are both build failures. Asking for a constant for such
- * copies would leave the constant to be read back into the union as
- * `typeof NO_VALUE`, which is the declaration bent around the rule. So a spelling this file
- * declares as a literal type is not counted. It is still a proxy: a copy handed to an untyped
- * place is not checked, and a union another file declares is out of view, where the report stands.
- *
- * Some spellings are somebody else's, and `ownedElsewhere` answers which: a flag, a media type,
- * a registry name, a system path. `args.push("--ro-bind", path, path)` reads against `man bwrap`,
- * while `args.push(RO_BIND, path, path)` reads against nothing, and the `const` would have been
- * typed from the same memory as the six copies. Three sites of 19 on 2026-09-20; the identity
- * scan asked the same question with a longer list, which is why the list is now shared.
- *
- * In a source file there is no fix, because where the constant belongs is the question and a
- * fixer would answer it with a local one every time. In a test file a local one is the answer: the
- * fixture belongs to the suite that spells it, and importing the producer's constant instead would
- * cost the test the rename it exists to catch. So the fixer runs there and nowhere else. It
- * declines a value it cannot turn into a plain identifier (a leading digit, an escape, a name the
- * file already uses) and a file with no import to insert after, because inserting before the
- * first declaration lands between a doc comment and the declaration it documents.
- *
- * Import sources and re-export names are skipped because the module system owns them, and object
- * property keys because they are the shape rather than a value. A test file is held to a higher
- * floor rather than skipped, for the reason `REPEAT_FLOOR` records. The report lands once per
- * literal, at its first spelling, and names the other lines: four reports of one string are four
- * readings of one finding.
+ * Flags a string literal not checked by the compiler (file paths, wire identifiers, grep targets)
+ * spelled four or more times in a source file (ten or more in a test file, excluding whitespace
+ * prose). Bare hyphenated union tags (`BARE_TAG`), strings declared as a literal type in the same
+ * file, external flags/paths (`ownedElsewhere`), import sources, and property keys are exempt.
+ * Auto-fixes test files only; in source files there is no fix because the constant's owner must be
+ * chosen deliberately.
  */
 
-/**
- * Spellings of one string in a file below which repetition is ordinary, by the file's job.
- *
- * A suite naming one fixture in twenty cases is doing its job, which is why test files take a
- * higher floor rather than being skipped. Skipping them would skip the case the floor exists for:
- * `5bc9988:test/run-triage.test.ts` spells one campaign directory 23 times, and when the fixture moved,
- * 23 lines had to move with it. Measured over the whole test corpus at a floor of 12, the rule
- * finds the files where the repetition is a fixture nobody named and nothing else.
- *
- * A suite's prose is not held to it at all. A string with whitespace in a test is a note no reader
- * compares, such as a scripted Builder's `finish` note, or the sentence an assertion reads, and a
- * constant hides from the case what it asserts: a repeated note such as "Nothing to add." in
- * `test/builder-led.test.ts` never needs its copies to agree. A directory or a file name has no
- * whitespace, and stays counted.
- */
+/** Spellings of one string in a file below which repetition is ordinary, by the file's job. */
 const REPEAT_FLOOR = { source: 4, test: 10 };
 
 /** String length below which a repeat is a word (`"id"`, `"json"`) rather than a value. */
@@ -111,11 +39,6 @@ interface Spelling {
 
 /**
  * The constant a repeated value would be named, or null when naming it would not be an improvement.
- *
- * The file's whole text is the collision test, not its scope tree: a word already spelled anywhere
- * here may be an import, a local or a property, and any of the three makes the new declaration a
- * second meaning for one name. It over-refuses, and the cost of over-refusing is a report the
- * author fixes by hand.
  */
 function constantName(value: string, text: string): string | null {
   if (value.includes("\\")) return null;

@@ -1,12 +1,6 @@
 /**
  * The `ci.yml` runs a landing reads, and the `ci-fixes` run it dispatches after a failed one.
  *
- * A full run of `ci.yml` takes about 17 runner-minutes over its three jobs and ten to fifteen
- * minutes of a landing's wall clock. When one failed in its tests and the fix is pushed, running the
- * whole of it again would pay for files that had just passed on a tree that differs from the new one
- * only by the fix (on the operator's word: "we only need to rerun 'ci-fixes' which is only the
- * maxdepth1 of all the fixed tests").
- *
  * So the run on a new head is `ci-fixes` by default: the same workflow, dispatched with the test
  * files to run in place of the suite. Its base is the newest full run on the top's branch, or, where
  * the branch has none, the trunk's head, whose tree a full run passed before `land` merged it, since
@@ -18,12 +12,6 @@
  * requests above are replayed, so the base is seldom an ancestor of the new head. A test neither
  * near the change nor failed there passed on the base's tree. The landing's own whole gate still
  * runs the full suite on the new head, on a runner host, before anything merges.
- *
- * A full run is dispatched instead wherever that argument does not hold: a failed step other than
- * the suite (the typecheck, the lint, the format, the secret scan, the UI's build, the climb
- * simulation), a job cancelled or never taken, a failed log that names no test file, or a change
- * to what installs or runs the suite or to the OS walls, which `ci.yml` exists to prove on clean
- * machines (`FULL`).
  */
 import { mkdtempSync, realpathSync, rmSync } from "../../src/meta/filesystem.ts";
 import { tmpdir } from "../../src/meta/os.ts";

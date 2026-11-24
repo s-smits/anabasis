@@ -43,11 +43,12 @@ import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { dirname, join, relative } from "#src/meta/path.ts";
+import { hasWholeToken } from "#src/meta/text.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { keyIfNotNull } from "#src/meta/optional-key.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { type Program, programsOf } from "#src/harness/programs.ts";
-import { HOST_ONLY } from "#src/harness/starter.ts";
+import { portableGuide } from "#src/harness/starter.ts";
 import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
 import { type Place, placeOf } from "#src/harness/place.ts";
 import { HARNESS_DIR, HERE, placeHarness, sourceNamed } from "./bundle.ts";
@@ -111,9 +112,15 @@ export async function exportForClaudeCode(
     mkdirSync(dirname(join(part, HOOKS)), { recursive: true });
     writeFileSync(join(part, HOOKS), `${capturedJsonStringify(hooks, null, 2)}\n`);
   }
-  // Each program is listed with the first line of its own account, which is where a program says what
-  // it opens; whether one written for the other runner's files is of use here is the solver's to judge.
-  const programs = exportedPrograms(part);
+  const rawGuide = harness.guide ?? "This harness has no guide of its own.\n";
+  // What a guide keeps under its last heading, `HOST_ONLY`, holds only for the exam and stays behind.
+  const guide = portableGuide(rawGuide);
+  const hostOnly = rawGuide.slice(guide.length);
+  // Each program is listed with the first line of its own account, omitting helpers quarantined
+  // strictly under `HOST_ONLY` so export does not re-advertise stripped campaign-only tools.
+  const programs = exportedPrograms(part).filter(
+    ({ name }) => hasWholeToken(guide, name) || !hasWholeToken(hostOnly, name),
+  );
   // A harness that keeps its method in packages reaches them in a campaign through its own
   // interpreter, first on that PATH. Here that name starts the machine's, which reads no folder of
   // the tree, so the solver is told where they are and what they were built for, and the rest is its.
@@ -127,7 +134,7 @@ export async function exportForClaudeCode(
   const note = [
     "# How this harness reaches you",
     "",
-    "The guide below was written for another runner, where a task came as `input.json`, the answer went into `answer.json` and a `submit` tool sent it. None of those is here: the task prompt is the whole task and says where the deliverable goes, and the files you leave are the answer, whatever the guide says of those three. Whatever it says of a limit on turns or time, of checking or submitting an answer, or of how an answer is scored also belongs to that runner and does not hold here.",
+    "The guide below was written for another runner, where a task came as `public/task.json`, the answer went into `answer.json` and a `submit` tool sent it. None of those is here: the task prompt is the whole task and says where the deliverable goes, and the files you leave are the answer, whatever the guide says of those three. Whatever it says of a limit on turns or time, of checking or submitting an answer, or of how an answer is scored also belongs to that runner and does not hold here.",
     ...(programs.length === 0
       ? []
       : [
@@ -146,8 +153,6 @@ export async function exportForClaudeCode(
         ]),
     "",
   ];
-  // What a guide keeps under its last heading, `HOST_ONLY`, holds only for the exam and stays behind.
-  const [guide = ""] = (harness.guide ?? "This harness has no guide of its own.\n").split(`\n${HOST_ONLY}\n`);
   writeFileSync(join(part, "CLAUDE.md"), `${note.join("\n")}\n${guide}`);
   const record = {
     harness: harness.digest,

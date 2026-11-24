@@ -132,6 +132,7 @@ PROMPT_FILES = (
     "src/tools/answer.ts",
     "src/solver/run.ts",
     "src/referee/referee.ts",
+    "src/referee/draft-audit.ts",
     "src/referee/probe.ts",
     "tools/d2/campaign-actions.ts",
 )

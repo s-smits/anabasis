@@ -1,18 +1,5 @@
 /**
  * `bun run runs replay [<name> ...] [--holds <commit>]... [--has <text>]...`
- *
- * Every campaign log in the repository's worktrees, or those whose names hold one of `name` and
- * whose every launch ran with what `--holds` and `--has` name (`ranWith`, `receipt.ts`), through
- * this tree's readers of a log: its events and their kinds (`read`), the task states and the sets a
- * comparison takes (`taskSets`), what its sessions wrote (`writtenTasks`), each recorded condition,
- * the comparisons that reported (`lastReports`) and the moves the stop rule counts of them
- * (`stopRule`), which are fewer, each printed as itself. It writes nothing. The whole-run
- * investigation reads a log through its own command (`tools/wri/wri.ts read`), which a production
- * verb does not import.
- *
- * It is the check to run when an event's shape, a fold or a reader has changed. A log a real run
- * wrote that this tree refuses is named in the reader's own words, with exit code 1. A log being
- * appended to reads to its last whole line.
  */
 import { conditionsOf } from "#src/kernel/condition.ts";
 import { writtenTasks } from "#src/kernel/history.ts";

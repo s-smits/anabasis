@@ -126,6 +126,40 @@ const positions = (name: string) => {
 const winning = (graded = GRADED) =>
   scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, graded, []);
 
+/** Like `winning`, except in a starter comparison the promoted reference answers all but one task
+ *  (confirming its promotion while leaving room on the remaining task). */
+function confirming(graded = GRADED_MANY, strayed: string[] = []): Seated {
+  const candidate = scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, graded, strayed);
+  const starterBeat = scriptedSeats(
+    { held: { old: "pass", fresh: "none" }, starter: "none" },
+    graded,
+    strayed,
+  );
+  return (campaign, given) => {
+    const base = candidate(campaign, given);
+    const beat = starterBeat(campaign, given);
+    const kept = new Map<string, string>();
+    return {
+      ...base,
+      solve: async (task, harness, kill, comparison) => {
+        const started = read(campaign.log).findLast(
+          ({ kind, data }) => kind === COMPARED && data.session === comparison,
+        )?.data;
+        const isStarterRead =
+          isString(started?.starter) && started.fresh === started.starter && started.old !== started.starter;
+        if (!isStarterRead || comparison === undefined) {
+          return await base.solve(task, harness, kill, comparison);
+        }
+        const skipped = kept.get(comparison) ?? task.taskId;
+        kept.set(comparison, skipped);
+        return task.taskId === skipped
+          ? await base.solve(task, harness, kill, comparison)
+          : await beat.solve(task, harness, kill, comparison);
+      },
+    };
+  };
+}
+
 /** What a campaign's log holds of one kind, in order; with `first`, only in its first Builder
  *  conversation, since each later one may open an Examiner session beside it. */
 const of = (name: string, kind: string, first = false): JsonObject[] => {
@@ -439,6 +473,34 @@ describe("a campaign run by its live Builder", () => {
       "build",
       "build",
     ]);
+  });
+
+  it("refuses a second candidate comparison at >=80% frontier overlap until examine supplies fresh tasks", async () => {
+    const name = `${STEM}-overlap-gate`;
+    const tied = scriptedSeats({ held: { old: "none", fresh: "none" }, starter: "none" }, GRADED, []);
+    const seats: Seats = {
+      seated: builderScript(tied, [
+        CHANGE_GUIDE,
+        ["compare", {}],
+        CHANGE_AGAIN,
+        // Same 5-task frontier (100% overlap): refused before checkpointing or recording a move.
+        ["compare", {}],
+        ["examine", {}],
+        ["wait", {}],
+        // 6 fresh tasks held out: overlap drops to 0%, so compare succeeds.
+        ["compare", {}],
+        ["finish", { note: "Compared on fresh tasks." }],
+        ["finish", { note: "Compared on fresh tasks." }],
+      ]),
+      examine: writer,
+    };
+    await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "10"], seats);
+    const [, refused, fresh] = said(name, "compare");
+    expect(refused).toContain("frontier tasks (100%) already scored in comparison g-1");
+    expect(refused).toContain("Call examine to hold out fresh tasks");
+    expect(fresh).not.toContain("already scored in comparison");
+    expect(of(name, COMPARED)).toHaveLength(2);
+    expect(of(name, "build.checkpoint")).toHaveLength(2);
   });
 
   it("requires a Referee for a paid opening, keeps its recorded seat, and permits scripted openings without one", () => {
@@ -854,22 +916,19 @@ describe("a campaign run by its live Builder", () => {
     const name = `${STEM}-promote`;
     const strayed: string[] = [];
     const seats: Seats = {
-      seated: builderScript(
-        scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED_MANY, strayed),
-        [
-          CHANGE_GUIDE,
-          ["compare", {}],
-          ["examine", {}],
-          CHANGE_GUIDE,
-          // The table names the starter comparison after a promotion, which goes first;
-          // the next compare reads the changed harness/.
-          ["compare", {}],
-          ["compare", {}],
-          // On the harness it last promoted, the first finish is told the run ends there.
-          ["finish", { note: "Two harnesses are promoted and measured." }],
-          ["finish", { note: "Two harnesses are promoted and measured." }],
-        ],
-      ),
+      seated: builderScript(confirming(GRADED_MANY, strayed), [
+        CHANGE_GUIDE,
+        ["compare", {}],
+        ["examine", {}],
+        CHANGE_GUIDE,
+        // The table names the starter comparison after a promotion, which goes first;
+        // the next compare reads the changed harness/.
+        ["compare", {}],
+        ["compare", {}],
+        // On the harness it last promoted, the first finish is told the run ends there.
+        ["finish", { note: "Two harnesses are promoted and measured." }],
+        ["finish", { note: "Two harnesses are promoted and measured." }],
+      ]),
       // The Builder's session writes tasks for the second step; the second, which the host starts as
       // the second promotion returns, holds none.
       examine: (request, wall) =>
@@ -1094,7 +1153,7 @@ describe("a campaign run by its live Builder", () => {
 });
 
 describe("a campaign tool where the table names more than the action", () => {
-  const passing = () => winning(GRADED_MANY);
+  const passing = () => confirming(GRADED_MANY);
 
   it("reads the starter against a promoted reference while harness/ is that reference", async () => {
     const name = `${STEM}-control`;
@@ -1140,6 +1199,35 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(stopped).toContain("Not finished. harness/ is the harness last promoted,");
     expect(closing).not.toContain("harness last promoted");
     expect(of(name, FINISHED)[0]).toMatchObject({ session: "b-1", ended: "finished" });
+  });
+
+  it("reverts an unconfirmed reference back to the starter once its starter comparison reads no step", async () => {
+    const name = `${STEM}-revert-unconfirmed`;
+    const seats: Seats = {
+      seated: builderScript(winning(GRADED_MANY), [
+        CHANGE_GUIDE,
+        ["compare", {}],
+        ["examine", {}],
+        CHANGE_AGAIN,
+        // Starter comparison fails to confirm (0-0), so the host reverts to starter; next compare tests against starter.
+        ["compare", {}],
+        ["compare", {}],
+        ["finish", { note: "Reverted and compared again." }],
+        ["finish", { note: "Reverted and compared again." }],
+      ]),
+      examine: writer,
+    };
+    await harnessBuilder([...seeded(name, MANY), ...FLAGS, "--moves", "14"], seats);
+    const [first, starterComparison, second] = of(name, REPORTED);
+    expect(starterComparison).toMatchObject({ fresh: first?.old, old: first?.fresh, reading: "no-step" });
+    expect(of(name, "harness.promoted")).toMatchObject([
+      { harness: first?.fresh },
+      { harness: second?.fresh },
+    ]);
+    expect(of(name, "harness.reverted")).toMatchObject([{ harness: first?.old, from: first?.fresh }]);
+    expect(said(name, "compare")[1]).toContain("reverted the campaign's reference to");
+    expect(second).toMatchObject({ old: first?.old });
+    expect(second?.fresh).not.toBe(first?.fresh);
   });
 
   it("ends the campaign on the operator's cap at its first promotion, and tells the Builder no count", async () => {

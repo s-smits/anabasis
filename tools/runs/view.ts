@@ -1,10 +1,6 @@
 /**
  * `bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]`
  *
- * A campaign as its log reads: the set-up, what each step handed over, the climb, and the move
- * that comes next. It is the one reading of `src/campaign/handover.ts`, printed whole for the
- * campaign's owner. Nothing here reads the log for itself, and nothing is launched.
- *
  * Its last line is the one move the decision table names on this log (`decide`,
  * `src/campaign/decide.ts`), with its reason: what `tools/d2/harness-builder.ts` would make next.
  * The table is asked with the four flags of the campaign command that bear on it, and with the
@@ -14,14 +10,6 @@
  * table does not make, and it parses no flag of its own.
  * The view opens no campaign, so of a log that holds no task it says what holds for a campaign
  * over a pack: that the pack's tasks are taken in first.
- *
- * A step's line holds counts, harnesses, a tally, a reading and a cost. A harness is named by its
- * letter beside its digest's head (`namesOf`, `src/campaign/names.ts`), since a run of
- * eight hex characters a line was what an operator had to match by eye across the view and the
- * closing report. A comparison's line also says how far its tasks are independent draws: the
- * largest family's share of its frontier, and the tasks the comparison of its kind before it drew.
- * It names no task and no family, and it is for the operator and the session that stands in for
- * the campaign's owner: what a Builder is told of the same rows is `src/builder/past.ts`.
  */
 import { barLines, epochLine, epochsOf, starterReads } from "#src/campaign/climb.ts";
 import { decide } from "#src/campaign/decide.ts";
@@ -31,7 +19,7 @@ import { type Decided, decidedLine, short } from "#src/campaign/move.ts";
 import { type Called, calledBy, namesOf } from "#src/campaign/names.ts";
 import { openingOf, planOf } from "#src/campaign/opening.ts";
 import { type Campaign, campaignOf, type Handover, openSteps } from "#src/campaign/handover.ts";
-import type { LogEvent } from "#src/kernel/log.ts";
+import { type EventKind, type LogEvent, read as readEvents } from "#src/kernel/log.ts";
 import { type Call, callsOf, tracesIn } from "#src/kernel/trace.ts";
 import { HOUR_MS, MINUTE_MS } from "#src/meta/clock.ts";
 import { parseArgs } from "#src/meta/process.ts";
@@ -40,10 +28,11 @@ import { resolve } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { PRACTICE } from "../d2/prepare.ts";
 import { COMPARISON_OPTIONS } from "../d2/round.ts";
-import { logEvents, Misused, processes } from "./registry.ts";
+import { Misused, processes } from "./registry.ts";
 import { readAcross } from "./snapshots.ts";
 import { dollars } from "./said.ts";
 import { lastLaunch } from "./receipt.ts";
+import { lifeOf } from "./diagnosis.ts";
 import { runReason, runState } from "./state.ts";
 
 /** How long a first comparison may stand admissible and not begun before it is called long: longer
@@ -62,6 +51,7 @@ const VIEW_OPTIONS = {
 /** The flags of the view that bear on the table, as `parseArgs` hands them over. */
 type Asked = { readonly [Flag in keyof typeof VIEW_OPTIONS]?: string | undefined };
 
+const SKIP_CLOSED: ReadonlySet<EventKind> = new Set(["solve.call", "referee.call"]);
 const STANDINGS = [
   ["open", "open"],
   ["passed-once", "passed once"],
@@ -208,17 +198,14 @@ export async function view(args: readonly string[]): Promise<void> {
     options: VIEW_OPTIONS,
   });
   const [name] = positionals;
-  if (name === undefined) {
-    throw new Misused();
-  }
+  if (name === undefined) throw new Misused();
   const run = await readAcross(name);
   const reader = gitText(resolve(import.meta.dir, "../.."), "rev-parse", "--short=9", "HEAD");
   const launched = lastLaunch(run.path)?.commit.slice(0, 9) ?? "no receipt";
   console.log(`reader ${reader}; last launch ${launched}; the table below uses this checkout's code`);
-  const events = logEvents(run.path);
-  for (const line of await runReason(run, runState(run, events, processes()))) {
-    console.log(line);
-  }
+  const running = processes();
+  const events = readEvents(run.path, lifeOf(run, running).writing ? undefined : SKIP_CLOSED);
+  for (const line of await runReason(run, runState(run, events, running))) console.log(line);
   const campaign = campaignOf(events);
   const called = calledBy(namesOf(events));
   const lines = viewLines(name, campaign, Date.now(), called);
@@ -228,18 +215,18 @@ export async function view(args: readonly string[]): Promise<void> {
   const decided = decidedOn(events, values);
   const reads = starterReads(events);
   const climb = epochsOf(events).map((epoch) => `  ${epochLine(epoch, called, reads)}`);
-  for (const line of [
-    ...lines,
-    "the climb",
-    ...climb,
-    ...barLines(events).map((bar) => `  ${bar}`),
-    open.length === 0
-      ? "the table's move"
-      : `the table's move, on the log as it stands with ${open.join(", ")} open`,
-    `  ${decidedLine(decided)}`,
-  ]) {
-    console.log(line);
-  }
+  console.log(
+    [
+      ...lines,
+      "the climb",
+      ...climb,
+      ...barLines(events).map((bar) => `  ${bar}`),
+      open.length === 0
+        ? "the table's move"
+        : `the table's move, on the log as it stands with ${open.join(", ")} open`,
+      `  ${decidedLine(decided)}`,
+    ].join("\n"),
+  );
 }
 
 /** Hours of `[from, to)` spent inside the Builder's `wait` calls. */

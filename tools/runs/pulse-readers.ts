@@ -8,26 +8,6 @@
  * that moved would take many times as long as a pass on the largest logs.
  *
  * Three limits shape it, and each is measured or tested rather than assumed.
- *
- * The look must not slow a campaign. A solve waits in its queue for the one-minute load
- * (`tools/d2/host.ts`) and a deadline counts elapsed time, so a pass is one process a host at the
- * lowest priority, one reader at a time, at most `PASS_MS` once in `GAP_MS` however many observers
- * look, each reader only where the load leaves it room (`room`), and none at all where a look's new
- * events hold no moment not yet read.
- *
- * The hook's `timeout 40` kills a look's whole process group. So the pass runs in a session of its
- * own and outlives the look that started it (`startPass`): a look waits for it at most `WAIT_MS`, and
- * what the pass still finishes is there for the next look. Each result lands by a rename, so a kill
- * leaves no half of one.
- *
- * A skipped reader must never read as nothing new. A moment whose readers have not read it is kept in
- * the observer's memory (`Moment`), named once with the reason the store gives (`whyNot`), keeps a
- * closed run in the looks, and its lines are said at the look that finds them.
- *
- * The output holds hidden values as the log does. The store lies under the main worktree's `.ana/`,
- * closed to every seat as the repository and its worktrees are, and an observer's files lie beside its
- * `--state`, in `.ana/` or the host's temporary folder, also closed (`src/wall/isolation.ts`).
- * `test/runs-pulse-readers.test.ts` tries to read both through the wall.
  */
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { sha256 } from "#src/meta/digest.ts";

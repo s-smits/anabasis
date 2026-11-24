@@ -5,37 +5,6 @@
  * keepers(name).length > 0` itself is a second reader of whether a run lives, and drifts from the
  * owner the day the owner learns a new case (a remote observation, a seat). Call the owner.
  *
- * A unit is an expression rooted in a binary operator: a logical join, a comparison or arithmetic,
- * a chain of one operator read as one node. It is normalised so that spellings of one fact read
- * alike: wrappers (`as`, `!`, parentheses) are dropped, `?.` reads as `.`, a name the file binds
- * inside a function (a parameter or a local) reads as `$`, the operands of `&&`, `||`, `===`,
- * `!==` and `*` are sorted, `>` and `>=` are turned round, `==` reads as `===`, and a unit and its
- * negation (De Morgan's laws pushed through) share one key. Names a file imports or declares at its
- * top level, and the platform's globals, keep their spelling: they are what makes two spellings the
- * same fact. A call's argument reads as `_`, or `_.field` where it is a member chain; two arguments
- * match unless both name a field and the fields differ, so `writers(run, running)` matches
- * `writers(run, processes())` while `isString(call.cwd)` does not match `isString(node.type)`.
- *
- * An owner is an exported function whose returned value is the unit, behind parentheses or either
- * side of `??`. A unit counts only where it names at least two distinct fields or functions outside
- * its calls' arguments, besides the language's own (`length`, `has`, `includes` and kin); not where
- * every operand compares one subject with a literal, which `no-scattered-state-literals` reads; not where
- * a comparison or arithmetic has a literal or a constant on one side (`kind === "pass"`, `code ===
- * KEYS.D`), a one-field test; and not for `??`, which gives a default. A unit inside a larger
- * reported unit is not reported again. Reported: each spelling outside the owner's file, naming the
- * owner and how many files spell it by hand. Tests, declaration files and vendored trees never
- * reach the scan: `implicitStateFindings` and its callers leave them out.
- *
- * The second shape is a fold spelled again: a scan of a collection for one value of a discriminant
- * (`events.findLast(({ kind, data }) => kind === "referee.finding" && data.solve === solve)?.data
- * .ruling`) that reads every field an exported function's scan for the same value reads, where that
- * function returns its scan (`rulingsOf` maps each solve to its last `ruling`). A scan is a
- * selecting call (`filter`, `flatMap`, `find`, `findLast`, `some`, `every`, `findIndex`) whose
- * callback compares a field or a name with a string literal; its fields are the last names of its
- * callback's member chains and of the chain read off its result, calls and the language's names
- * left out. The owner must read at least two. A `forEach` or `map` does something to each item
- * rather than reading a fact, so it neither owns nor reads.
- *
  * No upstream detector exists for this shape: clone detectors (PMD CPD, jscpd) match token runs, not
  * one normalised expression, and `tree/no-unowned-fact` (`tree-fact.ts`) reads only a literal
  * test beside a field read in three files. A fact spelled alike in several files with no owner is

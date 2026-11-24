@@ -1,14 +1,5 @@
 /**
  * Rejected-solve tallying and blind operator sample drawing (`rejections`, `drawn`, `labelled`).
- *
- * Control answers verify only the failure modes anticipated when a check was authored
- * (`src/kernel/acceptance.ts`); empirical check accuracy is measured on organic rejections from
- * real solves. To guarantee blind operator labelling, `drawn` refuses to sample from any log that
- * already contains a `referee.finding` event, and callers must collect all operator labels before
- * invoking the Referee. Sampling uses a deterministic seed (`draw`, `src/kernel/compare.ts`).
- *
- * This module tallies findings and validates label files; agreement thresholds are evaluated in
- * `src/referee/agreement.ts`.
  */
 import { draw } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";

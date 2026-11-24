@@ -27,7 +27,7 @@ import { crossedArguments } from "./tree-crossed-argument.ts";
 import { factsWithoutOwner } from "./tree-fact.ts";
 import { identitiesWithoutOwner } from "./tree-identity.ts";
 import { implicitStateFindings } from "./tree-implicit-state.ts";
-import { overwrittenKeys } from "./tree-overwritten-key.ts";
+import { overwrittenKeys, parsedSources } from "./tree-overwritten-key.ts";
 import { envExamples, staleReferences } from "./tree-stale-reference.ts";
 import {
   NOT_SLOP_LEDGER,
@@ -65,6 +65,8 @@ interface Tree {
   files: ReadonlyMap<string, string>;
   /** The same files with their comment lines blanked, so line numbers still hold. */
   code: ReadonlyMap<string, string>;
+  /** Distinct identifiers spelled in each file's comment-stripped code. */
+  idents: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 /**
@@ -366,17 +368,6 @@ function codeOf(path: string, text: string): string {
     .join("\n");
 }
 
-/** Which files' code spells each identifier. */
-function spellers(code: ReadonlyMap<string, string>): Map<string, Set<string>> {
-  const found = new Map<string, Set<string>>();
-  for (const [path, text] of code) {
-    for (const name of new Set(text.match(IDENTIFIER))) {
-      found.set(name, (found.get(name) ?? new Set()).add(path));
-    }
-  }
-  return found;
-}
-
 /**
  * Whether a production export can move into its one reader: the home file is the size the recorded
  * moves took and holds nothing else, the two sit in one directory, the reader has room, and the
@@ -405,7 +396,10 @@ function movesInto(home: string, reader: string, tree: Tree): boolean {
  * also uses is a unit the module runs; a name two files declare cannot be attributed.
  */
 function exportsReadOnce(tree: Tree): TreeFinding[] {
-  const spelled = spellers(tree.code);
+  const spelled = new Map<string, Set<string>>();
+  for (const [path, names] of tree.idents) {
+    for (const name of names) spelled.set(name, (spelled.get(name) ?? new Set()).add(path));
+  }
   const homes = new Map<string, { path: string; line: number } | null>();
   for (const [path, text] of tree.owned) {
     for (const match of text.matchAll(EXPORTED)) {
@@ -417,23 +411,16 @@ function exportsReadOnce(tree: Tree): TreeFinding[] {
   }
   const rows: TreeFinding[] = [];
   for (const [name, home] of homes) {
-    const readers = [...(spelled.get(name) ?? [])].filter((path) => path !== home?.path);
+    if (home === null) continue;
+    const readers = [...(spelled.get(name) ?? [])].filter((path) => path !== home.path);
     const [reader] = readers;
-    if (home === null || reader === undefined || readers.length > 1) continue;
-    const own = (tree.owned.get(home.path) ?? "").match(IDENTIFIER)?.filter((word) => word === name).length;
-    if ((own ?? 0) > 1) continue;
-    if (isTest(reader)) {
-      rows.push({
-        kind: "no-test-only-export",
-        ...home,
-        detail: `\`${name}\` is exported only for ${reader}`,
-      });
-    } else if (movesInto(home.path, reader, tree)) {
-      rows.push({
-        kind: "no-single-reader-export",
-        ...home,
-        detail: `\`${name}\` is read by one file, ${reader}`,
-      });
+    if (reader === undefined || readers.length > 1) continue;
+    const own = (tree.owned.get(home.path)?.match(IDENTIFIER) ?? []).filter((word) => word === name).length;
+    if (own > 1) continue;
+    const add = (kind: TreeFindingKind, detail: string) => rows.push({ kind, ...home, detail });
+    if (isTest(reader)) add("no-test-only-export", `\`${name}\` is exported only for ${reader}`);
+    else if (movesInto(home.path, reader, tree)) {
+      add("no-single-reader-export", `\`${name}\` is read by one file, ${reader}`);
     }
   }
   return rows;
@@ -474,22 +461,28 @@ function filesystemBudget(tree: Tree): TreeFinding[] {
   });
 }
 
-/** Each match of a pattern on a line of each file's code, with its line. */
-function matchesOf(code: ReadonlyMap<string, string>, pattern: RegExp) {
+/** Each match of a pattern on a line of each file's code matching `take`, with its line. */
+function matchesOf(
+  code: ReadonlyMap<string, string>,
+  pattern: RegExp,
+  take: (path: string, text: string) => boolean,
+) {
   return [...code].flatMap(([path, text]) =>
-    text
-      .split("\n")
-      .flatMap((line, index) =>
-        [...line.matchAll(pattern)].map((match) => ({ path, line: index + 1, match })),
-      ),
+    take(path, text)
+      ? text
+          .split("\n")
+          .flatMap((line, index) =>
+            [...line.matchAll(pattern)].map((match) => ({ path, line: index + 1, match })),
+          )
+      : [],
   );
 }
 
 /** Per file and tag, the older versions it spells once another production file spells a later one. */
 function supersededSchemaTags(code: ReadonlyMap<string, string>): TreeFinding[] {
-  const tags = matchesOf(code, SCHEMA_TAG)
-    .filter((tag) => !isTest(tag.path))
-    .map(({ path, line, match }) => ({ path, line, name: match[1] ?? "", version: Number(match[2]) }));
+  const tags = matchesOf(code, SCHEMA_TAG, (path, text) => !isTest(path) && text.includes("/v")).map(
+    ({ path, line, match }) => ({ path, line, name: match[1] ?? "", version: Number(match[2]) }),
+  );
   const latest = new Map<string, (typeof tags)[number]>();
   for (const tag of tags) if (tag.version > (latest.get(tag.name)?.version ?? -1)) latest.set(tag.name, tag);
   const stale = Map.groupBy(
@@ -497,8 +490,8 @@ function supersededSchemaTags(code: ReadonlyMap<string, string>): TreeFinding[] 
     (tag) => `${tag.path}\0${tag.name}`,
   );
   return [...stale.values()].flatMap(([first, ...rest]): TreeFinding[] => {
-    const top = latest.get(first?.name ?? "");
-    if (first === undefined || top === undefined) return [];
+    const top = first && latest.get(first.name);
+    if (!top) return [];
     const versions = [...new Set([first, ...rest].map((tag) => tag.version))].toSorted((a, b) => a - b);
     const spelled = versions.map((version) => `\`${top.name}/v${version}\``).join(", ");
     const detail = `${spelled} still spelled here after \`${top.name}/v${top.version}\` in ${top.path}:${top.line}`;
@@ -508,22 +501,16 @@ function supersededSchemaTags(code: ReadonlyMap<string, string>): TreeFinding[] 
 
 /** One row per authored production file, at the first line spelling `legacy` inside a longer name. */
 function compatibilityPaths(code: ReadonlyMap<string, string>): TreeFinding[] {
-  const spelled = matchesOf(code, NAME).filter(
-    ({ path, match: [name] }) =>
-      /legacy/iu.test(name) &&
-      !/^legacy$/iu.test(name) &&
-      COMPAT_CODE.test(path) &&
-      !isTest(path) &&
-      !FROZEN_PATH.test(path),
-  );
+  const spelled = matchesOf(
+    code,
+    NAME,
+    (path, text) =>
+      COMPAT_CODE.test(path) && !isTest(path) && !FROZEN_PATH.test(path) && /legacy/iu.test(text),
+  ).filter(({ match: [name] }) => name.length > 6 && /legacy/iu.test(name));
   return [...Map.groupBy(spelled, (one) => one.path)].map(([path, names]): TreeFinding => {
     const list = [...new Set(names.map(({ match: [name] }) => `\`${name}\``))].join(", ");
-    return {
-      kind: "no-compatibility-path",
-      path,
-      line: names[0]?.line ?? 0,
-      detail: `names a legacy path: ${list}`,
-    };
+    const detail = `names a legacy path: ${list}`;
+    return { kind: "no-compatibility-path", path, line: names[0]?.line ?? 0, detail };
   });
 }
 
@@ -594,9 +581,7 @@ function braceNames(list: string): [string, string][] {
  *  the forwarded one. */
 function unreadForwards(tree: Tree): TreeFinding[] {
   const quoting = new Map<string, Set<string>>();
-  const spelled = new Map<string, Set<string>>();
   for (const [reader, text] of tree.code) {
-    spelled.set(reader, new Set(text.match(IDENTIFIER)));
     for (const [, quoted = ""] of text.matchAll(QUOTED)) {
       quoting.set(stemOf(quoted), (quoting.get(stemOf(quoted)) ?? new Set()).add(reader));
     }
@@ -613,7 +598,7 @@ function unreadForwards(tree: Tree): TreeFinding[] {
     for (const match of text.matchAll(FORWARD)) {
       const unread = braceNames(match[1] ?? "")
         .filter(([local]) => !(match[2] ?? imported.get(local) ?? "node:").startsWith("node:"))
-        .filter(([, exported]) => !readers.some((reader) => spelled.get(reader)?.has(exported) === true))
+        .filter(([, exported]) => !readers.some((reader) => tree.idents.get(reader)?.has(exported) === true))
         .map(([, exported]) => `\`${exported}\``);
       if (unread.length === 0) continue;
       const line = lineAt(text, match.index);
@@ -650,30 +635,34 @@ export function treeSites(): TreeSite[] {
   const files = corpus(READER_ROOTS, READ_AS_SOURCE);
   const prose = new Map([...corpus(PROSE_ROOTS, PROSE_SUFFIXES), ...envExamples()]);
   for (const path of ROOT_FILES) if (existsSync(path)) prose.set(path, readFileSync(path, "utf8"));
+  const callers = new Map([...files].filter(([path]) => CALLERS.test(path) && !path.startsWith("vendor/")));
   const owned = new Map(
-    [...corpus(OWNED_ROOTS, [".ts", ".tsx", ".mts"])].filter(
-      ([path]) => !UNREAD.some((tree) => path.startsWith(tree)),
+    [...callers].filter(
+      ([path]) =>
+        OWNED_ROOTS.some((root) => path.startsWith(`${root}/`)) &&
+        !UNREAD.some((tree) => path.startsWith(tree)),
     ),
   );
   const code = new Map([...files].map(([path, text]) => [path, codeOf(path, text)]));
-  const tree: Tree = { owned, files, code };
-  const all = new Map([...owned, ...files, ...prose]);
+  const idents = new Map([...code].map(([path, text]) => [path, new Set(text.match(IDENTIFIER))]));
+  const tree: Tree = { owned, files, code, idents };
+  const all = new Map([...files, ...prose]);
+  const parsed = parsedSources(callers);
+  const parsedOwned = new Map([...parsed].filter(([path]) => owned.has(path)));
   return [
     ...exportsReadOnce(tree),
-    ...copiedBlocks(owned),
+    ...copiedBlocks(parsedOwned),
     ...unreadFields(tree),
     ...identitiesWithoutOwner(owned),
-    ...factsWithoutOwner(owned),
+    ...factsWithoutOwner(parsedOwned),
     ...supersededSchemaTags(code),
     ...compatibilityPaths(code),
     ...unreadModules(code, prose),
     ...unreadForwards(tree),
-    ...overwrittenKeys(owned),
-    ...crossedArguments(
-      new Map([...files].filter(([path]) => CALLERS.test(path) && !path.startsWith("vendor/"))),
-    ),
-    ...staleReferences(new Map([...files, ...prose])),
-    ...implicitStateFindings(owned),
+    ...overwrittenKeys(parsedOwned),
+    ...crossedArguments(parsed),
+    ...staleReferences(all),
+    ...implicitStateFindings(parsedOwned),
     ...filesystemBudget(tree),
   ]
     .filter((finding) => !UNREAD.some((root) => finding.path.startsWith(root)))

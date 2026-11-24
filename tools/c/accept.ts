@@ -16,16 +16,6 @@
  * and check program digest, and the command exits 1 if any fault remains. If the minimal value
  * produced by the schema is itself rejected by the format, that outcome is printed as a note rather
  * than a fault because the format rejects it before any check runs.
- *
- * `--freeze` records the operator's approval of the checker by writing `contract.frozen` for the
- * same two hashes when no fault is present. If faults exist, nothing is frozen unless the operator
- * supplies `--despite "<reason>"`, which is stored alongside the fault count. Because a pack's
- * controls may become stale even when its checks remain sound, this command reports faults without
- * deciding whether to proceed; freezing should follow manual inspection of refused answers. Once
- * frozen, a campaign under the same name refuses to open with a different contract or check program
- * (`tools/d2/campaign.ts`); a repaired checker requires a new campaign.
- *
- * Requires the verifier sandbox (Seatbelt on macOS or Bubblewrap on Linux).
  */
 import {
   AUTHOR,
@@ -96,6 +86,7 @@ export function keepReading(
         : { unformed },
     admitted: [...admitted],
     faults: [...faults],
+    ...keyIfDefined("notes", reading.notes.length > 0 ? [...reading.notes] : undefined),
   });
   const frozen = word.freeze && (faults.length === 0 || word.despite !== "");
   // `openCampaign` rejects any checker that conflicts with an existing freeze, so freezing here

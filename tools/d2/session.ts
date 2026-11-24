@@ -3,32 +3,12 @@
  *
  *   bun tools/d2/session.ts --name truss --session b-2 --builder claude/claude-opus-5-5 --cap 150
  *
- * A standalone comparison is several sessions and then one comparison. A round compares what it
- * leaves, so several rounds cost several paid comparisons. This is the session by itself: it forks the
- * harness `--parent` names, `latest` by default, practises on the campaign's released tasks and
- * freezes what it leaves, which `tools/d2/checkpoint.ts --new latest` then compares. It scores
- * nothing and reads no held-out task.
- *
- * It is a round's session and not a second one: the same request (`sessionNamed`, `round.ts`) run
- * by the same function (`sessionOnce`, `src/builder/session.ts`), under the campaign's recorded
- * setting (`setting.ts`). Its flags are a round's without those of a comparison.
- *
- * `--cap` is the session's dollar cap and is required, as a comparison's is: no practice solve
- * starts that a reserve for it (`--reserve`, $10) would take past the cap. The Builder's own turns
- * are billed while the session is live, before another campaign move can spend more; the final
- * session total records them once. They are held by `--turns`, `--minutes` and the cap: no request
- * starts once the session has billed it.
- *
  * Before its first event the session asks whether it may start (`admitSession`,
  * `src/campaign/admission.ts`): on a checker nobody has read, or after the stop rule has
  * stopped the campaign, it starts nothing. `--past-stop "<why>"` goes on past the stop rule.
  *
- * Run again with the same `--session`, it says what the session left, from the log.
- *
  * A simulation runs this same command with a script in its seats
  * (`bun run runs rehearse --no-comparison`).
- *
- * Not run here: see `campaign.ts`.
  */
 import { admitSession } from "#src/campaign/admission.ts";
 import { sessionOnce, type BuildRequest } from "#src/builder/session.ts";

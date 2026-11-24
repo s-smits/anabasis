@@ -6,15 +6,6 @@
  *
  *   bun .claude/skills/system-path-simulation/scripts/wall-probe.ts <tree>
  *   bun .claude/skills/system-path-simulation/scripts/wall-probe.ts <before> <after> [--battery <file.ts>]
- *
- * One tree prints every command with its exit code and what it said; two print the commands whose
- * exit code or words differ, which is what a change to `src/wall` gave and took. A battery file
- * default-exports `Probe[]`; `BATTERY` below is the default. A command prints fixed words only
- * (`ok`, `rc=1`), never a path, a name or a listing of the host, so a table can be pasted, and it
- * does nothing a wall that fails would regret: none opens an application, writes the clipboard or
- * signals by pattern. Add the command to `BATTERY` when a seat is found refused something no row
- * reads, as file watchers once were: the deny-by-default Darwin profile refuses them, and a battery
- * without them read every other command alike or better under it.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { rmSync } from "#src/meta/filesystem.ts";

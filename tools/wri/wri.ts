@@ -79,10 +79,6 @@
  *   beside the recorded verdict), either with fields replaced (`--set`, which refuses a path the answer
  *   lacks and a change of JSON type), or every file of a folder (`--answers`) with each one's sha256
  *   (`tools/wri/grade.ts`). It writes nothing and logs nothing.
- *
- * A log is named by its path or by its campaign's whole name in any of the
- * repository's worktrees (`runNamed`). No verb starts a solve, a session
- * or a round, and none appends to a log.
  */
 import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
@@ -132,8 +128,9 @@ import {
   stem,
   weightOf,
 } from "./investigation.ts";
-import { INVESTIGATION, investigationIndex, LAUNCH, REPORTS, SHARED } from "./index.ts";
+import { INVESTIGATION, investigationIndex, LAUNCH, OVERVIEW, REPORTS, SHARED } from "./index.ts";
 import { findingsLedger, standingLines } from "./findings.ts";
+import { backtrackForDomain, backtrackForLogs } from "./backtrack.ts";
 import { overview } from "./read.ts";
 import { RECORD, RECORD_VERB, recordWith } from "./record.ts";
 import { buildPackets, joinPackets } from "./packets.ts";
@@ -148,12 +145,13 @@ interface Investigation {
 
 const REPO = resolve(import.meta.dir, "..", "..");
 const USAGE =
-  "usage: bun tools/wri/wri.ts read | climb | trajectory | start | lanes | collect | record | synthesis | findings | grade | derive | reader | index | packets";
+  "usage: bun tools/wri/wri.ts read | climb | trajectory | backtrack | start | lanes | collect | record | synthesis | findings | grade | derive | reader | index | packets";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
     log: { type: "string" },
+    domain: { type: "string" },
     out: { type: "string" },
     root: { type: "string" },
     lanes: { type: "string" },
@@ -326,7 +324,7 @@ async function start(): Promise<number> {
     logs.length === 1
       ? texts.join("")
       : texts.map((each, index) => `## ${nameOf(logs[index] ?? "")}\n\n${each}`).join("\n");
-  writeFileSync(join(out, "overview.md"), text);
+  writeFileSync(join(out, OVERVIEW), text);
   writeFileSync(join(out, INVESTIGATION), `${JSON.stringify({ logs }, null, 2)}\n`);
   // The shared instructions last, since a start refuses a folder that holds them, and a start that
   // failed after writing them would leave a folder no start or later verb could read. The author's
@@ -531,18 +529,25 @@ function record(): number {
   return failed.length === 0 ? 0 : 1;
 }
 
-function synthesis(): number {
+async function synthesis(): Promise<number> {
   const investigation = opened();
   const { out, shared } = investigation;
   const reports = collected(investigation);
   const template = readFileSync(join(REFERENCES, "synthesis.template.md"), "utf8");
   const path = join(out, "synthesis-prompt.md");
+  const history = (
+    await backtrackForLogs(
+      investigation.campaigns.map(({ log }) => log),
+      REPO,
+    )
+  ).join("\n");
   writeFileSync(
     path,
     filled(template, {
       out,
       synthesis: join(out, "synthesis.md"),
-      overview: readFileSync(join(out, "overview.md"), "utf8").trim(),
+      overview: readFileSync(join(out, OVERVIEW), "utf8").trim(),
+      history,
       reports: reportIndex(reports, (lane) => reportPath(out, lane), investigation.campaigns, shared),
       sharedInstructions: shared.replaceAll(/<!--[\s\S]*?-->\n?/g, "").trim(),
       register: standingLines(),
@@ -593,6 +598,15 @@ async function main(): Promise<number> {
     );
     return 0;
   }
+  if (verb === "backtrack") {
+    if (values.domain !== undefined && values.domain !== "") {
+      console.log((await backtrackForDomain(values.domain, REPO)).join("\n"));
+      return 0;
+    }
+    needed("log");
+    console.log((await backtrackForLogs(resolvedLogs, REPO)).join("\n"));
+    return 0;
+  }
   if (verb === "climb") {
     needed("log");
     console.log(climbOf(resolvedLogs));
@@ -633,7 +647,7 @@ async function main(): Promise<number> {
   const steps = { start, lanes, collect, record, synthesis };
   const step = Object.entries(steps).find(([name]) => name === verb)?.[1];
   if (step === undefined) throw new Error(USAGE);
-  return step();
+  return await step();
 }
 
 // A plain `Error` is a verb's refusal, said in one line with exit 2 as in `tools/runs/cli.ts`;

@@ -11,7 +11,7 @@
  * program, the solves that called it, its calls, the calls the host marked as errors, the calls whose
  * result says the command exited non-zero, and how the calling solves ended. A program reached through
  * a wrapper (`bash -lc "..."`, `python3 -B path`, `timeout 30 prog`, a pipe's later stage) counts once,
- * under the program (`programsOf`, `programs.ts`), and a segment whose program the text does not name
+ * under the program (`callPrograms`, `src/kernel/call-programs.ts`), and a segment whose program the text does not name
  * (`$RUN x`, `..`) counts as not attributed instead of being dropped. Imports are not traced: a
  * library a script imports (`lib/*.js`) runs under the script's name and reads 0 here. Lane 15
  * sessions would otherwise build this table by hand, and count the solves whose command or output
@@ -36,7 +36,7 @@ import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { median } from "#src/meta/tally.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { type Index, indexOf, type Solve, TEST } from "./folds.ts";
-import { type CallPrograms, programsOf } from "./programs.ts";
+import { type CallPrograms, callPrograms } from "#src/kernel/call-programs.ts";
 
 const USAGE = `usage:
   bun tools/wri/calls.ts --log <log> [--harness <prefix>] [--program <name>] [--command <re>] [--output <re>]
@@ -119,7 +119,7 @@ function callsBySolve(index: Index, filters: Filters) {
     const said = isString(command) ? command : capturedJsonStringify(each.args);
     if (filters.command !== null && !filters.command.test(said)) continue;
     if (filters.output !== null && !filters.output.test(each.text)) continue;
-    const ran = programsOf(each);
+    const ran = callPrograms(each);
     if (filters.program !== null && !ran.programs.includes(filters.program)) continue;
     kept.set(each.id, [...(kept.get(each.id) ?? []), { call: each, ran }]);
   }

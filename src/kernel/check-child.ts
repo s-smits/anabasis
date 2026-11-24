@@ -3,18 +3,6 @@
  * process's stdin, and the process writes each check's answer, in the order given, and the
  * objective's where every check passed, to `result.json` in its working directory, the verdict's
  * cell. The answers go to a file because a check may print what it likes.
- *
- * The program is imported once and its checks run in this one process, a few at once, so they share
- * its module and the cell's folder, since no check program on record writes a file or keeps any
- * state but a memo cache. Each check has a time of its own: past it the check is at fault, as one
- * that throws is, its tools are ended and the other checks' answers stand. A check that holds the
- * process's one thread is ended with the cell, by the host.
- *
- * A tool the check runs starts here, in a directory of its own under the cell, so it runs inside the
- * same wall: the Seatbelt profile follows every child on Darwin, and the namespaces do on Linux. A
- * tool that is missing, never started its program, was ended by a signal or ran out its time leaves
- * the check deciding without its evidence, so the answer is a non-result whatever the check
- * returned. A tool that ran and failed is evidence: the check reads its exit code and decides.
  */
 import { mkdtempSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, lockJsonGlobals, parseJsonAs } from "../meta/json-runtime.ts";
@@ -39,8 +27,8 @@ export interface CheckInput {
 export interface CellInput {
   /** The check program's absolute path. */
   readonly program: string;
-  /** The verifier tool tree's search directories, the only place a declared tool is looked up. */
-  readonly toolPath: string;
+  /** Declared tool ids mapped to their pre-resolved executable paths (`resolveVerifierTool`). */
+  readonly tools: Readonly<Record<string, string>>;
   readonly toolCeilingMs: number;
   /** One check's time, its tools included. */
   readonly checkMs: number;
@@ -137,10 +125,9 @@ async function runTool(cell: CellInput, port: Port, call: ToolCall): Promise<Too
   if (!port.check.tools.includes(call.toolId)) {
     throw new Error(`check ${port.check.checkId} ran ${call.toolId}, which it does not declare`);
   }
-  // Only the tool tree is searched: the process's own PATH runs on into the host's toolchain, which
-  // a tool's interpreter needs and the tool itself must not come from. A name with a slash in it is
-  // never looked up, since `Bun.which` hands such a path back whatever the search path says.
-  const command = isSafePathSegment(call.toolId) ? Bun.which(call.toolId, { PATH: cell.toolPath }) : null;
+  // Only pre-resolved tools declared in the brief are reachable here; undeclared or missing tools
+  // are refused even when present on the host toolchain PATH inside the cell.
+  const command = isSafePathSegment(call.toolId) ? (cell.tools[call.toolId] ?? null) : null;
   if (command === null) {
     return lapse("verifierUnavailable", `${call.toolId} is not on the verifier's tool path`);
   }
@@ -148,6 +135,9 @@ async function runTool(cell: CellInput, port: Port, call: ToolCall): Promise<Too
   for (const [name, text] of Object.entries(call.files ?? {})) {
     if (!isSafePathSegment(name)) throw new Error(`check ${port.check.checkId} names a tool file ${name}`);
     writeFileSync(join(folder, name), text);
+  }
+  if (call.timeoutMs !== undefined && !Number.isFinite(call.timeoutMs)) {
+    throw new Error(`check ${port.check.checkId} passed a non-finite tool timeoutMs`);
   }
   const child = capturedSpawn({
     cmd: [command, ...(call.args ?? [])],
@@ -158,24 +148,30 @@ async function runTool(cell: CellInput, port: Port, call: ToolCall): Promise<Too
     stderr: "pipe",
   });
   port.live.add(child.pid);
-  const timeoutMs = Math.min(Math.max(1, call.timeoutMs ?? cell.toolCeilingMs), cell.toolCeilingMs);
+  // Only arm a tool-local timer when the check explicitly passed `timeoutMs`; otherwise `timed()`'s
+  // per-check deadline (`cell.checkMs`) owns expiry and settles cleanly as `faulty` without racing.
+  const timeoutMs =
+    call.timeoutMs === undefined ? null : Math.min(Math.max(1, call.timeoutMs), cell.toolCeilingMs);
   let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    killProcessGroupId(child.pid, "SIGKILL");
-  }, timeoutMs);
+  const timer =
+    timeoutMs === null
+      ? null
+      : setTimeout(() => {
+          timedOut = true;
+          killProcessGroupId(child.pid, "SIGKILL");
+        }, timeoutMs);
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
     child.exited,
   ]);
-  clearTimeout(timer);
+  if (timer !== null) clearTimeout(timer);
   // What the tool left running must not outlive its directory.
   await terminateAndReapProcessGroupId(child.pid);
   port.live.delete(child.pid);
   // The check resumes here, so it is the one that holds the thread now (`running`).
   markRunning(port);
-  if (timedOut) return lapse("timeout", `${call.toolId} ran past ${timeoutMs} ms`);
+  if (timedOut) return lapse("timeout", `${call.toolId} ran past ${String(timeoutMs)} ms`);
   // A signal the host did not send is no answer either; Bun reports it as the signal, not 128 + n.
   if (child.signalCode !== null) return lapse("crash", `${call.toolId} was ended by ${child.signalCode}`);
   if (programNeverRan(exitCode, stdout, stderr)) {

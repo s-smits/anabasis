@@ -2,31 +2,10 @@ import { defineRule } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 
 /**
- * `// oxlint-disable-next-line anti-slop/no-runtime-typeof` answers a slop finding in the one
- * store oxlint offers, and it is the weaker of the two this repository has.
- *
- * The comment is keyed by where it sits, not by what it excuses. An edit to the line below it keeps
- * the comment, so an answer given about one expression goes on excusing whatever is later written
- * there. And nothing asks it for a reason: thirty-one of the forty in the tree on 2026-09-21 had
- * none, and read as a record that someone was silenced rather than why.
- *
- * `tools/oxlint/not-slop.tsv` keys an answer by the rule and the text of the line it judged, needs a
- * reason a reviewer can check, and returns the finding for a fresh answer when the line changes.
- * `bun run lint` prints the id beside every heuristic finding and `bun run not-slop -- answer`
- * writes the row. So an `ana/` or `anti-slop/` rule has one store for its answers, and this rule
- * keeps it the only one.
- *
- * A core oxlint rule keeps its inline comment: it is a correctness rule rather than a heuristic,
- * and its exception is a fact about the code that belongs beside it. `oxlint-enable` is not
- * reported, since it answers nothing; it goes with the disable it closes.
- *
- * A disable that names no rule at all silences every rule on its line, the ana and anti-slop ones
- * among them, so it answers a slop finding with no name and no reason, and the rule reads it as
- * well as a directive followed by a list. Only the next-line form can
- * be read: a bare `disable` or `disable-line` silences this rule's own report on its line too.
- *
- * There is no fix. The comment's reason moves into a ledger row, which needs an id only a lint run
- * computes and a sentence only the author can check.
+ * Flags inline `oxlint-disable` / `eslint-disable` comments that silence an `ana/*` or
+ * `anti-slop/*` rule (or name no rule at all), requiring heuristic findings to be answered in
+ * `tools/oxlint/not-slop.tsv` via `bun run not-slop -- answer <id> "<why>"`. Core oxlint rule
+ * disables are exempt. There is no fix.
  */
 
 /** A directive at the start of a comment, and the rule list before any ` -- reason`. */

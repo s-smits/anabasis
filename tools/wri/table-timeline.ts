@@ -8,25 +8,6 @@
  * Builder's calls between the two rows are what it chose while it could have compared.
  *
  *   bun tools/wri/table-timeline.ts <log>
- *
- * For lanes 13, 18 and 22 for time. Without it lane 13 rebuilds this replay by hand from copies of
- * the log's prefixes, which is how an owed starter comparison the table named for hours while the
- * Builder sat in a `wait` is found.
- *
- * The replay is this tree's `decide` on an old log. Where the rule changed since the run, the
- * replayed column is what this tree would have named, not what the run's code named, so the two
- * columns stand apart and nothing here counts where they differ. Each row names the host-code
- * digest the log last recorded before it (`condition.recorded`), with `=` where it is this tree's.
- * A move is recorded as it begins (row F), so one may still be under way at the log's end: the move
- * that began each step open there is marked (`openAt`, `launches.ts`), and the last move carries
- * any open step no move names. A move the Builder chose reads `led`, and
- * `asked` in older logs.
- *
- * The table is asked at each event of the kinds in `POINTS`; where it names another move between two
- * of them, the first task event that moved it is found by halving (`FINE`), so a move the table
- * named and dropped again between two such points is not seen. Each replay folds its prefix from the
- * start, so a log of 50,000 events takes tens of seconds: this is a tool a lane runs, not a derived
- * reader. It prints ids, codes, digest heads and hours, never a task.
  */
 import { type Decided, short } from "#src/campaign/move.ts";
 import { decide } from "#src/campaign/decide.ts";
@@ -66,6 +47,7 @@ const POINTS: ReadonlySet<EventKind> = new Set([
   "comparison.started",
   "comparison.reported",
   "harness.promoted",
+  "harness.reverted",
   "build.checkpoint",
   "build.started",
   "build.finished",

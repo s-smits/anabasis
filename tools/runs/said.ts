@@ -3,11 +3,6 @@
  * readers, the pulse (`pulse.ts`), the alerts (`alerts.ts`) and the loop's driver (`wri2p2.ts`), so
  * that a session watching any one of them learns of a starter comparison, a pause or an
  * investigation owed without another command.
- *
- * An event's line is read from the event alone (`SAID`), in counts and ids: no line carries a task's
- * text, a check's or a reason the exam side wrote beyond what the pulse already said. The climb's
- * lines are read from the log up to the event (`climbAt`), and the trigger from the whole log
- * (`progressOf`, `triggerOf`).
  */
 import { comparisonFloor } from "#src/campaign/admission.ts";
 import { BARS, epochsOf, starterReads } from "#src/campaign/climb.ts";
@@ -25,9 +20,10 @@ export const PROMOTED = "harness.promoted";
 export const ENDED = "campaign.ended";
 const DIGEST_CHARS = 8;
 
-/** Where a run owes its next step, which names an investigation and stops nothing: two promotions
- *  or twelve hours, and two starter comparisons read before a pause. */
-const TRIGGER_AT = { promotions: 2, hours: 12 } as const;
+/** Per-promotion decision points (`1` through `ceilingPromotions = 5`) and non-promoting clock
+ *  bound (`12 h`). Each promotion opens a prediction-backtracking decision; promotion 5 is the
+ *  iteration ceiling. */
+export const TRIGGER_AT = { firstPromotion: 1, ceilingPromotions: 5, hours: 12 } as const;
 /** The loop's driver, whose `open` a look names where a stopped run's investigation is due. */
 export const DRIVER = ".claude/skills/run-improvement-campaign/scripts/wri2p2.ts";
 
@@ -201,6 +197,8 @@ export const SAID: Partial<Record<EventKind, (data: JsonObject) => string | null
       ? `⚠ waited ${isNumber(data.ms) ? minutes(data.ms) : "?"} for the ${data.for}${isString(data.until) ? ` until ${data.until}` : ""}`
       : null,
   "referee.finding": (data) => `· the Referee on ${word(data.task)}: ${short(data.reason)}`,
+  "referee.draft": (data) =>
+    `· the Referee audited draft ${word(data.session)} (${word(data.verdict)}): ${short(data.summary)}`,
   "comparison.started": startLine,
   [REPORTED]: reportLine,
 };
@@ -224,9 +222,9 @@ export function promotionsOf(events: readonly LogEvent[]): Promotion[] {
 
 /**
  * What a run's promotions and starter comparisons add to what `seen` remembers, oldest first, and
- * whether each is one to look at: a starter comparison that confirmed nothing, and a run ready to
- * pause. A promotion is said with what a pause before its starter comparison costs (`AGENTS.md`,
- * factor 1), and a run is ready once its second starter comparison has read, whatever it read.
+ * whether each is one to look at: a starter comparison that confirmed nothing, and each promotion
+ * whose starter comparison has now reported with no unread promotion ahead of it (`1` through `5`).
+ * A promotion is said with what a pause before its starter comparison costs (`AGENTS.md`, factor 1).
  */
 export function climbed(
   row: { readonly name: string; readonly promotions: readonly Promotion[] },
@@ -255,15 +253,12 @@ export function climbed(
     ];
   });
   const read = row.promotions.filter((one) => one.read !== null).length;
-  return seen.reads.length < TRIGGER_AT.promotions && read >= TRIGGER_AT.promotions
-    ? [
-        ...lines,
-        {
-          line: `ready to pause, ${String(read)} promotions read: bun run runs pause ${row.name} --yes`,
-          look: true,
-        },
-      ]
-    : lines;
+  if (read === 0 || read !== row.promotions.length || read <= seen.reads.length) return lines;
+  const action =
+    read >= TRIGGER_AT.ceilingPromotions
+      ? `ready to pause, ${plural(read, "promotion")} read (ceiling reached)`
+      : `ready to pause or continue, ${plural(read, "promotion")} read (backtrack predictions, up to ${String(TRIGGER_AT.ceilingPromotions)})`;
+  return [...lines, { line: `${action}: bun run runs pause ${row.name} --yes`, look: true }];
 }
 
 /** The climb's lines of the run `name`, each marked and under the index of the event of `log` that
@@ -315,9 +310,12 @@ export function progressOf<Run extends { readonly live: boolean }>(
   };
 }
 
-/** Why an investigation opens on `row` now, or null while it runs on. */
+/** Why a decision point or investigation opens on `row` now, or null while it runs on. Every
+ *  promotion (`1` through `ceilingPromotions`) triggers a prediction-sufficiency decision; before
+ *  the first promotion, an all-tied comparison, the clock bound, or a closing after a comparison
+ *  triggers an investigation. */
 export function triggerOf(row: Progress): string | null {
-  if (row.promotions >= TRIGGER_AT.promotions) return `${String(row.promotions)} promotions`;
+  if (row.promotions >= TRIGGER_AT.firstPromotion) return plural(row.promotions, "promotion");
   if (row.allTied) return "a comparison left no task untied";
   if (row.hours >= TRIGGER_AT.hours) return `${row.hours.toFixed(1)} h since its opening`;
   // A run that ended before any comparison measured nothing an iteration could read.

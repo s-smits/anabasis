@@ -5,20 +5,6 @@
  *   bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | campaign folder | name> [--tasks]
  *   bun .claude/skills/comparison-reading/scripts/starter-reads.ts --log <log> [--log <log> ...] [--tasks]
  *   bun .claude/skills/comparison-reading/scripts/starter-reads.ts --all [--since <date>] [--name <part>] [--tasks]
- *
- * A starter read scores three task origins: tasks from the comparison that promoted the reference
- * (`read at the promotion`), tasks held before the promotion but not drawn then (`written before,
- * not chosen on`, which may still have been selected by an ancestor promotion), and tasks authored
- * after the promotion (`written after`, the only origin free of selection bias). Because the
- * reference stands on the `old` side in a starter comparison, all tallies and margins here are
- * oriented from the reference's side (`reference - starter`), with each origin split into total,
- * validity-differed, and objective-only tallies.
- *
- * Also reports WRI lane 12 and 19 diagnostics: each origin's point sum and share, exact post-promotion
- * sign-draw confirmation counts (`stepCount`, `selection.ts`), and per-Examiner-session slices of
- * post-promotion tasks. With `--tasks` (lanes 17 and 18), prints one row per scored task with its
- * origin, authoring session, solve outcomes, reference margin, and each arm's ratio to `author best`
- * (exam-side only).
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { sideGap } from "#tools/wri/pairs.ts";
@@ -42,13 +28,15 @@ import { isString } from "#src/meta/json-shape.ts";
 import { basename, dirname } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
-import { summed, wlt } from "#tools/wri/folds.ts";
+import { NO_TRACES, summed, wlt } from "#tools/wri/folds.ts";
 import { type StepCount, stepCount } from "#skills/comparison-reading/scripts/selection.ts";
 
 /** What a read is made of: its after-slices and its sign draws, null where the level is not recorded. */
 interface Composition {
   readonly slices: readonly { writer: string; tally: Tally; alone: string }[];
   readonly draws: StepCount | null;
+  readonly after: number;
+  readonly fixed: readonly number[];
 }
 
 const USAGE = `usage:
@@ -79,9 +67,9 @@ const signedPoints = (points: number) => `${points > 0 ? "+" : ""}${String(Math.
 
 function compositionOf(each: StarterRead): Composition {
   const after = each.rows.filter(({ origin }) => origin === ORIGINS[2]);
-  const writers = [...new Set(after.map(({ writer }) => writer))];
-  const slices = writers.map((writer) => {
-    const margins = after.filter((row) => row.writer === writer).map(({ margin }) => margin);
+  const byWriter = Map.groupBy(after, ({ writer }) => writer);
+  const slices = [...byWriter].map(([writer, rows]) => {
+    const margins = rows.map(({ margin }) => margin);
     const { wins, losses, ties } = testOf(margins);
     return { writer, tally: { wins, losses, ties }, alone: unselectedOf(margins, each.level) };
   });
@@ -93,7 +81,7 @@ function compositionOf(each: StarterRead): Composition {
         each.level,
       )
     : null;
-  return { slices, draws };
+  return { slices, draws, after: after.length, fixed };
 }
 
 /** An origin's line: its whole tally, then those on which validity differed, then the rest. */
@@ -105,9 +93,9 @@ function originLine(origin: Origin, { whole, validity, rest }: Split): string {
 function marginLine(each: StarterRead): string {
   const all = each.rows.reduce((sum, { margin }) => sum + Math.abs(margin), 0);
   const parts = ORIGINS.map((origin) => {
-    const own = each.rows.filter((row) => row.origin === origin).map(({ margin }) => margin);
-    const net = own.reduce((sum, one) => sum + one, 0);
-    const absolute = own.reduce((sum, one) => sum + Math.abs(one), 0);
+    const own = each.rows.filter((row) => row.origin === origin);
+    const net = own.reduce((sum, { margin }) => sum + margin, 0);
+    const absolute = own.reduce((sum, { margin }) => sum + Math.abs(margin), 0);
     const share = all === 0 ? "" : `, ${String(Math.round((100 * absolute) / all))}%`;
     return `${SHORT[origin]} net ${signedPoints(net)} abs ${String(Math.round(absolute))}${share}`;
   });
@@ -115,15 +103,13 @@ function marginLine(each: StarterRead): string {
 }
 
 /** The sign draws' line, telling a read with no task written after from one whose all tied. */
-function drawLine(each: StarterRead, { draws }: Composition): string {
+function drawLine(each: StarterRead, { draws, after, fixed }: Composition): string {
   if (draws === null) return "  the report records no level, so no sign draw is counted";
-  const after = each.rows.filter(({ origin }) => origin === ORIGINS[2]).length;
   const others = draws.confirm > 0n ? "confirm" : "do not confirm";
   if (after === 0) return `  no task written after was scored; the other tasks alone ${others}`;
   if (draws.free === 0) {
     return `  all ${String(after)} tasks written after tied, so no sign draw; the other tasks alone ${others}`;
   }
-  const fixed = each.rows.filter(({ origin }) => origin !== ORIGINS[2]).map(({ margin }) => margin);
   const tied = stepCount(fixed, [], each.level).confirm > 0n ? "confirm" : "do not confirm";
   return `  sign draws of the ${String(draws.free)} untied tasks written after: ${String(draws.confirm)} of ${String(draws.draws)} confirm at ${String(each.level)}; with every one tied, the other tasks alone ${tied}`;
 }
@@ -226,21 +212,23 @@ function totalLines(reads: readonly StarterRead[], campaigns?: number): string[]
   ];
 }
 
-/** Each campaign's reads and sums, `tasks` with their rows, then the sums over all of them, one read a
- *  comparison however many copies of it are kept. */
+/** Each campaign's reads and sums, streaming one log at a time to keep memory bounded. */
 function acrossLines(
-  logs: readonly { name: string; events: readonly LogEvent[] }[],
-  tasks: boolean,
+  logs: readonly { name: string; path: string }[],
+  rows: "tasks" | "reads",
+  scope: "all" | "named",
 ): string[] {
   const kept = new Map<string, StarterRead>();
   const campaigns = new Set<string>();
   const lines: string[] = [];
-  for (const { name, events } of logs) {
+  for (const { name, path } of logs) {
+    const events = read(path, NO_TRACES);
+    if (scope === "all" && rehearsed(events)) continue;
     const own = starterReads(events).filter(({ key }) => !kept.has(key));
     for (const each of own) kept.set(each.key, each);
     if (own.length === 0) continue;
     campaigns.add(name);
-    lines.push(name, ...campaignLines(events, own, tasks ? "tasks" : "reads"));
+    lines.push(name, ...campaignLines(events, own, rows));
   }
   return [...lines, "all of them", ...totalLines([...kept.values()], campaigns.size)];
 }
@@ -274,38 +262,30 @@ export function starterLines(events: readonly LogEvent[], rows: "tasks" | "reads
   return [...LEGEND, ...campaignLines(events, reads, rows)];
 }
 
-/** Every campaign on record whose name holds `part`, rehearsals left out. */
-async function registryLogs(since: string, part: string) {
-  const logs = [];
-  for (const { name, path } of await campaignLogs(null, [], since)) {
-    if (!name.includes(part)) continue;
-    const events = read(path);
-    if (!rehearsed(events)) logs.push({ name, events });
-  }
-  return logs;
-}
-
 if (import.meta.main) {
   await runCommand(
     { name: "starter-reads", usage: USAGE, options: OPTIONS, positionals: [0, 1] },
     async (args: CommandArgs) => {
       const named = [...args.positionals, ...args.list("log")];
-      const tasks = args.flag("tasks");
+      const rows = args.flag("tasks") ? "tasks" : "reads";
       if (args.flag("all") === named.length > 0) args.die("name one campaign or more, or pass --all");
       if (named.length !== 1) {
+        const part = args.value("name") ?? "";
         const logs = args.flag("all")
-          ? await registryLogs(args.value("since") ?? "", args.value("name") ?? "")
+          ? (await campaignLogs(null, [], args.value("since") ?? "")).filter(({ name }) =>
+              name.includes(part),
+            )
           : await Promise.all(
               named.map(async (one) => {
                 const path = await logAcross(one);
-                return { name: basename(dirname(path)), events: read(path) };
+                return { name: basename(dirname(path)), path };
               }),
             );
-        console.log([...LEGEND, ...acrossLines(logs, tasks)].join("\n"));
+        console.log([...LEGEND, ...acrossLines(logs, rows, args.flag("all") ? "all" : "named")].join("\n"));
         return;
       }
-      const events = read(await logAcross(named[0] ?? ""));
-      console.log(starterLines(events, tasks ? "tasks" : "reads").join("\n"));
+      const events = read(await logAcross(named[0] ?? ""), NO_TRACES);
+      console.log(starterLines(events, rows).join("\n"));
     },
   );
 }

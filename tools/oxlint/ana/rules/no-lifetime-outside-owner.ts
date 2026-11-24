@@ -3,49 +3,12 @@ import type { RuleExample } from "../../rule-examples.ts";
 import { isOneOf, isTestFile } from "../shared/file-role.ts";
 
 /**
- * Process lifetime has one launch owner in this repository, `stageCommandIsolation` in
- * `src/wall/isolation.ts`, which stages every solve command behind the OS wall
- * and leaves what a command leaves under Seatbelt to the seat's release (`endHolders`), and one
- * reader of it, `src/meta/subprocess.ts`, whose `killProcessGroup` and
- * `terminateAndReapProcessGroupId` signal a group and wait for it to go. A file that spawns a child and then kills it has written a
- * second owner.
- *
- * The rule was written in v1, where a second launch owner stood beside `stageCommandIsolation`
- * for the Builder's isolated commands. There an `AbortSignal` threaded into the Builder's command
- * runner was refused, because the spawner already killed the group on timeout and in `finally`,
- * and the leak was the controller recording its terminal before its session had stopped. The
- * repair put the reaping of the group on exit inside `stageCommandIsolation`, on the Darwin
- * launch only, for one production line fewer. v2 copied `stageCommandIsolation` and
- * `src/meta/subprocess.ts` and left the Builder's spawner behind, so the owner list below names
- * two files and the message one owner.
- *
- * Every hand-rolled kill pays the same three costs. It races the owner's own teardown, so two
- * signals arrive and the second one's failure means nothing. It kills the process and not its
- * group, so a shell's children outlive the call and the leak looks fixed. And it makes a
- * successful `kill` syscall read as proof the child is gone, which the working contract says
- * plainly that it is not.
- *
- * The rule reads the file, not the call: a spawn and a `.kill(` in one module. That is the
- * shape, because the cost is the second owner existing, not any one line of it. The owner and
- * its reader are exempt by path. Tests are exempt: a test that starts a process has to be able to
- * stop it. `capturedSpawn` (`src/meta/process.ts`) is `Bun.spawn` taken at import, and the
- * launch paths that start a confined child call it, so the rule reads it as a spawn too.
- *
- * A signal sent through the process object is not that shape. `process.kill(pid, signal)` ends
- * an identity the file was handed, which is what `src/meta/subprocess.ts` itself does, what
- * `src/wall/seat-root.ts` does to the pids libproc lists in a seat's root, and what the test runner
- * does to the descendants a group kill could not reach: they left their session, so the runner
- * finds them in `ps` and signals each one. A second launch owner is a file that kills the child
- * it holds, and that is written `child.kill()`.
- *
- * The two sites this left in v1 on 2026-09-20 were one of each. A generated tool's worker file
- * spawned a worker and ran its own SIGTERM, wait, SIGKILL, wait ladder over `child.kill`, which
- * is the owner's `terminateAndReapProcessGroupId` rewritten one signal narrower: it reached the
- * worker and not its group, so a generated tool's own children outlived the close. Routing the
- * two signals through `killProcessGroup` fixed that and left the file with no kill of its own.
- *
- * There is no fix. Moving a kill to its owner changes two files and usually deletes
- * more than it moves.
+ * Process lifetime has one launch owner (`stageCommandIsolation`, `src/wall/isolation.ts`) and one
+ * reader (`killProcessGroup` and `terminateAndReapProcessGroupId`, `src/meta/subprocess.ts`). A
+ * module outside those two and test files that both spawns a child (`Bun.spawn`, `capturedSpawn`)
+ * and calls `.kill(` on a held reference introduces a second lifetime owner that races the
+ * owner's teardown and signals a single process instead of its group. Signals by PID
+ * (`process.kill(pid, signal)`) and liveness probes (`kill(pid, 0)`) are exempt. There is no fix.
  */
 
 /** A signal sent to a pid the file was handed, rather than to the child it holds. The suite

@@ -11,48 +11,11 @@ import {
 } from "../shared/statements.ts";
 
 /**
- * An object literal followed by `if (x !== undefined) o.k = x;` is one literal with the key
- * folded in:
- *
- *     const spawnOptions: SpawnOptions = { stdout: "pipe", stderr: "pipe" };
- *     if (options.cwd !== undefined) spawnOptions.cwd = options.cwd;
- *     if (options.env !== undefined) spawnOptions.env = options.env;
- *
- *     const spawnOptions: SpawnOptions = {
- *       stdout: "pipe",
- *       stderr: "pipe",
- *       ...keyIfDefined("cwd", options.cwd),
- *       ...keyIfDefined("env", options.env),
- *     };
- *
- * The guard exists because `exactOptionalPropertyTypes` refuses `cwd: options.cwd` when the
- * value may be undefined, and `src/meta/optional-key.ts` is the owner of that refusal: it holds
- * the two helpers, `keyIfDefined` and `keyIfNotNull`, and 290 call sites already spell the fold
- * through them. The guarded assignment is the same decision made after the literal instead of in
- * it, with the object's shape spread over as many statements as it has optional keys. Two
- * simplify passes made exactly this fold by hand, and the tree held 26 more of them on 2026-09-20.
- *
- * The shape is read strictly, because the fold moves an evaluation. A run of guards directly
- * below a `const` whose initialiser is an object literal; each guard has no `else`, tests one
- * expression against `undefined` or `null`, and assigns that same expression to one static key
- * of that same `const`. The expression must be a read (a name, a member chain, `this.x`, a
- * non-null or `as` over one of those) so that evaluating it inside the literal rather than after
- * it changes nothing, and it must not read the object it is folded into, since the binding is
- * not initialised yet inside its own literal. A `const x = …;` between the literal and a guard
- * over `x` is inlined when nothing else reads `x`; the literal's own properties have already
- * been evaluated when the appended spread runs, so the call keeps its place in the order. Any
- * other statement, and a guard whose block carries a comment, ends the run.
- *
- * Which helper is which: `!== undefined` is `keyIfDefined`, which omits undefined alone; `!==
- * null`, `!= null` and `!= undefined` are `keyIfNotNull`, which omits both. A `!== null` guard
- * over a value that may also be undefined assigned that undefined, and the fold does not, and the
- * program still compiles: a key declared
- * `k?: string | null | undefined` compiles with `if (w !== null) o.k = w`, and the fold drops a
- * key the original set to `undefined`. A plugin rule cannot see whether the value admits
- * undefined, so a run holding a strict `!== null` guard is reported without a fix.
- *
- * Otherwise it fixes. The rewrite is the owner's own spelling, the import edit rides with it, and
- * every removed statement is a whole line.
+ * Flags a `const` object literal immediately followed by `if (x !== undefined) o.k = x;` (or
+ * `!= null` / `!== null`) guards, folding them into the literal via `...keyIfDefined("k", x)` or
+ * `...keyIfNotNull("k", x)` from `src/meta/optional-key.ts`. Auto-fixes `!== undefined` and
+ * `!= null` / `!= undefined` guards; strict `!== null` guards are reported without a fix because
+ * folding omits `undefined`.
  */
 const OWNER = "src/meta/optional-key.ts";
 

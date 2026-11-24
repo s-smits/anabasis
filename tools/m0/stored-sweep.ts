@@ -5,10 +5,10 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "#src/agent/backends/claude.ts";
 import { type BackendOptions, backends } from "#src/agent/backends/models.ts";
-import type { Control } from "#src/kernel/acceptance.ts";
+import type { Control, ToolAvailability } from "#src/kernel/acceptance.ts";
 import { type Contract, type Objective, objectiveLine } from "#src/kernel/contract.ts";
 import type { TaskPackage } from "#src/kernel/task.ts";
-import { applicableTruthChecks, readBrief, type Task } from "#src/kernel/verify.ts";
+import { applicableTruthChecks, readBrief, resolveVerifierTool, type Task } from "#src/kernel/verify.ts";
 import { BRIEF_FILE, CONTROLS_FILE, TASKS_FILE } from "#src/meta/bundle-layout.ts";
 import { cpSync, readFileSync, renameSync, rmSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -18,7 +18,6 @@ import { type ControlFile, textFiles } from "#src/kernel/answer-files.ts";
 import { homedir } from "#src/meta/os.ts";
 import { basename, join } from "#src/meta/path.ts";
 import { type PublicResource, publicResource } from "#src/tools/answer.ts";
-import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
 
 /** Subset of fields read from a `brief.json`. */
 interface PackBrief {
@@ -94,10 +93,11 @@ export function readPack(bundle: string) {
   return { brief: parseJsonAs<PackBrief>(read(BRIEF_FILE)), tasks: parseJsonAs<Task[]>(read(TASKS_FILE)) };
 }
 
-/** Returns a predicate reporting whether a tool ID is available on the bundle's verifier `PATH`. */
-export function toolOnPath(bundle: string): (toolId: string) => boolean {
-  const path = toolTreeSearchDirs(join(bundle, ".toolchain")).join(":");
-  return (toolId) => Bun.which(toolId, { PATH: path }) !== null;
+/** Reports how `toolId` resolves for `bundle`: `"pack"` if installed inside `.toolchain/`,
+ *  `"host"` if forwarded via `.toolchain/host-tools.json`, or `false` if unavailable. */
+export function toolOnPath(bundle: string): (toolId: string) => ToolAvailability {
+  const tools = join(bundle, ".toolchain");
+  return (toolId) => resolveVerifierTool(tools, toolId)?.kind ?? false;
 }
 
 /** Reads a pack's accept and reject controls in file order with their author-assigned labels. */

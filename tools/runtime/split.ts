@@ -19,20 +19,8 @@
  * has moved past the merged head would change every tree, so it is refused rather than proved anew
  * without anyone asking.
  *
- * What stands on the pull request is every other open head that holds its head, read from Git alone:
- * `land` moves the bottom's base to the trunk as it merges, so a chain of bases no longer reaches the
- * merged branch, and a head that does not hold it has nothing to copy, whatever its base says.
- *
  * Without `--yes` nothing moves. On a pull request still open, the same copy runs against a merge
  * commit made for the purpose, which no ref holds, so a split can be read before its merge.
- *
- * With `--yes` on a pull request still open, its stack becomes two native stacks: up to it on the
- * trunk, and above it on its branch, each head and base as it was. No branch moves, so every pass stands.
- *
- * With `--yes` after the merge, every branch moves in one atomic push under a lease on the head GitHub
- * listed, a pull request still based on the merged branch moves to the trunk, and the stack above is
- * linked again on the trunk. The push skips the pre-push hook, since every tree was checked before and
- * a copy changes none (the operator's choice); `land --sanitize` shows the passes on the new heads.
  *
  * Both read the members of each native stack they link from the chain of bases rather than from the
  * native stack they dissolve, so a second run finishes what the first could not: a commit already on

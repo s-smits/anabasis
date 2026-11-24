@@ -8,21 +8,6 @@
  * every run on one machine would leave that machine idle at its five-hour limit while other logins
  * have capacity. The host chosen is the one where the run's login has the fewest live runs, so one
  * login's limit leaves every machine working.
- *
- * A machine may be kept for some packs (`packs` in `ANA_HOSTS`), so that the rule lives in
- * configuration rather than a session's memory. A machine that lists packs takes no other pack, and
- * a pack some machine lists goes to no machine that does not, whether chosen here or named by `--host`.
- *
- * Among those, the least busy machine comes next (the operator's choice: a mix of load and live
- * runs): its one-minute load a core, read by the sampler `runs loadwatch` and the check runner use
- * (`minuteLoads`), halved where it carries no live run, so that a machine busy with its own work
- * does not take a run beside an idle one. Where a machine with room gives no load in time, load
- * decides nothing for that placement.
- *
- * A GPT run is paid by the Codex CLI's login of its machine (`CODEX`, `live.ts`), at most one a
- * machine unless `ANA_LOGIN_RUNS` names `codex:N`. A machine that carries as many takes no other GPT
- * run, chosen here or named by `--host` (`fullOn`), so that the operator's rule of one a machine is
- * kept by code rather than by hand.
  */
 import { runtimeProcess } from "#src/meta/process.ts";
 import { asked } from "./hosts.ts";

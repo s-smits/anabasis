@@ -34,24 +34,20 @@
  * command refuses it there and ends on its environment. Then it checks out the commit, installs,
  * and starts the command only once the command's own dry run passed: niced, in a process group of
  * its own, its output beside the receipt the command keeps (`launch-run-<n>.out` and `.err`).
- *
- * `--login N` runs the command on the login the environment holds as `CLAUDE_CODE_OAUTH_TOKEN<N>`,
- * passed on as `CLAUDE_CODE_OAUTH_TOKEN` and recorded as `ANA_LOGIN`; no numbered key reaches the
- * command. With none named the unnumbered token stays and the numbered keys are removed. The launch
- * guesses no numbered login: the dry run refuses a seat whose provider holds no credential
- * (`served`), so a Claude run may use the unnumbered token, and a run that bills none starts without
- * one. A `continue` that names no login stays on the one its last run recorded, which is no guess:
- * the account that pays is the operator's. Which login a run takes is chosen by `fresh` and `keep`
- * (`billsLogin`, `logins.ts`). The verb never opens the env file: Bun's own `--env-file` loads it.
- *
- * These verbs ask no admission of a move: the command refuses
- * what it refuses.
  */
-import { SEATS, traceKind, unfinished } from "#src/kernel/trace.ts";
+import { unfinished } from "#src/kernel/trace.ts";
 import { append, type LogEvent } from "#src/kernel/log.ts";
-import { PAUSE, pauseWaitMs } from "#src/campaign/word.ts";
+import {
+  PAUSE,
+  pauseCountOf,
+  pauseKindsOf,
+  pausePointReached,
+  pauseWaitMs,
+  unpromotedStep,
+} from "#src/campaign/word.ts";
 import { epochsOf } from "#src/campaign/climb.ts";
 import { mkdirSync, openSync, statSync } from "#src/meta/filesystem.ts";
+import { keysIf } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, processGroupExists, runSync } from "#src/meta/subprocess.ts";
@@ -85,20 +81,9 @@ import { installAt, publishedAt } from "./code.ts";
 /** The hours left in a provider wait below which a keeper leaves its run to the login's own reset. */
 export const WAIT_HOURS = "0.25";
 
-/** The events a pause waits for one more of, by the word that names it: `next` is the smallest step
- *  a run completes, a finished solve or a recorded tool call of any seat, and `compacted` a
- *  compaction of any seat's conversation. Words joined by `|` wait for the first of their events. */
-const AFTER = {
-  next: ["solve.finished", "build.call", "draft.call", "exam.call", "referee.call", "solve.call"],
-  compacted: SEATS.map((seat) => traceKind(seat, "compacted")),
-  reported: ["comparison.reported"],
-  promoted: ["harness.promoted"],
-  examined: ["exam.finished"],
-  finished: ["build.finished"],
-} as const;
 /** The flags a run again does not repeat: its name, which the verb names, and its total. */
 const DROPPED = ["--name", "--budget"];
-const LOOK_MS = 30_000;
+const LOOK_MS = 5000;
 /** How often a pause at the next step looks, since a step follows another within seconds. */
 const STEP_MS = 1000;
 
@@ -126,39 +111,27 @@ export function loginEnv(env: Env, login: string | undefined) {
   return { ...kept, [TOKEN]: token, ANA_LOGIN: login };
 }
 
-const isWord = (word: string): word is keyof typeof AFTER => Object.hasOwn(AFTER, word);
-
-/** The kinds of event the words `after` names, refused where one of them names none, or where
- *  `next` is joined to another: it pauses at the next step, with its own word to the run and its own
- *  rest, and every other point lies past it. The dry form asks it too, and so refuses as `--yes` does. */
-function kindsOf(after: string): readonly string[] {
-  const words = after.split("|");
-  if (!words.every(isWord) || (words.length > 1 && words.includes("next"))) {
-    throw new Error(`--after takes ${Object.keys(AFTER).join(", ")}, or several but next joined by |`);
-  }
-  return words.flatMap((word) => AFTER[word]);
-}
-
-/** How many events of `kinds` `events` holds. */
-const countOf = (events: readonly LogEvent[], kinds: readonly string[]) =>
-  events.filter(({ kind }) => kinds.includes(kind)).length;
-
 /** What holds a pause after `after` from stopping the run whose log is `events`, none where it may:
  *  fewer than `base` + 1 of the kinds `after` names, then an open solve at the next step, or past it
  *  anything open but the Builder's conversation, which a pause cuts (`endCut`); a practice solve and
  *  its reading count since that conversation began. `reported` also waits out a promotion no starter
  *  comparison has tallied (`epochsOf`), which a rest would leave unconfirmed (factor 1). */
 export function heldBy(events: readonly LogEvent[], after: string, base: number): string[] {
-  const kinds = kindsOf(after);
+  const kinds = pauseKindsOf(after);
   const open = new Set(unfinished(events).map(({ of }) => of));
   const held = (holds: boolean, what: string) => (holds ? [what] : []);
-  const more = held(countOf(events, kinds) <= base, `one more ${kinds.join(" or ")}, past ${String(base)}`);
+  const more = held(
+    pauseCountOf(events, kinds) <= base,
+    `one more ${kinds.join(" or ")}, past ${String(base)}`,
+  );
   if (after === "next") return [...more, ...held(open.has("solve"), "its open solves")];
+  const pendingStep = after === "reported" && unpromotedStep(events);
   const last = epochsOf(events).at(-1);
   const unread = after === "reported" && last?.starter_tally === null && last.reference !== "starter";
   const led = events.slice(events.findLastIndex(({ kind }) => kind === "build.started"));
   return [
     ...more,
+    ...held(pendingStep, "the promotion of a reported step"),
     ...held(unread, "a starter comparison that tallies a task under the newest promotion"),
     ...held(open.has("exam") || open.has("draft"), "the open Examiner session or draft"),
     ...held(openComparisons(events).length > 0, "the open comparison"),
@@ -166,20 +139,23 @@ export function heldBy(events: readonly LogEvent[], after: string, base: number)
   ];
 }
 
-/** Stop `run` at the point `after` names, first leaving the word that starts no further solve, once
- *  `ready`, asked there, neither refused nor said false; `next` asks nothing, its word left at once.
- *  The word says which verb left it (`by`) and at which point, since a log read later cannot tell a
- *  pause from a move to another login, and two readers of one run would name two writers. */
-async function pauseAt(run: Run, after: string, by: string, ready = async () => true): Promise<void> {
-  const kinds = kindsOf(after);
-  const word = { word: PAUSE, why: `${by} --after ${after}` };
+/** Stop `run` at the point `after` names, leaving the armed pause word upfront for `runs pause` so
+ *  the campaign holds any new move the instant the boundary lands instead of overshooting between
+ *  polls; `continue --after` asks `ready` at the boundary before writing the word and stopping. */
+async function pauseAt(run: Run, after: string, by: string, ready?: () => Promise<boolean>): Promise<void> {
+  const kinds = pauseKindsOf(after);
   // One waiter a run: a `continue --after` would start again a run another's pause had stopped.
   const waiting = waiters(run.name);
   if (waiting.length > 0) {
     throw new Error(`${run.name} already waits to stop in process ${waiting.join(", ")}`);
   }
   const events = logEvents(run.path);
-  const base = countOf(events, kinds);
+  const base = pauseCountOf(events, kinds);
+  const word = {
+    word: PAUSE,
+    why: `${by} --after ${after}`,
+    ...keysIf(after !== "next", () => ({ after, base })),
+  };
   // How long a pause at the next step lets the open solves finish: the limit the run's setting
   // recorded, as the solves were given it.
   const allowed = pauseWaitMs((recordedSetting(events)?.minutes ?? LIMITS.wallSeconds / 60) * 60);
@@ -188,9 +164,19 @@ async function pauseAt(run: Run, after: string, by: string, ready = async () => 
       ? `${run.name}: starting no further solve, and letting its open ones finish, ${String(allowed / 60_000)} minutes at most`
       : `${run.name}: waiting for ${kinds.join(", ")} past ${String(base)}, with nothing but the Builder's conversation open${after === "reported" ? " and no promotion left unread against the starter" : ""}`,
   );
-  if (after === "next" && writers(run, processes()).length > 0) {
-    append(run.path, "campaign.word", word);
-  }
+  const preArm = after === "next" || ready === undefined;
+  let armedFor = "";
+  const armLive = () => {
+    const pids = writers(run, processes()).map(({ pid }) => pid);
+    const launched = lastLaunch(run.path)?.pid;
+    if (pids.length === 0 || (launched !== undefined && !pids.includes(launched))) return;
+    const live = pids.map(String).toSorted().join(",");
+    if (live !== armedFor) {
+      append(run.path, "campaign.word", word);
+      armedFor = live;
+    }
+  };
+  if (preArm) armLive();
   const patience = Date.now() + allowed;
   // A log runs to tens of megabytes, and one that did not grow says what it said.
   let size = -1;
@@ -199,18 +185,20 @@ async function pauseAt(run: Run, after: string, by: string, ready = async () => 
   const waits = () =>
     writers(run, processes()).length > 0 || (after !== "next" && keepers(run.name).length > 0);
   while (waits()) {
+    if (preArm) armLive();
     const grown = statSync(run.path).size;
     // Past its patience nothing need have moved: a held solve records nothing.
     const late = after === "next" && Date.now() > patience;
     const rests = () => heldBy(logEvents(run.path), after, base).length === 0;
     if (late || (grown !== size && rests())) {
       if (after === "next") return stop([run.name, "--yes"]);
-      if (!(await ready())) return;
+      if (ready !== undefined && !(await ready())) return;
       // The asking takes seconds, in which the run can begin its next comparison: read the rest again.
-      if (rests()) {
+      const stillRests = rests();
+      if (stillRests && armedFor === "" && pausePointReached(logEvents(run.path), after, base)) {
         append(run.path, "campaign.word", word);
-        return stop([run.name, "--yes"]);
       }
+      if (stillRests) return stop([run.name, "--yes"]);
     }
     size = grown;
     await Bun.sleep(after === "next" ? STEP_MS : LOOK_MS);
@@ -410,7 +398,7 @@ export async function continueRun(args: readonly string[]): Promise<void> {
   if (name === undefined) {
     throw new Misused();
   }
-  if (values.after !== undefined) kindsOf(values.after);
+  if (values.after !== undefined) pauseKindsOf(values.after);
   const run = runNamed(name);
   // Flags after `--` stand for the kept ones: a pack's path where the campaign was copied to
   // another host is that host's.
@@ -476,11 +464,11 @@ export async function pause(args: readonly string[]): Promise<void> {
     throw new Misused();
   }
   const after = values.after ?? "next";
-  kindsOf(after);
+  pauseKindsOf(after);
   const run = runNamed(name);
   if (!values.yes) {
     const events = logEvents(run.path);
-    const holds = heldBy(events, after, countOf(events, kindsOf(after))).join(", and for ");
+    const holds = heldBy(events, after, pauseCountOf(events, pauseKindsOf(after))).join(", and for ");
     return said(
       run,
       `would be stopped after its next ${after === "next" ? "step" : after}; it waits for ${holds}`,

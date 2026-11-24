@@ -3,36 +3,10 @@
  * Continuations share finish's counted practice evidence for the current exact digest, including
  * states restored after a different harness snapshot was frozen.
  *
- * The plan's D2 is "one Builder session scored on tasks it never saw". A session is given a copy of
- * the harness it starts from, a walled shell over that copy, practice solves on released tasks,
- * and the Referee's ruling of what fails there. It ends by freezing what the copy holds as a
- * harness version. In the campaign command, the same agent also calls campaign tools without
- * ending its conversation; the host supplies advice from `decide.ts` and checks each move.
- * Whether the new harness is better is the comparison's to say
- * (`src/kernel/compare.ts`), on tasks this session never saw.
- *
  * What v1's Builder (harness-builder-v4 at 7af7315) did and this one does not: write tasks and
  * checks, set its solver's limits, and submit a candidate through checks. The Examiner writes
  * tasks, the checks are fixed, the host owns every limit, and a harness is judged by a comparison
  * rather than refused at submission.
- *
- * The walls, each with the test that holds it:
- * - Practice is on released tasks only. The task fold says which those are, at the session's start
- *   and again at every practice, so a held-out task is refused by its state and not by the caller's
- *   care.
- * - The Builder's shell is the solver's command wall (`build`), so the repository, the operator's
- *   home and other solves' scratch are closed by the operating system.
- * - The installed programs are the session's own copy of the parent's, and nothing it installs
- *   reaches the parent. A harness in which a link or a script names the home is not frozen
- *   (`tools.ts`), since it runs from elsewhere.
- * - What the Builder reads of a solve is the paged trace (`src/kernel/trace.ts`) and an ending's
- *   outcome and kind. A verdict's checks and the Referee's reasons never reach a tool result.
- * - The log records what the session saw: `build.started` lists the practice task versions, and
- *   every practice solve runs under a recorded condition, so "never saw" can be checked afterwards.
- *
- * The session's own turns and calls are logged as `build.turn` and `build.call`. What catches a
- * Builder that went wrong is a reader of that record, and the model's own transcript is deleted
- * with the session's scratch.
  *
  * The session ends at `finish`, at its deadline, session turn limit or dollar cap, or when a
  * practice solve could not be run. A solve's prompt limit counts prompts, as v1's did; the session
@@ -48,7 +22,7 @@ import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { conditionsOf, type Limits } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
-import { append, type LogEvent, read } from "../kernel/log.ts";
+import { append, isReferenceChange, type LogEvent, read } from "../kernel/log.ts";
 import { billedParts, priceKey } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { type Cap, INTERRUPTED } from "../kernel/reports.ts";
@@ -243,7 +217,7 @@ export async function keepPractised(log: string, id: string, states: string): Pr
   // session's last harness snapshot ran a harness that snapshot already keeps or supersedes.
   const earlierHarnesses = new Set(
     events.flatMap(({ kind, data }) =>
-      kind === BUILD_STARTED ? [data.parent] : kind === "harness.promoted" ? [data.harness] : [],
+      kind === BUILD_STARTED ? [data.parent] : isReferenceChange(kind) ? [data.harness] : [],
     ),
   );
   const since = mine.findLastIndex(({ kind }) => kind === "build.checkpoint");
@@ -365,7 +339,7 @@ function openingFor(bench: Bench): string {
   const began = recorded.findLastIndex(
     ({ kind, data }) => kind === BUILD_STARTED && data.session === request.id,
   );
-  const moved = recorded.slice(began).some(({ kind }) => kind === "harness.promoted")
+  const moved = recorded.slice(began).some(({ kind }) => isReferenceChange(kind))
     ? " The reference harness has changed since this conversation began."
     : "";
   return firstMessage(
@@ -431,16 +405,21 @@ async function converse(
   // the last, which a call pi refuses before it runs (a tool the session lacks, arguments its schema
   // refuses) never reaches. A result is a result whichever call made it.
   let told = false;
+  let compacted = false;
   const footer = () => {
     if (told) return "";
     told = true;
-    return usedLine(used("during-tools"), limits);
+    const cue = compacted ? " Context compacted; read_opening holds the opening record and limits." : "";
+    return `${usedLine(used("during-tools"), limits)}${cue}`;
   };
   const tools = [
     ...walled(bench),
     practiceTool(bench),
     traceTool(bench),
-    openingTool(campaign === undefined ? first : opening, bench.said.opening),
+    openingTool(() => {
+      compacted = false;
+      return campaign === undefined ? first : opening();
+    }, bench.said.opening),
     finishTool(bench, campaign?.unmeasured),
     ...(campaign?.tools ?? []),
   ].map((each) => endingWith(each, footer));
@@ -489,6 +468,9 @@ async function converse(
     },
     onTurn: () => {
       told = false;
+    },
+    onCompact: () => {
+      compacted = true;
     },
     stops: [clock.signal, bench.halt.signal, request.kill],
   });

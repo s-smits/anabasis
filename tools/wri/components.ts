@@ -384,7 +384,7 @@ function seatLedger(events: readonly LogEvent[], traces: readonly Traced[] = tra
       REFEREE_ADJUDICATE,
       "referee.finding",
       "referee.finding",
-      (d) => text(d.ruling) === "unclear" && items(d.probes).length === 0,
+      (d) => !isString(d.reusedFrom) && text(d.ruling) === "unclear" && items(d.probes).length === 0,
     ],
   ];
   for (const [role, start, end, bad] of roleSpecs) {

@@ -1,6 +1,6 @@
-import type { LogEvent } from "../kernel/log.ts";
-import { labelsIn, rulingsOf } from "../kernel/solves.ts";
-import { asRecord, type JsonValue } from "../meta/json-shape.ts";
+import { eventsOf, type LogEvent } from "../kernel/log.ts";
+import { labelsIn } from "../kernel/solves.ts";
+import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import type { Ruling } from "./referee.ts";
 
 export const RULINGS = ["earned", "check-defect", "unclear"] as const;
@@ -53,7 +53,13 @@ export function agreement(events: readonly LogEvent[], labels: ReadonlyMap<strin
     RULINGS.map((label) => [label, Object.fromEntries(RULINGS.map((ruling) => [ruling, 0]))]),
   ) as Record<Ruling, Record<Ruling, number>>;
   const unruled: string[] = [];
-  const rulings = rulingsOf(events);
+  const rulings = new Map<string, string | null>();
+  for (const {
+    event: { data },
+  } of eventsOf(events, "referee.finding")) {
+    if (!isString(data.solve) || isString(data.reusedFrom)) continue;
+    rulings.set(data.solve, isString(data.ruling) ? data.ruling : null);
+  }
   for (const [solve, label] of labels) {
     const ruling = RULINGS.find((known) => known === rulings.get(solve));
     if (ruling === undefined) unruled.push(solve);

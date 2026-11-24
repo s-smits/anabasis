@@ -69,7 +69,7 @@ interface Found {
 }
 
 /** What one solve's leaves came to. */
-export interface Row {
+interface Row {
   readonly solve: string;
   readonly side: Side;
   readonly task: string;
@@ -87,7 +87,7 @@ interface Named {
 }
 
 /** One solve to read, with what a reader needs of it from the log. */
-export interface Asked {
+interface Asked {
   readonly solve: string;
   readonly side: Side;
 }
@@ -159,7 +159,7 @@ function digitsOf(written: string): number {
 }
 
 /** Every number in `text`, indexed at each precision from one to its written digits. */
-export function holderOf(text: string): Holder {
+function holderOf(text: string): Holder {
   const keys = new Set<string>();
   for (const [written] of text.matchAll(NUMBER)) {
     const value = Number(written);

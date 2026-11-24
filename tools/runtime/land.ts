@@ -788,7 +788,7 @@ async function landOnce(root: string, first: () => number, mode: Mode): Promise<
     if (tagged === 0) throw new Refusal(`${String(mode.tag)} is already a tag on origin.`);
     if (tagged !== 2) throw new Refusal(`origin could not be asked whether it holds ${String(mode.tag)}.`);
     let target = first();
-    alone = await holdAlone(root, "land", say, undefined, claimOf(root, target, mode));
+    alone = await holdAlone(root, say, undefined, claimOf(root, target, mode));
     for (let moves = 0; ; ) {
       if (mode.auto) {
         const open = openPulls(root);

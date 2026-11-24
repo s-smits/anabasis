@@ -63,7 +63,7 @@ function dueOf(store: string, logs: readonly string[], readers: readonly Reader[
 }
 
 /** Run `queue` until it is done, the budget is spent or the load leaves no room. */
-export async function runQueue(
+async function runQueue(
   queue: readonly Due[],
   ways: {
     readonly budgetMs: number;

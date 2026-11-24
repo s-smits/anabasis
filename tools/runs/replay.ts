@@ -14,7 +14,7 @@ import { isCampaign } from "./registry.ts";
 import { readableAcross } from "./snapshots.ts";
 
 /** What this tree's readers make of the log at `path`, in a line. */
-export function replayed(path: string): string {
+function replayed(path: string): string {
   const events: LogEvent[] = [];
   let total = 0;
   eachEvent(path, (event) => {

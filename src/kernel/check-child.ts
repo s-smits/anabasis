@@ -28,7 +28,7 @@ export interface CellInput {
 
 type Undecided = { readonly nonResult: string } | { readonly faulty: string };
 export type CheckResult = { readonly passed: boolean } | Undecided;
-export type Measure = { readonly value: number } | Undecided;
+type Measure = { readonly value: number } | Undecided;
 
 export interface CellResult {
   readonly results: readonly CheckResult[];

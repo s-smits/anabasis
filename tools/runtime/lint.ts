@@ -23,7 +23,7 @@ import {
 } from "../oxlint/not-slop-ledger.ts";
 import { PLUGINS } from "../oxlint/plugins.ts";
 import { renderedExamples, ruleExamples } from "../oxlint/rule-examples.ts";
-import { TREE_REGISTER_KINDS, treeSites } from "../oxlint/tree-findings.ts";
+import { treeSites } from "../oxlint/tree-findings.ts";
 
 const ROOTS = ["src", "tools", "vendor", "test", "packages", ".claude", "studies"];
 
@@ -205,15 +205,11 @@ function ledgerProblems(
   wholeTree: boolean,
 ): string[] {
   const trees = wholeTree ? new Set(treeSites().map((site) => site.id)) : null;
-  const registers = new Set(TREE_REGISTER_KINDS.map((kind) => `${TREE_RULE_PREFIX}${kind}`));
   const unread = ledger.unread.map((problem) => `${NOT_SLOP_LEDGER}: ${problem}`);
   return [
     ...unread,
     ...ledger.answers.flatMap((answer) => {
       const where = `${NOT_SLOP_LEDGER}: ${answer.id} ${answer.rule} ${answer.path}`;
-      if (registers.has(answer.rule)) {
-        return [`${where}: a register row is a current count, with nothing to answer`];
-      }
       const tree = answer.rule.startsWith(TREE_RULE_PREFIX);
       const judged = tree ? trees !== null : linted(answer.path);
       const present = tree ? trees?.has(answer.id) === true : seen.has(answer.id);

@@ -41,7 +41,7 @@ const DOCUMENTS = [
   "tools/oxlint/rules-off.tsv",
   ".claude/skills/simplify/SKILL.md",
 ];
-/** `ana/no-deep-nesting` or `tree/no-unowned-fact` spelled in prose. */
+/** `ana/no-deep-nesting` or `tree/no-unused-export` spelled in prose. */
 const PREFIXED =
   /(?<![\w./-])(?:ana|anti-slop|implicit-state|implicit-state-opinionated|tree)\/[a-z][a-z0-9-]*[a-z0-9](?![\w/.-])/gu;
 /** A backticked name in the fixer record, which names plugin rules alone. */

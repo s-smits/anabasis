@@ -14,7 +14,7 @@ import { useWaited } from "../waited.ts";
 
 /** The view to show: the one ready now, else the last that was; `stale` where it is the last, and
  *  `slow` once the read has outlasted the patience. */
-export interface Held<View> {
+interface Held<View> {
   readonly view: View | null;
   readonly stale: boolean;
   readonly slow: boolean;

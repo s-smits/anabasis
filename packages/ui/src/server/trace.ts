@@ -37,7 +37,7 @@ export const examTier = (tier: Tier): boolean => tier === "exam";
 
 /** A logged ending as the kernel types it, or null where it holds none it can read. A reason that
  *  names a check or the verifier's view of an answer is the exam tier's. */
-export function endingOf(ending: JsonObject | null, tier: Tier): Ending | null {
+function endingOf(ending: JsonObject | null, tier: Tier): Ending | null {
   if (ending === null) return null;
   const { outcome, kind, reason } = ending;
   const said = isString(reason) ? reason : "";

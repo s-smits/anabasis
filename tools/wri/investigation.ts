@@ -26,7 +26,7 @@ export interface Campaign {
   readonly overview: Overview;
 }
 
-export interface Report {
+interface Report {
   readonly lane: number;
   readonly state: "ok" | "missing" | "invalid";
   readonly faults: readonly string[];

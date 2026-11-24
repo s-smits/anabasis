@@ -59,7 +59,7 @@ export const HOURS = [2, 4, 6, 8, 12, 16, 24] as const;
 const SILENCE = 30 * 60 * 1000;
 const GUIDE_PATH = `${AGENT_DIR}${GUIDE_FILE}`;
 
-export type Grades = ReadonlyMap<string, number>;
+type Grades = ReadonlyMap<string, number>;
 interface Side {
   readonly turns: number;
   readonly valid: number;
@@ -165,7 +165,7 @@ function sideOf(sides: ReadonlyMap<string, Side>, session: string, harness: unkn
 }
 
 /** One campaign's readings and promotions on its work-hours clock. */
-export function trajectoryOf(name: string, events: readonly LogEvent[], grades: Grades | null): Trajectory {
+function trajectoryOf(name: string, events: readonly LogEvent[], grades: Grades | null): Trajectory {
   const clock = clockOf(events);
   const starts = eventsOf(events, "comparison.started");
   const first = starts[0]?.event;

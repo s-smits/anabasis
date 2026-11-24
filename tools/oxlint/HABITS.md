@@ -82,7 +82,7 @@ xs.forEach(async (x) => …)     →  for (const x of xs) await …   // or Prom
 Quick checklist:
 - Declare in order: imports → types/interfaces → module constants → functions.
 - Nesting ≤3 levels (early-return guards do not count); ternaries ≤3 tail-chained branches; ≤5 params; no positional booleans, `object` params, shadowing or param reassignment.
-- Inline single-caller micro-helpers, pass-through wrappers and single-use renaming `const`s; hoist repeated literals (≥6 chars ×4) and repeated objects (≥3 props ×3).
+- Inline pass-through wrappers and single-use renaming `const`s; hoist repeated literals (≥6 chars ×4) and repeated objects (≥3 props ×3).
 - Export only symbols imported elsewhere; avoid "shape" or "legacy" in production identifiers; write no `v1 || v2` fallback shims (except historical log `EVENT_KINDS`, `AGENTS.md` §5).
 - Ceilings: ≤800 nonblank lines/file, ≤115 lines/function.
 - Before committing: `bun fmt && bun run typecheck && bun run lint -- --strict`, owning tests, `bun run commit:check` (and `bun tools/loc/source-policy.ts` when changing exports or large files). Before handoff: `bun run simplify`.
@@ -91,7 +91,7 @@ Quick checklist:
 
 Test files = `test/` or `*.test.*`.
 
-- **Structure**: `require-declarations-first` [fix] (imports/types/consts above functions); `no-inline-schema-literal` (hoist ≥3-entry constant tables; tests exempt); `no-deep-nesting` (depth ≤3; ≤3-statement early-return guards exempt); `no-tangled-ternary` (≤3 tail-chained cases); `no-single-caller-helper` (inline short single-caller private helpers unless caller >115 lines); `no-pass-through-wrapper` (no unchanged-arg forwarding); `no-single-use-const-chain` (collapse ≥3 sequential single-use `const`s); `no-renaming-temporary` [fix] (inline single-use alias unless closure-narrowed); `no-alias-restating-return` (inline single-function return aliases).
+- **Structure**: `require-declarations-first` [fix] (imports/types/consts above functions); `no-inline-schema-literal` (hoist ≥3-entry constant tables; tests exempt); `no-deep-nesting` (depth ≤3; ≤3-statement early-return guards exempt); `no-tangled-ternary` (≤3 tail-chained cases); `no-pass-through-wrapper` (no unchanged-arg forwarding); `no-single-use-const-chain` (collapse ≥3 sequential single-use `const`s); `no-renaming-temporary` [fix] (inline single-use alias unless closure-narrowed); `no-alias-restating-return` (inline single-function return aliases).
 - **Branches**: `no-arms-differing-in-one-term` (factor single-term branch diff); `prefer-const-conditional` [fix] (`let` + `if` → `const` ternary / `??`); `no-positional-boolean-parameter` (use string-literal union or row arg; tests, uncalled callbacks and `holds ? [x] : []` exempt); `no-side-effect-in-predicate` (no mutation inside `filter`/`find`/`some`/`every`).
 - **Loops & calls**: `prefer-find-over-loop` [fix]; `no-inline-block-reducer` (use `for...of`); `no-transposed-argument` (catches swapped/rotated same-file call args; cross-file checked by `tree/no-transposed-argument`).
 - **Repetition & types**: `no-repeated-string-literal` [fix in tests] (≥6 chars ×4, ×10 in tests; literal types/imports/keys exempt); `no-thrice-spelled-object` (≥3 props ×3, ×5 in tests); `no-unproven-unknown-parameter` (validate `unknown` params in body via predicate/parser/`errorMessage`).
@@ -144,16 +144,15 @@ If a rule cites a moved owner, update the rule in the same change.
 
 | Kind | Resolution |
 | --- | --- |
-| `no-unused-module`, `no-test-only-module`, `no-test-only-export` | Delete dead code + test, or wire into live path |
-| `no-unused-field`, `no-unused-reexport`, `no-single-reader-export` | Delete dead symbol/branch, or move export into its sole reader |
-| `no-duplicate-block`, `no-duplicate-derivation` | Consolidate into or call the single owning function |
-| `no-unowned-identity`, `no-unowned-fact` | Declare one shared constant or owning function beside its type |
-| `no-superseded-schema-tag`, `no-compatibility-path` | Remove obsolete reader branch |
+| `no-unused-module`, `no-test-only-module`, `no-unused-export`, `no-test-only-export` | Delete dead code + test, drop unused `export`, or wire into live path |
+| `no-unused-field`, `no-unused-reexport`, `no-constant-parameter` | Delete dead field, forward, or invariant parameter |
+| `no-duplicate-block`, `no-duplicate-function`, `no-duplicate-type`, `no-duplicate-derivation` | Consolidate into or call the single owning symbol |
+| `no-unowned-identity`, `no-superseded-schema-tag` | Declare one shared constant or remove obsolete version branch |
+| `no-overwritten-key`, `no-transposed-argument` | Remove ignored key or fix swapped argument order |
 | `no-stale-reference` | Update path (or cite `<sha>:path` for history); document only live settings |
-| `no-scattered-state-literals`, `no-unowned-state-literals`, `no-scattered-enum-literals` | Define union and groupings once in the owning module |
+| `no-scattered-state-literals` | Define groupings beside the declared union in the owning module |
 | `no-repeated-external-read` | Read once at common caller and pass down |
 | `require-exhaustive-mapping` | Constrain lookup `Map` with `satisfies Record<Union, ...>` |
-| `max-filesystem-imports` | Accounting cap: preserve baseline `filesystem.ts` import count (+1 max per change) |
 
 ## 12.10 The size policy
 
@@ -185,10 +184,8 @@ Implicit state machines hide behind coupled booleans, ad-hoc string literals, ma
 - `implicit-state/no-coupled-flags` → replace coupled booleans with a single mode union.
 - `implicit-state/no-marker-file-state` → store phase in one record instead of marker-file existence.
 - `implicit-state/no-age-based-lock` → check holder liveness (PID, lease, exclusive open) instead of file age.
-- Whole-tree: `tree/no-scattered-state-literals`, `tree/no-scattered-enum-literals`, `tree/no-repeated-external-read`, `tree/no-duplicate-derivation`, `tree/require-exhaustive-mapping` (see 12.9).
+- Whole-tree: `tree/no-scattered-state-literals`, `tree/no-repeated-external-read`, `tree/no-duplicate-derivation`, `tree/require-exhaustive-mapping` (see 12.9).
 
 **Opinionated tier** (`implicit-state-opinionated`, separated for external adoption, equal weight here):
-- `implicit-state-opinionated/max-boolean-fields` → >2 required boolean fields or >3 boolean params: use a union.
+- `implicit-state-opinionated/max-boolean-fields` → >3 required boolean fields or >3 boolean params: use a union.
 - `implicit-state-opinionated/prefer-state-union` → independently mutated class booleans or flag derived from two flags: use a union.
-- `implicit-state-opinionated/no-state-in-names` → regex capture parsed from a name for logic: store the field on the record.
-- Whole-tree: `tree/no-unowned-state-literals` → declare shared literal sets once.

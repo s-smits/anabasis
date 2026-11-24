@@ -65,7 +65,7 @@ import { degradationLines } from "../runs/degradations.ts";
 import type { Receipt } from "../runs/receipt.ts";
 import { costTriggers, hoursLine, deadlineTriggers } from "./time.ts";
 
-export interface Row {
+interface Row {
   readonly id: string;
   readonly title: string;
   readonly lines: readonly string[];

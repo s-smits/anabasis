@@ -17,7 +17,7 @@ const NAMING: Readonly<Partial<Record<EventKind, readonly string[]>>> = {
 
 export const DIGEST = /^[0-9a-f]{64}$/u;
 
-export function letters(nth: number): string {
+function letters(nth: number): string {
   const rest = Math.floor(nth / 26);
   const last = String.fromCodePoint(65 + (nth % 26));
   return rest === 0 ? last : `${letters(rest - 1)}${last}`;

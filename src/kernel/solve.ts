@@ -1,7 +1,7 @@
 import { type AssistantMessage, isContextOverflow } from "@earendil-works/pi-ai";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
 
-export type CancellationOrigin = "session-wall" | "campaign-budget" | "caller" | "invocation" | "admission";
+type CancellationOrigin = "session-wall" | "campaign-budget" | "caller" | "invocation" | "admission";
 
 export type Ending =
   | { readonly outcome: "pass" }

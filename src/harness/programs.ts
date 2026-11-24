@@ -11,7 +11,7 @@ const SHEBANG = /^#!.*\n?/u;
 const OPENING = /^\s*(?:((?:[ \t]*(?:#|\/\/).*\n?)+)|"""([\s\S]*?)"""|'''([\s\S]*?)'''|\/\*([\s\S]*?)\*\/)/u;
 const MARK = /^[ \t]*(?:#|\/\/|\*) ?/u;
 
-export interface Program {
+interface Program {
   readonly name: string;
   readonly at: string;
   readonly account: string | null;

@@ -318,7 +318,7 @@ export function assess(
 
 /** Each login's rise after the last reading of `history`, by `model`, hour by hour to `HORIZON`:
  *  never falling from one hour to the next, and never more than its week has left. */
-export function ahead(model: Model, history: readonly Snapshot[]): Record<string, number[]> {
+function ahead(model: Model, history: readonly Snapshot[]): Record<string, number[]> {
   const sorted = byTime(history);
   const last = sorted.at(-1);
   if (last === undefined) return {};

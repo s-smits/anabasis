@@ -57,9 +57,8 @@ const EXPORTED =
 const IDENTIFIER = /[A-Za-z_$][\w$]*/g;
 
 export const READ_AS_SOURCE = [".ts", ".tsx", ".mts", ".mjs", ".js", ".py", ".json"];
-/** Per-file line ceilings for legacy or copied files exempt from the standard authored limits.
- *  Also consulted by `tree-findings.ts` before suggesting code moves into a file. */
-export const copiedFileLimits: Readonly<Record<string, number>> = sourcePolicy.copiedFileLimits;
+/** Per-file line ceilings for legacy or copied files exempt from the standard authored limits. */
+const copiedFileLimits: Readonly<Record<string, number>> = sourcePolicy.copiedFileLimits;
 const refusedLiterals: ReadonlySet<string> = new Set(sourcePolicy.refusedLiterals);
 const refusedCalls: ReadonlySet<string> = new Set(sourcePolicy.refusedCalls);
 
@@ -214,12 +213,8 @@ function cutFindings(path: string, text: string): SourcePolicyFinding[] {
   return findings;
 }
 
-export function sourceTextFindings(
-  path: string,
-  text: string,
-  copiedLimit: number | undefined = copiedFileLimits[path],
-): SourcePolicyFinding[] {
-  return [...sizeFindings(path, text, copiedLimit), ...cutFindings(path, text)];
+export function sourceTextFindings(path: string, text: string): SourcePolicyFinding[] {
+  return [...sizeFindings(path, text, copiedFileLimits[path]), ...cutFindings(path, text)];
 }
 
 /**

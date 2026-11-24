@@ -91,9 +91,9 @@ export function leastOccupied(rows: readonly Occupancy[]): Host | undefined {
   return chosen.host;
 }
 
-/** Whether a machine, `undefined` for this one, takes a pack under the reservations of `known`. */
-export function takes(host: Host | undefined, pack: string, known = hostsOf()): boolean {
-  return host?.packs?.includes(pack) ?? !known.some((one) => one.packs?.includes(pack) === true);
+/** Whether a machine, `undefined` for this one, takes a pack under the reservations of configured hosts. */
+export function takes(host: Host | undefined, pack: string): boolean {
+  return host?.packs?.includes(pack) ?? !hostsOf().some((one) => one.packs?.includes(pack) === true);
 }
 
 /** Read every machine before making an automatic choice; silence is never spare capacity. */

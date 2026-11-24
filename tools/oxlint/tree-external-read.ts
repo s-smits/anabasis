@@ -1,51 +1,44 @@
-/**
- * `no-repeated-external-read` (generic): one call path makes the same external read twice. Read
- * once, at the join, and pass the answer on.
- */
 import * as ts from "typescript5";
-import { importsOf } from "./tree-crossed-argument.ts";
+import { bare, type Callable, importsOf, isTestPath, lineOf } from "./tree-ast.ts";
 import type { TreeFinding } from "./tree-findings.ts";
 
-type Callable = ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression;
-
 interface Module {
-  path: string;
-  file: ts.SourceFile;
-  functions: ReadonlyMap<string, Callable>;
-  constants: ReadonlyMap<string, ts.Expression>;
-  imports: ReadonlyMap<string, { home: string; name: string }>;
-  spawnModules: ReadonlySet<string>;
-  mutables: ReadonlySet<string>;
+  readonly path: string;
+  readonly file: ts.SourceFile;
+  readonly functions: ReadonlyMap<string, Callable>;
+  readonly constants: ReadonlyMap<string, ts.Expression>;
+  readonly imports: ReadonlyMap<string, { readonly home: string; readonly name: string }>;
+  readonly spawnModules: ReadonlySet<string>;
+  readonly mutables: ReadonlySet<string>;
 }
 
-type Tally = Map<string, { count: number; lines: number[] }>;
+type Tally = Map<string, { readonly count: number; readonly lines: number[] }>;
 
 interface Moves {
   waits: boolean;
   signals: boolean;
-  paths: Set<string>;
+  readonly paths: Set<string>;
 }
 
 interface Graph {
-  modules: ReadonlyMap<string, Module>;
-  open: Set<Callable>;
-  memo: Map<Callable, Map<string, readonly string[]>>;
-  moving: Map<Callable, Moves>;
-  cached: Map<Callable, boolean>;
+  readonly modules: ReadonlyMap<string, Module>;
+  readonly open: Set<Callable>;
+  readonly memo: Map<Callable, Map<string, readonly string[]>>;
+  readonly moving: Map<Callable, Moves>;
+  readonly cached: Map<Callable, boolean>;
 }
 
 interface Scope {
-  module: Module;
-  bound: Map<string, string | null>;
-  locals: Map<string, ts.Expression>;
-  items: Set<string> | null;
-  depth: number;
-  graph: Graph;
+  readonly module: Module;
+  readonly bound: Map<string, string | null>;
+  readonly locals: Map<string, ts.Expression>;
+  readonly items: Set<string> | null;
+  readonly depth: number;
+  readonly graph: Graph;
 }
 
 const K = ts.SyntaxKind;
 const EMPTY: Tally = new Map();
-const TEST_PATH = /(?:^|\/)(?:test|tests|__tests__|__mocks__|fixtures?)\/|\.(?:test|spec)\.[cm]?[jt]sx?$/u;
 const SPAWNS = new Set(["spawnSync", "execSync", "execFileSync", "spawn", "execFile", "execa", "execaSync"]);
 const DIRECT_VERBS = new Map<string, string>([
   ["readFileSync", "read"],
@@ -99,8 +92,16 @@ const PROCESS_TABLE = /^run (?:ps|pgrep|lsof)\b/u;
 const UNKNOWN = "‹?›";
 const PER_ITEM = " (one item's)";
 
-function isCallable(node: ts.Node | undefined): node is Callable {
-  return node !== undefined && CALLABLE_KINDS.has(node.kind);
+const isCallable = (node: ts.Node | undefined): node is Callable =>
+  node !== undefined && CALLABLE_KINDS.has(node.kind);
+
+const withPrefix = (verb: string, key: string | null): string | null =>
+  key === null ? null : `${verb} ${key}`;
+
+function nameOf(call: ts.CallExpression): string | null {
+  const callee = call.expression;
+  if (ts.isIdentifier(callee)) return callee.text;
+  return ts.isPropertyAccessExpression(callee) ? callee.name.text : null;
 }
 
 function recordVars(
@@ -146,25 +147,28 @@ function moduleOf(path: string, file: ts.SourceFile, paths: ReadonlySet<string>)
   return { path, file, functions, constants, imports: importsOf(path, file, paths), spawnModules, mutables };
 }
 
-/** The text an expression always spells in this scope, or null where it depends on something else. */
-function spelled(node: ts.Expression, scope: Scope): string | null {
+function spelledTemplate(node: ts.TemplateExpression, scope: Scope): string | null {
+  let out = node.head.text;
+  for (const span of node.templateSpans) {
+    const part = spelled(span.expression, scope);
+    if (part === null) return null;
+    out += part + span.literal.text;
+  }
+  return out;
+}
+
+function spelledIdentifier(name: string, scope: Scope): string | null {
+  if (scope.bound.has(name)) return scope.bound.get(name) ?? null;
+  const constant = scope.module.constants.get(name);
+  if (constant !== undefined) return ts.isStringLiteralLike(constant) ? constant.text : `‹${name}›`;
+  return scope.module.imports.has(name) ? `‹${name}›` : null;
+}
+
+function spelled(raw: ts.Expression, scope: Scope): string | null {
+  const node = bare(raw);
   if (ts.isStringLiteralLike(node)) return node.text;
-  if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node)) return spelled(node.expression, scope);
-  if (ts.isTemplateExpression(node)) {
-    let out = node.head.text;
-    for (const span of node.templateSpans) {
-      const part = spelled(span.expression, scope);
-      if (part === null) return null;
-      out += part + span.literal.text;
-    }
-    return out;
-  }
-  if (ts.isIdentifier(node)) {
-    if (scope.bound.has(node.text)) return scope.bound.get(node.text) ?? null;
-    const constant = scope.module.constants.get(node.text);
-    if (constant !== undefined) return ts.isStringLiteralLike(constant) ? constant.text : `‹${node.text}›`;
-    return scope.module.imports.has(node.text) ? `‹${node.text}›` : null;
-  }
+  if (ts.isTemplateExpression(node)) return spelledTemplate(node, scope);
+  if (ts.isIdentifier(node)) return spelledIdentifier(node.text, scope);
   if (ts.isArrayLiteralExpression(node)) {
     return node.elements
       .map((one) => spelled(ts.isSpreadElement(one) ? one.expression : one, scope) ?? UNKNOWN)
@@ -183,14 +187,17 @@ function spelled(node: ts.Expression, scope: Scope): string | null {
   return parts.includes(null) ? null : parts.join("/");
 }
 
-/** The name a call is made by: `f` for `f()` and `a.f()`. */
-function nameOf(call: ts.CallExpression): string | null {
-  const callee = call.expression;
-  if (ts.isIdentifier(callee)) return callee.text;
-  return ts.isPropertyAccessExpression(callee) ? callee.name.text : null;
+function optionWordsOf(settings: ts.Expression | undefined, scope: Scope): string[] {
+  if (settings === undefined) return [];
+  if (!ts.isObjectLiteralExpression(settings)) return [UNKNOWN];
+  return settings.properties
+    .filter((one) => ts.isSpreadAssignment(one) || OPTION_KEYS.has(one.name.getText()))
+    .map((one) => {
+      const value = ts.isPropertyAssignment(one) ? spelled(one.initializer, scope) : null;
+      return value === null || ts.isSpreadAssignment(one) ? UNKNOWN : `${one.name.getText()}=${value}`;
+    });
 }
 
-/** What a spawn reads, from its argv and options. */
 function argvOf(call: ts.CallExpression, scope: Scope): string | null {
   const local = (node: ts.Expression | undefined): ts.Expression | undefined =>
     node !== undefined && ts.isIdentifier(node) ? (scope.locals.get(node.text) ?? node) : node;
@@ -210,28 +217,12 @@ function argvOf(call: ts.CallExpression, scope: Scope): string | null {
     argv = `${spelled(first, scope) ?? UNKNOWN} ${rest}`;
     settings = options ? second : third;
   }
-  const set = (one: ts.ObjectLiteralElementLike): string => {
-    const value = ts.isPropertyAssignment(one) ? spelled(one.initializer, scope) : null;
-    return value === null || ts.isSpreadAssignment(one) ? UNKNOWN : `${one.name.getText()}=${value}`;
-  };
-  const optionWords =
-    settings === undefined
-      ? []
-      : ts.isObjectLiteralExpression(settings)
-        ? settings.properties
-            .filter((one) => ts.isSpreadAssignment(one) || OPTION_KEYS.has(one.name.getText()))
-            .map(set)
-        : [UNKNOWN];
-  const words = [...(argv ?? "").split(/\s+/u), ...optionWords].filter(Boolean);
+  const words = [...(argv ?? "").split(/\s+/u), ...optionWordsOf(settings, scope)].filter(Boolean);
   const short = (one: string): boolean => one.startsWith("-") && !one.startsWith("--");
   const kept = words.filter((word, index) => !short(word) && !(index > 1 && short(words[index - 1] ?? "")));
   return kept.length === 0 || kept.includes(UNKNOWN) ? null : kept.join(" ");
 }
 
-const withPrefix = (verb: string, key: string | null): string | null =>
-  key === null ? null : `${verb} ${key}`;
-
-/** The key of the external read a call makes itself, or null where it makes none or names no key. */
 function readKey(call: ts.CallExpression, scope: Scope): string | null {
   const name = nameOf(call);
   if (name === null) return null;
@@ -272,7 +263,6 @@ function add(into: Tally, from: Tally, times = 1): Tally {
   return out;
 }
 
-/** The larger count of each key across alternatives. */
 function larger(...arms: Tally[]): Tally {
   let out: Tally = EMPTY;
   for (const arm of arms) {
@@ -286,7 +276,6 @@ function larger(...arms: Tally[]): Tally {
   return out;
 }
 
-/** The function a call reaches by name, with the module it is declared in. */
 function calleeOf(call: ts.CallExpression, scope: Scope): [Callable, Module] | null {
   const callee = call.expression;
   const { module } = scope;
@@ -306,7 +295,6 @@ function calleeOf(call: ts.CallExpression, scope: Scope): [Callable, Module] | n
   return found === undefined || home === undefined ? null : [found, home];
 }
 
-/** Whether a function caches its result in a top-level mutable binding or collection (memoized). */
 function cached(fn: Callable, module: Module, graph: Graph): boolean {
   const memo = graph.cached.get(fn);
   if (memo !== undefined) return memo;
@@ -333,7 +321,6 @@ function cached(fn: Callable, module: Module, graph: Graph): boolean {
   return result;
 }
 
-/** Every key a call to a function reads at least once, its parameters bound to the call's arguments. */
 function readsOfCall(call: ts.CallExpression, scope: Scope): Tally {
   const reached = calleeOf(call, scope);
   const { graph } = scope;
@@ -381,8 +368,7 @@ function once(
   const { items } = scope;
   const given = ts.isCallExpression(node) ? node.arguments : [node.template];
   const varies = items !== null && given.some((one) => mentions(one, items));
-  const { file } = scope.module;
-  const line = file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1;
+  const line = lineOf(scope.module.file, node);
   return new Map(
     keys.map((key) => [
       varies && !key.endsWith(PER_ITEM) ? key + PER_ITEM : key,
@@ -413,7 +399,43 @@ function mentionsCall(node: ts.Node, names: ReadonlySet<string>): boolean {
   return ts.forEachChild(node, (child) => mentionsCall(child, names) || undefined) === true;
 }
 
-/** What a node changes before a later read: time waits, process signals, or written paths. */
+function perItem(node: Callable): boolean {
+  const call = node.parent;
+  return (
+    ts.isCallExpression(call) &&
+    call.arguments.some((one) => one === node) &&
+    ITERATIONS.has(nameOf(call) ?? "")
+  );
+}
+
+function recordCallMove(node: ts.CallExpression, scope: Scope, into: Moves): void {
+  const name = nameOf(node) ?? "";
+  const [first, signal] = node.arguments;
+  into.waits ||= name === "sleepSync";
+  into.signals ||= name === "kill" && signal?.getText() !== "0";
+  const path = WRITES.has(name) && first !== undefined ? spelled(first, scope) : null;
+  if (path !== null) into.paths.add(path);
+  const reached = calleeOf(node, scope);
+  if (reached === null || scope.depth >= DEPTH) return;
+  const [fn, home] = reached;
+  const { moving } = scope.graph;
+  let sub = moving.get(fn);
+  if (sub === undefined) {
+    sub = { waits: false, signals: false, paths: new Set() };
+    moving.set(fn, sub);
+    sub = movesOf(fn.body ?? fn, {
+      ...scope,
+      module: home,
+      bound: new Map(),
+      locals: new Map(),
+      depth: scope.depth + 1,
+    });
+    moving.set(fn, sub);
+  }
+  into.waits ||= sub.waits;
+  into.signals ||= sub.signals;
+}
+
 function movesOf(
   node: ts.Node,
   scope: Scope,
@@ -422,34 +444,7 @@ function movesOf(
   if (ts.isTypeNode(node) || ts.isTypeParameterDeclaration(node)) return into;
   if (ts.isAwaitExpression(node) && mentionsCall(node.expression, WAITS)) into.waits = true;
   if (isCallable(node) && !perItem(node)) return into;
-  if (ts.isCallExpression(node)) {
-    const name = nameOf(node) ?? "";
-    const [first, signal] = node.arguments;
-    into.waits ||= name === "sleepSync";
-    into.signals ||= name === "kill" && signal?.getText() !== "0";
-    const path = WRITES.has(name) && first !== undefined ? spelled(first, scope) : null;
-    if (path !== null) into.paths.add(path);
-    const reached = calleeOf(node, scope);
-    if (reached !== null && scope.depth < DEPTH) {
-      const [fn, home] = reached;
-      const { moving } = scope.graph;
-      let sub = moving.get(fn);
-      if (sub === undefined) {
-        sub = { waits: false, signals: false, paths: new Set() };
-        moving.set(fn, sub);
-        sub = movesOf(fn.body ?? fn, {
-          ...scope,
-          module: home,
-          bound: new Map(),
-          locals: new Map(),
-          depth: scope.depth + 1,
-        });
-        moving.set(fn, sub);
-      }
-      into.waits ||= sub.waits;
-      into.signals ||= sub.signals;
-    }
-  }
+  if (ts.isCallExpression(node)) recordCallMove(node, scope, into);
   ts.forEachChild(node, (child) => {
     movesOf(child, scope, into);
   });
@@ -495,18 +490,13 @@ function sequence(statements: readonly ts.Statement[], scope: Scope, total: Tall
   return acc;
 }
 
-function perItem(node: Callable): boolean {
-  const call = node.parent;
-  return (
-    ts.isCallExpression(call) &&
-    call.arguments.some((one) => one === node) &&
-    ITERATIONS.has(nameOf(call) ?? "")
-  );
+function itemScope(scope: Scope, names: ts.Node | readonly ts.Node[] | undefined): Scope {
+  const items = new Set(scope.items);
+  for (const one of Array.isArray(names) ? names : [names]) boundBy(one, items);
+  return { ...scope, items };
 }
 
-/** How often each keyed read happens on the worst path through a node. */
-function tallyOf(node: ts.Node | undefined, scope: Scope): Tally {
-  if (node === undefined || ts.isTypeNode(node) || ts.isTypeParameterDeclaration(node)) return EMPTY;
+function tallyControl(node: ts.Node, scope: Scope): Tally | null {
   const walk = (one: ts.Node | undefined): Tally => tallyOf(one, scope);
   if (ts.isBlock(node) || ts.isSourceFile(node)) return sequence(node.statements, scope);
   if (ts.isIfStatement(node)) {
@@ -524,24 +514,36 @@ function tallyOf(node: ts.Node | undefined, scope: Scope): Tally {
   if (SKIPPED_LOOP_KINDS.has(node.kind) || (ts.isForStatement(node) && node.condition === undefined)) {
     return EMPTY;
   }
-  const each = (names: ts.Node | readonly ts.Node[] | undefined): Scope => {
-    const items = new Set(scope.items);
-    for (const one of Array.isArray(names) ? names : [names]) boundBy(one, items);
-    return { ...scope, items };
-  };
   if (FOR_KINDS.has(node.kind)) {
     // SAFETY: `FOR_KINDS` enumerates the three `for` loop AST node kinds.
     const loop = node as ts.ForStatement | ts.ForOfStatement | ts.ForInStatement;
     const head = ts.isForStatement(loop)
       ? add(walk(loop.initializer), walk(loop.condition))
       : walk(loop.expression);
-    return add(head, tallyOf(loop.statement, each(loop.initializer)), 2);
+    return add(head, tallyOf(loop.statement, itemScope(scope, loop.initializer)), 2);
   }
   if (isCallable(node)) {
     return perItem(node)
-      ? add(EMPTY, tallyOf(node.body, each(node.parameters.map((one) => one.name))), 2)
+      ? add(
+          EMPTY,
+          tallyOf(
+            node.body,
+            itemScope(
+              scope,
+              node.parameters.map((one) => one.name),
+            ),
+          ),
+          2,
+        )
       : EMPTY;
   }
+  return null;
+}
+
+function tallyOf(node: ts.Node | undefined, scope: Scope): Tally {
+  if (node === undefined || ts.isTypeNode(node) || ts.isTypeParameterDeclaration(node)) return EMPTY;
+  const branch = tallyControl(node, scope);
+  if (branch !== null) return branch;
   if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
     scope.bound.set(node.name.text, node.initializer === undefined ? null : spelled(node.initializer, scope));
     if (node.initializer !== undefined) scope.locals.set(node.name.text, node.initializer);
@@ -549,7 +551,7 @@ function tallyOf(node: ts.Node | undefined, scope: Scope): Tally {
   }
   let total: Tally = EMPTY;
   ts.forEachChild(node, (child) => {
-    total = add(total, walk(child));
+    total = add(total, tallyOf(child, scope));
   });
   if (ts.isCallExpression(node)) {
     const key = readKey(node, scope);
@@ -576,7 +578,7 @@ function rowsOf(path: string, name: string, tally: Tally): TreeFinding[] {
     const lines = at.split(", ").map(Number);
     const count = Math.max(...under.map(([, entry]) => entry.count));
     const reads = under.map(([key]) => `\`${key.replace(PER_ITEM, "")}\``).join(" and ");
-    const times = lines.length === 1 ? "once for each item of a loop" : `${count} times`;
+    const times = lines.length === 1 ? "once for each item of a loop" : `${String(count)} times`;
     return {
       kind: "no-repeated-external-read",
       path,
@@ -587,14 +589,13 @@ function rowsOf(path: string, name: string, tally: Tally): TreeFinding[] {
   });
 }
 
-/** Every function, and every module's top level, that makes one keyed external read twice. */
 export function repeatedExternalReads(parsed: ReadonlyMap<string, ts.SourceFile>): TreeFinding[] {
   const paths = new Set(parsed.keys());
   const modules = new Map([...parsed].map(([path, file]) => [path, moduleOf(path, file, paths)]));
   const graph: Graph = { modules, open: new Set(), memo: new Map(), moving: new Map(), cached: new Map() };
   const rows: TreeFinding[] = [];
   for (const module of modules.values()) {
-    if (TEST_PATH.test(module.path)) continue;
+    if (isTestPath(module.path)) continue;
     const entries: [string, ts.Node, Callable | null][] = [
       ["the module's top level", module.file, null],
       ...[...module.functions].map(([name, fn]): [string, ts.Node, Callable] => [

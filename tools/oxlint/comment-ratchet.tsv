@@ -100,7 +100,7 @@ packages/ui/src/views/held.ts	3
 packages/ui/src/views/inspector.tsx	14
 packages/ui/src/views/late.ts	2
 packages/ui/src/views/log.tsx	2
-packages/ui/src/views/moves-comparison.tsx	8
+packages/ui/src/views/moves-comparison.tsx	7
 packages/ui/src/views/moves-list.tsx	9
 packages/ui/src/views/moves-session.tsx	3
 packages/ui/src/views/moves.tsx	6
@@ -217,7 +217,6 @@ test/promotion-tuner-trend.test.ts	12
 test/promotion-tuner.test.ts	5
 test/pulls.test.ts	4
 test/referee-files.test.ts	11
-test/rejections.test.ts	4
 test/repository-practice-script.test.ts	3
 test/repository-source-policy.test.ts	3
 test/restack.test.ts	6
@@ -335,7 +334,6 @@ tools/oxlint/ana/rules/no-react-effect.ts	3
 tools/oxlint/ana/rules/no-renaming-temporary.ts	25
 tools/oxlint/ana/rules/no-repeated-string-literal.ts	24
 tools/oxlint/ana/rules/no-side-effect-in-predicate.ts	2
-tools/oxlint/ana/rules/no-single-caller-helper.ts	43
 tools/oxlint/ana/rules/no-single-use-const-chain.ts	12
 tools/oxlint/ana/rules/no-tangled-ternary.ts	3
 tools/oxlint/ana/rules/no-thrice-spelled-object.ts	7
@@ -348,7 +346,7 @@ tools/oxlint/ana/rules/require-captured-json-runtime.ts	5
 tools/oxlint/ana/rules/require-declarations-first.ts	48
 tools/oxlint/ana/rules/require-meta-runtime-import.ts	9
 tools/oxlint/ana/shared/crossed.ts	5
-tools/oxlint/ana/shared/file-role.ts	8
+tools/oxlint/ana/shared/file-role.ts	7
 tools/oxlint/ana/shared/flags.ts	4
 tools/oxlint/ana/shared/forwarding.ts	7
 tools/oxlint/ana/shared/import-fix.ts	7
@@ -377,7 +375,6 @@ tools/oxlint/anti-slop/shared/subpath-alias.ts	8
 tools/oxlint/anti-slop/shared/type-alias-resolution.ts	10
 tools/oxlint/implicit-state-opinionated/index.ts	1
 tools/oxlint/implicit-state-opinionated/rules/max-boolean-fields.ts	14
-tools/oxlint/implicit-state-opinionated/rules/no-state-in-names.ts	10
 tools/oxlint/implicit-state-opinionated/rules/prefer-state-union.ts	4
 tools/oxlint/implicit-state/index.ts	1
 tools/oxlint/implicit-state/rules/no-age-based-lock.ts	13
@@ -388,20 +385,8 @@ tools/oxlint/not-slop-ledger.ts	21
 tools/oxlint/not-slop.ts	7
 tools/oxlint/plugins.ts	2
 tools/oxlint/rule-examples.ts	6
-tools/oxlint/simplify-census.ts	19
 tools/oxlint/staged-slop.ts	17
-tools/oxlint/tree-copied-block.ts	4
-tools/oxlint/tree-crossed-argument.ts	9
-tools/oxlint/tree-external-read.ts	12
-tools/oxlint/tree-fact.ts	2
-tools/oxlint/tree-findings.ts	49
-tools/oxlint/tree-identity.ts	9
-tools/oxlint/tree-implicit-state.ts	2
-tools/oxlint/tree-overwritten-key.ts	14
-tools/oxlint/tree-partial-mapping.ts	2
-tools/oxlint/tree-second-reader.ts	2
 tools/oxlint/tree-stale-reference.ts	8
-tools/oxlint/tree-state-role.ts	2
 tools/runs/alerts.ts	34
 tools/runs/bench.ts	26
 tools/runs/cli.ts	23

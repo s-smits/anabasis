@@ -1,5 +1,6 @@
 import type { LogEvent } from "../kernel/log.ts";
 import { labelsIn, rulingsOf } from "../kernel/solves.ts";
+import { asRecord, type JsonValue } from "../meta/json-shape.ts";
 import type { Ruling } from "./referee.ts";
 
 export const RULINGS = ["earned", "check-defect", "unclear"] as const;
@@ -15,6 +16,8 @@ interface Bar {
   readonly caught: number;
   readonly voided: number;
 }
+
+export const VERDICT_BAR: Bar = { caught: 0.75, voided: 0.1 };
 
 interface Agreement {
   readonly table: Readonly<Record<Ruling, Readonly<Record<Ruling, number>>>>;
@@ -56,15 +59,15 @@ export function agreement(events: readonly LogEvent[], labels: ReadonlyMap<strin
     if (ruling === undefined) unruled.push(solve);
     else table[label][ruling] += 1;
   }
-  const labelled = (kind: Ruling) => RULINGS.reduce((sum, ruling) => sum + table[kind][ruling], 0);
+  const labelledCount = (kind: Ruling) => RULINGS.reduce((sum, ruling) => sum + table[kind][ruling], 0);
   const ruled = (kind: Ruling) => RULINGS.reduce((sum, label) => sum + table[label][kind], 0);
   const share = (label: Ruling) => {
-    const total = labelled(label);
+    const total = labelledCount(label);
     return total === 0 ? null : (total - table[label].earned) / total;
   };
-  const total = RULINGS.reduce((sum, kind) => sum + labelled(kind), 0);
+  const total = RULINGS.reduce((sum, kind) => sum + labelledCount(kind), 0);
   const alike = RULINGS.reduce((sum, kind) => sum + table[kind][kind], 0) / total;
-  const chance = RULINGS.reduce((sum, kind) => sum + labelled(kind) * ruled(kind), 0) / total ** 2;
+  const chance = RULINGS.reduce((sum, kind) => sum + labelledCount(kind) * ruled(kind), 0) / total ** 2;
   return {
     table,
     unruled,
@@ -74,7 +77,7 @@ export function agreement(events: readonly LogEvent[], labels: ReadonlyMap<strin
     // SAFETY: built from RULINGS, so every Ruling key is present.
     specific: Object.fromEntries(
       RULINGS.map((kind) => {
-        const either = labelled(kind) + ruled(kind);
+        const either = labelledCount(kind) + ruled(kind);
         return [kind, either === 0 ? null : (2 * table[kind][kind]) / either];
       }),
     ) as Record<Ruling, number | null>,
@@ -85,10 +88,10 @@ export function agreement(events: readonly LogEvent[], labels: ReadonlyMap<strin
 }
 
 export function clears(measured: Agreement, bar: Bar): boolean {
-  const labelled = RULINGS.flatMap((label) => RULINGS.map((ruling) => measured.table[label][ruling]));
+  const counts = RULINGS.flatMap((label) => RULINGS.map((ruling) => measured.table[label][ruling]));
   return (
     measured.unruled.length === 0 &&
-    labelled.reduce((sum, count) => sum + count, 0) >= LEAST_LABELS &&
+    counts.reduce((sum, count) => sum + count, 0) >= LEAST_LABELS &&
     measured.caught !== null &&
     measured.caught >= bar.caught &&
     measured.voided !== null &&
@@ -118,4 +121,15 @@ export function passAgreement(labels: ReadonlyMap<string, PassLabel>) {
     wrongRate,
     clears: decided >= LEAST_PASS_LABELS && wrongRate !== null && wrongRate <= MAX_WRONG_PASS,
   };
+}
+
+export function labelled<Word extends string>(file: JsonValue, known: readonly Word[]) {
+  const labels = new Map<string, Word>();
+  const open: string[] = [];
+  for (const [solve, value] of Object.entries(asRecord(file) ?? {})) {
+    const word = known.find((each) => each === value);
+    if (word === undefined) open.push(solve);
+    else labels.set(solve, word);
+  }
+  return { labels, open };
 }

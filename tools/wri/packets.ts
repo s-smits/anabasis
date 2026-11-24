@@ -22,7 +22,7 @@ const ANCHORS = 6;
 /** The grade from which a task the Starter answers every time is regraded: specialist work. */
 const HIGH = 5;
 
-export interface Campaign {
+interface Campaign {
   readonly name: string;
   readonly log: string;
   readonly events: readonly LogEvent[];

@@ -434,7 +434,7 @@ describe("one landing of a clone at a time", () => {
     // The lock is a link whose target is its holder's record.
     symlinkSync(recordOf(runtimeProcess.pid), lock);
     const said: string[] = [];
-    const held = holdAlone(clone, "land", (line) => said.push(line), 20);
+    const held = holdAlone(clone, (line) => said.push(line), 20);
     const early = await Promise.race([held.then(() => "held"), Bun.sleep(200).then(() => "waiting")]);
     expect(early).toBe("waiting");
     expect(said).toEqual([`another land (pid ${mine}) is running in this clone; waiting for it to end`]);
@@ -444,7 +444,7 @@ describe("one landing of a clone at a time", () => {
     const release = await held;
     expect(readlinkSync(lock)).toBe(recordOf(runtimeProcess.pid));
     release();
-    const again = await holdAlone(clone, "land", () => undefined, 20);
+    const again = await holdAlone(clone, () => undefined, 20);
     expect(readlinkSync(lock)).toBe(recordOf(runtimeProcess.pid));
     again();
   });
@@ -460,7 +460,7 @@ describe("one landing of a clone at a time", () => {
     };
     const over = (note: string): boolean => note === "#5 sanitizing";
     const apart = held();
-    const waiting = holdAlone(apart.clone, "land", () => undefined, 20, {
+    const waiting = holdAlone(apart.clone, () => undefined, 20, {
       note: "#4 sanitizing",
       over: () => false,
     });
@@ -472,7 +472,7 @@ describe("one landing of a clone at a time", () => {
 
     const { clone, lock, holder } = held();
     const said: string[] = [];
-    const release = await holdAlone(clone, "land", (line) => said.push(line), 20, {
+    const release = await holdAlone(clone, (line) => said.push(line), 20, {
       note: "#6 sanitizing",
       over,
     });
@@ -495,7 +495,7 @@ describe("one landing of a clone at a time", () => {
         `import { holdAlone } from ${landingPath};`,
         // Every taker starts at one instant, so they meet at the takeover rather than one after another.
         `while (Date.now() < ${String(Date.now() + 3000)});`,
-        `await holdAlone(${JSON.stringify(clone)}, "land", () => console.log("waiting"), 20);`,
+        `await holdAlone(${JSON.stringify(clone)}, () => console.log("waiting"), 20);`,
         `console.log("held");`,
         "await Bun.sleep(30000);",
       ].join("\n"),
@@ -523,7 +523,7 @@ describe("one landing of a clone at a time", () => {
     const lock = join(clone, ".git", "ana-land.lock");
     const stranger = Bun.spawn(["sleep", "30"]);
     symlinkSync(`${String(stranger.pid)} ${hostname()} Thu Jan  1 00:00:00 1970 #5 sanitizing`, lock);
-    const held = holdAlone(clone, "land", () => undefined, 20, { note: "#6 sanitizing", over: () => true });
+    const held = holdAlone(clone, () => undefined, 20, { note: "#6 sanitizing", over: () => true });
     const early = await Promise.race([held.then(() => "held"), Bun.sleep(500).then(() => "waiting")]);
     expect(early).toBe("held");
     expect(stranger.killed || stranger.signalCode !== null).toBe(false);

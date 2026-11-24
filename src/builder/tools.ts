@@ -128,7 +128,7 @@ function measuredText(
     : "";
 }
 
-function recordsOf(events: readonly LogEvent[]) {
+export function recordsOf(events: readonly LogEvent[]) {
   const stands = standsOf(events);
   const byTask = new Map<string, Map<string, PracticeRecord>>();
   for (const solve of ended(practiceRan(events))) {
@@ -143,11 +143,6 @@ function recordsOf(events: readonly LogEvent[]) {
     forTask.set(solve.under.harness, held);
   }
   return byTask;
-}
-
-export function record(events: readonly LogEvent[], version: string, harness: string) {
-  const held = recordsOf(events).get(version)?.get(harness);
-  return held === undefined ? { solves: [], passed: 0 } : { solves: [...held.solves], passed: held.passed };
 }
 
 export function hasPractice(

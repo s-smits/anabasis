@@ -5,6 +5,7 @@
 import { describe, expect, it } from "bun:test";
 import { resolve } from "../src/meta/path.ts";
 import { importSpecifier } from "../tools/oxlint/ana/shared/import-fix.ts";
+import { parsedSources } from "../tools/oxlint/tree-ast.ts";
 import { identitiesWithoutOwner } from "../tools/oxlint/tree-identity.ts";
 import { unreadModules } from "../tools/oxlint/tree-findings.ts";
 
@@ -43,10 +44,12 @@ describe("the tree scans read an alias as the module it names", () => {
       "",
     ].join("\n");
     const rows = identitiesWithoutOwner(
-      new Map([
-        ["a/probe.ts", probe],
-        ["b/probe.ts", probe],
-      ]),
+      parsedSources(
+        new Map([
+          ["a/probe.ts", probe],
+          ["b/probe.ts", probe],
+        ]),
+      ),
     );
     expect(rows.map((row) => row.detail)).toStrictEqual([]);
   });
@@ -61,10 +64,12 @@ describe("the tree scans read an alias as the module it names", () => {
     ] as const) {
       expect(
         identitiesWithoutOwner(
-          new Map([
-            ["a/probe.ts", line],
-            ["b/probe.ts", line],
-          ]),
+          parsedSources(
+            new Map([
+              ["a/probe.ts", line],
+              ["b/probe.ts", line],
+            ]),
+          ),
         ).length > 0,
         line,
       ).toBe(identity);

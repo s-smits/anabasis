@@ -70,7 +70,7 @@ export interface WallClock {
   readonly after: (ms: number, fall: () => void) => () => void;
 }
 
-export interface Used {
+interface Used {
   readonly clock: SolveClock;
   readonly turns: () => number;
   readonly modelTurns: number | undefined;

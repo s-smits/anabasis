@@ -164,7 +164,7 @@ function endOf(word: string): End | undefined {
  * delivered from the campaign's store, so a task a session wrote can be scripted once some solve
  * has answered it.
  */
-export function answersOf(graded: readonly Control[], log: string | null) {
+function answersOf(graded: readonly Control[], log: string | null) {
   const verdicts = log === null ? [] : [...verdictsOf(read(log)).values()];
   const solved = verdicts.flatMap(({ task, answer, files, checker }) =>
     log === null || task === null || answer === undefined || checker === null || checker.kind === "faulty"

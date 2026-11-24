@@ -334,7 +334,7 @@ const timeOf = (event: LogEvent | undefined) => (event === undefined ? Number.Na
 /** The campaigns of `runs` that pass `choice`, the newest last event first. A seed or a live solve
  *  is no campaign, and a log with no event passes nothing. Reading every archived log whole takes
  *  a few seconds. */
-export function newest(runs: readonly Run[], choice: Choice): Run[] {
+function newest(runs: readonly Run[], choice: Choice): Run[] {
   const read = runs
     .filter((run) => isCampaign(run) && run.seed !== true)
     .map((run) => {

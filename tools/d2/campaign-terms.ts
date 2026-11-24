@@ -10,10 +10,18 @@ import { tasksToAskFor } from "#src/campaign/decide.ts";
 import { cutShort, type Plan } from "#src/campaign/ground.ts";
 import type { Decided } from "#src/campaign/move.ts";
 import { type Opening, openingOf, planOf, SEATS, type Seat, TERMS } from "#src/campaign/opening.ts";
-import type { Word } from "#src/campaign/word.ts";
+import { ANSWERED, type Word } from "#src/campaign/word.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import type { Session } from "#src/examiner/session.ts";
-import { append, type LogEvent, read } from "#src/kernel/log.ts";
+import {
+  append,
+  CALL_KINDS,
+  eachEvent,
+  eventsOf,
+  type LogEvent,
+  read,
+  TRACE_KINDS,
+} from "#src/kernel/log.ts";
 import { PATIENCE, referenceOf } from "#src/kernel/reports.ts";
 import { mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
@@ -57,6 +65,15 @@ export interface Turn {
 }
 
 export type Values = ReturnType<typeof flagsOf>;
+
+interface TurnSource {
+  readonly log: string;
+  readonly values: Values;
+  readonly opening: Opening;
+  readonly seats: Seats;
+  readonly held: Seated;
+  readonly campaign: Campaign | null;
+}
 
 const OPTIONS = {
   ...PACK_OPTIONS,
@@ -183,7 +200,7 @@ export async function promoteMade(
 
 /** Record an automatic reference revert back to the last confirmed harness (or starter). */
 export function revertMade(log: string, owed: Extract<Decided, { move: "revert" }>): void {
-  const from = referenceOf(read(log)) ?? "starter";
+  const from = referenceOf(read(log, TRACE_KINDS)) ?? "starter";
   moved(log, owed, { harness: owed.harness });
   append(log, "harness.reverted", {
     harness: owed.harness,
@@ -333,7 +350,7 @@ export function opened(
   seats: "paid" | "scripted",
   heard: readonly Word[] = [],
 ): Opening {
-  const events = read(log);
+  const events = read(log, CALL_KINDS);
   const was = openingOf(events);
   const budget = resolveBudget(values, was, seats, heard);
   const prompt = promptOf(values, was);
@@ -383,12 +400,15 @@ export function opened(
  * that crashed, or was refused, every time would keep a campaign going without end.
  */
 export function idleOf(events: readonly LogEvent[]): number {
-  const since = events.slice(events.findLastIndex(({ kind }) => kind === "campaign.ended") + 1);
-  const named = since.flatMap(({ data }) => (isString(data.session) ? [data.session] : []));
+  const since = events.slice((eventsOf(events, "campaign.ended").at(-1)?.index ?? -1) + 1);
+  const counts = new Map<string, number>();
+  for (const { data } of since) {
+    if (isString(data.session)) counts.set(data.session, (counts.get(data.session) ?? 0) + 1);
+  }
   const cut = new Set([
     ...since.filter(cutShort).map(({ data }) => data.session),
     // A move whose session nothing else names never started: the host's refusal (`actionTool`).
-    ...named.filter((session) => named.indexOf(session) === named.lastIndexOf(session)),
+    ...[...counts].flatMap(([session, seen]) => (seen === 1 ? [session] : [])),
   ]);
   const moves = since.flatMap(({ kind, data }) => (kind === MOVED && !cut.has(data.session) ? [data] : []));
   return moves.length - 1 - moves.findLastIndex(({ move }) => move !== "build");
@@ -494,18 +514,35 @@ export function comparisonOf(decided: Extract<Decided, { move: "compare" }>, tur
   };
 }
 
+/** Reads the campaign log for a decision turn, skipping tool-call payloads unless an unanswered
+ *  operator word (`stop`, `tasks`, `budget`) requires raw unfiltered indices for `pendingWords`. */
+function readForTurn(log: string): LogEvent[] {
+  const events: LogEvent[] = [];
+  const heard = new Set<number>();
+  const words: number[] = [];
+  eachEvent(
+    log,
+    (event, index) => {
+      events.push(event);
+      if (Array.isArray(event.data.answers)) {
+        for (const at of event.data.answers) {
+          if (isNumber(at)) heard.add(at);
+        }
+      }
+      if (event.kind === "campaign.word" && ANSWERED.some((word) => word === event.data.word)) {
+        words.push(index);
+      }
+    },
+    CALL_KINDS,
+  );
+  return words.some((at) => !heard.has(at)) ? read(log) : events;
+}
+
 /** One turn of a campaign as its log stands now: the plan the table is asked with, from the
  *  campaign's terms and what is left of its total. */
-export function turnOf(source: {
-  readonly log: string;
-  readonly values: Values;
-  readonly opening: Opening;
-  readonly seats: Seats;
-  readonly held: Seated;
-  readonly campaign: Campaign | null;
-}): Turn {
+export function turnOf(source: TurnSource): Turn {
   const { log, values, opening, seats, held, campaign } = source;
-  const events = read(log);
+  const events = readForTurn(log);
   return {
     events,
     opening,

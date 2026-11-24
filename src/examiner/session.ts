@@ -7,7 +7,7 @@ import { Type } from "typebox";
 import { type SeatTool, sessionClock, sit } from "../agent/session.ts";
 import { endingWith, openingTool } from "../builder/tools.ts";
 import { budgetLeft } from "../campaign/opening.ts";
-import { append, read } from "../kernel/log.ts";
+import { append, CALL_KINDS, read, TRACE_KINDS } from "../kernel/log.ts";
 import { priceKey, reportedShare, type Spent } from "../kernel/meter.ts";
 import { Cancellation } from "../kernel/solve.ts";
 import { examinerSessions } from "../kernel/solves.ts";
@@ -133,7 +133,7 @@ const ENDINGS = ["stands", "finished", "supplied", "killed", "wall", "crashed", 
  * holds nothing.
  */
 function withinBudget(log: string, spent: AbortController): boolean {
-  const left = budgetLeft(read(log));
+  const left = budgetLeft(read(log, CALL_KINDS));
   if (left === null || left.dollars >= left.reserve) return true;
   spent.abort(new Cancellation("campaign-budget"));
   return false;
@@ -394,7 +394,7 @@ async function examining(
  */
 export async function examine(request: ExamRequest, wall?: Wall): Promise<Examined> {
   if (request.kill?.aborted === true) throw new Error(`session ${request.id} was stopped before it began`);
-  if (examinerSessions(read(request.log)).has(request.id)) {
+  if (examinerSessions(read(request.log, TRACE_KINDS)).has(request.id)) {
     throw new Error(`session ${request.id} is in the log already; a session's id names one session`);
   }
   const seated = async (walls?: Walls) =>

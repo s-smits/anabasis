@@ -12,7 +12,7 @@ import { refuseNamingHome } from "#src/builder/kept.ts";
 import { type Draft, draftOf } from "#src/examiner/draft.ts";
 import { readChecker } from "#src/kernel/acceptance.ts";
 import { contractHash } from "#src/kernel/contract.ts";
-import { read } from "#src/kernel/log.ts";
+import { read, TRACE_KINDS } from "#src/kernel/log.ts";
 import {
   CHECK_PROGRAM_CONTRACT,
   checkProgramVersion,
@@ -54,7 +54,7 @@ function examStaged(dir: string, draft: Draft): Staged {
  * exam, as an old campaign over a stored pack did, and refused where the draft was never staged.
  */
 export function stagedExamOf(log: string): Staged | null {
-  const draft = draftOf(read(log));
+  const draft = draftOf(read(log, TRACE_KINDS));
   if (draft === null) return null;
   const staged = examStaged(dirname(log), draft);
   if (!existsSync(staged.checks)) {

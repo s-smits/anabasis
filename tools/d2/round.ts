@@ -12,7 +12,7 @@ import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import { type ObjectiveRule, testedSet, testOf, WEIGHTS } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
-import { read } from "#src/kernel/log.ts";
+import { read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { priceKey } from "#src/kernel/meter.ts";
 import { type Cap, capHolds } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
@@ -160,7 +160,7 @@ export async function parentNamed(
   campaign: Campaign,
   values: Pick<SessionFlags, "session" | "parent">,
 ): Promise<string> {
-  const began = read(campaign.log).find(
+  const began = read(campaign.log, TRACE_KINDS).find(
     ({ kind, data }) => kind === "build.started" && data.session === values.session,
   )?.data.parent;
   return (await keptAs(campaign, "--parent", isString(began) ? began : values.parent)).dir;
@@ -191,7 +191,10 @@ export function sessionNamed(
     reference: given.reference,
     states: campaign.states,
     memory: campaign.memory,
-    tasks: taskSets(read(campaign.log)).released.map((version) => ({ version, task: packageOf(version) })),
+    tasks: taskSets(read(campaign.log, TRACE_KINDS)).released.map((version) => ({
+      version,
+      task: packageOf(version),
+    })),
     contract: campaign.contract,
     resources: campaign.resources,
     ...seats.builder,
@@ -324,11 +327,11 @@ export async function campaignFor(
   const seats = seated === solved ? "paid" : "scripted";
   const cap = capNamed(values, seats);
   refereeNamed(values, seats);
-  const setting = settingAsked(values, recordedSetting(read(campaignLog(pack.name))));
+  const setting = settingAsked(values, recordedSetting(read(campaignLog(pack.name), TRACE_KINDS)));
   const campaign = await openCampaign({ ...pack, ...setting.named });
   const unrecorded =
     seats === "paid"
-      ? firstRecord(setting, solvingAs(campaign, setting.named), solverLast(read(campaign.log)))
+      ? firstRecord(setting, solvingAs(campaign, setting.named), solverLast(read(campaign.log, TRACE_KINDS)))
       : undefined;
   if (unrecorded !== undefined) throw new Error(unrecorded);
   return { cap, setting, campaign };
@@ -337,7 +340,7 @@ export async function campaignFor(
 /** A comparison's report and the stop rule as JSON, then its lines for a person to read: the
  *  prediction the comparison began with beside what it read, where the operator made one. */
 export function printReport(campaign: Campaign, id: string, report: Report): void {
-  const events = read(campaign.log);
+  const events = read(campaign.log, TRACE_KINDS);
   const said = predicted(events, id);
   console.log(JSON.stringify(report, null, 2));
   console.log(JSON.stringify(stopRule(events), null, 2));
@@ -498,7 +501,7 @@ export async function comparedOn(
   const packageOf = packaged(campaign);
   return {
     starter: await starter(campaign),
-    ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract)),
+    ...scoredSet(read(campaign.log, TRACE_KINDS), setting.target, contractHash(campaign.contract)),
     solves: setting.solves,
     level: Number(values.level),
     objective: objectiveNamed(campaign),

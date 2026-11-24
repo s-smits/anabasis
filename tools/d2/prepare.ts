@@ -15,7 +15,7 @@ import { draftOf } from "#src/examiner/draft.ts";
 import { feasibleOf } from "#src/examiner/write.ts";
 import { textFiles } from "#src/kernel/answer-files.ts";
 import { contractHash } from "#src/kernel/contract.ts";
-import { append, type EventKind, type LogEvent, read } from "#src/kernel/log.ts";
+import { append, type EventKind, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { poolOf, releaseOrder } from "#src/kernel/reports.ts";
 import { SIZE, sizeLines } from "#src/kernel/size.ts";
 import { admissionsOf, packageGate, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
@@ -62,7 +62,7 @@ export async function prepareCommand(
   const campaign = await openCampaign(packNamed(values));
   const { log, contract } = campaign;
 
-  let events = read(log);
+  let events = read(log, TRACE_KINDS);
   const record = (kind: EventKind, data: Parameters<typeof append>[2]) =>
     events.push(append(log, kind, data));
   const known = taskStates(events);
@@ -115,7 +115,7 @@ export async function prepareCommand(
     }
   }
   if (awaited) {
-    events = read(log);
+    events = read(log, TRACE_KINDS);
     before = taskSets(events);
     currentPool = poolOf(events);
   }

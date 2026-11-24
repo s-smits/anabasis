@@ -30,7 +30,7 @@ import { type AnswerFile, keepAnswerFiles, textFiles } from "../kernel/answer-fi
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, contentOf, proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { poolOf } from "../kernel/reports.ts";
-import { append, type LogEvent, read } from "../kernel/log.ts";
+import { append, CALL_KINDS, eventsOf, type LogEvent, read, TRACE_KINDS } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { solvesIn } from "../kernel/solves.ts";
 import { packageGate as checkPackage, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
@@ -416,7 +416,7 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
         const candidate = instanceOf("try", args);
         // SAFETY: a tool's arguments are JSON the provider parsed.
         const answer = args.answer as JsonValue;
-        const events = read(log);
+        const events = read(log, CALL_KINDS);
         const content = contentOf(candidate);
         const instance = heldAs(desk.request, events, candidate) ?? candidate;
         const packaged = checkPackage(contract, desk.request.pack(instance));
@@ -499,7 +499,7 @@ function tryReferenceTool(desk: Desk, within: Within): SeatTool {
         const given =
           "reference" in args.task ? desk.checked.get(args.task.reference) : instanceOf("", args.task);
         if (given === undefined) throw new Error("Unknown instance reference. try_answer returns one.");
-        const instance = heldAs(request, read(request.log), given) ?? {
+        const instance = heldAs(request, read(request.log, TRACE_KINDS), given) ?? {
           ...given,
           taskId: `try-${contentOf(given).slice(0, 12)}`,
         };
@@ -510,7 +510,7 @@ function tryReferenceTool(desk: Desk, within: Within): SeatTool {
         const ran = await within(async () =>
           Promise.all(Array.from({ length: solves }, async () => probe.solve(instance, desk.stop))),
         );
-        const ends = new Map(solvesIn(read(request.log)).map(({ id, end }) => [id, end]));
+        const ends = new Map(solvesIn(read(request.log, TRACE_KINDS)).map(({ id, end }) => [id, end]));
         const lines = ran.map((one, nth) => {
           const turns = one.solve === null ? undefined : ends.get(one.solve)?.turns;
           return `Solve ${String(nth + 1)}: ${toldOf(one.ending, isNumber(turns) ? turns : null)}.`;
@@ -528,9 +528,7 @@ function tryReferenceTool(desk: Desk, within: Within): SeatTool {
  * wrote anything is no task of the campaign's, and may be proposed again.
  */
 function admittedDrafts(events: readonly LogEvent[]): Task[] {
-  const admissions = new Set(
-    events.flatMap(({ kind, data }) => (kind === TASK_ADMISSION ? [data.version] : [])),
-  );
+  const admissions = new Set(eventsOf(events, TASK_ADMISSION).map(({ event }) => event.data.version));
   return proposalsOf(events).flatMap(({ version, task }) =>
     task !== null && admissions.has(version) ? [task] : [],
   );
@@ -553,7 +551,7 @@ export function writing(
   }: Lent = {},
 ) {
   const { verify, probe } = request;
-  const before = read(request.log);
+  const before = read(request.log, CALL_KINDS);
   /** What a conversation opening on `events` for `asked` is told. */
   const openedOn = (asked: Terms, events: readonly LogEvent[]) =>
     firstMessage(
@@ -607,7 +605,7 @@ export function writing(
     },
     tools: [
       proposeTool(desk),
-      exampleTool(() => [...writtenTasks(read(desk.request.log)), ...desk.request.tasks]),
+      exampleTool(() => [...writtenTasks(read(desk.request.log, TRACE_KINDS)), ...desk.request.tasks]),
       ...(verify === null ? [] : [tryTool(desk, verify)]),
       ...(probe === null ? [] : [tryReferenceTool(desk, within)]),
     ],
@@ -625,7 +623,7 @@ export function writing(
     // Each ask counts its own drafts and tries; what the conversation saw and answered stays.
     ask: (next: Terms) => {
       Object.assign(desk, { request: next, proposed: 0, tried: 0, held: [], refused: [] });
-      const events = read(next.log);
+      const events = read(next.log, CALL_KINDS);
       told = openedOn(next, events);
       return wakeOn(events, next.tasks, { ...next.limits, tries: capped(next.probe) });
     },

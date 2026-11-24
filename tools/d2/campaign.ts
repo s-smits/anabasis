@@ -20,7 +20,7 @@ import {
 } from "#src/kernel/condition.ts";
 import { type Contract, contractHash } from "#src/kernel/contract.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
-import { LOG_FILE, read } from "#src/kernel/log.ts";
+import { LOG_FILE, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
 import { latestBuilt, poolOf, promoted } from "#src/kernel/reports.ts";
 import { type TaskPackage, taskVersion } from "#src/kernel/task.ts";
@@ -206,7 +206,7 @@ export function harnessNamed(flags: {
 export function packNamed(flags: { readonly name?: string | undefined }, also = ""): CampaignArgs {
   const { name } = flags;
   if (name === undefined) throw new Error(`name --name${also}`);
-  if (draftOf(read(campaignLog(name))) === null) {
+  if (draftOf(read(campaignLog(name), TRACE_KINDS)) === null) {
     throw new Error(
       `campaign ${name} holds no exam of its own, which only a campaign that opened from a prompt drafts (tools/d2/harness-builder.ts --prompt)`,
     );
@@ -219,12 +219,13 @@ export function packNamed(flags: { readonly name?: string | undefined }, also = 
  * opens it, the answer format, and who solves where no flag says: the one the opening names.
  */
 function packOpened(dir: string, log: string, args: CampaignArgs) {
-  const events = read(log);
+  const events = read(log, TRACE_KINDS);
   const draft = draftOf(events);
   if (draft === null) throw new Error(`${log} holds no drafted exam`);
   const named = openingOf(events)?.solver ?? null;
   return {
     ...stageExam(dir, draft),
+    events,
     format: draft.answerFormat,
     solver: () => {
       if (named === null) {
@@ -354,14 +355,14 @@ export async function openCampaign(args: CampaignArgs) {
   // checkout's manifest, which the solver's wall keeps closed (`commandReadAllows`).
   writeFileSync(join(dir, "package.json"), "{}\n");
   const log = join(dir, LOG_FILE);
-  const { bundle, checks, format, solver } = packOpened(dir, log, args);
+  const { bundle, checks, events, format, solver } = packOpened(dir, log, args);
   const { brief, tasks } = readPack(bundle);
   const contract = contractOf(brief, format);
   // The checker this campaign runs under: its contract and its staged check program. Once the
   // operator has frozen one in the log (`tools/c/accept.ts --freeze`), a campaign whose own is
   // another does not open, since what the log counted was counted under the frozen one.
   const checker = { contract: contractHash(contract), checks: hashJsonValue(checkProgramVersion(checks)) };
-  const moved = departure(read(log), checker);
+  const moved = departure(events, checker);
   if (moved !== null) throw new Error(`${log}: ${moved}`);
   const resources = sweepResources(brief);
   const tools = join(bundle, ".toolchain");
@@ -373,7 +374,12 @@ export async function openCampaign(args: CampaignArgs) {
   const pack = (task: Task): TaskPackage => packageOf(checks, task);
   /** Every task the pack holds or a session wrote into the log, by version. */
   const packages = (): Map<string, TaskPackage> =>
-    new Map([...tasks, ...writtenTasks(read(log))].map((task) => [taskVersion(pack(task)), pack(task)]));
+    new Map(
+      [...tasks, ...writtenTasks(read(log, TRACE_KINDS))].map((task) => [
+        taskVersion(pack(task)),
+        pack(task),
+      ]),
+    );
   let solves = 0;
   /** One live solve of a task under a harness, by a solver, its condition recorded first. A solve
    *  made for a comparison names it, and is counted by that comparison alone. */
@@ -492,7 +498,7 @@ export async function keptAs(campaign: Keeping, flag: string, asked: string): Pr
   if (asked.startsWith(PROGRAMS_OF)) {
     return await programsAblation(campaign, await keptAs(campaign, flag, asked.slice(PROGRAMS_OF.length)));
   }
-  const events = read(campaign.log);
+  const events = read(campaign.log, TRACE_KINDS);
   const built = asked === "latest" ? latestBuilt(events) : asked === PROMOTED ? promoted(events) : null;
   if (asked === "starter" || ((asked === "latest" || asked === PROMOTED) && built === null)) {
     return await starter(campaign);
@@ -560,12 +566,13 @@ export function awaitingLines(campaign: {
   readonly log: string;
   readonly packages: () => Map<string, TaskPackage>;
 }): string[] {
-  const { awaiting } = poolOf(read(campaign.log));
+  const { awaiting } = poolOf(read(campaign.log, TRACE_KINDS));
   if (awaiting.length === 0) return [];
   const packages = campaign.packages();
   const named = awaiting.map((version) => packages.get(version)?.taskId ?? version.slice(0, 8));
+  const [has, is, it] = awaiting.length === 1 ? ["has", "is", "it"] : ["have", "are", "them"];
   return [
-    `${plural(awaiting.length, "held-out task")} ${awaiting.length === 1 ? "has" : "have"} no valid answer on record after two comparisons that cut no solve of ${awaiting.length === 1 ? "it" : "them"} at a limit, and ${awaiting.length === 1 ? "is" : "are"} left out of the scored set until a person has read ${awaiting.length === 1 ? "it" : "them"}: ${named.join(", ")}. A task may be hard, wrongly checked, or have no valid answer at all. Label each with tools/d2/prepare.ts: --keep <task id> returns it to the set, --infeasible <task id> refuses it`,
+    `${plural(awaiting.length, "held-out task")} ${has} no valid answer on record after two comparisons that cut no solve of ${it} at a limit, and ${is} left out of the scored set until a person has read ${it}: ${named.join(", ")}. A task may be hard, wrongly checked, or have no valid answer at all. Label each with tools/d2/prepare.ts: --keep <task id> returns it to the set, --infeasible <task id> refuses it`,
   ];
 }
 

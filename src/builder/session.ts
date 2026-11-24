@@ -22,7 +22,7 @@ import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { conditionsOf, type Limits } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
-import { append, isReferenceChange, type LogEvent, read } from "../kernel/log.ts";
+import { append, CALL_KINDS, isReferenceChange, type LogEvent, read, TRACE_KINDS } from "../kernel/log.ts";
 import { billedParts, priceKey } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { type Cap, INTERRUPTED } from "../kernel/reports.ts";
@@ -191,7 +191,7 @@ const ENDINGS = ["finished", "killed", "wall", "crashed", "turns"] as const;
  *  verdict carry in the log, which the reviewers and `read_trace` are asked for. */
 export async function practised(request: SolveRequest): Promise<Practised> {
   const ending = await solve(request);
-  const events = read(request.log);
+  const events = read(request.log, TRACE_KINDS);
   const last = endedSolves(solvesIn(events).filter(({ id }) => id.startsWith(`${request.id}-`))).at(-1);
   // The condition says which harness the solve ran, and the solve says which it opened. A harness
   // whose digest moved with where it sat once made the two differ, and a comparison counted by the
@@ -210,7 +210,7 @@ export async function practised(request: SolveRequest): Promise<Practised> {
  *  and a session that crashed or was stopped with one would otherwise leave the next to rebuild it
  *  from its notes or begin from the starter. */
 export async function keepPractised(log: string, id: string, states: string): Promise<void> {
-  const events = read(log);
+  const events = read(log, TRACE_KINDS);
   const mine = events.filter(ownedBy(events, id));
   // Practice under the parent or reference is not this session's edit (`under`, `tools.ts`): every session's
   // parent and every harness promoted stand before this session's own. One that ran before the
@@ -281,7 +281,7 @@ export async function session(
   const { log, limits, model } = request;
   const began = performance.now();
   const parent = await openHarness(request.parent);
-  const before = read(log);
+  const before = read(log, TRACE_KINDS);
   if (before.some(({ kind, data }) => kind === BUILD_STARTED && data.session === request.id)) {
     throw new Error(`session ${request.id} is in the log already; a session's id names one session`);
   }
@@ -334,7 +334,7 @@ export async function session(
 /** Rebuilt from public facts, including tasks released while the conversation stays open. */
 function openingFor(bench: Bench): string {
   const { request } = bench;
-  const recorded = read(request.log);
+  const recorded = read(request.log, CALL_KINDS);
   const campaign = campaignOf(recorded);
   const began = recorded.findLastIndex(
     ({ kind, data }) => kind === BUILD_STARTED && data.session === request.id,
@@ -398,7 +398,10 @@ async function converse(
   const used = (moment: "during-tools" | "between-turns" = "between-turns"): Used => ({
     turns: turns.length - (moment === "during-tools" ? 1 : 0),
     seconds: clock.seconds(),
-    practiceLeft: practiceLeft(bench, request.cap === undefined && campaign === undefined ? [] : read(log)),
+    practiceLeft: practiceLeft(
+      bench,
+      request.cap === undefined && campaign === undefined ? [] : read(log, CALL_KINDS),
+    ),
     practised: bench.opened?.harness.digest ?? null,
   });
   // The line goes under the first result of each turn, once a turn, rather than under every call or
@@ -428,7 +431,7 @@ async function converse(
     if (
       campaign === undefined &&
       request.cap !== undefined &&
-      billedParts(read(log), request.id).session >= request.cap.dollars
+      billedParts(read(log, CALL_KINDS), request.id).session >= request.cap.dollars
     ) {
       bench.halt.abort();
     }
@@ -461,7 +464,8 @@ async function converse(
     next: async () => {
       if (bench.note !== null) return null;
       const harness = await harnessNow(bench);
-      const practice = isString(harness) && hasPractice(bench, read(log), harness) ? "counted" : "uncounted";
+      const practice =
+        isString(harness) && hasPractice(bench, read(log, TRACE_KINDS), harness) ? "counted" : "uncounted";
       return [continuation(used(), limits, harness, bench.said, practice), campaign?.hook() ?? ""]
         .filter((part) => part !== "")
         .join("\n\n");
@@ -598,8 +602,10 @@ export async function sessionOnce(
   builder?: (request: BuildRequest) => Promise<Built>,
 ) {
   const parent = (await openHarness(request.parent)).digest;
-  if ((await left(read(request.log), request, parent)) === undefined) await (builder ?? build)(request);
-  const built = await left(read(request.log), request, parent);
+  if ((await left(read(request.log, TRACE_KINDS), request, parent)) === undefined) {
+    await (builder ?? build)(request);
+  }
+  const built = await left(read(request.log, TRACE_KINDS), request, parent);
   if (built === undefined) throw new Error(`session ${request.id} ran and left no record in the log`);
   return built;
 }

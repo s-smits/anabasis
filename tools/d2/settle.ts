@@ -7,7 +7,7 @@ import { passesIn, reported, swapped, toLabel, UNSETTLED } from "#src/campaign/c
 import { settleReading } from "#src/campaign/settle.ts";
 import { draw } from "#src/kernel/compare.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
+import { type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { shownFiles } from "#src/kernel/answer-files.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { lastReports } from "#src/kernel/reports.ts";
@@ -141,7 +141,7 @@ export async function settleCommand(args: readonly string[]): Promise<number> {
   const { session } = values;
   if (session === undefined) throw new Error("name --session, the comparison whose packet is settled");
   const campaign = await openCampaign(packNamed(values, " and --session"));
-  const events = read(campaign.log);
+  const events = read(campaign.log, TRACE_KINDS);
   const dir = join(dirname(campaign.log), `settle-${session}`);
   const file = join(dir, "labels.json");
   const answered = existsSync(file) ? (asRecord(capturedJsonParse(readFileSync(file, "utf8"))) ?? {}) : null;
@@ -165,9 +165,10 @@ export async function settleCommand(args: readonly string[]): Promise<number> {
     console.log(`comparison ${session} is settled already, and this is the report it was settled as`);
   }
   const report = settleReading(campaign.log, session, rejections, passes);
+  const after = read(campaign.log, TRACE_KINDS);
   console.log(capturedJsonStringify(report, null, 2));
-  console.log(capturedJsonStringify(stopRule(read(campaign.log)), null, 2));
-  for (const line of [...reportLines(report), ...labelLines(read(campaign.log))]) console.log(line);
+  console.log(capturedJsonStringify(stopRule(after), null, 2));
+  for (const line of [...reportLines(report), ...labelLines(after)]) console.log(line);
   return 0;
 }
 

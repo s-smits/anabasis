@@ -27,8 +27,8 @@
 import { CRASHES_IN_A_ROW } from "#src/campaign/decide.ts";
 import { crashedRun } from "#src/campaign/ground.ts";
 import { affords, flying, inFlight } from "#src/campaign/opening.ts";
-import { paused } from "#src/campaign/word.ts";
-import { append, read } from "#src/kernel/log.ts";
+import { PAUSE, paused } from "#src/campaign/word.ts";
+import { append, eachEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { waiting, waitOut } from "#src/solver/run.ts";
@@ -82,13 +82,25 @@ const SCRIPTED: Host = { load: () => 0, cores: 1, waitMs: 1000 };
  * a `runs pause` of a rehearsed campaign lets its open solves finish and stops, as a paid run's
  * does, rather than starting solves after its word and cutting them at its patience.
  */
+function isPaused(log: string, began: number, now: number, wallSeconds: number): boolean {
+  let hasPause = false;
+  eachEvent(
+    log,
+    ({ data }, index) => {
+      if (index >= began && data.word === PAUSE) hasPause = true;
+    },
+    (kind) => kind !== "campaign.word",
+  );
+  return hasPause && paused(read(log), began, now, wallSeconds);
+}
+
 function queued(
   { seated, loaded, host = seated === solved ? HOST : SCRIPTED }: Queue,
   log: string,
   began = read(log).length,
 ): Seated {
   const clock = host.now ?? Date.now;
-  const pausing = (wallSeconds: number) => paused(read(log), began, clock(), wallSeconds);
+  const pausing = (wallSeconds: number) => isPaused(log, began, clock(), wallSeconds);
   return (campaign, given) => {
     const seats = seated(campaign, given);
     return {
@@ -147,7 +159,7 @@ function queued(
  * a crash, not again at each asking until a session ends whole.
  */
 export async function waitCrashed(log: string, host: Host = HOST): Promise<void> {
-  const events = read(log);
+  const events = read(log, TRACE_KINDS);
   const { count, crash } = crashedRun(events);
   if ((await waitOut(log, crash, host.sleep)) || crash === null || !NETWORK.test(crash)) return;
   if (count === 0 || count >= CRASHES_IN_A_ROW) return;
@@ -175,7 +187,7 @@ export async function waitPaused(
   const { host = HOST, signal, within = (work) => work() } = options;
   const waitMs = Math.min(host.waitMs, PAUSE_POLL_MS);
   const clock = host.now ?? Date.now;
-  const shouldWait = () => signal?.aborted !== true && paused(read(log), began, clock(), wallSeconds);
+  const shouldWait = () => signal?.aborted !== true && isPaused(log, began, clock(), wallSeconds);
   let waited = false;
   while (shouldWait()) {
     waited = true;

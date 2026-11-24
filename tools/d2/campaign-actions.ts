@@ -18,7 +18,7 @@ import { type Bench, endingWith, waitTool } from "#src/builder/tools.ts";
 import { pendingWords } from "#src/campaign/word.ts";
 import { conversing, type Examined, examine } from "#src/examiner/session.ts";
 import { contractHash } from "#src/kernel/contract.ts";
-import { append, type LogEvent, read } from "#src/kernel/log.ts";
+import { append, CALL_KINDS, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { latestBuilt, patienceOf, promoted as lastPromoted } from "#src/kernel/reports.ts";
 import { billedParts } from "#src/kernel/meter.ts";
 import { sizeLines } from "#src/kernel/size.ts";
@@ -126,7 +126,7 @@ export const awaitsOperator = (name: string, harness: string): string =>
  *  session's list, which `practice` and `read_trace` read, and the files under `practice/`. */
 function refreshPractice(bench: Bench, campaign: Campaign): void {
   const packages = campaign.packages();
-  const tasks = taskSets(read(campaign.log)).released.flatMap((version) => {
+  const tasks = taskSets(read(campaign.log, TRACE_KINDS)).released.flatMap((version) => {
     const task = packages.get(version);
     return task === undefined ? [] : [{ version, task: publicView(task) }];
   });
@@ -143,15 +143,18 @@ async function refreshCampaign(context: CampaignContext, bench: Bench): Promise<
   bench.reference = { dir, harness: await openHarness(dir) };
   // What was kept since the conversation opened as well as before, since the Builder is told
   // kept/ holds every kept harness (`shellWalls`, `prompt.ts`).
-  seedKept(bench.home, bench.request.states, read(campaign.log), bench.parent);
+  seedKept(bench.home, bench.request.states, read(campaign.log, TRACE_KINDS), bench.parent);
 }
 
 /** The turn an action is made in and the move the table names for it. A total the operator left
  *  as a word is what the campaign runs by from here on, as at a move's boundary. */
 function actionTurn(context: CampaignContext) {
-  const words = pendingWords(read(context.log)).filter(({ word }) => word === "budget");
-  if (words.length > 0) context.opening = opened(context.log, context.values, context.paid, words);
-  const turn = turnOf(context);
+  let turn = turnOf(context);
+  const words = pendingWords(turn.events).filter(({ word }) => word === "budget");
+  if (words.length > 0) {
+    context.opening = opened(context.log, context.values, context.paid, words);
+    turn = turnOf(context);
+  }
   return { turn, decided: decide(turn.events, turn.plan) };
 }
 
@@ -229,7 +232,7 @@ async function runAction(
   // there would promote twice on one epoch's tasks. The
   // session's end can release practice, a move of its own, so the limit is read again after the
   // wait, as `promoteOwed` reads it after its own.
-  if (move === "compare" && writing != null && promotedSince(read(context.log))) {
+  if (move === "compare" && writing != null && promotedSince(read(context.log, TRACE_KINDS))) {
     await bench.within(() => writing.done);
     if (context.used >= context.maxMoves) return halt(spent);
   }
@@ -401,7 +404,7 @@ async function releaseOnce(context: CampaignContext, cause: string, bench?: Benc
     throw new Error("the practice release was refused");
   }
   if (bench !== undefined) await refreshCampaign(context, bench);
-  if (taskSets(read(context.log)).released.length === before) return false;
+  if (taskSets(read(context.log, TRACE_KINDS)).released.length === before) return false;
   context.used += 1;
   const why = `${due.said}, and ${cause}: the host releases the practice owed`;
   moved(context.log, { move: "prepare", code: "practice", why });
@@ -521,7 +524,7 @@ const compareTool = (context: CampaignContext, bench: Bench): SeatTool =>
       }),
     );
     unlock();
-    const events = read(context.log);
+    const events = read(context.log, CALL_KINDS);
     const step = campaignOf(events).steps.findLast(
       (each) => each.step === "comparison" && each.id === session,
     );
@@ -745,9 +748,11 @@ export function campaignTools(
     const promoting = (made: SeatTool): SeatTool => ({
       ...made,
       execute: async (args, api, execution) => {
-        const before = lastPromoted(read(context.log));
+        const before = lastPromoted(read(context.log, TRACE_KINDS));
         const result = await made.execute(args, api, execution);
-        if (lastPromoted(read(context.log)) === before || context.examining != null) return result;
+        if (lastPromoted(read(context.log, TRACE_KINDS)) === before || context.examining != null) {
+          return result;
+        }
         if (actionTurn(context).decided.move !== "examine") return result;
         const started = await examining.execute({}, api, execution);
         return { ...result, output: [...(result.output ?? []), ...(started.output ?? [])] };
@@ -796,12 +801,15 @@ export function campaignTools(
           // would stop the climb at one step: it is told so, without the table's next move, and the
           // next conversation takes it up. One that never left the starter is told nothing: no run
           // showed that finish.
-          if (actionTurn(context).decided.move === "end" || lastPromoted(read(context.log)) !== digest) {
+          if (
+            actionTurn(context).decided.move === "end" ||
+            lastPromoted(read(context.log, TRACE_KINDS)) !== digest
+          ) {
             return null;
           }
           return "harness/ is the harness last promoted, and no step past it has been tried.";
         }
-        if (readAgainst(read(context.log), digest, reference)) return null;
+        if (readAgainst(read(context.log, TRACE_KINDS), digest, reference)) return null;
         const writing = context.examining?.session;
         return `No comparison has read harness/ as it stands against the reference, and finish leaves it unmeasured.${writing === undefined ? "" : ` Examiner session ${writing} is still writing tasks beside this conversation, and finish waits for it to end.`}`;
       },

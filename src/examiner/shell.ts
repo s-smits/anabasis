@@ -158,9 +158,7 @@ export async function inExaminerWall<T>(
     // the provider failed its turn, is carried on, so its work is not lost to the provider. A
     // drafting session ends in `draft.finished`, which this read takes too.
     // The conversation's last ask, whose id is its own (`examining`, `session.ts`).
-    const ended = read(log).findLast(
-      ({ kind }) => kind === "exam.finished" || kind === "draft.finished",
-    )?.data;
+    const ended = read(log, (kind) => kind !== "exam.finished" && kind !== "draft.finished").at(-1)?.data;
     if (!(ended?.ended === "crashed" && Number(ended.running) > 0)) kept();
     return result;
   } finally {

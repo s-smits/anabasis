@@ -1313,10 +1313,12 @@ const REFUSED: readonly (readonly [
     `no ci.yml run exists on #15's head ${short(noDispatch)}, and ci.yml there takes no workflow_dispatch`,
   ],
   [
-    // A run follows, so code that read the failed list as "none" dispatches and passes.
+    // GitHub fails every try; a run follows, so code that read the failed list as "none" dispatches and passes.
     "a ci.yml run list GitHub failed to give",
     ["12", "--merge"],
-    (ciStates) => ({ ANA_FAKE_CI_STATES: ciStates("down", "completed\tsuccess\t19\thttps://ci/19") }),
+    (ciStates) => ({
+      ANA_FAKE_CI_STATES: ciStates("down", "down", "down", "completed\tsuccess\t19\thttps://ci/19"),
+    }),
     1,
     `GitHub did not list ci.yml's runs on #12's head ${short(upper)}. Land again.`,
   ],

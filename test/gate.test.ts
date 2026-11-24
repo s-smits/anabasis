@@ -262,7 +262,7 @@ describe.concurrent("proveCommits", () => {
     expect(ran(head)).toEqual(["run ui:deps"]);
   });
 
-  it("runs a tree again once a file the gate imports changed, and not for a neighbour it never imports", async () => {
+  it("runs a tree again once code the gate runs changed, and not for a neighbour it never imports or a comment", async () => {
     const { log, prove } = sandbox();
     // A copy of the checker as a caller's checkout holds it: the gate and what it imports.
     const checker = join(fixture, "checker");
@@ -277,7 +277,16 @@ describe.concurrent("proveCommits", () => {
     appendFileSync(join(checker, "tools", "runtime", "lint.ts"), "\n// a step the target runs as its own\n");
     expect((await prove(landing, {}, driver)).status).toBe(0);
     expect(gatesRun(log)).toEqual([]);
-    appendFileSync(join(checker, "src", "meta", "subprocess.ts"), "\n// the gate's import, changed\n");
+    appendFileSync(
+      join(checker, "src", "meta", "subprocess.ts"),
+      "\n// the gate's import, its comment changed\n",
+    );
+    expect((await prove(landing, {}, driver)).status).toBe(0);
+    expect(gatesRun(log)).toEqual([]);
+    appendFileSync(
+      join(checker, "src", "meta", "subprocess.ts"),
+      '\nprocess.env.ANA_GATE_IMPORT_CHANGED ??= "1";\n',
+    );
     expect((await prove(landing, {}, driver)).status).toBe(0);
     expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
   });

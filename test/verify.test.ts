@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from "bun:test";
+import { EVALUATOR_FILE } from "../src/meta/bundle-layout.ts";
 import {
   checkEvaluationRequest,
   engineReadRoots,
@@ -563,7 +564,7 @@ describe.skipIf(!osIsolationSupport().ok)("the objective", () => {
       }),
     );
     writeFileSync(
-      join(rubricDir, "evaluator.ts"),
+      join(rubricDir, EVALUATOR_FILE),
       [
         "export const checks = { valid: (req) => req.artifact.ok === true };",
         "export const scores = {",
@@ -577,16 +578,111 @@ describe.skipIf(!osIsolationSupport().ok)("the objective", () => {
     const good = await verifyRubric(rubricTask, { ok: true, acc: 0.8, cal: 0.4 });
     expect(good).toMatchObject({ kind: "pass", scores: { accuracy: 0.8, calibration: 0.4 } });
     expect(good.kind === "pass" ? good.objective : null).toBeCloseTo(0.7, 12);
+    expect(await verifyRubric(rubricTask, { ok: true, acc: -0, cal: 0 })).toEqual({
+      kind: "pass",
+      objective: 0,
+      scores: { accuracy: 0, calibration: 0 },
+    });
+    expect(await verifyRubric(rubricTask, { ok: true, acc: 1 + 1e-15, cal: -1e-15 })).toEqual({
+      kind: "pass",
+      objective: 0.75,
+      scores: { accuracy: 1, calibration: 0 },
+    });
     expect(await verifyRubric(rubricTask, { ok: false, acc: 0.8, cal: 0.4 })).toEqual({
       kind: "fail",
       blocking: ["valid"],
     });
-    for (const bad of [-0.01, 1.01, Number.NaN, "high"]) {
+    for (const bad of [-0.01, -1e-6, 1 + 1e-6, 1.01, Number.NaN, "high"]) {
       expect(await verifyRubric(rubricTask, { ok: true, acc: bad, cal: 0.5 })).toMatchObject({
         kind: "faulty",
         check: "objective",
       });
     }
+
+    const edgeDir = join(root, "rubric-edge-checks");
+    mkdirSync(edgeDir, { recursive: true });
+    writeFileSync(
+      join(edgeDir, "brief.json"),
+      JSON.stringify({
+        correctnessContract: "check-program/v1",
+        truthChecks: [check("valid", "rubric", { artifact: ["$.ok"] })],
+        objective: {
+          quantity: "extreme weighted quality",
+          direction: "higher",
+          scale: "unit",
+          items: [
+            { id: "accuracy", weight: 1e308 },
+            { id: "calibration", weight: 1e308 },
+          ],
+        },
+      }),
+    );
+    writeFileSync(
+      join(edgeDir, EVALUATOR_FILE),
+      [
+        "export const checks = { valid: (req) => req.artifact.ok === true };",
+        "export const scores = {",
+        "  accuracy: (req) => { if (req.artifact.mutate) req.artifact.cal = 0; if (req.artifact.mutateArr) req.artifact.list.push(1); return req.artifact.acc; },",
+        "  calibration: (req) => req.artifact.cal,",
+        "};",
+      ].join("\n"),
+    );
+    const verifyEdge = openVerifier({ checks: edgeDir, tools });
+    const big = await verifyEdge(rubricTask, { ok: true, acc: 0.8, cal: 0.4, list: [] });
+    expect(big).toMatchObject({ kind: "pass", scores: { accuracy: 0.8, calibration: 0.4 } });
+    expect(big.kind === "pass" ? big.objective : null).toBeCloseTo(0.6, 12);
+    expect(await verifyEdge(rubricTask, { ok: true, acc: 0.8, cal: 0.4, mutate: true })).toMatchObject({
+      kind: "faulty",
+      check: "objective",
+    });
+    expect(
+      await verifyEdge(rubricTask, { ok: true, acc: 0.8, cal: 0.4, list: [], mutateArr: true }),
+    ).toMatchObject({
+      kind: "faulty",
+      check: "objective",
+    });
+
+    writeFileSync(
+      join(edgeDir, EVALUATOR_FILE),
+      "export const checks = { valid: () => true };\nexport const scores = { accuracy: () => 1 };\n",
+    );
+    const missingItem = await openVerifier({ checks: edgeDir, tools })(rubricTask, { ok: true });
+    expect(missingItem).toMatchObject({
+      kind: "faulty",
+      check: "objective",
+      reason: "score calibration is missing from the check program",
+    });
+    writeFileSync(join(edgeDir, EVALUATOR_FILE), "export const checks = { valid: () => true };\n");
+    expect(await openVerifier({ checks: edgeDir, tools })(rubricTask, { ok: true })).toMatchObject({
+      kind: "faulty",
+      check: "objective",
+      reason: "score accuracy is missing from the check program",
+    });
+
+    const singleDir = join(root, "rubric-single-item");
+    mkdirSync(singleDir, { recursive: true });
+    writeFileSync(
+      join(singleDir, "brief.json"),
+      JSON.stringify({
+        correctnessContract: "check-program/v1",
+        truthChecks: [check("valid", "rubric", { artifact: ["$.ok"] })],
+        objective: {
+          quantity: "single item rubric",
+          direction: "higher",
+          scale: "unit",
+          items: [{ id: "only", weight: 2 }],
+        },
+      }),
+    );
+    writeFileSync(
+      join(singleDir, EVALUATOR_FILE),
+      "export const checks = { valid: () => true };\nexport const scores = { only: () => 0.75 };\n",
+    );
+    expect(await openVerifier({ checks: singleDir, tools })(rubricTask, { ok: true })).toEqual({
+      kind: "pass",
+      objective: 0.75,
+      scores: { only: 0.75 },
+    });
 
     const unitDir = join(root, "unit-scalar-checks");
     mkdirSync(unitDir, { recursive: true });
@@ -599,16 +695,28 @@ describe.skipIf(!osIsolationSupport().ok)("the objective", () => {
       }),
     );
     writeFileSync(
-      join(unitDir, "evaluator.ts"),
+      join(unitDir, EVALUATOR_FILE),
       "export const checks = { valid: (req) => req.artifact.ok === true };\nexport const objective = (req) => req.artifact.score;\n",
     );
     const verifyUnit = openVerifier({ checks: unitDir, tools });
     expect(await verifyUnit(rubricTask, { ok: true, score: 0.5 })).toEqual({ kind: "pass", objective: 0.5 });
+    expect(await verifyUnit(rubricTask, { ok: true, score: 1 + 1e-15 })).toEqual({
+      kind: "pass",
+      objective: 1,
+    });
+    expect(await verifyUnit(rubricTask, { ok: true, score: -1e-15 })).toEqual({ kind: "pass", objective: 0 });
     for (const bad of [-0.1, 1.5]) {
       expect(await verifyUnit(rubricTask, { ok: true, score: bad })).toMatchObject({
         kind: "faulty",
         check: "objective",
       });
     }
+    writeFileSync(
+      join(unitDir, EVALUATOR_FILE),
+      'export const checks = { valid: () => true };\nexport const objective = () => { Bun.write("result.json", JSON.stringify({ results: [{ passed: true }], measured: { value: 1.5 } })); process.exit(0); };\n',
+    );
+    expect(await openVerifier({ checks: unitDir, tools })(rubricTask, { ok: true })).toMatchObject({
+      kind: "non-result",
+    });
   });
 });

@@ -1,11 +1,19 @@
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
 import { type AnswerFile, textFiles } from "../kernel/answer-files.ts";
-import { blockingOf, decides, faultyOf, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
+import {
+  blockingOf,
+  decides,
+  faultyOf,
+  formatScores,
+  type Task,
+  type Verdict,
+  type Verifier,
+} from "../kernel/verify.ts";
 import { jsonPathTokens, resolveJsonPath } from "../meta/json-evidence.ts";
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
-import { compareCodeUnits, hashJsonValue } from "../meta/stable-json.ts";
+import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { text, tool } from "../tools/answer.ts";
 
@@ -122,13 +130,7 @@ function editedPassage(field: JsonValue | undefined, edit: ProbeEdit): string | 
 
 function sideText(label: string, verdict: Verdict): string {
   if (verdict.kind === "pass") {
-    const items =
-      verdict.scores === undefined
-        ? ""
-        : `: ${Object.entries(verdict.scores)
-            .toSorted(([a], [b]) => compareCodeUnits(a, b))
-            .map(([id, value]) => `${id}=${String(value)}`)
-            .join(", ")}`;
+    const items = verdict.scores === undefined ? "" : `: ${formatScores(verdict.scores)}`;
     const measured =
       verdict.objective === undefined ? "" : ` (objective ${String(verdict.objective)}${items})`;
     return `  ${label}: pass${measured}`;

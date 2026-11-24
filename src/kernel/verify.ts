@@ -10,7 +10,15 @@ import {
 import { sha256OfFile } from "../meta/digest.ts";
 import { jsonPathTokens } from "../meta/json-evidence.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
-import { asRecord, isBoolean, isNumber, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
+import {
+  asRecord,
+  isBoolean,
+  isNumber,
+  isRecord,
+  isString,
+  type JsonValue,
+  unitScore,
+} from "../meta/json-shape.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
 import { isSafePathSegment } from "../meta/path-segment.ts";
 import { capturedExecPath, capturedSpawn } from "../meta/process.ts";
@@ -145,6 +153,27 @@ export function scoresOf(verdict: Verdict | null | undefined): Readonly<Record<s
   return verdict?.kind === "pass" ? (verdict.scores ?? null) : null;
 }
 
+export function validScores(raw: JsonValue | undefined): Readonly<Record<string, number>> | null {
+  const rec = asRecord(raw);
+  if (rec === null) return null;
+  const entries = Object.entries(rec).flatMap(([id, val]) => {
+    const score = isNumber(val) ? unitScore(val) : null;
+    return score === null ? [] : [[id, score] as const];
+  });
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
+
+export function formatScores(
+  scores: Readonly<Record<string, number>>,
+  entry: (id: string, value: number) => string = (id, value) => `${id}=${String(value)}`,
+  separator = ", ",
+): string {
+  return Object.entries(scores)
+    .toSorted(([a], [b]) => compareCodeUnits(a, b))
+    .map(([id, value]) => entry(id, value))
+    .join(separator);
+}
+
 export function blockingOf(verdict: Verdict | null | undefined): readonly string[] {
   return verdict?.kind === "fail" ? verdict.blocking : [];
 }
@@ -165,11 +194,7 @@ export function spelled(verdict: Verdict): string {
   if (verdict.kind === "pass") {
     if (verdict.objective === undefined) return "pass";
     if (verdict.scores === undefined) return `pass ${String(verdict.objective)}`;
-    const parts = Object.entries(verdict.scores)
-      .toSorted(([a], [b]) => compareCodeUnits(a, b))
-      .map(([id, value]) => `${id}=${String(value)}`)
-      .join(",");
-    return `pass ${String(verdict.objective)} [${parts}]`;
+    return `pass ${String(verdict.objective)} [${formatScores(verdict.scores, undefined, ",")}]`;
   }
   return `non-result ${verdict.reason}`;
 }
@@ -568,7 +593,7 @@ async function runCell(
     if ("nonResult" in outcome || "held" in outcome) return outcome;
     const { stderr, exitCode } = outcome;
     return (
-      writtenResult(join(root, "result.json"), checks.length, rubricItems) ?? {
+      writtenResult(join(root, "result.json"), checks.length, objectiveScale, rubricItems) ?? {
         nonResult: `the cell exited ${String(exitCode)} without a result: ${stderr.slice(-2000).trim()}`,
       }
     );
@@ -590,25 +615,53 @@ const undecided = (value: unknown) => {
 };
 
 function weightedRubric(
-  raw: unknown,
+  raw: JsonValue | undefined,
   items: readonly RubricItem[],
 ): { readonly value: number; readonly scores: Readonly<Record<string, number>> } | null {
   const rec = asRecord(raw);
   if (rec === null || Object.keys(rec).length !== items.length) return null;
+  const maxWeight = Math.max(...items.map(({ weight }) => weight));
+  if (!Number.isFinite(maxWeight) || maxWeight <= 0) return null;
   const scores: Record<string, number> = {};
   let weighted = 0;
   let totalWeight = 0;
   for (const item of items) {
     const val = Object.hasOwn(rec, item.id) ? rec[item.id] : undefined;
-    if (!isNumber(val) || !Number.isFinite(val) || val < 0 || val > 1) return null;
-    scores[item.id] = val;
-    weighted += item.weight * val;
-    totalWeight += item.weight;
+    const norm = isNumber(val) ? unitScore(val) : null;
+    if (norm === null) return null;
+    scores[item.id] = norm;
+    const scaled = item.weight / maxWeight;
+    weighted += scaled * norm;
+    totalWeight += scaled;
   }
-  return totalWeight > 0 ? { value: weighted / totalWeight, scores } : null;
+  const mean = totalWeight > 0 ? unitScore(weighted / totalWeight) : null;
+  return mean === null ? null : { value: mean, scores };
 }
 
-function writtenResult(path: string, count: number, rubricItems?: readonly RubricItem[]): CellResult | null {
+function readMeasured(
+  raw: JsonValue | undefined,
+  objectiveScale?: "unit",
+  rubricItems?: readonly RubricItem[],
+) {
+  const rec = asRecord(raw);
+  if (rubricItems !== undefined && rubricItems.length > 0) {
+    return weightedRubric(rec?.scores, rubricItems) ?? undecided(raw);
+  }
+  const value = rec?.value;
+  if (!isNumber(value) || !Number.isFinite(value)) return undecided(raw);
+  if (objectiveScale === "unit") {
+    const norm = unitScore(value);
+    return norm === null ? undecided(raw) : { value: norm };
+  }
+  return { value: value === 0 ? 0 : value };
+}
+
+function writtenResult(
+  path: string,
+  count: number,
+  objectiveScale?: "unit",
+  rubricItems?: readonly RubricItem[],
+): CellResult | null {
   if (!existsSync(path)) return null;
   let written: ReturnType<typeof asRecord>;
   try {
@@ -622,14 +675,7 @@ function writtenResult(path: string, count: number, rubricItems?: readonly Rubri
     const item = isBoolean(passed) ? { passed } : undecided(each);
     return item === null ? [] : [item];
   });
-  const measuredRec = asRecord(written?.measured);
-  const value = measuredRec?.value;
-  const measured =
-    rubricItems !== undefined && rubricItems.length > 0
-      ? (weightedRubric(measuredRec?.scores, rubricItems) ?? undecided(written?.measured))
-      : isNumber(value) && Number.isFinite(value)
-        ? { value }
-        : undecided(written?.measured);
+  const measured = readMeasured(written?.measured, objectiveScale, rubricItems);
   if (listed.length !== count || results.length !== count) return null;
   return written?.measured !== null && measured === null ? null : { results, measured };
 }

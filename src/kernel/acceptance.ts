@@ -15,6 +15,7 @@ import {
   OBJECTIVE,
   objectiveOf,
   requiredToolsOf,
+  scoresOf,
   spelled,
   type Task,
   type Verdict,
@@ -34,11 +35,6 @@ interface ControlAnswerRun extends Control {
   readonly verdicts: readonly [Verdict, Verdict];
 }
 
-interface Graded {
-  readonly task: Task;
-  readonly verdict: Verdict;
-}
-
 interface Idle {
   readonly taskId: string;
   readonly verdict: Verdict;
@@ -54,11 +50,6 @@ interface CheckReading {
   readonly refused: number;
   readonly named: number;
   readonly caught: number;
-}
-
-interface Acceptance {
-  readonly checks: readonly CheckReading[];
-  readonly faults: readonly string[];
 }
 
 export interface Checker {
@@ -83,36 +74,36 @@ interface Probe {
   readonly files: readonly AnswerFile[] | undefined;
 }
 
+type SchemaHandler = (
+  held: Record<string, JsonValue | undefined>,
+  smallest: (inner: JsonValue | undefined) => JsonValue,
+) => JsonValue;
+
 const NO_FILES: readonly AnswerFile[] = [];
 const when = (holds: boolean, text: string) => (holds ? [text] : []);
 
-function runControls(
-  verify: Verifier,
-  byId: ReadonlyMap<string, Task>,
-  controls: readonly Control[],
-  width: number,
-): Promise<ControlAnswerRun[]> {
-  return pooled(controls, width, async (control) => {
-    const task = byId.get(control.taskId);
-    if (task === undefined) {
-      throw new Error(`a control names ${control.taskId}, which the pack holds no task for`);
-    }
-    const first = await decided(verify, task, control.answer, control.files);
-    return { ...control, verdicts: [first, await decided(verify, task, control.answer, control.files)] };
-  });
-}
-
-function minimalPrimitive(
-  held: Record<string, JsonValue | undefined>,
-  type: JsonValue | undefined,
-): JsonValue {
-  if (type === "string") return "x".repeat(isNumber(held.minLength) ? held.minLength : 0);
-  if (type === "number" || type === "integer") {
-    if (isNumber(held.minimum)) return held.minimum;
-    return isNumber(held.exclusiveMinimum) ? held.exclusiveMinimum + 1 : 0;
-  }
-  return type === "boolean" ? false : null;
-}
+const BY_TYPE = new Map<string, SchemaHandler>([
+  [
+    "object",
+    (held, smallest) => {
+      const properties = asRecord(held.properties) ?? {};
+      const required = Array.isArray(held.required) ? held.required.filter(isString) : [];
+      return Object.fromEntries(required.map((name) => [name, smallest(properties[name])]));
+    },
+  ],
+  [
+    "array",
+    (held, smallest) =>
+      Array.from({ length: isNumber(held.minItems) ? held.minItems : 0 }, () => smallest(held.items)),
+  ],
+  ["string", (held) => "x".repeat(isNumber(held.minLength) ? held.minLength : 0)],
+  [
+    "number",
+    (held) =>
+      isNumber(held.minimum) ? held.minimum : isNumber(held.exclusiveMinimum) ? held.exclusiveMinimum + 1 : 0,
+  ],
+  ["boolean", () => false],
+]);
 
 function doNothingAnswer(
   schema: JsonValue | undefined,
@@ -131,27 +122,20 @@ function doNothingAnswer(
   if (Array.isArray(held.enum)) return held.enum[0] ?? null;
   const choice = [held.anyOf, held.oneOf].find((options) => Array.isArray(options));
   if (Array.isArray(choice)) return smallest(choice[0]);
-  const type = Array.isArray(held.type) ? held.type[0] : held.type;
-  if (type === "object") {
-    const properties = asRecord(held.properties) ?? {};
-    const required = Array.isArray(held.required) ? held.required.filter(isString) : [];
-    return Object.fromEntries(required.map((name) => [name, smallest(properties[name])]));
-  }
-  if (type === "array") {
-    return Array.from({ length: isNumber(held.minItems) ? held.minItems : 0 }, () => smallest(held.items));
-  }
-  return minimalPrimitive(held, type);
+  const rawType = Array.isArray(held.type) ? held.type[0] : held.type;
+  const handler = BY_TYPE.get(rawType === "integer" ? "number" : isString(rawType) ? rawType : "");
+  return handler === undefined ? null : handler(held, smallest);
 }
 
 async function probeSensitivity(given: Read, probes: readonly Probe[]) {
-  const { verify, brief, width } = given;
+  if (probes.length === 0) return { results: [], allValid: false, blind: false };
   const results = (
-    await pooled(probes, width, async ({ run, task, files }) => ({
+    await pooled(probes, given.width, async ({ run, task, files }) => ({
       run,
-      verdict: await verify(task, run.answer, undefined, files),
+      verdict: await given.verify(task, run.answer, undefined, files),
     }))
   ).filter(({ verdict }) => verdict.kind !== "non-result");
-  const rule = objectiveRuleOf(brief.objective) ?? { direction: "higher" };
+  const rule = objectiveRuleOf(given.brief.objective) ?? { direction: "higher" };
   const allValid =
     results.length > 0 &&
     results.every(
@@ -168,42 +152,60 @@ async function probeSensitivity(given: Read, probes: readonly Probe[]) {
   return { results, allValid, blind };
 }
 
+function flatRubricNotes(brief: Brief, verdicts: readonly Verdict[]): string[] {
+  return (brief.objective?.items ?? []).flatMap(({ id }) => {
+    const seen = verdicts.flatMap((verdict) => {
+      const value = scoresOf(verdict)?.[id];
+      return value === undefined ? [] : [value];
+    });
+    if (seen.length < 2) return [];
+    const span = Math.max(...seen) - Math.min(...seen);
+    return when(
+      span < GAP_FLOOR,
+      `rubric item ${id} stayed within ${String(GAP_FLOOR * 100)}% (near ${String(seen[0])}) across all ${String(seen.length)} passing control and sensitivity probes`,
+    );
+  });
+}
+
 async function deliverableReading(
   given: Read,
   byId: ReadonlyMap<string, Task>,
   accepted: readonly ControlAnswerRun[],
-): Promise<{ readonly faults: readonly string[]; readonly notes: readonly string[] }> {
-  const withFiles = accepted.flatMap((run) => {
-    const task = run.files && run.files.length > 0 ? byId.get(run.taskId) : undefined;
-    return task === undefined ? [] : [{ run, task, files: NO_FILES }];
-  });
-  if (withFiles.length === 0) return { faults: [], notes: [] };
-  const { results: stripped, allValid, blind } = await probeSensitivity(given, withFiles);
-  if (stripped.length === 0) return { faults: [], notes: [] };
-  const faultyStrips = stripped.flatMap(({ run, verdict }) => {
+) {
+  const stripped = await probeSensitivity(
+    given,
+    accepted.flatMap((run) => {
+      const task = run.files && run.files.length > 0 ? byId.get(run.taskId) : undefined;
+      return task === undefined ? [] : [{ run, task, files: NO_FILES }];
+    }),
+  );
+  const faultyStrips = stripped.results.flatMap(({ run, verdict }) => {
     const fault = faultyOf(verdict);
-    return fault === null || fault.check === OBJECTIVE.id
+    return fault === null
       ? []
-      : [`removing deliverable files caused check ${fault.check} to fault on ${run.taskId}: ${fault.reason}`];
+      : [
+          `removing deliverable files caused ${fault.check === OBJECTIVE.id ? OBJECTIVE.id : `check ${fault.check}`} to fault on ${run.taskId}: ${fault.reason}`,
+        ];
   });
-  const partial = allValid
+  const partialStrips = stripped.allValid
     ? []
-    : stripped.flatMap(({ run, verdict }) =>
+    : stripped.results.flatMap(({ run, verdict }) =>
         when(
           verdict.kind === "pass",
           `the accept control of ${run.taskId} still passed with all deliverable files removed`,
         ),
       );
   return {
+    results: stripped.results,
     faults: when(
-      blind,
+      stripped.blind,
       "deliverable files had no effect on any accept control: with all deliverables removed, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective reads them",
     ),
     notes: [
       ...faultyStrips,
-      ...partial,
+      ...partialStrips,
       ...when(
-        allValid && !blind,
+        stripped.allValid && !stripped.blind,
         "every validity check passed when each example's deliverable files were removed: only the objective read deliverables, so validity checks ignore submitted files",
       ),
     ],
@@ -224,6 +226,7 @@ async function probeReading(
       const task = other.taskId === run.taskId ? null : as(other);
       return task === null ? [] : [{ run, task, files: run.files }];
     });
+
   const { results: swaps } = await probeSensitivity(
     given,
     accepted.flatMap((run) => others(run, (other) => other)),
@@ -249,10 +252,12 @@ async function probeReading(
       );
     }
   }
+
   const hiddenOf = (task: Task) => capturedJsonStringify(task.hidden ?? null);
   const carried = tasks.length > 1 && tasks.every(({ hidden }) => hidden !== null);
   const identicalHidden = carried && accepted.length > 0 && new Set(tasks.map(hiddenOf)).size === 1;
-  const hiddenProbes =
+  const hidden = await probeSensitivity(
+    given,
     carried && !identicalHidden
       ? accepted.flatMap((run) => {
           const own = byId.get(run.taskId);
@@ -262,15 +267,21 @@ async function probeReading(
                 hiddenOf(other) === hiddenOf(own) ? null : { ...own, hidden: other.hidden },
               );
         })
-      : [];
-  const { allValid: allValidOnHiddenSwap, blind } =
-    hiddenProbes.length > 0 ? await probeSensitivity(given, hiddenProbes) : { allValid: false, blind: false };
+      : [],
+  );
   const deliverables = await deliverableReading(given, byId, accepted);
+  const allVerdicts = [
+    ...accepted.map(({ verdicts: [first] }) => first),
+    ...swaps.map(({ verdict }) => verdict),
+    ...hidden.results.map(({ verdict }) => verdict),
+    ...deliverables.results.map(({ verdict }) => verdict),
+  ];
+
   return {
     faults: [
       ...swapped,
       ...when(
-        blind,
+        hidden.blind,
         "hidden values had no effect on any accept control: with another example's hidden values in place of its own, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective is decided by them",
       ),
       ...deliverables.faults,
@@ -283,10 +294,11 @@ async function probeReading(
         "every example carries identical hidden values, so hidden-value sensitivity could not be probed",
       ),
       ...when(
-        allValidOnHiddenSwap && !blind,
+        hidden.allValid && !hidden.blind,
         "every validity check passed when each example's hidden values were swapped with another's: only the objective read hidden values, so validity checks test public properties alone",
       ),
       ...deliverables.notes,
+      ...flatRubricNotes(given.brief, allVerdicts),
     ],
   };
 }
@@ -313,8 +325,8 @@ function acceptance(
   byId: ReadonlyMap<string, Task>,
   runs: readonly ControlAnswerRun[],
   found: (toolId: string) => ToolAvailability,
-): Acceptance {
-  const graded: Graded[] = runs.flatMap(({ taskId, verdicts: [verdict] }) => {
+): { readonly checks: readonly CheckReading[]; readonly faults: readonly string[] } {
+  const graded = runs.flatMap(({ taskId, verdicts: [verdict] }) => {
     const task = byId.get(taskId);
     return task === undefined ? [] : [{ task, verdict }];
   });
@@ -322,8 +334,30 @@ function acceptance(
     instrument: tools.filter((tool) => found(tool) === true || found(tool) === "pack").join(", ") || AUTHOR,
     missing: tools.filter((tool) => found(tool) === false),
   });
-  const measured: CheckReading[] =
-    brief.objective === undefined
+  const applicable = new Map(
+    [...byId.values()].map((task) => [
+      task.taskId,
+      new Set(applicableTruthChecks(brief, task).map(({ id }) => id)),
+    ]),
+  );
+  const checks: CheckReading[] = [
+    ...brief.truthChecks.map(({ id, execution }) => {
+      const seen = graded.filter(
+        ({ task, verdict }) => decides(verdict) && applicable.get(task.taskId)?.has(id) === true,
+      );
+      const refused = seen.filter(({ verdict }) => verdict.kind === "fail" && verdict.blocking.includes(id));
+      const naming = runs.filter((run) => run.refusedBy === id);
+      return {
+        id,
+        ...toolInfo(requiredToolsOf(execution)),
+        passed: seen.length - refused.length,
+        refused: refused.length,
+        named: naming.length,
+        caught: naming.filter(({ verdicts: [first] }) => first.kind === "fail" && first.blocking.includes(id))
+          .length,
+      };
+    }),
+    ...(brief.objective === undefined
       ? []
       : [
           {
@@ -334,41 +368,16 @@ function acceptance(
             named: 0,
             caught: 0,
           },
-        ];
-  const applicable = new Map(
-    [...byId.values()].map((task) => [
-      task.taskId,
-      new Set(applicableTruthChecks(brief, task).map(({ id }) => id)),
-    ]),
-  );
-  const checks = brief.truthChecks.map(({ id, execution }): CheckReading => {
-    const seen = graded.filter(
-      ({ task, verdict }) => decides(verdict) && applicable.get(task.taskId)?.has(id) === true,
-    );
-    const refused = seen.filter(({ verdict }) => verdict.kind === "fail" && verdict.blocking.includes(id));
-    const naming = runs.filter((run) => run.refusedBy === id);
-    return {
-      id,
-      ...toolInfo(requiredToolsOf(execution)),
-      passed: seen.length - refused.length,
-      refused: refused.length,
-      named: naming.length,
-      caught: naming.filter(({ verdicts: [first] }) => first.kind === "fail" && first.blocking.includes(id))
-        .length,
-    };
-  });
-  const unrun = new Map(
-    graded
-      .flatMap(({ verdict }) => {
-        const fault = faultyOf(verdict);
-        return fault === null ? [] : [[fault.check, fault.reason] as const];
-      })
-      .toReversed(),
-  );
-  const all = [...checks, ...measured];
+        ]),
+  ];
+  const unrun = new Map<string, string>();
+  for (const { verdict } of graded) {
+    const fault = faultyOf(verdict);
+    if (fault !== null && !unrun.has(fault.check)) unrun.set(fault.check, fault.reason);
+  }
   const faults = [
     ...runs.flatMap((run) => controlFault(run) ?? []),
-    ...all.flatMap(({ id, missing, passed, refused, caught }) => {
+    ...checks.flatMap(({ id, missing, passed, refused, caught }) => {
       const missingFaults = missing.map(
         (tool) => `${id} names ${tool}, which is not on the verifier's tool path`,
       );
@@ -392,13 +401,20 @@ function acceptance(
       return [...missingFaults, ...detail];
     }),
   ];
-  return { checks: all, faults };
+  return { checks, faults };
 }
 
 export async function readChecker(given: Read) {
   const { verify, brief, tasks, width } = given;
   const byId = new Map(tasks.map((task) => [task.taskId, task]));
-  const runs = await runControls(verify, byId, given.controls, width);
+  const runs: ControlAnswerRun[] = await pooled(given.controls, width, async (control) => {
+    const task = byId.get(control.taskId);
+    if (task === undefined) {
+      throw new Error(`a control names ${control.taskId}, which the pack holds no task for`);
+    }
+    const first = await decided(verify, task, control.answer, control.files);
+    return { ...control, verdicts: [first, await decided(verify, task, control.answer, control.files)] };
+  });
   const idle = doNothingAnswer(given.contract.answerFormat);
   const unformed = answerFormatFault(given.contract.answerFormat, idle);
   const rejected: Idle[] =

@@ -13,9 +13,8 @@ import {
 import { howOftenValid } from "../kernel/size.ts";
 import { solvesIn, standsOf, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
-import { objectiveOf, scoresOf, type Task } from "../kernel/verify.ts";
+import { formatScores, objectiveOf, scoresOf, type Task } from "../kernel/verify.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
-import { compareCodeUnits } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { tasksByEpoch } from "../campaign/climb.ts";
 
@@ -23,7 +22,6 @@ interface Answered {
   readonly turns: readonly number[];
   readonly measures: readonly number[];
   readonly itemMeans: Readonly<Record<string, number>>;
-  readonly authorItems?: Readonly<Record<string, number>>;
 }
 
 const BLOCKS = {
@@ -40,6 +38,9 @@ const BLOCKS = {
 } as const;
 const CARRIED = { validity: "on validity", objective: "on the objective" } as const;
 const WON = { reference: "the reference harness", other: "the harness it was compared with" } as const;
+const SCORE_FAULT = /^score ([a-z][a-z0-9-]*) /u;
+
+export const measured = (measure: number): string => String(Number(measure.toPrecision(6)));
 
 function blockOf(state: string | undefined, outcome: Outcome | "closed" | undefined): keyof typeof BLOCKS {
   if (state === "released") return "practice";
@@ -47,214 +48,97 @@ function blockOf(state: string | undefined, outcome: Outcome | "closed" | undefi
   return outcome ?? "new";
 }
 
-export const measured = (measure: number): string => String(Number(measure.toPrecision(6)));
-
-export function heard(
-  events: readonly LogEvent[],
-  tasks: readonly Pick<Task, "taskId" | "family">[],
-  after?: number,
-) {
-  const states = taskStates(events);
-  const pool = poolOf(events);
-  const allProposals = proposalsOf(events);
-  const proposals = new Map(
-    allProposals.flatMap((proposal) => {
-      const id = proposal.task?.taskId ?? proposal.taskId;
-      return id === null ? [] : [[id, proposal] as const];
-    }),
-  );
-  const pairsCache = new Map<string, Paired[]>();
-  const pairsOf = (report: Reported): Paired[] => {
-    const cached = pairsCache.get(report.session);
-    if (cached !== undefined) return cached;
-    const computed = pairsReported(events, report);
-    pairsCache.set(report.session, computed);
-    return computed;
-  };
-  const answered = referenceAnswers(events, pairsOf);
-  const authorScores = authorScoresOf(events);
-  const faulted = faultedOf(events);
-  const setting = events.findLast(({ kind }) => kind === "campaign.setting")?.data.modelTurns;
-  const budget = isNumber(setting) ? setting : undefined;
-  const since = events.findLastIndex(({ kind }) => isReferenceChange(kind));
-  const compared = after === undefined ? null : reportedAfter(events, after);
-  const lines = new Map<string, string[]>();
-  const listed: string[] = [];
-  for (const { taskId, family } of tasks) {
-    const proposal = proposals.get(taskId);
-    const version = proposal?.version ?? "";
-    const state = states.get(version);
-    if (state === "refused" || compared?.has(version) === false) continue;
-    const block = blockOf(state, pool.exhausted.includes(version) ? "closed" : pool.outcomes.get(version));
-    if (block !== "practice") listed.push(version);
-    const named = `${taskId} (${family})`;
-    const plain = block === "practice" || block === "earlier-reference" || block === "faulted";
-    const taskAnswer = answered.get(version);
-    const authorItems = authorScores.get(version);
-    const clauses = plain
-      ? []
-      : clausesOf(
-          block,
-          pool,
-          version,
-          taskAnswer === undefined
-            ? undefined
-            : authorItems === undefined
-              ? taskAnswer
-              : { ...taskAnswer, authorItems },
-          budget,
-        );
-    const checks = faulted.get(taskId);
-    const fault =
-      checks === undefined ? [] : [`ruled at fault on an answer to it: ${[...checks].join(", ")}`];
-    const heading = BLOCKS[block];
-    const line = [named, ...clauses, ...fault].join("; ");
-    lines.set(heading, [...(lines.get(heading) ?? []), line]);
-  }
-  const groups = Object.values(BLOCKS).flatMap((heading): { heading: string; lines: string[] }[] => {
-    const held = lines.get(heading) ?? [];
-    return held.length === 0 ? [] : [{ heading, lines: held }];
-  });
-  return {
-    stood: outcomeSummaryLines(events, after, pairsOf),
-    groups,
-    promoted: after === undefined || since > after ? promotedLine(events, since, listed) : null,
-    refused: after === undefined ? refusedLines(events, since, allProposals) : [],
-  };
-}
-
-function refusedLines(
-  events: readonly LogEvent[],
-  since: number,
-  allProposals: ReturnType<typeof proposalsOf>,
-): string[] {
-  const drafts = new Map(allProposals.map(({ version, task }) => [version, task]));
-  const why = new Map<string, string[]>();
-  for (const { kind, data } of events.slice(since + 1)) {
-    const task = isString(data.version) ? drafts.get(data.version) : undefined;
-    if (kind !== "task.gate" || data.outcome !== "refused" || !isString(data.reason)) continue;
-    if (task === undefined || task === null) continue;
-    why.set(data.reason, [...(why.get(data.reason) ?? []), `${task.taskId} (${task.family})`]);
-  }
-  return [...why].map(([reason, named]) => `${reason}: ${named.join(", ")}`);
-}
-
-const reportedAfter = (events: readonly LogEvent[], after: number) =>
-  new Set(
-    lastReports(events)
-      .filter(({ index }) => index >= after)
-      .flatMap(({ data }) => (Array.isArray(data.versions) ? data.versions.filter(isString) : [])),
-  );
-
-function authorScoresOf(events: readonly LogEvent[]): Map<string, Readonly<Record<string, number>>> {
-  const best = new Map<string, { measure: number; scores: Readonly<Record<string, number>> }>();
-  for (const { kind, data } of events) {
-    if (kind !== "task.feasible" || !isString(data.version)) continue;
-    const obj = asRecord(data.objective);
-    const scoresRec = asRecord(obj?.scores);
-    if (obj === null || !isNumber(obj.measure) || scoresRec === null) continue;
-    const entries = Object.entries(scoresRec).flatMap(([id, val]) =>
-      isNumber(val) && Number.isFinite(val) ? [[id, val] as const] : [],
-    );
-    if (entries.length === 0) continue;
-    const prior = best.get(data.version);
-    const better =
-      prior === undefined ||
-      (obj.direction === "lower" ? obj.measure < prior.measure : obj.measure > prior.measure);
-    if (better) best.set(data.version, { measure: obj.measure, scores: Object.fromEntries(entries) });
-  }
-  return new Map([...best].map(([version, { scores }]) => [version, scores] as const));
-}
-
 function clausesOf(
   block: keyof typeof BLOCKS,
   pool: ReturnType<typeof poolOf>,
   version: string,
-  { turns, measures, itemMeans, authorItems }: Answered = { turns: [], measures: [], itemMeans: {} },
+  { turns, measures, itemMeans }: Answered = { turns: [], measures: [], itemMeans: {} },
   budget?: number,
 ): string[] {
   const answered = block === "reference-every" || block === "reference-some" || block === "closed";
   const best = pool.bests.get(version);
+  const authorItems = pool.bestScores.get(version);
   const sorted = (values: readonly number[]) => values.toSorted((a, b) => a - b);
-  const rubric = Object.entries(itemMeans).toSorted(([a], [b]) => compareCodeUnits(a, b));
+  const rubricText = formatScores(itemMeans, (id, value) => {
+    const authorVal = authorItems?.[id];
+    return authorVal === undefined
+      ? `${id}=${measured(value)}`
+      : `${id}=${measured(value)} (author ${measured(authorVal)})`;
+  });
+  const standing: Standing | undefined = pool.standings.get(version);
   return [
     ...(answered && turns.length > 0
       ? [`in ${sorted(turns).join(", ")}${budget === undefined ? "" : ` of ${String(budget)}`} turns`]
       : []),
     ...(answered && measures.length > 0 ? [`measured ${sorted(measures).map(measured).join(", ")}`] : []),
-    ...(answered && rubric.length > 0
-      ? [
-          `rubric ${rubric
-            .map(([id, value]) => {
-              const authorVal = authorItems?.[id];
-              return authorVal === undefined
-                ? `${id}=${measured(value)}`
-                : `${id}=${measured(value)} (author ${measured(authorVal)})`;
-            })
-            .join(", ")}`,
-        ]
-      : []),
+    ...(answered && rubricText !== "" ? [`rubric ${rubricText}`] : []),
     ...(answered && measures.length > 0 && best !== undefined
       ? [`the author's answer measured ${measured(best)}`]
       : []),
     ...(answered
       ? []
       : [pool.feasible.has(version) ? "a valid answer on record" : "no valid answer on record"]),
-    ...standingOf(pool.standings.get(version)),
+    ...(standing === undefined
+      ? []
+      : [
+          standing.won === null
+            ? "tied there"
+            : `won there by ${WON[standing.won]}${standing.by === null ? "" : ` ${CARRIED[standing.by]}`}`,
+        ]),
   ];
 }
 
 function faultedOf(events: readonly LogEvent[]): Map<string, Set<string>> {
-  const last = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "referee.finding" && isString(data.solve) ? [[data.solve, data]] : [],
-    ),
-  );
   const stands = standsOf(events);
   const faulted = new Map<string, Set<string>>();
-  const record = (task: string, label: string) =>
+  const last = new Map<string, { readonly task: string; readonly check: string }>();
+  const add = (task: string, label: string) =>
     faulted.set(task, new Set([...(faulted.get(task) ?? []), label]));
-  for (const [solve, { task, check }] of last) {
-    if (stands.get(solve) !== "check-defect" || !isString(task) || !isString(check)) continue;
-    record(task, check);
-  }
   for (const { kind, data } of events) {
-    if (kind !== "verdict" || data.kind !== "faulty" || !isString(data.task) || !isString(data.check)) {
-      continue;
+    if (kind === "referee.finding" && isString(data.solve) && isString(data.task) && isString(data.check)) {
+      last.set(data.solve, { task: data.task, check: data.check });
+    } else if (kind === "verdict" && data.kind === "faulty" && isString(data.task) && isString(data.check)) {
+      const hit = isString(data.reason) ? SCORE_FAULT.exec(data.reason)?.[1] : undefined;
+      add(data.task, hit === undefined ? data.check : `${data.check} (${hit})`);
     }
-    const scoreHit = isString(data.reason) ? /^score ([a-z][a-z0-9-]*) /u.exec(data.reason)?.[1] : undefined;
-    record(data.task, scoreHit === undefined ? data.check : `${data.check} (${scoreHit})`);
+  }
+  for (const [solve, { task, check }] of last) {
+    if (stands.get(solve) === "check-defect") add(task, check);
   }
   return faulted;
 }
 
-function standingOf(standing: Standing | undefined): string[] {
-  if (standing === undefined) return [];
-  return [
-    standing.won === null
-      ? "tied there"
-      : `won there by ${WON[standing.won]}${standing.by === null ? "" : ` ${CARRIED[standing.by]}`}`,
-  ];
-}
-
-function outcomeSummaryLines(
+function referenceAnswers(
   events: readonly LogEvent[],
-  after: number | undefined,
+  reports: readonly Reported[],
   pairsOf: (report: Reported) => Paired[],
-): string | null {
+): Map<string, Answered> {
   const reference = referenceOf(events);
-  const matching = lastReports(events).filter(
-    ({ data }) => data.old === reference || data.fresh === reference,
+  const took = new Map(
+    solvesIn(events).flatMap(({ id, end }) => (isNumber(end?.turns) ? [[id, end.turns] as const] : [])),
   );
-  const selected = after === undefined ? matching.slice(-1) : matching.filter(({ index }) => index >= after);
-  if (selected.length === 0) return null;
-  const named = ({ session }: Reported) =>
-    after === undefined
-      ? `The last comparison the reference harness stood in, ${session}`
-      : `Comparison ${session}, which the reference harness stood in`;
-  return selected
-    .map((report) => formatOutcomeLine(events, report, reference, named(report), pairsOf(report)))
-    .join("\n\n");
+  const verdicts = verdictsOf(events);
+  const answered = new Map<string, Answered>();
+  for (const report of reports) {
+    const side = report.data.fresh === reference ? "fresh" : report.data.old === reference ? "old" : null;
+    for (const pair of pairsOf(report)) {
+      const solves = side === null ? [] : (pair.solves?.[side] ?? []);
+      const valid = solves.filter((_, nth) => side !== null && pair[side][nth] === true);
+      const sums = new Map<string, { total: number; count: number }>();
+      for (const [id, value] of valid.flatMap((solve) =>
+        Object.entries(scoresOf(verdicts.get(solve)?.checker) ?? {}),
+      )) {
+        const prior = sums.get(id) ?? { total: 0, count: 0 };
+        sums.set(id, { total: prior.total + value, count: prior.count + 1 });
+      }
+      answered.set(pair.task, {
+        turns: valid.flatMap((solve) => took.get(solve) ?? []),
+        measures: valid.flatMap((solve) => objectiveOf(verdicts.get(solve)?.checker) ?? []),
+        itemMeans: Object.fromEntries([...sums].map(([id, { total, count }]) => [id, total / count])),
+      });
+    }
+  }
+  return answered;
 }
 
 function formatOutcomeLine(
@@ -288,57 +172,124 @@ function formatOutcomeLine(
   ].join(" ");
 }
 
+function outcomeSummaryLines(
+  events: readonly LogEvent[],
+  reports: readonly Reported[],
+  after: number | undefined,
+  pairsOf: (report: Reported) => Paired[],
+): string | null {
+  const reference = referenceOf(events);
+  const matching = reports.filter(({ data }) => data.old === reference || data.fresh === reference);
+  const selected = after === undefined ? matching.slice(-1) : matching.filter(({ index }) => index >= after);
+  if (selected.length === 0) return null;
+  return selected
+    .map((report) =>
+      formatOutcomeLine(
+        events,
+        report,
+        reference,
+        after === undefined
+          ? `The last comparison the reference harness stood in, ${report.session}`
+          : `Comparison ${report.session}, which the reference harness stood in`,
+        pairsOf(report),
+      ),
+    )
+    .join("\n\n");
+}
+
 function promotedLine(events: readonly LogEvent[], since: number, listed: readonly string[]): string | null {
   const promotion = events[since];
   if (promotion === undefined) return null;
   const under = new Set(tasksByEpoch(events.slice(since)).flat());
   const before = listed.filter((version) => !under.has(version)).length;
-  if (promotion.kind === "harness.reverted") {
-    return `The reference harness was reverted to an earlier harness. ${String(before)} of the ${String(listed.length)} tasks listed were held out before then, under the harness it replaced. Files in your home from sessions before then were written while the harness it replaced was the reference.`;
-  }
   const rests = promotion.data.rests;
   const on = Array.isArray(rests) ? asRecord(rests[0])?.comparison : undefined;
-  return `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}. ${String(before)} of the ${String(listed.length)} tasks listed were held out before then, under the harness it replaced. Files in your home from sessions before then were written while the harness it replaced was the reference.`;
+  const lead =
+    promotion.kind === "harness.reverted"
+      ? "The reference harness was reverted to an earlier harness."
+      : `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}.`;
+  return `${lead} ${String(before)} of the ${String(listed.length)} tasks listed were held out before then, under the harness it replaced. Files in your home from sessions before then were written while the harness it replaced was the reference.`;
 }
 
-function meanScores(
-  verdicts: ReturnType<typeof verdictsOf>,
-  solves: readonly string[],
-): Record<string, number> {
-  const sums = new Map<string, { total: number; count: number }>();
-  for (const solve of solves) {
-    const scores = scoresOf(verdicts.get(solve)?.checker);
-    if (scores === null) continue;
-    for (const [id, value] of Object.entries(scores)) {
-      const prior = sums.get(id) ?? { total: 0, count: 0 };
-      sums.set(id, { total: prior.total + value, count: prior.count + 1 });
-    }
-  }
-  return Object.fromEntries([...sums].map(([id, { total, count }]) => [id, total / count]));
-}
-
-function referenceAnswers(
+function refusedLines(
   events: readonly LogEvent[],
-  pairsOf: (report: Reported) => Paired[],
-): Map<string, Answered> {
-  const reference = referenceOf(events);
-  const took = new Map(
-    solvesIn(events).flatMap(({ id, end }) => (isNumber(end?.turns) ? [[id, end.turns] as const] : [])),
-  );
-  const verdicts = verdictsOf(events);
-  const answered = new Map<string, Answered>();
-  for (const report of lastReports(events, "all")) {
-    const side = report.data.fresh === reference ? "fresh" : report.data.old === reference ? "old" : null;
-    for (const pair of pairsOf(report)) {
-      const solves = side === null ? [] : (pair.solves?.[side] ?? []);
-      const valid = solves.filter((_, nth) => side !== null && pair[side][nth] === true);
-      const measures = valid.flatMap((solve) => objectiveOf(verdicts.get(solve)?.checker) ?? []);
-      answered.set(pair.task, {
-        turns: valid.flatMap((solve) => took.get(solve) ?? []),
-        measures,
-        itemMeans: meanScores(verdicts, valid),
-      });
-    }
+  since: number,
+  allProposals: ReturnType<typeof proposalsOf>,
+): string[] {
+  const drafts = new Map(allProposals.map(({ version, task }) => [version, task]));
+  const why = new Map<string, string[]>();
+  for (const { kind, data } of events.slice(since + 1)) {
+    const task = isString(data.version) ? drafts.get(data.version) : undefined;
+    if (kind !== "task.gate" || data.outcome !== "refused" || !isString(data.reason)) continue;
+    if (task === undefined || task === null) continue;
+    why.set(data.reason, [...(why.get(data.reason) ?? []), `${task.taskId} (${task.family})`]);
   }
-  return answered;
+  return [...why].map(([reason, named]) => `${reason}: ${named.join(", ")}`);
+}
+
+export function heard(
+  events: readonly LogEvent[],
+  tasks: readonly Pick<Task, "taskId" | "family">[],
+  after?: number,
+) {
+  const states = taskStates(events);
+  const pool = poolOf(events);
+  const allProposals = proposalsOf(events);
+  const proposals = new Map(
+    allProposals.flatMap((proposal) => {
+      const id = proposal.task?.taskId ?? proposal.taskId;
+      return id === null ? [] : [[id, proposal] as const];
+    }),
+  );
+  const pairsCache = new Map<string, Paired[]>();
+  const pairsOf = (report: Reported): Paired[] => {
+    const cached = pairsCache.get(report.session);
+    if (cached !== undefined) return cached;
+    const computed = pairsReported(events, report);
+    pairsCache.set(report.session, computed);
+    return computed;
+  };
+  const allReports = lastReports(events, "all");
+  const currentReports = allReports.filter(({ data }) => data.ladder !== true);
+  const answered = referenceAnswers(events, allReports, pairsOf);
+  const faulted = faultedOf(events);
+  const setting = events.findLast(({ kind }) => kind === "campaign.setting")?.data.modelTurns;
+  const budget = isNumber(setting) ? setting : undefined;
+  const since = events.findLastIndex(({ kind }) => isReferenceChange(kind));
+  const compared =
+    after === undefined
+      ? null
+      : new Set(
+          currentReports
+            .filter(({ index }) => index >= after)
+            .flatMap(({ data }) => (Array.isArray(data.versions) ? data.versions.filter(isString) : [])),
+        );
+  const lines = new Map<string, string[]>();
+  const listed: string[] = [];
+  for (const { taskId, family } of tasks) {
+    const version = proposals.get(taskId)?.version ?? "";
+    const state = states.get(version);
+    if (state === "refused" || compared?.has(version) === false) continue;
+    const block = blockOf(state, pool.exhausted.includes(version) ? "closed" : pool.outcomes.get(version));
+    if (block !== "practice") listed.push(version);
+    const plain = block === "practice" || block === "earlier-reference" || block === "faulted";
+    const clauses = plain ? [] : clausesOf(block, pool, version, answered.get(version), budget);
+    const checks = faulted.get(taskId);
+    const fault =
+      checks === undefined ? [] : [`ruled at fault on an answer to it: ${[...checks].join(", ")}`];
+    const heading = BLOCKS[block];
+    lines.set(heading, [
+      ...(lines.get(heading) ?? []),
+      [`${taskId} (${family})`, ...clauses, ...fault].join("; "),
+    ]);
+  }
+  return {
+    stood: outcomeSummaryLines(events, currentReports, after, pairsOf),
+    groups: Object.values(BLOCKS).flatMap((heading): { heading: string; lines: string[] }[] => {
+      const held = lines.get(heading) ?? [];
+      return held.length === 0 ? [] : [{ heading, lines: held }];
+    }),
+    promoted: after === undefined || since > after ? promotedLine(events, since, listed) : null,
+    refused: after === undefined ? refusedLines(events, since, allProposals) : [],
+  };
 }

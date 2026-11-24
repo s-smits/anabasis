@@ -449,7 +449,7 @@ export function writing(
   };
   return {
     kind: "exam" as const,
-    system: systemPrompt(probe === null ? "none" : "given"),
+    system: systemPrompt(probe === null ? "none" : "given", request.contract.objective),
     get opening() {
       return told;
     },

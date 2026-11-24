@@ -562,9 +562,14 @@ describe("a task the reference has closed", () => {
     expect(block(told, "some solves").open).toBeDefined();
   });
 
-  it("reports mean per-item rubric scores with author baselines and surfaces faulty rubric scorers", () => {
+  it("reports mean per-item rubric scores with best author baselines and surfaces all faulty rubric modes", () => {
     const log = logged();
     log.hold(["graded", "missed", "broken"]);
+    log.add("task.feasible", {
+      version: "v-graded",
+      session: "x-1",
+      objective: { measure: 0.6, direction: "higher", scores: { accuracy: 0.6, calibration: 0.6 } },
+    });
     log.add("task.feasible", {
       version: "v-graded",
       session: "x-1",
@@ -591,13 +596,18 @@ describe("a task the reference has closed", () => {
     log.solved("c-r", "graded", "h2", [0.5, 0.5]);
     log.solved("c-r", "missed", "h1", [false, false]);
     log.solved("c-r", "missed", "h2", [false, false]);
-    log.add("verdict", {
-      solve: "rs-fault",
-      task: "broken",
-      kind: "faulty",
-      check: "objective",
-      reason: "score calibration returned 1.5 (expected finite number in [0, 1])",
-    });
+    for (const [suffix, reason] of [
+      ["ret", "score calibration returned 1.5 (expected finite number in [0, 1])"],
+      ["miss", "score accuracy is missing from the check program"],
+    ] as const) {
+      log.add("verdict", {
+        solve: `rs-fault-${suffix}`,
+        task: "broken",
+        kind: "faulty",
+        check: "objective",
+        reason,
+      });
+    }
     log.add(TASK_STATE, { version: "v-broken", state: "disputed" });
     log.reported("c-r", ["h1", "h2"], ["graded", "missed"]);
     const told = heard(log.events, ["graded", "missed", "broken"].map(fixture));
@@ -606,7 +616,7 @@ describe("a task the reference has closed", () => {
     );
     expect(block(told, "no solve").missed).not.toContain("rubric");
     expect(block(told, "at fault").broken).toContain(
-      "ruled at fault on an answer to it: objective (calibration)",
+      "ruled at fault on an answer to it: objective (calibration), objective (accuracy)",
     );
   });
 });

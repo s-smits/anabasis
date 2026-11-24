@@ -9,6 +9,7 @@ import {
   type Measures,
   carriedBy,
   differenceOf,
+  gainOver,
   gapAgainst,
   type Paired,
   pointsOf,
@@ -145,6 +146,7 @@ function howOftenValid(pair: Paired): string {
   const known = measuresOf(pair).filter(isNumber);
   if (known.length < 2) return NONE;
   const [low, high] = [Math.min(...known), Math.max(...known)];
+  if (pair.objective?.scale === "unit") return (high - low).toFixed(3);
   const larger = Math.max(Math.abs(low), Math.abs(high));
   return larger === 0 ? "0" : ((high - low) / larger).toFixed(3);
 }
@@ -470,13 +472,18 @@ export function sideGap(
   for (const { task, objective } of pairs) {
     const measures = objective?.[side].filter((measure) => measure !== null) ?? [];
     if (measures.length === 0) continue;
-    const best = bests.get(task) ?? 0;
-    const own = measures.filter((measure) => measure > 0);
-    const ratio = median(
-      own.map((measure) => (objective?.direction === "lower" ? measure / best : best / measure)),
-    );
-    if (best > 0 && ratio !== null) ratios.push(ratio);
-    else unread += 1;
+    const best = bests.get(task);
+    let entry: number | null = null;
+    if (best !== undefined && objective?.scale === "unit") {
+      entry = median(measures.map((measure) => 1 + gainOver(objective, best, measure)));
+    } else if (best !== undefined && best > 0) {
+      const own = measures.filter((measure) => measure > 0);
+      entry = median(
+        own.map((measure) => (objective?.direction === "lower" ? measure / best : best / measure)),
+      );
+    }
+    if (entry === null) unread += 1;
+    else ratios.push(entry);
   }
   return {
     ratio: median(ratios),

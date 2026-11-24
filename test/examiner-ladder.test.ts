@@ -58,5 +58,7 @@ describe("the Examiner's ladder", () => {
   it("tells a drafting session the floor two valid answers are compared at, and the export that measures them", () => {
     expect(DRAFTING).toContain(`${String(GAP_FLOOR * 100)}%`);
     expect(DRAFTING).toContain("`objective`");
+    expect(systemPrompt("given")).toContain("of the larger measure");
+    expect(systemPrompt("given", { direction: "higher", scale: "unit" })).toContain("on the [0, 1] scale");
   });
 });

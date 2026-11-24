@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, lockJsonGlobals, parseJsonAs } from "../meta/json-runtime.ts";
-import { asRecord, isBoolean, isFunction, isNumber, typeName } from "../meta/json-shape.ts";
+import { asRecord, isBoolean, isFunction, isNumber, typeName, unitScore } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
 import { isSafePathSegment } from "../meta/path-segment.ts";
 import { pooled } from "../meta/pool.ts";
@@ -81,6 +81,18 @@ let slots = 0;
 const markRunning = (port: Port): void =>
   writeFileSync(port.marker, `${String(++seq)}\n${port.check.checkId}`);
 
+function deepFreeze(value: unknown): void {
+  if (Array.isArray(value)) {
+    Object.freeze(value);
+    for (const item of value) deepFreeze(item);
+    return;
+  }
+  const rec = asRecord(value);
+  if (rec === null) return;
+  Object.freeze(rec);
+  for (const child of Object.values(rec)) deepFreeze(child);
+}
+
 function programNeverRan(exitCode: number, stdout: string, stderr: string): boolean {
   if (exitCode === 0 || stdout !== "") return false;
   const tail = stderr.trimEnd();
@@ -100,13 +112,13 @@ async function runTool(cell: CellInput, port: Port, call: ToolCall): Promise<Too
   if (command === null) {
     return lapse("verifierUnavailable", `${call.toolId} is not on the verifier's tool path`);
   }
+  if (call.timeoutMs !== undefined && !Number.isFinite(call.timeoutMs)) {
+    throw new Error(`check ${port.check.checkId} passed a non-finite tool timeoutMs`);
+  }
   const folder = mkdtempSync(join(runtimeProcess.cwd(), "tool-"));
   for (const [name, text] of Object.entries(call.files ?? {})) {
     if (!isSafePathSegment(name)) throw new Error(`check ${port.check.checkId} names a tool file ${name}`);
     writeFileSync(join(folder, name), text);
-  }
-  if (call.timeoutMs !== undefined && !Number.isFinite(call.timeoutMs)) {
-    throw new Error(`check ${port.check.checkId} passed a non-finite tool timeoutMs`);
   }
   const child = capturedSpawn({
     cmd: [command, ...(call.args ?? [])],
@@ -147,73 +159,64 @@ async function runTool(cell: CellInput, port: Port, call: ToolCall): Promise<Too
   return { nonResult: null, exitCode, stdout, stderr };
 }
 
-function kindLabel(kind: RunKind, checkId: string): string {
-  return kind === "objective" ? "the objective" : kind === "score" ? `score ${checkId}` : "the check";
-}
-
-async function decide(
+async function runTarget(
   cell: CellInput,
-  port: Port,
-  found: unknown,
-  kind: RunKind,
-): Promise<CheckResult | Measure> {
-  const named = kindLabel(kind, port.check.checkId);
-  if (!isFunction(found)) {
-    const missing =
-      kind === "objective"
-        ? "objective"
-        : kind === "score"
-          ? `score ${port.check.checkId}`
-          : `check ${port.check.checkId}`;
-    return { faulty: `the check program has no ${missing}` };
-  }
-  const runtime: CheckRuntime = { tools: { run: (call) => runTool(cell, port, call) } };
-  let returned: unknown;
-  let threw: string | null = null;
-  try {
-    markRunning(port);
-    // SAFETY: a check program exports each check as a CheckFn; what it returns is narrowed below.
-    returned = await (found as CheckFn)({ ...port.check.request, runtime }, runtime);
-  } catch (error) {
-    threw = errorMessage(error);
-  } finally {
-    rmSync(port.marker, { force: true });
-  }
-  if (port.lapses.length > 0) return { nonResult: port.lapses.join("; ") };
-  if (threw !== null) return { faulty: `${named} threw: ${threw}` };
-  if (kind === "check") {
-    return isBoolean(returned)
-      ? { passed: returned }
-      : { faulty: `the check returned ${typeName(returned)}` };
-  }
-  if (kind === "score" || (kind === "objective" && cell.objectiveScale === "unit")) {
-    return isNumber(returned) && Number.isFinite(returned) && returned >= 0 && returned <= 1
-      ? { value: returned }
-      : {
-          faulty: `${named} returned ${isNumber(returned) ? String(returned) : typeName(returned)} (expected finite number in [0, 1])`,
-        };
-  }
-  return isNumber(returned) && Number.isFinite(returned)
-    ? { value: returned }
-    : { faulty: `the objective returned ${isNumber(returned) ? String(returned) : typeName(returned)}` };
-}
-
-async function timed(
-  cell: CellInput,
+  program: ReturnType<typeof asRecord>,
   check: CheckInput,
-  found: unknown,
   kind: RunKind,
 ): Promise<CheckResult | Measure> {
+  const named =
+    kind === "objective" ? "the objective" : kind === "score" ? `score ${check.checkId}` : "the check";
+  const container =
+    kind === "objective" ? program : asRecord(kind === "score" ? program?.scores : program?.checks);
+  const key = kind === "objective" ? "objective" : check.checkId;
+  const found: unknown = container !== null && Object.hasOwn(container, key) ? container[key] : undefined;
+  if (!isFunction(found)) {
+    return {
+      faulty:
+        kind === "score"
+          ? `score ${check.checkId} is missing from the check program`
+          : `the check program has no ${kind === "objective" ? "objective" : `check ${check.checkId}`}`,
+    };
+  }
   const marker = join(cell.running, `${String(++slots)}.run`);
   const port: Port = { check, marker, lapses: [], live: new Set() };
   const late = Promise.withResolvers<Undecided>();
-  const named = kindLabel(kind, check.checkId);
   const timer = setTimeout(
     () => late.resolve({ faulty: `${named} timed out after ${cell.checkMs} ms` }),
     cell.checkMs,
   );
+  const execute = async (): Promise<CheckResult | Measure> => {
+    const runtime: CheckRuntime = { tools: { run: (call) => runTool(cell, port, call) } };
+    let returned: unknown;
+    let threw: string | null = null;
+    try {
+      markRunning(port);
+      // SAFETY: a check program exports each target as a CheckFn; its return value is narrowed below.
+      returned = await (found as CheckFn)({ ...check.request, runtime }, runtime);
+    } catch (error) {
+      threw = errorMessage(error);
+    } finally {
+      rmSync(port.marker, { force: true });
+    }
+    if (port.lapses.length > 0) return { nonResult: port.lapses.join("; ") };
+    if (threw !== null) return { faulty: `${named} threw: ${threw}` };
+    if (kind === "check") {
+      return isBoolean(returned)
+        ? { passed: returned }
+        : { faulty: `the check returned ${typeName(returned)}` };
+    }
+    const unit = kind === "score" || cell.objectiveScale === "unit";
+    if (isNumber(returned) && Number.isFinite(returned)) {
+      const value = unit ? unitScore(returned) : returned === 0 ? 0 : returned;
+      if (value !== null) return { value };
+    }
+    return {
+      faulty: `${named} returned ${isNumber(returned) ? String(returned) : typeName(returned)}${unit ? " (expected finite number in [0, 1])" : ""}`,
+    };
+  };
   try {
-    return await Promise.race([decide(cell, port, found, kind), late.promise]);
+    return await Promise.race([execute(), late.promise]);
   } finally {
     clearTimeout(timer);
     rmSync(marker, { force: true });
@@ -223,44 +226,46 @@ async function timed(
 
 const cell = parseJsonAs<CellInput>(await Bun.stdin.text());
 lockJsonGlobals();
+for (const check of cell.checks) deepFreeze(check.request);
+if (cell.objective !== null) deepFreeze(cell.objective.request);
+
 const { program, unloaded } = await import(cell.program).then(
   (module) => ({ program: asRecord(module), unloaded: null }),
   (error: unknown) => ({ program: null, unloaded: `the check program did not load: ${errorMessage(error)}` }),
 );
-const run = (check: CheckInput, kind: RunKind) => {
-  if (unloaded !== null) return Promise.resolve({ nonResult: unloaded });
-  const container =
-    kind === "objective" ? program : asRecord(kind === "score" ? program?.scores : program?.checks);
-  const key = kind === "objective" ? "objective" : check.checkId;
-  const found: unknown = container !== null && Object.hasOwn(container, key) ? container[key] : undefined;
-  return timed(cell, check, found, kind);
-};
+const invoke = (check: CheckInput, kind: RunKind) =>
+  unloaded === null ? runTarget(cell, program, check, kind) : Promise.resolve({ nonResult: unloaded });
 
-async function measureObjective(objective: CheckInput): Promise<Measure> {
+// SAFETY: `invoke` returns `CheckResult` when `kind` is `"check"`.
+const results = (await pooled(cell.checks, cell.width, (check) => invoke(check, "check"))) as CheckResult[];
+const valid = results.every((result) => "passed" in result && result.passed);
+
+let measured: Measure | null = null;
+if (valid && cell.objective !== null) {
   const items = cell.rubricItems;
-  if (items === undefined || items.length === 0) {
-    // SAFETY: `decide` gives a measure where `kind` is `"objective"`.
-    return (await run(objective, "objective")) as Measure;
-  }
-  // SAFETY: `decide` gives a measure where `kind` is `"score"`.
-  const ran = (await pooled(items, cell.width, (item) =>
-    run({ ...objective, checkId: item.id }, "score"),
-  )) as Measure[];
-  const scores: Record<string, number> = {};
-  for (const [index, item] of items.entries()) {
-    const outcome = ran[index];
-    if (outcome === undefined || !("value" in outcome)) {
-      return outcome ?? { faulty: `missing score ${item.id}` };
+  if (items !== undefined && items.length > 0) {
+    const objective = cell.objective;
+    // SAFETY: `invoke` returns `Measure` when `kind` is `"score"`.
+    const ran = (await pooled(items, cell.width, (item) =>
+      invoke({ ...objective, checkId: item.id }, "score"),
+    )) as Measure[];
+    const scores: Record<string, number> = {};
+    let failed: Measure | null = null;
+    for (const [index, item] of items.entries()) {
+      const outcome = ran[index];
+      if (outcome === undefined || !("value" in outcome)) {
+        failed = outcome ?? { faulty: `score ${item.id} produced no result` };
+        break;
+      }
+      scores[item.id] = outcome.value;
     }
-    scores[item.id] = outcome.value;
+    measured = failed ?? { value: 0, scores };
+  } else {
+    // SAFETY: `invoke` returns `Measure` when `kind` is `"objective"`.
+    measured = (await invoke(cell.objective, "objective")) as Measure;
   }
-  return { value: 0, scores };
 }
 
-// SAFETY: `decide` gives a check's answer where `kind` is `"check"`.
-const results = (await pooled(cell.checks, cell.width, (check) => run(check, "check"))) as CheckResult[];
-const valid = results.every((result) => "passed" in result && result.passed);
-const measured = valid && cell.objective !== null ? await measureObjective(cell.objective) : null;
 const written: CellResult = { results, measured };
 writeFileSync("result.json", capturedJsonStringify(written));
 runtimeProcess.exit(0);

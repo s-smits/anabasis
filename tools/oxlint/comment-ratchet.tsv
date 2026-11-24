@@ -194,7 +194,7 @@ test/helpers/wri-campaign.ts	10
 test/helpers/write-harness.ts	1
 test/helpers/zip.ts	1
 test/history.test.ts	2
-test/holder.test.ts	9
+test/holder.test.ts	8
 test/host-tool.test.ts	7
 test/host.test.ts	19
 test/json-shape.test.ts	2
@@ -297,7 +297,7 @@ tools/c/accept.ts	9
 tools/d1b/draft.ts	12
 tools/d1b/examine.ts	15
 tools/d2/campaign-actions.ts	128
-tools/d2/campaign-terms.ts	42
+tools/d2/campaign-terms.ts	41
 tools/d2/campaign.ts	58
 tools/d2/checkpoint.ts	6
 tools/d2/close.ts	25

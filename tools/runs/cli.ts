@@ -13,31 +13,8 @@ import { join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { hasText } from "#src/meta/text.ts";
 import type { Host } from "./host-config.ts";
-import { preparedHost, publishedAt } from "./code.ts";
-import { alerts } from "./alerts.ts";
-import { fresh } from "./fresh.ts";
 import { holds, NAMING, on, routed, verbOn } from "./hosts.ts";
-import { hostsHealth } from "./health.ts";
-import { keep } from "./keep.ts";
 import { HERE, KEEPING, Misused, ownArgs } from "./registry.ts";
-import { loadwatch } from "./loadwatch.ts";
-import { netwatch } from "./netwatch.ts";
-import { active, logins } from "./logins.ts";
-import { continueRun, launch, pause } from "./manage.ts";
-import { copy, fetch, move } from "./move.ts";
-import { bench, evalOf, readEach } from "./bench.ts";
-import { runsStatus, watch } from "./pulse.ts";
-import { source } from "./receipt.ts";
-import { rehearse } from "./rehearse.ts";
-import { retire } from "./retire.ts";
-import { replay } from "./replay.ts";
-import { seed } from "./seed.ts";
-import { stop } from "./stop.ts";
-import { view } from "./view.ts";
-import { zipRuns } from "./zip.ts";
-import { catalogue } from "./snapshots.ts";
-import { search } from "./search.ts";
-import { sync } from "./sync.ts";
 
 interface Verb {
   readonly run: (args: readonly string[]) => Promise<void> | void;
@@ -63,90 +40,151 @@ const EVERY = [
 const verbOf = (run: Verb["run"], file: string, says: string): Verb => ({ run, file, says });
 
 /** Registry of all CLI verbs grouped for the bare `bun run runs` summary, with their handler,
- *  usage-owning file, and one-line description. */
+ *  usage-owning file, and one-line description. Handlers load their module lazily so invoking one
+ *  verb never parses unrelated commands. */
 const GROUPS = {
   "a run's life": {
     fresh: verbOf(
-      fresh,
+      (a) => import("./fresh.ts").then((m) => m.fresh(a)),
       "fresh.ts",
       "start a measured campaign from a blank project, in a worktree of its own",
     ),
-    launch: verbOf(launch, "manage.ts", "start the campaign command under a new name, in this worktree"),
+    launch: verbOf(
+      (a) => import("./manage.ts").then((m) => m.launch(a)),
+      "manage.ts",
+      "start the campaign command under a new name, in this worktree",
+    ),
     continue: verbOf(
-      continueRun,
+      (a) => import("./manage.ts").then((m) => m.continueRun(a)),
       "manage.ts",
       "run a stopped campaign again from its log, on its kept flags",
     ),
     keep: verbOf(
-      keep,
+      (a) => import("./keep.ts").then((m) => m.keep(a)),
       "keep.ts",
       "attach a keeper, which a run on a numbered login gets by itself, to go on across logins",
     ),
-    pause: verbOf(pause, "manage.ts", "stop a campaign at the next clean point after an event"),
-    move: verbOf(move, "move.ts", "pause a campaign, take it to another machine and go on there"),
-    copy: verbOf(copy, "move.ts", "copy a stopped campaign whole to another worktree"),
-    stop: verbOf(stop, "stop.ts", "end the process writing each log, and its keeper"),
+    pause: verbOf(
+      (a) => import("./manage.ts").then((m) => m.pause(a)),
+      "manage.ts",
+      "stop a campaign at the next clean point after an event",
+    ),
+    move: verbOf(
+      (a) => import("./move.ts").then((m) => m.move(a)),
+      "move.ts",
+      "pause a campaign, take it to another machine and go on there",
+    ),
+    copy: verbOf(
+      (a) => import("./move.ts").then((m) => m.copy(a)),
+      "move.ts",
+      "copy a stopped campaign whole to another worktree",
+    ),
+    stop: verbOf(
+      (a) => import("./stop.ts").then((m) => m.stop(a)),
+      "stop.ts",
+      "end the process writing each log, and its keeper",
+    ),
     retire: verbOf(
-      retire,
+      (a) => import("./retire.ts").then((m) => m.retire(a)),
       "retire.ts",
       "archive idle campaigns and delete unused worktrees, here and on every host",
     ),
   },
   reading: {
     status: verbOf(
-      runsStatus,
+      (a) => import("./pulse.ts").then((m) => m.runsStatus(a)),
       "pulse.ts",
       "one row a run on every host: tree, commit, login, comparisons, ending",
     ),
-    pulse: verbOf(watch, "pulse.ts", "what each run gained since the last look"),
+    pulse: verbOf(
+      (a) => import("./pulse.ts").then((m) => m.watch(a)),
+      "pulse.ts",
+      "what each run gained since the last look",
+    ),
     alerts: verbOf(
-      alerts,
+      (a) => import("./alerts.ts").then((m) => m.alerts(a)),
       "alerts.ts",
       "for cron: one line for each promotion, starter read, ending and stall new since the last look",
     ),
-    view: verbOf(view, "view.ts", "one campaign as its log reads, and the move the table names next"),
+    view: verbOf(
+      (a) => import("./view.ts").then((m) => m.view(a)),
+      "view.ts",
+      "one campaign as its log reads, and the move the table names next",
+    ),
     source: verbOf(
-      source,
+      (a) => import("./receipt.ts").then((m) => m.source(a)),
       "receipt.ts",
       "the commit each run ran, where it is published, whether it holds a fix",
     ),
-    replay: verbOf(replay, "replay.ts", "put every campaign log through this tree's readers"),
-    search: verbOf(search, "search.ts", "find text across campaign records and notes on every host"),
+    replay: verbOf(
+      (a) => import("./replay.ts").then((m) => m.replay(a)),
+      "replay.ts",
+      "put every campaign log through this tree's readers",
+    ),
+    search: verbOf(
+      (a) => import("./search.ts").then((m) => m.search(a)),
+      "search.ts",
+      "find text across campaign records and notes on every host",
+    ),
   },
   "logins and hosts": {
-    usage: verbOf(logins, "logins.ts", "each login's five-hour and weekly use, and its live runs"),
-    active: verbOf(active, "logins.ts", "the runs and seats live on each login, by name"),
+    usage: verbOf(
+      (a) => import("./logins.ts").then((m) => m.logins(a)),
+      "logins.ts",
+      "each login's five-hour and weekly use, and its live runs",
+    ),
+    active: verbOf(
+      (a) => import("./logins.ts").then((m) => m.active(a)),
+      "logins.ts",
+      "the runs and seats live on each login, by name",
+    ),
     hosts: verbOf(
-      hostsHealth,
+      (a) => import("./health.ts").then((m) => m.hostsHealth(a)),
       "hosts.ts",
       "each other host's runs, or with `--health` each machine's load, disk and busiest processes",
     ),
     on: verbOf(on, "hosts.ts", "run any verb on another host"),
     sync: verbOf(
-      sync,
+      (a) => import("./sync.ts").then((m) => m.sync(a)),
       "sync.ts",
       "bring every host to this machine's Python, table of tools and check runner, or say what differs",
     ),
     holds: verbOf(holds, "hosts.ts", "the names among these a worktree here holds"),
-    catalogue: verbOf(catalogue, "snapshots.ts", "this machine's original campaigns, for the other hosts"),
+    catalogue: verbOf(
+      () => import("./snapshots.ts").then((m) => m.catalogue()),
+      "snapshots.ts",
+      "this machine's original campaigns, for the other hosts",
+    ),
     fetch: verbOf(
-      fetch,
+      (a) => import("./move.ts").then((m) => m.fetch(a)),
       "move.ts",
       "copy a campaign another machine holds into the archive, or the record of every one (--whole: the folders too)",
     ),
-    loadwatch: verbOf(loadwatch, "loadwatch.ts", "each machine's CPU and load, live"),
+    loadwatch: verbOf(
+      (a) => import("./loadwatch.ts").then((m) => m.loadwatch(a)),
+      "loadwatch.ts",
+      "each machine's CPU and load, live",
+    ),
     netwatch: verbOf(
-      netwatch,
+      (a) => import("./netwatch.ts").then((m) => m.netwatch(a)),
       "netwatch.ts",
       "the traffic between the machines over Tailscale and its total, live",
     ),
   },
   "handover and simulation": {
-    zip: verbOf(zipRuns, "zip.ts", "bundle runs for handover"),
-    seed: verbOf(seed, "seed.ts", "copy a campaign under another name, cut where a question starts"),
-    rehearse: verbOf(rehearse, "rehearse.ts", "run a round over a seed with a script in each model seat"),
+    zip: verbOf((a) => import("./zip.ts").then((m) => m.zipRuns(a)), "zip.ts", "bundle runs for handover"),
+    seed: verbOf(
+      (a) => import("./seed.ts").then((m) => m.seed(a)),
+      "seed.ts",
+      "copy a campaign under another name, cut where a question starts",
+    ),
+    rehearse: verbOf(
+      (a) => import("./rehearse.ts").then((m) => m.rehearse(a)),
+      "rehearse.ts",
+      "run a round over a seed with a script in each model seat",
+    ),
     bench: verbOf(
-      bench,
+      (a) => import("./bench.ts").then((m) => m.bench(a)),
       "bench.ts",
       "roll a run's reference beside a bare solver on its outside benchmark, or score each finished read",
     ),
@@ -178,6 +216,7 @@ async function continueOn(host: Host, args: readonly string[]): Promise<number> 
   if (!hasText(revision) || revision.startsWith("--")) {
     throw new Error("name --at <commit>");
   }
+  const { preparedHost, publishedAt } = await import("./code.ts");
   const commit = publishedAt(runtimeProcess.cwd(), revision);
   const forwarded = own.filter((_, n) => n !== index && (joined || n !== index + 1));
   const command = [...forwarded, "--at", commit, ...args.slice(own.length)];
@@ -293,14 +332,17 @@ if (HELP.has(verb)) {
   try {
     // Evaluate `pause --eval` locally where `.env.runs` defines benchmarks; a remote host holding
     // the campaign only executes the pause.
-    const { passed, reads } = verb === "pause" ? evalOf(args) : { passed: args, reads: [] };
+    const { passed, reads } =
+      verb === "pause" ? (await import("./bench.ts")).evalOf(args) : { passed: args, reads: [] };
     const { here, away } = await routed(verb, passed);
     for (const [host, words] of away) {
       const code = await (verb === "continue" ? continueOn(host, words) : verbOn(host, words));
       if (code !== 0) runtimeProcess.exitCode = code;
     }
     if (here !== null) await chosen.run(here);
-    if ((runtimeProcess.exitCode ?? 0) === 0) await readEach(reads);
+    if ((runtimeProcess.exitCode ?? 0) === 0 && reads.length > 0) {
+      await (await import("./bench.ts")).readEach(reads);
+    }
   } catch (error) {
     if (!refusal(error)) throw error;
     // Append the verb's usage lines beneath any misuse error message.

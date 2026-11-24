@@ -1,4 +1,5 @@
 import { dlopen, FFIType } from "bun:ffi";
+import { runtimeProcess } from "./process.ts";
 
 interface ProcessRow {
   readonly pid: number;
@@ -8,6 +9,8 @@ interface ProcessRow {
   readonly program: string | null;
 }
 
+const PROC_ALL_PIDS = 1;
+const PROC_UID_ONLY = 4;
 const VNODE_PATH_INFO = 9;
 const VNODE_INFO_BYTES = 152;
 const PATH_BYTES = 1024;
@@ -17,7 +20,7 @@ const SHORT_BSD_INFO_BYTES = 64;
 const PROGRAM_BYTES = 4096;
 const FIRST_PIDS = 4096;
 const SYMBOLS = {
-  proc_listallpids: { args: [FFIType.ptr, FFIType.i32], returns: FFIType.i32 },
+  proc_listpids: { args: [FFIType.u32, FFIType.u32, FFIType.ptr, FFIType.i32], returns: FFIType.i32 },
   proc_pidinfo: {
     args: [FFIType.i32, FFIType.i32, FFIType.u64, FFIType.ptr, FFIType.i32],
     returns: FFIType.i32,
@@ -39,11 +42,14 @@ function cString(buffer: Uint8Array): string | null {
   return text === "" ? null : text;
 }
 
-function allPids(lib: ReturnType<typeof openLibproc>): Int32Array {
+function listedPids(lib: ReturnType<typeof openLibproc>): Int32Array {
+  const uid = runtimeProcess.getuid?.();
+  const type = uid === undefined ? PROC_ALL_PIDS : PROC_UID_ONLY;
   for (let room = FIRST_PIDS; ; room *= 2) {
     const pids = new Int32Array(room);
-    const count = lib.proc_listallpids(pids, pids.byteLength);
-    if (count < 0) throw new Error("libproc could not list the host's processes");
+    const bytes = lib.proc_listpids(type, uid ?? 0, pids, pids.byteLength);
+    if (bytes < 0) throw new Error("libproc could not list the host's processes");
+    const count = Math.trunc(bytes / 4);
     if (count < room) return pids.subarray(0, count);
   }
 }
@@ -55,16 +61,14 @@ export function processTable(): ProcessRow[] {
   const bsd = new DataView(new ArrayBuffer(SHORT_BSD_INFO_BYTES));
   const bsdBytes = new Uint8Array(bsd.buffer);
   const path = new Uint8Array(PROGRAM_BYTES);
-  return [...allPids(lib)].map((pid) => {
+  return [...listedPids(lib)].map((pid) => {
     const filled = lib.proc_pidinfo(pid, VNODE_PATH_INFO, 0, info, info.byteLength);
     const cwd =
       filled === info.byteLength
         ? cString(info.subarray(VNODE_INFO_BYTES, VNODE_INFO_BYTES + PATH_BYTES))
         : null;
-    path.fill(0);
-    const named =
-      lib.proc_pidpath(pid, path, path.byteLength) > 0 ||
-      lib.proc_regionfilename(pid, 0, path, path.byteLength) > 0;
+    const pathLen = lib.proc_pidpath(pid, path, path.byteLength);
+    const regionLen = pathLen > 0 ? pathLen : lib.proc_regionfilename(pid, 0, path, path.byteLength);
     const kin =
       lib.proc_pidinfo(pid, SHORT_BSD_INFO, 0, bsdBytes, SHORT_BSD_INFO_BYTES) === SHORT_BSD_INFO_BYTES;
     return {
@@ -72,7 +76,7 @@ export function processTable(): ProcessRow[] {
       ppid: kin ? bsd.getUint32(4, true) : 0,
       pgid: kin ? bsd.getUint32(8, true) : 0,
       cwd,
-      program: named ? cString(path) : null,
+      program: regionLen > 0 ? cString(path.subarray(0, regionLen)) : null,
     };
   });
 }

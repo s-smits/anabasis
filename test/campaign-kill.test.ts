@@ -22,6 +22,7 @@ import { admissionsOf, taskSets } from "../src/kernel/task.ts";
 import { cutSessions, unfinished } from "../src/kernel/trace.ts";
 import {
   appendFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -46,6 +47,7 @@ const REPO = resolve(import.meta.dir, "..");
 const STEM = `test-kill-${String(runtimeProcess.pid)}`;
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-kill-")));
 const names: string[] = [];
+let preparedTemplate: Promise<string> | null = null;
 /** A line a kill inside a write leaves: no newline, and cut inside a multi-byte character's text. */
 const TORN = `{"at":"2026-11-13T00:00:00.000Z","kind":"solve.call","data":{"text":"caf`;
 
@@ -83,15 +85,35 @@ async function once(name: string, moves: number, point: Point | null) {
   return { killed, code, said };
 }
 
+function preparedFolder(): Promise<string> {
+  return (preparedTemplate ??= (async () => {
+    const template = `${STEM}-tpl`;
+    names.push(template);
+    const folder = join(REPO, ".ana", "d2", template);
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, "seed.json"), `${JSON.stringify({ from: null, events: 0 })}\n`);
+    const result = await once(template, 2, null);
+    expect({ code: result.code, said: result.code === 0 ? "" : result.said.slice(-3000) }).toEqual({
+      code: 0,
+      said: "",
+    });
+    return folder;
+  })());
+}
+
 /** A campaign run until the kill at `point`, with a torn line left after it where `torn`, and then
  *  run again for `again` moves: the log as the kill left it and as the second run did. With `waits`,
  *  an Examiner session of the first run waits inside its first request, where the kill finds it. */
-async function killedAt(point: Point, again: number, torn: boolean, waits = false) {
+async function killedAt(point: Point, again: number, torn: boolean, waits = false, fromPrepared = true) {
   const name = `${STEM}-${point.kind.replace(".", "-")}-${String(point.count)}`;
   names.push(name);
   const folder = join(REPO, ".ana", "d2", name);
-  mkdirSync(folder, { recursive: true });
-  writeFileSync(join(folder, "seed.json"), `${JSON.stringify({ from: null, events: 0 })}\n`);
+  if (fromPrepared) {
+    cpSync(await preparedFolder(), folder, { recursive: true });
+  } else {
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, "seed.json"), `${JSON.stringify({ from: null, events: 0 })}\n`);
+  }
   const hold = join(root, `${name}.hold`);
   if (waits) writeFileSync(hold, "");
   const first = await once(name, 12, point);
@@ -170,7 +192,7 @@ const readings = (events: readonly LogEvent[]) =>
 
 describe("a campaign killed and run again", () => {
   it("puts to its gate every task a kill inside the pack's set-up left, torn line and all", async () => {
-    const cut = await killedAt({ kind: "task.proposed", count: 9 }, 1, true);
+    const cut = await killedAt({ kind: "task.proposed", count: 9 }, 1, true, false, false);
     expectContinued(cut);
     const sets = taskSets(cut.after);
     expect([sets.held.length, sets.released.length]).toEqual([PACK_TASKS.length - 2, 2]);

@@ -246,7 +246,7 @@ function flagsOf(events: readonly LogEvent[]): Map<string, string> {
 function tiesOf(events: readonly LogEvent[], since: number): Map<string, string> {
   const tasks = new Map<string, { pairs: number; kinds: Map<string, number> }>();
   for (const { kind, data } of events.slice(since + 1)) {
-    if (kind !== "referee.pair" || !isString(data.task)) continue;
+    if (kind !== "referee.pair" || !isString(data.task) || !isNumber(data.judge)) continue;
     const task = tasks.get(data.task) ?? { pairs: 0, kinds: new Map<string, number>() };
     task.pairs += 1;
     for (const [criterion, tie] of Object.entries(asRecord(data.ties) ?? {})) {
@@ -259,7 +259,7 @@ function tiesOf(events: readonly LogEvent[], since: number): Map<string, string>
   return new Map(
     [...tasks].flatMap(([task, { pairs, kinds }]) => {
       const tied = [...kinds].filter(([, count]) => 2 * count >= pairs).map(([key]) => key);
-      const of = `in most of ${plural(pairs, "judged pair")}`;
+      const of = `in half or more of ${plural(pairs, "judged pair")}`;
       return tied.length === 0 ? [] : [[task, `judged answers tied ${tied.join(", ")} ${of}`]];
     }),
   );

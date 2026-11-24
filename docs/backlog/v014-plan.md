@@ -232,6 +232,25 @@ PR B (`763f7ad81`, `14a1907f1`, `c43504c8d`) and PR C (`2bea90027`, `408811986`,
 - **Cross-family check.** Enforced at opening on the reviewer's and solver's model family names (`validateOpening`); the post-draft re-check was not needed because the judge term is locked per comparison.
 - **Transport.** Judge sessions run through `runRefereeSession`, inheriting its retry and limit handling, rather than a separate `streamSimple` client.
 - **PR C merge gate.** Model-free simulation (`.ana/wri/2026-11-24-v014-judge-sim/predictions.md`): `runs replay` read 282 of 282 logs identically at both commits; promotion-tuner replay over 269 campaigns, 553 readings and 217 promotions showed 0 flips; a scripted rehearsal on a seeded `buffer` campaign read `step` (p 0.004) at both commits with 0 judge events; the 9 wall suites `seat-view.ts` names pass (162 of 162). No archived contract carries a judge item, so the judged path is proved without a model through `test/round.test.ts` and `test/judge.test.ts`, and reaches a rehearsal only once an operator-admitted judged campaign exists.
+- **Review fixes (2026-11-24T23:24Z).** Two independent reviews of PR B and PR C were checked at source.
+  - **Fixed:**
+    - Judging that spends the cap down after the last vote no longer marks a fully judged comparison capped.
+    - A kill during judging stops the comparison for a rerun instead of recording `check-defects`.
+    - A pair the judge leaves unfinished is still billed (`judge: null`).
+    - `judgingOf` locks `step` in the terms.
+    - Answers reach pair sessions between nonce markers.
+    - Briefs are keyed on the task's content digest, not `taskId`, and brief flags must name real criteria.
+    - `pairsReported` passes the judge weights, so every downstream reader scores judged pairs with their votes. Before this, `informative` read `code = 0` exams as having no room.
+    - A judged valid pair always counts as informative.
+    - `objectiveLine` gives the Builder and the solver judged items by id and weight only, as §2.1 states; the Examiner keeps the criterion text.
+    - `familyOf` compares vendors.
+    - Every new test fails on the code it replaces.
+    - Replaying the tree against its parent gives 0 steps gained and 0 lost over 283 candidate comparisons, and 0 of 12,392 tasks differ.
+  - **Kept as planned:**
+    - The 3 KB dossier and the separate `referee.brief` (§2.3, §6 item 4). Phase 0b's agreement gate is their stated falsifier.
+    - `unadmitted` reads author-decided checks alone: judge admission is campaign-level (`opening.judged` → `--admit-judge`), and `close.ts` words its line for authored checks.
+    - Concurrent sessions of one pair share a reader id, and the pair event closes them as one unit for billing.
+    - Judging pairs only the reference's mirrored halves, not `aa-fresh`.
 - **Not done.** `pdftotext` is absent on the helper Macs, so `.pdf` answers extract with a fault there; the `AGENTS.md` amendment below awaits approval; Phases 0b and 4 are paid and await the operator.
 
 ### Phase 4 — Live Proof Runs and External Transfer Gate *(Operator-Gated)*

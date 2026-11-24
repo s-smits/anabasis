@@ -628,12 +628,13 @@ describe("the ties a judge records", () => {
     log.solved("b-1", "memo", "h1", [true, true]);
     log.solved("b-1", "memo", "h2", [true, true]);
     log.reported("b-1", ["h1", "h2"], ["memo"]);
-    const pair = (ties: JsonObject) => log.add("referee.pair", { comparison: "b-1", task: "memo", ties });
+    const pair = (ties: JsonObject) =>
+      log.add("referee.pair", { comparison: "b-1", task: "memo", judge: 0, ties });
     pair({ plain: "both-strong", cites: "swap-disagreed" });
     pair({ plain: "both-strong", cites: "both-weak" });
     pair({ plain: "mixed", cites: "both-weak" });
     const line = block(heard(log.events, [fixture("memo")]), "every").memo;
-    expect(line).toContain("tied both strong on plain, both weak on cites in most of 3 judged pairs");
+    expect(line).toContain("tied both strong on plain, both weak on cites in half or more of 3 judged pairs");
     log.add("referee.brief", {
       comparison: "b-1",
       task: "memo",

@@ -205,7 +205,7 @@ function comparisonAdmission(supply: Supply, wanted: Wanted): Admission {
   const { scored, floor, test } = sizeOf(supply, wanted);
   const { cap, pastStop } = wanted;
   const judging = wanted.judged === true ? JUDGED_TASK_DOLLARS * scored : 0;
-  const afforded = cap === null ? test : Math.floor((cap.dollars - judging) / cap.reserve);
+  const afforded = cap === null ? test : Math.max(0, Math.floor((cap.dollars - judging) / cap.reserve));
   return {
     refusals: [
       ...holding([

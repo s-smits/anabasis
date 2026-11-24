@@ -11,6 +11,7 @@ import { type CheckpointRequest, type Judging, scoredSet } from "#src/campaign/r
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import type { Reader } from "#src/referee/referee.ts";
 import {
+  JUDGE_STEP,
   type ObjectiveRule,
   objectiveRuleOf,
   scoresIn,
@@ -529,7 +530,7 @@ function judgingOf(
   const all = items.reduce((sum, { weight }) => sum + weight, 0);
   const judge = items.reduce((sum, { kind, weight }) => sum + (kind === "judge" ? weight : 0), 0);
   return {
-    weights: { code: all - judge, judge },
+    weights: { code: all - judge, judge, step: JUDGE_STEP },
     reviewer: reviewers.reviewer,
     brief: (version, comparison, kill) => reviewers.brief(packageOf(version), comparison, kill),
     pair: (version, asked, kill) => reviewers.pair(packageOf(version), asked, kill),

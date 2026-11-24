@@ -218,7 +218,7 @@ export function informative(
 ): boolean {
   const valid = pair[side].filter(Boolean).length;
   if (valid === 0) return knownValidAnswers.has(pair.task);
-  if (valid < pair[side].length) return true;
+  if (valid < pair[side].length || pair.judged !== undefined) return true;
   const other = pair.objective?.[side === "old" ? "fresh" : "old"] ?? [];
   return gapAgainst(pair, side, [...other, bests.get(pair.task) ?? null]);
 }

@@ -26,10 +26,12 @@ export function codexCredential(): OAuthCredential {
   return { type: "oauth", access, refresh, expires: expires * 1000 };
 }
 
+const REFRESH_MARGIN_MS = 5 * 60 * 1000;
+
 export function codexAuthStatus(now = Date.now()): CodexAuthState {
   if (!existsSync(codexAuthFile())) return "missing";
   try {
-    return codexCredential().expires > now ? "ready" : "expired";
+    return codexCredential().expires - REFRESH_MARGIN_MS > now ? "ready" : "expired";
   } catch {
     return "invalid";
   }

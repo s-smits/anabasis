@@ -56,7 +56,7 @@ export function providerFailed(last: LastTurn): boolean {
 }
 
 export function nonRetryableProvider(reason: string): boolean {
-  return /disabled Claude subscription access|Provider is not configured|requires more credits|model is not supported/u.test(
+  return /disabled Claude subscription access|Provider is not configured|requires more credits|model is not supported|only reads the Codex CLI's login|holds no ChatGPT login|access token carries no expiry/u.test(
     reason,
   );
 }

@@ -221,12 +221,14 @@ it("classifies Codex auth state without exposing tokens", () => {
     const jwt = (exp: number) => `h.${Buffer.from(JSON.stringify({ exp })).toString("base64url")}.s`;
     writeFileSync(
       join(home, "auth.json"),
-      JSON.stringify({ tokens: { access_token: jwt(200), refresh_token: secret } }),
+      JSON.stringify({ tokens: { access_token: jwt(1000), refresh_token: secret } }),
     );
     Bun.env.CODEX_HOME = home;
     for (const [now, expected] of [
       [100_000, "ready"],
-      [250_000, "expired"],
+      [699_999, "ready"],
+      [700_000, "expired"],
+      [1_100_000, "expired"],
     ] as const) {
       const state = codexAuthStatus(now);
       expect(state).toBe(expected);

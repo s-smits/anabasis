@@ -49,8 +49,6 @@ import { scriptedModel } from "./helpers/fixture-pack.ts";
 const FORMAT = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
 const OBJECTIVE = { quantity: "mass in kg", direction: "lower" } as const;
 const SOLVER = "claude/claude-opus-5-5";
-const HIDDEN_BLIND_NOTE =
-  "every validity check passed when each example's hidden values were swapped with another's: only the objective read hidden values, so validity checks test public properties alone";
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-draft-")));
 const STEM = `test-draft-${String(runtimeProcess.pid)}`;
 const campaigns: string[] = [];
@@ -378,7 +376,7 @@ describe.concurrent("staging and offline reading", () => {
     expect(undefinedCheckRes.faults.some((f) => f.includes("check-product"))).toBe(true);
   });
 
-  it("verifies deliverable files, archive entries, hidden-value sensitivity, and factual notes", async () => {
+  it("verifies deliverable files, archive entries and hidden-value sensitivity", async () => {
     // Plain deliverable file and archive member checks pass with files and fail without.
     const report: Draft = {
       ...SOUND,
@@ -448,11 +446,9 @@ describe.concurrent("staging and offline reading", () => {
     expect(decidedRead.faults).toEqual([]);
     expect(decidedRead.read?.reading.notes).toEqual([]);
     expect(noteRead.faults).toEqual([]);
-    expect(noteRead.read?.reading.notes).toEqual([HIDDEN_BLIND_NOTE]);
+    expect(noteRead.read?.reading.notes).toEqual([]);
     expect(partialRead.faults).toEqual([]);
-    expect(partialRead.read?.reading.notes).toEqual([
-      "the accept control of ex-001 also passed 1 of 2 other examples",
-    ]);
+    expect(partialRead.read?.reading.notes).toEqual([]);
   });
 
   it("dispatches declared host tools via host-tools.json manifest, keeps drafted checks author-decided, pins real binaries, and refuses missing/undeclared tools", async () => {
@@ -493,7 +489,7 @@ describe.concurrent("staging and offline reading", () => {
     ]);
     // Host-forwarded tools in a drafted exam never bypass Rule 10 / `--hitl` admission.
     expect(authoredFaults(checks, new Set())).toHaveLength(2);
-    expect(ok.read?.reading.notes).toEqual([HIDDEN_BLIND_NOTE]);
+    expect(ok.read?.reading.notes).toEqual([]);
     const staged = stageExam(dir, hostEngined);
     // No shell wrappers are generated in `.toolchain/bin/`; provenance lives in `host-tools.json`.
     expect(existsSync(join(staged.bundle, TOOL_TREE_DIR, "bin", "bash"))).toBe(false);

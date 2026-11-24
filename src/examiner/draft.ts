@@ -390,7 +390,10 @@ export function draftFaults(draft: Draft): string[] {
   const hidden = draft.tasks.filter((task) => task.hidden !== null).length;
   return [
     ...evaluatorFaults(draft),
-    ...rubricFaults(draft.objective),
+    ...rubricFaults(
+      draft.objective,
+      draft.checks.map(({ id }) => id),
+    ),
     ...(again === undefined ? [] : [`${again} is named twice: an id names one rule or one check`]),
     ...draft.rules.flatMap(({ id }) => {
       const checked = draft.checks.filter((check) => check.rule === id).length;

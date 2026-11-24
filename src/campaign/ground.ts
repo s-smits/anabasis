@@ -1,7 +1,7 @@
 /**
  * What move 7 reads its rows from: a campaign's plan, and its log read once (`groundOf`).
  */
-import { eventsOf, type LogEvent } from "../kernel/log.ts";
+import { type EventKind, eventsOf, type LogEvent } from "../kernel/log.ts";
 import { INTERRUPTED, lastReports, latestBuilt, referenceOf } from "../kernel/reports.ts";
 import { isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { refusals, supplyOf, type Wanted } from "./admission.ts";
@@ -46,6 +46,9 @@ interface Compared {
 /** A comparison that reported. */
 type Reported = Compared & { readonly report: JsonObject; readonly reported: number };
 
+const SESSION_FINISHED_KINDS: readonly EventKind[] = ["build.finished", "exam.finished", "draft.finished"];
+const SESSION_TURN_KINDS: readonly EventKind[] = ["build.turn", "exam.turn", "draft.turn"];
+
 /** Every comparison of a log that began, in the order they began; one whose start is on record
  *  twice stands where it last began. An old ladder's readings are no comparison of the table's
  *  (`lastReports`, `src/kernel/reports.ts`). */
@@ -89,47 +92,47 @@ export const cutShort = (event: LogEvent) =>
  *  ends a campaign on its environment after `CRASHES_IN_A_ROW` of them (`decide.ts`) instead of
  *  `no-room`, and the count starts again after that ending. */
 export function crashedRun(events: readonly LogEvent[]) {
-  // A wait for the provider's named reset starts the count again as an ending does (`waitOut`).
-  const since = events.findLastIndex(
-    ({ kind, data }) => kind === "campaign.ended" || (kind === "campaign.waited" && data.for === "provider"),
+  const endedAt = eventsOf(events, "campaign.ended").at(-1)?.index ?? -1;
+  const waitedAt =
+    eventsOf(events, "campaign.waited").findLast(({ event: { data } }) => data.for === "provider")?.index ??
+    -1;
+  const since = Math.max(endedAt, waitedAt);
+  const ended = SESSION_FINISHED_KINDS.flatMap((kind) =>
+    eventsOf(events, kind).filter(({ index, event }) => index > since && sessionEnded(event)),
   );
-  const tail = events.slice(since + 1);
-  // It starts again at the first turn served to a session that does not crash, as the provider was
-  // back; only a first turn counts, as a Builder is served one after each Examiner crash beside it.
   const crashed = new Set(
-    tail
-      .filter((event) => sessionEnded(event) && event.data.ended === "crashed")
-      .map(({ data }) => data.session),
+    ended.flatMap(({ event: { data } }) => (data.ended === "crashed" ? [data.session] : [])),
   );
-  // Each turn the provider served a seat's session (a solve's and a Referee's name none); the map,
-  // filled last turn first, keeps each session's first.
-  const served = tail.flatMap(({ kind, data }, at) =>
-    kind.endsWith(".turn") && isString(data.session) && !isString(data.error) && !crashed.has(data.session)
-      ? [[data.session, at] as const]
-      : [],
-  );
-  const back = Math.max(-1, ...new Map(served.toReversed()).values());
-  // A session the host stopped says nothing of the provider, and is passed over.
-  const sessions = tail
-    .slice(back + 1)
-    .filter((event) => sessionEnded(event) && event.data.ended !== "stopped")
+  if (crashed.size === 0) return { count: 0, crash: null };
+  ended.sort((a, b) => a.index - b.index);
+  const firstTurn = new Map<string, number>();
+  for (const {
+    index,
+    event: { data },
+  } of SESSION_TURN_KINDS.flatMap((kind) => eventsOf(events, kind))) {
+    if (index <= since || !isString(data.session) || isString(data.error) || crashed.has(data.session)) {
+      continue;
+    }
+    const prev = firstTurn.get(data.session);
+    if (prev === undefined || index < prev) firstTurn.set(data.session, index);
+  }
+  const back = Math.max(since, ...firstTurn.values());
+  const sessions = ended
+    .flatMap(({ index, event }) => (index > back && event.data.ended !== "stopped" ? [event] : []))
     .toReversed();
-  // A session moved the campaign whatever its ending where an Examiner's held a task out: one that
-  // did and then lost a turn to the provider is `crashed` with its tasks held (`exam.finished.held`
-  // is written whatever `ended` says). A Builder's moved it where its harness is one the campaign
-  // goes on from (`latestBuilt`), which a crashed session's is only where a harness snapshot was kept: one
-  // that edited and then crashed leaves the next session the same parent, so it counts as a crash.
-  const kept = new Set(tail.flatMap(({ kind, data }) => (kind === "build.checkpoint" ? [data.session] : [])));
+  const kept = new Set(
+    eventsOf(events, "build.checkpoint").flatMap(({ index, event: { data } }) =>
+      index > since ? [data.session] : [],
+    ),
+  );
   const moved = (data: JsonObject) =>
     heldOut(data) ||
     (isNumber(data.tries) && data.tries > 0) ||
     (data.changed === true && (data.ended !== "crashed" || kept.has(data.session)));
   const whole = sessions.findIndex(({ data }) => data.ended !== "crashed" || moved(data));
-  const count = whole === -1 ? sessions.length : whole;
-  // What the last session's crash said, counted or not, as its limit is still the next session's.
   const [last] = sessions;
   return {
-    count,
+    count: whole === -1 ? sessions.length : whole,
     crash: last?.data.ended === "crashed" && isString(last.data.crash) ? last.data.crash : null,
   };
 }

@@ -271,6 +271,16 @@ function wordsOf(text: string): string[] {
   return text.toLowerCase().match(WORD_RE) ?? [];
 }
 
+function bigramIndex(wanted: ReadonlySet<string> | null, length: number) {
+  if (wanted === null || length < 2) return null;
+  const pairs = new Map<string, Set<string>>();
+  for (const span of wanted) {
+    const [first = "", second = ""] = span.split(" ", 2);
+    pairs.set(first, (pairs.get(first) ?? new Set()).add(second));
+  }
+  return pairs;
+}
+
 /** Word spans of public inputs mapped to their tasks, dropping spans shared by every task. */
 export function spansOf(
   tasks: readonly TaskStrings[],
@@ -279,13 +289,7 @@ export function spansOf(
 ) {
   const spans = new Map<string, Set<string>>();
   if (wanted?.size === 0) return { spans, common: 0 };
-  const pairs = wanted === null || length < 2 ? null : new Map<string, Set<string>>();
-  if (wanted !== null && pairs !== null) {
-    for (const span of wanted) {
-      const [first = "", second = ""] = span.split(" ", 2);
-      pairs.set(first, (pairs.get(first) ?? new Set()).add(second));
-    }
-  }
+  const pairs = bigramIndex(wanted, length);
   const streams = tasks.flatMap(({ name, strings }) => strings.map((text) => [name, wordsOf(text)] as const));
   for (const [name, words] of streams) {
     for (let from = 0; from + length <= words.length; from += 1) {
@@ -308,6 +312,7 @@ export function quotedSpans(
   length = QUOTE_WORDS,
 ): QuotedSpan[] {
   if (spans.size === 0) return [];
+  const starts = new Set([...spans.keys()].map((span) => span.split(" ", 1)[0] ?? ""));
   const words = [...text.matchAll(WORD_RE)].map((match) => ({
     word: match[0].toLowerCase(),
     at: match.index,
@@ -318,7 +323,9 @@ export function quotedSpans(
   let from = -1;
   for (let at = 0; at <= plain.length; at += 1) {
     const holders =
-      at + length <= plain.length ? spans.get(plain.slice(at, at + length).join(" ")) : undefined;
+      at + length <= plain.length && starts.has(plain[at] ?? "")
+        ? spans.get(plain.slice(at, at + length).join(" "))
+        : undefined;
     if (holders !== undefined) {
       from = from === -1 ? at : from;
       for (const task of holders) tasks.add(task);

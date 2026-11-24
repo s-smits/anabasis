@@ -57,6 +57,11 @@ const ASSIGNMENT = /^\w+=/;
 /** A heredoc's body, kept to the rest of its first line: its body is data, never a command. */
 const HEREDOC = /(?<!<)<<-?\s*(['"]?)(\w+)\1([^\n]*)(?:\n(?:[^\n]*\n)*?[ \t]*\2[ \t]*(?=\n|$)|[\s\S]*$)/g;
 const REDIRECTION = /^\d*(?:[<>]+|&>>?)&?/;
+const FD_DUP = /&\d$/;
+const INLINE_FLAG = /^-\w*c\w*$/;
+const DIGIT_START = /^\d/;
+const SPACE_CHARS: ReadonlySet<string> = new Set([" ", "\t", "\r", "\f", "\v"]);
+const BREAK_CHARS: ReadonlySet<string> = new Set(["\n", ";", "|", "&", "(", ")", "`"]);
 
 /** The programs one call ran: a `bash` call's, each once a segment, and any other tool's own name;
  *  `unattributed` counts the segments whose program the command's text does not name. */
@@ -70,40 +75,49 @@ interface Word {
   readonly quoted: boolean;
 }
 
+const REDIR_END = /[<>]$/;
+
 /** A command's words, segment by segment: a line, a list, a pipe, a subshell or a substitution ends one. */
 function segmentsOf(command: string): Word[][] {
-  const segments: Word[][] = [[]];
-  let word = "";
-  let quoted = false;
-  let quote: string | null = null;
+  const segments: Word[][] = [];
+  let current: Word[] = [];
+  let [word, quoted, inDouble] = ["", false, false];
   const end = () => {
-    if (word !== "" || quoted) segments.at(-1)?.push({ text: word, quoted });
-    word = "";
-    quoted = false;
+    if (word !== "" || quoted) current.push({ text: word, quoted });
+    [word, quoted] = ["", false];
+  };
+  const flush = () => {
+    end();
+    if (current.length > 0) {
+      segments.push(current);
+      current = [];
+    }
   };
   for (let at = 0; at < command.length; at += 1) {
     const char = command[at] ?? "";
-    if (quote !== null) {
-      if (char === quote) quote = null;
-      else if (char === "\\" && quote === '"') word += command[(at += 1)] ?? "";
-      else word += char;
-    } else if (char === "'" || char === '"') {
-      quote = char;
+    if (inDouble) {
+      if (char === '"') inDouble = false;
+      else word += char === "\\" ? (command[(at += 1)] ?? "") : char;
+    } else if (char === "'") {
       quoted = true;
-    } else if (char === "\\") word += command[(at += 1)] ?? "";
-    else if (/\s/.test(char) && char !== "\n") end();
-    else if (char === "&" && (/[<>]$/.test(word) || command[at + 1] === ">")) word += char;
-    else if ("\n;|&()`".includes(char) || (char === "$" && command[at + 1] === "(")) {
-      end();
+      const close = command.indexOf("'", at + 1);
+      const stop = close === -1 ? command.length : close;
+      word += command.slice(at + 1, stop);
+      at = stop;
+    } else if (char === '"') [inDouble, quoted] = [true, true];
+    else if (char === "\\") word += command[(at += 1)] ?? "";
+    else if (SPACE_CHARS.has(char)) end();
+    else if (char === "&" && (REDIR_END.test(word) || command[at + 1] === ">")) word += char;
+    else if (BREAK_CHARS.has(char) || (char === "$" && command[at + 1] === "(")) {
       if (char === "$") at += 1;
-      segments.push([]);
+      flush();
     } else word += char;
   }
-  end();
-  return segments.filter((segment) => segment.length > 0);
+  flush();
+  return segments;
 }
 
-const base = (path: string) => path.replace(/^.*\//, "");
+const base = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
 /** A script's or module's name where it can be one, else the interpreter's or shell's own. */
 const named = (word: Word | undefined, fallback: string) =>
@@ -116,34 +130,43 @@ function withoutRedirections(words: readonly Word[]): Word[] {
   const kept: Word[] = [];
   for (let at = 0; at < words.length; at += 1) {
     const word = words[at];
-    if (word === undefined || word.quoted || !REDIRECTION.test(word.text)) {
-      if (word !== undefined) kept.push(word);
-      continue;
+    if (word === undefined) continue;
+    if (
+      word.quoted ||
+      (!word.text.includes(">") && !word.text.includes("<")) ||
+      !REDIRECTION.test(word.text)
+    ) {
+      kept.push(word);
+    } else if (word.text.replace(REDIRECTION, "") === "" && !FD_DUP.test(word.text)) {
+      // An operator standing alone takes the next word for its file.
+      at += 1;
     }
-    // An operator standing alone takes the next word for its file.
-    if (word.text.replace(REDIRECTION, "") === "" && !/&\d$/.test(word.text)) at += 1;
   }
   return kept;
 }
+
+function afterPrefixes(words: readonly Word[]): number {
+  let at = words.findIndex(
+    ({ text, quoted }) => quoted || (!ASSIGNMENT.test(text) && !SHELL_WORDS.has(text)),
+  );
+  while (at >= 0) {
+    const prefix = words[at]?.text;
+    if (prefix === undefined || !PREFIXES.has(prefix)) return at;
+    at += 1;
+    while (at < words.length && /^[-]|^\w+=/.test(words[at]?.text ?? "")) at += 1;
+    if (prefix === "timeout" && DIGIT_START.test(words[at]?.text ?? "")) at += 1;
+  }
+  return -1;
+}
+
+const firstTarget = (words: readonly Word[], skip = "") =>
+  words.find(({ text }) => !text.startsWith("-") && text !== skip);
 
 /** The program a segment's words run, past assignments, shell words and prefixes, into a shell's
  *  `-c` text and an interpreter's script; `null` where the text names none, `[]` where none runs. */
 function segmentPrograms(all: readonly Word[]): readonly string[] | null {
   const words = withoutRedirections(all);
-  let at = words.findIndex(
-    ({ text, quoted }) => quoted || (!ASSIGNMENT.test(text) && !SHELL_WORDS.has(text)),
-  );
-  while (at >= 0 && at < words.length && PREFIXES.has(words[at]?.text ?? "")) {
-    const prefix = words[at]?.text;
-    at += 1;
-    while (
-      at < words.length &&
-      ((words[at]?.text ?? "").startsWith("-") || ASSIGNMENT.test(words[at]?.text ?? ""))
-    ) {
-      at += 1;
-    }
-    if (prefix === "timeout" && /^\d/.test(words[at]?.text ?? "")) at += 1;
-  }
+  const at = afterPrefixes(words);
   const first = words[at];
   if (first === undefined) return [];
   if (first.quoted || !PROGRAM_WORD.test(first.text)) return null;
@@ -152,26 +175,15 @@ function segmentPrograms(all: readonly Word[]): readonly string[] | null {
   if (!NAME.test(program)) return null;
   const rest = words.slice(at + 1);
   if (SHELLS.has(program)) {
-    const inline = rest.findIndex(({ text, quoted }) => !quoted && /^-\w*c\w*$/.test(text));
+    const inline = rest.findIndex(({ text, quoted }) => !quoted && INLINE_FLAG.test(text));
     const body = inline === -1 ? undefined : rest[inline + 1];
-    if (body !== undefined) return programsIn(body.text).programs;
-    return [
-      named(
-        rest.find(({ text }) => !text.startsWith("-")),
-        program,
-      ),
-    ];
+    return body === undefined ? [named(firstTarget(rest), program)] : programsIn(body.text).programs;
   }
   if (INTERPRETER.test(program)) {
     const module = rest.findIndex(({ text }) => text === "-m");
     if (module !== -1 && rest[module + 1] !== undefined) return [named(rest[module + 1], program)];
     if (rest.some(({ text }) => text === "-c" || text === "-e")) return [program];
-    return [
-      named(
-        rest.find(({ text }) => !text.startsWith("-") && text !== "run"),
-        program,
-      ),
-    ];
+    return [named(firstTarget(rest, "run"), program)];
   }
   return [program];
 }
@@ -179,7 +191,8 @@ function segmentPrograms(all: readonly Word[]): readonly string[] | null {
 function programsIn(command: string): CallPrograms {
   const programs: string[] = [];
   let unattributed = 0;
-  for (const segment of segmentsOf(command.replaceAll(HEREDOC, "$3"))) {
+  const body = command.includes("<<") ? command.replaceAll(HEREDOC, "$3") : command;
+  for (const segment of segmentsOf(body)) {
     const found = segmentPrograms(segment);
     if (found === null) unattributed += 1;
     else programs.push(...found);

@@ -7,7 +7,7 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync } from "../meta/filesystem.ts";
 import { activeDeveloperBinDirs } from "../meta/host-tool.ts";
 import { dirname, isAbsolute, join, resolve } from "../meta/path.ts";
-import { keysIf } from "../meta/optional-key.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { homedir, tmpdir } from "../meta/os.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
@@ -88,10 +88,10 @@ export function canonicalRoots(paths: readonly string[]): string[] {
  * used to build `PATH`, keeping filesystem access and command lookup synchronised.
  */
 export function darwinToolchainInstallRoots(): string[] {
-  const shared = ["/usr/local"];
   const home = closedHome();
-  const perUser = home === undefined ? [] : TOOLCHAIN_HOME_ROOTS.map((relative) => join(home, relative));
-  return [...shared, ...perUser].filter(existsSync).toSorted(compareCodeUnits);
+  return ["/usr/local", ...(home === undefined ? [] : TOOLCHAIN_HOME_ROOTS.map((rel) => join(home, rel)))]
+    .filter(existsSync)
+    .toSorted(compareCodeUnits);
 }
 
 /** Runs a Darwin system command once per process and returns its trimmed stdout, or `undefined`
@@ -182,23 +182,21 @@ export function pinnedPythonDir(home: string): string {
  * intentionally remains under the seat's `HOME` so `pip` installs stay local and reproducible.
  */
 export function hostToolchainEnv() {
-  const sdk = darwinAnswer("/usr/bin/xcrun", "--show-sdk-path");
-  const compiler = sdk === undefined ? {} : { SDKROOT: sdk };
-  const home = closedHome();
-  if (home === undefined) return compiler;
-  const rustup = join(home, ".rustup");
-  return { ...compiler, ...keysIf(existsSync(rustup), () => ({ RUSTUP_HOME: rustup })) };
+  const [sdk, home] = [darwinAnswer("/usr/bin/xcrun", "--show-sdk-path"), closedHome()];
+  const rustup = home === undefined ? undefined : join(home, ".rustup");
+  return {
+    ...keyIfDefined("SDKROOT", sdk),
+    ...keyIfDefined("RUSTUP_HOME", rustup !== undefined && existsSync(rustup) ? rustup : undefined),
+  };
 }
 
 /** Returns every ancestor directory between `/` and `path`, ordered from outermost to innermost. */
 export function ancestorDirectories(path: string): string[] {
   const ancestors: string[] = [];
-  let current = dirname(path);
-  while (current !== "/" && current !== ".") {
+  for (let current = dirname(path), parent = dirname(current); current !== "/" && current !== "."; ) {
     ancestors.push(current);
-    const parent = dirname(current);
     if (parent === current) break;
-    current = parent;
+    [current, parent] = [parent, dirname(parent)];
   }
   return ancestors.toReversed();
 }

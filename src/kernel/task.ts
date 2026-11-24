@@ -91,6 +91,25 @@ const ONCE_HELD: ReadonlySet<string> = new Set([
 /** The recorded task admission number. A log written before 2026-10-09 holds three more a task, which
  *  say nothing of its shape. */
 const ADMISSION_RECORD = 1;
+interface TaskEvent {
+  readonly index: number;
+  readonly event: LogEvent;
+}
+const TASK_EVENT_CACHE = new WeakMap<
+  readonly LogEvent[],
+  { readonly length: number; readonly last: LogEvent | undefined; readonly list: readonly TaskEvent[] }
+>();
+
+function taskEventsOf(events: readonly LogEvent[]): readonly TaskEvent[] {
+  const [last, cached] = [events.at(-1), TASK_EVENT_CACHE.get(events)];
+  if (cached?.length === events.length && cached.last === last) return cached.list;
+  const list: TaskEvent[] = [];
+  for (const [index, event] of events.entries()) {
+    if (foldsEvent(event.kind)) list.push({ index, event });
+  }
+  TASK_EVENT_CACHE.set(events, { length: events.length, last, list });
+  return list;
+}
 
 /**
  * The shape check: every part is present, and every rule id is in the contract. A check
@@ -129,13 +148,14 @@ function packageFault(contract: Contract, task: TaskPackage): string | null {
     return `the check's brief does not read: ${errorMessage(error)}`;
   }
   if (checks.length === 0) return `no check applies to family ${task.family}`;
+  const listed = new Set(task.ruleIds);
   for (const check of checks) {
     // The brief is the author's, read unchecked: what it cites is proven here before it is trusted.
     const cited: unknown = check.citedDecisionIds;
     if (!Array.isArray(cited) || cited.length === 0 || !cited.every(isString)) {
       return `check ${check.id} cites no rule by id`;
     }
-    const unlisted = cited.find((id) => !task.ruleIds.includes(id));
+    const unlisted = cited.find((id) => !listed.has(id));
     if (unlisted !== undefined) {
       return `check ${check.id} enforces ${unlisted}, which the task does not list`;
     }
@@ -189,21 +209,22 @@ export function taskStates(events: readonly LogEvent[]): Map<string, TaskState> 
  *  practice are said in one place. */
 export function taskSets(events: readonly LogEvent[], upTo = events.length - 1): TaskSets {
   const tasks = new Map<string, Folded>();
-  for (const [index, event] of events.entries()) {
+  for (const { index, event } of taskEventsOf(events)) {
     if (index > upTo) break;
     step(tasks, event);
   }
-  const inState = (wanted: TaskState) =>
-    [...tasks].flatMap(([version, task]) => (task.admitted && task.state === wanted ? [version] : []));
-  return {
-    states: new Map([...tasks].map(([version, task]) => [version, task.state])),
-    held: inState("held"),
-    released: inState("released"),
-  };
+  const states = new Map<string, TaskState>();
+  const held: string[] = [];
+  const released: string[] = [];
+  for (const [version, { state, admitted }] of tasks) {
+    states.set(version, state);
+    if (admitted && state === "held") held.push(version);
+    else if (admitted && state === "released") released.push(version);
+  }
+  return { states, held, released };
 }
 
 function step(tasks: Map<string, Folded>, { at, kind, data }: LogEvent): void {
-  if (!foldsEvent(kind)) return;
   const version = data.version;
   if (!isString(version)) throw new Error(`${at}: ${kind} names no task version`);
   const task = tasks.get(version);
@@ -227,7 +248,7 @@ export function heldAtGate(outcome: JsonValue | undefined): boolean {
 /** Each admitted task version, held (true) or refused (false) as its last `task.gate` reads. */
 export function admissionsOf(events: readonly LogEvent[]): Map<string, boolean> {
   return new Map(
-    events.flatMap(({ kind, data }) =>
+    taskEventsOf(events).flatMap(({ event: { kind, data } }) =>
       kind === "task.gate" && isString(data.version)
         ? [[data.version, heldAtGate(data.outcome)] as const]
         : [],

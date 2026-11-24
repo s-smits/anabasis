@@ -6,10 +6,10 @@
  * (`studies/shared/bundle.ts`, `studies/shared/foreign-python.ts`) and cross-host campaign moves
  * (`tools/runs/move.ts`).
  */
-import { existsSync } from "#src/meta/filesystem.ts";
+import { existsSync, lstatSync, readHeadSync, readlinkSync } from "#src/meta/filesystem.ts";
 import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import { dirname, isAbsolute, join, normalize } from "#src/meta/path.ts";
-import { treeContent } from "./open.ts";
+import { pathsUnder } from "./open.ts";
 
 /** `uname -sm` as `placeOf` names a machine. */
 export const UNAME_PLACES = new Map([
@@ -65,23 +65,24 @@ export async function foreignPrograms(tree: string, place: Place = CONTAINER): P
 /** Each entry of `tree` that `place` cannot run, relative to the tree in code-unit order, with why: a
  *  program foreign to it, or a link out of the tree, as a Builder's virtual environment links its
  *  `python3.14` to the machine it was built on, which the harness does not carry. */
-export async function foreignFiles(tree: string, place: Place): Promise<{ path: string; why: string }[]> {
-  if (!existsSync(tree)) return [];
+export function foreignFiles(tree: string, place: Place): Promise<{ path: string; why: string }[]> {
+  if (!existsSync(tree)) return Promise.resolve([]);
   const foreign: { path: string; why: string }[] = [];
-  // A folder's content is null, a file's its digest and a link's its target.
-  for (const { path, mode, content } of treeContent(tree)) {
-    if (content === null) continue;
-    if ((mode & 0o170000) === 0o120000) {
-      const to = normalize(join(dirname(path), content));
-      if (isAbsolute(content) || to === ".." || to.startsWith("../")) {
-        foreign.push({ path, why: `a link to ${content}, outside the tree` });
+  for (const path of pathsUnder(tree)) {
+    const full = join(tree, path);
+    const stat = lstatSync(full);
+    if (stat.isSymbolicLink()) {
+      const target = readlinkSync(full);
+      const to = normalize(join(dirname(path), target));
+      if (isAbsolute(target) || to === ".." || to.startsWith("../")) {
+        foreign.push({ path, why: `a link to ${target}, outside the tree` });
       }
-      continue;
+    } else if (stat.isFile()) {
+      const why = foreignHead(readHeadSync(full, 128), place);
+      if (why !== null) foreign.push({ path, why });
     }
-    const why = foreignHead(Buffer.from(await Bun.file(join(tree, path)).slice(0, 128).bytes()), place);
-    if (why !== null) foreign.push({ path, why });
   }
-  return foreign;
+  return Promise.resolve(foreign);
 }
 
 /** Why the opening bytes of a file name a program foreign to `place`, or null. */

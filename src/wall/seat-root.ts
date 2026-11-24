@@ -106,13 +106,17 @@ export async function releaseRoot(root: string): Promise<void> {
   await rm(claimOf(root), { force: true });
 }
 
-/** Returns top-level entries inside `folder`, or an empty list if the directory is unreadable. */
-function inside(folder: string): string[] {
-  try {
-    return readdirSync(folder).map((name) => join(folder, name));
-  } catch {
-    return [];
-  }
+/** Most recent modification time across `root`, its host folder, and their top-level entries. */
+function latestWrite(root: string): number {
+  const inside = (folder: string) => {
+    try {
+      return readdirSync(folder).map((name) => join(folder, name));
+    } catch {
+      return [];
+    }
+  };
+  const tops = [root, hostFolder(root)].filter(existsSync);
+  return Math.max(...tops.flatMap((top) => [top, ...inside(top)]).map((path) => lstatSync(path).mtimeMs));
 }
 
 /**
@@ -128,19 +132,14 @@ export async function releaseLeft(
   spared: ReadonlySet<string> = new Set(),
 ): Promise<string[]> {
   const left: string[] = [];
-  for (const parent of parents.filter((each) => existsSync(each))) {
+  for (const parent of parents.filter(existsSync)) {
     const roots = new Set(
       readdirSync(parent).map((name) => join(parent, name.replace(/\.(?:host|owner)$/, ""))),
     );
     for (const root of roots) {
       try {
         if (spared.has(root)) continue;
-        // Compute the most recent modification time across the root, host folder, and top-level entries.
-        const tops = [root, hostFolder(root)].filter((top) => existsSync(top));
-        const written = Math.max(
-          ...tops.flatMap((top) => [top, ...inside(top)]).map((path) => lstatSync(path).mtimeMs),
-        );
-        if (recordIn(claimOf(root)) === "" ? written >= unclaimedBefore : claimed(root)) continue;
+        if (recordIn(claimOf(root)) === "" ? latestWrite(root) >= unclaimedBefore : claimed(root)) continue;
         if (act === "release") await releaseRoot(root);
         left.push(root);
       } catch {

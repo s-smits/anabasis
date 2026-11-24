@@ -6,10 +6,10 @@
 import type { ModelUsage } from "@anthropic-ai/claude-agent-sdk";
 import type { Api, AssistantMessage, Model, Models, Usage } from "@earendil-works/pi-ai";
 import type { UsageState } from "@earendil-works/pi-durable";
-import { isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
+import { isNumber, isString } from "../meta/json-shape.ts";
 import { type EventKind, eventsOf, type LogEvent } from "./log.ts";
 import { examinerSessions } from "./solves.ts";
-import { ownedBy, ownersOf, unfinished } from "./trace.ts";
+import { ownersOf, unfinished } from "./trace.ts";
 
 interface Price {
   readonly input: number;
@@ -37,9 +37,21 @@ export type Spent = Readonly<{ turns: number; tokens: Tokens; billed: number; re
 
 type Turn = Pick<AssistantMessage, "provider" | "model" | "responseModel" | "usage">;
 
+interface Parts {
+  session: number;
+  span: number;
+  comparison: number;
+}
+
 const FIELDS = ["input", "output", "cacheRead", "cacheWrite", "cacheWrite1h", "dollars"] as const;
 const NO_TOKENS: Tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cacheWrite1h: 0 };
 const NONE: Spend = { ...NO_TOKENS, dollars: 0 };
+interface PartsCache {
+  readonly length: number;
+  readonly last: LogEvent | undefined;
+  readonly map: Map<string, Parts>;
+}
+const PARTS_CACHE = new WeakMap<readonly LogEvent[], PartsCache>();
 
 export const NOTHING_SPENT: Spent = { turns: 0, tokens: NO_TOKENS, billed: 0, reportedCost: null };
 
@@ -62,6 +74,7 @@ const ROLES = new Map([
   ["referee", "referee"],
   ["diagnosis", "diagnoser"],
 ]);
+const ROLE_ORDER = [...new Set(ROLES.values())];
 
 export function priceKey(model: Pick<Model<Api>, "provider" | "id">): string {
   return `${model.provider}/${model.id}`;
@@ -208,10 +221,11 @@ const billedOn = ({ kind, data }: LogEvent) =>
   kind !== "build.started" && isNumber(data.billed) ? data.billed : null;
 
 /** Total billed USD across finished records plus metered turns of unfinished sessions/solves. */
-export function billedAll(events: readonly LogEvent[]): number {
+export function billedAll(events: readonly LogEvent[], upTo = events.length - 1): number {
+  if (upTo < 0) return 0;
   let total = 0;
-  for (const { event } of eventsOf(events, BILLED_KINDS)) total += billedOn(event) ?? 0;
-  return unfinished(events).reduce((all, { dollars }) => all + dollars, total);
+  for (const { event } of eventsOf(events, BILLED_KINDS, upTo)) total += billedOn(event) ?? 0;
+  return unfinished(events, upTo).reduce((all, { dollars }) => all + dollars, total);
 }
 
 export const reportedShare = (total: number | null, before: number | null) =>
@@ -219,7 +233,7 @@ export const reportedShare = (total: number | null, before: number | null) =>
 
 /** Billed USD in `[from, to)` via prefix difference so sessions spanning `from` are not attributed whole. */
 export function billedBetween(events: readonly LogEvent[], from: number, to = events.length): number {
-  const prefix = (at: number) => billedAll(at < events.length ? events.slice(0, at) : events);
+  const prefix = (at: number) => billedAll(events, Math.min(at, events.length) - 1);
   return from === 0 ? prefix(to) : prefix(to) - prefix(from);
 }
 
@@ -244,57 +258,75 @@ export function billedFor(events: readonly LogEvent[], id: string): number {
   return span + comparison;
 }
 
-/** Splits spend for `id` into `session` (own turns/practice), `span` (whole session window), and `comparison`. */
-export function billedParts(
-  events: readonly LogEvent[],
-  id: string,
-  owners = ownersOf(events),
-  open = unfinished(events),
-) {
-  const mine = ownedBy(events, id, owners);
-  const asked = (solve: JsonValue | undefined) => {
-    const owner = isString(solve) ? owners.get(solve) : undefined;
-    return owner?.asked === true && owner.by === id;
+function billedIndex(events: readonly LogEvent[]): Map<string, Parts> {
+  const [last, cached] = [events.at(-1), PARTS_CACHE.get(events)];
+  if (cached?.length === events.length && cached.last === last) return cached.map;
+  const [owners, map, active] = [ownersOf(events), new Map<string, Parts>(), new Set<string>()];
+  const add = (id: string, key: keyof Parts, dollars: number) => {
+    const held = map.get(id) ?? { session: 0, span: 0, comparison: 0 };
+    held[key] += dollars;
+    map.set(id, held);
   };
-  const billed = { session: 0, span: 0, comparison: 0 };
-  let inBuild = false;
+  const credit = (event: LogEvent, session: string | null, own: number) => {
+    const of = isString(event.data.solve) ? event.data.solve : event.data.reader;
+    const owner = isString(of) ? owners.get(of) : undefined;
+    for (const build of active) {
+      add(build, "span", own);
+      if ((session === null || session === build) && (owner === undefined || owner.by === build)) {
+        add(build, "session", own);
+      }
+    }
+    if (
+      isString(event.data.solve) &&
+      owner?.asked === true &&
+      owner.by !== undefined &&
+      !active.has(owner.by)
+    ) {
+      add(owner.by, "comparison", own);
+    }
+  };
   for (const { event } of eventsOf(events, BILL_SPAN_KINDS)) {
-    if (event.kind === "build.started" && event.data.session === id) inBuild = true;
+    const session = isString(event.data.session) ? event.data.session : null;
+    if (event.kind === "build.started" && session !== null) active.add(session);
     const own = billedOn(event);
-    if (own !== null && inBuild) {
-      billed.span += own;
-      if (mine(event)) billed.session += own;
-    } else if (own !== null && asked(event.data.solve)) billed.comparison += own;
-    if (event.kind === "build.finished" && event.data.session === id) inBuild = false;
+    if (own !== null) credit(event, session, own);
+    if (event.kind === "build.finished" && session !== null) active.delete(session);
   }
-  for (const { of, id: which, dollars } of open) {
-    if (of === "build" && which === id) {
-      billed.span += dollars;
-      billed.session += dollars;
-    } else if (asked(which)) billed.comparison += dollars;
-    else if (of === "solve" && isString(which) && owners.get(which)?.by === id) billed.session += dollars;
+  for (const { of, id: which, dollars } of unfinished(events)) {
+    if (!isString(which)) continue;
+    if (of === "build") {
+      add(which, "span", dollars);
+      add(which, "session", dollars);
+      continue;
+    }
+    const owner = owners.get(which);
+    if (owner?.by !== undefined && (owner.asked || of === "solve")) {
+      add(owner.by, owner.asked ? "comparison" : "session", dollars);
+    }
   }
-  return billed;
+  PARTS_CACHE.set(events, { length: events.length, last, map });
+  return map;
+}
+
+/** Splits spend for `id` into `session` (own turns/practice), `span` (whole session window), and `comparison`. */
+export function billedParts(events: readonly LogEvent[], id: string): Readonly<Parts> {
+  return { ...(billedIndex(events).get(id) ?? { session: 0, span: 0, comparison: 0 }) };
 }
 
 /** Billed USD by role (descending), attributing Examiner `try_reference`/draft solves to `examiner`. */
 export function spendOf(events: readonly LogEvent[]): [string, number][] {
-  const sessions = examinerSessions(events);
-  const owners = ownersOf(events);
-  const whoseRole = (kind: string, solve: unknown) => {
-    const role = roleOf(kind);
+  const [sessions, owners, billed] = [examinerSessions(events), ownersOf(events), new Map<string, number>()];
+  const add = (kind: string, solve: unknown, dollars: number) => {
+    const base = roleOf(kind);
     const owner = isString(solve) ? owners.get(solve) : undefined;
-    return role === "solver" && owner?.asked === true && sessions.has(owner.by) ? "examiner" : role;
-  };
-  const billed = new Map<string, number>();
-  const add = (role: string | undefined, dollars: number) => {
+    const role = base === "solver" && owner?.asked === true && sessions.has(owner.by) ? "examiner" : base;
     if (role !== undefined) billed.set(role, (billed.get(role) ?? 0) + dollars);
   };
   for (const { event } of eventsOf(events, BILLED_KINDS)) {
-    add(whoseRole(event.kind, event.data.solve), billedOn(event) ?? 0);
+    add(event.kind, event.data.solve, billedOn(event) ?? 0);
   }
-  for (const { of, id, dollars } of unfinished(events)) add(whoseRole(of, id), dollars);
-  return [...new Set(ROLES.values())]
-    .flatMap((role): [string, number][] => (billed.has(role) ? [[role, billed.get(role) ?? 0]] : []))
-    .toSorted(([, a], [, b]) => b - a);
+  for (const { of, id, dollars } of unfinished(events)) add(of, id, dollars);
+  return ROLE_ORDER.flatMap((role): [string, number][] =>
+    billed.has(role) ? [[role, billed.get(role) ?? 0]] : [],
+  ).toSorted(([, a], [, b]) => b - a);
 }

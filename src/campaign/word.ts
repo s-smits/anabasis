@@ -2,7 +2,7 @@
  * A word the operator leaves for a campaign that runs, as the campaign's log holds it
  * (`campaign.word`, written by `tools/d2/word.ts` and `tools/runs/manage.ts`).
  */
-import { CALL_KINDS, type LogEvent } from "../kernel/log.ts";
+import { CALL_KINDS, type EventKind, eventsOf, type LogEvent } from "../kernel/log.ts";
 import { lastReports, referenceOf } from "../kernel/reports.ts";
 import { SEATS, traceKind } from "../kernel/trace.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";
@@ -23,7 +23,9 @@ const PAUSE_AFTER = {
   promoted: ["harness.promoted"],
   examined: ["exam.finished"],
   finished: ["build.finished"],
-} as const;
+} as const satisfies Record<string, readonly EventKind[]>;
+
+const ANSWER_KINDS: readonly EventKind[] = ["campaign.ended", "campaign.move", "campaign.opened"];
 
 /** How long a reached boundary pause holds new actions/solves before expiring if `runs pause` died. */
 export const PAUSE_STOP_WINDOW_MS = 180_000;
@@ -46,18 +48,18 @@ export interface Word {
 }
 
 /** The kinds of event the words `after` names, refused where one names none or joins `next`. */
-export function pauseKindsOf(after: string): readonly string[] {
+export function pauseKindsOf(after: string): readonly EventKind[] {
   const words = after.split("|");
   const isWord = (word: string): word is keyof typeof PAUSE_AFTER => Object.hasOwn(PAUSE_AFTER, word);
   if (!words.every(isWord) || (words.length > 1 && words.includes("next"))) {
     throw new Error(`--after takes ${Object.keys(PAUSE_AFTER).join(", ")}, or several but next joined by |`);
   }
-  return words.flatMap((word) => PAUSE_AFTER[word]);
+  return [...new Set(words.flatMap((word) => PAUSE_AFTER[word]))];
 }
 
 /** How many events of `kinds` `events` holds. */
-export const pauseCountOf = (events: readonly LogEvent[], kinds: readonly string[]): number =>
-  events.filter(({ kind }) => kinds.includes(kind)).length;
+export const pauseCountOf = (events: readonly LogEvent[], kinds: readonly EventKind[]): number =>
+  kinds.reduce((sum, kind) => sum + eventsOf(events, kind).length, 0);
 
 /** Whether a comparison against the current reference has reported a step whose promotion is not yet on record. */
 export function unpromotedStep(events: readonly LogEvent[]): boolean {
@@ -91,28 +93,32 @@ export function pausePointReached(events: readonly LogEvent[], after: string, ba
  *  has not yet been crossed. Unparameterized or `next` pauses activate at `event.at`. For bounded
  *  pauses, scans backward over events that can change `pausePointReached` to find the start of the
  *  current contiguous reached suffix so pre-promotion arming latches onto starter confirmation. */
-function pauseReachedAt(events: readonly LogEvent[], event: LogEvent, index: number): number | null {
+function pauseReachedAt(
+  events: readonly LogEvent[],
+  event: LogEvent,
+  index: number,
+): { readonly reached: number; readonly bounded: boolean } | null {
   const { after, base } = event.data;
-  if (!isString(after) || after === "next" || !isNumber(base)) return Date.parse(event.at);
-  let kinds: readonly string[];
+  if (!isString(after) || after === "next" || !isNumber(base)) {
+    return { reached: Date.parse(event.at), bounded: false };
+  }
+  let kinds: readonly EventKind[];
   try {
     kinds = pauseKindsOf(after);
   } catch {
-    return Date.parse(event.at);
+    return { reached: Date.parse(event.at), bounded: true };
   }
   if (!pausePointReached(events, after, base)) return null;
   let reachedAt = event.at;
-  for (let i = events.length - 1; i > index; i -= 1) {
-    const step = events[i];
-    if (step === undefined) continue;
-    const affects = kinds.includes(step.kind) || (after === "reported" && step.kind === "harness.promoted");
-    if (!affects) continue;
-    if (!pausePointReached(events.slice(0, i), after, base)) {
-      reachedAt = step.at;
+  const affectKinds: readonly EventKind[] = after === "reported" ? [...kinds, "harness.promoted"] : kinds;
+  for (const step of eventsOf(events, affectKinds).toReversed()) {
+    if (step.index <= index) break;
+    if (!pausePointReached(events.slice(0, step.index), after, base)) {
+      reachedAt = step.event.at;
       break;
     }
   }
-  return Date.parse(reachedAt);
+  return { reached: Date.parse(reachedAt), bounded: true };
 }
 
 /** How long `runs pause --after next` lets the open solves of a campaign whose solves run
@@ -121,12 +127,11 @@ export const pauseWaitMs = (wallSeconds: number): number => wallSeconds * 1000 +
 
 /** The newest pause word left since `since` whose boundary (if any) has been reached, or null. */
 function latestReachedPause(events: readonly LogEvent[], since: number) {
-  for (let i = events.length - 1; i >= since; i -= 1) {
-    const event = events[i];
-    if (event?.kind !== "campaign.word" || event.data.word !== PAUSE) continue;
-    const reached = pauseReachedAt(events, event, i);
-    const bounded = isString(event.data.after) && event.data.after !== "next" && isNumber(event.data.base);
-    if (reached !== null) return { event, reached, bounded };
+  for (const { event, index } of eventsOf(events, "campaign.word").toReversed()) {
+    if (index < since) break;
+    if (event.data.word !== PAUSE) continue;
+    const hit = pauseReachedAt(events, event, index);
+    if (hit !== null) return { event, ...hit };
   }
   return null;
 }
@@ -166,12 +171,9 @@ export function paused(
  * a campaign stopped on a word goes on when its command is run again.
  */
 export function pendingWords(events: readonly LogEvent[]): Word[] {
-  const heard = new Set(
-    events.flatMap(({ data }) => (Array.isArray(data.answers) ? data.answers.filter(isNumber) : [])),
-  );
-  return events.flatMap(({ kind, data }, at) => {
-    const word = ANSWERED.find((each) => kind === "campaign.word" && each === data.word);
-    return word === undefined || heard.has(at)
+  const words = eventsOf(events, "campaign.word").flatMap(({ index: at, event: { data } }) => {
+    const word = ANSWERED.find((each) => each === data.word);
+    return word === undefined
       ? []
       : [
           {
@@ -182,4 +184,13 @@ export function pendingWords(events: readonly LogEvent[]): Word[] {
           },
         ];
   });
+  if (words.length === 0) return [];
+  const heard = new Set(
+    ANSWER_KINDS.flatMap((kind) =>
+      eventsOf(events, kind).flatMap(({ event: { data } }) =>
+        Array.isArray(data.answers) ? data.answers.filter(isNumber) : [],
+      ),
+    ),
+  );
+  return words.filter(({ at }) => !heard.has(at));
 }

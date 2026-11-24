@@ -107,6 +107,13 @@ const WHOSE = {
   referee: "reader",
   solve: "solve",
 } as const satisfies Record<Seat, string>;
+const SEAT_ENDS: Readonly<Record<Seat, readonly EventKind[]>> = {
+  build: ["build.finished"],
+  exam: ["exam.finished"],
+  draft: ["draft.finished"],
+  referee: ["referee.finding", "referee.draft"],
+  solve: ["solve.finished"],
+};
 export const whose = (seat: Seat) => WHOSE[seat];
 
 /** The kind seat `seat` logs part `part` under. */
@@ -120,16 +127,10 @@ const TRACE_KINDS = new Map<string, readonly [Seat, Traced["part"], string]>(
 const SEAT_START = new Map<EventKind, Seat>(
   SEATS.map((s): [EventKind, Seat] => [s === "referee" ? "referee.turn" : `${s}.started`, s]),
 );
-const SEAT_END = new Map<EventKind, Seat>([
-  ...SEATS.filter((s) => s !== "referee").map((s): [EventKind, Seat] => [`${s}.finished`, s]),
-  ["referee.finding", "referee"],
-  ["referee.draft", "referee"],
-]);
 const START_KINDS: readonly EventKind[] = [...SEAT_START.keys()].filter((kind) => kind !== "referee.turn");
 const TURN_KINDS: readonly EventKind[] = SEATS.filter((s) => s !== "referee").map((s) =>
   traceKind(s, "turn"),
 );
-const START_END_KINDS: readonly EventKind[] = [...SEAT_START.keys(), ...SEAT_END.keys()];
 
 /** The host's price of one usage, `cost.total`, or null where it holds none. */
 function costOf(usage: JsonValue | undefined): number | null {
@@ -304,30 +305,36 @@ export function callText(calls: readonly Call[], number: number): string {
  * rest, rather than twice for each seat, which would be most of what the billing folds cost on a
  * long log.
  */
-export function unfinished(events: readonly LogEvent[]): Unfinished[] {
-  const bySeat = new Map(
-    SEATS.map((of) => [
-      of,
-      {
-        of,
-        id: whose(of),
-        ended: new Set(),
-        started: new Set(),
-        open: new Map<JsonValue | undefined, Unfinished>(),
-      },
-    ]),
-  );
-  for (const { event } of eventsOf(events, START_END_KINDS)) {
-    const { kind, data } = event;
-    const [end, start] = [SEAT_END.get(kind), SEAT_START.get(kind)];
-    if (end !== undefined) bySeat.get(end)?.ended.add(data[WHOSE[end]]);
-    if (start !== undefined) bySeat.get(start)?.started.add(data[WHOSE[start]]);
-  }
-  const active = [...bySeat.values()].filter(({ started, ended }) =>
-    [...started].some((which) => !ended.has(which)),
-  );
+function openSeats(events: readonly LogEvent[], last: number) {
+  let from = last + 1;
+  const active = SEATS.flatMap((of) => {
+    const id = WHOSE[of];
+    const ended = new Set<JsonValue | undefined>();
+    for (const kind of SEAT_ENDS[of]) {
+      for (const { index, event } of eventsOf(events, kind)) {
+        if (index > last) break;
+        ended.add(event.data[id]);
+      }
+    }
+    const startKind: EventKind = of === "referee" ? "referee.turn" : `${of}.started`;
+    const first = eventsOf(events, startKind).find(
+      ({ index, event }) => index <= last && !ended.has(event.data[id]),
+    );
+    if (first === undefined) return [];
+    if (first.index < from) from = first.index;
+    return [{ of, id, ended, open: new Map<JsonValue | undefined, Unfinished>() }];
+  });
+  return { active, from };
+}
+
+export function unfinished(events: readonly LogEvent[], upTo = events.length - 1): Unfinished[] {
+  const last = Math.min(upTo, events.length - 1);
+  if (last < 0) return [];
+  const { active, from } = openSeats(events, last);
   if (active.length === 0) return [];
-  for (const [index, event] of events.entries()) {
+  for (let index = from; index <= last; index += 1) {
+    const event = events[index];
+    if (event === undefined) continue;
     const { at, kind, data } = event;
     for (const { of, id, ended, open } of active) {
       const which = data[id];

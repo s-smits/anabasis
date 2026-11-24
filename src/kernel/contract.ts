@@ -62,10 +62,16 @@ export function contractHash(contract: Contract): string {
  * check of a reference is a call in tail position, which the engine turns into a jump) and
  * TypeBox's interpreted `Value.Check` never returns from a name that is its own reference.
  */
+const COMPILED = new WeakMap<object, ReturnType<typeof Compile>>();
+
 export function answerFormatFault(answerFormat: Contract["answerFormat"], answer: JsonValue): string | null {
   const schema = answerSchema(answerFormat);
   try {
-    const format = Compile(schema);
+    let format = COMPILED.get(schema);
+    if (format === undefined) {
+      format = Compile(schema);
+      COMPILED.set(schema, format);
+    }
     if (format.Check(answer)) return null;
     return format
       .Errors(answer)

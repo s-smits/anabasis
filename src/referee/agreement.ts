@@ -61,15 +61,22 @@ interface Agreement {
   readonly pabak: number | null;
 }
 
-/** A person's label of each rejected answer on record (`labelsIn`), where it is one of the rulings. */
-export function settledLabels(events: readonly LogEvent[]): Map<string, Ruling> {
+function settledBy<T extends string>(
+  events: readonly LogEvent[],
+  field: "labels" | "passes",
+  known: readonly T[],
+): Map<string, T> {
   return new Map(
-    [...labelsIn(events)].flatMap(([solve, label]) => {
-      const ruling = RULINGS.find((known) => known === label);
-      return ruling === undefined ? [] : [[solve, ruling] as const];
+    [...labelsIn(events, field)].flatMap(([solve, label]) => {
+      const matched = known.find((word) => word === label);
+      return matched === undefined ? [] : [[solve, matched] as const];
     }),
   );
 }
+
+/** A person's label of each rejected answer on record (`labelsIn`), where it is one of the rulings. */
+export const settledLabels = (events: readonly LogEvent[]): Map<string, Ruling> =>
+  settledBy(events, "labels", RULINGS);
 
 /** The last ruling the log holds for each labelled solve (`rulingsOf`, the Referee's own), set
  *  against its label. */
@@ -139,14 +146,8 @@ export function unclearReport({ table, unclearEarned }: Agreement): string | nul
 
 /** A person's label of each sampled passing answer on record (`labelsIn`), where it is one of
  *  `PASS_LABELS`. */
-export function settledPassLabels(events: readonly LogEvent[]): Map<string, PassLabel> {
-  return new Map(
-    [...labelsIn(events, "passes")].flatMap(([solve, label]) => {
-      const known = PASS_LABELS.find((word) => word === label);
-      return known === undefined ? [] : [[solve, known] as const];
-    }),
-  );
-}
+export const settledPassLabels = (events: readonly LogEvent[]): Map<string, PassLabel> =>
+  settledBy(events, "passes", PASS_LABELS);
 
 /** Pass-soundness summary over blind pass labels (from one campaign or pooled across several):
  *  counts by label, total and decided (`sound` + `wrong`) labelled passes, wrong-pass share among

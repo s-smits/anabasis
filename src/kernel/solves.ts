@@ -6,7 +6,7 @@ import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from ".
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { type FileManifest, manifestOf } from "./answer-files.ts";
 import { type Condition, conditionsOf, type Limits, limitsIn } from "./condition.ts";
-import { type EventKind, eventsOf, type LogEvent } from "./log.ts";
+import { eventsOf, type LogEvent } from "./log.ts";
 import type { Verdict } from "./verify.ts";
 
 /** One solve attempt from `solve.started` to `solve.finished` (null fields while still open). */
@@ -44,30 +44,33 @@ export interface Judged {
   readonly checker: Verdict | null;
 }
 
-const SOLVE_BOUNDS: readonly EventKind[] = ["solve.started", "solve.finished"];
-const EXAMINER_STARTS: readonly EventKind[] = ["exam.started", "draft.started"];
+const EXAMINER_STARTS = ["exam.started", "draft.started"] as const;
 
 /** Every solve attempt in log start order. */
 export function solvesIn(events: readonly LogEvent[], upTo = events.length - 1): Solve[] {
   const solves = new Map<string, Solve>();
-  for (const { index, event } of eventsOf(events, SOLVE_BOUNDS, upTo)) {
-    const { kind, data } = event;
+  for (const {
+    index,
+    event: { data },
+  } of eventsOf(events, "solve.started", upTo)) {
     if (!isString(data.solve)) continue;
-    if (kind === "solve.started") {
-      solves.set(data.solve, {
-        id: data.solve,
-        started: index,
-        finished: null,
-        condition: isString(data.condition) ? data.condition : "",
-        ending: null,
-        start: data,
-        end: null,
-      });
-    } else {
-      const started = solves.get(data.solve);
-      if (started !== undefined) {
-        solves.set(data.solve, { ...started, finished: index, ending: asRecord(data.ending), end: data });
-      }
+    solves.set(data.solve, {
+      id: data.solve,
+      started: index,
+      finished: null,
+      condition: isString(data.condition) ? data.condition : "",
+      ending: null,
+      start: data,
+      end: null,
+    });
+  }
+  for (const {
+    index,
+    event: { data },
+  } of eventsOf(events, "solve.finished", upTo)) {
+    const started = isString(data.solve) ? solves.get(data.solve) : undefined;
+    if (started !== undefined && index > started.started) {
+      solves.set(started.id, { ...started, finished: index, ending: asRecord(data.ending), end: data });
     }
   }
   return [...solves.values()];
@@ -78,7 +81,9 @@ export function examinerSessions(
   events: readonly LogEvent[],
   upTo = events.length - 1,
 ): Set<JsonValue | undefined> {
-  return new Set(eventsOf(events, EXAMINER_STARTS, upTo).map(({ event }) => event.data.session));
+  return new Set(
+    EXAMINER_STARTS.flatMap((kind) => eventsOf(events, kind, upTo).map(({ event }) => event.data.session)),
+  );
 }
 
 /** Every solve except Examiner probes (`try_reference` / legacy `try_task`). */

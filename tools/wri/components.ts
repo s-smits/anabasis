@@ -74,17 +74,6 @@ const WALL_TARGET_KINDS: readonly EventKind[] = [
   "build.checkpoint",
   "build.finished",
 ];
-const SEAT_KINDS: readonly EventKind[] = [
-  "draft.started",
-  "draft.finished",
-  "referee.draft.refused",
-  "exam.started",
-  EXAM_END,
-  "build.started",
-  "build.finished",
-  SOLVE_FINISHED,
-  "referee.finding",
-];
 
 const passesText = (count: number) => (count === 1 ? "1 pass" : `${String(count)} passes`);
 const tallyStrings = (values: readonly string[]) => tally(countBy(values, (value) => value));
@@ -330,8 +319,7 @@ function pauseOvershoots(events: readonly LogEvent[]): string[] {
     if (!isString(after) || after === "next" || !isNumber(base)) continue;
     let kinds: readonly EventKind[];
     try {
-      // SAFETY: `pauseKindsOf` returns only canonical `EventKind` literals for valid pause points.
-      kinds = pauseKindsOf(after) as readonly EventKind[];
+      kinds = pauseKindsOf(after);
     } catch {
       continue;
     }
@@ -373,34 +361,38 @@ function seatLedger(events: readonly LogEvent[], traces: readonly Traced[] = tra
   }
   const auditPasses = draftAuditPasses(events);
   const auditBilled = auditPasses.reduce((sum, row) => sum + row.billed, 0);
-  let draftBilled = 0;
-  for (const {
-    event: { kind, data },
-  } of eventsOf(events, SEAT_KINDS)) {
-    if (kind === "draft.started") rowOf("draft").runs += 1;
-    else if (kind === "draft.finished") {
-      draftBilled += isNumber(data.billed) ? data.billed : 0;
-      if (!CLEAN_DRAFT_ENDS.has(text(data.ended))) rowOf("draft").anomalies += 1;
-    } else if (kind === "referee.draft.refused") rowOf(REFEREE_DRAFT).errors += 1;
-    else if (kind === "exam.started") rowOf("examiner").runs += 1;
-    else if (kind === EXAM_END && (!CLEAN_EXAM_ENDS.has(text(data.ended)) || items(data.held).length === 0)) {
-      rowOf("examiner").anomalies += 1;
-    } else if (kind === "build.started") rowOf("builder").runs += 1;
-    else if (kind === "build.finished" && (text(data.ended) !== "finished" || isString(data.broken))) {
-      rowOf("builder").anomalies += 1;
-    } else if (kind === SOLVE_FINISHED) {
-      rowOf("solver").runs += 1;
-      const ending = asRecord(data.ending);
-      if (ending?.outcome === "fail" && text(ending.kind) === "broken-harness") {
-        rowOf("solver").anomalies += 1;
-      }
-    } else if (kind === "referee.finding") {
-      rowOf(REFEREE_ADJUDICATE).runs += 1;
-      if (text(data.ruling) === "unclear" && items(data.probes).length === 0) {
-        rowOf(REFEREE_ADJUDICATE).anomalies += 1;
-      }
-    }
+  const draftBilled = eventsOf(events, "draft.finished").reduce(
+    (sum, { event: { data } }) => sum + (isNumber(data.billed) ? data.billed : 0),
+    0,
+  );
+  const roleSpecs: readonly [string, EventKind, EventKind, (data: LogEvent["data"]) => boolean][] = [
+    ["draft", "draft.started", "draft.finished", (d) => !CLEAN_DRAFT_ENDS.has(text(d.ended))],
+    [
+      "examiner",
+      "exam.started",
+      EXAM_END,
+      (d) => !CLEAN_EXAM_ENDS.has(text(d.ended)) || items(d.held).length === 0,
+    ],
+    ["builder", "build.started", "build.finished", (d) => text(d.ended) !== "finished" || isString(d.broken)],
+    [
+      "solver",
+      SOLVE_FINISHED,
+      SOLVE_FINISHED,
+      (d) => asRecord(d.ending)?.outcome === "fail" && text(asRecord(d.ending)?.kind) === "broken-harness",
+    ],
+    [
+      REFEREE_ADJUDICATE,
+      "referee.finding",
+      "referee.finding",
+      (d) => text(d.ruling) === "unclear" && items(d.probes).length === 0,
+    ],
+  ];
+  for (const [role, start, end, bad] of roleSpecs) {
+    const entry = rowOf(role);
+    entry.runs += eventsOf(events, start).length;
+    entry.anomalies += eventsOf(events, end).filter(({ event: { data } }) => bad(data)).length;
   }
+  rowOf(REFEREE_DRAFT).errors += eventsOf(events, "referee.draft.refused").length;
   const auditRow = rowOf(REFEREE_DRAFT);
   auditRow.runs = auditPasses.length;
   auditRow.turns = auditPasses.reduce((sum, row) => sum + row.turns, 0);

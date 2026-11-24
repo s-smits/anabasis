@@ -171,8 +171,7 @@ export function conditionsOf(
   upTo = events.length - 1,
 ): Map<string, Condition> {
   const conditions = new Map<string, Condition>();
-  for (const { index, event } of eventsOf(events, RECORDED)) {
-    if (index > upTo) break;
+  for (const { event } of eventsOf(events, RECORDED, upTo)) {
     if (ids !== null && (!isString(event.data.id) || !ids.has(event.data.id))) continue;
     let verified = VERIFIED.get(event);
     if (verified === undefined) {

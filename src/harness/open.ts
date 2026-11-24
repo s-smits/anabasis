@@ -89,8 +89,11 @@ export function pathsUnder(dir: string): string[] {
   return [...glob.scanSync({ cwd: dir, dot: true, onlyFiles: false, followSymlinks: false })].toSorted();
 }
 
+const isRacy = (stat: NonNullable<ReturnType<typeof lstatSync>>, now = Date.now()): boolean =>
+  Math.abs(now - Number(stat.ctimeMs)) < RACY_MS;
+
 function fileHash(full: string, stat: NonNullable<ReturnType<typeof lstatSync>>): string {
-  if (Math.abs(Date.now() - Number(stat.ctimeMs)) < RACY_MS) return sha256OfFile(full);
+  if (isRacy(stat)) return sha256OfFile(full);
   const key = `${String(stat.dev)}:${String(stat.ino)}:${String(stat.size)}:${String(stat.mtimeMs)}:${String(stat.ctimeMs)}`;
   const cached = FILE_HASHES.get(key);
   if (cached !== undefined) return cached;
@@ -152,9 +155,11 @@ function keptTreeContent(toolTree: string) {
   const real = realpathSync(toolTree);
   const entries = statEntries(real);
   const stamp = stampOf(entries);
-  const kept = TREES.get(real);
+  const now = Date.now();
+  const racy = entries.some(({ stat }) => isRacy(stat, now));
+  const kept = racy ? undefined : TREES.get(real);
   if (kept?.stamp === stamp) return kept.content;
   const content = entries.filter(({ path }) => !BYTECODE.test(path)).map(entryContent);
-  TREES.set(real, { stamp, content });
+  if (!racy) TREES.set(real, { stamp, content });
   return content;
 }

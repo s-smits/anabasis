@@ -2,7 +2,7 @@
  * Rejected-solve tallying and blind operator sample drawing (`rejections`, `drawn`, `labelled`).
  */
 import { draw } from "../kernel/compare.ts";
-import type { LogEvent } from "../kernel/log.ts";
+import { eventsOf, type LogEvent } from "../kernel/log.ts";
 import { verdictsOf } from "../kernel/solves.ts";
 import { blockingOf } from "../kernel/verify.ts";
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
@@ -31,13 +31,16 @@ function refused(events: readonly LogEvent[]): string[] {
 /** The refused answers and what the Referee has ruled of them so far. */
 export function rejections(events: readonly LogEvent[]): Rejections {
   const fails = refused(events);
+  const findings = new Map(
+    eventsOf(events, "referee.finding").flatMap(({ event: { data } }) =>
+      isString(data.solve) ? [[data.solve, data] as const] : [],
+    ),
+  );
   const rulings: Record<Ruling, number> = { earned: 0, "check-defect": 0, unclear: 0 };
   const defects: Record<string, number> = {};
   const unruled: string[] = [];
   for (const solve of fails) {
-    const found = events.findLast(
-      ({ kind, data }) => kind === "referee.finding" && data.solve === solve,
-    )?.data;
+    const found = findings.get(solve);
     const ruling = RULINGS.find((known) => known === found?.ruling);
     if (ruling === undefined) {
       unruled.push(solve);
@@ -53,7 +56,7 @@ export function rejections(events: readonly LogEvent[]): Rejections {
 
 /** The fails a person labels before the Referee reads any: `count` of the refused answers, by `seed`. */
 export function drawn(events: readonly LogEvent[], count: number, seed: string): string[] {
-  if (events.some(({ kind }) => kind === "referee.finding")) {
+  if (eventsOf(events, "referee.finding").length > 0) {
     throw new Error("the log already holds a ruling, so a label drawn now would not be made blind");
   }
   const fails = refused(events);

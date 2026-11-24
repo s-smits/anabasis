@@ -153,7 +153,6 @@ function runControls(
  * caller asks (`answerFormatFault`) before it puts the answer to a check. References are followed
  * so that a draft citing `#/$defs/...` is not refused on it.
  */
-/** Smallest scalar value for a primitive JSON Schema type. */
 function minimalPrimitive(
   held: Record<string, JsonValue | undefined>,
   type: JsonValue | undefined,
@@ -235,7 +234,7 @@ async function deliverableReading(
   accepted: readonly ControlAnswerRun[],
 ): Promise<{ readonly faults: readonly string[]; readonly notes: readonly string[] }> {
   const withFiles = accepted.flatMap((run) => {
-    const task = (run.files?.length ?? 0) > 0 ? byId.get(run.taskId) : undefined;
+    const task = run.files && run.files.length > 0 ? byId.get(run.taskId) : undefined;
     return task === undefined ? [] : [{ run, task, files: NO_FILES }];
   });
   if (withFiles.length === 0) return { faults: [], notes: [] };
@@ -243,9 +242,9 @@ async function deliverableReading(
   if (stripped.length === 0) return { faults: [], notes: [] };
   const faultyStrips = stripped.flatMap(({ run, verdict }) => {
     const fault = faultyOf(verdict);
-    return fault !== null && fault.check !== OBJECTIVE.id
-      ? [`removing deliverable files caused check ${fault.check} to fault on ${run.taskId}: ${fault.reason}`]
-      : [];
+    return fault === null || fault.check === OBJECTIVE.id
+      ? []
+      : [`removing deliverable files caused check ${fault.check} to fault on ${run.taskId}: ${fault.reason}`];
   });
   const partial = allValid
     ? []
@@ -295,9 +294,10 @@ async function probeReading(
     given,
     accepted.flatMap((run) => others(run, (other) => other)),
   );
+  const byRun = Map.groupBy(swaps, ({ run }) => run);
   const [swapped, partialSwaps, faultySwaps]: [string[], string[], string[]] = [[], [], []];
   for (const run of accepted) {
-    const own = swaps.filter((swap) => swap.run === run);
+    const own = byRun.get(run) ?? [];
     const passed = own.filter(({ verdict }) => verdict.kind === "pass").length;
     if (own.length > 0 && passed === own.length) {
       swapped.push(
@@ -335,24 +335,23 @@ async function probeReading(
   return {
     faults: [
       ...swapped,
-      ...(blind
-        ? [
-            "hidden values had no effect on any accept control: with another example's hidden values in place of its own, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective is decided by them",
-          ]
-        : []),
+      ...when(
+        blind,
+        "hidden values had no effect on any accept control: with another example's hidden values in place of its own, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective is decided by them",
+      ),
       ...deliverables.faults,
     ],
     notes: [
       ...partialSwaps,
       ...faultySwaps,
-      ...(identicalHidden
-        ? ["every example carries identical hidden values, so hidden-value sensitivity could not be probed"]
-        : []),
-      ...(allValidOnHiddenSwap && !blind
-        ? [
-            "every validity check passed when each example's hidden values were swapped with another's: only the objective read hidden values, so validity checks test public properties alone",
-          ]
-        : []),
+      ...when(
+        identicalHidden,
+        "every example carries identical hidden values, so hidden-value sensitivity could not be probed",
+      ),
+      ...when(
+        allValidOnHiddenSwap && !blind,
+        "every validity check passed when each example's hidden values were swapped with another's: only the objective read hidden values, so validity checks test public properties alone",
+      ),
       ...deliverables.notes,
     ],
   };
@@ -412,10 +411,15 @@ function acceptance(
             caught: 0,
           },
         ];
+  const applicable = new Map(
+    [...byId.values()].map((task) => [
+      task.taskId,
+      new Set(applicableTruthChecks(brief, task).map(({ id }) => id)),
+    ]),
+  );
   const checks = brief.truthChecks.map(({ id, execution }): CheckReading => {
     const seen = graded.filter(
-      ({ task, verdict }) =>
-        decides(verdict) && applicableTruthChecks(brief, task).some((check) => check.id === id),
+      ({ task, verdict }) => decides(verdict) && applicable.get(task.taskId)?.has(id) === true,
     );
     const refused = seen.filter(({ verdict }) => verdict.kind === "fail" && verdict.blocking.includes(id));
     const naming = runs.filter((run) => run.refusedBy === id);
@@ -431,9 +435,11 @@ function acceptance(
   });
   const unrun = new Map(
     graded
-      .flatMap(({ verdict }) => (verdict.kind === "faulty" ? [verdict] : []))
-      .toReversed()
-      .map(({ check, reason }) => [check, reason]),
+      .flatMap(({ verdict }) => {
+        const fault = faultyOf(verdict);
+        return fault === null ? [] : [[fault.check, fault.reason] as const];
+      })
+      .toReversed(),
   );
   const all = [...checks, ...measured];
   const faults = [
@@ -442,26 +448,24 @@ function acceptance(
       const missingFaults = missing.map(
         (tool) => `${id} names ${tool}, which is not on the verifier's tool path`,
       );
-      if (id === OBJECTIVE.id) {
+      const err = unrun.get(id);
+      if (err !== undefined) {
         return [
           ...missingFaults,
-          ...(unrun.has(id)
-            ? [`${id} could not be measured on a valid answer: ${unrun.get(id) ?? ""}`]
-            : when(passed === 0, `${id} has measured nothing in this reading`)),
+          id === OBJECTIVE.id
+            ? `${id} could not be measured on a valid answer: ${err}`
+            : `${id} could not run on an answer, so what it refuses and passes is not read: ${err}`,
         ];
       }
-      return [
-        ...missingFaults,
-        ...(unrun.has(id)
-          ? [
-              `${id} could not run on an answer, so what it refuses and passes is not read: ${unrun.get(id) ?? ""}`,
-            ]
+      const detail =
+        id === OBJECTIVE.id
+          ? when(passed === 0, `${id} has measured nothing in this reading`)
           : [
               ...when(refused === 0, `${id} has refused nothing in this reading`),
               ...when(passed === 0, `${id} has let nothing pass in this reading`),
               ...when(refused > 0 && caught === 0, `${id} has refused no reject control that names it`),
-            ]),
-      ];
+            ];
+      return [...missingFaults, ...detail];
     }),
   ];
   return { checks: all, faults };
@@ -510,11 +514,10 @@ export async function readChecker(given: Read) {
  *  a sentence each. An installed instrument needs no word, and a word for it is none. */
 export function authoredFaults(checks: readonly CheckReading[], admitted: ReadonlySet<string>): string[] {
   return checks.flatMap(({ id, instrument }) =>
-    instrument === AUTHOR && !admitted.has(id)
-      ? [
-          `${id} is decided by its author's own computation and no installed instrument: it stands on the operator's word alone (--admit ${id})`,
-        ]
-      : [],
+    when(
+      instrument === AUTHOR && !admitted.has(id),
+      `${id} is decided by its author's own computation and no installed instrument: it stands on the operator's word alone (--admit ${id})`,
+    ),
   );
 }
 
@@ -523,10 +526,10 @@ export function authoredFaults(checks: readonly CheckReading[], admitted: Readon
  *  record unless given, so `[]` names every check its author decides (the closing report). */
 export function unadmitted(events: readonly LogEvent[], admitted?: readonly unknown[]): string[] {
   const reading = eventsOf(events, "checker.read").at(-1)?.event.data;
-  const kept = admitted ?? (Array.isArray(reading?.admitted) ? reading.admitted : []);
+  const kept = new Set(admitted ?? (Array.isArray(reading?.admitted) ? reading.admitted : []));
   return (Array.isArray(reading?.rows) ? reading.rows : []).flatMap((row) => {
     const { id, instrument } = asRecord(row) ?? {};
-    return isString(id) && instrument === AUTHOR && !kept.includes(id) ? [id] : [];
+    return isString(id) && instrument === AUTHOR && !kept.has(id) ? [id] : [];
   });
 }
 
@@ -545,8 +548,8 @@ export function departure(events: readonly LogEvent[], own: Checker): string | n
   const frozen = frozenChecker(events);
   if (frozen === null) return null;
   const moved = [
-    ...(frozen.contract === own.contract ? [] : ["contract"]),
-    ...(frozen.checks === own.checks ? [] : ["check program"]),
+    ...when(frozen.contract !== own.contract, "contract"),
+    ...when(frozen.checks !== own.checks, "check program"),
   ];
   return moved.length === 0
     ? null

@@ -17,6 +17,13 @@ const processKill = runtimeProcess.kill.bind(runtimeProcess);
  * memory.
  */
 export const CAPTURE_MAX_BYTES = 64 * 1024 * 1024;
+const EMPTY = new Uint8Array();
+const ENCODER = new TextEncoder();
+const DECODER = new TextDecoder();
+const REAP_STEPS = [
+  ["SIGTERM", 100],
+  ["SIGKILL", 500],
+] as const;
 
 interface RunSyncOptions {
   input?: string | Uint8Array;
@@ -102,15 +109,12 @@ export function processGroupExists(processGroupId: number): boolean {
  * group to reap is one a receipt names rather than one a `Bun.Subprocess` in hand leads.
  */
 export async function terminateAndReapProcessGroupId(processGroupId: number): Promise<boolean> {
-  if (!processGroupExists(processGroupId)) return true;
-  killProcessGroupId(processGroupId, "SIGTERM");
-  for (let elapsed = 0; elapsed < 100 && processGroupExists(processGroupId); elapsed += 10) {
-    await Bun.sleep(10);
-  }
-  if (!processGroupExists(processGroupId)) return true;
-  killProcessGroupId(processGroupId, "SIGKILL");
-  for (let elapsed = 0; elapsed < 500 && processGroupExists(processGroupId); elapsed += 10) {
-    await Bun.sleep(10);
+  for (const [signal, waitMs] of REAP_STEPS) {
+    if (!processGroupExists(processGroupId)) return true;
+    killProcessGroupId(processGroupId, signal);
+    for (let elapsed = 0; elapsed < waitMs && processGroupExists(processGroupId); elapsed += 10) {
+      await Bun.sleep(10);
+    }
   }
   return !processGroupExists(processGroupId);
 }
@@ -133,12 +137,10 @@ export async function interruptAndReapProcessGroup(child: Bun.Subprocess, graceM
   return await terminateAndReapProcessGroupId(child.pid);
 }
 
-const EMPTY = new Uint8Array();
-
 /**
  * Run a command to completion and capture both streams. A non-zero exit, a signal and a command
  * that never started are all reported rather than thrown, because the callers that want a throw
- * have `runSyncOrThrow` below, while the rest ask questions whose answer may be no: `git config
+ * have `runTextSyncOrThrow` below, while the rest ask questions whose answer may be no: `git config
  * --get` exits 1 on a key nobody set, `git rev-parse` fails outside a repository, and a cleanup
  * `git worktree remove` may find nothing to remove. Each of those is the result the caller
  * records, not an interruption of it.
@@ -147,12 +149,7 @@ export function runSync(cmd: readonly string[], options: RunSyncOptions = {}): R
   const { input } = options;
   const spawnOptions: SpawnSyncOptions = {
     cmd: [...cmd],
-    stdin:
-      input === undefined
-        ? new Uint8Array()
-        : input instanceof Uint8Array
-          ? input
-          : new TextEncoder().encode(input),
+    stdin: input === undefined ? EMPTY : input instanceof Uint8Array ? input : ENCODER.encode(input),
     stdout: "pipe",
     stderr: "pipe",
     ...keyIfDefined("cwd", options.cwd),
@@ -182,21 +179,9 @@ export function runSync(cmd: readonly string[], options: RunSyncOptions = {}): R
     // A command that never started produced no streams at all, so the spawn error is put where a
     // reader already looks. Without it the caller holds `exitCode: null` and two empty buffers,
     // which is indistinguishable from a command the host killed.
-    const reason = new TextEncoder().encode(errorMessage(error));
+    const reason = ENCODER.encode(errorMessage(error));
     return { cappedAt: null, exitCode: null, signal: null, stdout: EMPTY, stderr: reason };
   }
-}
-
-/**
- * Run a command and return its stdout bytes, throwing with the captured stderr on any failure.
- */
-function runSyncOrThrow(cmd: readonly string[], options: RunSyncOptions = {}): Uint8Array {
-  const result = runSync(cmd, options);
-  if (result.cappedAt !== null || result.exitCode !== 0) {
-    const ending = result.cappedAt === null ? endingOf(result) : `filled its ${result.cappedAt}-byte capture`;
-    throw new Error(`${basename(cmd[0] ?? "")} ${ending}: ${decodeOutput(result.stderr).trim()}`);
-  }
-  return result.stdout;
 }
 
 /** How a command that did not exit zero ended, as both runners name it. */
@@ -207,7 +192,7 @@ function endingOf({ exitCode, signal }: { exitCode: number | null; signal: strin
 
 /** Decode captured command bytes as UTF-8 text. */
 export function decodeOutput(bytes: Uint8Array): string {
-  return new TextDecoder().decode(bytes);
+  return DECODER.decode(bytes);
 }
 
 /** A command's stdout as trimmed text where it exited zero, and null for any other ending: the
@@ -216,9 +201,14 @@ export function zeroExitText(result: RunSyncResult): string | null {
   return result.exitCode === 0 ? decodeOutput(result.stdout).trim() : null;
 }
 
-/** Run a command and return its stdout as UTF-8 text, throwing on any failure. */
+/** Run a command and return its stdout as UTF-8 text, throwing with the captured stderr on any failure. */
 export function runTextSyncOrThrow(cmd: readonly string[], options: RunSyncOptions = {}): string {
-  return decodeOutput(runSyncOrThrow(cmd, options));
+  const result = runSync(cmd, options);
+  if (result.cappedAt !== null || result.exitCode !== 0) {
+    const ending = result.cappedAt === null ? endingOf(result) : `filled its ${result.cappedAt}-byte capture`;
+    throw new Error(`${basename(cmd[0] ?? "")} ${ending}: ${decodeOutput(result.stderr).trim()}`);
+  }
+  return decodeOutput(result.stdout);
 }
 
 /**

@@ -25,7 +25,7 @@ import { settingId } from "../kernel/condition.ts";
 import { failWrongPasses, familiesOf, wrongPasses } from "../kernel/history.ts";
 import { eventsOf, type LogEvent } from "../kernel/log.ts";
 import { poolOf } from "../kernel/reports.ts";
-import { passed, ranUnder, rejected, rulingsOf, solvesIn } from "../kernel/solves.ts";
+import { passed, ranUnder, rejected, rulingsOf, type Solve, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
@@ -228,10 +228,10 @@ const REPORT_KEYS = [
 ] satisfies readonly (keyof Report)[];
 
 /** Slice `events` up to and including the first report for comparison `id` so later comparisons or
- *  task-state changes do not alter its reading; returns the full log if unreported. */
-function asReported(events: readonly LogEvent[], id: string): LogEvent[] {
+ *  task-state changes do not alter its reading; returns `events` unchanged if unreported or at end. */
+function asReported(events: readonly LogEvent[], id: string): readonly LogEvent[] {
   const own = eventsOf(events, REPORTED).find(({ event }) => event.data.session === id)?.index ?? -1;
-  return own === -1 ? [...events] : events.slice(0, own + 1);
+  return own === -1 || own === events.length - 1 ? events : events.slice(0, own + 1);
 }
 
 /** Build per-harness validity histograms and informative task counts over `pairs`, accounting for
@@ -259,8 +259,9 @@ function validOf(
 }
 
 /** Compute per-task median turn counts for valid answers on each side (`Report.turns`). */
-function turnsOf(events: readonly LogEvent[], pairs: readonly Paired[]): NonNullable<Report["turns"]> {
-  const turnsBySolve = new Map(solvesIn(events).map((solve) => [solve.id, solve.end?.turns]));
+function turnsOf(solves: readonly Solve[], pairs: readonly Paired[]): NonNullable<Report["turns"]> {
+  if (pairs.length === 0) return {};
+  const turnsBySolve = new Map(solves.map((solve) => [solve.id, solve.end?.turns]));
   const side = (pair: Paired, named: "old" | "fresh") =>
     median(
       (pair.solves?.[named] ?? [])
@@ -310,36 +311,38 @@ export function rejections(events: readonly LogEvent[], fixed: Fixed, labels: Re
   );
 }
 
-/**
- * Partition tallied `pairs` into the fixed frontier and retained subsets alongside per-family
- * frontier tallies. An empty retained subset reports `UNMEASURED` rather than zero regressions.
- */
+/** Partition tallied `pairs` into the fixed frontier and retained subsets alongside per-family
+ *  frontier tallies. An empty retained subset reports `UNMEASURED` rather than zero regressions. */
 function setsOf(
   events: readonly LogEvent[],
   fixed: Fixed,
   pairs: readonly Paired[],
   aside: readonly string[],
 ) {
-  const kept = new Set(fixed.retained);
-  const named = familiesOf(events);
+  const [kept, named] = [new Set(fixed.retained), familiesOf(events)];
   const familyOf = (task: string) => named.get(task) ?? "unnamed";
-  const part = (set: "frontier" | "retained") =>
-    pairs.filter(({ task }) => kept.has(task) === (set === "retained"));
-  const tallied = { frontier: part("frontier"), retained: part("retained") };
-  const setOf = (set: keyof typeof tallied): Entered => {
-    const within = (task: string) => kept.has(task) === (set === "retained");
-    const of = tallied[set].map(({ task }) => task);
-    return { tasks: fixed.tasks.filter(within), aside: aside.filter(within), ...scored(tallied[set]), of };
+  const part = (set: "frontier" | "retained"): Entered => {
+    const isRetained = set === "retained";
+    const picked = pairs.filter(({ task }) => kept.has(task) === isRetained);
+    return {
+      tasks: fixed.tasks.filter((task) => kept.has(task) === isRetained),
+      aside: aside.filter((task) => kept.has(task) === isRetained),
+      ...scored(picked),
+      of: picked.map(({ task }) => task),
+    };
   };
-  const families = [...new Set(fixed.tasks.map(familyOf))].map((family) => {
-    const { wins, losses, ties } = scored(tallied.frontier.filter(({ task }) => familyOf(task) === family));
-    return [family, { frontier: { wins, losses, ties } }] as const;
-  });
-  return {
-    frontier: setOf("frontier"),
-    retained: tallied.retained.length > 0 ? setOf("retained") : UNMEASURED,
-    families: Object.fromEntries(families),
-  };
+  const [frontier, retained] = [part("frontier"), part("retained")];
+  const byFamily = Map.groupBy(
+    pairs.filter(({ task }) => !kept.has(task)),
+    ({ task }) => familyOf(task),
+  );
+  const families = Object.fromEntries(
+    [...new Set(fixed.tasks.map(familyOf))].map((family) => {
+      const { wins, losses, ties } = scored(byFamily.get(family) ?? []);
+      return [family, { frontier: { wins, losses, ties } }] as const;
+    }),
+  );
+  return { frontier, retained: retained.of && retained.of.length > 0 ? retained : UNMEASURED, families };
 }
 
 /**
@@ -381,7 +384,7 @@ export function coverageOf(
 /** Score complete pairs for `fixed`, excluding set-aside rejections and any disputed tasks. */
 export function compared(all: readonly LogEvent[], fixed: Fixed, labels: ReadonlyMap<string, Ruling>) {
   const events = asReported(all, fixed.id);
-  const coverage = coverageOf(all, fixed, labels);
+  const coverage = coverageOf(events, fixed, labels);
   // Disputes apply regardless of when they were recorded (including during post-report settlement).
   const states = taskStates(all);
   const scorable = (task: string) => states.get(task) !== "disputed";
@@ -415,6 +418,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   const tested = scored(pairs);
   const stepped = readsStep(tested.differences, fixed.level);
   const reading: Reading = pairs.length === 0 ? "not-scored" : stepped ? "step" : "no-step";
+  const solves = pairs.length === 0 ? [] : solvesIn(events);
   return {
     scored: {
       ...tested,
@@ -433,10 +437,10 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     versions: pairs.map(({ task }) => task),
     aside,
     short: coverage.short.filter(scorable),
-    flagged: flaggedIn(events, pairs),
+    flagged: flaggedIn(solves, pairs),
     withdrawn: coverage.withdrawn.filter(scorable),
     reading,
-    turns: turnsOf(events, pairs),
+    turns: turnsOf(solves, pairs),
     // Attach descriptive epoch cost when the comparison reads a step.
     worth: reading === "step" ? worthOf(events, fixed.id) : null,
     objective: fixed.objective ?? null,
@@ -459,12 +463,13 @@ function billedMean(pairs: readonly Paired[], side: "old" | "fresh"): number | n
 }
 
 /** Return task versions in `pairs` where either side flagged a solve as malformed (`submit`). */
-function flaggedIn(events: readonly LogEvent[], pairs: readonly Paired[]): string[] {
-  const flags = new Set(
-    solvesIn(events).flatMap((solve) => (solve.ending?.outcome === "flagged" ? [solve.id] : [])),
-  );
-  return pairs.flatMap(({ task, solves }) =>
-    [...(solves?.old ?? []), ...(solves?.fresh ?? [])].some((solve) => flags.has(solve)) ? [task] : [],
+function flaggedIn(solves: readonly Solve[], pairs: readonly Paired[]): string[] {
+  if (pairs.length === 0) return [];
+  const flags = new Set(solves.flatMap((solve) => (solve.ending?.outcome === "flagged" ? [solve.id] : [])));
+  return pairs.flatMap(({ task, solves: pairSolves }) =>
+    [...(pairSolves?.old ?? []), ...(pairSolves?.fresh ?? [])].some((solve) => flags.has(solve))
+      ? [task]
+      : [],
   );
 }
 

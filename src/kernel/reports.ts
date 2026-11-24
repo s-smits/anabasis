@@ -3,6 +3,7 @@ import {
   carriedBy,
   draw,
   type Measures,
+  judgeIn,
   objectiveRuleIn,
   type Paired,
   pairsOf,
@@ -172,8 +173,8 @@ export function pairsReported(
   if (data.scored === null || !isString(old) || !isString(fresh) || !isString(setting) || !isNumber(solves)) {
     return [];
   }
-  const noise =
-    eventsOf(events, STARTED).find(({ event }) => event.data.session === session)?.event.data.noise === true;
+  const started = eventsOf(events, STARTED).find(({ event }) => event.data.session === session)?.event.data;
+  const noise = started?.noise === true;
   const halved = sides !== "both" && !noise;
   if ((sides === "fresh" && noise) || (halved && solves % 2 !== 0)) return [];
   const versions = Array.isArray(data.versions) ? data.versions.filter(isString) : [];
@@ -188,6 +189,7 @@ export function pairsReported(
       setting,
       comparison: session,
       objective: objectiveRuleIn(data),
+      judge: started === undefined ? undefined : judgeIn(started),
       halves: noise || halved ? "mirrored" : undefined,
       upTo: index,
     },

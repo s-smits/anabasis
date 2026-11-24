@@ -121,6 +121,21 @@ describe("the pairwise judge", () => {
     expect(torn?.ties).toEqual({});
   });
 
+  it("bills a pair the judge left unfinished and records no vote for it", async () => {
+    const at = seated((shown) => {
+      if (shown.includes("Overall, which answer")) throw new Error("the judge's login is at its limit");
+      return onSubstance(shown);
+    });
+    const given = { log: at.log, comparison: "g-1", task: TASK, contract: CONTRACT };
+    await judgeBrief(at.reader, given);
+    await expect(judgePair(at.reader, { ...given, first: "s-strong", second: "s-weak" })).rejects.toThrow(
+      "recorded no vote",
+    );
+    const pair = read(at.log).find(({ kind }) => kind === "referee.pair")?.data;
+    expect(pair).toMatchObject({ judge: null, holistic: null });
+    expect(pair?.billed).toBeGreaterThan(0);
+  });
+
   it("shows hidden values to the brief alone, bills each pair, and leaves no session open", async () => {
     const { sent, pair, log } = await judged(onSubstance);
     const [brief, ...pairs] = sent;

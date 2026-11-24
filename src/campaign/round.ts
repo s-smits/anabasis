@@ -330,11 +330,16 @@ function capReached(events: readonly LogEvent[], id: string, cap: Cap | undefine
 async function judgeAll(
   request: CheckpointRequest,
   fixed: Fixed,
-  within: { readonly kill: AbortSignal; readonly faults: string[]; readonly open: () => boolean },
+  within: {
+    readonly kill: AbortSignal;
+    readonly faults: string[];
+    readonly open: () => boolean;
+    readonly going: () => boolean;
+  },
 ): Promise<void> {
   const { judge, log, id, concurrency } = request;
   if (judge === undefined) return;
-  const { kill, faults, open } = within;
+  const { kill, faults, open, going } = within;
   const ask = async (what: string, asked: () => Promise<void>) => {
     try {
       await asked();
@@ -356,7 +361,7 @@ async function judgeAll(
       ),
     );
   }
-  const still = open() ? judgingLeft(read(log), fixed) : [];
+  const still = going() ? judgingLeft(read(log), fixed) : [];
   if (still.length > 0) {
     throw new Error(
       `the judge gave no vote on ${plural(still.length, "pair")}, so the comparison stops before its report: run it again and it goes on from its log (${faults.at(-1) ?? "no fault recorded"})`,
@@ -450,6 +455,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
         capped ||= going() && capReached(read(log), id, cap, 0);
         return going();
       },
+      going,
     });
   const solveAll = async (tasks: readonly string[]): Promise<boolean> => {
     const had = Map.groupBy(
@@ -458,10 +464,16 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     );
     await drain(unsolvedJobs(request, tasks, (task, digest) => had.get(`${task} ${digest}`)?.length ?? 0));
     if (thrown !== null) throw thrown;
-    if (kill.aborted) throw new Error("the comparison was killed; run it again and it goes on from its log");
+    const killed = () => {
+      if (kill.aborted) {
+        throw new Error("the comparison was killed; run it again and it goes on from its log");
+      }
+    };
+    killed();
     quiet.tail();
     await ruleLeft();
     await judgeLeft();
+    killed();
     return going();
   };
   return { solveAll, ruleLeft, faults, capped: () => capped };

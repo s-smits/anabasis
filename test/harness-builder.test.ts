@@ -175,7 +175,7 @@ describe("the campaign's executing Bun and opening guards", () => {
     expect(opened(reviewerLog, termFlags("--reviewer", model), "paid").seats.reviewer?.model).toBe(model);
     expect(opened(reviewerLog, termFlags(), "paid").seats.reviewer?.model).toBe(model);
     const judgedLog = join(root, "terms", "judged", LOG_FILE);
-    for (const reviewer of [model, "openrouter/anthropic/claude-fable-5-2"]) {
+    for (const reviewer of [model, "openrouter/anthropic/claude-fable-5-2", "anthropic/sonnet-5-5"]) {
       expect(() => opened(judgedLog, termFlags("--reviewer", reviewer, "--admit-judge"), "paid")).toThrow(
         "its own family",
       );

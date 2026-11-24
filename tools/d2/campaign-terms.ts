@@ -281,8 +281,13 @@ function resolveTerms(events: readonly LogEvent[], was: Opening | null, values: 
   };
 }
 
+const FAMILIES = new Map([
+  ["anthropic", /anthropic|claude|fable|opus|sonnet|haiku/i],
+  ["openai", /openai|codex|gpt|(^|\/)o\d/i],
+  ["google", /google|gemini|gemma/i],
+]);
 const familyOf = (name: string): string =>
-  /^[a-z]+/i.exec(name.split("/").at(-1) ?? "")?.[0]?.toLowerCase() ?? name;
+  [...FAMILIES].find(([, pattern]) => pattern.test(name))?.[0] ?? name.split("/")[0] ?? name;
 
 /** Validate opening invariants (`budget`, `reviewer`, `patience`, `promotions`) before recording. */
 function validateOpening(opening: Opening, values: Values, seats: "paid" | "scripted"): void {

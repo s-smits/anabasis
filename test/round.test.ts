@@ -42,11 +42,11 @@ import {
 } from "../src/builder/session.ts";
 import type { Bench } from "../src/builder/tools.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
-import { draw, pairsOf, WEIGHTS } from "../src/kernel/compare.ts";
+import { draw, informative, pairsOf, WEIGHTS } from "../src/kernel/compare.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { stopRule } from "../src/campaign/admission.ts";
-import { latestBuilt, poolOf } from "../src/kernel/reports.ts";
+import { lastReports, latestBuilt, pairsReported, poolOf } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { passed, ranUnder } from "../src/kernel/solves.ts";
 import { taskSets, taskStates } from "../src/kernel/task.ts";
@@ -2199,6 +2199,13 @@ describe("a judged comparison", () => {
     expect(fixed === null ? null : judgingLeft(read(s.log), fixed)).toEqual([]);
     expect(pairs(s.log)).toBe(HELD.length * 3);
     expect(read(s.log).filter(({ kind }) => kind === "referee.brief")).toHaveLength(HELD.length);
+    const reported = lastReports(read(s.log)).filter((one) => one.session === "g-judged");
+    const later = reported.flatMap((one) => pairsReported(read(s.log), one));
+    expect(later).toHaveLength(HELD.length);
+    for (const pair of later) {
+      expect(pair.judged?.votes.length).toBeGreaterThan(0);
+      expect(informative(pair, "old", new Set())).toBe(true);
+    }
   });
 
   it("stops before its report when a vote is missing, and goes on from its log without solving again", async () => {
@@ -2224,5 +2231,41 @@ describe("a judged comparison", () => {
     expect(s.asked).toHaveLength(solvesBefore);
     expect(pairs(s.log)).toBe(judgedBefore + 1);
     expect(report.reading).toBe("step");
+  });
+
+  it("reads a comparison whose last vote spends the budget down, and stops on a kill while judging", async () => {
+    const s = await setup([], () => PASS);
+    append(s.log, "campaign.opened", { budget: { dollars: 1000, reserve: 2 } });
+    const fresh = s.paired("g-spent").fresh.digest;
+    const judge = judging(s.log, fresh);
+    let left = HELD.length * 3;
+    const spending: Judging = {
+      ...judge,
+      pair: async (version, asked, kill) => {
+        await judge.pair(version, asked, kill);
+        left -= 1;
+        if (left === 0) {
+          append(s.log, "referee.brief", { comparison: "g-spent", task: version, reader: "j", billed: 999 });
+        }
+      },
+    };
+    const drained = await checkpoint(s.paired("g-spent", { judge: spending }));
+    expect(drained).toMatchObject({ reading: "step" });
+    expect(drained.capped).not.toBe(true);
+    const k = await setup([], () => PASS);
+    const kill = new AbortController();
+    const killing: Judging = {
+      ...judging(k.log, k.paired("g-kill").fresh.digest),
+      pair: async () => {
+        kill.abort();
+        throw new Error("aborted");
+      },
+    };
+    const request = k.paired("g-kill", { judge: killing, kill: kill.signal });
+    await expect(checkpoint(request)).rejects.toThrow("the comparison was killed");
+    const resumed = await checkpoint(
+      k.paired("g-kill", { judge: judging(k.log, k.paired("g-kill").fresh.digest) }),
+    );
+    expect(resumed.reading).toBe("step");
   });
 });

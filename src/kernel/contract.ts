@@ -11,11 +11,9 @@ interface Rule {
   readonly statement: string;
 }
 
-// oxlint-disable-next-line typescript/consistent-type-definitions -- type alias stays assignable to `JsonValue`
-export type RubricItem = {
-  readonly id: string;
-  readonly weight: number;
-};
+export type RubricItem =
+  | { readonly id: string; readonly weight: number; readonly kind?: "code" }
+  | { readonly id: string; readonly weight: number; readonly kind: "judge"; readonly criterion: string };
 
 export interface Objective {
   readonly quantity: string;
@@ -33,6 +31,69 @@ export interface Contract {
 }
 
 const WEIGHT_RATIO = 1e12;
+export const CRITERION = { least: 20, most: 220, perTask: 4 };
+
+export interface TaskCriterion {
+  readonly id: string;
+  readonly criterion: string;
+}
+
+export const hasJudge = (objective: Objective | undefined): boolean =>
+  (objective?.items ?? []).some(({ kind }) => kind === "judge");
+
+export function codeObjective(objective: Objective | undefined): Objective | undefined {
+  if (objective?.items === undefined) return objective;
+  const { items } = objective;
+  const code = items.filter(({ kind }) => kind !== "judge");
+  if (code.length === 0) return undefined;
+  return code.length === items.length ? objective : { ...objective, items: code };
+}
+
+export function rubricOf(value: unknown): TaskCriterion[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.flatMap((row) => {
+    const { id, criterion } = asRecord(row) ?? {};
+    return isString(id) && isString(criterion) ? [{ id, criterion }] : [];
+  });
+}
+
+export function taskRubricFaults(
+  objective: Objective | undefined,
+  rubric: readonly TaskCriterion[] | undefined,
+  checkIds: readonly string[],
+): string[] {
+  if (rubric === undefined) return [];
+  if (!hasJudge(objective)) {
+    return ["the task carries rubric criteria, and the contract declares no judged item"];
+  }
+  if (rubric.length === 0 || rubric.length > CRITERION.perTask) {
+    return [`the task's rubric holds 1 to ${String(CRITERION.perTask)} criteria`];
+  }
+  const taken = new Set([...checkIds, ...(objective?.items ?? []).map(({ id }) => id)]);
+  return rubric.flatMap(({ id, criterion }, index) => {
+    const named =
+      isString(id) &&
+      RUBRIC_ITEM_ID.test(id) &&
+      !taken.has(id) &&
+      rubric.findIndex((one) => one.id === id) === index;
+    const fault = criterionFault(criterion);
+    return [
+      ...(named
+        ? []
+        : [`rubric criterion ${String(index + 1)} needs an id of its own, unlike any check or item`]),
+      ...(fault === null ? [] : [`rubric criterion ${isString(id) ? id : String(index + 1)} ${fault}`]),
+    ];
+  });
+}
+
+function criterionFault(text: unknown): string | null {
+  if (!isString(text)) return "requires a criterion";
+  if (text.includes("\n")) return "states its criterion on one line";
+  const { length } = text.trim();
+  return length < CRITERION.least || length > CRITERION.most
+    ? `states its criterion in ${String(CRITERION.least)} to ${String(CRITERION.most)} characters`
+    : null;
+}
 
 export function rubricFaults(objective: Objective | undefined, checkIds: readonly string[] = []): string[] {
   const items = objective?.items;
@@ -53,6 +114,12 @@ export function rubricFaults(objective: Objective | undefined, checkIds: readonl
     if (!isNumber(item.weight) || !Number.isFinite(item.weight) || item.weight <= 0) {
       faults.push(`objective.items.${item.id} requires a positive finite weight`);
     }
+    const kind: unknown = item.kind;
+    if (kind !== undefined && kind !== "code" && kind !== "judge") {
+      faults.push(`objective.items.${item.id} is of kind code or judge`);
+    }
+    const criterion = item.kind === "judge" ? criterionFault(item.criterion) : null;
+    if (criterion !== null) faults.push(`objective.items.${item.id} ${criterion}`);
   }
   const weights = items.map(({ weight }) => weight).filter((weight) => isNumber(weight) && weight > 0);
   if (weights.length > 1 && Math.max(...weights) / Math.min(...weights) > WEIGHT_RATIO) {

@@ -16,6 +16,7 @@ export interface Opening {
   readonly patience: number;
   readonly seats: Readonly<Record<(typeof SEATS)[number], Seat | null>>;
   readonly attended: boolean;
+  readonly judged: boolean;
   readonly prompt: string | null;
   readonly solver: Seat | null;
   readonly terms: Terms;
@@ -79,6 +80,7 @@ export function openingOf(events: readonly LogEvent[]): Opening | null {
     patience: patienceOf(events),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
     attended: data.attended === true,
+    judged: data.judged === true,
     prompt: isString(data.prompt) ? data.prompt : null,
     solver: seated(asRecord(data.solver)),
     terms: Object.fromEntries(

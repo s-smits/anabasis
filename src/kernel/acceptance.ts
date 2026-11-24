@@ -4,7 +4,7 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { pooled } from "../meta/pool.ts";
 import type { AnswerFile } from "./answer-files.ts";
 import { gainOver, GAP_FLOOR, objectiveRuleOf } from "./compare.ts";
-import { answerFormatFault, type Contract } from "./contract.ts";
+import { answerFormatFault, codeObjective, type Contract } from "./contract.ts";
 import { eventsOf, type LogEvent } from "./log.ts";
 import {
   applicableTruthChecks,
@@ -23,6 +23,7 @@ import {
 } from "./verify.ts";
 
 export const AUTHOR = "author";
+export const JUDGE = "judge";
 
 export interface Control {
   readonly taskId: string;
@@ -128,7 +129,7 @@ function doNothingAnswer(
 }
 
 function flatRubricNotes(brief: Brief, verdicts: readonly Verdict[]): string[] {
-  return (brief.objective?.items ?? []).flatMap(({ id }) => {
+  return (codeObjective(brief.objective)?.items ?? []).flatMap(({ id }) => {
     const seen = verdicts.flatMap((verdict) => {
       const value = scoresOf(verdict)?.[id];
       return value === undefined ? [] : [value];
@@ -275,7 +276,7 @@ function acceptance(
           .length,
       };
     }),
-    ...(brief.objective === undefined
+    ...(codeObjective(brief.objective) === undefined
       ? []
       : [
           {
@@ -319,7 +320,12 @@ function acceptance(
       return [...missingFaults, ...detail];
     }),
   ];
-  return { checks, faults };
+  const judged = (brief.objective?.items ?? []).flatMap(({ id, kind }) =>
+    kind === "judge"
+      ? [{ id, instrument: JUDGE, missing: [], passed: 0, refused: 0, named: 0, caught: 0 }]
+      : [],
+  );
+  return { checks: [...checks, ...judged], faults };
 }
 
 export async function readChecker(given: Read) {
@@ -362,12 +368,16 @@ export async function readChecker(given: Read) {
 }
 
 export function authoredFaults(checks: readonly CheckReading[], admitted: ReadonlySet<string>): string[] {
-  return checks.flatMap(({ id, instrument }) =>
-    when(
+  return checks.flatMap(({ id, instrument }) => [
+    ...when(
       instrument === AUTHOR && !admitted.has(id),
       `${id} is decided by its author's own computation and no installed instrument: it stands on the operator's word alone (--admit ${id})`,
     ),
-  );
+    ...when(
+      instrument === JUDGE && !admitted.has(id),
+      `${id} is scored by a judging model and not by code: a campaign scores it only on the operator's word (--admit-judge)`,
+    ),
+  ]);
 }
 
 export function unadmitted(events: readonly LogEvent[], admitted?: readonly unknown[]): string[] {

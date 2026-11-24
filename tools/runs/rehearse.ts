@@ -68,6 +68,7 @@ import { stagedExamOf } from "../d2/exam.ts";
 import { checkpointCommand } from "../d2/checkpoint.ts";
 import { harnessBuilder } from "../d2/harness-builder.ts";
 import type { Seated } from "../d2/round.ts";
+import type { Reader } from "#src/referee/referee.ts";
 import { sessionCommand } from "../d2/session.ts";
 import { packControls } from "../m0/stored-sweep.ts";
 import { Misused, SEED_FILE } from "./registry.ts";
@@ -258,6 +259,33 @@ function scriptedBuilder() {
   );
 }
 
+function scriptedJudge(): Reader {
+  const faux = fauxProvider({ models: [{ id: "script-judge", contextWindow: 200_000, cost: PRICE }] });
+  const vote: FauxResponseFactory = (context) => {
+    faux.appendResponses([vote]);
+    const shown = JSON.stringify(context.messages);
+    if (shown.includes("record_brief")) {
+      const expectations = ["The answer follows the task's input.", "The answer is complete."];
+      return fauxAssistantMessage(fauxToolCall("record_brief", { expectations, flags: [] }), TOOL_USE);
+    }
+    const [a, b] = [shown.indexOf("Answer A:"), shown.indexOf("Answer B:")];
+    const [one, other] = [
+      hashJsonValue(shown.slice(a, b)).slice(-8),
+      hashJsonValue(shown.slice(b)).slice(-8),
+    ];
+    const better = one === other ? "neither" : one < other ? "A" : "B";
+    const kind = better === "neither" ? { kind: "both-strong" } : {};
+    return fauxAssistantMessage(
+      fauxToolCall("record_vote", { better, ...kind, reason: "scripted" }),
+      TOOL_USE,
+    );
+  };
+  faux.setResponses([vote]);
+  const models = createModels();
+  models.setProvider(faux.provider);
+  return { model: faux.getModel(), effort: "medium", models: () => models };
+}
+
 /** The seats of a rehearsal. `strayed` takes each solve that ended otherwise than scripted. */
 export function scriptedSeats(script: Script, graded: readonly Control[], strayed: string[]): Seated {
   return (campaign, { reference }) => {
@@ -284,6 +312,7 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
       dir === reference ? "old" : dir === (await least).dir ? "starter" : "new";
     return {
       builder: scriptedBuilder(),
+      judge: scriptedJudge(),
       // Every scripted solver is the same model at the same price, so one names the setting of all.
       setting: campaign.setting({ ...campaign.test, ...scripted([], 0) }),
       solve: async (task, harness, kill, comparison) => {

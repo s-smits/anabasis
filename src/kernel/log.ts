@@ -62,6 +62,8 @@ const EVENT_KINDS = [
   "referee.refused",
   "referee.draft",
   "referee.draft.refused",
+  "referee.brief",
+  "referee.pair",
   "diagnosis.recorded",
   "comparison.started",
   "comparison.reported",

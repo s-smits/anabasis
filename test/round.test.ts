@@ -12,11 +12,20 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { fixedIn, overlapOf, passesIn, predicted, swapped, toLabel } from "../src/campaign/comparison.ts";
+import {
+  fixedIn,
+  judgingLeft,
+  overlapOf,
+  passesIn,
+  predicted,
+  swapped,
+  toLabel,
+} from "../src/campaign/comparison.ts";
 import type { PassLabel } from "../src/referee/agreement.ts";
 import {
   type CheckpointRequest,
   checkpoint,
+  type Judging,
   frontierOverlap,
   OVERLAP_LIMIT,
   refuseTerms,
@@ -393,7 +402,13 @@ function expectMirrored(request: CheckpointRequest) {
   const { pairs, short } = pairsOf(
     events,
     request.tasks,
-    { ...request, old: request.old.digest, fresh: request.fresh.digest, comparison: request.id },
+    {
+      ...request,
+      old: request.old.digest,
+      fresh: request.fresh.digest,
+      comparison: request.id,
+      judge: undefined,
+    },
     request.solves,
   );
   expect(short).toEqual([]);
@@ -2057,6 +2072,12 @@ describe("the scored set", () => {
     expect(pool).toMatchObject({ awaiting: ["s1"], frontier: [] });
     expect(pool.retained.toSorted()).toEqual(["s2", "s3", "s4", "s5"]);
     expect(pool.exhausted.toSorted()).toEqual(["s2", "s3", "s4"]);
+    const judged = {
+      kind: "comparison.started",
+      at: "2026-11-24T00:00:00.000Z",
+      data: { judge: { weights: { code: 0, judge: 1 } } },
+    } as const;
+    expect(poolOf([...read(s.log), judged]).exhausted).toEqual([]);
     expect(scoredSet(read(s.log), 12, "c")).toEqual({ tasks: [], retained: [] });
     // Named for a comparison all the same, it is refused: the draw leaves it out, and a name
     // would otherwise be the one way past that.
@@ -2129,5 +2150,79 @@ describe("the scored set", () => {
         "h1",
       ),
     ).toBeNull();
+  });
+});
+
+describe("a judged comparison", () => {
+  const judging = (log: string, better: string, broken = new Set<string>()): Judging => {
+    const harnessOf = (solve: string) => ranUnder(read(log)).find(({ id }) => id === solve)?.under.harness;
+    return {
+      weights: { code: 0, judge: 1 },
+      reviewer: "faux/faux-judge",
+      brief: async (version, comparison) => {
+        append(log, "referee.brief", {
+          comparison,
+          task: version,
+          reader: "j",
+          expectations: ["e"],
+          flags: [],
+        });
+      },
+      pair: async (version, { comparison, first, second }) => {
+        if (broken.delete(first)) throw new Error("the judge's login is at its limit");
+        const sign = Number(harnessOf(first) === better) - Number(harnessOf(second) === better);
+        append(log, "referee.pair", {
+          comparison,
+          task: version,
+          solve: first,
+          old: second,
+          reader: "j",
+          judge: sign,
+          holistic: sign,
+        });
+      },
+    };
+  };
+  const pairs = (log: string) => read(log).filter(({ kind }) => kind === "referee.pair").length;
+
+  it("reads a step that the judge alone carries, holds its A/A at zero, and locks its terms", async () => {
+    const all: Table = () => PASS;
+    const plain = await compared(all);
+    expect(plain.report.reading).toBe(NO_STEP);
+    const s = await setup([], all);
+    const fresh = s.paired("g-judged").fresh.digest;
+    const report = await checkpoint(s.paired("g-judged", { judge: judging(s.log, fresh) }));
+    expect(report.reading).toBe("step");
+    expect(report.noise?.differences.every((difference) => difference === 0)).toBe(true);
+    const fixed = fixedIn(read(s.log), "g-judged");
+    expect(fixed?.judge).toEqual({ code: 0, judge: 1 });
+    expect(fixed === null ? null : judgingLeft(read(s.log), fixed)).toEqual([]);
+    expect(pairs(s.log)).toBe(HELD.length * 3);
+    expect(read(s.log).filter(({ kind }) => kind === "referee.brief")).toHaveLength(HELD.length);
+  });
+
+  it("stops before its report when a vote is missing, and goes on from its log without solving again", async () => {
+    const s = await setup([], () => PASS);
+    const fresh = s.paired("g-resume").fresh.digest;
+    const once = new Set<string>();
+    const broken = judging(s.log, fresh, once);
+    let armed = true;
+    const request = s.paired("g-resume", {
+      judge: {
+        ...broken,
+        pair: async (version, asked, kill) => {
+          if (armed) once.add(asked.first);
+          armed = false;
+          await broken.pair(version, asked, kill);
+        },
+      },
+    });
+    await expect(checkpoint(request)).rejects.toThrow("the judge gave no vote on 1 pair,");
+    const solvesBefore = s.asked.length;
+    const judgedBefore = pairs(s.log);
+    const report = await checkpoint(s.paired("g-resume", { judge: judging(s.log, fresh) }));
+    expect(s.asked).toHaveLength(solvesBefore);
+    expect(pairs(s.log)).toBe(judgedBefore + 1);
+    expect(report.reading).toBe("step");
   });
 });

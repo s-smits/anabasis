@@ -1,5 +1,5 @@
 import { GAP_FLOOR, gapBasis, type ObjectiveRule } from "../kernel/compare.ts";
-import { type Contract, objectiveLine } from "../kernel/contract.ts";
+import { type Contract, hasJudge, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
 import { LADDER } from "./ladder.ts";
@@ -82,6 +82,10 @@ ${brief}`,
             contract.objective.items === undefined
               ? ""
               : " Where the frozen rubric reads task-specific criteria from hidden values, set them in each task's hidden field."
+          }${
+            hasJudge(contract.objective)
+              ? " A task's rubric criteria are what the judging model compares two valid answers on: where answers tie both strong on a criterion, a later task can ask for more along it, and a quality code can decide exactly belongs in the check program instead."
+              : ""
           }`,
         ]),
     `A solver's answer follows this schema: ${capturedJsonStringify(contract.answerFormat)}`,

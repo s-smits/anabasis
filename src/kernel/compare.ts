@@ -58,7 +58,26 @@ interface Sides {
   readonly comparison: string;
   readonly halves?: "mirrored" | undefined;
   readonly objective?: ObjectiveRule | undefined;
+  readonly judge?: JudgeWeights | undefined;
   readonly upTo?: number | undefined;
+}
+
+export function judgeIn(data: JsonObject): JudgeWeights | undefined {
+  const { code, judge, step } = asRecord(asRecord(data.judge)?.weights) ?? {};
+  if (!isNumber(code) || !isNumber(judge)) return undefined;
+  return { code, judge, ...keyIfDefined("step", isNumber(step) ? step : undefined) };
+}
+
+function votesIn(events: readonly LogEvent[], comparison: string, upTo: number) {
+  const votes = new Map<string, { readonly judge: number; readonly holistic: number }>();
+  for (const { event } of eventsOf(events, "referee.pair", upTo)) {
+    const { solve, old, judge, holistic } = event.data;
+    if (event.data.comparison !== comparison || !isString(solve) || !isString(old)) continue;
+    if (!isNumber(judge) || !isNumber(holistic)) continue;
+    votes.set(`${solve}\u0000${old}`, { judge, holistic });
+    votes.set(`${old}\u0000${solve}`, { judge: -judge, holistic: -holistic });
+  }
+  return votes;
 }
 
 const DETECTION_CHANCE = 0.8;
@@ -349,7 +368,7 @@ export function pairsOf(
   sides: Sides,
   solves: number,
 ) {
-  const { old, fresh, setting, comparison, halves, objective, upTo = events.length - 1 } = sides;
+  const { old, fresh, setting, comparison, halves, objective, judge, upTo = events.length - 1 } = sides;
   if (old === fresh && halves === undefined) {
     throw new Error(`a comparison sets two harnesses against each other, and both sides are ${old}`);
   }
@@ -372,6 +391,7 @@ export function pairsOf(
   );
   const disputed = versions.filter((task) => states.get(task) === "disputed");
   const short: string[] = [];
+  const cast = judge === undefined ? null : votesIn(events, comparison, upTo);
   const pairs = versions.flatMap((task, place): Paired[] => {
     const state = states.get(task);
     if (state === "disputed") return [];
@@ -400,11 +420,21 @@ export function pairsOf(
       fresh: after.slice(0, solves).map(of),
     });
     const measured = side(({ id }) => measures.get(id) ?? null);
+    const valid = side((solve) => passed(solve) === true);
+    const ids = side(({ id }) => id);
+    const votes =
+      cast === null
+        ? []
+        : judgedPairs(`${comparison}:${task}`, ids, valid).flatMap(([f, o]) => {
+            const vote = cast.get(`${ids.fresh[f] ?? ""}\u0000${ids.old[o] ?? ""}`);
+            return vote === undefined ? [] : [{ fresh: f, old: o, ...vote }];
+          });
     return [
       {
         task,
-        ...side((solve) => passed(solve) === true),
-        solves: side(({ id }) => id),
+        ...valid,
+        solves: ids,
+        ...keyIfDefined("judged", judge === undefined ? undefined : { weights: judge, votes }),
         used: side(({ end }): SolveCost => ({ billed: isNumber(end.billed) ? end.billed : null })),
         ...keyIfDefined("objective", objective === undefined ? undefined : { ...objective, ...measured }),
       },

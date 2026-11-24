@@ -174,6 +174,16 @@ describe("the campaign's executing Bun and opening guards", () => {
     const model = "claude/claude-opus-5-5";
     expect(opened(reviewerLog, termFlags("--reviewer", model), "paid").seats.reviewer?.model).toBe(model);
     expect(opened(reviewerLog, termFlags(), "paid").seats.reviewer?.model).toBe(model);
+    const judgedLog = join(root, "terms", "judged", LOG_FILE);
+    for (const reviewer of [model, "openrouter/anthropic/claude-fable-5-2"]) {
+      expect(() => opened(judgedLog, termFlags("--reviewer", reviewer, "--admit-judge"), "paid")).toThrow(
+        "its own family",
+      );
+    }
+    expect(read(judgedLog)).toEqual([]);
+    expect(
+      opened(judgedLog, termFlags("--reviewer", "codex/gpt-6.1-sol", "--admit-judge"), "paid").judged,
+    ).toBe(true);
 
     const budgetLog = join(root, "terms", "budget", LOG_FILE);
     const budgetFlags = flagsOf(["--name", "terms", "--project", PROJECT, ...OPENED_FROM, "--budget", "300"]);

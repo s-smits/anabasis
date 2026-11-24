@@ -89,7 +89,7 @@ const SEAT_ENDS: Readonly<Record<Seat, readonly EventKind[]>> = {
   build: ["build.finished"],
   exam: ["exam.finished"],
   draft: ["draft.finished"],
-  referee: ["referee.finding", "referee.draft"],
+  referee: ["referee.finding", "referee.draft", "referee.brief", "referee.pair"],
   solve: ["solve.finished"],
 };
 export const whose = (seat: Seat) => WHOSE[seat];

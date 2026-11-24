@@ -1,4 +1,4 @@
-import { draw, type ObjectiveRule } from "../kernel/compare.ts";
+import { draw, type JudgeWeights, type ObjectiveRule } from "../kernel/compare.ts";
 import { familiesOf } from "../kernel/history.ts";
 import { append, isReferenceChange, type LogEvent, read } from "../kernel/log.ts";
 import { type Cap, capHolds, lastReports, poolOf } from "../kernel/reports.ts";
@@ -11,6 +11,7 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { sameJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
+import type { Asked } from "../referee/judge.ts";
 import type { RefereeFinding } from "../referee/referee.ts";
 import { tasksByEpoch } from "./climb.ts";
 import { budgetLeft } from "./opening.ts";
@@ -20,6 +21,7 @@ import {
   DEFECT,
   type Fixed,
   fixedIn,
+  judgingLeft,
   NO_LABELS,
   NOTHING,
   rejections,
@@ -59,6 +61,14 @@ interface Terms {
   readonly referee?:
     | ((solve: string, version: string, kill: AbortSignal) => Promise<RefereeFinding>)
     | undefined;
+  readonly judge?: Judging | undefined;
+}
+
+export interface Judging {
+  readonly weights: JudgeWeights;
+  readonly reviewer: string;
+  readonly brief: (version: string, comparison: string, kill: AbortSignal) => Promise<void>;
+  readonly pair: (version: string, asked: Asked, kill: AbortSignal) => Promise<void>;
 }
 
 export interface CheckpointRequest extends Terms {
@@ -317,6 +327,43 @@ function capReached(events: readonly LogEvent[], id: string, cap: Cap | undefine
   return overCap || (left !== null && left.dollars < (running + 1) * left.reserve);
 }
 
+async function judgeAll(
+  request: CheckpointRequest,
+  fixed: Fixed,
+  within: { readonly kill: AbortSignal; readonly faults: string[]; readonly open: () => boolean },
+): Promise<void> {
+  const { judge, log, id, concurrency } = request;
+  if (judge === undefined) return;
+  const { kill, faults, open } = within;
+  const ask = async (what: string, asked: () => Promise<void>) => {
+    try {
+      await asked();
+    } catch (error) {
+      faults.push(`${what}: ${errorMessage(error)}`);
+    }
+  };
+  const left = judgingLeft(read(log), fixed);
+  const tasks = [...new Set(left.map(({ task }) => task))];
+  for (let at = 0; at < tasks.length && open(); at += concurrency) {
+    const lane = tasks.slice(at, at + concurrency);
+    await Promise.all(lane.map((task) => ask(`brief ${task}`, () => judge.brief(task, id, kill))));
+  }
+  for (let at = 0; at < left.length && open(); at += concurrency) {
+    const lane = left.slice(at, at + concurrency);
+    await Promise.all(
+      lane.map(({ task, first, second }) =>
+        ask(`${first} against ${second}`, () => judge.pair(task, { comparison: id, first, second }, kill)),
+      ),
+    );
+  }
+  const still = open() ? judgingLeft(read(log), fixed) : [];
+  if (still.length > 0) {
+    throw new Error(
+      `the judge gave no vote on ${plural(still.length, "pair")}, so the comparison stops before its report: run it again and it goes on from its log (${faults.at(-1) ?? "no fault recorded"})`,
+    );
+  }
+}
+
 function floor(request: CheckpointRequest, fixed: Fixed) {
   const { log, id, cap } = request;
   const halt = new AbortController();
@@ -395,6 +442,15 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
       );
     }
   };
+  const judgeLeft = () =>
+    judgeAll(request, fixed, {
+      kill,
+      faults,
+      open: () => {
+        capped ||= going() && capReached(read(log), id, cap, 0);
+        return going();
+      },
+    });
   const solveAll = async (tasks: readonly string[]): Promise<boolean> => {
     const had = Map.groupBy(
       solvesUnder(read(log), fixed).filter(({ counts: own }) => own),
@@ -405,6 +461,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     if (kill.aborted) throw new Error("the comparison was killed; run it again and it goes on from its log");
     quiet.tail();
     await ruleLeft();
+    await judgeLeft();
     return going();
   };
   return { solveAll, ruleLeft, faults, capped: () => capped };
@@ -422,6 +479,12 @@ function begin(request: CheckpointRequest): Fixed {
     cap: request.cap === undefined ? null : { ...request.cap },
     ...keyIfDefined("prediction", request.prediction),
     ...keyIfDefined("objective", request.objective === undefined ? undefined : { ...request.objective }),
+    ...keyIfDefined(
+      "judge",
+      request.judge === undefined
+        ? undefined
+        : { weights: { ...request.judge.weights }, reviewer: request.judge.reviewer },
+    ),
   };
   const was = startOf(read(log), id);
   if (was === undefined) {

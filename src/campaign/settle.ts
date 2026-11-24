@@ -3,7 +3,7 @@
  * comparison outcome from the existing solves and appends an updated `comparison.reported` event
  * without launching new solves.
  */
-import { append, type LogEvent, read } from "../kernel/log.ts";
+import { append, eventsOf, type LogEvent, read } from "../kernel/log.ts";
 import { ranUnder } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import { asRecord } from "../meta/json-shape.ts";
@@ -49,7 +49,7 @@ export function settleReading(
   passes: ReadonlyMap<string, PassLabel> = new Map(),
 ): Report {
   const before = read(log);
-  const last = before.findLast((event) => event.kind === REPORTED && event.data.session === id)?.data;
+  const last = eventsOf(before, REPORTED).findLast(({ event }) => event.data.session === id)?.event.data;
   const report = reported(before, id);
   const fixed = fixedIn(before, id);
   if (last === undefined || report === null) throw new Error(`comparison ${id} has no report to settle`);
@@ -96,7 +96,11 @@ export function settleReading(
     const version = versionOf.get(solve) ?? "";
     return dispute(log, id, version, { solve, reason }) ? [version] : [];
   });
-  const failed = wrongAsFailed(read(log), labels, Object.fromEntries(passes));
+  const failed = wrongAsFailed(
+    disputed.length === 0 ? before : read(log),
+    labels,
+    Object.fromEntries(passes),
+  );
   const found =
     report.scored === null
       ? restopped(report, failed.events, fixed, failed.labels)

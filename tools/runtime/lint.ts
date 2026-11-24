@@ -96,7 +96,7 @@ export async function oxlintDiagnostics(
 }
 
 /** `ana(no-deep-nesting)` as oxlint spells it becomes `ana/no-deep-nesting`. */
-export function ruleOf(diagnostic: Diagnostic): string {
+function ruleOf(diagnostic: Diagnostic): string {
   const match = /^([\w-]+)\(([\w-]+)\)$/u.exec(diagnostic.code ?? "");
   return match === null ? (diagnostic.code ?? "") : `${match[1]}/${match[2]}`;
 }

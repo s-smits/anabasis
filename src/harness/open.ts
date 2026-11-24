@@ -9,7 +9,7 @@
  * (`src/tools/coding.ts`).
  */
 import { AGENT_DIR, BYTECODE, GUIDE_FILE, TOOLS_SPEC_FILE, TOOL_TREE_DIR } from "../meta/bundle-layout.ts";
-import { sha256OfFile } from "../meta/digest.ts";
+import { sha256, sha256OfFile } from "../meta/digest.ts";
 import { existsSync, lstatSync, readlinkSync, realpathSync } from "../meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isRecord, isString } from "../meta/json-shape.ts";
@@ -37,6 +37,13 @@ export interface Harness {
  */
 const NO_TOOLS_MODULE =
   "// @bun\n\nvar createDomainHarness = () => ({\n  tools: []\n});\nexport {\n  createDomainHarness\n};\n";
+const FILE_HASH_CAP = 50_000;
+/** Files changed within this window of `Date.now()` bypass the stat-keyed cache so same-size
+ *  rewrites within one coarse filesystem timestamp tick (e.g. Linux ext4 jiffies) never read stale. */
+const RACY_MS = 2000;
+const FILE_HASHES = new Map<string, string>();
+/** Each tool tree's content by where it really is, with the stamp it was read under. */
+const TREES = new Map<string, { stamp: string; content: ReturnType<typeof treeContent> }>();
 
 export async function openHarness(dir: string): Promise<Harness> {
   // The two files the host reads by name are the harness's own: a guide or a spec linked to a host
@@ -82,18 +89,50 @@ export function pathsUnder(dir: string): string[] {
   return [...glob.scanSync({ cwd: dir, dot: true, onlyFiles: false, followSymlinks: false })].toSorted();
 }
 
-/** Each entry under `dir` by path, mode and content: a file by its sha256, a link by its target. */
-export function treeContent(dir: string) {
+const isRacy = (stat: NonNullable<ReturnType<typeof lstatSync>>, now = Date.now()): boolean =>
+  Math.abs(now - Number(stat.ctimeMs)) < RACY_MS;
+
+function fileHash(full: string, stat: NonNullable<ReturnType<typeof lstatSync>>): string {
+  if (isRacy(stat)) return sha256OfFile(full);
+  const key = `${String(stat.dev)}:${String(stat.ino)}:${String(stat.size)}:${String(stat.mtimeMs)}:${String(stat.ctimeMs)}`;
+  const cached = FILE_HASHES.get(key);
+  if (cached !== undefined) return cached;
+  const digest = sha256OfFile(full);
+  if (FILE_HASHES.size >= FILE_HASH_CAP) FILE_HASHES.clear();
+  FILE_HASHES.set(key, digest);
+  return digest;
+}
+
+function statEntries(dir: string) {
   return pathsUnder(dir).map((path) => {
     const full = join(dir, path);
-    const stat = lstatSync(full);
-    const content = stat.isSymbolicLink() ? readlinkSync(full) : stat.isFile() ? sha256OfFile(full) : null;
-    return { path, mode: stat.mode, content };
+    return { path, full, stat: lstatSync(full) };
   });
 }
 
-/** Each tool tree's content by where it really is, with the stamp it was read under. */
-const TREES = new Map<string, { stamp: string; content: ReturnType<typeof treeContent> }>();
+function stampOf(entries: ReturnType<typeof statEntries>): string {
+  return sha256(
+    entries
+      .map(
+        ({ path, stat }) =>
+          `${path}\0${String(stat.size)}\0${String(stat.mtimeMs)}\0${String(stat.ctimeMs)}\0${String(stat.mode)}\0${String(stat.ino)}`,
+      )
+      .join("\0\0"),
+  );
+}
+
+function entryContent({ path, full, stat }: ReturnType<typeof statEntries>[number]) {
+  return {
+    path,
+    mode: stat.mode,
+    content: stat.isSymbolicLink() ? readlinkSync(full) : stat.isFile() ? fileHash(full, stat) : null,
+  };
+}
+
+/** Each entry under `dir` by path, mode and content: a file by its sha256, a link by its target. */
+export function treeContent(dir: string) {
+  return statEntries(dir).map(entryContent);
+}
 
 /** Whether a tree changed, links unfollowed: a file in it added, removed, resized, rewritten or with
  *  its mode changed changes it. A tool tree is read under it, and a solve's harness is compared by
@@ -104,12 +143,7 @@ const TREES = new Map<string, { stamp: string; content: ReturnType<typeof treeCo
  *  can read a tree of hundreds of megabytes. A stamp without the change time, mode or inode would
  *  miss a solve that rewrote a harness file so. */
 export function treeStamp(real: string): string {
-  return hashJsonValue(
-    pathsUnder(real).map((path) => {
-      const stat = lstatSync(join(real, path));
-      return [path, stat.size, stat.mtimeMs, stat.ctimeMs, stat.mode, stat.ino];
-    }),
-  );
+  return stampOf(statEntries(real));
 }
 
 /**
@@ -119,10 +153,13 @@ export function treeStamp(real: string): string {
  */
 function keptTreeContent(toolTree: string) {
   const real = realpathSync(toolTree);
-  const stamp = treeStamp(real);
-  const kept = TREES.get(real);
+  const entries = statEntries(real);
+  const stamp = stampOf(entries);
+  const now = Date.now();
+  const racy = entries.some(({ stat }) => isRacy(stat, now));
+  const kept = racy ? undefined : TREES.get(real);
   if (kept?.stamp === stamp) return kept.content;
-  const content = treeContent(real).filter(({ path }) => !BYTECODE.test(path));
-  TREES.set(real, { stamp, content });
+  const content = entries.filter(({ path }) => !BYTECODE.test(path)).map(entryContent);
+  if (!racy) TREES.set(real, { stamp, content });
   return content;
 }

@@ -47,168 +47,6 @@ interface Verb {
 
 /** Verbs whose own option parser handles `--here` beyond merely suppressing remote queries. */
 const READS_HERE: ReadonlySet<string | undefined> = new Set(["active", "hosts", "keep", "pulse"]);
-
-/** Registry of all CLI verbs grouped for the bare `bun run runs` summary, with their handler,
- *  usage-owning file, and one-line description. */
-const GROUPS = {
-  "a run's life": {
-    fresh: {
-      run: fresh,
-      file: "fresh.ts",
-      says: "start a measured campaign from a blank project, in a worktree of its own",
-    },
-    launch: {
-      run: launch,
-      file: "manage.ts",
-      says: "start the campaign command under a new name, in this worktree",
-    },
-    continue: {
-      run: continueRun,
-      file: "manage.ts",
-      says: "run a stopped campaign again from its log, on its kept flags",
-    },
-    keep: {
-      run: keep,
-      file: "keep.ts",
-      says: "attach a keeper, which a run on a numbered login gets by itself, to go on across logins",
-    },
-    pause: {
-      run: pause,
-      file: "manage.ts",
-      says: "stop a campaign at the next clean point after an event",
-    },
-    move: {
-      run: move,
-      file: "move.ts",
-      says: "pause a campaign, take it to another machine and go on there",
-    },
-    copy: {
-      run: copy,
-      file: "move.ts",
-      says: "copy a stopped campaign whole to another worktree",
-    },
-    stop: {
-      run: stop,
-      file: "stop.ts",
-      says: "end the process writing each log, and its keeper",
-    },
-    retire: {
-      run: retire,
-      file: "retire.ts",
-      says: "archive idle campaigns and delete unused worktrees, here and on every host",
-    },
-  },
-  reading: {
-    status: {
-      run: runsStatus,
-      file: "pulse.ts",
-      says: "one row a run on every host: tree, commit, login, comparisons, ending",
-    },
-    pulse: {
-      run: watch,
-      file: "pulse.ts",
-      says: "what each run gained since the last look",
-    },
-    alerts: {
-      run: alerts,
-      file: "alerts.ts",
-      says: "for cron: one line for each promotion, starter read, ending and stall new since the last look",
-    },
-    view: {
-      run: view,
-      file: "view.ts",
-      says: "one campaign as its log reads, and the move the table names next",
-    },
-    source: {
-      run: source,
-      file: "receipt.ts",
-      says: "the commit each run ran, where it is published, whether it holds a fix",
-    },
-    replay: {
-      run: replay,
-      file: "replay.ts",
-      says: "put every campaign log through this tree's readers",
-    },
-    search: {
-      run: search,
-      file: "search.ts",
-      says: "find text across campaign records and notes on every host",
-    },
-  },
-  "logins and hosts": {
-    usage: {
-      run: logins,
-      file: "logins.ts",
-      says: "each login's five-hour and weekly use, and its live runs",
-    },
-    active: {
-      run: active,
-      file: "logins.ts",
-      says: "the runs and seats live on each login, by name",
-    },
-    hosts: {
-      run: hostsHealth,
-      file: "hosts.ts",
-      says: "each other host's runs, or with `--health` each machine's load, disk and busiest processes",
-    },
-    on: { run: on, file: "hosts.ts", says: "run any verb on another host" },
-    sync: {
-      run: sync,
-      file: "sync.ts",
-      says: "bring every host to this machine's Python, table of tools and check runner, or say what differs",
-    },
-    holds: {
-      run: holds,
-      file: "hosts.ts",
-      says: "the names among these a worktree here holds",
-    },
-    catalogue: {
-      run: catalogue,
-      file: "snapshots.ts",
-      says: "this machine's original campaigns, for the other hosts",
-    },
-    fetch: {
-      run: fetch,
-      file: "move.ts",
-      says: "copy a campaign another machine holds into the archive, or the record of every one (--whole: the folders too)",
-    },
-    loadwatch: {
-      run: loadwatch,
-      file: "loadwatch.ts",
-      says: "each machine's CPU and load, live",
-    },
-    netwatch: {
-      run: netwatch,
-      file: "netwatch.ts",
-      says: "the traffic between the machines over Tailscale and its total, live",
-    },
-  },
-  "handover and simulation": {
-    zip: {
-      run: zipRuns,
-      file: "zip.ts",
-      says: "bundle runs for handover",
-    },
-    seed: {
-      run: seed,
-      file: "seed.ts",
-      says: "copy a campaign under another name, cut where a question starts",
-    },
-    rehearse: {
-      run: rehearse,
-      file: "rehearse.ts",
-      says: "run a round over a seed with a script in each model seat",
-    },
-    bench: {
-      run: bench,
-      file: "bench.ts",
-      says: "roll a run's reference beside a Starter on its outside benchmark, or score each finished read",
-    },
-  },
-} satisfies Record<string, Record<string, Verb>>;
-const VERBS: Record<string, Verb> = Object.fromEntries(
-  Object.values(GROUPS).flatMap((verbs) => Object.entries(verbs)),
-);
 /** Tokens that trigger the verb list or per-verb help output. */
 const HELP: ReadonlySet<string> = new Set(["", "help", "--help", "-h"]);
 /** Universal flags and conventions displayed beneath the verb groups. */
@@ -221,6 +59,102 @@ const EVERY = [
   ["--yes", "a verb that takes it says what it would do, and does it only with this"],
   ["<name>", `${[...NAMING].join(", ")} act on the host that holds the run they name`],
 ] as const;
+
+const verbOf = (run: Verb["run"], file: string, says: string): Verb => ({ run, file, says });
+
+/** Registry of all CLI verbs grouped for the bare `bun run runs` summary, with their handler,
+ *  usage-owning file, and one-line description. */
+const GROUPS = {
+  "a run's life": {
+    fresh: verbOf(
+      fresh,
+      "fresh.ts",
+      "start a measured campaign from a blank project, in a worktree of its own",
+    ),
+    launch: verbOf(launch, "manage.ts", "start the campaign command under a new name, in this worktree"),
+    continue: verbOf(
+      continueRun,
+      "manage.ts",
+      "run a stopped campaign again from its log, on its kept flags",
+    ),
+    keep: verbOf(
+      keep,
+      "keep.ts",
+      "attach a keeper, which a run on a numbered login gets by itself, to go on across logins",
+    ),
+    pause: verbOf(pause, "manage.ts", "stop a campaign at the next clean point after an event"),
+    move: verbOf(move, "move.ts", "pause a campaign, take it to another machine and go on there"),
+    copy: verbOf(copy, "move.ts", "copy a stopped campaign whole to another worktree"),
+    stop: verbOf(stop, "stop.ts", "end the process writing each log, and its keeper"),
+    retire: verbOf(
+      retire,
+      "retire.ts",
+      "archive idle campaigns and delete unused worktrees, here and on every host",
+    ),
+  },
+  reading: {
+    status: verbOf(
+      runsStatus,
+      "pulse.ts",
+      "one row a run on every host: tree, commit, login, comparisons, ending",
+    ),
+    pulse: verbOf(watch, "pulse.ts", "what each run gained since the last look"),
+    alerts: verbOf(
+      alerts,
+      "alerts.ts",
+      "for cron: one line for each promotion, starter read, ending and stall new since the last look",
+    ),
+    view: verbOf(view, "view.ts", "one campaign as its log reads, and the move the table names next"),
+    source: verbOf(
+      source,
+      "receipt.ts",
+      "the commit each run ran, where it is published, whether it holds a fix",
+    ),
+    replay: verbOf(replay, "replay.ts", "put every campaign log through this tree's readers"),
+    search: verbOf(search, "search.ts", "find text across campaign records and notes on every host"),
+  },
+  "logins and hosts": {
+    usage: verbOf(logins, "logins.ts", "each login's five-hour and weekly use, and its live runs"),
+    active: verbOf(active, "logins.ts", "the runs and seats live on each login, by name"),
+    hosts: verbOf(
+      hostsHealth,
+      "hosts.ts",
+      "each other host's runs, or with `--health` each machine's load, disk and busiest processes",
+    ),
+    on: verbOf(on, "hosts.ts", "run any verb on another host"),
+    sync: verbOf(
+      sync,
+      "sync.ts",
+      "bring every host to this machine's Python, table of tools and check runner, or say what differs",
+    ),
+    holds: verbOf(holds, "hosts.ts", "the names among these a worktree here holds"),
+    catalogue: verbOf(catalogue, "snapshots.ts", "this machine's original campaigns, for the other hosts"),
+    fetch: verbOf(
+      fetch,
+      "move.ts",
+      "copy a campaign another machine holds into the archive, or the record of every one (--whole: the folders too)",
+    ),
+    loadwatch: verbOf(loadwatch, "loadwatch.ts", "each machine's CPU and load, live"),
+    netwatch: verbOf(
+      netwatch,
+      "netwatch.ts",
+      "the traffic between the machines over Tailscale and its total, live",
+    ),
+  },
+  "handover and simulation": {
+    zip: verbOf(zipRuns, "zip.ts", "bundle runs for handover"),
+    seed: verbOf(seed, "seed.ts", "copy a campaign under another name, cut where a question starts"),
+    rehearse: verbOf(rehearse, "rehearse.ts", "run a round over a seed with a script in each model seat"),
+    bench: verbOf(
+      bench,
+      "bench.ts",
+      "roll a run's reference beside a Starter on its outside benchmark, or score each finished read",
+    ),
+  },
+} satisfies Record<string, Record<string, Verb>>;
+const VERBS: Record<string, Verb> = Object.fromEntries(
+  Object.values(GROUPS).flatMap((verbs) => Object.entries(verbs)),
+);
 const WIDTH = Math.max(...[...Object.keys(VERBS), ...EVERY.map(([name]) => name)].map((name) => name.length));
 
 /** Looks up a verb by exact own key so inherited `Object.prototype` names such as `toString` never match. */

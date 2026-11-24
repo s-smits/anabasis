@@ -138,9 +138,7 @@ function writesCampaign(args: readonly string[]): boolean {
   return runsAs(args, [BUILDER, ...BY_HAND]);
 }
 
-/** Every run log in the worktrees of the repository `repo` lies in. */
-export function runs(repo = runtimeProcess.cwd()): Run[] {
-  const trees = worktrees(repo);
+function runsIn(trees: readonly string[]): Run[] {
   return trees.flatMap((tree) => [
     ...campaignsIn(join(tree, CAMPAIGNS), tree),
     ...listed(join(tree, ".ana", "live"))
@@ -154,43 +152,54 @@ export function runs(repo = runtimeProcess.cwd()): Run[] {
   ]);
 }
 
-/** Every campaign the archive holds, under the main worktree of the repository `repo` lies in. */
-export function archived(repo = runtimeProcess.cwd()): Run[] {
-  const main = mainTree(repo);
-  const root = archiveOf(main);
+function archivedIn(main: string): Run[] {
+  const root = join(main, ARCHIVE);
   // `here` and a folder for each host; a dot file beside them (`.DS_Store`) holds no campaign.
   return listed(root)
     .filter((from) => !from.startsWith("."))
     .flatMap((from) => campaignsIn(join(root, from), main).map((run) => ({ ...run, archived: from })));
 }
 
+const allRuns = (repo: string, trees = worktrees(repo)) => [
+  ...runsIn(trees),
+  ...archivedIn(trees[0] ?? repo),
+];
+
+/** Every run log in the worktrees of the repository `repo` lies in. */
+export const runs = (repo = runtimeProcess.cwd()): Run[] => runsIn(worktrees(repo));
+
+/** Every campaign the archive holds, under the main worktree of the repository `repo` lies in. */
+export const archived = (repo = runtimeProcess.cwd()): Run[] => archivedIn(mainTree(repo));
+
+/** Every run a name can be taken by: the worktrees' first, then the archive's, from one git listing. */
+export const everyRun = (repo = runtimeProcess.cwd()): Run[] => allRuns(repo);
+
 /** This machine's original campaigns: its worktrees' and its own archive's, never a copy of a host's.
  *  A catalogue lists these to the other machines, and a refresh refuses a host's campaign that
  *  shares a name with one. */
 export const originals = (repo = runtimeProcess.cwd()): Run[] =>
-  [...runs(repo), ...archived(repo).filter((run) => run.archived === HERE)].filter(isCampaign);
-
-/** Every run a name can be taken by: the worktrees' and the archive's. */
-export const everyRun = (repo = runtimeProcess.cwd()): Run[] => [...runs(repo), ...archived(repo)];
+  allRuns(repo).filter((run) => isCampaign(run) && (run.archived === undefined || run.archived === HERE));
 
 /** The runs a reader reads: every worktree's, and one archived copy of each campaign whose name none
  *  of those has, this machine's before a host's, so a page keys it and a zip stages it once. */
 export function readable(repo = runtimeProcess.cwd()): Run[] {
-  const held = runs(repo);
+  const trees = worktrees(repo);
+  const held = runsIn(trees);
   const names = new Set(held.map(({ name }) => name));
-  const copies = new Map<string, Run>();
-  for (const run of archived(repo)) {
-    if (!names.has(run.name) && (!copies.has(run.name) || run.archived === HERE)) copies.set(run.name, run);
+  const kept = new Map<string, Run>();
+  for (const run of archivedIn(trees[0] ?? repo)) {
+    if (!names.has(run.name) && (!kept.has(run.name) || run.archived === HERE)) kept.set(run.name, run);
   }
-  return [...held, ...copies.values()];
+  return [...held, ...kept.values()];
 }
 
 /** The campaign `name` a reader reads: the one a worktree holds, else this machine's archived one,
  *  else a host's copy, refused where two hosts' copies are all there is. */
 export function readNamed(name: string, repo = runtimeProcess.cwd()): Run {
-  const held = runs(repo);
+  const trees = worktrees(repo);
+  const held = runsIn(trees);
   if (held.some((run) => run.name === name && isCampaign(run))) return runNamed(name, held);
-  const copies = archived(repo).filter((run) => run.name === name);
+  const copies = archivedIn(trees[0] ?? repo).filter((run) => run.name === name);
   const own = copies.find((run) => run.archived === HERE);
   if (own !== undefined) return own;
   const [only, other] = copies;
@@ -317,21 +326,24 @@ export function openComparisons(events: readonly LogEvent[]): string[] {
 /** The file beside `run`'s log that holds its keeper's output. */
 export const keptFile = (run: Run) => join(dirname(run.path), "keep.out");
 
+const cliMatches = (running: readonly Running[], match: (args: readonly string[]) => boolean) =>
+  running.flatMap(({ pid, args }) =>
+    pid !== runtimeProcess.pid && runsAs(args, [CLI]) && match(args) ? [pid] : [],
+  );
+
 /** The processes in `running`, but this one, that wait to stop campaign `name`, named before or after
  *  their flags: a `runs pause`, or a `runs continue --after`, which starts the run again once it has
  *  stopped. */
 export const waiters = (name: string, running: readonly Running[] = processes()): number[] =>
-  running.flatMap(({ pid, args }) => {
+  cliMatches(running, (args) => {
     const after = args.some((arg) => arg === "--after" || arg.startsWith("--after="));
     const at = args.findIndex((arg) => arg === "pause" || (after && arg === "continue"));
-    const waits = runsAs(args, [CLI]) && at !== -1 && args.slice(at + 1).includes(name);
-    return waits && pid !== runtimeProcess.pid ? [pid] : [];
+    return at !== -1 && args.slice(at + 1).includes(name);
   });
 
 /** The processes in `running`, but this one, that keep campaign `name` going (`runs keep`, `keep.ts`). */
 export const keepers = (name: string, running: readonly Running[] = processes()): number[] =>
-  running.flatMap(({ pid, args }) => {
+  cliMatches(running, (args) => {
     const at = args.indexOf("keep");
-    const kept = runsAs(args, [CLI]) && at !== -1 && args.includes(KEEPING) && args[at + 1] === name;
-    return kept && pid !== runtimeProcess.pid ? [pid] : [];
+    return at !== -1 && args.includes(KEEPING) && args[at + 1] === name;
   });

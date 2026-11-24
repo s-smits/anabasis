@@ -7,7 +7,7 @@
  */
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
-import { append, type LogEvent, read } from "../kernel/log.ts";
+import { append, CALL_KINDS, eventsOf, type LogEvent, read, TRACE_KINDS } from "../kernel/log.ts";
 import { callPrograms } from "../kernel/call-programs.ts";
 import { checkCouldNotRun, type Ending } from "../kernel/solve.ts";
 import { limitsIn } from "../kernel/condition.ts";
@@ -21,6 +21,7 @@ import {
   rejected,
   rejectionAside,
   solvesIn,
+  standsOf,
   verdictsOf,
 } from "../kernel/solves.ts";
 import { objectiveOf } from "../kernel/verify.ts";
@@ -90,12 +91,26 @@ interface Against {
   readonly author: number;
 }
 
+interface PracticeRecord {
+  readonly solves: string[];
+  passed: number;
+}
+
+interface FoldedPractice {
+  readonly records: ReadonlyMap<string, ReadonlyMap<string, PracticeRecord>>;
+  readonly verdicts: ReturnType<typeof verdictsOf>;
+}
+
 /** What a preview names the solve's home, which only a solve has. */
 const SOLVE_HOME = "(the solve's own home directory)";
 /** Where a band of the gain over the author's answer begins, after the tie floor. */
 const BAND_EDGES = [GAP_FLOOR, 0.1, 0.5, 0.9] as const;
 /** Session practice-solve count on one task at which a factual concentration note is appended. */
 const PRACTICE_NOTE_AT = 4;
+const EMPTY_RECORD: { readonly solves: readonly string[]; readonly passed: number } = {
+  solves: [],
+  passed: 0,
+};
 const percent = (share: number): string => String(Math.round(share * 100));
 
 /**
@@ -150,27 +165,40 @@ function endingText(ending: Ending): string {
  *  reads of its own practice only; `name` gives the quantity in full once a result, in brackets
  *  after "the objective", since a contract's quantity can run to a sentence, then "the objective". */
 function measuredText(
-  events: readonly LogEvent[],
+  verdicts: ReturnType<typeof verdictsOf>,
   solve: string,
   against: Against | null,
   name: () => string,
 ) {
-  const measure = objectiveOf(verdictsOf(events).get(solve)?.checker);
+  const measure = objectiveOf(verdicts.get(solve)?.checker);
   return against !== null && measure !== null
     ? ` Measured ${name()} against the author's answer on record: ${bandOf(against, measure)}.`
     : "";
 }
 
+/** Counted practice solves grouped by task and harness in ended order, folding the log once. */
+function recordsOf(events: readonly LogEvent[]) {
+  const stands = standsOf(events);
+  const byTask = new Map<string, Map<string, PracticeRecord>>();
+  for (const solve of ended(practiceRan(events))) {
+    if (rejectionAside(events, solve, stands)) continue;
+    const pass = passed(solve);
+    if (pass === null) continue;
+    const forTask = byTask.get(solve.under.task) ?? new Map<string, PracticeRecord>();
+    byTask.set(solve.under.task, forTask);
+    const held = forTask.get(solve.under.harness) ?? { solves: [], passed: 0 };
+    held.solves.push(solve.id);
+    if (pass) held.passed += 1;
+    forTask.set(solve.under.harness, held);
+  }
+  return byTask;
+}
+
 /** A task version's counted practice solves under one harness, by the log's condition records,
  *  in the order they ended. A solve a comparison made of the task is none (`practiceRan`). */
 export function record(events: readonly LogEvent[], version: string, harness: string) {
-  const mine = practiceRan(events).filter(({ under }) => under.task === version && under.harness === harness);
-  const counted = ended(mine).flatMap((solve) => {
-    if (rejectionAside(events, solve)) return [];
-    const pass = passed(solve);
-    return pass === null ? [] : [{ solve: solve.id, pass }];
-  });
-  return { solves: counted.map(({ solve }) => solve), passed: counted.filter(({ pass }) => pass).length };
+  const held = recordsOf(events).get(version)?.get(harness);
+  return held === undefined ? { solves: [], passed: 0 } : { solves: [...held.solves], passed: held.passed };
 }
 
 /** Counted practice on an offered task under this exact digest, whether passed or failed. */
@@ -179,7 +207,8 @@ export function hasPractice(
   events: readonly LogEvent[],
   harness: string,
 ): boolean {
-  return bench.tasks.some(({ version }) => record(events, version, harness).solves.length > 0);
+  const records = recordsOf(events);
+  return bench.tasks.some(({ version }) => (records.get(version)?.get(harness)?.solves.length ?? 0) > 0);
 }
 
 /** How much of its limits a finished solve used, as a sentence after its ending: the seconds from
@@ -189,8 +218,8 @@ export function hasPractice(
  *  one that passes at the limit. The tokens are the one measure of what a tool or a program costs a
  *  solve that the Builder can act on, since most of a short solve's tokens are its prompt read
  *  again each turn. */
-function usedText(events: readonly LogEvent[], solve: string): string {
-  const { start, end } = solvesIn(events).find(({ id }) => id === solve) ?? {};
+function usedText(solves: ReadonlyMap<string, ReturnType<typeof solvesIn>[number]>, solve: string): string {
+  const { start, end } = solves.get(solve) ?? {};
   const limits = limitsIn(start?.limits);
   if (!isNumber(end?.seconds) || !isNumber(end.turns) || limits === null) return "";
   const given = limits.modelTurns === undefined ? "" : ` of ${String(limits.modelTurns)}`;
@@ -247,7 +276,7 @@ async function practise(bench: Bench, task: PracticeTask, kept: HarnessSnapshot,
       // every reader of the practice set sees it, and the campaign owes another practice task in
       // its place rather than leaving the next session to pay to learn it again.
       if (finding.ruling === "check-defect") {
-        if (taskStates(read(request.log)).get(task.version) === "released") {
+        if (taskStates(read(request.log, TRACE_KINDS)).get(task.version) === "released") {
           append(request.log, "task.state", {
             version: task.version,
             state: "disputed",
@@ -305,22 +334,29 @@ export function listedPractice(
 ): Listed[] {
   const states = taskStates(events);
   const verdicts = verdictsOf(events);
+  const records = recordsOf(events);
   const againstFor = againstOf(events, contract);
   return tasks.map(({ version, task }) => {
-    const kept = record(events, version, parent);
+    const kept = records.get(version)?.get(parent) ?? EMPTY_RECORD;
     const against = againstFor(version);
     const measures = measuresOf(verdicts, kept.solves, against);
-    const ref = reference === parent ? null : record(events, version, reference);
+    const ref = reference === parent ? null : (records.get(version)?.get(reference) ?? EMPTY_RECORD);
     return {
       taskId: task.taskId,
       family: task.family,
       left: states.get(version) === "disputed",
-      ...kept,
+      solves: [...kept.solves],
+      passed: kept.passed,
       ...keyIfDefined("measures", measures.length > 0 ? measures : undefined),
       ...keyIfDefined(
         "reference",
         ref !== null && ref.solves.length > 0
-          ? { digest: reference, ...ref, measures: measuresOf(verdicts, ref.solves, against) }
+          ? {
+              digest: reference,
+              solves: [...ref.solves],
+              passed: ref.passed,
+              measures: measuresOf(verdicts, ref.solves, against),
+            }
           : undefined,
       ),
     };
@@ -333,7 +369,7 @@ export function listedPractice(
  *  harness/ also names the record under the reference, which a promotion moves off the parent.
  *  Only practice solves of released tasks are read (`record`). */
 function recordText(
-  events: readonly LogEvent[],
+  folded: FoldedPractice,
   version: string,
   roles: readonly (readonly [string | null, string])[],
   against: Against | null,
@@ -343,12 +379,11 @@ function recordText(
   for (const [digest, role] of roles) {
     if (digest !== null) named.set(digest, [...(named.get(digest) ?? []), role]);
   }
-  const verdicts = verdictsOf(events);
   return [...named]
     .map(([digest, [role, ...also]], index) => {
-      const kept = record(events, version, digest);
+      const kept = folded.records.get(version)?.get(digest) ?? EMPTY_RECORD;
       const which = `${role ?? ""}${also.length > 0 ? `, which is also ${also.join(" and ")}` : ""}`;
-      const measured = measuredClause(name, measuresOf(verdicts, kept.solves, against));
+      const measured = measuredClause(name, measuresOf(folded.verdicts, kept.solves, against));
       return `${index === 0 ? "Record under" : "Under"} ${which}: ${index === 0 ? "passed " : ""}${String(kept.passed)} of ${String(kept.solves.length)}${measured}.`;
     })
     .join(" ");
@@ -360,6 +395,7 @@ function practiceTaskNotes(
   events: readonly LogEvent[],
   task: PracticeTask,
   info: {
+    readonly folded: FoldedPractice;
     readonly sessionId: string;
     readonly roles: readonly (readonly [string | null, string])[];
     readonly against: Against | null;
@@ -373,13 +409,37 @@ function practiceTaskNotes(
     practiceRan(events).filter(({ started, under }) => started > sessionStart && under.task === task.version),
   ).filter((solve) => passed(solve) !== null).length;
   return [
-    recordText(events, task.version, info.roles, info.against, info.name),
+    recordText(info.folded, task.version, info.roles, info.against, info.name),
     ...(count >= PRACTICE_NOTE_AT
       ? [
           `Note: ${task.task.taskId} has now been practised ${String(count)} times in this session; further single-task tuning risks overfitting.`,
         ]
       : []),
   ];
+}
+
+function choosePracticeTasks(bench: Bench, requested: readonly string[]) {
+  const offered = new Map(bench.tasks.map((task) => [task.task.taskId, task]));
+  const unknown = requested.find((id) => !offered.has(id));
+  if (unknown !== undefined) {
+    throw new Error(
+      `${unknown} is not one of this session's practice tasks: ${[...offered.keys()].join(", ")}`,
+    );
+  }
+  const chosen = requested.flatMap((id) => offered.get(id) ?? []);
+  const asked = read(bench.request.log, CALL_KINDS);
+  const states = taskStates(asked);
+  const closed = chosen.find(
+    ({ version }) => states.get(version) !== "released" || bench.faulty.has(version),
+  );
+  if (closed !== undefined) throw new Error(`${closed.task.taskId} is no longer a practice task`);
+  const left = practiceLeft(bench, asked);
+  if (chosen.length > left) {
+    throw new Error(
+      `only ${plural(left, "practice solve")} left, and this asks for ${String(chosen.length)}`,
+    );
+  }
+  return chosen;
 }
 
 export function practiceTool(bench: Bench): SeatTool {
@@ -400,26 +460,7 @@ export function practiceTool(bench: Bench): SeatTool {
       ),
     }),
     execute: async (args, _api, context) => {
-      const offered = new Map(bench.tasks.map((task) => [task.task.taskId, task]));
-      const unknown = args.tasks.find((id) => !offered.has(id));
-      if (unknown !== undefined) {
-        throw new Error(
-          `${unknown} is not one of this session's practice tasks: ${[...offered.keys()].join(", ")}`,
-        );
-      }
-      const chosen = args.tasks.flatMap((id) => offered.get(id) ?? []);
-      const asked = read(request.log);
-      const states = taskStates(asked);
-      const closed = chosen.find(
-        ({ version }) => states.get(version) !== "released" || bench.faulty.has(version),
-      );
-      if (closed !== undefined) throw new Error(`${closed.task.taskId} is no longer a practice task`);
-      const left = practiceLeft(bench, asked);
-      if (chosen.length > left) {
-        throw new Error(
-          `only ${plural(left, "practice solve")} left, and this asks for ${String(chosen.length)}`,
-        );
-      }
+      const chosen = choosePracticeTasks(bench, args.tasks);
       // Stop sibling solves on a host fault, then let this tool record its refusal before the
       // session ends through `over`. Aborting the seat here loses durable's unfinished call.
       const failed = new AbortController();
@@ -467,19 +508,22 @@ export function practiceTool(bench: Bench): SeatTool {
       const names = [`the objective (${request.contract.objective?.quantity ?? ""})`];
       const name = () => names.shift() ?? "the objective";
       const againstFor = againstOf(events, request.contract);
-      // A task's record is read once all its solves finished, so it follows its last solve alone.
+      const stands = standsOf(events);
+      const scored = verdictsOf(events);
+      const folded = { records: recordsOf(events), verdicts: scored };
+      const solves = new Map(solvesIn(events).map((s) => [s.id, s]));
       const flat = solved.flat();
       const last = new Map(flat.map(({ task }, at) => [task.version, at]));
       const programs = installedPrograms(ran.harness.toolTree);
       const said = flat.map(({ task, solve, ending, lines }, at) => {
-        const shown = rejectionAside(events, { id: solve, ending })
+        const shown = rejectionAside(events, { id: solve, ending }, stands)
           ? "rejection set aside"
           : endingText(ending);
         const against = againstFor(task.version);
         return [
-          `${task.task.taskId}${under === "reference" ? " under the reference harness" : ""}: ${shown}. Solve ${solve}.${usedText(events, solve)}${callsText(events, solve, programs)}${measuredText(events, solve, against, name)}`,
+          `${task.task.taskId}${under === "reference" ? " under the reference harness" : ""}: ${shown}. Solve ${solve}.${usedText(solves, solve)}${callsText(events, solve, programs)}${measuredText(scored, solve, against, name)}`,
           ...(last.get(task.version) === at
-            ? practiceTaskNotes(events, task, { sessionId: request.id, roles, against, name })
+            ? practiceTaskNotes(events, task, { folded, sessionId: request.id, roles, against, name })
             : []),
           ...lines,
         ].join("\n");
@@ -516,9 +560,8 @@ export function traceTool(bench: Bench): SeatTool {
       const released =
         ran !== undefined &&
         (versions.has(ran.under.task) ||
-          events.some(
-            ({ kind, data }) =>
-              kind === "task.state" && data.state === "released" && data.version === ran.under.task,
+          eventsOf(events, "task.state").some(
+            ({ event: { data } }) => data.state === "released" && data.version === ran.under.task,
           ));
       if (ran === undefined || !released) {
         throw new Error(`${args.solve} is not a solve of one of this session's practice tasks`);
@@ -563,14 +606,16 @@ async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<stri
     const { unpractised, practised } = bench.said.broken;
     return `${why}. Left so, ${bench.opened === null ? unpractised : practised}. Mend it and call finish again, ${again}.`;
   }
-  const events = read(request.log);
+  const events = read(request.log, CALL_KINDS);
   const left = practiceLeft(bench, events);
   // Practised under this exact digest, or run by a comparison as either of its harnesses.
   const tried =
     bench.opened === null ||
     now === bench.parent ||
     hasPractice(bench, events, now) ||
-    events.some(({ kind, data }) => kind === COMPARISON_STARTED && (data.old === now || data.fresh === now));
+    eventsOf(events, COMPARISON_STARTED).some(
+      ({ event: { data } }) => data.old === now || data.fresh === now,
+    );
   const untried = !tried && left > 0 && told.get("untried") !== now;
   const unreadKey = `${now}@${bench.reference.harness.digest}`;
   const unread = told.get("unread") === unreadKey ? null : ((await unmeasured?.(now)) ?? null);

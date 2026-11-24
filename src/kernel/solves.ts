@@ -6,7 +6,7 @@ import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from ".
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { type FileManifest, manifestOf } from "./answer-files.ts";
 import { type Condition, conditionsOf, type Limits, limitsIn } from "./condition.ts";
-import type { LogEvent } from "./log.ts";
+import { eventsOf, type LogEvent } from "./log.ts";
 import type { Verdict } from "./verify.ts";
 
 /** One solve attempt from `solve.started` to `solve.finished` (null fields while still open). */
@@ -44,51 +44,63 @@ export interface Judged {
   readonly checker: Verdict | null;
 }
 
+const EXAMINER_STARTS = ["exam.started", "draft.started"] as const;
+
 /** Every solve attempt in log start order. */
-export function solvesIn(events: readonly LogEvent[]): Solve[] {
+export function solvesIn(events: readonly LogEvent[], upTo = events.length - 1): Solve[] {
   const solves = new Map<string, Solve>();
-  for (const [index, { kind, data }] of events.entries()) {
+  for (const {
+    index,
+    event: { data },
+  } of eventsOf(events, "solve.started", upTo)) {
     if (!isString(data.solve)) continue;
-    if (kind === "solve.started") {
-      solves.set(data.solve, {
-        id: data.solve,
-        started: index,
-        finished: null,
-        condition: isString(data.condition) ? data.condition : "",
-        ending: null,
-        start: data,
-        end: null,
-      });
-    } else if (kind === "solve.finished") {
-      const started = solves.get(data.solve);
-      if (started !== undefined) {
-        solves.set(data.solve, { ...started, finished: index, ending: asRecord(data.ending), end: data });
-      }
+    solves.set(data.solve, {
+      id: data.solve,
+      started: index,
+      finished: null,
+      condition: isString(data.condition) ? data.condition : "",
+      ending: null,
+      start: data,
+      end: null,
+    });
+  }
+  for (const {
+    index,
+    event: { data },
+  } of eventsOf(events, "solve.finished", upTo)) {
+    const started = isString(data.solve) ? solves.get(data.solve) : undefined;
+    if (started !== undefined && index > started.started) {
+      solves.set(started.id, { ...started, finished: index, ending: asRecord(data.ending), end: data });
     }
   }
   return [...solves.values()];
 }
 
 /** Session ids of Examiner writing and drafting sessions (`exam.started`, `draft.started`). */
-export function examinerSessions(events: readonly LogEvent[]): Set<JsonValue | undefined> {
+export function examinerSessions(
+  events: readonly LogEvent[],
+  upTo = events.length - 1,
+): Set<JsonValue | undefined> {
   return new Set(
-    events.flatMap(({ kind, data }) =>
-      kind === "exam.started" || kind === "draft.started" ? [data.session] : [],
-    ),
+    EXAMINER_STARTS.flatMap((kind) => eventsOf(events, kind, upTo).map(({ event }) => event.data.session)),
   );
 }
 
 /** Every solve except Examiner probes (`try_reference` / legacy `try_task`). */
-export function countedSolves(events: readonly LogEvent[]): Solve[] {
-  const sessions = examinerSessions(events);
-  return solvesIn(events).filter(({ start }) => !sessions.has(start.comparison));
+export function countedSolves(events: readonly LogEvent[], upTo = events.length - 1): Solve[] {
+  const sessions = examinerSessions(events, upTo);
+  return solvesIn(events, upTo).filter(({ start }) => !sessions.has(start.comparison));
 }
 
 /** Counted solves paired with their verified condition, omitting any solve whose opened harness
  *  disagreed with its condition. */
-export function ranUnder(events: readonly LogEvent[], solves = countedSolves(events)): Ran[] {
+export function ranUnder(
+  events: readonly LogEvent[],
+  solves = countedSolves(events),
+  upTo = events.length - 1,
+): Ran[] {
   if (solves.length === 0) return [];
-  const conditions = conditionsOf(events, new Set(solves.map(({ condition }) => condition)));
+  const conditions = conditionsOf(events, new Set(solves.map(({ condition }) => condition)), upTo);
   return solves.flatMap((solve) => {
     const under = conditions.get(solve.condition);
     const opened = solve.end?.harness;
@@ -107,16 +119,14 @@ export function solverLast(
   events: readonly LogEvent[],
 ): { readonly model: string; readonly effort: string; readonly limits: Limits } | null {
   const tested = new Map(
-    events.flatMap(({ kind, data }) => {
+    eventsOf(events, "condition.recorded").flatMap(({ event: { data } }) => {
       const condition = asRecord(data.condition);
-      return kind === "condition.recorded" && isString(data.id) && condition?.side === "test"
-        ? [[data.id, condition] as const]
-        : [];
+      return isString(data.id) && condition?.side === "test" ? [[data.id, condition] as const] : [];
     }),
   );
-  const started = events.findLast(
-    ({ kind, data }) => kind === "solve.started" && isString(data.condition) && tested.has(data.condition),
-  )?.data.condition;
+  const started = eventsOf(events, "solve.started").findLast(
+    ({ event: { data } }) => isString(data.condition) && tested.has(data.condition),
+  )?.event.data.condition;
   const ran = isString(started) ? tested.get(started) : undefined;
   const limits = limitsIn(ran?.limits);
   return ran !== undefined && isString(ran.model) && isString(ran.effort) && limits !== null
@@ -127,10 +137,8 @@ export function solverLast(
 /** Finished solves from `solves`, ordered by `finished` event index. */
 export function ended<Each extends Solve>(solves: readonly Each[]): (Each & Ended)[] {
   return solves
-    .flatMap((solve) =>
-      solve.finished === null || solve.end === null
-        ? []
-        : [{ ...solve, finished: solve.finished, end: solve.end }],
+    .flatMap((s) =>
+      s.finished !== null && s.end !== null ? [{ ...s, finished: s.finished, end: s.end }] : [],
     )
     .toSorted((a, b) => a.finished - b.finished);
 }
@@ -147,25 +155,20 @@ export function rejected(ending: JsonObject | null | undefined): boolean {
 }
 
 /** Last Referee ruling per solve (null when the Referee session ended without ruling). */
-export function rulingsOf(events: readonly LogEvent[]): Map<string, string | null> {
+export function rulingsOf(events: readonly LogEvent[], upTo = events.length - 1): Map<string, string | null> {
   return new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "referee.finding" && isString(data.solve)
-        ? [[data.solve, isString(data.ruling) ? data.ruling : null] as const]
-        : [],
+    eventsOf(events, "referee.finding", upTo).flatMap(({ event: { data } }) =>
+      isString(data.solve) ? [[data.solve, isString(data.ruling) ? data.ruling : null] as const] : [],
     ),
   );
 }
 
 /** Provider error from the last Referee finding touching any of `solves`, or null. */
 export function refereeErrorOf(events: readonly LogEvent[], solves: readonly string[]): string | null {
-  const error = events.findLast(
-    ({ kind, data }) =>
-      kind === "referee.finding" &&
-      isString(data.solve) &&
-      solves.includes(data.solve) &&
-      isString(data.error),
-  )?.data.error;
+  const wanted = new Set(solves);
+  const error = eventsOf(events, "referee.finding").findLast(
+    ({ event: { data } }) => isString(data.solve) && wanted.has(data.solve) && isString(data.error),
+  )?.event.data.error;
   return isString(error) ? error : null;
 }
 
@@ -176,8 +179,8 @@ export function labelsIn(
   field: "labels" | "passes" = "labels",
 ): Map<string, string> {
   const last = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "comparison.reported" && isString(data.session) ? [[data.session, data] as const] : [],
+    eventsOf(events, "comparison.reported").flatMap(({ event: { data } }) =>
+      isString(data.session) ? [[data.session, data] as const] : [],
     ),
   );
   return new Map(
@@ -205,26 +208,22 @@ export function rejectionAside(
 
 /** Last `verdict` event recorded for each solve. */
 export function verdictsOf(events: readonly LogEvent[]): Map<string, Judged> {
-  return new Map(
-    events.flatMap(({ kind, data }) =>
-      kind !== "verdict" || !isString(data.solve)
-        ? []
-        : [
-            [
-              data.solve,
-              {
-                solve: data.solve,
-                task: isString(data.task) ? data.task : null,
-                answer: data.answer,
-                ...keyIfDefined("files", data.files === undefined ? undefined : manifestOf(data.files)),
-                kind: isString(data.kind) ? data.kind : "",
-                fault: isString(data.fault) ? data.fault : null,
-                checker: checkerVerdict(data),
-              },
-            ] as const,
-          ],
-    ),
-  );
+  const found = new Map<string, Judged>();
+  for (const {
+    event: { data },
+  } of eventsOf(events, "verdict")) {
+    if (!isString(data.solve)) continue;
+    found.set(data.solve, {
+      solve: data.solve,
+      task: isString(data.task) ? data.task : null,
+      answer: data.answer,
+      ...keyIfDefined("files", data.files === undefined ? undefined : manifestOf(data.files)),
+      kind: isString(data.kind) ? data.kind : "",
+      fault: isString(data.fault) ? data.fault : null,
+      checker: checkerVerdict(data),
+    });
+  }
+  return found;
 }
 
 /** Parse the checker's verdict and objective measure from a `verdict` event payload. */

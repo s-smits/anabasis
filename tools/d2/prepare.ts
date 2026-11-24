@@ -15,7 +15,7 @@ import { draftOf } from "#src/examiner/draft.ts";
 import { feasibleOf } from "#src/examiner/write.ts";
 import { textFiles } from "#src/kernel/answer-files.ts";
 import { contractHash } from "#src/kernel/contract.ts";
-import { append, type EventKind, type LogEvent, read } from "#src/kernel/log.ts";
+import { append, type EventKind, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { poolOf, releaseOrder } from "#src/kernel/reports.ts";
 import { SIZE, sizeLines } from "#src/kernel/size.ts";
 import { admissionsOf, packageGate, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
@@ -24,6 +24,10 @@ import { awaitingLines, openCampaign, PACK_OPTIONS, packNamed } from "./campaign
 import { exampleId } from "./exam.ts";
 import { type Campaign, COMPARISON_OPTIONS } from "./round.ts";
 import { recordedSetting, targetNamed } from "./setting.ts";
+
+type Recorder = (kind: EventKind, data: Parameters<typeof append>[2]) => void;
+type Packages = ReadonlyMap<string, ReturnType<Campaign["pack"]>>;
+type LabelEntry = readonly [string, "held" | "refused", string, string];
 
 /** The practice tasks a campaign is brought to where no command names a count. */
 export const PRACTICE = 6;
@@ -44,6 +48,93 @@ export function ungated(campaign: Pick<Campaign, "tasks" | "pack">, events: read
   return campaign.tasks.map(campaign.pack).filter((task) => !gated.has(taskVersion(task)));
 }
 
+function proposeUngated(campaign: Campaign, events: readonly LogEvent[], record: Recorder): void {
+  const [known, fresh] = [taskStates(events), ungated(campaign, events)];
+  let refused = 0;
+  for (const task of fresh) {
+    const version = taskVersion(task);
+    if (!known.has(version)) record("task.proposed", { version, taskId: task.taskId, family: task.family });
+    const packaged = packageGate(campaign.contract, task);
+    record("task.gate", { version, gate: 1, ...packaged });
+    if (packaged.outcome === "refused") {
+      refused += 1;
+      record("task.state", { version, state: "refused" });
+      console.log(`${task.taskId}: refused: ${packaged.reason}`);
+    }
+  }
+  if (fresh.length > 0) {
+    console.log(
+      `${String(fresh.length)} of the pack's tasks proposed: ${String(fresh.length - refused)} held out, ${String(refused)} refused`,
+    );
+  }
+}
+
+async function verifyAccepted(
+  campaign: Campaign,
+  events: readonly LogEvent[],
+  packages: Packages,
+  record: Recorder,
+): Promise<boolean> {
+  const accepted = Map.groupBy(
+    (draftOf(events)?.accept ?? []).map(({ task, answer, files }) => ({
+      taskId: exampleId(task),
+      answer,
+      files: textFiles(files ?? []),
+    })),
+    ({ taskId }) => taskId,
+  );
+  const [before, currentPool] = [taskSets(events), poolOf(events)];
+  let awaited = false;
+  for (const version of before.held) {
+    const task = packages.get(version);
+    if (task === undefined || currentPool.feasible.has(version) || !accepted.has(task.taskId)) continue;
+    for (const { answer, files } of accepted.get(task.taskId) ?? []) {
+      awaited = true;
+      const verdict = await campaign.verify(task, answer, undefined, files);
+      if (verdict.kind !== "pass") continue;
+      record("task.feasible", {
+        version,
+        ...feasibleOf(campaign.log, campaign.contract, verdict, answer, files),
+      });
+      console.log(
+        `${task.taskId}: an accepted answer passes today's verifier, so a valid answer to it is on record`,
+      );
+      break;
+    }
+  }
+  return awaited;
+}
+
+function applyLabels(
+  packages: Packages,
+  events: readonly LogEvent[],
+  input: {
+    readonly labels: readonly LabelEntry[];
+    readonly note: string | undefined;
+    readonly record: Recorder;
+  },
+): void {
+  if (input.labels.length === 0) return;
+  const versionById = new Map<string, string>();
+  for (const [version, task] of packages) {
+    if (!versionById.has(task.taskId)) versionById.set(task.taskId, version);
+  }
+  const held = new Set(taskSets(events).held);
+  for (const [taskId, state, verdict, said] of input.labels) {
+    const version = versionById.get(taskId);
+    if (version === undefined || !held.has(version)) {
+      throw new Error(`${taskId} is no held-out task of this campaign, and only one is labelled`);
+    }
+    input.record("task.state", {
+      version,
+      state,
+      reason: `a person read the task as ${verdict}${input.note === undefined ? "" : `: ${input.note}`}`,
+    });
+    if (state === "refused") held.delete(version);
+    console.log(`${taskId}: ${said}`);
+  }
+}
+
 /**
  * `bun tools/d2/prepare.ts`. `heldBack`, the host's own release (`releaseOwed`), is read on the events
  * the release takes its tasks from, with no wait between that read and its appends: read before
@@ -61,73 +152,23 @@ export async function prepareCommand(
   }
   const campaign = await openCampaign(packNamed(values));
   const { log, contract } = campaign;
-
-  let events = read(log);
-  const record = (kind: EventKind, data: Parameters<typeof append>[2]) =>
+  let events = read(log, TRACE_KINDS);
+  const record: Recorder = (kind, data) => {
     events.push(append(log, kind, data));
-  const known = taskStates(events);
-  const fresh = ungated(campaign, events);
-  let refused = 0;
-  for (const task of fresh) {
-    const version = taskVersion(task);
-    if (!known.has(version)) {
-      record("task.proposed", { version, taskId: task.taskId, family: task.family });
-    }
-    const packaged = packageGate(contract, task);
-    record("task.gate", { version, gate: 1, ...packaged });
-    if (packaged.outcome === "refused") {
-      refused += 1;
-      record("task.state", { version, state: "refused" });
-      console.log(`${task.taskId}: refused: ${packaged.reason}`);
-    }
-  }
-  if (fresh.length > 0) {
-    console.log(
-      `${String(fresh.length)} of the pack's tasks proposed: ${String(fresh.length - refused)} held out, ${String(refused)} refused`,
-    );
-  }
+  };
+  proposeUngated(campaign, events, record);
 
   const packages = campaign.packages();
-  // Each held-out task an accept control of the drafted exam answers is rechecked under today's checks.
-  const accepted = Map.groupBy(
-    (draftOf(events)?.accept ?? []).map(({ task, answer, files }) => ({
-      taskId: exampleId(task),
-      answer,
-      files: textFiles(files ?? []),
-    })),
-    ({ taskId }) => taskId,
-  );
-  let before = taskSets(events);
-  let currentPool = poolOf(events);
-  let awaited = false;
-  for (const version of before.held) {
-    const task = packages.get(version);
-    if (task === undefined || currentPool.feasible.has(version) || !accepted.has(task.taskId)) continue;
-    for (const { answer, files } of accepted.get(task.taskId) ?? []) {
-      awaited = true;
-      const verdict = await campaign.verify(task, answer, undefined, files);
-      if (verdict.kind !== "pass") continue;
-      record("task.feasible", { version, ...feasibleOf(log, contract, verdict, answer, files) });
-      console.log(
-        `${task.taskId}: an accepted answer passes today's verifier, so a valid answer to it is on record`,
-      );
-      break;
-    }
-  }
-  if (awaited) {
-    events = read(log);
-    before = taskSets(events);
-    currentPool = poolOf(events);
-  }
+  if (await verifyAccepted(campaign, events, packages, record)) events = read(log, TRACE_KINDS);
+  const [before, currentPool] = [taskSets(events), poolOf(events)];
 
-  const labels = [
+  const labels: LabelEntry[] = [
     ...(values.keep ?? []).map((taskId) => [taskId, "held", "feasible", "kept in the scored set"] as const),
     ...(values.infeasible ?? []).map(
       (taskId) => [taskId, "refused", "infeasible", "refused as infeasible"] as const,
     ),
   ];
-  const recorded = recordedSetting(events);
-  const target = targetNamed(values.target ?? String(recorded?.target ?? SIZE.tasks));
+  const target = targetNamed(values.target ?? String(recordedSetting(events)?.target ?? SIZE.tasks));
   const pool = currentPool.practicePool;
   const missing = labels.length > 0 || heldBack(events) ? 0 : Math.max(0, practice - before.released.length);
   const released = Math.min(missing, Math.floor(pool.length / 2));
@@ -141,20 +182,7 @@ export async function prepareCommand(
     );
   }
 
-  // Only a held-out task is labelled: a label on any other would return or refuse a task no comparison left out.
-  for (const [taskId, state, verdict, said] of labels) {
-    const version = [...packages].find(([, task]) => task.taskId === taskId)?.[0];
-    if (version === undefined || !taskSets(events).held.includes(version)) {
-      throw new Error(`${taskId} is no held-out task of this campaign, and only one is labelled`);
-    }
-    record("task.state", {
-      version,
-      state,
-      reason: `a person read the task as ${verdict}${values.note === undefined ? "" : `: ${values.note}`}`,
-    });
-    console.log(`${taskId}: ${said}`);
-  }
-
+  applyLabels(packages, events, { labels, note: values.note, record });
   const sets = taskSets(events);
   console.log(`${String(sets.held.length)} held out, ${String(sets.released.length)} released for practice`);
   const scored = Math.min(target, poolOf(events).scorable.length);

@@ -1,29 +1,16 @@
 /**
- * `require-exhaustive-mapping` (generic): a lookup `Map` keyed by most members of a declared set, read with a
- * key the code does not spell, and held by no type to that set. `const EXAMINED = new Map([
- * ["finished", …], ["supplied", …], ["crashed", …], ["killed", …]])`, read as
- * `EXAMINED.get(ended)`, maps four of the eight ways an Examiner session ends: a session that ended
- * `stopped` reads as nothing, or as whatever default the reader supplies, and nobody is told. A
- * `Map`'s `get` takes any key, so the compiler holds every member only where the table says which
- * set it maps (`satisfies Record<Ending, string>` on the object its entries come from). An object
- * literal read with a typed key needs no such word: a key it lacks is already a type error.
- *
- * `@typescript-eslint/switch-exhaustiveness-check` (typescript-eslint, `src/rules/
- * switch-exhaustiveness-check.ts`) already holds a `switch` over a union to every member, and the
- * repository runs it as an error, so a switch is not read here. No upstream rule reads a lookup
- * table against a declared set; this one is written here.
+ * `require-exhaustive-mapping` (generic): a lookup `Map` keyed by most members of a declared set,
+ * read with a computed key, and held by no type to that set.
  */
 import * as ts from "typescript5";
 import type { TreeFinding } from "./tree-findings.ts";
 
-/** A declared set of values, as the literal census finds it. */
 interface KnownSet {
   name: string;
   values: ReadonlySet<string>;
   path: string;
 }
 
-/** A lookup table: its name, its keys and where it is declared. */
 interface Table {
   name: string;
   keys: ReadonlySet<string>;
@@ -31,26 +18,25 @@ interface Table {
   end: number;
 }
 
-/** The fewest keys a table holds. */
 const KEYS_FLOOR = 2;
-/** Methods that change a `Map`: a table changed after it is built is an accumulator. */
 const WRITES = new Set(["set", "delete", "clear"]);
+const NAME_KINDS = new Set([ts.SyntaxKind.Identifier, ts.SyntaxKind.StringLiteral]);
 
-/** The keys a `new Map` spells: literal pairs, or `Object.entries` of a plain object literal. */
 function tableKeys(value: ts.Expression): string[] | null {
   if (!ts.isNewExpression(value) || value.expression.getText() !== "Map") return null;
   const [items] = value.arguments ?? [];
-  if (items !== undefined && ts.isCallExpression(items) && items.expression.getText() === "Object.entries") {
+  if (items === undefined) return null;
+  if (ts.isCallExpression(items) && items.expression.getText() === "Object.entries") {
     const [object] = items.arguments;
     if (object === undefined || !ts.isObjectLiteralExpression(object)) return null;
-    const keys = object.properties.map((one) =>
-      ts.isPropertyAssignment(one) && (ts.isIdentifier(one.name) || ts.isStringLiteral(one.name))
-        ? one.name.text
-        : null,
-    );
+    const keys = object.properties.map((one) => {
+      if (!ts.isPropertyAssignment(one) || !NAME_KINDS.has(one.name.kind)) return null;
+      // SAFETY: `NAME_KINDS` enumerates `Identifier` and `StringLiteral`, both having `.text`.
+      return (one.name as ts.Identifier).text;
+    });
     return keys.every((one) => one !== null) ? keys : null;
   }
-  if (items === undefined || !ts.isArrayLiteralExpression(items)) return null;
+  if (!ts.isArrayLiteralExpression(items)) return null;
   const keys = items.elements.map((pair) => {
     const first = ts.isArrayLiteralExpression(pair) ? pair.elements[0] : undefined;
     return first !== undefined && ts.isStringLiteralLike(first) ? first.text : null;
@@ -58,27 +44,34 @@ function tableKeys(value: ts.Expression): string[] | null {
   return keys.every((one) => one !== null) ? keys : null;
 }
 
-/** Every unannotated table one file declares. */
 function tablesIn(file: ts.SourceFile): Table[] {
   const lineOf = (position: number): number => file.getLineAndCharacterOfPosition(position).line + 1;
   const found: Table[] = [];
   const visit = (node: ts.Node): void => {
+    if (ts.isTypeNode(node)) return;
     ts.forEachChild(node, visit);
     if (!ts.isVariableDeclaration(node) || !ts.isIdentifier(node.name) || node.type !== undefined) return;
-    const keys = node.initializer === undefined ? null : tableKeys(node.initializer);
-    if (keys === null || new Set(keys).size < KEYS_FLOOR) return;
-    const at = { line: lineOf(node.getStart(file)), end: lineOf(node.getEnd()) };
-    found.push({ name: node.name.text, keys: new Set(keys), ...at });
+    if (node.initializer === undefined) return;
+    const keys = tableKeys(node.initializer);
+    if (keys === null) return;
+    const unique = new Set(keys);
+    if (unique.size < KEYS_FLOOR) return;
+    found.push({
+      name: node.name.text,
+      keys: unique,
+      line: lineOf(node.getStart(file)),
+      end: lineOf(node.getEnd()),
+    });
   };
   visit(file);
   return found;
 }
 
-/** The names some file calls `name.get(key)` on with a computed key, and the names it changes. */
-function accessed(sources: ReadonlyMap<string, ts.SourceFile>): { read: Set<string>; written: Set<string> } {
+function accessed(sources: ReadonlyMap<string, ts.SourceFile>) {
   const read = new Set<string>();
   const written = new Set<string>();
   const visit = (node: ts.Node): void => {
+    if (ts.isTypeNode(node)) return;
     ts.forEachChild(node, visit);
     if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return;
     const { expression: owner, name } = node.expression;

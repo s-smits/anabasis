@@ -10,11 +10,11 @@
  * section 9); prints aggregate cluster counts, ruling breakdowns, and check names without emitting
  * raw exam-side rationale text.
  */
-import { read } from "#src/kernel/log.ts";
+import { read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { blockingOf } from "#src/kernel/verify.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { type EmbedWays, groupsOf, runVectorReader, vectorLines } from "./embed.ts";
-import { indexOf, NO_TRACES, text } from "./folds.ts";
+import { indexOf, text } from "./folds.ts";
 
 /** v1's line, kept for the reason above. */
 const SAME_COMPLAINT = 0.93;
@@ -51,7 +51,7 @@ function rowOf(ruled: readonly Ruled[]): string {
 
 /** One read of `log`: a head line and the groups worth naming, or one line where there is nothing. */
 async function restatedOf(log: string, ways: EmbedWays): Promise<string[]> {
-  const index = indexOf(read(log, NO_TRACES));
+  const index = indexOf(read(log, TRACE_KINDS));
   const said = [...index.rulings].flatMap(([solve, data]): Ruled[] => {
     const words = text(data.reason).trim();
     return words === ""

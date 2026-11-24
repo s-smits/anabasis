@@ -647,8 +647,11 @@ export function treeSites(): TreeSite[] {
   const idents = new Map([...code].map(([path, text]) => [path, new Set(text.match(IDENTIFIER))]));
   const tree: Tree = { owned, files, code, idents };
   const all = new Map([...files, ...prose]);
-  const parsed = parsedSources(callers);
-  const parsedOwned = new Map([...parsed].filter(([path]) => owned.has(path)));
+  const parsedOwned = parsedSources(owned);
+  const extraCallers = new Map(
+    [...callers].filter(([path, text]) => !owned.has(path) && /(?:\bfrom\s*["'][.#]|\bexport\b)/u.test(text)),
+  );
+  const parsed = new Map([...parsedOwned, ...parsedSources(extraCallers, "flat")]);
   return [
     ...exportsReadOnce(tree),
     ...copiedBlocks(parsedOwned),

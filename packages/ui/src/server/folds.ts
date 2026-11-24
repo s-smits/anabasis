@@ -16,8 +16,6 @@ import { stopRule } from "../../../../src/campaign/admission.ts";
 import { lastReports, poolOf } from "../../../../src/kernel/reports.ts";
 import { practiceRan, ranUnder, solvesIn, verdictsOf } from "../../../../src/kernel/solves.ts";
 import { taskSets } from "../../../../src/kernel/task.ts";
-import { tracesIn } from "../../../../src/kernel/trace.ts";
-import { countBy } from "../../../../src/meta/tally.ts";
 import type { TaskDraw } from "../models.ts";
 
 /** One log as it was read: the unit every fold below is kept for. */
@@ -48,13 +46,6 @@ export const ranIn = once(({ events }) => ranUnder(events));
 export const practiceIn = once(({ events }) => new Set(practiceRan(events).map(({ id }) => id)));
 export const verdictsIn = once(({ events }) => verdictsOf(events));
 export const conditionsIn = once(({ events }) => conditionsOf(events));
-/** How many calls each solve made (`tracesIn`), by id. */
-export const callsIn = once(({ events }) =>
-  countBy(
-    tracesIn(events).filter(({ seat, part }) => seat === "solve" && part === "call"),
-    ({ id }) => id,
-  ),
-);
 /** The one place each held-out task has (`poolOf`): the tasks waiting for a person's label and
  *  the exhausted ones are read off it, as the supply counts them (`supplyOf`,
  *  `src/campaign/admission.ts`). */

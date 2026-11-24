@@ -10,11 +10,13 @@ import { parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { hashJsonValue, requireJsonValue } from "../meta/stable-json.ts";
-import { append, type EventKind, type LogEvent, read } from "./log.ts";
+import { append, type EventKind, eventsOf, type LogEvent, read } from "./log.ts";
 import type { PriceTable } from "./meter.ts";
 
 /** The event that records a condition, once each. */
 const RECORDED: EventKind = "condition.recorded";
+const VERIFIED = new WeakMap<LogEvent, { readonly id: string; readonly condition: Condition }>();
+const SETTING_OF = new WeakMap<Setting, string>();
 
 /**
  * What the host holds every solve to. A harness never sets one: a file or a prompt that asks for a
@@ -119,9 +121,11 @@ export function conditionId(condition: Condition): string {
 
 /** A setting's identity. A whole condition may be passed: its task and its harness are left out. */
 export function settingId(setting: Setting): string {
+  const cached = SETTING_OF.get(setting);
+  if (cached !== undefined) return cached;
   const { contract, model, effort, prices, runtime, compaction } = setting;
   const { verifierTools, sandbox, limits, host, side } = setting;
-  return hashJsonValue({
+  const id = hashJsonValue({
     contract,
     model,
     effort,
@@ -134,6 +138,8 @@ export function settingId(setting: Setting): string {
     host,
     side,
   });
+  SETTING_OF.set(setting, id);
+  return id;
 }
 
 /**
@@ -152,7 +158,7 @@ export function recordCondition(log: string, condition: Condition): string {
 
 /** The host's code (`Condition.host`) of the last condition recorded, undefined before any. */
 export function lastHost(events: readonly LogEvent[]): string | undefined {
-  const host = asRecord(events.findLast(({ kind }) => kind === RECORDED)?.data.condition)?.host;
+  const host = asRecord(eventsOf(events, RECORDED).at(-1)?.event.data.condition)?.host;
   return isString(host) ? host : undefined;
 }
 
@@ -162,16 +168,21 @@ export function lastHost(events: readonly LogEvent[]): string | undefined {
 export function conditionsOf(
   events: readonly LogEvent[],
   ids: ReadonlySet<string> | null = null,
+  upTo = events.length - 1,
 ): Map<string, Condition> {
   const conditions = new Map<string, Condition>();
-  for (const event of events) {
-    if (event.kind !== RECORDED) continue;
+  for (const { event } of eventsOf(events, RECORDED, upTo)) {
     if (ids !== null && (!isString(event.data.id) || !ids.has(event.data.id))) continue;
-    // Only `recordCondition` writes the event, and the hash proves the record whole.
-    const condition = parseJsonAs<Condition>(asRecord(event.data.condition) ?? {});
-    const id = conditionId(condition);
-    if (id !== event.data.id) throw new Error(`${event.at}: a condition does not hash to its id`);
-    conditions.set(id, condition);
+    let verified = VERIFIED.get(event);
+    if (verified === undefined) {
+      // Only `recordCondition` writes the event, and the hash proves the record whole.
+      const condition = parseJsonAs<Condition>(asRecord(event.data.condition) ?? {});
+      const id = conditionId(condition);
+      if (id !== event.data.id) throw new Error(`${event.at}: a condition does not hash to its id`);
+      verified = { id, condition };
+      VERIFIED.set(event, verified);
+    }
+    conditions.set(verified.id, verified.condition);
   }
   return conditions;
 }

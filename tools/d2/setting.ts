@@ -48,7 +48,7 @@ import { clampThinkingLevel, type ThinkingLevel } from "@earendil-works/pi-ai";
 import { THINKING_LEVELS } from "@earendil-works/pi-ai/providers/model-schema";
 import type { Limits } from "#src/kernel/condition.ts";
 import { STARTED } from "#src/campaign/comparison.ts";
-import { append, type LogEvent } from "#src/kernel/log.ts";
+import { append, eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { SIZE } from "#src/kernel/size.ts";
 import type { solverLast } from "#src/kernel/solves.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
@@ -159,15 +159,13 @@ const PARTS: readonly {
 /** The scored tasks `--target` asks for: a whole number of at least one. Anything else would draw
  *  a set nobody asked for: no number draws none, and a negative one all but the last. */
 export function targetNamed(flag: string): number {
-  return wholeNamed("target", flag, "the tasks to score");
+  return wholeNamed("target", flag, "the tasks to score are a whole number of at least one");
 }
 
 /** A count a flag names, refused unless it is a whole number of at least one. */
-function wholeNamed(name: string, flag: string, what: string): number {
+function wholeNamed(name: string, flag: string | undefined, why: string): number {
   const count = Number(flag);
-  if (!Number.isInteger(count) || count < 1) {
-    throw new Error(`--${name} ${flag}: ${what} are a whole number of at least one`);
-  }
+  if (!Number.isInteger(count) || count < 1) throw new Error(`--${name} ${String(flag)}: ${why}`);
   return count;
 }
 
@@ -179,25 +177,28 @@ function wholeNamed(name: string, flag: string, what: string): number {
  */
 export function settingNamed(values: SettingFlags): NamedSetting {
   const given = { ...SETTING_DEFAULTS, ...defined(values) };
-  const minutes = Number(given["solve-minutes"]);
-  if (!Number.isInteger(minutes) || minutes < 1) {
-    throw new Error(
-      `--solve-minutes ${given["solve-minutes"]}: a solve's wall is a whole number of minutes, at least one`,
-    );
-  }
+  const minutes = wholeNamed(
+    "solve-minutes",
+    given["solve-minutes"],
+    "a solve's wall is a whole number of minutes, at least one",
+  );
   const named = given["solve-model-turns"];
-  const modelTurns = named === UNLIMITED ? undefined : Number(named);
-  if (modelTurns !== undefined && (!Number.isInteger(modelTurns) || modelTurns < 1)) {
-    throw new Error(
-      `--solve-model-turns ${named}: a solve's model turns are a whole number of at least one, or ${UNLIMITED}`,
-    );
-  }
-  const window = given["solver-window"] === undefined ? undefined : Number(given["solver-window"]);
-  if (window !== undefined && (!Number.isInteger(window) || window < 1)) {
-    throw new Error(
-      `--solver-window ${String(given["solver-window"])}: a solver's compaction window is a whole number of tokens`,
-    );
-  }
+  const modelTurns =
+    named === UNLIMITED
+      ? undefined
+      : wholeNamed(
+          "solve-model-turns",
+          named,
+          `a solve's model turns are a whole number of at least one, or ${UNLIMITED}`,
+        );
+  const window =
+    given["solver-window"] === undefined
+      ? undefined
+      : wholeNamed(
+          "solver-window",
+          given["solver-window"],
+          "a solver's compaction window is a whole number of tokens",
+        );
   // pi sends an effort it does not know as the model's lowest level, so that one is refused. It sends
   // a level the model does not serve as the next it does (`clampThinkingLevel`), and the setting
   // records that one (DeepSeek's `medium` as `high`). A model with no reasoning gets none.
@@ -244,21 +245,25 @@ function flagsOf({ solver, minutes, modelTurns, target, solves }: Recorded): Set
 }
 
 /** The flags as the record they name, with the defaults for those not given. */
-function recordOf(values: SettingFlags): Recorded {
-  const { solver, limits } = settingNamed(values);
+function recordOf(values: SettingFlags, named: NamedSetting): Recorded {
+  const { solver, limits } = named;
   return {
     solver: solver === undefined ? null : { ...solver },
     minutes: limits.wallSeconds / 60,
     modelTurns: limits.modelTurns ?? null,
     target: targetNamed(values.target ?? String(SIZE.tasks)),
-    solves: wholeNamed("solves", values.solves ?? String(SIZE.solves), "the solves a side"),
+    solves: wholeNamed(
+      "solves",
+      values.solves ?? String(SIZE.solves),
+      "the solves a side are a whole number of at least one",
+    ),
   };
 }
 
 /** The setting a log records for its campaign: the last one kept, or null where none reads whole. */
 export function recordedSetting(events: readonly LogEvent[]): Recorded | null {
   const { solver, minutes, turns, modelTurns, target, solves } =
-    events.findLast(({ kind }) => kind === KIND)?.data ?? {};
+    eventsOf(events, KIND).at(-1)?.event.data ?? {};
   const by = asRecord(solver);
   // An older record holds the prompts a solve was given, which every solve is
   // given alike since (`LIMITS.turns`); one that held another count ran under another setting.
@@ -293,7 +298,7 @@ export function recordedSetting(events: readonly LogEvent[]): Recorded | null {
 /** The solves a side an older record holds, which named none: the count its last
  *  comparison began at, since another count is another campaign, and the default where none began. */
 function ranAt(events: readonly LogEvent[]): number {
-  const solves = events.findLast(({ kind }) => kind === STARTED)?.data.solves;
+  const solves = eventsOf(events, STARTED).at(-1)?.event.data.solves;
   return isNumber(solves) ? solves : SIZE.solves;
 }
 
@@ -304,7 +309,8 @@ function ranAt(events: readonly LogEvent[]): number {
  */
 export function settingAsked(values: SettingFlags, recorded: Recorded | null): AskedSetting {
   const flags = recorded === null ? defined(values) : { ...flagsOf(recorded), ...defined(values) };
-  const asked = recordOf(flags);
+  const named = settingNamed(flags);
+  const asked = recordOf(flags, named);
   const moved = recorded === null ? [] : PARTS.filter(({ of }) => !sameJsonValue(asked[of], recorded[of]));
   if (recorded !== null && moved.length > 0) {
     const was = moved.flatMap(({ said }) => said(recorded) ?? []);
@@ -318,7 +324,7 @@ export function settingAsked(values: SettingFlags, recorded: Recorded | null): A
     );
   }
   return {
-    named: settingNamed(flags),
+    named,
     target: asked.target,
     solves: asked.solves,
     record: recorded === null ? asked : null,

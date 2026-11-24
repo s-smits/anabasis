@@ -18,7 +18,7 @@
  * `cost`, `exam-tasks` and `sessions`) are read past, since each is its move's default now or went
  * with the rule that read it.
  */
-import { type LogEvent, read } from "../kernel/log.ts";
+import { CALL_KINDS, type EventKind, eventsOf, type LogEvent, read } from "../kernel/log.ts";
 import { type Cap, patienceOf } from "../kernel/reports.ts";
 import { billedAll } from "../kernel/meter.ts";
 import { SIZE } from "../kernel/size.ts";
@@ -67,12 +67,21 @@ export type Terms = Readonly<Partial<Record<(typeof TERMS)[number], string>>>;
 /** The seats a campaign names a model for. The solver's is the setting's (`tools/d2/setting.ts`). */
 export const SEATS = ["builder", "examiner", "reviewer"] as const;
 const SETTING = "campaign.setting";
-const UNBILLED = /\.call$|^verdict$|^task\.|^condition\.|^exam\.drafted$/u;
-
 /** The paid solves of each campaign in flight in this process, by its log: a Builder's practice
  *  and a comparison's solves share one budget, so every solve in flight holds a reserve and two
  *  callers cannot both spend the last of it. */
 const FLYING = new Map<string, number>();
+
+const UNBILLED: ReadonlySet<EventKind> = new Set([
+  ...CALL_KINDS,
+  "verdict",
+  "condition.recorded",
+  "exam.drafted",
+  "task.proposed",
+  "task.feasible",
+  "task.gate",
+  "task.state",
+]);
 
 /** How many paid solves of the campaign whose log is `log` are in flight in this process. */
 export function inFlight(log: string): number {
@@ -90,7 +99,7 @@ export function budgetLeft(events: readonly LogEvent[], opening = openingOf(even
 /** Whether the campaign whose log is `log` holds a reserve for `count` more solves beside those in
  *  flight. A log whose opening names no budget holds every one. */
 export function affords(log: string, count: number): boolean {
-  const left = budgetLeft(read(log, (kind) => UNBILLED.test(kind)));
+  const left = budgetLeft(read(log, UNBILLED));
   return left === null || left.dollars >= (inFlight(log) + count) * left.reserve;
 }
 
@@ -106,7 +115,7 @@ export async function flying<T>(log: string, run: () => Promise<T>): Promise<T> 
 
 /** What a log's last opening holds a campaign to run by, or null where it holds none. */
 export function openingOf(events: readonly LogEvent[]): Opening | null {
-  const data = events.findLast(({ kind }) => kind === "campaign.opened")?.data;
+  const data = eventsOf(events, "campaign.opened").at(-1)?.event.data;
   if (data === undefined) return null;
   const budget = asRecord(data.budget);
   const seated = (named: JsonObject | null): Seat | null =>
@@ -153,7 +162,7 @@ export function planOf(
   },
   opening: Opening | null = openingOf(events),
 ): Plan {
-  const recorded = events.findLast(({ kind }) => kind === SETTING)?.data;
+  const recorded = eventsOf(events, SETTING).at(-1)?.event.data;
   const named = recorded?.target;
   const cap = Number(opening?.terms.promotions);
   return {

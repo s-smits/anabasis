@@ -35,26 +35,20 @@ export function activeDeveloperBinDirs(): string[] {
   return developerBinDirs;
 }
 
-/** The first existing `<dir>/<name>` across PATH, or null when PATH holds no such tool. */
-function firstPathResolution(name: string): string | null {
-  for (const dir of (Bun.env.PATH ?? "").split(":")) {
-    if (dir === "") continue;
-    const candidate = join(dir, name);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
 /** The direct path to a developer tool, or the bare name when this host resolves it through PATH. */
 export function hostTool(name: string): string {
   const remembered = resolvedTools.get(name);
   if (remembered !== undefined) return remembered;
-  const fromPath = firstPathResolution(name);
+  const fromPath = (Bun.env.PATH ?? "")
+    .split(":")
+    .filter(Boolean)
+    .map((dir) => join(dir, name))
+    .find(existsSync);
   const direct =
     fromPath === join("/usr/bin", name)
       ? activeDeveloperBinDirs()
           .map((dir) => join(dir, name))
-          .find((path) => existsSync(path))
+          .find(existsSync)
       : undefined;
   const answer = direct ?? fromPath ?? name;
   resolvedTools.set(name, answer);

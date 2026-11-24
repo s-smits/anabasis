@@ -11,7 +11,7 @@ import { PER_CHECK_MS } from "../kernel/verify.ts";
 import { REACH } from "./ladder.ts";
 import { budgetLine, FAIR, type SolveBudget, TASK, UNHELD } from "./prompt.ts";
 import { FROM_FILE, fromHome } from "./shell.ts";
-import { append, type LogEvent } from "../kernel/log.ts";
+import { append, eventsOf, type LogEvent } from "../kernel/log.ts";
 import { capturedJsonStringify, decodedJsonText, parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -516,9 +516,9 @@ function draftedFrom(args: Static<typeof DRAFT_PARAMETERS>): Draft {
 
 /** The exam a log holds: the draft of its last `exam.drafted`, or null. */
 export function draftOf(events: readonly LogEvent[]): Draft | null {
-  const draft = asRecord(events.findLast(({ kind }) => kind === "exam.drafted")?.data.draft);
+  const draft = asRecord(eventsOf(events, "exam.drafted").at(-1)?.event.data.draft);
   // `exam.drafted` is written by `drafting` alone, with a `Draft` under this key.
-  return draft === null ? null : parseJsonAs<Draft>(capturedJsonStringify(draft));
+  return draft === null ? null : parseJsonAs<Draft>(draft);
 }
 
 /** The drafting mode as `examine` seats it (`session.ts`): what the session is told, the

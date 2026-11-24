@@ -25,12 +25,11 @@
  */
 import { differenceOf } from "#src/kernel/compare.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
+import { type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { lastReports, pairsReported } from "#src/kernel/reports.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dot, type EmbedWays, groupsOf, runVectorReader, vectorLines } from "./embed.ts";
-import { NO_TRACES } from "./folds.ts";
 
 /** v1's line for a restated task. */
 const NEAR = 0.98;
@@ -84,7 +83,7 @@ function comparisonRows(events: readonly LogEvent[], written: readonly Written[]
 
 /** One read of `log`: a head line, a row a session and a comparison, or one line where there is nothing. */
 async function nearnessOf(log: string, ways: EmbedWays): Promise<string[]> {
-  const events = read(log, NO_TRACES);
+  const events = read(log, TRACE_KINDS);
   const tasks = proposalsOf(events).flatMap(({ version, session, task }) => {
     const input = task?.publicInput ?? null;
     if (input === null) return [];

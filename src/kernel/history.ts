@@ -4,7 +4,7 @@
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { type FileManifest, manifestOf } from "./answer-files.ts";
-import type { LogEvent } from "./log.ts";
+import { eventsOf, type LogEvent } from "./log.ts";
 import type { Task } from "./verify.ts";
 
 /** A task no session proposed came with the opening: a stored pack's or the drafted exam's. */
@@ -33,8 +33,8 @@ export function contentOf({ family, publicInput, hidden }: Omit<Task, "taskId">)
 
 /** Every proposal of a log, in the order the tasks were proposed. */
 export function proposalsOf(events: readonly LogEvent[]): Proposal[] {
-  return events.flatMap(({ kind, data }) => {
-    if (kind !== "task.proposed" || !isString(data.version)) return [];
+  return eventsOf(events, "task.proposed").flatMap(({ event: { data } }) => {
+    if (!isString(data.version)) return [];
     const task = asRecord(data.task);
     const family = task?.family ?? data.family;
     return [
@@ -83,7 +83,7 @@ export function acceptedAnswers(
   if (version === undefined) return [];
   const taskId = proposalsOf(events).findLast((proposal) => proposal.version === version)?.taskId ?? null;
   const wrong = wrongPassesIn(events);
-  return events.flatMap(({ kind, data }) =>
+  return eventsOf(events, ["task.feasible", "verdict"]).flatMap(({ event: { kind, data } }) =>
     data.answer !== undefined &&
     ((kind === "task.feasible" && data.version === version) ||
       (kind === "verdict" &&
@@ -119,9 +119,9 @@ export function failWrongPasses(
 /** Settled wrong passes across the log. A comparison can be settled only once (`settleReading`). */
 export function wrongPassesIn(events: readonly LogEvent[]): Set<string> {
   return new Set(
-    events.flatMap(({ kind, data }) =>
-      kind === "comparison.reported" ? [...wrongPasses(asRecord(asRecord(data.settled)?.passes) ?? {})] : [],
-    ),
+    eventsOf(events, "comparison.reported").flatMap(({ event: { data } }) => [
+      ...wrongPasses(asRecord(asRecord(data.settled)?.passes) ?? {}),
+    ]),
   );
 }
 

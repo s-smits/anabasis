@@ -3,21 +3,21 @@
  * multi-ask conversations, and interrupted Builder handovers (lane 15):
  *
  *   bun tools/wri/wri.ts reader continuity --log <log>
- *
- * Replaces `compactions.ts` by pairing every compaction record (tokens, seconds, error, priced
- * dollars, and whether `read_opening` followed within `REREAD_WINDOW` calls) with resting Examiner
- * conversation spans and interrupted Builder handover chains. Session lines open on the session id
- * so `bun run runs pulse` surfaces compactions and interrupted handovers directly on `BUILT` and
- * `EXAMINED` moments.
  */
-import type { LogEvent } from "#src/kernel/log.ts";
-import { type Call, type Traced, tracesIn } from "#src/kernel/trace.ts";
+import { type EventKind, eventsOf, type LogEvent } from "#src/kernel/log.ts";
+import type { Call, Traced } from "#src/kernel/trace.ts";
 import { isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { plural } from "#src/meta/text.ts";
+import { indexOf } from "./folds.ts";
 
 const NOT_RECORDED = "not recorded";
-/** How many subsequent tool calls after a compaction we check for `read_opening` recovery. */
 const REREAD_WINDOW = 3;
+const END_KINDS: readonly EventKind[] = [
+  "build.finished",
+  "exam.finished",
+  "draft.finished",
+  "solve.finished",
+];
 
 /** Whether `seat` / `id` called `read_opening` within `REREAD_WINDOW` calls after log line `after`. */
 export function rereadAfter(
@@ -34,16 +34,15 @@ export function rereadAfter(
   return next.slice(0, REREAD_WINDOW).some((call) => call.tool === "read_opening") ? "yes" : "no";
 }
 
-/** What a session's end records it billed, or undefined when no end event exists. */
 function endBilled(events: readonly LogEvent[], seat: string, id: string): number | null | undefined {
-  const end = events.findLast(
-    ({ kind, data }) => kind === `${seat}.finished` && (data.session === id || data.solve === id),
+  const want = `${seat}.finished`;
+  const end = eventsOf(events, END_KINDS).findLast(
+    ({ event: { kind, data } }) => kind === want && (data.session === id || data.solve === id),
   );
   if (end === undefined) return undefined;
-  return isNumber(end.data.billed) ? end.data.billed : null;
+  return isNumber(end.event.data.billed) ? end.event.data.billed : null;
 }
 
-/** Compaction event lines plus per-session compaction totals with `read_opening` recovery counts. */
 function compactionSection(events: readonly LogEvent[], traces: readonly Traced[]): string[] {
   const compactions = traces.filter((each) => each.part === "compacted");
   if (compactions.length === 0) return ["compactions: none on record"];
@@ -52,15 +51,13 @@ function compactionSection(events: readonly LogEvent[], traces: readonly Traced[
     const tokens = isNumber(data.tokensBefore) ? data.tokensBefore.toLocaleString("en-US") : NOT_RECORDED;
     const seconds = isNumber(data.seconds) ? data.seconds.toFixed(0) : NOT_RECORDED;
     const error = isString(data.error) ? data.error.slice(0, 80) : "none";
-    const billed = each.part === "compacted" ? each.billed.toFixed(2) : "0.00";
     const usages = Array.isArray(data.usages) ? String(data.usages.length) : NOT_RECORDED;
     const reread = each.seat === "solve" ? "n/a" : rereadAfter(traces, each.seat, each.id, each.index);
-    return `  line ${String(each.index + 1)} ${each.seat} ${each.id}: ${tokens} tok, ${seconds} s, err ${error}, ${usages} usages ($${billed}), read_opening<=3: ${reread}`;
+    return `  line ${String(each.index + 1)} ${each.seat} ${each.id}: ${tokens} tok, ${seconds} s, err ${error}, ${usages} usages ($${each.billed.toFixed(2)}), read_opening<=3: ${reread}`;
   });
-  const sessions = Map.groupBy(compactions, ({ seat, id }) => `${seat} ${id}`);
-  const totals = [...sessions].map(([name, own]) => {
+  const totals = [...Map.groupBy(compactions, ({ seat, id }) => `${seat} ${id}`)].map(([name, own]) => {
     const [seat = "", id = ""] = name.split(" ");
-    const sum = own.reduce((total, each) => total + (each.part === "compacted" ? each.billed : 0), 0);
+    const sum = own.reduce((total, each) => total + each.billed, 0);
     const missed =
       seat === "solve" ? 0 : own.filter((each) => rereadAfter(traces, seat, id, each.index) === "no").length;
     const ended = endBilled(events, seat, id);
@@ -76,17 +73,16 @@ function compactionSection(events: readonly LogEvent[], traces: readonly Traced[
   return [...totals, ...lines];
 }
 
-/** Resting Examiner conversations that span multiple asks, noting promotions crossed and bad ends. */
 function examinerContinuity(events: readonly LogEvent[]): string[] {
   const finished = new Map(
-    events.flatMap(({ kind, data }, index) =>
-      kind === "exam.finished" && isString(data.session)
+    eventsOf(events, "exam.finished").flatMap(({ index, event: { data } }) =>
+      isString(data.session)
         ? [[data.session, { index, ended: isString(data.ended) ? data.ended : NOT_RECORDED }] as const]
         : [],
     ),
   );
-  const starts = events.flatMap(({ kind, data }, index) =>
-    kind === "exam.started" && isString(data.session)
+  const starts = eventsOf(events, "exam.started").flatMap(({ index, event: { data } }) =>
+    isString(data.session)
       ? [
           {
             session: data.session,
@@ -97,20 +93,16 @@ function examinerContinuity(events: readonly LogEvent[]): string[] {
         ]
       : [],
   );
-  const groups = Map.groupBy(starts, ({ conversation }) => conversation);
-  const promotions = events.flatMap(({ kind }, index) => (kind === "harness.promoted" ? [index] : []));
-  return [...groups].flatMap(([conversation, asks]) => {
-    if (asks.length < 2 && asks.every(({ end }) => end === undefined || end.ended === "finished")) {
-      return [];
-    }
+  const promotions = eventsOf(events, "harness.promoted").map(({ index }) => index);
+  return [...Map.groupBy(starts, ({ conversation }) => conversation)].flatMap(([conversation, asks]) => {
+    if (asks.length < 2 && asks.every(({ end }) => end === undefined || end.ended === "finished")) return [];
     const first = asks[0]?.index ?? 0;
     const last = asks.at(-1)?.end?.index ?? events.length;
     const crossed = promotions.filter((at) => at > first && at < last).length;
     const nonFinished = asks.filter(({ end }) => end !== undefined && end.ended !== "finished");
     const badNote =
-      nonFinished.length === 0
-        ? "all finished"
-        : nonFinished.map(({ session, end }) => `${session} ${end?.ended ?? "open"}`).join(", ");
+      nonFinished.map(({ session, end }) => `${session} ${end?.ended ?? "open"}`).join(", ") ||
+      "all finished";
     const latest = asks.at(-1)?.session ?? conversation;
     return [
       `${latest} (exam conversation ${conversation}): ${plural(asks.length, "ask")} (${asks.map(({ session }) => session).join(" -> ")}), crossed ${plural(crossed, "promotion")}, ${badNote}`,
@@ -118,15 +110,14 @@ function examinerContinuity(events: readonly LogEvent[]): string[] {
   });
 }
 
-/** Builder sessions that opened after an interrupted (non-`finished`) predecessor. */
 function handoverSection(events: readonly LogEvent[]): string[] {
   const ends = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "build.finished" && isString(data.session) ? [[data.session, data] as const] : [],
+    eventsOf(events, "build.finished").flatMap(({ event: { data } }) =>
+      isString(data.session) ? [[data.session, data] as const] : [],
     ),
   );
-  const starts = events.flatMap(({ kind, data }) =>
-    kind === "build.started" && isString(data.session)
+  const starts = eventsOf(events, "build.started").flatMap(({ event: { data } }) =>
+    isString(data.session)
       ? [{ session: data.session, parent: isString(data.parent) ? data.parent.slice(0, 8) : "-" }]
       : [],
   );
@@ -147,7 +138,7 @@ function handoverSection(events: readonly LogEvent[]): string[] {
 
 /** Compaction recovery, resting Examiner continuity, and interrupted Builder handovers. */
 export function continuityRows(events: readonly LogEvent[]): string[] {
-  const traces = tracesIn(events);
+  const { traces } = indexOf(events);
   const exams = examinerContinuity(events);
   return [
     "continuity: compactions with read_opening recovery (within 3 calls), resting Examiner multi-ask spans, and interrupted Builder handovers",

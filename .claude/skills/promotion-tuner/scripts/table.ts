@@ -40,6 +40,7 @@ const OPTIONS = {
 const ACTIVE = "active h";
 const UNLOADED = "unloaded h";
 const FIRST_PROMOTION = "1st promotion h";
+const ROW_MODES = ["recent", "runs", "promotions", "cost"] as const;
 /** The measures a run's row gives as its own counts. */
 const COUNTED = [
   MEASURES.perComparison,
@@ -214,16 +215,23 @@ const costRows = (runs: readonly Run[]) =>
 
 async function main(args: CommandArgs): Promise<number> {
   const format = formatOf(args);
+  const rows = args.value("rows") ?? "recent";
+  if (!ROW_MODES.some((mode) => mode === rows)) {
+    return args.die(`--rows takes ${ROW_MODES.join(", ")}; got ${rows}`);
+  }
   const [has, holds] = [args.list("has"), args.list("holds")];
   const since = args.value("since") ?? SINCE;
-  const { runs, skipped } = await loadRuns({
-    home: args.value("runs"),
-    since,
-    names: args.list("name"),
-    has,
-    holds,
-    repo: runtimeProcess.cwd(),
-  });
+  const { runs, skipped } = await loadRuns(
+    {
+      home: args.value("runs"),
+      since,
+      names: args.list("name"),
+      has,
+      holds,
+      repo: runtimeProcess.cwd(),
+    },
+    rows === "cost" ? "full" : "unpriced",
+  );
   // Every live run, then the latest finished runs that promoted, newest first.
   const newest = (list: readonly Run[]) => list.toSorted((a, b) => b.last - a.last);
   const listed = [
@@ -239,9 +247,8 @@ async function main(args: CommandArgs): Promise<number> {
     ["promotions", () => printed(PROMOTION_HEAD, promotionRows(runs), format)],
     ["cost", () => printed(COST_HEAD, costRows(runs), format)],
   ]);
-  const rows = args.value("rows") ?? "recent";
   const table = tables.get(rows);
-  if (table === undefined) return args.die(`--rows takes ${[...tables.keys()].join(", ")}; got ${rows}`);
+  if (table === undefined) return args.die(`--rows takes ${ROW_MODES.join(", ")}; got ${rows}`);
   console.log(table());
   if (format === "tsv") return 0;
   if (rows === "recent") console.log(`\n${recentSummary(listed)}`);

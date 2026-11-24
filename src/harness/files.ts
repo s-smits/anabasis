@@ -19,6 +19,7 @@ const SKIP_DIR = /^(?:node_modules|\.?venv|vendor|include|__pycache__)$/;
 const SITE_DIR = /^(?:site|dist)-packages$/;
 /** A bundled interpreter's home, known by its Python library folder. */
 const INTERPRETER_HOME = /\/lib\/python\d[\d.]*\//;
+const PYTHON_LIB = /^python\d[\d.]*$/;
 const METADATA = /\.(?:dist-info|egg-info)$/;
 const PAST_NAME = /(?:-[^/]*)?\.(?:dist-info|egg-info)$/;
 const WHEEL_LIBS = /(^|\/)[^/]+\.libs\//;
@@ -62,6 +63,13 @@ interface QuotedSpan {
   readonly tasks: readonly string[];
 }
 
+interface TaskStrings {
+  readonly name: string;
+  readonly strings: readonly string[];
+}
+
+type MetadataMarks = ReadonlyMap<string, { readonly site: string; readonly name: string }>;
+
 /** Nonblank line count of `body`. */
 export const nonblank = (body: string): number =>
   body.split("\n").filter((line) => line.trim() !== "").length;
@@ -75,22 +83,9 @@ function resolved(path: string): string {
   return kept.join("/");
 }
 
-function installedBy(files: readonly { readonly path: string }[], recordOf: (path: string) => string | null) {
+function installedBy(marks: MetadataMarks, recordOf: (path: string) => string | null) {
   const paths = new Set<string>();
   const folders = new Set<string>();
-  const marks = new Map(
-    files.flatMap(({ path }) => {
-      const segments = path.split("/");
-      const at = segments.findIndex((seg, i) => i < segments.length - 1 && METADATA.test(seg));
-      if (at === -1) return [];
-      const folder = segments[at] ?? "";
-      const site = segments
-        .slice(0, at)
-        .map((seg) => `${seg}/`)
-        .join("");
-      return [[`${site}${folder}/`, { site, name: folder.replace(PAST_NAME, "") }] as const];
-    }),
-  );
   for (const [meta, { site, name }] of marks) {
     folders.add(meta);
     const record = recordOf(`${meta}RECORD`) ?? recordOf(`${meta}installed-files.txt`);
@@ -115,9 +110,10 @@ function installedBy(files: readonly { readonly path: string }[], recordOf: (pat
 
 function filterOwn(
   files: readonly { readonly path: string; readonly bytes: number }[],
+  marks: MetadataMarks,
   recordOf: (path: string) => string | null,
 ): string[] {
-  const installed = installedBy(files, recordOf);
+  const installed = installedBy(marks, recordOf);
   const homes = [
     ...new Set(files.map(({ path }) => path.slice(0, path.search(INTERPRETER_HOME) + 1))),
   ].filter(Boolean);
@@ -134,9 +130,21 @@ function filterOwn(
     .map(({ path }) => path);
 }
 
-function dirMode(mode: "all" | "site" | "count", name: string): "all" | "site" | "count" {
-  if (mode === "all") return SKIP_DIR.test(name) ? "count" : SITE_DIR.test(name) ? "site" : "all";
-  return mode === "site" && METADATA.test(name) ? "all" : "count";
+function isInterpreterHome(dir: string): boolean {
+  const lib = join(dir, "lib");
+  if (!existsSync(lib) || !lstatSync(lib).isDirectory()) return false;
+  return readdirSync(lib, { withFileTypes: true }).some(
+    (entry) =>
+      entry.isDirectory() && PYTHON_LIB.test(entry.name) && readdirSync(join(lib, entry.name)).length > 0,
+  );
+}
+
+function dirMode(mode: "all" | "site" | "count", name: string, child: string): "all" | "site" | "count" {
+  if (mode !== "all") return "count";
+  if (SKIP_DIR.test(name) || name.endsWith(".libs") || METADATA.test(name) || isInterpreterHome(child)) {
+    return "count";
+  }
+  return SITE_DIR.test(name) ? "site" : "all";
 }
 
 function walkTree(state: string, scope: "full" | "own") {
@@ -145,30 +153,37 @@ function walkTree(state: string, scope: "full" | "own") {
   if (!existsSync(tree)) return { root: tree, paths: empty, brokenLinks: 0, treeFiles: 0 };
   const root = realpathSync(tree);
   const files: { path: string; bytes: number }[] = [];
+  const marks = new Map<string, { readonly site: string; readonly name: string }>();
   let [brokenLinks, treeFiles] = [0, 0];
   const walk = (dir: string, prefix: string, mode: "all" | "site" | "count"): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       treeFiles += 1;
-      const full = join(dir, entry.name);
       if (entry.isDirectory()) {
-        const next = dirMode(mode, entry.name);
-        if (next !== "count" || scope === "full") walk(full, join(prefix, entry.name), next);
-      } else if (entry.isSymbolicLink() && !existsSync(full)) {
+        const child = join(dir, entry.name);
+        if (mode !== "count" && METADATA.test(entry.name)) {
+          const site = prefix === "" ? "" : `${prefix}/`;
+          marks.set(`${site}${entry.name}/`, { site, name: entry.name.replace(PAST_NAME, "") });
+        }
+        const next = dirMode(mode, entry.name, child);
+        if (next !== "count" || scope === "full") {
+          walk(child, next === "count" ? "" : join(prefix, entry.name), next);
+        }
+      } else if (entry.isSymbolicLink() && !existsSync(join(dir, entry.name))) {
         brokenLinks += 1;
       } else if (mode === "all" && entry.isSymbolicLink()) {
-        const target = realpathSync(full);
+        const target = realpathSync(join(dir, entry.name));
         if (target.startsWith(`${root}/`) && lstatSync(target).isFile()) {
           files.push({ path: join(prefix, entry.name), bytes: 0 });
         }
       } else if (mode === "all" && entry.isFile()) {
-        files.push({ path: join(prefix, entry.name), bytes: lstatSync(full).size });
+        files.push({ path: join(prefix, entry.name), bytes: lstatSync(join(dir, entry.name)).size });
       }
     }
   };
   walk(root, "", "all");
   const recordOf = (path: string) =>
     existsSync(join(root, path)) ? readFileSync(join(root, path), "utf8") : null;
-  return { root, paths: filterOwn(files, recordOf).toSorted(), brokenLinks, treeFiles };
+  return { root, paths: filterOwn(files, marks, recordOf).toSorted(), brokenLinks, treeFiles };
 }
 
 /** Files a harness wrote under `.toolchain/`, excluding installed packages and binaries. */
@@ -177,8 +192,8 @@ export function ownFiles(state: string): { readonly root: string; readonly paths
 }
 
 /** Written files (programs + guide), broken link count, tree entry count, and line size of one harness. */
-export function writtenFiles(state: string) {
-  const { root, paths, brokenLinks, treeFiles } = walkTree(state, "full");
+export function writtenFiles(state: string, scope: "full" | "own" = "full") {
+  const { root, paths, brokenLinks, treeFiles } = walkTree(state, scope);
   const guideFile = join(state, GUIDE_PATH);
   const entries = [
     ...paths.map((path) => [path, join(root, path)] as const),
@@ -252,22 +267,35 @@ export function stringsIn(value: JsonValue | undefined): string[] {
   return record === null ? [] : Object.entries(record).flatMap(([key, each]) => [key, ...stringsIn(each)]);
 }
 
-function wordsIn(text: string): { word: string; at: number }[] {
-  return [...text.matchAll(WORD_RE)].map((match) => ({ word: match[0].toLowerCase(), at: match.index }));
+function wordsOf(text: string): string[] {
+  return text.toLowerCase().match(WORD_RE) ?? [];
+}
+
+function bigramIndex(wanted: ReadonlySet<string> | null, length: number) {
+  if (wanted === null || length < 2) return null;
+  const pairs = new Map<string, Set<string>>();
+  for (const span of wanted) {
+    const [first = "", second = ""] = span.split(" ", 2);
+    pairs.set(first, (pairs.get(first) ?? new Set()).add(second));
+  }
+  return pairs;
 }
 
 /** Word spans of public inputs mapped to their tasks, dropping spans shared by every task. */
 export function spansOf(
-  tasks: readonly { readonly name: string; readonly strings: readonly string[] }[],
+  tasks: readonly TaskStrings[],
   length = QUOTE_WORDS,
+  wanted: ReadonlySet<string> | null = null,
 ) {
   const spans = new Map<string, Set<string>>();
-  for (const { name, strings } of tasks) {
-    for (const words of strings.map((text) => wordsIn(text).map(({ word }) => word))) {
-      for (let from = 0; from + length <= words.length; from += 1) {
-        const span = words.slice(from, from + length).join(" ");
-        spans.set(span, (spans.get(span) ?? new Set()).add(name));
-      }
+  if (wanted?.size === 0) return { spans, common: 0 };
+  const pairs = bigramIndex(wanted, length);
+  const streams = tasks.flatMap(({ name, strings }) => strings.map((text) => [name, wordsOf(text)] as const));
+  for (const [name, words] of streams) {
+    for (let from = 0; from + length <= words.length; from += 1) {
+      if (pairs !== null && pairs.get(words[from] ?? "")?.has(words[from + 1] ?? "") !== true) continue;
+      const span = words.slice(from, from + length).join(" ");
+      if (wanted === null || wanted.has(span)) spans.set(span, (spans.get(span) ?? new Set()).add(name));
     }
   }
   const everyone = new Set(tasks.map(({ name }) => name)).size;
@@ -283,13 +311,21 @@ export function quotedSpans(
   spans: ReadonlyMap<string, ReadonlySet<string>>,
   length = QUOTE_WORDS,
 ): QuotedSpan[] {
-  const words = wordsIn(text);
+  if (spans.size === 0) return [];
+  const starts = new Set([...spans.keys()].map((span) => span.split(" ", 1)[0] ?? ""));
+  const words = [...text.matchAll(WORD_RE)].map((match) => ({
+    word: match[0].toLowerCase(),
+    at: match.index,
+  }));
   const plain = words.map(({ word }) => word);
   const hits: QuotedSpan[] = [];
   const tasks = new Set<string>();
   let from = -1;
   for (let at = 0; at <= plain.length; at += 1) {
-    const holders = spans.get(plain.slice(at, at + length).join(" "));
+    const holders =
+      at + length <= plain.length && starts.has(plain[at] ?? "")
+        ? spans.get(plain.slice(at, at + length).join(" "))
+        : undefined;
     if (holders !== undefined) {
       from = from === -1 ? at : from;
       for (const task of holders) tasks.add(task);
@@ -305,11 +341,12 @@ export function quotedSpans(
 }
 
 /** Rare record/entity codes from public inputs (`S01-007`, `P-00123`, `C-01`), mapped to their tasks. */
-function rareCodes(tasks: readonly { readonly name: string; readonly strings: readonly string[] }[]) {
+function rareCodes(tasks: readonly TaskStrings[], wanted: ReadonlySet<string> | null = null) {
   const codes = new Map<string, Set<string>>();
+  if (wanted?.size === 0) return codes;
   for (const { name, strings } of tasks) {
     for (const token of strings.flatMap((text) => text.match(TOKEN_RE) ?? [])) {
-      if (token !== name && TASK_CODE_RE.test(token)) {
+      if (token !== name && (wanted === null ? TASK_CODE_RE.test(token) : wanted.has(token))) {
         codes.set(token, (codes.get(token) ?? new Set()).add(name));
       }
     }
@@ -342,10 +379,21 @@ export function namedTasks(
   tasks: readonly { readonly taskId: string; readonly publicInput: JsonValue }[],
 ): string[] {
   if (written.length === 0 || tasks.length === 0) return [];
+  const wantedSpans = new Set<string>();
+  const wantedCodes = new Set<string>();
+  for (const { text } of written) {
+    const words = wordsOf(text);
+    for (let from = 0; from + BUILDER_QUOTE_WORDS <= words.length; from += 1) {
+      wantedSpans.add(words.slice(from, from + BUILDER_QUOTE_WORDS).join(" "));
+    }
+    for (const token of text.match(TOKEN_RE) ?? []) {
+      if (TASK_CODE_RE.test(token)) wantedCodes.add(token);
+    }
+  }
   const inputs = tasks.map(({ taskId, publicInput }) => ({ name: taskId, strings: stringsIn(publicInput) }));
-  const { spans } = spansOf(inputs, BUILDER_QUOTE_WORDS);
+  const { spans } = spansOf(inputs, BUILDER_QUOTE_WORDS, wantedSpans);
   const rare = new Map([...spans].filter(([, holders]) => holders.size <= RARE_TASKS));
-  const codes = rareCodes(inputs);
+  const codes = rareCodes(inputs, wantedCodes);
   const found: string[] = [];
   for (const { path, text } of written) {
     const named = tasks

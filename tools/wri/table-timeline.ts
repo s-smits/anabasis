@@ -11,7 +11,7 @@
  */
 import { type Decided, short } from "#src/campaign/move.ts";
 import { decide } from "#src/campaign/decide.ts";
-import type { EventKind, LogEvent } from "#src/kernel/log.ts";
+import { type EventKind, eventsOf, type LogEvent, TRACE_KINDS } from "#src/kernel/log.ts";
 import type { Call } from "#src/kernel/trace.ts";
 import { HOUR_MS, MINUTE_MS } from "#src/meta/clock.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
@@ -39,7 +39,7 @@ interface Change {
 }
 
 /** The events after which the table is asked again. */
-const POINTS: ReadonlySet<EventKind> = new Set([
+const POINTS: readonly EventKind[] = [
   "campaign.opened",
   "campaign.move",
   "campaign.word",
@@ -53,9 +53,10 @@ const POINTS: ReadonlySet<EventKind> = new Set([
   "build.finished",
   "exam.started",
   "exam.finished",
-]);
+];
 /** The events between two points that can move the table without being a point themselves. */
-const FINE: ReadonlySet<EventKind> = new Set(["task.proposed", "task.state", "task.feasible"]);
+const FINE: readonly EventKind[] = ["task.proposed", "task.state", "task.feasible"];
+const EXAM_BOUNDS: readonly EventKind[] = ["exam.started", "exam.finished"];
 const MOVED = "campaign.move";
 const NOT_RECORDED = "not recorded";
 const REPO = resolve(import.meta.dir, "../..");
@@ -73,17 +74,65 @@ function keyOf(decided: Decided): string {
   return head;
 }
 
-/** The table's move on the first `upTo` events, each prefix read once. */
-function tableReader(events: readonly LogEvent[]) {
-  const seen = new Map<number, Table>();
-  return (upTo: number): Table => {
-    const known = seen.get(upTo);
-    if (known !== undefined) return known;
-    const prefix = events.slice(0, upTo);
-    const decided = decide(prefix, planOn(prefix));
-    const table = { decided, key: keyOf(decided) };
-    seen.set(upTo, table);
-    return table;
+/** Non-trace events plus the last `solve.turn` of each `turns-ended` solve (`poolOf` reads no other
+ *  trace events), keeping each kept event's raw log index for prefix mapping. */
+function compactReplay(events: readonly LogEvent[]) {
+  const turnsEnded = new Set(
+    eventsOf(events, "solve.finished").flatMap(({ event: { data } }) =>
+      isString(data.solve) && asRecord(data.ending)?.kind === "turns-ended" ? [data.solve] : [],
+    ),
+  );
+  const lastTurn = new Map<string, number>();
+  for (const { index, event } of eventsOf(events, "solve.turn")) {
+    if (isString(event.data.solve) && turnsEnded.has(event.data.solve)) lastTurn.set(event.data.solve, index);
+  }
+  const keepTurns = new Set(lastTurn.values());
+  const raw: number[] = [];
+  const compact: LogEvent[] = [];
+  for (const [index, event] of events.entries()) {
+    if (!TRACE_KINDS.has(event.kind) || keepTurns.has(index)) {
+      raw.push(index);
+      compact.push(event);
+    }
+  }
+  const cutOf = (upTo: number): number => {
+    let [lo, hi] = [0, raw.length];
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if ((raw[mid] ?? upTo) < upTo) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+  const prefixes = new Map<number, LogEvent[]>();
+  const prefixAt = (upTo: number): { readonly cut: number; readonly prefix: LogEvent[] } => {
+    const cut = cutOf(upTo);
+    const cached = prefixes.get(cut);
+    if (cached !== undefined) return { cut, prefix: cached };
+    const prefix = compact.slice(0, cut);
+    prefixes.set(cut, prefix);
+    return { cut, prefix };
+  };
+  const tables = new Map<number, Table>();
+  const pools = new Map<number, ReturnType<typeof poolOn>>();
+  return {
+    tableAt: (upTo: number): Table => {
+      const { cut, prefix } = prefixAt(upTo);
+      const known = tables.get(cut);
+      if (known !== undefined) return known;
+      const decided = decide(prefix, planOn(prefix));
+      const table = { decided, key: keyOf(decided) };
+      tables.set(cut, table);
+      return table;
+    },
+    poolAt: (upTo: number) => {
+      const { cut, prefix } = prefixAt(upTo);
+      const known = pools.get(cut);
+      if (known !== undefined) return known;
+      const pool = poolOn(prefix, prefix.length);
+      pools.set(cut, pool);
+      return pool;
+    },
   };
 }
 
@@ -93,8 +142,8 @@ function tableReader(events: readonly LogEvent[]) {
  * prefix that reads as now is found by halving over that point's event and the task events after it.
  */
 function changesOf(events: readonly LogEvent[], tableAt: (upTo: number) => Table): number[] {
-  const points = [...events.flatMap(({ kind }, index) => (POINTS.has(kind) ? [index] : [])), events.length];
-  const fine = events.flatMap(({ kind }, index) => (FINE.has(kind) ? [index + 1] : []));
+  const points = [...eventsOf(events, POINTS).map(({ index }) => index), events.length];
+  const fine = eventsOf(events, FINE).map(({ index }) => index + 1);
   const changes: number[] = [];
   let before = -1;
   for (const point of points) {
@@ -122,13 +171,13 @@ function changesOf(events: readonly LogEvent[], tableAt: (upTo: number) => Table
  *  the log ends. */
 function stoodOf(events: readonly LogEvent[], tableAt: (upTo: number) => Table, waits: readonly Call[]) {
   const changes = changesOf(events, tableAt);
+  const moves = eventsOf(events, MOVED);
   const end = events.at(-1)?.at ?? "";
   return changes.map((upTo, index): Change => {
     const table = tableAt(upTo);
     const next = changes[index + 1];
-    const began = events.findIndex(
-      (event, at) => at >= upTo && event.kind === MOVED && event.data.move === table.decided.move,
-    );
+    const began =
+      moves.find(({ index: at, event }) => at >= upTo && event.data.move === table.decided.move)?.index ?? -1;
     const cut = next ?? events.length;
     const ran = began !== -1 && began < cut;
     const from = events[Math.max(0, upTo - 1)]?.at ?? end;
@@ -148,16 +197,6 @@ function stoodOf(events: readonly LogEvent[], tableAt: (upTo: number) => Table, 
   });
 }
 
-/** The host-code digest each line ran under: the last `condition.recorded` at or before it. */
-function digestsOf(events: readonly LogEvent[]): (string | null)[] {
-  let last: string | null = null;
-  return events.map(({ kind, data }) => {
-    const host = kind === "condition.recorded" ? asRecord(data.condition)?.host : undefined;
-    if (isString(host)) last = host;
-    return last;
-  });
-}
-
 /** What one Examiner event says of its session. */
 function examinerLine({ kind, data }: LogEvent): string {
   const session = isString(data.session) ? data.session : "?";
@@ -169,10 +208,13 @@ function examinerLine({ kind, data }: LogEvent): string {
 
 /** The timeline's lines, `here` being the host-code digest of the tree the table is replayed under. */
 function timelineLines(events: readonly LogEvent[], here: string): string[] {
-  const tableAt = tableReader(events);
-  const digests = digestsOf(events);
+  const { tableAt, poolAt } = compactReplay(events);
+  const conditions = eventsOf(events, "condition.recorded").flatMap(({ index, event: { data } }) => {
+    const host = asRecord(data.condition)?.host;
+    return isString(host) ? [{ index, host }] : [];
+  });
   const ranAt = (index: number) => {
-    const digest = digests[index] ?? null;
+    const digest = conditions.findLast((each) => each.index <= index)?.host ?? null;
     if (digest === null) return NOT_RECORDED;
     return `${digest === here ? "=" : ""}${digest.slice(0, 8)}`;
   };
@@ -183,7 +225,6 @@ function timelineLines(events: readonly LogEvent[], here: string): string[] {
     const row = `${String(index + 1).padStart(6)}  ${at}Z  ${ranAt(index).padEnd(12)}  ${what}`;
     rows.set(index, [...(rows.get(index) ?? []), row]);
   };
-  const poolAt = (upTo: number) => poolOn(events, upTo);
   for (const change of stoodOf(events, tableAt, waits)) {
     const { upTo, table, hours, waited, until } = change;
     put(
@@ -198,18 +239,18 @@ function timelineLines(events: readonly LogEvent[], here: string): string[] {
       `admissible a first comparison from ${(events[held.index]?.at ?? "").slice(11, 19)}: ${poolAt(held.index + 1).text} · ${held.said}`,
     );
   }
-  const moves = events.flatMap((event, index) => (event.kind === MOVED ? [index] : []));
-  const open = events.slice(moves.at(-1) ?? events.length).some(({ kind }) => kind === "campaign.ended")
-    ? []
-    : openAt(events);
-  for (const index of moves) {
-    const data = events[index]?.data;
-    if (data === undefined) continue;
+  const moves = eventsOf(events, MOVED);
+  const lastMove = moves.at(-1)?.index ?? events.length;
+  const endedAfter = (eventsOf(events, "campaign.ended").at(-1)?.index ?? -1) >= lastMove;
+  const open = endedAfter ? [] : openAt(events);
+  const moveSessions = new Set(moves.map(({ event: { data } }) => data.session));
+  const unmatched = open.filter((id) => !moveSessions.has(id));
+  for (const { index, event } of moves) {
+    const { data } = event;
     const text = (value: unknown) => (isString(value) ? value : NOT_RECORDED);
     const recorded = `${text(data.move)}/${text(data.code)}${isString(data.session) ? ` ${data.session}` : ""}`;
     const mine = open.filter((id) => id === data.session);
-    const unmatched = open.filter((id) => !moves.some((at) => events[at]?.data.session === id));
-    const left = index === moves.at(-1) ? [...mine, ...unmatched] : mine;
+    const left = index === lastMove ? [...mine, ...unmatched] : mine;
     const last = left.length > 0 ? ` · begun, ${left.join(", ")} open at the log's end` : "";
     const pool = data.move === "compare" ? ` · ${poolAt(index).text}` : "";
     put(index, `move       recorded ${recorded.padEnd(24)} replayed ${tableAt(index).key}${pool}${last}`);
@@ -221,10 +262,8 @@ function timelineLines(events: readonly LogEvent[], here: string): string[] {
       `wait       Builder wait from ${from.slice(11, 19)} to ${at.slice(11, 19)} (${((ms ?? 0) / MINUTE_MS).toFixed(1)} min)`,
     );
   }
-  for (const [index, event] of events.entries()) {
-    if (event.kind === "exam.started" || event.kind === "exam.finished") put(index, examinerLine(event));
-  }
-  const distinct = [...new Set(digests.filter((each) => each !== null))];
+  for (const { index, event } of eventsOf(events, EXAM_BOUNDS)) put(index, examinerLine(event));
+  const distinct = [...new Set(conditions.map(({ host }) => host))];
   return [
     `table-timeline: this tree's table (host-code digest ${here.slice(0, 8)}) replayed on each prefix of the log; "recorded" is the log's own, "replayed" this tree's`,
     distinct.some((each) => each !== here)

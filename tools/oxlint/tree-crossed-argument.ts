@@ -79,7 +79,7 @@ function declaredIn(path: string, file: ts.SourceFile): Map<string, Declared> {
 
 /** The file each imported binding of a file comes from, and the name it has there (`*` for a
  *  namespace import). */
-function importsOf(path: string, file: ts.SourceFile, files: ReadonlySet<string>) {
+export function importsOf(path: string, file: ts.SourceFile, files: ReadonlySet<string>) {
   const bound = new Map<string, { home: string; name: string }>();
   for (const statement of file.statements) {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;

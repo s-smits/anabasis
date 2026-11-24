@@ -3,7 +3,7 @@
  * Examiner's shell and the Builder's preview; and each with what it says of itself, for the page.
  */
 import { CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
-import { closeSync, openSync, readdirSync, readSync, realpathSync, statSync } from "../meta/filesystem.ts";
+import { readdirSync, readHeadSync, realpathSync, statSync } from "../meta/filesystem.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { dirname, join } from "../meta/path.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
@@ -62,14 +62,7 @@ function accountAt(at: string, tree: string): string | null {
     const real = realpathSync(at);
     const closed = real.slice(tree.length).includes(`/${CORRECTNESS_MODEL_DIR}`);
     if (!statSync(real).isFile() || !containsPath(real, tree) || closed) return null;
-    const fd = openSync(real, "r");
-    const buffer = Buffer.alloc(HEAD_BYTES);
-    let head: string;
-    try {
-      head = buffer.subarray(0, readSync(fd, buffer, 0, HEAD_BYTES, 0)).toString("utf8");
-    } finally {
-      closeSync(fd);
-    }
+    const head = readHeadSync(real, HEAD_BYTES).toString("utf8");
     const opening = head.includes(NUL) ? null : OPENING.exec(head.replace(SHEBANG, ""));
     const said = opening?.slice(1).find((part) => part !== undefined) ?? "";
     const text = said
@@ -87,14 +80,21 @@ function accountAt(at: string, tree: string): string | null {
 export function programsOf(toolTree: string | null): Program[] {
   const found = programsAt(toolTree);
   const tree = toolTree === null || found.length === 0 ? "" : realpathSync(toolTree);
+  const libFiles = new Map<string, readonly string[]>();
+  const filesIn = (lib: string) => {
+    let entries = libFiles.get(lib);
+    if (entries === undefined) {
+      entries =
+        statSync(lib, { throwIfNoEntry: false })?.isDirectory() === true
+          ? readdirSync(lib).toSorted(compareCodeUnits)
+          : [];
+      libFiles.set(lib, entries);
+    }
+    return entries;
+  };
   return found.map(({ name, at }) => {
     const lib = join(dirname(dirname(at)), "lib");
-    const beside =
-      statSync(lib, { throwIfNoEntry: false })?.isDirectory() === true
-        ? readdirSync(lib)
-            .toSorted(compareCodeUnits)
-            .find((file) => file.replaceAll("_", "-").startsWith(`${name}.`))
-        : undefined;
+    const beside = filesIn(lib).find((file) => file.replaceAll("_", "-").startsWith(`${name}.`));
     const account = accountAt(at, tree) ?? (beside === undefined ? null : accountAt(join(lib, beside), tree));
     return { name, at, account };
   });

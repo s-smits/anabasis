@@ -22,7 +22,7 @@ import { short } from "#src/campaign/move.ts";
 import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/campaign/handover.ts";
 import { differenceOf, readsStepEitherWay, scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
-import type { LogEvent } from "#src/kernel/log.ts";
+import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { billedAll, costLine, spendOf } from "#src/kernel/meter.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
@@ -105,12 +105,12 @@ interface PractisedSession {
 }
 
 /** Lanes 13 and 16: one session's practice, and what its comparison then showed of it. */
-function practiceTriggers(log: Index, { build, changed, read, round }: PractisedSession): Trigger[] {
+function practiceTriggers(
+  log: Index,
+  { build, changed, read, round }: PractisedSession,
+  wonTasks: ReadonlySet<string>,
+): Trigger[] {
   const { session, finished } = build;
-  // A practice solve's condition names the state it ran under, so the log says by digest whether
-  // the harness that was measured is one the Builder tried: an edit made with the shell leaves no
-  // call to count, and a digest misses none. Practice after its comparison began counts for none.
-  // A digest leaves out Python's bytecode caches (`BYTECODE`, `src/meta/bundle-layout.ts`).
   const lastPractice = round.practice.at(-1);
   const unpractised = read.flatMap((candidate) => {
     const prior = round.practice.filter((solve) => solve.index < candidate.began);
@@ -129,18 +129,11 @@ function practiceTriggers(log: Index, { build, changed, read, round }: Practised
       ),
     ];
   });
-  // A session with no end record may still be running when the log is read: it is not finished by
-  // the log's last event, which is not the same as a session cut short.
   const ended = finished === null ? "not finished by the log's last event" : text(finished.ended);
   const fails = round.practice.filter((solve) => solve.outcome === "fail");
-  // A fail under the harness the session began from, or under one a solve ran under before it began
-  // (the reference, where the session followed a cut one), is a baseline's, which no edit of the
-  // session made or answered, and would otherwise read as a fail a change had answered.
   const older = new Set(log.solves.flatMap((solve) => (solve.index < build.from ? [solve.harness] : [])));
   const failed = fails.filter((fail) => fail.harness !== build.parent && !older.has(fail.harness));
   const earned = failed.filter((fail) => log.stands.get(fail.id) === "earned").length;
-  // A fail followed by a pass of the same task: under other bytes it may be the change answering
-  // the fail, and under the same bytes it is the solver's variance and answers nothing.
   const laterPass = (fail: Solve, bytes: "same" | "other") =>
     round.practice.some(
       (later) =>
@@ -152,13 +145,6 @@ function practiceTriggers(log: Index, { build, changed, read, round }: Practised
   const answered = failed.filter((fail) => laterPass(fail, "other")).length;
   const flipped = failed.filter((fail) => laterPass(fail, "same")).length;
   const exposed = round.exposed.size;
-  // A task won in one comparison is no win of another's, since one harness can be measured twice. A
-  // win on the objective or the bill counts as one on validity does, since a step can win every task
-  // where all solves were valid, and asking for a reference fail would keep lane 17 from opening on
-  // the promotion that most needs it.
-  const wonTasks = new Set(
-    wonOf(log).flatMap((each) => each.won.map((pair) => `${each.session} ${pair.task}`)),
-  );
   const quickWins = round.scoring.filter(
     (solve) =>
       solve.outcome === "pass" &&
@@ -192,14 +178,7 @@ function practiceTriggers(log: Index, { build, changed, read, round }: Practised
   ];
 }
 
-/**
- * Lane 16's wins, by solve: each comparison's tasks the new harness won, read as the comparison
- * paired them, with every counted solve of the task on each side: most wins are on the objective
- * between two valid answers. Lane 16 opens those solves' turns and calls, rather than rebuilding
- * the pairing by hand from a log of thousands of events. A task the report's test names is read by
- * the difference it recorded (`testedOf`), and only another by this tree's score, since a later
- * score can list as won a task the comparison tied or lost under the score it ran with.
- */
+/** Lane 16's wins, by solve: each comparison's tasks the new harness won. */
 export function wonOf(log: Index) {
   return log.compared.map(({ session, last, pairs: settled }) => {
     const pairs = settled();
@@ -213,8 +192,8 @@ export function wonOf(log: Index) {
   });
 }
 
-function winTriggers(log: Index): Trigger[] {
-  return wonOf(log).flatMap(({ session, pairs, won }) => {
+function winTriggers(wonList: ReturnType<typeof wonOf>): Trigger[] {
+  return wonList.flatMap(({ session, pairs, won }) => {
     const solves = won.map(
       (pair) =>
         `${short(pair.task)} new ${pair.solves?.fresh.join(" ") ?? "-"}, reference ${pair.solves?.old.join(" ") ?? "-"}`,
@@ -273,11 +252,13 @@ function programTriggers(log: Index): Trigger[] {
 }
 
 /** Lanes 13, 15 and 16: the harness, which is the Builder's. */
-function harnessTriggers(log: Index): Trigger[] {
+function harnessTriggers(log: Index, wonList: ReturnType<typeof wonOf>): Trigger[] {
   const comparisons = comparisonsOf(log.events);
+  const checkpoints = eventsOf(log.events, "build.checkpoint");
+  const buildEnds = eventsOf(log.events, BUILD_END);
+  const wonTasks = new Set(wonList.flatMap((each) => each.won.map((pair) => `${each.session} ${pair.task}`)));
   return log.builds.flatMap((build) => {
     const { session, finished, parent, calls } = build;
-    // Every comparison of the harness this session left, which can be measured more than once.
     const compared = log.compared.filter((each) => each.build === build);
     const practice = practiceOf(log, build);
     const round = {
@@ -292,16 +273,9 @@ function harnessTriggers(log: Index): Trigger[] {
       ),
     };
     const child = text(finished?.harness);
-    // Where the end record names no harness, the last one the session froze for a comparison or
-    // the host kept for it at the cut (`keepPractised`) is what it left.
     const left =
       child ||
-      text(
-        log.events.findLast(({ kind, data }) => kind === "build.checkpoint" && data.session === session)?.data
-          .harness,
-      );
-    // pi's `write` and `edit`, `write_file` in older sessions, and the tool tree where a shell
-    // command named it, since a session can keep tool files its file tools never wrote.
+      text(checkpoints.findLast(({ event: { data } }) => data.session === session)?.event.data.harness);
     const files = [
       ...new Set(calls.flatMap(({ tool, args }) => (FILE_WRITERS.has(tool) ? [text(args?.path)] : []))),
     ];
@@ -309,23 +283,26 @@ function harnessTriggers(log: Index): Trigger[] {
       ...files,
       ...new Set(calls.flatMap(({ args }) => /\.toolchain/.exec(text(args?.command)) ?? [])),
     ];
-    // A session a stop cut says nothing of what it changed: it has no end record, or the `killed`
-    // one a relaunch writes for it (`endCut`), which holds no `changed`, so a session cut after an
-    // hour of edits would read as having changed nothing. Its file-tool calls and the harness it
-    // left are what the end record would have said, so they stand in for `changed`. A shell command
-    // that names the tool tree does not: it may only run a program there, and standing in it would
-    // name killed sessions that wrote no file and left no harness. A
-    // cut session that changed its tools through the shell alone and never practised or compared
-    // the result therefore reads as unchanged.
     const edited =
       finished?.changed === undefined
         ? files.length > 0 || (left !== "" && left !== parent)
         : finished.changed === true;
-    // A shell command that only runs or lists the tool tree names it too, so `edited` decides:
-    // otherwise sessions whose end records read `changed` false would be named.
     const toolFiles = edited ? written.filter((path) => /tools|\.toolchain/.test(path)) : [];
     const fresh = edited ? round.scoring : [];
     const erring = fresh.filter((solve) => solve.errors > 0).length;
+    const read: PracticeCandidate[] = comparisons.flatMap(({ id, at, fresh: comparedFresh, report }) => {
+      const snapshot = checkpoints.some(
+        ({ index, event: { data } }) =>
+          data.session === session && data.harness === comparedFresh && index < at,
+      );
+      return build.from < at && (comparedFresh === child || snapshot)
+        ? [{ harness: comparedFresh, began: at, origin: "comparison", id, reported: report !== null }]
+        : [];
+    });
+    if (child !== "" && !read.some(({ harness }) => harness === child)) {
+      const end = buildEnds.find(({ event: { data } }) => data === finished)?.index ?? -1;
+      read.push({ harness: child, began: end, origin: "frozen" });
+    }
     return [
       ...firedIf(
         edited,
@@ -363,38 +340,9 @@ function harnessTriggers(log: Index): Trigger[] {
         `${session}: in ${share(erring, fresh.length)} solves under the new harness, a call marked an error, as every non-zero exit is, which a test reporting what is unmet may give by design`,
       ),
       ...firedIf(toolFiles.length > 0, "TOOLS EDITED", `${session}: ${toolFiles.join(", ")}`),
-      ...practiceTriggers(log, {
-        build,
-        changed: edited,
-        child,
-        read: practiceCandidates(log, build, comparisons),
-        round,
-      }),
+      ...practiceTriggers(log, { build, changed: edited, child, read, round }, wonTasks),
     ];
   });
-}
-
-/** Starts establish comparison use even without a report; a frozen child alone establishes none. */
-function practiceCandidates(
-  log: Index,
-  build: Build,
-  comparisons: ReturnType<typeof comparisonsOf>,
-): PracticeCandidate[] {
-  const child = text(build.finished?.harness);
-  const read: PracticeCandidate[] = comparisons.flatMap(({ id, at, fresh, report }) => {
-    const snapshot = log.events.some(
-      ({ kind, data }, index) =>
-        kind === "build.checkpoint" && data.session === build.session && data.harness === fresh && index < at,
-    );
-    return build.from < at && (fresh === child || snapshot)
-      ? [{ harness: fresh, began: at, origin: "comparison", id, reported: report !== null }]
-      : [];
-  });
-  if (child !== "" && !read.some(({ harness }) => harness === child)) {
-    const end = log.events.findIndex(({ kind, data }) => kind === BUILD_END && data === build.finished);
-    read.push({ harness: child, began: end, origin: "frozen" });
-  }
-  return read;
 }
 
 /** Lane 8, from a comparison's last report alone: whether it scored a task, what its cap
@@ -635,8 +583,8 @@ function reviewTriggers(log: Index): Trigger[] {
  * None for a log no campaign command wrote.
  */
 function campaignOf(log: Index): string[] {
-  const endings = log.events.flatMap(({ kind, data }, index) =>
-    kind === "campaign.ended" ? [`${text(data.ending)} at event ${String(index)}`] : [],
+  const endings = eventsOf(log.events, "campaign.ended").map(
+    ({ index, event }) => `${text(event.data.ending)} at event ${String(index)}`,
   );
   const opened = asRecord(log.of("campaign.opened").at(-1)?.budget);
   if (endings.length === 0 && opened === null) return [];
@@ -771,15 +719,16 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
 export function overview(events: readonly LogEvent[], launches: readonly Receipt[] = []): Overview {
   const log = indexOf(events);
   const { steps } = handoverOf(events);
+  const won = wonOf(log);
   return {
     rows: rowsOf(log, steps),
     triggers: [
       ...instrumentTriggers(log),
       ...taskTriggers(log),
-      ...harnessTriggers(log),
+      ...harnessTriggers(log, won),
       ...comparisonTriggers(log),
       ...solveTriggers(log, steps),
-      ...winTriggers(log),
+      ...winTriggers(won),
       ...programTriggers(log),
       ...reviewTriggers(log),
       ...promotionTriggers(log),

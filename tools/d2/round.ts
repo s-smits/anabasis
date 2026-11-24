@@ -12,7 +12,7 @@ import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import { type ObjectiveRule, testedSet, testOf, WEIGHTS } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
-import { read } from "#src/kernel/log.ts";
+import { read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { priceKey } from "#src/kernel/meter.ts";
 import { type Cap, capHolds } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
@@ -160,7 +160,7 @@ export async function parentNamed(
   campaign: Campaign,
   values: Pick<SessionFlags, "session" | "parent">,
 ): Promise<string> {
-  const began = read(campaign.log).find(
+  const began = read(campaign.log, TRACE_KINDS).find(
     ({ kind, data }) => kind === "build.started" && data.session === values.session,
   )?.data.parent;
   return (await keptAs(campaign, "--parent", isString(began) ? began : values.parent)).dir;
@@ -191,7 +191,10 @@ export function sessionNamed(
     reference: given.reference,
     states: campaign.states,
     memory: campaign.memory,
-    tasks: taskSets(read(campaign.log)).released.map((version) => ({ version, task: packageOf(version) })),
+    tasks: taskSets(read(campaign.log, TRACE_KINDS)).released.map((version) => ({
+      version,
+      task: packageOf(version),
+    })),
     contract: campaign.contract,
     resources: campaign.resources,
     ...seats.builder,
@@ -324,11 +327,11 @@ export async function campaignFor(
   const seats = seated === solved ? "paid" : "scripted";
   const cap = capNamed(values, seats);
   refereeNamed(values, seats);
-  const setting = settingAsked(values, recordedSetting(read(campaignLog(pack.name))));
+  const setting = settingAsked(values, recordedSetting(read(campaignLog(pack.name), TRACE_KINDS)));
   const campaign = await openCampaign({ ...pack, ...setting.named });
   const unrecorded =
     seats === "paid"
-      ? firstRecord(setting, solvingAs(campaign, setting.named), solverLast(read(campaign.log)))
+      ? firstRecord(setting, solvingAs(campaign, setting.named), solverLast(read(campaign.log, TRACE_KINDS)))
       : undefined;
   if (unrecorded !== undefined) throw new Error(unrecorded);
   return { cap, setting, campaign };
@@ -337,7 +340,7 @@ export async function campaignFor(
 /** A comparison's report and the stop rule as JSON, then its lines for a person to read: the
  *  prediction the comparison began with beside what it read, where the operator made one. */
 export function printReport(campaign: Campaign, id: string, report: Report): void {
-  const events = read(campaign.log);
+  const events = read(campaign.log, TRACE_KINDS);
   const said = predicted(events, id);
   console.log(JSON.stringify(report, null, 2));
   console.log(JSON.stringify(stopRule(events), null, 2));
@@ -350,17 +353,29 @@ export function printReport(campaign: Campaign, id: string, report: Report): voi
   }
 }
 
-/**
- * A report in lines, printed with every reading: the tasks its step was read on (`scored`, or the
- * frontier in an older report), with their untied tasks,
- * the least share of them the test detects four times in five (`detectable`), its false rate
- * between equal harnesses (`falseRate`) and its p, all read without the bill as the step is
- * (`stepOf`), and the same tasks as scored, which decide nothing; the reference against itself where the comparison carries it (`aaLines`); the tasks it drew, by what
- * became of each (`accounted`); and `valid`,
- * each harness by itself, as the tasks by how many of their solves were valid, which is what the
- * starter measurement reads of the starter, the reference harness of the first round; the
- * objective's margin. None for a report that compared nothing.
- */
+/** Formatted summary lines for a comparison report (test, A/A noise, task accounting, validity,
+ *  points, objective, valid-answer turns, and epoch worth); empty when nothing was compared. */
+function stepTestLines(test: Report["scored"] | Report["frontier"]): string[] {
+  if (test?.falseRate === undefined) return [];
+  const share = test.detectable ?? null;
+  // Some older reports read their step on their scores without the bill (`scoresIn`).
+  const unbilled = test.unbilled === undefined ? null : testOf(test.unbilled);
+  const stepped = unbilled ?? test;
+  const untied = stepped.wins + stepped.losses;
+  const on = unbilled === null ? "on the score" : "without the bill";
+  return [
+    `the step's test is read ${on} on ${plural(untied + stepped.ties, "tallied task")}, ${String(untied)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
+    `the test at these margins clears the level between equal harnesses ${String(Math.round(1000 * test.falseRate) / 10)}% of the time, never more than the level`,
+    // The test weighs margins, but a sweep's p is its count's alone.
+    `its p is ${rounded(stepped.p)}: the test weighs each untied task by its score${stepped.losses === 0 && untied > 0 ? `, and where every untied task is won p is one half to the power of their count whatever the margins: ${String(untied)} won read ${rounded(0.5 ** untied)}` : ""}`,
+    ...(unbilled === null
+      ? []
+      : [
+          `with the bill's points the same tasks read ${String(test.wins)}-${String(test.losses)}-${String(test.ties)}, p ${rounded(test.p)}, which decides nothing by itself`,
+        ]),
+  ];
+}
+
 export function reportLines({
   valid,
   objective,
@@ -379,27 +394,8 @@ export function reportLines({
     old === null || fresh === null ? [] : [{ old, fresh }],
   );
   const took = (side: "old" | "fresh") => String(median(both.map((each) => each[side])));
-  const test = testedSet(scored, frontier);
-  const share = test?.detectable ?? null;
-  // Some older reports read their step on their scores without the bill (`scoresIn`).
-  const unbilled = test?.unbilled === undefined ? null : testOf(test.unbilled);
-  const stepped = unbilled ?? test;
-  const untied = stepped === null ? 0 : stepped.wins + stepped.losses;
-  const on = unbilled === null ? "on the score" : "without the bill";
   return [
-    ...(test?.falseRate === undefined || stepped === null
-      ? []
-      : [
-          `the step's test is read ${on} on ${plural(untied + stepped.ties, "tallied task")}, ${String(untied)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
-          `the test at these margins clears the level between equal harnesses ${String(Math.round(1000 * test.falseRate) / 10)}% of the time, never more than the level`,
-          // The test weighs margins, but a sweep's p is its count's alone.
-          `its p is ${rounded(stepped.p)}: the test weighs each untied task by its score${stepped.losses === 0 && untied > 0 ? `, and where every untied task is won p is one half to the power of their count whatever the margins: ${String(untied)} won read ${rounded(0.5 ** untied)}` : ""}`,
-          ...(unbilled === null
-            ? []
-            : [
-                `with the bill's points the same tasks read ${String(test.wins)}-${String(test.losses)}-${String(test.ties)}, p ${rounded(test.p)}, which decides nothing by itself`,
-              ]),
-        ]),
+    ...stepTestLines(testedSet(scored, frontier)),
     ...(noise === null ? [] : aaLines(noise)),
     ...accounted(apart),
     `each harness by itself, as how many tasks had ${valid.old.map((_, count) => String(count)).join(", ")} valid answers in ${String(valid.old.length - 1)} solves (a count of tasks a column, not a share):`,
@@ -498,7 +494,7 @@ export async function comparedOn(
   const packageOf = packaged(campaign);
   return {
     starter: await starter(campaign),
-    ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract)),
+    ...scoredSet(read(campaign.log, TRACE_KINDS), setting.target, contractHash(campaign.contract)),
     solves: setting.solves,
     level: Number(values.level),
     objective: objectiveNamed(campaign),

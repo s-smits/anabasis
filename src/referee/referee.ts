@@ -10,7 +10,7 @@ import { type SeatTool, sit } from "../agent/session.ts";
 import { type AnswerFile, readAnswerFiles, shownFiles } from "../kernel/answer-files.ts";
 import type { Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, proposalsOf } from "../kernel/history.ts";
-import { append, type LogEvent, read } from "../kernel/log.ts";
+import { append, type LogEvent, read, TRACE_KINDS } from "../kernel/log.ts";
 import { priceKey } from "../kernel/meter.ts";
 import { verdictsOf } from "../kernel/solves.ts";
 import {
@@ -355,7 +355,7 @@ export async function runRefereeSession(given: {
 
 /** Referee one failed solve and log `referee.finding`. */
 export async function referee(reader: Reader, fail: RefereeCase): Promise<RefereeFinding> {
-  const events = read(fail.log);
+  const events = read(fail.log, TRACE_KINDS);
   const verdict = loggedVerdict(events, fail.solve, fail.log);
   if (verdict === null) {
     throw new Error(`solve ${fail.solve} has no answer on record: the Referee rules a rejected answer alone`);

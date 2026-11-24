@@ -8,7 +8,7 @@ import { epochsOf } from "#src/campaign/climb.ts";
 import { startOf } from "#src/campaign/comparison.ts";
 import { objectiveRuleIn, pairsOf, type Paired } from "#src/kernel/compare.ts";
 import { failWrongPasses, familiesOf, wrongPasses } from "#src/kernel/history.ts";
-import { type EventKind, type LogEvent, read } from "#src/kernel/log.ts";
+import { type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { lastReports, pairsReported, type Reported } from "#src/kernel/reports.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
@@ -65,17 +65,6 @@ export interface Comparison {
 
 /** How a log's first line opens, before its event's time. */
 const AT = '{"at":"';
-/** Kinds no score reads and the largest logs are mostly made of. */
-const UNREAD: ReadonlySet<EventKind> = new Set<EventKind>([
-  "solve.call",
-  "build.call",
-  "build.turn",
-  "draft.call",
-  "draft.turn",
-  "exam.turn",
-  "referee.turn",
-  "referee.call",
-]);
 
 const numberOr = (value: unknown) => (isNumber(value) ? value : null);
 
@@ -152,7 +141,7 @@ function selfPairs(events: readonly LogEvent[], report: Reported, versions: read
 }
 
 /** One campaign's reported comparisons that scored a task. */
-export function comparisonsIn(name: string, events: readonly LogEvent[]): Comparison[] {
+function comparisonsIn(name: string, events: readonly LogEvent[]): Comparison[] {
   const finished = new Map(solvesIn(events).map(({ id, end }) => [id, end]));
   const opened = Date.parse(events[0]?.at ?? "");
   const reports = lastReports(events);
@@ -223,7 +212,7 @@ async function readRecord(home: string | null, names: readonly string[], from: n
       .text();
     if (!(Date.parse(head.slice(AT.length)) >= from)) continue;
     try {
-      const events = read(path, UNREAD);
+      const events = read(path, TRACE_KINDS);
       if (!rehearsed(events)) comparisons.push(...comparisonsIn(name, events));
     } catch (error) {
       unread.push(`${name}: ${errorMessage(error)}`);

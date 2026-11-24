@@ -97,13 +97,8 @@ export function nodeRuntimeReadRoots(): string[] {
   }
   const home = homedir();
   for (const exe of candidates) {
-    const grand = dirname(dirname(exe));
-    const parent = dirname(exe);
-    const fallback = parent === home ? exe : parent;
-    const prefix = grand === home ? fallback : grand;
-    if (prefix !== "" && prefix !== home && !underSystemRoot(prefix) && existsSync(prefix)) {
-      roots.add(prefix);
-    }
+    const prefix = [dirname(dirname(exe)), dirname(exe), exe].find((dir) => dir !== home) ?? exe;
+    if (prefix !== "" && !underSystemRoot(prefix) && existsSync(prefix)) roots.add(prefix);
   }
   return [...roots].toSorted();
 }
@@ -112,20 +107,15 @@ function runBwrap(
   path: string,
   args: string[],
   env: OptionalEnvValues = Bun.env,
-): Bun.SyncSubprocess<"pipe", "pipe"> | Error {
+): { ok: true; stdout: string } | { ok: false; error: string } {
   try {
-    return Bun.spawnSync({ cmd: [path, ...args], env, timeout: 5000, stdout: "pipe", stderr: "pipe" });
+    const probe = Bun.spawnSync({ cmd: [path, ...args], env, timeout: 5000, stdout: "pipe", stderr: "pipe" });
+    return probe.success && probe.exitedDueToTimeout !== true
+      ? { ok: true, stdout: probe.stdout.toString() }
+      : { ok: false, error: probe.stderr.toString() };
   } catch (error) {
-    return asError(error);
+    return { ok: false, error: asError(error).message };
   }
-}
-
-/** Queries the installed `bwrap` version string for refusal diagnostics, returning `null` if the
- *  probe fails. */
-function installedBwrapVersion(bwrapPath: string): string | null {
-  const probe = runBwrap(bwrapPath, ["--version"]);
-  if (probe instanceof Error || !probe.success || probe.exitedDueToTimeout === true) return null;
-  return /bubblewrap\s+(\S+)/.exec(probe.stdout.toString())?.[1] ?? null;
 }
 
 /** Classifies a failed Bubblewrap launch from its stderr. Unknown flags (such as
@@ -136,10 +126,9 @@ function installedBwrapVersion(bwrapPath: string): string | null {
 function classifyBwrapRefusal(stderr: string, bwrapPath?: string): string {
   const unknown = UNKNOWN_OPTION.exec(stderr);
   if (unknown !== null) {
-    const version = bwrapPath === undefined ? null : installedBwrapVersion(bwrapPath);
+    const probe = bwrapPath === undefined ? null : runBwrap(bwrapPath, ["--version"]);
+    const version = probe?.ok === true ? (/bubblewrap\s+(\S+)/.exec(probe.stdout)?.[1] ?? null) : null;
     const installed = version === null ? "" : ` (installed bubblewrap ${version})`;
-    // Bubblewrap 0.8.0 introduced `--disable-userns`; naming the minimum version lets the operator
-    // verify their installed package directly.
     return `this bubblewrap does not support ${unknown[1]}${installed} — the OS isolation needs bubblewrap 0.8.0 or newer; upgrade the bubblewrap package`;
   }
   if (USER_NAMESPACE_REFUSALS.some((signature) => stderr.includes(signature))) {
@@ -148,7 +137,7 @@ function classifyBwrapRefusal(stderr: string, bwrapPath?: string): string {
   const detail = stderr
     .split("\n")
     .map((line) => line.trim())
-    .find((line) => line !== "");
+    .find(Boolean);
   return detail === undefined
     ? "bubblewrap refused its baseline policy"
     : `bubblewrap refused its baseline policy: ${boundText(detail, 200).shown}`;
@@ -164,14 +153,7 @@ function attestBwrap(bwrapPath: string): { mechanismDigest: string } | { refused
   // Exercise the full offline isolation posture by executing `/bin/true` from the bound root,
   // confirming a functional namespace rather than flag parsing alone.
   const canary = runBwrap(bwrapPath, [...bwrapOpenReadArgs({ network: false }), "/bin/true"], {});
-  if (canary instanceof Error || !canary.success || canary.exitedDueToTimeout === true) {
-    return {
-      refused: classifyBwrapRefusal(
-        canary instanceof Error ? canary.message : canary.stderr.toString(),
-        bwrapPath,
-      ),
-    };
-  }
+  if (!canary.ok) return { refused: classifyBwrapRefusal(canary.error, bwrapPath) };
   const mechanismDigest = sha256OfFile(bwrapPath);
   ATTESTED_BWRAP.set(bwrapPath, { metadata, mechanismDigest });
   return { mechanismDigest };
@@ -179,7 +161,6 @@ function attestBwrap(bwrapPath: string): { mechanismDigest: string } | { refused
 
 /** Checks Bubblewrap availability and unprivileged user-namespace support, failing closed on error. */
 export function linuxBwrapSupport(runtime: LinuxBwrapRuntime = {}): LinuxBwrapSupport {
-  const outerSandboxed = runtime.outerSandboxed ?? surroundingSandbox(Bun.env);
   const unavailable = (reason: string): LinuxBwrapSupport => ({
     ok: false,
     reason,
@@ -189,7 +170,7 @@ export function linuxBwrapSupport(runtime: LinuxBwrapRuntime = {}): LinuxBwrapSu
   if ((runtime.platform ?? runtimeProcess.platform) !== "linux") {
     return unavailable("Linux bubblewrap is unavailable on this platform");
   }
-  if (outerSandboxed) {
+  if (runtime.outerSandboxed ?? surroundingSandbox(Bun.env)) {
     return unavailable("a surrounding sandbox is not this wall; bubblewrap refuses to nest");
   }
   const bwrapPath = resolveBwrap(runtime);
@@ -200,21 +181,38 @@ export function linuxBwrapSupport(runtime: LinuxBwrapRuntime = {}): LinuxBwrapSu
   }
   try {
     const attested = attestBwrap(bwrapPath);
-    if ("refused" in attested) return unavailable(attested.refused);
-    return { ok: true, reason: null, mechanismPath: bwrapPath, mechanismDigest: attested.mechanismDigest };
+    return "refused" in attested
+      ? unavailable(attested.refused)
+      : { ok: true, reason: null, mechanismPath: bwrapPath, mechanismDigest: attested.mechanismDigest };
   } catch {
     return unavailable("the bubblewrap mechanism could not be attested");
   }
 }
 
+/** Serialises an explicit environment as sorted `--setenv` flags after `--clearenv`. */
+function bwrapEnvironmentArgs(environment: OptionalEnvValues): string[] {
+  return Object.entries(environment)
+    .filter((entry): entry is [string, string] => entry[1] !== undefined)
+    .toSorted(([left], [right]) => (left < right ? -1 : 1))
+    .flatMap(([name, value]) => {
+      if (name === "" || /[=\0]/.test(name) || value.includes("\0")) {
+        throw new Error("the explicit Bubblewrap environment is invalid");
+      }
+      return ["--setenv", name, value];
+    });
+}
+
+const bwrapBinds = (flag: "--ro-bind" | "--bind", paths: readonly string[]): string[] =>
+  paths.flatMap((path) => [flag, path, path]);
+
 /**
- * Baseline namespace isolation shared by every Bubblewrap launch: unprivileged user namespace,
- * new session, all capabilities dropped, nested user namespaces disabled, and isolated IPC, UTS,
- * cgroup, and PID namespaces. Only network isolation varies between seat commands and verification
- * checks. Failing any flag marks isolation unavailable rather than degrading silently.
+ * Builds the baseline namespace and allow-by-default read mount posture: unprivileged user, IPC,
+ * UTS, cgroup, and PID namespaces (`--disable-userns`, all capabilities dropped), host `/` bound
+ * read-only, plus fresh `/proc` and `/dev`. Only network isolation varies between seat commands
+ * and verification checks. Callers layer `bwrapTmpfsDenies` and writable binds on top.
  */
-function bwrapIsolationArgs(options: { network: boolean }): string[] {
-  const args = [
+export function bwrapOpenReadArgs(options: { network: boolean }): string[] {
+  return [
     "--die-with-parent",
     "--new-session",
     "--unshare-user",
@@ -224,42 +222,8 @@ function bwrapIsolationArgs(options: { network: boolean }): string[] {
     "--unshare-ipc",
     "--unshare-uts",
     "--unshare-cgroup",
-    // Private PID namespace: terminates confined children when bwrap exits, hides host processes
-    // in `/proc`, avoids orphaned processes under `--new-session`, and places bwrap's init as
-    // PID 1 so unhandled SIGTERM still terminates the workload.
     "--unshare-pid",
-  ];
-  if (!options.network) args.push("--unshare-net");
-  return args;
-}
-
-/**
- * Serialises an explicit environment as sorted `--setenv` flags after `--clearenv`. Sorting keeps
- * the launch argv deterministic for hashing, and rejecting names with `=` or NUL bytes prevents
- * argument injection into subsequent `bwrap` flags.
- */
-export function bwrapEnvironmentArgs(environment: OptionalEnvValues): string[] {
-  const entries = Object.entries(environment)
-    .filter((entry): entry is [string, string] => entry[1] !== undefined)
-    .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
-  const args: string[] = [];
-  for (const [name, value] of entries) {
-    if (name === "" || name.includes("=") || name.includes("\0") || value.includes("\0")) {
-      throw new Error("the explicit Bubblewrap environment is invalid");
-    }
-    args.push("--setenv", name, value);
-  }
-  return args;
-}
-
-/**
- * Builds the allow-by-default read mount posture: host `/` bound read-only, followed by a fresh
- * `/proc` and minimal `/dev` so the root bind does not obscure them. Callers layer
- * `bwrapTmpfsDenies` and writable binds on top.
- */
-export function bwrapOpenReadArgs(options: { network: boolean }): string[] {
-  const args = [
-    ...bwrapIsolationArgs(options),
+    ...(options.network ? [] : ["--unshare-net"]),
     "--clearenv",
     "--ro-bind",
     "/",
@@ -268,66 +232,52 @@ export function bwrapOpenReadArgs(options: { network: boolean }): string[] {
     "/proc",
     "--dev",
     "/dev",
+    ...(options.network ? bwrapBinds("--ro-bind", networkResolverReadPaths()) : []),
   ];
-  if (options.network) for (const path of networkResolverReadPaths()) args.push("--ro-bind", path, path);
-  return args;
 }
 
-/** Emits `--ro-bind` arguments mounting each path read-only at its own location. */
-export function bwrapReadBinds(paths: readonly string[]): string[] {
-  return paths.flatMap((path) => ["--ro-bind", path, path]);
-}
-
-/** Emits `--remount-ro` for each existing path so earlier binds cannot leave it writable. Missing
- *  paths are skipped because Bubblewrap aborts on non-existent remount targets. */
-export function bwrapReadonlyRemounts(paths: readonly string[]): string[] {
-  return paths.flatMap((path) => (existsSync(path) ? ["--remount-ro", path] : []));
-}
-
-/** Emits `--bind` arguments mounting each writable root read-write at its own location. */
-export function bwrapWriteBinds(paths: readonly string[]): string[] {
-  return paths.flatMap((path) => ["--bind", path, path]);
+/** Builds the complete Bubblewrap mount and environment argument sequence for an isolated command. */
+export function bwrapCommandArgs(options: {
+  readonly network: boolean;
+  readonly readDenies: readonly string[];
+  readonly readAllowRoots: readonly string[];
+  readonly scratchRoots: readonly string[];
+  readonly keptRoots: readonly string[];
+  readonly remounts: readonly string[];
+  readonly environment: OptionalEnvValues;
+}): string[] {
+  return [
+    ...bwrapOpenReadArgs({ network: options.network }),
+    ...bwrapTmpfsDenies(options.readDenies),
+    ...bwrapBinds("--ro-bind", options.readAllowRoots),
+    ...bwrapBinds("--bind", options.scratchRoots),
+    ...bwrapBinds("--ro-bind", options.keptRoots),
+    ...options.remounts.flatMap((path) => (existsSync(path) ? ["--remount-ro", path] : [])),
+    ...bwrapEnvironmentArgs(options.environment),
+  ];
 }
 
 /** Overmounts each protected directory with an empty tmpfs (and each protected regular file —
  *  including symlinks targeting a regular file — with read-only `/dev/null`), also masking canonical
  *  symlink targets that lie outside already-denied paths so protected bytes stay unreachable. */
 export function bwrapTmpfsDenies(paths: readonly string[]): string[] {
-  const expanded: string[] = [];
   const seen = new Set<string>();
-  const add = (candidate: string) => {
-    if (!seen.has(candidate)) {
-      seen.add(candidate);
-      expanded.push(candidate);
-    }
-  };
   for (const path of paths) {
-    add(path);
+    seen.add(path);
     try {
       if (lstatSync(path).isSymbolicLink()) {
         const real = realpathSync.native(path);
-        if (!paths.some((other) => posixContainsPath(real, other))) add(real);
+        if (!paths.some((other) => posixContainsPath(real, other))) seen.add(real);
       }
     } catch {
       // Missing path or dangling symlink; skipped below.
     }
   }
-  return expanded.flatMap((path) => {
-    if (isRegularFileDeny(path)) return ["--ro-bind", "/dev/null", path];
-    return existsSync(path) ? ["--tmpfs", path] : [];
+  return [...seen].flatMap((path) => {
+    try {
+      return statSync(path).isFile() ? ["--ro-bind", "/dev/null", path] : ["--tmpfs", path];
+    } catch {
+      return [];
+    }
   });
-}
-
-/**
- * Reports whether `path` resolves to an existing regular file that cannot accept a `--tmpfs`
- * directory mount (such as `~/.claude.json`, `~/.netrc`, or `~/.npmrc`, whether plain or symlinked).
- * Uses `statSync` so symlinks targeting regular files emit `--ro-bind /dev/null` instead of crashing
- * `bwrap` with `ENOTDIR` on `--tmpfs`.
- */
-function isRegularFileDeny(path: string): boolean {
-  try {
-    return statSync(path).isFile();
-  } catch {
-    return false;
-  }
 }

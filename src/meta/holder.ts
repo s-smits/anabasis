@@ -68,6 +68,7 @@ export function holderOf(file: string): { readonly pid: number; readonly note: s
   if (record === "") return null;
   const pid = Number.parseInt(record, 10);
   const utc = recordOf(pid, "utc");
+  if (utc === "") return null;
   if (matchesRecord(record, utc)) return { pid, note: record.slice(utc.length + 1) };
   const ambient = recordOf(pid, "ambient");
   if (matchesRecord(record, ambient)) return { pid, note: record.slice(ambient.length + 1) };

@@ -11,16 +11,7 @@ import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { capturedExecPath } from "../meta/process.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import {
-  LINUX_BWRAP_ID,
-  bwrapEnvironmentArgs,
-  bwrapOpenReadArgs,
-  bwrapReadBinds,
-  bwrapReadonlyRemounts,
-  bwrapTmpfsDenies,
-  bwrapWriteBinds,
-  nodeRuntimeReadRoots,
-} from "./linux-bwrap.ts";
+import { LINUX_BWRAP_ID, bwrapCommandArgs, nodeRuntimeReadRoots } from "./linux-bwrap.ts";
 import type { EnvValues } from "../agent/backends/scrub-env.ts";
 import { covers, moveBlockingRules, sbRule } from "./seatbelt-path-guard.ts";
 import { seatbeltBaseRules } from "./seatbelt-base.ts";
@@ -72,8 +63,8 @@ export function toolTreeSearchDirs(toolTree: string): string[] {
   if (!existsSync(toolTree)) return [];
   const found: string[] = [join(toolTree, "bin")].filter(existsSync);
   const queue: { dir: string; depth: number }[] = [{ dir: toolTree, depth: 0 }];
-  for (let visited = 0; visited < TOOL_TREE_MAX_DIRS; visited += 1) {
-    const next = queue.shift();
+  for (let visited = 0; visited < TOOL_TREE_MAX_DIRS && visited < queue.length; visited += 1) {
+    const next = queue[visited];
     if (next === undefined) break;
     const { dir, depth } = next;
     if (TOOL_TREE_BIN_DIRS.has(basename(dir)) && !found.includes(dir)) found.push(dir);
@@ -245,20 +236,11 @@ export function isolatedArgv(
   argv: readonly string[],
 ): string[] {
   if (policy.profile === null) {
-    return [
-      policy.mechanismPath,
-      ...bwrapOpenReadArgs({ network: policy.network }),
-      ...bwrapTmpfsDenies(policy.readDenies),
-      ...bwrapReadBinds(policy.readAllowRoots),
-      ...bwrapWriteBinds(policy.scratchRoots),
-      ...bwrapReadBinds(policy.keptRoots),
-      ...bwrapReadonlyRemounts([
-        "/",
-        ...policy.readDenies.filter((deny) => !policy.scratchRoots.some((root) => covers(deny, root))),
-      ]),
-      ...bwrapEnvironmentArgs(policy.environment),
-      ...argv,
+    const remounts = [
+      "/",
+      ...policy.readDenies.filter((deny) => !policy.scratchRoots.some((root) => covers(deny, root))),
     ];
+    return [policy.mechanismPath, ...bwrapCommandArgs({ ...policy, remounts }), ...argv];
   }
   rmSync(profileFile, { force: true });
   writeFileSync(profileFile, `${policy.profile}\n`, { mode: 0o400 });

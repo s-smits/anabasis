@@ -43,7 +43,7 @@ import { DIGEST } from "#src/campaign/names.ts";
 import { epochsOf, starterIn } from "#src/campaign/climb.ts";
 import { type HarnessSize, nonblank, ownFiles } from "#src/harness/files.ts";
 import { scoresIn, testOf } from "#src/kernel/compare.ts";
-import type { LogEvent } from "#src/kernel/log.ts";
+import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { lastReports } from "#src/kernel/reports.ts";
 import { practiceRan } from "#src/kernel/solves.ts";
 import { AGENT_DIR, GUIDE_FILE } from "#src/meta/bundle-layout.ts";
@@ -89,7 +89,7 @@ interface Promotion {
   /** The hour its starter read confirmed it, or null. */
   readonly confirmed: number | null;
 }
-export interface Trajectory {
+interface Trajectory {
   readonly name: string;
   readonly opened: string;
   readonly elapsed: number;
@@ -106,12 +106,13 @@ export interface Trajectory {
 
 /** Work hours from the log's first event: elapsed less each recorded wait and silence, once. */
 export function clockOf(events: readonly LogEvent[]): (at: string) => number {
-  const times = events.map(({ at }) => Date.parse(at));
-  const start = times[0] ?? 0;
+  const start = Date.parse(events[0]?.at ?? "");
   const spans = waitsOf(events).map(({ from, until }): [number, number] => [from, until]);
-  for (const [nth, time] of times.entries()) {
-    const before = times[nth - 1];
-    if (before !== undefined && time - before >= SILENCE) spans.push([before, time]);
+  let before = start;
+  for (let i = 1; i < events.length; i += 1) {
+    const time = Date.parse(events[i]?.at ?? "");
+    if (time - before >= SILENCE) spans.push([before, time]);
+    before = time;
   }
   spans.sort((a, b) => a[0] - b[0]);
   const merged: [number, number][] = [];
@@ -134,17 +135,16 @@ function solvesOf(events: readonly LogEvent[]) {
   const started = new Map<string, { comparison: string; task: string }>();
   const sides = new Map<string, { turns: number; valid: number; results: number }>();
   const opposed = new Map<string, Set<string>>();
-  for (const { kind, data } of events) {
-    if (
-      kind === "solve.started" &&
-      isString(data.comparison) &&
-      isString(data.solve) &&
-      isString(data.task)
-    ) {
-      started.set(data.solve, { comparison: data.comparison, task: data.task });
+  for (const {
+    event: { kind, data },
+  } of eventsOf(events, ["solve.started", "solve.finished"])) {
+    if (kind === "solve.started") {
+      if (isString(data.comparison) && isString(data.solve) && isString(data.task)) {
+        started.set(data.solve, { comparison: data.comparison, task: data.task });
+      }
       continue;
     }
-    if (kind !== "solve.finished" || !isString(data.solve) || !isString(data.harness)) continue;
+    if (!isString(data.solve) || !isString(data.harness)) continue;
     const solve = started.get(data.solve);
     const outcome = asRecord(data.ending)?.outcome;
     if (solve === undefined || outcome === "non-result") continue;
@@ -167,16 +167,15 @@ function sideOf(sides: ReadonlyMap<string, Side>, session: string, harness: unkn
 /** One campaign's readings and promotions on its work-hours clock. */
 export function trajectoryOf(name: string, events: readonly LogEvent[], grades: Grades | null): Trajectory {
   const clock = clockOf(events);
-  const first = events.find(({ kind }) => kind === "comparison.started");
+  const starts = eventsOf(events, "comparison.started");
+  const first = starts[0]?.event;
   const starter = starterIn(events);
   const { sides, opposed } = solvesOf(events);
   const hourOfSession = new Map<string, number>();
   const readings = lastReports(events).map(({ session, index, data }): Reading => {
     const hour = clock(events[index]?.at ?? "");
     hourOfSession.set(session, hour);
-    const begun = events.find(
-      ({ kind, data: of }) => kind === "comparison.started" && of.session === session,
-    );
+    const begun = starts.find(({ event: { data: of } }) => of.session === session)?.event;
     const { wins, losses, ties } = testOf(scoresIn(data.scored));
     const tallied = wins + losses + ties;
     const points = asRecord(data.points);
@@ -210,8 +209,8 @@ export function trajectoryOf(name: string, events: readonly LogEvent[], grades: 
         confirmed === true && starter_read !== null ? (hourOfSession.get(starter_read) ?? null) : null,
     }));
   const end = events.at(-1)?.at ?? "";
-  const ending = events.findLast(({ kind }) => kind === "campaign.ended")?.data.ending;
-  const open = events.findLast(({ kind }) => kind === "comparison.started")?.data.session;
+  const ending = eventsOf(events, "campaign.ended").at(-1)?.event.data.ending;
+  const open = starts.at(-1)?.event.data.session;
   return {
     name,
     opened: events[0]?.at ?? "",
@@ -287,9 +286,8 @@ export function diffOf(
  *  a version's parent, which `harness-versions.ts` and the lane 14 packets both call, since reading
  *  `harness.version` alone gives a led session's checkpoints the starter for a parent. */
 export function madeOf(events: readonly LogEvent[], digest: string, starter: string) {
-  const version = events.find(
-    ({ kind, data }) => kind === "harness.version" && data.version === digest,
-  )?.data;
+  const version = eventsOf(events, "harness.version").find(({ event: { data } }) => data.version === digest)
+    ?.event.data;
   if (isString(version?.parent)) {
     const note = isString(version.note) ? `${version.note.split(/\s+/).length}-word note` : "no note";
     return {
@@ -297,24 +295,25 @@ export function madeOf(events: readonly LogEvent[], digest: string, starter: str
       parent: version.parent,
     };
   }
-  const imported = events.find(
-    ({ kind, data }) => kind === "harness.imported" && data.harness === digest,
-  )?.data;
+  const imported = eventsOf(events, "harness.imported").find(({ event: { data } }) => data.harness === digest)
+    ?.event.data;
   if (imported !== undefined) return { made: `imported from ${unrecorded(imported.from)}`, parent: null };
-  // A Builder that leads its campaign freezes a harness with `build.checkpoint` and no parent: its
-  // parent is the session's harness snapshot before it, or what the session began from, rather
-  // than every harness compared in a led campaign reading as made by no record.
-  const at = events.findIndex(({ kind, data }) => kind === "build.checkpoint" && data.harness === digest);
-  const session = events[at]?.data.session;
-  const before = events.slice(0, Math.max(at, 0)).filter(({ data }) => data.session === session);
+  const checkpoint = eventsOf(events, "build.checkpoint").find(
+    ({ event: { data } }) => data.harness === digest,
+  );
+  const session = checkpoint?.event.data.session;
+  const before =
+    checkpoint === undefined
+      ? []
+      : eventsOf(events, ["build.checkpoint", "build.started"]).filter(
+          ({ index, event: { data } }) => index < checkpoint.index && data.session === session,
+        );
   const parent =
-    before.findLast(({ kind }) => kind === "build.checkpoint")?.data.harness ??
-    before.findLast(({ kind }) => kind === "build.started")?.data.parent;
+    before.findLast(({ event }) => event.kind === "build.checkpoint")?.event.data.harness ??
+    before.findLast(({ event }) => event.kind === "build.started")?.event.data.parent;
   if (isString(parent)) {
     return { made: `checkpoint of session ${unrecorded(session)} from ${parent.slice(0, 8)}`, parent };
   }
-  // A led session practises states it never freezes, which the log's practice solves name, so they
-  // read as practised rather than as made by no record.
   if (digest === starter) {
     return { made: "the Starter Built Harness as this checkout writes it", parent: null };
   }

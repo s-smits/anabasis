@@ -7,15 +7,14 @@
  * Bun exposes no equivalent descriptor lock.
  */
 import { dlopen, FFIType } from "bun:ffi";
-import { constants, copyFileSync, renameSync, rmSync } from "node:fs";
+import { closeSync, constants, copyFileSync, openSync, readSync, renameSync, rmSync } from "node:fs";
 import { runtimeProcess } from "./process.ts";
 
-export { constants, copyFileSync, renameSync, rmSync };
+export { closeSync, constants, copyFileSync, openSync, readSync, renameSync, rmSync };
 export {
   accessSync,
   appendFileSync,
   chmodSync,
-  closeSync,
   cpSync,
   existsSync,
   fstatSync,
@@ -25,12 +24,10 @@ export {
   lstatSync,
   mkdirSync,
   mkdtempSync,
-  openSync,
   opendirSync,
   readFileSync,
   readdirSync,
   readlinkSync,
-  readSync,
   realpathSync,
   rmdirSync,
   statfsSync,
@@ -66,6 +63,17 @@ export function lockExclusiveSync(fd: number): void {
 /** Copies `source` to `destination` using copy-on-write cloning where the filesystem supports it. */
 export function cloneFile(source: string, destination: string): void {
   copyFileSync(source, destination, constants.COPYFILE_FICLONE);
+}
+
+/** Reads up to `bytes` from the start of `path` without loading the full file into memory. */
+export function readHeadSync(path: string, bytes: number): Buffer {
+  const fd = openSync(path, "r");
+  const head = Buffer.allocUnsafe(bytes);
+  try {
+    return head.subarray(0, readSync(fd, head, 0, bytes, 0));
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /** Replaces `path` with a private copy-on-write inode so mutating it never alters sibling hard links. */

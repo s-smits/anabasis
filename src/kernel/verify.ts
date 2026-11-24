@@ -222,12 +222,12 @@ function hostManifestIn(toolsDir: string): { readonly draft: boolean; readonly t
   };
 }
 
-/** Strict subdirectory (or file) inside `home` for a resolved executable — never `home` itself. */
-function safeHomeRoot(real: string, home: string): string {
-  const grand = dirname(dirname(real));
-  if (grand !== home && containsPath(grand, home)) return grand;
-  const parent = dirname(real);
-  return parent !== home && containsPath(parent, home) ? parent : real;
+function toolLookup(toolsDir: string) {
+  return {
+    toolPath: toolTreeSearchDirs(toolsDir).join(":"),
+    hostPath: toolchainPathDirs().join(":"),
+    manifest: hostManifestIn(toolsDir),
+  };
 }
 
 /** Resolve one declared verifier tool by provenance: a binary under `toolsDir` takes precedence
@@ -238,23 +238,18 @@ function safeHomeRoot(real: string, home: string): string {
 export function resolveVerifierTool(
   toolsDir: string,
   name: string,
-  hostPath = toolchainPathDirs().join(":"),
+  lookup = toolLookup(toolsDir),
 ): ResolvedVerifierTool | null {
   if (!isSafePathSegment(name)) return null;
-  const manifest = hostManifestIn(toolsDir);
-  const packBin = Bun.which(name, { PATH: toolTreeSearchDirs(toolsDir).join(":") });
-  if (packBin !== null) {
-    return {
-      kind: manifest.draft ? "host" : "pack",
-      path: packBin,
-      sha256: sha256OfFile(realpathSync(packBin)),
-    };
-  }
-  if (!manifest.tools.has(name)) return null;
-  const hostBin = Bun.which(name, { PATH: hostPath });
-  return hostBin === null
-    ? null
-    : { kind: "host", path: hostBin, sha256: sha256OfFile(realpathSync(hostBin)) };
+  const packBin = Bun.which(name, { PATH: lookup.toolPath });
+  const bin =
+    packBin ?? (lookup.manifest.tools.has(name) ? Bun.which(name, { PATH: lookup.hostPath }) : null);
+  if (bin === null) return null;
+  return {
+    kind: packBin !== null && !lookup.manifest.draft ? "pack" : "host",
+    path: bin,
+    sha256: sha256OfFile(realpathSync(bin)),
+  };
 }
 
 /** Tool ids a check requires, whether declared under external evidence or execution dependencies. */
@@ -264,17 +259,19 @@ export function requiredToolsOf(execution: CheckExecution): readonly string[] {
     : (execution.requiredToolIds ?? []);
 }
 
-/** Resolve and hash every declared verifier engine (`resolveVerifierTool`). */
-export function pinnedEngines({ checks, tools }: VerifierTree): Engine[] {
-  const hostPath = toolchainPathDirs().join(":");
-  const toolsReal = existsSync(tools) ? realpathSync(tools) : null;
-  const brief = readBrief(checks);
-  const named = [
+const declaredTools = (brief: Brief) => [
+  ...new Set([
     ...brief.truthChecks.flatMap(({ execution }) => requiredToolsOf(execution)),
     ...(brief.objectiveTools ?? []),
-  ];
-  return [...new Set(named)].flatMap((name) => {
-    const resolved = resolveVerifierTool(tools, name, hostPath);
+  ]),
+];
+
+/** Resolve and hash every declared verifier engine (`resolveVerifierTool`). */
+export function pinnedEngines({ checks, tools }: VerifierTree): Engine[] {
+  const lookup = toolLookup(tools);
+  const toolsReal = existsSync(tools) ? realpathSync(tools) : null;
+  return declaredTools(readBrief(checks)).flatMap((name) => {
+    const resolved = resolveVerifierTool(tools, name, lookup);
     if (resolved === null) return [];
     const external = toolsReal === null || !containsPath(realpathSync(resolved.path), toolsReal);
     return [{ name, path: resolved.path, sha256: resolved.sha256, external }];
@@ -363,11 +360,9 @@ export function checkEvaluationRequest(
     return { ...checkPublicInputs(check, request), hidden: request.hidden };
   }
   const hidden =
-    check.execution.hidden === "none"
+    check.execution.hidden === "none" || !Array.isArray(request.hidden)
       ? []
-      : Array.isArray(request.hidden)
-        ? request.hidden.filter((row: unknown) => isRecord(row) && row.checkId === check.id)
-        : [];
+      : request.hidden.filter((row: unknown) => isRecord(row) && row.checkId === check.id);
   if (
     check.execution.hidden === "required" &&
     (hidden.length !== 1 || !isRecord(hidden[0]) || !Object.hasOwn(hidden[0], "expectation"))
@@ -427,13 +422,26 @@ export function engineReadRoots(
     ...new Set(
       paths.flatMap((path) => {
         const real = realpathSync(path);
-        if (!containsPath(real, home)) return [];
-        if (canonicalTools !== null && containsPath(real, canonicalTools)) return [];
-        return [safeHomeRoot(real, home)];
+        const insideTools = canonicalTools !== null && containsPath(real, canonicalTools);
+        if (!containsPath(real, home) || insideTools) return [];
+        return [
+          [dirname(dirname(real)), dirname(real)].find((dir) => dir !== home && containsPath(dir, home)) ??
+            real,
+        ];
       }),
     ),
   ];
 }
+
+const stopVerdict = (
+  id: string,
+  outcome: CheckResult | NonNullable<CellResult["measured"]>,
+): Verdict | null =>
+  "nonResult" in outcome
+    ? { kind: "non-result", reason: `${id}: ${outcome.nonResult}` }
+    : "faulty" in outcome
+      ? { kind: "faulty", check: id, reason: outcome.faulty }
+      : null;
 
 /**
  * A verifier over one tree. The brief is read and the wall's base taken once, here, so every
@@ -444,46 +452,32 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
   const tree: VerifierTree = { checks: resolve(given.checks), tools: resolve(given.tools) };
   const brief = readBrief(tree.checks);
   const [firstTool, ...moreTools] = brief.objectiveTools ?? [];
-  const objectiveTools: [string, ...string[]] | undefined =
-    firstTool === undefined ? undefined : [firstTool, ...moreTools];
   const objective: BriefTruthCheck | null =
     brief.objective === undefined
       ? null
-      : objectiveTools === undefined
+      : firstTool === undefined
         ? OBJECTIVE
-        : {
-            ...OBJECTIVE,
-            execution: {
-              ...OBJECTIVE.execution,
-              requiredToolIds: objectiveTools,
-              evidence: { kind: "authored" },
-            },
-          };
-  const hostPath = toolchainPathDirs().join(":");
-  const declared = [
-    ...new Set([
-      ...brief.truthChecks.flatMap(({ execution }) => requiredToolsOf(execution)),
-      ...(brief.objectiveTools ?? []),
-    ]),
-  ];
-  const resolvedTools = declared.flatMap((name) => {
-    const resolved = resolveVerifierTool(tree.tools, name, hostPath);
-    return resolved === null ? [] : [[name, resolved] as const];
+        : { ...OBJECTIVE, execution: { ...OBJECTIVE.execution, requiredToolIds: [firstTool, ...moreTools] } };
+  const lookup = toolLookup(tree.tools);
+  const resolvedTools = declaredTools(brief).flatMap((name) => {
+    const resolved = resolveVerifierTool(tree.tools, name, lookup);
+    return resolved === null ? [] : [[name, resolved.path] as const];
   });
-  const toolMap = Object.fromEntries(resolvedTools.map(([name, resolved]) => [name, resolved.path]));
-  const homeToolRoots = engineReadRoots(
-    tree.tools,
-    resolvedTools.map(([, resolved]) => resolved.path),
-  );
   const wall: Wall = {
     tree,
     program: checkProgramFiles(tree.checks),
-    toolMap,
+    toolMap: Object.fromEntries(resolvedTools),
     base: solveIsolationPolicy({
       repoRoot: REPO,
       otherTrees: given.otherTrees ?? [],
       packRoots: given.packRoots ?? [],
-      readAllowRoots: [...CHECK_CHILD_SOURCES, ...new Set(homeToolRoots)],
+      readAllowRoots: [
+        ...CHECK_CHILD_SOURCES,
+        ...engineReadRoots(
+          tree.tools,
+          resolvedTools.map(([, path]) => path),
+        ),
+      ],
       network: false,
     }),
     checkMs: given.checkMs ?? PER_CHECK_MS,
@@ -500,24 +494,26 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
     if (checks.length === 0) {
       return { kind: "faulty", check: "brief", reason: `no check applies to family ${task.family}` };
     }
-    const ran = await runCell(wall, checks, objective, request, signal);
+    const ran = await runCell(wall, { checks, objective, request, signal });
     if ("nonResult" in ran) return { kind: "non-result", reason: ran.nonResult };
     if ("held" in ran) return { kind: "faulty", check: ran.held, reason: ran.reason };
     // Every check ran, and the first that cannot decide or is faulty, in the brief's order, decides.
     const blocking: string[] = [];
     for (const [index, result] of ran.results.entries()) {
       const { id } = checks[index] ?? OBJECTIVE;
-      if ("nonResult" in result) return { kind: "non-result", reason: `${id}: ${result.nonResult}` };
-      if ("faulty" in result) return { kind: "faulty", check: id, reason: result.faulty };
-      if (!result.passed) blocking.push(id);
+      const stopped = stopVerdict(id, result);
+      if (stopped !== null) return stopped;
+      if ("passed" in result && !result.passed) blocking.push(id);
     }
     if (blocking.length > 0) return { kind: "fail", blocking };
     const { measured } = ran;
     if (measured === null) return { kind: "pass" };
-    const { id } = OBJECTIVE;
-    if ("nonResult" in measured) return { kind: "non-result", reason: `${id}: ${measured.nonResult}` };
-    if ("faulty" in measured) return { kind: "faulty", check: id, reason: measured.faulty };
-    return { kind: "pass", objective: measured.value };
+    return (
+      stopVerdict(OBJECTIVE.id, measured) ?? {
+        kind: "pass",
+        ...keyIfDefined("objective", "value" in measured ? measured.value : undefined),
+      }
+    );
   };
 }
 
@@ -553,21 +549,14 @@ function heldCheck(runningDir: string): string | null {
   let held: { readonly seq: number; readonly checkId: string } | null = null;
   for (const name of readdirSync(runningDir)) {
     if (!name.endsWith(".run")) continue;
-    let content: string;
     try {
-      content = readFileSync(join(runningDir, name), "utf8");
+      const [rawSeq, checkId = ""] = readFileSync(join(runningDir, name), "utf8").split("\n");
+      const seq = Number(rawSeq);
+      if (Number.isFinite(seq) && checkId !== "" && (held === null || seq > held.seq)) {
+        held = { seq, checkId };
+      }
     } catch {
-      continue;
-    }
-    const [rawSeq, checkId] = content.split("\n");
-    const seq = Number(rawSeq);
-    if (
-      Number.isFinite(seq) &&
-      checkId !== undefined &&
-      checkId !== "" &&
-      (held === null || seq > held.seq)
-    ) {
-      held = { seq, checkId };
+      // Marker removed between readdir and read.
     }
   }
   return held?.checkId ?? null;
@@ -583,11 +572,14 @@ function heldCheck(runningDir: string): string | null {
  */
 async function runCell(
   wall: Wall,
-  checks: readonly BriefTruthCheck[],
-  objective: BriefTruthCheck | null,
-  request: EvaluationRequest,
-  signal?: AbortSignal,
+  run: {
+    readonly checks: readonly BriefTruthCheck[];
+    readonly objective: BriefTruthCheck | null;
+    readonly request: EvaluationRequest;
+    readonly signal: AbortSignal | undefined;
+  },
 ): Promise<CellResult | { readonly nonResult: string } | { readonly held: string; readonly reason: string }> {
+  const { checks, objective, request, signal } = run;
   const { base } = wall;
   if (signal?.aborted === true) return { nonResult: "the verifier was cancelled" };
   if ("unsupported" in base) return { nonResult: `this host cannot wall a check: ${base.unsupported}` };
@@ -690,23 +682,20 @@ const undecided = (value: unknown) => {
 /** The cell's answers, or null where it wrote none that reads as one for each of its `count` checks. */
 function writtenResult(path: string, count: number): CellResult | null {
   if (!existsSync(path)) return null;
-  let parsed: JsonValue;
+  let written: ReturnType<typeof asRecord>;
   try {
-    parsed = capturedJsonParse(readFileSync(path, "utf8"));
+    written = asRecord(capturedJsonParse(readFileSync(path, "utf8")));
   } catch {
     return null;
   }
-  const written = asRecord(parsed);
   const listed = Array.isArray(written?.results) ? written.results : [];
-  const results = listed
-    .map((each): CheckResult | null => {
-      const passed = asRecord(each)?.passed;
-      return isBoolean(passed) ? { passed } : undecided(each);
-    })
-    .filter((each) => each !== null);
+  const results = listed.flatMap((each): CheckResult[] => {
+    const passed = asRecord(each)?.passed;
+    const item = isBoolean(passed) ? { passed } : undecided(each);
+    return item === null ? [] : [item];
+  });
   const value = asRecord(written?.measured)?.value;
   const measured = isNumber(value) && Number.isFinite(value) ? { value } : undecided(written?.measured);
   if (listed.length !== count || results.length !== count) return null;
-  if (written?.measured !== null && measured === null) return null;
-  return { results, measured };
+  return written?.measured !== null && measured === null ? null : { results, measured };
 }

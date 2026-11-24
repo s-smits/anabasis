@@ -53,7 +53,7 @@ function deadProgramFindings(log: Index, statesDir: string): Finding[] {
       (solve) => solve.side === TEST && solve.comparison !== null && solve.harness === digest,
     );
     if (testSolves.length < MIN_SOLVES_FOR_DEAD_CODE) continue;
-    const binEntries = writtenFiles(join(statesDir, digest))
+    const binEntries = writtenFiles(join(statesDir, digest), "own")
       .written.filter(({ path }) => path.startsWith("bin/"))
       .map(({ path, text: body }) => ({ name: basename(path), text: body }));
     if (binEntries.length === 0) continue;

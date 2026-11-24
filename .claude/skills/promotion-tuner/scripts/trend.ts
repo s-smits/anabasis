@@ -104,7 +104,10 @@ function rate(factor: Measure["factor"], name: string, part: Each, whole: Each, 
     factor,
     name,
     better: "higher",
-    of: (runs) => (total(runs, whole) === 0 ? null : (per * total(runs, part)) / total(runs, whole)),
+    of: (runs) => {
+      const denom = total(runs, whole);
+      return denom === 0 ? null : (per * total(runs, part)) / denom;
+    },
     counts: (runs) => `${total(runs, part).toFixed(0)}/${total(runs, whole).toFixed(0)}`,
   };
 }
@@ -315,10 +318,14 @@ function pooledLine(window: Window): string {
 }
 
 /** The climb set against what holds it, between two windows: the pattern and its three counts. */
-export function guardOf(then: readonly Run[], now: readonly Run[]): { pattern: string; line: string } {
+export function guardOf(
+  then: readonly Run[],
+  now: readonly Run[],
+  precomputed: ReadonlyMap<Measure, Change> | null = null,
+): { pattern: string; line: string } {
   const read = [MEASURES.speed, MEASURES.confirmed, MEASURES.after].map((measure) => ({
     measure,
-    change: changeOf(measure, then, now),
+    change: precomputed?.get(measure) ?? changeOf(measure, then, now),
   }));
   const [speed, ...held] = read.map(({ change }) => change);
   if (speed?.verdict === "no value" || held.every(({ verdict }) => verdict === "no value")) {
@@ -405,10 +412,15 @@ function packLines(
       "",
       printed(head, rows, format),
       "",
-      ...earlier.map(
-        (then) =>
-          `Climb against what holds it, now against ${labelOf(then)}: ${guardOf(then.runs, now.runs).line}`,
-      ),
+      ...earlier.map((then, nth) => {
+        const computed = new Map(LISTED.map((measure, at) => [measure, changes[at]?.[nth]] as const));
+        const kept = new Map(
+          [...computed].flatMap(([measure, change]) =>
+            change === undefined ? [] : [[measure, change] as const],
+          ),
+        );
+        return `Climb against what holds it, now against ${labelOf(then)}: ${guardOf(then.runs, now.runs, kept).line}`;
+      }),
       "",
     ],
     ...counts,

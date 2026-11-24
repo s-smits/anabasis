@@ -1,10 +1,5 @@
 /**
- * Every arm of the JobBench pilot scored on one path: each task solved once under one frozen
- * harness by the k=1 sweep's own rollout (`jobBench(...).execute`, the port of `jb_claude_runner.py`)
- * and judged by JobBench's own `eval/judge.py` with the flags of the pilot's `judge-arm.sh` and the
- * adapter's `_run_judge`. The operator asked to "mimick how the benchmark works
- * and copy over to our system but for our produced jobstat harness(ses) through Anabasis to fairly
- * compare", and allowed tuning to our primitives "but it should not be changing the core premise".
+ * External JobBench arm runner, judge wrapper, and arms/spread table reader.
  *
  *   bun studies/harness2/score.ts score --arm <arm> --name <name> --out <dir> --jb <checkout>
  *     --api-base <url> [--harness <kept>] [--tasks <profession/taskN,...>] [--judge-log <shim.jsonl>]
@@ -14,65 +9,10 @@
  *   bun studies/harness2/score.ts tree --arm <arm> --name <name> --out <dir> --for <linux-x64> [--python <3.12>]
  *     [--harness <kept>]
  *
- * `tree` writes a campaign's or the starter's tree and its build's price for another machine and
- * rolls nothing: a campaign stays on its own host, so its arm is made there for the machine that
- * rolls it, and `<out>/trees/<name>` with `<name>.build.json` is all that machine's store needs.
- * An arm is `base` (Harness²'s base harness, the pilot's Base), `starter` or a campaign's name
- * (its kept harness written out by `claude-export.ts`, `--harness` as `keptAs` takes it),
- * `pi:starter` or `pi:<campaign>` (the harness as kept, solved inside by `../shared/pi-solve.ts`,
- * where its programs lead the path, which the export loses),
- * `tree:<dir>` (any Claude Code tree), `heldout` (task N under the sweep's final harness of task
- * N-1) or `sweep:base1` and `sweep:agg1` (the sweep's own rollouts in `--out`, judged and rolled
- * by nothing else). Scoring into the sweep's `--out` keeps every arm in one store, as the pilot's
- * `runs/jb/dataset` was. The tasks default to the pilot's eight, the fair five for `heldout`.
- * Rollouts run one at a time and each is judged before the next begins, so that no rollout's clock
- * or deadline depends on another's load on the machine (`score.sh` ran three; the operator's
- * rule), and a judgement's dollars are the
- * shim log's rows inside its window. One record a task lands in
- * `<out>/judged/<name>/`, and `table` prints the pilot's arms table from them: every arm over all
- * the tasks (unless named, those its records hold, since a sitting's eight are not the pilot's) and
- * over those that are not a profession's first.
- * A record also names the files judge.py's reader cut at 200,000 characters before the judge read
- * them (`cut`: each file with its length, or null where that reader did not run), since a score on
- * a cut file partly reads how long the file ran. `table` marks such a cell `CUT <n>` and prints a
- * third block, `fair uncut`, over the fair tasks on which no record of any arm it shows holds a
- * cut file or a cut nobody counted; a record written before `cut` existed counts as holding none.
- * It shows every arm in the store, or those `--name` lists by the label `score` gave each: a store
- * gathers arms over weeks, and one old arm's cut file takes its task out of the block for a pair
- * neither side of which cut it, which can read a reference points under its Starter where the
- * pair's own tasks read them level. Beside an arm's points it prints the
- * criteria the judge passed of those it read, from the judge's details in the store: a rubric pays
- * its weight only where all its criteria pass, so points alone magnify a near tie.
- * `compare.ts` runs a whole comparison through `score`: `--solve-only` leaves a block's judging for
- * afterwards, and `again:<side>` with `--rubrics` judges a deliverable it copied once more,
- * under a wider cut than judge.py's where `--cap` names one, recorded as `cap` with `cut` counted
- * against it; no other arm takes `--cap`.
- *
- * What is the same for every arm: the task and its prompt, Opus 5.5 at high with $5 and 3600 s an
- * attempt and a second attempt only when none is delivered, one harness frozen for the whole arm,
- * judge.py and the task's `RUBRICS.json` untouched (Opus 5.5 at medium, 8 workers, 3 retries,
- * 240 s a rubric), and the rollout's environment. Tuned to our primitives, each named: the
- * rollout is the TypeScript runner, so the environment carries no `HARNESS_RENDER_DIR`; every
- * tree is installed by `installTree` as the sweep installs one, where `score.sh` copied a tree's
- * `CLAUDE.md`, `.claude/` and `scripts/` raw, which adds only an empty `.claude/settings.json` for
- * an exported harness; the judge's environment is the adapter's scrubbed one without Vertex's
- * region; and a record is one JSON file a task. Kept the benchmark's way: Claude Code's own
- * `total_cost_usd` is the solve's dollars (the pilot's tables read it, not `src/kernel/meter.ts`),
- * this script puts no wall around the workspace, and the judge's transport is the operator's shim,
- * named by `--api-base`. Where the Linux runner rolls an arm, the sitting runs `claude` in
- * namespaces that show it the store, the checkouts, the logins and the Docker socket empty; it still
- * reaches the network, and `claude`'s login token stays readable to its commands. Elsewhere nothing
- * hides them. Either way a trajectory that names the store, the benchmark's tasks or judge, a judged
- * record or the benchmark's hosts is flagged in its record (`peeked`).
- *
- * One difference from the pilot is deliberate. Its Base and Harness² k=1 rollouts ran under the
- * sweep's PATH, the judge's interpreter first, with pandas, openpyxl and python-docx; its Anabasis
- * and held-out arms ran through `score.sh` under `uv run`, whose interpreter has none of them, and
- * their trajectories met "No module named" for one of those six packages (pandas, numpy, openpyxl,
- * docx, pdfplumber, mammoth) 88 and 54 times, where Base's met it 12 times and k=1's never.
- * Here every arm gets the sweep's PATH (`pilotClaude`), and that interpreter gets a pip of its own
- * where it has none (`ownInstaller`), so that an install a solver starts lands where `python3`
- * imports from.
+ * Arms may be `base`, `starter`, `<campaign>`, `pi:starter`, `pi:<campaign>`, `tree:<dir>`,
+ * `heldout`, `again:<side>`, `sweep:base1`, or `sweep:agg1`. Rollouts run sequentially under the
+ * benchmark's PATH and judge (`eval/judge.py`); records land in `<out>/judged/<name>/` and track
+ * file-length cuts (`cut`) and workspace escape needles (`peeked`).
  */
 import { openHarness } from "#src/harness/open.ts";
 import { billedAll } from "#src/kernel/meter.ts";
@@ -196,6 +136,17 @@ interface Judging {
   readonly shimLog: string | undefined;
   readonly rubrics: string | undefined;
   readonly cap: number | undefined;
+}
+
+interface ScoreContext {
+  readonly jb: string;
+  readonly store: string;
+  readonly judged: string;
+  readonly arm: Arm;
+  readonly pi: boolean;
+  readonly how: Judging;
+  readonly needles: readonly string[];
+  readonly solveOnly: boolean;
 }
 
 const OPTIONS = {
@@ -390,6 +341,76 @@ function before(task: string): string {
   return `${profession}/task${n - 1}`;
 }
 
+async function exportPiTree(
+  into: string,
+  source: ReturnType<typeof sourceNamed>,
+  place: ReturnType<typeof placeOf>,
+): Promise<void> {
+  const part = `${into}.part-${String(runtimeProcess.pid)}`;
+  const origin = await placeHarness(join(part, HARNESS_DIR), source);
+  // Hash the kept harness before cross-platform Python rebuilds mutate `.toolchain/`, matching claude-export.
+  const harnessDigest = (await openHarness(join(part, HARNESS_DIR))).digest;
+  const toolTree = join(part, HARNESS_DIR, TOOL_TREE_DIR);
+  const hasTools = existsSync(toolTree);
+  const rebuilt = hasTools ? await rebuildForeignPython(toolTree, place, uvPython(place)) : null;
+  writeFileSync(
+    join(part, "export.json"),
+    `${capturedJsonStringify(
+      {
+        harness: harnessDigest,
+        mode: "pi",
+        ...origin,
+        toolchain: hasTools ? join(HARNESS_DIR, TOOL_TREE_DIR) : null,
+        ...keyIfNotNull("rebuilt", rebuilt === null ? null : { for: place.name, ...rebuilt }),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  renameSync(part, into);
+}
+
+async function exportedArm(
+  name: string,
+  from: string,
+  context: {
+    readonly harness: string | undefined;
+    readonly out: string;
+    readonly place: ReturnType<typeof placeOf>;
+    readonly pi: boolean;
+  },
+): Promise<Arm> {
+  const { harness, out, place, pi } = context;
+  const source = sourceNamed(from, harness);
+  // An arm's name binds its tree, written once: another harness takes another name.
+  const into = join(out, "trees", name);
+  if (!existsSync(into)) {
+    await (pi ? exportPiTree(into, source, place) : exportForClaudeCode(into, source, place));
+  }
+  const record = readJson(join(into, "export.json"));
+  const digest =
+    field(record, "harness") ?? (pi ? (await openHarness(join(into, HARNESS_DIR))).digest : null);
+  const fallbackToolchain = pi ? join(HARNESS_DIR, TOOL_TREE_DIR) : null;
+  const toolchain =
+    isRecord(record) && "toolchain" in record ? field(record, "toolchain") : fallbackToolchain;
+  if (isString(toolchain)) await foreignPrograms(join(into, toolchain), place);
+  const priced = `${into}.build.json`;
+  if (!existsSync(priced)) {
+    const usd = from === "starter" ? 0 : billedAll(read(await logAcross(from)));
+    writeFileSync(priced, `${capturedJsonStringify({ of: from, usd })}\n`);
+  }
+  const [of, usd] = [field(readJson(priced), "of"), field(readJson(priced), "usd")];
+  if (!isString(of) || !isNumber(usd)) throw new Error(`${priced} names no build`);
+  const build = { of, usd };
+  return {
+    name,
+    harness: isString(digest) ? digest : into,
+    tree: () => into,
+    build: () => build,
+    label: (task) => `${name}__${keyOf(task)}`,
+  };
+}
+
 async function armOf(values: Values, out: string, baseHarness: string, place = HERE): Promise<Arm> {
   const { arm = "", name = "" } = values;
   if (name === "" || name.includes("__") || name.includes("/") || name.startsWith(NAMESPACE)) {
@@ -413,7 +434,6 @@ async function armOf(values: Values, out: string, baseHarness: string, place = H
         stage === "base1" ? { of: "base", usd: 0 } : sweepBuild(out, task, STAGES.slice(0, 3)),
     };
   }
-  // `compare.ts rejudge` copies a rollout's deliverable under this name, so the judge reads it again.
   if (arm.startsWith("again:")) {
     return {
       name,
@@ -447,59 +467,12 @@ async function armOf(values: Values, out: string, baseHarness: string, place = H
   }
   if (arm === "") throw new Error("name --arm");
   const pi = arm.startsWith(PI);
-  const from = pi ? arm.slice(PI.length) : arm;
-  const source = sourceNamed(from, values.harness);
-  // An arm's name binds its tree, written once: another harness takes another name.
-  const into = join(out, "trees", name);
-  if (!existsSync(into)) {
-    if (pi) {
-      const part = `${into}.part-${String(runtimeProcess.pid)}`;
-      const origin = await placeHarness(join(part, HARNESS_DIR), source);
-      // Hash the kept harness before cross-platform Python rebuilds mutate `.toolchain/`, matching claude-export.
-      const harnessDigest = (await openHarness(join(part, HARNESS_DIR))).digest;
-      const toolTree = join(part, HARNESS_DIR, TOOL_TREE_DIR);
-      const hasTools = existsSync(toolTree);
-      const rebuilt = hasTools ? await rebuildForeignPython(toolTree, place, uvPython(place)) : null;
-      writeFileSync(
-        join(part, "export.json"),
-        `${capturedJsonStringify(
-          {
-            harness: harnessDigest,
-            mode: "pi",
-            ...origin,
-            toolchain: hasTools ? join(HARNESS_DIR, TOOL_TREE_DIR) : null,
-            ...keyIfNotNull("rebuilt", rebuilt === null ? null : { for: place.name, ...rebuilt }),
-          },
-          null,
-          2,
-        )}\n`,
-      );
-      renameSync(part, into);
-    } else await exportForClaudeCode(into, source, place);
-  }
-  const record = readJson(join(into, "export.json"));
-  const digest =
-    field(record, "harness") ?? (pi ? (await openHarness(join(into, HARNESS_DIR))).digest : null);
-  // A rollout runs outside a container, on the programs its tree was exported with.
-  const fallbackToolchain = pi ? join(HARNESS_DIR, TOOL_TREE_DIR) : null;
-  const toolchain =
-    isRecord(record) && "toolchain" in record ? field(record, "toolchain") : fallbackToolchain;
-  if (isString(toolchain)) await foreignPrograms(join(into, toolchain), place);
-  // The build is priced once, beside the tree and outside what a solver is given, so a tree copied
-  // to another machine rolls there without the campaign's log, which stays on its own host.
-  const priced = `${into}.build.json`;
-  if (!existsSync(priced)) {
-    const usd = from === "starter" ? 0 : billedAll(read(await logAcross(from)));
-    writeFileSync(priced, `${capturedJsonStringify({ of: from, usd })}\n`);
-  }
-  const [of, usd] = [field(readJson(priced), "of"), field(readJson(priced), "usd")];
-  if (!isString(of) || !isNumber(usd)) throw new Error(`${priced} names no build`);
-  const build = { of, usd };
-  return rolled(
-    isString(digest) ? digest : into,
-    () => into,
-    () => build,
-  );
+  return await exportedArm(name, pi ? arm.slice(PI.length) : arm, {
+    harness: values.harness,
+    out,
+    place,
+    pi,
+  });
 }
 
 /** `_judge_failed` and the partial check of `_read_details`: details that are no judgement. */
@@ -556,28 +529,22 @@ async function judge(
     mkdirSync(dirname(details), { recursive: true });
     mkdirSync(output, { recursive: true });
     const from = Date.now() / 1000;
+    const flags = {
+      "output-dir": output,
+      "rubrics-file": rubrics,
+      "details-file": details,
+      "judge-model": JUDGE.model,
+      "api-base": apiBase,
+      "max-workers": "8",
+      "max-retries": "3",
+      "timeout-per-rubric": "240",
+      "evaluated-model": place.label,
+    };
     const code = await inGroup(
       [
         join(jb, ".venv", "bin", "python"),
         ...(cap === undefined ? [judgePy] : ["-c", WIDER, judgePy, String(cap)]),
-        "--output-dir",
-        output,
-        "--rubrics-file",
-        rubrics,
-        "--details-file",
-        details,
-        "--judge-model",
-        JUDGE.model,
-        "--api-base",
-        apiBase,
-        "--max-workers",
-        "8",
-        "--max-retries",
-        "3",
-        "--timeout-per-rubric",
-        "240",
-        "--evaluated-model",
-        place.label,
+        ...Object.entries(flags).flatMap(([k, v]) => [`--${k}`, v]),
       ],
       {
         cwd: jb,
@@ -606,26 +573,17 @@ async function judge(
   return why;
 }
 
-export async function score(values: Values): Promise<void> {
-  if (values.out === undefined || values["api-base"] === undefined || values.jb === undefined) {
-    throw new Error("score needs --arm, --name, --out, --jb and --api-base");
-  }
-  if (values.for !== undefined || values.python !== undefined) {
-    throw new Error("--for and --python are the tree verb's; a rollout runs on this machine");
-  }
-  // An official record keeps judge.py's own cut, so a wider one reads only a deliverable judged again.
-  const cap = capOf(values.cap);
-  if (cap !== undefined && !(values.arm ?? "").startsWith("again:")) {
-    throw new Error("--cap judges only an again: arm, so no official record is made under another cut");
-  }
-  const jb = resolve(values.jb);
-  const out = resolve(values.out);
-  const store = join(out, "dataset");
-  const claude = pilotClaude(jb);
-  const pi = (values.arm ?? "").startsWith(PI);
-  const bench = jobBench(jb, store, claude, pi ? piAgent(claude) : undefined);
-  const arm = await armOf(values, out, bench.baseHarness);
-  const tasks = tasksOf(values.tasks, values.arm === "heldout" ? fair(PILOT_TASKS) : PILOT_TASKS);
+async function checkScoreInputs(
+  jb: string,
+  store: string,
+  input: {
+    readonly arm: Arm;
+    readonly tasks: readonly string[];
+    readonly pi: boolean;
+    readonly claude: Claude;
+  },
+): Promise<string> {
+  const { arm, tasks, pi, claude } = input;
   const python = join(jb, ".venv", "bin", "python");
   for (const need of [python, join(jb, "eval", "judge.py")]) {
     if (!existsSync(need)) {
@@ -646,6 +604,94 @@ export async function score(values: Values): Promise<void> {
     const own = await ownPython(tree, claude.env);
     if (own !== null) console.log(`  tree ${basename(tree)}: ${own}`);
   }
+  return python;
+}
+
+async function judgeTask(task: string, ctx: ScoreContext): Promise<void> {
+  const { jb, store, judged, arm, pi, how, needles } = ctx;
+  const label = arm.label(task);
+  const output = join(store, task, OUTPUT, label);
+  const got = await judge(jb, { store, task, label }, how);
+  if (isString(got)) {
+    console.log(`${task}: not judged (${got})`);
+    runtimeProcess.exitCode = 1;
+    return;
+  }
+  const traj = join(store, task, "model_traj", label);
+  const traces = existsSync(traj)
+    ? readdirSync(traj).map((name) => readFileSync(join(traj, name), "utf8").toLowerCase())
+    : [];
+  const log = rolloutLog(store, task, label);
+  const record = {
+    arm: arm.name,
+    harness: arm.harness,
+    task,
+    label,
+    delivered: readdirSync(output).length > 0,
+    points: got.details.total_score ?? null,
+    total: got.details.max_score ?? null,
+    passed: got.details.passed_count ?? null,
+    rubrics: got.details.total_count ?? null,
+    solveUsd: log.usd,
+    judgeUsd: got.usd,
+    seconds: log.seconds,
+    attempts: log.attempts,
+    build: arm.build(task),
+    peeked: needles.filter((needle) => traces.some((trace) => trace.includes(needle.toLowerCase()))),
+    cut: cutOf(jb, output, how.cap),
+    ...keyIfDefined("cap", how.cap),
+    ...keysIf(pi, () => ({ runtime: "pi-durable" })),
+  };
+  mkdirSync(judged, { recursive: true });
+  writeFileSync(join(judged, `${keyOf(task)}.json`), `${capturedJsonStringify(record, null, 2)}\n`);
+  console.log(`${task}: ${text(record.points)}/${text(record.total)}, $${log.usd.toFixed(4)} solved`);
+}
+
+async function runScoreLoop(
+  tasks: readonly string[],
+  bench: ReturnType<typeof jobBench>,
+  ctx: ScoreContext,
+): Promise<void> {
+  const { store, judged, arm } = ctx;
+  for (const task of tasks.filter((one) => !existsSync(join(judged, `${keyOf(one)}.json`)))) {
+    const [tree, label] = [arm.tree(task), arm.label(task)];
+    if (tree !== null && !rolloutLog(store, task, label).ran) {
+      try {
+        await bench.execute(task, tree, `${arm.name}/${task}`);
+      } catch (error) {
+        console.log(`${task}: ${errorMessage(error)}`);
+      }
+    }
+    if (tree !== null && !rolloutLog(store, task, label).ran) {
+      console.log(`${task}: no rollout ended with a result, a non-result; scoring again rolls it again`);
+      runtimeProcess.exitCode = 1;
+      continue;
+    }
+    if (!ctx.solveOnly) await judgeTask(task, ctx);
+  }
+}
+
+function validatedScoreFlags(values: Values) {
+  if (values.out === undefined || values["api-base"] === undefined || values.jb === undefined) {
+    throw new Error("score needs --arm, --name, --out, --jb and --api-base");
+  }
+  if (values.for !== undefined || values.python !== undefined) {
+    throw new Error("--for and --python are the tree verb's; a rollout runs on this machine");
+  }
+  const cap = capOf(values.cap);
+  if (cap !== undefined && !(values.arm ?? "").startsWith("again:")) {
+    throw new Error("--cap judges only an again: arm, so no official record is made under another cut");
+  }
+  return { jb: resolve(values.jb), out: resolve(values.out), apiBase: values["api-base"], cap };
+}
+
+export async function score(values: Values): Promise<void> {
+  const { jb, out, apiBase, cap } = validatedScoreFlags(values);
+  const [store, claude, pi] = [join(out, "dataset"), pilotClaude(jb), (values.arm ?? "").startsWith(PI)];
+  const bench = jobBench(jb, store, claude, pi ? piAgent(claude) : undefined);
+  const arm = await armOf(values, out, bench.baseHarness);
+  const tasks = tasksOf(values.tasks, values.arm === "heldout" ? fair(PILOT_TASKS) : PILOT_TASKS);
+  const python = await checkScoreInputs(jb, store, { arm, tasks, pi, claude });
   const judged = join(out, "judged", arm.name);
   console.log(`arm ${arm.name}: ${arm.harness}, ${tasks.length} tasks into ${judged}`);
   console.log(
@@ -653,7 +699,7 @@ export async function score(values: Values): Promise<void> {
   );
   if (pi) console.log(piDry(claude, arm.tree(tasks[0] ?? "") ?? ""));
   console.log(
-    `  judge: ${JUDGE.model} at ${JUDGE.effort} through ${values["api-base"]}, one at a time, each file cut at ${String(cap ?? MAX_CHARS_PER_FILE)} characters`,
+    `  judge: ${JUDGE.model} at ${JUDGE.effort} through ${apiBase}, one at a time, each file cut at ${String(cap ?? MAX_CHARS_PER_FILE)} characters`,
   );
   for (const task of tasks) {
     console.log(`  ${task}: ${arm.label(task)} under ${arm.tree(task) ?? "the sweep's rollout"}`);
@@ -666,9 +712,6 @@ export async function score(values: Values): Promise<void> {
   }
   const installer = ownInstaller(python);
   if (installer !== null) console.log(`  installer: ${installer}`);
-  // What a trajectory names only where its solver looked past its workspace: the store and its
-  // folders, the benchmark's tasks and judge (its interpreter, `<jb>/.venv`, fills every traceback),
-  // the judged records, and the benchmark's and Harness²'s hosts and names. Read without case.
   const needles = [
     store,
     OUTPUT,
@@ -683,69 +726,9 @@ export async function score(values: Values): Promise<void> {
     "google-research/harness2",
     "workbuddy",
   ];
-  const scoreOne = async (task: string): Promise<void> => {
-    const label = arm.label(task);
-    const place = { store, task, label };
-    const output = join(store, task, OUTPUT, label);
-    const got = await judge(jb, place, {
-      apiBase: values["api-base"] ?? "",
-      shimLog: values["judge-log"],
-      rubrics: values.rubrics,
-      cap,
-    });
-    if (isString(got)) {
-      console.log(`${task}: not judged (${got})`);
-      runtimeProcess.exitCode = 1;
-      return;
-    }
-    const traj = join(store, task, "model_traj", label);
-    const traces = existsSync(traj)
-      ? readdirSync(traj).map((name) => readFileSync(join(traj, name), "utf8").toLowerCase())
-      : [];
-    const log = rolloutLog(store, task, label);
-    const record = {
-      arm: arm.name,
-      harness: arm.harness,
-      task,
-      label,
-      delivered: readdirSync(output).length > 0,
-      points: got.details.total_score ?? null,
-      total: got.details.max_score ?? null,
-      passed: got.details.passed_count ?? null,
-      rubrics: got.details.total_count ?? null,
-      solveUsd: log.usd,
-      judgeUsd: got.usd,
-      seconds: log.seconds,
-      attempts: log.attempts,
-      build: arm.build(task),
-      peeked: needles.filter((needle) => traces.some((trace) => trace.includes(needle.toLowerCase()))),
-      cut: cutOf(jb, output, cap),
-      ...keyIfDefined("cap", cap),
-      ...keysIf(pi, () => ({ runtime: "pi-durable" })),
-    };
-    mkdirSync(judged, { recursive: true });
-    writeFileSync(join(judged, `${keyOf(task)}.json`), `${capturedJsonStringify(record, null, 2)}\n`);
-    console.log(`${task}: ${text(record.points)}/${text(record.total)}, $${log.usd.toFixed(4)} solved`);
-  };
-  for (const task of tasks.filter((one) => !existsSync(join(judged, `${keyOf(one)}.json`)))) {
-    const tree = arm.tree(task);
-    const label = arm.label(task);
-    // The runner's SKIP: a rollout on record, delivered or not, is this arm's one solve.
-    if (tree !== null && !rolloutLog(store, task, label).ran) {
-      try {
-        await bench.execute(task, tree, `${arm.name}/${task}`);
-      } catch (error) {
-        console.log(`${task}: ${errorMessage(error)}`);
-      }
-    }
-    if (tree !== null && !rolloutLog(store, task, label).ran) {
-      console.log(`${task}: no rollout ended with a result, a non-result; scoring again rolls it again`);
-      runtimeProcess.exitCode = 1;
-      continue;
-    }
-    // `compare.ts run` solves a block's sides side by side and judges them in turn afterwards.
-    if (values["solve-only"] !== true) await scoreOne(task);
-  }
+  const how: Judging = { apiBase, shimLog: values["judge-log"], rubrics: values.rubrics, cap };
+  const solveOnly = values["solve-only"] === true;
+  await runScoreLoop(tasks, bench, { jb, store, judged, arm, pi, how, needles, solveOnly });
 }
 
 /** The judged records under `<out>/judged/` of the labels `shown`, or of every label. */
@@ -778,10 +761,21 @@ const uncutOf = (tasks: readonly string[], records: readonly JsonObject[]): stri
  * show (system-audit, "The pillars and the v1.0 bar"), rather than both being worked out by hand
  * from `table`.
  */
+const indexRecords = (records: readonly JsonObject[]) =>
+  new Map(records.toReversed().map((r) => [`${text(r.arm)}\0${text(r.task)}`, r] as const));
+
+const sumPair = (
+  items: readonly (readonly [number | null, number | null])[],
+): readonly [number | null, number | null] => {
+  const sumAt = (i: 0 | 1) =>
+    items.reduce<number | null>((a, p) => (a === null || p[i] === null ? null : a + p[i]), 0);
+  return [sumAt(0), sumAt(1)];
+};
+
 function spread(out: string, shown: readonly string[]): void {
   const store = recordsOf(out, undefined);
-  const rowOf = (label: string, task: string) =>
-    store.find((record) => record.arm === label && record.task === task);
+  const byKey = indexRecords(store);
+  const rowOf = (label: string, task: string) => byKey.get(`${label}\0${task}`);
   const held = [...new Set(store.map((record) => text(record.task)))].toSorted();
   const tasks = uncutOf(held, store).filter((task) =>
     shown.every((label) => isNumber(rowOf(label, task)?.points)),
@@ -806,9 +800,8 @@ function spread(out: string, shown: readonly string[]): void {
     return { task, low: Math.min(...points), high: Math.max(...points), mean };
   });
   for (const row of rows.toSorted((a, b) => a.mean - b.mean)) {
-    const share = (100 * row.mean).toFixed(1);
     console.log(
-      `${row.task}: ${String(row.low)} to ${String(row.high)} of ${String(totalOf(row.task))}, mean ${share}%`,
+      `${row.task}: ${String(row.low)} to ${String(row.high)} of ${String(totalOf(row.task))}, mean ${(100 * row.mean).toFixed(1)}%`,
     );
   }
 }
@@ -816,28 +809,38 @@ function spread(out: string, shown: readonly string[]): void {
 /** The pilot's arms table (`final.py`) from the records under `<out>/judged/`. */
 function table(out: string, named: string | undefined, shown: readonly string[] | undefined): void {
   const records = recordsOf(out, shown);
+  const byKey = indexRecords(records);
   const arms = [...new Set(records.map((record) => text(record.arm)))].toSorted();
   // Unnamed, the tasks are those the records hold, not the pilot's eight, of which a sitting may
   // roll six, so that no arm reads "6 of 8" over a fair five no sitting chose.
   const tasks = tasksOf(named, [...new Set(records.map((record) => text(record.task)))].toSorted());
   const money = (value: number | null): string => (value === null ? "?" : value.toFixed(2));
   const width = Math.max(10, ...arms.map((arm) => arm.length));
-  const uncut = uncutOf(tasks, records);
-  // A rubric pays its weight only where every criterion passes, so points magnify a near tie: two
-  // arms dozens of points apart can stand two criteria apart. The judge's own
-  // count is read from its details, and is unknown where a store holds none for a record.
-  const criteria = (rows: readonly JsonObject[]): string => {
-    const results = rows.flatMap((row) => {
-      const details = readJson(detailsOf(join(out, "dataset"), text(row.task), text(row.label)));
-      const rubrics = field(details, "rubrics");
-      return Array.isArray(rubrics) ? rubrics.map((rubric) => field(rubric, "result")) : [null];
-    });
-    const sum = (key: string): string => {
-      const counts = results.map((result) => field(result, key));
-      return counts.every(isNumber) ? String(counts.reduce((all, count) => all + count, 0)) : "?";
-    };
-    return `${sum("criteria_passed")}/${sum("criteria_count")}`;
+  const [uncut, dataset] = [uncutOf(tasks, records), join(out, "dataset")];
+  // The judge's criterion count is read once per (task, label) across the three table blocks.
+  const detailTotals = new Map<string, readonly [number | null, number | null]>();
+  const rowCriteria = (row: JsonObject): readonly [number | null, number | null] => {
+    const [task, label] = [text(row.task), text(row.label)];
+    const key = `${task}\0${label}`;
+    const cached = detailTotals.get(key);
+    if (cached !== undefined) return cached;
+    const rubrics = field(readJson(detailsOf(dataset, task, label)), "rubrics");
+    const totals = Array.isArray(rubrics)
+      ? sumPair(
+          rubrics.map((rubric) => {
+            const r = field(rubric, "result");
+            const [p, c] = [field(r, "criteria_passed"), field(r, "criteria_count")];
+            return [isNumber(p) ? p : null, isNumber(c) ? c : null] as const;
+          }),
+        )
+      : ([null, null] as const);
+    detailTotals.set(key, totals);
+    return totals;
   };
+  const criteria = (rows: readonly JsonObject[]): string =>
+    sumPair(rows.map(rowCriteria))
+      .map((n) => (n === null ? "?" : String(n)))
+      .join("/");
   for (const [title, set] of [
     ["all", tasks],
     ["fair", fair(tasks)],
@@ -845,8 +848,10 @@ function table(out: string, named: string | undefined, shown: readonly string[] 
   ] as const) {
     console.log(`${title} ${set.length}`);
     for (const arm of arms) {
-      const rows = set.map((task) => records.find((record) => record.arm === arm && record.task === task));
-      const held = rows.filter((row) => row !== undefined);
+      const held = set.flatMap((task) => {
+        const row = byKey.get(`${arm}\0${task}`);
+        return row === undefined ? [] : [row];
+      });
       if (held.length < set.length) {
         console.log(`  ${arm.padEnd(width)} ${held.length} of ${set.length} tasks scored`);
         continue;
@@ -859,16 +864,12 @@ function table(out: string, named: string | undefined, shown: readonly string[] 
       const builds = new Map(
         held.map((row) => [text(field(row.build, "of") ?? row.task), field(row.build, "usd")] as const),
       );
-      const build = [...builds.values()].every((usd) => isNumber(usd))
-        ? [...builds.values()].reduce<number>((all, usd) => all + (isNumber(usd) ? usd : 0), 0)
-        : null;
-      const [points, total, solve, judgeUsd, seconds] = [
-        sum("points"),
-        sum("total"),
-        sum("solveUsd"),
-        sum("judgeUsd"),
-        sum("seconds"),
-      ];
+      const build = [...builds.values()].reduce<number | null>(
+        (all, usd) => (all === null || !isNumber(usd) ? null : all + usd),
+        0,
+      );
+      const [points, total, solve] = [sum("points"), sum("total"), sum("solveUsd")];
+      const [judgeUsd, seconds] = [sum("judgeUsd"), sum("seconds")];
       // A system costs its build and its solves; the judge prices the benchmark, not the system,
       // and most of a sitting's total can be judging.
       const system = build === null || solve === null ? null : build + solve;
@@ -881,7 +882,7 @@ function table(out: string, named: string | undefined, shown: readonly string[] 
   }
   for (const task of tasks) {
     const cells = arms.flatMap((arm) => {
-      const row = records.find((record) => record.arm === arm && record.task === task);
+      const row = byKey.get(`${arm}\0${task}`);
       const peeked = Array.isArray(row?.peeked) && row.peeked.length > 0 ? " PEEKED" : "";
       const cut = cuts(row) > 0 ? ` CUT ${String(cuts(row))}` : "";
       return row === undefined ? [] : [`${arm} ${text(row.points)}/${text(row.total)}${peeked}${cut}`];

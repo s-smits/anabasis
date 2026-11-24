@@ -20,7 +20,7 @@ import { pooled } from "../meta/pool.ts";
 import type { AnswerFile } from "./answer-files.ts";
 import { gainOver, GAP_FLOOR } from "./compare.ts";
 import { answerFormatFault, type Contract } from "./contract.ts";
-import type { LogEvent } from "./log.ts";
+import { eventsOf, type LogEvent } from "./log.ts";
 import {
   applicableTruthChecks,
   type Brief,
@@ -116,16 +116,24 @@ export interface Read {
   readonly probes?: false;
 }
 
+interface Probe {
+  readonly run: ControlAnswerRun;
+  readonly task: Task;
+  readonly files: readonly AnswerFile[] | undefined;
+}
+
+const NO_FILES: readonly AnswerFile[] = [];
+const when = (holds: boolean, text: string) => (holds ? [text] : []);
+
 /** Every control answer through the checks, twice, `width` at once. A control answer of a task the pack does not
  *  hold is the caller's error, not the checker's, and a verifier that cannot decide stops the run,
  *  as it stops task admission (`decided`): a wall that is not there is no fault of a check's. */
 function runControls(
   verify: Verifier,
-  tasks: readonly Task[],
+  byId: ReadonlyMap<string, Task>,
   controls: readonly Control[],
   width: number,
 ): Promise<ControlAnswerRun[]> {
-  const byId = new Map(tasks.map((task) => [task.taskId, task]));
   return pooled(controls, width, async (control) => {
     const task = byId.get(control.taskId);
     if (task === undefined) {
@@ -145,7 +153,6 @@ function runControls(
  * caller asks (`answerFormatFault`) before it puts the answer to a check. References are followed
  * so that a draft citing `#/$defs/...` is not refused on it.
  */
-/** Smallest scalar value for a primitive JSON Schema type. */
 function minimalPrimitive(
   held: Record<string, JsonValue | undefined>,
   type: JsonValue | undefined,
@@ -188,64 +195,77 @@ function doNothingAnswer(
   return minimalPrimitive(held, type);
 }
 
+/** Run `probes` through `verify` (dropping non-results) and classify validity/objective sensitivity. */
+async function probeSensitivity(given: Read, probes: readonly Probe[]) {
+  const { verify, brief, width } = given;
+  const results = (
+    await pooled(probes, width, async ({ run, task, files }) => ({
+      run,
+      verdict: await verify(task, run.answer, undefined, files),
+    }))
+  ).filter(({ verdict }) => verdict.kind !== "non-result");
+  const rule = { direction: brief.objective?.direction ?? "higher" } as const;
+  // `objective` runs only after every truth check passed (`verify.ts`), so an objective-only
+  // fault still proves every validity check passed without reading the perturbed input.
+  const allValid =
+    results.length > 0 &&
+    results.every(
+      ({ verdict }) =>
+        verdict.kind === "pass" || (verdict.kind === "faulty" && verdict.check === OBJECTIVE.id),
+    );
+  const blind =
+    results.length > 0 &&
+    results.every(
+      ({ run, verdict }) =>
+        verdict.kind === "pass" &&
+        Math.abs(gainOver(rule, objectiveOf(verdict), objectiveOf(run.verdicts[0]))) < GAP_FLOOR,
+    );
+  return { results, allValid, blind };
+}
+
 /**
  * Probe deliverable-carrying accept controls with all deliverable files removed: faults when no
  * check or objective reads deliverables, and surfaces factual notes when only the objective reads
  * them or when some accept controls still pass without files.
  */
 async function deliverableReading(
-  { verify, brief, tasks, width }: Read,
+  given: Read,
+  byId: ReadonlyMap<string, Task>,
   accepted: readonly ControlAnswerRun[],
 ): Promise<{ readonly faults: readonly string[]; readonly notes: readonly string[] }> {
-  const byId = new Map(tasks.map((task) => [task.taskId, task]));
   const withFiles = accepted.flatMap((run) => {
-    const task = (run.files?.length ?? 0) > 0 ? byId.get(run.taskId) : undefined;
-    return task === undefined ? [] : [{ run, task }];
+    const task = run.files && run.files.length > 0 ? byId.get(run.taskId) : undefined;
+    return task === undefined ? [] : [{ run, task, files: NO_FILES }];
   });
   if (withFiles.length === 0) return { faults: [], notes: [] };
-  const stripped = (
-    await pooled(withFiles, width, async ({ run, task }) => ({
-      run,
-      verdict: await verify(task, run.answer, undefined, []),
-    }))
-  ).filter(({ verdict }) => verdict.kind !== "non-result");
+  const { results: stripped, allValid, blind } = await probeSensitivity(given, withFiles);
   if (stripped.length === 0) return { faults: [], notes: [] };
-  const rule = { direction: brief.objective?.direction ?? "higher" } as const;
-  const allValid = stripped.every(
-    ({ verdict }) => verdict.kind === "pass" || (verdict.kind === "faulty" && verdict.check === OBJECTIVE.id),
-  );
-  const blind = stripped.every(
-    ({ run, verdict }) =>
-      verdict.kind === "pass" &&
-      Math.abs(gainOver(rule, objectiveOf(verdict), objectiveOf(run.verdicts[0]))) < GAP_FLOOR,
-  );
   const faultyStrips = stripped.flatMap(({ run, verdict }) => {
     const fault = faultyOf(verdict);
-    return fault !== null && fault.check !== OBJECTIVE.id
-      ? [`removing deliverable files caused check ${fault.check} to fault on ${run.taskId}: ${fault.reason}`]
-      : [];
+    return fault === null || fault.check === OBJECTIVE.id
+      ? []
+      : [`removing deliverable files caused check ${fault.check} to fault on ${run.taskId}: ${fault.reason}`];
   });
   const partial = allValid
     ? []
     : stripped.flatMap(({ run, verdict }) =>
-        verdict.kind === "pass"
-          ? [`the accept control of ${run.taskId} still passed with all deliverable files removed`]
-          : [],
+        when(
+          verdict.kind === "pass",
+          `the accept control of ${run.taskId} still passed with all deliverable files removed`,
+        ),
       );
   return {
-    faults: blind
-      ? [
-          "deliverable files had no effect on any accept control: with all deliverables removed, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective reads them",
-        ]
-      : [],
+    faults: when(
+      blind,
+      "deliverable files had no effect on any accept control: with all deliverables removed, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective reads them",
+    ),
     notes: [
       ...faultyStrips,
       ...partial,
-      ...(allValid && !blind
-        ? [
-            "every validity check passed when each example's deliverable files were removed: only the objective read deliverables, so validity checks ignore submitted files",
-          ]
-        : []),
+      ...when(
+        allValid && !blind,
+        "every validity check passed when each example's deliverable files were removed: only the objective read deliverables, so validity checks ignore submitted files",
+      ),
     ],
   };
 }
@@ -258,30 +278,26 @@ async function deliverableReading(
  */
 async function probeReading(
   given: Read,
+  byId: ReadonlyMap<string, Task>,
   runs: readonly ControlAnswerRun[],
 ): Promise<{ readonly faults: readonly string[]; readonly notes: readonly string[] }> {
-  const { verify, brief, tasks, width } = given;
+  const { tasks } = given;
   const accepted = runs.filter(
     ({ refusedBy, verdicts: [first] }) => refusedBy === null && first.kind === "pass",
   );
-  const judged = async (probes: readonly { readonly run: ControlAnswerRun; readonly task: Task }[]) =>
-    (
-      await pooled(probes, width, async ({ run, task }) => ({
-        run,
-        verdict: await verify(task, run.answer, undefined, run.files),
-      }))
-    ).filter(({ verdict }) => verdict.kind !== "non-result");
   const others = (run: ControlAnswerRun, as: (other: Task) => Task | null) =>
     tasks.flatMap((other) => {
       const task = other.taskId === run.taskId ? null : as(other);
-      return task === null ? [] : [{ run, task }];
+      return task === null ? [] : [{ run, task, files: run.files }];
     });
-  const swaps = await judged(accepted.flatMap((run) => others(run, (other) => other)));
-  const swapped: string[] = [];
-  const partialSwaps: string[] = [];
-  const faultySwaps: string[] = [];
+  const { results: swaps } = await probeSensitivity(
+    given,
+    accepted.flatMap((run) => others(run, (other) => other)),
+  );
+  const byRun = Map.groupBy(swaps, ({ run }) => run);
+  const [swapped, partialSwaps, faultySwaps]: [string[], string[], string[]] = [[], [], []];
   for (const run of accepted) {
-    const own = swaps.filter((swap) => swap.run === run);
+    const own = byRun.get(run) ?? [];
     const passed = own.filter(({ verdict }) => verdict.kind === "pass").length;
     if (own.length > 0 && passed === own.length) {
       swapped.push(
@@ -292,93 +308,60 @@ async function probeReading(
         `the accept control of ${run.taskId} also passed ${String(passed)} of ${String(own.length)} other examples`,
       );
     }
-    const faulted = own.find(({ verdict }) => verdict.kind === "faulty");
-    if (faulted?.verdict.kind === "faulty") {
+    const fault = own.map(({ verdict }) => faultyOf(verdict)).find((one) => one !== null);
+    if (fault !== undefined) {
       faultySwaps.push(
-        `the accept control of ${run.taskId} faulted ${faulted.verdict.check} on another example: ${faulted.verdict.reason}`,
+        `the accept control of ${run.taskId} faulted ${fault.check} on another example: ${fault.reason}`,
       );
     }
   }
-  const byId = new Map(tasks.map((task) => [task.taskId, task]));
   const hiddenOf = (task: Task) => capturedJsonStringify(task.hidden ?? null);
   const carried = tasks.length > 1 && tasks.every(({ hidden }) => hidden !== null);
   const identicalHidden = carried && accepted.length > 0 && new Set(tasks.map(hiddenOf)).size === 1;
-  const moved =
+  const hiddenProbes =
     carried && !identicalHidden
-      ? await judged(
-          accepted.flatMap((run) => {
-            const own = byId.get(run.taskId);
-            return own === undefined
-              ? []
-              : others(run, (other) =>
-                  hiddenOf(other) === hiddenOf(own) ? null : { ...own, hidden: other.hidden },
-                );
-          }),
-        )
+      ? accepted.flatMap((run) => {
+          const own = byId.get(run.taskId);
+          return own === undefined
+            ? []
+            : others(run, (other) =>
+                hiddenOf(other) === hiddenOf(own) ? null : { ...own, hidden: other.hidden },
+              );
+        })
       : [];
-  const rule = { direction: brief.objective?.direction ?? "higher" } as const;
-  // `objective` runs only after every truth check passed (`verify.ts`), so an objective-only
-  // fault on swapped hidden values still proves every validity check passed without reading hidden.
-  const allValidOnHiddenSwap =
-    moved.length > 0 &&
-    moved.every(
-      ({ verdict }) =>
-        verdict.kind === "pass" || (verdict.kind === "faulty" && verdict.check === OBJECTIVE.id),
-    );
-  const blind =
-    moved.length > 0 &&
-    moved.every(
-      ({ run, verdict }) =>
-        verdict.kind === "pass" &&
-        Math.abs(gainOver(rule, objectiveOf(verdict), objectiveOf(run.verdicts[0]))) < GAP_FLOOR,
-    );
-  const deliverables = await deliverableReading(given, accepted);
+  const { allValid: allValidOnHiddenSwap, blind } =
+    hiddenProbes.length > 0 ? await probeSensitivity(given, hiddenProbes) : { allValid: false, blind: false };
+  const deliverables = await deliverableReading(given, byId, accepted);
   return {
     faults: [
       ...swapped,
-      ...(blind
-        ? [
-            "hidden values had no effect on any accept control: with another example's hidden values in place of its own, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective is decided by them",
-          ]
-        : []),
+      ...when(
+        blind,
+        "hidden values had no effect on any accept control: with another example's hidden values in place of its own, every accept control passed and measured within the comparison's floor of its own measure, so no check or objective is decided by them",
+      ),
       ...deliverables.faults,
     ],
     notes: [
       ...partialSwaps,
       ...faultySwaps,
-      ...(identicalHidden
-        ? ["every example carries identical hidden values, so hidden-value sensitivity could not be probed"]
-        : []),
-      ...(allValidOnHiddenSwap && !blind
-        ? [
-            "every validity check passed when each example's hidden values were swapped with another's: only the objective read hidden values, so validity checks test public properties alone",
-          ]
-        : []),
+      ...when(
+        identicalHidden,
+        "every example carries identical hidden values, so hidden-value sensitivity could not be probed",
+      ),
+      ...when(
+        allValidOnHiddenSwap && !blind,
+        "every validity check passed when each example's hidden values were swapped with another's: only the objective read hidden values, so validity checks test public properties alone",
+      ),
       ...deliverables.notes,
     ],
   };
-}
-
-/** The do-nothing answer through every task's checks, `width` at once. */
-function runDoNothing(
-  verify: Verifier,
-  tasks: readonly Task[],
-  answer: JsonValue,
-  width: number,
-): Promise<Idle[]> {
-  return pooled(tasks, width, async (task) => ({
-    taskId: task.taskId,
-    verdict: await decided(verify, task, answer),
-  }));
 }
 
 /** The tasks on which the do-nothing answer was not rejected, a sentence each: it passed, or a
  *  check could not run on it, which is no rejection either. */
 export function doNothingFaults(idle: readonly Idle[]): string[] {
   return idle.flatMap(({ taskId, verdict }) =>
-    verdict.kind === "fail"
-      ? []
-      : [`the do-nothing answer was not rejected on ${taskId}: ${spelled(verdict)}`],
+    when(verdict.kind !== "fail", `the do-nothing answer was not rejected on ${taskId}: ${spelled(verdict)}`),
   );
 }
 
@@ -401,50 +384,48 @@ function controlFault({ taskId, refusedBy, verdicts: [first, second] }: ControlA
  */
 function acceptance(
   brief: Brief,
-  tasks: readonly Task[],
+  byId: ReadonlyMap<string, Task>,
   runs: readonly ControlAnswerRun[],
   found: (toolId: string) => ToolAvailability,
 ): Acceptance {
-  const byId = new Map(tasks.map((task) => [task.taskId, task]));
   const graded: Graded[] = runs.flatMap(({ taskId, verdicts: [verdict] }) => {
     const task = byId.get(taskId);
     return task === undefined ? [] : [{ task, verdict }];
   });
-  const packInstalled = (tools: readonly string[]) =>
-    tools.filter((tool) => {
-      const seen = found(tool);
-      return seen === true || seen === "pack";
-    });
-  const missingOf = (tools: readonly string[]) => tools.filter((tool) => found(tool) === false);
+  const toolInfo = (tools: readonly string[]) => ({
+    instrument: tools.filter((tool) => found(tool) === true || found(tool) === "pack").join(", ") || AUTHOR,
+    missing: tools.filter((tool) => found(tool) === false),
+  });
   // The objective is read as a check is: its author's own computation, which the operator admits
   // by name, and seen to measure every valid answer or none.
-  const objTools = brief.objectiveTools ?? [];
   const measured: CheckReading[] =
     brief.objective === undefined
       ? []
       : [
           {
             id: OBJECTIVE.id,
-            instrument: packInstalled(objTools).join(", ") || AUTHOR,
-            missing: missingOf(objTools),
+            ...toolInfo(brief.objectiveTools ?? []),
             passed: graded.filter(({ verdict }) => objectiveOf(verdict) !== null).length,
             refused: 0,
             named: 0,
             caught: 0,
           },
         ];
+  const applicable = new Map(
+    [...byId.values()].map((task) => [
+      task.taskId,
+      new Set(applicableTruthChecks(brief, task).map(({ id }) => id)),
+    ]),
+  );
   const checks = brief.truthChecks.map(({ id, execution }): CheckReading => {
     const seen = graded.filter(
-      ({ task, verdict }) =>
-        decides(verdict) && applicableTruthChecks(brief, task).some((check) => check.id === id),
+      ({ task, verdict }) => decides(verdict) && applicable.get(task.taskId)?.has(id) === true,
     );
     const refused = seen.filter(({ verdict }) => verdict.kind === "fail" && verdict.blocking.includes(id));
     const naming = runs.filter((run) => run.refusedBy === id);
-    const required = requiredToolsOf(execution);
     return {
       id,
-      instrument: packInstalled(required).join(", ") || AUTHOR,
-      missing: missingOf(required),
+      ...toolInfo(requiredToolsOf(execution)),
       passed: seen.length - refused.length,
       refused: refused.length,
       named: naming.length,
@@ -452,39 +433,42 @@ function acceptance(
         .length,
     };
   });
-  // A check that could not run is the fault, and what it then never refused or passed is not a
-  // second one: said so, the remedy reads as another control answer. v1's admission test told a Builder to add a
-  // reject when twelve existed and the check's tool could not write its output.
   const unrun = new Map(
     graded
-      .flatMap(({ verdict }) => (verdict.kind === "faulty" ? [verdict] : []))
-      .toReversed()
-      .map(({ check, reason }) => [check, reason]),
+      .flatMap(({ verdict }) => {
+        const fault = faultyOf(verdict);
+        return fault === null ? [] : [[fault.check, fault.reason] as const];
+      })
+      .toReversed(),
   );
+  const all = [...checks, ...measured];
   const faults = [
     ...runs.flatMap((run) => controlFault(run) ?? []),
-    ...checks.flatMap(({ id, missing, passed, refused, caught }) => [
-      ...missing.map((tool) => `${id} names ${tool}, which is not on the verifier's tool path`),
-      ...(unrun.has(id)
-        ? [
-            `${id} could not run on an answer, so what it refuses and passes is not read: ${unrun.get(id) ?? ""}`,
-          ]
-        : [
-            ...(refused === 0 ? [`${id} has refused nothing in this reading`] : []),
-            ...(passed === 0 ? [`${id} has let nothing pass in this reading`] : []),
-            ...(refused > 0 && caught === 0 ? [`${id} has refused no reject control that names it`] : []),
-          ]),
-    ]),
-    ...measured.flatMap(({ id, missing, passed }) => [
-      ...missing.map((tool) => `${id} names ${tool}, which is not on the verifier's tool path`),
-      ...(unrun.has(id)
-        ? [`${id} could not be measured on a valid answer: ${unrun.get(id) ?? ""}`]
-        : passed === 0
-          ? [`${id} has measured nothing in this reading`]
-          : []),
-    ]),
+    ...all.flatMap(({ id, missing, passed, refused, caught }) => {
+      const missingFaults = missing.map(
+        (tool) => `${id} names ${tool}, which is not on the verifier's tool path`,
+      );
+      const err = unrun.get(id);
+      if (err !== undefined) {
+        return [
+          ...missingFaults,
+          id === OBJECTIVE.id
+            ? `${id} could not be measured on a valid answer: ${err}`
+            : `${id} could not run on an answer, so what it refuses and passes is not read: ${err}`,
+        ];
+      }
+      const detail =
+        id === OBJECTIVE.id
+          ? when(passed === 0, `${id} has measured nothing in this reading`)
+          : [
+              ...when(refused === 0, `${id} has refused nothing in this reading`),
+              ...when(passed === 0, `${id} has let nothing pass in this reading`),
+              ...when(refused > 0 && caught === 0, `${id} has refused no reject control that names it`),
+            ];
+      return [...missingFaults, ...detail];
+    }),
   ];
-  return { checks: [...checks, ...measured], faults };
+  return { checks: all, faults };
 }
 
 /**
@@ -496,22 +480,28 @@ function acceptance(
  */
 export async function readChecker(given: Read) {
   const { verify, brief, tasks, width } = given;
-  const runs = await runControls(verify, tasks, given.controls, width);
+  const byId = new Map(tasks.map((task) => [task.taskId, task]));
+  const runs = await runControls(verify, byId, given.controls, width);
   const idle = doNothingAnswer(given.contract.answerFormat);
   const unformed = answerFormatFault(given.contract.answerFormat, idle);
-  const rejected = unformed === null ? await runDoNothing(verify, tasks, idle, width) : [];
-  const { checks, faults } = acceptance(brief, tasks, runs, given.found);
-  const probed = given.probes === false ? { faults: [], notes: [] } : await probeReading(given, runs);
+  const rejected: Idle[] =
+    unformed === null
+      ? await pooled(tasks, width, async (task) => ({
+          taskId: task.taskId,
+          verdict: await decided(verify, task, idle),
+        }))
+      : [];
+  const { checks, faults } = acceptance(brief, byId, runs, given.found);
+  const probed = given.probes === false ? { faults: [], notes: [] } : await probeReading(given, byId, runs);
   return {
     runs,
     checks,
     faults: [...faults, ...(unformed === null ? doNothingFaults(rejected) : []), ...probed.faults],
     notes: [
-      ...(unformed === null
-        ? []
-        : [
-            `the do-nothing answer ${capturedJsonStringify(idle)} does not follow the answer format (${unformed}), so the format refuses it before any check reads it: the host builds it from the schema's types, required properties, minimums, least lengths and counts, first enumerated or constant values, first choices and local references, and reads no other keyword`,
-          ]),
+      ...when(
+        unformed !== null,
+        `the do-nothing answer ${capturedJsonStringify(idle)} does not follow the answer format (${String(unformed)}), so the format refuses it before any check reads it: the host builds it from the schema's types, required properties, minimums, least lengths and counts, first enumerated or constant values, first choices and local references, and reads no other keyword`,
+      ),
       ...probed.notes,
     ],
     idle,
@@ -524,11 +514,10 @@ export async function readChecker(given: Read) {
  *  a sentence each. An installed instrument needs no word, and a word for it is none. */
 export function authoredFaults(checks: readonly CheckReading[], admitted: ReadonlySet<string>): string[] {
   return checks.flatMap(({ id, instrument }) =>
-    instrument === AUTHOR && !admitted.has(id)
-      ? [
-          `${id} is decided by its author's own computation and no installed instrument: it stands on the operator's word alone (--admit ${id})`,
-        ]
-      : [],
+    when(
+      instrument === AUTHOR && !admitted.has(id),
+      `${id} is decided by its author's own computation and no installed instrument: it stands on the operator's word alone (--admit ${id})`,
+    ),
   );
 }
 
@@ -536,17 +525,17 @@ export function authoredFaults(checks: readonly CheckReading[], admitted: Readon
  *  what an exam that stands on the operator's word waits for. `admitted` is the operator's word on
  *  record unless given, so `[]` names every check its author decides (the closing report). */
 export function unadmitted(events: readonly LogEvent[], admitted?: readonly unknown[]): string[] {
-  const reading = events.findLast(({ kind }) => kind === "checker.read")?.data;
-  const kept = admitted ?? (Array.isArray(reading?.admitted) ? reading.admitted : []);
+  const reading = eventsOf(events, "checker.read").at(-1)?.event.data;
+  const kept = new Set(admitted ?? (Array.isArray(reading?.admitted) ? reading.admitted : []));
   return (Array.isArray(reading?.rows) ? reading.rows : []).flatMap((row) => {
     const { id, instrument } = asRecord(row) ?? {};
-    return isString(id) && instrument === AUTHOR && !kept.includes(id) ? [id] : [];
+    return isString(id) && instrument === AUTHOR && !kept.has(id) ? [id] : [];
   });
 }
 
 /** The checker the log holds as frozen, by its last `contract.frozen`; null when none is. */
 export function frozenChecker(events: readonly LogEvent[]): Checker | null {
-  const data = events.findLast(({ kind }) => kind === "contract.frozen")?.data;
+  const data = eventsOf(events, "contract.frozen").at(-1)?.event.data;
   return isString(data?.contract) && isString(data.checks)
     ? { contract: data.contract, checks: data.checks }
     : null;
@@ -559,8 +548,8 @@ export function departure(events: readonly LogEvent[], own: Checker): string | n
   const frozen = frozenChecker(events);
   if (frozen === null) return null;
   const moved = [
-    ...(frozen.contract === own.contract ? [] : ["contract"]),
-    ...(frozen.checks === own.checks ? [] : ["check program"]),
+    ...when(frozen.contract !== own.contract, "contract"),
+    ...when(frozen.checks !== own.checks, "check program"),
   ];
   return moved.length === 0
     ? null

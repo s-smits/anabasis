@@ -12,6 +12,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  readHeadSync,
   readlinkSync,
   realpathSync,
   renameSync,
@@ -52,6 +53,15 @@ export const HOME_TOOL_TREE = `harness/${TOOL_TREE_DIR}`;
  *  each ending. */
 const LINKED_TREE_BYTES = 100 * 1024 * 1024;
 
+function treeOverLimit(tree: string): boolean {
+  let bytes = 0;
+  for (const path of pathsUnder(tree)) {
+    bytes += lstatSync(join(tree, path)).size;
+    if (bytes > LINKED_TREE_BYTES) return true;
+  }
+  return false;
+}
+
 /** Copy the kept state `state` to `into`, its programs as files and its correctness model left out.
  *  With `trees`, a tool tree over `LINKED_TREE_BYTES` is copied once to `trees/<its name>` and
  *  `.toolchain` links there, as a kept state's does to the tree beside it: the digest and the wall
@@ -66,8 +76,7 @@ export function copyHarness(state: string, into: string, trees?: string): void {
     filter: (each) => resolve(each) !== own && basename(each) !== examDirectory,
   });
   if (tree === null) return;
-  const bytes = pathsUnder(tree).reduce((sum, path) => sum + lstatSync(join(tree, path)).size, 0);
-  if (trees === undefined || bytes <= LINKED_TREE_BYTES) {
+  if (trees === undefined || !treeOverLimit(tree)) {
     cpSync(tree, join(into, TOOL_TREE_DIR), copy);
     return;
   }
@@ -118,9 +127,11 @@ export function refuseNamingHome(dir: string, home: string, under: string): void
     const full = join(dir, path);
     const stat = lstatSync(full);
     if (stat.isSymbolicLink()) return forms.some((form) => readlinkSync(full).includes(form));
-    if (!stat.isFile() || (stat.mode & 0o111) === 0) return false;
+    if (!stat.isFile() || (stat.mode & 0o111) === 0 || readHeadSync(full, 2).toString() !== "#!") {
+      return false;
+    }
     const bytes = readFileSync(full);
-    return bytes.subarray(0, 2).toString() === "#!" && forms.some((form) => bytes.includes(form));
+    return forms.some((form) => bytes.includes(form));
   });
   if (named.length > 0) {
     throw new Error(

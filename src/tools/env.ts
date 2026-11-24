@@ -169,6 +169,12 @@ class WalledEnv implements ExecutionEnv {
       : AbortSignal.any([context.abortSignal, this.lifetime.signal]);
   }
 
+  private aborted(context: Context, path?: string): Result<never, FileError> | undefined {
+    return this.signal(context).aborted
+      ? { ok: false, error: new FileError("aborted", "aborted", path) }
+      : undefined;
+  }
+
   /** Runs `op` of durable's environment in a worker on the wall, with each output frame to `onText`. */
   private async call<T>(
     op: string,
@@ -184,10 +190,10 @@ class WalledEnv implements ExecutionEnv {
     return await this.serial<Wire<T>>(async () => {
       if (signal.aborted) return { ok: false, error: { code: "aborted", message: "aborted" } };
       // Resolved at the first operation, not at import: a compiled solver has no installed packages.
-      envSources ??= ENV_FILES.map((name) => {
+      if (envSources === undefined) {
         const dir = dirname(Bun.fileURLToPath(import.meta.resolve("@earendil-works/pi-durable/env")));
-        return [name, readFileSync(join(dir, name), "utf8")] as const;
-      });
+        envSources = ENV_FILES.map((name) => [name, readFileSync(join(dir, name), "utf8")] as const);
+      }
       const sources = envSources;
       const bounded = new AbortController();
       let pending = "";
@@ -262,15 +268,11 @@ class WalledEnv implements ExecutionEnv {
   }
 
   async absolutePath(path: string, context: Context): Promise<Result<string, FileError>> {
-    return this.signal(context).aborted
-      ? { ok: false, error: new FileError("aborted", "aborted") }
-      : { ok: true, value: this.path(path) };
+    return this.aborted(context) ?? { ok: true, value: this.path(path) };
   }
 
   async joinPath(parts: string[], context: Context): Promise<Result<string, FileError>> {
-    return this.signal(context).aborted
-      ? { ok: false, error: new FileError("aborted", "aborted") }
-      : { ok: true, value: join(...parts) };
+    return this.aborted(context) ?? { ok: true, value: join(...parts) };
   }
 
   async readBinaryFile(path: string, context: Context): Promise<Result<Uint8Array, FileError>> {
@@ -298,9 +300,7 @@ class WalledEnv implements ExecutionEnv {
     const failure = (ctx: Context): Result<never, FileError> | undefined =>
       closed
         ? { ok: false, error: new FileError("invalid", "Reader is closed", path) }
-        : this.signal(ctx).aborted
-          ? { ok: false, error: new FileError("aborted", "aborted", path) }
-          : undefined;
+        : this.aborted(ctx, path);
     return {
       ok: true,
       value: {
@@ -337,13 +337,11 @@ class WalledEnv implements ExecutionEnv {
     return {
       ok: true,
       value: {
-        readLine: async (ctx) => {
-          if (this.signal(ctx).aborted) {
-            return { ok: false, error: new FileError("aborted", "aborted", path) };
-          }
-          if (closed) return { ok: false, error: new FileError("invalid", "Reader is closed", path) };
-          return { ok: true, value: lines[index++] };
-        },
+        readLine: async (ctx) =>
+          this.aborted(ctx, path) ??
+          (closed
+            ? { ok: false, error: new FileError("invalid", "Reader is closed", path) }
+            : { ok: true, value: lines[index++] }),
         close: async () => {
           closed = true;
         },
@@ -409,9 +407,8 @@ class WalledEnv implements ExecutionEnv {
       ok: true,
       value: {
         next: async (maxEntries, ctx) => {
-          if (this.signal(ctx).aborted) {
-            return { ok: false, error: new FileError("aborted", "aborted", path) };
-          }
+          const refused = this.aborted(ctx, path);
+          if (refused !== undefined) return refused;
           if (closed || !Number.isSafeInteger(maxEntries) || maxEntries <= 0) {
             return { ok: false, error: new FileError("invalid", "Closed reader or invalid page size", path) };
           }

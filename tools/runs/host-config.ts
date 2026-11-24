@@ -99,6 +99,36 @@ export const checkHost = (): string | undefined => runtimeProcess.env.ANA_CHECK_
 /** The check tasks `host` takes at once from the check runner and a landing: its `checks`, or two. */
 export const checkSlots = (host: Host): number => host.checks ?? 2;
 
+export interface Place {
+  readonly remote?: string;
+  readonly slots: number;
+}
+
+export const NO_VERDICT: ReadonlySet<number> = new Set([255, 75, 69]);
+
+export function checkPlaces(root: string, jobs: number | undefined): readonly Place[] {
+  const one = [{ slots: jobs ?? 1 }];
+  if ((checkHost()?.trim() ?? "") !== "") return one;
+  const hosts = hostsFor(root).map((host) => ({ name: host.name, checks: checkSlots(host) }));
+  if (hosts.length === 0) return one;
+  const dealt = new Map(hosts.map((host) => [host, 0]));
+  for (let left = jobs ?? Infinity; left > 0 && [...dealt].some(([host, slots]) => slots < host.checks); ) {
+    for (const [host, slots] of dealt) {
+      if (left > 0 && slots < host.checks) {
+        dealt.set(host, slots + 1);
+        left -= 1;
+      }
+    }
+  }
+  return [...dealt].flatMap(([host, slots]) => (slots === 0 ? [] : [{ remote: host.name, slots }]));
+}
+
+export const namedPlaces = (places: readonly Place[]): string =>
+  places.map(({ remote, slots }) => `${remote ?? "here"} (${String(slots)})`).join(", ");
+
+export const placeEnv = ({ remote }: Place): Readonly<Record<string, string>> =>
+  remote === undefined ? {} : { ANA_CHECK_HOST: remote, ANA_RUNNER_SPARE_HELD: "1" };
+
 /** The hosts `text` lists, by default the environment's `ANA_HOSTS`: none for a verb kept here. */
 export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Host[] {
   if (isLocalOnly()) return [];

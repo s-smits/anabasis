@@ -52,7 +52,7 @@ const IDLE_WALL_SECONDS = 180;
  *  The suite owns the output it parses, so its child never sees them. */
 const AGENT_MARKERS = new Set(["CLAUDECODE", "AGENT", "REPL_ID", "GITHUB_ACTIONS"]);
 
-const PER_TEST_WALL_MS = 60_000;
+export const PER_TEST_WALL_MS = 60_000;
 const COMMON_FLAGS = [
   "--max-concurrency=4",
   `--timeout=${String(PER_TEST_WALL_MS)}`,

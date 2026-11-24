@@ -207,7 +207,7 @@ test/moments.test.ts	2
 test/names.test.ts	3
 test/opening.test.ts	3
 test/pairs-property.test.ts	15
-test/pre-push.test.ts	10
+test/pre-push.test.ts	9
 test/process-table.test.ts	6
 test/programs.test.ts	10
 test/promotion-tuner-lab.test.ts	4

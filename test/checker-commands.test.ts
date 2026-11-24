@@ -7,7 +7,7 @@ import { taskSets } from "../src/kernel/task.ts";
 import { rmSync } from "../src/meta/filesystem.ts";
 import { isString } from "../src/meta/json-shape.ts";
 import { join, resolve } from "../src/meta/path.ts";
-import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
+import { capturedExecPath, capturedSpawn, runtimeProcess } from "../src/meta/process.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 import { fixtureDraft, fixtureTasks, layOutDraft } from "./helpers/fixture-pack.ts";
 import { anyOf, matching, objectWith } from "./helpers/matchers.ts";
@@ -62,10 +62,19 @@ layOutDraft(folder(SOURCE), DRAFT);
 
 /** A command as the operator runs it: its exit code and everything it printed. `bare` are flags
  *  that take no value. */
-function command(file: string, flags: Record<string, string>, ...bare: string[]) {
+async function command(file: string, flags: Record<string, string>, ...bare: string[]) {
   const args = Object.entries(flags).flatMap(([flag, value]) => [`--${flag}`, value]);
-  const ran = Bun.spawnSync({ cmd: [capturedExecPath, file, ...args, ...bare], cwd: REPO });
-  return { code: ran.exitCode, said: `${ran.stdout.toString()}${ran.stderr.toString()}` };
+  const child = capturedSpawn([capturedExecPath, file, ...args, ...bare], {
+    cwd: REPO,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [out, err, code] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  return { code, said: `${out}${err}` };
 }
 
 const accept = (name: string, flags: Record<string, string> = ADMIT, ...bare: string[]) =>
@@ -75,8 +84,11 @@ const held = (name: string, kind: string) =>
   read(join(folder(name), LOG)).flatMap((event) => (event.kind === kind ? [event.data] : []));
 
 suite("acceptance and freezing over a drafted exam", () => {
-  it("records a checker's reading, and names the control that does not get its label", () => {
-    const sound = accept(ACCEPTED);
+  it.concurrent("records a checker's reading, and names the control that does not get its label", async () => {
+    const [sound, mislabelled] = await Promise.all([
+      accept(ACCEPTED),
+      accept(MISLABELLED, ADMIT, "--freeze"),
+    ]);
     expect(sound.said).toContain("check-product\tauthor\t2\t1\t1 of 1");
     // The smallest answer the format allows is put to both tasks, and the check rejects it on each.
     expect(sound.said).toMatch(/\{"answer":""\}.*rejected.*2 of 2/u);
@@ -92,17 +104,18 @@ suite("acceptance and freezing over a drafted exam", () => {
     ]);
 
     // Without the operator's word the same check is a fault, and a check nobody wrote is no word.
-    const unadmitted = accept(ACCEPTED, {});
+    const unadmitted = await accept(ACCEPTED, {});
     expect(unadmitted.said).toMatch(/fault: check-product.*--admit check-product/u);
     expect(unadmitted.code).toBe(1);
     // A campaign without `--hitl` gives that word for every check its author decides.
-    expect(accept(ACCEPTED, {}, "--admit-authored").code).toBe(0);
+    expect((await accept(ACCEPTED, {}, "--admit-authored")).code).toBe(0);
     expect(held(ACCEPTED, "checker.read").at(-1)).toMatchObject({ admitted: ["check-product"], faults: [] });
-    expect(accept(ACCEPTED, { admit: "check-nobody" }).said).toMatch(/--admit.*check-nobody.*no such check/u);
+    expect((await accept(ACCEPTED, { admit: "check-nobody" })).said).toMatch(
+      /--admit.*check-nobody.*no such check/u,
+    );
 
     // A reject control whose answer is still right: the check it names lets it pass, and the
     // operator's word does not freeze a checker read so.
-    const mislabelled = accept(MISLABELLED, ADMIT, "--freeze");
     const fault = /reject control.*ex-001.*check-product.*pass/u;
     expect(mislabelled.said).toMatch(fault);
     expect(mislabelled.said).toContain("not frozen");
@@ -111,12 +124,16 @@ suite("acceptance and freezing over a drafted exam", () => {
     expect(held(MISLABELLED, "contract.frozen")).toEqual([]);
   });
 
-  it("refuses to freeze over a stale accept control, and freezes over it on the operator's word", () => {
-    const refused = accept(STALE, ADMIT, "--freeze");
+  it.concurrent("refuses to freeze over a stale accept control, and freezes over it on the operator's word", async () => {
+    const refused = await accept(STALE, ADMIT, "--freeze");
     expect(refused.said).toMatch(/fault:.*accept control.*ex-002.*fail check-product/u);
     expect(refused.code).toBe(1);
     expect(held(STALE, "contract.frozen")).toEqual([]);
-    const given = accept(STALE, { ...ADMIT, despite: "the accept control of ex-002 is stale" }, "--freeze");
+    const given = await accept(
+      STALE,
+      { ...ADMIT, despite: "the accept control of ex-002 is stale" },
+      "--freeze",
+    );
     expect(given.said).toMatch(/frozen.*1 fault.*contract/u);
     expect(given.code).toBe(0);
     expect(held(STALE, "contract.frozen")).toMatchObject([
@@ -124,8 +141,8 @@ suite("acceptance and freezing over a drafted exam", () => {
     ]);
   });
 
-  it("notes a do-nothing answer the format refuses, and freezes over it", () => {
-    const unformed = accept(UNFORMED, ADMIT, "--freeze");
+  it.concurrent("notes a do-nothing answer the format refuses, and freezes over it", async () => {
+    const unformed = await accept(UNFORMED, ADMIT, "--freeze");
     expect(unformed.said).toMatch(/note:.*do-nothing.*\{"answer":""\}.*answer format/u);
     expect(unformed.said).toContain("no fault");
     expect(unformed.code).toBe(0);
@@ -138,20 +155,29 @@ suite("rehearsal over a drafted exam", () => {
   // A checkpoint as its commands walk it: two Builder sessions, each with no comparison after it,
   // and then one comparison of what the second left, since a session runs outside a round too. A
   // script sits in every seat.
-  it("rehearses two sessions and then one checkpoint over a seed", () => {
+  it.concurrent("rehearses two sessions and then one checkpoint over a seed", async () => {
     const seeded = folder(SEED);
     // One of the exam's two tasks is released for practice, by the contract's draw, and one held out.
-    const taken = command("tools/d2/prepare.ts", { name: SOURCE, practice: "1" });
+    const taken = await command("tools/d2/prepare.ts", { name: SOURCE, practice: "1" });
     expect(taken.code).toBe(0);
     expect(taskSets(read(join(folder(SOURCE), LOG)))).toMatchObject({
       held: [anyOf(String)],
       released: [anyOf(String)],
     });
-    const cli = (...args: string[]) => {
-      const ran = Bun.spawnSync({ cmd: [capturedExecPath, "tools/runs/cli.ts", ...args], cwd: REPO });
-      return { code: ran.exitCode, said: `${ran.stdout.toString()}${ran.stderr.toString()}` };
+    const cli = async (...args: string[]) => {
+      const child = capturedSpawn([capturedExecPath, "tools/runs/cli.ts", ...args], {
+        cwd: REPO,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [out, err, code] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ]);
+      return { code, said: `${out}${err}` };
     };
-    expect(cli("seed", "--from", folder(SOURCE), "--name", SEED).code).toBe(0);
+    expect((await cli("seed", "--from", folder(SOURCE), "--name", SEED)).code).toBe(0);
     const rehearse = (...more: string[]) => cli("rehearse", "--name", SEED, ...more);
     const of = (kind: string) => held(SEED, kind);
 
@@ -160,12 +186,12 @@ suite("rehearsal over a drafted exam", () => {
     // refused as another setting.
     const lines = () => read(join(seeded, LOG)).length;
     const before = lines();
-    expect(rehearse("--id", "g-0", "--target", "0").said).toMatch(/--target 0.*at least one/u);
+    expect((await rehearse("--id", "g-0", "--target", "0")).said).toMatch(/--target 0.*at least one/u);
     expect(lines()).toBe(before);
     expect(of("campaign.setting")).toEqual([]);
 
     for (const session of ["b-1", "b-2"]) {
-      expect(rehearse("--no-comparison", "--session", session).code).toBe(0);
+      expect((await rehearse("--no-comparison", "--session", session)).code).toBe(0);
     }
     // Two sessions are on record, the second from what the first left, and nothing is compared.
     const [one, two] = of("build.finished");
@@ -179,13 +205,13 @@ suite("rehearsal over a drafted exam", () => {
 
     // Then the one comparison: the harness the last session left against the reference harness,
     // which is the starter. One held-out task reads no step; what is proven is the join.
-    const compared = rehearse("--id", "g-1", "--new", "latest");
+    const compared = await rehearse("--id", "g-1", "--new", "latest");
     expect(compared.code).toBe(0);
     expect(of("comparison.reported")).toMatchObject([
       { session: "g-1", fresh: two?.harness, reading: "no-step", scored: { wins: 1, losses: 0, ties: 0 } },
     ]);
     // A session that ended says what it left when it is asked for again, and runs nothing.
-    const again = rehearse("--no-comparison", "--session", "b-2");
+    const again = await rehearse("--no-comparison", "--session", "b-2");
     expect(again.code).toBe(0);
     expect(again.said).toContain("b-2");
     expect(again.said).toContain(isString(two?.harness) ? two.harness : "missing harness");
@@ -193,14 +219,14 @@ suite("rehearsal over a drafted exam", () => {
 
     // The campaign's view prints each step's handover. Of the moves, it names the table's alone.
     // It takes the campaign command's flags and no other, not a launch's.
-    const viewed = cli("view", SEED, "--level", "0.02").said;
+    const viewed = (await cli("view", SEED, "--level", "0.02")).said;
     expect(
       viewed.split("\n").filter((line) => line.includes("Builder session (finished): from")),
     ).toHaveLength(2);
     // Two rollouts per arm, fixed, and alpha 0.02 where nothing names another (`SIZE`).
     expect(viewed).toMatch(/1 task.*2 rollouts per arm.*0\.02.*1 won.*0 lost.*0 tied.*no-step/u);
     expect(viewed).not.toContain("  a round");
-    expect(cli("view", SEED, "--cap", "100").said).toContain("Unknown option '--cap'");
+    expect((await cli("view", SEED, "--cap", "100")).said).toContain("Unknown option '--cap'");
     // Fix row F26: the view's last line is the one move the decision table names, and the
     // campaign's own command, rehearsed and asked what it would do next, names the same. The move is
     // the line after the heading alone: a view run from an unpushed head warns after it which
@@ -214,6 +240,6 @@ suite("rehearsal over a drafted exam", () => {
     expect(tabled).toContain(": ");
     // At 0.02 the default patience holds the bound an opening may risk (`openingLines`).
     const terms = ["--project", "fixture", "--level", "0.02"];
-    expect(rehearse(...terms, "--dry-run").said).toContain(`next · ${tabled}`);
+    expect((await rehearse(...terms, "--dry-run")).said).toContain(`next · ${tabled}`);
   });
 });

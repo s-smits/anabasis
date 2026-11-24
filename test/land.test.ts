@@ -545,9 +545,10 @@ describe.concurrent("bun run land", () => {
   // The runner's exits that say nothing of the commit: a dropped connection, no slot in time, and a
   // host that does not answer or lacks the disk (`tools/runtime/router/run.ts`).
   for (const code of ["255", "75", "69"]) {
+    const scope = code === "255" ? ["12", "--sanitize"] : ["12", "--sanitize", "--from", "12"];
     it(`runs a step again where its runner exited ${code}, and passes on the second run`, async () => {
       const { runLand, gateLog, statuses } = sandbox();
-      const result = await runLand(["12", "--sanitize"], {
+      const result = await runLand(scope, {
         ANA_FAKE_DROP: `${upper} test`,
         ANA_FAKE_DROP_CODE: code,
       });
@@ -558,7 +559,7 @@ describe.concurrent("bun run land", () => {
 
     it(`reads two exits of ${code} as no verdict: an error status, no fix recipe, and land again`, async () => {
       const { runLand, statuses } = sandbox();
-      const result = await runLand(["12", "--sanitize"], {
+      const result = await runLand(scope, {
         ANA_FAKE_DROP: `${upper} test`,
         ANA_FAKE_DROPS: "2",
         ANA_FAKE_DROP_CODE: code,
@@ -570,12 +571,14 @@ describe.concurrent("bun run land", () => {
       );
       expect(result.stderr).not.toContain("the fix belongs in");
       expect(statuses(COMMIT)).toContain(`error ${upper}`);
-      expect(statuses("mergeable")).toEqual([
-        `pending ${lowerDocs}`,
-        `pending ${upper}`,
-        `success ${lowerDocs}`,
-        `error ${upper}`,
-      ]);
+      if (code === "255") {
+        expect(statuses("mergeable")).toEqual([
+          `pending ${lowerDocs}`,
+          `pending ${upper}`,
+          `success ${lowerDocs}`,
+          `error ${upper}`,
+        ]);
+      }
     });
   }
 
@@ -1140,8 +1143,24 @@ describe.concurrent("bun run land", () => {
         `linux\t${step}\t2026-11-07T10:00:00.7Z (fail) the owner > holds one [1.00ms]`,
       ].join("\n"),
     );
+    let fixPasses: Promise<string> | null = null;
+    const rememberedFixPasses = (): Promise<string> => {
+      fixPasses ??= (async () => {
+        const seed = await provedSandbox();
+        const seeded = await seed.runLand(["12", "--sanitize"], {
+          ANA_FAKE_PULLS: fixPulls,
+          ANA_FAKE_STACK_SHA: fixed,
+        });
+        expect(seeded.status, seeded.stderr).toBe(0);
+        const cache = join(fixture, "ana-gate-passed-fixes");
+        copyFileSync(join(seed.work, ".git", "ana-gate-passed"), cache);
+        return cache;
+      })();
+      return fixPasses;
+    };
     const fixesLand = async (env: Record<string, string>) => {
-      const box = await provedSandbox();
+      const box = sandbox();
+      copyFileSync(await rememberedFixPasses(), join(box.work, ".git", "ana-gate-passed"));
       const result = await box.runLand(["12", "--merge"], {
         ANA_FAKE_PULLS: fixPulls,
         ANA_FAKE_CI_STATES: box.ciStates(

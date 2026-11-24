@@ -43,8 +43,8 @@ See `design-and-seats` (`question-and-factors.md`, `stance.md`):
 - **Validity & objective variance**: binary `valid` separates constrained domains (`buffer`, `truss`, `recode`, `esp32`) and floors open-ended ones (`jobstat`) against objective hacking; carry open-ended headroom in a non-hedgable objective (100% pass with lagging transfer flags weak grounding). Report carrying measure and A/A floor (`GAP_FLOOR` trades noise vs supply).
 - **Promotion vs confirmation**: each promotion should beat its predecessor and `baseStarter` (Starter Pack) internally (even if `bareSolver` differs) and beat `bareSolver` externally; flat climbs flag grounding/measurement defects. Owed starter reads run on next `compare` (`heldSince`); reading ahead stays unconfirmed (`test/decide-explore.test.ts`).
 - **Practice vs held-out supply**: practice takes ≤ half the held-out pool; watch `comparisonFloor` and treat untransferred practice gains as overfitting.
-- **Gate strictness vs capability**: refuse only measurement-breaking or wasted-compute actions; pass others as factual notes; err toward lenient sandboxing and Builder freedom.
-- **External benchmarks**: measure transfer, not promotion; keep queries naturally scoped.
+- **Gate strictness vs capability**: refuse only measurement-breaking or wasted-compute actions; note others factually; favour lenient sandboxing and Builder freedom.
+- **External benchmarks**: verify cross-OS portability, copyability and workspace transfer (not promotion), separating OS/runtime porting from workspace coupling; keep queries natural.
 
 ### Two sides and one wall
 
@@ -140,7 +140,7 @@ Own conclusions and subagent reports sit lowest until grounded higher. Compute c
 | A refusal | Refusal text (proves only its trigger) |
 | Harness attribution | Ablation comparison against `programs-of:<digest>` |
 
-Give every rate its denominator and compare runs over matched active hours, not wall-clock span. Separate **instrument health** (clean runs, zero A/A steps, low crashes) from **product outcome** (`written-after` confirmation apart from `chosen-on` selection, external transfer vs Starter, and same-domain delta vs nearest prior version, weighting recent gaps highest). Triage inline by joining `.ana/wri/` artifacts (`synthesis.md`, `cross-domain.md`, `outcomes-*.md`, `outside-reads.md`, `plan.md`, `cycle.md`) with live folds (`runs source`, `runs view`, `tools/wri/backtrack.ts`, `table.ts`, `trend.ts`, `starter-reads.ts`, `score.ts`): treat prose as an index and re-ground key counts in owning folds.
+Give every rate its denominator and compare runs over matched active hours, not wall-clock span. Separate **instrument health** (clean runs, zero A/A steps, low crashes) from **product outcome** (`written-after` apart from `chosen-on`, external transfer vs Starter, same-domain delta vs prior version, weighting recent gaps highest). Triage inline by joining `.ana/wri/` (`synthesis.md`, `cross-domain.md`, `outcomes-*.md`, `outside-reads.md`, `plan.md`, `cycle.md`) with live folds (`runs source|view`, `backtrack.ts`, `table.ts`, `trend.ts`, `starter-reads.ts`, `score.ts`), re-grounding counts in owning folds.
 
 ## 10. Runs with a real model
 

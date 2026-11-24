@@ -11,7 +11,6 @@ import {
   NEW_FUNCTION_CEILING,
   production,
   sourceTextFindings,
-  unusedExports,
 } from "../tools/loc/source-policy.ts";
 import { scanTokens } from "../tools/loc/token-facts.ts";
 
@@ -49,26 +48,6 @@ describe("source policy", () => {
     }
   });
 
-  it("names an export no other file spells, and yields where the name cannot be attributed", () => {
-    const declaring = new Map([
-      ["src/a.ts", "export type Read = 1;\nexport type Never = 2;\nexport function twice() {}\n"],
-      ["src/b.ts", "export function twice() {}\n"],
-    ]);
-    for (const [readers, name] of [
-      [new Map([["test/a.test.ts", "const x: Read = 1;\n"]]), "Never"],
-      [new Map([["scripts/x.mjs", "// Never mind\n"]]), "Read"],
-    ] as const) {
-      const findings = unusedExports(declaring, readers);
-      expect(findings).toHaveLength(1);
-      expect(findings[0]).toMatchObject({ check: "unused-export", path: "src/a.ts" });
-      expect(findings[0]?.detail.match(/`([^`]+)`/u)?.[1]).toBe(name);
-    }
-    // A file's own read does not make its export a public interface.
-    expect(
-      unusedExports(new Map([["src/a.ts", "export type Read = 1;\nconst y: Read = 1;\n"]]), new Map()),
-    ).toHaveLength(1);
-  });
-
   it("reads string literals and calls past comments and a regex holding `#`, and counts nonblank lines", () => {
     const facts = scanTokens(
       '// "held" in a comment\ntype T = "artifact" | "clarification";\nfunction go() { accept(bytes); }\nconst s = `tpl-word`;\n',
@@ -86,12 +65,26 @@ describe("source policy", () => {
     expect(countNonBlank("a\n\n  \nb\n")).toBe(2);
   });
 
-  it("treats nested /test/ trees as helpers rather than production source", () => {
+  it("enforces helper-tree and security-layer boundaries", () => {
     expect(production("packages/ui/test/smoke.test.ts")).toBe(false);
     expect(production("vendor/foo/test/x.ts")).toBe(true);
     expect(production("packages/ui/src/main.ts")).toBe(true);
     expect(
       breaches(["packages/ui/test/smoke.test.ts", "packages/ui/src/main.ts"], () => ["test/helpers/a.ts"]),
     ).toEqual([{ file: "packages/ui/src/main.ts", imported: "test/helpers/a.ts", root: "test/" }]);
+    const graph = new Map<string, readonly string[]>([
+      ["src/kernel/check-child.ts", ["src/meta/path.ts", "src/kernel/contract.ts", "src/builder/tools.ts"]],
+      ["src/meta/path.ts", ["src/meta/os.ts", "src/kernel/log.ts"]],
+      ["src/kernel/log.ts", ["src/wall/policy.ts", "src/builder/tools.ts"]],
+      ["src/wall/policy.ts", ["src/meta/os.ts", "src/campaign/decide.ts"]],
+      ["src/campaign/round.ts", ["src/builder/tools.ts"]],
+    ]);
+    expect(breaches([...graph.keys()], (file) => graph.get(file) ?? [])).toEqual([
+      { file: "src/kernel/check-child.ts", imported: "src/kernel/contract.ts", root: "offline-cell" },
+      { file: "src/kernel/check-child.ts", imported: "src/builder/tools.ts", root: "offline-cell" },
+      { file: "src/meta/path.ts", imported: "src/kernel/log.ts", root: "src/meta/" },
+      { file: "src/kernel/log.ts", imported: "src/builder/tools.ts", root: "src/builder/" },
+      { file: "src/wall/policy.ts", imported: "src/campaign/decide.ts", root: "src/campaign/" },
+    ]);
   });
 });

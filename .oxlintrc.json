@@ -69,7 +69,6 @@
     "ana/prefer-find-over-loop": "error",
     "ana/prefer-key-if-defined": "error",
     "ana/require-captured-json-runtime": "error",
-    "ana/require-declarations-first": "error",
     "ana/require-meta-runtime-import": "error",
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",

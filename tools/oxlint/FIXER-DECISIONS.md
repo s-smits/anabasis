@@ -1,6 +1,6 @@
 # Which rules fix, and which only report
 
-Every `ana` and `anti-slop` rule gates at `error`. **Ten carry an autofixer; the rest intentionally report without fixing.**
+Every `ana` and `anti-slop` rule gates at `error`. **Nine carry an autofixer; the rest intentionally report without fixing.**
 
 ## Criteria for an autofixer
 
@@ -10,7 +10,7 @@ A fixer must satisfy all four conditions:
 3. **Matches established repository idiom**: verified empirically on the tree.
 4. **Preserves the prompt for real repair**: never silence a rule while leaving the underlying smell unaddressed (e.g. hoisting an unnamed table or swapping `setTimeout` for `Bun.sleep(50)`).
 
-## The ten rules that fix
+## The nine rules that fix
 
 | Rule | Automated edit | Why mechanical |
 | --- | --- | --- |
@@ -22,7 +22,6 @@ A fixer must satisfy all four conditions:
 | `prefer-key-if-defined` | guarded assignment → `...keyIfDefined("k", v)` | pure read into existing owner |
 | `prefer-subpath-import` | relative climb → `#src/...` alias | resolved directly from `package.json` |
 | `require-captured-json-runtime` | imports and calls `capturedJsonParse` | single owner and name |
-| `require-declarations-first` | hoists types/consts above functions | pure reordering |
 | `require-meta-runtime-import` | redirects 7 `node:` builtins to `src/meta` | one-to-one wrappers only |
 
 ## Four borderline rules (withheld by policy)

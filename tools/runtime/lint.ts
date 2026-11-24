@@ -13,17 +13,16 @@ import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { runSync, zeroExitText } from "../../src/meta/subprocess.ts";
 import {
-  type Ledger,
   ledgerOnDisk,
   NOT_SLOP_LEDGER,
   siteExcerpt,
   siteId,
+  staleLedgerProblems,
   TREE_RULE_PREFIX,
   unanswerable,
 } from "../oxlint/not-slop-ledger.ts";
 import { PLUGINS } from "../oxlint/plugins.ts";
 import { renderedExamples, ruleExamples } from "../oxlint/rule-examples.ts";
-import { treeSites } from "../oxlint/tree-findings.ts";
 
 const ROOTS = ["src", "tools", "vendor", "test", "packages", ".claude", "studies"];
 
@@ -195,32 +194,6 @@ export function sitesCachePath(): string | null {
 }
 
 /**
- * The ledger's own failures: rows it could not read, rows no finding in this run bears out, and
- * rows naming a register.
- */
-function ledgerProblems(
-  ledger: Ledger,
-  seen: ReadonlySet<string>,
-  linted: (path: string) => boolean,
-  wholeTree: boolean,
-): string[] {
-  const trees = wholeTree ? new Set(treeSites().map((site) => site.id)) : null;
-  const unread = ledger.unread.map((problem) => `${NOT_SLOP_LEDGER}: ${problem}`);
-  return [
-    ...unread,
-    ...ledger.answers.flatMap((answer) => {
-      const where = `${NOT_SLOP_LEDGER}: ${answer.id} ${answer.rule} ${answer.path}`;
-      const tree = answer.rule.startsWith(TREE_RULE_PREFIX);
-      const judged = tree ? trees !== null : linted(answer.path);
-      const present = tree ? trees?.has(answer.id) === true : seen.has(answer.id);
-      return judged && !present
-        ? [`${where}: no finding has this id any more; bun run not-slop -- prune`]
-        : [];
-    }),
-  ];
-}
-
-/**
  * The roots a whole-tree run lints. `packages/ui` keeps its own lock and `node_modules`; without
  * its React types the type-aware rules read every component as an error type and report findings
  * that are not there, so it waits for `bun run ui:deps` and says so (v1's rule). Its own
@@ -274,9 +247,14 @@ async function main(): Promise<number> {
     extra.length === 0 &&
     (explicit.length > 0 ? explicit.includes(path) : roots.some((root) => path.startsWith(`${root}/`)));
   const seen = new Set(found.flatMap(({ site }) => (site === null ? [] : [site.id])));
-  const wholeTree = extra.length === 0 && explicit.length === 0;
   // The ledger answers the optional plugins alone, so only a run held to their rules reads it.
-  const problems = strict ? ledgerProblems(ledger, seen, linted, wholeTree) : [];
+  const problems = strict
+    ? staleLedgerProblems(
+        ledger,
+        seen,
+        (answer) => !answer.rule.startsWith(TREE_RULE_PREFIX) && linted(answer.path),
+      )
+    : [];
 
   const cache = sitesCachePath();
   const sites = unanswered.flatMap(({ site }) => (site === null ? [] : [site]));

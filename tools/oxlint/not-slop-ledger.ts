@@ -175,3 +175,20 @@ export async function ledgerOnDisk(root = "."): Promise<Ledger> {
   const file = Bun.file(`${root}/${NOT_SLOP_LEDGER}`);
   return readLedger((await file.exists()) ? await file.text() : "");
 }
+
+export function staleLedgerProblems(
+  ledger: Ledger,
+  seen: ReadonlySet<string>,
+  include: (answer: Answer) => boolean,
+): string[] {
+  return [
+    ...ledger.unread.map((problem) => `${NOT_SLOP_LEDGER}: ${problem}`),
+    ...ledger.answers.flatMap((answer) =>
+      include(answer) && !seen.has(answer.id)
+        ? [
+            `${NOT_SLOP_LEDGER}: ${answer.id} ${answer.rule} ${answer.path}: no finding has this id any more; bun run not-slop -- prune`,
+          ]
+        : [],
+    ),
+  ];
+}

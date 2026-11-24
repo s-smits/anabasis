@@ -7,7 +7,8 @@
  *     bun run not-slop -- prune                   remove every row no finding bears out
  *
  * `prune` judges a tree row against a fresh scan and a lint row against a fresh lint of its file,
- * which `bun run lint` also does and fails on; this is the one command that answers that failure.
+ * which `bun run lint` (for plugin rows) and `bun run simplify -- --gate` (for tree rows) also
+ * enforce; this is the one command that answers that failure.
  */
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
@@ -80,10 +81,16 @@ function unwritable(ledger: Ledger): string | null {
 }
 
 async function writeAnswer([id = "", ...words]: readonly string[]): Promise<number> {
-  const tree = treeSites();
-  const site = [...(await lastLintSites()), ...tree.map(treeSite)].find((one) => one.id === id);
+  const cached = (await lastLintSites()).find((one) => one.id === id);
+  const site =
+    cached ??
+    treeSites()
+      .map(treeSite)
+      .find((one) => one.id === id);
   if (site === undefined) {
-    return refuse(`no current finding has the id "${id}": run bun run lint, and answer an id it printed`);
+    return refuse(
+      `no current finding has the id "${id}": run bun run lint or bun run simplify, and answer an id it printed`,
+    );
   }
   const row: Answer = {
     id,

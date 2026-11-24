@@ -26,8 +26,8 @@ Scope defaults to named arguments (code, worktree, PR, commit, range, paths) or 
 Never audit manually what static tools already catch, and measure before touching code:
 
 - `bun run lint -- --strict` (`tools/oxlint/HABITS.md` 12.4–12.5, 12.14): fix the site or tune the rule; never add disable comments.
-- `bun run simplify -- --gate` (`tools/oxlint/HABITS.md` 12.9): fix or answer every census site (`-- --all`, `-- <kind>`), and check staged rules (`tools/oxlint/staged-rules.json`) on touched files.
-- `bun tools/loc/source-policy.ts`: enforces 800 nonblank lines/file, 115 lines/function, `AGENTS.md` size, import direction, and zero unread exports.
+- `bun run simplify -- --gate` (`tools/oxlint/HABITS.md` 12.9): fix or answer every census site (`-- --all`, `-- <kind>`), including unused exports and stale `tree/` ledger rows.
+- `bun tools/loc/source-policy.ts`: enforces 800 nonblank lines/file, 115 lines/function, `AGENTS.md` size, and import/security-layer direction.
 - Measure before editing (and again after with the same `<ref>`):
   ```sh
   python3 .claude/skills/reduce-complexity/scripts/measure.py --base <ref> [-C <worktree>]
@@ -80,4 +80,4 @@ Evaluate structural shapes static scans miss, from largest removal to smallest:
 ## 6. Verify, report, and feed the census
 
 - Re-run `measure.py --base <ref>` and `git complexity <base> HEAD`; replay any touched log producer/reader with `bun run runs replay` (label unverified counts as estimates); run owning `bun run test -- <paths>`, `bun run commit:check`, and `bun run gate` before delivery.
-- **Report**: lead with one sentence on what got simpler and the commit SHA. Follow with: (1) sites grouped by shape, largest first (`removed`, `folded into <owner>`, `kept: <verifiable sentence>`, `open: <why>` — or `"already the smallest honest form"`, naming the closest site); (2) before/after `measure.py` budget and `git complexity` rows; (3) `not-slop.tsv` audit result plus replay and test counts; (4) **For the census** (`none`, or any manual pattern recurring at ≥3 sites that a lint catcher or `tree/` scan can detect automatically — starting report-only in `tools/oxlint/staged-rules.json` and graduating to `.oxlintrc.json` only at zero sites).
+- **Report**: lead with one sentence on what got simpler and the commit SHA. Follow with: (1) sites grouped by shape, largest first (`removed`, `folded into <owner>`, `kept: <verifiable sentence>`, `open: <why>` — or `"already the smallest honest form"`, naming the closest site); (2) before/after `measure.py` budget and `git complexity` rows; (3) `not-slop.tsv` audit result plus replay and test counts; (4) **For the census** (`none`, or any manual pattern recurring at ≥3 sites that a lint catcher or `tree/` scan can detect automatically).

@@ -39,7 +39,7 @@ path	count
 .claude/skills/promotion-tuner/scripts/tree.ts	18
 .claude/skills/promotion-tuner/scripts/trend.ts	36
 .claude/skills/repository-practice/scripts/direction.ts	1
-.claude/skills/repository-practice/scripts/preflight.ts	19
+.claude/skills/repository-practice/scripts/preflight.ts	18
 .claude/skills/run-improvement-campaign/scripts/timers.ts	14
 .claude/skills/run-improvement-campaign/scripts/until.ts	4
 .claude/skills/run-improvement-campaign/scripts/wri2p2.ts	62
@@ -218,7 +218,7 @@ test/promotion-tuner.test.ts	5
 test/pulls.test.ts	4
 test/referee-files.test.ts	11
 test/repository-practice-script.test.ts	3
-test/repository-source-policy.test.ts	3
+test/repository-source-policy.test.ts	2
 test/restack.test.ts	6
 test/review.test.ts	21
 test/round.test.ts	294
@@ -313,7 +313,7 @@ tools/d2/setting.ts	33
 tools/d2/settle.ts	10
 tools/d2/word.ts	3
 tools/loc/nonblank-loc.ts	3
-tools/loc/source-policy.ts	28
+tools/loc/source-policy.ts	24
 tools/loc/token-facts.ts	17
 tools/m0/stored-sweep.ts	19
 tools/oxlint/ana/index.ts	1
@@ -343,7 +343,6 @@ tools/oxlint/ana/rules/prefer-const-conditional.ts	14
 tools/oxlint/ana/rules/prefer-find-over-loop.ts	17
 tools/oxlint/ana/rules/prefer-key-if-defined.ts	10
 tools/oxlint/ana/rules/require-captured-json-runtime.ts	5
-tools/oxlint/ana/rules/require-declarations-first.ts	48
 tools/oxlint/ana/rules/require-meta-runtime-import.ts	9
 tools/oxlint/ana/shared/crossed.ts	5
 tools/oxlint/ana/shared/file-role.ts	7
@@ -433,7 +432,7 @@ tools/runtime/follow.ts	14
 tools/runtime/gate.ts	60
 tools/runtime/land.ts	55
 tools/runtime/landing.ts	16
-tools/runtime/lint.ts	36
+tools/runtime/lint.ts	35
 tools/runtime/moments.ts	9
 tools/runtime/pre-push.ts	14
 tools/runtime/pulls.ts	28

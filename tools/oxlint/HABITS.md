@@ -11,13 +11,13 @@ Expands `AGENTS.md` §12. Read before editing code; write idiomatic code from th
 
 ## 12.2 How lint runs
 
-`bun run lint` runs type-aware Oxlint across `src`, `tools`, `vendor`, `test`, `packages`, `.claude` and `studies` (`--deny-warnings`, `--report-unused-disable-directives`; `packages/ui` runs once `bun run ui:deps` is installed). Four local plugins run alongside built-ins: `ana`, `anti-slop`, `implicit-state` and `implicit-state-opinionated`. Staged rules live in `tools/oxlint/staged-rules.json` (reported by `bun run simplify`, non-gating).
+`bun run lint` runs type-aware Oxlint across `src`, `tools`, `vendor`, `test`, `packages`, `.claude` and `studies` (`--deny-warnings`, `--report-unused-disable-directives`; `packages/ui` runs once `bun run ui:deps` is installed). Four local plugins run alongside built-ins: `ana`, `anti-slop`, `implicit-state` and `implicit-state-opinionated`.
 
 - **Always run strict mode**: `bun run lint -- --strict` (or `ANA_LINT_STRICT=1` / `git config ana.lintStrict true`). Plugin findings fail only in strict mode; CI runs strict mode and `main` must stay at zero.
-- Extra args forward to Oxlint. Ten plugin rules carry `[fix]` autofixers (`--fix`); `tools/oxlint/FIXER-DECISIONS.md` documents why others only report.
+- Extra args forward to Oxlint. Nine plugin rules carry `[fix]` autofixers (`--fix`); `tools/oxlint/FIXER-DECISIONS.md` documents why others only report.
 - Firing rules print before/after example pairs (`meta.docs.examples`, `TREE_FINDING_EXAMPLES` in `tools/oxlint/tree-findings.ts`, checked by `test/rule-examples.test.ts`).
 - **Never disable rules**: add no `"off"` entries in `.oxlintrc.json` and no inline `oxlint-disable` for plugin rules (`ana/no-inline-slop-answer`).
-- **Every core rule in scope is explicitly decided** in `.oxlintrc.json` or `tools/oxlint/rules-off.tsv` (`off` with rationale or `staged` with site count), enforced by `test/lint-registry.test.ts`.
+- **Every core rule in scope is explicitly decided** in `.oxlintrc.json` or `tools/oxlint/rules-off.tsv` (`off` with rationale), enforced by `test/lint-registry.test.ts`.
 - **False positives** (`tools/oxlint/not-slop-ledger.ts`):
 
 | Category | Response |
@@ -26,7 +26,7 @@ Expands `AGENTS.md` §12. Read before editing code; write idiomatic code from th
 | Report-only plugin rule or `tree/` scan | Fix the rule, or record `bun run not-slop -- answer <id> "<verifiable reason>"` |
 | Core Oxlint rule | Fix the code, or place an explained `oxlint-disable` (unused directives fail) |
 
-Stale ledger rows fail strict lint; prune with `bun run not-slop -- prune`.
+Stale ledger rows fail strict lint (for plugin rules) or `bun run simplify -- --gate` (for `tree/` scans); prune with `bun run not-slop -- prune`.
 
 ## 12.3 The habits
 
@@ -80,7 +80,6 @@ xs.forEach(async (x) => …)     →  for (const x of xs) await …   // or Prom
 ```
 
 Quick checklist:
-- Declare in order: imports → types/interfaces → module constants → functions.
 - Nesting ≤3 levels (early-return guards do not count); ternaries ≤3 tail-chained branches; ≤5 params; no positional booleans, `object` params, shadowing or param reassignment.
 - Inline pass-through wrappers and single-use renaming `const`s; hoist repeated literals (≥6 chars ×4) and repeated objects (≥3 props ×3).
 - Export only symbols imported elsewhere; avoid "shape" or "legacy" in production identifiers; write no `v1 || v2` fallback shims (except historical log `EVENT_KINDS`, `AGENTS.md` §5).
@@ -91,7 +90,7 @@ Quick checklist:
 
 Test files = `test/` or `*.test.*`.
 
-- **Structure**: `require-declarations-first` [fix] (imports/types/consts above functions); `no-inline-schema-literal` (hoist ≥3-entry constant tables; tests exempt); `no-deep-nesting` (depth ≤3; ≤3-statement early-return guards exempt); `no-tangled-ternary` (≤3 tail-chained cases); `no-pass-through-wrapper` (no unchanged-arg forwarding); `no-single-use-const-chain` (collapse ≥3 sequential single-use `const`s); `no-renaming-temporary` [fix] (inline single-use alias unless closure-narrowed); `no-alias-restating-return` (inline single-function return aliases).
+- **Structure**: `no-inline-schema-literal` (hoist ≥3-entry constant tables; tests exempt); `no-deep-nesting` (depth ≤3; ≤3-statement early-return guards exempt); `no-tangled-ternary` (≤3 tail-chained cases); `no-pass-through-wrapper` (no unchanged-arg forwarding); `no-single-use-const-chain` (collapse ≥3 sequential single-use `const`s); `no-renaming-temporary` [fix] (inline single-use alias unless closure-narrowed); `no-alias-restating-return` (inline single-function return aliases).
 - **Branches**: `no-arms-differing-in-one-term` (factor single-term branch diff); `prefer-const-conditional` [fix] (`let` + `if` → `const` ternary / `??`); `no-positional-boolean-parameter` (use string-literal union or row arg; tests, uncalled callbacks and `holds ? [x] : []` exempt); `no-side-effect-in-predicate` (no mutation inside `filter`/`find`/`some`/`every`).
 - **Loops & calls**: `prefer-find-over-loop` [fix]; `no-inline-block-reducer` (use `for...of`); `no-transposed-argument` (catches swapped/rotated same-file call args; cross-file checked by `tree/no-transposed-argument`).
 - **Repetition & types**: `no-repeated-string-literal` [fix in tests] (≥6 chars ×4, ×10 in tests; literal types/imports/keys exempt); `no-thrice-spelled-object` (≥3 props ×3, ×5 in tests); `no-unproven-unknown-parameter` (validate `unknown` params in body via predicate/parser/`errorMessage`).
@@ -156,7 +155,7 @@ If a rule cites a moved owner, update the rule in the same change.
 
 ## 12.10 The size policy
 
-`tools/loc/source-policy.ts` enforces ≤800 nonblank lines/file, ≤115 lines/function across `src`, `tools`, `vendor` and `.claude/skills`, `AGENTS.md` ≤24,000 bytes, one-way production→helper dependencies, and unreferenced `export`s in `src`, `tools` and `packages/ui/src` (comment mentions count as readers). `source-policy.json` stays empty. `bun run commit:check`, `bun run gate` and `ci.yml` all run it. No cyclomatic complexity gate exists in v2.
+`tools/loc/source-policy.ts` enforces ≤800 nonblank lines/file, ≤115 lines/function across `src`, `tools`, `vendor` and `.claude/skills`, `AGENTS.md` ≤24,000 bytes, one-way production→helper dependencies, and security layer boundaries (`src/meta/` leaf-only; `check-child.ts` runtime imports restricted to `src/meta/*`; `src/kernel/` and `src/wall/` never import seats or `src/campaign/`). `source-policy.json` stays empty, and `bun run commit:check`, `bun run gate` and `ci.yml` all run it. Unused exports across authored roots are enforced by `tree/no-unused-export` (`bun run simplify -- --gate`; `commit:check` checks staged lines). No cyclomatic complexity gate exists in v2.
 
 ## 12.11 Per-path overrides
 
@@ -174,7 +173,6 @@ If a rule cites a moved owner, update the rule in the same change.
 - Name rules `no-`, `prefer-`, `require-` or `max-` (same for `tree/`) after the smell, not the mechanism.
 - Place in `tools/oxlint/ana/rules/<name>.ts`, register in `tools/oxlint/ana/index.ts`, `tools/oxlint/plugins.ts` (single registry) and `.oxlintrc.json` (`"error"`), with `meta.docs.examples`. `test/lint-registry.test.ts` checks naming, registration, configs, `FIXER-DECISIONS.md` and docs.
 - Head comment states the rejected pattern, exemptions and whether it fixes (`no fix` required when non-fixable). Admit a rule only when every flagged site rewrites cleanly under all other rules; test via `bun run lint -c <config>` (never raw `oxlint`, which omits type-aware mode).
-- Stage heuristic or unresolved rules in `tools/oxlint/staged-rules.json` (`"warn"`) until sites reach zero, then promote to `.oxlintrc.json` (`"error"`).
 
 ## 12.14 Implicit state
 

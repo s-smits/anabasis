@@ -9,6 +9,7 @@ import {
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import { type AnswerFile, keepAnswerFiles } from "../src/kernel/answer-files.ts";
+import { conditionId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, read } from "../src/kernel/log.ts";
 import type { Task, Verifier } from "../src/kernel/verify.ts";
@@ -17,8 +18,11 @@ import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined, keysIf } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
+import { requireJsonValue } from "../src/meta/stable-json.ts";
+import { agreement } from "../src/referee/agreement.ts";
 import { type ProbeRow, probeTool } from "../src/referee/probe.ts";
 import { referee } from "../src/referee/referee.ts";
+import { conditionOf } from "./helpers/logged-round.ts";
 import { containing, objectWith } from "./helpers/matchers.ts";
 
 const TASK: Task = { taskId: "t-1", family: "ledger", publicInput: {}, hidden: {} };
@@ -465,13 +469,24 @@ describe("publicInput.files bounding in Referee", () => {
     expect(sawAnswerLen).toBeGreaterThan(25_000);
   });
 
-  it("reuses prior aside rulings within the same comparison at zero model calls without crossing comparisons or practice", async () => {
+  it("reuses same-check check-defect rulings within one comparison and task version while failing closed and excluding reused rows from agreement", async () => {
     const log = join(scratch, `reading-reuse-${String(++readings)}.jsonl`);
     const task: Task = { taskId: "t-reuse", family: "ledger", publicInput: { summary: false }, hidden: {} };
-    const recordSolve = (solve: string, comparison: string | undefined, blocking: readonly string[]) => {
+    const condV1 = conditionOf("v-reuse-1", "h-1");
+    const condV2 = conditionOf("v-reuse-2", "h-1");
+    const cidV1 = conditionId(condV1);
+    const cidV2 = conditionId(condV2);
+    append(log, "condition.recorded", { id: cidV1, condition: requireJsonValue(condV1) });
+    append(log, "condition.recorded", { id: cidV2, condition: requireJsonValue(condV2) });
+    const recordSolve = (
+      solve: string,
+      comparison: string | undefined,
+      blocking: readonly string[],
+      cid: string = cidV1,
+    ) => {
       append(log, "solve.started", {
         solve,
-        condition: "c-1",
+        condition: cid,
         ...keyIfDefined("comparison", comparison),
       });
       append(log, "verdict", {
@@ -495,8 +510,53 @@ describe("publicInput.files bounding in Referee", () => {
     });
     recordSolve("s-2", "g-1", ["span"]);
     recordSolve("s-3", "g-1", ["rows"]);
+    recordSolve("s-v2", "g-1", ["span"], cidV2);
+    recordSolve("s-nocond", "g-1", ["span"], "missing-cond");
     recordSolve("s-4", "g-2", ["span"]);
     recordSolve("s-5", undefined, ["span"]);
+
+    recordSolve("s-walled", "g-walled", ["span"]);
+    append(log, "referee.finding", {
+      solve: "s-walled",
+      task: task.taskId,
+      ruling: "check-defect",
+      check: "span",
+      walled: true,
+      probes: [],
+    });
+    recordSolve("s-after-walled", "g-walled", ["span"]);
+
+    recordSolve("s-settled", "g-settled", ["span"]);
+    append(log, "referee.finding", {
+      solve: "s-settled",
+      task: task.taskId,
+      ruling: "check-defect",
+      check: "span",
+      probes: [1],
+    });
+    append(log, "comparison.reported", {
+      session: "g-settled",
+      settled: { labels: { "s-settled": "earned" } },
+    });
+    recordSolve("s-after-settled", "g-settled", ["span"]);
+
+    recordSolve("s-superseded", "g-sup", ["span"]);
+    append(log, "referee.finding", {
+      solve: "s-superseded",
+      task: task.taskId,
+      ruling: "check-defect",
+      check: "span",
+      probes: [1],
+    });
+    append(log, "referee.finding", {
+      solve: "s-superseded",
+      task: task.taskId,
+      ruling: "earned",
+      rule: "R3",
+      field: "$.span",
+      probes: [1],
+    });
+    recordSolve("s-after-sup", "g-sup", ["span"]);
 
     let llmCalls = 0;
     const faux = fauxProvider({
@@ -508,16 +568,12 @@ describe("publicInput.files bounding in Referee", () => {
         },
       ],
     });
-    faux.setResponses([
-      () => {
+    faux.setResponses(
+      Array.from({ length: 8 }, () => () => {
         llmCalls += 1;
-        return ruling({ ruling: "unclear", reason: "Fresh comparison.", probes: [] });
-      },
-      () => {
-        llmCalls += 1;
-        return ruling({ ruling: "unclear", reason: "Practice solve.", probes: [] });
-      },
-    ]);
+        return ruling({ ruling: "unclear", reason: "Fresh session.", probes: [] });
+      }),
+    );
     const models = createModels();
     models.setProvider(faux.provider);
     const reader = { model: faux.getModel(), effort: "medium" as const, models: () => models };
@@ -531,25 +587,36 @@ describe("publicInput.files bounding in Referee", () => {
         verify: async () => ({ kind: "fail", blocking: [...blocking] }),
       });
 
-    const sameCheck = await run("s-2", ["span"]);
-    expect(sameCheck).toMatchObject({ ruling: "check-defect", check: "span", probes: [] });
+    expect(await run("s-2", ["span"])).toMatchObject({ ruling: "check-defect", check: "span", probes: [] });
     expect(llmCalls).toBe(0);
 
-    const otherCheck = await run("s-3", ["rows"]);
-    expect(otherCheck).toMatchObject({ ruling: "unclear", check: null, probes: [] });
-    expect(llmCalls).toBe(0);
+    for (const [solve, blk] of [
+      ["s-3", ["rows"]],
+      ["s-v2", ["span"]],
+      ["s-nocond", ["span"]],
+      ["s-4", ["span"]],
+      ["s-5", ["span"]],
+      ["s-after-walled", ["span"]],
+      ["s-after-settled", ["span"]],
+      ["s-after-sup", ["span"]],
+    ] as const) {
+      expect((await run(solve, blk)).ruling).toBe("unclear");
+    }
+    expect(llmCalls).toBe(8);
 
-    const nextComp = await run("s-4", ["span"]);
-    expect(nextComp.ruling).toBe("unclear");
-    expect(llmCalls).toBe(1);
-
-    const practice = await run("s-5", ["span"]);
-    expect(practice.ruling).toBe("unclear");
-    expect(llmCalls).toBe(2);
-
-    const findings = read(log).filter(({ kind }) => kind === "referee.finding");
-    expect(findings.find(({ data }) => data.solve === "s-2")?.data.reader).toBeUndefined();
-    expect(findings.find(({ data }) => data.solve === "s-3")?.data.reader).toBeUndefined();
-    expect(findings.find(({ data }) => data.solve === "s-4")?.data.reader).toBeString();
+    const events = read(log);
+    const reusedRow = events.find(({ kind, data }) => kind === "referee.finding" && data.solve === "s-2");
+    expect(reusedRow?.data.reusedFrom).toBe("s-1");
+    expect(reusedRow?.data.reader).toBeUndefined();
+    const agree = agreement(
+      events,
+      new Map([
+        ["s-1", "check-defect"],
+        ["s-2", "earned"],
+      ]),
+    );
+    expect(agree.table["check-defect"]["check-defect"]).toBe(1);
+    expect(agree.table.earned["check-defect"]).toBe(0);
+    expect(agree.unruled).toEqual(["s-2"]);
   });
 });

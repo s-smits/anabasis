@@ -33,7 +33,7 @@ export type ProbeRow = {
   readonly moved: readonly string[];
 };
 
-export type DraftProbeRow = ProbeRow & { readonly task: string };
+export type DraftProbeRow = ProbeRow & { readonly task: string; readonly taskDigest?: string };
 
 interface RawChange {
   readonly path: string;
@@ -408,6 +408,10 @@ export function probeTool(
   });
 }
 
+export function taskContentDigest(task: Task): string {
+  return hashJsonValue({ family: task.family, publicInput: task.publicInput, hidden: task.hidden });
+}
+
 export function probeExamplesTool(
   verify: Verifier,
   examples: readonly {
@@ -451,7 +455,7 @@ export function probeExamplesTool(
           return cached;
         },
       });
-      rows.push({ task: args.task, ...row });
+      rows.push({ task: args.task, taskDigest: taskContentDigest(example.task), ...row });
       return text(`task ${args.task}\n${rowText(row)}\n${budgetLine(rows.length, budget)}`);
     },
   });

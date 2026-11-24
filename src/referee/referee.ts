@@ -6,7 +6,7 @@ import type { Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, proposalsOf } from "../kernel/history.ts";
 import { append, eventsOf, type LogEvent, read, TRACE_KINDS } from "../kernel/log.ts";
 import { priceKey } from "../kernel/meter.ts";
-import { ranUnder, solvesIn, verdictsOf } from "../kernel/solves.ts";
+import { ranUnder, solvesIn, standsOf, verdictsOf } from "../kernel/solves.ts";
 import {
   applicableTruthChecks,
   blockingOf,
@@ -184,50 +184,45 @@ export function boundJsonPreview(value: JsonValue, path: string, extra: Map<stri
   return `${boundText(full, JSON_PREVIEW_BYTES).shown} (read full JSON via read_task_file: ${path})`;
 }
 
-function reusedAsideRuling(
+function reusedDefectRuling(
   events: readonly LogEvent[],
   solve: string,
   taskId: string,
   blocking: readonly string[],
-): RefereeFinding | null {
+): { readonly finding: RefereeFinding; readonly from: string } | null {
   const solves = new Map(solvesIn(events).map((each) => [each.id, each] as const));
   const comp = solves.get(solve)?.start.comparison;
   if (!isString(comp)) return null;
   const versionOf = new Map(ranUnder(events).map((each) => [each.id, each.under.task] as const));
   const version = versionOf.get(solve);
-  const candidates = eventsOf(events, "referee.finding").flatMap(({ event: { data } }) => {
-    const prior = data.solve;
-    if (!isString(prior) || prior === solve || data.task !== taskId) return [];
-    if (solves.get(prior)?.start.comparison !== comp) return [];
-    const priorVersion = versionOf.get(prior);
-    if (version !== undefined && priorVersion !== undefined && priorVersion !== version) return [];
-    const ruling = data.ruling;
-    if (!isString(ruling) || ruling === "earned") return [];
-    return [{ prior, ruling, check: isString(data.check) ? data.check : null }];
-  });
-  const defect = candidates.find(
-    ({ ruling, check }) => ruling === "check-defect" && check !== null && blocking.includes(check),
-  );
-  if (defect !== undefined) {
+  if (version === undefined) return null;
+  const stands = standsOf(events);
+  const latestBySolve = new Map<string, (typeof events)[number]["data"]>();
+  for (const {
+    event: { data },
+  } of eventsOf(events, "referee.finding")) {
+    if (isString(data.solve)) latestBySolve.set(data.solve, data);
+  }
+  for (const [prior, data] of latestBySolve) {
+    if (prior === solve || data.task !== taskId) continue;
+    if (solves.get(prior)?.start.comparison !== comp) continue;
+    if (versionOf.get(prior) !== version) continue;
+    if (isString(data.reusedFrom) || data.walled === true || isString(data.error)) continue;
+    if (stands.get(prior) !== "check-defect") continue;
+    if (!isString(data.check) || !blocking.includes(data.check)) continue;
     return {
-      ruling: "check-defect",
-      check: defect.check,
-      rule: null,
-      field: null,
-      reason: `reused check-defect on ${String(defect.check)} from earlier solve ${defect.prior} in comparison ${comp}`,
-      probes: [],
+      from: prior,
+      finding: {
+        ruling: "check-defect",
+        check: data.check,
+        rule: null,
+        field: null,
+        reason: `reused check-defect on ${data.check} from earlier solve ${prior} in comparison ${comp}`,
+        probes: [],
+      },
     };
   }
-  const aside = candidates[0];
-  if (aside === undefined) return null;
-  return {
-    ruling: "unclear",
-    check: null,
-    rule: null,
-    field: null,
-    reason: `task already set aside in comparison ${comp} after ${aside.prior} (${aside.ruling})`,
-    probes: [],
-  };
+  return null;
 }
 
 function packet(
@@ -316,7 +311,7 @@ function readTools(
   caseFiles: ReadonlyMap<string, string>,
 ) {
   const texts = fileTexts(files);
-  const taskFiles = new Map([...taskFileTexts(publicInput), ...caseFiles]);
+  const taskFiles = new Map([...caseFiles, ...taskFileTexts(publicInput)]);
   return [
     checkProgramTool(checks),
     readTool(
@@ -464,8 +459,10 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
   }
   const replay =
     verdict.fault === null ? await fail.verify(fail.task, verdict.answer, reader.kill, verdict.files) : null;
-  const host =
-    hostRuling(verdict, replay) ?? reusedAsideRuling(events, fail.solve, fail.task.taskId, verdict.blocking);
+  const directHost = hostRuling(verdict, replay);
+  const reused =
+    directHost === null ? reusedDefectRuling(events, fail.solve, fail.task.taskId, verdict.blocking) : null;
+  const host = directHost ?? reused?.finding ?? null;
   const rows: ProbeRow[] = [];
   const found: RefereeFinding[] = [];
   const version = proposalsOf(events).findLast(({ taskId }) => taskId === fail.task.taskId)?.version;
@@ -539,6 +536,7 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
     solve: fail.solve,
     task: fail.task.taskId,
     ...finding,
+    ...keyIfNotNull("reusedFrom", reused?.from ?? null),
     ...keyIfNotNull("replay", replay),
     ...keysIf(meter !== null, () => ({ ...meter, probeRows: rows })),
   });

@@ -28,6 +28,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { draftCommand } from "../tools/d1b/draft.ts";
+import { taskContentDigest } from "../src/referee/probe.ts";
 import { campaignLog, openCampaign, packNamed } from "../tools/d2/campaign.ts";
 import { draftReading, stagedExamOf, stageExam } from "../tools/d2/exam.ts";
 import { packControls, readPack, sweepResources } from "../tools/m0/stored-sweep.ts";
@@ -846,11 +847,28 @@ describe.concurrent("campaign draft lifecycle", () => {
       tasks: [...holeOne.tasks, { family: "product", publicInput: { base: 5 }, hidden: null }],
       accept: [...holeOne.accept, { task: 3, answer: { answer: "30" } }],
     };
-    const probeFour = { ...probeRow("hole1"), task: "ex-004" };
+    const probeFour = {
+      ...probeRow("hole1"),
+      task: "ex-004",
+      taskDigest: taskContentDigest({
+        taskId: "ex-004",
+        family: "product",
+        publicInput: { base: 5 },
+        hidden: null,
+      }),
+    };
+    const reorderedFour: Draft = {
+      ...holeOne,
+      tasks: [{ family: "product", publicInput: { base: 5 }, hidden: null }, ...holeOne.tasks.slice(0, 2)],
+      accept: [
+        { task: 0, answer: { answer: "30" } },
+        ...holeOne.accept.slice(0, 2).map((c, idx) => ({ ...c, task: idx + 1 })),
+      ],
+    };
     let deletedAuditCalls = 0;
     const deletedRun = await draftCommand(
-      [...opened(deletedName, false, { model: SOLVER, effort: "low" }), "--session", "d-1", "--tries", "3"],
-      putting(fourExamples, holeOne, SOUND),
+      [...opened(deletedName, false, { model: SOLVER, effort: "low" }), "--session", "d-1", "--tries", "4"],
+      putting(fourExamples, reorderedFour, holeOne, SOUND),
       async () => {
         deletedAuditCalls += 1;
         return {
@@ -861,10 +879,16 @@ describe.concurrent("campaign draft lifecycle", () => {
         };
       },
     );
-    expect(deletedRun).toMatchObject({ ended: "finished", puts: 3 });
+    expect(deletedRun).toMatchObject({ ended: "finished", puts: 4 });
     expect(deletedAuditCalls).toBe(1);
     expect(draftOf(read(campaignLog(deletedName)))).toBeNull();
     const deletedLog = read(campaignLog(deletedName));
+    expect(
+      deletedLog.some(
+        ({ kind, data }) =>
+          kind === "draft.call" && isString(data.text) && data.text.includes("prior probe still reproduces"),
+      ),
+    ).toBe(true);
     expect(
       deletedLog.some(
         ({ kind, data }) =>

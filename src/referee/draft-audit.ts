@@ -2,7 +2,7 @@ import { type Static, Type } from "typebox";
 import type { Control } from "../kernel/acceptance.ts";
 import type { AnswerFile } from "../kernel/answer-files.ts";
 import { GAP_FLOOR, gainOver } from "../kernel/compare.ts";
-import type { Contract } from "../kernel/contract.ts";
+import { codeObjective, type Contract } from "../kernel/contract.ts";
 import { append } from "../kernel/log.ts";
 import { blockingOf, objectiveOf, type Task, type Verifier } from "../kernel/verify.ts";
 import { boundText } from "../meta/bounded-text.ts";
@@ -254,7 +254,11 @@ export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promi
     description: "Record your final verdict on the drafted exam once probes settle it.",
     parameters: PARAMETERS,
     execute: async (args) => {
-      const problem = refusal(rows, args, target.contract.objective === undefined ? "none" : "measured");
+      const problem = refusal(
+        rows,
+        args,
+        codeObjective(target.contract.objective) === undefined ? "none" : "measured",
+      );
       if (problem !== null) {
         append(target.log, "referee.draft.refused", {
           session: target.session,
@@ -407,7 +411,9 @@ export async function replayDraftProbes(
       });
       if (!conclusive(replayed)) {
         unverified.push(formatted);
-      } else if (reproduces(finding, { task: finding.task, ...replayed }, target.contract.objective)) {
+      } else if (
+        reproduces(finding, { task: finding.task, ...replayed }, codeObjective(target.contract.objective))
+      ) {
         stillBroken.push(`${formatted} (prior probe still reproduces on this revision)`);
       } else {
         verifiedFixed.push(formatted);

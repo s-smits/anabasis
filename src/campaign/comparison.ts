@@ -21,9 +21,9 @@ import {
   informative,
   wholePoints,
 } from "../kernel/compare.ts";
-import { conditionsOf, settingId } from "../kernel/condition.ts";
+import { settingId } from "../kernel/condition.ts";
 import { failWrongPasses, familiesOf, wrongPasses } from "../kernel/history.ts";
-import type { LogEvent } from "../kernel/log.ts";
+import { eventsOf, type LogEvent } from "../kernel/log.ts";
 import { poolOf } from "../kernel/reports.ts";
 import { passed, ranUnder, rejected, rulingsOf, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
@@ -230,7 +230,7 @@ const REPORT_KEYS = [
 /** Slice `events` up to and including the first report for comparison `id` so later comparisons or
  *  task-state changes do not alter its reading; returns the full log if unreported. */
 function asReported(events: readonly LogEvent[], id: string): LogEvent[] {
-  const own = events.findIndex(({ kind, data }) => kind === REPORTED && data.session === id);
+  const own = eventsOf(events, REPORTED).find(({ event }) => event.data.session === id)?.index ?? -1;
   return own === -1 ? [...events] : events.slice(0, own + 1);
 }
 
@@ -274,7 +274,7 @@ function turnsOf(events: readonly LogEvent[], pairs: readonly Paired[]): NonNull
 
 /** Return the most recent report recorded for comparison `id` (initial or settled), or null. */
 export function reported(events: readonly LogEvent[], id: string): Report | null {
-  const found = events.findLast((event) => event.kind === REPORTED && event.data.session === id)?.data;
+  const found = eventsOf(events, REPORTED).findLast(({ event }) => event.data.session === id)?.event.data;
   if (found === undefined) return null;
   // Default missing fields for backwards compatibility; legacy reports stored `counted` as a string
   // reading rather than a tally object, so coerce non-records to null.
@@ -286,15 +286,12 @@ export function reported(events: readonly LogEvent[], id: string): Report | null
 /** Return test-side solves eligible for comparison `fixed` (matching comparison id, harness, and
  *  setting), annotated with whether each solve yielded a countable pass or fail (`passed`). */
 export function solvesUnder(events: readonly LogEvent[], fixed: Fixed) {
-  const settings = new Map(
-    [...conditionsOf(events)].map(([condition, ran]) => [condition, settingId(ran)] as const),
-  );
   const harnesses = new Set([fixed.old, fixed.fresh, fixed.starter]);
   return ranUnder(events).flatMap((solve) =>
     solve.under.side === "test" &&
     harnesses.has(solve.under.harness) &&
     solve.start.comparison === fixed.id &&
-    settings.get(solve.condition) === fixed.setting
+    settingId(solve.under) === fixed.setting
       ? [{ ...solve, counts: passed(solve) !== null }]
       : [],
   );
@@ -331,7 +328,6 @@ function setsOf(
   const tallied = { frontier: part("frontier"), retained: part("retained") };
   const setOf = (set: keyof typeof tallied): Entered => {
     const within = (task: string) => kept.has(task) === (set === "retained");
-    // Record the task version aligned with each entry in `differences`.
     const of = tallied[set].map(({ task }) => task);
     return { tasks: fixed.tasks.filter(within), aside: aside.filter(within), ...scored(tallied[set]), of };
   };
@@ -356,10 +352,10 @@ export function coverageOf(
   labels: ReadonlyMap<string, Ruling> = NO_LABELS,
 ) {
   const events = asReported(all, fixed.id);
-  const states = taskStates(events);
   // Exclude tasks released or refused while the comparison was running so they are reported as
   // withdrawn instead of blocking the comparison report.
-  const held = new Set(taskSets(events).held);
+  const { states, held: heldList } = taskSets(events);
+  const held = new Set(heldList);
   const scorable = fixed.tasks.filter((task) => states.get(task) !== "disputed");
   const live = scorable.filter((task) => held.has(task));
   const open = new Set(
@@ -395,8 +391,6 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   const pairs = kept(first);
   const aside = coverage.aside.filter(scorable);
   const sets = setsOf(all, fixed, pairs, aside);
-  /** Evaluate the reference against itself on mirrored halves of its own solves over the exact same
-   *  tallied task set as the primary test. */
   const againstItself = () =>
     kept(
       pairsOf(
@@ -413,8 +407,6 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
         fixed.solves / 2,
       ).pairs,
     );
-  // Compute the empirical A/A control whenever `solves` is even by splitting reference solves into
-  // time-mirrored halves (at two solves per side, alternating solve order across tasks).
   const mirroredOf = (halves: readonly Paired[]) => {
     const aa = scored(halves);
     return { ...aa, flips: flipsOf(halves), detectable: detectable(aa.differences, fixed.level) };
@@ -490,14 +482,13 @@ function flipsOf(pairs: readonly Paired[]): number | null {
 /** Find the most recent prior comparison of the same kind (promotion attempt vs starter comparison)
  *  under the same reference, and return the intersection of their initial task draws. */
 export function overlapOf(events: readonly LogEvent[], fixed: Fixed) {
-  const began = events.findIndex(({ kind, data }) => kind === STARTED && data.session === fixed.id);
+  const starts = eventsOf(events, STARTED);
+  const began = starts.find(({ event }) => event.data.session === fixed.id)?.index ?? -1;
   const kindOf = (fresh: JsonValue | undefined) => fresh === fixed.starter;
-  const before = events
-    .slice(0, Math.max(0, began))
-    .findLast(
-      ({ kind, data }) =>
-        kind === STARTED && data.old === fixed.old && kindOf(data.fresh) === kindOf(fixed.fresh),
-    );
+  const before = starts.findLast(
+    ({ index, event: { data } }) =>
+      index < began && data.old === fixed.old && kindOf(data.fresh) === kindOf(fixed.fresh),
+  )?.event;
   if (before === undefined || !isString(before.data.session)) return null;
   const drawnThen = new Set(Array.isArray(before.data.tasks) ? before.data.tasks.filter(isString) : []);
   return { with: before.data.session, tasks: fixed.tasks.filter((task) => drawnThen.has(task)) };
@@ -535,17 +526,7 @@ export function swapped(
   const settled = reported(events, id)?.settled;
   const fixed = fixedIn(events, id);
   const original = reported(own, id);
-  const decided = original?.reading;
-  if (
-    fixed === null ||
-    original?.scored === null ||
-    decided === undefined ||
-    settled === undefined ||
-    settled === null ||
-    settled === UNSETTLED
-  ) {
-    return null;
-  }
+  if (fixed === null || original?.scored == null || settled == null || settled === UNSETTLED) return null;
   const defects = new Set(Object.keys(settled.labels).filter((solve) => settled.labels[solve] === DEFECT));
   const failed = wrongAsFailed(own, new Map(Object.entries(settled.labels)), settled.passes);
   const swappedIn = failed.events.map((event) =>
@@ -553,10 +534,13 @@ export function swapped(
       ? { ...event, data: { ...event.data, ending: { outcome: "pass" } } }
       : event,
   );
-  const { labels } = failed;
-  const found = compared(swappedIn, fixed, labels);
-  const unlabelled = compared(own, fixed, NO_LABELS).reading;
-  return { decided, unlabelled, swapped: found.reading, scored: found.scored };
+  const found = compared(swappedIn, fixed, failed.labels);
+  return {
+    decided: original.reading,
+    unlabelled: compared(own, fixed, NO_LABELS).reading,
+    swapped: found.reading,
+    scored: found.scored,
+  };
 }
 
 /** Return the operator's pre-solve prediction for comparison `id`, or null if none was recorded. */
@@ -567,7 +551,7 @@ export function predicted(events: readonly LogEvent[], id: string): string | nul
 
 /** Return the raw `comparison.started` payload for comparison `id`, if present. */
 export function startOf(events: readonly LogEvent[], id: string): JsonObject | undefined {
-  return events.find(({ kind, data }) => kind === STARTED && data.session === id)?.data;
+  return eventsOf(events, STARTED).find(({ event }) => event.data.session === id)?.event.data;
 }
 
 /** Reconstruct the immutable `Fixed` terms for comparison `id`, or null if it never started. */

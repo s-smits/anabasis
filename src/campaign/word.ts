@@ -2,7 +2,7 @@
  * A word the operator leaves for a campaign that runs, as the campaign's log holds it
  * (`campaign.word`, written by `tools/d2/word.ts` and `tools/runs/manage.ts`).
  */
-import type { LogEvent } from "../kernel/log.ts";
+import { CALL_KINDS, type LogEvent } from "../kernel/log.ts";
 import { lastReports, referenceOf } from "../kernel/reports.ts";
 import { SEATS, traceKind } from "../kernel/trace.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";
@@ -17,7 +17,7 @@ export const PAUSE = "pause";
  *  a run completes, a finished solve or a recorded tool call of any seat, and `compacted` a
  *  compaction of any seat's conversation. Words joined by `|` wait for the first of their events. */
 const PAUSE_AFTER = {
-  next: ["solve.finished", "build.call", "draft.call", "exam.call", "referee.call", "solve.call"],
+  next: ["solve.finished", ...CALL_KINDS],
   compacted: SEATS.map((seat) => traceKind(seat, "compacted")),
   reported: ["comparison.reported"],
   promoted: ["harness.promoted"],

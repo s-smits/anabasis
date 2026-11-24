@@ -4,17 +4,10 @@
  * `exam.compacted`), as `traceSink` and `sit` write them (`src/agent/session.ts`).
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import {
-  asRecord,
-  isBoolean,
-  isNumber,
-  isString,
-  type JsonObject,
-  type JsonValue,
-} from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
 import { proposalsOf } from "./history.ts";
-import type { LogEvent } from "./log.ts";
+import { type EventKind, eventsOf, type LogEvent } from "./log.ts";
 import { admissionsOf } from "./task.ts";
 
 /** Each seat whose trace the log holds, in the order a stopped run's open sessions are ended
@@ -37,7 +30,7 @@ export interface Degradation {
  *  dollars its turns and compactions metered, its turns, and when it began and wrote its last
  *  event (`unfinished`). Whose a solve is, is `ownersOf`'s to say. */
 interface Unfinished {
-  readonly of: (typeof METERED)[number]["of"];
+  readonly of: Seat;
   readonly id: JsonValue | undefined;
   dollars: number;
   turns: number;
@@ -97,6 +90,12 @@ export type Traced = Turn | Call | Compaction;
 const ARGUMENT_HEAD = 100;
 
 const BUILD_FINISHED = "build.finished";
+const OWNER_KINDS: readonly EventKind[] = [
+  "build.started",
+  BUILD_FINISHED,
+  "solve.started",
+  "referee.finding",
+];
 
 /** The field that names whose a seat's trace is. A Referee's reading is named by its reader's id,
  *  which its `referee.finding` carries too, so the finding ends it (`unfinished`) while the field
@@ -110,10 +109,6 @@ const WHOSE = {
 } as const satisfies Record<Seat, string>;
 export const whose = (seat: Seat) => WHOSE[seat];
 
-/** Each kind of start whose turns and compactions are billed where no end is on record, with the
- *  field that names the session or the solve in all four events: a Builder's session, an
- *  Examiner's two kinds, a Referee's reading and a solve attempt. */
-export const METERED = SEATS.map((of) => ({ of, id: whose(of) }));
 /** The kind seat `seat` logs part `part` under. */
 export const traceKind = (seat: Seat, part: Traced["part"]) => `${seat}.${part}` as const;
 
@@ -122,14 +117,19 @@ const TRACE_KINDS = new Map<string, readonly [Seat, Traced["part"], string]>(
     (["turn", "call", "compacted"] as const).map((part) => [`${seat}.${part}`, [seat, part, whose(seat)]]),
   ),
 );
-const SEAT_START = new Map<string, Seat>(
-  SEATS.map((s) => [s === "referee" ? "referee.turn" : `${s}.started`, s]),
+const SEAT_START = new Map<EventKind, Seat>(
+  SEATS.map((s): [EventKind, Seat] => [s === "referee" ? "referee.turn" : `${s}.started`, s]),
 );
-const SEAT_END = new Map<string, Seat>([
-  ...SEATS.filter((s) => s !== "referee").map((s): [string, Seat] => [`${s}.finished`, s]),
+const SEAT_END = new Map<EventKind, Seat>([
+  ...SEATS.filter((s) => s !== "referee").map((s): [EventKind, Seat] => [`${s}.finished`, s]),
   ["referee.finding", "referee"],
   ["referee.draft", "referee"],
 ]);
+const START_KINDS: readonly EventKind[] = [...SEAT_START.keys()].filter((kind) => kind !== "referee.turn");
+const TURN_KINDS: readonly EventKind[] = SEATS.filter((s) => s !== "referee").map((s) =>
+  traceKind(s, "turn"),
+);
+const START_END_KINDS: readonly EventKind[] = [...SEAT_START.keys(), ...SEAT_END.keys()];
 
 /** The host's price of one usage, `cost.total`, or null where it holds none. */
 function costOf(usage: JsonValue | undefined): number | null {
@@ -170,7 +170,7 @@ export function traced({ kind, at, data }: LogEvent, index: number): Traced | nu
       turn: orNull(turn, isNumber),
       tool: textOf(tool),
       args: args ?? null,
-      isError: isBoolean(isError) && isError,
+      isError: isError === true,
       text: textOf(text),
       ms: orNull(ms, isNumber),
     };
@@ -182,8 +182,10 @@ export function traced({ kind, at, data }: LogEvent, index: number): Traced | nu
 /** The model (`provider/model`) each session or solve's start asked for, by its id. */
 export function askedOf(events: readonly LogEvent[]): Map<string, string> {
   const asked = new Map<string, string>();
-  for (const { kind, data } of events) {
-    const seat = kind === "referee.turn" ? undefined : SEAT_START.get(kind);
+  for (const {
+    event: { kind, data },
+  } of eventsOf(events, START_KINDS)) {
+    const seat = SEAT_START.get(kind);
     const id = seat === undefined ? undefined : data[whose(seat)];
     if (isString(id) && isString(data.model)) asked.set(id, data.model);
   }
@@ -200,9 +202,12 @@ export function askedOf(events: readonly LogEvent[]): Map<string, string> {
 export function degradations(events: readonly LogEvent[], from = 0): Degradation[] {
   const asked = askedOf(events);
   const rows = new Map<string, Degradation>();
-  for (const each of tracesIn(events.slice(from))) {
-    const seat = each.part === "turn" ? asked.get(each.id) : undefined;
-    if (each.part !== "turn" || each.model === null || seat === undefined) continue;
+  for (const { index, event } of eventsOf(events, TURN_KINDS)) {
+    if (index < from) continue;
+    const each = traced(event, index);
+    if (each?.part !== "turn" || each.model === null) continue;
+    const seat = asked.get(each.id);
+    if (seat === undefined) continue;
     const wanted = seat.slice(seat.indexOf("/") + 1);
     if (each.model === wanted || each.model.replace(/-\d{8}$/u, "") === wanted) continue;
     const key = `${each.id}\u0000${each.model}`;
@@ -236,11 +241,16 @@ export const callsOf = (traces: readonly Traced[], seat: Seat): Call[] =>
 
 /** The turns and the calls of seat `seat`'s solve or session `id`, in the order logged. */
 export function traceOf(events: readonly LogEvent[], seat: Seat, id: string) {
-  const own = tracesIn(events).filter((each) => each.seat === seat && each.id === id);
-  return {
-    turns: own.filter((each): each is Turn => each.part === "turn"),
-    calls: own.filter((each): each is Call => each.part === "call"),
-  };
+  const turns: Turn[] = [];
+  const calls: Call[] = [];
+  const field = whose(seat);
+  for (const { index, event } of eventsOf(events, [traceKind(seat, "turn"), traceKind(seat, "call")])) {
+    if (event.data[field] !== id) continue;
+    const found = traced(event, index);
+    if (found?.part === "turn") turns.push(found);
+    else if (found?.part === "call") calls.push(found);
+  }
+  return { turns, calls };
 }
 
 /** What a solver last said in words: the text of its last turn that held any. */
@@ -296,12 +306,19 @@ export function callText(calls: readonly Call[], number: number): string {
  */
 export function unfinished(events: readonly LogEvent[]): Unfinished[] {
   const bySeat = new Map(
-    METERED.map(({ of, id }) => [
+    SEATS.map((of) => [
       of,
-      { of, id, ended: new Set(), started: new Set(), open: new Map<JsonValue | undefined, Unfinished>() },
+      {
+        of,
+        id: whose(of),
+        ended: new Set(),
+        started: new Set(),
+        open: new Map<JsonValue | undefined, Unfinished>(),
+      },
     ]),
   );
-  for (const { kind, data } of events) {
+  for (const { event } of eventsOf(events, START_END_KINDS)) {
+    const { kind, data } = event;
     const [end, start] = [SEAT_END.get(kind), SEAT_START.get(kind)];
     if (end !== undefined) bySeat.get(end)?.ended.add(data[WHOSE[end]]);
     if (start !== undefined) bySeat.get(start)?.started.add(data[WHOSE[start]]);
@@ -312,7 +329,6 @@ export function unfinished(events: readonly LogEvent[]): Unfinished[] {
   if (active.length === 0) return [];
   for (const [index, event] of events.entries()) {
     const { at, kind, data } = event;
-    let part: ReturnType<typeof traced> | undefined;
     for (const { of, id, ended, open } of active) {
       const which = data[id];
       if (SEAT_START.get(kind) === of && !ended.has(which) && (of !== "referee" || !open.has(which))) {
@@ -321,10 +337,10 @@ export function unfinished(events: readonly LogEvent[]): Unfinished[] {
       const found = open.get(which);
       if (found === undefined) continue;
       found.last = at;
-      part = part === undefined ? traced(event, index) : part;
+      const part = TRACE_KINDS.has(kind) ? traced(event, index) : null;
       if (part?.seat !== of || part.part === "call") continue;
       found.dollars += part.billed ?? 0;
-      found.turns += part.part === "turn" ? 1 : 0;
+      if (part.part === "turn") found.turns += 1;
     }
   }
   return active.flatMap(({ open }) => [...open.values()]);
@@ -363,14 +379,14 @@ export function cutSessions(events: readonly LogEvent[]) {
  */
 function cutCounts(events: readonly LogEvent[], of: "build" | "exam" | "draft", id: string) {
   if (of === "draft") {
-    const own = events.flatMap(({ kind, data }, at) =>
-      data.session === id && kind === "draft.call" && data.tool === "draft_exam" ? [{ at, data }] : [],
+    const own = eventsOf(events, "draft.call").filter(
+      ({ event: { data } }) => data.session === id && data.tool === "draft_exam",
     );
-    const after = own.at(-1)?.at ?? -1;
-    const measuring = events.some(
-      ({ kind, data }, at) => at > after && kind === "solve.started" && data.comparison === id,
+    const after = own.at(-1)?.index ?? -1;
+    const measuring = eventsOf(events, "solve.started").some(
+      ({ index, event: { data } }) => index > after && data.comparison === id,
     );
-    return { tries: own.filter(({ data }) => data.isError !== true).length + (measuring ? 1 : 0) };
+    return { tries: own.filter(({ event: { data } }) => data.isError !== true).length + (measuring ? 1 : 0) };
   }
   if (of === "build") return {};
   const proposed = proposalsOf(events).flatMap(({ session, version }) => (session === id ? [version] : []));
@@ -393,7 +409,8 @@ function cutCounts(events: readonly LogEvent[], of: "build" | "exam" | "draft", 
 export function ownersOf(events: readonly LogEvent[]): Map<string, Owner> {
   const owners = new Map<string, Owner>();
   let open: string | undefined;
-  for (const { kind, data } of events) {
+  for (const { event } of eventsOf(events, OWNER_KINDS)) {
+    const { kind, data } = event;
     if (kind === "build.started" && isString(data.session)) open = data.session;
     else if (kind === BUILD_FINISHED && data.session === open) open = undefined;
     else if (kind === "solve.started" && isString(data.solve)) {

@@ -30,7 +30,7 @@ import { gapAgainst, type Paired } from "#src/kernel/compare.ts";
 import { conditionsOf } from "#src/kernel/condition.ts";
 import { OPENING, proposalsOf, writersOf } from "#src/kernel/history.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { lastReports, pairsReported, type Reported, taskRecords } from "#src/kernel/reports.ts";
+import { lastReports, pairsReported, poolOf, type Reported } from "#src/kernel/reports.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { type Call, callsOf, tracesIn } from "#src/kernel/trace.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
@@ -299,7 +299,7 @@ function tick(row: Measured, pair: Paired, side: "old" | "fresh", best: number |
 /** Each side's valid measures against the author's best, by writer and harness. */
 function measuredOf(events: readonly LogEvent[], reported: readonly PairedReport[]): Measured[] {
   const writers = writersOf(events);
-  const bests = new Map(taskRecords(events).records.map(({ version, best }) => [version, best]));
+  const bests = poolOf(events).bests;
   const rows = new Map<string, Measured>();
   for (const { report, pairs } of reported) {
     const starter = isString(report.data.starter) ? report.data.starter : null;

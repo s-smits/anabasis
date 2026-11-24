@@ -2,6 +2,7 @@
  * One git question asked of one checkout, answered as trimmed text.
  */
 import { hostTool } from "./host-tool.ts";
+import { basename, dirname } from "./path.ts";
 import { CAPTURE_MAX_BYTES, runTextSyncOrThrow } from "./subprocess.ts";
 
 /** A worktree as git lists it: its path, its commit and its branch, where it has each. */
@@ -51,4 +52,7 @@ export const worktreeList = (repo: string): Worktree[] =>
 export const worktrees = (repo: string): string[] => worktreeList(repo).map(({ path }) => path);
 
 /** The main worktree of the repository `repo` lies in, which holds what all its worktrees share. */
-export const mainTree = (repo: string): string => worktrees(repo)[0] ?? repo;
+export function mainTree(repo: string): string {
+  const common = gitText(repo, "rev-parse", "--path-format=absolute", "--git-common-dir");
+  return basename(common) === ".git" ? dirname(common) : (worktrees(repo)[0] ?? repo);
+}

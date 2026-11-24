@@ -6,7 +6,7 @@
  *   bun tools/wri/rejections.ts <log | campaign folder | name> [--solve <id>]
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
+import { type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import {
   checkerVerdict,
   examinerSessions,
@@ -24,7 +24,6 @@ import {
   type Index,
   indexOf,
   items,
-  NO_TRACES,
   refusals,
   type Solve,
   strings,
@@ -182,7 +181,7 @@ function probeLines(events: readonly LogEvent[], wanted: string): string[] {
 
 async function main(args: CommandArgs): Promise<number> {
   const named = args.positionals[0] ?? args.required("log");
-  const events = read(await logAcross(named, "record"), NO_TRACES);
+  const events = read(await logAcross(named, "record"), TRACE_KINDS);
   const solve = args.value("solve");
   console.log((solve === null ? rejectionRows(events) : probeLines(events, solve)).join("\n"));
   return 0;

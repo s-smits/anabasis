@@ -7,9 +7,9 @@ import type { ModelUsage } from "@anthropic-ai/claude-agent-sdk";
 import type { Api, AssistantMessage, Model, Models, Usage } from "@earendil-works/pi-ai";
 import type { UsageState } from "@earendil-works/pi-durable";
 import { isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
-import type { LogEvent } from "./log.ts";
+import { type EventKind, eventsOf, type LogEvent } from "./log.ts";
 import { examinerSessions } from "./solves.ts";
-import { METERED, ownedBy, ownersOf, unfinished } from "./trace.ts";
+import { ownedBy, ownersOf, unfinished } from "./trace.ts";
 
 interface Price {
   readonly input: number;
@@ -43,12 +43,16 @@ const NONE: Spend = { ...NO_TOKENS, dollars: 0 };
 
 export const NOTHING_SPENT: Spent = { turns: 0, tokens: NO_TOKENS, billed: 0, reportedCost: null };
 
-const BILLED: ReadonlySet<string> = new Set([
-  ...METERED.map(({ of }) => `${of}.finished`),
+const BILLED_KINDS: readonly EventKind[] = [
+  "solve.finished",
+  "build.finished",
+  "exam.finished",
+  "draft.finished",
   "referee.finding",
   "referee.draft",
   "diagnosis.recorded",
-]);
+];
+const BILL_SPAN_KINDS: readonly EventKind[] = ["build.started", ...BILLED_KINDS];
 
 const ROLES = new Map([
   ["solve", "solver"],
@@ -94,13 +98,7 @@ const signed = (ledger: Ledger, sign: number) =>
 const totalOf = (ledger: Ledger): Spend =>
   sum(Object.values(ledger).map((spend) => ["", spend, 1] as const))[""] ?? NONE;
 
-const tokensOf = ({ input, output, cacheRead, cacheWrite, cacheWrite1h }: Spend): Tokens => ({
-  input,
-  output,
-  cacheRead,
-  cacheWrite,
-  cacheWrite1h,
-});
+const tokensOf = ({ dollars: _dollars, ...tokens }: Spend): Tokens => tokens;
 
 const sizeOf = ({ input, output, cacheRead, cacheWrite }: Tokens) => input + output + cacheRead + cacheWrite;
 
@@ -207,12 +205,12 @@ export function seatMeter(model: Model<Api>) {
 export const roleOf = (kind: string): string | undefined => ROLES.get(kind.split(".")[0] ?? "");
 
 const billedOn = ({ kind, data }: LogEvent) =>
-  BILLED.has(kind) && isNumber(data.billed) ? data.billed : null;
+  kind !== "build.started" && isNumber(data.billed) ? data.billed : null;
 
 /** Total billed USD across finished records plus metered turns of unfinished sessions/solves. */
 export function billedAll(events: readonly LogEvent[]): number {
   let total = 0;
-  for (const event of events) total += billedOn(event) ?? 0;
+  for (const { event } of eventsOf(events, BILLED_KINDS)) total += billedOn(event) ?? 0;
   return unfinished(events).reduce((all, { dollars }) => all + dollars, total);
 }
 
@@ -227,7 +225,7 @@ export function billedBetween(events: readonly LogEvent[], from: number, to = ev
 
 export function costLine(events: readonly LogEvent[]): string {
   let [records, covered, backend, billed] = [0, 0, 0, 0];
-  for (const event of events) {
+  for (const { event } of eventsOf(events, BILLED_KINDS)) {
     const own = billedOn(event);
     if (own === null) continue;
     records += 1;
@@ -260,7 +258,7 @@ export function billedParts(
   };
   const billed = { session: 0, span: 0, comparison: 0 };
   let inBuild = false;
-  for (const event of events) {
+  for (const { event } of eventsOf(events, BILL_SPAN_KINDS)) {
     if (event.kind === "build.started" && event.data.session === id) inBuild = true;
     const own = billedOn(event);
     if (own !== null && inBuild) {
@@ -283,7 +281,7 @@ export function billedParts(
 export function spendOf(events: readonly LogEvent[]): [string, number][] {
   const sessions = examinerSessions(events);
   const owners = ownersOf(events);
-  const whoseRole = (kind: string, solve: JsonValue | undefined) => {
+  const whoseRole = (kind: string, solve: unknown) => {
     const role = roleOf(kind);
     const owner = isString(solve) ? owners.get(solve) : undefined;
     return role === "solver" && owner?.asked === true && sessions.has(owner.by) ? "examiner" : role;
@@ -292,7 +290,9 @@ export function spendOf(events: readonly LogEvent[]): [string, number][] {
   const add = (role: string | undefined, dollars: number) => {
     if (role !== undefined) billed.set(role, (billed.get(role) ?? 0) + dollars);
   };
-  for (const event of events) add(whoseRole(event.kind, event.data.solve), billedOn(event) ?? 0);
+  for (const { event } of eventsOf(events, BILLED_KINDS)) {
+    add(whoseRole(event.kind, event.data.solve), billedOn(event) ?? 0);
+  }
   for (const { of, id, dollars } of unfinished(events)) add(whoseRole(of, id), dollars);
   return [...new Set(ROLES.values())]
     .flatMap((role): [string, number][] => (billed.has(role) ? [[role, billed.get(role) ?? 0]] : []))

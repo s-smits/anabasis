@@ -3,7 +3,7 @@
  */
 import { conditionsOf } from "#src/kernel/condition.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
-import { read } from "#src/kernel/log.ts";
+import { eachEvent, type LogEvent, TRACE_KINDS } from "#src/kernel/log.ts";
 import { stopRule } from "#src/campaign/admission.ts";
 import { lastReports } from "#src/kernel/reports.ts";
 import { taskSets } from "#src/kernel/task.ts";
@@ -15,10 +15,15 @@ import { readableAcross } from "./snapshots.ts";
 
 /** What this tree's readers make of the log at `path`, in a line. */
 export function replayed(path: string): string {
-  const events = read(path);
+  const events: LogEvent[] = [];
+  let total = 0;
+  eachEvent(path, (event) => {
+    total += 1;
+    if (!TRACE_KINDS.has(event.kind)) events.push(event);
+  });
   const sets = taskSets(events);
   return [
-    `${String(events.length)} events`,
+    `${String(total)} events`,
     `${String(conditionsOf(events).size)} conditions`,
     `${String(sets.held.length)} held out, ${String(sets.released.length)} released`,
     `${String(writtenTasks(events).length)} written by a session`,

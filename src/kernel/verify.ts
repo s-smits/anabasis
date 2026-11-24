@@ -264,16 +264,18 @@ export function requiredToolsOf(execution: CheckExecution): readonly string[] {
     : (execution.requiredToolIds ?? []);
 }
 
+const declaredTools = (brief: Brief) => [
+  ...new Set([
+    ...brief.truthChecks.flatMap(({ execution }) => requiredToolsOf(execution)),
+    ...(brief.objectiveTools ?? []),
+  ]),
+];
+
 /** Resolve and hash every declared verifier engine (`resolveVerifierTool`). */
 export function pinnedEngines({ checks, tools }: VerifierTree): Engine[] {
   const hostPath = toolchainPathDirs().join(":");
   const toolsReal = existsSync(tools) ? realpathSync(tools) : null;
-  const brief = readBrief(checks);
-  const named = [
-    ...brief.truthChecks.flatMap(({ execution }) => requiredToolsOf(execution)),
-    ...(brief.objectiveTools ?? []),
-  ];
-  return [...new Set(named)].flatMap((name) => {
+  return declaredTools(readBrief(checks)).flatMap((name) => {
     const resolved = resolveVerifierTool(tools, name, hostPath);
     if (resolved === null) return [];
     const external = toolsReal === null || !containsPath(realpathSync(resolved.path), toolsReal);
@@ -435,6 +437,16 @@ export function engineReadRoots(
   ];
 }
 
+const stopVerdict = (
+  id: string,
+  outcome: CheckResult | NonNullable<CellResult["measured"]>,
+): Verdict | null =>
+  "nonResult" in outcome
+    ? { kind: "non-result", reason: `${id}: ${outcome.nonResult}` }
+    : "faulty" in outcome
+      ? { kind: "faulty", check: id, reason: outcome.faulty }
+      : null;
+
 /**
  * A verifier over one tree. The brief is read and the wall's base taken once, here, so every
  * verdict it gives is under the same checks and the same wall. The tree is resolved first: the wall
@@ -444,46 +456,32 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
   const tree: VerifierTree = { checks: resolve(given.checks), tools: resolve(given.tools) };
   const brief = readBrief(tree.checks);
   const [firstTool, ...moreTools] = brief.objectiveTools ?? [];
-  const objectiveTools: [string, ...string[]] | undefined =
-    firstTool === undefined ? undefined : [firstTool, ...moreTools];
   const objective: BriefTruthCheck | null =
     brief.objective === undefined
       ? null
-      : objectiveTools === undefined
+      : firstTool === undefined
         ? OBJECTIVE
-        : {
-            ...OBJECTIVE,
-            execution: {
-              ...OBJECTIVE.execution,
-              requiredToolIds: objectiveTools,
-              evidence: { kind: "authored" },
-            },
-          };
+        : { ...OBJECTIVE, execution: { ...OBJECTIVE.execution, requiredToolIds: [firstTool, ...moreTools] } };
   const hostPath = toolchainPathDirs().join(":");
-  const declared = [
-    ...new Set([
-      ...brief.truthChecks.flatMap(({ execution }) => requiredToolsOf(execution)),
-      ...(brief.objectiveTools ?? []),
-    ]),
-  ];
-  const resolvedTools = declared.flatMap((name) => {
+  const resolvedTools = declaredTools(brief).flatMap((name) => {
     const resolved = resolveVerifierTool(tree.tools, name, hostPath);
-    return resolved === null ? [] : [[name, resolved] as const];
+    return resolved === null ? [] : [[name, resolved.path] as const];
   });
-  const toolMap = Object.fromEntries(resolvedTools.map(([name, resolved]) => [name, resolved.path]));
-  const homeToolRoots = engineReadRoots(
-    tree.tools,
-    resolvedTools.map(([, resolved]) => resolved.path),
-  );
   const wall: Wall = {
     tree,
     program: checkProgramFiles(tree.checks),
-    toolMap,
+    toolMap: Object.fromEntries(resolvedTools),
     base: solveIsolationPolicy({
       repoRoot: REPO,
       otherTrees: given.otherTrees ?? [],
       packRoots: given.packRoots ?? [],
-      readAllowRoots: [...CHECK_CHILD_SOURCES, ...new Set(homeToolRoots)],
+      readAllowRoots: [
+        ...CHECK_CHILD_SOURCES,
+        ...engineReadRoots(
+          tree.tools,
+          resolvedTools.map(([, path]) => path),
+        ),
+      ],
       network: false,
     }),
     checkMs: given.checkMs ?? PER_CHECK_MS,
@@ -507,17 +505,19 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
     const blocking: string[] = [];
     for (const [index, result] of ran.results.entries()) {
       const { id } = checks[index] ?? OBJECTIVE;
-      if ("nonResult" in result) return { kind: "non-result", reason: `${id}: ${result.nonResult}` };
-      if ("faulty" in result) return { kind: "faulty", check: id, reason: result.faulty };
-      if (!result.passed) blocking.push(id);
+      const stopped = stopVerdict(id, result);
+      if (stopped !== null) return stopped;
+      if ("passed" in result && !result.passed) blocking.push(id);
     }
     if (blocking.length > 0) return { kind: "fail", blocking };
     const { measured } = ran;
     if (measured === null) return { kind: "pass" };
-    const { id } = OBJECTIVE;
-    if ("nonResult" in measured) return { kind: "non-result", reason: `${id}: ${measured.nonResult}` };
-    if ("faulty" in measured) return { kind: "faulty", check: id, reason: measured.faulty };
-    return { kind: "pass", objective: measured.value };
+    return (
+      stopVerdict(OBJECTIVE.id, measured) ?? {
+        kind: "pass",
+        ...keyIfDefined("objective", "value" in measured ? measured.value : undefined),
+      }
+    );
   };
 }
 

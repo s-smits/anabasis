@@ -6,7 +6,7 @@
  */
 import { frozenChecker } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
-import { append, isReferenceChange, type LogEvent, read } from "../kernel/log.ts";
+import { append, type EventKind, eventsOf, type LogEvent, read } from "../kernel/log.ts";
 import {
   activePromotionAt,
   type Cap,
@@ -66,6 +66,7 @@ export const EXAMINE = "tools/d1b/examine.ts";
 /** Extra frontier buffer above `sweepOf(level)` for one set-aside task and one tie. */
 const MARGIN = 2;
 const STARTED = "comparison.started";
+const REFERENCE_KINDS: readonly EventKind[] = ["harness.promoted", "harness.reverted"];
 const UNREAD =
   "the campaign's checker has never been read: run tools/c/accept.ts, which puts every control and the do-nothing answer to the checks and says what each check has been seen to do";
 const UNRELEASED = "no task is released: the Builder has nothing to practise on";
@@ -79,7 +80,7 @@ export function billedRate(solves: ReturnType<typeof ended>): number | null {
 
 export function supplyOf(events: readonly LogEvent[]): Supply {
   const { frontier, awaiting, exhausted } = poolOf(events);
-  const reading = events.findLast(({ kind }) => kind === "checker.read")?.data.faults;
+  const reading = eventsOf(events, "checker.read").at(-1)?.event.data.faults;
   return {
     held: frontier.length,
     awaiting: awaiting.length,
@@ -101,26 +102,28 @@ export function stopRule(events: readonly LogEvent[]) {
   const failed = practiceRan(events).filter(
     (solve) => solve.ending?.outcome === "fail" && !rejectionAside(events, solve, stands),
   );
-  const wholeSession = ({ kind, data }: LogEvent, harness: "changed" | "unchanged") =>
-    kind === "build.finished" && data.changed === (harness === "changed") && !INTERRUPTED.has(data.ended);
-  const builtHarnesses = new Set(
-    events.flatMap((event) =>
-      event.kind === "build.checkpoint" || wholeSession(event, "changed") ? [event.data.harness] : [],
-    ),
-  );
-  const declined = events.flatMap((each, index) => {
-    if (!wholeSession(each, "unchanged")) return [];
-    const from = events.findLastIndex(
-      (began, at) => at < index && began.kind === "build.started" && began.data.session === each.data.session,
-    );
-    const epoch = events.findLastIndex((one, at) => at < index && isReferenceChange(one.kind));
+  const whole = ({ data }: LogEvent, harness: "changed" | "unchanged") =>
+    data.changed === (harness === "changed") && !INTERRUPTED.has(data.ended);
+  const finishes = eventsOf(events, "build.finished");
+  const starts = eventsOf(events, "build.started");
+  const changes = eventsOf(events, REFERENCE_KINDS);
+  const builtHarnesses = new Set([
+    ...eventsOf(events, "build.checkpoint").map(({ event }) => event.data.harness),
+    ...finishes.flatMap(({ event }) => (whole(event, "changed") ? [event.data.harness] : [])),
+  ]);
+  const declined = finishes.flatMap(({ index, event: each }) => {
+    if (!whole(each, "unchanged")) return [];
+    const from =
+      starts.findLast(({ index: at, event }) => at < index && event.data.session === each.data.session)
+        ?.index ?? -1;
+    const epoch = changes.findLast(({ index: at }) => at < index)?.index ?? -1;
     return failed.some(({ started }) => started > Math.max(from, epoch) && started < index)
       ? [{ index, step: false }]
       : [];
   });
   const revertedHarnesses = new Set(
-    events.flatMap(({ kind, data }) =>
-      kind === "harness.reverted" && isString(data.from) ? [data.from] : [],
+    eventsOf(events, "harness.reverted").flatMap(({ event: { data } }) =>
+      isString(data.from) ? [data.from] : [],
     ),
   );
   const pairs = new Map<string, { index: number; step: boolean; counts: boolean }>();
@@ -281,7 +284,7 @@ function alreadyStarted(
   id: string,
   kind: typeof STARTED | "build.started",
 ): boolean {
-  return events.some((event) => event.kind === kind && event.data.session === id);
+  return eventsOf(events, kind).some(({ event }) => event.data.session === id);
 }
 
 function admitStart(
@@ -289,7 +292,7 @@ function admitStart(
   start: {
     readonly id: string;
     readonly kind: Parameters<typeof alreadyStarted>[2];
-    readonly own?: () => void;
+    readonly own: (() => void) | null;
   },
   pastStop: string | undefined,
   decide: (supply: Supply) => Admission & { readonly supply: Supply },
@@ -299,8 +302,8 @@ function admitStart(
   if (alreadyStarted(events, id, kind)) return [];
   const { supply, refusals: refused, notes } = decide(supplyOf(events));
   if (refused.length > 0) throw new Refused(refused.join("\n"));
-  own?.();
-  const overridden = events.some((event) => event.kind === "stop.overridden" && event.data.session === id);
+  if (own !== null) own();
+  const overridden = eventsOf(events, "stop.overridden").some(({ event }) => event.data.session === id);
   if (supply.stop.stop && pastStop !== undefined && !overridden) {
     const { checkpoints, sinceStep } = supply.stop;
     append(log, "stop.overridden", { session: id, reason: pastStop, checkpoints, sinceStep });
@@ -328,7 +331,7 @@ export function admitSession(
   { id, wanted, seats }: { readonly id: string; readonly wanted: WantedSession; readonly seats: Seats },
 ): string[] {
   if (seats === "scripted") return [];
-  return admitStart(log, { id, kind: "build.started" }, wanted.pastStop, (supply) => ({
+  return admitStart(log, { id, kind: "build.started", own: null }, wanted.pastStop, (supply) => ({
     supply,
     ...sessionAdmission(supply, wanted),
   }));

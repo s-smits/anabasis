@@ -9,7 +9,7 @@
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { objectiveLine } from "#src/kernel/contract.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
+import { type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { practiceRan, verdictsOf } from "#src/kernel/solves.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -18,7 +18,6 @@ import { plural } from "#src/meta/text.ts";
 import { stagedExamOf } from "#tools/d2/exam.ts";
 import { contractOf, readPack } from "#tools/m0/stored-sweep.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
-import { NO_TRACES } from "./folds.ts";
 import { proposedTasks } from "./tasks.ts";
 
 const USAGE = "usage: bun tools/wri/public-exam.ts <log | campaign folder | name>";
@@ -84,7 +83,7 @@ async function main(args: CommandArgs): Promise<number> {
   const log = await logAcross(args.positionals[0] ?? args.required("log"), "record");
   const bundle = stagedExamOf(log)?.bundle;
   if (bundle === undefined) throw new Error("the campaign drafted no exam of its own");
-  console.log(publicExam(read(log, NO_TRACES), bundle).join("\n"));
+  console.log(publicExam(read(log, TRACE_KINDS), bundle).join("\n"));
   return 0;
 }
 

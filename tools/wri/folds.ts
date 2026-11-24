@@ -7,7 +7,7 @@ import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { type Paired, type Tally, testOf, unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { lastReports, poolOf, pairsReported, referenceOf } from "#src/kernel/reports.ts";
-import { SEATS, type Traced, traceKind, tracesIn } from "#src/kernel/trace.ts";
+import { type Traced, tracesIn } from "#src/kernel/trace.ts";
 import { spendOf } from "#src/kernel/meter.ts";
 import { examinerSessions, type Judged, solvesIn, standsOf, verdictsOf } from "#src/kernel/solves.ts";
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
@@ -138,10 +138,6 @@ export interface Index {
 /** A pass under this share of its deadline, on few turns, is the lead v1 read for a published recipe. */
 export const SMALL_DEADLINE_SHARE = 0.05;
 const SMALL_DEADLINE_TURNS = 3;
-/** What a reader of no seat's words reads a large log without. */
-export const NO_TRACES: ReadonlySet<LogEvent["kind"]> = new Set(
-  SEATS.flatMap((seat) => [traceKind(seat, "call"), traceKind(seat, "turn")]),
-);
 const DEFECT = "check-defect";
 export const TEST = "test";
 export const BUILD_END = "build.finished";

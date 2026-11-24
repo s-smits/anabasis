@@ -8,7 +8,7 @@ import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shap
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { settingId } from "./condition.ts";
-import type { LogEvent } from "./log.ts";
+import { eventsOf, type LogEvent } from "./log.ts";
 import { checkerVerdict, countedSolves, ended, passed, ranUnder } from "./solves.ts";
 import { taskSets } from "./task.ts";
 import { objectiveOf } from "./verify.ts";
@@ -50,6 +50,8 @@ interface Sides {
   /** `mirrored` for A/A controls: splits reference solves in 4-element mirrored pattern across tasks. */
   readonly halves?: "mirrored" | undefined;
   readonly objective?: ObjectiveRule | undefined;
+  /** Optional log prefix cutoff (`pairsReported`). */
+  readonly upTo?: number | undefined;
 }
 
 const DETECTION_CHANCE = 0.8;
@@ -317,29 +319,25 @@ export function pairsOf(
   sides: Sides,
   solves: number,
 ) {
-  const { old, fresh, setting, comparison, halves, objective } = sides;
+  const { old, fresh, setting, comparison, halves, objective, upTo = events.length - 1 } = sides;
   if (old === fresh && halves === undefined) {
     throw new Error(`a comparison sets two harnesses against each other, and both sides are ${old}`);
   }
-  const { states, held } = taskSets(events);
+  const { states, held } = taskSets(events, upTo);
   const heldOut = new Set(held);
-  const ownSolves = countedSolves(events).filter(
+  const ownSolves = countedSolves(events, upTo).filter(
     (solve) => solve.start.comparison === comparison && passed(solve) !== null,
   );
-  const solved = ended(ranUnder(events, ownSolves));
-  const byId = new Map(solved.map(({ condition, under }) => [condition, under]));
-  const settings = new Map([...byId].map(([id, under]) => [id, settingId(under)]));
+  const solved = ended(ranUnder(events, ownSolves, upTo));
   const counted = solved
-    .filter((solve) => solve.under.side === "test" && settings.get(solve.condition) === setting)
+    .filter((solve) => solve.under.side === "test" && settingId(solve.under) === setting)
     .toSorted((a, b) => a.started - b.started);
   const byKey = Map.groupBy(counted, ({ under }) => `${under.task}\u0000${under.harness}`);
   const measures = new Map(
     objective === undefined
       ? []
-      : events.flatMap(({ kind, data }) =>
-          kind === "verdict" && isString(data.solve)
-            ? [[data.solve, objectiveOf(checkerVerdict(data))] as const]
-            : [],
+      : eventsOf(events, "verdict", upTo).flatMap(({ event: { data } }) =>
+          isString(data.solve) ? [[data.solve, objectiveOf(checkerVerdict(data))] as const] : [],
         ),
   );
   const disputed = versions.filter((task) => states.get(task) === "disputed");
@@ -360,10 +358,10 @@ export function pairsOf(
     // Mirror A/A split across tasks (0,3 vs 1,2 mod 4): always putting earlier solves first showed
     // order bias across 234 controls (446-363, p=0.004) vs balanced (405-404) when mirrored.
     const ran = old === fresh ? place * 2 * solves : 0;
-    const first = (at: number) => halves === undefined || (ran + at) % 4 === 0 || (ran + at) % 4 === 3;
+    const first = (slot: number) => halves === undefined || (ran + slot) % 4 === 0 || (ran + slot) % 4 === 3;
     const reference = under(old);
-    const own = reference.filter((_, at) => first(at));
-    const other = reference.filter((_, at) => !first(at));
+    const own = reference.filter((_, slot) => first(slot));
+    const other = reference.filter((_, slot) => !first(slot));
     const [before, after] = [own, old === fresh ? other : under(fresh)];
     if (before.length < solves || after.length < solves) {
       short.push(task);

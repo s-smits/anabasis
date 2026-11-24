@@ -3,7 +3,7 @@
  */
 import { type Measures, pointsOf, scoresIn, type Tally, testOf } from "../kernel/compare.ts";
 import { proposalsOf } from "../kernel/history.ts";
-import type { LogEvent } from "../kernel/log.ts";
+import { type EventKind, eventsOf, type LogEvent } from "../kernel/log.ts";
 import { INTERRUPTED, lastReports, latestBuilt, pairsReported, promoted } from "../kernel/reports.ts";
 import { ownedBy, ownersOf, traceKind, unfinished as openMetered } from "../kernel/trace.ts";
 import { billedAll, billedParts } from "../kernel/meter.ts";
@@ -153,6 +153,8 @@ const BOUNDS: ReadonlySet<string> = new Set([
   "comparison.reported",
   "campaign.ended",
 ]);
+const STEP_KINDS: readonly EventKind[] = ["exam.started", "build.started", STARTED, "comparison.reported"];
+const COMPARISON_CUTS: readonly EventKind[] = [STARTED, "campaign.ended"];
 
 function sharedOf(events: readonly LogEvent[]) {
   return {
@@ -162,7 +164,7 @@ function sharedOf(events: readonly LogEvent[]) {
     reports: new Map(lastReports(events).map((report) => [report.session, report])),
     solves: Map.groupBy(solvesIn(events), ({ start }) => start.comparison),
     rulings: rulingsOf(events),
-    settings: events.flatMap(({ kind, data }, at) => (kind === "campaign.setting" ? [{ at, data }] : [])),
+    settings: eventsOf(events, "campaign.setting").map(({ index: at, event: { data } }) => ({ at, data })),
   };
 }
 
@@ -199,23 +201,31 @@ export function nextBound(events: readonly LogEvent[], index: number): number {
 /** Session at `index` with turns of kind `seat.turn`, as the log holds it, and its window end. */
 function soFar(events: readonly LogEvent[], index: number, seat: "exam" | "build", owners: Shared["owners"]) {
   const id = text(events[index]?.data.session) ?? "";
-  const own = ({ kind, data }: LogEvent) => kind.startsWith(`${seat}.`) && data.session === id;
-  const closed = events.findIndex(
-    (event, at) => at > index && own(event) && event.kind === `${seat}.finished`,
+  const closed = eventsOf(events, `${seat}.finished`).find(
+    ({ index: at, event }) => at > index && event.data.session === id,
   );
-  const past = events.findIndex(
-    ({ kind }, at) => at > index && (kind === `${seat}.started` || kind === "campaign.ended"),
-  );
-  const until = [closed, past, events.length].find((at) => at !== -1) ?? events.length;
-  const window = events.slice(index, closed === -1 ? until : closed + 1);
-  const read: SoFar = {
-    ended: closed === -1 ? null : text(events[closed]?.data.ended),
-    cut: closed === -1 && past !== -1,
-    turns: window.filter((event) => own(event) && event.kind === traceKind(seat, "turn")).length,
-    last: window.findLast(own)?.at ?? "",
+  const past = eventsOf(events, [`${seat}.started`, "campaign.ended"]).find(({ index: at }) => at > index);
+  const until = closed?.index ?? past?.index ?? events.length;
+  const endAt = closed === undefined ? until : closed.index + 1;
+  const turns = eventsOf(events, traceKind(seat, "turn")).filter(
+    ({ index: at, event }) => at >= index && at < endAt && event.data.session === id,
+  ).length;
+  if (closed !== undefined) {
+    const read: SoFar = { ended: text(closed.event.data.ended), cut: false, turns, last: closed.event.at };
+    return { read, end: closed.event.data, until, endAt, window: events.slice(0, 0), billed: 0 };
+  }
+  const window = events.slice(index, until);
+  const last =
+    window.findLast(({ kind, data }) => kind.startsWith(`${seat}.`) && data.session === id)?.at ?? "";
+  const read: SoFar = { ended: null, cut: past !== undefined, turns, last };
+  return {
+    read,
+    end: undefined,
+    until,
+    endAt,
+    window,
+    billed: billedAll(window.filter(ownedBy(events, id, owners))),
   };
-  const billed = closed === -1 ? billedAll(window.filter(ownedBy(events, id, owners))) : 0;
-  return { read, closed, until, window, billed };
 }
 
 /** Every failed practice solve on a released task, each with where it stands, and its start index. */
@@ -285,9 +295,7 @@ function compared(events: readonly LogEvent[], id: string, shared: Shared, began
     billed: billedParts(events, id, shared.owners, shared.open).comparison,
     // A comparison with no report has a start: a step is a start or a report. Like a session it is
     // cut by its own kind's next start or the campaign's end; an Examiner writes beside it.
-    cut:
-      report === null &&
-      events.some(({ kind }, at) => at > began && (kind === STARTED || kind === "campaign.ended")),
+    cut: report === null && eventsOf(events, COMPARISON_CUTS).some(({ index: at }) => at > began),
     begun: solves.length,
     solved: ended(solves).length,
   };
@@ -309,26 +317,23 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
   const fails = practiceFails(events, practised, shared);
   const admissions = admissionsOf(events);
   const comparisons = new Set<string>();
-  const steps = events.flatMap(({ kind, data }, index): Handover[] => {
+  const steps = eventsOf(events, STEP_KINDS).flatMap(({ index, event: { kind, data } }): Handover[] => {
     const id = data.session;
     if (!isString(id)) return [];
     if (kind === "exam.started") {
-      const { read, closed, window, billed } = soFar(events, index, "exam", shared.owners);
-      const end = events[closed]?.data;
-      const openCounts = () => {
-        const proposed = proposalsOf(window).flatMap(({ session, version }) =>
-          session === id ? [version] : [],
-        );
-        return {
-          proposed: proposed.length,
-          held: proposed.filter((version) => admissions.get(version) === true).length,
-          refused: proposed.filter((version) => admissions.get(version) === false).length,
-          billed,
-        };
-      };
+      const { read, end, window, billed } = soFar(events, index, "exam", shared.owners);
+      const proposed =
+        end === undefined
+          ? proposalsOf(window).flatMap(({ session, version }) => (session === id ? [version] : []))
+          : [];
       const counts =
         end === undefined
-          ? openCounts()
+          ? {
+              proposed: proposed.length,
+              held: proposed.filter((version) => admissions.get(version) === true).length,
+              refused: proposed.filter((version) => admissions.get(version) === false).length,
+              billed,
+            }
           : {
               proposed: count(end.proposed),
               held: listed(end.held),
@@ -338,20 +343,18 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
       return [{ step: "examiner", id, ...read, ...counts }];
     }
     if (kind === "build.started") {
-      const { read, closed, until, window, billed } = soFar(events, index, "build", shared.owners);
-      const end = events[closed]?.data;
+      const { read, end, until, endAt, billed } = soFar(events, index, "build", shared.owners);
       const within = ({ started }: { readonly started: number }) => started > index && started < until;
       // A session cut before its end, killed or crashed, left the harness it last froze. Its ending
       // names no harness, or a tree past the checkpoint where no session starts (`latestBuilt`), so
       // the checkpoint is read instead, and a Builder resumed after it is told where that harness
       // came from.
-      const frozen = window.findLast(
-        (event) => event.kind === "build.checkpoint" && event.data.session === id,
-      );
+      const frozen = eventsOf(events, "build.checkpoint").findLast(
+        ({ index: at, event }) => at >= index && at < endAt && event.data.session === id,
+      )?.event;
       const interrupted = INTERRUPTED.has(end?.ended);
       const named = interrupted ? null : text(end?.harness);
       const harness = named ?? text(frozen?.data.harness);
-      const unfinished = interrupted && end?.changed === true ? text(end?.harness) : null;
       const parent = text(data.parent);
       return [
         {
@@ -360,7 +363,7 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
           ...read,
           parent,
           harness,
-          unfinished,
+          unfinished: interrupted && end?.changed === true ? text(end?.harness) : null,
           changed: named === null ? harness !== null && harness !== parent : end?.changed === true,
           // Each attempt of one solve is logged as `<id>-<attempt>`, and the session charged the
           // solve once, so attempts are folded into their solve before counting.
@@ -376,9 +379,7 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
     }
     // A comparison stands where the log first holds it: at its start, or at its first report. An
     // old ladder's readings were told to no Builder, and are not now (`lastReports`, `reports.ts`).
-    if ((kind !== STARTED && kind !== "comparison.reported") || comparisons.has(id) || data.ladder === true) {
-      return [];
-    }
+    if (comparisons.has(id) || data.ladder === true) return [];
     comparisons.add(id);
     return [compared(events, id, shared, kind === STARTED ? index : -1)];
   });

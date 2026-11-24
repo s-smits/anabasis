@@ -21,14 +21,14 @@ import {
 } from "#src/campaign/climb.ts";
 import { calledBy, namesOf } from "#src/campaign/names.ts";
 import { type Tally, testOf } from "#src/kernel/compare.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
+import { type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { poolOf } from "#src/kernel/reports.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { basename, dirname } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
-import { NO_TRACES, summed, wlt } from "#tools/wri/folds.ts";
+import { summed, wlt } from "#tools/wri/folds.ts";
 import { type StepCount, stepCount } from "#skills/comparison-reading/scripts/selection.ts";
 
 /** What a read is made of: its after-slices and its sign draws, null where the level is not recorded. */
@@ -222,7 +222,7 @@ function acrossLines(
   const campaigns = new Set<string>();
   const lines: string[] = [];
   for (const { name, path } of logs) {
-    const events = read(path, NO_TRACES);
+    const events = read(path, TRACE_KINDS);
     if (scope === "all" && rehearsed(events)) continue;
     const own = starterReads(events).filter(({ key }) => !kept.has(key));
     for (const each of own) kept.set(each.key, each);
@@ -284,7 +284,7 @@ if (import.meta.main) {
         console.log([...LEGEND, ...acrossLines(logs, rows, args.flag("all") ? "all" : "named")].join("\n"));
         return;
       }
-      const events = read(await logAcross(named[0] ?? ""), NO_TRACES);
+      const events = read(await logAcross(named[0] ?? ""), TRACE_KINDS);
       console.log(starterLines(events, rows).join("\n"));
     },
   );

@@ -14,7 +14,7 @@ import { examinerCounts, examinerEach } from "#skills/design-and-seats/scripts/e
 import { ambitionLines } from "#skills/examiner-complexity/scripts/ambition.ts";
 import { csvLines, draftRows as examRows, EXAMS_HEADER } from "#skills/examiner-complexity/scripts/exams.ts";
 import { lastHost } from "#src/kernel/condition.ts";
-import type { EventKind, LogEvent } from "#src/kernel/log.ts";
+import { type EventKind, type LogEvent, TRACE_KINDS } from "#src/kernel/log.ts";
 import {
   existsSync,
   mkdirSync,
@@ -49,7 +49,7 @@ import { diagnosticRows } from "./diagnostics.ts";
 import { draftRows } from "./drafted.ts";
 import { epochSpendLines } from "./epoch-spend.ts";
 import { executionRows } from "./execution.ts";
-import { indexOf, NO_TRACES } from "./folds.ts";
+import { indexOf } from "./folds.ts";
 import { gamingRows } from "./gaming.ts";
 import { WRI } from "./index.ts";
 import { launchLines } from "./launches.ts";
@@ -69,7 +69,7 @@ interface Parsed {
   readonly repo: string;
   /** Its whole lines, as `logEvents` reads them. */
   readonly events: readonly LogEvent[];
-  /** The same without the seats' turns and calls (`NO_TRACES`), which most readers never read. */
+  /** The same without the seats' turns and calls (`TRACE_KINDS`), which most readers never read. */
   readonly quiet: readonly LogEvent[];
   /** The log's bytes when it was read, so no more than the events cover. */
   readonly size: number;
@@ -621,7 +621,7 @@ export function sourceOf(log: string, repo: string): Source {
   const parse = (): Parsed => {
     const { size } = Bun.file(log);
     const events = logEvents(log);
-    return { log, repo, events, quiet: events.filter(({ kind }) => !NO_TRACES.has(kind)), size };
+    return { log, repo, events, quiet: events.filter(({ kind }) => !TRACE_KINDS.has(kind)), size };
   };
   return { log, repo, parsed: () => (once ??= parse()) };
 }

@@ -187,9 +187,12 @@ export function taskStates(events: readonly LogEvent[]): Map<string, TaskState> 
 
 /** The same fold with the two sets beside the states, so that what is held out and what is
  *  practice are said in one place. */
-export function taskSets(events: readonly LogEvent[]): TaskSets {
+export function taskSets(events: readonly LogEvent[], upTo = events.length - 1): TaskSets {
   const tasks = new Map<string, Folded>();
-  for (const event of events) step(tasks, event);
+  for (const [index, event] of events.entries()) {
+    if (index > upTo) break;
+    step(tasks, event);
+  }
   const inState = (wanted: TaskState) =>
     [...tasks].flatMap(([version, task]) => (task.admitted && task.state === wanted ? [version] : []));
   return {

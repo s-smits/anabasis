@@ -7,7 +7,7 @@
 import { comparisonFloor } from "#src/campaign/admission.ts";
 import { BARS, epochsOf, starterReads } from "#src/campaign/climb.ts";
 import { readsStep, readsStepEitherWay, scoresIn, type Tally, testOf } from "#src/kernel/compare.ts";
-import type { EventKind, LogEvent } from "#src/kernel/log.ts";
+import { type EventKind, eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { endingOf } from "#src/kernel/reports.ts";
 import { smallestSteps, sizeLines } from "#src/kernel/size.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
@@ -267,8 +267,11 @@ export function climbed(
 export function climbAt(name: string, log: readonly LogEvent[], from: number): Map<number, string[]> {
   const found = new Map<number, string[]>();
   let before: Promotion[] | null = null;
-  for (const [at, { kind }] of log.entries()) {
-    if (at < from || (kind !== PROMOTED && kind !== REPORTED)) continue;
+  for (const {
+    index: at,
+    event: { kind },
+  } of eventsOf(log, [PROMOTED, REPORTED])) {
+    if (at < from) continue;
     before ??= promotionsOf(log.slice(0, at));
     // A report before the first promotion is no starter comparison's.
     if (kind === REPORTED && before.length === 0) continue;
@@ -294,13 +297,13 @@ export function progressOf<Run extends { readonly live: boolean }>(
 ): Run & Progress {
   const last = events.at(-1);
   const opened = Date.parse(events[0]?.at ?? "");
-  const reported = events.filter(({ kind }) => kind === REPORTED);
+  const reported = eventsOf(events, REPORTED);
   return {
     ...seen,
-    promotions: events.filter(({ kind }) => kind === PROMOTED).length,
+    promotions: eventsOf(events, PROMOTED).length,
     compared: reported.length,
     // A comparison that scored nothing tested nothing, so its empty tally is no tie.
-    allTied: reported.some(({ data }) => {
+    allTied: reported.some(({ event: { data } }) => {
       const scored = asRecord(data.scored);
       return data.reading !== "not-scored" && scored?.wins === 0 && scored.losses === 0;
     }),

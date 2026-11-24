@@ -124,7 +124,7 @@ export type EventKind = (typeof EVENT_KINDS)[number];
  *  `no-unowned-identity` reported. */
 export const LOG_FILE = "log.jsonl";
 
-const [NEWLINE, QUOTE, CHUNK, EMPTY] = [0x0a, 0x22, 256 * 1024, Buffer.alloc(0)];
+const [NEWLINE, QUOTE, CHUNK] = [0x0a, 0x22, 256 * 1024];
 /** Where `{"at":"<24 characters>` ends and `","kind":"` begins, in every line `append` writes. */
 const [AT_END, KIND_BYTES] = [31, Buffer.from(`","kind":"`, "utf8")];
 
@@ -138,6 +138,24 @@ export interface LogEvent {
 type KindFilter = ReadonlySet<EventKind> | ((kind: EventKind) => boolean);
 
 const KINDS: ReadonlySet<string> = new Set(EVENT_KINDS);
+/** Tool-call trace events (`*.call`), derived dynamically from `EVENT_KINDS`. */
+export const CALL_KINDS: ReadonlySet<EventKind> = new Set(
+  EVENT_KINDS.filter((kind) => kind.endsWith(".call")),
+);
+/** Per-turn and per-call trace events (`*.turn`, `*.call`), derived dynamically from `EVENT_KINDS`. */
+export const TRACE_KINDS: ReadonlySet<EventKind> = new Set(
+  EVENT_KINDS.filter((kind) => kind.endsWith(".call") || kind.endsWith(".turn")),
+);
+interface IndexedEvent {
+  readonly index: number;
+  readonly event: LogEvent;
+}
+interface KindCache {
+  readonly length: number;
+  readonly last: LogEvent | undefined;
+  readonly map: Map<EventKind, IndexedEvent[]>;
+}
+const BY_KIND = new WeakMap<readonly LogEvent[], KindCache>();
 export const isKind = (value: unknown): value is EventKind => isString(value) && KINDS.has(value);
 /** Whether an event installs a new reference harness (either a promotion or an automatic revert). */
 export const isReferenceChange = (kind: EventKind): boolean =>
@@ -205,39 +223,82 @@ export function truncatePartial(path: string): number {
   return size;
 }
 
-/** Every event in append order. Missing logs are empty; kinds matched by `without` are skipped
- *  straight from fixed byte chunks without decoding or parsing. */
-export function read(path: string, without?: KindFilter): LogEvent[] {
-  if (!existsSync(path)) return [];
+/** Streams every event in append order into `visit`. Missing logs yield none; kinds matched by
+ *  `without` are skipped straight from the reusable byte buffer without decoding or parsing. */
+export function eachEvent(
+  path: string,
+  visit: (event: LogEvent, index: number) => void,
+  without: KindFilter | null = null,
+): void {
+  if (!existsSync(path)) return;
   const skip =
-    without === undefined ? null : isFunction(without) ? without : (kind: EventKind) => without.has(kind);
-  const events: LogEvent[] = [];
-  const [block, fd] = [Buffer.allocUnsafe(CHUNK), openSync(path, "r")];
-  let [carry, lineNo] = [EMPTY, 0];
+    without === null ? null : isFunction(without) ? without : (kind: EventKind) => without.has(kind);
+  const fd = openSync(path, "r");
+  let buf = Buffer.allocUnsafe(CHUNK);
+  let [len, lineNo] = [0, 0];
   try {
-    for (let got = readSync(fd, block, 0, CHUNK, null); got > 0; got = readSync(fd, block, 0, CHUNK, null)) {
-      const chunk =
-        carry.length === 0 ? block.subarray(0, got) : Buffer.concat([carry, block.subarray(0, got)]);
+    for (;;) {
+      if (len === buf.length) {
+        const grown = Buffer.allocUnsafe(buf.length * 2);
+        buf.copy(grown, 0, 0, len);
+        buf = grown;
+      }
+      const got = readSync(fd, buf, len, buf.length - len, null);
+      if (got === 0) break;
+      len += got;
+      const view = buf.subarray(0, len);
       let start = 0;
-      for (let nl = chunk.indexOf(NEWLINE); nl !== -1; nl = chunk.indexOf(NEWLINE, start)) {
+      for (let nl = view.indexOf(NEWLINE); nl !== -1; nl = view.indexOf(NEWLINE, start)) {
         const from = start;
         start = nl + 1;
         lineNo += 1;
-        if (skip !== null && skipAt(chunk, from, nl, skip)) continue;
-        const event = asRecord(parsed(chunk.toString("utf8", from, nl)));
-        const kind = isKind(event?.kind) ? event.kind : undefined;
-        const data = asRecord(event?.data);
-        if (!isString(event?.at) || kind === undefined || data === null) {
+        if (skip !== null && skipAt(view, from, nl, skip)) continue;
+        const raw = asRecord(parsed(view.toString("utf8", from, nl)));
+        const data = asRecord(raw?.data);
+        if (raw === null || !isString(raw.at) || !isKind(raw.kind) || data === null) {
           throw new Error(`${path}:${lineNo} is not a log event`);
         }
-        if (skip === null || !skip(kind)) events.push({ at: event.at, kind, data });
+        if (skip === null || !skip(raw.kind)) visit({ at: raw.at, kind: raw.kind, data }, lineNo - 1);
       }
-      carry = start < chunk.length ? Buffer.from(chunk.subarray(start)) : EMPTY;
+      const tail = len - start;
+      if (tail > 0) buf.copyWithin(0, start, len);
+      len = tail;
     }
   } finally {
     closeSync(fd);
   }
+}
+
+/** Every event in append order. Missing logs are empty; kinds matched by `without` are skipped
+ *  straight from fixed byte chunks without decoding or parsing. */
+export function read(path: string, without: KindFilter | null = null): LogEvent[] {
+  const events: LogEvent[] = [];
+  eachEvent(path, (event) => events.push(event), without);
   return events;
+}
+
+/** Events matching `kinds` with their log indices (log order), lazily indexed per `events` array. */
+export function eventsOf(
+  events: readonly LogEvent[],
+  kinds: EventKind | readonly EventKind[],
+  upTo = events.length - 1,
+): readonly IndexedEvent[] {
+  const last = events.at(-1);
+  let cached = BY_KIND.get(events);
+  if (cached?.length !== events.length || cached.last !== last) {
+    const map = new Map<EventKind, IndexedEvent[]>();
+    for (const [index, event] of events.entries()) {
+      const list = map.get(event.kind);
+      if (list === undefined) map.set(event.kind, [{ index, event }]);
+      else list.push({ index, event });
+    }
+    cached = { length: events.length, last, map };
+    BY_KIND.set(events, cached);
+  }
+  const list = isString(kinds)
+    ? (cached.map.get(kinds) ?? [])
+    : kinds.flatMap((kind) => cached.map.get(kind) ?? []).toSorted((a, b) => a.index - b.index);
+  return upTo >= events.length - 1 ? list : list.filter(({ index }) => index <= upTo);
 }
 
 function skipAt(chunk: Buffer, start: number, end: number, skip: (kind: EventKind) => boolean): boolean {

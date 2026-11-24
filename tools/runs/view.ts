@@ -19,8 +19,8 @@ import { type Decided, decidedLine, short } from "#src/campaign/move.ts";
 import { type Called, calledBy, namesOf } from "#src/campaign/names.ts";
 import { openingOf, planOf } from "#src/campaign/opening.ts";
 import { type Campaign, campaignOf, type Handover, openSteps } from "#src/campaign/handover.ts";
-import { type EventKind, type LogEvent, read as readEvents } from "#src/kernel/log.ts";
-import { type Call, callsOf, tracesIn } from "#src/kernel/trace.ts";
+import { type EventKind, eventsOf, type LogEvent, read as readEvents } from "#src/kernel/log.ts";
+import { type Call, traced } from "#src/kernel/trace.ts";
 import { HOUR_MS, MINUTE_MS } from "#src/meta/clock.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { gitText } from "#src/meta/git.ts";
@@ -100,34 +100,29 @@ function stepLine(step: Handover, now: number, called: Called): string {
       ? `no report yet, ${step.cut ? "cut before it" : "open at the log's end"}: ${unended}`
       : `${tally === null ? "no task tallied" : `${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied by ${called(step.fresh)}`}, which reads ${step.reading}`;
   const ruled = [
-    ...(rulings.earned > 0 ? [`${plural(rulings.earned, "rejection")} ruled earned`] : []),
-    ...(rulings["check-defect"] > 0 ? [`${String(rulings["check-defect"])} ruled a check defect`] : []),
-    ...(rulings.unclear > 0 ? [`${String(rulings.unclear)} ruled unclear`] : []),
-  ];
+    rulings.earned > 0 && `${plural(rulings.earned, "rejection")} ruled earned`,
+    rulings["check-defect"] > 0 && `${String(rulings["check-defect"])} ruled a check defect`,
+    rulings.unclear > 0 && `${String(rulings.unclear)} ruled unclear`,
+  ].filter(Boolean);
   return row(
     step.id,
     [
       `comparison of ${called(step.fresh)} with ${called(step.old)} on ${plural(step.tasks, "task")}, ${String(step.solves)} solves a side at ${String(step.level)}: ${read}`,
-      ...(grain === null || grain.largest < 2
-        ? []
-        : [`${String(grain.largest)} of ${plural(grain.of, "tallied frontier task")} in one family`]),
-      ...(repeat === null
-        ? []
-        : [`${String(repeat.tasks)} of ${plural(step.tasks, "task")} also drawn by ${repeat.with}`]),
-      ...(valid === null
-        ? []
-        : [
-            `tasks with ${valid.old.map((_, index) => String(index)).join(", ")} valid answers: reference ${valid.old.join("/")}, new ${valid.fresh.join("/")}`,
-          ]),
-      ...(step.points === null
-        ? []
-        : [
-            `points to the new harness by validity ${String(step.points.validity)}, the objective ${String(step.points.objective)}`,
-          ]),
-      ...(step.aside > 0 ? [`${plural(step.aside, "task")} set aside for a person's labels`] : []),
-      ...(ruled.length === 0 ? [] : [ruled.join(", ")]),
+      grain !== null &&
+        grain.largest >= 2 &&
+        `${String(grain.largest)} of ${plural(grain.of, "tallied frontier task")} in one family`,
+      repeat !== null &&
+        `${String(repeat.tasks)} of ${plural(step.tasks, "task")} also drawn by ${repeat.with}`,
+      valid !== null &&
+        `tasks with ${valid.old.map((_, index) => String(index)).join(", ")} valid answers: reference ${valid.old.join("/")}, new ${valid.fresh.join("/")}`,
+      step.points !== null &&
+        `points to the new harness by validity ${String(step.points.validity)}, the objective ${String(step.points.objective)}`,
+      step.aside > 0 && `${plural(step.aside, "task")} set aside for a person's labels`,
+      ruled.length > 0 && ruled.join(", "),
       dollars(step.billed),
-    ].join(" · "),
+    ]
+      .filter(Boolean)
+      .join(" · "),
   );
 }
 
@@ -177,7 +172,7 @@ export function planOn(events: readonly LogEvent[], values: Asked = {}): Plan {
   return planOf(
     events,
     {
-      unprepared: opening?.prompt == null && !events.some(({ kind }) => kind === "task.proposed"),
+      unprepared: opening?.prompt == null && eventsOf(events, "task.proposed").length === 0,
       level: Number(term("level", COMPARISON_OPTIONS.level.default)),
       target: target === undefined ? undefined : Number(target),
       pastStop: values["past-stop"],
@@ -241,8 +236,12 @@ export function waitedIn(waits: readonly Call[], from: string, to: string): numb
 }
 
 /** The Builder's `wait` calls. */
-export const builderWaits = (events: readonly LogEvent[]) =>
-  callsOf(tracesIn(events), "build").filter(({ tool }) => tool === "wait");
+export const builderWaits = (events: readonly LogEvent[]): Call[] =>
+  eventsOf(events, "build.call").flatMap(({ index, event }) => {
+    if (event.data.tool !== "wait") return [];
+    const call = traced(event, index);
+    return call?.part === "call" ? [call] : [];
+  });
 
 /** The pool on the first `upTo` events and what comparison admission refuses there. */
 export function poolOn(events: readonly LogEvent[], upTo: number) {
@@ -261,7 +260,7 @@ export function poolOn(events: readonly LogEvent[], upTo: number) {
  *  waits, and whether the hours are long (`HELD_OFF_MS`). Null where none became admissible. It
  *  keeps the hours after admission apart, which would otherwise read as the Examiner's. */
 export function heldOff(events: readonly LogEvent[]) {
-  const first = events.findIndex(({ kind }) => kind === "comparison.started");
+  const first = eventsOf(events, "comparison.started")[0]?.index ?? -1;
   const index = events.slice(0, first === -1 ? events.length : first).findIndex(
     // The pool moves with a task and the terms with the opening or a word.
     ({ kind }, at) => /^(task|campaign)\./.test(kind) && poolOn(events, at + 1).open,

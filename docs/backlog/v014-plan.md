@@ -192,6 +192,15 @@ The current stack carries seven PRs to unify onto `origin/main` (`#1158`, `#1159
 - Execute all verified removals in §3 and rewrite `src/kernel/acceptance.ts` (`453 -> ~270–290` nonblank lines under mutation testing).
 - Build the production `$0` Offline File Extractor (promoted from the Phase 0b prototype), wire manifest and paged `read_trace(solve, file, from)` in `src/builder/tools.ts:traceTool` under Rule-3 wall tests, and cap repeated `unclear` Referee rulings per check and task in `src/referee/referee.ts`.
 
+#### Implementation record (2026-11-24T22:03Z)
+Phase 0a and the removal half of PR A are present in source on `claude/v014-impl`, stacked directly above `#1162`. Where the implementation departs from the plan above:
+- **Stack order.** `#1160` and `#1162` sit at the top of the stack, above `#1166`, rather than mid-stack; placing them lower would have restacked every PR above them.
+- **`1e-9` delta snap.** Not applied. Unit-scale objectives already pass through `GAP_FLOOR`, so a second near-zero threshold would be a second owner of the same decision (rule 12).
+- **`unclear` cap.** Implemented as reuse instead of a counter: a later rejection whose blocking checks match an earlier `unclear` ruling's checker verdict in the same comparison reuses that ruling without a Referee session (`reusedRuling`).
+- **`unbilled` branches.** Removed from `tools/d2/round.ts`; kept in `src/campaign/handover.ts`, whose readers still receive comparisons recorded without `differences`.
+- **`acceptance.ts`.** One probe runner with the three hard faults and the gated `flatRubricNotes`; prose notes removed. The result is 375 nonblank lines, short of the 270–290 target; further cuts remain open. A mutant removing the `probePassed` gate fails `test/acceptance.test.ts`.
+- **Still planned in PR A.** The Offline File Extractor, paged `read_trace`, `simulate-scoring.ts`, `cases/rubric-and-verifier.md` and the Starter Pack review.
+
 ### Phase 2 — PR B (`I1`): Unified Rubric Schema, Linear Scoring, Wall Split, Guards, and Codex Fixes
 - Extend `src/kernel/contract.ts:RubricItem`, gate code-export checks on `hasJudge && !hasCode`, add `instrument: "judge"` + `judgeFaults` + `--admit-judge` enforcement, add `Task.rubric` validation (`packageFault`) and thread `...keyIfDefined("rubric", task.rubric)` across all five task-reconstruction sites (`history.ts:contentOf`, `history.ts:proposalsOf`, `write.ts:instanceOf`, `write.ts:admitDraft`, `write.ts` task list builder; `tools/d2/exam.ts:stageExam` already spreads `...task`), and register `referee.brief` and `referee.pair` in `log.ts`, `meter.ts`, and `trace.ts`.
 - Add `reviewer` and weight locking to `comparison.started` and `condition.ts:settingId`, enforce launch + post-draft cross-family and vision checks, and apply the Codex pre-expiry, `nonRetryableProvider`, and generalised `resetOf` fixes.

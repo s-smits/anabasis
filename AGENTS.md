@@ -43,7 +43,7 @@ See `design-and-seats` (`question-and-factors.md`, `stance.md`):
 - **Multi-domain generality**: account for every evaluation angle—verifiable constraints (`buffer`, `truss`, `esp32`, `recode`, `seating`), hard-to-verify mixed (`kernel`, `jobstat`) and open-ended workplace/analytical deliverables; keep verifiable baselines zero-overhead while preserving headroom elsewhere.
 - **Validity & objective variance**: binary `valid` separates constrained domains and floors open-ended ones against objective hacking; carry open-ended headroom in a non-hedgable objective (100% pass with lagging transfer flags weak grounding). Report carrying measure and A/A floor (`GAP_FLOOR` trades noise vs supply).
 - **Promotion vs confirmation**: each promotion should beat its predecessor and `baseStarter` (Starter Pack) internally (even if `bareSolver` differs) and beat `bareSolver` externally; flat climbs flag grounding/measurement defects. Owed starter reads run on next `compare` (`heldSince`); reading ahead stays unconfirmed (`test/decide-explore.test.ts`).
-- **Practice vs held-out supply**: practice takes ≤ half the held-out pool; watch `comparisonFloor` and treat untransferred practice gains as overfitting.
+- **Practice vs held-out supply**: treat untransferred practice gains as overfitting (§6 owns the split).
 - **Gate strictness vs capability**: refuse only measurement-breaking or wasted-compute actions; note others factually; favour lenient sandboxing and Builder freedom.
 - **External benchmarks**: verify cross-OS portability, copyability and workspace transfer (not promotion), separating OS/runtime porting from workspace coupling; keep queries natural.
 
@@ -141,7 +141,7 @@ Own conclusions and subagent reports sit lowest until grounded higher. Compute c
 | A refusal | Refusal text (proves only its trigger) |
 | Harness attribution | Ablation comparison against `programs-of:<digest>` |
 
-Give every rate its denominator and compare runs over matched active hours, not wall-clock span. Separate **instrument health** (clean runs, zero A/A steps, low crashes) from **product outcome** (`written-after` apart from `chosen-on`, external transfer vs Starter, same-domain delta vs prior version, weighting recent gaps highest). Triage inline by joining `.ana/wri/` (`synthesis.md`, `cross-domain.md`, `outcomes-*.md`, `outside-reads.md`, `plan.md`, `cycle.md`) with live folds (`runs source|view`, `backtrack.ts`, `table.ts`, `trend.ts`, `starter-reads.ts`, `score.ts`), re-grounding counts in owning folds.
+Give every rate its denominator and compare runs over matched active hours, not wall-clock span. Separate **instrument health** (clean runs, zero A/A steps, low crashes) from **product outcome** (`written-after` apart from `chosen-on`, external transfer vs Starter, same-domain delta vs prior version, weighting recent gaps highest). Triage inline by joining `.ana/wri/` with live folds (`runs source|view`, `backtrack.ts`, `table.ts`, `trend.ts`, `starter-reads.ts`, `score.ts`).
 
 ## 10. Runs with a real model
 
@@ -167,21 +167,23 @@ Run `stack-pr` (`scripts/stack.ts`) before branching/pushing: extend the owning 
 
 Label PRs by category (`CATEGORIES`, `tools/runtime/land.ts`) and highest importance (`repository-practice`): `I0` invalid/unsafe results (runs pause), `I1` decision/measurement/wall/crash/stall/waste fix or removal, `I2` other prod/prompt/tooling change, `I3` docs/prose/tests alone.
 
-**Shell & reviews** (`repository-practice`): pass command guard, edit via tools, leave profiles/SSH/env untouched; keep architecture and edits inline, using read-only subagents after forming your own plan (continue warm ones over relaunch) with source, bounded questions and verified counts plus `file:symbol`.
+**Shell & reviews** (`repository-practice`): pass command guard, edit via tools, leave profiles/SSH/env untouched; keep edits inline; give read-only subagents source and bounded questions, and verify their counts and `file:symbol` citations.
 
 ## 12. Code that passes the first time
 
 Read `tools/oxlint/HABITS.md` first. Add zero strict-lint findings, never disable rules (`bun run not-slop` for single-site false positives; fix systematic ones in rule source), import `node:` only through `src/meta`, keep files ≤800 nonblank lines and functions ≤115 lines, and export only imported symbols.
 
+**Comments** (`ana/no-comments` ratchet, `delete-comment`): a prose comment marks what code should say. Delete tautologies and stale notes, make a surprise unrepresentable, and move decisions to `docs/adr/`. Encode a constraint comment (`do not remove`, `keep this wording`) as a type, runtime check, test or lint rule, then delete it; keep only `SAFETY:` invariants and notes on what we cannot change, deleting any keep you cannot prove.
+
 ### Tests
 
-State outcomes over an input space, not one-off examples (`code-and-writing.md`, `HABITS.md` §12.12). Prefer, in order:
+State outcomes over an input space, not one-off examples (`HABITS.md` §12.12). Prefer, in order:
 1. **Bounded exhaustive checks** against an independent rule (`compare-exhaustive`), ≤~10s via symmetry/canonical state before shrinking bounds.
 2. **State-space search** over reachable logs with cross-move invariants (`decide-explore`), or **seeded LCG generators** counting reached branches (`pairs-property`).
 3. **Shared perturbation walls** (`wri-walls`, `wall-practice`) and **pure invariant/view-model tables** (`runs-invariants`, `view-model`).
 4. **Named examples only** across process/file/provider boundaries, refusals/locks (nearest hostile case) or real-run regressions.
 
-Pin constants (`WEIGHTS`, `GAP_FLOOR`, `SIZE`, `PATIENCE`) once. Avoid wording/per-reader examples, lint fixtures (`rule-examples`), browser click-flows (view-model tables + smokes), module mocks, sleeps and test-only exports; assert via live entry points. Delete/replace tests only against owner mutants (`commit-r` step 8). Check full exit codes directly (unmasked by pipes); isolated passes are leads, missing-userns wall failures are real.
+Pin each §6 default once. Avoid wording/per-reader examples, lint fixtures (`rule-examples`), browser click-flows (view-model tables + smokes), module mocks, sleeps and test-only exports; assert via live entry points. Delete/replace tests only against owner mutants (`commit-r` step 8). Check full exit codes directly (unmasked by pipes); isolated passes are leads, missing-userns wall failures are real.
 
 **Where a reader or helper lives** (search by behaviour first, delete dead guards/timers; helpers may import production, never reverse, `direction.ts`, and must call owning folds):
 
@@ -189,12 +191,12 @@ Pin constants (`WEIGHTS`, `GAP_FLOOR`, `SIZE`, `PATIENCE`) once. Avoid wording/p
 | --- | --- |
 | Campaign, `bun run` verb, local job, UI | Production fold in `src/` or command folder in `tools/` |
 | Deep single-campaign investigation (`wri.ts`) | `tools/wri/` |
-| Shared skill scripts (≥2 skills) or cross-run analysis | `.claude/skills/main/` (`cli.ts`, `logs.ts`, `runs.ts`, `print.ts`, `stats.ts`) |
+| Shared skill scripts (≥2 skills) or cross-run analysis | `.claude/skills/main/` |
 | Single skill's procedure | That skill's `scripts/` |
 
 ## 13. Writing
 
-Write plain, logical English without forced jargon or robotic phrasing: state general principles, current behaviour and rationale rather than chronological "at X, Y happened" narratives (history lives in commits/PRs/logs). Give exact figures with measured axis (tests, observations, estimates), use §14 terms and backticks for identifiers/paths, state each fact once in its owner (rewrite prompts, never append), and keep defaults in code.
+Write plain English: state general principles, current behaviour and rationale rather than chronological "at X, Y happened" narratives (history lives in commits/PRs/logs). Give exact figures with measured axis (tests, observations, estimates), use §14 terms and backticks for identifiers/paths, and state each fact once in its owner (rewrite prompts, never append).
 
 ## 14. Terms and map
 

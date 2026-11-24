@@ -11,6 +11,7 @@ import { dirname, join } from "#src/meta/path.ts";
 import { median } from "#src/meta/tally.ts";
 import {
   type BenchRecord,
+  formatCriteria,
   hasOneBefore,
   isCut,
   type PairedBenchArm,
@@ -49,12 +50,15 @@ interface CohortArmRow {
   readonly arm: string;
   readonly harness: string;
   readonly tasks: number;
-  readonly partial: boolean;
-  readonly peeked: boolean;
+  readonly flags: readonly string[];
   readonly builtTotal: number;
   readonly baselineTotal: number;
   readonly maxTotal: number;
   readonly delta: number;
+  readonly builtCriteria: string;
+  readonly baselineCriteria: string;
+  readonly builtSolveUsd: number;
+  readonly baselineSolveUsd: number;
   readonly wins: number;
   readonly losses: number;
   readonly ties: number;
@@ -89,6 +93,8 @@ interface RegressionReport {
   readonly baselineTotal: number;
   readonly maxTotal: number;
   readonly delta: number;
+  readonly builtCriteria: string;
+  readonly baselineCriteria: string;
   readonly wins: number;
   readonly losses: number;
   readonly ties: number;
@@ -104,6 +110,8 @@ interface RegressionReport {
   readonly externalTrajCount: number;
   readonly cohorts: readonly RuntimeCohort[];
 }
+
+const UNKNOWN_CRITERIA = "?/?";
 
 const sumBy = (records: readonly BenchRecord[], pick: (rec: BenchRecord) => number) =>
   records.reduce((sum, rec) => sum + pick(rec), 0);
@@ -310,16 +318,26 @@ function buildRuntimeCohort(
     const uncutBaseRecs = pair.baseline.filter((rec) => fairSet.has(rec.task));
     const uncutBuilt = sumBy(uncutBuiltRecs, (rec) => rec.points);
     const uncutBaseline = sumBy(uncutBaseRecs, (rec) => rec.points);
+    const flags = [
+      ...(pair.sharedTasks.length < fullTaskCount
+        ? [`partial ${String(pair.sharedTasks.length)}/${String(fullTaskCount)}`]
+        : []),
+      ...(pair.built.some((rec) => rec.peekedCount > 0) ? ["PEEKED"] : []),
+      ...(pair.baseline.some((rec) => !rec.delivered) ? ["undelivered-baseline"] : []),
+    ];
     return {
       arm: pair.arm,
       harness: pair.harness,
       tasks: pair.sharedTasks.length,
-      partial: pair.sharedTasks.length < fullTaskCount,
-      peeked: pair.built.some((rec) => rec.peekedCount > 0),
+      flags,
       builtTotal,
       baselineTotal,
       maxTotal: sumBy(pair.built, (rec) => rec.total),
       delta: builtTotal - baselineTotal,
+      builtCriteria: formatCriteria(pair.built),
+      baselineCriteria: formatCriteria(pair.baseline),
+      builtSolveUsd: sumBy(pair.built, (rec) => rec.solveUsd),
+      baselineSolveUsd: sumBy(pair.baseline, (rec) => rec.solveUsd),
       ...tallyPaired(pair.built, pair.baseline),
       uncutBuilt,
       uncutBaseline,
@@ -329,7 +347,7 @@ function buildRuntimeCohort(
       baselineCuts: pair.baseline.filter(isCut).length,
     };
   });
-  const clean = rows.filter((row) => !row.partial && !row.peeked);
+  const clean = rows.filter((row) => row.flags.length === 0);
   const baselineUncutRange = rangeOf(clean.map((row) => row.uncutBaseline));
   const uncutNegDeltas = clean.map((row) => -row.uncutDelta);
   const bestByDelta = clean.toSorted((a, b) => b.uncutDelta - a.uncutDelta || b.delta - a.delta)[0] ?? null;
@@ -385,6 +403,8 @@ function emptyReport(
     baselineTotal: 0,
     maxTotal: 0,
     delta: 0,
+    builtCriteria: UNKNOWN_CRITERIA,
+    baselineCriteria: UNKNOWN_CRITERIA,
     wins: 0,
     losses: 0,
     ties: 0,
@@ -462,6 +482,8 @@ export function analyzeRegressions(
     baselineTotal,
     maxTotal: sumBy(pair.built, (rec) => rec.total),
     delta: builtTotal - baselineTotal,
+    builtCriteria: formatCriteria(pair.built),
+    baselineCriteria: formatCriteria(pair.baseline),
     ...tallyPaired(pair.built, pair.baseline),
     builtSolveUsd: sumBy(pair.built, (rec) => rec.solveUsd),
     builtJudgeUsd: sumBy(pair.built, (rec) => rec.judgeUsd),
@@ -530,13 +552,13 @@ function formatCohortLines(cohorts: readonly RuntimeCohort[], targetArm: string 
     if (cohort.targetVerdict !== null) lines.push(`  target verdict: ${cohort.targetVerdict}`);
     for (const row of cohort.rows) {
       const mark = row.arm === targetArm ? "*" : " ";
-      const flags = [
-        ...(row.partial ? [`partial ${String(row.tasks)}/${String(cohort.fullTaskCount)}`] : []),
-        ...(row.peeked ? ["PEEKED"] : []),
-      ];
-      const suffix = flags.length > 0 ? ` [${flags.join(", ")}]` : "";
+      const suffix = row.flags.length > 0 ? ` [${row.flags.join(", ")}]` : "";
+      const crit =
+        row.builtCriteria !== UNKNOWN_CRITERIA || row.baselineCriteria !== UNKNOWN_CRITERIA
+          ? ` | crit ${row.builtCriteria} vs ${row.baselineCriteria}`
+          : "";
       lines.push(
-        `  ${mark} ${row.arm} (${row.harness.slice(0, 8)}): all ${String(row.builtTotal)}/${String(row.maxTotal)} vs ${String(row.baselineTotal)} (${signed(row.delta)}, ${String(row.wins)}-${String(row.losses)}-${String(row.ties)}) | fair-uncut ${String(row.uncutBuilt)}/${String(row.uncutMax)} vs ${String(row.uncutBaseline)} (${signed(row.uncutDelta)}) | cuts ${String(row.builtCuts)}/${String(row.baselineCuts)}${suffix}`,
+        `  ${mark} ${row.arm} (${row.harness.slice(0, 8)}): all ${String(row.builtTotal)}/${String(row.maxTotal)} vs ${String(row.baselineTotal)} (${signed(row.delta)}, ${String(row.wins)}-${String(row.losses)}-${String(row.ties)})${crit} | fair-uncut ${String(row.uncutBuilt)}/${String(row.uncutMax)} vs ${String(row.uncutBaseline)} (${signed(row.uncutDelta)}) | solve $${row.builtSolveUsd.toFixed(2)}/$${row.baselineSolveUsd.toFixed(2)} | cuts ${String(row.builtCuts)}/${String(row.baselineCuts)}${suffix}`,
       );
     }
   }
@@ -577,11 +599,15 @@ export function formatRegressionReport(report: RegressionReport): string {
   const pct = (points: number) =>
     report.maxTotal > 0 ? ((100 * points) / report.maxTotal).toFixed(1) : "0.0";
   const baseLabel = pair?.baselineTier ?? "baseline";
+  const criteriaSuffix =
+    report.builtCriteria !== UNKNOWN_CRITERIA || report.baselineCriteria !== UNKNOWN_CRITERIA
+      ? ` | criteria ${report.builtCriteria} vs ${report.baselineCriteria}`
+      : "";
   return [
     ...header,
     `benchmark: ${readiness.bench?.name ?? "local"} | pair: ${pair?.arm ?? ""} (${pair?.builtTier ?? "builtSolver"}) vs ${pair?.baselineArm ?? ""} (${baseLabel}, ${pair?.runtime ?? ""}, harness ${pair?.harness.slice(0, 8) ?? ""})`,
     `internal starter read: ${report.internalStarterSummary}`,
-    `score: ${String(report.builtTotal)}/${String(report.maxTotal)} (${pct(report.builtTotal)}%) vs ${String(report.baselineTotal)}/${String(report.maxTotal)} (${pct(report.baselineTotal)}%) | delta ${signed(report.delta)} | W-L-T ${String(report.wins)}-${String(report.losses)}-${String(report.ties)}`,
+    `score: ${String(report.builtTotal)}/${String(report.maxTotal)} (${pct(report.builtTotal)}%) vs ${String(report.baselineTotal)}/${String(report.maxTotal)} (${pct(report.baselineTotal)}%) | delta ${signed(report.delta)} | W-L-T ${String(report.wins)}-${String(report.losses)}-${String(report.ties)}${criteriaSuffix}`,
     `spend: built $${(report.builtSolveUsd + report.builtJudgeUsd).toFixed(2)} (solve $${report.builtSolveUsd.toFixed(2)}, judge $${report.builtJudgeUsd.toFixed(2)}) | ${baseLabel} $${(report.baselineSolveUsd + report.baselineJudgeUsd).toFixed(2)} (solve $${report.baselineSolveUsd.toFixed(2)}, judge $${report.baselineJudgeUsd.toFixed(2)})`,
     `harness guide: ${report.guideBytes === null ? "unavailable locally" : `${String(report.guideBytes)} B`}`,
     "",

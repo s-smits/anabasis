@@ -498,6 +498,7 @@ describe("deterministic regression evals analyzer and lane-guard", () => {
     expect(text).toContain("inspect-workspace: campaign 1/1 solves | external 1/2 tasks");
     expect(text).toContain("pystat: campaign 1/1 solves | external 0/2 tasks");
     expect(text).toContain("Cross-version cohort backtrack");
+    expect(text).toContain("solve $");
     expect(text).toContain("insufficient-baseline (k=1 same-runtime bareSolver");
   });
 

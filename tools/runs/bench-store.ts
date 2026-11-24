@@ -6,16 +6,23 @@ import { basename, join } from "#src/meta/path.ts";
 const BASE_PREFIX = "base-";
 const STARTER_PREFIX = "starter-";
 const BASELINE_PREFIXES = [BASE_PREFIX, STARTER_PREFIX] as const;
+const DETAILS_FILE = "claude-opus-5-5_judge.json";
 
 export type SolverTier = "bareSolver" | "baseStarter" | "builtSolver";
 
 export interface BenchRecord {
   readonly arm: string;
   readonly task: string;
+  readonly label: string;
   readonly harness: string;
   readonly runtime: string;
+  readonly tier: SolverTier;
   readonly points: number;
   readonly total: number;
+  readonly criteriaPassed: number | null;
+  readonly criteriaTotal: number | null;
+  readonly rubricsPassed: number | null;
+  readonly rubricsTotal: number | null;
   readonly solveUsd: number;
   readonly judgeUsd: number;
   readonly seconds: number;
@@ -40,7 +47,7 @@ export interface PairedBenchArm {
   readonly baseline: readonly BenchRecord[];
 }
 
-function solverTierOf(record: Pick<BenchRecord, "arm" | "buildOf">): SolverTier {
+export function solverTierOf(record: Pick<BenchRecord, "arm" | "buildOf">): SolverTier {
   const origin = record.buildOf?.trim() ?? "";
   if (
     origin === "base" ||
@@ -52,6 +59,53 @@ function solverTierOf(record: Pick<BenchRecord, "arm" | "buildOf">): SolverTier 
   }
   if (origin === "starter" || record.arm.startsWith(STARTER_PREFIX)) return "baseStarter";
   return "builtSolver";
+}
+
+export function criteriaFromRubrics(rubrics: unknown): readonly [number | null, number | null] {
+  if (!Array.isArray(rubrics)) return [null, null];
+  let passed = 0;
+  let total = 0;
+  for (const entry of rubrics) {
+    const result = asRecord(asRecord(entry)?.result);
+    if (result === null || !isNumber(result.criteria_passed) || !isNumber(result.criteria_count)) {
+      return [null, null];
+    }
+    passed += result.criteria_passed;
+    total += result.criteria_count;
+  }
+  return [passed, total];
+}
+
+export function criteriaOfDetails(
+  datasetDir: string,
+  task: string,
+  label: string,
+): readonly [number | null, number | null] {
+  if (label === "") return [null, null];
+  const file = join(datasetDir, task, "eval_result", `eval_${label}`, DETAILS_FILE);
+  if (!existsSync(file)) return [null, null];
+  const raw = asRecord(capturedJsonParse(readFileSync(file, "utf8")));
+  return criteriaFromRubrics(raw?.rubrics);
+}
+
+function sumCriteria(
+  records: readonly Pick<BenchRecord, "criteriaPassed" | "criteriaTotal">[],
+): readonly [number | null, number | null] {
+  let passed = 0;
+  let total = 0;
+  for (const rec of records) {
+    if (rec.criteriaPassed === null || rec.criteriaTotal === null) return [null, null];
+    passed += rec.criteriaPassed;
+    total += rec.criteriaTotal;
+  }
+  return [passed, total];
+}
+
+export function formatCriteria(
+  records: readonly Pick<BenchRecord, "criteriaPassed" | "criteriaTotal">[],
+): string {
+  const [passed, total] = sumCriteria(records);
+  return passed === null || total === null ? "?/?" : `${String(passed)}/${String(total)}`;
 }
 
 export function isBaselineArmName(arm: string): boolean {
@@ -82,18 +136,30 @@ export const hasOneBefore = (task: string): boolean => !task.endsWith("/task1");
 export const isCut = (record: Pick<BenchRecord, "cutCount" | "cutUnknown">): boolean =>
   record.cutUnknown || record.cutCount > 0;
 
-function parseBenchRecord(armDir: string, file: string): BenchRecord | null {
+function parseBenchRecord(store: string, armDir: string, file: string): BenchRecord | null {
   const raw = asRecord(capturedJsonParse(readFileSync(file, "utf8")));
   if (raw === null || !isString(raw.task) || !isNumber(raw.points) || !isNumber(raw.total)) return null;
+  const arm = isString(raw.arm) ? raw.arm : armDir;
+  const label = isString(raw.label) ? raw.label : "";
   const buildOfValue = asRecord(raw.build)?.of;
   const buildOf = isString(buildOfValue) ? buildOfValue : null;
+  const [criteriaPassed, criteriaTotal] =
+    isNumber(raw.criteriaPassed) && isNumber(raw.criteriaTotal)
+      ? [raw.criteriaPassed, raw.criteriaTotal]
+      : criteriaOfDetails(join(store, "dataset"), raw.task, label);
   return {
-    arm: isString(raw.arm) ? raw.arm : armDir,
+    arm,
     task: raw.task,
+    label,
     harness: isString(raw.harness) ? raw.harness : "",
     runtime: isString(raw.runtime) ? raw.runtime : "claude-code",
+    tier: solverTierOf({ arm, buildOf }),
     points: raw.points,
     total: raw.total,
+    criteriaPassed,
+    criteriaTotal,
+    rubricsPassed: isNumber(raw.passed) ? raw.passed : null,
+    rubricsTotal: isNumber(raw.rubrics) ? raw.rubrics : null,
     solveUsd: isNumber(raw.solveUsd) ? raw.solveUsd : 0,
     judgeUsd: isNumber(raw.judgeUsd) ? raw.judgeUsd : 0,
     seconds: isNumber(raw.seconds) ? raw.seconds : 0,
@@ -127,7 +193,7 @@ export function readJudgedStore(store: string): BenchRecord[] {
   const root = join(store, "judged");
   return [...judgedFilesByArm(store)].flatMap(([arm, files]) =>
     files.flatMap((file) => {
-      const record = parseBenchRecord(arm, join(root, arm, file));
+      const record = parseBenchRecord(store, arm, join(root, arm, file));
       return record === null ? [] : [record];
     }),
   );

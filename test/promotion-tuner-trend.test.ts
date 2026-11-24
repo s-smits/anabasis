@@ -7,6 +7,7 @@ import type { Promotion, Run } from "#skills/main/runs.ts";
 import { outsideLines, type Score, scoresOf } from "#skills/promotion-tuner/scripts/outside.ts";
 import { changeOf, type Measure, MEASURES } from "#skills/promotion-tuner/scripts/trend.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 
@@ -111,14 +112,27 @@ it("reads too few runs where only the runs holding a denominator can be dealt ap
   expect(changeOf(MEASURES.confirmed, then, now).verdict).toBe("too few runs");
 });
 
-const score = (arm: string, harness: string, task: string, points: number, of: string | null): Score => ({
+const score = (
+  arm: string,
+  task: string,
+  points: number,
+  of: string | null,
+  over: Partial<Score> = {},
+): Score => ({
   arm,
-  harness,
+  harness: of === "starter" ? "s" : "d",
   task,
+  runtime: "claude-code",
+  tier: of === "starter" ? "baseStarter" : of === "base" ? "bareSolver" : "builtSolver",
   points,
   total: 50,
-  of,
+  criteriaPassed: null,
+  criteriaTotal: null,
+  solveUsd: 1,
+  delivered: true,
+  of: of === "starter" || of === "base" ? null : of,
   cut: false,
+  ...over,
 });
 
 /** The outside block's rows by arm, each a list of its cells. */
@@ -136,16 +150,17 @@ it("bounds an arm by the sums of whole Starter rollouts, never by the Starter's 
   // Two Starter rollouts trade places on two tasks: each sums to 50, where the lower of each task
   // sums to 20 and the higher to 80, a spread no rollout had and one that every added rollout widens.
   const starter = [
-    score("starter-a", "s", "t1", 10, "starter"),
-    score("starter-a", "s", "t2", 40, "starter"),
-    score("starter-b", "s", "t1", 40, "starter"),
-    score("starter-b", "s", "t2", 10, "starter"),
+    score("starter-a", "t1", 10, "starter"),
+    score("starter-a", "t2", 40, "starter"),
+    score("starter-b", "t1", 40, "starter"),
+    score("starter-b", "t2", 10, "starter"),
     // A Starter arm that holds one of the two tasks has no sum over both, so its nought bounds neither.
-    score("starter-void", "s", "t1", 0, "starter"),
-    score("starter-other", "s", "t3", 30, "starter"),
+    score("starter-void", "t1", 0, "starter"),
+    score("starter-other", "t3", 30, "starter"),
+    score("starter-crash", "t3", 0, "starter", { delivered: false }),
   ];
   const arm = (name: string, tasks: readonly string[], points: number) =>
-    tasks.map((task) => score(name, "d", task, points, null));
+    tasks.map((task) => score(name, task, points, null));
   const read = outsideRows(
     [
       ...starter,
@@ -160,33 +175,66 @@ it("bounds an arm by the sums of whole Starter rollouts, never by the Starter's 
     ],
     [],
   );
-  expect(read.get("under")?.slice(6, 9)).toEqual(["30/100", "50 to 50", "below"]);
-  expect(read.get("over")?.slice(7, 9)).toEqual(["50 to 50", "above"]);
-  expect(read.get("level")?.[8]).toBe("inside");
-  expect(read.get("single")?.slice(6, 9)).toEqual(["5/50", "0 to 40", "inside"]);
-  expect(read.get("lone")?.slice(7, 9)).toEqual(["30 to 30", "inside, one Starter rollout"]);
-  expect(read.get("apart")?.slice(5, 9)).toEqual(["2", "30/100", "-", "-"]);
+  expect(read.get("under")?.slice(7, 13)).toEqual([
+    "30/100",
+    "-",
+    "2.00",
+    "baseStarter",
+    "50 to 50",
+    "below",
+  ]);
+  expect(read.get("over")?.slice(11, 13)).toEqual(["50 to 50", "above"]);
+  expect(read.get("level")?.[12]).toBe("inside");
+  expect(read.get("single")?.slice(7, 13)).toEqual(["5/50", "-", "1.00", "baseStarter", "0 to 40", "inside"]);
+  expect(read.get("lone")?.slice(10, 13)).toEqual([
+    "baseStarter",
+    "30 to 30",
+    "inside, one baseStarter rollout",
+  ]);
+  expect(read.get("apart")?.slice(6, 13)).toEqual(["2", "30/100", "-", "2.00", "-", "-", "-"]);
 });
 
-it("stratifies base-<label> bareSolver baselines from Starter and leaves non-prefixed build.of=base arms visible", () => {
+it("stratifies baselines by runtime and solver tier, persists criteria and solve spend, and excludes undelivered crashes", () => {
   const store = join(home, "outside-base");
-  const put = (arm: string, buildOf: string, points: number) => {
+  const put = (arm: string, buildOf: string, points: number, extra: JsonObject = {}) => {
     mkdirSync(join(store, "judged", arm), { recursive: true });
     writeFileSync(
       join(store, "judged", arm, "t1.json"),
-      `${JSON.stringify({ arm, task: "t1", harness: "h", runtime: "pi-durable", points, total: 50, build: { of: buildOf, usd: 0 } })}\n`,
+      `${JSON.stringify({
+        arm,
+        task: "t1",
+        harness: "h",
+        runtime: "pi-durable",
+        points,
+        total: 50,
+        criteriaPassed: 8,
+        criteriaTotal: 10,
+        solveUsd: 1.25,
+        delivered: true,
+        build: { of: buildOf, usd: 0 },
+        ...extra,
+      })}\n`,
     );
   };
   put("pi-a1", "jobstat-run", 40);
   put("base-pi-a1", "base", 30);
-  put("cc-a1", "jobstat-run", 40);
-  put("starter-cc-a1", "starter", 10);
-  put("sweep:base1", "base", 25);
+  put("starter-pi-a1", "starter", 45);
+  put("starter-cc-only", "starter", 10, { runtime: "claude-code" });
+  put("starter-pi-crash", "starter", 0, { delivered: false });
+  put("pi-lone", "jobstat-run", 20, { runtime: "other-rt" });
   const loaded = scoresOf(store);
   const rows = outsideRows(loaded, []);
   expect(rows.has("base-pi-a1")).toBe(false);
-  expect(rows.has("starter-cc-a1")).toBe(false);
-  expect(rows.has("sweep:base1")).toBe(true);
-  expect(rows.get("pi-a1")?.slice(6, 9)).toEqual(["40/50", "30 to 30", "above, one bareSolver rollout"]);
-  expect(rows.get("cc-a1")?.slice(6, 9)).toEqual(["40/50", "10 to 10", "above, one Starter rollout"]);
+  expect(rows.has("starter-pi-a1")).toBe(false);
+  expect(rows.has("starter-cc-only")).toBe(false);
+  expect(rows.get("pi-a1")?.slice(1, 2)).toEqual(["pi-durable"]);
+  expect(rows.get("pi-a1")?.slice(7, 13)).toEqual([
+    "40/50",
+    "8/10",
+    "1.25",
+    "bareSolver",
+    "30 to 30",
+    "above, one bareSolver rollout",
+  ]);
+  expect(rows.get("pi-lone")?.slice(10, 13)).toEqual(["-", "-", "-"]);
 });

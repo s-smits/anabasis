@@ -39,6 +39,12 @@ import { capturedExecPath, parseArgs, runtimeProcess } from "#src/meta/process.t
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { LIMITS } from "#tools/d2/campaign.ts";
+import {
+  criteriaFromRubrics,
+  criteriaOfDetails,
+  formatCriteria,
+  solverTierOf,
+} from "#tools/runs/bench-store.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { foreignPrograms, placeOf } from "#src/harness/place.ts";
 import { HARNESS_DIR, HERE, ownPython, placeHarness, sourceNamed } from "../shared/bundle.ts";
@@ -193,9 +199,6 @@ const field = (value: JsonValue | undefined, ...keys: string[]): JsonValue | und
   keys.reduce<JsonValue | undefined>((at, key) => (isRecord(at) ? at[key] : undefined), value);
 const readJson = (path: string): JsonValue =>
   existsSync(path) ? capturedJsonParse(readFileSync(path, "utf8")) : null;
-/** Where judge.py's details of one label lie in a store's dataset. */
-const detailsOf = (store: string, task: string, label: string): string =>
-  join(store, task, "eval_result", `eval_${label}`, DETAILS);
 /** A JSON value as text, as a record prints it. */
 const text = (value: JsonValue | undefined): string =>
   isString(value) ? value : value === undefined ? "" : capturedJsonStringify(value);
@@ -531,7 +534,7 @@ async function judge(
   const { apiBase, shimLog, cap } = how;
   const rubrics = how.rubrics ?? join(jb, "dataset", "main", place.task, "RUBRICS.json");
   const output = join(place.store, place.task, OUTPUT, place.label);
-  const details = detailsOf(place.store, place.task, place.label);
+  const details = join(place.store, place.task, "eval_result", `eval_${place.label}`, DETAILS);
   const judgePy = join(jb, "eval", "judge.py");
   let usd: number | null = null;
   if (!existsSync(details) || statSync(details).size === 0) {
@@ -631,6 +634,7 @@ async function judgeTask(task: string, ctx: ScoreContext): Promise<void> {
     ? readdirSync(traj).map((name) => readFileSync(join(traj, name), "utf8").toLowerCase())
     : [];
   const log = rolloutLog(store, task, label);
+  const [criteriaPassed, criteriaTotal] = criteriaFromRubrics(got.details.rubrics);
   const record = {
     arm: arm.name,
     harness: arm.harness,
@@ -641,6 +645,8 @@ async function judgeTask(task: string, ctx: ScoreContext): Promise<void> {
     total: got.details.max_score ?? null,
     passed: got.details.passed_count ?? null,
     rubrics: got.details.total_count ?? null,
+    ...keyIfNotNull("criteriaPassed", criteriaPassed),
+    ...keyIfNotNull("criteriaTotal", criteriaTotal),
     solveUsd: log.usd,
     judgeUsd: got.usd,
     seconds: log.seconds,
@@ -773,12 +779,22 @@ const uncutOf = (tasks: readonly string[], records: readonly JsonObject[]): stri
 const indexRecords = (records: readonly JsonObject[]) =>
   new Map(records.toReversed().map((r) => [`${text(r.arm)}\0${text(r.task)}`, r] as const));
 
-const sumPair = (
-  items: readonly (readonly [number | null, number | null])[],
-): readonly [number | null, number | null] => {
-  const sumAt = (i: 0 | 1) =>
-    items.reduce<number | null>((a, p) => (a === null || p[i] === null ? null : a + p[i]), 0);
-  return [sumAt(0), sumAt(1)];
+const armTag = (arm: string, held: readonly JsonObject[]): string => {
+  const runtimes = [
+    ...new Set(held.map((row) => (isString(row.runtime) ? row.runtime : "claude-code"))),
+  ].toSorted();
+  const buildOfValue = field(held[0]?.build, "of");
+  const tier = solverTierOf({ arm, buildOf: isString(buildOfValue) ? buildOfValue : null });
+  const cutTasks = held.filter((row) => row.cut === null || cuts(row) > 0).length;
+  const peekTasks = held.filter((row) => Array.isArray(row.peeked) && row.peeked.length > 0).length;
+  const undelivered = held.filter((row) => row.delivered === false).length;
+  return [
+    runtimes.join("+"),
+    tier,
+    ...(cutTasks > 0 ? [`cut ${String(cutTasks)}`] : []),
+    ...(peekTasks > 0 ? [`PEEKED ${String(peekTasks)}`] : []),
+    ...(undelivered > 0 ? [`undelivered ${String(undelivered)}`] : []),
+  ].join(", ");
 };
 
 function spread(out: string, shown: readonly string[]): void {
@@ -829,27 +845,24 @@ function table(out: string, named: string | undefined, shown: readonly string[] 
   // The judge's criterion count is read once per (task, label) across the three table blocks.
   const detailTotals = new Map<string, readonly [number | null, number | null]>();
   const rowCriteria = (row: JsonObject): readonly [number | null, number | null] => {
+    if (isNumber(row.criteriaPassed) && isNumber(row.criteriaTotal)) {
+      return [row.criteriaPassed, row.criteriaTotal];
+    }
     const [task, label] = [text(row.task), text(row.label)];
     const key = `${task}\0${label}`;
     const cached = detailTotals.get(key);
     if (cached !== undefined) return cached;
-    const rubrics = field(readJson(detailsOf(dataset, task, label)), "rubrics");
-    const totals = Array.isArray(rubrics)
-      ? sumPair(
-          rubrics.map((rubric) => {
-            const r = field(rubric, "result");
-            const [p, c] = [field(r, "criteria_passed"), field(r, "criteria_count")];
-            return [isNumber(p) ? p : null, isNumber(c) ? c : null] as const;
-          }),
-        )
-      : ([null, null] as const);
+    const totals = criteriaOfDetails(dataset, task, label);
     detailTotals.set(key, totals);
     return totals;
   };
   const criteria = (rows: readonly JsonObject[]): string =>
-    sumPair(rows.map(rowCriteria))
-      .map((n) => (n === null ? "?" : String(n)))
-      .join("/");
+    formatCriteria(
+      rows.map((row) => {
+        const [criteriaPassed, criteriaTotal] = rowCriteria(row);
+        return { criteriaPassed, criteriaTotal };
+      }),
+    );
   for (const [title, set] of [
     ["all", tasks],
     ["fair", fair(tasks)],
@@ -885,7 +898,7 @@ function table(out: string, named: string | undefined, shown: readonly string[] 
       const share =
         points === null || total === null || total === 0 ? "?" : ((100 * points) / total).toFixed(1);
       console.log(
-        `  ${arm.padEnd(width)} score ${String(points)}/${String(total)} (${share}%) criteria ${criteria(held)} system ${money(system)} (build ${money(build)}, solve ${money(solve)}) judge ${money(judgeUsd)} solve hours ${seconds === null ? "?" : (seconds / 3600).toFixed(2)}`,
+        `  ${arm.padEnd(width)} score ${String(points)}/${String(total)} (${share}%) criteria ${criteria(held)} system ${money(system)} (build ${money(build)}, solve ${money(solve)}) judge ${money(judgeUsd)} solve hours ${seconds === null ? "?" : (seconds / 3600).toFixed(2)} [${armTag(arm, held)}]`,
       );
     }
   }

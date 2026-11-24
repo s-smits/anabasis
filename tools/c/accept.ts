@@ -2,7 +2,7 @@
  * Evaluates a campaign's check program offline (Phase C) and records its observed behaviour against
  * the contract and check versions under inspection.
  *
- *   bun tools/c/accept.ts --name <campaign> [--admit a,b | --admit-authored] [--freeze]
+ *   bun tools/c/accept.ts --name <campaign> [--admit a,b | --admit-authored] [--admit-judge] [--freeze]
  *
  * Every control of the drafted exam is run through the campaign's checks twice. The command prints
  * one row per check: its instrument, the counts of accepted and refused answers, and how many of
@@ -12,13 +12,15 @@
  * path; tasks on which the minimal do-nothing answer allowed by the schema is not rejected; and
  * author-computed checks, which remain faults until admitted by the operator individually
  * (`--admit a,b`) or collectively (`--admit-authored`, implied when a campaign launches without
- * `--hitl`). The reading is recorded in the campaign log as `checker.read` under the contract hash
+ * `--hitl`). Objective items a judging model scores remain faults unless the operator passes
+ * `--admit-judge`, which unattended launches never imply. The reading is recorded in the campaign log as `checker.read` under the contract hash
  * and check program digest, and the command exits 1 if any fault remains. If the minimal value
  * produced by the schema is itself rejected by the format, that outcome is printed as a note rather
  * than a fault because the format rejects it before any check runs.
  */
 import {
   AUTHOR,
+  JUDGE,
   authoredFaults,
   type Checker,
   doNothingFaults,
@@ -38,6 +40,7 @@ const OPTIONS = {
   ...PACK_OPTIONS,
   admit: { type: "string" },
   "admit-authored": { type: "boolean", default: false },
+  "admit-judge": { type: "boolean", default: false },
   jobs: { type: "string", default: "4" },
   freeze: { type: "boolean", default: false },
   despite: { type: "string" },
@@ -60,6 +63,7 @@ export function keepReading(
   word: {
     readonly admitted: ReadonlySet<string>;
     readonly authored: boolean;
+    readonly judge: boolean;
     readonly freeze: boolean;
     readonly despite: string;
   },
@@ -69,7 +73,9 @@ export function keepReading(
   // the objective, regardless of what the reading finds.
   const admitted = new Set([
     ...word.admitted,
-    ...(word.authored ? checks.flatMap(({ id, instrument }) => (instrument === AUTHOR ? [id] : [])) : []),
+    ...checks.flatMap(({ id, instrument }) =>
+      (word.authored && instrument === AUTHOR) || (word.judge && instrument === JUDGE) ? [id] : [],
+    ),
   ]);
   const faults = [...reading.faults, ...authoredFaults(checks, admitted)];
   append(log, "checker.read", {
@@ -134,6 +140,7 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
   const { faults, frozen } = keepReading(log, checker, reading, {
     admitted,
     authored: values["admit-authored"],
+    judge: values["admit-judge"],
     freeze: values.freeze,
     despite,
   });

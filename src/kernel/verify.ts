@@ -31,7 +31,13 @@ import { hostFolder, releaseRoot } from "../wall/seat-root.ts";
 import { type SolveIsolationPolicy, solveIsolationPolicy } from "../wall/base.ts";
 import { closedHome, hostScratch, toolchainPathDirs } from "../wall/policy.ts";
 import type { CellInput, CellResult, CheckInput, CheckResult } from "./check-child.ts";
-import { type Objective, type RubricItem, rubricFaults } from "./contract.ts";
+import {
+  codeObjective,
+  type Objective,
+  type RubricItem,
+  rubricFaults,
+  type TaskCriterion,
+} from "./contract.ts";
 import type { AnswerFile } from "./answer-files.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 
@@ -73,7 +79,10 @@ export interface EvaluationRequest {
 
 export const CHECK_PROGRAM_CONTRACT = "check-program/v1";
 
-export type Task = PublicTask<JsonValue> & { readonly hidden: JsonValue };
+export type Task = PublicTask<JsonValue> & {
+  readonly hidden: JsonValue;
+  readonly rubric?: readonly TaskCriterion[];
+};
 
 export interface VerifierTree {
   readonly checks: string;
@@ -406,9 +415,10 @@ const stopVerdict = (
 export function openVerifier(given: VerifierTree & Closed): Verifier {
   const tree: VerifierTree = { checks: resolve(given.checks), tools: resolve(given.tools) };
   const brief = readBrief(tree.checks);
+  const scored = codeObjective(brief.objective);
   const [firstTool, ...moreTools] = brief.objectiveTools ?? [];
   const objective: BriefTruthCheck | null =
-    brief.objective === undefined
+    scored === undefined
       ? null
       : firstTool === undefined
         ? OBJECTIVE
@@ -452,8 +462,8 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
     const ran = await runCell(wall, {
       checks,
       objective,
-      ...keyIfDefined("objectiveScale", brief.objective?.scale),
-      ...keyIfDefined("rubricItems", brief.objective?.items),
+      ...keyIfDefined("objectiveScale", scored?.scale),
+      ...keyIfDefined("rubricItems", scored?.items),
       request,
       signal,
     });

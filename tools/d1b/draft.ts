@@ -178,6 +178,7 @@ export async function draftCommand(
     keepReading(log, last.checker, last.reading, {
       admitted: new Set(),
       authored: unattended,
+      judge: openingOf(after)?.judged === true,
       freeze: unattended,
       despite: "",
     });

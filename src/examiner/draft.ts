@@ -1,5 +1,11 @@
 import { type Static, Type } from "typebox";
-import { answerFormatFault, type Objective, type RubricItem, rubricFaults } from "../kernel/contract.ts";
+import {
+  answerFormatFault,
+  codeObjective,
+  type Objective,
+  type RubricItem,
+  rubricFaults,
+} from "../kernel/contract.ts";
 import { type ControlFile, DELIVERABLES } from "../kernel/answer-files.ts";
 import { GAP_FLOOR } from "../kernel/compare.ts";
 import { PER_CHECK_MS } from "../kernel/verify.ts";
@@ -355,14 +361,15 @@ function evaluatorFaults(draft: Draft): string[] {
     ...(scanned.imports.length > 0 ? ["an import"] : []),
     ...OUTSIDE.flatMap(([spelled, what]) => (spelled.test(code) ? [what] : [])),
   ];
-  const hasItems = draft.objective?.items !== undefined && draft.objective.items.length > 0;
+  const scored = codeObjective(draft.objective);
+  const hasItems = scored?.items !== undefined && scored.items.length > 0;
   return [
     ...[...new Set(reached)].map(
       (what) =>
         `the check program reaches for ${what}: a check computes from its request alone, so that one answer gets one verdict on every host`,
     ),
     ...(scanned.exports.includes("checks") ? [] : ["the check program does not export `checks`"]),
-    ...(draft.objective !== undefined && !hasItems && !scanned.exports.includes("objective")
+    ...(scored !== undefined && !hasItems && !scanned.exports.includes("objective")
       ? ["the draft declares an objective, and the check program does not export `objective`"]
       : []),
     ...(hasItems && !scanned.exports.includes("scores")

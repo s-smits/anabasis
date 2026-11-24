@@ -27,6 +27,20 @@ export interface Paired {
   };
   readonly solves?: { readonly old: readonly string[]; readonly fresh: readonly string[] };
   readonly used?: { readonly old: readonly SolveCost[]; readonly fresh: readonly SolveCost[] };
+  readonly judged?: { readonly weights: JudgeWeights; readonly votes: readonly Vote[] };
+}
+
+export interface JudgeWeights {
+  readonly code: number;
+  readonly judge: number;
+  readonly step?: number;
+}
+
+export interface Vote {
+  readonly fresh: number;
+  readonly old: number;
+  readonly judge: number;
+  readonly holistic: number;
 }
 
 export type Measures = Readonly<Record<"validity" | "objective", number>>;
@@ -53,6 +67,7 @@ export const GAP_FLOOR = 0.01;
 const ZERO_FLOOR = 1e-12;
 export const WEIGHTS: Measures = { validity: 0.6, objective: 0.3 };
 const POINTS_SCALE = 1000;
+export const JUDGE_STEP = 0.25;
 
 function plusTotalChances(sizes: readonly number[], share: number): Float64Array {
   const chances = new Float64Array(sumOf(sizes) + 1);
@@ -214,10 +229,34 @@ export function gainOver(
   return Math.max(-1, Math.min(1, delta / larger));
 }
 
-function objectiveGain(pair: Paired, f: number, o: number): number {
+const floored = (gain: number) => (Math.abs(gain) < GAP_FLOOR ? 0 : gain);
+
+function codeGain(pair: Paired, f: number, o: number): number {
   const rule = pair.objective;
-  const gain = rule === undefined ? 0 : gainOver(rule, rule.fresh[f], rule.old[o]);
-  return Math.abs(gain) < GAP_FLOOR ? 0 : gain;
+  return rule === undefined ? 0 : gainOver(rule, rule.fresh[f], rule.old[o]);
+}
+
+export function judgedGain(weights: JudgeWeights, code: number, vote: Vote): number {
+  if (weights.code === 0) return 0.5 * (vote.judge + vote.holistic);
+  const judged = (weights.step ?? JUDGE_STEP) * weights.judge * (vote.judge + vote.holistic);
+  return (weights.code * code + judged) / (weights.code + 2 * weights.judge);
+}
+
+export function judgedPairs(
+  key: string,
+  solves: { readonly old: readonly string[]; readonly fresh: readonly string[] },
+  valid: { readonly old: readonly boolean[]; readonly fresh: readonly boolean[] },
+): [fresh: number, old: number][] {
+  const ranked = (side: "old" | "fresh") =>
+    solves[side]
+      .flatMap((solve, at) => (valid[side][at] === true ? [{ at, rank: sha256(`${key}:${solve}`) }] : []))
+      .toSorted((one, other) => compareCodeUnits(one.rank, other.rank))
+      .map(({ at }) => at);
+  const old = ranked("old");
+  return ranked("fresh").flatMap((f, index) => {
+    const o = old[index];
+    return o === undefined ? [] : [[f, o]];
+  });
 }
 
 export function pointsOf(pair: Paired): Measures {
@@ -226,13 +265,22 @@ export function pointsOf(pair: Paired): Measures {
   for (const [f, freshValid] of pair.fresh.entries()) {
     for (const [o, oldValid] of pair.old.entries()) {
       if (freshValid !== oldValid) validity += freshValid ? 1 : -1;
-      else if (freshValid) gains.push(objectiveGain(pair, f, o));
+      else if (freshValid) gains.push(floored(codeGain(pair, f, o)));
     }
   }
   const each = POINTS_SCALE / (pair.fresh.length * pair.old.length);
+  const { weights, votes = [] } = pair.judged ?? {};
+  const objective =
+    weights === undefined || votes.length === 0
+      ? orderFreeSum(gains)
+      : (orderFreeSum(
+          votes.map((vote) => floored(judgedGain(weights, codeGain(pair, vote.fresh, vote.old), vote))),
+        ) *
+          gains.length) /
+        votes.length;
   return {
     validity: validity * WEIGHTS.validity * each,
-    objective: orderFreeSum(gains) * WEIGHTS.objective * each,
+    objective: objective * WEIGHTS.objective * each,
   };
 }
 

@@ -109,6 +109,7 @@ const OPTIONS = {
   loaded: { type: "boolean", default: false },
   "dry-run": { type: "boolean", default: false },
   hitl: { type: "boolean" },
+  "admit-judge": { type: "boolean" },
   "past-stop": COMPARISON_OPTIONS["past-stop"],
 } as const;
 /** What a campaign runs by where neither a flag nor its record says: the reserve of one solve in
@@ -148,6 +149,7 @@ const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
   turns: "a Builder conversation's session turn limit (300)",
   practice: "practice tasks released after each reading or promotion, at most half of what is held",
   admit: "checks admitted by name, under --hitl",
+  "admit-judge": "objective items a judging model scores, admitted for the campaign; kept once named",
   promotions: "the promotions after which the campaign ends on the operator's word; none to lift it (none)",
   moves: "the most campaign moves this run makes",
   handover: "a directory, outside the repository, to write what the campaign hands over at its end",
@@ -254,6 +256,7 @@ function openingRecord(opening: Opening): JsonObject {
       SEATS.map((each) => [each, opening.seats[each] === null ? null : { ...opening.seats[each] }]),
     ),
     ...keyIfDefined("attended", opening.attended || undefined),
+    ...keyIfDefined("judged", opening.judged || undefined),
     ...keyIfDefined("prompt", opening.prompt ?? undefined),
     ...keyIfDefined("solver", opening.solver === null ? undefined : { ...opening.solver }),
     terms: { ...opening.terms },
@@ -372,6 +375,7 @@ export function opened(
     patience: values.patience === undefined ? (was?.patience ?? PATIENCE) : Number(values.patience),
     seats: resolveSeats(values, was),
     attended: values.hitl ?? was?.attended ?? false,
+    judged: values["admit-judge"] ?? was?.judged ?? false,
     prompt,
     solver,
     terms: resolveTerms(events, was, values),

@@ -114,6 +114,7 @@ async function make(decided: Made, turn: Turn, log: string): Promise<void> {
       ...pack,
       ...flag("admit", admits?.join(",")),
       ...(opening.attended ? [] : ["--freeze", "--admit-authored"]),
+      ...(opening.judged ? ["--admit-judge"] : []),
     ]);
     return;
   }

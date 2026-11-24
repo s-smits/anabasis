@@ -1,13 +1,11 @@
 import type { SeatTool } from "../agent/session.ts";
 import { Type } from "typebox";
-import { affords, openingOf } from "../campaign/opening.ts";
+import { openingOf } from "../campaign/opening.ts";
 import { type AnswerFile, keepAnswerFiles, textFiles } from "../kernel/answer-files.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, contentOf, proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { poolOf } from "../kernel/reports.ts";
 import { append, CALL_KINDS, eventsOf, type LogEvent, read, TRACE_KINDS } from "../kernel/log.ts";
-import type { Ending } from "../kernel/solve.ts";
-import { solvesIn } from "../kernel/solves.ts";
 import { packageGate as checkPackage, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import { objectiveOf, scoresOf, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
@@ -33,22 +31,12 @@ interface Terms {
   readonly pack: (task: Task) => TaskPackage;
   readonly budget: SolveBudget | null;
   readonly verify: Verifier | null;
-  readonly probe: {
-    readonly tries: number;
-    readonly solve: (task: Task, stop: AbortSignal) => Promise<Probed>;
-  } | null;
-}
-
-interface Probed {
-  readonly solve: string | null;
-  readonly ending: Ending;
 }
 
 interface Desk {
   request: Terms;
   readonly stop: AbortSignal;
   proposed: number;
-  tried: number;
   readonly seen: Map<string, "now" | "earlier">;
   readonly answered: Map<string, { readonly answer: JsonValue; readonly files?: readonly AnswerFile[] }>;
   readonly checked: Map<string, Task>;
@@ -61,13 +49,11 @@ interface Desk {
 
 interface Lent {
   readonly stop?: AbortSignal;
-  readonly within?: Within;
   readonly rest?: Desk["rest"];
   readonly home?: string | undefined;
 }
 
 const TASK_ADMISSION = "task.gate";
-export const TRIES = 14;
 const SPELLED = {
   family: Type.String({ minLength: 1 }),
   public_input: Type.Unknown(),
@@ -77,16 +63,6 @@ const NAMED = Type.String({ description: "The instance reference returned by try
 const GIVEN = Type.Union([Type.Object(SPELLED), Type.Object({ reference: NAMED })], {
   description: "An instance in the shape of the existing tasks, or its checked reference.",
 });
-const FAILED = new Map([
-  ["rejected", "not valid: the checks refused its answer"],
-  ["turns-ended", "not valid: ended at its turns limit"],
-  ["wall-ended", "not valid: ended at its deadline"],
-  ["context-ended", "not valid: ended when its context ran out"],
-  ["no-answer", "not valid: it gave no answer"],
-  ["broken-harness", "not valid: the harness could not be opened"],
-  ["flagged", "not valid: it called the task malformed"],
-]);
-type Within = <T>(action: () => Promise<T>) => Promise<T>;
 const PLANTED =
   "it carries, whole, an answer that passed try_answer in this session: a planted answer is for try_answer alone, and no task holds one, in its public input or its hidden values";
 const SUPPLIED = "The host has the tasks it needs. The session ends here.";
@@ -347,60 +323,7 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
   );
 }
 
-function formatSolveOutcome(ended: Ending, turns: number | null): string {
-  if (ended.outcome === "non-result") return `could not run: ${ended.kind}`;
-  if (ended.outcome === "flagged") return FAILED.get("flagged") ?? "not valid";
-  if (ended.outcome === "fail") return FAILED.get(ended.kind) ?? "not valid";
-  return `valid in ${turns === null ? "an unrecorded number of turns" : plural(turns, "turn")}`;
-}
-
-const capped = (probe: Terms["probe"]): number => Math.min(probe?.tries ?? 0, TRIES);
-
 const filed = (desk: Desk): string => (desk.home === undefined ? "" : ` ${FROM_FILE}`);
-
-function tryReferenceTool(desk: Desk, within: Within): SeatTool {
-  return tool(
-    fromHome(desk.home, {
-      name: "try_reference",
-      description: `Put an instance, or its checked reference, to fresh solves by the reference harness, as the system prompt's section on trying the reference says. A try enters no task in the exam.${filed(desk)}`,
-      parameters: Type.Object({
-        task: GIVEN,
-        solves: Type.Integer({ minimum: 1, maximum: 2, description: "How many solves to run side by side." }),
-      }),
-      execute: async (args, _api, context) => {
-        context.abortSignal?.throwIfAborted();
-        const { request } = desk;
-        const { probe } = request;
-        const left = capped(probe) - desk.tried;
-        if (probe === null || left <= 0) {
-          throw new Error("This session has no try of the reference harness left.");
-        }
-        const given =
-          "reference" in args.task ? desk.checked.get(args.task.reference) : instanceOf("", args.task);
-        if (given === undefined) throw new Error("Unknown instance reference. try_answer returns one.");
-        const instance = heldAs(request, read(request.log, TRACE_KINDS), given) ?? {
-          ...given,
-          taskId: `try-${contentOf(given).slice(0, 12)}`,
-        };
-        const solves = Math.min(args.solves, left);
-        if (!affords(request.log, solves)) {
-          throw new Error("The campaign's budget holds no reserve for these solves.");
-        }
-        const ran = await within(async () =>
-          Promise.all(Array.from({ length: solves }, async () => probe.solve(instance, desk.stop))),
-        );
-        const ends = new Map(solvesIn(read(request.log, TRACE_KINDS)).map(({ id, end }) => [id, end]));
-        const lines = ran.map((one, nth) => {
-          const turns = one.solve === null ? undefined : ends.get(one.solve)?.turns;
-          return `Solve ${String(nth + 1)}: ${formatSolveOutcome(one.ending, isNumber(turns) ? turns : null)}.`;
-        });
-        desk.tried += ran.filter((one) => one.ending.outcome !== "non-result").length;
-        const used = `Solves of the reference harness used in this session: ${String(desk.tried)} of ${String(capped(probe))}; one that could not run uses none.`;
-        return text([...lines, used].join("\n"));
-      },
-    }),
-  );
-}
 
 function admittedDrafts(events: readonly LogEvent[]): Task[] {
   const admissions = new Set(eventsOf(events, TASK_ADMISSION).map(({ event }) => event.data.version));
@@ -412,26 +335,15 @@ function admittedDrafts(events: readonly LogEvent[]): Task[] {
 export function writing(
   request: Terms,
   walls: Pick<Walls, "pinned"> | undefined,
-  {
-    stop = new AbortController().signal,
-    within = async (action) => action(),
-    rest = async () => null,
-    home,
-  }: Lent = {},
+  { stop = new AbortController().signal, rest = async () => null, home }: Lent = {},
 ) {
-  const { verify, probe } = request;
+  const { verify } = request;
   const before = read(request.log, CALL_KINDS);
   const openedOn = (asked: Terms, events: readonly LogEvent[]) =>
-    firstMessage(
-      asked.contract,
-      asked.checks,
-      heard(events, asked.tasks),
-      { ...asked.limits, tries: capped(asked.probe) },
-      {
-        brief: openingOf(events)?.prompt ?? null,
-        budget: asked.budget,
-      },
-    );
+    firstMessage(asked.contract, asked.checks, heard(events, asked.tasks), asked.limits, {
+      brief: openingOf(events)?.prompt ?? null,
+      budget: asked.budget,
+    });
   let told = openedOn(request, before);
   const desk: Desk = {
     request,
@@ -439,7 +351,6 @@ export function writing(
     rest,
     home,
     proposed: 0,
-    tried: 0,
     seen: new Map(admittedDrafts(before).map((task) => [contentOf(task), "earlier"] as const)),
     answered: new Map(),
     checked: new Map(),
@@ -449,7 +360,7 @@ export function writing(
   };
   return {
     kind: "exam" as const,
-    system: systemPrompt(probe === null ? "none" : "given", request.contract.objective),
+    system: systemPrompt(request.contract.objective),
     get opening() {
       return told;
     },
@@ -461,7 +372,6 @@ export function writing(
           turns: asked.limits.turns,
           proposals: asked.limits.puts,
           tasks: asked.wanted,
-          tries: capped(asked.probe),
         },
         checks: asked.checks.map(({ id }) => id),
         examples: asked.tasks.map(({ taskId }) => taskId),
@@ -472,7 +382,6 @@ export function writing(
       proposeTool(desk),
       exampleTool(() => [...writtenTasks(read(desk.request.log, TRACE_KINDS)), ...desk.request.tasks]),
       ...(verify === null ? [] : [tryTool(desk, verify)]),
-      ...(probe === null ? [] : [tryReferenceTool(desk, within)]),
     ],
     enters: "Nothing in your home enters the exam: a task enters it through propose_tasks alone",
     nudge: "Propose further tasks",
@@ -484,10 +393,10 @@ export function writing(
     counted: () => ({ proposed: desk.proposed, held: desk.held, refused: desk.refused }),
     result: () => ({ puts: desk.proposed, held: desk.held, refused: desk.refused }),
     ask: (next: Terms) => {
-      Object.assign(desk, { request: next, proposed: 0, tried: 0, held: [], refused: [] });
+      Object.assign(desk, { request: next, proposed: 0, held: [], refused: [] });
       const events = read(next.log, CALL_KINDS);
       told = openedOn(next, events);
-      return wakeOn(events, next.tasks, { ...next.limits, tries: capped(next.probe) });
+      return wakeOn(events, next.tasks, next.limits);
     },
   };
 }

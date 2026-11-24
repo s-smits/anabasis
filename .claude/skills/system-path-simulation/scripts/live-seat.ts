@@ -678,9 +678,6 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
   const { examineCommand } = (await import(join(tree, script))) as { examineCommand: typeof ExamineCommand };
   // SAFETY: as above.
   const { writing } = (await import(join(tree, "src/examiner/write.ts"))) as { writing: typeof Writing };
-  // A stand-in session is given no tries unless seats are passed, and without them this would print
-  // the writing prompt without "Trying the reference", which every campaign's session reads. The
-  // tree's own seats are passed and never solve: the session below exits before its first turn.
   // SAFETY: as above.
   const { solved } = (await import(join(tree, ROUND))) as { solved: typeof Solved };
   runtimeProcess.chdir(tree);
@@ -696,7 +693,12 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
     }
     return runtimeProcess.exit(0);
   };
-  await examineCommand([...flags, "--name", name], composed, solved);
+  // SAFETY: a tree before v0.14 takes its seats third, and the session exits before its first turn.
+  await (examineCommand as (...given: unknown[]) => Promise<void>)(
+    [...flags, "--name", name],
+    composed,
+    solved,
+  );
   return 0;
 }
 

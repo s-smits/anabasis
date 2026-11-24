@@ -26,7 +26,7 @@ Anabasis separates the exam side (held-out tasks, hidden values, check source, R
    A practice task disputed after a check defect leaves active `bench.tasks`, yet its prior practice solves remain readable through `read_trace` because they were already released to the build side.
 
 6. **Omitted objective values in `try_reference` (`src/examiner/write.ts`, `formatSolveOutcome`)**
-   `try_reference` reports validity, turn count, or failure kind instead of the reference's raw objective score, so single-solve objective noise does not drive survivorship filtering during task drafting.
+   `try_reference` reported validity, turn count, or failure kind instead of the reference's raw objective score, so single-solve objective noise did not drive survivorship filtering during task drafting. v0.14 removes the tool: the Examiner sees reference outcomes only through comparisons, which closes the channel entirely.
 
 7. **Guide named `BUILT_AGENTS.md` rather than `AGENTS.md` (`src/meta/bundle-layout.ts`, `GUIDE_FILE`)**
    Naming the Built Harness guide `BUILT_AGENTS.md` prevents agent backends from auto-loading an `AGENTS.md` file out of band alongside the host-constructed system prompt.

@@ -335,9 +335,6 @@ const examineAction =
     const work = examineCommand(
       args,
       (request, wall) => examiner.session({ ...request, opened: resolve }, wall),
-      // The author's tries of the reference harness wait in the solve queue as a comparison's
-      // solves do; a scripted Examiner is given none.
-      seats.examine === undefined ? turn.held : null,
       // The host's halt, on its bounds or an ending, and the run's kill stop it; the
       // conversation's own end is neither.
       AbortSignal.any([bench.halt.signal, ...(bench.request.kill === undefined ? [] : [bench.request.kill])]),

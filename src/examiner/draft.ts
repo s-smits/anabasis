@@ -42,7 +42,6 @@ export interface Draft {
   readonly evaluator: string;
   readonly objective?: Objective;
   readonly objectiveTools?: readonly string[];
-  readonly unmeasured?: string;
   readonly tasks: readonly {
     readonly family: string;
     readonly publicInput: JsonValue;
@@ -170,13 +169,6 @@ const DRAFT_PARAMETERS = Type.Object({
           },
         ),
       ),
-      none: Type.Optional(
-        Type.String({
-          pattern: "\\S",
-          description:
-            "Where the exam declares no objective: why no task of the domain could leave valid answers that differ to a practitioner.",
-        }),
-      ),
       tools: Type.Optional(
         Type.Array(Type.String({ minLength: 1 }), {
           description:
@@ -184,7 +176,10 @@ const DRAFT_PARAMETERS = Type.Object({
         }),
       ),
     },
-    { description: "A quantity with its direction, or why there is none, as the system prompt says." },
+    {
+      description:
+        "A quantity with its direction, as the system prompt says, or empty where the exam has none.",
+    },
   ),
   tasks: Type.Array(
     Type.Object({
@@ -208,11 +203,11 @@ const SYSTEM = [
   `A public input may in turn list under files what a practitioner is handed as files, such as a table, a log or a memo, as rows of { path, text } with relative paths: the solver's home then holds each as a file under public/files/ at its path, beside the JSON that lists it.`,
   `Two harnesses for the solver are compared on tasks neither was built on, each task solved afresh under each harness. A task tells them apart in two ways only. On validity: some of its solves are valid and some are not, and a valid answer beats one that is not. On the objective, where the exam declares one: two answers are both valid and one is better by it than the other by at least ${FLOOR} of the larger measure (or ${FLOOR} on [0, 1] for a unit-scale objective). Any other task is a tie, and a tie leaves the test, so an exam on which every solve is valid and nothing chooses between valid answers tells no harness from another, however many tasks it holds.`,
   `Who solves, and how hard a task can be for it:\n\n${REACH}`,
-  "Which of the two ways the exam's tasks can use is decided here, and nothing written later adds the other. How much gradient validity carries differs by domain: hard-constraint domains (physical feasibility, compilers, simulators) separate harnesses on binary validity, whereas open-ended or multi-criteria domains keep prompt-stated requirements as a binary feasibility floor while the objective separates valid answers. Validity tells harnesses apart only on tasks in one of the three places above, so it needs rules and a scope that leave the solver a method to find. The objective tells them apart on a task with more than one valid answer where the field's standard method, applied to the input, falls short of the best measure; where it reaches it, every careful solve submits that answer and the task ties. So ask of the domain what makes one valid answer better than another to a practitioner: what they pay for, save, minimise or maximise while meeting the requirements, such as a cost, a mass, a length, a count, a time, an error, a margin to a limit, or in multi-criteria analytical domains a proper score or penalised count over independent hidden-ground-truth domain criteria (penalising wrong or hedged claims so a broad guess cannot score high). Whether valid answers differ on it is decided here too, by what the answer format and the scope leave to the answer: where a task fixes everything the quantity depends on, every valid answer measures the same and none is better, and where the answer chooses some of it, such as the parts, the sizes, the amounts or the estimates, they differ. Where the domain has such a quantity, leave the answer what it depends on and declare it as the objective. Declare none only where no task of the domain could leave an answer that choice, and say why under the objective's `none`; the exam then measures by validity alone.",
+  "Which of the two ways the exam's tasks can use is decided here, and nothing written later adds the other. How much gradient validity carries differs by domain: hard-constraint domains (physical feasibility, compilers, simulators) separate harnesses on binary validity, whereas open-ended or multi-criteria domains keep prompt-stated requirements as a binary feasibility floor while the objective separates valid answers. Validity tells harnesses apart only on tasks in one of the three places above, so it needs rules and a scope that leave the solver a method to find. The objective tells them apart on a task with more than one valid answer where the field's standard method, applied to the input, falls short of the best measure; where it reaches it, every careful solve submits that answer and the task ties. So ask of the domain what makes one valid answer better than another to a practitioner: what they pay for, save, minimise or maximise while meeting the requirements, such as a cost, a mass, a length, a count, a time, an error, a margin to a limit, or in multi-criteria analytical domains a proper score or penalised count over independent hidden-ground-truth domain criteria (penalising wrong or hedged claims so a broad guess cannot score high). Whether valid answers differ on it is decided here too, by what the answer format and the scope leave to the answer: where a task fixes everything the quantity depends on, every valid answer measures the same and none is better, and where the answer chooses some of it, such as the parts, the sizes, the amounts or the estimates, they differ. Where the domain has such a quantity, leave the answer what it depends on and declare it as the objective. Declare none only where no task of the domain could leave an answer that choice; the exam then measures by validity alone.",
   'Compute the objective via either a single `objective(request, runtime)` export (bounded to `[0, 1]` when `scale: "unit"`) or, for multi-criteria analytical domains, `objective.items` paired with a `scores` export mapping each item id to `[0, 1]`. Both may read `request.hidden`—including per-task rubric targets placed in `request.hidden` so later writing sessions can vary task-specific criteria under the frozen evaluator. A measure agreeing with a public-input recomputation lets standard methods tie; score against hidden generating parameters or planted defects on a public-input scale without hidden denominators. In multi-criteria domains, split every graded component—point accuracy, uncertainty calibration (penalising wide hedges, e.g. interval or proper scores), record-integrity or exclusion overlap (F1/Jaccard rather than recall alone), and deliverables—into graded partial-credit `scores` items (fraction of criteria/targets met or smooth error decay on `[0, 1]`, avoiding coarse all-or-nothing `0/1` cliffs that amplify rollout variance) where exact answers score near `1` and wrong, missing, or hedged claims fall toward `0`, rather than a `direction: "lower"` error toward `0`. Reserve binary `checks` for unambiguous structural, physical, or numerical feasibility invariants rather than exact hidden-set equality on prose boundaries.',
   `A rule states a domain property every valid answer has, which a check decides from its argument: a coupled bound that holds, a quantity that is conserved, an equilibrium or state the field's own engine reaches, or a behavioural test the answer passes. The host already enforces \`answer_format\` JSON Schema (types, required keys, enums, structural bounds) before checks run, and a capable solver already satisfies syntax, compilation, file presence, catalogue membership and simple distinctness on its own; put structural constraints in \`answer_format\` and focus rules and checks on coupled domain invariants, competing limits and executable behaviour while keeping surface formatting (headings, ordering, equivalent notations) lenient unless the domain standard fixes it. Give each rule its source: the standard, specification, reference manual or textbook that defines the property, named precisely enough to look up, and one that states the limit as your rule does; a nominal or typical value is no limit. ${UNHELD} Name the standard rather than restating its tables, equations or working, which the solver can look up, and leave the way to the property to the solver. A rule, a convention or a task's input that states the procedure, its steps or the numbers it needs hands the solver the whole method, and every task becomes running it once; so does a rule met by matching a shape the scope spells out or by writing one exact text.`,
   "The scope bounds every task written later: a size it fixes is the ceiling on how hard a task can be made, and a class of problem it leaves out is one no task can pose. Draft a scope under which tasks can be written at every grade this field reaches, with the effects that decide answers near its limits. It names the classes of problem a task may pose, never a list of the faults tasks plant, and never says that an effect it leaves unnamed is absent: the solver reads the scope, and a list of plants turns finding a fault into matching one.",
-  "The operator's prompt outranks your choice of rules. Every requirement it names stays in the exam at the strength the prompt states: unambiguous feasibility limits and required analyses stay as rules with binary checks, graded multi-item accuracy or record-integrity criteria stay at full weight inside the composite `objective`, and a quantity the prompt asks to minimise or maximise is the objective. Where no check or objective can decide such a requirement from its argument alone, such as a step of the work, name it in the scope as not measured, and do not check a weaker property under its name. The same holds for the objective: a quantity declared because the prompt's own cannot be computed is a stand-in, so the scope names the prompt's quantity as not measured and the stand-in as what is measured in its place, and a step won on it measures the stand-in alone.",
+  "The operator's prompt outranks your choice of rules. Every requirement it names stays in the exam at the strength the prompt states: unambiguous feasibility limits and required analyses stay as rules with binary checks, graded multi-item accuracy or record-integrity criteria stay at full weight inside the composite `objective`, and a quantity the prompt asks to minimise or maximise is the objective. A check measures the property its rule names, never a weaker one under that name.",
   `Write one check for each rule, and no other. The check program is one TypeScript module that exports \`checks\`, an object with a function under each check id. A function takes \`(request, runtime)\` and returns a boolean, or a promise of one: \`request.publicTask\` is \`{ taskId, family, publicInput }\`, \`request.artifact\` is the answer, and \`request.hidden\` is the task's hidden values. It runs offline in a closed cell and imports nothing, so it computes from its argument alone, and the same answer always gets the same verdict. Where a check or the objective needs an installed program or domain engine (such as \`python3\` with any packages already installed in your shell's environment, \`bash\`, a compiler, a simulator, or a package you install yourself), declare each program name in its \`tools\` array and run it via \`await runtime.tools.run({ toolId, args, files, stdin })\`, which returns \`{ nonResult, exitCode, stdout, stderr }\` inside the same offline cell. Anything you install under \`.toolchain/\` in your home (using \`uv\` venvs or launchers locating sibling files via \`$(dirname "$0")\`, with no hardcoded home paths) is frozen with the draft into the verifier cell and resolved ahead of host \`PATH\` binaries. A check that runs longer than ${String(PER_CHECK_MS / 60_000)} minutes is at fault, which drops the task as the check's defect. It returns true where the answer keeps its rule and false only where it breaks it: an answer that breaks another rule is that rule's check's to refuse, and where its own computation cannot reach a verdict on an answer the format allows—such as a solver that does not converge, an unexpected \`NaN\`, or a missing lookup entry—it throws rather than catching and returning \`false\` or \`0\`, dropping the task as the check's defect instead of misscoring the answer. It holds its rule's stated bounds without relaxing them—so a quantity a rule calls zero or absent refuses any non-zero amount—while allowing a small floating-point arithmetic epsilon (e.g. 1e-9) on sums or products of decimal inputs so IEEE-754 rounding never rejects an exact boundary value. It verifies the property its rule states, must be right on a task nobody has answered, and never compares the answer with an answer you worked out. A check that recomputes the one value its rule allows leaves each task one valid answer.`,
   `Give at least ${plural(EXAMPLES, "example task")}, different in what they ask and not only in their numbers. Either every task carries hidden values or none does. For each example give one accept control: an answer that keeps every rule. You choose the task, so you can start from an answer and derive the task from it; where the exam declares an objective, an example leaves room on it only where the standard method's answer measures worse than that control by at least ${FLOOR}. For each check give at least one reject control: an answer to an example that follows the answer format, breaks that check's rule, and names the check. The smallest answer the format allows, such as empty strings and empty lists, has to be rejected on every task: where it would pass, the format or the rules ask too little.`,
   "draft_exam validates the whole draft and returns any faults; a fault-free draft becomes the campaign's fixed exam.",
@@ -410,11 +405,6 @@ export function draftFaults(draft: Draft): string[] {
     ...(draft.objectiveTools ?? []).flatMap((toolId) =>
       isSafePathSegment(toolId) ? [] : [`objective names invalid verifier tool ${toolId}`],
     ),
-    ...((draft.objective === undefined) === (draft.unmeasured === undefined)
-      ? [
-          "the objective is a quantity with its direction, or why there is none: this draft gives both or neither",
-        ]
-      : []),
     ...(draft.tasks.length < EXAMPLES
       ? [
           `the draft holds ${plural(draft.tasks.length, "example task")}, and at least ${String(EXAMPLES)} are needed`,
@@ -431,8 +421,7 @@ export function draftFaults(draft: Draft): string[] {
 }
 
 function draftedFrom(args: Static<typeof DRAFT_PARAMETERS>): Draft {
-  const { quantity, direction, scale, items, none, tools } = args.objective;
-  const half = (quantity === undefined) !== (direction === undefined);
+  const { quantity, direction, scale, items, tools } = args.objective;
   const rubric: readonly RubricItem[] | undefined =
     items !== undefined && items.length > 0 ? items.map(({ id, weight }) => ({ id, weight })) : undefined;
   const objective: Objective | undefined =
@@ -461,7 +450,6 @@ function draftedFrom(args: Static<typeof DRAFT_PARAMETERS>): Draft {
     evaluator: args.evaluator as string,
     ...keyIfDefined("objective", objective),
     ...keyIfDefined("objectiveTools", tools !== undefined && tools.length > 0 ? tools : undefined),
-    ...keyIfDefined("unmeasured", half ? undefined : none),
     tasks: args.tasks.map(({ family, public_input, hidden }) => ({
       family,
       // SAFETY: as above.
@@ -509,7 +497,15 @@ export function drafting(
         const draft = draftedFrom(args);
         desk.tries += 1;
         const seen = capturedJsonStringify(draft);
-        const unformed = draftFaults(draft);
+        const { quantity, direction } = args.objective;
+        const unformed = [
+          ...((quantity === undefined) === (direction === undefined)
+            ? []
+            : [
+                "the objective is a quantity with its direction, or neither: this draft gives one of the two",
+              ]),
+          ...draftFaults(draft),
+        ];
         const faults =
           unformed.length > 0 ? unformed : await within(async () => await terms.reading(draft, home));
         if (faults.length === 0) {

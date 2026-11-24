@@ -64,7 +64,7 @@ function sessionRows(events: readonly LogEvent[], draftCalls: readonly Call[]): 
 function standingRow(draft: Draft, session: string): string {
   const objective =
     draft.objective === undefined
-      ? `none (reason given: ${draft.unmeasured === undefined ? NOT_RECORDED : "yes"})`
+      ? `none (reason given: ${Object.hasOwn(draft, "unmeasured") ? "yes" : NOT_RECORDED})`
       : `${draft.objective.direction}, a quantity of ${plural(words(draft.objective.quantity), "word")}`;
   const fields = Object.keys(asRecord(asRecord(draft.answerFormat)?.properties) ?? {}).length;
   const families = new Set(draft.tasks.map(({ family }) => family)).size;

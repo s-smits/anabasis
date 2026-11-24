@@ -10,7 +10,7 @@ Freeze one primary count, direction, threshold, denser **graded loss**, and non-
 
 | Seat | Primary count | Graded loss | Guards |
 | --- | --- | --- | --- |
-| Examiner post-promotion | drafts held | drafts refused; median turns of valid `try_reference` answers | USD / admission |
+| Examiner post-promotion | drafts held | drafts refused; median turns of valid reference answers (pre-v0.14 trees) | USD / admission |
 | Examiner at opening | drafts held before comparison 1 | drafts refused | USD / admission |
 
 ## 2. Select open positions & measure noise floor

@@ -49,8 +49,7 @@ describe("the Examiner's ladder", () => {
   });
 
   it("is shown whole to a writing session, and as its scale and solver to a drafting one", () => {
-    expect(systemPrompt("none")).toContain(LADDER);
-    expect(systemPrompt("given")).toContain(LADDER);
+    expect(systemPrompt()).toContain(LADDER);
     expect(DRAFTING).toContain(REACH);
     for (const { rungs } of FIELDS) for (const rung of rungs) expect(DRAFTING).not.toContain(rung);
   });
@@ -58,7 +57,7 @@ describe("the Examiner's ladder", () => {
   it("tells a drafting session the floor two valid answers are compared at, and the export that measures them", () => {
     expect(DRAFTING).toContain(`${String(GAP_FLOOR * 100)}%`);
     expect(DRAFTING).toContain("`objective`");
-    expect(systemPrompt("given")).toContain("of the larger measure");
-    expect(systemPrompt("given", { direction: "higher", scale: "unit" })).toContain("on the [0, 1] scale");
+    expect(systemPrompt()).toContain("of the larger measure");
+    expect(systemPrompt({ direction: "higher", scale: "unit" })).toContain("on the [0, 1] scale");
   });
 });

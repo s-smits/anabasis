@@ -65,7 +65,7 @@ Code governs protocol and conditions (eligibility, refusals, limits, solve condi
 
 Close gaming channels in code. Separate practice overfitting from structural reward hacking:
 - **Practice memorisation** (task IDs, rare codes like `P-00123`, verbatim prompts): training overfitting, not a held-out exploit; held-out comparisons block it while `check_harness` (`src/harness/files.ts`) and WRI `names.ts` flag high-precision leaks.
-- **Oracle / hidden-value inversion** (probing practice scores or `try_reference` gaps to invert hidden values or boundary-tune): close via coarse cross-wall bands (`bandOf`, `roomLine` `GAP_FLOOR`), keeping raw digits in the log.
+- **Oracle / hidden-value inversion** (probing practice scores or reference gaps to invert hidden values or boundary-tune): close via coarse cross-wall bands (`bandOf`, `roomLine` `GAP_FLOOR`), keeping raw digits in the log.
 - **Measurement softening & comparison fishing** (dropped checks across retries, `vacuous-pass` holes like `Number("") === 0`, hedgable metrics, or re-comparing noisy edits to clear `α`): prevent via upstream mechanical probes (`referee.draft`, `doNothing`, hidden-swap checks), host-gated fresh comparisons (`decide`, `written-after` confirmation), and WRI gaming audit (`tools/wri/gaming.ts`).
 
 ## 3. The seats

@@ -60,6 +60,26 @@ describe("the process table", () => {
     }
   });
 
+  it.skipIf(!onDarwin)(
+    "lists a setuid program this user started, whose effective uid is root's",
+    async () => {
+      const child = Bun.spawn(["/usr/bin/top", "-l", "0"], { stdio: ["ignore", "ignore", "ignore"] });
+      const row = () => processTable().find(({ pid }) => pid === child.pid);
+      try {
+        for (const until = performance.now() + 5000; performance.now() < until; await Bun.sleep(20)) {
+          if (row()?.program === "/usr/bin/top") break;
+        }
+        expect(row()).toMatchObject({
+          ppid: runtimeProcess.pid,
+          program: "/usr/bin/top",
+        });
+      } finally {
+        child.kill("SIGKILL");
+        await child.exited;
+      }
+    },
+  );
+
   it.skipIf(!onDarwin)("still names a program whose file was removed after it started", async () => {
     const { program, row, end } = sleeper();
     try {

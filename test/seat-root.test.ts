@@ -84,6 +84,25 @@ describe("a seat's root", () => {
     rmSync(parent, { recursive: true, force: true });
   });
 
+  it.skipIf(!onDarwin)("keeps its claim where the root outlives a failed release", async () => {
+    const { parent, root } = unclaimed();
+    const release = await claimRoot(root);
+    const stuck = join(root, "stuck");
+    mkdirSync(stuck);
+    Bun.spawnSync(["/usr/bin/chflags", "uchg", stuck]);
+    try {
+      await expect(release()).rejects.toThrow();
+      expect(existsSync(root)).toBe(true);
+      for (const until = performance.now() + 250; performance.now() < until; await Bun.sleep(10)) {
+        expect(there(claimOf(root))).toBe(true);
+      }
+    } finally {
+      Bun.spawnSync(["/usr/bin/chflags", "nouchg", stuck]);
+      await releaseRoot(root);
+      rmSync(parent, { recursive: true, force: true });
+    }
+  });
+
   // A command the host kills must not leave its child running, which would write its home again
   // after the release and run on, forking.
   it.skipIf(!onDarwin)(

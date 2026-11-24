@@ -6,7 +6,9 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readlinkSync,
+  renameSync,
   rmSync,
   symlinkSync,
   utimesSync,
@@ -82,7 +84,7 @@ describe("holder", () => {
     expect(held(file)).toBe(false);
   });
 
-  it("reads a live holder's record whole at every instant it holds", async () => {
+  it("reads a live holder's record as held throughout a stretch of its hold", async () => {
     const folder = scratch();
     const file = join(folder, "pass.lock");
     const holder = capturedSpawn([
@@ -164,19 +166,31 @@ describe("holder", () => {
     await gone.exited;
     record(file, gone.pid);
     const taker = join(folder, "taker.ts");
+    const go = join(folder, "go");
     writeFileSync(
       taker,
       [
+        `import { existsSync, readFileSync, writeFileSync } from "node:fs";`,
         `import { hold } from ${holderPath};`,
-        // Every taker wakes at one instant, so they meet at the takeover without busy-spinning CPUs.
-        `await Bun.sleep(Math.max(0, ${String(Date.now() + 1000)} - Date.now()));`,
+        // Every taker is loaded before any starts, then all spin to one instant and meet at the takeover.
+        `writeFileSync(${JSON.stringify(join(folder, "ready-"))} + process.pid, "");`,
+        `while (!existsSync(${JSON.stringify(go)})) await Bun.sleep(5);`,
+        `const at = Number(readFileSync(${JSON.stringify(go)}, "utf8"));`,
+        "while (Date.now() < at);",
         `console.log(hold(${JSON.stringify(file)}));`,
-        "await Bun.sleep(1000);",
+        "await Bun.sleep(500);",
       ].join("\n"),
     );
     const takers = Array.from({ length: 8 }, () =>
       capturedSpawn([capturedExecPath, taker], { stdout: "pipe" }),
     );
+    const until = performance.now() + 20_000;
+    while (readdirSync(folder).filter((name) => name.startsWith("ready-")).length < 8) {
+      if (performance.now() > until) throw new Error("the takers never all started");
+      await Bun.sleep(10);
+    }
+    writeFileSync(`${go}.part`, String(Date.now() + 50));
+    renameSync(`${go}.part`, go);
     const said = await Promise.all(takers.map(async (one) => (await new Response(one.stdout).text()).trim()));
     expect(said.filter((one) => one === "true")).toHaveLength(1);
     expect(said.filter((one) => one === "false")).toHaveLength(7);

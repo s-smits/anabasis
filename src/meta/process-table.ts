@@ -10,7 +10,7 @@ interface ProcessRow {
 }
 
 const PROC_ALL_PIDS = 1;
-const PROC_UID_ONLY = 4;
+const PROC_RUID_ONLY = 5;
 const VNODE_PATH_INFO = 9;
 const VNODE_INFO_BYTES = 152;
 const PATH_BYTES = 1024;
@@ -44,7 +44,7 @@ function cString(buffer: Uint8Array): string | null {
 
 function listedPids(lib: ReturnType<typeof openLibproc>): Int32Array {
   const uid = runtimeProcess.getuid?.();
-  const type = uid === undefined ? PROC_ALL_PIDS : PROC_UID_ONLY;
+  const type = uid === undefined ? PROC_ALL_PIDS : PROC_RUID_ONLY;
   for (let room = FIRST_PIDS; ; room *= 2) {
     const pids = new Int32Array(room);
     const bytes = lib.proc_listpids(type, uid ?? 0, pids, pids.byteLength);

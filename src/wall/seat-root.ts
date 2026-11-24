@@ -63,11 +63,8 @@ export async function claimRoot(root: string): Promise<ReleaseRoot> {
 
 export async function releaseRoot(root: string): Promise<void> {
   endHolders([root, hostFolder(root)]);
-  await Promise.all([
-    removeWhole(root),
-    rm(hostFolder(root), { recursive: true, force: true }),
-    rm(claimOf(root), { force: true }),
-  ]);
+  await Promise.all([removeWhole(root), rm(hostFolder(root), { recursive: true, force: true })]);
+  await rm(claimOf(root), { force: true });
 }
 
 function latestWrite(root: string): number {

@@ -605,6 +605,7 @@ describe("the arms table over a store of judged records", () => {
       task: string,
       points: number,
       rubrics: (readonly [number, number])[] | null,
+      extra: JsonObject = {},
     ) => {
       const key = task.replace("/", "__");
       const label = `${arm}__${key}`;
@@ -621,6 +622,7 @@ describe("the arms table over a store of judged records", () => {
           judgeUsd: 1,
           seconds: 60,
           cut: [],
+          ...extra,
         }),
       );
       if (rubrics === null) return;
@@ -637,16 +639,36 @@ describe("the arms table over a store of judged records", () => {
       );
     };
     // A rubric pays all or nothing: `near` misses one criterion of four and loses six points to `far`.
-    judged("near", "stat/task2", 4, [
-      [3, 3],
-      [3, 4],
-    ]);
+    judged(
+      "near",
+      "stat/task2",
+      4,
+      [
+        [3, 3],
+        [3, 4],
+      ],
+      { runtime: "pi-durable", cut: [{ file: "big.csv", chars: 205_000 }] },
+    );
     judged("far", "stat/task2", 10, [
       [3, 3],
       [4, 4],
     ]);
     judged("blind", "stat/task2", 10, null);
-    for (const arm of ["near", "far", "blind"]) judged(arm, "bio/task2", 10, [[2, 2]]);
+    judged("base-pi", "stat/task2", 10, null, {
+      runtime: "pi-durable",
+      criteriaPassed: 5,
+      criteriaTotal: 6,
+      build: { of: "base", usd: 0 },
+    });
+    for (const arm of ["near", "far", "blind"]) {
+      judged(arm, "bio/task2", 10, [[2, 2]], arm === "near" ? { runtime: "pi-durable" } : {});
+    }
+    judged("base-pi", "bio/task2", 10, null, {
+      runtime: "pi-durable",
+      criteriaPassed: 2,
+      criteriaTotal: 2,
+      build: { of: "base", usd: 0 },
+    });
     const score = new URL("../studies/harness2/score.ts", import.meta.url).pathname;
     const printed = decodeOutput(
       runSync([capturedExecPath, score, "table", "--out", out, "--tasks", "stat/task2,bio/task2"]).stdout,
@@ -654,8 +676,12 @@ describe("the arms table over a store of judged records", () => {
     const line = (arm: string) =>
       printed.split("\n").find((each) => each.trimStart().startsWith(`${arm} `)) ?? "";
     expect(line("near")).toContain("score 14/20 (70.0%) criteria 8/9 ");
+    expect(line("near")).toContain("[pi-durable, builtSolver, cut 1]");
     expect(line("far")).toContain("score 20/20 (100.0%) criteria 9/9 ");
+    expect(line("far")).toContain("[claude-code, builtSolver]");
     expect(line("blind")).toContain("score 20/20 (100.0%) criteria ?/? ");
+    expect(line("base-pi")).toContain("score 20/20 (100.0%) criteria 7/8 ");
+    expect(line("base-pi")).toContain("[pi-durable, bareSolver]");
   });
 
   it("reads one arm's rollouts as a spread over the fair uncut tasks every one scored, the worst task first", () => {

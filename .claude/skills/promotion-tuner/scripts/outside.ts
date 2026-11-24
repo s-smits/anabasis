@@ -8,34 +8,44 @@ import { MISSING, printed } from "#skills/main/print.ts";
 import type { Promotion, Run } from "#skills/main/runs.ts";
 import { existsSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
-import { isBaselineArmName, isCut, readJudgedStore } from "#tools/runs/bench-store.ts";
+import { formatCriteria, isCut, readJudgedStore, type SolverTier } from "#tools/runs/bench-store.ts";
 
-/** One judged rollout: an arm's points on a task. */
+/** One judged rollout: an arm's points, criteria, spend, runtime and tier on a task. */
 export interface Score {
   readonly arm: string;
   readonly harness: string;
   readonly task: string;
+  readonly runtime: string;
+  readonly tier: SolverTier;
   readonly points: number;
   readonly total: number;
-  /** The campaign the arm's harness was built by, `starter`, `base`, or null for an arm built elsewhere. */
+  readonly criteriaPassed: number | null;
+  readonly criteriaTotal: number | null;
+  readonly solveUsd: number;
+  readonly delivered: boolean;
+  /** The campaign the arm's harness was built by, or null for baselines and external arms. */
   readonly of: string | null;
   /** Whether the judge's reader cut a file of the deliverable before the judge read it. */
   readonly cut: boolean;
 }
 
-const STARTER = "starter";
-const BASE = "base";
-const BASELINES = new Set([STARTER, BASE]);
+const BUILT: SolverTier = "builtSolver";
+const BARE: SolverTier = "bareSolver";
+const STARTER_TIER: SolverTier = "baseStarter";
 const HEAD = [
   "arm",
+  "runtime",
   "pack",
   "promotion",
   "promoted on",
   "confirmed by the starter",
   "tasks",
   "points",
-  "Starter, lowest to highest",
-  "against the Starter",
+  "criteria",
+  "solve USD",
+  "baseline",
+  "baseline, lowest to highest",
+  "against baseline",
 ];
 const VERDICTS = ["above", "inside", "below"] as const;
 type Verdict = (typeof VERDICTS)[number];
@@ -50,14 +60,15 @@ export function scoresOf(store: string, only: readonly string[] | null = null): 
     arm: record.arm,
     harness: record.harness,
     task: record.task,
+    runtime: record.runtime,
+    tier: record.tier,
     points: record.points,
     total: record.total,
-    of:
-      isBaselineArmName(record.arm) && record.arm.startsWith("base-")
-        ? BASE
-        : record.buildOf === STARTER || isBaselineArmName(record.arm)
-          ? STARTER
-          : record.campaign,
+    criteriaPassed: record.criteriaPassed,
+    criteriaTotal: record.criteriaTotal,
+    solveUsd: record.solveUsd,
+    delivered: record.delivered,
+    of: record.tier === BUILT ? record.campaign : null,
     cut: isCut(record),
   }));
   if (only === null) return all;
@@ -68,41 +79,58 @@ export function scoresOf(store: string, only: readonly string[] | null = null): 
 
 /** The campaigns the arms of a store were built by, which a caller folds before `outsideLines`. */
 export const campaignsOf = (scores: readonly Score[]): string[] => [
-  ...new Set(scores.flatMap(({ of }) => (of === null || BASELINES.has(of) ? [] : [of]))),
+  ...new Set(scores.flatMap(({ tier, of }) => (tier !== BUILT || of === null ? [] : [of]))),
 ];
 
 const summed = (scores: readonly Score[]) => scores.reduce((sum, { points }) => sum + points, 0);
 
-/** An arm's sum against the Starter's sums on the same tasks, one sum a Starter arm that holds them
- *  all. The Starter's lowest rollout of each task, summed, is a rollout nobody ran, and it falls
- *  with every Starter arm added, until every arm beside it reads inside. */
-function againstStarter(own: readonly Score[], starter: readonly Score[]) {
-  const shared = own.filter(({ task }) => starter.some((score) => score.task === task));
-  const sums = [...Map.groupBy(starter, ({ arm }) => arm).values()].flatMap((rollout) => {
-    const held = rollout.filter(({ task }) => shared.some((score) => score.task === task));
-    return held.length === shared.length ? [summed(held)] : [];
-  });
-  const [points, low, high] = [summed(shared), Math.min(...sums), Math.max(...sums)];
-  const placed: Verdict = points > high ? "above" : points < low ? "below" : "inside";
+/** An arm's sum against same-runtime delivered baseline rollouts of one solver tier on the same tasks. */
+function againstBaseline(arm: string, own: readonly Score[], baselines: readonly Score[]) {
+  const runtime = own[0]?.runtime ?? "claude-code";
+  const sameRuntime = baselines.filter((score) => score.delivered && score.runtime === runtime);
+  const byArm = Map.groupBy(sameRuntime, ({ arm: name }) => name);
+  const tierOrder: readonly SolverTier[] = byArm.has(`base-${arm}`)
+    ? [BARE, STARTER_TIER]
+    : byArm.has(`starter-${arm}`)
+      ? [STARTER_TIER, BARE]
+      : [BARE, STARTER_TIER];
+  const tasks = new Set(own.map(({ task }) => task));
+  const points = summed(own);
+  const total = own.reduce((sum, score) => sum + score.total, 0);
+  const cut = own.filter((score) => score.cut).length;
+  for (const tier of tierOrder) {
+    const sums = [
+      ...Map.groupBy(
+        sameRuntime.filter((score) => score.tier === tier),
+        ({ arm: name }) => name,
+      ).values(),
+    ].flatMap((rollout) => {
+      const held = rollout.filter(({ task }) => tasks.has(task));
+      return held.length === own.length ? [summed(held)] : [];
+    });
+    if (sums.length === 0) continue;
+    const [low, high] = [Math.min(...sums), Math.max(...sums)];
+    const verdict: Verdict = points > high ? "above" : points < low ? "below" : "inside";
+    return { tier, tasks: own.length, points, total, low, high, rollouts: sums.length, verdict, cut };
+  }
   return {
-    tasks: shared.length,
+    tier: null,
+    tasks: own.length,
     points,
-    total: shared.reduce((sum, score) => sum + score.total, 0),
-    low,
-    high,
-    rollouts: sums.length,
-    verdict: sums.length === 0 ? null : placed,
-    cut: shared.filter((score) => score.cut).length,
+    total,
+    low: 0,
+    high: 0,
+    rollouts: 0,
+    verdict: null,
+    cut,
   };
 }
 
-/** The outside block: one row an arm that is no Starter, then what the join reads. */
+/** The outside block: one row an arm that is no baseline, then what the join reads. */
 export function outsideLines(scores: readonly Score[], runs: readonly Run[], format: "md" | "tsv"): string[] {
-  const starter = scores.filter(({ of }) => of === STARTER);
-  const bare = scores.filter(({ of }) => of === BASE);
-  const bareNames = new Set(bare.map(({ arm }) => arm));
+  const baselines = scores.filter(({ tier }) => tier !== BUILT);
   const arms = Map.groupBy(
-    scores.filter(({ of }) => of === null || !BASELINES.has(of)),
+    scores.filter(({ tier }) => tier === BUILT),
     ({ arm }) => arm,
   );
   const joined: { confirmed: boolean | null; verdict: Verdict }[] = [];
@@ -113,15 +141,16 @@ export function outsideLines(scores: readonly Score[], runs: readonly Run[], for
     const run =
       runs.find(({ promotions }) => promotions.some(promotes)) ?? runs.find(({ name }) => name === first?.of);
     const promotion = run?.promotions.find(promotes);
-    const usesBare = bareNames.has(`base-${arm}`);
-    const read = againstStarter(own, usesBare ? bare : starter);
+    const read = againstBaseline(arm, own, baselines);
     if (promotion !== undefined && read.verdict !== null) {
       joined.push({ confirmed: promotion.confirmed, verdict: read.verdict });
     }
-    const label = usesBare ? "bareSolver" : "Starter";
-    const spread = read.rollouts === 1 ? `, one ${label} rollout` : "";
+    const criteria = formatCriteria(own);
+    const solveUsd = own.reduce((sum, score) => sum + score.solveUsd, 0).toFixed(2);
+    const spread = read.rollouts === 1 && read.tier !== null ? `, one ${read.tier} rollout` : "";
     return [
       arm,
+      first?.runtime ?? MISSING,
       run?.pack ?? MISSING,
       promotion === undefined || run === undefined
         ? "no recorded promotion"
@@ -130,6 +159,9 @@ export function outsideLines(scores: readonly Score[], runs: readonly Run[], for
       promotion === undefined ? MISSING : confirmedWord(promotion.confirmed),
       `${String(read.tasks)}${read.cut > 0 ? ` (${String(read.cut)} cut)` : ""}`,
       `${String(read.points)}/${String(read.total)}`,
+      criteria === "?/?" ? MISSING : criteria,
+      solveUsd,
+      read.tier ?? MISSING,
       read.verdict === null ? MISSING : `${String(read.low)} to ${String(read.high)}`,
       read.verdict === null ? MISSING : `${read.verdict}${spread}`,
     ];
@@ -151,9 +183,9 @@ export function outsideLines(scores: readonly Score[], runs: readonly Run[], for
     printed(HEAD, rows, format),
     "",
     `Arms that name a promotion ${String(joined.length)}, by what the starter read of it: ${[true, false, null].map(counted).join("; ")}.`,
-    `The two readings agree on ${String(agree)} of ${String(joined.length)}: a promotion the starter confirmed that scores above the Starter's spread, or one it did not that does not.`,
-    "An arm is read on the tasks a Starter rollout also holds, against the lowest and highest sum among the Starter arms that hold them all; inside that spread is no reading, and one rollout a task reads a direction only. A deficit is a difference in conditions first (what the export carries and tells the solver, the interpreter, the day) and the harness only once those are equal.",
-    "A campaign climbs on its own comparisons alone: promotions that come faster while these rows stay inside or below the Starter's spread are fitted to those comparisons. A bench score promotes nothing, and no seat, prompt, check or query reads this table.",
+    `The two readings agree on ${String(agree)} of ${String(joined.length)}: a promotion the starter confirmed that scores above the baseline spread, or one it did not that does not.`,
+    "An arm is read on its tasks strictly against same-runtime delivered baseline rollouts of one solver tier (bareSolver or baseStarter) that hold them all; inside that spread is no reading, and one rollout a task reads a direction only. A deficit is a difference in conditions first (what the export carries and tells the solver, the interpreter, the day) and the harness only once those are equal.",
+    "A campaign climbs on its own comparisons alone: promotions that come faster while these rows stay inside or below the baseline spread are fitted to those comparisons. A bench score promotes nothing, and no seat, prompt, check or query reads this table.",
   ];
 }
 

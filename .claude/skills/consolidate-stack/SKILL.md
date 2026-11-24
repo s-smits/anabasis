@@ -37,10 +37,10 @@ Mark each member `keep` | `simplify` | `merge` | `rewrite` | `drop`; verify `mea
 Target 5–10 groups (`I0`/`I1` -> `I2` -> `I3`), enforcing three hard edges (overriding tier defaults when needed):
 - **Gates above judged sites**: violation fixes stay beneath the lint rule promoting them.
 - **Ledger rows (`tools/oxlint/not-slop.tsv`) above their rule**: rebuild reordered deltas via `formatLedger` (`tools/oxlint/not-slop-ledger.ts`) or `bun run not-slop -- prune`, holding rows until their rule arrives (`.gitattributes` `merge=union` silently creates stale rows without git conflicts).
-- **Exports with first external reader**: `tools/loc/source-policy.ts:unreadExports` fails intermediate commits exporting symbols across `AUTHORED_ROOTS` before an external caller exists.
+- **Exports with first external reader**: `bun run simplify -- --gate` (`tree/no-unused-export`) fails intermediate commits exporting symbols across `AUTHORED_ROOTS` before an external caller exists.
 
 Trial on `git worktree add --detach ../anabasis-regroup-trial origin/main`:
-- Cherry-pick groups in order; run `bun run typecheck && bun run lint -- --strict && bun tools/loc/source-policy.ts` at every group head.
+- Cherry-pick groups in order; run `bun run typecheck && bun run lint -- --strict && bun tools/loc/source-policy.ts && bun run simplify -- --gate` at every group head.
 - Require `git diff --quiet <new top> <published top>` for Mode A regroups.
 
 ## 5. Review, assemble & republish

@@ -39,7 +39,7 @@ Declare the pass type, compartment importance, and complexity budget (`python3 .
    - Diff outputs on step 2's real inputs (empty diff for refolds; only intended diffs for rewrites) and close any open triage findings on the final diff.
    - Scope `mutate.ts` by pass kind (`list` first to size the run; `run` refuses immediately if any suite fails unmutated; use `--only <ids>` on reruns after closing gaps):
      ```sh
-     bun .claude/skills/commit-r/scripts/mutate.ts list <copy> <files...>
+     bun .claude/skills/commit-r/scripts/mutate.ts list <copy> <files...> # or $(git diff --name-only <base> -- src)
      bun .claude/skills/commit-r/scripts/mutate.ts run <copy> <files...> --out <scratchpad>/kills.jsonl --suites <suites.json> --jobs 6 --stop-at-kill
      bun .claude/skills/commit-r/scripts/mutate.ts report <scratchpad>/kills.jsonl [--old old] [--survivors]
      ```

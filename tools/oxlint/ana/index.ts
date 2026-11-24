@@ -29,7 +29,6 @@ import { noThriceSpelledObjectRule } from "./rules/no-thrice-spelled-object.ts";
 import { noTransposedArgumentRule } from "./rules/no-transposed-argument.ts";
 import { preferConstConditionalRule } from "./rules/prefer-const-conditional.ts";
 import { preferFindOverLoopRule } from "./rules/prefer-find-over-loop.ts";
-import { requireDeclarationsFirstRule } from "./rules/require-declarations-first.ts";
 
 /**
  * Repository-owned custom lint rules (`ana/*`), registered at `error` in `.oxlintrc.json` and
@@ -69,7 +68,6 @@ const anaPlugin = eslintCompatPlugin({
     "no-thrice-spelled-object": noThriceSpelledObjectRule,
     "no-transposed-argument": noTransposedArgumentRule,
     "no-tangled-ternary": noTangledTernaryRule,
-    "require-declarations-first": requireDeclarationsFirstRule,
   },
 });
 

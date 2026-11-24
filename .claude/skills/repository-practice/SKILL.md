@@ -36,8 +36,8 @@ determine what the diff requires:
 - each area of `tools/runtime/moments.ts` touched by the diff and its associated obligation (rule 3
   wall tests for `seats`, historical replay for `measurement`, rehearsal for `campaign`, and
   cross-platform verification for `wall`);
-- source files exceeding 800 nonblank lines, functions exceeding 115 lines, or unused exports across
-  authored roots (`tools/loc/source-policy.ts`);
+- source files exceeding 800 nonblank lines or functions exceeding 115 lines
+  (`tools/loc/source-policy.ts`);
 - `AGENTS.md` section 13 prose findings in changed Markdown (`PROSE` in `scripts/preflight.ts`);
 - whether Git hooks are enabled, whether a paid run may launch from the current worktree
   (`treeFault`), and with `--stack`, where the branch sits on the open stack

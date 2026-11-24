@@ -1,7 +1,7 @@
 import type { RuleExample } from "./rule-examples.ts";
 import { existsSync, readFileSync } from "../../src/meta/filesystem.ts";
 import { dirname, join } from "../../src/meta/path.ts";
-import { AUTHORED_ROOTS, corpus, READ_AS_SOURCE, READER_ROOTS } from "../loc/source-policy.ts";
+import { AUTHORED_ROOTS, corpus } from "../loc/source-policy.ts";
 import {
   NOT_SLOP_LEDGER,
   type Place,
@@ -219,6 +219,18 @@ export const TREE_FINDING_EXAMPLES: Readonly<Record<TreeFindingKind, readonly Ru
 };
 
 const PARSABLE = /\.(?:ts|tsx|mts|mjs|js)$/u;
+const READER_ROOTS = [
+  "src",
+  "tools",
+  "vendor",
+  "starters",
+  "test",
+  "packages",
+  "scripts",
+  ".claude",
+  "studies",
+] as const;
+const READ_AS_SOURCE = [".ts", ".tsx", ".mts", ".mjs", ".js", ".py", ".json"];
 const OWNED_ROOTS = [...AUTHORED_ROOTS, ".claude"];
 const UNREAD = ["tools/oxlint/anti-slop/", "vendor/pi-claude-bridge/"];
 const PROSE_ROOTS = [...READER_ROOTS, "docs", ".github", ".codex", ".config", ".harness"];

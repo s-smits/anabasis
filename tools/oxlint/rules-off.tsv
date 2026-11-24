@@ -34,13 +34,13 @@ eslint/no-ternary	*	3787	off	A conditional expression is the tree's form for a v
 eslint/no-undefined	*	1748	off	`undefined` is the value of an absent optional property under `exactOptionalPropertyTypes`, so the tree has to name it.
 eslint/no-use-before-define	*	296	off	Its sites call a module's helper declared below its caller, which runs only once the module has loaded; the tree puts a module's entry first (34 sites remain with functions false).
 eslint/prefer-destructuring	*	100	off	Its sites take one property or one index, where `const { x } = o` reads no better than `const x = o.x`.
-eslint/prefer-named-capture-group	*	254	staged	Staged: an unnamed group used only to group becomes `(?:...)` and one read by index gets a name, which wants each pattern read.
+eslint/prefer-named-capture-group	*	254	off	Deferred: an unnamed group used only to group becomes `(?:...)` and one read by index gets a name, which wants each pattern read.
 eslint/prefer-promise-reject-errors	*	0	off	`typescript/prefer-promise-reject-errors`, which is on, checks the same calls with types.
 eslint/require-await	*	145	off	Its sites are `async` functions an interface requires to return a promise (tool handlers, scripted seats), where dropping `async` would turn a rejection into a synchronous throw.
-eslint/require-unicode-regexp	*	261	staged	Staged: the `u` flag changes which escapes a pattern may use, so each of its sites wants reading before the flag goes on.
-eslint/sort-imports	*	484	staged	Staged at 484 sites with ignoreDeclarationSort (2160 without), the names inside each import's braces out of order: one mechanical pass of its own.
+eslint/require-unicode-regexp	*	261	off	Deferred: the `u` flag changes which escapes a pattern may use, so each of its sites wants reading before the flag goes on.
+eslint/sort-imports	*	484	off	Deferred at 484 sites with ignoreDeclarationSort (2160 without), the names inside each import's braces out of order: one mechanical pass of its own.
 eslint/sort-keys	*	5340	off	Object keys follow the order a reader or a log line needs, an event's kind before its data, which alphabetical order would scramble.
-import/consistent-type-specifier-style	*	485	staged	Staged at 485 sites for prefer-inline (836 for prefer-top-level): both forms are in use, and one form is a mechanical pass of its own.
+import/consistent-type-specifier-style	*	485	off	Deferred at 485 sites for prefer-inline (836 for prefer-top-level): both forms are in use, and one form is a mechanical pass of its own.
 import/exports-last	*	1056	off	Each declaration is exported where it is defined, with the module's entry first, which a block of exports at the end would part from its code.
 import/group-exports	*	1593	off	Each declaration is exported where it is defined, which one grouped export statement would part from its code.
 import/max-dependencies	*	125	off	A file's import count is not a measure the tree enforces; cohesion governs module boundaries.
@@ -67,9 +67,9 @@ promise/prefer-catch	*	3	off	`.then(a, b)` does not pass a throw in `a` to `b` a
 typescript/await-thenable	test/**	118	off	bun-types declares `expect(...).rejects` and `.resolves` without a `then`, though a test awaits both, so every awaited matcher would be reported.
 typescript/ban-types	*	0	off	`typescript/no-empty-object-type`, `no-unsafe-function-type` and `no-wrapper-object-types`, which are on, replace it.
 typescript/consistent-return	*	2	off	Its two sites return a call typed `never` or end an exhaustive `switch`, which the typecheck reads as complete and the rule does not.
-typescript/explicit-function-return-type	*	1494	off	Return types are inferred inside a module; `typescript/explicit-module-boundary-types`, staged, is the rule for exported functions.
+typescript/explicit-function-return-type	*	1494	off	Return types are inferred inside a module; `typescript/explicit-module-boundary-types`, deferred, is the rule for exported functions.
 typescript/explicit-member-accessibility	*	65	off	Classes hide members with `#private`, and a `public` keyword on the rest says nothing.
-typescript/explicit-module-boundary-types	*	212	staged	Staged: each exported function without a declared return type wants its type read and written, a pass of its own.
+typescript/explicit-module-boundary-types	*	212	off	Deferred: each exported function without a declared return type wants its type read and written, a pass of its own.
 typescript/no-confusing-void-expression	*	321	off	Its sites return a void call from a void arrow (`() => set(x)`), the tree's short form for a handler.
 typescript/no-dynamic-delete	*	2	off	Its two sites delete an environment variable or a record entry by a name known only at run time, which is the operation.
 typescript/no-empty-interface	*	0	off	`typescript/no-empty-object-type`, which is on, replaces it.
@@ -83,7 +83,7 @@ typescript/prefer-ts-expect-error	*	0	off	`typescript/ban-ts-comment`, which is 
 typescript/promise-function-async	*	134	off	Its sites return a promise from a plain function on purpose, so that a throw before the promise stays synchronous.
 typescript/require-await	*	119	off	Its sites are `async` functions an interface requires to return a promise, where dropping `async` would turn a rejection into a synchronous throw.
 typescript/strict-void-return	*	20	off	Its sites pass a function that returns a value where a `void` callback is expected (`onData: (data) => chunks.push(data)`), which TypeScript allows on purpose.
-unicorn/consistent-function-scoping	*	177	staged	Staged: each closure that captures nothing moves to module scope, which wants a name and a place read for each.
+unicorn/consistent-function-scoping	*	177	off	Deferred: each closure that captures nothing moves to module scope, which wants a name and a place read for each.
 unicorn/custom-error-definition	*	17	off	It asks each error class to take a message alone and name itself after its class, where the tree's errors carry typed fields such as `Cancellation.cancelledBy`, and some set the `name` a log reads.
 unicorn/max-nested-calls	*	225	off	Its sites nest path and JSON helpers such as `asRecord(capturedJsonParse(readFileSync(...)))`, where a name for each step would be read once, in the next line.
 unicorn/no-array-callback-reference	*	207	off	Its sites pass a named function whose parameters are known (`map(String)`, `filter(isString)`), where a wrapping arrow adds nothing.

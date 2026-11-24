@@ -144,7 +144,7 @@ const ROUTES: readonly Route[] = [
   {
     id: "lint",
     path: /(^|\/)(tools\/oxlint\/|\.oxlintrc\.json$)/u,
-    said: "Lint rules (`tools/oxlint/HABITS.md` §12.13): register in `tools/oxlint/plugins.ts` and `.oxlintrc.json` (or `staged-rules.json`), include `meta.docs.examples`, state `no fix` when report-only, update `FIXER-DECISIONS.md`, and verify with `test/lint-registry.test.ts` and `test/rule-examples.test.ts`.",
+    said: "Lint rules (`tools/oxlint/HABITS.md` §12.13): register in `tools/oxlint/plugins.ts` and `.oxlintrc.json`, include `meta.docs.examples`, state `no fix` when report-only, update `FIXER-DECISIONS.md`, and verify with `test/lint-registry.test.ts` and `test/rule-examples.test.ts`.",
     skill: "simplify",
   },
   {

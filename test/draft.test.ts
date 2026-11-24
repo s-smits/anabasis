@@ -22,7 +22,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
-import { asRecord, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
+import { asRecord, isString, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
@@ -839,5 +839,39 @@ describe.concurrent("campaign draft lifecycle", () => {
     expect(replayCalls[1]?.prior).toEqual([]);
     expect(replayCalls[1]?.verifiedFixed?.[0]).toContain("hole1 passed");
     expect(draftOf(read(campaignLog(replayName)))).toEqual(SOUND);
+
+    const deletedName = `${STEM}-audit-deleted-example`;
+    const fourExamples: Draft = {
+      ...holeOne,
+      tasks: [...holeOne.tasks, { family: "product", publicInput: { base: 5 }, hidden: null }],
+      accept: [...holeOne.accept, { task: 3, answer: { answer: "30" } }],
+    };
+    const probeFour = { ...probeRow("hole1"), task: "ex-004" };
+    let deletedAuditCalls = 0;
+    const deletedRun = await draftCommand(
+      [...opened(deletedName, false, { model: SOLVER, effort: "low" }), "--session", "d-1", "--tries", "3"],
+      putting(fourExamples, holeOne, SOUND),
+      async () => {
+        deletedAuditCalls += 1;
+        return {
+          verdict: "defects",
+          findings: [{ kind: "vacuous-pass", task: "ex-004", probe: 1, reason: "hole1 passed on ex-004" }],
+          summary: "vacuous on ex-004",
+          probes: [probeFour],
+        };
+      },
+    );
+    expect(deletedRun).toMatchObject({ ended: "finished", puts: 3 });
+    expect(deletedAuditCalls).toBe(1);
+    expect(draftOf(read(campaignLog(deletedName)))).toBeNull();
+    const deletedLog = read(campaignLog(deletedName));
+    expect(
+      deletedLog.some(
+        ({ kind, data }) =>
+          kind === "draft.call" &&
+          isString(data.text) &&
+          data.text.includes("example task ex-004 is missing"),
+      ),
+    ).toBe(true);
   });
 });

@@ -12,6 +12,7 @@ import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
 import { ending, text, tool } from "../tools/answer.ts";
 import { conclusive, type DraftProbeRow, executeProbe, FILE, fileTexts, probeExamplesTool } from "./probe.ts";
 import {
+  boundJsonPreview,
   boundPublicInput,
   checkProgramTool,
   type Reader,
@@ -142,6 +143,7 @@ function refusal(
 function packet(
   target: DraftAuditCase,
   examples: readonly { readonly task: Task; readonly control: Control }[],
+  caseFiles: Map<string, string>,
 ): string {
   const deliverables = (files: readonly AnswerFile[] | undefined): string[] => {
     const texts = fileTexts(files ?? []);
@@ -176,15 +178,18 @@ function packet(
       [
         `- ${task.taskId} (family ${task.family})`,
         `  publicInput: ${capturedJsonStringify(boundPublicInput(task.publicInput))}`,
-        `  hidden: ${capturedJsonStringify(task.hidden)}`,
-        `  accept control: ${capturedJsonStringify(control.answer)}`,
+        `  hidden: ${boundJsonPreview(task.hidden, `${task.taskId}/case:hidden.json`, caseFiles)}`,
+        `  accept control: ${boundJsonPreview(control.answer, `${task.taskId}/case:answer.json`, caseFiles)}`,
         ...deliverables(control.files),
       ].join("\n"),
     ),
   ].join("\n\n");
 }
 
-function exampleReadTools(examples: readonly { readonly task: Task; readonly control: Control }[]) {
+function exampleReadTools(
+  examples: readonly { readonly task: Task; readonly control: Control }[],
+  caseFiles: ReadonlyMap<string, string>,
+) {
   const deliverables = new Map<string, string>(
     examples.flatMap(({ task, control }) =>
       [...fileTexts(control.files ?? [])].map(
@@ -192,11 +197,12 @@ function exampleReadTools(examples: readonly { readonly task: Task; readonly con
       ),
     ),
   );
-  const taskFiles = new Map<string, string>(
-    examples.flatMap(({ task }) =>
+  const taskFiles = new Map<string, string>([
+    ...examples.flatMap(({ task }) =>
       [...taskFileTexts(task.publicInput)].map(([path, body]) => [`${task.taskId}/${path}`, body] as const),
     ),
-  );
+    ...caseFiles,
+  ]);
   const firstId = examples[0]?.task.taskId ?? "ex-001";
   return [
     ...(deliverables.size === 0
@@ -215,7 +221,7 @@ function exampleReadTools(examples: readonly { readonly task: Task; readonly con
       : [
           readTool(
             "read_task_file",
-            "the full texts of example task input files (`<taskId>/<path>`)",
+            "the full texts of example task input files (`<taskId>/<path>`) and any oversized case JSONs (`<taskId>/case:*`)",
             [...taskFiles.keys()][0] ?? `${firstId}/data.csv`,
             () => [...taskFiles.keys()],
             (path) => taskFiles.get(path) ?? "",
@@ -276,12 +282,14 @@ export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promi
     PROBE_BUDGET,
   );
   const pass = target.pass ?? 1;
+  const caseFiles = new Map<string, string>();
+  const opening = packet(target, examples, caseFiles);
   const meter = await runRefereeSession({
     id: `draft-${target.session}-${String(pass)}`,
     reader,
     system: SYSTEM_PROMPT,
-    opening: packet(target, examples),
-    tools: [checkProgramTool(target.checks), ...exampleReadTools(examples), probe, record],
+    opening,
+    tools: [checkProgramTool(target.checks), ...exampleReadTools(examples, caseFiles), probe, record],
     log: target.log,
     over: () => recorded.length > 0,
     most: TURN_LIMIT,
@@ -355,8 +363,14 @@ export async function replayDraftProbes(
     const row = byProbe.get(finding.probe);
     const task = byTask.get(finding.task);
     const control = controls.get(finding.task);
-    if (row === undefined || task === undefined || control === undefined) {
+    if (row === undefined) {
       unverified.push(formatted);
+      continue;
+    }
+    if (task === undefined || control === undefined) {
+      stillBroken.push(
+        `${formatted} (example task ${finding.task} is missing from this revision, so the prior defect probe could not be verified fixed)`,
+      );
       continue;
     }
     const rawChanges = row.changes.map(({ path, value, edit }) => ({

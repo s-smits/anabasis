@@ -14,7 +14,7 @@ import { append, read } from "../src/kernel/log.ts";
 import type { Task, Verifier } from "../src/kernel/verify.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
-import { keysIf } from "../src/meta/optional-key.ts";
+import { keyIfDefined, keysIf } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { type ProbeRow, probeTool } from "../src/referee/probe.ts";
@@ -383,5 +383,173 @@ describe("publicInput.files bounding in Referee", () => {
     expect(s.results[0]).toContain("big/input.csv");
     expect(s.results[0]).toContain("extra/table_9.csv");
     expect(s.results[1]).toContain(tailMarker);
+  });
+
+  it("bounds oversized hidden, answer, and accepted answer JSONs inline and serves full text via read_task_file", async () => {
+    const hiddenTail = "HIDDEN_TAIL_999";
+    const answerTail = "ANSWER_TAIL_888";
+    const acceptedTail = "ACCEPTED_TAIL_777";
+    const bigHidden = { blob: `${"h".repeat(25_000)}${hiddenTail}` };
+    const bigAnswer = { span: 12, blob: `${"a".repeat(25_000)}${answerTail}` };
+    const bigAccepted = { span: 9, blob: `${"c".repeat(25_000)}${acceptedTail}` };
+    const log = join(scratch, `reading-json-${String(++readings)}.jsonl`);
+    append(log, "task.proposed", { version: "v-big", taskId: "t-json" });
+    append(log, "verdict", { solve: "s-ok", task: "t-json", answer: bigAccepted, kind: "pass" });
+    append(log, "verdict", {
+      solve: "s-bad",
+      task: "t-json",
+      answer: bigAnswer,
+      kind: "fail",
+      blocking: ["span"],
+    });
+    const sent: TranscriptContext[] = [];
+    const faux = fauxProvider({
+      models: [
+        {
+          id: "faux-json",
+          contextWindow: 200_000,
+          cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+        },
+      ],
+    });
+    const responses = [
+      call("read_task_file", {}),
+      call("read_task_file", { path: "case:hidden.json", from: 20_000 }),
+      call("read_task_file", { path: "case:answer.json", from: 20_000 }),
+      call("read_task_file", { path: "case:accepted-answer.json", from: 20_000 }),
+      ruling({ ruling: "unclear", reason: "Read oversized JSONs.", probes: [] }),
+    ];
+    faux.setResponses(
+      responses.map((message) => (context: TranscriptContext) => {
+        sent.push(structuredClone(context));
+        return message;
+      }),
+    );
+    const models = createModels();
+    models.setProvider(faux.provider);
+    let sawHiddenLen = 0;
+    let sawAnswerLen = 0;
+    const finding = await referee(
+      { model: faux.getModel(), effort: "medium", models: () => models },
+      {
+        solve: "s-bad",
+        task: { taskId: "t-json", family: "ledger", publicInput: { summary: false }, hidden: bigHidden },
+        contract: CONTRACT,
+        checks,
+        log,
+        verify: async (asked, answer, signal, files) => {
+          sawHiddenLen = JSON.stringify(asked.hidden).length;
+          sawAnswerLen = JSON.stringify(answer).length;
+          return verify(asked, answer, signal, files);
+        },
+      },
+    );
+    const opening = JSON.stringify(sent[0]);
+    const results = (sent.at(-1)?.messages ?? []).flatMap((message) =>
+      message.role === "toolResult"
+        ? [message.content.map((part) => (part.type === "text" ? part.text : "")).join("")]
+        : [],
+    );
+    expect(finding.ruling).toBe("unclear");
+    expect(opening).toContain("case:hidden.json");
+    expect(opening).toContain("case:answer.json");
+    expect(opening).toContain("case:accepted-answer.json");
+    expect(opening).not.toContain(hiddenTail);
+    expect(opening).not.toContain(answerTail);
+    expect(opening).not.toContain(acceptedTail);
+    expect(results[0]).toBe("case:hidden.json\ncase:answer.json\ncase:accepted-answer.json");
+    expect(results[1]).toContain(hiddenTail);
+    expect(results[2]).toContain(answerTail);
+    expect(results[3]).toContain(acceptedTail);
+    expect(sawHiddenLen).toBeGreaterThan(25_000);
+    expect(sawAnswerLen).toBeGreaterThan(25_000);
+  });
+
+  it("reuses prior aside rulings within the same comparison at zero model calls without crossing comparisons or practice", async () => {
+    const log = join(scratch, `reading-reuse-${String(++readings)}.jsonl`);
+    const task: Task = { taskId: "t-reuse", family: "ledger", publicInput: { summary: false }, hidden: {} };
+    const recordSolve = (solve: string, comparison: string | undefined, blocking: readonly string[]) => {
+      append(log, "solve.started", {
+        solve,
+        condition: "c-1",
+        ...keyIfDefined("comparison", comparison),
+      });
+      append(log, "verdict", {
+        solve,
+        task: task.taskId,
+        answer: { span: blocking.includes("span") ? 12 : 9 },
+        kind: "fail",
+        blocking: [...blocking],
+      });
+    };
+    recordSolve("s-1", "g-1", ["span"]);
+    append(log, "referee.finding", {
+      solve: "s-1",
+      task: task.taskId,
+      ruling: "check-defect",
+      check: "span",
+      rule: null,
+      field: null,
+      reason: "check over-strict",
+      probes: [1],
+    });
+    recordSolve("s-2", "g-1", ["span"]);
+    recordSolve("s-3", "g-1", ["rows"]);
+    recordSolve("s-4", "g-2", ["span"]);
+    recordSolve("s-5", undefined, ["span"]);
+
+    let llmCalls = 0;
+    const faux = fauxProvider({
+      models: [
+        {
+          id: "faux-reuse",
+          contextWindow: 200_000,
+          cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+        },
+      ],
+    });
+    faux.setResponses([
+      () => {
+        llmCalls += 1;
+        return ruling({ ruling: "unclear", reason: "Fresh comparison.", probes: [] });
+      },
+      () => {
+        llmCalls += 1;
+        return ruling({ ruling: "unclear", reason: "Practice solve.", probes: [] });
+      },
+    ]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const reader = { model: faux.getModel(), effort: "medium" as const, models: () => models };
+    const run = (solve: string, blocking: readonly string[]) =>
+      referee(reader, {
+        solve,
+        task,
+        contract: CONTRACT,
+        checks,
+        log,
+        verify: async () => ({ kind: "fail", blocking: [...blocking] }),
+      });
+
+    const sameCheck = await run("s-2", ["span"]);
+    expect(sameCheck).toMatchObject({ ruling: "check-defect", check: "span", probes: [] });
+    expect(llmCalls).toBe(0);
+
+    const otherCheck = await run("s-3", ["rows"]);
+    expect(otherCheck).toMatchObject({ ruling: "unclear", check: null, probes: [] });
+    expect(llmCalls).toBe(0);
+
+    const nextComp = await run("s-4", ["span"]);
+    expect(nextComp.ruling).toBe("unclear");
+    expect(llmCalls).toBe(1);
+
+    const practice = await run("s-5", ["span"]);
+    expect(practice.ruling).toBe("unclear");
+    expect(llmCalls).toBe(2);
+
+    const findings = read(log).filter(({ kind }) => kind === "referee.finding");
+    expect(findings.find(({ data }) => data.solve === "s-2")?.data.reader).toBeUndefined();
+    expect(findings.find(({ data }) => data.solve === "s-3")?.data.reader).toBeUndefined();
+    expect(findings.find(({ data }) => data.solve === "s-4")?.data.reader).toBeString();
   });
 });

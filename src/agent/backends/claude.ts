@@ -563,10 +563,37 @@ function emptyUsage(): Usage {
   };
 }
 
+const UNIT_MS = new Map([
+  ["ms", 1],
+  ["s", 1000],
+  ["m", 60_000],
+  ["h", 3_600_000],
+  ["d", 86_400_000],
+]);
+
+function delayOf(said: string, now: Date): Date | null {
+  const seconds = /\b(?:resets_in_seconds|retry-after)"?\s*[:=]\s*(\d+)/i.exec(said)?.[1];
+  if (seconds !== undefined) return new Date(now.getTime() + Number(seconds) * 1000);
+  const phrase = /\btry again in\s+((?:\d+(?:\.\d+)?\s*[a-z]+[\s,]*(?:and\s+)?)+)/i.exec(said)?.[1];
+  if (phrase === undefined) return null;
+  let ms = 0;
+  for (const [, amount = "", word = ""] of phrase.matchAll(/(\d+(?:\.\d+)?)\s*([a-z]+)/gi)) {
+    const lower = word.toLowerCase();
+    const unit = UNIT_MS.get(
+      lower === "ms" || lower.startsWith("mil") ? "ms" : lower.startsWith("mi") ? "m" : (lower[0] ?? ""),
+    );
+    if (unit === undefined) return null;
+    ms += Number(amount) * unit;
+  }
+  return new Date(now.getTime() + Math.ceil(ms));
+}
+
 export function resetOf(said: string, now: Date): Date | null {
-  if (!/\blimit\b/i.test(said)) return null;
-  const unix = /limit reached\|(\d{10})\b/i.exec(said)?.[1];
+  if (!/(?:\b|_)limit(?:\b|_)/i.test(said)) return null;
+  const unix = /(?:limit reached\||\bresets_at"?\s*[:=]\s*)(\d{10})\b/i.exec(said)?.[1];
   if (unix !== undefined) return new Date(Number(unix) * 1000);
+  const delayed = delayOf(said, now);
+  if (delayed !== null) return delayed;
   const clock =
     /\breset[s]?\b\D{0,24}?(?:\b([a-z]{3})[a-z]*\s+(\d{1,2}),?\s+(?:at\s+)?)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:\(([A-Za-z_]+(?:\/[A-Za-z_+-]+)+)\))?/i.exec(
       said,

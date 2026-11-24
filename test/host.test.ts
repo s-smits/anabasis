@@ -443,9 +443,33 @@ describe("the provider's named reset", () => {
     expect(zoned("weekly limit · resets Oct 27 at 9pm (Europe/Amsterdam)", "2026-10-22T10:00:00Z")).toBe(
       "2026-10-27T20:00:00.000Z",
     );
-    for (const message of ["You've hit your limit", "socket hang up", "limit · resets 3pm (Mars/Olympus)"]) {
+    for (const message of [
+      "You've hit your limit",
+      "socket hang up",
+      "limit · resets 3pm (Mars/Olympus)",
+      "Rate limit reached. Please try again in 3 fortnights.",
+      "Please try again in 20s.",
+    ]) {
       expect(resetOf(message, NOW)).toBeNull();
     }
+  });
+
+  it("is read from the delay an OpenAI or Codex limit names, whatever its units", () => {
+    const after = (ms: number) => new Date(NOW.getTime() + ms).toISOString();
+    for (const [message, ms] of [
+      ["Rate limit reached for gpt-6.1-sol. Please try again in 6.2s.", 6200],
+      ["Rate limit reached. Please try again in 1h2m3.5s.", 3_723_500],
+      ["Rate limit reached. Please try again in 120ms.", 120],
+      ["You've hit your usage limit. Try again in 2 days 3 hours.", 183_600_000],
+      ["usage limit: try again in 4 minutes and 30 seconds", 270_000],
+      ['{"type":"usage_limit_reached","resets_in_seconds":5400}', 5_400_000],
+      ["429 rate limit exceeded; Retry-After: 30", 30_000],
+    ] as const) {
+      expect(resetOf(message, NOW)?.toISOString()).toBe(after(ms));
+    }
+    expect(resetOf('{"type":"usage_limit_reached","resets_at":1791811800}', NOW)?.toISOString()).toBe(
+      "2026-10-12T13:30:00.000Z",
+    );
   });
 
   it("is waited out to a minute past it and on record, however far on, from what a move threw", async () => {

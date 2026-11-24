@@ -49,6 +49,7 @@ export interface Plan {
   readonly wait: boolean;
   /** Which solver runtime rolls the arm: exported Claude Code (`claude`, default) or native `pi`. */
   readonly runtime?: "claude" | "pi";
+  readonly baseline?: "base" | "starter";
 }
 
 /** Options governing duplicate-export detection in `heldAs`. */
@@ -115,18 +116,18 @@ export function opened(trees: string, label: string): string {
 export function stepsOf(plan: Plan): Step[] {
   const { run, label, login, holder, runner, sitting } = plan;
   const prefix = plan.runtime === "pi" ? "pi:" : "";
-  const starter = `starter-${label}`;
+  const baselineKind = plan.baseline ?? "base";
+  const baselineLabel = `${baselineKind}-${label}`;
   const stage = `"\${TMPDIR:-/tmp}"/${quoted(`ana-outside-read-${label}`)}`;
   const on = (says: string, script: string): Step => ({ says, command: shellOn(runner, script) });
   const piped = (host: Host | undefined, script: string) => shellOn(host, script).map(quoted).join(" ");
   const reference = `${sitting} run ${quoted(login)} ${quoted(label)} --arm ${quoted(`${prefix}${run}`)} --harness ${quoted(plan.harness)}`;
-  const bare = `${sitting} run ${quoted(login)} ${quoted(starter)} --arm ${quoted(`${prefix}starter`)}`;
+  const bare = `${sitting} run ${quoted(login)} ${quoted(baselineLabel)} --arm ${quoted(`${prefix}${baselineKind}`)}`;
   const idle = `${sitting} status | head -n 1 | grep -qx idle`;
   const rolled = `${plan.store}/rolled-${label}.log`;
   const exported: Step[] = [
     {
       says: `export ${label} for ${plan.place} on ${holder?.name ?? "this machine"}`,
-      // Remove any leftover staging directory from an interrupted export before writing a fresh tree.
       command: shellOn(
         holder,
         `rm -rf ${stage} && cd ${shellPath(plan.tree)} && ${plan.bun} studies/harness2/score.ts tree --arm ${quoted(`${prefix}${run}`)} --harness ${quoted(plan.harness)} --name ${quoted(label)} --out ${stage} --for ${quoted(plan.place)} --python ${quoted(plan.python)}`,
@@ -151,11 +152,9 @@ export function stepsOf(plan: Plan): Step[] {
         ),
     ...(plan.held === null ? exported : []),
     on(`dry run of ${label}`, `${reference} --dry-run`),
-    on(`dry run of ${starter}`, `${bare} --dry-run`),
-    // Launch both arms sequentially in a detached background process so the Starter arm runs
-    // immediately after the reference arm releases the sitting lock, logging output beside the store.
+    on(`dry run of ${baselineLabel}`, `${bare} --dry-run`),
     on(
-      `roll ${label}, then ${starter}, on login ${login}`,
+      `roll ${label}, then ${baselineLabel}, on login ${login}`,
       `nohup sh -c ${quoted(`${reference} --yes && ${bare} --yes`)} >> ${rolled} 2>&1 < /dev/null & echo "rolling in process $!, which writes ${rolled}; the sitting's status names the arm"`,
     ),
   ];
@@ -270,8 +269,20 @@ async function exporterOf(run: string): Promise<Pick<Plan, "holder" | "tree" | "
 /** Resolves a complete `Plan` for `run`, or returns null if the harness is already evaluated under another label. */
 async function planOf(
   run: string,
-  values: { as?: string; bench?: string; harness?: string; login?: string; pi: boolean; wait: boolean },
+  values: {
+    as?: string;
+    baseline?: string;
+    bench?: string;
+    harness?: string;
+    login?: string;
+    pi: boolean;
+    wait: boolean;
+  },
 ): Promise<Plan | null> {
+  if (values.baseline !== undefined && values.baseline !== "base" && values.baseline !== "starter") {
+    throw new Misused("--baseline takes base or starter");
+  }
+  const baseline = values.baseline ?? "base";
   const env = runtimeProcess.env;
   const settings = settingsOf(run, env, values.bench);
   const harness = values.harness ?? promoted(logEvents(readNamed(run).path));
@@ -323,16 +334,17 @@ async function planOf(
     held,
     wait: values.wait,
     runtime: values.pi ? "pi" : "claude",
+    baseline,
   };
 }
 
-/** Entry point for `bun run runs bench`. */
 export async function bench(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],
     allowPositionals: true,
     options: {
       as: { type: "string" },
+      baseline: { type: "string" },
       bench: { type: "string" },
       host: { type: "string" },
       store: { type: "string" },
@@ -356,8 +368,9 @@ export async function bench(args: readonly string[]): Promise<void> {
   const plan = await planOf(run, values);
   if (plan === null) return;
   const { label, held } = plan;
+  const baselineKind = plan.baseline ?? "base";
   console.log(
-    `${run} read outside on ${plan.bench} as ${label} and starter-${label}, on login ${plan.login}, for ${plan.place} (python3 ${plan.python})${held === null ? "" : `; the store holds ${label} already, rolled as it stands`}`,
+    `${run} read outside on ${plan.bench} as ${label} and ${baselineKind}-${label}, on login ${plan.login}, for ${plan.place} (python3 ${plan.python})${held === null ? "" : `; the store holds ${label} already, rolled as it stands`}`,
   );
   const steps = stepsOf(plan);
   if (!values.yes) {

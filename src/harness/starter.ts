@@ -196,8 +196,12 @@ export function portableGuide(guide: string): string {
   return match === null ? guide : guide.slice(0, match.index);
 }
 
-export function writeStarter(dir: string): void {
+export function writeBare(dir: string): void {
   mkdirSync(join(dir, AGENT_DIR), { recursive: true });
   writeFileSync(join(dir, TOOLS_SPEC_FILE), `${capturedJsonStringify(STARTER.spec, null, 2)}\n`);
+}
+
+export function writeStarter(dir: string): void {
+  writeBare(dir);
   writeFileSync(join(dir, AGENT_DIR, GUIDE_FILE), STARTER.guide);
 }

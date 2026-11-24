@@ -129,7 +129,7 @@ studies/harness2/h2/tree.ts	20
 studies/harness2/jobbench.ts	19
 studies/harness2/levels.ts	20
 studies/harness2/run.ts	18
-studies/harness2/score.ts	39
+studies/harness2/score.ts	38
 studies/shared/atif.ts	6
 studies/shared/bundle.ts	17
 studies/shared/claude-export.ts	17
@@ -285,7 +285,6 @@ test/walled-env-conformance.test.ts	4
 test/walled-env.test.ts	2
 test/word.test.ts	13
 test/wri-backtrack.test.ts	8
-test/wri-domains-regressions.test.ts	8
 test/wri-examiner-view.test.ts	2
 test/wri-lane-guard.test.ts	10
 test/wri-readers.test.ts	17
@@ -405,9 +404,7 @@ tools/oxlint/tree-second-reader.ts	2
 tools/oxlint/tree-stale-reference.ts	8
 tools/oxlint/tree-state-role.ts	2
 tools/runs/alerts.ts	34
-tools/runs/bench-scores.ts	3
-tools/runs/bench-store.ts	12
-tools/runs/bench.ts	30
+tools/runs/bench.ts	26
 tools/runs/cli.ts	23
 tools/runs/code.ts	17
 tools/runs/degradations.ts	6
@@ -475,7 +472,6 @@ tools/wri/continuity.ts	3
 tools/wri/deliverables.ts	7
 tools/wri/derive.ts	40
 tools/wri/diagnostics.ts	7
-tools/wri/domains.ts	12
 tools/wri/drafted.ts	4
 tools/wri/embed.ts	13
 tools/wri/epoch-spend.ts	3
@@ -505,7 +501,6 @@ tools/wri/public-exam.ts	3
 tools/wri/rank-lanes.ts	11
 tools/wri/read.ts	43
 tools/wri/record.ts	7
-tools/wri/regressions.ts	16
 tools/wri/rejections.ts	9
 tools/wri/restated.ts	5
 tools/wri/run.ts	10
@@ -516,4 +511,4 @@ tools/wri/tasks.ts	11
 tools/wri/time.ts	13
 tools/wri/trajectory.ts	25
 tools/wri/transfer.ts	8
-tools/wri/wri.ts	46
+tools/wri/wri.ts	40

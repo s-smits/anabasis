@@ -35,7 +35,7 @@ import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { foreignPrograms, placeOf } from "#src/harness/place.ts";
-import { writeStarter } from "#src/harness/starter.ts";
+import { writeBare, writeStarter } from "#src/harness/starter.ts";
 import { keptAs, PROMOTED } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 
@@ -76,16 +76,19 @@ interface Source {
 }
 
 /** The source an arm's `--from` and `--harness` name. */
-export function sourceNamed(from: string, harness: string | undefined): "starter" | Source {
-  if (from !== "starter") return harness === undefined ? { campaign: from } : { campaign: from, harness };
-  if (harness === undefined) return "starter";
-  throw new Error("--harness names a campaign's kept harness; the starter is one harness");
+export function sourceNamed(from: string, harness: string | undefined): "base" | "starter" | Source {
+  if (from !== "starter" && from !== "base") {
+    return harness === undefined ? { campaign: from } : { campaign: from, harness };
+  }
+  if (harness === undefined) return from;
+  throw new Error(`--harness names a campaign's kept harness; ${from} is one harness`);
 }
 
 /** The harness folder `dir`, written from `source`. Returns what the mount records of it. */
-export async function placeHarness(dir: string, source: "starter" | Source): Promise<Origin> {
-  if (source === "starter") {
-    writeStarter(dir);
+export async function placeHarness(dir: string, source: "base" | "starter" | Source): Promise<Origin> {
+  if (source === "base" || source === "starter") {
+    if (source === "base") writeBare(dir);
+    else writeStarter(dir);
     return { campaign: null, ending: null, confirmed: null };
   }
   const asked = source.harness ?? PROMOTED;
@@ -126,7 +129,7 @@ export async function placeHarness(dir: string, source: "starter" | Source): Pro
  *  harness opens as and where it came from. */
 export async function bundleArm(
   into: string,
-  source: "starter" | Source,
+  source: "base" | "starter" | Source,
 ): Promise<{ digest: string; origin: Origin }> {
   if (existsSync(into)) throw new Error(`${into} is there already; an arm's mount is made once`);
   // Built beside its place and renamed into it whole, so a failure leaves no half-made mount that

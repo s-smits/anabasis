@@ -56,13 +56,19 @@ interface RemoteRun {
 
 type Depth = "record" | "whole";
 
-/** Of a benchmark's trees, only the toolchain `bin` folder (`levels` reads exported program names). */
+/** Of a benchmark's trees, only `export.json` and toolchain `bin` folders (`levels` reads program names). */
 const PROGRAMS_ONLY = [
   "--include=/trees/",
   "--include=/trees/*/",
+  "--include=/trees/*/export.json",
   "--include=/trees/*/scripts/",
   "--include=/trees/*/scripts/toolchain/",
   "--include=/trees/*/scripts/toolchain/bin/***",
+  "--include=/trees/*/harness/",
+  "--include=/trees/*/harness/.toolchain/",
+  "--include=/trees/*/harness/.toolchain/bin/***",
+  "--include=/trees/*/harness/.toolchain/*/",
+  "--include=/trees/*/harness/.toolchain/*/bin/***",
   "--exclude=/trees/**",
 ];
 export const PRIVATE_NAMES = [".env", ".env.*", "*.env", CODEX_AUTH];

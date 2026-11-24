@@ -383,6 +383,11 @@ async function exportedArm(
   const into = join(out, "trees", name);
   if (!existsSync(into)) await exportPiTree(into, source, place);
   const record = readJson(join(into, "export.json"));
+  if (field(record, "mode") !== "pi") {
+    throw new Error(
+      `${into} is not a native pi tree (mode=${text(field(record, "mode")) || "claude"}); choose another --name`,
+    );
+  }
   const digest = field(record, "harness") ?? (await openHarness(join(into, HARNESS_DIR))).digest;
   const toolchain =
     isRecord(record) && "toolchain" in record ? field(record, "toolchain") : join(HARNESS_DIR, TOOL_TREE_DIR);
@@ -460,7 +465,9 @@ async function armOf(values: Values, out: string, baseHarness: string, place = H
   }
   if (arm === "") throw new Error("name --arm");
   if (!arm.startsWith(PI)) {
-    throw new Error(`Anabasis arms run natively on pi-durable: pass --arm pi:${arm}`);
+    throw new Error(
+      `unknown or legacy --arm '${arm}'; Anabasis arms run natively as --arm pi:<base|starter|campaign>`,
+    );
   }
   return await exportedArm(name, arm.slice(PI.length), {
     harness: values.harness,

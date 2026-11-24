@@ -13,14 +13,16 @@ import {
 import { howOftenValid } from "../kernel/size.ts";
 import { solvesIn, standsOf, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
-import { objectiveOf, type Task } from "../kernel/verify.ts";
+import { objectiveOf, scoresOf, type Task } from "../kernel/verify.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
+import { compareCodeUnits } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { tasksByEpoch } from "../campaign/climb.ts";
 
 interface Answered {
   readonly turns: readonly number[];
   readonly measures: readonly number[];
+  readonly itemMeans: Readonly<Record<string, number>>;
 }
 
 const BLOCKS = {
@@ -132,17 +134,21 @@ function clausesOf(
   block: keyof typeof BLOCKS,
   pool: ReturnType<typeof poolOf>,
   version: string,
-  { turns, measures }: Answered = { turns: [], measures: [] },
+  { turns, measures, itemMeans }: Answered = { turns: [], measures: [], itemMeans: {} },
   budget?: number,
 ): string[] {
   const answered = block === "reference-every" || block === "reference-some" || block === "closed";
   const best = pool.bests.get(version);
   const sorted = (values: readonly number[]) => values.toSorted((a, b) => a - b);
+  const rubric = Object.entries(itemMeans).toSorted(([a], [b]) => compareCodeUnits(a, b));
   return [
     ...(answered && turns.length > 0
       ? [`in ${sorted(turns).join(", ")}${budget === undefined ? "" : ` of ${String(budget)}`} turns`]
       : []),
     ...(answered && measures.length > 0 ? [`measured ${sorted(measures).map(measured).join(", ")}`] : []),
+    ...(answered && rubric.length > 0
+      ? [`rubric ${rubric.map(([id, value]) => `${id}=${measured(value)}`).join(", ")}`]
+      : []),
     ...(answered && measures.length > 0 && best !== undefined
       ? [`the author's answer measured ${measured(best)}`]
       : []),
@@ -241,6 +247,22 @@ function promotedLine(events: readonly LogEvent[], since: number, listed: readon
   return `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}. ${String(before)} of the ${String(listed.length)} tasks listed were held out before then, under the harness it replaced. Files in your home from sessions before then were written while the harness it replaced was the reference.`;
 }
 
+function meanScores(
+  verdicts: ReturnType<typeof verdictsOf>,
+  solves: readonly string[],
+): Record<string, number> {
+  const sums = new Map<string, { total: number; count: number }>();
+  for (const solve of solves) {
+    const scores = scoresOf(verdicts.get(solve)?.checker);
+    if (scores === null) continue;
+    for (const [id, value] of Object.entries(scores)) {
+      const prior = sums.get(id) ?? { total: 0, count: 0 };
+      sums.set(id, { total: prior.total + value, count: prior.count + 1 });
+    }
+  }
+  return Object.fromEntries([...sums].map(([id, { total, count }]) => [id, total / count]));
+}
+
 function referenceAnswers(
   events: readonly LogEvent[],
   pairsOf: (report: Reported) => Paired[],
@@ -257,7 +279,11 @@ function referenceAnswers(
       const solves = side === null ? [] : (pair.solves?.[side] ?? []);
       const valid = solves.filter((_, nth) => side !== null && pair[side][nth] === true);
       const measures = valid.flatMap((solve) => objectiveOf(verdicts.get(solve)?.checker) ?? []);
-      answered.set(pair.task, { turns: valid.flatMap((solve) => took.get(solve) ?? []), measures });
+      answered.set(pair.task, {
+        turns: valid.flatMap((solve) => took.get(solve) ?? []),
+        measures,
+        itemMeans: meanScores(verdicts, valid),
+      });
     }
   }
   return answered;

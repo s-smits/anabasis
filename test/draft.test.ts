@@ -898,4 +898,44 @@ describe.concurrent("campaign draft lifecycle", () => {
       ),
     ).toBe(true);
   });
+
+  it("validates, stages, and reads weighted rubric objectives with scores export and hidden-swap item notes", async () => {
+    const rubricObjective = {
+      quantity: "weighted domain score",
+      direction: "higher" as const,
+      scale: "unit" as const,
+      items: [
+        { id: "accuracy", weight: 3 },
+        { id: "constant-item", weight: 1 },
+      ],
+    };
+    const rubricDraft: Draft = {
+      ...SILENT,
+      objective: rubricObjective,
+      tasks: SOUND.tasks.map((t, i) => ({ ...t, hidden: { expected: (i + 2) * 6 } })),
+      evaluator: [
+        'export const checks = { "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) };',
+        "export const scores = {",
+        "  accuracy: (req) => (Number(req.artifact.answer) === req.hidden.expected ? 1 : 0),",
+        '  "constant-item": () => 1,',
+        "};",
+      ].join("\n"),
+    };
+    expect(draftFaults(rubricDraft)).toEqual([]);
+    expect(draftFaults({ ...rubricDraft, evaluator: SOUND.evaluator })[0]).toContain("export `scores`");
+    expect(
+      draftFaults({
+        ...rubricDraft,
+        objective: { ...rubricObjective, direction: "lower" },
+      })[0],
+    ).toContain('direction "higher"');
+
+    const staged = stageExam(join(root, "rubric-stage"), rubricDraft);
+    const brief = readPack(staged.bundle).brief;
+    expect(brief.objective).toEqual(rubricObjective);
+    const readRes = await draftReading(join(root, "rubric-read"), rubricDraft, 2);
+    expect(readRes.faults).toEqual([]);
+    expect(readRes.read?.reading.notes.some((n) => n.includes("rubric item constant-item"))).toBe(true);
+    expect(readRes.read?.reading.notes.some((n) => n.includes("rubric item accuracy"))).toBe(false);
+  });
 });

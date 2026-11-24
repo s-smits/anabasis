@@ -204,9 +204,18 @@ export function verdictsOf(events: readonly LogEvent[]): Map<string, Judged> {
 
 export function checkerVerdict(data: JsonObject): Verdict | null {
   if (data.kind === "pass") {
+    const rawScores = asRecord(data.scores);
+    const scoreEntries =
+      rawScores === null
+        ? []
+        : Object.entries(rawScores).flatMap(([key, val]) =>
+            isNumber(val) && Number.isFinite(val) ? [[key, val] as const] : [],
+          );
+    const scores = scoreEntries.length > 0 ? Object.fromEntries(scoreEntries) : undefined;
     return {
       kind: "pass",
       ...keyIfDefined("objective", isNumber(data.objective) ? data.objective : undefined),
+      ...keyIfDefined("scores", scores),
     };
   }
   if (data.kind === "fail" && Array.isArray(data.blocking) && data.blocking.length > 0) {

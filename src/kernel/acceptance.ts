@@ -3,7 +3,7 @@ import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { pooled } from "../meta/pool.ts";
 import type { AnswerFile } from "./answer-files.ts";
-import { gainOver, GAP_FLOOR } from "./compare.ts";
+import { gainOver, GAP_FLOOR, objectiveRuleOf } from "./compare.ts";
 import { answerFormatFault, type Contract } from "./contract.ts";
 import { eventsOf, type LogEvent } from "./log.ts";
 import {
@@ -15,6 +15,7 @@ import {
   OBJECTIVE,
   objectiveOf,
   requiredToolsOf,
+  scoresOf,
   spelled,
   type Task,
   type Verdict,
@@ -151,7 +152,7 @@ async function probeSensitivity(given: Read, probes: readonly Probe[]) {
       verdict: await verify(task, run.answer, undefined, files),
     }))
   ).filter(({ verdict }) => verdict.kind !== "non-result");
-  const rule = { direction: brief.objective?.direction ?? "higher" } as const;
+  const rule = objectiveRuleOf(brief.objective) ?? { direction: "higher" };
   const allValid =
     results.length > 0 &&
     results.every(
@@ -263,8 +264,26 @@ async function probeReading(
               );
         })
       : [];
-  const { allValid: allValidOnHiddenSwap, blind } =
-    hiddenProbes.length > 0 ? await probeSensitivity(given, hiddenProbes) : { allValid: false, blind: false };
+  const {
+    results: hiddenSwaps,
+    allValid: allValidOnHiddenSwap,
+    blind,
+  } = hiddenProbes.length > 0
+    ? await probeSensitivity(given, hiddenProbes)
+    : { results: [], allValid: false, blind: false };
+  const rubricNotes = (given.brief.objective?.items ?? []).flatMap(({ id }) => {
+    if (accepted.length === 0 || hiddenSwaps.length === 0) return [];
+    const allOne = accepted.every(({ verdicts: [first] }) => (scoresOf(first)?.[id] ?? 0) >= 1 - GAP_FLOOR);
+    const fixedOnSwap = hiddenSwaps.every(
+      ({ run, verdict }) =>
+        verdict.kind === "pass" &&
+        Math.abs((scoresOf(verdict)?.[id] ?? 0) - (scoresOf(run.verdicts[0])?.[id] ?? 0)) < GAP_FLOOR,
+    );
+    return when(
+      allOne && fixedOnSwap,
+      `rubric item ${id} scored near 1 on every accept control and did not move on any hidden-value swap`,
+    );
+  });
   const deliverables = await deliverableReading(given, byId, accepted);
   return {
     faults: [
@@ -286,6 +305,7 @@ async function probeReading(
         allValidOnHiddenSwap && !blind,
         "every validity check passed when each example's hidden values were swapped with another's: only the objective read hidden values, so validity checks test public properties alone",
       ),
+      ...rubricNotes,
       ...deliverables.notes,
     ],
   };

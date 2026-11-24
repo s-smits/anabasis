@@ -561,4 +561,34 @@ describe("a task the reference has closed", () => {
     expect(block(told, "Closed").open).toBeUndefined();
     expect(block(told, "some solves").open).toBeDefined();
   });
+
+  it("reports mean per-item rubric scores on reference valid solves without exposing them on unsolved tasks", () => {
+    const log = logged();
+    log.hold(["graded", "missed"]);
+    const ran = condition("v-graded", "h1");
+    log.add("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+    for (const [idx, scores] of [
+      { accuracy: 1, calibration: 0.2 },
+      { accuracy: 0.8, calibration: 0.6 },
+    ].entries()) {
+      const solve = `rs-${String(idx + 1)}`;
+      log.add("solve.started", { solve, condition: conditionId(ran), comparison: "c-r" });
+      log.add("verdict", {
+        solve,
+        task: "graded",
+        kind: "pass",
+        answer: { answer: SOLVER },
+        objective: 0.7,
+        scores,
+      });
+      log.add("solve.finished", { solve, ending: PASS, turns: 5 });
+    }
+    log.solved("c-r", "graded", "h2", [0.5, 0.5]);
+    log.solved("c-r", "missed", "h1", [false, false]);
+    log.solved("c-r", "missed", "h2", [false, false]);
+    log.reported("c-r", ["h1", "h2"], ["graded", "missed"]);
+    const told = heard(log.events, ["graded", "missed"].map(fixture));
+    expect(block(told, "every solve").graded).toContain("rubric accuracy=0.9, calibration=0.4");
+    expect(block(told, "no solve").missed).not.toContain("rubric");
+  });
 });

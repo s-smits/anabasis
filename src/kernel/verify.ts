@@ -86,7 +86,11 @@ interface Closed {
 }
 
 export type Verdict =
-  | { readonly kind: "pass"; readonly objective?: number }
+  | {
+      readonly kind: "pass";
+      readonly objective?: number;
+      readonly scores?: Readonly<Record<string, number>>;
+    }
   | { readonly kind: "fail"; readonly blocking: readonly string[] }
   | { readonly kind: "faulty"; readonly check: string; readonly reason: string }
   | { readonly kind: "non-result"; readonly reason: string };
@@ -137,6 +141,10 @@ export function objectiveOf(verdict: Verdict | null | undefined): number | null 
   return verdict?.kind === "pass" ? (verdict.objective ?? null) : null;
 }
 
+export function scoresOf(verdict: Verdict | null | undefined): Readonly<Record<string, number>> | null {
+  return verdict?.kind === "pass" ? (verdict.scores ?? null) : null;
+}
+
 export function blockingOf(verdict: Verdict | null | undefined): readonly string[] {
   return verdict?.kind === "fail" ? verdict.blocking : [];
 }
@@ -155,7 +163,13 @@ export function spelled(verdict: Verdict): string {
   if (verdict.kind === "fail") return `fail ${[...verdict.blocking].toSorted().join(",")}`;
   if (verdict.kind === "faulty") return `faulty ${verdict.check}: ${verdict.reason}`;
   if (verdict.kind === "pass") {
-    return verdict.objective === undefined ? "pass" : `pass ${String(verdict.objective)}`;
+    if (verdict.objective === undefined) return "pass";
+    if (verdict.scores === undefined) return `pass ${String(verdict.objective)}`;
+    const parts = Object.entries(verdict.scores)
+      .toSorted(([a], [b]) => compareCodeUnits(a, b))
+      .map(([id, value]) => `${id}=${String(value)}`)
+      .join(",");
+    return `pass ${String(verdict.objective)} [${parts}]`;
   }
   return `non-result ${verdict.reason}`;
 }
@@ -322,6 +336,25 @@ export function readBrief(checks: string): Brief {
   if (brief.truthChecks.some((check) => check.id === OBJECTIVE.id)) {
     throw new Error(`a check is named ${OBJECTIVE.id}, which names the objective`);
   }
+  const items = brief.objective?.items;
+  if (items !== undefined) {
+    if (items.length === 0) throw new Error("objective.items must be non-empty when declared");
+    if (brief.objective?.direction !== "higher" || brief.objective.scale !== "unit") {
+      throw new Error('objective.items requires direction "higher" and scale "unit"');
+    }
+    const seen = new Set<string>();
+    for (const item of items) {
+      if (!isString(item.id) || item.id === "" || seen.has(item.id)) {
+        throw new Error(
+          `objective.items names an invalid or duplicate item ${isString(item.id) ? item.id : ""}`,
+        );
+      }
+      if (!isNumber(item.weight) || !Number.isFinite(item.weight) || item.weight <= 0) {
+        throw new Error(`objective.items.${item.id} requires a positive finite weight`);
+      }
+      seen.add(item.id);
+    }
+  }
   return brief;
 }
 
@@ -403,7 +436,13 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
     if (checks.length === 0) {
       return { kind: "faulty", check: "brief", reason: `no check applies to family ${task.family}` };
     }
-    const ran = await runCell(wall, { checks, objective, request, signal });
+    const ran = await runCell(wall, {
+      checks,
+      objective,
+      ...keyIfDefined("rubricItems", brief.objective?.items),
+      request,
+      signal,
+    });
     if ("nonResult" in ran) return { kind: "non-result", reason: ran.nonResult };
     if ("held" in ran) return { kind: "faulty", check: ran.held, reason: ran.reason };
     const blocking: string[] = [];
@@ -420,6 +459,7 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
       stopVerdict(OBJECTIVE.id, measured) ?? {
         kind: "pass",
         ...keyIfDefined("objective", "value" in measured ? measured.value : undefined),
+        ...keyIfDefined("scores", "value" in measured ? measured.scores : undefined),
       }
     );
   };
@@ -467,11 +507,12 @@ async function runCell(
   run: {
     readonly checks: readonly BriefTruthCheck[];
     readonly objective: BriefTruthCheck | null;
+    readonly rubricItems?: Objective["items"];
     readonly request: EvaluationRequest;
     readonly signal: AbortSignal | undefined;
   },
 ): Promise<CellResult | { readonly nonResult: string } | { readonly held: string; readonly reason: string }> {
-  const { checks, objective, request, signal } = run;
+  const { checks, objective, rubricItems, request, signal } = run;
   const { base } = wall;
   if (signal?.aborted === true) return { nonResult: "the verifier was cancelled" };
   if ("unsupported" in base) return { nonResult: `this host cannot wall a check: ${base.unsupported}` };
@@ -483,7 +524,8 @@ async function runCell(
     kept: join(root, "kept"),
     host: hostFolder(root),
   };
-  const cellMs = (Math.ceil(checks.length / CHECKS_AT_ONCE) + 2) * wall.checkMs;
+  const itemWaves = Math.ceil((rubricItems?.length ?? 1) / CHECKS_AT_ONCE);
+  const cellMs = (Math.ceil(checks.length / CHECKS_AT_ONCE) + itemWaves + 1) * wall.checkMs;
   let child: Bun.Subprocess | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let abort: (() => void) | null = null;
@@ -504,6 +546,7 @@ async function runCell(
       width: CHECKS_AT_ONCE,
       checks: checks.map((check) => inputOf(check, request)),
       objective: objective === null ? null : inputOf(objective, request),
+      ...keyIfDefined("rubricItems", rubricItems),
       running: runningDir,
     };
     const policy = commandIsolationPolicy(base, { ...dirs, toolTree: wall.tree.tools });
@@ -560,6 +603,19 @@ const undecided = (value: unknown) => {
   return null;
 };
 
+function parsedScores(raw: unknown): Readonly<Record<string, number>> | null {
+  const rec = asRecord(raw);
+  if (rec === null) return null;
+  const entries = Object.entries(rec);
+  if (entries.length === 0) return null;
+  const out: Record<string, number> = {};
+  for (const [id, val] of entries) {
+    if (!isNumber(val) || !Number.isFinite(val) || val < 0 || val > 1) return null;
+    out[id] = val;
+  }
+  return out;
+}
+
 function writtenResult(path: string, count: number): CellResult | null {
   if (!existsSync(path)) return null;
   let written: ReturnType<typeof asRecord>;
@@ -574,8 +630,13 @@ function writtenResult(path: string, count: number): CellResult | null {
     const item = isBoolean(passed) ? { passed } : undecided(each);
     return item === null ? [] : [item];
   });
-  const value = asRecord(written?.measured)?.value;
-  const measured = isNumber(value) && Number.isFinite(value) ? { value } : undecided(written?.measured);
+  const measuredRec = asRecord(written?.measured);
+  const value = measuredRec?.value;
+  const scores = measuredRec?.scores === undefined ? undefined : parsedScores(measuredRec.scores);
+  const measured =
+    isNumber(value) && Number.isFinite(value) && scores !== null
+      ? { value, ...keyIfDefined("scores", scores) }
+      : undecided(written?.measured);
   if (listed.length !== count || results.length !== count) return null;
   return written?.measured !== null && measured === null ? null : { results, measured };
 }

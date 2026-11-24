@@ -122,7 +122,14 @@ function editedPassage(field: JsonValue | undefined, edit: ProbeEdit): string | 
 
 function sideText(label: string, verdict: Verdict): string {
   if (verdict.kind === "pass") {
-    const measured = verdict.objective === undefined ? "" : ` (objective ${String(verdict.objective)})`;
+    const items =
+      verdict.scores === undefined
+        ? ""
+        : `: ${Object.entries(verdict.scores)
+            .map(([id, value]) => `${id}=${String(value)}`)
+            .join(", ")}`;
+    const measured =
+      verdict.objective === undefined ? "" : ` (objective ${String(verdict.objective)}${items})`;
     return `  ${label}: pass${measured}`;
   }
   if (verdict.kind === "fail") {

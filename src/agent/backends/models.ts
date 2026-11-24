@@ -8,18 +8,14 @@ import {
   lazyStream,
   type Model,
   type MutableModels,
-  type OAuthCredential,
   type Provider,
   type StreamOptions,
 } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
-import { existsSync, readFileSync } from "../../meta/filesystem.ts";
-import { asRecord, isNumber, isString } from "../../meta/json-shape.ts";
-import { capturedJsonParse } from "../../meta/json-runtime.ts";
-import { homedir } from "../../meta/os.ts";
-import { join } from "../../meta/path.ts";
+import { existsSync } from "../../meta/filesystem.ts";
+import { asRecord, isString } from "../../meta/json-shape.ts";
 import {
   CLAUDE_API_PROVIDER,
   type ClaudeOptions,
@@ -27,11 +23,13 @@ import {
   claudeProvider,
   servedByClaude,
 } from "./claude.ts";
+import { CODEX_AUTH, codexAuthFile, codexCredential } from "./codex-auth.ts";
 import { durableCompactionMode } from "./compaction.ts";
 import type { ConversationRetryPolicy } from "@earendil-works/pi-durable";
 
+export { CODEX_AUTH };
+
 const CODEX = "openai-codex";
-export const CODEX_AUTH = "auth.json";
 
 const DEEPSEEK_FLASH = {
   cost: { input: 0.098, output: 0.294, cacheRead: 0.00294, cacheWrite: 0 },
@@ -176,21 +174,4 @@ export function compactionMode(
   return servedByClaude(model.provider)
     ? claudeCompactionMode(options.claude.compaction, model.id)
     : durableCompactionMode(model);
-}
-
-function codexAuthFile(): string {
-  return join(Bun.env.CODEX_HOME ?? join(homedir(), ".codex"), CODEX_AUTH);
-}
-
-function codexCredential(): OAuthCredential {
-  const tokens = asRecord(asRecord(capturedJsonParse(readFileSync(codexAuthFile(), "utf8")))?.tokens);
-  const access = tokens?.access_token;
-  const refresh = tokens?.refresh_token;
-  if (!isString(access) || !isString(refresh)) throw new Error(`${codexAuthFile()} holds no ChatGPT login`);
-  const claims = asRecord(
-    capturedJsonParse(Buffer.from(access.split(".")[1] ?? "", "base64url").toString("utf8")),
-  );
-  const expires = claims?.exp;
-  if (!isNumber(expires)) throw new Error(`${codexAuthFile()}: the access token carries no expiry`);
-  return { type: "oauth", access, refresh, expires: expires * 1000 };
 }

@@ -17,7 +17,7 @@ import { CLAUDE_COMPACTED } from "../src/agent/backends/claude.ts";
 import { crashedRun } from "../src/campaign/ground.ts";
 import { type BuildRequest, build, layPractice, type PracticeTask, session } from "../src/builder/session.ts";
 import { HOME_TOOL_TREE, snapshot } from "../src/builder/kept.ts";
-import { type Bench, practiceLeft, record } from "../src/builder/tools.ts";
+import { type Bench, practiceLeft, recordsOf } from "../src/builder/tools.ts";
 import { formatKeys, namedTasks, readHarnessFiles } from "../src/harness/files.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
@@ -484,7 +484,11 @@ describe("a Builder session", () => {
       READ_TRACE,
       "finish",
     ]);
-    expect(record(s.events(), "v1", built.harness ?? "")).toEqual({ solves: ["s-3"], passed: 0 });
+    expect(
+      recordsOf(s.events())
+        .get("v1")
+        ?.get(built.harness ?? ""),
+    ).toEqual({ solves: ["s-3"], passed: 0 });
   });
 
   it("opens on the notes its last session left and each comparison's tally, and leaves notes of its own", async () => {
@@ -706,7 +710,7 @@ describe("a Builder session", () => {
       // Only a ruled check defect closes the task: the next practice of it is refused, and any
       // other ruling's next pass, s-4, is the record's one solve.
       const defect = ruling === "check-defect";
-      expect(record(s.events(), "v2", s.digest)).toEqual(
+      expect(recordsOf(s.events()).get("v2")?.get(s.digest) ?? { solves: [], passed: 0 }).toEqual(
         defect ? { solves: [], passed: 0 } : { solves: ["s-4"], passed: 1 },
       );
       expect(s.sent.join("\n")).not.toContain(CHECK);

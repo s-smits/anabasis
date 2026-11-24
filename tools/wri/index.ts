@@ -82,7 +82,7 @@ export interface SynthesisRef {
 
 /** Where the index reads beyond the investigations: the main checkout's `notes/`, the runs the
  *  registry finds, and the clock that dates the last fourteen days. */
-export interface Beyond {
+interface Beyond {
   readonly notes: string;
   readonly runs: readonly Run[];
   readonly now: number;

@@ -22,7 +22,7 @@ export interface Listed extends TaskPractice {
   readonly reference?: TaskPractice & { readonly digest: string };
 }
 
-export interface Past {
+interface Past {
   readonly start: string;
   readonly fails: readonly string[];
   readonly comparisons: readonly string[];

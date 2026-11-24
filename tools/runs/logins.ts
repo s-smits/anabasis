@@ -368,7 +368,7 @@ async function viaRateLimitHeaders(token: string, agent: string): Promise<Read |
  *  names `ultra` reports none, since a verified ultra account has no five-hour limit and the
  *  provider names no share, reset or status for it. One that still reports the window keeps it, and
  *  any other plan's unread window stays unread, so a keeper never reads such a login as unread. */
-export function planned(reading: Reading, env: Env): Reading {
+function planned(reading: Reading, env: Env): Reading {
   const five = "error" in reading ? null : reading.fiveHour;
   const silent = five?.pct === null && five.resetsAt === null && five.status === undefined;
   return silent && subOf(env, reading.login)?.sub === "ultra" ? { ...reading, fiveHour: null } : reading;
@@ -538,7 +538,7 @@ function fitOf(week: Week, perHour: number | null, now: number): number | null {
 /** A login's live runs out of the most it carries, the lower of its cap (`capOf`) and what its
  *  week fits (`fitOf`), and whether more run on it than its week fits, since the cap alone would
  *  offer room on a login whose week is nearly spent. */
-export function carried(on: number, cap: string | null, fit: number | null): string {
+function carried(on: number, cap: string | null, fit: number | null): string {
   const fits = fit !== null && Number.isFinite(fit) ? fit : null;
   const most = [cap === null ? null : Number(cap), fits].filter((one): one is number => one !== null);
   const of = most.length === 0 ? "" : `/${String(Math.min(...most))}`;

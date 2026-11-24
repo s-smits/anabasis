@@ -25,7 +25,7 @@ const SESSION_STARTS = new Set<unknown>(["build.started", "exam.started", "draft
 const HOME_ENDS = new Set<unknown>(["exam.finished", "draft.finished"]);
 
 /** Where a seed's log is cut: before a session, after a count of events, or nowhere. */
-export interface Cut {
+interface Cut {
   readonly before?: string | undefined;
   readonly events?: string | undefined;
 }

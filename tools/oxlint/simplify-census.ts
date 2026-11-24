@@ -1,29 +1,15 @@
-// The simplify census: the whole-tree scans of `tree-findings.ts`, the shapes `/simplify` kept
-// finding that relate two files and so no per-file rule can see, grouped by shape and largest
-// first, each argument printed once above its sites. A person reads a group, decides it as a group,
-// and fixes it in one go; the gate runs it with `--gate`, which fails while any unanswered site of a
-// listed shape stands (operator, 22 November 2026: "we need to fix bun run simplify on each commit").
-// The registers and the staged rules print beside it and never fail it.
-//
-// It also runs the per-file rules that report and never gate, `staged-rules.json`, over the
-// authored roots: a rule starts there and moves to `.oxlintrc.json`, as an error, once no site of
-// it stands in the tree.
-
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { runSync } from "../../src/meta/subprocess.ts";
 import { OXLINT_BINARY } from "../runtime/lint.ts";
-import { TREE_FINDING_ARGUMENTS, TREE_REGISTER_KINDS, treeFindings, type TreeSite } from "./tree-findings.ts";
+import stagedConfig from "./staged-rules.json" with { type: "json" };
+import { TREE_FINDING_ARGUMENTS, treeFindings, type TreeSite } from "./tree-findings.ts";
 
-/** Sites listed under each shape before the rest are counted, unless `--all` is passed. */
 const DEFAULT_SITES = 8;
 const WRAP = 96;
-/** The staged rules' config, and the roots they read. */
 const STAGED = "tools/oxlint/staged-rules.json";
 const STAGED_ROOTS = ["src", "tools", "test", "packages", ".claude", "studies"];
-/** One `file:line:col: message [Warning/plugin(rule)]` row of oxlint's unix format. */
 const STAGED_ROW = /^(?<at>[^:]+:\d+):\d+: (?<message>.*) \[\w+\/(?<rule>[\w-]+\([\w-]+\))\]$/u;
 
-/** A message broken at spaces to the terminal width, each line indented. */
 function wrapped(text: string): string {
   const lines = [""];
   for (const word of text.split(/\s+/u)) {
@@ -34,21 +20,20 @@ function wrapped(text: string): string {
   return lines.map((line) => `    ${line}`).join("\n");
 }
 
-/** One section per shape: its argument once, then its sites, the tail counted past `limit`. */
 function section(kind: TreeSite["kind"], sites: readonly TreeSite[], limit: number): string {
   const shown = sites.slice(0, limit).map((site) => {
-    const at = site.line === 0 ? site.path : `${site.path}:${site.line}`;
+    const at = site.line === 0 ? site.path : `${site.path}:${String(site.line)}`;
     return `    ${at}  ${site.detail} [${site.id}]`;
   });
-  const rest = sites.length > limit ? [`    … and ${sites.length - limit} more`] : [];
-  const count = `${sites.length} ${sites.length === 1 ? "site" : "sites"}`;
+  const rest = sites.length > limit ? [`    … and ${String(sites.length - limit)} more`] : [];
+  const count = `${String(sites.length)} ${sites.length === 1 ? "site" : "sites"}`;
   return ["", `tree/${kind}  (${count})`, wrapped(TREE_FINDING_ARGUMENTS[kind]), "", ...shown, ...rest].join(
     "\n",
   );
 }
 
-/** Each staged rule's sites in the tree, as `path:line  message`, by `plugin(rule)`. */
 function stagedSites(): Map<string, string[]> {
+  if (Object.keys(stagedConfig.rules).length === 0) return new Map();
   const oxlint = [runtimeProcess.execPath, "--no-env-file", OXLINT_BINARY];
   const output = runSync([...oxlint, "-c", STAGED, "--format=unix", ...STAGED_ROOTS]).stdout;
   const rows = new TextDecoder()
@@ -62,13 +47,12 @@ function stagedSites(): Map<string, string[]> {
   return new Map([...byRule].map(([rule, under]) => [rule, under.map((row) => row.site).toSorted()]));
 }
 
-/** One row per shape: its count and the root directories its sites sit in. */
 function summaryRow(kind: string, sites: readonly TreeSite[]): string {
   const roots = Map.groupBy(sites, (site) =>
     /(?:^|\/)test\/|\.test\./u.test(site.path) ? "test" : site.path.split("/")[0],
   );
   const where = [...roots]
-    .map(([root, under]) => `${root} ${under.length}`)
+    .map(([root, under]) => `${root} ${String(under.length)}`)
     .toSorted()
     .join(", ");
   return `${String(sites.length).padStart(6)}  ${where.padEnd(24)}  tree/${kind}`;
@@ -83,30 +67,22 @@ const sites = treeFindings()
 const groups = [...Map.groupBy(sites, (site) => site.kind)].toSorted(
   ([a, left], [b, right]) => right.length - left.length || (a < b ? -1 : 1),
 );
-const listed = groups.filter(([kind]) => !TREE_REGISTER_KINDS.includes(kind));
-const registers = groups.filter(([kind]) => TREE_REGISTER_KINDS.includes(kind));
-const total = listed.reduce((count, [, under]) => count + under.length, 0);
+const total = groups.reduce((count, [, under]) => count + under.length, 0);
 const staged = [...stagedSites()].filter(([rule]) => only === undefined || rule.includes(only));
 
-// `Bun.write` resolves once stdout has taken the whole string, where a stream's `write` returned
-// before the bytes left and the exit cut the tail of `--all`.
 await Bun.write(
   Bun.stdout,
   [
     "",
-    `Simplify census: ${total} ${total === 1 ? "finding" : "findings"} across ${listed.length} shapes`,
+    `Simplify census: ${String(total)} ${total === 1 ? "finding" : "findings"} across ${String(groups.length)} shapes`,
     only === undefined ? "" : `filtered to shapes matching "${only}"`,
-    "",
-    `${"count".padStart(6)}  ${"where".padEnd(24)}  shape`,
-    ...listed.map(([kind, under]) => summaryRow(kind, under)),
-    ...listed.map(([kind, under]) => section(kind, under, limit)),
-    ...(registers.length === 0
+    ...(groups.length === 0
       ? []
       : [
           "",
-          "Standing registers, not counted above: each row is a current count, and its rule is about",
-          "the change proposed against it, so the list does not empty.",
-          ...registers.map(([kind, under]) => section(kind, under, limit)),
+          `${"count".padStart(6)}  ${"where".padEnd(24)}  shape`,
+          ...groups.map(([kind, under]) => summaryRow(kind, under)),
+          ...groups.map(([kind, under]) => section(kind, under, limit)),
         ]),
     ...(staged.length === 0
       ? []
@@ -115,9 +91,9 @@ await Bun.write(
           `Staged rules (${STAGED}), reported until no site stands, then gated:`,
           ...staged.flatMap(([rule, under]) => [
             "",
-            `${rule}  (${under.length} ${under.length === 1 ? "site" : "sites"})`,
+            `${rule}  (${String(under.length)} ${under.length === 1 ? "site" : "sites"})`,
             ...under.slice(0, limit),
-            ...(under.length > limit ? [`    … and ${under.length - limit} more`] : []),
+            ...(under.length > limit ? [`    … and ${String(under.length - limit)} more`] : []),
           ]),
         ]),
     "",

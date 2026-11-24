@@ -4,7 +4,7 @@ import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 
-export interface Rule {
+interface Rule {
   readonly id: string;
   readonly statement: string;
 }

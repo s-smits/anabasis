@@ -26,7 +26,7 @@ Scope defaults to named arguments (code, worktree, PR, commit, range, paths) or 
 Never audit manually what static tools already catch, and measure before touching code:
 
 - `bun run lint -- --strict` (`tools/oxlint/HABITS.md` 12.4–12.5, 12.14): fix the site or tune the rule; never add disable comments.
-- `bun run simplify -- --gate` (`tools/oxlint/HABITS.md` 12.9): fix or answer every census site (`-- --all`, `-- <kind>`), and check standing registers (`tree/max-filesystem-imports`) plus staged rules (`tools/oxlint/staged-rules.json`) on touched files.
+- `bun run simplify -- --gate` (`tools/oxlint/HABITS.md` 12.9): fix or answer every census site (`-- --all`, `-- <kind>`), and check staged rules (`tools/oxlint/staged-rules.json`) on touched files.
 - `bun tools/loc/source-policy.ts`: enforces 800 nonblank lines/file, 115 lines/function, `AGENTS.md` size, import direction, and zero unread exports.
 - Measure before editing (and again after with the same `<ref>`):
   ```sh
@@ -65,7 +65,7 @@ Evaluate structural shapes static scans miss, from largest removal to smallest:
 
 - **Disagreement test**: if you find yourself arguing against simplifying a site, it is probably too complex. A site stays only on **one sentence a reviewer can verify** against a file, test, or log (e.g. `null` for unknown vs `0`, distinct error contracts, a helper name clarifying a non-trivial branch, or an `AGENTS.md` rule by number). `"A test pins it"`, `"touches many files"`, `"just a few lines"`, or `"as X.ts does"` all fail. Record retained scan sites via `bun run not-slop -- answer <id> "<reason>"` (fixable rules reject ledger answers).
 - **Must not cut**: (1) wall byte-identity (`AGENTS.md` rule 3; check with `bun .claude/skills/design-and-seats/scripts/seat-view.ts` and wall tests); (2) typed `null` for unknown (never collapse into `0`, `false`, or `""`); (3) historical log `EVENT_KINDS` readability (`AGENTS.md` §5); (4) code owns conditions / models own content (`AGENTS.md` §2) and measurement rules 4, 5, 7, 8; (5) protected paths (`AGENTS.md` §11: `.ana/` except `.ana/wri/`, `data/runs/`, `vendor/`, packs, check programs, kept harnesses).
-- **Budgets** (operator-stated budgets replace defaults): a bug fix adds ≤5 production lines, ≤1 new function, and 0 new modules; a pure simplification nets ≤0 production lines; each file adds ≤1 `src/meta/filesystem.ts` import (`tree/max-filesystem-imports`). Meet length ceilings (800 lines/file, 115 lines/function; `measure.py`'s `cx > 21` is an advisory lead) by cutting branches first, then local closures, then helpers — never split into a sibling module (`tools/loc/source-policy.json` stays empty).
+- **Budgets** (operator-stated budgets replace defaults): a bug fix adds ≤5 production lines, ≤1 new function, and 0 new modules; a pure simplification nets ≤0 production lines. Meet length ceilings (800 lines/file, 115 lines/function; `measure.py`'s `cx > 21` is an advisory lead) by cutting branches first, then local closures, then helpers — never split into a sibling module (`tools/loc/source-policy.json` stays empty).
 
 ## 5. Follow the strand and run the mandatory hostile full-diff audit
 

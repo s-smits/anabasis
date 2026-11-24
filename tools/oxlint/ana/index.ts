@@ -5,7 +5,6 @@ import { requireCapturedJsonRuntimeRule } from "./rules/require-captured-json-ru
 import { noHandReadArgvRule } from "./rules/no-hand-read-argv.ts";
 import { noHandSpelledGitRule } from "./rules/no-hand-spelled-git.ts";
 import { requireMetaRuntimeImportRule } from "./rules/require-meta-runtime-import.ts";
-import { noSingleCallerHelperRule } from "./rules/no-single-caller-helper.ts";
 import { noSingleUseConstChainRule } from "./rules/no-single-use-const-chain.ts";
 import { noPositionalBooleanParameterRule } from "./rules/no-positional-boolean-parameter.ts";
 import { preferKeyIfDefinedRule } from "./rules/prefer-key-if-defined.ts";
@@ -46,7 +45,6 @@ const anaPlugin = eslintCompatPlugin({
     "no-hand-read-argv": noHandReadArgvRule,
     "no-hand-spelled-git": noHandSpelledGitRule,
     "require-meta-runtime-import": requireMetaRuntimeImportRule,
-    "no-single-caller-helper": noSingleCallerHelperRule,
     "no-positional-boolean-parameter": noPositionalBooleanParameterRule,
     "prefer-key-if-defined": preferKeyIfDefinedRule,
     "no-hand-rolled-error-render": noHandRolledErrorRenderRule,

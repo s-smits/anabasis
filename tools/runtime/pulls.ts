@@ -48,7 +48,7 @@ export interface Pull {
   readonly labels: readonly { readonly name: string }[];
 }
 
-export interface Answer {
+interface Answer {
   readonly ok: boolean;
   readonly out: string;
   readonly err: string;
@@ -58,7 +58,7 @@ export interface Answer {
 export type StatusState = "pending" | "success" | "failure" | "error";
 
 /** A commit status as GitHub's statuses API takes it; `link` is the target its Details opens. */
-export interface Status {
+interface Status {
   readonly context: string;
   readonly state: StatusState;
   readonly description: string;

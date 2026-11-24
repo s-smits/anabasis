@@ -1,63 +1,49 @@
-/**
- * The implicit-state shapes that need every file at once: a state whose values are compared by
- * hand in many files. Run on any folder as
- * `bun tools/oxlint/tree-implicit-state.ts <root> [--json] [--readers <n>]`.
- */
 import * as ts from "typescript5";
 import { readdirSync, readFileSync } from "../../src/meta/filesystem.ts";
 import { join, relative } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
+import { isExported, isTestPath, lineOf, namedExportsOf, parsedSources } from "./tree-ast.ts";
 import { repeatedExternalReads } from "./tree-external-read.ts";
 import type { TreeFinding } from "./tree-findings.ts";
-import { parsedSources } from "./tree-overwritten-key.ts";
 import { partialMappings } from "./tree-partial-mapping.ts";
 import { secondReaders } from "./tree-second-reader.ts";
-import { type LiteralSet, statefulSets } from "./tree-state-role.ts";
 
 interface Declared {
-  name: string;
-  values: ReadonlySet<string>;
-  path: string;
-  line: number;
-  property?: string;
+  readonly name: string;
+  readonly values: ReadonlySet<string>;
+  readonly path: string;
+  readonly line: number;
+  readonly property?: string;
 }
 
 interface Variants {
-  name: string;
-  members: readonly ts.TypeNode[];
-  path: string;
-  line: number;
+  readonly name: string;
+  readonly members: readonly ts.TypeNode[];
+  readonly path: string;
+  readonly line: number;
 }
 
 interface Grouping {
-  subject: string;
-  values: readonly string[];
-  path: string;
-  line: number;
-  switchCovers?: ReadonlySet<string>;
-}
-
-interface Found {
-  row: TreeFinding;
-  set: LiteralSet;
+  readonly subject: string;
+  readonly values: readonly string[];
+  readonly path: string;
+  readonly line: number;
+  readonly switchCovers?: ReadonlySet<string>;
 }
 
 interface Census {
-  typed: Set<string>;
-  tagged: Map<string, ReadonlyMap<string, string>>;
-  variants: Variants[];
-  local: Pick<Declared, "values" | "path">[];
+  readonly tagged: Map<string, ReadonlyMap<string, string>>;
+  readonly variants: Variants[];
+  readonly local: Pick<Declared, "values" | "path">[];
 }
 
 const K = ts.SyntaxKind;
-const TEST_PATH = /(?:^|\/)(?:test|tests|__tests__|__mocks__|fixtures?)\/|\.(?:test|spec)\.[cm]?[jt]sx?$/u;
 const SKIPPED_DIRECTORY =
   /^(?:node_modules|dist|build|out|coverage|vendor|vendored|third[-_]party|generated)$|^\./u;
 const SOURCE = /\.(?:ts|tsx|mts|cts)$/u;
 const DECLARATION = /\.d\.[cm]?ts$/u;
 const READER_FLOOR = 2;
 const INLINE = "(inline)";
-const WORD = /^[A-Za-z][\w-]*$/u;
 const NAMED_DECL_KINDS = new Set([K.TypeAliasDeclaration, K.InterfaceDeclaration, K.EnumDeclaration]);
 const ALIAS_OR_ENUM = new Set([K.TypeAliasDeclaration, K.EnumDeclaration]);
 const PROP_OR_VAR = new Set([K.PropertySignature, K.PropertyDeclaration, K.VariableDeclaration]);
@@ -68,8 +54,6 @@ const EQ_OPS = new Set([K.EqualsEqualsEqualsToken, K.EqualsEqualsToken]);
 const NEQ_OPS = new Set([K.ExclamationEqualsEqualsToken, K.ExclamationEqualsToken]);
 const CHAIN_OPS = new Set([K.BarBarToken, K.AmpersandAmpersandToken]);
 
-const lineOf = (file: ts.SourceFile, node: ts.Node): number =>
-  file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1;
 const textOf = (file: ts.SourceFile, node: ts.Node): string => node.getText(file).replaceAll(/\s+/gu, "");
 
 function tagsOf(members: readonly ts.TypeElement[]): Map<string, string> {
@@ -84,27 +68,13 @@ function tagsOf(members: readonly ts.TypeElement[]): Map<string, string> {
   return tags;
 }
 
-function namedExportsOf(file: ts.SourceFile): Set<string> {
-  return new Set(
-    file.statements.flatMap((one) =>
-      ts.isExportDeclaration(one) &&
-      one.moduleSpecifier === undefined &&
-      one.exportClause !== undefined &&
-      ts.isNamedExports(one.exportClause)
-        ? one.exportClause.elements.map((element) => (element.propertyName ?? element.name).text)
-        : [],
-    ),
-  );
-}
-
 function exported(node: ts.Node, file: ts.SourceFile, named: ReadonlySet<string>): boolean {
   let top = node;
   while (top.parent !== undefined && !ts.isSourceFile(top.parent)) {
     if (ts.isFunctionLike(top) || top.kind === K.Block) return false;
     top = top.parent;
   }
-  const modifiers = ts.canHaveModifiers(top) ? (ts.getModifiers(top) ?? []) : [];
-  if (modifiers.some((one) => one.kind === K.ExportKeyword)) return true;
+  if (isExported(top)) return true;
   if (named.size === 0) return false;
   if (ts.isVariableStatement(top)) {
     return top.declarationList.declarations.some((one) => named.has(one.name.getText(file)));
@@ -147,6 +117,11 @@ function unionValues(node: ts.TypeNode, lists: ReadonlyMap<string, readonly stri
   return values;
 }
 
+function literalsOf(nodes: readonly ts.Node[]): string[] | null {
+  const values = nodes.flatMap((one) => (ts.isStringLiteralLike(one) ? [one.text] : []));
+  return values.length === nodes.length ? values : null;
+}
+
 function constValues(node: ts.Node): string[] | null {
   const asConst = ts.isAsExpression(node) && node.type.getText() === "const";
   // SAFETY: `UNWRAP_CONST` enumerates `AsExpression` and `SatisfiesExpression`, both having `.expression`.
@@ -161,11 +136,6 @@ function constValues(node: ts.Node): string[] | null {
   return literalsOf(
     inner.properties.flatMap((one) => (ts.isPropertyAssignment(one) ? [one.initializer] : [])),
   );
-}
-
-function literalsOf(nodes: readonly ts.Node[]): string[] | null {
-  const values = nodes.flatMap((one) => (ts.isStringLiteralLike(one) ? [one.text] : []));
-  return values.length === nodes.length ? values : null;
 }
 
 function nameOf(node: ts.Node, file: ts.SourceFile): string {
@@ -201,7 +171,6 @@ function declaredIn(path: string, file: ts.SourceFile, census: Census): Declared
     ),
   );
   const add = (node: ts.Node, values: readonly string[] | null): void => {
-    for (const value of values ?? []) census.typed.add(value);
     if (values === null) return;
     const unique = new Set(values);
     if (unique.size < 2) return;
@@ -211,8 +180,7 @@ function declaredIn(path: string, file: ts.SourceFile, census: Census): Declared
     else census.local.push(set);
   };
   const visit = (node: ts.Node): void => {
-    if (ts.isLiteralTypeNode(node) && ts.isStringLiteral(node.literal)) census.typed.add(node.literal.text);
-    else if (ts.isUnionTypeNode(node) && node.parent.kind !== K.UnionType) {
+    if (ts.isUnionTypeNode(node) && node.parent.kind !== K.UnionType) {
       add(node, unionValues(node, lists));
     } else if (ts.isInterfaceDeclaration(node)) census.tagged.set(node.name.text, tagsOf(node.members));
     else if (ts.isTypeAliasDeclaration(node)) {
@@ -324,39 +292,16 @@ function groupingsIn(path: string, file: ts.SourceFile): Grouping[] {
 
 const quoted = (values: Iterable<string>): string => [...values].map((value) => `"${value}"`).join(" | ");
 
-function unownedLiterals(
-  groupings: readonly Grouping[],
-  typed: ReadonlySet<string>,
-  readers: number,
-): Found[] {
-  const unowned = groupings.filter(
-    ({ values }) => values.every((value) => WORD.test(value)) && !values.some((value) => typed.has(value)),
-  );
-  return [...Map.groupBy(unowned, (one) => quoted(one.values.toSorted()))].flatMap(([values, under]) => {
-    const readerFiles = new Set(under.map((one) => one.path));
-    const [first] = under;
-    if (first === undefined || readerFiles.size < readers) return [];
-    const row: TreeFinding = {
-      kind: "no-unowned-state-literals",
-      path: first.path,
-      line: first.line,
-      detail: `${values} is compared by hand in ${readerFiles.size} files and no type, \`as const\`, enum or \`Set\` declares those states`,
-      places: under.map((one) => ({ path: one.path, line: one.line, end: one.line })),
-    };
-    return [{ row, set: { values: new Set(first.values), subjects: under.map((one) => one.subject) } }];
-  });
-}
-
 function censusOf(parsed: ReadonlyMap<string, ts.SourceFile>) {
-  const census: Census = { typed: new Set(), tagged: new Map(), variants: [], local: [] };
+  const census: Census = { tagged: new Map(), variants: [], local: [] };
   const declared = [...parsed].flatMap(([path, file]) => declaredIn(path, file, census));
   declared.push(...census.variants.flatMap((one) => discriminated(one, census.tagged)));
-  return { declared, typed: census.typed, local: census.local };
+  return { declared, local: census.local };
 }
 
 function stateLiterals(
   sources: ReadonlyMap<string, ts.SourceFile>,
-  { declared, typed }: ReturnType<typeof censusOf>,
+  declared: readonly Declared[],
   readers: number,
 ): TreeFinding[] {
   const groupings = [...sources].flatMap(([path, file]) => groupingsIn(path, file));
@@ -383,47 +328,30 @@ function stateLiterals(
     if (list === undefined) owned.set(owner, [grouping]);
     else list.push(grouping);
   }
-  const found: Found[] = [];
+  const rows: TreeFinding[] = [];
   for (const [owner, groupedBy] of owned) {
     const readerFiles = new Set(groupedBy.map((one) => one.path));
     if (readerFiles.size < readers) continue;
     const sets = new Set(groupedBy.map((one) => quoted(one.values.toSorted())));
-    found.push({
-      row: {
-        kind: "no-scattered-state-literals",
-        path: owner.path,
-        line: owner.line,
-        detail: `\`${owner.name}\` (${quoted(owner.values)}) is grouped by hand in ${readerFiles.size} other files, as ${[...sets].join("; ")}: give each grouping a name in the owner and call it`,
-        places: [owner, ...groupedBy].map((one) => ({ path: one.path, line: one.line, end: one.line })),
-      },
-      set: { values: owner.values, subjects: groupedBy.map((one) => one.subject) },
+    rows.push({
+      kind: "no-scattered-state-literals",
+      path: owner.path,
+      line: owner.line,
+      detail: `\`${owner.name}\` (${quoted(owner.values)}) is grouped by hand in ${String(readerFiles.size)} other files, as ${[...sets].join("; ")}: give each grouping a name in the owner and call it`,
+      places: [owner, ...groupedBy].map((one) => ({ path: one.path, line: one.line, end: one.line })),
     });
   }
-  found.push(...unownedLiterals(groupings, typed, readers));
-  const stateful = statefulSets(
-    sources,
-    found.map((one) => one.set),
-  );
-  return found.map(({ row }, index) =>
-    stateful[index] === true
-      ? row
-      : {
-          ...row,
-          kind: "no-scattered-enum-literals",
-          detail: `an enumeration rather than a state, since no literal of it is written where a value changes: ${row.detail}`,
-        },
-  );
+  return rows;
 }
 
-/** Every implicit-state finding of the tree scans over one set of files, parsed once. */
 export function implicitStateFindings(
   parsed: ReadonlyMap<string, ts.SourceFile>,
   readers = READER_FLOOR,
 ): TreeFinding[] {
-  const owned = new Map([...parsed].filter(([path]) => !TEST_PATH.test(path)));
+  const owned = new Map([...parsed].filter(([path]) => !isTestPath(path)));
   const sets = censusOf(owned);
   return [
-    ...stateLiterals(owned, sets, readers),
+    ...stateLiterals(owned, sets.declared, readers),
     ...repeatedExternalReads(parsed),
     ...secondReaders(owned),
     ...partialMappings(owned, sets.declared, sets.local),
@@ -461,8 +389,8 @@ if (import.meta.main) {
   }
   const lines = [...Map.groupBy(rows, (row) => row.kind)].flatMap(([kind, under]) => [
     "",
-    `${kind} (${under.length})`,
-    ...under.map((row) => `  ${row.path}:${row.line}  ${row.detail}`),
+    `${kind} (${String(under.length)})`,
+    ...under.map((row) => `  ${row.path}:${String(row.line)}  ${row.detail}`),
   ]);
-  await Bun.write(Bun.stdout, `${files.size} files read under ${root}\n${lines.join("\n")}\n`);
+  await Bun.write(Bun.stdout, `${String(files.size)} files read under ${root}\n${lines.join("\n")}\n`);
 }

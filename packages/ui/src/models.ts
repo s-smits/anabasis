@@ -37,8 +37,6 @@ import type { JsonObject, JsonValue } from "../../../src/meta/json-shape.ts";
 import type { Ruling } from "../../../src/referee/referee.ts";
 import { hasText } from "../../../src/meta/text.ts";
 
-export { type Tally } from "../../../src/kernel/compare.ts";
-
 export type Tone = "good" | "bad" | "warn" | "info" | "neutral";
 
 /** Valid answers and solves of one harness on a set of tasks. */
@@ -138,7 +136,7 @@ type Shown<Step> = Step extends { readonly step: "comparison" }
 /** The decision table's row a move was made by, as the move records it (`campaign.move`): the
  *  row's code and its reason. A move the Builder made that the table did not name carries `asked`
  *  and what the table named, and its conversation carries `led`. */
-export interface Named {
+interface Named {
   readonly code: string;
   readonly why: string;
 }

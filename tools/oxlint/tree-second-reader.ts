@@ -1,34 +1,30 @@
-/**
- * `no-duplicate-derivation` (generic): a fact an exported function already returns, derived again
- * by hand in another file. Call the owner.
- */
 import * as ts from "typescript5";
-import { boundNames } from "./tree-copied-block.ts";
+import { bare, boundNames, endLineOf, isExported, lineOf, namedExportsOf } from "./tree-ast.ts";
 import type { TreeFinding } from "./tree-findings.ts";
 
 interface Spelling {
-  path: string;
-  line: number;
-  end: number;
-  key: string;
-  norm: string;
-  start: number;
-  stop: number;
-  owner: string | null;
+  readonly path: string;
+  readonly line: number;
+  readonly end: number;
+  readonly key: string;
+  readonly norm: string;
+  readonly start: number;
+  readonly stop: number;
+  readonly owner: string | null;
 }
 
 interface Scan {
-  path: string;
-  line: number;
-  end: number;
-  test: string;
-  fields: ReadonlySet<string>;
-  owner: string | null;
+  readonly path: string;
+  readonly line: number;
+  readonly end: number;
+  readonly test: string;
+  readonly fields: ReadonlySet<string>;
+  readonly owner: string | null;
 }
 
 interface Reading {
-  one: Pick<Spelling, "path" | "line" | "end" | "key">;
-  owner: Pick<Spelling, "path" | "owner">;
+  readonly one: Pick<Spelling, "path" | "line" | "end" | "key">;
+  readonly owner: Pick<Spelling, "path" | "owner">;
 }
 
 const K = ts.SyntaxKind;
@@ -95,6 +91,8 @@ const LANGUAGE = new Set(
     .join(" ")
     .split(" "),
 );
+const ESTREE_TYPE =
+  /"[A-Z][A-Za-z]+(?:Expression|Statement|Declaration|Pattern|Literal|Clause)"[!=]==\$\.type|\$\.type[!=]==?"[A-Z][A-Za-z]+(?:Expression|Statement|Declaration|Pattern|Literal|Clause)"/u;
 const ARGUMENT = /_(?:\.[\w$]+)?(?=[,)])/gu;
 const SELECTING = new Set([
   "filter",
@@ -107,17 +105,6 @@ const SELECTING = new Set([
   "findLastIndex",
 ]);
 const SCAN_FIELDS = 2;
-
-const isWrapper = (
-  node: ts.Node,
-): node is ts.ParenthesizedExpression | ts.NonNullExpression | ts.AsExpression | ts.SatisfiesExpression =>
-  WRAPPER_KINDS.has(node.kind);
-
-function bare(node: ts.Expression): ts.Expression {
-  let at = node;
-  while (isWrapper(at)) at = at.expression;
-  return at;
-}
 
 const operatorOf = (node: ts.Expression): string | undefined =>
   ts.isBinaryExpression(node) ? OPERATORS.get(node.operatorToken.kind) : undefined;
@@ -154,23 +141,6 @@ function localNames(file: ts.SourceFile): Set<string> {
     } else ts.forEachChild(node, visit);
   };
   visit(file);
-  return names;
-}
-
-function namedExportsOf(file: ts.SourceFile): Set<string> {
-  const names = new Set<string>();
-  for (const statement of file.statements) {
-    if (
-      ts.isExportDeclaration(statement) &&
-      statement.moduleSpecifier === undefined &&
-      statement.exportClause !== undefined &&
-      ts.isNamedExports(statement.exportClause)
-    ) {
-      for (const element of statement.exportClause.elements) {
-        names.add((element.propertyName ?? element.name).text);
-      }
-    }
-  }
   return names;
 }
 
@@ -284,14 +254,15 @@ function exportedName(fn: ts.Node, file: ts.SourceFile, listed: ReadonlySet<stri
   if (name === undefined || !ts.isIdentifier(name)) return null;
   const top = ts.isVariableDeclaration(declaration) ? declaration.parent.parent : declaration;
   if (top.parent !== file) return null;
-  const modified =
-    ts.canHaveModifiers(top) && (ts.getModifiers(top) ?? []).some((one) => one.kind === K.ExportKeyword);
-  return modified || listed.has(name.text) ? name.text : null;
+  return isExported(top) || listed.has(name.text) ? name.text : null;
 }
 
 function ownerOf(node: ts.Node, file: ts.SourceFile, listed: ReadonlySet<string>): string | null {
   let at: ts.Node = node;
-  while (isWrapper(at.parent) || (ts.isBinaryExpression(at.parent) && operatorOf(at.parent) === "??")) {
+  while (
+    WRAPPER_KINDS.has(at.parent.kind) ||
+    (ts.isBinaryExpression(at.parent) && operatorOf(at.parent) === "??")
+  ) {
     at = at.parent;
   }
   const { parent } = at;
@@ -303,7 +274,7 @@ function ownerOf(node: ts.Node, file: ts.SourceFile, listed: ReadonlySet<string>
 
 function isInnerLink(node: ts.BinaryExpression): boolean {
   let { parent } = node;
-  while (isWrapper(parent)) parent = parent.parent;
+  while (WRAPPER_KINDS.has(parent.kind)) parent = parent.parent;
   const operator = operatorOf(node);
   return (
     operator !== undefined &&
@@ -316,7 +287,6 @@ function isInnerLink(node: ts.BinaryExpression): boolean {
 function spellingsOf(path: string, file: ts.SourceFile, listed: ReadonlySet<string>): Spelling[] {
   const locals = localNames(file);
   const { canon, negated } = keyer(locals);
-  const lineOf = (position: number): number => file.getLineAndCharacterOfPosition(position).line + 1;
   const found: Spelling[] = [];
   const visit = (node: ts.Node): void => {
     if (ts.isTypeNode(node)) return;
@@ -329,17 +299,16 @@ function spellingsOf(path: string, file: ts.SourceFile, listed: ReadonlySet<stri
         namesOf(node, locals).size >= 2
       ) {
         const plain = canon(node);
-        if (!plain.includes("…")) {
+        if (!plain.includes("…") && !ESTREE_TYPE.test(plain)) {
           const inverse = LOGICAL.has(operator) ? negated(node) : plain;
           const key = plain < inverse ? plain : inverse;
-          const start = node.getStart(file);
           found.push({
             path,
-            line: lineOf(start),
-            end: lineOf(node.getEnd()),
+            line: lineOf(file, node),
+            end: endLineOf(file, node),
             key,
             norm: key.replaceAll(ARGUMENT, "_"),
-            start,
+            start: node.getStart(file),
             stop: node.getEnd(),
             owner: ownerOf(node, file, listed),
           });
@@ -391,7 +360,6 @@ function testsOf(body: ts.Node): { keys: Map<string, string>; fields: Set<string
 }
 
 function scansOf(path: string, file: ts.SourceFile, listed: ReadonlySet<string>): Scan[] {
-  const lineOf = (position: number): number => file.getLineAndCharacterOfPosition(position).line + 1;
   const found: Scan[] = [];
   const visit = (node: ts.Node): void => {
     if (ts.isTypeNode(node)) return;
@@ -413,7 +381,7 @@ function scansOf(path: string, file: ts.SourceFile, listed: ReadonlySet<string>)
     }
     if (ts.isPropertyAccessExpression(result)) fields.add(result.name.text);
     const owner = returnedBy(node, file, listed);
-    const at = { line: lineOf(node.getStart(file)), end: lineOf(node.getEnd()) };
+    const at = { line: lineOf(file, node), end: endLineOf(file, node) };
     for (const [test, subject] of keys) {
       const read = new Set([...fields].filter((field) => field !== subject && !LANGUAGE.has(field)));
       found.push({ path, ...at, test, fields: read, owner });
@@ -446,7 +414,6 @@ function sameFact(a: Spelling, b: Spelling): boolean {
   return left.every((one, at) => one === "_" || right[at] === "_" || one === right[at]);
 }
 
-/** Each spelling of a fact an exported function in another file already returns. */
 export function secondReaders(sources: ReadonlyMap<string, ts.SourceFile>): TreeFinding[] {
   const read = [...sources].map(([path, file]) => [path, file, namedExportsOf(file)] as const);
   const spellings = read.flatMap(([path, file, listed]) => spellingsOf(path, file, listed));

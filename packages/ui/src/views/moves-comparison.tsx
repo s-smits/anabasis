@@ -9,7 +9,6 @@ import type {
   ScoredTask,
   Sensitivity,
   SolveRow,
-  Tally,
 } from "../models.ts";
 import { shortHash } from "../models.ts";
 import { type Navigation, useKept } from "../route.ts";
@@ -19,7 +18,7 @@ import { duration, money, percent, time } from "./format.ts";
 import { kindOf, standingOf } from "./moves-list.tsx";
 import { OUTCOMES } from "./outcome.ts";
 import { RulingsCell, rulingLabel } from "./solve-rows.tsx";
-import { plural } from "../../../../src/meta/text.ts";
+import { plural, tallyText } from "../../../../src/meta/text.ts";
 
 /*
  * One comparison: what it was, what its scored tasks came to, and each task's solves on both sides.
@@ -32,10 +31,6 @@ import { plural } from "../../../../src/meta/text.ts";
  */
 
 const RULING_KINDS = ["earned", "check-defect", "unclear"] as const;
-
-/** A tally in words, in the page's order. */
-const tallyWords = ({ wins, losses, ties }: Tally): string =>
-  `${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied`;
 
 /** A comparison's rulings in words: by kind, or how many were ruled while one is withheld. */
 function rulingsText({ rulings }: Pick<ComparisonBar, "rulings">): string {
@@ -157,7 +152,7 @@ function OutcomeSplit({
 function Readings({ detail, reading }: { detail: ComparisonDetail; reading: CampaignReading }) {
   const { bar } = detail;
   const facts = [
-    ["Tally", bar.tally === null ? "none" : tallyWords(bar.tally)],
+    ["Tally", bar.tally === null ? "none" : tallyText(bar.tally)],
     ["Sign test", bar.p === null ? "not made" : `${pText(bar.p)} at level ${String(bar.level)}`],
     ...(bar.carried === null
       ? []
@@ -180,18 +175,18 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
     ...(bar.sets === null
       ? []
       : ([
-          ["Frontier", `${tallyWords(bar.sets.frontier.tally)} · ${pText(bar.sets.frontier.p)}`],
+          ["Frontier", `${tallyText(bar.sets.frontier.tally)} · ${pText(bar.sets.frontier.p)}`],
           [
             "Retained",
             bar.sets.retained === "unmeasured"
               ? "unmeasured: no retained task was tallied, which is not no loss"
-              : tallyWords(bar.sets.retained),
+              : tallyText(bar.sets.retained),
           ],
         ] as const)),
     ["Rulings", rulingsText(bar)],
     ...(bar.noise === null
       ? []
-      : ([["Reference against itself", `${tallyWords(bar.noise.tally)} · ${pText(bar.noise.p)}`]] as const)),
+      : ([["Reference against itself", `${tallyText(bar.noise.tally)} · ${pText(bar.noise.p)}`]] as const)),
   ] as const;
   const { terms } = detail;
   const termFacts = [

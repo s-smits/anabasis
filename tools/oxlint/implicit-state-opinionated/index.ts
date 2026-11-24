@@ -2,7 +2,6 @@ import { eslintCompatPlugin } from "@oxlint/plugins";
 
 import { maxBooleanFieldsRule } from "./rules/max-boolean-fields.ts";
 import { preferStateUnionRule } from "./rules/prefer-state-union.ts";
-import { noStateInNamesRule } from "./rules/no-state-in-names.ts";
 
 /**
  * The opinionated implicit-state rules: stances about where state may live, which hold in a
@@ -15,7 +14,6 @@ const implicitStateOpinionatedPlugin = eslintCompatPlugin({
   rules: {
     "max-boolean-fields": maxBooleanFieldsRule,
     "prefer-state-union": preferStateUnionRule,
-    "no-state-in-names": noStateInNamesRule,
   },
 });
 

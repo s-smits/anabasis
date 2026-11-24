@@ -1,29 +1,19 @@
-/**
- * A call into another file whose arguments are named for one another's parameters, crossed.
- */
 import * as ts from "typescript5";
 import { crossings } from "./ana/shared/crossed.ts";
+import { importsOf, isFunctionValue, lineOf } from "./tree-ast.ts";
 import type { TreeFinding } from "./tree-findings.ts";
-import { resolved } from "./tree-overwritten-key.ts";
 
-/** One parameter list a file declares, under the name a caller reaches it by. */
 interface Declared {
-  path: string;
-  line: number;
-  params: (string | null)[];
+  readonly path: string;
+  readonly line: number;
+  readonly params: (string | null)[];
 }
 
-/** What an argument is named: an identifier, or the property that ends a member read. */
 function argumentName(node: ts.Expression): string | null {
   if (ts.isIdentifier(node)) return node.text;
   return ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.name) ? node.name.text : null;
 }
 
-function isFunctionValue(node: ts.Node | undefined): node is ts.ArrowFunction | ts.FunctionExpression {
-  return node !== undefined && (ts.isArrowFunction(node) || ts.isFunctionExpression(node));
-}
-
-/** The methods of an object literal, under `object.method`. */
 function methodsOf(
   object: string,
   literal: ts.ObjectLiteralExpression,
@@ -40,8 +30,6 @@ function methodsOf(
   });
 }
 
-/** The signatures a file's top level declares: functions, `const` functions, classes' constructors
- *  and object literals' methods, keyed by how a caller reaches them. */
 function signaturesOf(file: ts.SourceFile): [string, ts.SignatureDeclarationBase][] {
   return file.statements.flatMap((statement): [string, ts.SignatureDeclarationBase][] => {
     if (ts.isFunctionDeclaration(statement) && statement.name !== undefined) {
@@ -61,7 +49,6 @@ function signaturesOf(file: ts.SourceFile): [string, ts.SignatureDeclarationBase
   });
 }
 
-/** Each file's parameter lists by the name a caller reaches them by, a name declared twice left out. */
 function declaredIn(path: string, file: ts.SourceFile): Map<string, Declared> {
   const declared = new Map<string, Declared>();
   for (const [name, list] of Map.groupBy(signaturesOf(file), ([each]) => each)) {
@@ -70,33 +57,13 @@ function declaredIn(path: string, file: ts.SourceFile): Map<string, Declared> {
     const fn = only[1];
     declared.set(name, {
       path,
-      line: file.getLineAndCharacterOfPosition(fn.getStart(file)).line + 1,
+      line: lineOf(file, fn),
       params: fn.parameters.map((one) => (ts.isIdentifier(one.name) ? one.name.text : null)),
     });
   }
   return declared;
 }
 
-/** The file each imported binding of a file comes from, and the name it has there (`*` for a
- *  namespace import). */
-export function importsOf(path: string, file: ts.SourceFile, files: ReadonlySet<string>) {
-  const bound = new Map<string, { home: string; name: string }>();
-  for (const statement of file.statements) {
-    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
-    const home = resolved(path, statement.moduleSpecifier.text, files);
-    const bindings = statement.importClause?.namedBindings;
-    if (home === undefined || bindings === undefined) continue;
-    if (ts.isNamespaceImport(bindings)) bound.set(bindings.name.text, { home, name: "*" });
-    else {
-      for (const element of bindings.elements) {
-        bound.set(element.name.text, { home, name: (element.propertyName ?? element.name).text });
-      }
-    }
-  }
-  return bound;
-}
-
-/** The name a callee is declared by in its own file, and the local binding it is reached through. */
 function reachOf(node: ts.CallExpression | ts.NewExpression): { local: string; rest: string } | null {
   const callee = node.expression;
   if (ts.isIdentifier(callee)) return { local: callee.text, rest: "" };
@@ -106,7 +73,6 @@ function reachOf(node: ts.CallExpression | ts.NewExpression): { local: string; r
     : null;
 }
 
-/** Every call into another file whose arguments cross the callee's parameters. */
 export function crossedArguments(parsed: ReadonlyMap<string, ts.SourceFile>): TreeFinding[] {
   const paths = new Set(parsed.keys());
   const byFile = new Map([...parsed].map(([path, file]) => [path, declaredIn(path, file)]));
@@ -134,8 +100,8 @@ export function crossedArguments(parsed: ReadonlyMap<string, ts.SourceFile>): Tr
             rows.push({
               kind: "no-transposed-argument",
               path,
-              line: file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1,
-              detail: `\`${node.expression.getText(file)}\` (${declared.path}:${declared.line}) receives ${given.join(", ")}: each argument is named for the parameter of another`,
+              line: lineOf(file, node),
+              detail: `\`${node.expression.getText(file)}\` (${declared.path}:${String(declared.line)}) receives ${given.join(", ")}: each argument is named for the parameter of another`,
             });
           }
         }

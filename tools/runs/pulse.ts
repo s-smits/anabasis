@@ -803,7 +803,7 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
  * that fell off the rows without a word would read as gone to an agent reading `status` alone (the
  * operator's choice).
  */
-export function leftOut(
+function leftOut(
   quiet: number,
   archive: number,
   newest: readonly { readonly name: string; readonly days: number; readonly promoted: number }[],

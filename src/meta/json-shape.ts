@@ -17,7 +17,7 @@ export type JsonObject = Record<string, JsonValue>;
 
 export type OpenRecord = Record<string, unknown>;
 
-export type Callable = (...args: never[]) => void;
+type Callable = (...args: never[]) => void;
 
 export function isString(value: unknown): value is string {
   return typeof value === "string";

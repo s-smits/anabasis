@@ -1,21 +1,18 @@
-/**
- * `require-exhaustive-mapping` (generic): a lookup `Map` keyed by most members of a declared set,
- * read with a computed key, and held by no type to that set.
- */
 import * as ts from "typescript5";
+import { endLineOf, lineOf } from "./tree-ast.ts";
 import type { TreeFinding } from "./tree-findings.ts";
 
 interface KnownSet {
-  name: string;
-  values: ReadonlySet<string>;
-  path: string;
+  readonly name: string;
+  readonly values: ReadonlySet<string>;
+  readonly path: string;
 }
 
 interface Table {
-  name: string;
-  keys: ReadonlySet<string>;
-  line: number;
-  end: number;
+  readonly name: string;
+  readonly keys: ReadonlySet<string>;
+  readonly line: number;
+  readonly end: number;
 }
 
 const KEYS_FLOOR = 2;
@@ -45,7 +42,6 @@ function tableKeys(value: ts.Expression): string[] | null {
 }
 
 function tablesIn(file: ts.SourceFile): Table[] {
-  const lineOf = (position: number): number => file.getLineAndCharacterOfPosition(position).line + 1;
   const found: Table[] = [];
   const visit = (node: ts.Node): void => {
     if (ts.isTypeNode(node)) return;
@@ -59,8 +55,8 @@ function tablesIn(file: ts.SourceFile): Table[] {
     found.push({
       name: node.name.text,
       keys: unique,
-      line: lineOf(node.getStart(file)),
-      end: lineOf(node.getEnd()),
+      line: lineOf(file, node),
+      end: endLineOf(file, node),
     });
   };
   visit(file);
@@ -84,7 +80,6 @@ function accessed(sources: ReadonlyMap<string, ts.SourceFile>) {
   return { read, written };
 }
 
-/** Each table that leaves part of its set out, or maps it whole with nothing holding it there. */
 export function partialMappings(
   sources: ReadonlyMap<string, ts.SourceFile>,
   sets: readonly KnownSet[],

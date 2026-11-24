@@ -8,7 +8,7 @@ import { sha256OfFile } from "../meta/digest.ts";
 import { runtimeProcess, capturedExecPath } from "../meta/process.ts";
 import { asError } from "../meta/runtime-values.ts";
 import { boundText } from "../meta/bounded-text.ts";
-import { surroundingSandbox } from "./policy.ts";
+import { surroundingSandbox, type WallSupport } from "./policy.ts";
 
 export const LINUX_BWRAP_ID = "linux-bwrap/v1" as const;
 
@@ -16,13 +16,6 @@ export interface LinuxBwrapRuntime {
   platform?: RuntimePlatform;
   bwrapPath?: string;
   outerSandboxed?: boolean;
-}
-
-interface LinuxBwrapSupport {
-  ok: boolean;
-  reason: string | null;
-  mechanismPath: string;
-  mechanismDigest: string | null;
 }
 
 const UNKNOWN_OPTION = /Unknown option (--[a-z0-9-]+)/;
@@ -126,8 +119,8 @@ function attestBwrap(bwrapPath: string): { mechanismDigest: string } | { refused
   return { mechanismDigest };
 }
 
-export function linuxBwrapSupport(runtime: LinuxBwrapRuntime = {}): LinuxBwrapSupport {
-  const unavailable = (reason: string): LinuxBwrapSupport => ({
+export function linuxBwrapSupport(runtime: LinuxBwrapRuntime = {}): WallSupport {
+  const unavailable = (reason: string): WallSupport => ({
     ok: false,
     reason,
     mechanismPath: runtime.bwrapPath ?? BWRAP_CANDIDATES[0],

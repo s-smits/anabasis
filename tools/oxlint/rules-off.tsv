@@ -9,7 +9,7 @@ eslint/init-declarations	*	115	off	Its sites declare a `let` that every branch b
 eslint/max-classes-per-file	*	4	off	Its four files hold an error or helper class beside the class that uses it, and tools/loc/source-policy.ts owns file size.
 eslint/max-lines	*	146	off	tools/loc/source-policy.ts owns file size at 800 nonblank lines (AGENTS.md section 12), and this rule's 300 counts blanks and comments.
 eslint/max-lines-per-function	*	513	off	tools/loc/source-policy.ts owns function size at 115 lines (AGENTS.md section 12), and this rule's 50 would split functions that limit allows.
-eslint/max-statements	*	1011	off	tools/loc/source-policy.ts owns function size; ten statements a function would split most into helpers with one caller, which `ana/no-single-caller-helper` refuses.
+eslint/max-statements	*	1011	off	tools/loc/source-policy.ts owns function size; ten statements a function would artificially split cohesive functions.
 eslint/no-await-in-loop	*	304	off	Its sites await in order on purpose: appends to one log, one solve after another under the host's load, and polls that wait between reads.
 eslint/no-bitwise	*	39	off	Its sites are hashes, file modes and sizes such as `1 << 17`, where a bitwise operator is the operation.
 eslint/no-console	*	418	off	Commands, scripts and tests report on stdout and stderr by design, and the tree has no logger to route through.
@@ -43,7 +43,7 @@ eslint/sort-keys	*	5340	off	Object keys follow the order a reader or a log line 
 import/consistent-type-specifier-style	*	485	staged	Staged at 485 sites for prefer-inline (836 for prefer-top-level): both forms are in use, and one form is a mechanical pass of its own.
 import/exports-last	*	1056	off	Each declaration is exported where it is defined, with the module's entry first, which a block of exports at the end would part from its code.
 import/group-exports	*	1593	off	Each declaration is exported where it is defined, which one grouped export statement would part from its code.
-import/max-dependencies	*	125	off	A file's import count is no measure the tree holds; `tree/max-filesystem-imports` budgets the one import list that is.
+import/max-dependencies	*	125	off	A file's import count is not a measure the tree enforces; cohesion governs module boundaries.
 import/no-anonymous-default-export	*	0	off	`import/no-default-export`, which is on, already reports every default export.
 import/no-named-export	*	1781	off	It opposes `import/no-default-export`, which is on.
 import/no-namespace	*	7	off	Its sites import the TypeScript compiler API as `ts` and two modules a test reaches through their namespace, which is the form both uses need.

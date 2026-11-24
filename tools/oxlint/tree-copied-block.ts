@@ -1,27 +1,28 @@
-/**
- * Two or more consecutive statements written out at two or more places, once the names each
- * function binds for itself and every literal are abstracted away.
- */
 import * as ts from "typescript5";
+import { boundNames, endLineOf, isFunctionValue, lineOf, OPTED_OUT, TEST_PATH } from "./tree-ast.ts";
 import type { TreeFinding } from "./tree-findings.ts";
 
+interface Place {
+  readonly path: string;
+  readonly host: string;
+  readonly statements: readonly ts.Statement[];
+  readonly first: number;
+  readonly last: number;
+  readonly tokens: number;
+  readonly line: number;
+  readonly end: number;
+}
+
 const K = ts.SyntaxKind;
-const SKIPPED_PATH =
-  /(?:^|\/)(?:test|tests|__tests__|fixtures?|__mocks__)\/|\.(?:test|spec)\.|(?:^|\/)(?:vendor|vendored|third[-_]party|migrations?|examples?)\/|(?:^|[/._-])legacy[._-][^/]*$/iu;
-/** A file's opening comment when nobody edits it by hand, or it is kept as its upstream wrote it. */
-export const OPTED_OUT =
-  /@ts-nocheck|@generated\b|\bauto-?generated\b|\bdo not edit\b|^\/\/\s*vendored from\s+\S/iu;
+const FROZEN_PATH = /(?:^|\/)(?:vendor|vendored|third[-_]party|migrations?|examples?)\//iu;
 const WORDY = /\p{L}{3}/u;
-const TOKEN_FLOOR = 64;
-const LINE_FLOOR = 3;
+const TOKEN_FLOOR = 84;
+const LINE_FLOOR = 4;
 const DIVERGENT_WORDS = 5;
 const DATA_SHARE = 0.5;
 const NAMED_PLACES = 3;
 
-const DECL_KINDS = new Set([K.VariableDeclaration, K.Parameter, K.BindingElement]);
-const NAMED_KINDS = new Set([K.FunctionDeclaration, K.ClassDeclaration]);
 const METHOD_KINDS = new Set([K.FunctionDeclaration, K.MethodDeclaration]);
-const FN_VALUE_KINDS = new Set([K.ArrowFunction, K.FunctionExpression]);
 const STRING_KINDS = new Set([K.StringLiteral, K.NoSubstitutionTemplateLiteral]);
 const PROP_KINDS = new Set([K.PropertyAccessExpression, K.PropertyAssignment]);
 const WRAPPER_KINDS = new Set([
@@ -41,43 +42,7 @@ const LITERAL_KINDS = new Set([
 ]);
 const DATA_KINDS = new Set([K.ObjectLiteralExpression, K.ArrayLiteralExpression]);
 
-interface Place {
-  path: string;
-  host: string;
-  statements: readonly ts.Statement[];
-  first: number;
-  last: number;
-  tokens: number;
-  line: number;
-  end: number;
-}
-
-/** Every name a function binds for itself: parameters, locals, nested declarations, catch variables. */
-export function boundNames(fn: ts.FunctionLikeDeclaration): Set<string> {
-  const names = new Set<string>();
-  const bind = (name: ts.BindingName): void => {
-    if (ts.isIdentifier(name)) names.add(name.text);
-    else for (const element of name.elements) if (!ts.isOmittedExpression(element)) bind(element.name);
-  };
-  const walk = (node: ts.Node): void => {
-    if (DECL_KINDS.has(node.kind)) {
-      // SAFETY: `DECL_KINDS` enumerates the three declarations carrying `.name: ts.BindingName`.
-      bind((node as ts.VariableDeclaration).name);
-    } else if (NAMED_KINDS.has(node.kind)) {
-      // SAFETY: `NAMED_KINDS` enumerates `FunctionDeclaration` and `ClassDeclaration`.
-      const name = (node as ts.FunctionDeclaration).name;
-      if (name !== undefined) names.add(name.text);
-    } else if (ts.isCatchClause(node) && node.variableDeclaration !== undefined) {
-      bind(node.variableDeclaration.name);
-    }
-    ts.forEachChild(node, walk);
-  };
-  for (const parameter of fn.parameters) bind(parameter.name);
-  if (fn.body !== undefined) walk(fn.body);
-  return names;
-}
-
-const pushMap = <Key, Value>(map: Map<Key, Value[]>, key: Key, item: Value) => {
+const pushMap = <Key, Value>(map: Map<Key, Value[]>, key: Key, item: Value): void => {
   const list = map.get(key);
   if (list === undefined) map.set(key, [item]);
   else list.push(item);
@@ -95,11 +60,9 @@ function hostsOf(file: ts.SourceFile): [string, ts.FunctionLikeDeclaration][] {
     } else if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
-      node.initializer !== undefined &&
-      FN_VALUE_KINDS.has(node.initializer.kind)
+      isFunctionValue(node.initializer)
     ) {
-      // SAFETY: `FN_VALUE_KINDS` enumerates `ArrowFunction` and `FunctionExpression`.
-      hosts.push([node.name.text, node.initializer as ts.ArrowFunction | ts.FunctionExpression]);
+      hosts.push([node.name.text, node.initializer]);
     }
     ts.forEachChild(node, visit);
   };
@@ -130,7 +93,6 @@ function spell(node: ts.Node, bound: ReadonlySet<string>, out: string[]): string
 }
 
 function unitsOf(path: string, file: ts.SourceFile, into: Map<string, Place[]>): void {
-  const lineOf = (position: number): number => file.getLineAndCharacterOfPosition(position).line + 1;
   for (const [host, fn] of hostsOf(file)) {
     const bound = boundNames(fn);
     const runs = (statements: readonly ts.Statement[]): void => {
@@ -139,8 +101,8 @@ function unitsOf(path: string, file: ts.SourceFile, into: Map<string, Place[]>):
         return {
           text: parts.join(" "),
           tokens: parts.length,
-          line: lineOf(statement.getStart(file)),
-          end: lineOf(statement.getEnd()),
+          line: lineOf(file, statement),
+          end: endLineOf(file, statement),
         };
       });
       for (const [first, start] of spelled.entries()) {
@@ -209,11 +171,10 @@ function saysDifferentThings(places: readonly Place[]): boolean {
   );
 }
 
-/** One row per copied block, at its first place, naming the others. */
 export function copiedBlocks(parsed: ReadonlyMap<string, ts.SourceFile>): TreeFinding[] {
   const groups = new Map<string, Place[]>();
   for (const [path, file] of [...parsed].toSorted(([a], [b]) => a.localeCompare(b))) {
-    if (SKIPPED_PATH.test(path)) continue;
+    if (TEST_PATH.test(path) || FROZEN_PATH.test(path)) continue;
     if (!OPTED_OUT.test(file.text.slice(0, file.statements[0]?.getStart(file)))) unitsOf(path, file, groups);
   }
   const taken = new Map<string, Place[]>();
@@ -246,14 +207,14 @@ export function copiedBlocks(parsed: ReadonlyMap<string, ts.SourceFile>): TreeFi
     }
     const named = others
       .slice(0, NAMED_PLACES)
-      .map((place) => `${place.path}:${place.line} in \`${place.host}\``);
-    const rest = others.length > NAMED_PLACES ? ` and ${others.length - NAMED_PLACES} more` : "";
+      .map((place) => `${place.path}:${String(place.line)} in \`${place.host}\``);
+    const rest = others.length > NAMED_PLACES ? ` and ${String(others.length - NAMED_PLACES)} more` : "";
     rows.push({
       kind: "no-duplicate-block",
       path: first.path,
       line: first.line,
       detail:
-        `${first.last - first.first + 1} statements, ${first.tokens} tokens, lines ${first.line}–${first.end} ` +
+        `${String(first.last - first.first + 1)} statements, ${String(first.tokens)} tokens, lines ${String(first.line)}–${String(first.end)} ` +
         `in \`${first.host}\`; also ${named.join(", ")}${rest}`,
       places: kept.map(({ path, line, end }) => ({ path, line, end })),
     });

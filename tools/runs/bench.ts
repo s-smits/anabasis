@@ -97,13 +97,13 @@ export function settingsOf(
 /** Sender-side shell command for streaming an exported tree: computes SHA-256 checksums for all
  *  files (needed because `bsdtar` does not verify gzip CRCs on extraction), then tars the tree,
  *  build record, and checksums to stdout while stripping macOS extended attributes and `.DS_Store`. */
-export const sealed = (from: string, label: string) =>
+const sealed = (from: string, label: string) =>
   `cd ${from} && find ${quoted(label)} ${quoted(`${label}.build.json`)} -type f ! -name .DS_Store -exec ${SUMS} {} + > ${quoted(`${label}.sha256`)} && COPYFILE_DISABLE=1 tar -czf - --no-xattrs --exclude .DS_Store ${quoted(label)} ${quoted(`${label}.build.json`)} ${quoted(`${label}.sha256`)}`;
 
 /** Receiver-side shell command on the benchmark host: extracts into a staging directory, verifies
  *  every SHA-256 checksum, rejects symlinks pointing to absolute paths on the build machine, and
  *  moves the tree into place atomically without overwriting an existing label. */
-export function opened(trees: string, label: string): string {
+function opened(trees: string, label: string): string {
   const tree = `${trees}/${quoted(label)}`;
   const part = `${trees}/${quoted(`.part-${label}`)}`;
   return `test ! -e ${tree} && mkdir -p ${trees} && rm -rf ${part} && mkdir ${part} && tar -xzf - -C ${part} && (cd ${part} && ${SUMS} -c --quiet ${quoted(`${label}.sha256`)}) && links=$(find ${part} -type l -lname '/*') && { test -z "$links" || { echo "links to absolute paths: $links" >&2; false; }; } && rm ${part}/${quoted(`${label}.sha256`)} && mv ${part}/${quoted(label)} ${tree} && mv ${part}/${quoted(`${label}.build.json`)} ${trees}/ && rmdir ${part}`;

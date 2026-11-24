@@ -32,7 +32,7 @@ export interface Watched<S = Sample> {
 
 /** Each load average by its window, and its place in a sample's `loads`. */
 export const WINDOWS = { "1m": 0, "5m": 1, "15m": 2 } as const;
-export type Window = (typeof WINDOWS)[keyof typeof WINDOWS];
+type Window = (typeof WINDOWS)[keyof typeof WINDOWS];
 
 const SILENT_MS = 20_000;
 const RETRY_MS = 3000;

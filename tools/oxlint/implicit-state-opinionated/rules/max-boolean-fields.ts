@@ -18,7 +18,7 @@ import { calleeName, isTestPath, objectValues } from "../../implicit-state/share
  *
  * There is no fix: which states the flags stand for is the whole change.
  */
-const MAX_FIELDS = 2;
+const MAX_FIELDS = 3;
 const MAX_PARAMS = 3;
 const DECLARATION = /\.d\.[cm]?ts$/u;
 const PARSE = /parse/iu;

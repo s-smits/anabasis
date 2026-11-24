@@ -30,13 +30,12 @@ const KINDS = ["proving", "sanitizing", "merging"];
  *  out, since a landing beneath it on the same chain can prove for hours. */
 export async function holdAlone(
   root: string,
-  who: string,
   say: (line: string) => void,
   pauseMs = 15_000,
   claim: Claim | null = null,
 ): Promise<() => void> {
   const [common = ""] = lines(git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]));
-  const lock = join(common, `ana-${who}.lock`);
+  const lock = join(common, "ana-land.lock");
   let ended = 0;
   for (let looks = 0; ; looks += 1) {
     // The run CLI's lock (`holder.ts`): a holder is a live process of this host with the start its
@@ -49,14 +48,14 @@ export async function holdAlone(
     if (ended !== holder && held !== "" && claim?.over(held) === true) {
       ended = holder;
       say(
-        `another ${who} (pid ${String(holder)}, ${held}) covers less than this one; ending it, its passes kept`,
+        `another land (pid ${String(holder)}, ${held}) covers less than this one; ending it, its passes kept`,
       );
       runtimeProcess.kill(holder, "SIGTERM");
       await Bun.sleep(Math.min(pauseMs, 1000));
       continue;
     }
     if (looks % 20 === 0) {
-      say(`another ${who} (pid ${String(holder)}) is running in this clone; waiting for it to end`);
+      say(`another land (pid ${String(holder)}) is running in this clone; waiting for it to end`);
     }
     await Bun.sleep(pauseMs);
   }

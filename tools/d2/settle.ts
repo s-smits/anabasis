@@ -22,14 +22,16 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import {
   agreement,
+  clears,
+  labelled,
   PASS_LABELS,
   passAgreement,
   RULINGS,
   settledLabels,
   settledPassLabels,
   unclearReport,
+  VERDICT_BAR,
 } from "#src/referee/agreement.ts";
-import { labelled } from "#src/referee/rejections.ts";
 import { openCampaign, PACK_OPTIONS, packNamed } from "./campaign.ts";
 import { type Campaign, reportLines } from "./round.ts";
 
@@ -116,7 +118,7 @@ export function labelLines(events: readonly LogEvent[]): string[] {
       ? null
       : `${passed.total === 1 ? "1 labelled pass" : `${String(passed.total)} labelled passes`}: sound ${String(passed.counts.sound)}, wrong ${String(passed.counts.wrong)}, unclear ${String(passed.counts.unclear)}; wrong rate ${rate(passed.wrongRate)} (${String(passed.counts.wrong)}/${String(passed.decided)} decided)`;
   return [
-    `the Referee against ${plural(labels.size, "labelled rejection")}, ${String(measured.unruled.length)} of them unruled: agreement of each kind ${each}; over all three ${rate(measured.observed)}, PABAK ${rate(measured.pabak)} beside kappa ${rate(measured.kappa)}`,
+    `the Referee against ${plural(labels.size, "labelled rejection")}, ${String(measured.unruled.length)} of them unruled: agreement of each kind ${each}; over all three ${rate(measured.observed)}, PABAK ${rate(measured.pabak)} beside kappa ${rate(measured.kappa)}${labels.size === 0 ? "" : `; bar ${clears(measured, VERDICT_BAR) ? "cleared" : "open"}`}`,
     ...(passLine === null ? [] : [passLine]),
     ...(unclear === null ? [] : [unclear]),
     ...lastReports(events, "all").flatMap(({ session: id }) => {

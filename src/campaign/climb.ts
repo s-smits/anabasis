@@ -18,7 +18,7 @@ import { billedBetween } from "../kernel/meter.ts";
 import { heldAtGate } from "../kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keysIf } from "../meta/optional-key.ts";
-import { plural } from "../meta/text.ts";
+import { plural, tallyText } from "../meta/text.ts";
 import { short } from "./move.ts";
 import type { Called } from "./names.ts";
 
@@ -276,9 +276,6 @@ function falsePromotionOf(
     ),
   };
 }
-
-const tallyText = ({ wins, losses, ties }: Tally) =>
-  `${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied`;
 
 function starterClause({ reference, starter_tally: tally, confirmed }: Epoch, read?: StarterRead): string {
   if (reference === "starter") return "";

@@ -32,7 +32,7 @@ import { writtenIn } from "./trajectory.ts";
 
 /** What the new harness wrote against the reference, by path (`guide` for its guide); a path added with
  *  the bytes of one removed is a rename, `old -> new`, and neither added nor removed. */
-export interface Written {
+interface Written {
   readonly added: readonly string[];
   readonly changed: readonly string[];
   readonly removed: readonly string[];
@@ -110,7 +110,7 @@ function firstUses(calls: readonly Call[], programs: readonly string[]): { ran: 
 }
 
 /** Each solve of each won task, both sides, with its calls in the order logged. */
-export function solveRows(events: readonly LogEvent[], session: string): SolveRow[] | null {
+function solveRows(events: readonly LogEvent[], session: string): SolveRow[] | null {
   const found = wonPairs(events, session);
   if (found === null) return null;
   const endings = new Map(

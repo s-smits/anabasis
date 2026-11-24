@@ -21,7 +21,7 @@ import {
   readLedger,
   TREE_RULE_PREFIX,
 } from "./not-slop-ledger.ts";
-import { TREE_REGISTER_KINDS, type TreeSite, treeSites } from "./tree-findings.ts";
+import { type TreeSite, treeSites } from "./tree-findings.ts";
 
 /** Each command, by the word that names it; none is the status. */
 const COMMANDS = new Map<string, (rest: readonly string[]) => Promise<number>>([
@@ -81,10 +81,6 @@ function unwritable(ledger: Ledger): string | null {
 
 async function writeAnswer([id = "", ...words]: readonly string[]): Promise<number> {
   const tree = treeSites();
-  const register = tree.find((site) => site.id === id && TREE_REGISTER_KINDS.includes(site.kind));
-  if (register !== undefined) {
-    return refuse(`${id} is a ${register.kind} row: a current count, with nothing to answer`);
-  }
   const site = [...(await lastLintSites()), ...tree.map(treeSite)].find((one) => one.id === id);
   if (site === undefined) {
     return refuse(`no current finding has the id "${id}": run bun run lint, and answer an id it printed`);

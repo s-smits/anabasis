@@ -247,7 +247,7 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
  * pool carried from another host stays as carried, where a running keeper would otherwise go on
  * choosing from the logins it had been started with after the operator narrowed the pool.
  */
-export function poolOf(file: string, env: Env): () => Promise<readonly string[]> {
+function poolOf(file: string, env: Env): () => Promise<readonly string[]> {
   const named = async () =>
     /^ANA_LOGINS=["']?([^"'\s#]*)/mu.exec(
       await Bun.file(file)

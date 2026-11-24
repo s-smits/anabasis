@@ -9,6 +9,13 @@ import { runtimeProcess } from "../meta/process.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { claim } from "./seat-root.ts";
 
+export interface WallSupport {
+  ok: boolean;
+  reason: string | null;
+  mechanismPath: string;
+  mechanismDigest: string | null;
+}
+
 const darwinAnswers = new Map<string, string | undefined>();
 
 export const BUILT_COMMAND_SCRATCH_ROOT = join(tmpdir(), "ana-built-bash");

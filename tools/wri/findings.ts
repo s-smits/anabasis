@@ -32,7 +32,7 @@ const REGISTER = join(REFERENCES, "standing-findings.md");
 const DATED = /^(\d{4}-\d{2}-\d{2})-/u;
 
 /** One row of a findings table. A column its table lacks reads as "". */
-export interface Finding {
+interface Finding {
   /** `vet-<n>`, however the row wrote it (`3`, `vet-3`, in bold or in backticks). */
   readonly id: string;
   readonly verdict: Verdict;

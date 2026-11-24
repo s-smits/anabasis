@@ -8,6 +8,18 @@ export function plural(count: number, noun: string): string {
   return `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
 }
 
+export function tallyText({
+  wins,
+  losses,
+  ties,
+}: {
+  readonly wins: number;
+  readonly losses: number;
+  readonly ties: number;
+}): string {
+  return `${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied`;
+}
+
 export function textOr(value: string | null | undefined, fallback: string): string {
   return hasText(value) ? value : fallback;
 }

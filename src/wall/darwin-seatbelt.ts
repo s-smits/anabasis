@@ -1,7 +1,7 @@
 import { realpathSync, statSync } from "../meta/filesystem.ts";
 import type { RuntimePlatform } from "../meta/runtime-values.ts";
 import { sha256OfFile } from "../meta/digest.ts";
-import { surroundingSandbox } from "./policy.ts";
+import { surroundingSandbox, type WallSupport } from "./policy.ts";
 import { runtimeProcess } from "../meta/process.ts";
 
 export const DARWIN_SEATBELT_ID = "darwin-seatbelt/v1" as const;
@@ -13,18 +13,11 @@ export interface DarwinSeatbeltRuntime {
   outerSandboxed?: boolean;
 }
 
-interface DarwinSeatbeltSupport {
-  ok: boolean;
-  reason: string | null;
-  mechanismPath: string;
-  mechanismDigest: string | null;
-}
-
 const DIGEST_BY_PATH = new Map<string, string>();
 
-export function darwinSeatbeltSupport(runtime: DarwinSeatbeltRuntime = {}): DarwinSeatbeltSupport {
+export function darwinSeatbeltSupport(runtime: DarwinSeatbeltRuntime = {}): WallSupport {
   const sandboxExecPath = runtime.sandboxExecPath ?? DARWIN_SANDBOX_EXEC;
-  const unavailable = (reason: string): DarwinSeatbeltSupport => ({
+  const unavailable = (reason: string): WallSupport => ({
     ok: false,
     reason,
     mechanismPath: sandboxExecPath,

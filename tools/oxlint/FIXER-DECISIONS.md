@@ -25,14 +25,13 @@ A fixer must satisfy all four conditions:
 | `require-declarations-first` | hoists types/consts above functions | pure reordering |
 | `require-meta-runtime-import` | redirects 7 `node:` builtins to `src/meta` | one-to-one wrappers only |
 
-## Five borderline rules (withheld by policy)
+## Four borderline rules (withheld by policy)
 
 Reversing any of these requires explicit rationale:
 
 | Rule | Feasible edit | Why withheld |
 | --- | --- | --- |
 | `no-inline-schema-literal` | hoist literal to module scope | hoisting is the moment to name and document the table (criterion 4) |
-| `no-single-caller-helper` | inline body at call site | ~300-site prototype yielded unreadable inline expressions |
 | `require-safety-comment-for-type-assertion` | insert placeholder `SAFETY:` | defeats verifying the invariant |
 | `no-conditional-empty-object-spread` | emit `null` property | omission vs `null` is a contract choice |
 | `no-alias-restating-return` | inline return type, delete alias | feasible, not yet motivated by site count |
@@ -49,7 +48,7 @@ Each states `no fix` in its source (`test/lint-registry.test.ts` enforces this):
 
 ## Implicit-state rules (repair is choosing an owner)
 
-- `implicit-state` (`no-coupled-flags`, `no-marker-file-state`, `no-age-based-lock`) and `implicit-state-opinionated` (`max-boolean-fields`, `prefer-state-union`, `no-state-in-names`): choosing the typed state space, owning module or record field violates criterion 1.
+- `implicit-state` (`no-coupled-flags`, `no-marker-file-state`, `no-age-based-lock`) and `implicit-state-opinionated` (`max-boolean-fields`, `prefer-state-union`): choosing the typed state space or owning module violates criterion 1.
 
 ## Fixable findings cannot use the ledger
 

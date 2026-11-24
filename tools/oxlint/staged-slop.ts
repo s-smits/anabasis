@@ -17,7 +17,6 @@ import { renderedExamples } from "./rule-examples.ts";
 import {
   TREE_FINDING_ARGUMENTS,
   TREE_FINDING_EXAMPLES,
-  TREE_REGISTER_KINDS,
   type TreeSite,
   treeFindings,
 } from "./tree-findings.ts";
@@ -91,12 +90,10 @@ function report(touched: readonly TreeSite[], elsewhere: readonly TreeSite[]): s
   ].join("\n");
 }
 
-/** Each scan among `sites`, once, with the pair it keeps; a register keeps none. */
+/** Each scan among `sites`, once, with the pair it keeps. */
 function examplesOf(sites: readonly TreeSite[]): string[] {
   const kinds = [...new Set(sites.map((site) => site.kind))];
-  return kinds.flatMap((kind) =>
-    kind === "max-filesystem-imports" ? [] : renderedExamples(kind, TREE_FINDING_EXAMPLES[kind]),
-  );
+  return kinds.flatMap((kind) => renderedExamples(kind, TREE_FINDING_EXAMPLES[kind]));
 }
 
 /** What the agent or person committing reads: the sites, where the rest is, and the two answers. */
@@ -123,10 +120,8 @@ function message(first: TreeSite, touched: readonly TreeSite[], log: string): st
 }
 
 const changed = changedLines();
-const sites = treeFindings().filter(
-  (site) =>
-    !TREE_REGISTER_KINDS.includes(site.kind) &&
-    (site.places ?? [site]).some((place) => changed.has(place.path)),
+const sites = treeFindings().filter((site) =>
+  (site.places ?? [site]).some((place) => changed.has(place.path)),
 );
 const touched = sites.filter((site) => touches(site, changed));
 const [first] = touched;

@@ -9,7 +9,7 @@ import { domainOf, packOf } from "../runs/registry.ts";
 import { WRI } from "./index.ts";
 
 /** One command's ending and what it printed. */
-export interface Ran {
+interface Ran {
   readonly exitCode: number | null;
   readonly text: string;
 }

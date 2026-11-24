@@ -44,7 +44,7 @@ const OPTIONS = {
 } as const;
 
 /** Checker acceptance reading produced by `readChecker`. */
-export type Reading = Awaited<ReturnType<typeof readChecker>>;
+type Reading = Awaited<ReturnType<typeof readChecker>>;
 
 /**
  * Records a checker acceptance reading (`checker.read`) in the campaign log, including operator-admitted

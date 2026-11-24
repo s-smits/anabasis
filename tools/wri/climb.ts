@@ -24,7 +24,7 @@ import {
 } from "./promotion.ts";
 
 /** One campaign as the climb table names it: its name and its log's events. */
-export interface Campaign {
+interface Campaign {
   readonly name: string;
   readonly events: readonly LogEvent[];
 }

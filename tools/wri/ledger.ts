@@ -8,7 +8,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/files
 import { join } from "#src/meta/path.ts";
 
 /** Parent run ledgers and optional iteration plan used to determine carried predictions on a fork. */
-export interface Parent {
+interface Parent {
   readonly name: string;
   readonly predictions: string;
   readonly outcomes: string;

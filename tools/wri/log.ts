@@ -120,7 +120,7 @@ interface KindHeld {
 }
 
 /** A log named by its path or by its campaign's folder. */
-export function logPath(named: string): string {
+function logPath(named: string): string {
   return existsSync(named) && statSync(named).isDirectory() ? join(named, LOG_FILE) : named;
 }
 
@@ -306,7 +306,7 @@ function solveCell(record: JsonObject, column: string): string {
 }
 
 /** Every solve a row as the folds read it, or one column's counts among them, then by role and outcome. */
-export function solveRows(events: readonly LogEvent[], only: SolveQuery): string[] {
+function solveRows(events: readonly LogEvent[], only: SolveQuery): string[] {
   const index = indexOf(events);
   const families = familiesOf(events);
   const records = index.solves

@@ -300,12 +300,13 @@ describe("domain extensions, minPromo gate, and paired arm discovery", () => {
     expect(one.ablationNeeded).toBe(true);
     expect(one.ablationCommand).toBe("bun run runs bench jobstat-anabasis-v9-fresh-opus");
 
+    const taskOne = "stats/t1";
     writeBenchArm({
       store,
       arm: "cc-p2",
       harness: PROMO_2,
       runtime: "claude-code",
-      tasks: [{ task: "stats/t1", points: 32, total: 50 }],
+      tasks: [{ task: taskOne, points: 32, total: 50 }],
     });
     writeBenchArm({
       store,
@@ -313,14 +314,14 @@ describe("domain extensions, minPromo gate, and paired arm discovery", () => {
       harness: "",
       runtime: "claude-code",
       buildOf: "base",
-      tasks: [{ task: "stats/t1", points: 35, total: 50 }],
+      tasks: [{ task: taskOne, points: 35, total: 50 }],
     });
     writeBenchArm({
       store,
       arm: "pi-p2-starter",
       harness: PROMO_2,
       runtime: "pi-durable",
-      tasks: [{ task: "stats/t1", points: 33, total: 50 }],
+      tasks: [{ task: taskOne, points: 33, total: 50 }],
     });
     writeBenchArm({
       store,
@@ -328,7 +329,7 @@ describe("domain extensions, minPromo gate, and paired arm discovery", () => {
       harness: STARTER,
       runtime: "pi-durable",
       buildOf: "starter",
-      tasks: [{ task: "stats/t1", points: 31, total: 50 }],
+      tasks: [{ task: taskOne, points: 31, total: 50 }],
     });
     expect(findPairedArm(store, [PROMO_1, PROMO_2])).toMatchObject({
       arm: "pi-p2-starter",
@@ -342,7 +343,7 @@ describe("domain extensions, minPromo gate, and paired arm discovery", () => {
       arm: "pi-p2",
       harness: PROMO_2,
       runtime: "pi-durable",
-      tasks: [{ task: "stats/t1", points: 34, total: 50 }],
+      tasks: [{ task: taskOne, points: 34, total: 50 }],
     });
     writeBenchArm({
       store,
@@ -350,7 +351,7 @@ describe("domain extensions, minPromo gate, and paired arm discovery", () => {
       harness: "",
       runtime: "pi-durable",
       buildOf: "base",
-      tasks: [{ task: "stats/t1", points: 31, total: 50 }],
+      tasks: [{ task: taskOne, points: 31, total: 50 }],
     });
 
     expect(findPairedArm(store, [PROMO_1, PROMO_2])).toMatchObject({
@@ -360,6 +361,56 @@ describe("domain extensions, minPromo gate, and paired arm discovery", () => {
       baselineTier: "bareSolver",
       harness: PROMO_2,
       runtime: "pi-durable",
+    });
+
+    writeBenchArm({
+      store,
+      arm: "pi-p2-full",
+      harness: PROMO_2,
+      runtime: "pi-durable",
+      tasks: [
+        { task: taskOne, points: 34, total: 50 },
+        { task: "stats/t2", points: 42, total: 50 },
+      ],
+    });
+    writeBenchArm({
+      store,
+      arm: "starter-pi-p2-full",
+      harness: STARTER,
+      runtime: "pi-durable",
+      buildOf: "starter",
+      tasks: [
+        { task: taskOne, points: 31, total: 50 },
+        { task: "stats/t2", points: 38, total: 50 },
+      ],
+    });
+    writeBenchArm({
+      store,
+      arm: "pi-p2-cross",
+      harness: PROMO_2,
+      runtime: "pi-durable",
+      tasks: [
+        { task: taskOne, points: 34, total: 50 },
+        { task: "stats/t2", points: 42, total: 50 },
+        { task: "stats/t3", points: 44, total: 50 },
+      ],
+    });
+    writeBenchArm({
+      store,
+      arm: "base-pi-p2-cross",
+      harness: "",
+      runtime: "claude-code",
+      buildOf: "base",
+      tasks: [
+        { task: taskOne, points: 31, total: 50 },
+        { task: "stats/t2", points: 38, total: 50 },
+        { task: "stats/t3", points: 40, total: 50 },
+      ],
+    });
+    expect(findPairedArm(store, [PROMO_1, PROMO_2])).toMatchObject({
+      arm: "pi-p2-full",
+      baselineArm: "starter-pi-p2-full",
+      tasks: 2,
     });
   });
 });

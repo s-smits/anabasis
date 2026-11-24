@@ -391,6 +391,7 @@ export async function rollout(
   const workspace = mkdtempSync(join(tmpdir(), "hevo_ws_cc", `${name}_`));
   const output = join(workspace, "output");
   let billed = 0;
+  let lastSubtype = "None";
   try {
     for (let attempt = 1; attempt <= ROLLOUT_ATTEMPTS; attempt += 1) {
       rmSync(join(workspace, TASK_FOLDER), { recursive: true, force: true });
@@ -425,18 +426,22 @@ export async function rollout(
         rmSync(`${logFile}.stderr`);
       }
       const seen = agent.seen(traj);
+      lastSubtype = seen.subtype;
       billed += seen.costUsd;
       log(
         `[${stamp(new Date(), "clock")}] attempt ${attempt}: rc=${code} result=${seen.subtype} turns=${seen.turns} tools=${seen.tools} cost_usd=${seen.costUsd.toFixed(4)}`,
       );
-      if (nonEmpty(output)) break;
+      if (seen.subtype !== REFUSED && nonEmpty(output)) break;
       if (seen.subtype.startsWith("error_max_budget")) {
         log(`[${stamp(new Date(), "clock")}] BUDGET SPENT ${place.task}; not retrying`);
         break;
       }
       if (code === 124) log(`[${stamp(new Date(), "clock")}] TIMEOUT ${place.task} attempt ${attempt}`);
     }
-    if (nonEmpty(output)) {
+    if (lastSubtype !== REFUSED && nonEmpty(output)) {
+      if (statSync(finalDir, { throwIfNoEntry: false })?.isDirectory() === true) {
+        rmSync(finalDir, { recursive: true, force: true });
+      }
       mkdirSync(finalDir, { recursive: true });
       for (const item of readdirSync(output)
         .toSorted()

@@ -37,7 +37,7 @@ import { tmpdir } from "#src/meta/os.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { runSync } from "#src/meta/subprocess.ts";
+import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { LIMITS } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { foreignPrograms, placeOf } from "#src/harness/place.ts";
@@ -308,10 +308,18 @@ export function piAgent(claude: Claude): Agent {
 function piDry(claude: Claude, tree: string): string {
   const traj = join(tmpdir(), `pi-dry-${String(runtimeProcess.pid)}.jsonl`);
   const argv = piAgent(claude).argv({ prompt: "A dry run.", treeDir: tree, workspace: tmpdir(), traj });
-  runSync([...argv, "--dry-run"], { cwd: tmpdir(), env: claude.env });
+  const ran = runSync([...argv, "--dry-run"], { cwd: tmpdir(), env: claude.env });
   const result = readJson(join(piLogs(traj), RESULT_FILE));
   rmSync(piLogs(traj), { recursive: true, force: true });
-  if (field(result, "ending") !== "dry-run") throw new Error(`pi-solve cannot open ${tree}: ${text(result)}`);
+  if (field(result, "ending") !== "dry-run") {
+    const stderr = decodeOutput(ran.stderr).trim();
+    const detail = [
+      text(result),
+      ...(ran.exitCode === 0 ? [] : [`exit ${String(ran.exitCode)}`]),
+      ...(stderr === "" ? [] : [stderr]),
+    ].join("; ");
+    throw new Error(`pi-solve cannot open ${tree}: ${detail}`);
+  }
   const found = text(field(result, "found")).trim().split("\n").filter(Boolean);
   const missing = found.filter((line) => line.startsWith("missing: "));
   if (missing.length > 0) throw new Error(`pi-solve missing programs in ${tree}: ${missing.join(", ")}`);

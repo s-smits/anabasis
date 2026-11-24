@@ -141,17 +141,29 @@ describe("runs bench", () => {
   test("completedBenchPairs handles both base- and starter- baselines with exact task matching", () => {
     const store = mkdtempSync(join(tmpdir(), "ana-bench-scores-"));
     scratch.push(store);
-    const put = (arm: string, task: string) => {
+    const put = (arm: string, task: string, runtime?: string) => {
       mkdirSync(join(store, "judged", arm), { recursive: true });
-      writeFileSync(join(store, "judged", arm, `${task}.json`), "{}\n");
+      const body = runtime === undefined ? "{}\n" : `${JSON.stringify({ runtime })}\n`;
+      writeFileSync(join(store, "judged", arm, `${task}.json`), body);
     };
     put("ref-a1", "t1");
     put("starter-ref-a1", "t1");
     put("starter-ref-a1", "t2");
-    put("pi-a2", "t1");
-    put("base-pi-a2", "t1");
+    put("pi-a2", "t1", "pi-durable");
+    put("base-pi-a2", "t1", "pi-durable");
+    put("pi-mixed", "t1", "pi-durable");
+    put("starter-pi-mixed", "t1", "claude-code");
     expect(completedBenchPairs(store)).toEqual([{ label: "pi-a2", baseline: "base-pi-a2" }]);
     put("ref-a1", "t2");
+    expect(completedBenchPairs(store)).toEqual([
+      { label: "pi-a2", baseline: "base-pi-a2" },
+      { label: "ref-a1", baseline: "starter-ref-a1" },
+    ]);
+    mkdirSync(join(store, "scored"), { recursive: true });
+    writeFileSync(join(store, "scored", "pi-a2.txt"), "all 1\n  pi-a2 score 10/10\n");
+    expect(completedBenchPairs(store)).toEqual([{ label: "ref-a1", baseline: "starter-ref-a1" }]);
+    put("pi-a2", "t2", "pi-durable");
+    put("base-pi-a2", "t2", "pi-durable");
     expect(completedBenchPairs(store)).toEqual([
       { label: "pi-a2", baseline: "base-pi-a2" },
       { label: "ref-a1", baseline: "starter-ref-a1" },

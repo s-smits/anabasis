@@ -295,7 +295,7 @@ describe("the campaign's executing Bun and opening guards", () => {
   });
 });
 
-describe("end-to-end campaign lifecycles, settlement, and handover", () => {
+describe.concurrent("end-to-end campaign lifecycles, settlement, and handover", () => {
   it("runs --hitl promotion, load-wait, retained ratio, revert, blind settlement, and handover", async () => {
     const name = `${STEM}-climb`;
     const flags = [...seeded(name, TASKS), "--practice", "2", "--target", "8", "--patience", "1"];

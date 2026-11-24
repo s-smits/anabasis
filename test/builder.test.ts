@@ -271,7 +271,7 @@ async function setup(
   };
 }
 
-describe("the Builder running its campaign", () => {
+describe.concurrent("the Builder running its campaign", () => {
   it("holds practice to the current campaign total alone, including other seats and budget changes", async () => {
     const s = await setup([finish]);
     const left: number[] = [];
@@ -357,7 +357,7 @@ describe("the Builder running its campaign", () => {
   });
 });
 
-describe("a Builder session", () => {
+describe.concurrent("a Builder session", () => {
   it("lays practice in place of what the Builder left there, following none of its links", () => {
     const scratch = realpathSync(mkdtempSync(join(tmpdir(), "ana-practice-")));
     scratches.push(scratch);
@@ -1505,7 +1505,7 @@ describe("a Builder session", () => {
 // A few canaries (a check's name, the Referee's reason, a held-out solve's id) would prove only
 // themselves, so here two campaigns are alike in everything a Builder may know and differ in
 // everything it may not, and a session over each has to read the same bytes.
-describe("what crosses to the Builder", () => {
+describe.concurrent("what crosses to the Builder", () => {
   /** What a campaign keeps from its Builder: the check that refused an answer, the Referee's
    *  reason, the hidden value of a held-out task and of a practice task (a practice solve's measure,
    *  which may depend on it, crosses; the value does not), which held-out task the
@@ -1799,7 +1799,7 @@ describe("what crosses to the Builder", () => {
   }, 60_000);
 });
 
-describe("what a practice solve used", () => {
+describe.concurrent("what a practice solve used", () => {
   it("is its time of its limit, the model's turns, the tokens it read and wrote, its failed calls and the calls that ran each program, and nothing the log does not hold", async () => {
     const s = await setup([call("practice", { tasks: ["t-1", "t-2", "t-1"] }), finish], [], true);
     const limits = { ...LIMITS, wallSeconds: 480 };

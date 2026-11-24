@@ -193,7 +193,7 @@ const writer: NonNullable<Seats["examine"]> = (request) =>
 const unwritten: NonNullable<Seats["examine"]> = (request) =>
   examine({ ...request, ...scripted([FINISH_IDLE, FINISH_IDLE]) });
 
-describe("the host's practice release", () => {
+describe.concurrent("the host's practice release", () => {
   const owing = async (name: string): Promise<CampaignContext> => {
     const flags = [...(await prepared(name, MANY)), ...FLAGS];
     const seats: Seats = { seated: winning(GRADED_MANY) };
@@ -235,7 +235,7 @@ describe("the host's practice release", () => {
   });
 });
 
-describe("live Builder and Examiner coordination", () => {
+describe.concurrent("live Builder and Examiner coordination", () => {
   it("keeps handover filtered, wakes one Examiner across asks, reopens after crash, and skips load on non-solve moves", async () => {
     const name = `${STEM}-conversing`;
     const sessions: { id: string; tasks: string[]; minutes: number | undefined }[] = [];
@@ -569,7 +569,7 @@ describe("live Builder and Examiner coordination", () => {
   });
 });
 
-describe("promotion, starter reads, operator words, and Rule 3 wall", () => {
+describe.concurrent("promotion, starter reads, operator words, and Rule 3 wall", () => {
   const passing = () => confirming(GRADED_MANY);
 
   it("climbs A->B->C in one conversation: wakes resting Examiner, waits before starter read, refreshes kept/, and runs candidate next", async () => {
@@ -950,7 +950,7 @@ describe("promotion, starter reads, operator words, and Rule 3 wall", () => {
   });
 });
 
-describe("a campaign's endings", () => {
+describe.concurrent("a campaign's endings", () => {
   const passing = () => scriptedSeats({ held: { old: "pass", fresh: "pass" }, starter: "none" }, GRADED, []);
   const failing = () => scriptedSeats({ held: { old: "none", fresh: "none" }, starter: "none" }, GRADED, []);
   const practise = (name: string): Step => ({

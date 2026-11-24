@@ -79,7 +79,7 @@ async function stillBeats(beat: string): Promise<boolean> {
   return count() !== before;
 }
 
-describe("a solve's walled commands", () => {
+describe.concurrent("a solve's walled commands", () => {
   it.skipIf(!osIsolationSupport().ok)(
     "keep the home, drop each command's folder, and read neither the host folder, the repository nor a reader's home",
     async () => {
@@ -513,7 +513,7 @@ console.log(JSON.stringify({ probe: process.argv.at(-1), said: process.env.TMPDI
   );
 });
 
-describe("a wall's network reach", () => {
+describe.concurrent("a wall's network reach", () => {
   it.skipIf(!osIsolationSupport().ok)(
     "probes again once an unreached reading is ten minutes old, and keeps a reached one",
     async () => {

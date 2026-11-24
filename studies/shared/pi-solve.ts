@@ -345,6 +345,13 @@ if (import.meta.main) {
     crash: errorMessage(error),
   }));
   writeFileSync(join(ask.logs, RESULT_FILE), `${capturedJsonStringify(result, null, 2)}\n`);
+  const detail =
+    "crash" in result && isString(result.crash)
+      ? result.crash
+      : "reason" in result && isString(result.reason)
+        ? result.reason
+        : null;
+  if (detail !== null) console.error(`pi-solve: ${result.ending}: ${detail}`);
   console.log(`pi-solve: ${result.ending}`);
   runtimeProcess.exitCode = 0;
 }

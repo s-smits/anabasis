@@ -216,5 +216,15 @@ describe("the seal", () => {
       looks: 1,
       listed: true,
     });
+    const stubTask = "g/task2";
+    mkdirSync(join(store, "trees", "empty-stub"), { recursive: true });
+    grade("empty-stub", stubTask, [[10, 10, 4, 4]]);
+    attempt("empty-stub", stubTask, "roll_stub_attempt1_20261124_010000", ["estimate data.csv"]);
+    expect(armOf(root, "empty-stub").get(stubTask)?.shell).toStrictEqual({
+      commands: 1,
+      named: 0,
+      looks: 0,
+      listed: false,
+    });
   });
 });

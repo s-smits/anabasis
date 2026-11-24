@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, realpathSync, rmSync } from "../../../src/meta/filesystem.ts";
 import { tmpdir } from "../../../src/meta/os.ts";
-import { join } from "../../../src/meta/path.ts";
+import { dirname, join } from "../../../src/meta/path.ts";
 import { parseJsonAs } from "../../../src/meta/json-runtime.ts";
+import { capturedExecPath, capturedSpawn } from "../../../src/meta/process.ts";
+import { decodeOutput, killProcessGroupId, runSync } from "../../../src/meta/subprocess.ts";
 import { type AnswerOf, type ApiError, type Endpoint, type Query, TOKEN_HEADER } from "../src/models.ts";
 import { handleApiRequest, type ServerOptions } from "../src/server/api.ts";
 import { answersOver, type Fixture, writeFixtureCampaign } from "./fixture-campaign.ts";
@@ -92,4 +94,53 @@ describe("the router", () => {
     }
     expect((await get(pathOf("move", { key: fixture.key, move: "1" }))).status).toBe(404);
   });
+});
+
+describe("serve.ts", () => {
+  /** The pids whose command line names `root`. */
+  const naming = (root: string): number[] =>
+    decodeOutput(runSync(["ps", "-axo", "pid=,args="]).stdout)
+      .split("\n")
+      .filter((row) => row.includes(root))
+      .map((row) => Number.parseInt(row, 10));
+
+  test("ends with the test that started it when that test is killed before it stops the server", async () => {
+    const helper = JSON.stringify(join(import.meta.dir, "browser.ts"));
+    const parent = capturedSpawn(
+      [
+        capturedExecPath,
+        "-e",
+        `const { serveFixture } = await import(${helper});\nconsole.log((await serveFixture()).fixture.root);\nawait Bun.sleep(600_000);`,
+      ],
+      { stdout: "pipe", stderr: "inherit" },
+    );
+    let root = "";
+    try {
+      const reader = parent.stdout.getReader();
+      const decoder = new TextDecoder();
+      let text = "";
+      while (!text.includes("\n")) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+      reader.releaseLock();
+      root = text.split("\n")[0]?.trim() ?? "";
+      // An empty or unrecognised root would match unrelated processes or delete the wrong directory.
+      expect(root).toStartWith("/");
+      expect(root).toContain("ana-ui-browser-");
+      expect(naming(root).length).toBeGreaterThan(0);
+      parent.kill("SIGKILL");
+      await parent.exited;
+      const until = performance.now() + 10_000;
+      while (naming(root).length > 0 && performance.now() < until) await Bun.sleep(100);
+      expect(naming(root)).toEqual([]);
+    } finally {
+      parent.kill("SIGKILL");
+      if (root.includes("ana-ui-browser-")) {
+        for (const pid of naming(root)) killProcessGroupId(pid, "SIGKILL");
+        rmSync(dirname(root), { recursive: true, force: true });
+      }
+    }
+  }, 40_000);
 });

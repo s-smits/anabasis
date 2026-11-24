@@ -77,6 +77,7 @@ export async function serveFixture(): Promise<Served> {
   const child = Bun.spawn(["bun", "serve.ts", "--repo", fixture.root], {
     cwd: PACKAGE,
     env: { ...Bun.env, PORT: "0" },
+    stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
     detached: true,

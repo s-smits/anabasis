@@ -1,6 +1,6 @@
 import index from "./index.html";
 import { handleApiRequest, type ServerOptions } from "./src/server/api.ts";
-import { existsSync, readFileSync, writeFileSync } from "../../src/meta/filesystem.ts";
+import { existsSync, fstatSync, readFileSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import { join, resolve } from "../../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "../../src/meta/process.ts";
 import { terminateAndReapProcessGroupId } from "../../src/meta/subprocess.ts";
@@ -45,19 +45,31 @@ if (Bun.env[SERVING] === undefined) {
       detached: true,
     });
   let child = start();
-  for (const signal of ["SIGINT", "SIGTERM"] as const) {
-    runtimeProcess.on(signal, () => {
-      terminateAndReapProcessGroupId(child.pid).then(leave, leave);
-    });
+  let ending = false;
+  const end = () => {
+    if (ending) return;
+    ending = true;
+    terminateAndReapProcessGroupId(child.pid).then(leave, leave);
+  };
+  for (const signal of ["SIGINT", "SIGTERM"] as const) runtimeProcess.on(signal, end);
+  // A parent holding a pipe to it (Bun's `stdin: "pipe"` is a socket), as the browser tests do, ends
+  // it by exiting however it exits; a terminal, `/dev/null` or a closed fd 0 changes nothing.
+  try {
+    const input = fstatSync(0);
+    if (input.isFIFO() || input.isSocket()) Bun.stdin.text().then(end, end);
+  } catch {
+    // Closed fd 0 (EBADF): treat like `/dev/null` and stay running until signalled.
   }
   let head = await headOf();
   for (;;) {
     await Bun.sleep(MOVED_MS);
+    if (ending) continue;
     const now = await headOf();
     if (now === "" || now === head) continue;
     head = now;
     console.log(`the tree moved to ${now.slice(0, 9)}: serving it afresh`);
     await terminateAndReapProcessGroupId(child.pid);
+    if (ending) continue;
     child = start();
   }
 }

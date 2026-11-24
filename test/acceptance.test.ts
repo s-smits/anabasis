@@ -425,43 +425,35 @@ describe("cross-example and hidden-value probes (probeReading)", () => {
       width: 2,
     });
 
-  it("distinguishes full cross-example pass faults from partial-pass notes and cross-example faulty crash notes", async () => {
-    // Full pass on every other example -> fault only (never duplicated as partial note).
+  it("faults an accept control that passes every other example, and stays silent on a partial or faulting swap", async () => {
     const full = await probeRead(tasksOf([null, null, null]), async (_t, a) =>
       asRecord(a)?.v === 0 ? { kind: "fail", blocking: ["ok"] } : { kind: "pass", objective: 1 },
     );
     expect(full.faults.filter((f) => f.includes("passed every other example"))).toHaveLength(3);
-    expect(full.notes.filter((n) => n.includes("also passed"))).toEqual([]);
-
-    // Partial cross-example pass -> factual note only, 0 faults.
-    const partial = await probeRead(tasksOf([null, null, null]), async (t, a) => {
-      const id = asRecord(t.publicInput)?.id;
-      const v = asRecord(a)?.v;
-      return v === id || (id === 2 && v === 1)
-        ? { kind: "pass", objective: 1 }
-        : { kind: "fail", blocking: ["ok"] };
-    });
-    expect(partial.faults).toEqual([]);
-    expect(partial.notes).toEqual(["the accept control of ex-001 also passed 1 of 2 other examples"]);
-
-    // Cross-example swap returning `faulty` -> factual note naming task, check, and reason (Hole B).
-    const faultySwap = await probeRead(tasksOf([null, null, null]), async (t, a) => {
-      const id = asRecord(t.publicInput)?.id;
-      const v = asRecord(a)?.v;
-      if (v === id) return { kind: "pass", objective: 1 };
-      if (id === 2 && v === 1) return { kind: "faulty", check: "ok", reason: "key mismatch" };
-      return { kind: "fail", blocking: ["ok"] };
-    });
-    expect(faultySwap.faults).toEqual([]);
-    expect(faultySwap.notes).toEqual([
-      "the accept control of ex-001 faulted ok on another example: key mismatch",
-    ]);
+    const verifiers: readonly Verifier[] = [
+      async (t, a) => {
+        const id = asRecord(t.publicInput)?.id;
+        const v = asRecord(a)?.v;
+        return v === id || (id === 2 && v === 1)
+          ? { kind: "pass", objective: 1 }
+          : { kind: "fail", blocking: ["ok"] };
+      },
+      async (t, a) => {
+        const id = asRecord(t.publicInput)?.id;
+        const v = asRecord(a)?.v;
+        if (v === id) return { kind: "pass", objective: 1 };
+        if (id === 2 && v === 1) return { kind: "faulty", check: "ok", reason: "key mismatch" };
+        return { kind: "fail", blocking: ["ok"] };
+      },
+    ];
+    for (const check of verifiers) {
+      const read = await probeRead(tasksOf([null, null, null]), check);
+      expect([read.faults, read.notes]).toEqual([[], []]);
+    }
   });
 
-  it("distinguishes hidden-blind faults, objective-only hidden notes, hidden-sensitive checks, identical hidden, and non-results", async () => {
+  it("faults hidden values nothing reads, and nothing else: objective-only, check-read, identical and non-result swaps", async () => {
     const distinct = tasksOf([{ k: 1 }, { k: 2 }, { k: 3 }]);
-
-    // Unread hidden -> fault only (not duplicated as hidden-blind validity note).
     const blind = await probeRead(distinct, async (t, a) =>
       asRecord(a)?.v === asRecord(t.publicInput)?.id
         ? { kind: "pass", objective: 10 }
@@ -469,55 +461,56 @@ describe("cross-example and hidden-value probes (probeReading)", () => {
     );
     expect(blind.faults).toEqual([matching(/hidden values had no effect/u)]);
     expect(blind.notes).toEqual([]);
-
-    // Hidden read only by objective (both shifted value and objective-only fault) -> factual note, 0 faults.
-    const objOnly = await probeRead(distinct, async (t, a) =>
-      asRecord(a)?.v === asRecord(t.publicInput)?.id
-        ? { kind: "pass", objective: Number(asRecord(t.hidden)?.k ?? 0) * 10 }
-        : { kind: "fail", blocking: ["ok"] },
-    );
-    expect(objOnly.faults).toEqual([]);
-    expect(objOnly.notes).toEqual([matching(/only the objective read hidden values/u)]);
-
-    const objThrow = await probeRead(distinct, async (t, a) => {
-      const id = asRecord(t.publicInput)?.id;
-      if (asRecord(a)?.v !== id) return { kind: "fail", blocking: ["ok"] };
-      return asRecord(t.hidden)?.k === id
-        ? { kind: "pass", objective: 10 }
-        : { kind: "faulty", check: "objective", reason: "wrong hidden schema" };
-    });
-    expect(objThrow.faults).toEqual([]);
-    expect(objThrow.notes).toEqual([matching(/only the objective read hidden values/u)]);
-
-    // Validity check reads hidden -> 0 faults, 0 notes.
-    const checkReads = await probeRead(distinct, async (t, a) =>
-      asRecord(a)?.v === asRecord(t.hidden)?.k
-        ? { kind: "pass", objective: 10 }
-        : { kind: "fail", blocking: ["ok"] },
-    );
-    expect([checkReads.faults, checkReads.notes]).toEqual([[], []]);
-
-    // Identical non-null hidden across all examples -> Hole A factual note, 0 faults.
-    const identical = await probeRead(tasksOf([{ k: 1 }, { k: 1 }, { k: 1 }]), async (t, a) =>
-      asRecord(a)?.v === asRecord(t.publicInput)?.id
-        ? { kind: "pass", objective: 10 }
-        : { kind: "fail", blocking: ["ok"] },
-    );
-    expect(identical.faults).toEqual([]);
-    expect(identical.notes).toEqual([matching(/identical hidden values.*could not be probed/u)]);
-
-    // `non-result` during hidden swap is ignored without fabricating a fault or identical-hidden note.
-    const nonRes = await probeRead(distinct, async (t, a) => {
-      const id = asRecord(t.publicInput)?.id;
-      if (asRecord(a)?.v !== id) return { kind: "fail", blocking: ["ok"] };
-      return asRecord(t.hidden)?.k === id
-        ? { kind: "pass", objective: 10 }
-        : { kind: "non-result", reason: "wall timeout" };
-    });
-    expect([nonRes.faults, nonRes.notes]).toEqual([[], []]);
+    const silent: [Task[], Verifier][] = [
+      [
+        distinct,
+        async (t, a) =>
+          asRecord(a)?.v === asRecord(t.publicInput)?.id
+            ? { kind: "pass", objective: Number(asRecord(t.hidden)?.k ?? 0) * 10 }
+            : { kind: "fail", blocking: ["ok"] },
+      ],
+      [
+        distinct,
+        async (t, a) => {
+          const id = asRecord(t.publicInput)?.id;
+          if (asRecord(a)?.v !== id) return { kind: "fail", blocking: ["ok"] };
+          return asRecord(t.hidden)?.k === id
+            ? { kind: "pass", objective: 10 }
+            : { kind: "faulty", check: "objective", reason: "wrong hidden schema" };
+        },
+      ],
+      [
+        distinct,
+        async (t, a) =>
+          asRecord(a)?.v === asRecord(t.hidden)?.k
+            ? { kind: "pass", objective: 10 }
+            : { kind: "fail", blocking: ["ok"] },
+      ],
+      [
+        tasksOf([{ k: 1 }, { k: 1 }, { k: 1 }]),
+        async (t, a) =>
+          asRecord(a)?.v === asRecord(t.publicInput)?.id
+            ? { kind: "pass", objective: 10 }
+            : { kind: "fail", blocking: ["ok"] },
+      ],
+      [
+        distinct,
+        async (t, a) => {
+          const id = asRecord(t.publicInput)?.id;
+          if (asRecord(a)?.v !== id) return { kind: "fail", blocking: ["ok"] };
+          return asRecord(t.hidden)?.k === id
+            ? { kind: "pass", objective: 10 }
+            : { kind: "non-result", reason: "wall timeout" };
+        },
+      ],
+    ];
+    for (const [tasks, check] of silent) {
+      const read = await probeRead(tasks, check);
+      expect([read.faults, read.notes]).toEqual([[], []]);
+    }
   });
 
-  it("distinguishes deliverable-blind faults, objective-only deliverable notes, partial strip notes, and checked deliverables", async () => {
+  it("faults deliverables nothing reads, and notes a flat rubric item only once a probe has passed", async () => {
     const file = { path: "report.md", base64: "b2s=", text: "ok" };
     const withFiles: Control[] = [
       { taskId: "ex-001", answer: { v: 1 }, files: [file], refusedBy: null },
@@ -535,8 +528,6 @@ describe("cross-example and hidden-value probes (probeReading)", () => {
         found: () => true,
         width: 2,
       });
-
-    // Blind to deliverables -> blocking fault, no duplicate note.
     const blind = await runWith(async (t, a) =>
       asRecord(a)?.v === asRecord(t.publicInput)?.id
         ? { kind: "pass", objective: 10 }
@@ -544,50 +535,26 @@ describe("cross-example and hidden-value probes (probeReading)", () => {
     );
     expect(blind.faults).toEqual([matching(/deliverable files had no effect/u)]);
     expect(blind.notes).toEqual([]);
-
-    // Only objective reads deliverables -> factual note, 0 faults.
-    const objOnly = await runWith(async (t, a, _s, files) =>
-      asRecord(a)?.v === asRecord(t.publicInput)?.id
-        ? { kind: "pass", objective: (files?.length ?? 0) > 0 ? 10 : 1 }
-        : { kind: "fail", blocking: ["ok"] },
-    );
-    expect(objOnly.faults).toEqual([]);
-    expect(objOnly.notes).toEqual([matching(/only the objective read deliverables/u)]);
-
-    // Partial deliverable check (ex-001 passes without files, others fail) -> factual note for ex-001.
-    const partial = await runWith(async (t, a, _s, files) => {
-      const id = asRecord(t.publicInput)?.id;
-      if (asRecord(a)?.v !== id) return { kind: "fail", blocking: ["ok"] };
-      return id === 1 || (files?.length ?? 0) > 0
-        ? { kind: "pass", objective: 10 }
-        : { kind: "fail", blocking: ["ok"] };
-    });
-    expect(partial.faults).toEqual([]);
-    expect(partial.notes).toEqual([
-      "the accept control of ex-001 still passed with all deliverable files removed",
-    ]);
-
-    // Validity check rejects missing deliverables -> 0 faults, 0 notes.
-    const checked = await runWith(async (t, a, _s, files) =>
-      asRecord(a)?.v === asRecord(t.publicInput)?.id && (files?.length ?? 0) > 0
-        ? { kind: "pass", objective: 10 }
-        : { kind: "fail", blocking: ["ok"] },
-    );
-    expect([checked.faults, checked.notes]).toEqual([[], []]);
-
-    // Validity check crashing on missing deliverables surfaces a factual note rather than staying silent.
-    const faultyStrip = await runWith(async (t, a, _s, files) => {
-      if (asRecord(a)?.v !== asRecord(t.publicInput)?.id) return { kind: "fail", blocking: ["ok"] };
-      return (files?.length ?? 0) > 0
-        ? { kind: "pass", objective: 10 }
-        : { kind: "faulty", check: "ok", reason: "TypeError: missing file" };
-    });
-    expect(faultyStrip.faults).toEqual([]);
-    expect(faultyStrip.notes).toEqual([
-      "removing deliverable files caused check ok to fault on ex-001: TypeError: missing file",
-      "removing deliverable files caused check ok to fault on ex-002: TypeError: missing file",
-      "removing deliverable files caused check ok to fault on ex-003: TypeError: missing file",
-    ]);
+    const stripping: readonly Verifier[] = [
+      async (t, a, _s, files) =>
+        asRecord(a)?.v === asRecord(t.publicInput)?.id
+          ? { kind: "pass", objective: (files?.length ?? 0) > 0 ? 10 : 1 }
+          : { kind: "fail", blocking: ["ok"] },
+      async (t, a, _s, files) =>
+        asRecord(a)?.v === asRecord(t.publicInput)?.id && (files?.length ?? 0) > 0
+          ? { kind: "pass", objective: 10 }
+          : { kind: "fail", blocking: ["ok"] },
+      async (t, a, _s, files) => {
+        if (asRecord(a)?.v !== asRecord(t.publicInput)?.id) return { kind: "fail", blocking: ["ok"] };
+        return (files?.length ?? 0) > 0
+          ? { kind: "pass", objective: 10 }
+          : { kind: "faulty", check: "ok", reason: "TypeError: missing file" };
+      },
+    ];
+    for (const check of stripping) {
+      const read = await runWith(check);
+      expect([read.faults, read.notes]).toEqual([[], []]);
+    }
 
     const rubricObjective = {
       quantity: "weighted score",
@@ -598,46 +565,31 @@ describe("cross-example and hidden-value probes (probeReading)", () => {
         { id: "flat-item", weight: 1 },
       ],
     };
-    const rubricBrief: Brief = { ...probeBrief, objective: rubricObjective };
-    const flatRubric = await readChecker({
-      brief: rubricBrief,
-      contract: { ...contract, objective: rubricObjective },
-      verify: async (t, a) => {
-        const match = asRecord(a)?.v === asRecord(t.publicInput)?.id;
-        if (!match) return { kind: "fail", blocking: ["ok"] };
-        const hidMatch = asRecord(t.hidden)?.h === asRecord(t.publicInput)?.id;
-        const acc = hidMatch ? 0.9 : 0.2;
-        const flat = hidMatch ? 1 : 0.995;
-        return {
-          kind: "pass",
-          objective: (3 * acc + flat) / 4,
-          scores: { accuracy: acc, "flat-item": flat },
-        };
-      },
-      tasks: tasksOf([{ h: 1 }, { h: 2 }, { h: 3 }]),
-      controls: [
-        { taskId: "ex-001", answer: { v: 1 }, refusedBy: null },
-        { taskId: "ex-002", answer: { v: 2 }, refusedBy: null },
-        { taskId: "ex-003", answer: { v: 3 }, refusedBy: null },
-        { taskId: "ex-001", answer: { v: 0 }, refusedBy: "ok" },
-      ],
-      found: () => true,
-      width: 2,
-    });
-    expect(flatRubric.faults).toEqual([]);
-    expect(flatRubric.notes).toContainEqual(matching(/rubric item flat-item stayed within 1%/u));
-    expect(flatRubric.notes).not.toContainEqual(matching(/rubric item accuracy/u));
-
-    const objStripFault = await runWith(async (t, a, _s, files) => {
-      if (asRecord(a)?.v !== asRecord(t.publicInput)?.id) return { kind: "fail", blocking: ["ok"] };
-      return (files?.length ?? 0) > 0
-        ? { kind: "pass", objective: 10 }
-        : { kind: "faulty", check: "objective", reason: "score deliverables threw: missing file" };
-    });
-    expect(objStripFault.faults).toEqual([]);
-    expect(objStripFault.notes).toContainEqual(
-      matching(/removing deliverable files caused objective to fault on ex-001/u),
-    );
+    const rubricRead = (hiddens: readonly (JsonValue | null)[]) =>
+      readChecker({
+        brief: { ...probeBrief, objective: rubricObjective },
+        contract: { ...contract, objective: rubricObjective },
+        verify: async (t, a) => {
+          if (asRecord(a)?.v !== asRecord(t.publicInput)?.id) return { kind: "fail", blocking: ["ok"] };
+          const hidMatch = asRecord(t.hidden)?.h === asRecord(t.publicInput)?.id;
+          const acc = hidMatch ? 0.9 : 0.2;
+          const flat = hidMatch ? 1 : 0.995;
+          return {
+            kind: "pass",
+            objective: (3 * acc + flat) / 4,
+            scores: { accuracy: acc, "flat-item": flat },
+          };
+        },
+        tasks: tasksOf(hiddens),
+        controls: baseControls,
+        found: () => true,
+        width: 2,
+      });
+    const probed = await rubricRead([{ h: 1 }, { h: 2 }, { h: 3 }]);
+    expect(probed.faults).toEqual([]);
+    expect(probed.notes).toEqual([matching(/rubric item flat-item stayed within 1%/u)]);
+    // Without hidden values no probe passes, so the three accept controls alone note nothing.
+    expect((await rubricRead([null, null, null])).notes).toEqual([]);
   });
 });
 

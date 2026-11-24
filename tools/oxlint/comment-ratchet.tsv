@@ -136,7 +136,7 @@ studies/shared/foreign-python.ts	36
 studies/shared/pi-solve.ts	18
 studies/shared/scores.ts	25
 studies/transitivity/read.ts	8
-test/acceptance.test.ts	29
+test/acceptance.test.ts	17
 test/answer-tools.test.ts	14
 test/answer.test.ts	3
 test/atif.test.ts	1

@@ -22,6 +22,7 @@ import { formatKeys, namedTasks, readHarnessFiles } from "../src/harness/files.t
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
+import { DELIVERABLES, keepAnswerFiles, textFiles } from "../src/kernel/answer-files.ts";
 import { latestBuilt } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { TOOL_TREE_DIR } from "../src/meta/bundle-layout.ts";
@@ -173,7 +174,14 @@ async function setup(
     });
     add("solve.turn", { solve, turn: 1, stopReason: "stop", text: "Submitted." });
     if (ending.outcome === "non-result" || (ending.outcome === "fail" && ending.kind === "rejected")) {
-      add("verdict", { solve, answer: { answer: "41" }, kind: "fail", blocking: [check] });
+      const memo = textFiles([{ path: "memo.md", text: `${"margin ".repeat(2400)}MEMO_END` }]);
+      add("verdict", {
+        solve,
+        answer: { answer: "41" },
+        files: keepAnswerFiles(log, memo).map((file) => ({ ...file })),
+        kind: "fail",
+        blocking: [check],
+      });
     }
     if (ending.outcome === "pass" && contract.objective !== undefined) {
       add("verdict", { solve, answer: { answer: "42" }, kind: "pass", objective: solves * 10 });
@@ -407,6 +415,7 @@ describe.concurrent("a Builder session", () => {
         call("practice", { tasks: ["t-1", "t-2"] }),
         call(READ_TRACE, { solve: "s-3" }),
         call(READ_TRACE, { solve: "s-3", call: 1 }),
+        call(READ_TRACE, { solve: "s-3", file: "memo.md", from: 16_384 }),
         finish,
       ],
       [{ outcome: "fail", kind: "rejected" }, { outcome: "pass" }],
@@ -461,6 +470,9 @@ describe.concurrent("a Builder session", () => {
     // Each call listed with its size and the command it ran, which a Builder chose its reads by.
     expect(s.sent[3]).toContain(String.raw`\n1 bash (13 characters): run`);
     expect(s.sent[4]).toContain("result: margin of s-3");
+    expect(s.sent[3]).toContain("delivered files: memo.md (16808 B)");
+    expect(s.sent[5]).toContain("bytes 16384 to 16808 of 16808");
+    expect(s.sent[5]).toContain("MEMO_END");
     // Nothing of the verifier's side reached the Builder: not the check, not the Referee's reason.
     expect(s.sent.join("\n")).not.toContain(CHECK);
     expect(s.sent.join("\n")).not.toContain(REASON);
@@ -475,11 +487,12 @@ describe.concurrent("a Builder session", () => {
       harness: built.harness,
       changed: true,
       practiceSolves: 2,
-      turns: 5,
+      turns: 6,
     });
     expect(s.of(BUILD_CALL).map(({ tool: name }) => name)).toEqual([
       WRITE_FILE,
       "practice",
+      READ_TRACE,
       READ_TRACE,
       READ_TRACE,
       "finish",
@@ -2059,7 +2072,7 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
     expect(greet.stdout.toString()).toBe("installed-greeting\n");
     expect(existsSync(join(s.parent, ".toolchain", "bin", "greet"))).toBe(false);
     // A check keeps no state: the one kept is the session's last, beside the one copy of its tree.
-    const kept = readdirSync(request.states);
+    const kept = readdirSync(request.states).filter((name) => name !== DELIVERABLES.folder);
     const states = kept.filter((name) => !name.startsWith("tree-"));
     expect(states).toEqual([built.harness ?? ""]);
     expect(kept).toHaveLength(2);

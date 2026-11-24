@@ -6,6 +6,8 @@ import { checkCouldNotRun, type Ending } from "../kernel/solve.ts";
 import { limitsIn } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
 import { callList, callText, closingOf, traceOf } from "../kernel/trace.ts";
+import { readAnswerFiles } from "../kernel/answer-files.ts";
+import { type Extracted, extract, headOf } from "../kernel/extract.ts";
 import { billedParts } from "../kernel/meter.ts";
 import {
   ended,
@@ -412,14 +414,32 @@ export function practiceTool(bench: Bench): SeatTool {
   });
 }
 
+const PAGE_BYTES = 16 * 1024;
+
+function pageOf(extracted: Extracted, from: number): string {
+  const bytes = Buffer.from(extracted.text);
+  const start = Math.min(Math.floor(from), bytes.length);
+  const end = Math.min(start + PAGE_BYTES, bytes.length);
+  const more = end < bytes.length ? `; the next page is from ${String(end)}` : "";
+  return [
+    ...headOf(extracted),
+    `bytes ${String(start)} to ${String(end)} of ${String(bytes.length)}${more}`,
+    bytes.subarray(start, end).toString("utf8"),
+  ].join("\n");
+}
+
 export function traceTool(bench: Bench): SeatTool {
   return tool({
     name: "read_trace",
     description:
-      "Read a solve of one of your practice tasks: the ones the opening message lists and the ones practice returns. With no call, return its ending, the answer it submitted, its closing text and every tool call by number, each with its size and its arguments on one line. With a call number, return that call whole: its arguments and its result.",
+      "Read a solve of one of your practice tasks: the ones the opening message lists and the ones practice returns. With no call, return its ending, the answer it submitted, the files it delivered, its closing text and every tool call by number, each with its size and its arguments on one line. With a call number, return that call whole: its arguments and its result. With a file, return that delivered file's text as read offline (a spreadsheet's cells by sheet with its formulas counted, a document's or deck's paragraphs, a notebook's cells, a PDF's text), a page at a time from the byte `from` names.",
     parameters: Type.Object({
       solve: Type.String({ description: "A solve's id." }),
       call: Type.Optional(Type.Number({ minimum: 1, description: "A call's number, from the list." })),
+      file: Type.Optional(Type.String({ description: "A delivered file's path, from the list." })),
+      from: Type.Optional(
+        Type.Number({ minimum: 0, description: "The byte of the file's text a page starts at." }),
+      ),
     }),
     execute: async (args) => {
       const versions = new Set(bench.tasks.map(({ version }) => version));
@@ -436,13 +456,24 @@ export function traceTool(bench: Bench): SeatTool {
       }
       const { turns, calls } = traceOf(events, "solve", args.solve);
       if (args.call !== undefined) return text(callText(calls, args.call));
-      const answer = verdictsOf(events).get(args.solve)?.answer;
+      const { answer, files = [] } = verdictsOf(events).get(args.solve) ?? {};
+      if (args.file !== undefined) {
+        const kept = files.find(({ path }) => path === args.file);
+        if (kept === undefined) throw new Error(`${args.solve} delivered no file ${args.file}`);
+        const [delivered = { path: kept.path, base64: "" }] = readAnswerFiles(bench.request.log, [kept]);
+        return text(pageOf(extract(delivered), args.from ?? 0));
+      }
       return text(
         [
           `ending: ${rejectionAside(events, ran) ? "rejection set aside" : isString(ran.ending?.outcome) ? `${ran.ending.outcome}${isString(ran.ending.kind) ? ` (${ran.ending.kind})` : ""}` : "not recorded"}`,
           answer === undefined
             ? "no answer was submitted"
             : `submitted answer: ${capturedJsonStringify(answer)}`,
+          ...(files.length === 0
+            ? []
+            : [
+                `delivered files: ${files.map(({ path, bytes }) => `${path} (${String(bytes)} B)`).join(", ")}`,
+              ]),
           `closing text: ${closingOf(turns) ?? "(none recorded)"}`,
           callList(calls),
         ].join("\n"),

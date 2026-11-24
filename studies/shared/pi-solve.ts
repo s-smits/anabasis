@@ -38,12 +38,6 @@
  */
 import { type AssistantMessage, createModels, type ThinkingLevel } from "@earendil-works/pi-ai";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
-import {
-  createBashTool,
-  createEditTool,
-  createReadTool,
-  createWriteTool,
-} from "@earendil-works/pi-durable/tools";
 import { Type } from "typebox";
 import { openrouter } from "#src/agent/backends/models.ts";
 import { read } from "#src/kernel/log.ts";
@@ -55,13 +49,13 @@ import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
-import { CODING_IMAGES, selectedCodingTools } from "#src/tools/coding.ts";
+import { directCodingTools, selectedCodingTools } from "#src/tools/coding.ts";
 import { ending, text, tool } from "#src/tools/answer.ts";
 import type { SolveClock } from "#src/tools/command.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { installedPrograms } from "#src/harness/programs.ts";
 import { portableGuide } from "#src/harness/starter.ts";
-import { NUDGE, systemPrompt } from "#src/solver/prompt.ts";
+import { listedPrograms, NUDGE, promptEnvelope } from "#src/solver/prompt.ts";
 import { raiseWall, timed, type Wall } from "#src/solver/run.ts";
 import { type Seat, type SeatTool, sit } from "#src/agent/session.ts";
 import { trajectoryOf } from "./atif.ts";
@@ -155,7 +149,7 @@ function duty(ask: Asked, guide: string | null): string {
     "Your work is graded as the working directory and the files the task names stand when the task ends, by checks you cannot see; call submit when it is complete.",
     ...(guide !== null && CAMPAIGN_REF_RE.test(guide)
       ? [
-          "This task has no input.json and no answer.json: the first message is the whole task, and the files you leave are the answer, whatever a guide says of those two files.",
+          "This task has no input.json, public/ folder, or answer.json: the first message is the whole task, and the files you leave are the answer, whatever a guide says of them.",
         ]
       : []),
     ask.modelTurns === undefined
@@ -213,26 +207,17 @@ async function solve(ask: Asked) {
   // The harness's programs first on PATH, in the order a solve's shell has them.
   const path = harness.toolTree === null ? [] : toolTreeSearchDirs(harness.toolTree);
   const prefix = path.length === 0 ? undefined : `export PATH=${shellQuote(path.join(":"))}:"$PATH"`;
-  const coding = {
-    read: createReadTool({ images: CODING_IMAGES }),
-    bash: createBashTool(prefix === undefined ? {} : { commandPrefix: prefix }),
-    edit: createEditTool(),
-    write: createWriteTool(),
-  } satisfies Record<string, SeatTool>;
   const said = { submitted: false };
   // In the order a campaign's solver is given them (`solverTools`, `src/solver/run.ts`).
-  const defined = [
-    ...selectedCodingTools(harness.presets)
-      .flatMap((name) => coding[name] ?? [])
-      .map((each): SeatTool => ({ ...each, executionMode: "sequential" })),
-    submitTool(said),
-  ];
+  const defined = [...directCodingTools(selectedCodingTools(harness.presets), prefix), submitTool(said)];
   const programs = installedPrograms(harness.toolTree);
   const stripped = harness.guide === null ? "" : portableGuide(harness.guide);
   const guide = stripped.trim() === "" ? null : stripped;
   const programLine =
-    programs.length === 0 ? "" : `\n- Programs this harness installed run by name: ${programs.join(", ")}.`;
-  const prompt = systemPrompt({
+    programs.length === 0
+      ? ""
+      : `\n- Programs this harness installed run by name: ${listedPrograms(programs)}.`;
+  const prompt = promptEnvelope({
     tools: defined,
     home: cwd,
     guide,

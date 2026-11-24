@@ -1,5 +1,5 @@
 /**
- * `bun run runs bench <run> [--bench <name>] [--as <label>] [--harness <kept>] [--baseline base|starter] [--claude] [--login N] [--wait] [--yes]`
+ * `bun run runs bench <run> [--bench <name>] [--as <label>] [--harness <kept>] [--baseline base|starter] [--login N] [--wait] [--yes]`
  * `bun run runs bench [--bench <name>] [--store <dir>] [--host <name>]`
  */
 import { UNAME_PLACES } from "#src/harness/place.ts";
@@ -47,16 +47,14 @@ export interface Plan {
   readonly held: string | null;
   /** Whether to wait for the runner host to become idle rather than failing immediately if busy. */
   readonly wait: boolean;
-  /** Which solver runtime rolls the arm: native `pi` (default) or exported Claude Code (`claude`). */
-  readonly runtime?: "claude" | "pi";
-  readonly baseline?: "base" | "starter";
+  /** Baseline arm paired beside the built harness on native `pi-durable`: `base` (bareSolver) or `starter` (baseStarter). */
+  readonly baseline: "base" | "starter";
 }
 
 /** Options governing duplicate-export detection in `heldAs`. */
 interface HeldAsOptions {
   readonly as?: string | undefined;
   readonly modes?: ReadonlyMap<string, "claude" | "pi"> | undefined;
-  readonly runtime?: "claude" | "pi" | undefined;
 }
 
 /** Shell expression selecting `sha256sum` (coreutils) when present, falling back to `shasum -a 256`
@@ -111,32 +109,22 @@ export function opened(trees: string, label: string): string {
   return `test ! -e ${tree} && mkdir -p ${trees} && rm -rf ${part} && mkdir ${part} && tar -xzf - -C ${part} && (cd ${part} && ${SUMS} -c --quiet ${quoted(`${label}.sha256`)}) && links=$(find ${part} -type l -lname '/*') && { test -z "$links" || { echo "links to absolute paths: $links" >&2; false; }; } && rm ${part}/${quoted(`${label}.sha256`)} && mv ${part}/${quoted(label)} ${tree} && mv ${part}/${quoted(`${label}.build.json`)} ${trees}/ && rmdir ${part}`;
 }
 
-function baselineKindOf(plan: Pick<Plan, "runtime" | "baseline">): "base" | "starter" {
-  return plan.baseline ?? ((plan.runtime ?? "pi") === "pi" ? "base" : "starter");
-}
-
-function baselineAsked(runtime: "claude" | "pi", asked: string | undefined): "base" | "starter" {
-  if (asked === undefined) return runtime === "pi" ? "base" : "starter";
+function baselineAsked(asked: string | undefined): "base" | "starter" {
+  if (asked === undefined) return "base";
   if (asked !== "base" && asked !== "starter") throw new Misused("--baseline takes base or starter");
-  if (runtime === "claude" && asked === "base") {
-    throw new Misused("--baseline base requires native pi (omit --claude)");
-  }
   return asked;
 }
 
 /** Builds the ordered shell steps for `plan`. Ensures the runner host is idle before loading it and
  *  completes both dry runs before spending compute on rollouts. */
 export function stepsOf(plan: Plan): Step[] {
-  const { run, label, login, holder, runner, sitting } = plan;
-  const runtime = plan.runtime ?? "pi";
-  const prefix = runtime === "pi" ? "pi:" : "";
-  const baselineKind = baselineKindOf(plan);
-  const baselineLabel = `${baselineKind}-${label}`;
+  const { run, label, login, holder, runner, sitting, baseline } = plan;
+  const baselineLabel = `${baseline}-${label}`;
   const stage = `"\${TMPDIR:-/tmp}"/${quoted(`ana-outside-read-${label}`)}`;
   const on = (says: string, script: string): Step => ({ says, command: shellOn(runner, script) });
   const piped = (host: Host | undefined, script: string) => shellOn(host, script).map(quoted).join(" ");
-  const reference = `${sitting} run ${quoted(login)} ${quoted(label)} --arm ${quoted(`${prefix}${run}`)} --harness ${quoted(plan.harness)}`;
-  const bare = `${sitting} run ${quoted(login)} ${quoted(baselineLabel)} --arm ${quoted(`${prefix}${baselineKind}`)}`;
+  const reference = `${sitting} run ${quoted(login)} ${quoted(label)} --arm ${quoted(`pi:${run}`)} --harness ${quoted(plan.harness)}`;
+  const bare = `${sitting} run ${quoted(login)} ${quoted(baselineLabel)} --arm ${quoted(`pi:${baseline}`)}`;
   const idle = `${sitting} status | head -n 1 | grep -qx idle`;
   const rolled = `${plan.store}/rolled-${label}.log`;
   const exported: Step[] = [
@@ -144,7 +132,7 @@ export function stepsOf(plan: Plan): Step[] {
       says: `export ${label} for ${plan.place} on ${holder?.name ?? "this machine"}`,
       command: shellOn(
         holder,
-        `rm -rf ${stage} && cd ${shellPath(plan.tree)} && ${plan.bun} studies/harness2/score.ts tree --arm ${quoted(`${prefix}${run}`)} --harness ${quoted(plan.harness)} --name ${quoted(label)} --out ${stage} --for ${quoted(plan.place)} --python ${quoted(plan.python)}`,
+        `rm -rf ${stage} && cd ${shellPath(plan.tree)} && ${plan.bun} studies/harness2/score.ts tree --arm ${quoted(`pi:${run}`)} --harness ${quoted(plan.harness)} --name ${quoted(label)} --out ${stage} --for ${quoted(plan.place)} --python ${quoted(plan.python)}`,
       ),
     },
     {
@@ -198,31 +186,32 @@ export async function walk(
 }
 
 /** Checks `store` for existing exports matching `label` or `harness`. Throws if `label` already
- *  binds a different 64-character digest; returns other labels that already hold `harness` under
- *  the same `runtime` unless `--as` explicitly requested a new label. */
+ *  binds a different 64-character digest or a legacy Claude Code export; returns other native `pi`
+ *  labels holding `harness` (`again`) and any legacy Claude Code labels (`legacy`) unless `--as`
+ *  explicitly requested a new label. */
 export function heldAs(
   store: ReadonlyMap<string, string>,
   harness: string,
   label: string,
-  { as, modes, runtime = "pi" }: HeldAsOptions = {},
-): { again: string[]; held: string | null } {
+  { as, modes }: HeldAsOptions = {},
+): { again: string[]; held: string | null; legacy: string[] } {
   const held = store.get(label) ?? null;
   if (held !== null && harness.length === 64 && held !== harness) {
     throw new Error(
       `${label}: the store holds that label for ${held.slice(0, 8)}; a label binds one tree, so name another`,
     );
   }
-  const sameMode = (one: string) => (modes?.get(one) ?? "claude") === runtime;
-  if (held !== null && !sameMode(label)) {
+  const isPi = (one: string) => (modes?.get(one) ?? "claude") === "pi";
+  if (held !== null && !isPi(label)) {
     throw new Error(
-      `${label}: the store holds that label as a ${modes?.get(label) ?? "claude"} tree, not ${runtime}; name another label`,
+      `${label}: the store holds that label as a legacy claude export; name another label for native pi`,
     );
   }
-  const again =
-    as === undefined
-      ? [...store].filter(([one, of]) => of === harness && one !== label && sameMode(one))
-      : [];
-  return { again: again.map(([one]) => one), held };
+  const sameHarness =
+    as === undefined ? [...store].filter(([one, of]) => of === harness && one !== label) : [];
+  const again = sameHarness.filter(([one]) => isPi(one)).map(([one]) => one);
+  const legacy = sameHarness.filter(([one]) => !isPi(one)).map(([one]) => one);
+  return { again, held, legacy };
 }
 
 /** Strips `--eval` from `pause` arguments and computes the follow-up `bench --wait` commands owed
@@ -287,20 +276,18 @@ async function planOf(
     as?: string;
     baseline?: string;
     bench?: string;
-    claude: boolean;
     harness?: string;
     login?: string;
     wait: boolean;
   },
 ): Promise<Plan | null> {
-  const runtime = values.claude ? "claude" : "pi";
-  const baseline = baselineAsked(runtime, values.baseline);
+  const baseline = baselineAsked(values.baseline);
   const env = runtimeProcess.env;
   const settings = settingsOf(run, env, values.bench);
   const harness = values.harness ?? promoted(logEvents(readNamed(run).path));
   if (harness === null) throw new Error(`${run} has promoted no harness: there is nothing to read outside`);
   // Single-letter harness identifiers are only meaningful alongside `view`, so require an explicit `--as` label.
-  const defaultLabel = harness.length === 64 ? `${runtime === "pi" ? "pi-" : ""}${harness.slice(0, 8)}` : "";
+  const defaultLabel = harness.length === 64 ? `pi-${harness.slice(0, 8)}` : "";
   const label = values.as ?? defaultLabel;
   if (!isSafePathSegment(label)) throw new Misused();
   const said = await runTextOrThrow(shellOn(settings.runner, probed(settings)));
@@ -314,15 +301,20 @@ async function planOf(
   const modes = new Map(
     [...modeRows].map(([, one = "", mode = "claude"]) => [one, mode === "pi" ? "pi" : "claude"] as const),
   );
-  const { again, held } = heldAs(
+  const { again, held, legacy } = heldAs(
     new Map([...rows].map(([, one = "", of = ""]) => [one, of])),
     harness,
     label,
-    { as: values.as, modes, runtime },
+    { as: values.as, modes },
   );
   if (again.length > 0) {
     console.log(`${run}: ${harness.slice(0, 8)} is read already as ${again.join(", ")}; --as reads it again`);
     return null;
+  }
+  if (legacy.length > 0) {
+    console.log(
+      `${run}: ${harness.slice(0, 8)} was read before under legacy claude as ${legacy.join(", ")}; reading natively on pi-durable`,
+    );
   }
   const { logins, why } =
     values.login === undefined
@@ -344,7 +336,6 @@ async function planOf(
     python,
     held,
     wait: values.wait,
-    runtime,
     baseline,
   };
 }
@@ -357,7 +348,6 @@ export async function bench(args: readonly string[]): Promise<void> {
       as: { type: "string" },
       baseline: { type: "string" },
       bench: { type: "string" },
-      claude: { type: "boolean", default: false },
       host: { type: "string" },
       store: { type: "string" },
       harness: { type: "string" },
@@ -378,10 +368,9 @@ export async function bench(args: readonly string[]): Promise<void> {
   }
   const plan = await planOf(run, values);
   if (plan === null) return;
-  const { label, held } = plan;
-  const baselineKind = baselineKindOf(plan);
+  const { label, held, baseline } = plan;
   console.log(
-    `${run} read outside on ${plan.bench} as ${label} and ${baselineKind}-${label}, on login ${plan.login}, for ${plan.place} (python3 ${plan.python})${held === null ? "" : `; the store holds ${label} already, rolled as it stands`}`,
+    `${run} read outside on ${plan.bench} as ${label} and ${baseline}-${label}, on login ${plan.login}, for ${plan.place} (python3 ${plan.python})${held === null ? "" : `; the store holds ${label} already, rolled as it stands`}`,
   );
   const steps = stepsOf(plan);
   if (!values.yes) {

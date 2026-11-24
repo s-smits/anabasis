@@ -26,18 +26,21 @@ import { copyHarness } from "#src/builder/kept.ts";
 import { epochsOf } from "#src/campaign/climb.ts";
 import { read } from "#src/kernel/log.ts";
 import { promoted } from "#src/kernel/reports.ts";
-import { existsSync, mkdirSync, renameSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, lstatSync, mkdirSync, renameSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { basename, dirname, join } from "#src/meta/path.ts";
+import { tmpdir } from "#src/meta/os.ts";
+import { basename, dirname, join, relative } from "#src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
-import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
+import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { foreignPrograms, placeOf } from "#src/harness/place.ts";
 import { writeBare, writeStarter } from "#src/harness/starter.ts";
+import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
 import { keptAs, PROMOTED } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
+import { packageFolders } from "./foreign-python.ts";
 
 /** The solver's executable, the harness and the record, as the Harbor agent names them inside the
  *  mount (`harbor/pi_agent.py`). */
@@ -49,6 +52,13 @@ export const MOUNT_RECORD = "mount.json";
 const TARGET = "bun-linux-x64-baseline";
 
 const SOLVER = join(import.meta.dir, "pi-solve.ts");
+const IMPORTS = `import importlib, pkgutil, sys
+names = sorted({m.name for m in pkgutil.iter_modules(sys.argv[1:]) if not m.name.startswith("_")})
+bad = []
+for name in names:
+    try: importlib.import_module(name)
+    except BaseException: bad.append(name)
+print("IMPORTS", sys.version.split()[0], len(names) - len(bad), len(names), *bad[:5])`;
 
 /** The machine this process runs on, where a rollout outside a container finds its programs. */
 export const HERE = placeOf(
@@ -152,4 +162,33 @@ export async function bundleArm(
   writeFileSync(join(part, MOUNT_RECORD), `${capturedJsonStringify(record, null, 2)}\n`);
   renameSync(part, into);
   return { digest: opened.digest, origin };
+}
+
+export async function ownPython(tree: string, env: Readonly<Record<string, string>>): Promise<string | null> {
+  const toolchain = join(tree, HARNESS_DIR, TOOL_TREE_DIR);
+  const dirs = toolTreeSearchDirs(toolchain);
+  const python = dirs
+    .map((dir) => join(dir, "python3"))
+    .find((path) => lstatSync(path, { throwIfNoEntry: false }) !== undefined);
+  if (python === undefined) return null;
+  const run = (words: readonly string[]) => {
+    const ran = runSync([python, "-c", ...words], {
+      cwd: tmpdir(),
+      env: { ...env, PATH: [...dirs, env.PATH ?? ""].join(":") },
+      timeout: 300_000,
+    });
+    const last = decodeOutput(ran.stderr).trim().split("\n").at(-1) ?? "";
+    return {
+      out: decodeOutput(ran.stdout),
+      why: `exit ${String(ran.exitCode)}: ${last}`,
+      ok: ran.exitCode === 0,
+    };
+  };
+  const started = run(["pass"]);
+  if (!started.ok) throw new Error(`${relative(tree, python)} cannot start here (${started.why})`);
+  const sites = (await packageFolders(toolchain)).map(({ site }) => join(toolchain, site));
+  const counted = run([IMPORTS, ...sites]);
+  const [, version, ok, of, ...bad] = /^IMPORTS .*$/mu.exec(counted.out)?.[0].split(" ") ?? [];
+  if (of === undefined) return `its python3 starts, and the count of its modules ended (${counted.why})`;
+  return `its python3 is ${String(version)} and imports ${String(ok)} of ${of} of its modules${bad.length === 0 ? "" : `, not ${bad.join(", ")}`}`;
 }

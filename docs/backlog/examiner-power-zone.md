@@ -394,7 +394,7 @@ In order: each rests on the one before, except item 7, which comes before item 3
       the data were generated from leaves a better method room. The validity cliff has no case on
       record, so it stays opposed;
     - carrying a harness's `agent/tools.ts` into the JobBench export
-      (`studies/shared/claude-export.ts`): none of the 33 kept jobstat harnesses declares a tool
+      (`488884bb2:studies/shared/claude-export.ts`): none of the 33 kept jobstat harnesses declares a tool
       (`tools-spec.json` lists none), and their programs already travel in `scripts/toolchain/`,
       so a per-tool wrapper is machinery with no case behind it (rule 13);
     - putting the versions of packages a solve installs from the network into the condition. Both

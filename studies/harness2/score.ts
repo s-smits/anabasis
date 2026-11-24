@@ -9,10 +9,10 @@
  *   bun studies/harness2/score.ts tree --arm <arm> --name <name> --out <dir> --for <linux-x64> [--python <3.12>]
  *     [--harness <kept>]
  *
- * Arms may be `base`, `starter`, `<campaign>`, `pi:base`, `pi:starter`, `pi:<campaign>`, `tree:<dir>`,
- * `heldout`, `again:<side>`, `sweep:base1`, or `sweep:agg1`. Rollouts run sequentially under the
- * benchmark's PATH and judge (`eval/judge.py`); records land in `<out>/judged/<name>/` and track
- * file-length cuts (`cut`) and workspace escape needles (`peeked`).
+ * Arms may be `pi:base`, `pi:starter`, `pi:<campaign>` (Anabasis native `pi-durable`), or `base`,
+ * `tree:<dir>`, `heldout`, `again:<side>`, `sweep:base1`, `sweep:agg1` (Harness²). Rollouts run
+ * sequentially under the benchmark's PATH and judge (`eval/judge.py`); records land in
+ * `<out>/judged/<name>/` and track file-length cuts (`cut`) and workspace escape needles (`peeked`).
  */
 import { openHarness } from "#src/harness/open.ts";
 import { billedAll } from "#src/kernel/meter.ts";
@@ -41,8 +41,7 @@ import { runSync } from "#src/meta/subprocess.ts";
 import { LIMITS } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { foreignPrograms, placeOf } from "#src/harness/place.ts";
-import { HARNESS_DIR, HERE, placeHarness, sourceNamed } from "../shared/bundle.ts";
-import { exportForClaudeCode, ownPython } from "../shared/claude-export.ts";
+import { HARNESS_DIR, HERE, ownPython, placeHarness, sourceNamed } from "../shared/bundle.ts";
 import { rebuildForeignPython, uvPython } from "../shared/foreign-python.ts";
 import { RESULT_FILE, TRACE_FILE } from "../shared/pi-solve.ts";
 import { inGroup, REFUSED, type Agent, type Claude } from "./h2/claude.ts";
@@ -348,7 +347,7 @@ async function exportPiTree(
 ): Promise<void> {
   const part = `${into}.part-${String(runtimeProcess.pid)}`;
   const origin = await placeHarness(join(part, HARNESS_DIR), source);
-  // Hash the kept harness before cross-platform Python rebuilds mutate `.toolchain/`, matching claude-export.
+  // Hash the kept harness before cross-platform Python rebuilds mutate `.toolchain/`.
   const harnessDigest = (await openHarness(join(part, HARNESS_DIR))).digest;
   const toolTree = join(part, HARNESS_DIR, TOOL_TREE_DIR);
   const hasTools = existsSync(toolTree);
@@ -377,21 +376,16 @@ async function exportedArm(
     readonly harness: string | undefined;
     readonly out: string;
     readonly place: ReturnType<typeof placeOf>;
-    readonly pi: boolean;
   },
 ): Promise<Arm> {
-  const { harness, out, place, pi } = context;
+  const { harness, out, place } = context;
   const source = sourceNamed(from, harness);
   const into = join(out, "trees", name);
-  if (!existsSync(into)) {
-    await (pi ? exportPiTree(into, source, place) : exportForClaudeCode(into, source, place));
-  }
+  if (!existsSync(into)) await exportPiTree(into, source, place);
   const record = readJson(join(into, "export.json"));
-  const digest =
-    field(record, "harness") ?? (pi ? (await openHarness(join(into, HARNESS_DIR))).digest : null);
-  const fallbackToolchain = pi ? join(HARNESS_DIR, TOOL_TREE_DIR) : null;
+  const digest = field(record, "harness") ?? (await openHarness(join(into, HARNESS_DIR))).digest;
   const toolchain =
-    isRecord(record) && "toolchain" in record ? field(record, "toolchain") : fallbackToolchain;
+    isRecord(record) && "toolchain" in record ? field(record, "toolchain") : join(HARNESS_DIR, TOOL_TREE_DIR);
   if (isString(toolchain)) await foreignPrograms(join(into, toolchain), place);
   const priced = `${into}.build.json`;
   if (!existsSync(priced)) {
@@ -465,12 +459,13 @@ async function armOf(values: Values, out: string, baseHarness: string, place = H
     );
   }
   if (arm === "") throw new Error("name --arm");
-  const pi = arm.startsWith(PI);
-  return await exportedArm(name, pi ? arm.slice(PI.length) : arm, {
+  if (!arm.startsWith(PI)) {
+    throw new Error(`Anabasis arms run natively on pi-durable: pass --arm pi:${arm}`);
+  }
+  return await exportedArm(name, arm.slice(PI.length), {
     harness: values.harness,
     out,
     place,
-    pi,
   });
 }
 
@@ -599,11 +594,8 @@ async function checkScoreInputs(
     const missing = needs.find((need) => !existsSync(need));
     if (missing !== undefined) throw new Error(`${task}: ${missing} is missing`);
   }
-  const ownOptions = pi
-    ? { toolchainDir: join(HARNESS_DIR, TOOL_TREE_DIR), pathOrder: "prepend" as const }
-    : {};
-  for (const tree of new Set(tasks.flatMap((task) => arm.tree(task) ?? []))) {
-    const own = await ownPython(tree, claude.env, ownOptions);
+  for (const tree of pi ? new Set(tasks.flatMap((task) => arm.tree(task) ?? [])) : []) {
+    const own = await ownPython(tree, claude.env);
     if (own !== null) console.log(`  tree ${basename(tree)}: ${own}`);
   }
   return python;

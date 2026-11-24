@@ -360,16 +360,20 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     ["foreign", armElf],
     ["native", readFileSync(capturedExecPath).subarray(0, 128)],
   ] as const) {
-    mkdirSync(join(out, "trees", name, "scripts", "toolchain", "bin"), { recursive: true });
-    writeFileSync(join(out, "trees", name, "scripts", "toolchain", "bin", "tool"), program);
-    writeFileSync(join(out, "trees", name, "CLAUDE.md"), `# ${name}\n`);
+    mkdirSync(join(out, "trees", name, "harness", ".toolchain", "bin"), { recursive: true });
+    mkdirSync(join(out, "trees", name, "harness", "agent"), { recursive: true });
+    writeFileSync(join(out, "trees", name, "harness", ".toolchain", "bin", "tool"), program);
+    writeFileSync(
+      join(out, "trees", name, "harness", "agent", "tools-spec.json"),
+      JSON.stringify({ presets: ["bash"], tools: [] }),
+    );
     writeFileSync(
       join(out, "trees", name, "export.json"),
-      JSON.stringify({ harness: name, toolchain: "scripts/toolchain" }),
+      JSON.stringify({ harness: name, mode: "pi", toolchain: "harness/.toolchain" }),
     );
   }
-  const foreignArm = scored("starter", "foreign", FIRST, "--dry-run");
-  const nativeArm = scored("starter", "native", FIRST, "--dry-run");
+  const foreignArm = scored("pi:starter", "foreign", FIRST, "--dry-run");
+  const nativeArm = scored("pi:starter", "native", FIRST, "--dry-run");
   const alpha = "alpha/task1,alpha/task2";
   const refused = scored("base", "base", alpha);
   const planned = scored("base", "base", alpha, "--dry-run");
@@ -378,7 +382,6 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     scored(`tree:${join(root, "trees", word)}`, word.toLowerCase(), BETA, "--yes");
   const runs = {
     base: scored("base", "base", alpha, "--yes"),
-    starter: scored("starter", "starter", FIRST, "--yes"),
     heldout: scored("heldout", "heldout", "alpha/task2", "--yes"),
     k1: scored("sweep:agg1", "k1", alpha, "--yes"),
     peek: treeArm("PEEK"),
@@ -499,9 +502,6 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     }
     const baseGuide = readFileSync(new URL("../studies/harness2/h2/base/CLAUDE.md", import.meta.url), "utf8");
     expect(field(rollsOf("base")[0], "guide")).toBe(baseGuide);
-    expect(text(field(rollsOf("starter")[0], "guide"))).toBe(
-      readFileSync(join(out, "trees", "starter", "CLAUDE.md"), "utf8"),
-    );
     expect(text(field(rollsOf("heldout")[0], "guide"))).toBe(
       readFileSync(
         join(out, "adapt", "jb-cc-agg1", "alpha__task1", "harnesses", "agg1", "CLAUDE.md"),
@@ -565,7 +565,6 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     expect(field(record("k1", FIRST), "build")).toEqual({ of: "sweep alpha/task1", usd: 2.9375 });
     expect(field(record("k1", "alpha/task2"), "build")).toEqual({ of: "sweep alpha/task2", usd: 2.3125 });
     expect(field(record("k1", FIRST), "solveUsd")).toBe(0.25);
-    expect(field(record("starter", FIRST), "harness")).toMatch(/^[0-9a-f]{16,}$/u);
     expect(field(record("peek", BETA), "peeked")).toEqual(["RUBRICS.json"]);
     // The suite's folder is named for the study, as a checkout's path can be, and flags nothing.
     expect(field(record("store", BETA), "peeked")).toEqual([join(out, "dataset"), "model_output"]);
@@ -619,7 +618,7 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     ] as const) {
       expect(part.filter((line) => pattern.test(line))).toHaveLength(1);
     }
-    expect(lines).toContain("alpha/task1: base 3/5, k1 5/5, starter 3/5");
+    expect(lines).toContain("alpha/task1: base 3/5, k1 5/5");
   });
 
   it("records the files the judge's reader cuts, a database and a file of exactly the cap not among them", () => {

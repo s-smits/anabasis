@@ -7,9 +7,12 @@
  * `list` counts the mutants of each file. `run` appends one JSON line per mutant to `--out` and
  * skips mutants already recorded, allowing an interrupted run to resume; each worker mutates its own
  * worktree clone (`<out>.clone-<k>`) and runs `bun test --bail`. A run that outputs no pass, fail,
- * or bail count records `null` rather than a kill. `report` tabulates per-file kills across `--old`
- * and the remaining suites (or solo `killed / survived / unread` counts when `--old` is omitted),
- * and `--survivors` prints `O-` IDs (comparative) or surviving mutant IDs (solo).
+ * or bail count, or that `--timeout` ends, records `null` rather than a kill: under parallel mutants
+ * a slow suite reaches the timeout unmutated, and a mutant that hangs fails on the suite's own
+ * per-test timeout. `report` tabulates per-file kills across `--old` and the remaining suites (or
+ * solo `killed / survived / unread` counts when `--old` is omitted), with `unread` for rows a
+ * missing verdict leaves undecided, and `--survivors` prints `O-` IDs (comparative) or surviving
+ * mutant IDs (solo).
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { appendFileSync, cpSync, existsSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
@@ -144,7 +147,7 @@ async function verdict(clone: string, paths: readonly string[], seconds: number)
     "",
   );
   const code = await run.exited;
-  if (run.signalCode !== null) return true;
+  if (run.signalCode !== null) return null;
   // A full run ends on its pass and fail counts; a run `--bail` stopped ends on the line saying so
   // and prints no counts (Bun 1.4).
   return /\n *\d+ (pass|fail)|\nBailed out after \d+ failures?/.test(said) ? code !== 0 : null;
@@ -217,15 +220,19 @@ function report(args: CommandArgs, results: readonly string[]): void {
           return verdicts.includes(false) ? "survived" : "unread";
         }
       : ({ killed }: Result) => {
-          const others = Object.entries(killed).filter(([name]) => name !== old);
-          return `${killed[old] === true ? "O" : "-"}${others.some(([, kill]) => kill === true) ? "N" : "-"}`;
+          const others = new Set(
+            Object.entries(killed).flatMap(([name, kill]) => (name === old ? [] : [kill])),
+          );
+          const kept = others.has(true);
+          if (!kept && (killed[old] == null || others.has(null))) return "unread";
+          return `${killed[old] === true ? "O" : "-"}${kept ? "N" : "-"}`;
         };
   const survivorKind = old === null ? "survived" : "O-";
   if (args.flag("survivors")) {
     for (const row of rows) if (classify(row) === survivorKind) console.log(row.id);
     return;
   }
-  const columns = old === null ? ["killed", "survived", "unread"] : ["ON", "O-", "-N", "--"];
+  const columns = old === null ? ["killed", "survived", "unread"] : ["ON", "O-", "-N", "--", "unread"];
   console.log(["file", ...columns].join("  "));
   for (const [file, group] of Map.groupBy(rows, (row) => row.file)) {
     const counts = columns.map((kind) => String(group.filter((row) => classify(row) === kind).length));

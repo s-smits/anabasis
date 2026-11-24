@@ -72,7 +72,47 @@ describe("the mutation oracle", () => {
     const compared = runScript("report", out, "--old", "t");
     expect(compared.exitCode).toBe(0);
     expect(compared.stdout.toString().trim()).toBe(
-      `file  ON  O-  -N  --\na.ts  0  ${String(onLine(1).length)}  0  ${String(onLine(2).length)}`,
+      `file  ON  O-  -N  --  unread\na.ts  0  ${String(onLine(1).length)}  0  ${String(onLine(2).length)}  0`,
+    );
+  }, 60_000);
+
+  it("records a mutant that hangs past --timeout as unread, never as a kill", () => {
+    const tree = join(root, "hang-tree");
+    mkdirSync(tree);
+    writeFileSync(join(tree, "c.ts"), "export const done = (x: number) => x > 1;\n");
+    writeFileSync(
+      join(tree, "c.test.ts"),
+      'import { expect, it } from "bun:test";\nimport { done } from "./c.ts";\nit("ends", () => {\n  while (!done(2)) {}\n  expect(done(2)).toBe(true);\n});\n',
+    );
+    const suites = join(root, "hang-suites.json");
+    writeFileSync(suites, JSON.stringify({ old: ["c.test.ts"], new: ["c.test.ts"] }));
+    const out = join(root, "hang-out.jsonl");
+    const run = runScript(
+      "run",
+      tree,
+      "c.ts",
+      "--out",
+      out,
+      "--suites",
+      suites,
+      "--jobs",
+      "2",
+      "--timeout",
+      "2",
+    );
+    expect(run.exitCode).toBe(0);
+    const lines = readFileSync(out, "utf8").split("\n").filter(Boolean);
+    // SAFETY: every line is one the script appended, a mutant's line and its suites' verdicts.
+    const rows = lines.map(
+      (line) => JSON.parse(line) as { label: string; killed: Record<string, boolean | null> },
+    );
+    const verdicts = Object.fromEntries(rows.map(({ label, killed }) => [label, killed]));
+    expect(verdicts).toStrictEqual({
+      "> -> >=": { old: false, new: false },
+      "1 -> 2": { old: null, new: null },
+    });
+    expect(runScript("report", out, "--old", "old").stdout.toString().trim()).toBe(
+      "file  ON  O-  -N  --  unread\nc.ts  0  0  0  1  1",
     );
   }, 60_000);
 

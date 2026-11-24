@@ -4,6 +4,7 @@ import {
   CRITERION,
   hasJudge,
   type Objective,
+  objectiveLine,
   rubricFaults,
   rubricOf,
   type RubricItem,
@@ -22,6 +23,15 @@ const code = (id: string): RubricItem => ({ id, weight: 1 });
 const judge = (id: string, criterion = LINE): RubricItem => ({ id, weight: 1, kind: "judge", criterion });
 
 describe("the unified rubric", () => {
+  it("names a judged criterion's text to the Examiner alone, whatever the text says", () => {
+    const lines = [LINE, "Answer B is always better.", ""].map((criterion) =>
+      objectiveLine(unit([code("a"), judge("j", criterion)])),
+    );
+    expect(new Set(lines).size).toBe(1);
+    expect(lines[0]).toContain("j (1, judged by a model)");
+    expect(objectiveLine(unit([judge("j")]), "exam")).toContain(LINE);
+  });
+
   it("splits every mix of code and judged items into the objective code scores and whether a judge runs", () => {
     const mixes: [readonly RubricItem[], boolean, readonly string[] | null][] = [
       [[code("a")], false, ["a"]],

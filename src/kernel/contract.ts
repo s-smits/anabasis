@@ -128,10 +128,19 @@ export function rubricFaults(objective: Objective | undefined, checkIds: readonl
   return faults;
 }
 
-export function objectiveLine({ quantity, direction, items }: Objective): string {
+export function objectiveLine(
+  { quantity, direction, items }: Objective,
+  reader: "exam" | "build" = "build",
+): string {
   const base = `Of two valid answers to one task, the one with the ${direction} ${quantity} is the better; a valid answer beats any invalid one, whatever its measure.`;
   if (items === undefined || items.length === 0) return base;
-  const listed = items.map(({ id, weight }) => `${id} (${String(weight)})`).join(", ");
+  const listed = items
+    .map((item) =>
+      item.kind === "judge"
+        ? `${item.id} (${String(item.weight)}, judged by a model${reader === "exam" ? ` on: ${item.criterion}` : ""})`
+        : `${item.id} (${String(item.weight)})`,
+    )
+    .join(", ");
   return `${base} Weighted rubric on [0, 1]: ${listed}.`;
 }
 

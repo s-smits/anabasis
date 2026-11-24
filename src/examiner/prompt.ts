@@ -78,7 +78,7 @@ ${brief}`,
     ...(contract.objective === undefined
       ? []
       : [
-          `Objective: ${objectiveLine(contract.objective)}${
+          `Objective: ${objectiveLine(contract.objective, "exam")}${
             contract.objective.items === undefined
               ? ""
               : " Where the frozen rubric reads task-specific criteria from hidden values, set them in each task's hidden field."

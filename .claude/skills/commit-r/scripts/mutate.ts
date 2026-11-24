@@ -5,19 +5,34 @@
  * against the suites, and records which suites kill it.
  *
  * `list` counts the mutants of each file. `run` appends one JSON line per mutant to `--out` and
- * skips mutants already recorded, allowing an interrupted run to resume; each worker mutates its own
- * worktree clone (`<out>.clone-<k>`) and runs `bun test --bail`. A run that outputs no pass, fail,
- * or bail count, or that `--timeout` ends, records `null` rather than a kill: under parallel mutants
- * a slow suite reaches the timeout unmutated, and a mutant that hangs fails on the suite's own
- * per-test timeout. `report` tabulates per-file kills across `--old` and the remaining suites (or
+ * skips mutants already recorded, allowing an interrupted run to resume. Mutants spread over the
+ * check places a landing's proofs use (`checkPlaces`, tools/runs/host-config.ts): one worker a slot,
+ * each mutating its own copy of the tree (`<out>.clone-<k>`) and running `bun test --bail` there
+ * through the check runner, whose deadline `--timeout` sets, or on this machine where
+ * `ANA_CHECK_HOST` is `here` or no host is listed. `--jobs N` is the most at once (default: every
+ * slot the hosts give, or one here). Every place first passes the suites unmutated, or takes no
+ * mutants; a place that gives no verdict puts its mutant back for another and takes no more. A run
+ * that outputs no pass, fail, or bail count, or that `--timeout` ends, records `null` rather than a
+ * kill: a slow suite can reach the timeout unmutated, and a mutant that hangs fails on the suite's
+ * own per-test timeout. `report` tabulates per-file kills across `--old` and the remaining suites (or
  * solo `killed / survived / unread` counts when `--old` is omitted), with `unread` for rows a
  * missing verdict leaves undecided, and `--survivors` prints `O-` IDs (comparative) or surviving
  * mutant IDs (solo), then unread IDs, which a rerun must bring to a verdict.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { appendFileSync, cpSync, existsSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { join } from "#src/meta/path.ts";
-import { pooled } from "#src/meta/pool.ts";
+import { keysIf } from "#src/meta/optional-key.ts";
+import { basename, join } from "#src/meta/path.ts";
+import { errorMessage } from "#src/meta/runtime-values.ts";
+import {
+  checkHost,
+  checkPlaces,
+  NO_VERDICT,
+  namedPlaces,
+  type Place,
+  placeEnv,
+} from "#tools/runs/host-config.ts";
+import { PER_TEST_WALL_MS } from "#tools/runtime/test-suite.ts";
 import * as ts from "typescript5";
 
 interface Mutant {
@@ -134,19 +149,31 @@ function mutantsOf(root: string, file: string): Mutant[] {
 const linesOf = (path: string) =>
   existsSync(path) ? readFileSync(path, "utf8").split("\n").filter(Boolean) : [];
 
-/** One suite over one mutated copy: true where it failed, false where it passed, null where the runner gave no verdict. */
-async function verdict(clone: string, paths: readonly string[], seconds: number): Promise<boolean | null> {
-  const run = Bun.spawn(["bun", "test", "--bail", "--max-concurrency=4", ...paths], {
-    cwd: clone,
-    env: { ...Bun.env, ANA_RUNNER_ACTIVE: "1", ANA_CHECK_HOST: "here" },
+interface Worker {
+  readonly place: Place;
+  readonly clone: string;
+}
+
+const routed = ({ remote }: Place): boolean =>
+  remote !== undefined || !["", "here"].includes(checkHost()?.trim() ?? "");
+
+async function verdict(worker: Worker, paths: readonly string[], seconds: number) {
+  const away = routed(worker.place);
+  const wall = `--timeout=${String(PER_TEST_WALL_MS)}`;
+  const run = Bun.spawn(["bun", "test", "--bail", "--max-concurrency=4", wall, ...paths], {
+    cwd: worker.clone,
+    env: away
+      ? { ...Bun.env, ...placeEnv(worker.place), ANA_RUNNER_WALL: String(seconds) }
+      : { ...Bun.env, ANA_RUNNER_ACTIVE: "1", ANA_CHECK_HOST: "here" },
     stdout: "pipe",
     stderr: "pipe",
-    timeout: seconds * 1000,
+    ...keysIf(!away, () => ({ timeout: seconds * 1000 })),
   });
   const said = (await Promise.all([new Response(run.stdout).text(), new Response(run.stderr).text()])).join(
     "",
   );
   const code = await run.exited;
+  if (away && NO_VERDICT.has(code)) return "elsewhere";
   if (run.signalCode !== null) return null;
   // A full run ends on its pass and fail counts; a run `--bail` stopped ends on the line saying so
   // and prints no counts (Bun 1.4).
@@ -167,45 +194,97 @@ async function runMutants(args: CommandArgs, root: string, files: readonly strin
     .flatMap((file) => mutantsOf(root, file))
     .filter(({ id }) => !done.has(id) && (wanted?.has(id) ?? true));
   const originals = new Map(files.map((file) => [file, readFileSync(join(root, file), "utf8")]));
-  const free = Array.from({ length: args.int("jobs") ?? 4 }, (_, index) => `${out}.clone-${String(index)}`);
-  for (const clone of free) {
-    if (!existsSync(clone)) cpSync(root, clone, { recursive: true });
-    // A run stopped mid-mutant leaves that mutant in its copy.
-    for (const [file, text] of originals) writeFileSync(join(clone, file), text);
-  }
   const seconds = args.int("timeout") ?? 300;
-  const probe = free[0];
-  if (probe !== undefined && todo.length > 0) {
-    for (const [name, paths] of suites) {
-      const baseline = await verdict(probe, paths, seconds);
-      if (baseline === false) continue;
-      args.die(
-        `baseline suite "${name}" did not pass unmutated (${baseline === true ? "failed" : "no verdict"})`,
-      );
-    }
-  }
-  await pooled(todo, free.length, async (mutant) => {
-    const clone = free.pop() ?? "";
+  const ran = (count: number) =>
+    console.log(`${String(count)} mutants run, ${String(done.size)} held before`);
+  if (todo.length === 0) return ran(0);
+  const workers = workersFor(args, root, out, originals);
+  const killsOf = async (worker: Worker, mutant: Mutant) => {
     const original = originals.get(mutant.file) ?? "";
     writeFileSync(
-      join(clone, mutant.file),
+      join(worker.clone, mutant.file),
       original.slice(0, mutant.start) + mutant.text + original.slice(mutant.end),
     );
-    const killed: Record<string, boolean | null> = {};
-    for (const [name, paths] of suites) {
-      killed[name] =
-        args.flag("stop-at-kill") && Object.values(killed).some(Boolean)
-          ? null
-          : await verdict(clone, paths, seconds);
+    try {
+      const killed: Record<string, boolean | null> = {};
+      for (const [name, paths] of suites) {
+        const stopped = args.flag("stop-at-kill") && Object.values(killed).some(Boolean);
+        const said = stopped ? null : await verdict(worker, paths, seconds);
+        if (said === "elsewhere") return said;
+        killed[name] = said;
+      }
+      return killed;
+    } finally {
+      writeFileSync(join(worker.clone, mutant.file), original);
     }
-    writeFileSync(join(clone, mutant.file), original);
-    free.push(clone);
-    appendFileSync(
-      out,
-      `${JSON.stringify({ id: mutant.id, file: mutant.file, line: mutant.line, label: mutant.label, killed })}\n`,
-    );
-  });
-  console.log(`${String(todo.length)} mutants run, ${String(done.size)} held before`);
+  };
+  const firsts = workers.filter(
+    ({ place }, index) => workers.findIndex((one) => one.place === place) === index,
+  );
+  const refusals = await Promise.all(firsts.map((worker) => unfit(worker, suites, seconds)));
+  const fit = firsts.flatMap(({ place }, index) => (refusals[index] === null ? [place] : []));
+  if (fit.length === 0) return args.die(refusals.join("\n"));
+  for (const why of refusals) if (why !== null) console.error(`${why}; it takes no mutants`);
+  const queue = [...todo];
+  const take = async (worker: Worker): Promise<boolean> => {
+    for (let mutant = queue.shift(); mutant !== undefined; mutant = queue.shift()) {
+      const killed = await killsOf(worker, mutant);
+      if (killed === "elsewhere") {
+        queue.push(mutant);
+        console.error(`${worker.place.remote ?? "here"} gave no verdict, so takes no more mutants`);
+        return false;
+      }
+      const { id, file, line, label } = mutant;
+      appendFileSync(out, `${JSON.stringify({ id, file, line, label, killed })}\n`);
+    }
+    return true;
+  };
+  for (let live = workers.filter(({ place }) => fit.includes(place)); queue.length > 0 && live.length > 0; ) {
+    const answers = await Promise.all(live.map(take));
+    live = live.filter((_, index) => answers[index] === true);
+  }
+  ran(todo.length - queue.length);
+  if (queue.length > 0) {
+    args.die(`${String(queue.length)} mutants left unrun, since no place gave a verdict; run again`);
+  }
+}
+
+function workersFor(
+  args: CommandArgs,
+  root: string,
+  out: string,
+  originals: ReadonlyMap<string, string>,
+): Worker[] {
+  let places: readonly Place[] = [];
+  try {
+    places = checkPlaces(root, args.int("jobs") ?? undefined);
+  } catch (error) {
+    args.die(`${errorMessage(error)}; ANA_CHECK_HOST=here runs every suite on this machine`);
+  }
+  if (places[0]?.remote !== undefined) console.error(`mutants run on ${namedPlaces(places)} at once`);
+  const workers = places
+    .flatMap((place) => Array.from({ length: place.slots }, () => place))
+    .map((place, index) => ({ place, clone: `${out}.clone-${String(index)}` }));
+  for (const { place, clone } of workers) {
+    const kept = (path: string) => !routed(place) || basename(path) !== "node_modules";
+    if (!existsSync(clone)) cpSync(root, clone, { recursive: true, filter: kept });
+    for (const [file, text] of originals) writeFileSync(join(clone, file), text);
+  }
+  return workers;
+}
+
+async function unfit(
+  worker: Worker,
+  suites: ReadonlyMap<string, readonly string[]>,
+  seconds: number,
+): Promise<string | null> {
+  for (const [name, paths] of suites) {
+    const said = await verdict(worker, paths, seconds);
+    if (said === false) continue;
+    const at = worker.place.remote === undefined ? "" : ` on ${worker.place.remote}`;
+    return `baseline suite "${name}" did not pass unmutated (${said === true ? "failed" : "no verdict"})${at}`;
+  }
+  return null;
 }
 
 function report(args: CommandArgs, results: readonly string[]): void {

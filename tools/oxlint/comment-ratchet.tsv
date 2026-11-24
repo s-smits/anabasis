@@ -4,7 +4,7 @@ path	count
 .claude/skills/campaign-mechanics/scripts/ending.ts	8
 .claude/skills/codex-gpt-swarm/scripts/gpt-receipts.ts	19
 .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts	26
-.claude/skills/commit-r/scripts/mutate.ts	7
+.claude/skills/commit-r/scripts/mutate.ts	5
 .claude/skills/compare-systems/scripts/systems.ts	17
 .claude/skills/compare-systems/scripts/trial.ts	3
 .claude/skills/comparison-reading/scripts/draw.ts	4
@@ -427,7 +427,7 @@ tools/runs/zip.ts	30
 tools/runtime/ci-runs.ts	19
 tools/runtime/doubled.ts	3
 tools/runtime/follow.ts	14
-tools/runtime/gate.ts	60
+tools/runtime/gate.ts	58
 tools/runtime/land.ts	55
 tools/runtime/landing.ts	16
 tools/runtime/lint.ts	35

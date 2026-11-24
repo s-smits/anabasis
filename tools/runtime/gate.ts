@@ -24,6 +24,7 @@ import { availableParallelism, tmpdir } from "../../src/meta/os.ts";
 import { basename, dirname, isAbsolute, join, relative } from "../../src/meta/path.ts";
 import { parseArgs, type ParseArgsOptionsConfig, runtimeProcess } from "../../src/meta/process.ts";
 import { killProcessGroup, runSync, runTextSyncOrThrow, zeroExitText } from "../../src/meta/subprocess.ts";
+import { NO_VERDICT, type Place, placeEnv } from "../runs/host-config.ts";
 import type { StatusState } from "./pulls.ts";
 
 type Pass = "static" | "whole";
@@ -42,13 +43,6 @@ interface Failure {
   readonly step: string;
   readonly log: string;
   readonly verdict: boolean;
-}
-
-/** Where passes run, and how many at once there: `remote` is the `ANA_CHECK_HOST` each carries to the
- *  check runner, a host's name, and undefined leaves the caller's own as it stands. */
-export interface Place {
-  readonly remote?: string;
-  readonly slots: number;
 }
 
 /** A proof in the queue, with its place in the landing's line. */
@@ -126,12 +120,6 @@ const TEST_REPORT_LINES = 200;
 /** A pass keeps its output in a log and prints nothing for minutes, which reads like a hung push. */
 const PULSE_MS = (Number(runtimeProcess.env.ANA_GATE_PULSE_SECONDS) || 60) * 1000;
 const LOG_DAYS = 14;
-/** The check runner's exits that say nothing about the commit (`tools/runtime/router/run.ts`): 255
- *  where ssh dropped or the task left no status, 75 where no slot came free in time, and 69 where the
- *  host does not answer or lacks the disk. Counting 255 alone would fail a commit whose queue timed
- *  out, and the landing would print a fix for a commit nothing had read. */
-const NO_VERDICT = new Set([255, 75, 69]);
-
 /** What an exit of a step, or of the gate over a commit, says about the commit. */
 const verdictOf = (code: number): "passed" | "failed" | "none" =>
   code === 0 ? "passed" : NO_VERDICT.has(code) ? "none" : "failed";
@@ -597,7 +585,7 @@ export async function proveCommits(
         ...keysIf(pass === "static" && remote === undefined, () => ({ ANA_TEST_WORKERS: share })),
         ...runtimeProcess.env,
         ANA_TEST_BAIL: "1",
-        ...keysIf(remote !== undefined, () => ({ ANA_CHECK_HOST: remote, ANA_RUNNER_SPARE_HELD: "1" })),
+        ...placeEnv(place),
       },
       // Its own group, so a stop reaches the steps and the runner's ssh beneath it.
       detached: stop !== undefined,

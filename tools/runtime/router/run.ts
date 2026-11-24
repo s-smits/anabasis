@@ -65,7 +65,7 @@ const FORWARDED = [
   "ANA_TEST_HOST_LOAD",
   "ANA_CLIMB",
 ];
-/** Exits that say nothing about the tree (`NO_VERDICT`, `tools/runtime/gate.ts`), and the others. */
+/** Exits that say nothing about the tree (`NO_VERDICT`, tools/runs/host-config.ts), and the others. */
 const EXIT = { usage: 2, unavailable: 69, noSlot: 75, interrupted: 130, noVerdict: 255 } as const;
 const TASK_SCRIPT = join(import.meta.dir, "task.sh");
 const EPOCH = "2000-01-01T00:00:00Z";

@@ -266,7 +266,7 @@ describe.concurrent("proveCommits", () => {
     const { log, prove } = sandbox();
     // A copy of the checker as a caller's checkout holds it: the gate and what it imports.
     const checker = join(fixture, "checker");
-    for (const part of ["tools/runtime", "src/meta"]) {
+    for (const part of ["package.json", "tools/runtime", "tools/runs/host-config.ts", "src/meta"]) {
       cpSync(join(import.meta.dir, "..", part), join(checker, part), { recursive: true });
     }
     const driver = driverOf(join(checker, "tools", "runtime", "gate.ts"));

@@ -112,11 +112,11 @@ import {
   failedLine,
   git,
   gitSays,
-  type Place,
   type Proof,
   proveCommits,
   short,
 } from "./gate.ts";
+import type { Place } from "../runs/host-config.ts";
 import { claimOf, follow, holdAlone, placesOf, sayingPulls, watching, whereToProve } from "./landing.ts";
 import { movedFrom, movesOf, pushMoves, Unreplayable } from "./restack.ts";
 

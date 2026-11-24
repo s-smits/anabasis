@@ -22,8 +22,8 @@ GitHub Actions runs `ci.yml` exclusively (dispatched by `bun run land -- <top> -
 ## Host routing (`tools/runtime/router/`, installed via `router/install.ts`)
 
 - `bun run test|typecheck|lint|secrets|gate` and `bun test`: unset `ANA_CHECK_HOST` = `auto`—probes 1m load/core across local + `ANA_HOSTS` (`tools/runs/load.ts`, 5s timeout `ANA_RUNNER_PICK_WAIT`) and picks the least-loaded free slot (falls back to local if no hosts configured). `ANA_CHECK_HOST=here` forces local; naming a host targets it directly.
-- `bun run land` with unset `ANA_CHECK_HOST` (`whereToProve`, `tools/runtime/landing.ts`): fans per-commit passes across all hosts up to each host's `checks` limit (default 2), sends the top gate to the first host, and retries no-verdict commits elsewhere.
-- Transfers working tree (incl. uncommitted edits) as one synthetic commit; slots reinstall only when lockfiles or Bun pin change; `runs retire` trashes slots idle ≥7 days (`trashIdleSlots`). Exit codes 255/75/69 = infrastructure non-verdict (`NO_VERDICT`, `gate.ts`).
+- `bun run land` and commit-r's `mutate.ts` with unset `ANA_CHECK_HOST` (`checkPlaces`, `tools/runs/host-config.ts`): fan per-commit passes or mutants across all hosts up to each host's `checks` limit (default 2), land sends the top gate to the first host; both retry no-verdict work elsewhere.
+- Transfers working tree (incl. uncommitted edits) as one synthetic commit; slots reinstall only when lockfiles or Bun pin change; `runs retire` trashes slots idle ≥7 days (`trashIdleSlots`). Exit codes 255/75/69 = infrastructure non-verdict (`NO_VERDICT`, `tools/runs/host-config.ts`).
 
 ## Placing a new check & measuring Actions
 

@@ -8,8 +8,8 @@ import { join } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { hold, holderOf, release } from "#src/meta/holder.ts";
 import { errorMessage } from "../../src/meta/runtime-values.ts";
-import { checkHost, checkSlots, type Host, hostsFor } from "../runs/host-config.ts";
-import { git, lines, type Place, type Proof, short } from "./gate.ts";
+import { checkPlaces, namedPlaces, type Place } from "../runs/host-config.ts";
+import { git, lines, type Proof, short } from "./gate.ts";
 import { beneath, chainAbove, openPulls, type Pull, stackStart } from "./pulls.ts";
 
 /** What a holder says of itself in the lock, after its record, and whether a newer one may end it. */
@@ -147,45 +147,25 @@ export function watching(Interrupted: new (message: string) => Error, moved: () 
   return { signal: stop.signal, end };
 }
 
-/**
- * Where a landing in `root` proves its commits. `ANA_CHECK_HOST` set, `here` among its values, is one
- * place to the landing, which hands each pass to the runner, so under `auto` each pass picks its own
- * least loaded slot; unset, the passes spread over every host `ANA_HOSTS` lists, each taking
- * as many at once as `checkSlots` gives it, and with no host listed they stay on this machine.
- * `--jobs N` is the most at once: N on one place, or N dealt in turn over the hosts' slots. A list
- * that cannot be read is refused, null, before anything is proved or posted.
- */
+/** Where a landing in `root` proves its commits (`checkPlaces`), said where they spread over hosts;
+ *  a host list that cannot be read is refused, null, before anything is proved or posted. */
 export function whereToProve(
   root: string,
   jobs: number | undefined,
   say: (line: string) => void,
 ): readonly Place[] | null {
-  const one = [{ slots: jobs ?? 1 }];
-  if ((checkHost()?.trim() ?? "") !== "") return one;
-  let listed: readonly Host[];
   try {
-    listed = hostsFor(root);
+    const places = checkPlaces(root, jobs);
+    if (places[0]?.remote !== undefined) {
+      say(`proving on ${namedPlaces(places)} at once; ANA_CHECK_HOST=<one> proves at that one.`);
+    }
+    return places;
   } catch (error) {
     console.error(
       `land: ${errorMessage(error)}; ANA_CHECK_HOST=here proves on this machine. Nothing was merged.`,
     );
     return null;
   }
-  const hosts = listed.map((host) => ({ name: host.name, checks: checkSlots(host) }));
-  if (hosts.length === 0) return one;
-  const dealt = new Map(hosts.map((host) => [host, 0]));
-  for (let left = jobs ?? Infinity; left > 0 && [...dealt].some(([host, slots]) => slots < host.checks); ) {
-    for (const [host, slots] of dealt) {
-      if (left > 0 && slots < host.checks) {
-        dealt.set(host, slots + 1);
-        left -= 1;
-      }
-    }
-  }
-  const places = [...dealt].flatMap(([host, slots]) => (slots === 0 ? [] : [{ remote: host.name, slots }]));
-  const named = places.map(({ remote, slots }) => `${remote} (${String(slots)})`).join(", ");
-  say(`proving on ${named} at once; ANA_CHECK_HOST=<one> proves at that one.`);
-  return places;
 }
 
 /** The open pull requests by number, base and head, which say whether any of them moved. */

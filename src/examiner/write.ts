@@ -29,11 +29,10 @@ import { affords, openingOf } from "../campaign/opening.ts";
 import { type AnswerFile, keepAnswerFiles, textFiles } from "../kernel/answer-files.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, contentOf, proposalsOf, writtenTasks } from "../kernel/history.ts";
-import { gainOver, GAP_FLOOR } from "../kernel/compare.ts";
 import { poolOf } from "../kernel/reports.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
-import { solvesIn, verdictsOf } from "../kernel/solves.ts";
+import { solvesIn } from "../kernel/solves.ts";
 import { packageGate as checkPackage, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import { objectiveOf, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
@@ -100,10 +99,7 @@ interface Desk {
   readonly seen: Map<string, "now" | "earlier">;
   /** The last author answer that passed on each instance, kept only in session memory and
    *  rechecked on the final task before recording a known valid answer. */
-  readonly answered: Map<
-    string,
-    { readonly answer: JsonValue; readonly files?: readonly AnswerFile[]; readonly measure: number | null }
-  >;
+  readonly answered: Map<string, { readonly answer: JsonValue; readonly files?: readonly AnswerFile[] }>;
   /** Checked content, kept once so a proposal can name it without sending its input again. */
   readonly checked: Map<string, Task>;
   /** Every answer that passed, by hash: a task that carries one whole is refused, since a planted
@@ -440,7 +436,6 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
           desk.answered.set(content, {
             answer,
             ...keyIfDefined("files", files),
-            measure: objectiveOf(verdict),
           });
           desk.planted.add(hashJsonValue(answer));
           recordValidAnswer(events, taskVersion(desk.request.pack(instance)), verdict, answer, files);
@@ -457,14 +452,14 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
   );
 }
 
-/** One solve `try_reference` ran, as its reply tells it: valid in how many turns and by what measure,
- *  or what ended it, or that it could not run. */
-function toldOf(ended: Ending, turns: number | null, measure: number | null): string {
+/** One solve `try_reference` ran, as its reply tells it: valid in how many turns, or what ended it,
+ *  or that it could not run. Reference objective values are omitted so single-solve noise does not
+ *  drive survivorship filtering. */
+function toldOf(ended: Ending, turns: number | null): string {
   if (ended.outcome === "non-result") return `could not run: ${ended.kind}`;
   if (ended.outcome === "flagged") return FAILED.get("flagged") ?? "not valid";
   if (ended.outcome === "fail") return FAILED.get(ended.kind) ?? "not valid";
-  const valid = `valid in ${turns === null ? "an unrecorded number of turns" : plural(turns, "turn")}`;
-  return measure === null ? valid : `${valid}, measuring ${measured(measure)}`;
+  return `valid in ${turns === null ? "an unrecorded number of turns" : plural(turns, "turn")}`;
 }
 
 /** The solves of the reference harness an ask may have under `probe`: none without one. */
@@ -473,36 +468,13 @@ const capped = (probe: Terms["probe"]): number => Math.min(probe?.tries ?? 0, TR
 /** What a tool that takes JSON values tells of `from_file`, where the session has a home to read. */
 const filed = (desk: Desk): string => (desk.home === undefined ? "" : ` ${FROM_FILE}`);
 
-/** Where the contract declares an objective, the author's `try_answer` measure of the instance, the
- *  count of valid solves in this call, and a coarse band comparing the best valid solve against the
- *  author's answer relative to `GAP_FLOOR`: one line, or none. Coarse bands instead of exact signed
- *  percentages curb single-solve survivorship filtering while preserving factual separation; the gate
- *  reads none of it. */
-function roomLine(contract: Contract, author: number | null, valid: readonly number[]): string[] {
-  const declared = contract.objective;
-  if (declared === undefined || author === null || valid.length === 0) return [];
-  const best = valid.reduce((kept, next) => (gainOver(declared, next, kept) > 0 ? next : kept));
-  const lead = gainOver(declared, author, best);
-  const floor = `${String(GAP_FLOOR * 100)}%`;
-  const band =
-    lead >= GAP_FLOOR
-      ? `yours clears the comparison's ${floor} floor ahead of it`
-      : lead <= -GAP_FLOOR
-        ? `its best valid solve clears the comparison's ${floor} floor ahead of yours`
-        : `both lie within the comparison's ${floor} floor`;
-  return [
-    `Your answer that passed try_answer on this instance measures ${measured(author)}; valid solves here: ${String(valid.length)}; ${band} (one or two solves show little of the reference's spread).`,
-  ];
-}
-
 /**
  * `try_reference`: fresh solves of an instance by the reference harness, one or two a call, side by
- * side, and of each whether it was valid, in how many turns and by what measure, or what ended it.
- * A solve that could not run is no try. The call is refused once the tries are spent or the
- * campaign's budget holds no reserve for its solves beside those in flight (`affords`), as a
- * comparison's admission reads it. An instance a task of the campaign holds runs under that task's
- * id, and any other under one its content names. Each solve's turns and measure are read back from
- * the log under the id the probe returns.
+ * side, and of each whether it was valid and in how many turns, or what ended it. A solve that could
+ * not run is no try. The call is refused once the tries are spent or the campaign's budget holds no
+ * reserve for its solves beside those in flight (`affords`), as a comparison's admission reads it.
+ * An instance a task of the campaign holds runs under that task's id, and any other under one its
+ * content names. Each solve's turns are read back from the log under the id the probe returns.
  */
 function tryReferenceTool(desk: Desk, within: Within): SeatTool {
   return tool(
@@ -538,24 +510,14 @@ function tryReferenceTool(desk: Desk, within: Within): SeatTool {
         const ran = await within(async () =>
           Promise.all(Array.from({ length: solves }, async () => probe.solve(instance, desk.stop))),
         );
-        const events = read(request.log);
-        const verdicts = verdictsOf(events);
-        const ends = new Map(solvesIn(events).map(({ id, end }) => [id, end]));
-        const measures = ran.map((one) =>
-          objectiveOf(one.solve === null ? undefined : verdicts.get(one.solve)?.checker),
-        );
+        const ends = new Map(solvesIn(read(request.log)).map(({ id, end }) => [id, end]));
         const lines = ran.map((one, nth) => {
           const turns = one.solve === null ? undefined : ends.get(one.solve)?.turns;
-          return `Solve ${String(nth + 1)}: ${toldOf(one.ending, isNumber(turns) ? turns : null, measures[nth] ?? null)}.`;
+          return `Solve ${String(nth + 1)}: ${toldOf(one.ending, isNumber(turns) ? turns : null)}.`;
         });
         desk.tried += ran.filter((one) => one.ending.outcome !== "non-result").length;
         const used = `Solves of the reference harness used in this session: ${String(desk.tried)} of ${String(capped(probe))}; one that could not run uses none.`;
-        const valid = ran.flatMap((one, nth) => {
-          const measure = measures[nth] ?? null;
-          return one.ending.outcome === "pass" && measure !== null ? [measure] : [];
-        });
-        const room = roomLine(request.contract, desk.answered.get(contentOf(given))?.measure ?? null, valid);
-        return text([...lines, ...room, used].join("\n"));
+        return text([...lines, used].join("\n"));
       },
     }),
   );

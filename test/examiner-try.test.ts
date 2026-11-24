@@ -41,7 +41,7 @@ afterAll(sweep);
 /** A probe that solves as the launcher logs a solve, under the Examiner session x-1: each call takes
  *  the next of `endings`, a pass measuring 2.5 in 4 turns, its answer and trace holding the canary,
  *  each solve billed `BILL`, and the tasks it was handed kept in `handed`. */
-function probe(log: string, tries: number, endings: readonly Ending[]) {
+function probe(log: string, tries: number, endings: readonly Ending[], objective = 2.5) {
   const handed: Task[] = [];
   const solve = async (task: Task) => {
     const ending = endings[handed.length] ?? PASS;
@@ -50,7 +50,7 @@ function probe(log: string, tries: number, endings: readonly Ending[]) {
     append(log, "solve.started", { solve: id, task: task.taskId, comparison: "x-1" });
     append(log, "solve.call", { solve: id, turn: 1, tool: "bash", isError: false, text: CANARY });
     if (ending.outcome === "pass") {
-      append(log, "verdict", { solve: id, task: task.taskId, kind: "pass", objective: 2.5, answer: CANARY });
+      append(log, "verdict", { solve: id, task: task.taskId, kind: "pass", objective, answer: CANARY });
     } else if (ending.outcome === "fail" && ending.kind === "rejected") {
       append(log, "verdict", {
         solve: id,
@@ -86,7 +86,7 @@ const spelled = (base: number) => {
 };
 
 describe("trying the reference at writing", () => {
-  it("tells of each solve its validity, turns and measure or what ended it, counts no solve that could not run, and stops at the tries", async () => {
+  it("tells of each solve its validity and turns or what ended it, omits objective values, counts no solve that could not run, and stops at the tries", async () => {
     const made = seated(100, 4, [
       PASS,
       REJECTED,
@@ -98,8 +98,9 @@ describe("trying the reference at writing", () => {
     const before = poolOf(read(made.log));
     const first = await said(made, { task: spelled(7) });
     expect(first).toStartWith(
-      "Solve 1: valid in 4 turns, measuring 2.5.\nSolve 2: not valid: the checks refused its answer.\n",
+      "Solve 1: valid in 4 turns.\nSolve 2: not valid: the checks refused its answer.\n",
     );
+    expect(first).not.toContain("2.5");
     expect(first.split("\n")).toHaveLength(3);
     expect(first).toContain("2 of 4");
     const second = await said(made, { task: spelled(8) });
@@ -202,13 +203,12 @@ describe("trying the reference at writing", () => {
     expect(made.handed).toHaveLength(TRIES);
   });
 
-  it("states the author's checked measure beside a coarse separation band relative to the floor with no signed percentage or verdict", async () => {
-    // The probe's valid solves measure 2.5, and lower is better.
-    const told = async (author: number) => {
+  it("leaves try_reference replies byte-identical across perturbed reference and author objective values", async () => {
+    const told = async (author: number, referenceObjective: number) => {
       const s = seat("write", []);
       append(s.log, "campaign.opened", { budget: { dollars: 100, reserve: 1 } });
       append(s.log, "exam.started", { session: "x-1" });
-      const made = probe(s.log, 4, [PASS, REJECTED]);
+      const made = probe(s.log, 4, [PASS, REJECTED], referenceObjective);
       const mode = writing(
         {
           ...s.request,
@@ -218,25 +218,22 @@ describe("trying the reference at writing", () => {
         },
         undefined,
       );
-      const before = await invoke(toolOf(mode, TRY), "try", { solves: 1, task: spelled(5) });
       await invoke(toolOf(mode, "try_answer"), "answer", { ...spelled(7), answer: ANSWER });
-      const after = await invoke(toolOf(mode, TRY), "try", { solves: 2, task: spelled(7) });
-      return [before, after].map(({ output: [part] = [] }) => (part?.type === "text" ? part.text : ""));
+      const reply = await invoke(toolOf(mode, TRY), "try", { solves: 2, task: spelled(7) });
+      const [part] = reply.output ?? [];
+      return part?.type === "text" ? part.text : "";
     };
-    const [unchecked = "", roomy = ""] = await told(2);
-    expect(unchecked).not.toContain("try_answer");
-    expect(roomy).toContain(
-      "measures 2; valid solves here: 1; yours clears the comparison's 1% floor ahead of it",
-    );
-    expect(roomy).not.toContain("20%");
-    const [, tied = ""] = await told(2.5);
-    expect(tied).toContain("both lie within the comparison's 1% floor");
-    expect(tied).not.toContain("0%");
-    const [, behind = ""] = await told(3);
-    expect(behind).toContain("its best valid solve clears the comparison's 1% floor ahead of yours");
-    expect(behind).not.toContain("16.7%");
-    for (const line of [roomy, tied, behind]) expect(line).not.toMatch(/room|leaves the reference/);
-    expect(tied).not.toContain(CANARY);
+    const baseline = await told(2, 2.5);
+    for (const [author, referenceObjective] of [
+      [2, 9999.1234],
+      [2.5, 2.5],
+      [3, 0.001],
+    ] as const) {
+      expect(await told(author, referenceObjective)).toBe(baseline);
+    }
+    expect(baseline).not.toContain("2.5");
+    expect(baseline).not.toContain("try_answer");
+    expect(baseline).not.toContain(CANARY);
   });
 });
 

@@ -28,6 +28,7 @@ import { continuityRows } from "../tools/wri/continuity.ts";
 import { deliverableRows } from "../tools/wri/deliverables.ts";
 import { READERS } from "../tools/wri/derive.ts";
 import { diagnosticRows } from "../tools/wri/diagnostics.ts";
+import { epochSpendLines } from "../tools/wri/epoch-spend.ts";
 import { executionRows } from "../tools/wri/execution.ts";
 import { indexOf, TRIGGERS } from "../tools/wri/folds.ts";
 import { rankCatalogue } from "../tools/wri/rank-lanes.ts";
@@ -469,6 +470,43 @@ describe("current-system WRI triggers and blind packet rendering", () => {
     expect(trigger).toMatchObject({ lane: TRIGGERS["FAMILY CONCENTRATION"] });
     expect(trigger?.detail).toContain("6 of 8 held tasks across 2 families");
     expect(trigger?.detail).not.toContain("SECRET-FAMILY");
+  });
+
+  it("counts zero-billed compactions in BILLING RESIDUAL and epoch-spend only for open sessions", () => {
+    const endedOnly: LogEvent[] = [
+      { at: AT, kind: "exam.started", data: { session: "x-1" } },
+      {
+        at: AT,
+        kind: "exam.compacted",
+        data: { session: "x-1", tokensBefore: 90_000, seconds: 5, usages: [] },
+      },
+      {
+        at: AT,
+        kind: "exam.finished",
+        data: { session: "x-1", ended: "finished", billed: 1, reportedCost: 1 },
+      },
+    ];
+    expect(overview(endedOnly).triggers.find((each) => each.name === "BILLING RESIDUAL")).toBeUndefined();
+    expect(epochSpendLines(endedOnly).at(-1)).toContain("0 unpriced compactions");
+
+    const withOpen: LogEvent[] = [
+      ...endedOnly,
+      { at: AT, kind: "build.started", data: { session: "b-1", parent: "h1" } },
+      {
+        at: AT,
+        kind: "build.compacted",
+        data: { session: "b-1", tokensBefore: 80_000, seconds: 4, usages: [] },
+      },
+      {
+        at: AT,
+        kind: "build.compacted",
+        data: { session: "b-1", tokensBefore: 85_000, seconds: 4, usages: [] },
+      },
+    ];
+    const trigger = overview(withOpen).triggers.find((each) => each.name === "BILLING RESIDUAL");
+    expect(trigger).toMatchObject({ lane: TRIGGERS["BILLING RESIDUAL"] });
+    expect(trigger?.detail).toContain("2 open compactions with 0 locally priced usage");
+    expect(epochSpendLines(withOpen).at(-1)).toContain("2 unpriced compactions");
   });
 
   it("renders blind grading packets directly from the rewritten blind lane", () => {

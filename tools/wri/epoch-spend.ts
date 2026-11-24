@@ -8,10 +8,20 @@ import { epochsOf } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { billedAll, billedBetween, billedFor, costLine, spendOf } from "#src/kernel/meter.ts";
-import { tracesIn } from "#src/kernel/trace.ts";
+import { type Traced, tracesIn, unfinished } from "#src/kernel/trace.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
+import { isString } from "#src/meta/json-shape.ts";
 import { plural } from "#src/meta/text.ts";
 import { clockOf } from "./trajectory.ts";
+
+/** Zero-billed compactions whose session or solve has no finished event on record; ended sessions
+ *  already carry their end ledger in `costLine`. */
+export function unpricedCompactions(events: readonly LogEvent[], traces: readonly Traced[]): number {
+  const zero = traces.filter((each) => each.part === "compacted" && each.billed === 0);
+  if (zero.length === 0) return 0;
+  const open = new Set(unfinished(events).flatMap(({ of, id }) => (isString(id) ? [`${of}:${id}`] : [])));
+  return zero.filter((each) => open.has(`${each.seat}:${each.id}`)).length;
+}
 
 /** Per-epoch billed spend and active hours, plus billing residual and $/promotion summary. */
 export function epochSpendLines(events: readonly LogEvent[]): string[] {
@@ -39,7 +49,7 @@ export function epochSpendLines(events: readonly LogEvent[]): string[] {
   const total = billedAll(events);
   const promoted = epochs.filter(({ promoted: harness }) => harness !== null).length;
   const confirmed = epochs.filter(({ confirmed: ok }) => ok === true).length;
-  const unpriced = tracesIn(events).filter((each) => each.part === "compacted" && each.billed === 0).length;
+  const unpriced = unpricedCompactions(events, tracesIn(events));
   const perProm = promoted === 0 ? "none" : `$${(total / promoted).toFixed(2)}`;
   const perConf = confirmed === 0 ? "none" : `$${(total / confirmed).toFixed(2)}`;
   return [

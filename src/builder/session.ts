@@ -22,7 +22,7 @@ import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { conditionsOf, type Limits } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
-import { append, type LogEvent, read } from "../kernel/log.ts";
+import { append, isReferenceChange, type LogEvent, read } from "../kernel/log.ts";
 import { billedParts, priceKey } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { type Cap, INTERRUPTED } from "../kernel/reports.ts";
@@ -217,7 +217,7 @@ export async function keepPractised(log: string, id: string, states: string): Pr
   // session's last harness snapshot ran a harness that snapshot already keeps or supersedes.
   const earlierHarnesses = new Set(
     events.flatMap(({ kind, data }) =>
-      kind === BUILD_STARTED ? [data.parent] : kind === "harness.promoted" ? [data.harness] : [],
+      kind === BUILD_STARTED ? [data.parent] : isReferenceChange(kind) ? [data.harness] : [],
     ),
   );
   const since = mine.findLastIndex(({ kind }) => kind === "build.checkpoint");
@@ -339,7 +339,7 @@ function openingFor(bench: Bench): string {
   const began = recorded.findLastIndex(
     ({ kind, data }) => kind === BUILD_STARTED && data.session === request.id,
   );
-  const moved = recorded.slice(began).some(({ kind }) => kind === "harness.promoted")
+  const moved = recorded.slice(began).some(({ kind }) => isReferenceChange(kind))
     ? " The reference harness has changed since this conversation began."
     : "";
   return firstMessage(

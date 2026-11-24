@@ -43,6 +43,7 @@ import {
   packOf,
   prepared,
   promoteMade,
+  revertMade,
   type Seats,
   type Turn,
   turnOf,
@@ -532,19 +533,27 @@ const compareTool = (context: CampaignContext, bench: Bench): SeatTool =>
  */
 async function promoteOwed(context: CampaignContext, bench: Bench): Promise<string[]> {
   const { decided } = actionTurn(context);
-  if (decided.move !== "promote" || context.used >= context.maxMoves) return [];
-  if (context.opening.attended) {
+  if ((decided.move !== "promote" && decided.move !== "revert") || context.used >= context.maxMoves) {
+    return [];
+  }
+  if (decided.move === "promote" && context.opening.attended) {
     console.log(awaitsOperator(context.values.name ?? "", decided.harness));
     return [];
   }
-  // A session writing as the step reports aims at the reference before it, so the promotion waits
-  // for it, on the host's time as the comparison's: every session after it is the new reference's,
-  // and `promoting` starts the first at once. A comparison does not wait for it.
-  // The table is read again after the wait, so a stop word left during it is heard first.
+  // A session writing as the step reports aims at the reference before it, so the reference change
+  // waits for it, on the host's time as the comparison's: every session after it is the new
+  // reference's. The table is read again after the wait, so a stop word left during it is heard first.
   await context.examining?.done;
   const owed = actionTurn(context).decided;
-  if (owed.move !== "promote" || context.used >= context.maxMoves) return [];
+  if ((owed.move !== "promote" && owed.move !== "revert") || context.used >= context.maxMoves) return [];
   context.used += 1;
+  if (owed.move === "revert") {
+    revertMade(context.log, owed);
+    await refreshCampaign(context, bench);
+    return [
+      `The starter comparison did not confirm the promoted reference, so the host reverted the campaign's reference to ${short(owed.harness)}.`,
+    ];
+  }
   await promoteMade(context.log, context.values.name, owed);
   await refreshCampaign(context, bench);
   return [

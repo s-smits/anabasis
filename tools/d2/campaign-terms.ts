@@ -14,7 +14,7 @@ import type { Word } from "#src/campaign/word.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import type { Session } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
-import { PATIENCE } from "#src/kernel/reports.ts";
+import { PATIENCE, referenceOf } from "#src/kernel/reports.ts";
 import { mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -179,6 +179,17 @@ export async function promoteMade(
 ): Promise<void> {
   moved(log, owed, { harness: owed.harness });
   await promoteCommand([...flag("name", name), "--harness", owed.harness, "--yes"]);
+}
+
+/** Record an automatic reference revert back to the last confirmed harness (or starter). */
+export function revertMade(log: string, owed: Extract<Decided, { move: "revert" }>): void {
+  const from = referenceOf(read(log)) ?? "starter";
+  moved(log, owed, { harness: owed.harness });
+  append(log, "harness.reverted", {
+    harness: owed.harness,
+    from,
+    reason: owed.why,
+  });
 }
 
 export function flagsOf(args: readonly string[]) {

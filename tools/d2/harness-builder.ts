@@ -51,6 +51,7 @@ import {
   packOf,
   prepared,
   promoteMade,
+  revertMade,
   type Seats,
   sharedOf,
   type Turn,
@@ -74,8 +75,8 @@ const WHOLE: ReadonlySet<unknown> = new Set(["finished", "wall", "turns"]);
 const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
 
 /** The moves the host makes itself, by the command an operator would run: the exam's draft and
- *  reading, the tasks set apart, a comparison and a promotion. Every other is a conversation's. */
-type Made = Extract<Decided, { move: "draft" | "accept" | "prepare" | "compare" | "promote" }>;
+ *  reading, the tasks set apart, a comparison, a promotion, and a revert. Every other is a conversation's. */
+type Made = Extract<Decided, { move: "draft" | "accept" | "prepare" | "compare" | "promote" | "revert" }>;
 
 /**
  * Whether the campaign goes on from a move that threw, which began where the log held `from`
@@ -118,6 +119,10 @@ async function make(decided: Made, turn: Turn, log: string): Promise<void> {
   }
   if (decided.move === "promote") {
     await promoteMade(log, values.name, decided);
+    return;
+  }
+  if (decided.move === "revert") {
+    revertMade(log, decided);
     return;
   }
   if (decided.move === "draft") {
@@ -496,9 +501,10 @@ export async function harnessBuilder(
     }
     if (values["dry-run"] || made >= most) return decided;
     // Hold at an active or reached boundary pause before opening a new conversation or host move
-    // (promotions still land so `unpromotedStep` clears before `runs pause` stops the run).
+    // (promotions and reverts still land so reference state settles before `runs pause` stops the run).
     if (
       decided.move !== "promote" &&
+      decided.move !== "revert" &&
       (await waitPaused(log, began, campaign?.limits.wallSeconds ?? LIMITS.wallSeconds, {
         host: seats.host,
       }))

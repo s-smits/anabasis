@@ -38,6 +38,7 @@ export type Decided =
         readonly id?: string;
       }
     | { readonly move: "promote"; readonly why: string; readonly harness: string }
+    | { readonly move: "revert"; readonly why: string; readonly harness: string }
     | {
         readonly move: "end";
         readonly why: string;
@@ -77,6 +78,9 @@ export function decidedLine(decided: Decided): string {
       }
       case "promote": {
         return `promote harness ${short(decided.harness)}`;
+      }
+      case "revert": {
+        return `revert reference to ${named(decided.harness)}`;
       }
       case "end": {
         return `the campaign ends (${decided.ending})`;

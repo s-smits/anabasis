@@ -47,6 +47,7 @@ const POINTS: ReadonlySet<EventKind> = new Set([
   "comparison.started",
   "comparison.reported",
   "harness.promoted",
+  "harness.reverted",
   "build.checkpoint",
   "build.started",
   "build.finished",

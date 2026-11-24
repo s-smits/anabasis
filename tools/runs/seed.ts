@@ -116,6 +116,7 @@ function pointsOf(events: readonly LogEvent[]): string[] {
     const row = (...parts: unknown[]) => [[index, kind, ...parts].map(String).join(" ")];
     if (SESSION_STARTS.has(kind) || kind === "build.finished") return row(data.session);
     if (kind === "harness.promoted") return row(data.harness);
+    if (kind === "harness.reverted") return row("reverted", data.harness);
     if (kind === "comparison.started" && starterReads.has(data.session)) {
       return row(data.session, "starter read");
     }

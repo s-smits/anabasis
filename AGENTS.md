@@ -13,9 +13,9 @@ Skill scripts: `bun .claude/skills/<skill>/scripts/<name>.ts`. Metrics: `docs/pl
 
 **How to approach a task.** Carry work as far as authority permits, through verification and delivery:
 1. **Fix the owning design upstream.** Refactor owners at their boundary (standalone Anabasis, not shims); weigh rebase blast radius on deep stacks, patching locally when structural work awaits §3.
-2. **Sweep archives before changing rules or heuristics.** Replay rule edits over `data/runs/` (`promotion-tuner`, `system-path-simulation`) and report flipped decisions; sweep logs/harnesses for real triggers (not `0/N`) and near-zero false positives.
+2. **Sweep archives before changing rules or heuristics.** Replay rule edits over `data/runs/` (`promotion-tuner`, `system-path-simulation`) and report flips; sweep logs/harnesses for real triggers (not `0/N`) and near-zero false positives.
 3. **Subtract and reuse before adding.** Exhaust existing owners (rule 12) before adding an agent, tool, flag or guard; keep net complexity flat/falling (`git complexity`), preferring a simpler design capturing ~90%+ of the gain.
-4. **Think inline from primary sources first.** Join `.ana/wri/` artifacts with live folds and form a hypothesis before invoking subagents or raw scans (§9); assert nothing unverified and correct errors immediately.
+4. **Think inline from primary sources first.** Join `.ana/wri/` artifacts with live folds and form a hypothesis before subagents or raw scans (§9); assert nothing unverified and correct errors immediately.
 5. **Ship separable, ablatable, simulatable slices.** Before live spend, simulate each slice model-free (`system-path-simulation`: archive/counterfactual replay, `runs rehearse`, wall probes) against its strongest objection and a before/after test or mutant.
 
 Finish or checkpoint current work before unrelated tasks, unless redirected or stopped. Resolve routine ambiguity with the strongest option and its falsifier; pause only for missing permissions or a §3 decision, with analysis and recommendation. Audits, reviews, plans stay read-only. Report evidence rung (§9) and open items. Keep operator infra (hosts, logins, accounts, jobs, full run names) out of tracked files, commits and PRs.
@@ -40,7 +40,8 @@ Name target factor and empirical count (`docs/plan.md`):
 ### Trade-offs to keep in view
 
 See `design-and-seats` (`question-and-factors.md`, `stance.md`):
-- **Validity & objective variance**: binary `valid` separates constrained domains (`buffer`, `truss`, `recode`, `esp32`) and floors open-ended ones (`jobstat`) against objective hacking; carry open-ended headroom in a non-hedgable objective (100% pass with lagging transfer flags weak grounding). Report carrying measure and A/A floor (`GAP_FLOOR` trades noise vs supply).
+- **Multi-domain generality**: account for every evaluation angle—verifiable constraints (`buffer`, `truss`, `esp32`, `recode`, `seating`), hard-to-verify mixed (`kernel`, `jobstat`) and open-ended workplace/analytical deliverables; keep verifiable baselines zero-overhead while preserving headroom elsewhere.
+- **Validity & objective variance**: binary `valid` separates constrained domains and floors open-ended ones against objective hacking; carry open-ended headroom in a non-hedgable objective (100% pass with lagging transfer flags weak grounding). Report carrying measure and A/A floor (`GAP_FLOOR` trades noise vs supply).
 - **Promotion vs confirmation**: each promotion should beat its predecessor and `baseStarter` (Starter Pack) internally (even if `bareSolver` differs) and beat `bareSolver` externally; flat climbs flag grounding/measurement defects. Owed starter reads run on next `compare` (`heldSince`); reading ahead stays unconfirmed (`test/decide-explore.test.ts`).
 - **Practice vs held-out supply**: practice takes ≤ half the held-out pool; watch `comparisonFloor` and treat untransferred practice gains as overfitting.
 - **Gate strictness vs capability**: refuse only measurement-breaking or wasted-compute actions; note others factually; favour lenient sandboxing and Builder freedom.
@@ -48,23 +49,23 @@ See `design-and-seats` (`question-and-factors.md`, `stance.md`):
 
 ### Two sides and one wall
 
-Practice is training; held-out is test and never leaks. Examiner sees reference outcomes and winning harnesses; only five items cross to build: (1) public rules, scope, conventions, answer format and objective (quantity + direction); (2) public spec of released practice tasks; (3) practice solve outcome, kind, trajectory and coarse band vs author's best (no raw values); (4) aggregate comparison tally and reading without task names; (5) host limits, budget, task counts. Nothing else crosses: no held-out text/trajectory, check source, hidden values, refusing checks, Referee rationale or move-table advice (rule 3).
+Practice is training; held-out is test and never leaks. Examiner sees reference outcomes and winning harnesses; only five items cross to build: (1) public rules, scope, conventions, answer format, objective (quantity + direction); (2) released practice specs; (3) practice solve outcome, kind, trajectory and coarse band vs author's best (no raw values); (4) aggregate tally/reading without task names; (5) host limits, budget, task counts. Nothing else crosses: no held-out text/trajectory, check source, hidden values, refusing checks, Referee rationale or move-table advice (rule 3).
 
 ## 2. The stance: code owns the conditions, models own the content
 
 Code governs protocol and conditions (eligibility, refusals, limits, solve conditions, verification, statistics, wall, dollar cap, log); models govern content (harness, solutions, tasks, rulings, diagnosis, hypothesis).
 
-1. **Supply facts, frame positively, omit numeric targets.** Describe what good work looks like rather than "do not X" bans (which seed failure modes) or numeric targets (Examiner never sees target counts or pass rates); bound prompt edits (~20–30% drift) and prune distracting lines.
-2. **Design for frontier models; keep Builder unconstrained.** Give seats clean sandbox primitives and freedom instead of arbitrary count floors (min lines/tools) or weak-model handholding; forbid only naming a task, copying its text or embedding its answer.
-3. **Code validates structure, never selects content**; a model reply never sets a score, limit or identity. Any model review pass runs upstream at low frequency, reuses an existing seat and requires mechanical probe evidence rather than prose opinion.
+1. **Supply facts, frame positively, omit numeric targets.** Describe good work rather than "do not X" bans (which seed failures) or numeric targets (Examiner never sees target counts/pass rates); bound prompt edits (~20–30% drift) and prune distracting lines.
+2. **Design for frontier models; keep Builder unconstrained.** Give seats clean sandbox primitives instead of arbitrary count floors or weak-model handholding; forbid only naming a task, copying its text or embedding its answer.
+3. **Code validates structure, never selects content**; a model reply never sets a score, limit or identity. Model review passes run upstream at low frequency, reuse an existing seat and require mechanical probe evidence, not prose opinion.
 4. **When in doubt, permit full workspace** (isolation hides only hidden values, credentials and other seats' private files: `SolveDirs`, `src/tools/command.ts`).
 5. **Keep designs as simple as honesty allows.**
 
 ### Reward hacking vs overfitting
 
 Close gaming channels in code. Separate practice overfitting from structural reward hacking:
-- **Practice memorisation** (task IDs, rare codes like `P-00123`, verbatim prompts): training overfitting, not a held-out exploit; held-out comparisons block it from winning, while `check_harness` (`src/harness/files.ts`) and WRI `names.ts` flag high-precision leaks cheaply.
-- **Oracle / hidden-value inversion** (probing practice scores or `try_reference` gaps to invert hidden values or boundary-tune): close by coarsening cross-wall feedback into bands (`bandOf`, `roomLine` `GAP_FLOOR`), keeping raw digits in the log.
+- **Practice memorisation** (task IDs, rare codes like `P-00123`, verbatim prompts): training overfitting, not a held-out exploit; held-out comparisons block it while `check_harness` (`src/harness/files.ts`) and WRI `names.ts` flag high-precision leaks.
+- **Oracle / hidden-value inversion** (probing practice scores or `try_reference` gaps to invert hidden values or boundary-tune): close via coarse cross-wall bands (`bandOf`, `roomLine` `GAP_FLOOR`), keeping raw digits in the log.
 - **Measurement softening & comparison fishing** (dropped checks across retries, `vacuous-pass` holes like `Number("") === 0`, hedgable metrics, or re-comparing noisy edits to clear `α`): prevent via upstream mechanical probes (`referee.draft`, `doNothing`, hidden-swap checks), host-gated fresh comparisons (`decide`, `written-after` confirmation), and WRI gaming audit (`tools/wri/gaming.ts`).
 
 ## 3. The seats
@@ -81,7 +82,7 @@ A **harness** (`agent/tools-spec.json`, `.toolchain/`, `agent/BUILT_AGENTS.md`) 
 
 Seven decisions need explicit operator approval (`design-and-seats`, `operator-and-harness.md`): freezing/rejecting contract/checks or admitting authored checks (`tools/c/accept.ts --freeze`, `--admit`); blind labels; dollar cap/payer; declaring a task infeasible; manual promotion (`tools/d2/promote.ts --harness <digest> --yes`, `--despite`); changing solver inputs/limits (`baseStarter`, env, limits); stopping a live run.
 
-Present evidence and a recommendation while continuing independent work. Approval covers only what it names ("keep going" grants none; opening a cycle covers its runs, pauses, stack patches). Host messages say "a person" solely for these seven.
+Present evidence and a recommendation while continuing independent work. Approval covers only what it names ("keep going" grants none; a cycle covers its runs, pauses, stack patches). Host messages say "a person" solely for these seven.
 
 ## 4. The Harness Builder
 
@@ -146,11 +147,11 @@ Give every rate its denominator and compare runs over matched active hours, not 
 
 Live runs spend budget and need explicit approval per named run; seats run in Seatbelt/Bubblewrap (unavailable wall = typed non-result). See `run-improvement-campaign`, `run-management`, `whole-run-investigation` (`bun run runs`):
 1. **Worktree is the condition**: launch in a clean worktree at a published commit (`runs fresh`), leave `src/` untouched; paid seats refuse main checkout or `ana-followed` (`treeFault`).
-2. **Simulate before spending** (`system-path-simulation`: `--dry-run`, `runs replay`, counterfactual archive replays, seeded `runs rehearse`, wall probes on every modified seam); **pre-register count-based predictions** before solve 1 and resolve them before forking next.
+2. **Simulate before spending** (`system-path-simulation`: `--dry-run`, `runs replay`, archive replays, seeded `runs rehearse`, wall probes on modified seams); **pre-register count predictions** before solve 1 and resolve before forking next.
 3. **At most 1–2 concurrent rounds per host** (`leastOccupied`); **never open, print or copy `--env-file`**.
 4. **Never stop a live run to patch it** (stack fixes for fresh runs); **read logs/reports before prose**; **report every started attempt**; **a measured run opens a fresh project at one commit** (inherited promotions do not count).
 
-Track primary + control domains and external transfer (`docs/plan.md`, `run-improvement-campaign`), checking conditions before blaming a harness on external benchmarks. React to `runs alerts`/`runs pulse`, not polling.
+Track primary + control domains and external transfer (`docs/plan.md`, `run-improvement-campaign`), verifying conditions before blaming a harness externally. React to `runs alerts`/`runs pulse`, not polling.
 
 ## 11. Working in the repository
 
@@ -193,7 +194,7 @@ Pin constants (`WEIGHTS`, `GAP_FLOOR`, `SIZE`, `PATIENCE`) once. Avoid wording/p
 
 ## 13. Writing
 
-Write plain, logical English without forced jargon or robotic phrasing: state general principles, current behaviour and rationale instead of chronological "at X, Y happened so we did Z" narratives (history belongs in commits, PRs or logs). Give exact figures with measured axis (tests, observations, estimates distinct), use §14 terms and backticks for identifiers/paths, state each fact once in its owner (rewrite prompts, never append), and keep defaults in code.
+Write plain, logical English without forced jargon or robotic phrasing: state general principles, current behaviour and rationale rather than chronological "at X, Y happened" narratives (history lives in commits/PRs/logs). Give exact figures with measured axis (tests, observations, estimates), use §14 terms and backticks for identifiers/paths, state each fact once in its owner (rewrite prompts, never append), and keep defaults in code.
 
 ## 14. Terms and map
 

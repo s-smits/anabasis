@@ -1,7 +1,7 @@
 /**
  * What move 7 reads its rows from: a campaign's plan, and its log read once (`groundOf`).
  */
-import type { LogEvent } from "../kernel/log.ts";
+import { eventsOf, type LogEvent } from "../kernel/log.ts";
 import { INTERRUPTED, lastReports, latestBuilt, referenceOf } from "../kernel/reports.ts";
 import { isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { refusals, supplyOf, type Wanted } from "./admission.ts";
@@ -52,10 +52,9 @@ type Reported = Compared & { readonly report: JsonObject; readonly reported: num
 export function comparisonsOf(events: readonly LogEvent[]): Compared[] {
   const reports = new Map(lastReports(events).map((report) => [report.session, report]));
   const begun = new Map<string, Compared>();
-  for (const [at, { kind, data }] of events.entries()) {
-    const { session, old, fresh } = data;
-    if (kind !== "comparison.started" || !isString(session) || !isString(old) || !isString(fresh)) continue;
-    if (data.ladder === true) continue;
+  for (const { index: at, event } of eventsOf(events, "comparison.started")) {
+    const { session, old, fresh, ladder } = event.data;
+    if (!isString(session) || !isString(old) || !isString(fresh) || ladder === true) continue;
     const last = reports.get(session);
     begun.set(session, {
       id: session,

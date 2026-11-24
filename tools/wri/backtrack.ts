@@ -134,7 +134,19 @@ interface CohortKey {
   readonly setting: string;
 }
 
+interface CohortHead {
+  readonly releaseLabel: string;
+  readonly semver: Semver | null;
+  readonly attention: Attention;
+}
+
+interface ReleaseRef {
+  readonly tag: string | null;
+  readonly label: string;
+}
+
 const SEMVER_TAG = /\bv(\d+)\.(\d+)\.(\d+)(?:\.\d+)?\b/u;
+const DESCRIBED = /^(v\d[^-]*)-(\d+)-g[0-9a-f]+$/u;
 const SINCE = "2026-10-01";
 const MAJOR_WEIGHT = 10;
 const SAME_MINOR_PATCH_STEP = 0.1;
@@ -149,6 +161,7 @@ const TIER_BOUNDS: readonly (readonly [number, AttentionTier])[] = [
   [NEAR_CEILING, "near"],
   [MID_CEILING, "mid"],
 ];
+const TARGET_ATTENTION: Attention = { gap: 0, weight: 1, tier: "direct", samePack: true, direction: "same" };
 const SUMMARY_MAX = 140;
 const CONSTRAINT_MAX = 200;
 
@@ -209,68 +222,29 @@ export function attentionOf(target: CohortKey, other: CohortKey): Attention {
 }
 
 /** Sums numeric fields across a cohort of runs into one aggregate row. */
-function aggregateCohort(
-  releaseLabel: string,
-  semver: Semver | null,
-  attention: Attention,
-  group: readonly BacktrackRun[],
-  targetPack: string,
-): CohortRow {
-  let activeHours = 0;
-  let promotions = 0;
-  let compared = 0;
-  let confirmed = 0;
-  let reads = 0;
-  let afterWins = 0;
-  let afterLosses = 0;
-  let afterTies = 0;
-  let scored = 0;
-  let room = 0;
-  let controls = 0;
-  let aaSteps = 0;
-  let dollars = 0;
-  let repricedSum = 0;
-  let allRepriced = true;
-  let samePackRuns = 0;
-  for (const run of group) {
-    activeHours += run.activeHours;
-    promotions += run.promotions;
-    compared += run.compared;
-    confirmed += run.confirmed;
-    reads += run.reads;
-    afterWins += run.afterWins;
-    afterLosses += run.afterLosses;
-    afterTies += run.afterTies;
-    scored += run.scored;
-    room += run.room;
-    controls += run.controls;
-    aaSteps += run.aaSteps;
-    dollars += run.dollars;
-    if (run.pack === targetPack) samePackRuns += 1;
-    if (run.repriced === null) allRepriced = false;
-    else repricedSum += run.repriced;
-  }
+function aggregateCohort(head: CohortHead, group: readonly BacktrackRun[], targetPack: string): CohortRow {
+  const sum = (of: (run: BacktrackRun) => number) => group.reduce((total, run) => total + of(run), 0);
+  const samePackRuns = group.filter((run) => run.pack === targetPack).length;
+  const repriced = group.every((run) => run.repriced !== null) ? sum((run) => run.repriced ?? 0) : null;
   return {
-    releaseLabel,
-    semver,
-    attention,
+    ...head,
     runs: group.length,
     samePackRuns,
     priorPromptRuns: group.length - samePackRuns,
-    activeHours,
-    promotions,
-    compared,
-    confirmed,
-    reads,
-    afterWins,
-    afterLosses,
-    afterTies,
-    scored,
-    room,
-    controls,
-    aaSteps,
-    dollars,
-    repriced: allRepriced ? repricedSum : null,
+    activeHours: sum((run) => run.activeHours),
+    promotions: sum((run) => run.promotions),
+    compared: sum((run) => run.compared),
+    confirmed: sum((run) => run.confirmed),
+    reads: sum((run) => run.reads),
+    afterWins: sum((run) => run.afterWins),
+    afterLosses: sum((run) => run.afterLosses),
+    afterTies: sum((run) => run.afterTies),
+    scored: sum((run) => run.scored),
+    room: sum((run) => run.room),
+    controls: sum((run) => run.controls),
+    aaSteps: sum((run) => run.aaSteps),
+    dollars: sum((run) => run.dollars),
+    repriced,
   };
 }
 
@@ -352,9 +326,7 @@ export function buildBacktrack(
   const targetSemver = parseReleaseTag(lead.releaseTag ?? lead.releaseLabel);
   const targetKey: CohortKey = { semver: targetSemver, pack: lead.pack, setting: lead.setting };
   const targetCohort = aggregateCohort(
-    lead.releaseLabel,
-    targetSemver,
-    { gap: 0, weight: 1, tier: "direct", samePack: true, direction: "same" },
+    { releaseLabel: lead.releaseLabel, semver: targetSemver, attention: TARGET_ATTENTION },
     targets,
     lead.pack,
   );
@@ -362,9 +334,7 @@ export function buildBacktrack(
   const grouped = new Map<string, { semver: Semver | null; attention: Attention; runs: BacktrackRun[] }>();
   const expanded: ExpandedPeer[] = [];
   const distantReleases = new Set<string>();
-  let distantCount = 0;
-  let otherSettingCount = 0;
-  let newerCount = 0;
+  let [distantCount, otherSettingCount, newerCount] = [0, 0, 0];
   for (const peer of sameDomain) {
     const peerSemver = parseReleaseTag(peer.releaseTag ?? peer.releaseLabel);
     const attention = attentionOf(targetKey, { semver: peerSemver, pack: peer.pack, setting: peer.setting });
@@ -397,24 +367,19 @@ export function buildBacktrack(
       });
     }
   }
+  const byGap = (a: Attention, b: Attention) => a.gap - b.gap || b.weight - a.weight;
   const cohorts = [...grouped.entries()]
-    .map(([label, { semver, attention, runs: group }]) =>
-      aggregateCohort(label, semver, attention, group, lead.pack),
+    .map(([releaseLabel, { semver, attention, runs: group }]) =>
+      aggregateCohort({ releaseLabel, semver, attention }, group, lead.pack),
     )
-    .toSorted((one, other) => {
-      if (one.attention.gap !== other.attention.gap) return one.attention.gap - other.attention.gap;
-      return other.attention.weight - one.attention.weight;
-    });
-  expanded.sort((one, other) => {
-    if (one.attention.gap !== other.attention.gap) return one.attention.gap - other.attention.gap;
-    if (one.attention.weight !== other.attention.weight) return other.attention.weight - one.attention.weight;
-    return other.run.launched - one.run.launched;
-  });
+    .toSorted((one, other) => byGap(one.attention, other.attention));
+  expanded.sort(
+    (one, other) => byGap(one.attention, other.attention) || other.run.launched - one.run.launched,
+  );
   const midConstraints: { releaseLabel: string; folder: string; constraint: string }[] = [];
   const seenFolders = new Set<string>();
   for (const cohort of cohorts.filter(({ attention }) => attention.tier === "mid")) {
-    const midRuns = sameDomain.filter((peer) => peer.releaseLabel === cohort.releaseLabel);
-    for (const run of midRuns) {
+    for (const run of grouped.get(cohort.releaseLabel)?.runs ?? []) {
       const ref = syntheses.get(run.name);
       if (ref?.constraint === null || ref === undefined || seenFolders.has(ref.folder)) continue;
       seenFolders.add(ref.folder);
@@ -453,9 +418,11 @@ export function formatBacktrack(report: BacktrackReport): string[] {
     "",
   ];
   const targetRow = aggregateCohort(
-    `TARGET (${report.targetRelease})`,
-    parseReleaseTag(report.targetRelease),
-    { gap: 0, weight: 1, tier: "direct", samePack: true, direction: "same" },
+    {
+      releaseLabel: `TARGET (${report.targetRelease})`,
+      semver: parseReleaseTag(report.targetRelease),
+      attention: TARGET_ATTENTION,
+    },
     report.targets,
     report.pack,
   );
@@ -505,60 +472,59 @@ export function formatBacktrack(report: BacktrackReport): string[] {
       lines.push(`- ${releaseLabel} (\`.ana/wri/${folder}/synthesis.md\`): ${constraint}`);
     }
   }
-  const footnotes: string[] = [];
-  if (report.distantCount > 0) {
-    footnotes.push(
+  const footnotes = [
+    report.distantCount > 0 &&
       `Distant background (gap >= 3, collapsed): ${plural(report.distantCount, "run")} across ${report.distantReleases.join(", ")}.`,
-    );
-  }
-  if (report.otherSettingCount > 0) {
-    footnotes.push(
+    report.otherSettingCount > 0 &&
       `Other settings (excluded from causal deltas, AGENTS.md §9): ${plural(report.otherSettingCount, "same-domain run")}.`,
-    );
-  }
-  if (report.newerCount > 0) {
-    footnotes.push(
+    report.newerCount > 0 &&
       `Newer same-domain runs after ${report.targetRelease}: ${plural(report.newerCount, "run")}.`,
-    );
-  }
+  ].filter((line): line is string => line !== false);
   if (footnotes.length > 0) lines.push("", "## Background & exclusions", "", ...footnotes);
   return lines;
 }
 
-/** Resolves a launch commit's exact git ancestor release tag (`vX.Y.Z`), memoized per commit. */
-function ancestorRelease(
-  commit: string | null,
-  fallback: string,
-  repo: string,
-  cache: Map<string, { tag: string | null; label: string }>,
-): { tag: string | null; label: string } {
-  if (commit === null) return { tag: parseReleaseTag(fallback)?.tag ?? null, label: fallback };
-  const cached = cache.get(commit);
-  if (cached !== undefined) return cached;
-  const exact = gitMaybe(repo, "describe", "--tags", "--exact-match", "--match", "v[0-9]*", commit)?.trim();
-  if (exact !== undefined && exact !== "") {
-    const resolved = { tag: exact, label: exact };
-    cache.set(commit, resolved);
-    return resolved;
-  }
-  const ancestor = gitMaybe(repo, "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", commit)?.trim();
-  const resolved =
-    ancestor !== undefined && ancestor !== ""
-      ? { tag: ancestor, label: `after ${ancestor}` }
-      : { tag: parseReleaseTag(fallback)?.tag ?? null, label: fallback };
-  cache.set(commit, resolved);
-  return resolved;
+/** Parses one `git describe --tags --long` line into exact (`-0-g...`) or ancestor (`after <tag>`). */
+function parsedDescribe(line: string): ReleaseRef | null {
+  const match = DESCRIBED.exec(line.trim());
+  if (match === null) return null;
+  const [, tag = "", count = "0"] = match;
+  return { tag, label: count === "0" ? tag : `after ${tag}` };
 }
 
-/** Maps a `#skills/main/runs.ts` `Run` plus its log path into a `BacktrackRun`. */
+/** Batch-resolves launch commits to ancestor release tags in one `git describe` call when possible. */
+function prefetchReleases(
+  commits: readonly (string | null)[],
+  repo: string,
+  cache: Map<string, ReleaseRef | null>,
+): void {
+  const todo = [
+    ...new Set(commits.filter((commit): commit is string => commit !== null && !cache.has(commit))),
+  ];
+  if (todo.length === 0) return;
+  const out = gitMaybe(repo, "describe", "--tags", "--long", "--match", "v[0-9]*", ...todo);
+  if (out !== null) {
+    const lines = out.trim().split("\n");
+    if (lines.length === todo.length) {
+      for (const [at, commit] of todo.entries()) cache.set(commit, parsedDescribe(lines[at] ?? ""));
+      return;
+    }
+  }
+  for (const commit of todo) {
+    const one = gitMaybe(repo, "describe", "--tags", "--long", "--match", "v[0-9]*", commit);
+    cache.set(commit, one === null ? null : parsedDescribe(one));
+  }
+}
+
+/** Maps a `#skills/main/runs.ts` `Run` plus its launch commit into a `BacktrackRun`. */
 function toBacktrackRun(
   run: SummaryRun,
-  logPath: string | null,
-  repo: string,
-  cache: Map<string, { tag: string | null; label: string }>,
+  commit: string | null,
+  cache: ReadonlyMap<string, ReleaseRef | null>,
 ): BacktrackRun {
-  const commit = logPath === null ? null : (receipts(logPath)[0]?.commit ?? null);
-  const { tag, label } = ancestorRelease(commit, run.release, repo, cache);
+  const resolved = commit === null ? null : (cache.get(commit) ?? null);
+  const tag = resolved?.tag ?? parseReleaseTag(run.release)?.tag ?? null;
+  const label = resolved?.label ?? run.release;
   return {
     name: run.name,
     domain: domainOf(run.name),
@@ -605,50 +571,58 @@ function outsideDetailsOf(wriRoot: string): Map<string, OutsideRef> {
   return found;
 }
 
-/** Loads one target log into a `BacktrackRun`, reading its parent folder directly so temp logs and
- *  live worktree runs work identically to archived logs. */
-async function loadTargetRun(
-  log: string,
+/** Resolves commits for a batch of `(run, logPath)` pairs and converts them into `BacktrackRun`s. */
+function mappedRuns(
+  pairs: readonly (readonly [SummaryRun, string | null])[],
   repo: string,
-  cache: Map<string, { tag: string | null; label: string }>,
-): Promise<BacktrackRun | null> {
-  const name = basename(dirname(log));
-  const parent = dirname(dirname(log));
-  const loaded = await loadRuns({ home: parent, since: "2020-01-01", names: [name], repo });
-  const match = loaded.runs.find((run) => run.name === name);
-  return match === undefined ? null : toBacktrackRun(match, log, repo, cache);
+  cache: Map<string, ReleaseRef | null>,
+): BacktrackRun[] {
+  const withCommits = pairs.map(
+    ([run, logPath]) => [run, logPath === null ? null : (receipts(logPath)[0]?.commit ?? null)] as const,
+  );
+  prefetchReleases(
+    withCommits.map(([, commit]) => commit),
+    repo,
+    cache,
+  );
+  return withCommits.map(([run, commit]) => toBacktrackRun(run, commit, cache));
 }
 
 /** Loads same-domain archived runs for `domain` from the local archive without touching SSH or `.env`. */
 async function loadDomainArchive(
   domain: string,
   repo: string,
-  cache: Map<string, { tag: string | null; label: string }>,
+  cache: Map<string, ReleaseRef | null>,
 ): Promise<BacktrackRun[]> {
-  const main = mainTree(repo);
-  const archive = archiveOf(main);
+  const archive = archiveOf(mainTree(repo));
   if (!existsSync(archive)) return [];
   const loaded = await loadRuns({ home: archive, since: SINCE, names: [domain], repo });
-  return loaded.runs
-    .filter((run) => domainOf(run.name) === domain)
-    .map((run) => {
-      const logPath = join(archive, run.host, run.name, LOG_FILE);
-      return toBacktrackRun(run, existsSync(logPath) ? logPath : null, repo, cache);
-    });
+  return mappedRuns(
+    loaded.runs
+      .filter((run) => domainOf(run.name) === domain)
+      .map((run) => {
+        const logPath = join(archive, run.host, run.name, LOG_FILE);
+        return [run, existsSync(logPath) ? logPath : null] as const;
+      }),
+    repo,
+    cache,
+  );
 }
 
 /** Builds longitudinal same-domain version-backtracking lines for one or more campaign `logs`. */
 export async function backtrackForLogs(logs: readonly string[], repo: string): Promise<string[]> {
-  const cache = new Map<string, { tag: string | null; label: string }>();
-  const targets: BacktrackRun[] = [];
+  const cache = new Map<string, ReleaseRef | null>();
+  const targetPairs: (readonly [SummaryRun, string])[] = [];
   for (const log of logs) {
-    const loaded = await loadTargetRun(log, repo, cache);
-    if (loaded !== null) targets.push(loaded);
+    const name = basename(dirname(log));
+    const loaded = await loadRuns({ home: dirname(dirname(log)), since: "2020-01-01", names: [name], repo });
+    const match = loaded.runs.find((run) => run.name === name);
+    if (match !== undefined) targetPairs.push([match, log]);
   }
+  const targets = mappedRuns(targetPairs, repo, cache);
   const lead = targets[0];
   if (lead === undefined) return ["history: target campaign log could not be folded (rehearsal or empty)"];
-  const main = mainTree(repo);
-  const wriRoot = join(main, ".ana", "wri");
+  const wriRoot = join(mainTree(repo), ".ana", "wri");
   const peers = await loadDomainArchive(lead.domain, repo, cache);
   if (peers.filter((peer) => !targets.some((target) => target.name === peer.name)).length === 0) {
     return [
@@ -665,11 +639,9 @@ export async function backtrackForLogs(logs: readonly string[], repo: string): P
 
 /** Builds longitudinal same-domain version-backtracking lines for the newest run(s) of `domain`. */
 export async function backtrackForDomain(domain: string, repo: string): Promise<string[]> {
-  const cache = new Map<string, { tag: string | null; label: string }>();
-  const main = mainTree(repo);
-  const wriRoot = join(main, ".ana", "wri");
+  const cache = new Map<string, ReleaseRef | null>();
+  const wriRoot = join(mainTree(repo), ".ana", "wri");
   const all = await loadDomainArchive(domain, repo, cache);
-  if (all.length === 0) return [`history: no archived runs found for domain \`${domain}\``];
   const newest = all.at(-1);
   if (newest === undefined) return [`history: no archived runs found for domain \`${domain}\``];
   const targets = all.filter(

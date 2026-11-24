@@ -78,7 +78,7 @@ export async function loadTree(path: string): Promise<Tree> {
     path,
     commit: `${gitText(path, "rev-parse", "--short", "HEAD")}${changed ? " with uncommitted changes under src" : ""}`,
     weights: { bill: 0, ...compare.WEIGHTS },
-    read: (file) => log.read(file),
+    read: (file) => (log.CALL_KINDS === undefined ? log.read(file) : log.read(file, log.CALL_KINDS)),
     lastReports: (events) => reports.lastReports(events),
     pairsReported: (events, report) => reports.pairsReported(events, report),
     pairsOf: (events, versions, sides, solves) => compare.pairsOf(events, versions, sides, solves).pairs,

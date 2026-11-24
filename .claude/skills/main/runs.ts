@@ -16,13 +16,12 @@
 import { backends } from "#src/agent/backends/models.ts";
 import { epochsOf, ORIGINS, starterIn, starterReads } from "#src/campaign/climb.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
-import { campaignOf } from "#src/campaign/handover.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import type { Tally } from "#src/kernel/compare.ts";
-import { CALL_KINDS, type EventKind, type LogEvent, read } from "#src/kernel/log.ts";
+import { CALL_KINDS, type EventKind, eventsOf, type LogEvent, read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { billedBetween, seatMeter } from "#src/kernel/meter.ts";
-import { endingOf } from "#src/kernel/reports.ts";
-import { askedOf, type Seat, tracesIn } from "#src/kernel/trace.ts";
+import { endingOf, lastReports } from "#src/kernel/reports.ts";
+import { askedOf, type Seat, traced } from "#src/kernel/trace.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { gitMaybe } from "#src/meta/git.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
@@ -44,6 +43,7 @@ import { MISSING } from "./print.ts";
 /** The tool calls of solves and sessions, which no fold here reads; `draft.call` is read for what a
  *  drafting session cut short had metered (`unfinished`, `src/kernel/trace.ts`). */
 const CALLS: ReadonlySet<EventKind> = new Set([...CALL_KINDS].filter((kind) => kind !== "draft.call"));
+const TURN_KINDS: readonly EventKind[] = [...TRACE_KINDS].filter((kind) => !CALL_KINDS.has(kind));
 /** A run whose log has been quiet for longer than this, or whose last event is an ending, is not
  *  live. A run sitting out a provider's reset longer than this reads as finished with no ending. */
 const LIVE_MS = 2 * HOUR_MS;
@@ -206,27 +206,34 @@ function settingOf(events: readonly LogEvent[]): string {
 /** The time of a campaign's solves: the median in seconds, and the median one-minute load per core
  *  at their start. */
 function machineOf(events: readonly LogEvent[]) {
-  const seconds = events.flatMap(({ kind, data }) =>
-    kind === "solve.finished" && isNumber(data.seconds) ? [data.seconds] : [],
+  const seconds = eventsOf(events, "solve.finished").flatMap(({ event: { data } }) =>
+    isNumber(data.seconds) ? [data.seconds] : [],
   );
-  const loads = events.flatMap(({ kind, data }) => {
+  const loads = eventsOf(events, "solve.started").flatMap(({ event: { data } }) => {
     const first = Array.isArray(data.load) ? data.load[0] : undefined;
-    return kind === "solve.started" && isNumber(first) && isNumber(data.cores) && data.cores > 0
-      ? [first / data.cores]
-      : [];
+    return isNumber(first) && isNumber(data.cores) && data.cores > 0 ? [first / data.cores] : [];
   });
   return { solveSeconds: median(seconds), load: median(loads) };
 }
 
 /** The tally and p of the comparison a promotion rests on: the last reading of the promoted harness
  *  against the reference it replaced that read `step`, else its last reading of any kind. */
-function tallyOf(events: readonly LogEvent[], index: number): string {
+function tallyOf(
+  events: readonly LogEvent[],
+  comparisons: ReturnType<typeof comparisonsOf>,
+  index: number,
+): string {
   const { harness, from } = events[index]?.data ?? {};
-  const readings = comparisonsOf(events.slice(0, index)).filter(
-    ({ fresh, old, report }) => report !== null && fresh === harness && (from === undefined || old === from),
-  );
+  const reports = eventsOf(events, "comparison.reported");
+  const readings = comparisons.flatMap(({ id, at, fresh, old }) => {
+    if (at >= index || fresh !== harness || (from !== undefined && old !== from)) return [];
+    const last = reports.findLast(
+      ({ index: atReport, event }) => atReport < index && event.data.session === id,
+    );
+    return last === undefined ? [] : [last.event.data];
+  });
   const scored = asRecord(
-    (readings.findLast(({ report }) => report?.reading === "step") ?? readings.at(-1))?.report?.scored,
+    (readings.findLast(({ reading }) => reading === "step") ?? readings.at(-1))?.scored,
   );
   if (scored === null) return MISSING;
   const p = isNumber(scored.p) ? ` p ${scored.p.toFixed(4)}` : "";
@@ -236,16 +243,32 @@ function tallyOf(events: readonly LogEvent[], index: number): string {
 /** What the starter comparisons of a campaign read: how many promotions one has read, and the
  *  reference's tally in them on the tasks written after its promotion; and the comparisons a
  *  promotion could come from, which leaves out those whose new side is the starter, read or not. */
-function heldOf(events: readonly LogEvent[]): Pick<Run, "reads" | "after" | "compared"> {
+function heldOf(events: readonly LogEvent[], comparisons: ReturnType<typeof comparisonsOf>) {
   const reads = starterReads(events);
   const starter = starterIn(events);
   return {
     reads: reads.length,
     after: summed(reads.map(({ origins }) => origins[ORIGINS[2]].whole)),
-    compared: comparisonsOf(events).filter(
+    compared: comparisons.filter(
       ({ report, old, fresh }) => report !== null && fresh !== old && fresh !== starter,
     ).length,
   };
+}
+
+/** Reported comparison validity and points fields for `validityOf`, avoiding `campaignOf`. */
+function validitySteps(events: readonly LogEvent[], comparisons: ReturnType<typeof comparisonsOf>) {
+  const freshBy = new Map(comparisons.map(({ id, fresh }) => [id, fresh]));
+  return lastReports(events).map(({ session, data }) => {
+    const valid = asRecord(data.valid);
+    const points = asRecord(data.points);
+    const fresh = freshBy.get(session) ?? (isString(data.fresh) ? data.fresh : "");
+    return {
+      fresh,
+      reading: isString(data.reading) ? data.reading : null,
+      valid: Array.isArray(valid?.old) ? { old: valid.old.map((each) => (isNumber(each) ? each : 0)) } : null,
+      points: isNumber(points?.validity) ? { validity: points.validity } : null,
+    };
+  });
 }
 
 /** One meter a model, priced on today's catalogue as a live seat's is; the catalogue is built at the
@@ -271,8 +294,9 @@ function repricedOf(events: readonly LogEvent[], meterOf: (name: string) => Mete
   const opening = openingOf(events);
   const seats = { ...opening?.seats, solver: opening?.solver ?? null };
   let total = 0;
-  for (const turn of tracesIn(events)) {
-    if (turn.part !== "turn" || turn.usage === null) continue;
+  for (const { index, event } of eventsOf(events, TURN_KINDS)) {
+    const turn = traced(event, index);
+    if (turn?.part !== "turn" || turn.usage === null) continue;
     const model = asked.get(turn.id) ?? seats[OPENED[turn.seat]]?.model;
     if (model === undefined) return { repriced: null, unpriced: `no model for ${turn.seat}.turn` };
     const [provider = "", ...id] = model.split("/");
@@ -293,13 +317,14 @@ function repricedOf(events: readonly LogEvent[], meterOf: (name: string) => Mete
 
 /** The events of a log read only to `until`, as a reading then saw it, and to `age` hours after its
  *  first; the moment they are read at; and the run's last moment, the age where its log goes on. */
-function cutOf(logged: readonly LogEvent[], { until = Date.now(), age = Infinity }: Cut) {
-  const seen = logged.filter(({ at }) => Date.parse(at) <= until);
+function cutOf(logged: readonly LogEvent[], { until, age = Infinity }: Cut) {
+  const now = until ?? Date.now();
+  const seen = until === undefined ? logged : logged.filter(({ at }) => Date.parse(at) <= until);
   const aged = Date.parse(seen[0]?.at ?? "") + age * HOUR_MS;
-  const events = seen.filter(({ at }) => Date.parse(at) <= aged);
+  const events = age === Infinity ? seen : seen.filter(({ at }) => Date.parse(at) <= aged);
   const end = events.at(-1)?.at;
   const last = events.length < seen.length ? aged : end === undefined ? 0 : Date.parse(end);
-  return { events, last, moment: Math.min(until, aged) };
+  return { events, last, moment: Math.min(now, aged) };
 }
 
 /** One campaign as a row, or null for a rehearsal; `meterOf` reprices its turns, and `cut` stops the
@@ -308,13 +333,16 @@ function runOf(
   found: Found,
   logged: readonly LogEvent[],
   tags: readonly { name: string; at: number }[],
-  meterOf = meters(),
+  meterOf: ((name: string) => Meter) | null,
   cut: Cut = {},
 ): Run | null {
   if (rehearsed(logged)) return null;
   const { events, last, moment } = cutOf(logged, cut);
-  const stamps = events.map(({ at }) => Date.parse(at));
-  const first = stamps[0] ?? 0;
+  const stamp = (at: number) => {
+    const raw = events[at]?.at;
+    return raw === undefined ? undefined : Date.parse(raw);
+  };
+  const first = stamp(0) ?? 0;
   const launch = receipts(found.path)[0];
   const launched = launch === undefined ? first : Date.parse(launch.at);
   const tag = tags.findLast(({ at }) => at <= launched);
@@ -323,11 +351,12 @@ function runOf(
   // Hours between two moments less the waits inside them, and less what an overloaded host cost.
   const activeAt = (to: number, from = first) => hours(to - from - waitedMs(waits, from, to));
   const unloadedAt = (to: number, from = first) => activeAt(to, from) - hours(overload(from, to));
-  const indexes = events.flatMap(({ kind }, at) => (kind === "harness.promoted" ? [at] : []));
+  const comparisons = comparisonsOf(events);
+  const indexes = eventsOf(events, "harness.promoted").map(({ index }) => index);
   const epochs = epochsOf(events);
   const promotions = indexes.map((at, nth): Promotion => {
     const start = indexes[nth - 1] ?? 0;
-    const [before = first, now = first] = [stamps[start], stamps[at]];
+    const [before = first, now = first] = [stamp(start), stamp(at)];
     // The epoch a promotion opens is the one its starter comparison is read in.
     const opened = epochs[nth + 1];
     const { harness } = events[at]?.data ?? {};
@@ -342,14 +371,14 @@ function runOf(
       epochUnloaded: unloadedAt(now, before),
       dollars: billedBetween(events, start, at + 1),
       comparisons: epochs[nth]?.comparisons.length ?? 0,
-      tally: tallyOf(events, at),
+      tally: tallyOf(events, comparisons, at),
     };
   });
-  const firstOf = (kind: string) => {
-    const at = stamps[events.findIndex((event) => event.kind === kind)];
+  const firstOf = (kind: EventKind) => {
+    const at = stamp(eventsOf(events, kind)[0]?.index ?? -1);
     return at === undefined ? null : hours(at - first);
   };
-  const admissible = stamps[heldOff(events)?.index ?? -1];
+  const admissible = stamp(heldOff(events)?.index ?? -1);
   const ended = endingOf(events);
   // `falsePromotion` reads the A/A comparisons of the whole campaign on every epoch.
   const noise = epochs[0]?.falsePromotion;
@@ -372,9 +401,9 @@ function runOf(
     firstAdmissible: admissible === undefined ? null : hours(admissible - first),
     promotions,
     dollars: billedBetween(events, 0),
-    ...repricedOf(events, meterOf),
-    ...validityOf(campaignOf(events).steps, events),
-    ...heldOf(events),
+    ...(meterOf === null ? { repriced: null, unpriced: null } : repricedOf(events, meterOf)),
+    ...validityOf(validitySteps(events, comparisons), events),
+    ...heldOf(events, comparisons),
     confirmed: epochs.filter((epoch) => epoch.confirmed === true).length,
     controls: noise?.controls ?? 0,
     aaSteps: noise?.errors ?? 0,
@@ -388,24 +417,30 @@ function runOf(
 
 /** Every campaign asked for as a row, oldest launch first, read to `until`; the logs that could not
  *  be read; and `at`, which reads a run again as it stood `age` hours past its first event. */
-export async function loadRuns(asked: Asked) {
+export async function loadRuns(asked: Asked, mode: "full" | "unpriced" = "full") {
   const { home, names = [], has = [], holds = [], repo, until } = asked;
   const tags = releasesOf(repo);
-  const meterOf = meters();
+  const meterOf = mode === "full" ? meters() : null;
   const skipped: string[] = [];
   const runs: Run[] = [];
   const logOf = new Map<Run, Found>();
+  const cutCache = new Map<string, Run>();
   const at = (run: Run, age: number): Run => {
     const found = logOf.get(run);
     if (found === undefined || run.elapsed <= age) return run;
-    return runOf(found, read(found.path, CALLS), tags, meterOf, { until, age }) ?? run;
+    const key = `${found.path}\0${String(age)}`;
+    const cached = cutCache.get(key);
+    if (cached !== undefined) return cached;
+    const cut = runOf(found, read(found.path, CALLS), tags, meterOf, { until, age }) ?? run;
+    cutCache.set(key, cut);
+    return cut;
   };
-  for (const each of await campaignLogs(home, [], asked.since)) {
+  const match = names.length > 0 ? (name: string) => names.some((part) => name.includes(part)) : null;
+  for (const each of await campaignLogs(home, [], asked.since, match)) {
     // Under an explicit home, a campaign's host is the folder it lies in where that lies in the
     // given one (`data/runs/<host>/<name>/log.jsonl`), and this machine otherwise.
     const parts = home === null ? [] : relative(home, each.path).split(sep);
     const found = parts.length === 3 ? { ...each, archived: parts[0] ?? "here" } : each;
-    if (names.length > 0 && !names.some((part) => found.name.includes(part))) continue;
     if (has.length + holds.length > 0 && !ranWith(found.path, repo, { has, holds })) continue;
     try {
       const run = runOf(found, read(found.path, CALLS), tags, meterOf, { until });

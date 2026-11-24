@@ -13,7 +13,7 @@
  */
 import { barLines, epochLine, epochsOf, starterReads } from "#src/campaign/climb.ts";
 import { decide } from "#src/campaign/decide.ts";
-import { refusals, supplyOf } from "#src/campaign/admission.ts";
+import { comparisonFloor, refusals, supplyOf } from "#src/campaign/admission.ts";
 import { askedOf, type Plan } from "#src/campaign/ground.ts";
 import { type Decided, decidedLine, short } from "#src/campaign/move.ts";
 import { type Called, calledBy, namesOf } from "#src/campaign/names.ts";
@@ -261,10 +261,25 @@ export function poolOn(events: readonly LogEvent[], upTo: number) {
  *  keeps the hours after admission apart, which would otherwise read as the Examiner's. */
 export function heldOff(events: readonly LogEvent[]) {
   const first = eventsOf(events, "comparison.started")[0]?.index ?? -1;
-  const index = events.slice(0, first === -1 ? events.length : first).findIndex(
+  const end = first === -1 ? events.length : first;
+  let [checkerRead, gates, floor] = [false, 0, comparisonFloor(Number(COMPARISON_OPTIONS.level.default))];
+  let index = -1;
+  for (let at = 0; at < end; at += 1) {
+    const event = events[at];
+    if (event === undefined) continue;
+    const { kind, data } = event;
+    if (kind === "checker.read") checkerRead = true;
+    else if (kind === "task.gate" && data.outcome !== "refused") gates += 1;
+    else if (kind === "campaign.opened") {
+      const level = Number(openingOf([event])?.terms.level ?? COMPARISON_OPTIONS.level.default);
+      if (Number.isFinite(level) && level > 0) floor = comparisonFloor(level);
+    }
     // The pool moves with a task and the terms with the opening or a word.
-    ({ kind }, at) => /^(task|campaign)\./.test(kind) && poolOn(events, at + 1).open,
-  );
+    if (checkerRead && gates >= floor && /^(task|campaign)\./.test(kind) && poolOn(events, at + 1).open) {
+      index = at;
+      break;
+    }
+  }
   if (index === -1) return null;
   const from = events[index]?.at ?? "";
   const to = events[first === -1 ? events.length - 1 : first]?.at ?? from;

@@ -72,12 +72,18 @@ export function shiftOf<Unit>(
   const exact = Number.isFinite(deals);
   const dealt = exact ? choicesOf(pool.length, then.length) : shufflesOf(pool.length, then.length);
   const read: number[] = [];
+  const mark = new Uint16Array(pool.length);
+  let gen = 0;
   for (const chosen of dealt) {
-    const picked = new Set(chosen);
-    const [one, other] = [
-      statistic(pool.filter((_, at) => picked.has(at))),
-      statistic(pool.filter((_, at) => !picked.has(at))),
-    ];
+    gen += 1;
+    if (gen === 65_535) {
+      mark.fill(0);
+      gen = 1;
+    }
+    for (const at of chosen) mark[at] = gen;
+    const [left, right]: [Unit[], Unit[]] = [[], []];
+    for (const [at, unit] of pool.entries()) (mark[at] === gen ? left : right).push(unit);
+    const [one, other] = [statistic(left), statistic(right)];
     if (one !== null && other !== null) read.push(Math.abs(one - other));
   }
   // A sampled p counts the record itself among the deals, so it is never zero.

@@ -271,10 +271,9 @@ if (import.meta.main) {
       if (args.flag("all") === named.length > 0) args.die("name one campaign or more, or pass --all");
       if (named.length !== 1) {
         const part = args.value("name") ?? "";
+        const match = part === "" ? null : (name: string) => name.includes(part);
         const logs = args.flag("all")
-          ? (await campaignLogs(null, [], args.value("since") ?? "")).filter(({ name }) =>
-              name.includes(part),
-            )
+          ? await campaignLogs(null, [], args.value("since") ?? "", match)
           : await Promise.all(
               named.map(async (one) => {
                 const path = await logAcross(one);

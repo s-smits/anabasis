@@ -8,14 +8,35 @@
  * or comparison its start names. A session open across a promotion bills each epoch what its turns
  * metered there.
  */
-import type { LogEvent } from "#src/kernel/log.ts";
+import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dollars } from "#tools/runs/said.ts";
 import { spansOf, unionMs } from "#tools/wri/time.ts";
 import type { Tree } from "./tree.ts";
 
+type Span = ReturnType<typeof spansOf>[number];
+
+interface EpochContext {
+  readonly tree: Tree;
+  readonly events: readonly LogEvent[];
+  readonly all: readonly Span[];
+  readonly ids: ReadonlyMap<string, Span["part"]>;
+  readonly owners: ReadonlyMap<string, string>;
+}
+
 const hours = (ms: number) => (ms / HOUR_MS).toFixed(1);
+
+function contextOf(tree: Tree, events: readonly LogEvent[]): EpochContext {
+  const all = spansOf(events);
+  const ids = new Map(all.map(({ id, part }) => [id, part]));
+  const owners = new Map<string, string>();
+  for (const { event } of eventsOf(events, "solve.started")) {
+    const { solve, comparison } = event.data;
+    if (isString(solve) && isString(comparison)) owners.set(solve, comparison);
+  }
+  return { tree, events, all, ids, owners };
+}
 
 /**
  * The dollars each part billed between two events, and the tree's own sum over them. Each part is
@@ -23,14 +44,7 @@ const hours = (ms: number) => (ms / HOUR_MS).toFixed(1);
  * what its turns metered (`unfinished`), as the total does. Summing the ending records alone would
  * read an Examiner session open at the log's end as $0.00 where the view reads what it billed.
  */
-function billedOf(tree: Tree, events: readonly LogEvent[], from: number, to: number) {
-  const owners = new Map<string, string>();
-  const ids = new Map(spansOf(events).map(({ id, part }) => [id, part]));
-  for (const { kind, data } of events) {
-    if (kind === "solve.started" && isString(data.solve) && isString(data.comparison)) {
-      owners.set(data.solve, data.comparison);
-    }
-  }
+function billedOf({ tree, events, ids, owners }: EpochContext, from: number, to: number) {
   const partOf = ({ data }: LogEvent) => {
     const owner = isString(data.solve)
       ? owners.get(data.solve)
@@ -57,15 +71,10 @@ function billedOf(tree: Tree, events: readonly LogEvent[], from: number, to: num
 }
 
 /** One epoch's lines: hours and dollars, each part with its sessions. */
-function epochBlock(
-  tree: Tree,
-  events: readonly LogEvent[],
-  bounds: readonly [number, number],
-  title: string,
-) {
+function epochBlock(ctx: EpochContext, bounds: readonly [number, number], title: string) {
+  const { events, all } = ctx;
   const [from, to] = bounds;
   const [start, end] = [Date.parse(events[from]?.at ?? ""), Date.parse(events[to]?.at ?? "")];
-  const all = spansOf(events);
   const cut = (part: string) =>
     all.flatMap(({ part: own, id, from: a, until: b }) =>
       own === part && Math.min(b, end) > Math.max(a, start)
@@ -73,7 +82,7 @@ function epochBlock(
         : [],
     );
   const [examiner, comparisons, builder] = [cut("examiner"), cut("comparisons"), cut("builder")];
-  const { parts, total } = billedOf(tree, events, from, to + 1);
+  const { parts, total } = billedOf(ctx, from, to + 1);
   const each = (spans: typeof examiner) =>
     spans.length === 0
       ? ""
@@ -91,17 +100,17 @@ function epochBlock(
 
 /** Each epoch that ended in a promotion, and the one open since the last. */
 export function epochLines(tree: Tree, events: readonly LogEvent[], promotions: readonly number[]) {
+  const ctx = contextOf(tree, events);
   const starts = [0, ...promotions];
   const promoted = promotions.map((to, nth) =>
-    epochBlock(tree, events, [starts[nth] ?? 0, to], `epoch ${String(nth + 1)} to its promotion`),
+    epochBlock(ctx, [starts[nth] ?? 0, to], `epoch ${String(nth + 1)} to its promotion`),
   );
   const last = starts.at(-1) ?? 0;
   const open =
     last < events.length - 1
       ? [
           epochBlock(
-            tree,
-            events,
+            ctx,
             [last, events.length - 1],
             promotions.length === 0 ? "since the opening" : "since the last promotion",
           ),

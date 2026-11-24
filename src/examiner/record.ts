@@ -17,6 +17,7 @@ import { formatScores, OBJECTIVE, objectiveOf, scoresOf, type Task } from "../ke
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
 import { tasksByEpoch } from "../campaign/climb.ts";
+import { FLAGS } from "../referee/judge.ts";
 
 interface Answered {
   readonly turns: readonly number[];
@@ -228,6 +229,20 @@ function refusedLines(
   return [...why].map(([reason, named]) => `${reason}: ${named.join(", ")}`);
 }
 
+function flagsOf(events: readonly LogEvent[]): Map<string, string> {
+  const flagged = new Map<string, string>();
+  for (const { kind, data } of events) {
+    if (kind !== "referee.brief" || !isString(data.task) || !Array.isArray(data.flags)) continue;
+    const lines = data.flags.flatMap((flag) => {
+      const { criterion, reason } = asRecord(flag) ?? {};
+      const line = isString(reason) ? new Map(Object.entries(FLAGS)).get(reason) : undefined;
+      return isString(criterion) && line !== undefined ? [`${criterion} ${line}`] : [];
+    });
+    if (lines.length > 0) flagged.set(data.task, `its judging brief notes that ${lines.join(", ")}`);
+  }
+  return flagged;
+}
+
 function tiesOf(events: readonly LogEvent[], since: number): Map<string, string> {
   const tasks = new Map<string, { pairs: number; kinds: Map<string, number> }>();
   for (const { kind, data } of events.slice(since + 1)) {
@@ -280,6 +295,7 @@ export function heard(
   const budget = isNumber(setting) ? setting : undefined;
   const since = events.findLastIndex(({ kind }) => isReferenceChange(kind));
   const ties = tiesOf(events, since);
+  const flags = flagsOf(events);
   const compared =
     after === undefined
       ? null
@@ -301,11 +317,11 @@ export function heard(
     const checks = faulted.get(taskId);
     const fault =
       checks === undefined ? [] : [`ruled at fault on an answer to it: ${[...checks].join(", ")}`];
-    const tie = plain ? undefined : ties.get(taskId);
+    const judged = plain ? [] : [ties.get(taskId), flags.get(taskId)].filter(isString);
     const heading = BLOCKS[block];
     lines.set(heading, [
       ...(lines.get(heading) ?? []),
-      [`${taskId} (${family})`, ...clauses, ...fault, ...(tie === undefined ? [] : [tie])].join("; "),
+      [`${taskId} (${family})`, ...clauses, ...fault, ...judged].join("; "),
     ]);
   }
   return {

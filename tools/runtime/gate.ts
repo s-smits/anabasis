@@ -18,7 +18,7 @@ import {
   openSync,
   readFileSync,
 } from "../../src/meta/filesystem.ts";
-import { sha256, sha256OfFile } from "../../src/meta/digest.ts";
+import { sha256 } from "../../src/meta/digest.ts";
 import { keysIf } from "../../src/meta/optional-key.ts";
 import { availableParallelism, tmpdir } from "../../src/meta/os.ts";
 import { basename, dirname, isAbsolute, join, relative } from "../../src/meta/path.ts";
@@ -475,17 +475,15 @@ export const failedLine = (failure: Failure): string =>
  * from the caller's checkout as it stands, since `GATE` runs from there over each target. Its
  * steps run `bun run …` in the target's checkout (`step`), so the lint plugins and configs, the
  * test wrapper, `package.json` and `bun.lock` they use are the target's, which its tree keys. The
- * digest takes the gate's own files rather than every file of `tools/runtime` and `src/meta`, so a
- * caller whose lint or `src/meta/git.ts` changed does not prove again what an equal CI gate passed.
+ * digest reads the gate as Bun bundles it, so only code the gate runs keys it: a comment, a type or
+ * an export it never calls in a `src/meta` file it imports leaves every remembered pass standing,
+ * where hashing those files whole proved the whole stack again after each such pull request.
  */
-function checkerDigest(): string {
-  const top = join(import.meta.dir, "..", "..");
-  return sha256(
-    [...within(top, relative(top, GATE), Infinity)]
-      .toSorted()
-      .map((file) => `${file} ${sha256OfFile(join(top, file))}`)
-      .join("\n"),
-  ).slice(0, 16);
+async function checkerDigest(): Promise<string> {
+  const built = await Bun.build({ entrypoints: [GATE], target: "bun", minify: { whitespace: true } });
+  const [bundle] = built.outputs;
+  if (!built.success || bundle === undefined) throw new Error(`could not bundle ${GATE}`);
+  return sha256(await bundle.text()).slice(0, 16);
 }
 
 /**
@@ -568,7 +566,7 @@ export async function proveCommits(
 ): Promise<Failure | null> {
   const { who, say, mark, stop } = prover;
   const { record, logs, passed } = await remembered(root);
-  const checker = checkerDigest();
+  const checker = await checkerDigest();
   const free: string[] = [];
   const made: string[] = [];
   const failures: (Failure & { index: number })[] = [];

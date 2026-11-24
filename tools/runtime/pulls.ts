@@ -73,12 +73,16 @@ export interface Board {
 }
 
 export function gh(root: string, args: readonly string[]): Answer {
-  const result = runSync(["gh", ...args], { cwd: root });
-  return {
-    ok: result.exitCode === 0,
-    out: decodeOutput(result.stdout).trim(),
-    err: decodeOutput(result.stderr).trim(),
-  };
+  for (let tries = 1; ; tries += 1) {
+    const result = runSync(["gh", ...args], { cwd: root });
+    const answer = {
+      ok: result.exitCode === 0,
+      out: decodeOutput(result.stdout).trim(),
+      err: decodeOutput(result.stderr).trim(),
+    };
+    if (answer.ok || tries === 3 || args.includes("PUT") || !/HTTP 50[234]/u.test(answer.err)) return answer;
+    Bun.sleepSync(tries * 1000);
+  }
 }
 
 export function ghOrThrow(root: string, args: readonly string[]): string {

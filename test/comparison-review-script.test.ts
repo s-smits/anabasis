@@ -173,4 +173,48 @@ describe("the seal", () => {
     }
     expect(told).not.toContain("4 tasks, built v bare");
   });
+
+  it("counts shell commands and by-name harness program calls from native pi-durable traces", () => {
+    mkdirSync(join(store, "trees", "pi-built", "harness", ".toolchain", "bin"), { recursive: true });
+    writeFileSync(
+      join(store, "trees", "pi-built", "harness", ".toolchain", "bin", "estimate"),
+      "#!/bin/sh\n",
+      {
+        mode: 0o755,
+      },
+    );
+    grade("pi-built", "g/task1", [[10, 10, 4, 4]]);
+    const folder = join(root, "g", "task1", "model_traj", "pi-built__g__task1");
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(
+      join(folder, "roll_pi_attempt1_20261124_010000.jsonl"),
+      [
+        { at: "2026-11-24T01:00:00Z", kind: "solve.call", data: { tool: "read", args: { path: "x" } } },
+        {
+          at: "2026-11-24T01:00:01Z",
+          kind: "solve.call",
+          data: { tool: "bash", args: { command: "estimate data.csv" } },
+        },
+        {
+          at: "2026-11-24T01:00:02Z",
+          kind: "solve.call",
+          data: { tool: "bash", args: { command: "ls harness/.toolchain/bin" } },
+        },
+        {
+          at: "2026-11-24T01:00:03Z",
+          kind: "solve.call",
+          data: { tool: "bash", args: { command: "python3 work.py" } },
+        },
+      ]
+        .map((row) => capturedJsonStringify(row))
+        .join("\n"),
+    );
+    const piArm = armOf(root, "pi-built");
+    expect(piArm.get("g/task1")?.shell).toStrictEqual({
+      commands: 3,
+      named: 2,
+      looks: 1,
+      listed: true,
+    });
+  });
 });

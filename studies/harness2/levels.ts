@@ -36,7 +36,6 @@ import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { HARNESS_DIR } from "../shared/bundle.ts";
-import { parseEvents } from "./h2/claude.ts";
 
 const TOOLCHAIN_PATHS = [join(HARNESS_DIR, TOOL_TREE_DIR), "scripts/toolchain"] as const;
 
@@ -128,6 +127,36 @@ const headOf = (part: string): string =>
  *  starts at attempt 1, so the name's own order would put an older second attempt last. */
 const stampOf = (name: string): string => name.replace(/^.*_attempt\d+_/u, "");
 
+function commandsIn(path: string): string[] {
+  const out: string[] = [];
+  for (const raw of readFileSync(path, "utf8").replaceAll("\0", "").split("\n")) {
+    const line = raw.trim();
+    if (!line.startsWith("{")) continue;
+    let parsed: JsonObject | null;
+    try {
+      parsed = asRecord(capturedJsonParse(line));
+    } catch {
+      continue;
+    }
+    if (parsed === null) continue;
+    if (parsed.kind === "solve.call") {
+      const data = asRecord(parsed.data);
+      const args = asRecord(data?.args ?? data?.input);
+      if (isString(args?.command)) out.push(args.command);
+      continue;
+    }
+    if (parsed.type !== "assistant") continue;
+    const content = asRecord(parsed.message)?.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      const rec = asRecord(block);
+      const command = asRecord(rec?.input)?.command;
+      if (rec?.type === "tool_use" && isString(command)) out.push(command);
+    }
+  }
+  return out;
+}
+
 /** The newest attempt's commands, since that attempt left the deliverable the grading read, and
  *  those that name the harness's folder or start one of its programs by name. */
 function shellIn(folder: string, programs: ReadonlySet<string> | null): Shell | null {
@@ -138,14 +167,7 @@ function shellIn(folder: string, programs: ReadonlySet<string> | null): Shell | 
         .at(-1)
     : undefined;
   if (newest === undefined) return null;
-  const commands = parseEvents(join(folder, newest)).flatMap((event) => {
-    const content = asRecord(event.message)?.content;
-    if (event.type !== "assistant" || !Array.isArray(content)) return [];
-    return content.flatMap((block) => {
-      const command = asRecord(asRecord(block)?.input)?.command;
-      return asRecord(block)?.type === "tool_use" && isString(command) ? [command] : [];
-    });
-  });
+  const commands = commandsIn(join(folder, newest));
   const parts = commands.map((command) =>
     command
       .split(NEXT_COMMAND)

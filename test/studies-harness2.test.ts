@@ -242,7 +242,7 @@ describe("a harness's programs, checked against the container", () => {
   });
 });
 
-describe("a harness written out for Claude Code", () => {
+describe("a harness tree staged for a benchmark rollout", () => {
   it("installs a tree into a task's workspace with its links as links, its modes and nothing it generates", () => {
     const tree = join(root, "linked-tree");
     const toolchain = join(tree, "scripts", "toolchain");
@@ -502,7 +502,13 @@ describe("a harness solved on pi-durable in the benchmark's rollout", () => {
     expect(decodeOutput(unsaid.stderr)).toContain("--yes");
     const legacy = score("--arm", "starter", "--name", "legacy-cc", "--dry-run");
     expect(legacy.exitCode).not.toBe(0);
-    expect(decodeOutput(legacy.stderr)).toContain("pass --arm pi:starter");
+    expect(decodeOutput(legacy.stderr)).toContain("Anabasis arms run natively as --arm pi:");
+    const staleTree = join(out, "trees", "stale-cc");
+    mkdirSync(join(staleTree, "harness"), { recursive: true });
+    writeFileSync(join(staleTree, "export.json"), `${capturedJsonStringify({ harness: made.child })}\n`);
+    const staleReuse = score("--arm", "pi:starter", "--name", "stale-cc", "--dry-run");
+    expect(staleReuse.exitCode).not.toBe(0);
+    expect(decodeOutput(staleReuse.stderr)).toContain("is not a native pi tree");
     // A tree written here for another machine is priced and rolls nothing; a rollout names none.
     const far = (machine: string) =>
       runSync(

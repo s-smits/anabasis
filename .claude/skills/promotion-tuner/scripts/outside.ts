@@ -8,7 +8,7 @@ import { MISSING, printed } from "#skills/main/print.ts";
 import type { Promotion, Run } from "#skills/main/runs.ts";
 import { existsSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
-import { isCut, readJudgedStore } from "#tools/runs/bench-store.ts";
+import { isBaselineArmName, isCut, readJudgedStore } from "#tools/runs/bench-store.ts";
 
 /** One judged rollout: an arm's points on a task. */
 export interface Score {
@@ -24,6 +24,7 @@ export interface Score {
 }
 
 const STARTER = "starter";
+const BASE = "base";
 const HEAD = [
   "arm",
   "pack",
@@ -50,7 +51,10 @@ export function scoresOf(store: string, only: readonly string[] | null = null): 
     task: record.task,
     points: record.points,
     total: record.total,
-    of: record.buildOf === STARTER ? STARTER : record.campaign,
+    of:
+      record.buildOf === STARTER || record.buildOf === BASE || isBaselineArmName(record.arm)
+        ? STARTER
+        : record.campaign,
     cut: isCut(record),
   }));
   if (only === null) return all;

@@ -53,10 +53,11 @@ const log = (row) => appendFileSync(LOG, JSON.stringify(row) + "\\n");
 if (args.includes("stream-json")) {
   const ws = args[args.indexOf("--add-dir") + 1];
   // Neither the workspace nor the environment names the rollout, so its label is read from the
-  // trajectory its stdout writes: <store>/<group>/<task>/model_traj/<label>/<file>.
+  // trajectory its stdout writes: <store>/<group>/<task>/model_traj/<label>/<file>. Only the store is
+  // walked: the sweep's temporary folders beside it come and go while rollouts run.
   const ino = fstatSync(1).ino;
   const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => entry.isDirectory() ? (entry.name === ".venv" ? [] : walk(join(dir, entry.name))) : entry.name.endsWith(".jsonl") && statSync(join(dir, entry.name)).ino === ino ? [join(dir, entry.name)] : []);
-  const traj = walk(${JSON.stringify(root)})[0];
+  const traj = walk(${JSON.stringify(out)})[0];
   const label = basename(dirname(traj));
   const taskDir = dirname(dirname(dirname(traj)));
   const attempt = rows().filter((row) => row.label === label).length + 1;

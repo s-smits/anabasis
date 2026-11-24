@@ -13,6 +13,8 @@ import {
   gainOver,
   gapAgainst,
   informative,
+  objectiveRuleIn,
+  objectiveRuleOf,
   type Paired,
   pointsOf,
   power,
@@ -618,5 +620,47 @@ describe("the protocol's measured constants", () => {
     expect(
       patienceOf([{ at: "2026-11-21T00:00:00.000Z", kind: "campaign.opened", data: { patience: 2 } }]),
     ).toBe(2);
+  });
+
+  it("scores unit-scale objectives by antisymmetric absolute difference on [0, 1] without a cliff at zero", () => {
+    const grid = [0, 0.005, 0.01, 0.25, 0.5, 0.75, 0.99, 1];
+    for (const direction of ["higher", "lower"] as const) {
+      const rule = { direction, scale: "unit" as const };
+      for (const a of grid) {
+        for (const b of grid) {
+          const got = gainOver(rule, a, b);
+          const expected = Math.max(-1, Math.min(1, direction === "lower" ? b - a : a - b));
+          expect(got).toBeCloseTo(expected, 12);
+          expect(gainOver(rule, b, a)).toBeCloseTo(-got, 12);
+        }
+      }
+    }
+    expect(gainOver({ direction: "lower", scale: "unit" }, 0, 0.02)).toBeCloseTo(0.02, 12);
+    expect(gainOver({ direction: "higher", scale: "unit" }, 0.85, 0)).toBeCloseTo(0.85, 12);
+    expect(
+      differenceOf({
+        task: "u1",
+        old: [true],
+        fresh: [true],
+        objective: { direction: "higher", scale: "unit", old: [0.85], fresh: [0.855] },
+      }),
+    ).toBe(0);
+    expect(
+      differenceOf({
+        task: "u2",
+        old: [true],
+        fresh: [true],
+        objective: { direction: "higher", scale: "unit", old: [0.7], fresh: [0.85] },
+      }),
+    ).toBe(45);
+    expect(objectiveRuleOf({ direction: "higher", scale: "unit" })).toEqual({
+      direction: "higher",
+      scale: "unit",
+    });
+    expect(objectiveRuleIn({ objective: { direction: "higher", scale: "unit" } })).toEqual({
+      direction: "higher",
+      scale: "unit",
+    });
+    expect(objectiveRuleIn({ objective: { direction: "higher" } })).toEqual({ direction: "higher" });
   });
 });

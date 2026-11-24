@@ -9,7 +9,7 @@ import { worthLine } from "#src/campaign/climb.ts";
 import { predicted, type Report } from "#src/campaign/comparison.ts";
 import { type CheckpointRequest, scoredSet } from "#src/campaign/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import { type ObjectiveRule, testedSet, testOf, WEIGHTS } from "#src/kernel/compare.ts";
+import { type ObjectiveRule, objectiveRuleOf, testedSet, testOf, WEIGHTS } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read, TRACE_KINDS } from "#src/kernel/log.ts";
@@ -254,8 +254,7 @@ export function solvingAs(campaign: Campaign, { limits }: Pick<AskedSetting, "na
  *  the brief's direction. Undefined otherwise. No margin or floor goes with it; the floor is one
  *  constant (`GAP_FLOOR`, `src/kernel/compare.ts`). */
 export function objectiveNamed(campaign: Pick<Campaign, "checks">): ObjectiveRule | undefined {
-  const declared = readBrief(campaign.checks).objective;
-  return declared === undefined ? undefined : { direction: declared.direction };
+  return objectiveRuleOf(readBrief(campaign.checks).objective);
 }
 
 /** What `--predict` names: the operator's expectation of the comparison, in a sentence, or none. */

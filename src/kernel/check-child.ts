@@ -7,6 +7,7 @@ import { pooled } from "../meta/pool.ts";
 import { capturedSpawn, runtimeProcess } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { killProcessGroupId, terminateAndReapProcessGroupId } from "../meta/subprocess.ts";
+import type { RubricItem } from "./contract.ts";
 import type { EvaluationRequest } from "./verify.ts";
 
 export interface CheckInput {
@@ -23,12 +24,14 @@ export interface CellInput {
   readonly width: number;
   readonly checks: readonly CheckInput[];
   readonly objective: CheckInput | null;
+  readonly rubricItems?: readonly RubricItem[];
   readonly running: string;
 }
 
 type Undecided = { readonly nonResult: string } | { readonly faulty: string };
+type RunKind = "check" | "objective" | "score";
 export type CheckResult = { readonly passed: boolean } | Undecided;
-type Measure = { readonly value: number } | Undecided;
+type Measure = { readonly value: number; readonly scores?: Readonly<Record<string, number>> } | Undecided;
 
 export interface CellResult {
   readonly results: readonly CheckResult[];
@@ -143,16 +146,25 @@ async function runTool(cell: CellInput, port: Port, call: ToolCall): Promise<Too
   return { nonResult: null, exitCode, stdout, stderr };
 }
 
+function kindLabel(kind: RunKind, checkId: string): string {
+  return kind === "objective" ? "the objective" : kind === "score" ? `score ${checkId}` : "the check";
+}
+
 async function decide(
   cell: CellInput,
   port: Port,
   found: unknown,
-  kind: "check" | "objective",
+  kind: RunKind,
 ): Promise<CheckResult | Measure> {
-  const measure = kind === "objective";
-  const named = measure ? "the objective" : "the check";
+  const named = kindLabel(kind, port.check.checkId);
   if (!isFunction(found)) {
-    return { faulty: `the check program has no ${measure ? "objective" : `check ${port.check.checkId}`}` };
+    const missing =
+      kind === "objective"
+        ? "objective"
+        : kind === "score"
+          ? `score ${port.check.checkId}`
+          : `check ${port.check.checkId}`;
+    return { faulty: `the check program has no ${missing}` };
   }
   const runtime: CheckRuntime = { tools: { run: (call) => runTool(cell, port, call) } };
   let returned: unknown;
@@ -168,10 +180,17 @@ async function decide(
   }
   if (port.lapses.length > 0) return { nonResult: port.lapses.join("; ") };
   if (threw !== null) return { faulty: `${named} threw: ${threw}` };
-  if (!measure) {
+  if (kind === "check") {
     return isBoolean(returned)
       ? { passed: returned }
       : { faulty: `the check returned ${typeName(returned)}` };
+  }
+  if (kind === "score") {
+    return isNumber(returned) && Number.isFinite(returned) && returned >= 0 && returned <= 1
+      ? { value: returned }
+      : {
+          faulty: `${named} returned ${isNumber(returned) ? String(returned) : typeName(returned)} (expected finite number in [0, 1])`,
+        };
   }
   return isNumber(returned) && Number.isFinite(returned)
     ? { value: returned }
@@ -182,12 +201,12 @@ async function timed(
   cell: CellInput,
   check: CheckInput,
   found: unknown,
-  kind: "check" | "objective",
+  kind: RunKind,
 ): Promise<CheckResult | Measure> {
   const marker = join(cell.running, `${String(++slots)}.run`);
   const port: Port = { check, marker, lapses: [], live: new Set() };
   const late = Promise.withResolvers<Undecided>();
-  const named = kind === "objective" ? "the objective" : "the check";
+  const named = kindLabel(kind, check.checkId);
   const timer = setTimeout(
     () => late.resolve({ faulty: `${named} timed out after ${cell.checkMs} ms` }),
     cell.checkMs,
@@ -207,17 +226,45 @@ const { program, unloaded } = await import(cell.program).then(
   (module) => ({ program: asRecord(module), unloaded: null }),
   (error: unknown) => ({ program: null, unloaded: `the check program did not load: ${errorMessage(error)}` }),
 );
-const run = (check: CheckInput, kind: "check" | "objective") => {
+const run = (check: CheckInput, kind: RunKind) => {
   if (unloaded !== null) return Promise.resolve({ nonResult: unloaded });
-  const found = kind === "objective" ? program?.objective : asRecord(program?.checks)?.[check.checkId];
+  const found =
+    kind === "objective"
+      ? program?.objective
+      : kind === "score"
+        ? asRecord(program?.scores)?.[check.checkId]
+        : asRecord(program?.checks)?.[check.checkId];
   return timed(cell, check, found, kind);
 };
+
+async function measureObjective(objective: CheckInput): Promise<Measure> {
+  const items = cell.rubricItems;
+  if (items === undefined || items.length === 0) {
+    // SAFETY: `decide` gives a measure where `kind` is `"objective"`.
+    return (await run(objective, "objective")) as Measure;
+  }
+  // SAFETY: `decide` gives a measure where `kind` is `"score"`.
+  const ran = (await pooled(items, cell.width, (item) =>
+    run({ ...objective, checkId: item.id }, "score"),
+  )) as Measure[];
+  let weighted = 0;
+  let totalWeight = 0;
+  const scores: Record<string, number> = {};
+  for (const [index, item] of items.entries()) {
+    const outcome = ran[index];
+    if (outcome === undefined) return { faulty: `missing score ${item.id}` };
+    if (!("value" in outcome)) return outcome;
+    scores[item.id] = outcome.value;
+    weighted += item.weight * outcome.value;
+    totalWeight += item.weight;
+  }
+  return totalWeight > 0 ? { value: weighted / totalWeight, scores } : { faulty: "rubric weights sum to 0" };
+}
+
 // SAFETY: `decide` gives a check's answer where `kind` is `"check"`.
 const results = (await pooled(cell.checks, cell.width, (check) => run(check, "check"))) as CheckResult[];
 const valid = results.every((result) => "passed" in result && result.passed);
-// SAFETY: `decide` gives a measure where `kind` is `"objective"`.
-const measured =
-  valid && cell.objective !== null ? ((await run(cell.objective, "objective")) as Measure) : null;
+const measured = valid && cell.objective !== null ? await measureObjective(cell.objective) : null;
 const written: CellResult = { results, measured };
 writeFileSync("result.json", capturedJsonStringify(written));
 runtimeProcess.exit(0);

@@ -9,9 +9,17 @@ interface Rule {
   readonly statement: string;
 }
 
+// oxlint-disable-next-line typescript/consistent-type-definitions -- type alias stays assignable to `JsonValue`
+export type RubricItem = {
+  readonly id: string;
+  readonly weight: number;
+};
+
 export interface Objective {
   readonly quantity: string;
   readonly direction: "lower" | "higher";
+  readonly scale?: "unit";
+  readonly items?: readonly RubricItem[];
 }
 
 export interface Contract {
@@ -22,8 +30,11 @@ export interface Contract {
   readonly scope: string;
 }
 
-export function objectiveLine({ quantity, direction }: Objective): string {
-  return `Of two valid answers to one task, the one with the ${direction} ${quantity} is the better; a valid answer beats any invalid one, whatever its measure.`;
+export function objectiveLine({ quantity, direction, items }: Objective): string {
+  const base = `Of two valid answers to one task, the one with the ${direction} ${quantity} is the better; a valid answer beats any invalid one, whatever its measure.`;
+  if (items === undefined || items.length === 0) return base;
+  const listed = items.map(({ id, weight }) => `${id} (${String(weight)})`).join(", ");
+  return `${base} Weighted rubric on [0, 1]: ${listed}.`;
 }
 
 export function contractHash(contract: Contract): string {

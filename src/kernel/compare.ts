@@ -14,6 +14,7 @@ interface SolveCost {
 
 export interface ObjectiveRule {
   readonly direction: "lower" | "higher";
+  readonly scale?: "unit";
 }
 
 export interface Paired {
@@ -159,9 +160,16 @@ export function testedSet<S extends { readonly falseRate?: unknown }, F>(
   return whole?.falseRate === undefined ? frontier : whole;
 }
 
+export function objectiveRuleOf(declared: ObjectiveRule | undefined): ObjectiveRule | undefined {
+  return declared === undefined
+    ? undefined
+    : { direction: declared.direction, ...keyIfDefined("scale", declared.scale) };
+}
+
 export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
-  const { direction } = asRecord(data.objective) ?? {};
-  return direction === "lower" || direction === "higher" ? { direction } : undefined;
+  const { direction, scale } = asRecord(data.objective) ?? {};
+  if (direction !== "lower" && direction !== "higher") return undefined;
+  return { direction, ...keyIfDefined("scale", scale === "unit" ? "unit" : undefined) };
 }
 
 export function informative(
@@ -195,9 +203,11 @@ export function gainOver(
   other: number | null | undefined,
 ): number {
   if (!isNumber(one) || !isNumber(other)) return 0;
+  const delta = rule.direction === "lower" ? other - one : one - other;
+  if (rule.scale === "unit") return Math.max(-1, Math.min(1, delta));
   const larger = Math.max(Math.abs(one), Math.abs(other));
   if (larger < ZERO_FLOOR) return 0;
-  return Math.max(-1, Math.min(1, (rule.direction === "lower" ? other - one : one - other) / larger));
+  return Math.max(-1, Math.min(1, delta / larger));
 }
 
 function objectiveGain(pair: Paired, f: number, o: number): number {

@@ -542,4 +542,50 @@ describe.skipIf(!osIsolationSupport().ok)("the objective", () => {
     expect(ext?.external).toBe(true);
     expect(local?.external).toBe(false);
   });
+
+  it("computes host-verified weighted rubric scores on [0, 1] and faults missing or out-of-range item scores", async () => {
+    const rubricDir = join(root, "rubric-checks");
+    mkdirSync(rubricDir, { recursive: true });
+    writeFileSync(
+      join(rubricDir, "brief.json"),
+      JSON.stringify({
+        correctnessContract: "check-program/v1",
+        truthChecks: [check("valid", "rubric", { artifact: ["$.ok"] })],
+        objective: {
+          quantity: "weighted analytical quality",
+          direction: "higher",
+          scale: "unit",
+          items: [
+            { id: "accuracy", weight: 3 },
+            { id: "calibration", weight: 1 },
+          ],
+        },
+      }),
+    );
+    writeFileSync(
+      join(rubricDir, "evaluator.ts"),
+      [
+        "export const checks = { valid: (req) => req.artifact.ok === true };",
+        "export const scores = {",
+        "  accuracy: (req) => req.artifact.acc,",
+        "  calibration: (req) => req.artifact.cal,",
+        "};",
+      ].join("\n"),
+    );
+    const verifyRubric = openVerifier({ checks: rubricDir, tools });
+    const rubricTask: Task = { taskId: "r-1", family: "rubric", publicInput: {}, hidden: {} };
+    const good = await verifyRubric(rubricTask, { ok: true, acc: 0.8, cal: 0.4 });
+    expect(good).toMatchObject({ kind: "pass", scores: { accuracy: 0.8, calibration: 0.4 } });
+    expect(good.kind === "pass" ? good.objective : null).toBeCloseTo(0.7, 12);
+    expect(await verifyRubric(rubricTask, { ok: false, acc: 0.8, cal: 0.4 })).toEqual({
+      kind: "fail",
+      blocking: ["valid"],
+    });
+    for (const bad of [-0.01, 1.01, Number.NaN, "high"]) {
+      expect(await verifyRubric(rubricTask, { ok: true, acc: bad, cal: 0.5 })).toMatchObject({
+        kind: "faulty",
+        check: "objective",
+      });
+    }
+  });
 });

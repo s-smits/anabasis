@@ -122,8 +122,8 @@ function measureOf(contract: Contract, verdict: Verdict): JsonObject {
   const declared = contract.objective;
   const measure = objectiveOf(verdict);
   if (declared === undefined || measure === null) return {};
-  const { quantity, direction } = declared;
-  return { objective: { quantity, direction, measure } };
+  const { quantity, direction, scale } = declared;
+  return { objective: { quantity, direction, ...keyIfDefined("scale", scale), measure } };
 }
 
 export const feasibleOf = (

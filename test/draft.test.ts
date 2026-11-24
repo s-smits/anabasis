@@ -311,7 +311,7 @@ describe("draft shape and session gate", () => {
   });
 });
 
-describe("staging and offline reading", () => {
+describe.concurrent("staging and offline reading", () => {
   it("stages packs idempotently without leaking hidden controls or unmeasured rationale", () => {
     const staged = stageExam(join(root, "staged"), SOUND);
     expect(stageExam(join(root, "staged"), SOUND)).toEqual(staged);
@@ -344,11 +344,33 @@ describe("staging and offline reading", () => {
   });
 
   it("reads sound, lax, form-only, unloadable, and missing-export evaluators accurately", async () => {
-    expect((await draftReading(join(root, "read"), SOUND, 2)).faults).toEqual([]);
-    expect((await draftReading(join(root, "read"), MEASURED, 2)).faults).toEqual([]);
-
     const lax = { ...SOUND, evaluator: `export const checks = { "check-product": () => true };\n` };
-    const laxFaults = (await draftReading(join(root, "read"), lax, 2)).faults;
+    const formOnly = {
+      ...SOUND,
+      evaluator: `export const checks = { "check-product": (req) => /^[0-9]+$/u.test(req.artifact.answer) };\n`,
+      reject: [{ task: 0, answer: { answer: "x" }, check: "check-product" }],
+    };
+    const broken = {
+      ...SOUND,
+      evaluator: `export const checks = { "check-product": (req) => req.artifact.answer === ;\n`,
+    };
+    const [soundRes, measuredRes, laxRes, formRes, brokenRes, missingObjRes, undefinedCheckRes] =
+      await Promise.all([
+        draftReading(join(root, "read-sound"), SOUND, 2),
+        draftReading(join(root, "read-measured"), MEASURED, 2),
+        draftReading(join(root, "read-lax"), lax, 2),
+        draftReading(join(root, "read-form"), formOnly, 2),
+        draftReading(join(root, "read-broken"), broken, 2),
+        draftReading(join(root, "read-no-obj"), { ...MEASURED, evaluator: SOUND.evaluator }, 2),
+        draftReading(
+          join(root, "read-undef"),
+          { ...SOUND, evaluator: SOUND.evaluator.replace("check-product", "check-other") },
+          2,
+        ),
+      ]);
+    expect(soundRes.faults).toEqual([]);
+    expect(measuredRes.faults).toEqual([]);
+    const laxFaults = laxRes.faults;
     expect(laxFaults).toHaveLength(8);
     for (const [index, facts] of [
       ["ex-001", "check-product", "reject control", "pass"],
@@ -358,39 +380,15 @@ describe("staging and offline reading", () => {
     ].entries()) {
       for (const fact of facts) expect(laxFaults[index]).toContain(fact);
     }
-
-    const formOnly = {
-      ...SOUND,
-      evaluator: `export const checks = { "check-product": (req) => /^[0-9]+$/u.test(req.artifact.answer) };\n`,
-      reject: [{ task: 0, answer: { answer: "x" }, check: "check-product" }],
-    };
-    const formFaults = (await draftReading(join(root, "read"), formOnly, 2)).faults;
-    expect(formFaults).toHaveLength(3);
-    for (const fault of formFaults) expect(fault).toContain("passed every other example");
-
-    const broken = {
-      ...SOUND,
-      evaluator: `export const checks = { "check-product": (req) => req.artifact.answer === ;\n`,
-    };
-    const [syntaxFault, ...rest] = (await draftReading(join(root, "read"), broken, 2)).faults;
+    expect(formRes.faults).toHaveLength(3);
+    for (const fault of formRes.faults) expect(fault).toContain("passed every other example");
+    const [syntaxFault, ...rest] = brokenRes.faults;
     expect(rest).toEqual([]);
     for (const fact of ["ex-00", "check-product", "did not load", "Unexpected ;"]) {
       expect(syntaxFault).toContain(fact);
     }
-
-    expect(
-      (await draftReading(join(root, "read"), { ...MEASURED, evaluator: SOUND.evaluator }, 2)).faults.some(
-        (f) => f.includes("objective"),
-      ),
-    ).toBe(true);
-    const undefinedCheck = (
-      await draftReading(
-        join(root, "read"),
-        { ...SOUND, evaluator: SOUND.evaluator.replace("check-product", "check-other") },
-        2,
-      )
-    ).faults;
-    expect(undefinedCheck.some((f) => f.includes("check-product"))).toBe(true);
+    expect(missingObjRes.faults.some((f) => f.includes("objective"))).toBe(true);
+    expect(undefinedCheckRes.faults.some((f) => f.includes("check-product"))).toBe(true);
   });
 
   it("verifies deliverable files, archive entries, hidden-value sensitivity, and factual notes", async () => {
@@ -400,11 +398,6 @@ describe("staging and offline reading", () => {
       evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) && req.files.some((f) => f.path === "report.md" && f.text === "six times"),\n};\n`,
       accept: SOUND.accept.map((c) => ({ ...c, files: [{ path: "report.md", text: "six times" }] })),
     };
-    expect((await draftReading(join(root, "read"), report, 2)).faults).toEqual([]);
-    expect(
-      (await draftReading(join(root, "read"), { ...report, accept: SOUND.accept }, 2)).faults.join("\n"),
-    ).toContain("accept control");
-
     const book: Draft = {
       ...SOUND,
       evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) && req.files.some((f) => f.path === "book.xlsx" && f.base64 !== "" && (f.entries ?? []).some((e) => e.text === "<v>6</v>")),\n};\n`,
@@ -413,21 +406,12 @@ describe("staging and offline reading", () => {
         files: [{ path: "book.xlsx", entries: [{ path: "xl/worksheets/sheet1.xml", text: "<v>6</v>" }] }],
       })),
     };
-    expect((await draftReading(join(root, "read"), book, 2)).faults).toEqual([]);
     const flatBook: Draft = {
       ...book,
       accept: SOUND.accept.map((c) => ({ ...c, files: [{ path: "book.xlsx", text: "<v>6</v>" }] })),
     };
-    expect((await draftReading(join(root, "read"), flatBook, 2)).faults.join("\n")).toContain(
-      "accept control",
-    );
-
     // Hidden values: unread fails, check-deciding passes silently, objective-only (including key throw) emits factual note.
     const unread = { ...SOUND, tasks: SOUND.tasks.map((t, seed) => ({ ...t, hidden: { seed } })) };
-    expect((await draftReading(join(root, "read"), unread, 2)).faults).toEqual([
-      expect.stringContaining("hidden values had no effect on any accept control"),
-    ]);
-
     const factors = [5, 6, 7] as const;
     const hiddenDecided: Draft = {
       ...SOUND,
@@ -438,10 +422,6 @@ describe("staging and offline reading", () => {
         answer: { answer: String(Number(asRecord(t.publicInput)?.base) * Number(factors[i])) },
       })),
     };
-    const decidedRead = await draftReading(join(root, "read"), hiddenDecided, 2);
-    expect(decidedRead.faults).toEqual([]);
-    expect(decidedRead.read?.reading.notes).toEqual([]);
-
     const keyChecked: Draft = {
       ...MEASURED,
       objective: { quantity: "score", direction: "lower" },
@@ -455,16 +435,33 @@ describe("staging and offline reading", () => {
         "}",
       ].join("\n"),
     };
-    const noteRead = await draftReading(join(root, "hidden-note"), keyChecked, 2);
-    expect(noteRead.faults).toEqual([]);
-    expect(noteRead.read?.reading.notes).toEqual([HIDDEN_BLIND_NOTE]);
-
     // Partial cross-example pass emits a factual note without faulting.
     const partial: Draft = {
       ...SOUND,
       evaluator: `export const checks = { "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6) || (req.publicTask.publicInput.base === 3 && req.artifact.answer === "12") };\n`,
     };
-    const partialRead = await draftReading(join(root, "partial-note"), partial, 2);
+    const [reportOk, reportMiss, bookOk, bookFlat, unreadRes, decidedRead, noteRead, partialRead] =
+      await Promise.all([
+        draftReading(join(root, "read-report"), report, 2),
+        draftReading(join(root, "read-report-miss"), { ...report, accept: SOUND.accept }, 2),
+        draftReading(join(root, "read-book"), book, 2),
+        draftReading(join(root, "read-book-flat"), flatBook, 2),
+        draftReading(join(root, "read-unread"), unread, 2),
+        draftReading(join(root, "read-hidden"), hiddenDecided, 2),
+        draftReading(join(root, "hidden-note"), keyChecked, 2),
+        draftReading(join(root, "partial-note"), partial, 2),
+      ]);
+    expect(reportOk.faults).toEqual([]);
+    expect(reportMiss.faults.join("\n")).toContain("accept control");
+    expect(bookOk.faults).toEqual([]);
+    expect(bookFlat.faults.join("\n")).toContain("accept control");
+    expect(unreadRes.faults).toEqual([
+      expect.stringContaining("hidden values had no effect on any accept control"),
+    ]);
+    expect(decidedRead.faults).toEqual([]);
+    expect(decidedRead.read?.reading.notes).toEqual([]);
+    expect(noteRead.faults).toEqual([]);
+    expect(noteRead.read?.reading.notes).toEqual([HIDDEN_BLIND_NOTE]);
     expect(partialRead.faults).toEqual([]);
     expect(partialRead.read?.reading.notes).toEqual([
       "the accept control of ex-001 also passed 1 of 2 other examples",
@@ -688,7 +685,7 @@ describe("staging and offline reading", () => {
   });
 });
 
-describe("campaign draft lifecycle", () => {
+describe.concurrent("campaign draft lifecycle", () => {
   it("ends the campaign after three failed drafts across two sessions", async () => {
     await expect(draftCommand([])).rejects.toThrow("name --name, --session and --examiner");
     const name = `${STEM}-spent`;
@@ -714,22 +711,24 @@ describe("campaign draft lifecycle", () => {
   });
 
   it("freezes unattended drafts matching openCampaign and holds --hitl drafts for operator admission", async () => {
-    for (const attended of [false, true]) {
-      const name = `${STEM}-kept-${String(attended)}`;
-      await draftCommand([...opened(name, attended), "--session", "d-1"], putting(SOUND));
-      const events = read(campaignLog(name));
-      const readings = events.filter(({ kind }) => kind === "checker.read");
-      expect(readings).toHaveLength(1);
-      expect(readings[0]?.data).toMatchObject({ admitted: attended ? [] : ["check-product"] });
-      expect(readings[0]?.data.faults).toEqual(
-        attended ? [expect.stringContaining("--admit check-product")] : [],
-      );
-      const frozen = events.filter(({ kind }) => kind === "contract.frozen");
-      expect(frozen).toHaveLength(attended ? 0 : 1);
-      const { checker } = await openCampaign(packNamed({ name }));
-      expect(readings[0]?.data).toMatchObject({ ...checker });
-      if (!attended) expect(frozen[0]?.data).toMatchObject({ ...checker });
-    }
+    await Promise.all(
+      [false, true].map(async (attended) => {
+        const name = `${STEM}-kept-${String(attended)}`;
+        await draftCommand([...opened(name, attended), "--session", "d-1"], putting(SOUND));
+        const events = read(campaignLog(name));
+        const readings = events.filter(({ kind }) => kind === "checker.read");
+        expect(readings).toHaveLength(1);
+        expect(readings[0]?.data).toMatchObject({ admitted: attended ? [] : ["check-product"] });
+        expect(readings[0]?.data.faults).toEqual(
+          attended ? [expect.stringContaining("--admit check-product")] : [],
+        );
+        const frozen = events.filter(({ kind }) => kind === "contract.frozen");
+        expect(frozen).toHaveLength(attended ? 0 : 1);
+        const { checker } = await openCampaign(packNamed({ name }));
+        expect(readings[0]?.data).toMatchObject({ ...checker });
+        if (!attended) expect(frozen[0]?.data).toMatchObject({ ...checker });
+      }),
+    );
   });
 
   it("audits up to two passes using reviewer.effort, stops early on sound/skipped, and skips when no reviewer is configured", async () => {
@@ -739,56 +738,8 @@ describe("campaign draft lifecycle", () => {
       pass: number | undefined;
       prior: readonly string[] | undefined;
     }[] = [];
-    await draftCommand(
-      [
-        ...opened(defectName, false, { model: SOLVER, effort: "low" }),
-        "--session",
-        "d-1",
-        "--examiner-effort",
-        "high",
-      ],
-      putting(SOUND, SOUND, SOUND),
-      async (reader, target) => {
-        seenPasses.push({ effort: reader.effort, pass: target.pass, prior: target.priorFindings });
-        return {
-          verdict: "defects",
-          findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "wrong value passed" }],
-          summary: "vacuous check",
-          probes: [],
-        };
-      },
-    );
-    expect(seenPasses).toHaveLength(2);
-    expect(seenPasses[0]).toEqual({ effort: "low", pass: 1, prior: [] });
-    expect(seenPasses[1]?.effort).toBe("low");
-    expect(seenPasses[1]?.pass).toBe(2);
-    expect(seenPasses[1]?.prior?.[0]).toContain("vacuous-pass on ex-001");
-    expect(draftOf(read(campaignLog(defectName)))).toEqual(SOUND);
-
-    for (const verdict of ["sound", "skipped"] as const) {
-      const name = `${STEM}-audit-${verdict}`;
-      let calls = 0;
-      await draftCommand(
-        [...opened(name, false, { model: SOLVER, effort: "medium" }), "--session", "d-1"],
-        putting(SOUND),
-        async () => {
-          calls += 1;
-          return { verdict, findings: [], summary: verdict, probes: [] };
-        },
-      );
-      expect(calls).toBe(1);
-      expect(draftOf(read(campaignLog(name)))).toEqual(SOUND);
-    }
-
     const noReviewer = `${STEM}-audit-none`;
     let skippedCalls = 0;
-    await draftCommand([...opened(noReviewer), "--session", "d-1"], putting(SOUND), async () => {
-      skippedCalls += 1;
-      return { verdict: "sound", findings: [], summary: "unused", probes: [] };
-    });
-    expect(skippedCalls).toBe(0);
-
-    // Deterministic $0 probe replay blocks unfixed revisions without spending an LLM pass and gates post-cap drafts too.
     const replayName = `${STEM}-audit-replay`;
     const holeOne: Draft = {
       ...SOUND,
@@ -812,28 +763,75 @@ describe("campaign draft lifecycle", () => {
       verifiedFixed: readonly string[] | undefined;
       prior: readonly string[] | undefined;
     }[] = [];
-    const replayed = await draftCommand(
-      [...opened(replayName, false, { model: SOLVER, effort: "low" }), "--session", "d-1", "--tries", "5"],
-      // Try 1: holeOne -> LLM Pass 1 flags hole1. Try 2: holeOne again -> $0 replay blocks (no LLM call!).
-      // Try 3: holeTwo -> $0 replay confirms hole1 fixed, LLM Pass 2 flags hole2.
-      // Try 4: holeTwo again -> $0 replay blocks even after MAX_DRAFT_AUDITS = 2!
-      // Try 5: SOUND -> $0 replay confirms hole2 fixed -> draft stands.
-      putting(holeOne, holeOne, holeTwo, holeTwo, SOUND),
-      async (_reader, target) => {
-        replayCalls.push({
-          pass: target.pass,
-          verifiedFixed: target.verifiedFixed,
-          prior: target.priorFindings,
-        });
-        const hole = target.pass === 1 ? "hole1" : "hole2";
-        return {
-          verdict: "defects",
-          findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: `${hole} passed` }],
-          summary: `${hole} vacuous`,
-          probes: [probeRow(hole)],
-        };
-      },
-    );
+    const [replayed] = await Promise.all([
+      draftCommand(
+        [...opened(replayName, false, { model: SOLVER, effort: "low" }), "--session", "d-1", "--tries", "5"],
+        // Try 1: holeOne -> LLM Pass 1 flags hole1. Try 2: holeOne again -> $0 replay blocks (no LLM call!).
+        // Try 3: holeTwo -> $0 replay confirms hole1 fixed, LLM Pass 2 flags hole2.
+        // Try 4: holeTwo again -> $0 replay blocks even after MAX_DRAFT_AUDITS = 2!
+        // Try 5: SOUND -> $0 replay confirms hole2 fixed -> draft stands.
+        putting(holeOne, holeOne, holeTwo, holeTwo, SOUND),
+        async (_reader, target) => {
+          replayCalls.push({
+            pass: target.pass,
+            verifiedFixed: target.verifiedFixed,
+            prior: target.priorFindings,
+          });
+          const hole = target.pass === 1 ? "hole1" : "hole2";
+          return {
+            verdict: "defects",
+            findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: `${hole} passed` }],
+            summary: `${hole} vacuous`,
+            probes: [probeRow(hole)],
+          };
+        },
+      ),
+      draftCommand(
+        [
+          ...opened(defectName, false, { model: SOLVER, effort: "low" }),
+          "--session",
+          "d-1",
+          "--examiner-effort",
+          "high",
+        ],
+        putting(SOUND, SOUND, SOUND),
+        async (reader, target) => {
+          seenPasses.push({ effort: reader.effort, pass: target.pass, prior: target.priorFindings });
+          return {
+            verdict: "defects",
+            findings: [{ kind: "vacuous-pass", task: "ex-001", probe: 1, reason: "wrong value passed" }],
+            summary: "vacuous check",
+            probes: [],
+          };
+        },
+      ),
+      ...(["sound", "skipped"] as const).map(async (verdict) => {
+        const name = `${STEM}-audit-${verdict}`;
+        let calls = 0;
+        await draftCommand(
+          [...opened(name, false, { model: SOLVER, effort: "medium" }), "--session", "d-1"],
+          putting(SOUND),
+          async () => {
+            calls += 1;
+            return { verdict, findings: [], summary: verdict, probes: [] };
+          },
+        );
+        expect(calls).toBe(1);
+        expect(draftOf(read(campaignLog(name)))).toEqual(SOUND);
+      }),
+      draftCommand([...opened(noReviewer), "--session", "d-1"], putting(SOUND), async () => {
+        skippedCalls += 1;
+        return { verdict: "sound", findings: [], summary: "unused", probes: [] };
+      }),
+    ]);
+    expect(seenPasses).toHaveLength(2);
+    expect(seenPasses[0]).toEqual({ effort: "low", pass: 1, prior: [] });
+    expect(seenPasses[1]?.effort).toBe("low");
+    expect(seenPasses[1]?.pass).toBe(2);
+    expect(seenPasses[1]?.prior?.[0]).toContain("vacuous-pass on ex-001");
+    expect(draftOf(read(campaignLog(defectName)))).toEqual(SOUND);
+    expect(skippedCalls).toBe(0);
+    // Deterministic $0 probe replay blocks unfixed revisions without spending an LLM pass and gates post-cap drafts too.
     expect(replayed).toMatchObject({ ended: "stands", puts: 5 });
     expect(replayCalls).toHaveLength(2);
     expect(replayCalls[0]).toEqual({ pass: 1, verifiedFixed: [], prior: [] });

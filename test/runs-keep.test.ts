@@ -276,7 +276,7 @@ describe("a keeper's looks, scripted", () => {
   });
 });
 
-describe("going on with a live run after a pause", () => {
+describe.concurrent("going on with a live run after a pause", () => {
   /** `continue --after next` of a live campaign whose comparisons began at 0.02, on `level`. The
    *  campaign command here takes its dry run's refusal from the real opening (`opened`), and its
    *  live run, once it reads the pause word, finishes a solve. Each case takes 60 s: under a whole
@@ -328,7 +328,7 @@ if (stat !== "" && !stat.startsWith("Z")) console.log(${JSON.stringify(row)});
     const before = readFileSync(log, "utf8");
     const flags = ["--project", "p", "--prompt", "a domain", "--solver", OPUS, "--level", level];
     const words = JSON.stringify(["sample", "--after", "next", "--yes", "--", ...flags]);
-    const result = made.run(
+    const result = await made.runAsync(
       `import { continueRun } from "REPOSITORY/tools/runs/manage.ts"; await continueRun(${words});`,
       { FAKE_CWDS: `p${String(live.pid)}\nn${made.main}` },
     );

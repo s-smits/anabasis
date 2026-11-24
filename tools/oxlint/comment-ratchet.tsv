@@ -227,7 +227,7 @@ test/run-stopped.test.ts	9
 test/runs-alerts.test.ts	4
 test/runs-bench.test.ts	7
 test/runs-controller.test.ts	5
-test/runs-fleet.test.ts	20
+test/runs-fleet.test.ts	16
 test/runs-invariants.test.ts	11
 test/runs-keep.test.ts	12
 test/runs-loadstream.test.ts	2
@@ -264,7 +264,7 @@ test/stopped-settlement.test.ts	10
 test/stored-sweep.test.ts	4
 test/studies-foreign-python.test.ts	19
 test/studies-harness2-compare.test.ts	3
-test/studies-harness2-h2-sweep.test.ts	22
+test/studies-harness2-h2-sweep.test.ts	20
 test/studies-harness2-h2.test.ts	5
 test/studies-harness2.test.ts	30
 test/subpath-imports.test.ts	1

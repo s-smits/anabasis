@@ -130,10 +130,14 @@ describe("going on with a campaign", () => {
     const folder = join(made.main, ".ana", "d2", name);
     mkdirSync(folder, { recursive: true });
     append(join(folder, "log.jsonl"), "campaign.opened", { name });
-    for (const after of ["promotion", "reported|toString", "reported|"]) {
-      const refused = made.run(
-        `import { pause } from "REPOSITORY/tools/runs/manage.ts"; await pause(["${name}", "--after", "${after}", "--yes"]);`,
-      );
+    const results = await Promise.all(
+      ["promotion", "reported|toString", "reported|"].map((after) =>
+        made.runAsync(
+          `import { pause } from "REPOSITORY/tools/runs/manage.ts"; await pause(["${name}", "--after", "${after}", "--yes"]);`,
+        ),
+      ),
+    );
+    for (const refused of results) {
       expect(refused.code).not.toBe(0);
       expect(refused.err).toContain("--after takes");
     }
@@ -168,8 +172,8 @@ describe("going on with a campaign", () => {
       made,
       log,
       row,
-      go: (extra: Record<string, string> = {}) => made.run(driver, { FAKE_PS: row, ...extra }),
-      ended: () => Promise.race([keeper.exited.then(() => true), Bun.sleep(500).then(() => false)]),
+      go: (extra: Record<string, string> = {}) => made.runAsync(driver, { FAKE_PS: row, ...extra }),
+      ended: () => Promise.race([keeper.exited.then(() => true), Bun.sleep(200).then(() => false)]),
     };
   }
   const words = (log: string) =>
@@ -180,57 +184,59 @@ describe("going on with a campaign", () => {
   const capped = { ANA_LOGIN_RUNS: "1", [`${KEY}2`]: "a" };
 
   it("asks at the point, before the stop, what the start would refuse, and leaves a refused run running with no word", async () => {
-    for (const [flags, meanwhile, extra, refusal] of [
+    const cases: [string[], Meanwhile, Record<string, string>, string][] = [
       [[], () => "", { FAKE_FETCH_FAIL: "1" }, "git exited 1"],
       [["--login", "2"], (_log, set) => set("FAKE_ACTIVE", filled), capped, "login 2 is at its live-run cap"],
       [[], (_log, set) => set("FAKE_DIRTY", " M src/kernel/log.ts"), {}, "holds a change no commit names"],
-    ] satisfies [string[], Meanwhile, Record<string, string>, string][]) {
-      const { log, go, ended } = pointed(flags, meanwhile);
-      const refused = go(extra);
-      expect(refused.code).not.toBe(0);
-      expect(refused.out).toContain("waiting for comparison.reported past 0");
-      expect(refused.err).toContain(refusal);
-      expect(await ended()).toBe(false);
-      expect(words(log)).toEqual([]);
-    }
+    ];
+    await Promise.all(
+      cases.map(async ([flags, meanwhile, extra, refusal]) => {
+        const { log, go, ended } = pointed(flags, meanwhile);
+        const refused = await go(extra);
+        expect(refused.code).not.toBe(0);
+        expect(refused.out).toContain("waiting for comparison.reported past 0");
+        expect(refused.err).toContain(refusal);
+        expect(await ended()).toBe(false);
+        expect(words(log)).toEqual([]);
+      }),
+    );
   });
 
-  it("refuses a second waiter on one run, which could start again a run the first had stopped", () => {
+  it("refuses a second waiter on one run, which could start again a run the first had stopped", async () => {
     const made = fakeHosts();
     fixtures.push(made.root);
     const folder = join(made.main, ".ana", "d2", "waited");
     mkdirSync(folder, { recursive: true });
     append(join(folder, "log.jsonl"), "campaign.ended", { ending: "environment" });
     const pauseOf = (row: string) =>
-      made.run(
+      made.runAsync(
         'import { pause } from "REPOSITORY/tools/runs/manage.ts"; await pause(["waited", "--after", "compacted", "--yes"]);',
         { FAKE_PS: row },
       );
     const waiting = `99999 ${capturedExecPath} tools/runs/cli.ts pause waited --after reported --yes`;
-    const refused = pauseOf(waiting);
+    const [refused, flagFirst, contWait] = await Promise.all([
+      pauseOf(waiting),
+      pauseOf(`99999 ${capturedExecPath} tools/runs/cli.ts pause --after reported waited --yes`),
+      pauseOf(`99999 ${capturedExecPath} tools/runs/cli.ts continue waited --after compacted --yes`),
+    ]);
     expect(refused.code).toBe(1);
     expect(refused.err).toContain("already waits to stop in process 99999");
     // The name may follow the flags, as `parseArgs` takes it.
-    const flagFirst = pauseOf(
-      `99999 ${capturedExecPath} tools/runs/cli.ts pause --after reported waited --yes`,
-    );
     expect(flagFirst.err).toContain("already waits to stop in process 99999");
+    expect(contWait.code).toBe(1);
     expect(readLog(join(folder, "log.jsonl")).map(({ kind }) => kind)).toEqual(["campaign.ended"]);
     // Another run's waiter, or a continue that waits for nothing, leaves this pause free.
     for (const row of [
       waiting.replace("waited", "other"),
       `99999 ${capturedExecPath} tools/runs/cli.ts continue waited --login 1 --yes`,
     ]) {
-      expect(pauseOf(row)).toMatchObject({ code: 0, err: "" });
+      expect(await pauseOf(row)).toMatchObject({ code: 0, err: "" });
     }
-    expect(
-      pauseOf(`99999 ${capturedExecPath} tools/runs/cli.ts continue waited --after compacted --yes`).code,
-    ).toBe(1);
   });
 });
 
-describe("starting a campaign", () => {
-  it("shows the dry run's own refusal, and starts nothing after it", () => {
+describe.concurrent("starting a campaign", () => {
+  it("shows the dry run's own refusal, and starts nothing after it", async () => {
     const made = fakeHosts();
     fixtures.push(made.root);
     // The install passes and a detached start would leave its call; the fake tree holds no
@@ -241,7 +247,7 @@ describe("starting a campaign", () => {
       `#!${capturedExecPath}\nimport { appendFileSync } from "node:fs";\nappendFileSync(process.env.FAKE_CALLS, JSON.stringify({tool:"nice",args:process.argv.slice(2)}) + "\\n");\n`,
     );
     chmodSync(nice, 0o755);
-    const result = made.run(
+    const result = await made.runAsync(
       'import { launch } from "REPOSITORY/tools/runs/manage.ts"; await launch(["refused", "--yes"]);',
     );
     expect(result.code).toBe(1);

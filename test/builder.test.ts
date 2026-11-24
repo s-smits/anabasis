@@ -1866,6 +1866,28 @@ describe("what a practice solve used", () => {
     expect(s.sent[1]).not.toContain("unused)");
   });
 
+  it("appends a factual concentration note once a single practice task reaches 4 solves in the session without refusing it", async () => {
+    const s = await setup(
+      [
+        call("practice", { tasks: ["t-1", "t-1", "t-1", "t-2"] }),
+        call("practice", { tasks: ["t-1"] }),
+        finish,
+      ],
+      [],
+      true,
+    );
+    await session({ ...s.request, limits: { ...s.request.limits, practiceSolves: 6 } }, s, s.walled);
+    const practiceReplies = read(s.request.log)
+      .filter(({ kind, data }) => kind === "build.call" && data.tool === "practice")
+      .map(({ data }) => (isString(data.text) ? data.text : ""));
+    expect(practiceReplies).toHaveLength(2);
+    expect(practiceReplies[0]).not.toContain("further single-task tuning risks overfitting");
+    expect(practiceReplies[1]).toContain(
+      "Note: t-1 has now been practised 4 times in this session; further single-task tuning risks overfitting.",
+    );
+    expect(practiceReplies[1]).not.toContain("Note: t-2");
+  });
+
   it("omits per-solve unused noise on multi-bin harnesses", async () => {
     const s = await setup([call("practice", { tasks: ["t-1", "t-2"] }), finish], [], true);
     const binDir = join(s.home, HOME_TOOL_TREE, "bin");

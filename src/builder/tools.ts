@@ -94,6 +94,8 @@ interface Against {
 const SOLVE_HOME = "(the solve's own home directory)";
 /** Where a band of the gain over the author's answer begins, after the tie floor. */
 const BAND_EDGES = [GAP_FLOOR, 0.1, 0.5, 0.9] as const;
+/** Session practice-solve count on one task at which a factual concentration note is appended. */
+const PRACTICE_NOTE_AT = 4;
 const percent = (share: number): string => String(Math.round(share * 100));
 
 /**
@@ -352,6 +354,34 @@ function recordText(
     .join(" ");
 }
 
+/** Record line plus factual concentration note once a task reaches `PRACTICE_NOTE_AT` solves in this
+ *  session; never refuses and reads practice solves alone (rule 3). */
+function practiceTaskNotes(
+  events: readonly LogEvent[],
+  task: PracticeTask,
+  info: {
+    readonly sessionId: string;
+    readonly roles: readonly (readonly [string | null, string])[];
+    readonly against: Against | null;
+    readonly name: () => string;
+  },
+): string[] {
+  const sessionStart = events.findLastIndex(
+    ({ kind, data }) => kind === "build.started" && data.session === info.sessionId,
+  );
+  const count = ended(
+    practiceRan(events).filter(({ started, under }) => started > sessionStart && under.task === task.version),
+  ).filter((solve) => passed(solve) !== null).length;
+  return [
+    recordText(events, task.version, info.roles, info.against, info.name),
+    ...(count >= PRACTICE_NOTE_AT
+      ? [
+          `Note: ${task.task.taskId} has now been practised ${String(count)} times in this session; further single-task tuning risks overfitting.`,
+        ]
+      : []),
+  ];
+}
+
 export function practiceTool(bench: Bench): SeatTool {
   const { request } = bench;
   return tool({
@@ -448,7 +478,9 @@ export function practiceTool(bench: Bench): SeatTool {
         const against = againstFor(task.version);
         return [
           `${task.task.taskId}${under === "reference" ? " under the reference harness" : ""}: ${shown}. Solve ${solve}.${usedText(events, solve)}${callsText(events, solve, programs)}${measuredText(events, solve, against, name)}`,
-          ...(last.get(task.version) === at ? [recordText(events, task.version, roles, against, name)] : []),
+          ...(last.get(task.version) === at
+            ? practiceTaskNotes(events, task, { sessionId: request.id, roles, against, name })
+            : []),
           ...lines,
         ].join("\n");
       });

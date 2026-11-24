@@ -475,6 +475,34 @@ describe("a campaign run by its live Builder", () => {
     ]);
   });
 
+  it("refuses a second candidate comparison at >=80% frontier overlap until examine supplies fresh tasks", async () => {
+    const name = `${STEM}-overlap-gate`;
+    const tied = scriptedSeats({ held: { old: "none", fresh: "none" }, starter: "none" }, GRADED, []);
+    const seats: Seats = {
+      seated: builderScript(tied, [
+        CHANGE_GUIDE,
+        ["compare", {}],
+        CHANGE_AGAIN,
+        // Same 5-task frontier (100% overlap): refused before checkpointing or recording a move.
+        ["compare", {}],
+        ["examine", {}],
+        ["wait", {}],
+        // 6 fresh tasks held out: overlap drops to 0%, so compare succeeds.
+        ["compare", {}],
+        ["finish", { note: "Compared on fresh tasks." }],
+        ["finish", { note: "Compared on fresh tasks." }],
+      ]),
+      examine: writer,
+    };
+    await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "10"], seats);
+    const [, refused, fresh] = said(name, "compare");
+    expect(refused).toContain("frontier tasks (100%) already scored in comparison g-1");
+    expect(refused).toContain("Call examine to hold out fresh tasks");
+    expect(fresh).not.toContain("already scored in comparison");
+    expect(of(name, COMPARED)).toHaveLength(2);
+    expect(of(name, "build.checkpoint")).toHaveLength(2);
+  });
+
   it("requires a Referee for a paid opening, keeps its recorded seat, and permits scripted openings without one", () => {
     const log = join(root, "terms", "reviewer", LOG_FILE);
     const flags = (...more: string[]) =>

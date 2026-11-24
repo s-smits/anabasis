@@ -14,7 +14,14 @@ import {
 import { Type } from "typebox";
 import { fixedIn, overlapOf, passesIn, predicted, swapped, toLabel } from "../src/campaign/comparison.ts";
 import type { PassLabel } from "../src/referee/agreement.ts";
-import { type CheckpointRequest, checkpoint, refuseTerms, scoredSet } from "../src/campaign/round.ts";
+import {
+  type CheckpointRequest,
+  checkpoint,
+  frontierOverlap,
+  OVERLAP_LIMIT,
+  refuseTerms,
+  scoredSet,
+} from "../src/campaign/round.ts";
 import { settleReading } from "../src/campaign/settle.ts";
 import {
   type BuildRequest,
@@ -2062,5 +2069,65 @@ describe("the scored set", () => {
       reason: "a person read the task as feasible",
     });
     expect(poolOf(read(s.log)).scorable).toContain("s1");
+  });
+
+  it("measures projected frontier overlap against the immediately preceding candidate no-step comparison in the epoch", () => {
+    const base = heldOut(held);
+    expect(frontierOverlap(base, 5, "contract-a", "S")).toBeNull();
+    const picked = scoredSet(base, 5, "contract-a");
+    const started = {
+      at,
+      kind: "comparison.started",
+      data: {
+        session: "g-1",
+        old: "S",
+        fresh: "h1",
+        starter: "S",
+        tasks: picked.tasks,
+        retained: picked.retained,
+      },
+    } as const;
+    const reportedNoStep = {
+      at,
+      kind: COMPARISON_REPORTED,
+      data: { session: "g-1", old: "S", fresh: "h1", starter: "S", reading: NO_STEP, versions: picked.tasks },
+    } as const;
+    // Unchanged pool: 5/5 (100%) overlap, clearing OVERLAP_LIMIT.
+    const samePool: LogEvent[] = [...base, started, reportedNoStep];
+    expect(frontierOverlap(samePool, 5, "contract-a", "S")).toEqual({
+      ratio: 1,
+      overlap: 5,
+      total: 5,
+      priorSession: "g-1",
+    });
+    // Adding 2 fresh tasks reduces overlap on target=5 to 3/5 (60% < 80%).
+    const withTwoFresh = frontierOverlap([...samePool, ...heldOut(["n1", "n2"])], 5, "contract-a", "S");
+    expect(withTwoFresh).toMatchObject({ overlap: 3, total: 5, priorSession: "g-1" });
+    expect(withTwoFresh?.ratio).toBeLessThan(OVERLAP_LIMIT);
+    // Adding 5 fresh tasks drops overlap to 0/5.
+    expect(
+      frontierOverlap([...samePool, ...heldOut(["n1", "n2", "n3", "n4", "n5"])], 5, "contract-a", "S"),
+    ).toMatchObject({ ratio: 0, overlap: 0, total: 5 });
+    // Starter comparisons, steps, and promotions reset the gate.
+    const starterReport = {
+      at,
+      kind: COMPARISON_REPORTED,
+      data: { session: "g-1", old: "h1", fresh: "S", starter: "S", reading: NO_STEP, versions: picked.tasks },
+    } as const;
+    expect(frontierOverlap([...base, started, starterReport], 5, "contract-a", "h1")).toBeNull();
+    const stepReport = {
+      at,
+      kind: COMPARISON_REPORTED,
+      data: { session: "g-1", old: "S", fresh: "h1", starter: "S", reading: "step", versions: picked.tasks },
+    } as const;
+    expect(frontierOverlap([...base, started, stepReport], 5, "contract-a", "S")).toBeNull();
+    expect(
+      frontierOverlap(
+        [...samePool, { at, kind: "harness.promoted", data: { harness: "h1" } }],
+        5,
+        "contract-a",
+        "h1",
+      ),
+    ).toBeNull();
   });
 });

@@ -7,8 +7,8 @@
  */
 import { draw, type ObjectiveRule } from "../kernel/compare.ts";
 import { familiesOf } from "../kernel/history.ts";
-import { append, type LogEvent, read } from "../kernel/log.ts";
-import { type Cap, capHolds, poolOf } from "../kernel/reports.ts";
+import { append, isReferenceChange, type LogEvent, read } from "../kernel/log.ts";
+import { type Cap, capHolds, lastReports, poolOf } from "../kernel/reports.ts";
 import { billedFor } from "../kernel/meter.ts";
 import { checkCouldNotRun, type Ending, nonRetryableProvider } from "../kernel/solve.ts";
 import { ranUnder, refereeErrorOf, rejected, solvesIn } from "../kernel/solves.ts";
@@ -116,6 +116,9 @@ interface Job {
 const SILENT = 3;
 /** The most of a scored set one family takes where the frontier holds three or more (`scoredSet`). */
 const FAMILY_SHARE = 0.4;
+/** Maximum projected frontier overlap allowed between consecutive scored candidate comparisons on
+ *  the same reference after a `no-step` reading (`frontierOverlap`). */
+export const OVERLAP_LIMIT = 0.8;
 const TASK_STATE = "task.state";
 /** The states a comparison's finding may dispute a task from. */
 const DISPUTABLE: ReadonlySet<string> = new Set(["held", "released"]);
@@ -179,6 +182,50 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
     }
   }
   return { tasks: [...tasks, ...picked], retained: picked };
+}
+
+/**
+ * Projected frontier overlap between the next candidate comparison (`scoredSet`) and the
+ * immediately preceding scored candidate `no-step` comparison on `reference` in the current epoch.
+ * Reads pre-registered `comparison.started` task sets alone so candidate outcomes never cross the
+ * wall (rule 3). Returns null when no qualifying prior `no-step` comparison exists or the projected
+ * frontier is empty.
+ */
+export function frontierOverlap(
+  events: readonly LogEvent[],
+  target: number,
+  contract: string,
+  reference: string,
+): {
+  readonly ratio: number;
+  readonly overlap: number;
+  readonly total: number;
+  readonly priorSession: string;
+} | null {
+  const promotedAt = events.findLastIndex(({ kind }) => isReferenceChange(kind));
+  const prior = lastReports(events).findLast(
+    ({ index, data }) =>
+      index > promotedAt &&
+      data.old === reference &&
+      data.fresh !== data.starter &&
+      data.reading !== "not-scored",
+  );
+  if (prior?.data.reading !== "no-step") return null;
+  const priorStart = events.findLast(
+    ({ kind, data }) => kind === STARTED && data.session === prior.session && data.ladder !== true,
+  )?.data;
+  const priorTasks = Array.isArray(priorStart?.tasks) ? priorStart.tasks.filter(isString) : [];
+  const priorRetained = new Set(
+    Array.isArray(priorStart?.retained) ? priorStart.retained.filter(isString) : [],
+  );
+  const priorFrontier = new Set(priorTasks.filter((task) => !priorRetained.has(task)));
+  if (priorFrontier.size === 0) return null;
+  const projected = scoredSet(events, target, contract);
+  const projectedRetained = new Set(projected.retained);
+  const frontier = projected.tasks.filter((task) => !projectedRetained.has(task));
+  if (frontier.length === 0) return null;
+  const overlap = frontier.filter((task) => priorFrontier.has(task)).length;
+  return { ratio: overlap / frontier.length, overlap, total: frontier.length, priorSession: prior.session };
 }
 
 /**

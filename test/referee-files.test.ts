@@ -13,7 +13,7 @@ import type { Contract } from "../src/kernel/contract.ts";
 import { append, read } from "../src/kernel/log.ts";
 import type { Task, Verifier } from "../src/kernel/verify.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { asRecord, type JsonObject } from "../src/meta/json-shape.ts";
+import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keysIf } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -111,6 +111,7 @@ async function reading(
   blocking: readonly string[],
   responses: ReturnType<typeof fauxAssistantMessage>[],
   task: Task = TASK,
+  onVerify?: (asked: Task) => void,
 ) {
   const sent: TranscriptContext[] = [];
   const faux = fauxProvider({
@@ -150,6 +151,7 @@ async function reading(
       checks,
       log,
       verify: async (asked, answer, signal, received) => {
+        onVerify?.(asked);
         given.push((received ?? []).map(({ path }) => path));
         return verify(asked, answer, signal, received);
       },
@@ -331,5 +333,55 @@ describe("a probe of a file", () => {
     await invoke({ path: "file:out/data.csv", find: "row-bad", replace: "row-newer" });
     const sizes = { was: { lines: 1, bytes: 8 }, now: { lines: 1, bytes: 10 } };
     expect(rows).toMatchObject([{ texts: [{ path: "file:out/data.csv", ...sizes }] }]);
+  });
+});
+
+describe("publicInput.files bounding in Referee", () => {
+  it("bounds large publicInput.files inline while keeping small memos intact, serves full windows via read_task_file, and passes untouched task to verify", async () => {
+    const memo = "Short protocol memo under 2 KB.\n";
+    const tailMarker = "TAIL_MARKER_ROW_9999";
+    const bigCsv = `id,val\n${"1,abcdef0123456789\n".repeat(1200)}9999,${tailMarker}\n`;
+    const extraFiles = Array.from({ length: 10 }, (_, idx) => ({
+      path: `extra/table_${String(idx)}.csv`,
+      text: `k,v\n${"x,1234567890\n".repeat(250)}`,
+    }));
+    const taskWithFiles: Task = {
+      taskId: "t-big",
+      family: "ledger",
+      publicInput: {
+        summary: false,
+        files: [{ path: "memo.txt", text: memo }, { path: "big/input.csv", text: bigCsv }, ...extraFiles],
+      },
+      hidden: {},
+    };
+    let verifiedBigLen = 0;
+    const s = await reading(
+      [],
+      ["span"],
+      [
+        call("read_task_file", {}),
+        call("read_task_file", { path: "big/input.csv", from: bigCsv.length - 40 }),
+        call(PROBE, { changes: [{ path: "$.span", value: "9" }] }),
+        ruling({ ruling: "earned", rule: "R3", field: "$.span", reason: "Span exceeds 10 m.", probes: [1] }),
+      ],
+      taskWithFiles,
+      (asked) => {
+        const list = asRecord(asked.publicInput)?.files;
+        const big = (Array.isArray(list) ? list : [])
+          .map((row) => asRecord(row))
+          .find((row) => row?.path === "big/input.csv");
+        if (isString(big?.text)) verifiedBigLen = big.text.length;
+      },
+    );
+    expect(s.finding).toMatchObject({ ruling: "earned", rule: "R3", field: "$.span", probes: [1] });
+    expect(s.opening).toContain(memo.trim());
+    expect(s.opening).not.toContain(tailMarker);
+    expect(s.opening).toContain("omittedBytes");
+    expect(s.opening.length).toBeLessThan(30_000);
+    // Verifier and probes always receive the full, un-truncated publicInput.files text.
+    expect(verifiedBigLen).toBe(bigCsv.length);
+    expect(s.results[0]).toContain("big/input.csv");
+    expect(s.results[0]).toContain("extra/table_9.csv");
+    expect(s.results[1]).toContain(tailMarker);
   });
 });

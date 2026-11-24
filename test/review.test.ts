@@ -779,6 +779,38 @@ describe("adversarial draft audit", () => {
     expect(s.sent[0]).toContain("file:results.csv");
     expect(s.sent[1]).toContain(String.raw`a,b\n1,2\n`);
 
+    // Large example publicInput.files are bounded in the draft-audit opening and readable via read_task_file.
+    const bigTail = "DRAFT_AUDIT_TAIL_999";
+    const bigInputCsv = `id,x\n${"1,abcdefghij0123456789\n".repeat(1200)}999,${bigTail}\n`;
+    let draftVerifiedLen = 0;
+    const taskWithBigFile: Task = {
+      ...TASK,
+      publicInput: { files: [{ path: "inputs/big.csv", text: bigInputCsv }] },
+    };
+    const bigSetup = setup([
+      callTool("read_task_file", {}),
+      callTool("read_task_file", { path: "t-1/inputs/big.csv", from: bigInputCsv.length - 40 }),
+      callTool(PROBE, { task: "t-1", changes: [{ path: SPAN, value: "999" }] }),
+      reviewCall({ verdict: "sound", findings: [], summary: "checked input and probe" }),
+    ]);
+    const bigRes = await reviewDraft(bigSetup.reader, {
+      ...target,
+      tasks: [taskWithBigFile],
+      verify: async (task, answer, signal, files) => {
+        const list = asRecord(task.publicInput)?.files;
+        const first = Array.isArray(list) ? asRecord(list[0]) : null;
+        if (isString(first?.text)) draftVerifiedLen = first.text.length;
+        return vacuousVerify(task, answer, signal, files);
+      },
+      log: bigSetup.log,
+    });
+    expect(bigRes.verdict).toBe("sound");
+    expect(bigSetup.sent[0]).not.toContain(bigTail);
+    expect(bigSetup.sent[0]?.length ?? 0).toBeLessThan(15_000);
+    expect(bigSetup.sent[1]).toContain("t-1/inputs/big.csv");
+    expect(bigSetup.sent[2]).toContain(bigTail);
+    expect(draftVerifiedLen).toBe(bigInputCsv.length);
+
     // No accept controls -> skipped with 0 model calls.
     const noControls = setup([]);
     expect(

@@ -19,6 +19,7 @@ const SKIP_DIR = /^(?:node_modules|\.?venv|vendor|include|__pycache__)$/;
 const SITE_DIR = /^(?:site|dist)-packages$/;
 /** A bundled interpreter's home, known by its Python library folder. */
 const INTERPRETER_HOME = /\/lib\/python\d[\d.]*\//;
+const PYTHON_LIB = /^python\d[\d.]*$/;
 const METADATA = /\.(?:dist-info|egg-info)$/;
 const PAST_NAME = /(?:-[^/]*)?\.(?:dist-info|egg-info)$/;
 const WHEEL_LIBS = /(^|\/)[^/]+\.libs\//;
@@ -67,6 +68,8 @@ interface TaskStrings {
   readonly strings: readonly string[];
 }
 
+type MetadataMarks = ReadonlyMap<string, { readonly site: string; readonly name: string }>;
+
 /** Nonblank line count of `body`. */
 export const nonblank = (body: string): number =>
   body.split("\n").filter((line) => line.trim() !== "").length;
@@ -80,22 +83,9 @@ function resolved(path: string): string {
   return kept.join("/");
 }
 
-function installedBy(files: readonly { readonly path: string }[], recordOf: (path: string) => string | null) {
+function installedBy(marks: MetadataMarks, recordOf: (path: string) => string | null) {
   const paths = new Set<string>();
   const folders = new Set<string>();
-  const marks = new Map(
-    files.flatMap(({ path }) => {
-      const segments = path.split("/");
-      const at = segments.findIndex((seg, i) => i < segments.length - 1 && METADATA.test(seg));
-      if (at === -1) return [];
-      const folder = segments[at] ?? "";
-      const site = segments
-        .slice(0, at)
-        .map((seg) => `${seg}/`)
-        .join("");
-      return [[`${site}${folder}/`, { site, name: folder.replace(PAST_NAME, "") }] as const];
-    }),
-  );
   for (const [meta, { site, name }] of marks) {
     folders.add(meta);
     const record = recordOf(`${meta}RECORD`) ?? recordOf(`${meta}installed-files.txt`);
@@ -120,9 +110,10 @@ function installedBy(files: readonly { readonly path: string }[], recordOf: (pat
 
 function filterOwn(
   files: readonly { readonly path: string; readonly bytes: number }[],
+  marks: MetadataMarks,
   recordOf: (path: string) => string | null,
 ): string[] {
-  const installed = installedBy(files, recordOf);
+  const installed = installedBy(marks, recordOf);
   const homes = [
     ...new Set(files.map(({ path }) => path.slice(0, path.search(INTERPRETER_HOME) + 1))),
   ].filter(Boolean);
@@ -139,9 +130,21 @@ function filterOwn(
     .map(({ path }) => path);
 }
 
-function dirMode(mode: "all" | "site" | "count", name: string): "all" | "site" | "count" {
-  if (mode === "all") return SKIP_DIR.test(name) ? "count" : SITE_DIR.test(name) ? "site" : "all";
-  return mode === "site" && METADATA.test(name) ? "all" : "count";
+function isInterpreterHome(dir: string): boolean {
+  const lib = join(dir, "lib");
+  if (!existsSync(lib) || !lstatSync(lib).isDirectory()) return false;
+  return readdirSync(lib, { withFileTypes: true }).some(
+    (entry) =>
+      entry.isDirectory() && PYTHON_LIB.test(entry.name) && readdirSync(join(lib, entry.name)).length > 0,
+  );
+}
+
+function dirMode(mode: "all" | "site" | "count", name: string, child: string): "all" | "site" | "count" {
+  if (mode !== "all") return "count";
+  if (SKIP_DIR.test(name) || name.endsWith(".libs") || METADATA.test(name) || isInterpreterHome(child)) {
+    return "count";
+  }
+  return SITE_DIR.test(name) ? "site" : "all";
 }
 
 function walkTree(state: string, scope: "full" | "own") {
@@ -150,14 +153,20 @@ function walkTree(state: string, scope: "full" | "own") {
   if (!existsSync(tree)) return { root: tree, paths: empty, brokenLinks: 0, treeFiles: 0 };
   const root = realpathSync(tree);
   const files: { path: string; bytes: number }[] = [];
+  const marks = new Map<string, { readonly site: string; readonly name: string }>();
   let [brokenLinks, treeFiles] = [0, 0];
   const walk = (dir: string, prefix: string, mode: "all" | "site" | "count"): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       treeFiles += 1;
       if (entry.isDirectory()) {
-        const next = dirMode(mode, entry.name);
+        const child = join(dir, entry.name);
+        if (mode !== "count" && METADATA.test(entry.name)) {
+          const site = prefix === "" ? "" : `${prefix}/`;
+          marks.set(`${site}${entry.name}/`, { site, name: entry.name.replace(PAST_NAME, "") });
+        }
+        const next = dirMode(mode, entry.name, child);
         if (next !== "count" || scope === "full") {
-          walk(join(dir, entry.name), next === "count" ? "" : join(prefix, entry.name), next);
+          walk(child, next === "count" ? "" : join(prefix, entry.name), next);
         }
       } else if (entry.isSymbolicLink() && !existsSync(join(dir, entry.name))) {
         brokenLinks += 1;
@@ -174,7 +183,7 @@ function walkTree(state: string, scope: "full" | "own") {
   walk(root, "", "all");
   const recordOf = (path: string) =>
     existsSync(join(root, path)) ? readFileSync(join(root, path), "utf8") : null;
-  return { root, paths: filterOwn(files, recordOf).toSorted(), brokenLinks, treeFiles };
+  return { root, paths: filterOwn(files, marks, recordOf).toSorted(), brokenLinks, treeFiles };
 }
 
 /** Files a harness wrote under `.toolchain/`, excluding installed packages and binaries. */
@@ -183,8 +192,8 @@ export function ownFiles(state: string): { readonly root: string; readonly paths
 }
 
 /** Written files (programs + guide), broken link count, tree entry count, and line size of one harness. */
-export function writtenFiles(state: string) {
-  const { root, paths, brokenLinks, treeFiles } = walkTree(state, "full");
+export function writtenFiles(state: string, scope: "full" | "own" = "full") {
+  const { root, paths, brokenLinks, treeFiles } = walkTree(state, scope);
   const guideFile = join(state, GUIDE_PATH);
   const entries = [
     ...paths.map((path) => [path, join(root, path)] as const),
@@ -270,11 +279,17 @@ export function spansOf(
 ) {
   const spans = new Map<string, Set<string>>();
   if (wanted?.size === 0) return { spans, common: 0 };
-  const starts = wanted === null ? null : new Set([...wanted].map((span) => span.split(" ", 1)[0] ?? ""));
+  const pairs = wanted === null || length < 2 ? null : new Map<string, Set<string>>();
+  if (wanted !== null && pairs !== null) {
+    for (const span of wanted) {
+      const [first = "", second = ""] = span.split(" ", 2);
+      pairs.set(first, (pairs.get(first) ?? new Set()).add(second));
+    }
+  }
   const streams = tasks.flatMap(({ name, strings }) => strings.map((text) => [name, wordsOf(text)] as const));
   for (const [name, words] of streams) {
     for (let from = 0; from + length <= words.length; from += 1) {
-      if (starts !== null && !starts.has(words[from] ?? "")) continue;
+      if (pairs !== null && pairs.get(words[from] ?? "")?.has(words[from + 1] ?? "") !== true) continue;
       const span = words.slice(from, from + length).join(" ");
       if (wanted === null || wanted.has(span)) spans.set(span, (spans.get(span) ?? new Set()).add(name));
     }

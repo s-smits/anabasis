@@ -5,13 +5,6 @@
  *
  *   bun tools/wri/names.ts <log>
  *   bun tools/wri/names.ts --log <log> [--harness <prefix>]
- *
- * The Builder's one limit is that no part of a harness names a task, copies its text or holds its
- * answer (`src/builder/prompt.ts`), and no production check reads it. Without this a lane 15
- * session scans own programs for it by hand, and such a scan can be refused for walking the
- * checkout or giving an interpreter a campaign's path. The files read are what the
- * harness wrote (`writtenIn`, `tools/wri/trajectory.ts`: the guide and its own programs, nothing it
- * installed). A word matches whole: `x-1-3` is not found inside `x-1-31`.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { QUOTE_WORDS, quotedSpans, spansOf, stringsIn } from "#src/harness/files.ts";
@@ -29,8 +22,8 @@ const OPTIONS = { log: "text", harness: "text" } as const;
 const MIN_TOKEN = 6;
 const RARE = 2;
 const PREFIX_CHARS = 8;
-/** A word of a file or an input: letters, digits and inner `-`, `_`, `.` or `:`. */
 const WORD = /[\p{L}\p{N}_](?:[\p{L}\p{N}_.:-]*[\p{L}\p{N}_])?/gu;
+const SPAN_WORD = /[a-z0-9]+/gu;
 const IDENTIFIER = /\d|[_.:]|^.+\p{Lu}/u;
 const HEX = /^[0-9a-f]{8,64}$/;
 
@@ -50,8 +43,41 @@ interface Hit {
   readonly tasks: readonly string[];
 }
 
-/** The tokens to look for, by their text, with the tasks each names; and the plain words left out. */
-function tokensOf(events: readonly LogEvent[]) {
+/** Read kept states once and collect candidate identifiers and quote spans present in their files. */
+function loadKept(states: string, only: string | null) {
+  const wantedWords = new Set<string>();
+  const wantedSpans = new Set<string>();
+  const unique = new Set<string>();
+  const loaded = keptStates(states)
+    .filter((each) => only === null || each.startsWith(only))
+    .map((digest) => {
+      const files = writtenIn(join(states, digest));
+      const entries = [...files].flatMap(([path, file]): [string, string][] => {
+        if (lstatSync(file).isSymbolicLink()) return [];
+        const whole = readFileSync(file, "utf8");
+        if (!unique.has(whole)) {
+          unique.add(whole);
+          for (const word of whole.match(WORD) ?? []) {
+            if ((word.length >= MIN_TOKEN && IDENTIFIER.test(word)) || HEX.test(word)) wantedWords.add(word);
+          }
+          const words = whole.toLowerCase().match(SPAN_WORD) ?? [];
+          for (let from = 0; from + QUOTE_WORDS <= words.length; from += 1) {
+            wantedSpans.add(words.slice(from, from + QUOTE_WORDS).join(" "));
+          }
+        }
+        return [[path, whole]];
+      });
+      return { digest, files: files.size, entries };
+    });
+  return { loaded, wantedWords, wantedSpans };
+}
+
+/** The tokens and quote spans of public inputs, restricted to candidates present in kept states. */
+function tokensOf(
+  events: readonly LogEvent[],
+  wantedWords: ReadonlySet<string>,
+  wantedSpans: ReadonlySet<string>,
+) {
   const tokens = new Map<string, Token>();
   const add = (kind: Kind, text: string, task: string) => {
     const token = tokens.get(text) ?? { kind, text, tasks: new Set<string>() };
@@ -62,22 +88,29 @@ function tokensOf(events: readonly LogEvent[]) {
   const families = new Map<string, Set<string>>();
   const versions = new Map<string, string>();
   const inputs: { name: string; strings: readonly string[] }[] = [];
-  for (const { version, taskId, family, input } of proposedTasks(events)) {
+  const tasks = proposedTasks(events);
+  const scanWords = new Set(wantedWords);
+  for (const { taskId, family } of tasks) {
+    if (taskId !== null) scanWords.add(taskId);
+    if (isString(family)) scanWords.add(family);
+  }
+  const hasKept = wantedWords.size > 0 || wantedSpans.size > 0;
+  for (const { version, taskId, family, input } of tasks) {
     const name = taskId ?? version.slice(0, PREFIX_CHARS);
     versions.set(version, name);
     if (taskId !== null) add("id", taskId, name);
     if (isString(family)) families.set(family, (families.get(family) ?? new Set()).add(name));
+    if (!hasKept) continue;
     const strings = stringsIn(input?.publicInput);
     inputs.push({ name, strings });
-    for (const word of strings.flatMap((text) => text.match(WORD) ?? [])) {
+    for (const word of strings.flatMap((text) => text.match(WORD) ?? []).filter((w) => scanWords.has(w))) {
       publics.set(word, (publics.get(word) ?? new Set()).add(name));
     }
   }
-  let plain = 0;
   for (const [word, holders] of publics) {
-    if (tokens.has(word) || word.length < MIN_TOKEN || holders.size > RARE) continue;
-    if (IDENTIFIER.test(word)) for (const task of holders) add("public", word, task);
-    else plain += 1;
+    if (!tokens.has(word) && word.length >= MIN_TOKEN && holders.size <= RARE && IDENTIFIER.test(word)) {
+      for (const task of holders) add("public", word, task);
+    }
   }
   const byPrefix = Map.groupBy(versions, ([version]) => version.slice(0, PREFIX_CHARS));
   const escaped = (name: string) => name.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
@@ -91,72 +124,80 @@ function tokensOf(events: readonly LogEvent[]) {
     familyRules.length === 0
       ? null
       : bounded(`(?:${familyRules.map(({ family }) => escaped(family)).join("|")})`);
-  return { tokens, publics, versions, byPrefix, familyRules, familyAny, plain, phrases: spansOf(inputs) };
+  return {
+    tokens,
+    publics,
+    versions,
+    byPrefix,
+    familyRules,
+    familyAny,
+    phrases: spansOf(inputs, QUOTE_WORDS, wantedSpans),
+  };
 }
 
-/** What one word of a file names: a task id or public identifier, and the versions it begins. */
-function wordHits(word: string, known: ReturnType<typeof tokensOf>): Omit<Hit, "path" | "line">[] {
-  const token = known.tokens.get(word);
-  // HEX takes no word shorter than a printed prefix, so a short hex word names no version.
-  const named = HEX.test(word)
-    ? (known.byPrefix.get(word.slice(0, PREFIX_CHARS)) ?? []).filter(([version]) => version.startsWith(word))
-    : [];
+/** Scan one file's text, caching hits across kept states that share identical file bytes. */
+function scanText(whole: string, known: ReturnType<typeof tokensOf>): Omit<Hit, "path">[] {
+  const hits = whole.split("\n").flatMap((text, at): Omit<Hit, "path">[] => {
+    const line = at + 1;
+    const words = [...new Set(text.match(WORD))].flatMap((word): Omit<Hit, "path">[] => {
+      const token = known.tokens.get(word);
+      const named = HEX.test(word)
+        ? (known.byPrefix.get(word.slice(0, PREFIX_CHARS)) ?? []).filter(([v]) => v.startsWith(word))
+        : [];
+      return [
+        ...(token === undefined ? [] : [{ line, kind: token.kind, text: word, tasks: [...token.tasks] }]),
+        ...(named.length === 0
+          ? []
+          : [{ line, kind: "version" as const, text: word, tasks: named.map(([, task]) => task) }]),
+      ];
+    });
+    const families =
+      known.familyAny?.test(text) === true
+        ? known.familyRules
+            .filter(({ rule }) => rule.test(text))
+            .map(({ family, tasks }) => ({ line, kind: "family" as const, text: family, tasks }))
+        : [];
+    return [...words, ...families];
+  });
   return [
-    ...(token === undefined ? [] : [{ kind: token.kind, text: word, tasks: [...token.tasks] }]),
-    ...(named.length === 0
-      ? []
-      : [{ kind: "version" as const, text: word, tasks: named.map(([, task]) => task) }]),
+    ...hits,
+    ...quotedSpans("", whole, known.phrases.spans).map(({ line, text, tasks }) => ({
+      line,
+      kind: "phrase" as const,
+      text,
+      tasks,
+    })),
   ];
-}
-
-/** The hits in one kept state's own files. */
-function hitsIn(state: string, known: ReturnType<typeof tokensOf>): { files: number; hits: Hit[] } {
-  const files = writtenIn(state);
-  const hits: Hit[] = [];
-  // A link names another file of the tree, whose words are read under that file's own path.
-  for (const [path, file] of files) {
-    if (lstatSync(file).isSymbolicLink()) continue;
-    const whole = readFileSync(file, "utf8");
-    for (const [at, text] of whole.split("\n").entries()) {
-      const line = at + 1;
-      hits.push(
-        ...[...new Set(text.match(WORD))].flatMap((word) =>
-          wordHits(word, known).map((hit) => ({ path, line, ...hit })),
-        ),
-        ...(known.familyAny?.test(text) === true
-          ? known.familyRules
-              .filter(({ rule }) => rule.test(text))
-              .map(({ family, tasks }) => ({ path, line, kind: "family" as const, text: family, tasks }))
-          : []),
-      );
-    }
-    hits.push(
-      ...quotedSpans(path, whole, known.phrases.spans).map((hit) => ({ kind: "phrase" as const, ...hit })),
-    );
-  }
-  return { files: files.size, hits };
 }
 
 /** The rows: a header, then a block a kept state with a line a hit. */
 export function nameRows(events: readonly LogEvent[], states: string, only: string | null = null): string[] {
-  const known = tokensOf(events);
+  const { loaded, wantedWords, wantedSpans } = loadKept(states, only);
+  const known = tokensOf(events, wantedWords, wantedSpans);
   const { held, released } = taskSets(events);
   const heldNames = new Set(held.map((version) => known.versions.get(version)));
   const practised = new Set(released.map((version) => known.versions.get(version)));
   const marked = (task: string) =>
     `${task} (${practised.has(task) ? "practice" : heldNames.has(task) ? "held out" : "neither set"})`;
-  const kept = keptStates(states).filter((each) => only === null || each.startsWith(only));
-  const scanned = kept.map((digest) => ({ digest, ...hitsIn(join(states, digest), known) }));
+  const byContent = new Map<string, Omit<Hit, "path">[]>();
+  const scanned = loaded.map(({ digest, files, entries }) => ({
+    digest,
+    files,
+    hits: entries.flatMap(([path, whole]) => {
+      const cached = byContent.get(whole) ?? scanText(whole, known);
+      byContent.set(whole, cached);
+      return cached.map((hit) => ({ path, ...hit }));
+    }),
+  }));
   const holders = new Map<string, number>();
   for (const { hits } of scanned) {
     for (const text of new Set(hits.map((hit) => hit.text))) holders.set(text, (holders.get(text) ?? 0) + 1);
   }
-  const kinds = [...known.tokens.values()];
-  const count = (kind: Kind) => String(kinds.filter((token) => token.kind === kind).length);
+  const ids = [...known.tokens.values()].filter((token) => token.kind === "id").length;
   return [
-    `names: where the files each kept harness wrote name a task, word by word, or copy its public input; looked for ${count("id")} task ids, ${String(known.versions.size)} version prefixes, ${String(known.familyRules.length)} families, ${count("public")} identifiers of public inputs (${String(known.plain)} plain words left out) and ${String(known.phrases.spans.size)} spans of ${String(QUOTE_WORDS)} words of public inputs (${String(known.phrases.common)} spans every task shares left out)`,
+    `names: where the files each kept harness wrote name a task, word by word, or copy its public input; looked for ${String(ids)} task ids, ${String(known.versions.size)} version prefixes, ${String(known.familyRules.length)} families, plus rare public-input identifiers and ${String(QUOTE_WORDS)}-word spans across ${String(loaded.length)} kept harnesses`,
     "harness  path:line  kind  length  kept versions holding it  public inputs holding it  tasks",
-    ...(kept.length === 0 ? [`no kept harness under ${states}`] : []),
+    ...(loaded.length === 0 ? [`no kept harness under ${states}`] : []),
     ...scanned.flatMap(({ digest, files, hits }) => [
       `${digest.slice(0, 8)}  ${String(files)} written files, ${String(hits.length)} hits`,
       ...hits.map((hit) => {

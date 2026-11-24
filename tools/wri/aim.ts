@@ -27,22 +27,28 @@
  */
 import { epochsOf, tasksByEpoch } from "#src/campaign/climb.ts";
 import { gapAgainst, type Paired } from "#src/kernel/compare.ts";
-import { conditionsOf } from "#src/kernel/condition.ts";
 import { OPENING, proposalsOf, writersOf } from "#src/kernel/history.ts";
-import type { LogEvent } from "#src/kernel/log.ts";
-import { lastReports, pairsReported, poolOf, type Reported } from "#src/kernel/reports.ts";
-import { solvesIn } from "#src/kernel/solves.ts";
-import { type Call, callsOf, tracesIn } from "#src/kernel/trace.ts";
+import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
+import { poolOf } from "#src/kernel/reports.ts";
+import { type Call, callsOf } from "#src/kernel/trace.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { countBy, median } from "#src/meta/tally.ts";
+import { type Index, indexOf } from "./folds.ts";
 
 /** Where a writing session's home held the reference harness, under code that laid a copy there. */
 const REFERENCE_HOME = "reference-harness";
 
 /** A comparison's last report with the pairs it tallied. */
 interface PairedReport {
-  readonly report: Reported;
+  readonly session: string;
+  readonly data: JsonObject;
   readonly pairs: readonly Paired[];
+}
+
+interface KeyedEvent {
+  readonly index: number;
+  readonly value: string;
+  readonly data: JsonObject;
 }
 
 /** One Examiner writing session (an ask, `exam.started`), as the log records it. */
@@ -86,15 +92,20 @@ interface ExamSession {
 
 /** What `examSessionsOf` reads once for every session. */
 interface Gathered {
+  readonly total: number;
   readonly epochs: ReturnType<typeof epochsOf>;
   readonly admitted: ReadonlySet<string>;
-  readonly proposals: ReturnType<typeof proposalsOf>;
+  readonly proposalsBy: ReadonlyMap<string | null, readonly ReturnType<typeof proposalsOf>[number][]>;
   readonly starterReads: ReadonlySet<string>;
-  readonly calls: readonly Call[];
+  readonly callsBy: ReadonlyMap<string, readonly Call[]>;
+  readonly anyCall: boolean;
   readonly anyTry: boolean;
   /** Each solve's harness, by the session or comparison its start names. */
   readonly tries: ReadonlyMap<string, readonly string[]>;
   readonly reported: readonly PairedReport[];
+  readonly finishedBy: ReadonlyMap<string, readonly KeyedEvent[]>;
+  readonly reports: readonly KeyedEvent[];
+  readonly promoted: readonly KeyedEvent[];
 }
 
 /** Per writer and harness, over every comparison's tallied pairs. */
@@ -112,58 +123,62 @@ interface Measured {
 }
 
 const NOT_RECORDED = "not recorded";
+const str = (value: unknown): string | null => (isString(value) ? value : null);
+const orNone = (value: string): string => (value === "" ? "none" : value);
+const keyed = (events: readonly LogEvent[], kind: LogEvent["kind"], field: "session" | "harness") =>
+  eventsOf(events, kind).flatMap(({ index, event: { data } }) => {
+    const value = data[field];
+    return isString(value) ? [{ index, value, data }] : [];
+  });
 
 /** A harness by its digest's prefix, the starter marked where the reports name one. */
 const labelOf = (digest: string, starter: string | null) =>
   `${digest === "starter" ? digest : digest.slice(0, 8)}${digest === starter ? " starter" : ""}`;
-
-/** The pairs every comparison's last report tallied, read once. */
-function pairedReports(events: readonly LogEvent[]): PairedReport[] {
-  return lastReports(events).map((report) => ({ report, pairs: pairsReported(events, report) }));
-}
 
 /** The reference in force at event `index`, by the epochs of the climb. */
 function referenceAt(epochs: ReturnType<typeof epochsOf>, index: number): string {
   return epochs.findLast(({ from }) => from <= index)?.reference ?? "starter";
 }
 
-function readOnce(events: readonly LogEvent[], reported: readonly PairedReport[]): Gathered {
+function readOnce(
+  log: Index,
+  reported: readonly PairedReport[],
+): { readonly gathered: Gathered; readonly starts: readonly KeyedEvent[] } {
+  const { events } = log;
   const epochs = epochsOf(events);
-  const calls = callsOf(tracesIn(events), "exam");
-  // An Examiner's tries are no counted solve (`countedSolves`), so they are read with their
-  // conditions here rather than through `ranUnder`, which leaves them out.
-  const conditions = conditionsOf(events);
-  const tries = Map.groupBy(solvesIn(events), ({ start }) =>
-    isString(start.comparison) ? start.comparison : "",
-  );
+  const calls = callsOf(log.traces, "exam");
+  const tries = Map.groupBy(log.solves, ({ comparison }) => comparison ?? "");
   return {
-    epochs,
-    admitted: new Set(tasksByEpoch(events).flat()),
-    proposals: proposalsOf(events),
-    starterReads: new Set(epochs.flatMap(({ starter_read: found }) => (found === null ? [] : [found]))),
-    calls,
-    anyTry: calls.some(({ tool }) => tool === "try_reference"),
-    tries: new Map(
-      [...tries].map(([named, solves]) => [
-        named,
-        solves.map(({ condition }) => conditions.get(condition)?.harness ?? NOT_RECORDED),
-      ]),
-    ),
-    reported,
+    starts: keyed(events, "exam.started", "session"),
+    gathered: {
+      total: events.length,
+      epochs,
+      admitted: new Set(tasksByEpoch(events).flat()),
+      proposalsBy: Map.groupBy(proposalsOf(events), ({ session }) => session),
+      starterReads: new Set(epochs.flatMap(({ starter_read: found }) => (found === null ? [] : [found]))),
+      callsBy: Map.groupBy(calls, ({ id }) => id),
+      anyCall: calls.length > 0,
+      anyTry: calls.some(({ tool }) => tool === "try_reference"),
+      tries: new Map(
+        [...tries].map(([named, solves]) => [
+          named,
+          solves.map(({ condition }) => log.conditions.get(condition)?.harness ?? NOT_RECORDED),
+        ]),
+      ),
+      reported,
+      finishedBy: Map.groupBy(keyed(events, "exam.finished", "session"), ({ value }) => value),
+      reports: keyed(events, "comparison.reported", "session"),
+      promoted: keyed(events, "harness.promoted", "harness"),
+    },
   };
 }
 
-/** One session of `events`, whose start is at `index`. */
-function sessionAt(events: readonly LogEvent[], index: number, session: string, log: Gathered): ExamSession {
-  const data: JsonObject = events[index]?.data ?? {};
-  const end = events.findIndex(
-    (event, at) => at > index && event.kind === "exam.finished" && event.data.session === session,
-  );
-  const until = end === -1 ? events.length : end;
-  const endData = events[end]?.data;
-  const ended = endData?.ended;
-  const billed = isNumber(endData?.billed) ? endData.billed : null;
-  const proposedRows = log.proposals.filter((each) => each.session === session);
+/** One session of `events`, whose start is at `started`. */
+function sessionAt(started: KeyedEvent, log: Gathered): ExamSession {
+  const { index, value: session, data } = started;
+  const endRow = log.finishedBy.get(session)?.find((each) => each.index > index);
+  const until = endRow === undefined ? log.total : endRow.index;
+  const proposedRows = log.proposalsBy.get(session) ?? [];
   const proposed = proposedRows.map(({ version }) => version);
   const admitted = proposed.filter((version) => log.admitted.has(version));
   const admittedSet = new Set(admitted);
@@ -173,72 +188,51 @@ function sessionAt(events: readonly LogEvent[], index: number, session: string, 
       ({ family }) => family ?? "",
     ),
   );
-  const own = log.calls.filter(({ id }) => id === session);
+  const own = log.callsBy.get(session) ?? [];
   const shells = own.filter(({ tool }) => tool === "bash");
   const tryAnswers = own.filter(({ tool }) => tool === "try_answer");
-  const lastReport = events.findLast(
-    (event, at) => at < index && event.kind === "comparison.reported" && isString(event.data.session),
-  )?.data.session;
   const tries = new Map<string, number>();
   for (const harness of log.tries.get(session) ?? []) tries.set(harness, (tries.get(harness) ?? 0) + 1);
   return {
     session,
-    conversation: isString(data.conversation) ? data.conversation : null,
+    conversation: str(data.conversation),
     started: index + 1,
-    finished: end === -1 ? null : end + 1,
-    ended: end === -1 ? null : isString(ended) ? ended : NOT_RECORDED,
+    finished: endRow === undefined ? null : endRow.index + 1,
+    ended: endRow === undefined ? null : (str(endRow.data.ended) ?? NOT_RECORDED),
     reference: {
       start: referenceAt(log.epochs, index),
-      finish: end === -1 ? null : referenceAt(log.epochs, end),
+      finish: endRow === undefined ? null : referenceAt(log.epochs, endRow.index),
     },
-    promotedWithin: events.flatMap((event, at) =>
-      at > index && at < until && event.kind === "harness.promoted" && isString(event.data.harness)
-        ? [event.data.harness]
-        : [],
-    ),
-    lastReport: isString(lastReport) ? lastReport : null,
+    promotedWithin: log.promoted
+      .filter((each) => each.index > index && each.index < until)
+      .map(({ value }) => value),
+    lastReport: log.reports.findLast((each) => each.index < index)?.value ?? null,
     referenceHome: data.referenceHome === true,
     tryCalls: log.anyTry ? own.filter(({ tool }) => tool === "try_reference").length : null,
     tries,
-    referenceShell:
-      log.calls.length === 0
-        ? null
-        : {
-            naming: shells.filter(({ args }) => {
-              const command = isString(args) ? args : asRecord(args)?.command;
-              return isString(command) && command.includes(REFERENCE_HOME);
-            }).length,
-            of: shells.length,
-          },
+    referenceShell: log.anyCall
+      ? {
+          naming: shells.filter(({ args }) => {
+            const command = str(args) ?? str(asRecord(args)?.command);
+            return command?.includes(REFERENCE_HOME) === true;
+          }).length,
+          of: shells.length,
+        }
+      : null,
     proposed,
     admitted,
-    familySpread: { distinct: famCounts.length, top: famCounts.length === 0 ? 0 : Math.max(...famCounts) },
+    familySpread: { distinct: famCounts.length, top: Math.max(0, ...famCounts) },
     friction: {
       tryAnswers: tryAnswers.length,
       tryErrors: tryAnswers.filter(({ isError }) => isError).length,
       bashErrors: shells.filter(({ isError }) => isError).length,
     },
-    billed,
-    scoredIn: log.reported.flatMap(({ report, pairs }) => {
-      const tasks = pairs.filter(({ task }) => admitted.includes(task)).length;
-      return tasks === 0
-        ? []
-        : [{ comparison: report.session, tasks, starterRead: log.starterReads.has(report.session) }];
+    billed: isNumber(endRow?.data.billed) ? endRow.data.billed : null,
+    scoredIn: log.reported.flatMap(({ session: comparison, pairs }) => {
+      const tasks = pairs.filter(({ task }) => admittedSet.has(task)).length;
+      return tasks === 0 ? [] : [{ comparison, tasks, starterRead: log.starterReads.has(comparison) }];
     }),
   };
-}
-
-/** Every Examiner writing session of `events`, in the order they started: what each could read
- *  (the reference in force, the last report, its home, its tries and shell calls) and what it wrote
- *  (tasks proposed and admitted, and the comparisons that tallied them). */
-function examSessionsOf(
-  events: readonly LogEvent[],
-  reported: readonly PairedReport[] = pairedReports(events),
-): ExamSession[] {
-  const log = readOnce(events, reported);
-  return events.flatMap(({ kind, data }, index) =>
-    kind === "exam.started" && isString(data.session) ? [sessionAt(events, index, data.session, log)] : [],
-  );
 }
 
 function sessionLines(each: ExamSession, starter: string | null): string[] {
@@ -249,25 +243,27 @@ function sessionLines(each: ExamSession, starter: string | null): string[] {
     each.promotedWithin.length === 0
       ? "none promoted within"
       : `promoted within: ${each.promotedWithin.map(label).join(", ")}`;
-  const tries =
-    [...each.tries].map(([harness, count]) => `${String(count)} under ${label(harness)}`).join(", ") ||
-    "none";
+  const tries = orNone(
+    [...each.tries].map(([harness, count]) => `${String(count)} under ${label(harness)}`).join(", "),
+  );
   const shell =
     referenceShell === null
       ? NOT_RECORDED
       : `${String(referenceShell.naming)} of ${String(referenceShell.of)}`;
-  const scored =
+  const scored = orNone(
     each.scoredIn
       .map(
         ({ comparison, tasks, starterRead }) =>
           `${comparison}${starterRead ? " (starter read)" : ""} ${String(tasks)}`,
       )
-      .join(", ") || "none";
+      .join(", "),
+  );
   const span = each.finished === null ? "open" : `${String(each.finished)} (${each.ended ?? NOT_RECORDED})`;
-  const costPart =
-    each.billed === null
-      ? "billed n/a"
-      : `billed $${each.billed.toFixed(2)}${each.admitted.length > 0 ? ` ($${(each.billed / each.admitted.length).toFixed(2)}/held)` : " (zero-yield)"}`;
+  const perHeld =
+    each.billed !== null && each.admitted.length > 0
+      ? ` ($${(each.billed / each.admitted.length).toFixed(2)}/held)`
+      : " (zero-yield)";
+  const costPart = each.billed === null ? "billed n/a" : `billed $${each.billed.toFixed(2)}${perHeld}`;
   const famPart =
     each.familySpread.distinct === 0
       ? "families none"
@@ -284,8 +280,10 @@ function tick(row: Measured, pair: Paired, side: "old" | "fresh", best: number |
   const rule = pair.objective;
   if (rule === undefined) return;
   row.tasks.add(pair.task);
-  row.valid += pair[side].filter(Boolean).length;
-  row.invalid += pair[side].filter((valid) => !valid).length;
+  for (const ok of pair[side]) {
+    if (ok) row.valid += 1;
+    else row.invalid += 1;
+  }
   for (const measure of rule[side]) {
     if (measure === null || best === null) continue;
     row.againstBest += 1;
@@ -301,13 +299,13 @@ function measuredOf(events: readonly LogEvent[], reported: readonly PairedReport
   const writers = writersOf(events);
   const bests = poolOf(events).bests;
   const rows = new Map<string, Measured>();
-  for (const { report, pairs } of reported) {
-    const starter = isString(report.data.starter) ? report.data.starter : null;
+  for (const { session, data, pairs } of reported) {
+    const starter = str(data.starter);
     for (const pair of pairs) {
       const writer = writers.get(pair.task) ?? OPENING;
       for (const side of ["old", "fresh"] as const) {
-        const digest = report.data[side];
-        if (!isString(digest) || pair.objective === undefined) continue;
+        const digest = str(data[side]);
+        if (digest === null || pair.objective === undefined) continue;
         const harness = labelOf(digest, starter);
         const key = `${writer} ${harness}`;
         const row = rows.get(key) ?? {
@@ -322,7 +320,7 @@ function measuredOf(events: readonly LogEvent[], reported: readonly PairedReport
           ratios: [],
         };
         rows.set(key, row);
-        row.comparisons.add(report.session);
+        row.comparisons.add(session);
         tick(row, pair, side, bests.get(pair.task) ?? null);
       }
     }
@@ -346,10 +344,16 @@ function tableLines(rows: readonly Measured[], order: readonly string[]): string
 
 /** The reader's whole output for one log. */
 export function aimRows(events: readonly LogEvent[]): string[] {
-  const reported = pairedReports(events);
-  const sessions = examSessionsOf(events, reported);
+  const log = indexOf(events);
+  const reported = log.compared.map((each) => ({
+    session: each.session,
+    data: each.last,
+    pairs: each.pairs(),
+  }));
+  const { starts, gathered } = readOnce(log, reported);
+  const sessions = starts.map((started) => sessionAt(started, gathered));
   if (sessions.length === 0) return ["aim: the log holds no Examiner writing session"];
-  const starter = reported.map(({ report }) => report.data.starter).find(isString) ?? null;
+  const starter = reported.map(({ data }) => data.starter).find(isString) ?? null;
   const unrecorded = sessions.some(
     ({ tryCalls, referenceShell }) => tryCalls === null || referenceShell === null,
   );

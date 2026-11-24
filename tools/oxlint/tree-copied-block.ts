@@ -5,6 +5,7 @@
 import * as ts from "typescript5";
 import type { TreeFinding } from "./tree-findings.ts";
 
+const K = ts.SyntaxKind;
 const SKIPPED_PATH =
   /(?:^|\/)(?:test|tests|__tests__|fixtures?|__mocks__)\/|\.(?:test|spec)\.|(?:^|\/)(?:vendor|vendored|third[-_]party|migrations?|examples?)\/|(?:^|[/._-])legacy[._-][^/]*$/iu;
 /** A file's opening comment when nobody edits it by hand, or it is kept as its upstream wrote it. */
@@ -15,13 +16,34 @@ const TOKEN_FLOOR = 64;
 const LINE_FLOOR = 3;
 const DIVERGENT_WORDS = 5;
 const DATA_SHARE = 0.5;
-/** Places a detail names before it counts the rest. */
 const NAMED_PLACES = 3;
+
+const DECL_KINDS = new Set([K.VariableDeclaration, K.Parameter, K.BindingElement]);
+const NAMED_KINDS = new Set([K.FunctionDeclaration, K.ClassDeclaration]);
+const METHOD_KINDS = new Set([K.FunctionDeclaration, K.MethodDeclaration]);
+const FN_VALUE_KINDS = new Set([K.ArrowFunction, K.FunctionExpression]);
+const STRING_KINDS = new Set([K.StringLiteral, K.NoSubstitutionTemplateLiteral]);
+const PROP_KINDS = new Set([K.PropertyAccessExpression, K.PropertyAssignment]);
+const WRAPPER_KINDS = new Set([
+  K.AsExpression,
+  K.SatisfiesExpression,
+  K.NonNullExpression,
+  K.ParenthesizedExpression,
+]);
+const BLOCK_KINDS = new Set([K.Block, K.CaseClause, K.DefaultClause]);
+const LITERAL_KINDS = new Set([
+  K.StringLiteral,
+  K.NumericLiteral,
+  K.NoSubstitutionTemplateLiteral,
+  K.TemplateHead,
+  K.TemplateMiddle,
+  K.TemplateTail,
+]);
+const DATA_KINDS = new Set([K.ObjectLiteralExpression, K.ArrayLiteralExpression]);
 
 interface Place {
   path: string;
   host: string;
-  /** The statement list, and the run of it this place spans. */
   statements: readonly ts.Statement[];
   first: number;
   last: number;
@@ -38,37 +60,46 @@ export function boundNames(fn: ts.FunctionLikeDeclaration): Set<string> {
     else for (const element of name.elements) if (!ts.isOmittedExpression(element)) bind(element.name);
   };
   const walk = (node: ts.Node): void => {
-    if (ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isBindingElement(node)) bind(node.name);
-    else if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name) {
-      names.add(node.name.text);
-    } else if (ts.isCatchClause(node) && node.variableDeclaration) bind(node.variableDeclaration.name);
+    if (DECL_KINDS.has(node.kind)) {
+      // SAFETY: `DECL_KINDS` enumerates the three declarations carrying `.name: ts.BindingName`.
+      bind((node as ts.VariableDeclaration).name);
+    } else if (NAMED_KINDS.has(node.kind)) {
+      // SAFETY: `NAMED_KINDS` enumerates `FunctionDeclaration` and `ClassDeclaration`.
+      const name = (node as ts.FunctionDeclaration).name;
+      if (name !== undefined) names.add(name.text);
+    } else if (ts.isCatchClause(node) && node.variableDeclaration !== undefined) {
+      bind(node.variableDeclaration.name);
+    }
     ts.forEachChild(node, walk);
   };
   for (const parameter of fn.parameters) bind(parameter.name);
-  if (fn.body) walk(fn.body);
+  if (fn.body !== undefined) walk(fn.body);
   return names;
 }
 
-const pushMap = <K, V>(map: Map<K, V[]>, key: K, item: V) => map.get(key)?.push(item) ?? map.set(key, [item]);
+const pushMap = <Key, Value>(map: Map<Key, Value[]>, key: Key, item: Value) => {
+  const list = map.get(key);
+  if (list === undefined) map.set(key, [item]);
+  else list.push(item);
+};
 
-/** The functions a finding can name, each with its name. An anonymous callback is its host's. */
 function hostsOf(file: ts.SourceFile): [string, ts.FunctionLikeDeclaration][] {
   const hosts: [string, ts.FunctionLikeDeclaration][] = [];
   const visit = (node: ts.Node): void => {
-    if (
-      (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node)) &&
-      node.body !== undefined &&
-      node.name &&
-      ts.isIdentifier(node.name)
-    ) {
-      hosts.push([node.name.text, node]);
+    if (METHOD_KINDS.has(node.kind)) {
+      // SAFETY: `METHOD_KINDS` enumerates `FunctionDeclaration` and `MethodDeclaration`.
+      const fn = node as ts.FunctionDeclaration | ts.MethodDeclaration;
+      if (fn.body !== undefined && fn.name !== undefined && ts.isIdentifier(fn.name)) {
+        hosts.push([fn.name.text, fn]);
+      }
     } else if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
-      node.initializer &&
-      (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
+      node.initializer !== undefined &&
+      FN_VALUE_KINDS.has(node.initializer.kind)
     ) {
-      hosts.push([node.name.text, node.initializer]);
+      // SAFETY: `FN_VALUE_KINDS` enumerates `ArrowFunction` and `FunctionExpression`.
+      hosts.push([node.name.text, node.initializer as ts.ArrowFunction | ts.FunctionExpression]);
     }
     ts.forEachChild(node, visit);
   };
@@ -76,23 +107,18 @@ function hostsOf(file: ts.SourceFile): [string, ts.FunctionLikeDeclaration][] {
   return hosts;
 }
 
-/** A node as the comparison reads it: kinds, bound names as one token, literals as their kind. */
 function spell(node: ts.Node, bound: ReadonlySet<string>, out: string[]): string[] {
-  if (ts.isTypeNode(node) || ts.isTypeParameterDeclaration(node)) return out;
+  if (ts.isTypeNode(node) || node.kind === K.TypeParameter) return out;
   if (ts.isIdentifier(node)) {
     const { parent } = node;
-    const field =
-      (ts.isPropertyAccessExpression(parent) || ts.isPropertyAssignment(parent)) && parent.name === node;
+    // SAFETY: `PROP_KINDS` enumerates `PropertyAccessExpression` and `PropertyAssignment`, both having `.name`.
+    const field = PROP_KINDS.has(parent.kind) && (parent as ts.PropertyAccessExpression).name === node;
     out.push(bound.has(node.text) && !field ? "I" : `N:${node.text}`);
-  } else if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) out.push("S");
-  else if (ts.isNumericLiteral(node)) out.push("#");
-  else if (
-    ts.isAsExpression(node) ||
-    ts.isSatisfiesExpression(node) ||
-    ts.isNonNullExpression(node) ||
-    ts.isParenthesizedExpression(node)
-  ) {
-    spell(node.expression, bound, out);
+  } else if (STRING_KINDS.has(node.kind)) out.push("S");
+  else if (node.kind === K.NumericLiteral) out.push("#");
+  else if (WRAPPER_KINDS.has(node.kind)) {
+    // SAFETY: every kind in `WRAPPER_KINDS` wraps an `.expression: ts.Expression`.
+    spell((node as ts.ParenthesizedExpression).expression, bound, out);
   } else {
     out.push(String(node.kind));
     ts.forEachChild(node, (child) => {
@@ -103,7 +129,6 @@ function spell(node: ts.Node, bound: ReadonlySet<string>, out: string[]): string
   return out;
 }
 
-/** Every run of two or more statements of one file, keyed by its spelling. */
 function unitsOf(path: string, file: ts.SourceFile, into: Map<string, Place[]>): void {
   const lineOf = (position: number): number => file.getLineAndCharacterOfPosition(position).line + 1;
   for (const [host, fn] of hostsOf(file)) {
@@ -125,41 +150,53 @@ function unitsOf(path: string, file: ts.SourceFile, into: Map<string, Place[]>):
           if (stop === undefined) break;
           key = Bun.hash(`${key}|${stop.text}`).toString(36);
           tokens += stop.tokens;
-          if (tokens < TOKEN_FLOOR) continue;
-          const place = { path, host, statements, first, last, tokens, line: start.line, end: stop.end };
-          pushMap(into, key, place);
+          if (tokens >= TOKEN_FLOOR) {
+            pushMap(into, key, {
+              path,
+              host,
+              statements,
+              first,
+              last,
+              tokens,
+              line: start.line,
+              end: stop.end,
+            });
+          }
         }
       }
     };
     const collect = (node: ts.Node): void => {
-      if (ts.isBlock(node) || ts.isCaseClause(node) || ts.isDefaultClause(node)) runs(node.statements);
+      if (BLOCK_KINDS.has(node.kind)) {
+        // SAFETY: `BLOCK_KINDS` enumerates `Block`, `CaseClause`, and `DefaultClause`, all having `.statements`.
+        runs((node as ts.Block).statements);
+      }
       if (node === fn.body || !ts.isFunctionLike(node)) ts.forEachChild(node, collect);
     };
-    if (fn.body) collect(fn.body);
+    if (fn.body !== undefined) collect(fn.body);
   }
 }
 
-/** A place's literals in order, and the share of its nodes inside object and array literals. */
 function contentOf(place: Place): { literals: string[]; data: number } {
   const literals: string[] = [];
   let [nodes, data] = [0, 0];
   const walk = (node: ts.Node, within: "data" | "code"): void => {
-    if (ts.isTypeNode(node) || ts.isTypeParameterDeclaration(node)) return;
-    [nodes, data] = [nodes + 1, data + (within === "data" ? 1 : 0)];
-    if (ts.isStringLiteral(node) || ts.isNumericLiteral(node) || ts.isTemplateLiteralToken(node)) {
-      literals.push(node.text);
+    if (ts.isTypeNode(node) || node.kind === K.TypeParameter) return;
+    nodes += 1;
+    data += Number(within === "data");
+    if (LITERAL_KINDS.has(node.kind)) {
+      // SAFETY: every kind in `LITERAL_KINDS` is a literal token carrying `.text: string`.
+      literals.push((node as ts.LiteralLikeNode).text);
       return;
     }
-    const literal = ts.isObjectLiteralExpression(node) || ts.isArrayLiteralExpression(node);
+    const next = DATA_KINDS.has(node.kind) ? "data" : within;
     ts.forEachChild(node, (child) => {
-      walk(child, literal ? "data" : within);
+      walk(child, next);
     });
   };
   for (const statement of place.statements.slice(place.first, place.last + 1)) walk(statement, "code");
   return { literals, data: data / Math.max(nodes, 1) };
 }
 
-/** Whether the places are one shape filled with different content: a table, not a copy of work. */
 function saysDifferentThings(places: readonly Place[]): boolean {
   const [first, ...others] = places.map(contentOf);
   if (first === undefined || first.literals.length === 0) return false;
@@ -175,7 +212,7 @@ function saysDifferentThings(places: readonly Place[]): boolean {
 /** One row per copied block, at its first place, naming the others. */
 export function copiedBlocks(parsed: ReadonlyMap<string, ts.SourceFile>): TreeFinding[] {
   const groups = new Map<string, Place[]>();
-  for (const [path, file] of [...parsed].toSorted(([a], [b]) => (a < b ? -1 : 1))) {
+  for (const [path, file] of [...parsed].toSorted(([a], [b]) => a.localeCompare(b))) {
     if (SKIPPED_PATH.test(path)) continue;
     if (!OPTED_OUT.test(file.text.slice(0, file.statements[0]?.getStart(file)))) unitsOf(path, file, groups);
   }
@@ -197,7 +234,7 @@ export function copiedBlocks(parsed: ReadonlyMap<string, ts.SourceFile>): TreeFi
     const packages = Map.groupBy(distinct, (place) => /^packages\/[^/]+\//u.exec(place.path)?.[0] ?? "");
     const kept = [...packages.values()]
       .reduce((best, one) => (one.length > best.length ? one : best), [])
-      .toSorted((a, b) => (a.path === b.path ? a.line - b.line : a.path < b.path ? -1 : 1));
+      .toSorted((a, b) => a.path.localeCompare(b.path) || a.line - b.line);
     const [first, ...others] = kept;
     if (
       first === undefined ||

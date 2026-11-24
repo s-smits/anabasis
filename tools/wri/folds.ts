@@ -4,7 +4,7 @@
  */
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
-import type { LogEvent } from "#src/kernel/log.ts";
+import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { type Paired, type Tally, testOf, unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { lastReports, poolOf, pairsReported, referenceOf } from "#src/kernel/reports.ts";
 import { type Traced, tracesIn } from "#src/kernel/trace.ts";
@@ -144,6 +144,8 @@ export const BUILD_END = "build.finished";
 export const EXAM_START = "exam.started";
 export const EXAM_END = "exam.finished";
 export const REPORTED = "comparison.reported";
+const COMPARISON_STARTED = "comparison.started";
+const INDEX_CACHE = new WeakMap<readonly LogEvent[], Index>();
 
 /** Every trigger this reader can print, and the lane it starts. `lanes.md` names each one in the
  *  `Starts from` paragraph of that lane, and `test/wri-readers.test.ts` holds the two together. */
@@ -306,14 +308,15 @@ export const strings = (value: JsonValue | undefined): string[] => items(value).
  *  solver's flag is its side's own fail, as the comparison counts it. */
 export const measured = (solve: Solve): boolean => ["pass", "fail", "flagged"].includes(solve.outcome ?? "");
 export const share = (part: number, whole: number): string => `${String(part)} of ${String(whole)}`;
-/** A tally as `wins-losses-ties`. */
 /** `tallies` summed. */
 export function summed(tallies: readonly Tally[]): Tally {
-  return {
-    wins: tallies.reduce((total, { wins }) => total + wins, 0),
-    losses: tallies.reduce((total, { losses }) => total + losses, 0),
-    ties: tallies.reduce((total, { ties }) => total + ties, 0),
-  };
+  const out = { wins: 0, losses: 0, ties: 0 };
+  for (const { wins, losses, ties } of tallies) {
+    out.wins += wins;
+    out.losses += losses;
+    out.ties += ties;
+  }
+  return out;
 }
 
 export const wlt = ({ wins, losses, ties }: Tally): string =>
@@ -348,7 +351,7 @@ function solvesOf(
   conditions: ReadonlyMap<string, Condition>,
 ): Solve[] {
   const begun = new Map(
-    events.flatMap(({ kind, data }) => (kind === "comparison.started" ? [[data.session, data]] : [])),
+    eventsOf(events, COMPARISON_STARTED).map(({ event: { data } }) => [data.session, data] as const),
   );
   const tries = examinerSessions(events);
   const solves = new Map(
@@ -405,24 +408,24 @@ function solvesOf(
 function buildsOf(events: readonly LogEvent[], traces: readonly Traced[]): Build[] {
   const builds: Build[] = [];
   const bySession = new Map<string, Build>();
-  for (const [index, { kind, data }] of events.entries()) {
-    const session = text(data.session);
-    if (kind === "build.started") {
+  for (const { index, event } of eventsOf(events, ["build.started", BUILD_END])) {
+    const session = text(event.data.session);
+    if (event.kind === "build.started") {
       const last = builds.at(-1);
       if (last !== undefined) last.until = index;
       const build: Build = {
         session,
         from: index,
         until: events.length,
-        parent: text(data.parent),
+        parent: text(event.data.parent),
         finished: null,
         calls: [],
       };
       builds.push(build);
       bySession.set(session, build);
-    } else if (kind === BUILD_END) {
+    } else {
       const build = bySession.get(session);
-      if (build !== undefined) build.finished = data;
+      if (build !== undefined) build.finished = event.data;
     }
   }
   for (const call of traces) {
@@ -433,10 +436,10 @@ function buildsOf(events: readonly LogEvent[], traces: readonly Traced[]): Build
 }
 
 export function indexOf(events: readonly LogEvent[]): Index {
+  const cached = INDEX_CACHE.get(events);
+  if (cached !== undefined) return cached;
   const conditions = conditionsOf(events);
-  const last = (kind: LogEvent["kind"]) =>
-    new Map(events.flatMap((event) => (event.kind === kind ? [[text(event.data.solve), event.data]] : [])));
-  const of = (kind: LogEvent["kind"]) => events.flatMap((event) => (event.kind === kind ? [event.data] : []));
+  const of = (kind: LogEvent["kind"]) => eventsOf(events, kind).map(({ event }) => event.data);
   const { states, held, released } = taskSets(events);
   const traces = tracesIn(events);
   const solves = solvesOf(events, traces, conditions);
@@ -452,13 +455,14 @@ export function indexOf(events: readonly LogEvent[]): Index {
       solve.role = "practice";
     }
   }
-  return {
+  const rulings = new Map(of("referee.finding").map((data) => [text(data.solve), data] as const));
+  const built: Index = {
     events,
     conditions,
     solves,
     traces,
     verdicts: verdictsOf(events),
-    rulings: last("referee.finding"),
+    rulings,
     stands: standsOf(events),
     states,
     builds,
@@ -467,6 +471,8 @@ export function indexOf(events: readonly LogEvent[]): Index {
     released,
     of,
   };
+  INDEX_CACHE.set(events, built);
+  return built;
 }
 
 /**
@@ -475,19 +481,20 @@ export function indexOf(events: readonly LogEvent[]): Index {
  * read from its round's own window of the log, as that round counted them.
  */
 function comparedOf(events: readonly LogEvent[], log: Pick<Index, "solves" | "builds">): Compared[] {
+  const beganBy = new Map<JsonValue | undefined, number>();
+  for (const { index, event } of eventsOf(events, COMPARISON_STARTED)) {
+    if (!beganBy.has(event.data.session)) beganBy.set(event.data.session, index);
+  }
+  const checkpoints = eventsOf(events, "build.checkpoint");
   return lastReports(events).map(({ session, index: at, data: last }) => {
-    const began = events.findIndex(
-      ({ kind, data }) => kind === "comparison.started" && data.session === session,
-    );
+    const began = beganBy.get(session) ?? -1;
     const own = events[at]?.data ?? last;
     // A comparison the campaign command runs is a session of its own (`g-N`), and the round it
-    // measured is the Builder session that left its new harness. Read by name alone, no comparison
-    // would have a round, and every trigger of a session's comparison would read nothing.
-    // A led Builder freezes a harness for a comparison inside its conversation (`build.checkpoint`),
-    // which may never end.
+    // measured is the Builder session that left its new harness. A led Builder freezes a harness
+    // for a comparison inside its conversation (`build.checkpoint`), which may never end.
     const frozen = new Set(
-      events.flatMap(({ kind, data }, index) =>
-        kind === "build.checkpoint" && index < at && data.harness === own.fresh ? [data.session] : [],
+      checkpoints.flatMap(({ index, event: { data } }) =>
+        index < at && data.harness === own.fresh ? [data.session] : [],
       ),
     );
     const makers = log.builds.filter(
@@ -725,10 +732,11 @@ export function taskTriggers(log: Index): Trigger[] {
   const passed = admissions.filter((data) => heldAtGate(data.outcome)).length;
   // Each task `out` (released) a comparison started after its release named (`tasks` holds the retained).
   const [out, late] = [new Set<string>(), new Set<string>()];
-  for (const { kind, data } of log.events) {
-    if (kind === "task.state" && data.state === "released") out.add(text(data.version));
-    const named = kind === "comparison.started" ? strings(data.tasks) : [];
-    for (const one of named.filter((task) => out.has(task))) late.add(one);
+  for (const { event } of eventsOf(log.events, ["task.state", COMPARISON_STARTED])) {
+    if (event.kind === "task.state" && event.data.state === "released") out.add(text(event.data.version));
+    else if (event.kind === COMPARISON_STARTED) {
+      for (const one of strings(event.data.tasks).filter((task) => out.has(task))) late.add(one);
+    }
   }
   const lateSaid = `${share(late.size, out.size)} released tasks scored after their release:`;
   const reasons = countBy(
@@ -752,14 +760,22 @@ export function taskTriggers(log: Index): Trigger[] {
   );
   const sequences = new Set(quick.map((solve) => solve.calls.join(">"))).size;
   // Each Examiner session's tasks still held at the end, under the reference then, and the reports before it.
+  const heldSet = new Set(log.held);
+  const examOpened = new Map<string, number>();
+  for (const { index, event } of eventsOf(log.events, EXAM_START)) {
+    const session = text(event.data.session);
+    if (!examOpened.has(session)) examOpened.set(session, index);
+  }
+  const reportedAt = eventsOf(log.events, REPORTED).map(({ index }) => index);
   const bySession = Map.groupBy(proposed, (data) => text(data.session));
   const heard = [...bySession].flatMap(([session, tasks]) => {
     const said = countBy(
-      tasks.filter((data) => log.held.includes(text(data.version))),
+      tasks.filter((data) => heldSet.has(text(data.version))),
       (data) => outcomes.get(text(data.version)) ?? "not compared",
     );
-    const opened = log.events.findIndex(({ kind, data }) => kind === EXAM_START && data.session === session);
-    const before = log.events.slice(0, opened).filter(({ kind }) => kind === REPORTED).length;
+    const opened = examOpened.get(session) ?? -1;
+    const limit = opened < 0 ? log.events.length - 1 : opened;
+    const before = reportedAt.filter((at) => at < limit).length;
     return Object.keys(said).length === 0
       ? []
       : [`${session}, opened after ${plural(before, "report")}: ${tally(said)}`];

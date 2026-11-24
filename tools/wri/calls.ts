@@ -29,7 +29,7 @@
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { familiesOf } from "#src/kernel/history.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
+import { eventsOf, type LogEvent, read } from "#src/kernel/log.ts";
 import type { Call } from "#src/kernel/trace.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
@@ -78,13 +78,13 @@ interface Row {
  *  sides of a comparison of one harness; an Examiner session's reference solve; or none of these. */
 function sidesOf(events: readonly LogEvent[]): (solve: Solve) => Side {
   const sides = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "comparison.started" && isString(data.session) ? [[data.session, data] as const] : [],
+    eventsOf(events, "comparison.started").flatMap(({ event: { data } }) =>
+      isString(data.session) ? [[data.session, data] as const] : [],
     ),
   );
   const exams = new Set(
-    events.flatMap(({ kind, data }) =>
-      kind === "exam.started" && isString(data.session) ? [data.session] : [],
+    eventsOf(events, "exam.started").flatMap(({ event: { data } }) =>
+      isString(data.session) ? [data.session] : [],
     ),
   );
   return (solve) => {
@@ -115,13 +115,19 @@ function callsBySolve(index: Index, filters: Filters) {
     if (solve === undefined || (filters.harness !== null && !solve.harness.startsWith(filters.harness))) {
       continue;
     }
-    const command = asRecord(each.args)?.command;
-    const said = isString(command) ? command : capturedJsonStringify(each.args);
-    if (filters.command !== null && !filters.command.test(said)) continue;
+    if (filters.command !== null) {
+      const command = asRecord(each.args)?.command;
+      if (!filters.command.test(isString(command) ? command : capturedJsonStringify(each.args))) continue;
+    }
     if (filters.output !== null && !filters.output.test(each.text)) continue;
     const ran = callPrograms(each);
     if (filters.program !== null && !ran.programs.includes(filters.program)) continue;
-    kept.set(each.id, [...(kept.get(each.id) ?? []), { call: each, ran }]);
+    let list = kept.get(each.id);
+    if (list === undefined) {
+      list = [];
+      kept.set(each.id, list);
+    }
+    list.push({ call: each, ran });
   }
   return { solves, kept };
 }

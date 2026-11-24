@@ -25,7 +25,7 @@
  * split a tally by measure in their own scripts, which can disagree on one comparison: one counting
  * the objective where both answers were valid, the other everywhere.
  */
-import type { LogEvent } from "#src/kernel/log.ts";
+import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import {
   differenceOf,
   flipP,
@@ -53,6 +53,13 @@ const UNNAMED = "not recorded";
 const EXACTLY = 1e-6;
 
 type Measure = (pair: Paired) => number;
+interface ScoreContext {
+  readonly family: ReadonlyMap<string, string | null>;
+  readonly verdicts: ReadonlyMap<string, Judged>;
+  readonly reports: readonly Reported[];
+  readonly starts: ReturnType<typeof eventsOf>;
+  readonly taskEvents: ReturnType<typeof eventsOf>;
+}
 const MEASURES: readonly (readonly [string, Measure])[] = [
   ["recounted", differenceOf],
   ["validity alone", (pair) => wholePoints(pointsOf(pair).validity)],
@@ -118,25 +125,20 @@ function stepLines(scores: readonly number[], level: number): string[] {
   ];
 }
 
-/**
- * The scores by whether a task of the same family (the Examiner's own label; a task that names none
- * has none) had been released for practice before the comparison began, or before its report where
- * no start is on record, since a harness can climb on the kinds of task its Builder practised alone.
- * The second line is the same split over the tasks no earlier report tested, the one to sum over a
- * campaign, since a Builder compares candidates one after another on the tasks held. It decides nothing.
- */
+/** The scores by whether a task of the same family was released for practice before the comparison began. */
 function practisedLines(
-  events: readonly LogEvent[],
+  { family, reports, starts, taskEvents }: ScoreContext,
   { session, index }: Reported,
   tested: readonly Paired[],
   scores: readonly number[],
 ): string[] {
-  const began = events.findLastIndex(
-    ({ kind, data }, at) => at < index && kind === STARTED && data.session === session,
-  );
-  const family = familiesOf(events);
+  const began =
+    starts.findLast(({ index: at, event }) => at < index && event.data.session === session)?.index ?? -1;
+  const cut = began === -1 ? index : began;
   const practised = new Set(
-    taskSets(events.slice(0, began === -1 ? index : began)).released.map((version) => family.get(version)),
+    taskSets(taskEvents.flatMap(({ index: at, event }) => (at < cut ? [event] : []))).released.map(
+      (version) => family.get(version),
+    ),
   );
   const split = (counted: (task: string) => boolean) => {
     const [kin, none] = [true, false].map((wanted) =>
@@ -149,9 +151,7 @@ function practisedLines(
     return `a task of the family was practice before the start ${tallied(kin ?? [])}; none was ${tallied(none ?? [])}`;
   };
   const before = new Set(
-    lastReports(events)
-      .filter((report) => report.index < index)
-      .flatMap(({ data }) => testedOf(data).of),
+    reports.filter((report) => report.index < index).flatMap(({ data }) => testedOf(data).of),
   );
   const first = (task: string) => !before.has(task);
   return [
@@ -203,11 +203,7 @@ function repeatLine(pairs: readonly Paired[], verdicts: ReadonlyMap<string, Judg
 }
 
 /** The block of one reported comparison. */
-function reportedLines(
-  events: readonly LogEvent[],
-  report: Reported,
-  verdicts: ReadonlyMap<string, Judged>,
-): string[] {
+function reportedLines(events: readonly LogEvent[], report: Reported, ctx: ScoreContext): string[] {
   const { data, session } = report;
   const level = isNumber(data.level) ? data.level : LEVEL;
   const reading = isString(data.reading) ? data.reading : UNNAMED;
@@ -231,7 +227,7 @@ function reportedLines(
   const objTally = objectiveMeasure === undefined ? "none" : tallied(tested.map(objectiveMeasure));
   const step = readsStep(recorded, level);
   const sparePart = step ? `; spare ${String(spareOf(recorded, level))} wins` : "";
-  const repeat = repeatLine(pairs, verdicts);
+  const repeat = repeatLine(pairs, ctx.verdicts);
   const lines = [
     `${head} · validity ${valTally} · objective ${objTally} · A/A ${testSaid(data.noise)}${sparePart}`,
     `  recorded: ${tallied(differences)} over ${String(differences.length)} tested tasks; the report's A/A ${testSaid(data.noise)}`,
@@ -242,14 +238,14 @@ function reportedLines(
     ),
     ...(repeat === null ? [] : [`  ${repeat}`]),
     `  every new solve beat every reference solve: ${String(tested.filter(beatsAll).length)} of ${String(tested.length)} tasks`,
-    ...practisedLines(events, report, tested, recorded),
+    ...practisedLines(ctx, report, tested, recorded),
   ];
   return step ? [...lines, ...stepLines(recorded, level)] : lines;
 }
 
 /** The block of a comparison begun with no report: the solves it began, by harness, and how many ended. */
-function absentLines(events: readonly LogEvent[], session: string): string[] {
-  const begun = solvesIn(events).filter(({ start }) => start.comparison === session);
+function absentLines(solves: ReturnType<typeof solvesIn>, session: string): string[] {
+  const begun = solves.filter(({ start }) => start.comparison === session);
   const ended = begun.filter(({ finished }) => finished !== null).length;
   return [
     `${session}: report absent (cut short or still open); nothing is recounted`,
@@ -259,17 +255,27 @@ function absentLines(events: readonly LogEvent[], session: string): string[] {
 
 /** Each comparison's block, in the order the log began them. */
 export function scoreRows(events: readonly LogEvent[]): string[] {
-  const reports = new Map(lastReports(events).map((report) => [report.session, report]));
+  const allReports = lastReports(events);
+  const reports = new Map(allReports.map((report) => [report.session, report]));
   const sessions = [...new Set([...startedComparisons(events), ...reports.keys()])];
   if (sessions.length === 0) return ["scores: no comparison on record"];
-  const verdicts = verdictsOf(events);
+  const ctx: ScoreContext = {
+    family: familiesOf(events),
+    verdicts: verdictsOf(events),
+    reports: allReports,
+    starts: eventsOf(events, STARTED),
+    taskEvents: eventsOf(events, ["task.proposed", "task.gate", "task.state"]),
+  };
+  let solves: ReturnType<typeof solvesIn> | undefined;
   return [
     "scores (lane 6): each comparison's task scores recounted by this tree's differenceOf, measure splits, A/A halves, answer/objective repetition, practised-family split, and step sensitivity.",
     ...sessions.flatMap((session) => {
       const report = reports.get(session);
-      return report === undefined || asRecord(report.data) === null
-        ? absentLines(events, session)
-        : reportedLines(events, report, verdicts);
+      if (report === undefined || asRecord(report.data) === null) {
+        solves ??= solvesIn(events);
+        return absentLines(solves, session);
+      }
+      return reportedLines(events, report, ctx);
     }),
   ];
 }

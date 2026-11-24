@@ -19,7 +19,7 @@ import {
 } from "#src/kernel/compare.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
 import { OPENING, proposalsOf } from "#src/kernel/history.ts";
-import type { LogEvent } from "#src/kernel/log.ts";
+import { eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { lastReports, pairsReported, poolOf, type Reported } from "#src/kernel/reports.ts";
 import { ended, passed, type Ran, ranUnder } from "#src/kernel/solves.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
@@ -53,6 +53,7 @@ interface Context {
   readonly retained: ReadonlySet<string>;
   readonly writers: ReadonlyMap<string, { readonly session: string; readonly family: string }>;
   readonly ran: ReadonlyMap<string, Counted>;
+  readonly byTask: ReadonlyMap<string, readonly Counted[]>;
   readonly stored: ReadonlyMap<string, number>;
   readonly aa: ReadonlyMap<string, Paired>;
   readonly self: ReadonlyMap<string, Paired>;
@@ -208,12 +209,10 @@ function pairRow(context: Context, pair: Paired): string {
 
 /** The row of a task the report did not tally: each side's counted solves, and no score. */
 function unpairedRow(context: Context, part: string, task: string, sides: readonly [string, string]): string {
-  const solves = [...context.ran.values()].filter(
-    ({ start, under }) => start.comparison === context.session && under.task === task,
-  );
-  const of = (harness: string) => solves.filter(({ under }) => under.harness === harness);
+  const solves = context.byTask.get(`${context.session}\0${task}`) ?? [];
   const said = (harness: string) =>
-    of(harness)
+    solves
+      .filter(({ under }) => under.harness === harness)
       .map((solve) => (passed(solve) === true ? PASS : endingOf(solve)))
       .join(",") || NONE;
   return [
@@ -376,7 +375,7 @@ function comparisonRows(
   events: readonly LogEvent[],
   start: JsonObject,
   report: Reported | undefined,
-  shared: Pick<Context, "writers" | "ran" | "bests">,
+  shared: Pick<Context, "writers" | "ran" | "byTask" | "bests">,
   grain: Grain = null,
 ): string[] {
   const data = report?.data ?? start;
@@ -428,8 +427,8 @@ function comparisonRows(
 export function pairRows(events: readonly LogEvent[]): string[] {
   const reports = new Map(lastReports(events).map((report) => [report.session, report]));
   const starts = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "comparison.started" && isString(data.session) ? [[data.session, data] as const] : [],
+    eventsOf(events, "comparison.started").flatMap(({ event: { data } }) =>
+      isString(data.session) ? [[data.session, data] as const] : [],
     ),
   );
   const writers = new Map(
@@ -439,16 +438,17 @@ export function pairRows(events: readonly LogEvent[]): string[] {
     ]),
   );
   const { bests } = poolOf(events);
-  const ran = new Map(
-    ended(ranUnder(events)).flatMap((solve) =>
-      solve.under.side === "test" ? [[solve.id, solve] as const] : [],
-    ),
+  const testSolves = ended(ranUnder(events)).filter((solve) => solve.under.side === "test");
+  const ran = new Map(testSolves.map((solve) => [solve.id, solve] as const));
+  const byTask = Map.groupBy(
+    testSolves,
+    ({ start, under }) => `${isString(start.comparison) ? start.comparison : ""}\0${under.task}`,
   );
   const grains = new Map(
     campaignOf(events).steps.flatMap((step) => (step.step === "comparison" ? [[step.id, step.grain]] : [])),
   );
   const rows = [...starts].flatMap(([session, start]) =>
-    comparisonRows(events, start, reports.get(session), { writers, ran, bests }, grains.get(session)),
+    comparisonRows(events, start, reports.get(session), { writers, ran, byTask, bests }, grains.get(session)),
   );
   const unaligned = [...reports.values()].filter(
     ({ data }) => asRecord(data.noise) !== null && storedOf(data).size === 0,

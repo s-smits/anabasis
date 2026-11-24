@@ -3,12 +3,6 @@
  * (lane 17), replacing the separate `budget`, `waits`, and `routes` readers in one `Index` pass:
  *
  *   bun tools/wri/wri.ts reader execution --log <log>
- *
- * For each comparison side (`old`, `new`, or `both` for an A/A control): endings, turns against
- * bound, wall seconds and deadline share, tool-call wait share for passes and misses, route
- * diversity (median calls and distinct tool orders per pass), tool error and non-zero exit rates,
- * solver compactions, long shell calls, solve-queue hours, and median load per core. Also reports
- * tool-call wait share for Builder, Examiner, and drafting sessions.
  */
 import { AT_A_LIMIT } from "#src/kernel/reports.ts";
 import type { Call, Traced } from "#src/kernel/trace.ts";
@@ -17,7 +11,6 @@ import { isNumber, isString } from "#src/meta/json-shape.ts";
 import { median } from "#src/meta/tally.ts";
 import { type Index, measured, type Solve } from "./folds.ts";
 
-/** A call running at least this share of the shell's default timeout counts as a long call. */
 const LONG_CALL = 0.95;
 const SIDES = new Set(["old", "new", "both"]);
 const SESSION_SEATS: ReadonlySet<string> = new Set(["build", "exam", "draft"]);
@@ -33,14 +26,12 @@ const said = (value: number | null, digits = 0) => (value === null ? "none" : va
 export const percent = (value: number | null) =>
   value === null ? "none" : `${String(Math.round(value * 100))}%`;
 
-/** Milliseconds spent inside at least one tool call, merging overlapping call intervals. */
 function insideMs(calls: readonly Traced[]): number {
   const spans = calls
     .filter(isTimedCall)
     .map(({ at, ms }) => [Date.parse(at) - ms, Date.parse(at)] as const)
     .toSorted(([one], [other]) => one - other);
-  let total = 0;
-  let reached = Number.NEGATIVE_INFINITY;
+  let [total, reached] = [0, Number.NEGATIVE_INFINITY];
   for (const [from, until] of spans) {
     total += Math.max(0, until - Math.max(from, reached));
     reached = Math.max(reached, until);
@@ -48,7 +39,6 @@ function insideMs(calls: readonly Traced[]): number {
   return total;
 }
 
-/** Median share of solve wall time spent inside tool calls for `solves`. */
 function waitShare(solves: readonly Solve[], tracesBySolve: ReadonlyMap<string, readonly Traced[]>): string {
   const shares = solves.flatMap((solve) => {
     const calls = tracesBySolve.get(solve.id) ?? [];
@@ -60,7 +50,10 @@ function waitShare(solves: readonly Solve[], tracesBySolve: ReadonlyMap<string, 
   return middle === null ? "none" : `${middle.toFixed(2)} (${String(shares.length)})`;
 }
 
-/** Pre-computed per-solve trace metrics: timed calls, long shell calls, non-zero exits, compactions. */
+function bump(counts: Map<string, number>, id: string): void {
+  counts.set(id, (counts.get(id) ?? 0) + 1);
+}
+
 function traceStatsOf(index: Index) {
   const bySolve = new Map<string, Traced[]>();
   const long = new Map<string, number>();
@@ -73,22 +66,19 @@ function traceStatsOf(index: Index) {
     if (list === undefined) bySolve.set(each.id, [each]);
     else list.push(each);
     if (each.part === "compacted") {
-      compacted.set(each.id, (compacted.get(each.id) ?? 0) + 1);
+      bump(compacted, each.id);
       continue;
     }
     if (each.part !== "call") continue;
-    if (NONZERO.test(each.text)) nonzero.set(each.id, (nonzero.get(each.id) ?? 0) + 1);
+    if (NONZERO.test(each.text)) bump(nonzero, each.id);
     const solve = solves.get(each.id);
     const limit =
       solve === undefined ? undefined : index.conditions.get(solve.condition)?.limits.shellDefaultSeconds;
-    if (each.ms !== null && isNumber(limit) && each.ms >= limit * 1000 * LONG_CALL) {
-      long.set(each.id, (long.get(each.id) ?? 0) + 1);
-    }
+    if (each.ms !== null && isNumber(limit) && each.ms >= limit * 1000 * LONG_CALL) bump(long, each.id);
   }
   return { bySolve, long, nonzero, compacted };
 }
 
-/** One comparison side's compact pulse-friendly summary line and full telemetry line. */
 function sideLines(
   name: string,
   solves: readonly Solve[],
@@ -106,14 +96,17 @@ function sideLines(
   const shares = done.flatMap((solve) => (solve.wallSeconds > 0 ? [solve.seconds / solve.wallSeconds] : []));
   const seconds = done.map((solve) => solve.seconds);
   const loads = solves.flatMap((solve) =>
-    solve.load === null || solve.cores === null || solve.cores === 0 ? [] : [solve.load / solve.cores],
+    solve.load !== null && solve.cores !== null && solve.cores > 0 ? [solve.load / solve.cores] : [],
   );
-  const atLimit = solves.filter((solve) => AT_A_LIMIT.has(solve.kind)).length;
-  const totalCalls = solves.reduce((sum, solve) => sum + solve.calls.length, 0);
-  const totalErrors = solves.reduce((sum, solve) => sum + solve.errors, 0);
-  const totalNonzero = solves.reduce((sum, solve) => sum + (stats.nonzero.get(solve.id) ?? 0), 0);
-  const totalLong = solves.reduce((sum, solve) => sum + (stats.long.get(solve.id) ?? 0), 0);
-  const totalCompact = solves.reduce((sum, solve) => sum + (stats.compacted.get(solve.id) ?? 0), 0);
+  let [atLimit, totalCalls, totalErrors, totalNonzero, totalLong, totalCompact] = [0, 0, 0, 0, 0, 0];
+  for (const solve of solves) {
+    atLimit += Number(AT_A_LIMIT.has(solve.kind));
+    totalCalls += solve.calls.length;
+    totalErrors += solve.errors;
+    totalNonzero += stats.nonzero.get(solve.id) ?? 0;
+    totalLong += stats.long.get(solve.id) ?? 0;
+    totalCompact += stats.compacted.get(solve.id) ?? 0;
+  }
   const passCalls = median(passes.map(({ calls }) => calls.length));
   const routes = new Set(passes.map(({ calls }) => calls.join(" "))).size;
   const errPct = totalCalls === 0 ? "0%" : percent(totalErrors / totalCalls);
@@ -135,9 +128,10 @@ export function executionRows(index: Index): string[] {
   }
   const waited = new Map<string, number>();
   for (const { comparison, harness, ms } of index.of("campaign.waited")) {
-    if (!isString(comparison) || !isString(harness) || !isNumber(ms)) continue;
-    const key = `${comparison} ${harness}`;
-    waited.set(key, (waited.get(key) ?? 0) + ms / HOUR_MS);
+    if (isString(comparison) && isString(harness) && isNumber(ms)) {
+      const key = `${comparison} ${harness}`;
+      waited.set(key, (waited.get(key) ?? 0) + ms / HOUR_MS);
+    }
   }
   const stats = traceStatsOf(index);
   const groups = Map.groupBy(

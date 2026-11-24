@@ -3,17 +3,9 @@
  * (lane 22), and where the campaign's hours, dollars and silences went (lane 23).
  * Role hours are elapsed open spans and can overlap. Every recorded wait, a provider's reset
  * (its grace minute included), a network wait and a solve-queue wait, joins one union, and the hours
- * a promotion stand with and without it, since subtracting one kind of wait alone leaves hours a
- * promotion far above what every recorded wait leaves.
- *
- * - a miss is read at every limit the kernel calls one (`AT_A_LIMIT`), by comparison and by side,
- *   rather than at the deadline alone, which reads none of the misses that end on turns;
- * - a silence is read against the campaign's own median solve and labelled by what ran through
- *   it, rather than at a fixed twenty minutes with only the first given, by its time, which reads
- *   nothing on a campaign of quick solves;
- * - the hours are read by role beside the billed dollars.
+ * a promotion stand with and without it.
  */
-import type { LogEvent } from "#src/kernel/log.ts";
+import { type EventKind, eventsOf, type LogEvent } from "#src/kernel/log.ts";
 import { AT_A_LIMIT } from "#src/kernel/reports.ts";
 import { degradations, type Turn, tracesIn } from "#src/kernel/trace.ts";
 import { roleOf, spendOf } from "#src/kernel/meter.ts";
@@ -37,45 +29,34 @@ import {
 } from "./folds.ts";
 import { heldOff } from "#tools/runs/view.ts";
 
-/** How long a load sample is taken to stand for: a solve starts every few minutes while one runs,
- *  and a stretch with none, such as a Builder's own turns, is counted as unloaded. */
 const SAMPLE_MS = 15 * 60_000;
-/** The events after which a recorded provider or network wait is over (`waitsOf`). */
-const ONWARD: ReadonlySet<string> = new Set(["campaign.ended", "build.started", "exam.started"]);
-
-/** The share of a deadline past which a miss is read as bound by it, as v1's climb read it. */
+const ONWARD: ReadonlySet<EventKind> = new Set(["campaign.ended", "build.started", "exam.started"]);
+const WAIT_SCAN_KINDS: readonly EventKind[] = ["campaign.waited", ...ONWARD];
+const LOAD_SCAN_KINDS: readonly EventKind[] = ["solve.started", "solve.finished", "campaign.waited"];
 const DEADLINE_BOUND_SHARE = 0.95;
-/** The factor between the loads two comparisons ran under from which they are read as made on
- *  different hosts, and the load under which no factor is worth a line: a load of four moves no
- *  deadline on a host of four cores or more, while a heavy load can more than double one harness's
- *  median time on the same tasks. */
 const LOAD_MOVED = 2;
 const LOAD_WORTH_A_LINE = 4;
-/** A task's two mirrored orders of slots, `o` for the reference harness and `f` for the new one,
- *  repeated: the round puts the reference first in one slot and the new harness in the next, and
- *  starts every other task the other way (`unsolvedJobs`, `src/campaign/round.ts`). */
 const MIRRORS = ["offo", "foof"] as const;
-/** A silence is a gap between two events longer than this many of the campaign's median finished
- *  solve, and never shorter than the floor. A gap that long is no solve's ordinary pace. The floor
- *  holds a pack of quick solves to gaps a person would ask about, since gaps of a few minutes are
- *  common and nearly all a Builder's or a solver's command. */
 const SILENCE_SOLVES = 5;
 const SILENCE_FLOOR_SECONDS = 600;
 const SILENCES_NAMED = 5;
-/** Events written within this many milliseconds of a gap's end are the one move that ended it: an
- *  Examiner's turn is logged a few milliseconds after the task it proposed. */
 const BURST_MS = 1000;
-/** Where each part of the campaign's hours starts and ends. A part a stop cut ends at the
- *  campaign's ending, or at the log's last event. */
-const SPANS = [
-  ["builder", "build.started", "build.finished"],
-  ["examiner", "exam.started", "exam.finished"],
-  ["examiner", "draft.started", "draft.finished"],
-  ["comparisons", "comparison.started", "comparison.reported"],
-] as const;
 const BETWEEN_MOVES = "between moves";
-/** The recorded waits by what they waited for, in the order the hours line names them. */
 const WAIT_KINDS = ["provider", "network", "load"] as const;
+
+const SPAN_STARTS = new Map<EventKind, string>([
+  ["build.started", "builder"],
+  ["exam.started", "examiner"],
+  ["draft.started", "examiner"],
+  ["comparison.started", "comparisons"],
+]);
+const SPAN_ENDS = new Map<EventKind, EventKind>([
+  ["build.finished", "build.started"],
+  ["exam.finished", "exam.started"],
+  ["draft.finished", "draft.started"],
+  ["comparison.reported", "comparison.started"],
+]);
+const SPAN_KINDS: readonly EventKind[] = [...SPAN_STARTS.keys(), ...SPAN_ENDS.keys(), "campaign.ended"];
 
 interface Span {
   readonly part: string;
@@ -84,25 +65,18 @@ interface Span {
   readonly until: number;
 }
 
-/** Whether a miss ended at a limit of its own: the kernel's kinds, every turn its bound allowed used
- *  (`limit`), or past the share of its deadline read as bound by it. */
 const atALimit = (solve: Solve) =>
   AT_A_LIMIT.has(solve.kind) ||
   solve.limit !== null ||
   (solve.wallSeconds > 0 && solve.seconds > solve.wallSeconds * DEADLINE_BOUND_SHARE);
 const limitOf = (solve: Solve) => (AT_A_LIMIT.has(solve.kind) ? solve.kind : solve.limit) ?? "wall share";
 
-/** A comparison's solves of the tasks it tallied. A task set aside, short or withdrawn stands in no
- *  pair, and reading its solves with them would move both the misses at a limit and the deadline
- *  share. */
 const tallied = ({ own, scoring }: Compared) => {
   const versions = new Set(strings(own.versions));
   return scoring.filter((solve) => versions.has(solve.version));
 };
 
-/** The misses at a limit by comparison and side, since most misses can end on turns, which a read
- *  of the deadline alone does not see. A miss at a limit says the budget was
- *  short and nothing of the task, so a side whose misses are all there was cut and not beaten. */
+/** The misses at a limit by comparison and side, and outside comparisons. */
 function limitTriggers(log: Index): Trigger[] {
   const misses = (solves: readonly Solve[]) => solves.filter((solve) => solve.outcome === "fail");
   const detail = (missed: readonly Solve[]) => {
@@ -125,7 +99,6 @@ function limitTriggers(log: Index): Trigger[] {
       `${session}: ${side(own.old)} reference misses and ${side(own.fresh)} new at a limit ${of}`,
     );
   });
-  // An Examiner's admission solve names its session where a comparison's names the comparison.
   const started = new Set(log.of("comparison.started").map((start) => text(start.session)));
   const outside = misses(log.solves.filter((solve) => !started.has(solve.comparison ?? "")));
   const { at, of } = detail(outside);
@@ -139,12 +112,8 @@ function limitTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Where another model answered than a seat asked for: each comparison's scored solves, and the
- *  campaign's other seats where no scored solve shows it. */
+/** Where another model answered than a seat asked for. */
 function servedTriggers(log: Index, results: ReturnType<typeof scoredOf>): Trigger[] {
-  // The solves a model other than their condition's answered, by the fold the pulse and the gather
-  // read (`degradations`), since a comparison can run on another model than its setting names, and
-  // nothing else would say so.
   const degraded = degradations(log.events);
   const servedBy = Map.groupBy(
     degraded.filter((row) => row.seat === "solve"),
@@ -162,28 +131,25 @@ function servedTriggers(log: Index, results: ReturnType<typeof scoredOf>): Trigg
       )}`,
     );
   });
-  // A campaign whose comparisons scored none of the solves another model answered still opens the
-  // lane, since every seat may have run on another model under a check-defects reading.
   const turns = degraded.reduce((sum, row) => sum + row.turns, 0);
-  const anywhere = firedIf(
-    otherModel.length === 0 && turns > 0,
-    "SERVED ANOTHER MODEL",
-    `the campaign: ${plural(turns, "turn")} in ${String(new Set(degraded.map((row) => row.id)).size)} sessions and solves, none a comparison's scored solve; served by ${[...new Set(degraded.map((row) => row.served))].join(", ")}`,
-  );
-  return [...otherModel, ...anywhere];
+  return [
+    ...otherModel,
+    ...firedIf(
+      otherModel.length === 0 && turns > 0,
+      "SERVED ANOTHER MODEL",
+      `the campaign: ${plural(turns, "turn")} in ${String(new Set(degraded.map((row) => row.id)).size)} sessions and solves, none a comparison's scored solve; served by ${[...new Set(degraded.map((row) => row.served))].join(", ")}`,
+    ),
+  ];
 }
 
-/** Each comparison with the solves it scored. */
 const scoredOf = (log: Index) =>
   log.compared.map((each) => ({ ...each, scoring: tallied(each).filter(measured) }));
 
-/** Lane 22: the misses at a limit, and over the solves each comparison measured, not the non-results
- *  it reran, the share of the deadline each harness used and the host's load when they started. */
+/** Lane 22: misses at a limit, deadline share, host load, mirrored start order, and served model. */
 export function deadlineTriggers(log: Index): Trigger[] {
   const results = scoredOf(log);
   const deadlineShares = results.flatMap(({ session, own, scoring }) => {
-    // The median share of its deadline a harness's solves used, or null for none under a deadline. v1 read
-    // this share as the measure that moves on every task set and leads a fail (lane 22).
+    if (own.old === own.fresh) return [];
     const under = (harness: JsonValue | undefined) =>
       median(
         scoring.flatMap((solve) =>
@@ -191,7 +157,7 @@ export function deadlineTriggers(log: Index): Trigger[] {
         ),
       );
     const [before, after] = [under(own.old), under(own.fresh)];
-    return before === null || after === null || own.old === own.fresh
+    return before === null || after === null
       ? []
       : [
           fired(
@@ -200,18 +166,15 @@ export function deadlineTriggers(log: Index): Trigger[] {
           ),
         ];
   });
-  // The one-minute load at each solve's start. The same elapsed-time limit allows less work on a
-  // loaded host, so identical settings need not give solves equal computing time. Read the first
-  // and second halves of each comparison separately, since one comparison's solves can start at
-  // loads ten times apart, where a reading across comparisons is silent.
   const loads = results.flatMap(({ session, scoring }) => {
     const at = scoring.flatMap((solve) => (solve.load === null ? [] : [solve.load]));
     const middle = median(at);
+    if (middle === null) return [];
     const halves = [at.slice(0, at.length / 2), at.slice(at.length / 2)].flatMap(
       (half) => median(half) ?? [],
     );
     const cores = scoring.findLast((solve) => solve.cores !== null)?.cores ?? null;
-    return middle === null ? [] : [{ session, middle, most: Math.max(...at), cores, halves }];
+    return [{ session, middle, most: Math.max(...at), cores, halves }];
   });
   const loaded = loads.flatMap(({ session, middle, most, cores }) =>
     cores !== null && middle > cores
@@ -223,12 +186,8 @@ export function deadlineTriggers(log: Index): Trigger[] {
         ]
       : [],
   );
-  // The tasks whose counted solves started out of their mirrored order. A worker runs a task's
-  // slots one after another and retries a non-result at its own slot, so a task's counted starts
-  // are a prefix of one mirror (`MIRRORS`), and a task off it is a defect of the round. On older
-  // host code the queue ordered starts without holding them, and a wait for the load or a
-  // provider's reset on one side moved them.
   const outOfTurn = results.flatMap(({ session, own, scoring }) => {
+    if (own.old === own.fresh) return [];
     const tasks = Map.groupBy(
       scoring.toSorted((one, other) => one.index - other.index),
       (solve) => solve.version,
@@ -238,14 +197,13 @@ export function deadlineTriggers(log: Index): Trigger[] {
       return !MIRRORS.some((mirror) => mirror.repeat(order.length).startsWith(order));
     }).length;
     return firedIf(
-      late > 0 && own.old !== own.fresh,
+      late > 0,
       "STARTS OUT OF TURN",
       `${session}: ${share(late, tasks.size)} tasks started their harnesses' solves out of turn`,
     );
   });
   const middles = loads.flatMap(({ halves }) => halves);
   const [calmest, busiest] = [Math.min(...middles), Math.max(...middles)];
-  const moved = busiest >= LOAD_WORTH_A_LINE && busiest >= calmest * LOAD_MOVED;
   return [
     ...limitTriggers(log),
     ...deadlineShares,
@@ -253,17 +211,14 @@ export function deadlineTriggers(log: Index): Trigger[] {
     ...outOfTurn,
     ...servedTriggers(log, results),
     ...firedIf(
-      moved,
+      busiest >= LOAD_WORTH_A_LINE && busiest >= calmest * LOAD_MOVED,
       "LOAD MOVED",
       `median load when each comparison's solves started, its first half then its second: ${loads.map(({ session, halves }) => `${session} ${halves.map((half) => half.toFixed(1)).join(" then ")}`).join("; ")}`,
     ),
   ];
 }
 
-/** The parts of the campaign's clock: each Builder and Examiner session and each comparison, from
- *  its start to its end. One a stop cut ends at the campaign's ending, which a stop writes. A
- *  comparison so cut goes on under its id with no second start, so it opens again where the campaign
- *  resumes, rather than reading as between moves. */
+/** The parts of the campaign's clock: each Builder and Examiner session and each comparison. */
 export function spansOf(events: readonly LogEvent[]): Span[] {
   const spans: Span[] = [];
   const open = new Map<string, Omit<Span, "until">>();
@@ -272,21 +227,32 @@ export function spansOf(events: readonly LogEvent[]): Span[] {
     if (started !== undefined) spans.push({ ...started, until });
     open.delete(key);
   };
-  let cut: [string, Omit<Span, "until">][] = [];
-  for (const { at, kind, data } of events) {
+  for (const { index, event } of eventsOf(events, SPAN_KINDS)) {
+    const { at, kind, data } = event;
     const time = Date.parse(at);
-    for (const [key, span] of cut.splice(0)) open.set(key, { ...span, from: time });
-    // One exam is drafted at a time, so a draft that starts ends one left open, rather than a cut
-    // draft counting to the log's end and taking most of the Examiner's hours.
-    for (const key of open.keys()) if (kind === "draft.started" && key.startsWith(kind)) close(key, time);
-    for (const [part, start, end] of SPANS) {
-      const id = text(data.session);
-      const key = `${start}:${id}`;
-      if (kind === start && !open.has(key)) open.set(key, { part, id, from: time });
-      if (kind === end) close(key, time);
+    if (kind === "draft.started") {
+      for (const key of [...open.keys()].filter((each) => each.startsWith("draft.started:"))) {
+        close(key, time);
+      }
     }
-    if (kind === "campaign.ended") cut = [...open].filter(([, span]) => span.part === "comparisons");
-    if (kind === "campaign.ended") for (const key of open.keys()) close(key, time);
+    const part = SPAN_STARTS.get(kind);
+    if (part !== undefined) {
+      const id = text(data.session);
+      const key = `${kind}:${id}`;
+      if (!open.has(key)) open.set(key, { part, id, from: time });
+      continue;
+    }
+    const start = SPAN_ENDS.get(kind);
+    if (start !== undefined) {
+      close(`${start}:${text(data.session)}`, time);
+      continue;
+    }
+    const cut = [...open].filter(([, span]) => span.part === "comparisons");
+    for (const key of open.keys()) close(key, time);
+    const next = events[index + 1];
+    if (next === undefined) continue;
+    const resumed = Date.parse(next.at);
+    for (const [key, span] of cut) open.set(key, { ...span, from: resumed });
   }
   const last = Date.parse(events.at(-1)?.at ?? "");
   for (const key of open.keys()) close(key, last);
@@ -303,19 +269,21 @@ export function unionMs(windows: readonly { readonly from: number; readonly unti
   return held;
 }
 
-/** Every wait a log records, as the interval it covered. A provider's reset and a network wait are
- *  recorded before their sleep and stop at the first later ending or session start: a run moved to
- *  another login writes no ending, and a long reset would otherwise read as waited until the run
- *  ended, although the run went on under another login long before. A load wait
- *  is recorded when the host admits the solve, so it ends at its event. */
+/** Every wait a log records, as the interval it covered. */
 export function waitsOf(events: readonly LogEvent[]): { from: number; until: number; kind: string }[] {
   const waits: { from: number; until: number; kind: string }[] = [];
   let boundary = Date.parse(events.at(-1)?.at ?? "");
-  for (const { at, kind, data } of events.toReversed()) {
+  const hits = eventsOf(events, WAIT_SCAN_KINDS);
+  for (let i = hits.length - 1; i >= 0; i -= 1) {
+    const hit = hits[i];
+    if (hit === undefined) continue;
+    const { at, kind, data } = hit.event;
     const from = Date.parse(at);
-    if (ONWARD.has(kind)) boundary = from;
-    if (kind !== "campaign.waited" || !isNumber(data.ms)) continue;
-    // The solve queue writes no `for`, older logs' included, and records its wait once it is over.
+    if (ONWARD.has(kind)) {
+      boundary = from;
+      continue;
+    }
+    if (!isNumber(data.ms)) continue;
     if (data.for === undefined) waits.push({ from: from - data.ms, until: from, kind: "load" });
     else if (data.for === "provider" || data.for === "network") {
       waits.push({ from, until: Math.min(from + data.ms, boundary), kind: data.for });
@@ -334,20 +302,11 @@ export const waitedMs = (waits: readonly { from: number; until: number }[], from
     ),
   );
 
-/**
- * The milliseconds between two moments lost to an overloaded host, outside every wait: each
- * stretch from one recorded one-minute load to the next (`solve.started`, `solve.finished` and the
- * solve queue's `campaign.waited`), at most `SAMPLE_MS`, weighted by the share of the demand the
- * cores could not serve, `1 - cores / load`. It treats the whole run as CPU-bound, while a model's
- * turn waits on the provider, so it bounds from above what the load cost and is an estimate. The
- * log is read once and each stretch asked of the function it returns, since a reader asks one for
- * every epoch.
- */
+/** The milliseconds between two moments lost to an overloaded host, outside every wait. */
 export function overloadOf(events: readonly LogEvent[]): (from: number, to: number) => number {
   const waits = waitsOf(events);
   let cores: number | undefined;
-  const samples = events.flatMap(({ at, kind, data }) => {
-    if (kind !== "solve.started" && kind !== "solve.finished" && kind !== "campaign.waited") return [];
+  const samples = eventsOf(events, LOAD_SCAN_KINDS).flatMap(({ event: { at, data } }) => {
     if (isNumber(data.cores) && data.cores > 0) cores = data.cores;
     const load = Array.isArray(data.load) ? data.load[0] : data.load;
     return isNumber(load) && cores !== undefined
@@ -369,9 +328,7 @@ export function overloadOf(events: readonly LogEvent[]): (from: number, to: numb
   };
 }
 
-/** Row A's overlapping elapsed spans beside its billed dollars, and the union of every recorded wait
- *  (`waitsOf`) with the hours a promotion with and without it. The load half is an indicator: other
- *  solves run while one waits for the load. */
+/** Row A's overlapping elapsed spans beside its billed dollars, and the union of every recorded wait. */
 export function hoursLine(log: Index): string {
   const spans = spansOf(log.events);
   const [first, last] = [Date.parse(log.events[0]?.at ?? ""), Date.parse(log.events.at(-1)?.at ?? "")];
@@ -379,7 +336,7 @@ export function hoursLine(log: Index): string {
   const parts = new Map<string, number>();
   for (const { part, from, until } of spans) parts.set(part, (parts.get(part) ?? 0) + until - from);
   const waits = waitsOf(log.events);
-  const promotions = log.events.filter(({ kind }) => kind === "harness.promoted").length;
+  const promotions = log.of("harness.promoted").length;
   const hours = (ms: number) => (ms / HOUR_MS).toFixed(1);
   const named = [...parts]
     .toSorted(([, a], [, b]) => b - a)
@@ -396,11 +353,15 @@ export function hoursLine(log: Index): string {
   return `hours: elapsed open spans (overlapping), ${named.join(", ")}, of ${hours(whole)}; recorded waits ${hours(waited)} h${kinds.length > 0 ? ` (${kinds.join(", ")})` : ""}${perPromotion}`;
 }
 
-/** What ran through the gap that ends at event `index`: the command whose time covers most of it,
- *  else the turn it ended, else nothing where no session or comparison was open. */
+/** What ran through the gap that ends at event `index`. */
 function causeOf(log: Index, spans: readonly Span[], index: number, gap: number): string {
   const end = Date.parse(log.events[index]?.at ?? "");
-  const burst = log.events.slice(index).filter(({ at }) => Date.parse(at) - end <= BURST_MS);
+  const burst: LogEvent[] = [];
+  for (let i = index; i < log.events.length; i += 1) {
+    const event = log.events[i];
+    if (event === undefined || Date.parse(event.at) - end > BURST_MS) break;
+    burst.push(event);
+  }
   const traces = tracesIn(burst);
   const command = traces.find((each) => each.part === "call" && each.ms !== null && each.ms * 2 >= gap);
   if (command !== undefined) return `${roleOf(command.seat) ?? command.seat} command`;
@@ -413,38 +374,35 @@ function causeOf(log: Index, spans: readonly Span[], index: number, gap: number)
   return open ? `before ${log.events[index]?.kind ?? ""}` : BETWEEN_MOVES;
 }
 
-/** Lane 23: the longest silences, each by what ran through it, and a role that took most of the
- *  dollars. A silence is read against the campaign's own median solve, since a fixed twenty minutes
- *  reads nothing on a campaign of quick solves, and gives longer ones as a count and the time of the
- *  first, with nothing of what ran. */
+/** Lane 23: the longest silences, each by what ran through it, and a role that took most of the dollars. */
 export function costTriggers(log: Index): Trigger[] {
-  // A solve that measured, since short provider and killed attempts would pull the median far
-  // below its passes and rejections.
-  const done = log.solves.filter(measured).map((solve) => solve.seconds);
-  const scaled = (median(done) ?? 0) * SILENCE_SOLVES;
+  const scaled = (median(log.solves.filter(measured).map((solve) => solve.seconds)) ?? 0) * SILENCE_SOLVES;
   const threshold = Math.max(scaled, SILENCE_FLOOR_SECONDS) * 1000;
   const why =
     scaled > SILENCE_FLOOR_SECONDS
       ? `${String(SILENCE_SOLVES)} times the median measured solve`
       : "the floor";
-  const times = log.events.map(({ at }) => Date.parse(at));
-  const gaps = times
-    .flatMap((at, index) => (index > 0 && at - (times[index - 1] ?? at) > threshold ? [index] : []))
-    .map((index) => ({ index, gap: (times[index] ?? 0) - (times[index - 1] ?? 0) }))
-    .toSorted((a, b) => b.gap - a.gap);
-  const spans = spansOf(log.events);
-  const named = gaps.slice(0, SILENCES_NAMED).map(
-    // The log's lines either side, from 1 as `sed -n` counts, so that a lane need not find them again.
-    ({ index, gap }) =>
-      `${(gap / MINUTE_MS).toFixed(1)} min ${causeOf(log, spans, index, gap)} (lines ${String(index)}-${String(index + 1)})`,
-  );
+  const gaps: { index: number; gap: number }[] = [];
+  let prev = Date.parse(log.events[0]?.at ?? "");
+  for (let index = 1; index < log.events.length; index += 1) {
+    const at = Date.parse(log.events[index]?.at ?? "");
+    const gap = at - prev;
+    if (gap > threshold) gaps.push({ index, gap });
+    prev = at;
+  }
+  gaps.sort((a, b) => b.gap - a.gap);
+  const spans = gaps.length > 0 ? spansOf(log.events) : [];
+  const named = gaps
+    .slice(0, SILENCES_NAMED)
+    .map(
+      ({ index, gap }) =>
+        `${(gap / MINUTE_MS).toFixed(1)} min ${causeOf(log, spans, index, gap)} (lines ${String(index)}-${String(index + 1)})`,
+    );
   const spend = spendOf(log.events);
   const total = spend.reduce((sum, [, dollars]) => sum + dollars, 0);
   const [[leader, most] = ["", 0]] = spend;
   const held = heldOff(log.events);
   return [
-    // The hours are the Builder's, not the Examiner's: which host message kept it from comparing
-    // is the timeline's to say (`table-timeline.ts`).
     ...firedIf(held?.long === true, "FIRST COMPARISON HELD OFF", `admissible ${held?.said ?? ""}`),
     ...firedIf(
       gaps.length > 0,

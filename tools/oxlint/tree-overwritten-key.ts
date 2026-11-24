@@ -21,19 +21,23 @@ const ALIASES: readonly [string, string][] = [
   ["#skills/", ".claude/skills/"],
 ];
 
+const BARE_KINDS = new Set([
+  ts.SyntaxKind.ParenthesizedExpression,
+  ts.SyntaxKind.AsExpression,
+  ts.SyntaxKind.SatisfiesExpression,
+  ts.SyntaxKind.NonNullExpression,
+  ts.SyntaxKind.AwaitExpression,
+  ts.SyntaxKind.TypeAssertionExpression,
+]);
+
 /** The expression beneath parentheses, `await`, `as`, `satisfies` and `!`. */
 function bare(node: ts.Expression): ts.Expression {
-  if (
-    ts.isParenthesizedExpression(node) ||
-    ts.isAsExpression(node) ||
-    ts.isSatisfiesExpression(node) ||
-    ts.isNonNullExpression(node) ||
-    ts.isAwaitExpression(node) ||
-    ts.isTypeAssertionExpression(node)
-  ) {
-    return bare(node.expression);
+  let at = node;
+  while (BARE_KINDS.has(at.kind)) {
+    // SAFETY: every kind in `BARE_KINDS` is a unary wrapper carrying `.expression: ts.Expression`.
+    at = (at as ts.ParenthesizedExpression).expression;
   }
-  return node;
+  return at;
 }
 
 /** The object literals an expression yields itself or hands straight to a call. */
@@ -190,13 +194,17 @@ function namesIn(
   return named;
 }
 
-/** Every file but a declaration file, parsed with its parent links set. */
-export function parsedSources(files: ReadonlyMap<string, string>): Map<string, ts.SourceFile> {
+/** Every file but a declaration file, parsed (with parent links unless `links` is `"flat"`). */
+export function parsedSources(
+  files: ReadonlyMap<string, string>,
+  links: "parents" | "flat" = "parents",
+): Map<string, ts.SourceFile> {
   const out = new Map<string, ts.SourceFile>();
+  const setParents = links === "parents";
   for (const [path, text] of files) {
     if (/\.d\.m?ts$/u.test(path)) continue;
     const kind = path.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-    out.set(path, ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, kind));
+    out.set(path, ts.createSourceFile(path, text, ts.ScriptTarget.Latest, setParents, kind));
   }
   return out;
 }

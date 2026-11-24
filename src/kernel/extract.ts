@@ -1,3 +1,4 @@
+import { sha256 } from "../meta/digest.ts";
 import { asRecord, isString } from "../meta/json-shape.ts";
 import { capturedJsonParse } from "../meta/json-runtime.ts";
 import { runSync, decodeOutput } from "../meta/subprocess.ts";
@@ -18,7 +19,7 @@ export interface Extracted {
   readonly fault: string | null;
 }
 
-export const EXTRACT = { cellsPerSheet: 100_000, emptyRows: 500, pdfMs: 15_000 };
+export const EXTRACT = { cellsPerSheet: 100_000, emptyRows: 500, pdfMs: 15_000, slice: 750 };
 
 const ERRORS = new Set(["#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#N/A", "#NUM!", "#NULL!"]);
 const ENTITIES = new Map([
@@ -192,4 +193,19 @@ export function headOf(extracted: Extracted): string[] {
         ]),
     ...(fault === null ? [] : [`extraction fault: ${fault}`]),
   ];
+}
+
+const sliceAt = (bytes: Buffer, from: number): string =>
+  bytes.subarray(from, from + EXTRACT.slice).toString("utf8");
+export function dossierOf(extracted: Extracted, seed: string): string {
+  const bytes = Buffer.from(extracted.text);
+  const room = Math.max(1, bytes.length - 3 * EXTRACT.slice);
+  const middle = [0, 1]
+    .map((at) => EXTRACT.slice + (Number.parseInt(sha256(`${seed}:${String(at)}`).slice(0, 8), 16) % room))
+    .toSorted((one, other) => one - other);
+  const parts =
+    bytes.length <= 4 * EXTRACT.slice
+      ? [extracted.text]
+      : [0, ...middle, bytes.length - EXTRACT.slice].map((at) => sliceAt(bytes, at));
+  return [...headOf(extracted), parts.join("\n[…]\n")].join("\n");
 }

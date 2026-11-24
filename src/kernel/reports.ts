@@ -344,7 +344,9 @@ export function poolOf(events: readonly LogEvent[]) {
           ),
         ),
   );
+  const judged = eventsOf(events, "comparison.started").at(-1)?.event.data.judge !== undefined;
   const easy = orderedBy(heldRecords, ({ tallied }) => {
+    if (judged) return undefined;
     const readings = tallied.filter(({ validity, referenceCut }) => validity !== null && !referenceCut);
     const open = readings.findLastIndex((reading) => reading.validity !== "every" || reading.room);
     return readings.length - 1 - open >= READINGS_IN_A_ROW.easy ? readings.at(-1)?.order : undefined;

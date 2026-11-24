@@ -228,6 +228,28 @@ function refusedLines(
   return [...why].map(([reason, named]) => `${reason}: ${named.join(", ")}`);
 }
 
+function tiesOf(events: readonly LogEvent[], since: number): Map<string, string> {
+  const tasks = new Map<string, { pairs: number; kinds: Map<string, number> }>();
+  for (const { kind, data } of events.slice(since + 1)) {
+    if (kind !== "referee.pair" || !isString(data.task)) continue;
+    const task = tasks.get(data.task) ?? { pairs: 0, kinds: new Map<string, number>() };
+    task.pairs += 1;
+    for (const [criterion, tie] of Object.entries(asRecord(data.ties) ?? {})) {
+      if (tie !== "both-strong" && tie !== "both-weak") continue;
+      const key = `${tie.replace("-", " ")} on ${criterion}`;
+      task.kinds.set(key, (task.kinds.get(key) ?? 0) + 1);
+    }
+    tasks.set(data.task, task);
+  }
+  return new Map(
+    [...tasks].flatMap(([task, { pairs, kinds }]) => {
+      const tied = [...kinds].filter(([, count]) => 2 * count >= pairs).map(([key]) => key);
+      const of = `in most of ${plural(pairs, "judged pair")}`;
+      return tied.length === 0 ? [] : [[task, `judged answers tied ${tied.join(", ")} ${of}`]];
+    }),
+  );
+}
+
 export function heard(
   events: readonly LogEvent[],
   tasks: readonly Pick<Task, "taskId" | "family">[],
@@ -257,6 +279,7 @@ export function heard(
   const setting = events.findLast(({ kind }) => kind === "campaign.setting")?.data.modelTurns;
   const budget = isNumber(setting) ? setting : undefined;
   const since = events.findLastIndex(({ kind }) => isReferenceChange(kind));
+  const ties = tiesOf(events, since);
   const compared =
     after === undefined
       ? null
@@ -278,10 +301,11 @@ export function heard(
     const checks = faulted.get(taskId);
     const fault =
       checks === undefined ? [] : [`ruled at fault on an answer to it: ${[...checks].join(", ")}`];
+    const tie = plain ? undefined : ties.get(taskId);
     const heading = BLOCKS[block];
     lines.set(heading, [
       ...(lines.get(heading) ?? []),
-      [`${taskId} (${family})`, ...clauses, ...fault].join("; "),
+      [`${taskId} (${family})`, ...clauses, ...fault, ...(tie === undefined ? [] : [tie])].join("; "),
     ]);
   }
   return {

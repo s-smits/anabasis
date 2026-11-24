@@ -33,7 +33,10 @@ export interface Wanted {
   readonly builds: boolean;
   readonly cap: Cap | null;
   readonly pastStop?: string | undefined;
+  readonly judged?: boolean;
 }
+
+const JUDGED_TASK_DOLLARS = 0.6;
 
 type SizedWant = Pick<Wanted, "target" | "level" | "solves" | "cap" | "pastStop">;
 
@@ -201,7 +204,8 @@ function faultNote(supply: Supply): readonly [boolean, string] {
 function comparisonAdmission(supply: Supply, wanted: Wanted): Admission {
   const { scored, floor, test } = sizeOf(supply, wanted);
   const { cap, pastStop } = wanted;
-  const afforded = cap === null ? test : Math.floor(cap.dollars / cap.reserve);
+  const judging = wanted.judged === true ? JUDGED_TASK_DOLLARS * scored : 0;
+  const afforded = cap === null ? test : Math.floor((cap.dollars - judging) / cap.reserve);
   return {
     refusals: [
       ...holding([
@@ -228,7 +232,7 @@ function comparisonAdmission(supply: Supply, wanted: Wanted): Admission {
         faultNote(supply),
         [
           cap !== null && afforded < test,
-          `the cap of $${String(cap?.dollars)} holds a reserve of $${String(cap?.reserve)} for ${String(afforded)} solves, and the comparison's test alone makes ${String(test)}${wanted.builds ? ", after a session whose spend the same cap holds" : ""}: it is cut short and reads not-scored unless its solves bill well under their reserve`,
+          `the cap of $${String(cap?.dollars)} holds a reserve of $${String(cap?.reserve)} for ${String(afforded)} solves${judging > 0 ? ` beside about $${judging.toFixed(2)} of judging` : ""}, and the comparison's test alone makes ${String(test)}${wanted.builds ? ", after a session whose spend the same cap holds" : ""}: it is cut short and reads not-scored unless its solves bill well under their reserve`,
         ],
       ]),
       ...stopVerdict(supply, pastStop).notes,

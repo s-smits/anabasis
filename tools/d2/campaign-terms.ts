@@ -281,10 +281,25 @@ function resolveTerms(events: readonly LogEvent[], was: Opening | null, values: 
   };
 }
 
+const familyOf = (name: string): string =>
+  /^[a-z]+/i.exec(name.split("/").at(-1) ?? "")?.[0]?.toLowerCase() ?? name;
+
 /** Validate opening invariants (`budget`, `reviewer`, `patience`, `promotions`) before recording. */
 function validateOpening(opening: Opening, values: Values, seats: "paid" | "scripted"): void {
   if (seats === "paid" && opening.seats.reviewer === null) {
     throw new Error("name --reviewer: a paid campaign needs a Referee to rule its rejections");
+  }
+  const { reviewer } = opening.seats;
+  const solver = opening.solver?.model;
+  if (
+    opening.judged &&
+    reviewer !== null &&
+    solver !== undefined &&
+    familyOf(reviewer.model) === familyOf(solver)
+  ) {
+    throw new Error(
+      `--admit-judge: the reviewer ${reviewer.model} judges answers by a solver of its own family (${solver}); name a reviewer from another family`,
+    );
   }
   counted(
     opening.patience,

@@ -56,6 +56,8 @@ const BILLED_KINDS: readonly EventKind[] = [
   "draft.finished",
   "referee.finding",
   "referee.draft",
+  "referee.brief",
+  "referee.pair",
   "diagnosis.recorded",
 ];
 const BILL_SPAN_KINDS: readonly EventKind[] = ["build.started", ...BILLED_KINDS];
@@ -259,7 +261,8 @@ function billedIndex(events: readonly LogEvent[]): Map<string, Parts> {
   };
   const credit = (event: LogEvent, session: string | null, own: number) => {
     const of = isString(event.data.solve) ? event.data.solve : event.data.reader;
-    const owner = isString(of) ? owners.get(of) : undefined;
+    const asked = isString(event.data.comparison) ? { by: event.data.comparison, asked: true } : undefined;
+    const owner = (isString(of) ? owners.get(of) : undefined) ?? asked;
     for (const build of active) {
       add(build, "span", own);
       if ((session === null || session === build) && (owner === undefined || owner.by === build)) {
@@ -267,7 +270,7 @@ function billedIndex(events: readonly LogEvent[]): Map<string, Parts> {
       }
     }
     if (
-      isString(event.data.solve) &&
+      (isString(event.data.solve) || asked !== undefined) &&
       owner?.asked === true &&
       owner.by !== undefined &&
       !active.has(owner.by)

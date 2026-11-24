@@ -13,6 +13,9 @@ import {
   UNMEASURED,
   unsolved,
   informative,
+  judgedPairs,
+  judgeIn,
+  type JudgeWeights,
   wholePoints,
 } from "../kernel/compare.ts";
 import { settingId } from "../kernel/condition.ts";
@@ -113,6 +116,7 @@ export interface Fixed {
   readonly tasks: readonly string[];
   readonly retained: readonly string[];
   readonly objective: ObjectiveRule | undefined;
+  readonly judge?: JudgeWeights | undefined;
 }
 
 export const STARTED = "comparison.started";
@@ -276,6 +280,7 @@ export function coverageOf(all: readonly LogEvent[], fixed: Fixed, labels: Label
     setting: fixed.setting,
     comparison: fixed.id,
     objective: fixed.objective,
+    judge: fixed.judge,
   };
   const first = pairsOf(events, live, sides, fixed.solves);
   return {
@@ -285,6 +290,42 @@ export function coverageOf(all: readonly LogEvent[], fixed: Fixed, labels: Label
     withdrawn: scorable.filter((task) => !held.has(task)),
     pairs: first.pairs,
   };
+}
+
+function mirroredPairs(events: readonly LogEvent[], fixed: Fixed, tasks: readonly string[]) {
+  const sides = {
+    old: fixed.old,
+    fresh: fixed.old,
+    setting: fixed.setting,
+    comparison: fixed.id,
+    objective: fixed.objective,
+    judge: fixed.judge,
+    halves: "mirrored" as const,
+  };
+  return fixed.solves % 2 === 0 ? pairsOf(events, tasks, sides, fixed.solves / 2).pairs : [];
+}
+
+export function judgingLeft(all: readonly LogEvent[], fixed: Fixed) {
+  if (fixed.judge === undefined) return [];
+  const events = asReported(all, fixed.id);
+  const { pairs } = coverageOf(events, fixed, NO_LABELS);
+  const asked = [
+    ...pairs,
+    ...mirroredPairs(
+      events,
+      fixed,
+      pairs.map(({ task }) => task),
+    ),
+  ];
+  return asked.flatMap(({ task, fresh, old, solves, judged }) => {
+    if (solves === undefined || judged === undefined) return [];
+    const cast = new Set(judged.votes.map((vote) => `${String(vote.fresh)}:${String(vote.old)}`));
+    return judgedPairs(`${fixed.id}:${task}`, solves, { fresh, old }).flatMap(([f, o]) =>
+      cast.has(`${String(f)}:${String(o)}`)
+        ? []
+        : [{ task, first: solves.fresh[f] ?? "", second: solves.old[o] ?? "" }],
+    );
+  });
 }
 
 export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Labels) {
@@ -300,19 +341,11 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Labels)
   const sets = setsOf(all, fixed, pairs, aside);
   const againstItself = () =>
     kept(
-      pairsOf(
+      mirroredPairs(
         events,
+        fixed,
         pairs.map(({ task }) => task),
-        {
-          old: fixed.old,
-          fresh: fixed.old,
-          setting: fixed.setting,
-          comparison: fixed.id,
-          objective: fixed.objective,
-          halves: "mirrored",
-        },
-        fixed.solves / 2,
-      ).pairs,
+      ),
     );
   const mirroredOf = (halves: readonly Paired[]) => {
     const aa = scored(halves);
@@ -461,6 +494,7 @@ export function fixedIn(events: readonly LogEvent[], id: string): Fixed | null {
         tasks: Array.isArray(tasks) ? tasks.filter(isString) : [],
         retained: Array.isArray(retained) ? retained.filter(isString) : [],
         objective: objectiveRuleIn(start),
+        judge: judgeIn(start),
       }
     : null;
 }

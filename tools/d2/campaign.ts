@@ -54,6 +54,7 @@ import { gitMaybe, worktrees } from "#src/meta/git.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { type Reader, referee } from "#src/referee/referee.ts";
+import { type Asked, judgeBrief, judgePair } from "#src/referee/judge.ts";
 import { writeStarter } from "#src/harness/starter.ts";
 import { stageExam } from "./exam.ts";
 import type { NamedSolver } from "./setting.ts";
@@ -334,6 +335,11 @@ function reviewersOf(
   return {
     referee: (solve: string, task: TaskPackage, kill: AbortSignal) =>
       referee({ ...reader, kill }, { solve, task, contract, checks, verify, log }),
+    reviewer: priceKey(reader.model),
+    brief: (task: TaskPackage, comparison: string, kill: AbortSignal) =>
+      judgeBrief({ ...reader, kill }, { log, comparison, task, contract }),
+    pair: (task: TaskPackage, asked: Asked, kill: AbortSignal) =>
+      judgePair({ ...reader, kill }, { log, task, contract, ...asked }),
   };
 }
 

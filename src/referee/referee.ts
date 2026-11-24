@@ -103,7 +103,7 @@ const RULING_PARAMETERS = Type.Object({
   probes: Type.Array(Type.Number(), { description: "Probe numbers supporting the ruling; [] for none." }),
 });
 
-function loggedVerdict(events: readonly LogEvent[], solve: string, log: string): LoggedVerdict | null {
+export function loggedVerdict(events: readonly LogEvent[], solve: string, log: string): LoggedVerdict | null {
   const judged = verdictsOf(events).get(solve);
   if (judged?.answer === undefined) return null;
   const manifest = judged.files ?? [];

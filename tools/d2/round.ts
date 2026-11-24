@@ -7,8 +7,9 @@ import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { stopRule, type Wanted } from "#src/campaign/admission.ts";
 import { worthLine } from "#src/campaign/climb.ts";
 import { predicted, type Report } from "#src/campaign/comparison.ts";
-import { type CheckpointRequest, scoredSet } from "#src/campaign/round.ts";
+import { type CheckpointRequest, type Judging, scoredSet } from "#src/campaign/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
+import type { Reader } from "#src/referee/referee.ts";
 import {
   type ObjectiveRule,
   objectiveRuleOf,
@@ -18,7 +19,7 @@ import {
   WEIGHTS,
 } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
-import { contractHash } from "#src/kernel/contract.ts";
+import { type Contract, contractHash, hasJudge } from "#src/kernel/contract.ts";
 import { read, TRACE_KINDS } from "#src/kernel/log.ts";
 import { priceKey } from "#src/kernel/meter.ts";
 import { type Cap, capHolds } from "#src/kernel/reports.ts";
@@ -66,6 +67,7 @@ interface SolverSeat {
  *  first and never reads the second (`checkpoint.ts`). */
 export interface Seats extends SolverSeat {
   readonly builder: Pick<BuildRequest, "model" | "models"> | null;
+  readonly judge?: Reader;
   /** Set by the paid seats, and kept by whatever holds them, as the solve queue does, rather than
    *  told by `seated === solved`, which every move made through the solve queue would fail and so
    *  read as a rehearsal's and skip its admission. The cap is still read by identity before the campaign opens,
@@ -237,7 +239,12 @@ export function wantedNamed(
     readonly level: string;
     readonly "past-stop"?: string | undefined;
   },
-  given: { readonly setting: AskedSetting; readonly cap: Cap | undefined; readonly builds: boolean },
+  given: {
+    readonly setting: AskedSetting;
+    readonly cap: Cap | undefined;
+    readonly builds: boolean;
+    readonly judged: boolean;
+  },
 ): Wanted {
   const { target, solves } = given.setting;
   return {
@@ -247,6 +254,7 @@ export function wantedNamed(
     builds: given.builds,
     cap: given.cap ?? null,
     pastStop: predictionNamed(values["past-stop"]),
+    judged: given.judged,
   };
 }
 
@@ -490,6 +498,7 @@ export async function comparedOn(
   reviewers: Reviewers | null,
 ): Promise<Omit<CheckpointRequest, "log" | "id" | "old" | "fresh" | "kill">> {
   const packageOf = packaged(campaign);
+  const judges = reviewers ?? (seats.judge === undefined ? null : campaign.reviewers(seats.judge));
   return {
     starter: await starter(campaign),
     ...scoredSet(read(campaign.log, TRACE_KINDS), setting.target, contractHash(campaign.contract)),
@@ -506,5 +515,23 @@ export async function comparedOn(
       reviewers === null
         ? undefined
         : (solve, version, kill) => reviewers.referee(solve, packageOf(version), kill),
+    judge: judges === null ? undefined : judgingOf(campaign.contract, judges, packageOf),
+  };
+}
+
+function judgingOf(
+  contract: Contract,
+  reviewers: Reviewers,
+  packageOf: (version: string) => TaskPackage,
+): Judging | undefined {
+  const items = contract.objective?.items ?? [];
+  if (!hasJudge(contract.objective)) return undefined;
+  const all = items.reduce((sum, { weight }) => sum + weight, 0);
+  const judge = items.reduce((sum, { kind, weight }) => sum + (kind === "judge" ? weight : 0), 0);
+  return {
+    weights: { code: all - judge, judge },
+    reviewer: reviewers.reviewer,
+    brief: (version, comparison, kill) => reviewers.brief(packageOf(version), comparison, kill),
+    pair: (version, asked, kill) => reviewers.pair(packageOf(version), asked, kill),
   };
 }

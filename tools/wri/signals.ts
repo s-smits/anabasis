@@ -15,6 +15,7 @@ import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { passAgreement, settledPassLabels } from "#src/referee/agreement.ts";
 import { draftDeliverableInfo } from "./deliverables.ts";
+import { unpricedCompactions } from "./epoch-spend.ts";
 import {
   EXAM_END,
   firedIf,
@@ -241,15 +242,15 @@ function toolErrorTriggers(log: Index): Trigger[] {
   return firedIf(high.length > 0, "HIGH TOOL ERROR RATE", high.join("; "));
 }
 
-/** Lane 19: billing residual > 5% between local meter and backend totals, or unpriced compactions. */
+/** Lane 19: billing residual > 5% between local meter and backend totals, or open unpriced compactions. */
 function billingTriggers(log: Index): Trigger[] {
   const line = costLine(log.events);
   const match = RESIDUAL_RE.exec(line);
   const pct = match === null ? 0 : Math.abs(Number(match[1]));
-  const unpriced = log.traces.filter((each) => each.part === "compacted" && each.billed === 0).length;
+  const unpriced = unpricedCompactions(log.events, log.traces);
   const parts = [
     ...(pct > RESIDUAL_PCT ? [line] : []),
-    ...(unpriced > 0 ? [`${plural(unpriced, "compaction")} with 0 locally priced usage`] : []),
+    ...(unpriced > 0 ? [`${plural(unpriced, "open compaction")} with 0 locally priced usage`] : []),
   ];
   return firedIf(parts.length > 0, "BILLING RESIDUAL", parts.join("; "));
 }

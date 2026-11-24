@@ -48,7 +48,7 @@ import { basename, dirname } from "#src/meta/path.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { percent } from "#tools/wri/execution.ts";
 import { equalMost, equalNeed, shortOf, spareOf } from "#tools/wri/clearance.ts";
-import { wlt } from "#tools/wri/folds.ts";
+import { formatTally } from "#tools/wri/folds.ts";
 import { type SideGap, sideGap } from "#tools/wri/pairs.ts";
 
 const USAGE = `usage:
@@ -63,6 +63,7 @@ A campaign's name is read where \`logAcross\` finds it, on this host or another 
 const OPTIONS = { comparison: "text", level: "text", zone: "flag" } as const;
 /** The kinds of task a report lists apart from the tallied ones, in the order they are told. */
 const APART = ["aside", "short", "disputed", "flagged", "withdrawn"] as const;
+const NOT_RECORDED = "not recorded";
 /** The columns of `--zone`, in the order of `zoneRows`. */
 export const ZONE_HEADER =
   "campaign\tcomparison\tkind\tepoch\treading\ttasks\tref_none\tref_some\tref_all\tref_valid_share\tuntied_validity\tuntied_objective\ttied\tuntied_share\taa_untied\taa_share";
@@ -341,7 +342,7 @@ function rereadLine({ reading, reread, level, scored }: Row): string {
 
 /** Dollars to the cent, or unrecorded. */
 function dollars(value: number | null): string {
-  return value === null ? "not recorded" : `$${value.toFixed(2)}`;
+  return value === null ? NOT_RECORDED : `$${value.toFixed(2)}`;
 }
 
 /** How the scores stand from the level by their largest margins (`clearance.ts`). */
@@ -365,34 +366,34 @@ function nearLines({ reverse, margin, need, cap, level }: Row): string[] {
       : [
           `  p read for the reference ${pOf(reverse)}; at ${String(level)}, ${marginOf(margin)}; on equal margins ${losses(need.losses)} need ${need.wins === null ? "more wins than any tally holds" : `${String(need.wins)} wins`}, and ${most}`,
         ];
-  const capSaid =
+  const capSummary =
     cap.dollars === null
       ? "no cap recorded"
-      : `cap ${dollars(cap.dollars)}${cap.reserve === null ? "" : ` (reserve ${dollars(cap.reserve)} a solve)`}`;
+      : `cap ${dollars(cap.dollars)}${cap.reserve === null ? "" : ` (reserve ${dollars(cap.reserve)} per solve)`}`;
   const test =
     cap.solves === null
-      ? "its test's solves not recorded"
-      : `its test, ${String(cap.solves)} solves a side at the ${dollars(cap.rate)} a finished solve billed before it, comes to ${dollars(cap.cost)}`;
+      ? "test rollouts not recorded"
+      : `test (${String(cap.solves)} rollouts per arm at ${dollars(cap.rate)} per prior solve) estimated at ${dollars(cap.cost)}`;
   return [
     ...near,
-    `  ${capSaid}; ${test}; cut by its cap ${cap.capped === null ? "not recorded" : cap.capped ? "yes" : "no"}`,
+    `  ${capSummary}; ${test}; capped ${cap.capped === null ? NOT_RECORDED : cap.capped ? "yes" : "no"}`,
   ];
 }
 
 /** The tested part of a row, or what a row without a test says. */
 function testLines({ scored, unbilled, frontier, retained }: Row): string[] {
-  if (scored === null) return ["  nothing was tallied: nothing was tested"];
+  if (scored === null) return ["  no tasks scored (no statistical test)"];
   const untied = scored.wins + scored.losses;
-  const retainedSaid =
+  const retainedSummary =
     retained === UNMEASURED
       ? UNMEASURED
       : retained === null
         ? "none"
-        : `${wlt(retained)} p ${pOf(retained.p)}`;
+        : `${formatTally(retained)} p=${pOf(retained.p)}`;
   return [
-    `  scored ${wlt(scored)} p ${pOf(scored.p)}, ${String(untied)} untied${unbilled === null ? "" : `; without the bill (a report of 26 October to 2 November, which the step read) ${wlt(unbilled)} p ${pOf(unbilled.p)}`}`,
-    `  detects four times in five ${scored.detectable === undefined ? "a share not recorded" : `${percent(scored.detectable)} of untied tasks won`}; false rate ${scored.falseRate === null ? "not recorded" : `${(100 * scored.falseRate).toFixed(1)}%`}`,
-    `  frontier ${frontier === null ? "none" : `${wlt(frontier)} p ${pOf(frontier.p)}`}; retained ${retainedSaid}`,
+    `  scored ${formatTally(scored)} p=${pOf(scored.p)}, ${String(untied)} untied${unbilled === null ? "" : `; unbilled ${formatTally(unbilled)} p=${pOf(unbilled.p)}`}`,
+    `  80% power detectable win share: ${scored.detectable === undefined ? NOT_RECORDED : percent(scored.detectable)}; estimated false-positive rate: ${scored.falseRate === null ? NOT_RECORDED : `${(100 * scored.falseRate).toFixed(1)}%`}`,
+    `  frontier ${frontier === null ? "none" : `${formatTally(frontier)} p=${pOf(frontier.p)}`}; retained ${retainedSummary}`,
   ];
 }
 
@@ -425,19 +426,19 @@ export function zoneRows(campaign: string, events: readonly LogEvent[]): string[
   return rowsOf(events, null, null).flatMap(({ session, kind, epoch, reading, zone: z, aa }) => {
     if (z === null) return [];
     const aaUntied = aa === null ? null : aa.wins + aa.losses;
-    const said = [campaign, session, kind, String(epoch), reading === "unknown" ? "" : reading];
+    const meta = [campaign, session, kind, String(epoch), reading === "unknown" ? "" : reading];
     const counts = [z.tasks, z.none, z.some, z.all].map(String);
     const untied = [z.validity, z.objective, z.tied].map(String);
-    const aaSaid =
+    const aaCols =
       aa === null || aaUntied === null ? ["", ""] : [String(aaUntied), share(aaUntied, aaUntied + aa.ties)];
     return [
       [
-        ...said,
+        ...meta,
         ...counts,
         share(z.valid, z.solves),
         ...untied,
         share(z.validity + z.objective, z.tasks),
-        ...aaSaid,
+        ...aaCols,
       ],
     ];
   });
@@ -450,14 +451,14 @@ function rowLines(row: Row, called: Called): string[] {
   );
   const aa = row.aa;
   return [
-    `${row.session}  ${row.reading}  ${row.fresh === null ? "nothing new" : called(row.fresh)} against ${called(row.old)}, ${row.solves === null ? "?" : String(row.solves)} solves a side, level ${String(row.level)}`,
+    `${row.session}  ${row.reading}  ${row.fresh === null ? "no candidate" : called(row.fresh)} vs ${called(row.old)}, ${row.solves === null ? "?" : String(row.solves)} rollouts per arm, alpha=${String(row.level)}`,
     ...testLines(row),
     aa === null
-      ? "  A/A: none in the report"
-      : `  A/A ${wlt(aa)}${aa.wins + aa.losses === 0 && aa.ties > 0 ? " (every task tied)" : ""}, flip rate ${percent(aa.flips)}, ${aa.either ? "reads a step either way, where none can be" : "reads no step either way"}`,
+      ? "  A/A: not recorded"
+      : `  A/A ${formatTally(aa)}${aa.wins + aa.losses === 0 && aa.ties > 0 ? " (all tasks tied)" : ""}, flip rate ${percent(aa.flips)}, ${aa.either ? "two-sided false positive" : "no false positive"}`,
     ...nearLines(row),
     ...pairedLines(row),
-    `  room for the reference: ${row.room}; ${String(row.tallied)} tallied${apart.length === 0 ? "" : `, ${apart.join(", ")}`}`,
+    `  reference headroom: ${row.room}; ${String(row.tallied)} scored${apart.length === 0 ? "" : `, ${apart.join(", ")}`}`,
     rereadLine(row),
   ];
 }

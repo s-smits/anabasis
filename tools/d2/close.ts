@@ -286,7 +286,7 @@ function promotionLines(
         ? ". No comparison of it tallied a task"
         : `. In ${last.id} it won ${String(last.tally.wins)}, lost ${String(last.tally.losses)} and tied ${String(last.tally.ties)}${last.points === null ? "" : `, the score giving it ${String(last.points.validity)} points by validity and ${String(last.points.objective)} by the objective`}`;
     return [
-      `- ${at.slice(0, 10)}: harness ${called(data.harness)}, ${rung}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}${worth === undefined ? "" : `. Its ${worthLine(worth)}`}`,
+      `- ${at.slice(0, 10)}: harness ${called(data.harness)}, ${rung}, decided by ${stepped.map((each) => each.id).join(" and ") || "no recorded comparison"}${held}${isString(data.despite) ? `. Promoted manually by operator override: ${data.despite}` : ""}${origin}${worth === undefined ? "" : `. ${worthLine(worth)}`}`,
     ];
   });
 }

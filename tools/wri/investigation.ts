@@ -74,8 +74,13 @@ interface Prediction {
 
 /** What a report's second line says until its lane is read; `reportOf` holds it as unfinished. */
 const PENDING = "pending";
-const RESOLUTIONS = ["held", "falsified", "unreached"] as const;
+const RESOLUTIONS = ["confirmed", "refuted", "not-observed"] as const;
 type Resolution = (typeof RESOLUTIONS)[number];
+const RESOLUTION_SYNONYMS = new Map<string, Resolution>([
+  ["held", "confirmed"],
+  ["falsified", "refuted"],
+  ["unreached", "not-observed"],
+]);
 const PREDICTION = "Prediction";
 /** A trigger's detail past this many characters is cut in the part every lane reads, and stands
  *  whole in its own lane's prompt, so that one lane's long lines do not fill every lane's. */
@@ -330,18 +335,18 @@ function predictionsOf(shared: string): Prediction[] {
   return found;
 }
 
-/** The predictions `lane` resolves: none for a lane that freezes or grades before it reads a result. */
-const owedBy = (lane: Lane, shared: string) =>
+/** Predictions assigned to `lane` (none for isolated or blind lanes). */
+const predictionsForLane = (lane: Lane, shared: string) =>
   lane.isolated || lane.blind ? [] : predictionsOf(shared).filter(({ lanes }) => lanes.includes(lane.number));
 
-/** The predictions section of a lane's prompt, or nothing where no row names the lane. */
-function predicting(owed: readonly Prediction[]): string[] {
-  const [first] = owed;
+/** Predictions section of a lane prompt, or empty when no prediction targets the lane. */
+function predicting(assigned: readonly Prediction[]): string[] {
+  const [first] = assigned;
   if (first === undefined) return [];
   return [
     "## Predictions this lane resolves",
-    `The prior state names this lane on the ${owed.length === 1 ? "row" : "rows"} below. Recount each from the log, whatever else the lane finds, and give each one line under \`## Predictions\` in your report: \`${PREDICTION} <id>: <${RESOLUTIONS.join(" | ")}>\`, then two counts: how often the row's trigger occurred in the log, and how often the event its mechanism writes followed. A row whose trigger never came is unreached, and one held on a mechanism that ran and moved no reading says so; the collector refuses a report that leaves a row out.`,
-    [first.head, first.head.replaceAll(/[^|]+/g, " --- "), ...owed.map(({ row }) => row)].join("\n"),
+    `The prior state assigns the ${assigned.length === 1 ? "prediction" : "predictions"} below to this lane. Recount each from the log regardless of other findings, and add one line per id under \`## Predictions\` in your report: \`${PREDICTION} <id>: <${RESOLUTIONS.join(" | ")}>\`, followed by two counts (how often the trigger occurred and how often the expected event followed). Mark a prediction \`not-observed\` if its trigger never occurred, and note explicitly when a mechanism ran without shifting any comparison reading. The collector rejects reports missing assigned predictions.`,
+    [first.head, first.head.replaceAll(/[^|]+/g, " --- "), ...assigned.map(({ row }) => row)].join("\n"),
   ];
 }
 
@@ -613,8 +618,8 @@ export function lanePrompt({
           ...form(`# Lane ${String(lane.number)}: ${lane.title}`, owners, names, "alone"),
         ]
       : [
-          ...predicting(owedBy(lane, shared)),
-          "The report's form, its owners and what a lane may leave unread are in the shared file.",
+          ...predicting(predictionsForLane(lane, shared)),
+          "The report format, owner table, and omission criteria are in the shared instructions file.",
         ]),
   ].join("\n\n");
 }
@@ -643,24 +648,28 @@ export function reportOf(
   }
   const lines = text.split("\n");
   const written = writtenIn(lines);
-  const said =
+  const verdictLine =
     lines
       .find((line) => line.startsWith("Verdict:"))
       ?.slice("Verdict:".length)
       .trim() ?? "";
-  const verdict = VERDICTS.find((each) => said.startsWith(each)) ?? null;
-  const unfinished = said.startsWith(PENDING) ? PENDING : ["provisional"].find((word) => said.includes(word));
+  const verdict = VERDICTS.find((each) => verdictLine.startsWith(each)) ?? null;
+  const unfinished = verdictLine.startsWith(PENDING)
+    ? PENDING
+    : ["provisional"].find((word) => verdictLine.includes(word));
   const resolved: Record<string, Resolution> = {};
   for (const line of lines) {
     const [id, how = ""] = line.startsWith(`${PREDICTION} `)
       ? line.slice(PREDICTION.length + 1).split(/: */u)
       : [];
-    const resolution = RESOLUTIONS.find((each) => how.startsWith(each));
+    const direct = RESOLUTIONS.find((each) => how.startsWith(each));
+    const synonym = [...RESOLUTION_SYNONYMS].find(([alias]) => how.startsWith(alias))?.[1];
+    const resolution = direct ?? synonym;
     if (id !== undefined && resolution !== undefined) resolved[id] = resolution;
   }
   const unresolved =
     verdict === "finding" || verdict === "no finding"
-      ? owedBy(lane, shared).flatMap(({ id }) => (id in resolved ? [] : [id]))
+      ? predictionsForLane(lane, shared).flatMap(({ id }) => (id in resolved ? [] : [id]))
       : [];
   const fields = names.length > 1 ? [...FIELDS, SEEN] : FIELDS;
   const counts = fields.map((field) => lines.filter((line) => line.startsWith(field)).length);
@@ -721,20 +730,21 @@ export function reportOf(
  * heading since the finding before: the form puts every other field below its observation.
  */
 function writtenIn(lines: readonly string[]): Written[] {
-  const markOf = (said: string) => {
-    const word = firstWord(plain(said));
+  const markOf = (fieldText: string) => {
+    const word = firstWord(plain(fieldText));
     return word === CONFIRMED || word === PLAUSIBLE ? word : "unmarked";
   };
   const starts = lines.flatMap((line, at) => (line.startsWith(OBSERVATION) ? [at] : []));
   return starts.map((at, index) => {
     const own = lines.slice(at, starts[index + 1]);
-    const said = (field: string) => own.find((line) => line.startsWith(field))?.slice(field.length) ?? "";
+    const fieldValue = (field: string) =>
+      own.find((line) => line.startsWith(field))?.slice(field.length) ?? "";
     const heading = lines.slice((starts[index - 1] ?? -1) + 1, at).findLast((line) => line.startsWith(TITLE));
     return {
       title: heading?.slice(TITLE.length).trim() ?? "",
-      owner: said(OWNER).trim(),
-      observation: markOf(said(OBSERVATION)),
-      cause: markOf(said(CAUSE)),
+      owner: fieldValue(OWNER).trim(),
+      observation: markOf(fieldValue(OBSERVATION)),
+      cause: markOf(fieldValue(CAUSE)),
     };
   });
 }
@@ -766,12 +776,12 @@ export function reportIndex(
     ];
   });
   const predictions = predictionsOf(shared).map(({ id, lanes: named }) => {
-    const said = RESOLUTIONS.flatMap((how) => {
+    const resolutionNotes = RESOLUTIONS.flatMap((how) => {
       const by = reports.filter(({ resolved }) => resolved[id] === how).map(({ lane }) => lane);
       return by.length === 0 ? [] : [`${how} by lane ${by.join(", ")}`];
     });
     const silent = named.filter((lane) => !reports.some((each) => each.lane === lane && id in each.resolved));
-    return `- ${id}: ${[...said, ...(silent.length === 0 ? [] : [`no line from lane ${silent.join(", ")}`])].join("; ")}`;
+    return `- ${id}: ${[...resolutionNotes, ...(silent.length === 0 ? [] : [`no line from lane ${silent.join(", ")}`])].join("; ")}`;
   });
   return [
     ...lanes,

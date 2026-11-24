@@ -437,8 +437,8 @@ export function poolLine(weeks: readonly Week[], unread: number, now: number): s
 
 export const endWords = (end: End, now: number) =>
   end.at === null
-    ? "lasts, by the model"
-    : `ends in ${spanOf(Math.round((end.at - now) / 60_000))} (${clock(end.at)}) by the model${end.runs ? " if its runs keep going" : ""}`;
+    ? "projected to last until reset"
+    : `projected to exhaust in ${spanOf(Math.round((end.at - now) / 60_000))} (${clock(end.at)})${end.runs ? " at current run pace" : ""}`;
 
 /** The one forecast: where the model beats both older paces on the hours held out, when the pool
  *  runs out at its pace over the next `HORIZON` hours and each login's rise at a few of those hours,

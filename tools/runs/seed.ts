@@ -31,7 +31,7 @@ export interface Cut {
 }
 
 /** How many of a log's `lines` a cut keeps. */
-function keptLines(lines: readonly string[], cut: Cut): number {
+function prefixLineCount(lines: readonly string[], cut: Cut): number {
   if (cut.before !== undefined && cut.events !== undefined) {
     throw new Error("name --before or --events, not both");
   }
@@ -72,7 +72,7 @@ function linesOf(from: string): string[] {
 export function treeAsRan(from: string, cut: Cut, repo: string): string {
   const lines = linesOf(from);
   // Lines `append` wrote; `seedCampaign` reads the copy again and refuses an unknown kind.
-  const events = lines.slice(0, keptLines(lines, cut)).map((line) => parseJsonAs<LogEvent>(line));
+  const events = lines.slice(0, prefixLineCount(lines, cut)).map((line) => parseJsonAs<LogEvent>(line));
   const host = lastHost(events);
   const at = events.at(-1)?.at ?? "";
   const launches = receipts(join(from, LOG_FILE));
@@ -141,7 +141,7 @@ export function codeLine(tree: string, folder: string): string {
 export function seedCampaign(from: string, to: string, cut: Cut) {
   if (existsSync(to)) throw new Error(`${to} is there already: a seed takes a name of its own`);
   const lines = linesOf(from);
-  const kept = keptLines(lines, cut);
+  const kept = prefixLineCount(lines, cut);
   mkdirSync(to, { recursive: true });
   try {
     writeFileSync(

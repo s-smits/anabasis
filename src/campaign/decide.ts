@@ -45,8 +45,8 @@ const ROWS: readonly {
     move: (ground) => {
       const ended = bound(ground);
       if (ended?.move === "end" && ended.ending === "budget") {
-        const owed = owedPromotion(ground);
-        if (owed !== null) return { ...owed, code: "step" };
+        const pending = pendingPromotion(ground);
+        if (pending !== null) return { ...pending, code: "step" };
         const reverted = unconfirmedRevert(ground);
         if (reverted !== null) return { ...reverted, code: "revert" };
       }
@@ -59,7 +59,7 @@ const ROWS: readonly {
   // A comparison that began carries on.
   { code: "unfinished", move: unfinished },
   // A step against the reference promotes.
-  { code: "step", move: owedPromotion },
+  { code: "step", move: pendingPromotion },
   // A promoted reference that failed its starter confirmation reverts to the last confirmed reference.
   { code: "revert", move: unconfirmedRevert },
   // The reference's last reading left it nothing to gain: the tasks change.
@@ -67,7 +67,7 @@ const ROWS: readonly {
   // Tasks held out since the last reading are compared before a Builder session is paid for, where
   // admission would take the comparison: the starter comparison a promotion owes, or a waiting
   // harness whose last reading left no room.
-  { code: "unread", move: (ground) => (wantsTasks(ground) ? null : heldSince(ground)) },
+  { code: "unread", move: (ground) => (wantsTasks(ground) ? null : uncomparedTasks(ground)) },
   // Nothing new to read, or too few tasks to read it on: the Builder builds and asks the Examiner
   // itself. Short of tasks at the supply patience, the campaign ends on its exam.
   {
@@ -98,8 +98,8 @@ const DRAFTS = 3;
 export const CRASHES_IN_A_ROW = DRAFTS;
 /** The admission refusals that mean too few held-out tasks (`refusals`, `admission.ts`). */
 const SHORT_OF_TASKS = ["no-held", "held-short"] as const;
-const WANTS_TASKS = "comparison admission refuses the next comparison for want of tasks";
-const BUILDS_AND_ASKS = "the Builder builds, and asks for tasks";
+const WANTS_TASKS = "comparison admission requires more held-out tasks";
+const BUILDS_AND_ASKS = "Builder continues building and requests tasks";
 /** The most tasks one Examiner ask after a promotion may be short of (`shortBy`); the next ask
  *  takes the rest. Asks of 30 drew proposals of 12 or 13. */
 const MOST_ASKED_AFTER_PROMOTION = 16;
@@ -371,7 +371,7 @@ function tasks(ground: Ground): Move | null {
   // Other tasks on the operator's word, once there is an exam to write them against. A waiting step
   // is promoted first, so the Examiner writes for the new reference rather than the old.
   const asked = pendingWords(events).find(({ word }) => word === "tasks");
-  if (asked !== undefined && owedPromotion(ground) === null) {
+  if (asked !== undefined && pendingPromotion(ground) === null) {
     return {
       move: "examine",
       why: `the operator asked for other tasks${asked.why === "" ? "" : `: ${asked.why}`}`,
@@ -479,19 +479,23 @@ function unconfirmedRevert({ events, reference, starter }: Ground): Move | null 
  * step by and promote nothing. The newest such harness is promoted, and what later sessions left
  * is read against it once it is the reference.
  */
-function owedPromotion(ground: Ground): Move | null {
+function pendingPromotion(ground: Ground): Move | null {
   const { reports, reference, waiting } = ground;
   if (waiting !== null && readStep(ground, waiting)) {
-    return { move: "promote", harness: waiting, why: `harness ${short(waiting)} read a step` };
+    return {
+      move: "promote",
+      harness: waiting,
+      why: `harness ${short(waiting)} cleared the promotion threshold`,
+    };
   }
   const earlier = reports.toReversed().flatMap(({ old, fresh }) => (old === reference ? [fresh] : []));
-  const owed = earlier.find((harness) => harness !== waiting && readStep(ground, harness));
-  return owed === undefined
+  const pending = earlier.find((harness) => harness !== waiting && readStep(ground, harness));
+  return pending === undefined
     ? null
     : {
         move: "promote",
-        harness: owed,
-        why: `harness ${short(owed)} read a step, and was not promoted: what later sessions left is read against it once it is the reference`,
+        harness: pending,
+        why: `harness ${short(pending)} cleared the promotion threshold and has not been promoted yet; later candidate harnesses will be evaluated against it once promoted`,
       };
 }
 
@@ -533,17 +537,17 @@ function noRoom(ground: Ground): Move | null {
   }
   const why =
     room === "too-hard"
-      ? `comparison ${last.id} read no step, and neither harness gave a valid answer: other tasks are written`
+      ? `comparison ${last.id} showed no improvement and neither harness produced a valid answer: generating replacement tasks`
       : side === "old"
-        ? `comparison ${last.id} read no step, and no task was informative for the reference harness: the tasks have to change`
-        : `harness ${short(reference ?? "")} is the reference, and comparison ${last.id} found no task informative for it: the tasks have to change, to ones that leave it room to improve`;
+        ? `comparison ${last.id} showed no improvement and no task was informative for the reference harness: generating new tasks`
+        : `harness ${short(reference ?? "")} is the current reference and comparison ${last.id} found no informative tasks for it: generating harder tasks with evaluation headroom`;
   return examine(ground, "room", why);
 }
 
 /**
  * A comparison of the tasks held out since the last reading, before anything more is built.
  */
-function heldSince(ground: Ground): Move | null {
+function uncomparedTasks(ground: Ground): Move | null {
   const { events, read, reports, waiting, reference, starter } = ground;
   // Count tasks held after both the promotion and the last starter comparison's start, so the
   // confirmation reads tasks aimed at this reference.
@@ -553,20 +557,24 @@ function heldSince(ground: Ground): Move | null {
     ({ old, fresh, report }) => (old === starter || fresh === starter) && report.reading !== "not-scored",
   );
   const since = heldOutAfter(events, Math.max(lastStarter?.at ?? -1, promotedAt));
-  const owed = reference !== null && starter !== null && reference !== starter && since > 0;
+  const pending = reference !== null && starter !== null && reference !== starter && since > 0;
   const currentEpoch = epochsOf(events).at(-1);
-  if (owed && currentEpoch?.starter_tally === null && currentEpoch.confirmed !== true) {
+  if (pending && currentEpoch?.starter_tally === null && currentEpoch.confirmed !== true) {
     return compare(
-      `harness ${short(reference)} is the reference, and ${plural(since, "task")} ${since === 1 ? "was" : "were"} held out for it: the starter is compared with it, those tasks first, to read whether they leave it room and whether it stands above the starter`,
+      `harness ${short(reference)} is the current reference with ${plural(since, "new held-out task")}: running a starter confirmation comparison (prioritizing new tasks) to check evaluation headroom and confirm the gain over starter`,
       "starter",
     );
   }
   if (waiting === null || read === null || !enoughWrittenSince(ground, read)) return null;
-  const later = "and tasks were written since";
-  if (read.report.reading === "not-scored") return compare(`comparison ${read.id} tallied no task, ${later}`);
-  const whatItLeft = { none: "left no room", "too-hard": "left neither harness an answer", room: null }[
-    roomOf(read.report)
-  ];
+  const later = "and new tasks have been added since";
+  if (read.report.reading === "not-scored") {
+    return compare(`comparison ${read.id} tallied no tasks, ${later}`);
+  }
+  const whatItLeft = {
+    none: "left no evaluation headroom",
+    "too-hard": "produced no valid answers on either arm",
+    room: null,
+  }[roomOf(read.report)];
   return whatItLeft === null ? null : compare(`comparison ${read.id} ${whatItLeft}, ${later}`);
 }
 
@@ -575,13 +583,13 @@ function heldSince(ground: Ground): Move | null {
 function buildsOn(ground: Ground): string {
   const { read, waiting, reference } = ground;
   if (read?.starterComparison === true) {
-    return `comparison ${read.id} read the starter against harness ${short(reference ?? "")}, the tasks held out since first, and they leave it room: the Builder builds`;
+    return `starter confirmation ${read.id} against harness ${short(reference ?? "")} showed evaluation headroom on new held-out tasks: Builder continues building`;
   }
   if (read !== null) {
-    return `comparison ${read.id} read no step with room to gain: harness ${short(read.fresh)} did not help`;
+    return `comparison ${read.id} showed no significant step despite available headroom: harness ${short(read.fresh)} did not improve over reference`;
   }
-  if (waiting === null) return "no session has left a harness that is not the reference harness";
-  return `no comparison has read harness ${short(waiting)}: the Builder compares it when it chooses`;
+  if (waiting === null) return "no candidate harness differs from the current reference";
+  return `harness ${short(waiting)} has not been evaluated yet: Builder will trigger comparison when ready`;
 }
 
 /**

@@ -177,7 +177,7 @@ export function emptyTotals(): Totals {
 const numbers = (value: JsonValue | undefined) => (Array.isArray(value) ? value.filter(isNumber) : []);
 const won = (differences: readonly number[]) => differences.filter((one) => one > 0).length;
 const lost = (differences: readonly number[]) => differences.filter((one) => one < 0).length;
-const wlt = (differences: readonly number[]) =>
+const formatTally = (differences: readonly number[]) =>
   `${String(won(differences))}-${String(lost(differences))}-${String(differences.length - won(differences) - lost(differences))}`;
 
 /** Whether a report holds the points each measure gave, as none before the weights does. */
@@ -288,12 +288,12 @@ function readingsOf(tree: Tree, events: readonly LogEvent[], totals: Totals): Re
 }
 
 const toldReading = (tree: Tree, reading: Reading) =>
-  `${reading.session} ${wlt(reading.differences)} p ${tree.flipP(reading.differences).toFixed(4)}; without the bill ${reading.unbilled === null ? "unread" : `${wlt(reading.unbilled)} p ${tree.flipP(reading.unbilled).toFixed(4)}`}`;
+  `${reading.session} ${formatTally(reading.differences)} p ${tree.flipP(reading.differences).toFixed(4)}; without the bill ${reading.unbilled === null ? "unread" : `${formatTally(reading.unbilled)} p ${tree.flipP(reading.unbilled).toFixed(4)}`}`;
 
 const aaLine = (tree: Tree, reading: Reading) =>
   reading.aa === null
     ? "A/A unread"
-    : `A/A ${wlt(reading.aa.differences)}${tree.readsStepEitherWay(reading.aa.differences, reading.level, reading.aa.unbilled) ? " STEP" : ""}`;
+    : `A/A ${formatTally(reading.aa.differences)}${tree.readsStepEitherWay(reading.aa.differences, reading.level, reading.aa.unbilled) ? " STEP" : ""}`;
 
 /** A pair the score promotes: the reading it rests on, its A/A, and later readings. */
 function promotedLines(
@@ -708,7 +708,7 @@ function namedLines(panels: readonly Panel[], mechanisms: readonly Mechanism[], 
   return panels.flatMap((panel, at) => {
     const mechanism = mechanisms[at] ?? base;
     const row = (sign: string, { campaign, session, tasks, after }: Comparison) =>
-      `  ${sign} ${campaign} ${session}: ${wlt(tasks.map(base.score))} by the tree, ${wlt(tasks.map(mechanism.score))} here; later promotions ${String(after.promoted.length)}, later readings ${String(after.readings)}`;
+      `  ${sign} ${campaign} ${session}: ${formatTally(tasks.map(base.score))} by the tree, ${formatTally(tasks.map(mechanism.score))} here; later promotions ${String(after.promoted.length)}, later readings ${String(after.readings)}`;
     const rows = [...panel.added.map((one) => row("+", one)), ...panel.dropped.map((one) => row("-", one))];
     return rows.length === 0 ? [] : ["", panel.name, ...rows];
   });

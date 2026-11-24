@@ -18,7 +18,7 @@ import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { resolve } from "#src/meta/path.ts";
 import { codeOf } from "#tools/d2/campaign.ts";
 import { logEvents } from "#tools/runs/registry.ts";
-import { builderWaits, heldOff, planOn, poolOn, waitedIn } from "#tools/runs/view.ts";
+import { builderWaits, firstComparisonDelay, planOn, poolOn, waitedIn } from "#tools/runs/view.ts";
 import { printRows } from "./folds.ts";
 import { openAt } from "./launches.ts";
 
@@ -169,7 +169,11 @@ function changesOf(events: readonly LogEvent[], tableAt: (upTo: number) => Table
 
 /** Each change with how long it stood: until the move it names begins, the table names another, or
  *  the log ends. */
-function stoodOf(events: readonly LogEvent[], tableAt: (upTo: number) => Table, waits: readonly Call[]) {
+function tableDecisionsOf(
+  events: readonly LogEvent[],
+  tableAt: (upTo: number) => Table,
+  waits: readonly Call[],
+) {
   const changes = changesOf(events, tableAt);
   const moves = eventsOf(events, MOVED);
   const end = events.at(-1)?.at ?? "";
@@ -225,18 +229,18 @@ function timelineLines(events: readonly LogEvent[], here: string): string[] {
     const row = `${String(index + 1).padStart(6)}  ${at}Z  ${ranAt(index).padEnd(12)}  ${what}`;
     rows.set(index, [...(rows.get(index) ?? []), row]);
   };
-  for (const change of stoodOf(events, tableAt, waits)) {
+  for (const change of tableDecisionsOf(events, tableAt, waits)) {
     const { upTo, table, hours, waited, until } = change;
     put(
       Math.max(0, upTo - 1),
       `table      replayed ${table.key} · ${poolAt(upTo).text} · named ${hours.toFixed(2)} h, ${waited.toFixed(2)} h of it inside Builder waits, until ${until}`,
     );
   }
-  const held = heldOff(events);
-  if (held !== null) {
+  const delay = firstComparisonDelay(events);
+  if (delay !== null) {
     put(
-      held.index,
-      `admissible a first comparison from ${(events[held.index]?.at ?? "").slice(11, 19)}: ${poolAt(held.index + 1).text} · ${held.said}`,
+      delay.index,
+      `admissible first comparison from ${(events[delay.index]?.at ?? "").slice(11, 19)}: ${poolAt(delay.index + 1).text} · ${delay.summary}`,
     );
   }
   const moves = eventsOf(events, MOVED);

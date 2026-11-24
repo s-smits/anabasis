@@ -41,7 +41,7 @@ export interface Listed extends TaskPractice {
 /** What a session is told of the sessions before it (`memory.ts`). */
 export interface Past {
   /** The harness the session starts from, as the lists below name a harness, where it came from
-   *  and how the last session ended, as a sentence (`startTold`, `past.ts`). */
+   *  and how the last session ended, as a sentence (`formatSessionStart`, `past.ts`). */
   readonly start: string;
   /** Every failed practice solve of the campaign on this session's tasks, a line each. */
   readonly fails: readonly string[];
@@ -59,7 +59,7 @@ export interface Solver {
 
 /** The limits a session is told it runs under, and the solver and limits each of its harness's
  *  solves is held to. */
-export interface Told {
+interface SessionLimits {
   readonly wallSeconds: number;
   readonly turns: number;
   readonly practiceSolves: number;
@@ -73,7 +73,7 @@ const GOAL =
   "Your harness is measured against a reference harness on tasks you are never shown: the same solving model answers each task under each harness, under the same limits.";
 
 /** The texts a Builder reads that differ by who makes its campaign's moves. */
-export interface Said {
+export interface ModePrompts {
   /** The system prompt's sentences on the campaign its tools lead and what ends it, before the one
    *  on the session's end; empty for a session by hand, whose campaign is the operator's. */
   readonly closing: string;
@@ -104,7 +104,7 @@ export interface Said {
  * nothing: the operator's milestone is no rule (`AGENTS.md`, "Climb"), and `finish` ends
  * the campaign only after three conversations in a row made no campaign move (`harness-builder.ts`).
  */
-export const SAID: Readonly<Record<"host" | "builder", Said>> = {
+export const MODE_PROMPTS: Readonly<Record<"host" | "builder", ModePrompts>> = {
   host: {
     closing: "",
     frozen: "frozen and measured",
@@ -172,7 +172,7 @@ export const shellWalls = (network: NetworkReach): string =>
       : `Network is reachable, so packages and programs can be installed under harness/.toolchain.${INSTALLER_TOLD[network]}`
   } Writable: your home and $TMPDIR, which persists for the session; a write under /tmp is refused or does not outlive the command. Readable: host toolchains and public runtime roots, never the repository or private data. Background jobs are killed when a command returns, so one is waited for in the command that started it.`;
 
-export function systemPrompt(said: Said): string {
+export function systemPrompt(modePrompts: ModePrompts): string {
   return [
     "You are the Builder. You build and refine a Built Harness (programs and operating guide) for a separate solving model in one domain. The host owns verification, acceptance, and scoring.",
     `${GOAL} Measured tasks are never practice tasks and include families not seen in practice. One hard rule: nothing in harness/ may name a task, copy its text, or embed its answer.`,
@@ -190,8 +190,8 @@ export function systemPrompt(said: Said): string {
     `Comparisons pair your candidate against the reference on each task. Validity comes first: an invalid answer never beats a valid one. Between valid answers, an objective gain of at least ${String(GAP_FLOOR * 100)}% of the larger magnitude breaks ties. Earlier solved tasks remain in comparisons alongside new ones, so regressions on easy tasks cost comparisons. Cost and turns are reported but unscored; running out of turns, time, or context without submitting, or flagging a task malformed, counts as a fail. Check-defect fails are excluded and not yours to build around.`,
     "Use read, edit, and write with paths relative to your home (such as harness/agent/BUILT_AGENTS.md), and bash for everything else: searching, listing, running and installing. Each reply counts as one turn, with or without a tool call.",
     [
-      said.closing,
-      `The session ends when you call finish or hit its limits, and harness/ is then ${said.frozen}.`,
+      modePrompts.closing,
+      `The session ends when you call finish or hit its limits, and harness/ is then ${modePrompts.frozen}.`,
     ]
       .filter((sentence) => sentence !== "")
       .join(" "),
@@ -210,7 +210,7 @@ export function systemPrompt(said: Said): string {
  * and leave a tree that does not open.
  * The line states the condition and no course: which fact matters is the Builder's.
  */
-export function usedLine(used: Used, limits: Pick<Told, "wallSeconds" | "turns">): string {
+export function usedLine(used: Used, limits: Pick<SessionLimits, "wallSeconds" | "turns">): string {
   const clock = (seconds: number) => {
     const whole = Math.max(0, Math.floor(seconds));
     return `${String(Math.floor(whole / 60))}:${String(whole % 60).padStart(2, "0")}`;
@@ -227,14 +227,14 @@ export function usedLine(used: Used, limits: Pick<Told, "wallSeconds" | "turns">
  */
 export function continuation(
   used: Used,
-  limits: Pick<Told, "wallSeconds" | "turns">,
+  limits: Pick<SessionLimits, "wallSeconds" | "turns">,
   harness: string | Error,
-  said: Said,
+  modePrompts: ModePrompts,
   practice: "counted" | "uncounted",
 ): string {
   const minutes = (seconds: number) => String(Math.floor(seconds / 60));
   return [
-    `You have not called finish, and the session goes on: ending a turn does not end it. It ends when you call finish or at its limits, and what harness/ holds then is ${said.frozen}.`,
+    `You have not called finish, and the session goes on: ending a turn does not end it. It ends when you call finish or at its limits, and what harness/ holds then is ${modePrompts.frozen}.`,
     `The goal, unchanged: ${GOAL}`,
     `This session so far: ${String(used.turns)} of ${plural(limits.turns, "turn")} and ${minutes(used.seconds)} of ${plural(Number(minutes(limits.wallSeconds)), "minute")} used, ${plural(used.practiceLeft, "practice solve")} left. ${tried(harness, practice)}`,
     "read_opening returns the opening message again.",
@@ -252,7 +252,12 @@ export function measuredClause(name: () => string, measures: readonly string[] =
  *  each valid answer's band against the author's answer on record), what the campaign's log holds
  *  of the sessions before this one, and the session's limits. A task's public part is a file in the
  *  home, since a pack's inputs run long. */
-export function firstMessage(contract: Contract, tasks: readonly Listed[], told: Told, past: Past): string {
+export function firstMessage(
+  contract: Contract,
+  tasks: readonly Listed[],
+  told: SessionLimits,
+  past: Past,
+): string {
   const names = [contract.objective?.quantity ?? ""];
   const name = () => names.shift() ?? "the objective";
   const listed = tasks.map(({ taskId, family, solves, passed, measures, left, reference }) => {

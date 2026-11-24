@@ -64,7 +64,7 @@ export const confirmedIn = (vetting: string): string[] =>
     .map(({ id }) => id);
 
 /** The findings of `vetting`: each row of each table with a `verdict` column whose verdict begins
- *  with one of `VERDICTS`. A prediction's row, resolved as held or falsified, is no finding. */
+ *  with one of `VERDICTS`. A prediction's row, resolved as confirmed, refuted, or not-observed, is not a finding. */
 function findingsIn(vetting: string): Finding[] {
   return tablesOf(vetting).flatMap(({ header, rows }) => {
     const columns = header.map((cell) => plain(cell));

@@ -6,7 +6,7 @@
  * practice solve ran, and a harness copied without its programs.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { copyHarness, seedKept } from "../src/builder/kept.ts";
+import { copyHarness, seedSavedHarnesses } from "../src/builder/kept.ts";
 import {
   closeSync,
   existsSync,
@@ -58,7 +58,7 @@ describe("the harnesses a campaign kept, in a Builder's home", () => {
     const practice = "d".repeat(64);
     keep(states, parent, null);
     keep(states, practice, null);
-    seedKept(
+    seedSavedHarnesses(
       home,
       states,
       [
@@ -98,14 +98,14 @@ describe("the harnesses a campaign kept, in a Builder's home", () => {
       join(home, "three", ".toolchain", "bin", "run"),
     );
 
-    // `seedKept` shares >100 MB trees under `home/.kept-trees` without polluting `home/kept/`.
+    // `seedSavedHarnesses` shares >100 MB trees under `home/.kept-trees` without polluting `home/kept/`.
     const [largeTwo, parent] = ["e".repeat(64), "f".repeat(64)];
     keep(states, largeTwo, null);
     symlinkSync(join("..", "tree-1"), join(states, largeTwo, ".toolchain"));
     keep(states, parent, null);
     const seededHome = join(root, "seeded-large");
     mkdirSync(seededHome);
-    seedKept(
+    seedSavedHarnesses(
       seededHome,
       states,
       [

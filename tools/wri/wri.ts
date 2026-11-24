@@ -50,7 +50,7 @@
  *   which the launcher takes over its `--reasoning-effort`. `lanes` creates `<out>/lanes` where it is missing.
  * - `collect` holds every expected report to its shape and writes `reports.md`. It exits 1 until
  *   every report is there and valid.
- * - `record` makes the reads the primary owes while the lane sessions work (`readsOf`,
+ * - `record` runs the baseline read commands while lane sessions work (`checkedStepsOf`,
  *   `tools/wri/record.ts`) and writes each under its command in `<out>/record.md`, with when it ran,
  *   how many lane reports stood written then and its exit code. A read already made is kept, and it
  *   exits 1 while one failed. It runs each command with this process's environment, so start it as

@@ -662,7 +662,7 @@ describe("a campaign run by its log", () => {
     );
     // The chance of a false promotion over the whole campaign, not one epoch's alone (the plan's 7.6).
     expect(closing).toContain("## The chance of a false promotion\n\n- Epoch 1:");
-    expect(closing).toContain("Over the campaign, a false promotion in any epoch estimated at");
+    expect(closing).toContain("Campaign-wide estimated false-promotion risk across all epochs:");
     // It holds no link: a kept harness names its programs by one, into a tree beside it, and what
     // is handed over is the tree itself.
     const links = readdirSync(join(to, "harness"), { recursive: true }).filter((entry) =>
@@ -679,7 +679,7 @@ describe("a campaign run by its log", () => {
     const letter = /harness ([A-Z]+) \(([0-9a-f]{8})\), set-up \(epoch 0\)/u.exec(report);
     expect(letter?.[2]).toBe(handed.harness.slice(0, 8));
     expect(report).toContain(
-      `harness ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}), set-up (epoch 0), read by g-1. In g-1 it won 8, lost 0 and tied 0`,
+      `harness ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}), set-up (epoch 0), decided by g-1. In g-1 it won 8, lost 0 and tied 0`,
     );
     expect(report).toContain(`| g-1 | ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}) | A (`);
     // The points each measure of the score gave it, all by validity here, and its cost beside
@@ -687,7 +687,7 @@ describe("a campaign run by its log", () => {
     expect(report).toMatch(
       /tied 0, the score giving it [1-9]\d* points by validity and 0 by the objective\./,
     );
-    expect(report).toContain("1 promotion attempt this epoch (bar 3 after set-up): met");
+    expect(report).toContain("1 promotion attempt this epoch (threshold 3 after setup): within threshold");
     expect(report).not.toContain("ladder");
     // What each measured thing cost, the climb's velocity first, and how many comparisons that
     // began bought a report.

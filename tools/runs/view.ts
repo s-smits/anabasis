@@ -1,15 +1,10 @@
 /**
  * `bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]`
  *
- * Its last line is the one move the decision table names on this log (`decide`,
- * `src/campaign/decide.ts`), with its reason: what `tools/d2/harness-builder.ts` would make next.
- * The table is asked with the four flags of the campaign command that bear on it, and with the
- * terms its opening keeps for those it does not name (`campaign.opened`, `src/campaign/opening.ts`),
- * so that the view and `tools/d2/harness-builder.ts` name one move on one log. It prints the
- * table's move alone, not every move a launch would be admitted for, which could name a move the
- * table does not make, and it parses no flag of its own.
- * The view opens no campaign, so of a log that holds no task it says what holds for a campaign
- * over a pack: that the pack's tasks are taken in first.
+ * Prints a campaign's setup, sessions, comparisons, climb summary, and the next action selected by
+ * the decision table (`decide`, `src/campaign/decide.ts`). Terms fall back from CLI flags to
+ * `campaign.opened` (`src/campaign/opening.ts`) to repository defaults so `runs view` matches
+ * `tools/d2/harness-builder.ts` on the same log.
  */
 import { barLines, epochLine, epochsOf, starterReads } from "#src/campaign/climb.ts";
 import { decide } from "#src/campaign/decide.ts";
@@ -35,12 +30,9 @@ import { lastLaunch } from "./receipt.ts";
 import { lifeOf } from "./diagnosis.ts";
 import { runReason, runState } from "./state.ts";
 
-/** How long a first comparison may stand admissible and not begun before it is called long: longer
- *  than this has meant the Builder waiting on practice tasks the move table asked for. It is a
- *  lead, not a fault: most recorded campaigns that reached the position stood this long, many with
- *  a Builder at work, which the hours inside its waits tell apart. */
-const HELD_OFF_MS = 75 * MINUTE_MS;
-/** The flags the table is asked with: the campaign command's, with the same names. */
+/** Threshold above which a delay between first comparison admissibility and start is flagged. */
+const DELAY_FLAG_MS = 75 * MINUTE_MS;
+/** CLI flags forwarded to the campaign decision table. */
 const VIEW_OPTIONS = {
   level: { type: "string" },
   target: { type: "string" },
@@ -48,8 +40,7 @@ const VIEW_OPTIONS = {
   "past-stop": { type: "string" },
 } as const;
 
-/** The flags of the view that bear on the table, as `parseArgs` hands them over. */
-type Asked = { readonly [Flag in keyof typeof VIEW_OPTIONS]?: string | undefined };
+type ViewFlags = { readonly [Flag in keyof typeof VIEW_OPTIONS]?: string | undefined };
 
 const SKIP_CLOSED: ReadonlySet<EventKind> = new Set(["solve.call", "referee.call"]);
 const STANDINGS = [
@@ -59,65 +50,58 @@ const STANDINGS = [
   ["failing-again", "failing again"],
 ] as const;
 
-const row = (id: string, said: string) => `  ${id.padEnd(11)} ${said}`;
+const row = (id: string, body: string) => `  ${id.padEnd(11)} ${body}`;
 
-/** How a session stands, said for its line: its ending; or cut, where the campaign went past it;
- *  or open at the log's end, with its turns so far and when it last wrote, `now` being when the
- *  view reads. An open session that last wrote long ago is likely a process stopped with no
- *  ending, which the log cannot say. */
+/** Format a session's lifecycle state: final ending, interrupted, or still active at `now`. */
 function stateOf(step: Exclude<Handover, { readonly step: "comparison" }>, now: number): string {
   if (step.ended !== null) return step.ended;
-  if (step.cut) return "cut before its end: a later step began without it";
+  if (step.cut) return "interrupted before completion (superseded by a later step)";
   const minutes = Math.max(0, Math.round((now - Date.parse(step.last)) / MINUTE_MS));
-  return `open at the log's end, ${plural(step.turns, "turn")} so far, last wrote at ${step.last.slice(11, 19)}Z (${plural(minutes, "minute")} before this reading)`;
+  return `active, ${plural(step.turns, "turn")}, last event at ${step.last.slice(11, 19)}Z (${plural(minutes, "minute")} ago)`;
 }
 
-/** One step's handover as a line, each harness `called` as the view names it. */
+/** Format one campaign step (Examiner, Builder, or comparison) using letter aliases from `called`. */
 function stepLine(step: Handover, now: number, called: Called): string {
   if (step.step === "examiner") {
     return row(
       step.id,
-      `Examiner session, ${stateOf(step, now)}: ${String(step.proposed)} proposed, ${String(step.held)} held out, ${String(step.refused)} refused · ${dollars(step.billed)}`,
+      `Examiner session (${stateOf(step, now)}): ${String(step.proposed)} proposed, ${String(step.held)} held out, ${String(step.refused)} refused · ${dollars(step.billed)}`,
     );
   }
   if (step.step === "builder") {
-    const left =
-      step.changed && step.harness !== null
-        ? `it left ${called(step.harness)}`
-        : "it left the harness as it was";
-    // A session with no end has left nothing yet.
-    const from = `from ${called(step.parent ?? "")}${step.ended === null ? "" : ` ${left}`}`;
+    const result =
+      step.changed && step.harness !== null ? `produced ${called(step.harness)}` : "harness unchanged";
+    const lineage = `from ${called(step.parent ?? "")}${step.ended === null ? "" : `, ${result}`}`;
     return row(
       step.id,
-      `Builder session, ${stateOf(step, now)}: ${from}, ${plural(step.practiceSolves, "practice solve")} · ${dollars(step.billed)}`,
+      `Builder session (${stateOf(step, now)}): ${lineage}, ${plural(step.practiceSolves, "practice solve")} · ${dollars(step.billed)}`,
     );
   }
   const { tally, valid, rulings, grain, repeat } = step;
-  // A comparison with no report is open or cut, as a session with no end is, and says its solves.
-  const unended = `${plural(step.solved, "solve")} ended, ${String(step.begun - step.solved)} ${step.cut ? "cut" : "open"}`;
-  const read =
+  const inFlight = `${plural(step.solved, "solve")} finished, ${String(step.begun - step.solved)} ${step.cut ? "cut" : "open"}`;
+  const outcome =
     step.reading === null
-      ? `no report yet, ${step.cut ? "cut before it" : "open at the log's end"}: ${unended}`
-      : `${tally === null ? "no task tallied" : `${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied by ${called(step.fresh)}`}, which reads ${step.reading}`;
+      ? `no report yet (${step.cut ? "interrupted" : "in progress"}): ${inFlight}`
+      : `${tally === null ? "no tasks scored" : `${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied for ${called(step.fresh)}`} (outcome: ${step.reading})`;
   const ruled = [
     rulings.earned > 0 && `${plural(rulings.earned, "rejection")} ruled earned`,
-    rulings["check-defect"] > 0 && `${String(rulings["check-defect"])} ruled a check defect`,
+    rulings["check-defect"] > 0 && `${String(rulings["check-defect"])} ruled check-defect`,
     rulings.unclear > 0 && `${String(rulings.unclear)} ruled unclear`,
   ].filter(Boolean);
   return row(
     step.id,
     [
-      `comparison of ${called(step.fresh)} with ${called(step.old)} on ${plural(step.tasks, "task")}, ${String(step.solves)} solves a side at ${String(step.level)}: ${read}`,
+      `comparison ${called(step.fresh)} vs ${called(step.old)} on ${plural(step.tasks, "task")}, ${String(step.solves)} rollouts per arm at alpha=${String(step.level)}: ${outcome}`,
       grain !== null &&
         grain.largest >= 2 &&
         `${String(grain.largest)} of ${plural(grain.of, "tallied frontier task")} in one family`,
       repeat !== null &&
         `${String(repeat.tasks)} of ${plural(step.tasks, "task")} also drawn by ${repeat.with}`,
       valid !== null &&
-        `tasks with ${valid.old.map((_, index) => String(index)).join(", ")} valid answers: reference ${valid.old.join("/")}, new ${valid.fresh.join("/")}`,
+        `valid answers per task (${valid.old.map((_, index) => String(index)).join("/")}): reference ${valid.old.join("/")}, candidate ${valid.fresh.join("/")}`,
       step.points !== null &&
-        `points to the new harness by validity ${String(step.points.validity)}, the objective ${String(step.points.objective)}`,
-      step.aside > 0 && `${plural(step.aside, "task")} set aside for a person's labels`,
+        `score delta (candidate minus reference): validity ${String(step.points.validity)}, objective ${String(step.points.objective)}`,
+      step.aside > 0 && `${plural(step.aside, "task")} set aside awaiting operator labels`,
       ruled.length > 0 && ruled.join(", "),
       dollars(step.billed),
     ]
@@ -126,23 +110,22 @@ function stepLine(step: Handover, now: number, called: Called): string {
   );
 }
 
-/** A campaign's reading, a line each, read at `now`, each harness `called` by its letter where the
- *  log names it (`calledBy`) and by its digest's first eight characters otherwise. */
+/** Format the setup, step rows, and practice failure summary of a campaign at `now`. */
 export function viewLines(name: string, campaign: Campaign, now: number, called: Called = short): string[] {
   const { supply, fails } = campaign;
   const checker =
     supply.faults === null
-      ? "checker never read"
-      : `checker read, ${plural(supply.faults, "fault")}, ${supply.frozen ? "frozen" : "not frozen"}`;
-  const standing = STANDINGS.flatMap(([state, said]) => {
+      ? "checker not yet audited"
+      : `checker audited, ${plural(supply.faults, "fault")}, ${supply.frozen ? "frozen" : "not frozen"}`;
+  const standing = STANDINGS.flatMap(([state, label]) => {
     const found = fails.filter((fail) => fail.standing === state).length;
-    return found === 0 ? [] : [`${String(found)} ${said}`];
+    return found === 0 ? [] : [`${String(found)} ${label}`];
   });
   return [
     name,
     row(
-      "set-up",
-      `${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(supply.awaiting)} wait for a label · ${String(supply.exhausted)} exhausted · ${checker} · reference: ${campaign.reference === null ? "the starter" : called(campaign.reference)}`,
+      "setup",
+      `${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(supply.awaiting)} awaiting label · ${String(supply.exhausted)} exhausted · ${checker} · reference: ${campaign.reference === null ? "starter" : called(campaign.reference)}`,
     ),
     ...campaign.steps.map((step) => stepLine(step, now, called)),
     ...(fails.length === 0
@@ -152,20 +135,16 @@ export function viewLines(name: string, campaign: Campaign, now: number, called:
 }
 
 /**
- * The one move the table names on `events`, asked as this view asks it: each term as a flag names
- * it, then as the campaign's opening keeps it, then the tree's default. The Anabasis UI asks it
- * here with no flag (`packages/ui/src/server/reading.ts`), so that the page and the view name one
- * move on one log by construction.
+ * Evaluate the decision table on `events` using flag overrides, recorded opening terms, and
+ * repository defaults. Shared with the UI server (`packages/ui/src/server/reading.ts`).
  */
-export function decidedOn(events: readonly LogEvent[], values: Asked = {}): Decided {
+export function decidedOn(events: readonly LogEvent[], values: ViewFlags = {}): Decided {
   return decide(events, planOn(events, values));
 }
 
-/** Resolve the plan shared by the move table and readers of its stopping conditions. */
-export function planOn(events: readonly LogEvent[], values: Asked = {}): Plan {
+/** Resolve the campaign plan shared by the decision table and stopping-condition readers. */
+export function planOn(events: readonly LogEvent[], values: ViewFlags = {}): Plan {
   const opening = openingOf(events);
-  // Each term as this view is asked it, then as the opening keeps it, then the tree's default: the
-  // scored tasks are the setting's where it names them, then the flag's (`planOf`).
   const term = (flag: "level" | "practice", fallback: string) =>
     values[flag] ?? opening?.terms[flag] ?? fallback;
   const { target } = values;
@@ -176,16 +155,13 @@ export function planOn(events: readonly LogEvent[], values: Asked = {}): Plan {
       level: Number(term("level", COMPARISON_OPTIONS.level.default)),
       target: target === undefined ? undefined : Number(target),
       pastStop: values["past-stop"],
-      // The practice tasks the campaign is brought to, as the command passes them: without a
-      // count the table releases nothing, and the view would say `build` where the command makes
-      // `prepare`.
       practice: Number(term("practice", String(PRACTICE))),
     },
     opening,
   );
 }
 
-/** `bun run runs view` uses this checkout's reader, refreshing a named remote record first. */
+/** Render `bun run runs view <name>` using this checkout's reader after refreshing remote state. */
 export async function view(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],
@@ -197,15 +173,13 @@ export async function view(args: readonly string[]): Promise<void> {
   const run = await readAcross(name);
   const reader = gitText(resolve(import.meta.dir, "../.."), "rev-parse", "--short=9", "HEAD");
   const launched = lastLaunch(run.path)?.commit.slice(0, 9) ?? "no receipt";
-  console.log(`reader ${reader}; last launch ${launched}; the table below uses this checkout's code`);
+  console.log(`reader ${reader}; last launch ${launched}; decision table uses this checkout`);
   const running = processes();
   const events = readEvents(run.path, lifeOf(run, running).writing ? undefined : SKIP_CLOSED);
   for (const line of await runReason(run, runState(run, events, running))) console.log(line);
   const campaign = campaignOf(events);
   const called = calledBy(namesOf(events));
   const lines = viewLines(name, campaign, Date.now(), called);
-  // A move the command is making is on record from its start (`campaign.move`), and the table is
-  // read on a log that does not hold its end yet.
   const open = openSteps(campaign.steps);
   const decided = decidedOn(events, values);
   const reads = starterReads(events);
@@ -213,18 +187,18 @@ export async function view(args: readonly string[]): Promise<void> {
   console.log(
     [
       ...lines,
-      "the climb",
+      "Climb summary",
       ...climb,
       ...barLines(events).map((bar) => `  ${bar}`),
       open.length === 0
-        ? "the table's move"
-        : `the table's move, on the log as it stands with ${open.join(", ")} open`,
+        ? "Recommended next action"
+        : `Recommended next action (with ${open.join(", ")} still open)`,
       `  ${decidedLine(decided)}`,
     ].join("\n"),
   );
 }
 
-/** Hours of `[from, to)` spent inside the Builder's `wait` calls. */
+/** Hours within `[from, to)` spent inside Builder `wait` calls. */
 export function waitedIn(waits: readonly Call[], from: string, to: string): number {
   const [start, end] = [Date.parse(from), Date.parse(to)];
   let total = 0;
@@ -235,7 +209,7 @@ export function waitedIn(waits: readonly Call[], from: string, to: string): numb
   return total / HOUR_MS;
 }
 
-/** The Builder's `wait` calls. */
+/** Extract all Builder `wait` tool calls from the log. */
 export const builderWaits = (events: readonly LogEvent[]): Call[] =>
   eventsOf(events, "build.call").flatMap(({ index, event }) => {
     if (event.data.tool !== "wait") return [];
@@ -243,23 +217,24 @@ export const builderWaits = (events: readonly LogEvent[]): Call[] =>
     return call?.part === "call" ? [call] : [];
   });
 
-/** The pool on the first `upTo` events and what comparison admission refuses there. */
+/** Pool counts and admission blockers after the first `upTo` events. */
 export function poolOn(events: readonly LogEvent[], upTo: number) {
   const prefix = events.slice(0, upTo);
   const supply = supplyOf(prefix);
   const codes = refusals(supply, askedOf(planOn(prefix))).map(({ code }) => code);
-  const refused = codes.length === 0 ? "nothing" : codes.join(", ");
+  const refused = codes.length === 0 ? "none" : codes.join(", ");
   return {
     open: codes.length === 0,
-    text: `${String(supply.held)} held out, ${String(supply.released)} released · admission refuses ${refused}`,
+    text: `${String(supply.held)} held out, ${String(supply.released)} released · admission blockers: ${refused}`,
   };
 }
 
-/** The line at which admission first refused a first comparison nothing, and what the campaign then
- *  took to begin one (to the log's end where none began): the hours, those of them inside Builder
- *  waits, and whether the hours are long (`HELD_OFF_MS`). Null where none became admissible. It
- *  keeps the hours after admission apart, which would otherwise read as the Examiner's. */
-export function heldOff(events: readonly LogEvent[]) {
+/**
+ * Find the first log index at which comparison admission opened, and measure the elapsed hours until
+ * the first comparison started (or log end), along with the share spent inside Builder `wait` calls.
+ * Returns `null` if admission never opened.
+ */
+export function firstComparisonDelay(events: readonly LogEvent[]) {
   const first = eventsOf(events, "comparison.started")[0]?.index ?? -1;
   const end = first === -1 ? events.length : first;
   let [checkerRead, gates, floor] = [false, 0, comparisonFloor(Number(COMPARISON_OPTIONS.level.default))];
@@ -284,6 +259,6 @@ export function heldOff(events: readonly LogEvent[]) {
   const from = events[index]?.at ?? "";
   const to = events[first === -1 ? events.length - 1 : first]?.at ?? from;
   const hours = (Date.parse(to) - Date.parse(from)) / HOUR_MS;
-  const said = `${hours.toFixed(2)} h ${first === -1 ? "to the log's end, none begun" : "before one began"}, ${waitedIn(builderWaits(events), from, to).toFixed(2)} h of it inside Builder waits`;
-  return { index, said, hours, long: hours * HOUR_MS >= HELD_OFF_MS };
+  const summary = `${hours.toFixed(2)} h ${first === -1 ? "to log end (no comparison started)" : "until first comparison started"}, ${waitedIn(builderWaits(events), from, to).toFixed(2)} h inside Builder waits`;
+  return { index, summary, hours, long: hours * HOUR_MS >= DELAY_FLAG_MS };
 }

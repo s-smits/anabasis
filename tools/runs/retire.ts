@@ -38,7 +38,7 @@ import { takeRetired, syncRuns } from "./snapshots.ts";
 import { stillRunning } from "./diagnosis.ts";
 import { unlaunchedSeed } from "./receipt.ts";
 import { archived, archiveOf, HERE, Misused, processes, runs } from "./registry.ts";
-import { leftOpen, release } from "./stop.ts";
+import { release, unreleasedSandboxes } from "./stop.ts";
 
 /** What one sweep is asked: the main worktree, how long idle is, the time, and whether to act. */
 export interface Sweep {
@@ -48,8 +48,8 @@ export interface Sweep {
   readonly yes: boolean;
 }
 
-/** What each run's log names as open (`leftOpen`), by the log's path. */
-type Open = Map<string, ReturnType<typeof leftOpen>>;
+/** Unreleased sandbox directories recorded in each run's log, indexed by log path. */
+type Open = Map<string, ReturnType<typeof unreleasedSandboxes>>;
 
 /** A worktree or branch nothing uses stays this long, and a tree with a change no commit names twice
  *  as long: past it the system has moved too far for the change to apply (the operator's choice). */
@@ -113,7 +113,7 @@ export async function releaseScratch(sweep: Sweep, parents: readonly string[]): 
   const open: Open = new Map();
   for (const run of runs(sweep.main)) {
     try {
-      open.set(run.path, leftOpen(run));
+      open.set(run.path, unreleasedSandboxes(run));
     } catch (error) {
       // Unread, its roots cannot be told from those nobody holds, so none goes by its claim today.
       warn(`${run.name}: ${errorMessage(error)}, so no root is released by its claim in this sweep`);

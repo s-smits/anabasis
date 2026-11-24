@@ -18,7 +18,7 @@ Cuts (recorded before execution):
 
 Explanations (committed before unsealing):
   id | explanation | kind (innocent, instrument, mechanism) | predicted count on sealed half |
-  falsified if | resolution: held, falsified, or unreached, with recount
+  refuted if | resolution: confirmed, refuted, or not-observed, with recount
 
 Levels (one row per level in levels.md):
   level | count or "could not read" | what it settles
@@ -70,7 +70,7 @@ Corrections:     any earlier claim refuted by this review
 The comparison:  what ran, benchmark coverage, execution conditions, statistical test, and sample size
 Levels 0 to 6:   what held and what broke, each with its closing count
 Levels 7 to 11:  where the gap sits, at each granularity, in both directions
-Explanations:    each pre-registered explanation marked held, falsified, or unreached, with recount
+Explanations:    each pre-registered explanation marked confirmed, refuted, or not-observed, with recount
 Cuts:            total cuts executed, and how many were added after seeing outcomes
 Burned tasks:    which tasks are burned, and how many unburned tasks remain
 Noise:           the clean A/A measurement, or "unmeasured"

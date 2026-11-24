@@ -37,7 +37,12 @@ import { draftCommand } from "../d1b/draft.ts";
 import { hostPython, nextRun, writeReceipt } from "../runs/receipt.ts";
 import { standing } from "../runs/registry.ts";
 import { campaignLog, LIMITS, openCampaign, packNamed, REPO, treeFault } from "./campaign.ts";
-import { awaitsOperator, type CampaignContext, campaignTools, releaseOwed } from "./campaign-actions.ts";
+import {
+  awaitsOperator,
+  type CampaignContext,
+  campaignTools,
+  releasePendingPractice,
+} from "./campaign-actions.ts";
 import {
   comparisonOf,
   examinerRun,
@@ -243,7 +248,7 @@ async function converse(
   const { builder } = turn.opening.seats;
   // The practice owed since the last reading, a comparison or a promotion the host made between
   // conversations among them, is in the workspace the conversation opens on.
-  await releaseOwed(context, "a Builder conversation opens");
+  await releasePendingPractice(context, "a Builder conversation opens");
   const led = `the Builder's campaign conversation, where the table named ${named.move}`;
   moved(log, { move: "build", code: "led", why: led }, { session });
   try {

@@ -24,7 +24,7 @@ For an internal campaign comparison, conditions match by construction (use [comp
 4. **Inspect the open half (levels 7–11)**: examine per-task splits, tool usage, and rollout variance symmetrically across wins and losses.
 5. **Conduct a blind second reading**: launch independent read-only sessions under neutral arm labels with file pointers and open questions only ([references/report.md](references/report.md)).
 6. **Commit >=3 rival explanations** (including an innocent/noise explanation and an instrument-defect explanation), each with a predicted count and falsifier on the sealed half.
-7. **Unseal once** (`--unseal`) and resolve each explanation as `held`, `falsified`, or `unreached` by recounting without rewording.
+7. **Unseal once** (`--unseal`) and resolve each explanation as `confirmed`, `refuted`, or `not-observed` by recounting without rewording.
 8. **Distil shape cards** ([references/backtrack.md](references/backtrack.md)) from both winning and losing rows, stripped of arm identity and direction.
 9. **Backtrack blind**: hand only the shape cards to a fresh session to locate owning modules and count recurrence across archived campaign logs.
 10. **Apply the eight-question gate** ([references/backtrack.md](references/backtrack.md)), recording the disposition and failed question for any dropped card.

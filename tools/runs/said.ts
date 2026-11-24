@@ -1,8 +1,7 @@
 /**
- * What a look says of one event of a run, and the step that event leaves owed. One owner for three
- * readers, the pulse (`pulse.ts`), the alerts (`alerts.ts`) and the loop's driver (`wri2p2.ts`), so
- * that a session watching any one of them learns of a starter comparison, a pause or an
- * investigation owed without another command.
+ * Event formatting and checkpoint triggers shared across `pulse.ts`, `alerts.ts`, and `wri2p2.ts`.
+ * Translates raw campaign log events into concise status lines, promotion summaries, and decision
+ * triggers without requiring separate log scans.
  */
 import { comparisonFloor } from "#src/campaign/admission.ts";
 import { BARS, epochsOf, starterReads } from "#src/campaign/climb.ts";
@@ -24,29 +23,28 @@ const DIGEST_CHARS = 8;
  *  bound (`12 h`). Each promotion opens a prediction-backtracking decision; promotion 5 is the
  *  iteration ceiling. */
 export const TRIGGER_AT = { firstPromotion: 1, ceilingPromotions: 5, hours: 12 } as const;
-/** The loop's driver, whose `open` a look names where a stopped run's investigation is due. */
+/** Path to the improvement-loop driver invoked when an investigation opens. */
 export const DRIVER = ".claude/skills/run-improvement-campaign/scripts/wri2p2.ts";
 
-/** One promotion of a run, and its starter comparison once one tallied a task (`epochsOf`). */
+/** One promotion in a campaign and its first scored starter confirmation comparison (`epochsOf`). */
 export interface Promotion {
   readonly digest: string;
   readonly read: {
     readonly session: string;
     readonly tally: Tally;
-    /** Whether its tally, turned so that the reference is the side ahead, reads a step at its
-     *  level (`confirmed`, `epochsOf`); the comparison's own reading is the starter's, never this. */
+    /** True when the reference cleared the significance level against the starter (unbilled). */
     readonly confirmed: boolean;
-    /** The tally on the tasks written after the promotion. A peer whose tree predates it sends none. */
+    /** Tally restricted to tasks written after the promotion (absent on older peer logs). */
     readonly writtenAfter?: Tally;
   } | null;
 }
 
-/** How far a run has come, as its log reads. */
+/** High-level progress counters folded from a campaign log. */
 export interface Progress {
   readonly live: boolean;
   readonly promotions: number;
   readonly compared: number;
-  /** Whether a scored comparison reported every task tied. */
+  /** True if any scored comparison ended with every task tied. */
   readonly allTied: boolean;
   readonly ending: string | null;
   readonly hours: number;
@@ -55,155 +53,136 @@ export interface Progress {
 export const minutes = (ms: number) => `${String(Math.round(ms / 60_000))}m`;
 export const dollars = (value: number) => `$${value.toFixed(2)}`;
 export const short = (value: unknown) => (isString(value) ? value.replaceAll(/\s+/g, " ").slice(0, 160) : "");
-/** A string or number field as written, and "?" for a field the event does not hold. */
+/** Render a string or numeric field, falling back to `"?"` when absent. */
 export const word = (value: unknown) => (isString(value) || isNumber(value) ? String(value) : "?");
-/** How many a list field holds, and none for a field the event does not hold. */
 const sized = (value: unknown) => (Array.isArray(value) ? value.length : 0);
 
-/** How long a session or a solve took, and what it billed, as its `.finished` event says. */
+/** Format duration and billed cost from a `.finished` event payload. */
 const cost = (data: JsonObject) =>
   `${isNumber(data.seconds) ? ` in ${minutes(data.seconds * 1000)}` : ""}${isNumber(data.billed) ? `, ${dollars(data.billed)}` : ""}`;
 
 /**
- * A report in the four factors and supply (`AGENTS.md`, section 1), from the event alone: the tasks
- * the reference left room on against the admission floor, the reference against itself, and the
- * attempt this epoch against the economy's bar, so that a watch learns a promoted harness left no
- * task informative without reading the log by hand. An A/A that clears the level, a floor not met
- * or a bar passed is one to look at.
+ * Format the four factor summaries and supply floor from a `comparison.reported` payload, and
+ * return `flag: true` when supply drops below floor, an A/A control triggers a false positive, or
+ * epoch attempts exceed the economy threshold.
  */
-function factorsOf(data: JsonObject): { said: string; look: boolean } {
+function factorsOf(data: JsonObject): { text: string; flag: boolean } {
   const informative = asRecord(asRecord(data.valid)?.informative)?.old;
   const level = isNumber(data.level) ? data.level : 0.02;
   const floor = comparisonFloor(level);
-  // The A/A is read as a step is, either way, on the scores the step is read on (`scoresIn`).
   const noise = asRecord(data.noise);
   const scores = Array.isArray(noise?.differences) ? scoresIn(noise) : undefined;
   const aa = scores === undefined ? null : testOf(scores);
   const clears = scores !== undefined && readsStepEitherWay(scores, level);
-  // Only a one-sided clearance is the A/A step the view counts (`readOf`, `climb.ts`); name the other.
   const reversed = scores !== undefined && clears && !readsStep(scores, level);
   const worth = asRecord(data.worth);
   const spent = asRecord(worth?.cost);
   const attempts = spent?.attempts;
-  const scant = isNumber(informative) && informative < floor;
-  // Past the bar as the report reads it (`met`, `costOf`, `climb.ts`): set-up's epoch never is.
-  const dear = spent?.met === false;
+  const lowSupply = isNumber(informative) && informative < floor;
+  const overBudgetAttempts = spent?.met === false;
   const parts = [
     isNumber(informative)
-      ? `supply ${String(informative)} of ${word(data.tasks)} informative, floor ${String(floor)}`
+      ? `supply ${String(informative)}/${word(data.tasks)} informative (floor ${String(floor)})`
       : "",
     aa === null
       ? ""
-      : `A/A ${String(aa.wins)}-${String(aa.losses)}-${String(aa.ties)}${clears ? ` cleared the level${reversed ? " reversed" : ""}` : ""}`,
-    isNumber(attempts) ? `attempt ${String(attempts)} of ${String(BARS.cost)} this epoch` : "",
+      : `A/A ${String(aa.wins)}-${String(aa.losses)}-${String(aa.ties)}${clears ? ` false positive${reversed ? " (reversed)" : ""}` : ""}`,
+    isNumber(attempts) ? `attempt ${String(attempts)}/${String(BARS.cost)} this epoch` : "",
   ].filter((part) => part !== "");
-  return { said: parts.map((part) => ` · ${part}`).join(""), look: clears || dear || scant };
+  return {
+    text: parts.map((part) => ` · ${part}`).join(""),
+    flag: clears || overBudgetAttempts || lowSupply,
+  };
 }
 
 function reportHead(data: JsonObject): string {
   const settled = asRecord(data.settled);
   if (settled !== null) {
-    return `◆ settled by hand as ${word(data.reading)}: ${word(settled.labelled)} labelled, ${word(settled.defects)} a check defect`;
+    return `◆ manually adjudicated as ${word(data.reading)}: ${word(settled.labelled)} labelled, ${word(settled.defects)} check defects`;
   }
   if (data.capped === true) {
-    return `⚠ reported ${word(data.reading)}: its dollar cap cut ${asRecord(data.scored) === null ? "it short" : "the starter's solves short, and its test stands"}`;
+    return `⚠ reported ${word(data.reading)}: budget cap cut ${asRecord(data.scored) === null ? "comparison short" : "starter solves short (test retained)"}`;
   }
   const aside = sized(data.aside);
   if (aside > 0) {
-    return `⚠ reported ${word(data.reading)}, with ${String(aside)} task(s) set aside on rejections no person has settled`;
+    return `⚠ reported ${word(data.reading)} (${plural(aside, "task")} set aside awaiting operator labels)`;
   }
   return `${data.reading === "not-scored" ? "⚠" : "◆"} reported ${word(data.reading)}`;
 }
 
-/** What a comparison's report earns: one that scored nothing, one its cap cut, or one with tasks set
- *  aside on rejections nobody has settled is one to look at before it is believed
- *  (`src/campaign/round.ts`), and so is one whose factors say so (`factorsOf`). */
+/** Format a `comparison.reported` line, upgrading `◆` to `⚠` when any factor or cap warrants inspection. */
 function reportLine(data: JsonObject): string {
   const head = reportHead(data);
-  const { said, look: flagged } = factorsOf(data);
-  return `${flagged ? head.replace(/^◆/, "⚠") : head}${said}`;
+  const { text, flag } = factorsOf(data);
+  return `${flag ? head.replace(/^◆/, "⚠") : head}${text}`;
 }
 
-/** What a comparison can read, said as it starts and before a solve is paid for: its solves a side,
- *  the tasks it carries over, and the smallest results that clear its level (`sizeLines`). One that
- *  holds too few tasks to read a step is one to look at, before its report rather than after. */
+/** Format a `comparison.started` line with rollout count, retained tasks, and minimum step size. */
 function startLine(data: JsonObject): string {
   const head = `comparison ${word(data.session)} started`;
   if (!isNumber(data.level) || !isNumber(data.solves)) return `· ${head}`;
   const tasks = sized(data.tasks);
   const retained = sized(data.retained);
   const terms = [
-    `${head}${isString(data.starter) && data.fresh === data.starter ? " against the starter" : ""}`,
-    `${plural(data.solves, "solve")} a side`,
+    `${head}${isString(data.starter) && data.fresh === data.starter ? " against starter" : ""}`,
+    `${plural(data.solves, "rollout")} per arm`,
     ...(retained > 0 ? [`${plural(retained, "task")} retained`] : []),
   ];
   const mark = smallestSteps(tasks, data.level).length === 0 ? "⚠" : "·";
   return `${mark} ${terms.join(", ")}: ${sizeLines(tasks, data.level)[0] ?? ""}`;
 }
 
-/** The line each event a reader wants earns; a kind not here is a trace, and null is one of its
- *  kind left unsaid. A promotion's line is the climb's (`climbAt`). */
-export const SAID: Partial<Record<EventKind, (data: JsonObject) => string | null>> = {
-  // The exam's milestones in counts: a draft, a checker read and a freeze each have a line, rather
-  // than a fault being said only by the `rows` reader's triggers, a pass later.
+/** Formatters for operator-relevant campaign events; absent kinds are routine trace events. */
+export const EVENT_FORMATTERS: Partial<Record<EventKind, (data: JsonObject) => string | null>> = {
   "exam.drafted": (data) => {
     const draft = asRecord(data.draft);
-    return `◆ the exam is drafted: ${plural(sized(draft?.checks), "check")}, ${plural(sized(draft?.tasks), "task")}`;
+    return `◆ exam drafted: ${plural(sized(draft?.checks), "check")}, ${plural(sized(draft?.tasks), "task")}`;
   },
   "checker.read": (data) => {
     const faults = sized(data.faults);
     const nothing = asRecord(data.doNothing);
-    const head = faults > 0 ? `⚠ the checker read with ${plural(faults, "fault")}` : "◆ the checker read";
-    return `${head}: ${plural(sized(data.rows), "check")}, ${String(sized(data.admitted))} admitted, ${word(data.controls)} controls, the do-nothing answer rejected on ${word(nothing?.rejected)} of ${word(nothing?.tasks)} tasks`;
+    const head = faults > 0 ? `⚠ checker audit found ${plural(faults, "fault")}` : "◆ checker audited";
+    return `${head}: ${plural(sized(data.rows), "check")}, ${String(sized(data.admitted))} admitted, ${word(data.controls)} controls, do-nothing rejected on ${word(nothing?.rejected)}/${word(nothing?.tasks)} tasks`;
   },
   "contract.frozen": (data) => {
     const head =
       isNumber(data.faults) && data.faults > 0
-        ? `⚠ the contract is frozen despite ${plural(data.faults, "fault")}`
-        : "◆ the contract is frozen";
-    return `${head}, ${plural(sized(data.admitted), "check")} admitted`;
+        ? `⚠ contract frozen despite ${plural(data.faults, "fault")}`
+        : "◆ contract frozen";
+    return `${head} (${plural(sized(data.admitted), "check")} admitted)`;
   },
   "build.started": (data) => `· build ${word(data.session)} started on ${word(data.model)}`,
   "exam.started": (data) => `· exam ${word(data.session)} started on ${word(data.model)}`,
-  // A session a stop cut writes neither `changed` nor `broken` (`endCut`), so its line says neither.
   "build.finished": (data) => {
-    const harness = data.changed === true ? "changed the harness" : "left the harness as it was";
+    const harness = data.changed === true ? "modified harness" : "harness unchanged";
     const broken = short(data.broken);
-    return `◆ build ended at ${word(data.ended)}${isBoolean(data.changed) ? ` and ${harness}` : ""}${broken === "" ? "" : `, broken: ${broken}`}${cost(data)}`;
+    return `◆ build ended (${word(data.ended)})${isBoolean(data.changed) ? `, ${harness}` : ""}${broken === "" ? "" : `, broken: ${broken}`}${cost(data)}`;
   },
   "exam.finished": (data) => {
     const head = `◆ exam ${word(data.session)} ended${cost(data)}`;
     if (!isNumber(data.proposed)) return head;
-    return `${head}: held ${String(sized(data.held))} of ${String(data.proposed)} proposed, ${String(sized(data.refused))} refused`;
+    return `${head}: held out ${String(sized(data.held))}/${String(data.proposed)} proposed, ${String(sized(data.refused))} refused`;
   },
   "harness.version": (data) =>
     `· harness ${word(data.version).slice(0, DIGEST_CHARS)}${short(data.note) === "" ? "" : `: ${short(data.note)}`}`,
-  // A solve is counted in the status line, and only a non-result has a line of its own, by its kind
-  // and reason: over 57 recorded logs, a line a solve started or passed was 74% of everything the
-  // pulse said, and no person acts on one. A line a look counting its solves, replayed on those
-  // logs, became the most said line, and printed the row the status line already counts.
   "solve.finished": (data) => {
     const ending = asRecord(data.ending);
-    // An older gate cut a room solve once another settled the task's room, and such a cut is no
-    // solve without a result.
     if (ending?.outcome !== "non-result" || ending.cancelledBy === "admission") return null;
-    return `⚠ a solve ended without a result, ${word(ending.kind)}: ${short(ending.reason)}`;
+    return `⚠ solve returned non-result (${word(ending.kind)}): ${short(ending.reason)}`;
   },
-  // A campaign's ending, and a wait for the provider or the network, so that a run waiting out a
-  // limit does not read as quiet. A wait on the load is one a solve.
-  [ENDED]: (data) => `◆ the campaign ended ${word(data.ending)}: ${short(data.why)}`,
+  [ENDED]: (data) => `◆ campaign ended (${word(data.ending)}): ${short(data.why)}`,
   "campaign.waited": (data) =>
     isString(data.for)
-      ? `⚠ waited ${isNumber(data.ms) ? minutes(data.ms) : "?"} for the ${data.for}${isString(data.until) ? ` until ${data.until}` : ""}`
+      ? `⚠ waited ${isNumber(data.ms) ? minutes(data.ms) : "?"} for ${data.for}${isString(data.until) ? ` until ${data.until}` : ""}`
       : null,
-  "referee.finding": (data) => `· the Referee on ${word(data.task)}: ${short(data.reason)}`,
+  "referee.finding": (data) => `· Referee on ${word(data.task)}: ${short(data.reason)}`,
   "referee.draft": (data) =>
-    `· the Referee audited draft ${word(data.session)} (${word(data.verdict)}): ${short(data.summary)}`,
+    `· Referee audited draft ${word(data.session)} (${word(data.verdict)}): ${short(data.summary)}`,
   "comparison.started": startLine,
   [REPORTED]: reportLine,
 };
 
-/** The promotions of a log, oldest first. */
+/** Extract campaign promotions and their first starter confirmation comparisons, oldest first. */
 export function promotionsOf(events: readonly LogEvent[]): Promotion[] {
   const reads = starterReads(events);
   return epochsOf(events)
@@ -221,10 +200,8 @@ export function promotionsOf(events: readonly LogEvent[]): Promotion[] {
 }
 
 /**
- * What a run's promotions and starter comparisons add to what `seen` remembers, oldest first, and
- * whether each is one to look at: a starter comparison that confirmed nothing, and each promotion
- * whose starter comparison has now reported with no unread promotion ahead of it (`1` through `5`).
- * A promotion is said with what a pause before its starter comparison costs (`AGENTS.md`, factor 1).
+ * Format newly reported promotions and starter confirmation results beyond `seen`, flagging
+ * unconfirmed promotions and completed confirmation checkpoints ready for backtracking or pause.
  */
 export function climbed(
   row: { readonly name: string; readonly promotions: readonly Promotion[] },
@@ -237,7 +214,7 @@ export function climbed(
         ? []
         : [
             {
-              line: `promotion ${nth}, harness ${digest}${read === null ? "; a pause should wait for its starter comparison, or it stays unconfirmed for good" : ""}`,
+              line: `promotion ${nth}, harness ${digest}${read === null ? " (wait for starter confirmation before pausing)" : ""}`,
               look: false,
             },
           ];
@@ -247,7 +224,7 @@ export function climbed(
     return [
       ...promoted,
       {
-        line: `starter comparison ${read.session} after promotion ${nth} (${digest}) read ${read.confirmed ? "a step" : "no step"} for the reference: won ${String(wins)}, lost ${String(losses)}, tied ${String(ties)}, ${read.confirmed ? "confirmed" : "not confirmed"}${after === undefined ? "" : `; on tasks written after it won ${String(after.wins)}, lost ${String(after.losses)}, tied ${String(after.ties)}`}`,
+        line: `starter confirmation ${read.session} for promotion ${nth} (${digest}): ${read.confirmed ? "confirmed" : "not confirmed"} (${String(wins)}-${String(losses)}-${String(ties)}${after === undefined ? "" : `; written-after ${String(after.wins)}-${String(after.losses)}-${String(after.ties)}`})`,
         look: !read.confirmed,
       },
     ];
@@ -256,14 +233,12 @@ export function climbed(
   if (read === 0 || read !== row.promotions.length || read <= seen.reads.length) return lines;
   const action =
     read >= TRIGGER_AT.ceilingPromotions
-      ? `ready to pause, ${plural(read, "promotion")} read (ceiling reached)`
-      : `ready to pause or continue, ${plural(read, "promotion")} read (backtrack predictions, up to ${String(TRIGGER_AT.ceilingPromotions)})`;
+      ? `ready to pause, ${plural(read, "promotion")} checked (ceiling reached)`
+      : `ready to pause or continue, ${plural(read, "promotion")} checked (backtrack predictions, up to ${String(TRIGGER_AT.ceilingPromotions)})`;
   return [...lines, { line: `${action}: bun run runs pause ${row.name} --yes`, look: true }];
 }
 
-/** The climb's lines of the run `name`, each marked and under the index of the event of `log` that
- *  earned it, for the events from `from` on: a promotion's own line at its `harness.promoted`, and a
- *  starter comparison, with the pause it may make ready, at its report. */
+/** Map log indices from `from` onward to their newly generated promotion and confirmation lines. */
 export function climbAt(name: string, log: readonly LogEvent[], from: number): Map<number, string[]> {
   const found = new Map<number, string[]>();
   let before: Promotion[] | null = null;
@@ -273,7 +248,6 @@ export function climbAt(name: string, log: readonly LogEvent[], from: number): M
   } of eventsOf(log, [PROMOTED, REPORTED])) {
     if (at < from) continue;
     before ??= promotionsOf(log.slice(0, at));
-    // A report before the first promotion is no starter comparison's.
     if (kind === REPORTED && before.length === 0) continue;
     const promotions = promotionsOf(log.slice(0, at + 1));
     const reads = before.flatMap(({ read }) => (read === null ? [] : [read.session]));
@@ -289,7 +263,7 @@ export function climbAt(name: string, log: readonly LogEvent[], from: number): M
   return found;
 }
 
-/** The progress of the run `seen` whose log holds `events`, read at `now`. */
+/** Compute live or final campaign progress counters at timestamp `now`. */
 export function progressOf<Run extends { readonly live: boolean }>(
   seen: Run,
   events: readonly LogEvent[],
@@ -308,33 +282,28 @@ export function progressOf<Run extends { readonly live: boolean }>(
       return data.reading !== "not-scored" && scored?.wins === 0 && scored.losses === 0;
     }),
     ending: endingOf(events),
-    // A live run is timed to now: one in a long wait writes nothing, and its clock still runs.
     hours: Number.isNaN(opened) ? 0 : ((seen.live ? now : Date.parse(last?.at ?? "")) - opened) / HOUR_MS,
   };
 }
 
-/** Why a decision point or investigation opens on `row` now, or null while it runs on. Every
- *  promotion (`1` through `ceilingPromotions`) triggers a prediction-sufficiency decision; before
- *  the first promotion, an all-tied comparison, the clock bound, or a closing after a comparison
- *  triggers an investigation. */
+/**
+ * Determine whether `row` has reached a decision point or investigation trigger, returning the
+ * reason or `null` if the run should continue unattended.
+ */
 export function triggerOf(row: Progress): string | null {
   if (row.promotions >= TRIGGER_AT.firstPromotion) return plural(row.promotions, "promotion");
-  if (row.allTied) return "a comparison left no task untied";
-  if (row.hours >= TRIGGER_AT.hours) return `${row.hours.toFixed(1)} h since its opening`;
-  // A run that ended before any comparison measured nothing an iteration could read.
+  if (row.allTied) return "all tasks tied in comparison";
+  if (row.hours >= TRIGGER_AT.hours) return `${row.hours.toFixed(1)} h since opening`;
   if (!row.live && row.compared > 0) return `closed${row.ending === null ? "" : ` (${row.ending})`}`;
   return null;
 }
 
-/** The second at which a live run's clock trigger turns, for a run `row.hours` old at `now`: the
- *  trigger reads raw hours, so a timer set to the minute of the opening reads it seconds early. */
+/** Return the UTC timestamp (rounded up to the second) when a live run reaches its 12 h clock bound. */
 export const clockTurns = (row: Pick<Progress, "hours">, now: number): string =>
   new Date(Math.ceil((now + (TRIGGER_AT.hours - row.hours) * HOUR_MS) / 1000) * 1000)
     .toISOString()
     .replace(".000Z", "Z");
 
-/** The command that takes the step a trigger leaves owed on a run: a live run pauses after its next
- *  comparison, so that its investigation reads it, and a stopped one opens; `on` is the run CLI's
- *  prefix that reaches the run's host. */
+/** Return the CLI command that advances a triggered run (pause if live, open investigation if stopped). */
 export const openingCommand = (run: { readonly name: string; readonly live: boolean }, on = ""): string =>
   run.live ? `bun run runs ${on}pause ${run.name} --after reported --yes` : `bun ${DRIVER} open ${run.name}`;

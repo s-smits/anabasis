@@ -195,10 +195,10 @@ suite("rehearsal over a drafted exam", () => {
     // It takes the campaign command's flags and no other, not a launch's.
     const viewed = cli("view", SEED, "--level", "0.02").said;
     expect(
-      viewed.split("\n").filter((line) => line.includes("Builder session, finished: from")),
+      viewed.split("\n").filter((line) => line.includes("Builder session (finished): from")),
     ).toHaveLength(2);
-    // Two solves a side, fixed, and the level 0.02 where nothing names another (`SIZE`).
-    expect(viewed).toMatch(/1 task.*2 solves.*0\.02.*1 won.*0 lost.*0 tied.*no-step/u);
+    // Two rollouts per arm, fixed, and alpha 0.02 where nothing names another (`SIZE`).
+    expect(viewed).toMatch(/1 task.*2 rollouts per arm.*0\.02.*1 won.*0 lost.*0 tied.*no-step/u);
     expect(viewed).not.toContain("  a round");
     expect(cli("view", SEED, "--cap", "100").said).toContain("Unknown option '--cap'");
     // Fix row F26: the view's last line is the one move the decision table names, and the
@@ -207,7 +207,7 @@ suite("rehearsal over a drafted exam", () => {
     // published ancestor its remote reads use.
     const tabled = (
       viewed
-        .slice(viewed.indexOf("the table's move\n") + "the table's move\n".length)
+        .slice(viewed.indexOf("Recommended next action\n") + "Recommended next action\n".length)
         .trim()
         .split("\n")[0] ?? ""
     ).trim();

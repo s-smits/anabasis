@@ -52,11 +52,11 @@ describe("a first comparison held off", () => {
     };
     const heldTrigger = (events: readonly LogEvent[]) =>
       costTriggers(indexOf(events)).find(({ name }) => name === "FIRST COMPARISON HELD OFF")?.detail;
-    const tail = "none begun, 0.00 h of it inside Builder waits";
+    const tail = "(no comparison started), 0.00 h inside Builder waits";
     // The hostile case: a minute under the threshold is no finding.
     expect(heldTrigger(waiting(84))).toBeUndefined();
-    expect(heldTrigger(waiting(85))).toBe(`admissible 1.25 h to the log's end, ${tail}`);
-    expect(heldTrigger(waiting(95, true))).toStartWith("admissible 1.42 h before one began");
+    expect(heldTrigger(waiting(85))).toBe(`admissible 1.25 h to log end ${tail}`);
+    expect(heldTrigger(waiting(95, true))).toStartWith("admissible 1.42 h until first comparison started");
 
     const run: Run = {
       name: "r1",
@@ -75,7 +75,7 @@ describe("a first comparison held off", () => {
     const looked = { lines: 0, open: true, quiet: false };
     expect(said(waiting(84), looked).lines).toEqual([]);
     const late = said(waiting(85), looked);
-    expect(late.lines).toEqual(["⚠ a first comparison admissible for 1.25 h, none begun"]);
+    expect(late.lines).toEqual(["⚠ first comparison admissible for 1.25 h without starting"]);
     // Said once, never of a campaign that began comparing, and never of one no process writes.
     expect(said(waiting(120), late.seen).lines).toEqual([]);
     expect(said(waiting(95, true), looked).lines).toEqual([]);

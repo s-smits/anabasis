@@ -37,7 +37,7 @@ import {
   UI_SETUP,
 } from "#tools/runtime/gate.ts";
 import { CATEGORIES } from "#tools/runtime/land.ts";
-import { openPulls, stackTold } from "#tools/runtime/pulls.ts";
+import { formatStackSummary, openPulls } from "#tools/runtime/pulls.ts";
 import { momentsOf } from "#tools/runtime/moments.ts";
 
 /** The diff a preflight reads: every changed path, those beyond the documentation set, and the
@@ -208,7 +208,7 @@ function labelsOf(files: readonly string[]): Pick<Owed, "category" | "importance
 }
 
 /** What `change` owes, read in `root`. */
-export function owedOf(root: string, change: Change): Owed {
+export function requiredChecksOf(root: string, change: Change): Owed {
   const areas = new Map<string, Area>();
   for (const file of change.all) {
     for (const route of momentsOf({ file_path: file }, new Set())) {
@@ -278,7 +278,7 @@ export function told(owed: Owed): string[] {
 /** The facts about the tree a change is made in, each from its owner: whether the hooks are on
  *  (`git config core.hooksPath`, set by `bun run hooks:install`), whether a run may start here
  *  (`treeFault`, `tools/d2/campaign.ts`), and with `stack` where the branch sits on the open stack
- *  (`stackTold`, `tools/runtime/pulls.ts`, over what GitHub lists). */
+ *  (`formatStackSummary`, `tools/runtime/pulls.ts`, over what GitHub lists). */
 export function treeLines(root: string, stack: "stack" | "no-stack"): string[] {
   const hooks = gitMaybe(root, "config", "core.hooksPath");
   const fault = treeFault(root);
@@ -291,7 +291,7 @@ export function treeLines(root: string, stack: "stack" | "no-stack"): string[] {
       : `hooks: ${hooks ?? "unset"}, so a commit and a push go unchecked; run bun run hooks:install`,
     fault === null ? "tree: may hold a run or a simulation" : `tree: no run here: ${fault}`,
     ...(stack === "stack"
-      ? stackTold(pulls, own ? branch : null)
+      ? formatStackSummary(pulls, own ? branch : null)
           .filter((line) => own || line.startsWith("top:"))
           .map((line) => `stack: ${line}`)
       : []),
@@ -308,7 +308,7 @@ if (import.meta.main) {
       const root = gitText(runtimeProcess.cwd(), "rev-parse", "--show-toplevel");
       const change = changeOf(root, commit === null ? { base: base ?? "HEAD" } : { commit });
       const tree = treeLines(root, args.flag("stack") ? "stack" : "no-stack");
-      console.log([...told(owedOf(root, change)), ...tree].join("\n"));
+      console.log([...told(requiredChecksOf(root, change)), ...tree].join("\n"));
     },
   );
 }

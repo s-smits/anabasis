@@ -87,7 +87,12 @@ export interface Change {
   /** The newest value over the earlier, less one; null where either is missing or the earlier is 0. */
   readonly relative: number | null;
   readonly shift: Shift;
-  readonly verdict: "too few runs" | "inside the spread" | "moved, better" | "moved, worse" | "no value";
+  readonly verdict:
+    | "too few runs"
+    | "within inter-run variance"
+    | "moved, better"
+    | "moved, worse"
+    | "no value";
 }
 
 type Each = (run: Run) => number;
@@ -158,9 +163,9 @@ export const MEASURES = {
     run.promotions.slice(0, 1).map((first) => first.elapsed),
   ),
   byHorizon: rate("climb", "runs promoted by the horizon", (run) => Math.min(promoted(run), 1), one),
-  speed: rate("climb", "promotions a 100 active hours", promoted, (run) => run.active, 100),
-  perComparison: rate("climb", "promotions a comparison", promoted, (run) => run.compared),
-  rung: middle("climb", "hours a rung", (run) => rungsOf(run).map((rung) => rung.epochElapsed)),
+  speed: rate("climb", "promotions per 100 active hours", promoted, (run) => run.active, 100),
+  perComparison: rate("climb", "promotions per comparison", promoted, (run) => run.compared),
+  rung: middle("climb", "hours per rung", (run) => rungsOf(run).map((rung) => rung.epochElapsed)),
   confirmed: rate(
     "holding",
     "promotions the starter confirmed, of those it read",
@@ -203,13 +208,13 @@ export const MEASURES = {
       (run) => run.aaObjectiveControls,
     ),
   ),
-  rungDollars: middle("economy", "dollars a rung", (run) => rungsOf(run).map((rung) => rung.dollars)),
-  perPromotion: lower(rate("economy", "dollars a promotion", (run) => run.dollars, promoted)),
+  rungDollars: middle("economy", "dollars per rung", (run) => rungsOf(run).map((rung) => rung.dollars)),
+  perPromotion: lower(rate("economy", "dollars per promotion", (run) => run.dollars, promoted)),
   // On one meter across the windows, over the runs whose every turn it priced.
   repriced: lower(
     rate(
       "economy",
-      "repriced dollars a promotion",
+      "repriced dollars per promotion",
       (run) => run.repriced ?? 0,
       (run) => (run.repriced === null ? 0 : promoted(run)),
     ),
@@ -217,7 +222,7 @@ export const MEASURES = {
   perConfirmed: lower(
     rate(
       "economy",
-      "dollars a confirmed promotion",
+      "dollars per confirmed promotion",
       (run) => run.dollars,
       (run) => run.confirmed,
     ),
@@ -279,7 +284,7 @@ export function changeOf(measure: Measure, then: readonly Run[], now: readonly R
   const relative = before === null || after === null || before === 0 ? null : after / before - 1;
   if (shift.p === null || before === null || after === null) return { relative, shift, verdict: "no value" };
   if ((shift.least ?? 1) > LEVEL) return { relative, shift, verdict: "too few runs" };
-  if (shift.p > LEVEL) return { relative, shift, verdict: "inside the spread" };
+  if (shift.p > LEVEL) return { relative, shift, verdict: "within inter-run variance" };
   const up = after > before;
   return {
     relative,
@@ -379,12 +384,12 @@ function packLines(
     "factor",
     "measure",
     ...[now, ...earlier].map(labelOf),
-    ...earlier.map((then) => `now against ${labelOf(then)}`),
+    ...earlier.map((then) => `current vs ${labelOf(then)}`),
   ];
   const verdicts = changes.flat().map(({ verdict }) => verdict);
   const moved = verdicts.filter((verdict) => verdict.startsWith("moved")).length;
   const counts = {
-    tested: moved + verdicts.filter((verdict) => verdict === "inside the spread").length,
+    tested: moved + verdicts.filter((verdict) => verdict === "within inter-run variance").length,
     moved,
   };
   if (format === "tsv") return { lines: [printed(head, rows, format)], ...counts };
@@ -419,7 +424,7 @@ function packLines(
             change === undefined ? [] : [[measure, change] as const],
           ),
         );
-        return `Climb against what holds it, now against ${labelOf(then)}: ${guardOf(then.runs, now.runs, kept).line}`;
+        return `Climb vs confirmation (current vs ${labelOf(then)}): ${guardOf(then.runs, now.runs, kept).line}`;
       }),
       "",
     ],
@@ -473,10 +478,10 @@ async function main(args: CommandArgs): Promise<number> {
   }
   if (format === "tsv") return 0;
   console.log(
-    `\n${String(tested)} differences tested at ${String(LEVEL)} in the packs' own blocks, ${String(moved)} read moved. Where nothing changed, each test reads moved one time in twenty; the tests share runs and counts, so such readings come in groups rather than as a steady share.`,
+    `\n${String(tested)} per-pack tests at alpha=${String(LEVEL)}: ${String(moved)} flagged as shifted. Under a true null, each test fires at 5%; because metrics share runs and counts, false shifts tend to cluster rather than occur independently.`,
   );
   console.log(
-    "A campaign is the unit: p is the share of ways to deal the two windows' campaigns out again that move the measure as far apart. No row is a step or a comparison of harnesses, and none decides a promotion.",
+    "Campaigns are the unit of analysis: p is the permutation share of window reassignments that separate the metric at least as far. Rows are descriptive only and do not represent a step or govern promotion.",
   );
   if (skipped.length > 0) console.log(`not read (${String(skipped.length)}): ${skipped.join("; ")}`);
   return 0;

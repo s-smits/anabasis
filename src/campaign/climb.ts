@@ -528,16 +528,16 @@ function starterReadsFrom(
 /** Format a single summary line for an epoch, using `called` to render harness identifiers and
  *  attaching post-promotion breakdowns from `reads` when available. */
 export function epochLine(epoch: Epoch, called: Called = short, reads: readonly StarterRead[] = []): string {
-  const reference = epoch.reference === "starter" ? "the starter" : called(epoch.reference);
+  const reference = epoch.reference === "starter" ? "starter" : called(epoch.reference);
   const readings = epoch.comparisons.map(({ id, reading }) => `${id} ${reading}`).join(", ") || "none";
-  // The first promotion over the Starter is treated as set-up (epoch 0); climb rungs count from there.
-  const rung = epoch.nth === 1 ? "as set-up (epoch 0)" : `as rung ${String(epoch.nth - 1)} of the climb`;
+  // The first promotion over the Starter is treated as setup (epoch 0); climb rungs count from there.
+  const rung = epoch.nth === 1 ? "as setup (epoch 0)" : `as rung ${String(epoch.nth - 1)} of the climb`;
   const end = epoch.promoted === null ? "open" : `promoted ${called(epoch.promoted)} ${rung}`;
   const risk = epoch.falsePromotion;
   return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks admitted; ${plural(epoch.sessions, "Builder session")}; comparisons ${readings}${starterClause(
     epoch,
     reads.find(({ session }) => session === epoch.starter_read),
-  )}; ${plural(risk.attempts, ATTEMPT)} under this reference, a false promotion among them estimated at ${percent(risk.union)}; ${controlsClause(risk)}; ${end}`;
+  )}; ${plural(risk.attempts, ATTEMPT)} under this reference, estimated false-promotion risk ${percent(risk.union)}; ${controlsClause(risk)}; ${end}`;
 }
 
 /** Format a probability as a percentage: whole percent at or above 10%, one decimal place below
@@ -552,12 +552,12 @@ function percent(chance: number): string {
 function controlsClause(risk: FalsePromotion): string {
   const comparisons =
     risk.controls === 0
-      ? "no A/A comparison with enough untied tasks to read a step"
-      : `${String(risk.errors)} of ${plural(risk.controls, "A/A comparison")} with enough untied tasks to read a step read one (${String(risk.either)} either way)`;
+      ? "no powered A/A control"
+      : `${String(risk.errors)} of ${plural(risk.controls, "powered A/A control")} triggered a false positive (${String(risk.either)} two-sided)`;
   const tied =
-    risk.tied === 0 ? "" : `, ${String(risk.tied)} of them because the reference tied every task with itself`;
+    risk.tied === 0 ? "" : `, ${String(risk.tied)} of them tied on every task (zero reference variance)`;
   const incapable =
-    risk.incapable === 0 ? "" : `, and ${String(risk.incapable)} too small to read one at their level${tied}`;
+    risk.incapable === 0 ? "" : `, plus ${String(risk.incapable)} underpowered at alpha${tied}`;
   return `${comparisons}${incapable}`;
 }
 
@@ -577,10 +577,10 @@ export function riskLines(events: readonly LogEvent[]): string[] {
   return [
     ...epochs.map(({ nth, falsePromotion: risk }) => {
       const attempts = plural(risk.attempts, ATTEMPT);
-      return `- Epoch ${String(nth)}: ${attempts}, a false promotion among them estimated at ${percent(risk.union)}; ${controlsClause(risk)}.`;
+      return `- Epoch ${String(nth)}: ${attempts}, estimated false-promotion risk ${percent(risk.union)}; ${controlsClause(risk)}.`;
     }),
-    `Over the campaign, a false promotion in any epoch estimated at ${percent(total)}: the sum of the epochs' estimates, capped at one, which assumes nothing of how the attempts depend on one another. It sums estimates, so it is an estimate and no bound.`,
-    "The rule assumes each untied task is as likely won as lost between equal harnesses; solver drift can violate that assumption. A/A comparisons provide an empirical check: each step is an observed false positive, but one alone does not establish miscalibration. With no steps in n independent comparisons sharing one false-positive rate, the approximate 95% upper limit is 3/n. The recorded comparisons do not establish those conditions, so they give no such bound by themselves. These estimates cover only recorded attempts; further attempts increase the campaign's estimate.",
+    `Campaign-wide estimated false-promotion risk across all epochs: ${percent(total)} (sum of per-epoch estimates capped at 100%, assuming no independence between attempts; an estimate rather than a formal bound).`,
+    "The permutation test assumes each untied task is equally likely to favour either arm under the null; solver drift can violate exchangeability. A/A controls provide an empirical check: each false positive signals noise, although a single event does not establish miscalibration. With 0 false positives in n independent comparisons sharing a common rate, the approximate 95% upper confidence limit is 3/n (the log does not establish those assumptions). These estimates cover recorded attempts only; additional attempts increase cumulative risk.",
   ];
 }
 
@@ -613,7 +613,7 @@ export function promotionsWorth(events: readonly LogEvent[]): ReadonlyMap<string
 
 /** Format a single-line summary of promotion cost against `BARS` (descriptive only). */
 export function worthLine({ cost }: Worth): string {
-  return `cost, reported only: ${plural(cost.attempts, ATTEMPT)} this epoch (bar ${String(BARS.cost)} after set-up): ${cost.met ? "met" : "over it"}, over ${plural(cost.sessions, "Builder session")} and ${cost.dollars.toFixed(2)} dollars billed`;
+  return `cost (observational only): ${plural(cost.attempts, ATTEMPT)} this epoch (threshold ${String(BARS.cost)} after setup): ${cost.met ? "within threshold" : "exceeded"}, across ${plural(cost.sessions, "Builder session")} and $${cost.dollars.toFixed(2)} billed`;
 }
 
 /**
@@ -641,9 +641,9 @@ export function barLines(events: readonly LogEvent[]): string[] {
     return cost.met ? [] : [`epoch ${String(epoch.nth)} at ${String(cost.attempts)}${open}`];
   });
   return [
-    `- Climb: ${plural(climbed.length, "promotion")}, ${String(confirmed.length)} confirmed against a milestone of ${String(MILESTONE.promotions)}${confirmedReads.length === 0 ? "" : ` (${aloneOf(confirmedReads)})`}; ${String(climbed.length - confirmed.length - unread)} read against the starter without a step, ${String(unread)} not read against it.`,
+    `- Climb: ${plural(climbed.length, "promotion")}, ${String(confirmed.length)} confirmed (milestone: ${String(MILESTONE.promotions)})${confirmedReads.length === 0 ? "" : ` (${aloneOf(confirmedReads)})`}; ${String(climbed.length - confirmed.length - unread)} failed starter confirmation, ${String(unread)} pending confirmation.`,
     honestyLine(controls, epochs[MILESTONE.promotions]?.from),
-    `- Economy: ${plural(climbed.length, "epoch")} after set-up against a bar of ${plural(BARS.cost, ATTEMPT)} each, ${String(overBar.length)} over it${overBar.length === 0 ? "" : `: ${overBar.join("; ")}`}. Reported only.`,
+    `- Economy: ${plural(climbed.length, "post-setup epoch")} against a threshold of ${plural(BARS.cost, ATTEMPT)} each, ${String(overBar.length)} exceeded${overBar.length === 0 ? "" : `: ${overBar.join("; ")}`}. Observational only.`,
     starterNoiseLine(events, reports),
     repeatLine(reports, pairsOf),
   ];
@@ -659,10 +659,8 @@ function repeatLine(reports: readonly Reported[], pairsOf: (report: Reported) =>
   });
   const fullyRepeated = read.filter(({ measured }) => measured).map(({ session }) => session);
   const named =
-    fullyRepeated.length === 0
-      ? ""
-      : ` (${fullyRepeated.join(", ")}), where no split of either side shows noise`;
-  return `- Repetition: in ${plural(read.length, "comparison")} each side gave one validity in every solve of every task, and in ${String(fullyRepeated.length)} one measure as well${named}. Reported only.`;
+    fullyRepeated.length === 0 ? "" : ` (${fullyRepeated.join(", ")}, zero split-arm variance on either arm)`;
+  return `- Rollout consistency: in ${plural(read.length, "comparison")} both arms had uniform validity across all rollouts per task, and in ${String(fullyRepeated.length)} uniform objective scores as well${named}. Observational only.`;
 }
 
 /** Format a suffix noting how many A/A controls tied on every task, or an empty string if none did. */
@@ -670,29 +668,29 @@ function tiedClause(controls: readonly { readonly tied: boolean }[], of: string)
   const tied = controls.filter((control) => control.tied).length;
   return tied === 0
     ? ""
-    : ` ${String(tied)} of ${of} tied every task, as the reference matched itself on every solve, and could read no step.`;
+    : ` ${String(tied)} of ${of} tied every task (identical reference outcomes across rollouts, unpowered).`;
 }
 
 /** Summarise A/A controls reported after log index `sixth` (the sixth promotion). Capable vs
  *  incapable controls and one-sided vs two-sided steps are kept separate for operator judgement. */
 function honestyLine(all: readonly ReturnType<typeof controlOf>[], sixth: number | undefined): string {
   const named = `promotion ${String(MILESTONE.promotions)}`;
-  const bar = `the bar's ${String(MILESTONE.controls)}`;
+  const target = String(MILESTONE.controls);
   if (sixth === undefined) {
-    const so = tiedClause(all, `the campaign's ${plural(all.length, "A/A comparison")} so far`);
-    const counted = all.length === 0 ? "" : ` So far ${controlCounts(all)}.`;
-    return `- Honesty: no ${named} yet, so none of ${bar} A/A comparisons after it.${counted}${so}`;
+    const so = tiedClause(all, `${plural(all.length, "A/A control")} so far`);
+    const counted = all.length === 0 ? "" : ` To date: ${controlCounts(all)}.`;
+    return `- Honesty: ${named} not yet reached (target: ${target} post-milestone A/A controls).${counted}${so}`;
   }
   const after = all.filter(({ index }) => index > sixth);
-  return `- Honesty: after ${named}, ${plural(after.length, "A/A comparison")} against ${bar}, ${controlCounts(after)}.${tiedClause(after, "them")}`;
+  return `- Honesty: after ${named}, ${plural(after.length, "A/A control")} against target ${target}; ${controlCounts(after)}.${tiedClause(after, "them")}`;
 }
 
-/** Format counts of capable A/A controls and one-sided / two-sided steps. */
+/** Format counts of powered A/A controls and one-sided / two-sided false positives. */
 function controlCounts(controls: readonly ReturnType<typeof controlOf>[]): string {
   const able = controls.filter((control) => control.able).length;
   const steps = controls.filter(({ step }) => step).length;
   const either = controls.filter((control) => control.either).length;
-  return `${String(able)} with enough untied tasks to read a step: ${String(steps)} read one, ${String(either)} read one either way`;
+  return `${plural(able, "powered A/A control")}: ${String(steps)} one-sided, ${String(either)} two-sided false positives`;
 }
 
 /**
@@ -710,10 +708,10 @@ function starterNoiseLine(events: readonly LogEvent[], reports: readonly Reporte
       ? []
       : [controlOf(report.index, levelOf(report), pairs.map(differenceOf), measureSliceOf(report.data))];
   });
-  const head = "- Starter against itself:";
+  const head = "- Baseline A/A control:";
   if (read.length === 0) {
-    return `${head} no starter comparison split the starter's own solves in two. Reported only.`;
+    return `${head} no split-arm starter comparison recorded yet. Observational only.`;
   }
   const tied = read.filter((control) => control.tied).length;
-  return `${head} ${plural(read.length, "starter comparison")} split the starter's own solves in two, ${controlCounts(read)}, and ${String(tied)} tied every task. Reported only, and counted towards no bar.`;
+  return `${head} ${plural(read.length, "split-arm starter comparison")}, ${controlCounts(read)}, ${String(tied)} tied every task. Observational only, excluded from honesty bar.`;
 }

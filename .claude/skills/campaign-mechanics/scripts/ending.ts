@@ -116,7 +116,7 @@ export function eventsAt(events: readonly LogEvent[], at: string): readonly LogE
 export function endingLines({ events, endings, since, standing }: Ending, reads = "now"): string[] {
   const last = since.last;
   return [
-    `${plural(events, "event")}, ${plural(endings.length, "ending")} on record`,
+    `${plural(events, "event")}, ${plural(endings.length, "recorded ending")}`,
     ...endings.flatMap(({ ending, at, why, moves }) => [
       `ended ${ending} at ${at} after ${movesLine(moves)}`,
       `  why: ${why}`,
@@ -126,7 +126,7 @@ export function endingLines({ events, endings, since, standing }: Ending, reads 
       : `since ${endings.length === 0 ? "the opening" : "the last ending"}: ${movesLine(since.moves)}, last event ${last.kind} at ${last.at}`,
     `as the table reads the log ${reads}:`,
     ...standingLines(standing).map((line) => `  ${line}`),
-    `the table's move: ${decidedLine(standing.decided)}`,
+    `recommended next action: ${decidedLine(standing.decided)}`,
   ];
 }
 

@@ -142,7 +142,7 @@ const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
   "solve-minutes": "a solve's deadline in minutes (setting)",
   "solve-model-turns": "a solve's model turn limit (setting)",
   target: "frontier tasks a comparison scores (setting; 24)",
-  solves: "solves a side of each scored task (setting; 2)",
+  solves: "rollouts per arm on each scored task (setting; 2)",
   level: "the step test's level: one reading at or under it promotes (0.02)",
   minutes: "a Builder conversation's deadline in minutes of its own time (1440)",
   turns: "a Builder conversation's session turn limit (300)",

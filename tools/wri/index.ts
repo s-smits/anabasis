@@ -20,10 +20,11 @@ import {
   launchForks,
   ledgerFiles,
   carryOf,
+  normalizeOutcome,
   OUTCOMES,
   outcomesOf,
-  owedOf,
   pullOf,
+  requiredIds,
   sectionOf as linesUnder,
   tablesOf,
 } from "./ledger.ts";
@@ -106,11 +107,11 @@ const INDEX = "INDEX.md";
 /** The quoted sentence's length, so a constraint is named and no hidden value is carried whole. */
 const QUOTE = 300;
 const NAMES_SHOWN = 3;
-const PREDICTIONS = ["held", "falsified", "unreached"] as const;
+const PREDICTIONS = ["confirmed", "refuted", "not-observed", "held", "falsified", "unreached"] as const;
 const WORDS = new RegExp(`\\b(${[...VERDICTS, ...PREDICTIONS].join("|")})\\b`, "u");
 const PREDICTED = new RegExp(`\\b(${PREDICTIONS.join("|")})\\b`, "u");
-/** A ledger's column that resolves its predictions: `held, falsified or unreached` and its kin. */
-const RESOLVED = /^(verdict|resolution|outcome|held, falsified)/u;
+/** A ledger column resolving predictions (`verdict`, `resolution`, `outcome`, or outcome headers). */
+const RESOLVED = /^(verdict|resolution|outcome|confirmed, refuted|held, falsified)/u;
 const RECENT_DAYS = 14;
 const DATE = /(\d{4})-?(\d{2})-?(\d{2})/u;
 /** The per-run ledgers of a cycle folder, `<kind>-<run>.md`. */
@@ -180,7 +181,10 @@ function markedOf(text: string, header: RegExp, words: RegExp): string[] {
   return tablesOf(text).flatMap(({ header: cells, rows }) => {
     const column = cells.findIndex((cell) => header.test(cell));
     if (column === -1) return [];
-    return rows.flatMap((row) => words.exec((row[column] ?? "").toLowerCase())?.[1] ?? []);
+    return rows.flatMap((row) => {
+      const match = words.exec((row[column] ?? "").toLowerCase())?.[1];
+      return match === undefined ? [] : [normalizeOutcome(match)];
+    });
   });
 }
 
@@ -525,7 +529,7 @@ function pullRows(root: string, entries: readonly Entry[], known: readonly strin
           held
             .flatMap(({ name, files: { predictions = "", outcomes: resolved = "" } }) => {
               const outcome = outcomesOf(resolved);
-              return owedOf(predictions)
+              return requiredIds(predictions)
                 .filter((id) => !outcome.has(id))
                 .map((id) => `${name}:${id}`);
             })
@@ -609,7 +613,7 @@ export function investigationIndex(root: string, { notes, runs, now }: Beyond) {
     "",
     "## Cycles and ledgers",
     "",
-    `${plural(ledgers.length, "folder")} under \`${root}\` and \`${notes}\` hold a cycle file or a prediction ledger. Predictions are counted from a table column headed verdict, resolution, outcome or "held, falsified or unreached".`,
+    `${plural(ledgers.length, "folder")} under \`${root}\` and \`${notes}\` hold a cycle file or a prediction ledger. Predictions are counted from any table column headed verdict, resolution, outcome, or "confirmed, refuted, or not-observed" (including legacy "held, falsified, or unreached").`,
     "",
     ...tableOf(
       ["date", "folder", "where", "files", "predictions"],

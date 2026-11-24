@@ -286,7 +286,7 @@ const topOf = (line: readonly Pull[]) => {
 };
 
 /** What is said of the open pull requests, or of one branch among them. */
-export function stackTold(pulls: readonly Pull[], branch: string | null): string[] {
+export function formatStackSummary(pulls: readonly Pull[], branch: string | null): string[] {
   const { stacks, sides } = chains(pulls);
   if (branch === null) {
     if (stacks.length === 0) return ["no pull request is open"];

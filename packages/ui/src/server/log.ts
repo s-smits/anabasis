@@ -56,7 +56,7 @@ const TRACE_PART = new Map<string, "turns" | "calls" | "compactions">([
 const TASK_NOTE = new Map<string, (data: LogEvent["data"]) => string | null>([
   ["task.proposed", (data) => `proposed in ${text(data.session) ?? "?"}`],
   ["task.state", (data) => text(data.state)],
-  ["task.feasible", () => "a valid answer on record"],
+  ["task.feasible", () => "valid answer recorded"],
 ]);
 
 const many = (value: unknown): number | null =>
@@ -79,7 +79,7 @@ const checkerLine: LineFormatter = (data, kind) => {
 };
 
 /** Single-event timeline lines by kind. */
-const SAID = new Map<string, LineFormatter>(
+const EVENT_FORMATTERS = new Map<string, LineFormatter>(
   Object.entries({
     "campaign.opened": (data) => {
       const solver = text(isRecord(data.solver) ? data.solver.model : data.solver);
@@ -99,7 +99,7 @@ const SAID = new Map<string, LineFormatter>(
         "Setting fixed",
         isNumber(data.modelTurns) ? plural(data.modelTurns, "model turn") : null,
         isNumber(data.minutes) ? `${String(data.minutes)} min a solve` : null,
-        isNumber(data.solves) ? `${plural(data.solves, "solve")} a side` : null,
+        isNumber(data.solves) ? `${plural(data.solves, "rollout")} per arm` : null,
       ),
     }),
     "campaign.move": (data) => ({
@@ -153,7 +153,7 @@ const SAID = new Map<string, LineFormatter>(
         what: joined(
           "Comparison started",
           tasks === null ? null : plural(tasks, "task"),
-          isNumber(data.solves) ? `${plural(data.solves, "solve")} a side` : null,
+          isNumber(data.solves) ? `${plural(data.solves, "rollout")} per arm` : null,
         ),
       };
     },
@@ -298,7 +298,7 @@ const linesIn = once(({ events }) => {
       if (known.row.index !== index) known.until = event.at;
       continue;
     }
-    const words = SAID.get(kind)?.(data, kind);
+    const words = EVENT_FORMATTERS.get(kind)?.(data, kind);
     const plain = kind.replaceAll(".", " ");
     start(
       index,

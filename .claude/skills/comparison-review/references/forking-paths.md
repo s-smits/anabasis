@@ -21,4 +21,4 @@ Post-hoc reviews can slice small samples many ways without stating a falsehood (
 5. **Shared-miss**: weaknesses equal in both arms cannot explain the difference.
 
 ## Permissible conclusions
-Allowed: which level failed, refuted factual claims, quantified gap shares, surviving/falsified explanations, recurring archived shapes (N of M). Forbidden until confirmed by a fresh comparison: claiming a fix will improve performance or that a causal mechanism is proved.
+Allowed: which level failed, refuted factual claims, quantified gap shares, confirmed or refuted explanations, recurring archived shapes (N of M). Forbidden until confirmed by a fresh comparison: claiming a fix will improve performance or that a causal mechanism is proved.

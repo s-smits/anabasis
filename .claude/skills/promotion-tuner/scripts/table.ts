@@ -84,7 +84,7 @@ const RECENT_HEAD = [
   `${ACTIVE} a rung`,
   `${UNLOADED} a rung`,
   "$ a rung",
-  "h a promotion, set-up included",
+  "h per promotion (setup included)",
 ];
 const COST_HEAD = [
   "run",

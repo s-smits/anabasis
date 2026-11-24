@@ -1,6 +1,6 @@
 /**
  * Campaign tools exposed to a live Builder conversation (`examine`, `compare`, `campaign_status`,
- * `wait`), plus host-executed practice release (`releaseOwed`) and promotion (`promoteOwed`).
+ * `wait`), plus host-executed practice release (`releasePendingPractice`) and promotion (`applyPendingPromotions`).
  */
 import { Type } from "typebox";
 import { type SeatTool, textsOf } from "#src/agent/session.ts";
@@ -11,8 +11,8 @@ import { campaignOf } from "#src/campaign/handover.ts";
 import { type Decided, short } from "#src/campaign/move.ts";
 import type { Opening } from "#src/campaign/opening.ts";
 import { frontierOverlap, OVERLAP_LIMIT } from "#src/campaign/round.ts";
-import { comparisonsTold } from "#src/builder/past.ts";
-import { seedKept, snapshot } from "#src/builder/kept.ts";
+import { formatComparisonHistory } from "#src/builder/past.ts";
+import { seedSavedHarnesses, snapshot } from "#src/builder/kept.ts";
 import { type BuildRequest, layPractice } from "#src/builder/session.ts";
 import { type Bench, endingWith, waitTool } from "#src/builder/tools.ts";
 import { pendingWords } from "#src/campaign/word.ts";
@@ -92,7 +92,7 @@ export interface CampaignContext {
   failed: { readonly move: string; readonly why: string } | null;
   /** The Examiner session writing beside the conversation, which settles and never throws. */
   examining?: { readonly session: string; readonly done: Promise<void> } | null;
-  /** The last practice release or comparison, which the next release waits for (`releaseOwed`). */
+  /** The last practice release or comparison, which the next release waits for (`releasePendingPractice`). */
   releasing?: Promise<boolean>;
   /** The Examiner conversation each `examine` asks in turn (`conversing`). */
   examiner?: ReturnType<typeof conversing>;
@@ -143,7 +143,7 @@ async function refreshCampaign(context: CampaignContext, bench: Bench): Promise<
   bench.reference = { dir, harness: await openHarness(dir) };
   // What was kept since the conversation opened as well as before, since the Builder is told
   // kept/ holds every kept harness (`shellWalls`, `prompt.ts`).
-  seedKept(bench.home, bench.request.states, read(campaign.log, TRACE_KINDS), bench.parent);
+  seedSavedHarnesses(bench.home, bench.request.states, read(campaign.log, TRACE_KINDS), bench.parent);
 }
 
 /** The turn an action is made in and the move the table names for it. A total the operator left
@@ -353,7 +353,9 @@ const examineAction =
     // the frontier down to the sweep for a comparison started meanwhile.
     const done = work
       .then(() => waitCrashed(context.log, context.seats.host))
-      .then(() => releaseOwed(context, `Examiner session ${session} beside the conversation ended`, bench))
+      .then(() =>
+        releasePendingPractice(context, `Examiner session ${session} beside the conversation ended`, bench),
+      )
       .catch(async (error: unknown) => {
         if (await waitOut(context.log, error, context.seats.host?.sleep)) return;
         context.failed = { move: "examine", why: errorMessage(error) };
@@ -380,7 +382,11 @@ const examineAction =
  * could not practise on tasks released only then. It is the host's own move, on record with the
  * cause, and `--moves` bounds it as any move.
  */
-export function releaseOwed(context: CampaignContext, cause: string, bench?: Bench): Promise<boolean> {
+export function releasePendingPractice(
+  context: CampaignContext,
+  cause: string,
+  bench?: Bench,
+): Promise<boolean> {
   const release = Promise.resolve(context.releasing).then(() => releaseOnce(context, cause, bench));
   context.releasing = release.catch(() => false);
   return release;
@@ -529,7 +535,7 @@ const compareTool = (context: CampaignContext, bench: Bench): SeatTool =>
       (each) => each.step === "comparison" && each.id === session,
     );
     // The tally stands once, as the last in the facts the result ends with, so one with none says so.
-    const tallied = comparisonsTold(step === undefined ? [] : [step]).length > 0;
+    const tallied = formatComparisonHistory(step === undefined ? [] : [step]).length > 0;
     const scored = events.findLast(
       ({ kind, data }) => kind === "comparison.reported" && data.session === session,
     )?.data.versions;
@@ -538,10 +544,10 @@ const compareTool = (context: CampaignContext, bench: Bench): SeatTool =>
     const size = Array.isArray(scored)
       ? [`Comparison size: ${sizeLines(scored.length, turn.plan.wanted.level)[0] ?? ""}.`]
       : [];
-    const promoted = await promoteOwed(context, bench);
+    const promoted = await applyPendingPromotions(context, bench);
     // A reading owes practice again (`practiceDue`), so the host releases it as the report lands
     // rather than at the next conversation.
-    if (promoted.length === 0) await releaseOwed(context, `comparison ${session} reported`, bench);
+    if (promoted.length === 0) await releasePendingPractice(context, `comparison ${session} reported`, bench);
     return {
       said: [
         ...(tallied ? [] : ["The comparison has no tally yet."]),
@@ -558,7 +564,7 @@ const compareTool = (context: CampaignContext, bench: Bench): SeatTool =>
  * Builder to call a `promote` tool, which Builders almost never call. It is the host's own move, on record
  * with the table's code; `--hitl` leaves it to the operator, and `--moves` bounds it as any move.
  */
-async function promoteOwed(context: CampaignContext, bench: Bench): Promise<string[]> {
+async function applyPendingPromotions(context: CampaignContext, bench: Bench): Promise<string[]> {
   const { decided } = actionTurn(context);
   if ((decided.move !== "promote" && decided.move !== "revert") || context.used >= context.maxMoves) {
     return [];
@@ -702,7 +708,7 @@ function campaignStatus(context: CampaignContext, bench: Bench): string {
   // task moves (a check that could not run disputes its task on the reference's answer alone,
   // `floor`): the scorable, exhausted and waiting counts follow which tasks were answered (rule 3).
   const sets = taskSets(turn.events);
-  const tallies = comparisonsTold(campaignOf(turn.events).steps);
+  const tallies = formatComparisonHistory(campaignOf(turn.events).steps);
   const writing = context.examining?.session;
   // The conversation under way ends the run `idleOf` counts until it makes a move.
   const idle = idleOf(turn.events) - 1;

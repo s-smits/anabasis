@@ -231,21 +231,20 @@ function quantile(values: readonly number[], share: number): number {
   return sorted[Math.max(0, Math.ceil(share * sorted.length) - 1)] ?? 0;
 }
 
-/** A tally of task scores and its sign-flip p, as a summary says it. */
-function testSaid(differences: readonly number[]): string {
+/** A tally of task scores and its sign-flip p-value. */
+function formatDifferenceTest(differences: readonly number[]): string {
   const { wins, losses, ties, p } = testOf(differences);
   return `${String(wins)}-${String(losses)}-${String(ties)} p ${p.toFixed(4)}`;
 }
 
-/** The tally of each side's first solves alone and of its second alone: a description of those
- *  solves, which reads no step and no reading, since only the comparison reads (rule 1). None where
- *  a pair holds fewer than two a side. */
-function samplesSaid(pairs: readonly Paired[]): string {
+/** The tally of each arm's first rollouts alone and second rollouts alone: descriptive only,
+ *  never a decision reading (rule 1). */
+function formatSplitHalves(pairs: readonly Paired[]): string {
   if (pairs.length === 0 || pairs.some(({ old, fresh }) => old.length < 2 || fresh.length < 2)) {
-    return "solve halves: not split, fewer than two solves a side";
+    return "solve halves: not split, fewer than two rollouts per arm";
   }
   const at = (index: number) => pairs.map((pair) => differenceOf(pairingOf(pair, index, index)));
-  return `solve halves, a description and not a reading: first solves ${testSaid(at(0))}, second solves ${testSaid(at(1))}`;
+  return `solve halves (descriptive only): first rollouts ${formatDifferenceTest(at(0))}, second rollouts ${formatDifferenceTest(at(1))}`;
 }
 
 /** The new side's wins by where each `diff` stands against its own task's rebuilt A/A
@@ -276,9 +275,9 @@ function againstNoise(context: Context, pair: Paired): "inside" | "level" | "out
  * the largest group first. A group counts every tallied task, and a report's family tallies, which
  * `runs view`'s grain reads, the frontier alone.
  */
-function groupsSaid(context: Context, pairs: readonly Paired[], by: "writer" | "family"): string {
+function formatGroupBreakdown(context: Context, pairs: readonly Paired[], by: "writer" | "family"): string {
   const groups = Map.groupBy(pairs, ({ task }) => originOf(context, task)[by === "writer" ? 0 : 1]);
-  const said = [...groups]
+  const lines = [...groups]
     .toSorted(([, one], [, other]) => other.length - one.length)
     .map(([key, some]) => {
       const diffs = some.map((pair) => differenceOf(pair));
@@ -288,7 +287,7 @@ function groupsSaid(context: Context, pairs: readonly Paired[], by: "writer" | "
       const retained = some.filter(({ task }) => context.retained.has(task)).length;
       return `${key} ${count(1)}-${count(-1)}-${count(0)}, diff ${net > 0 ? "+" : ""}${String(net)}, ${String(outside)} outside${retained === 0 ? "" : `, ${String(retained)} retained`}`;
     });
-  return `== ${context.session} by ${by} (won-lost-tied of the new side, summed diff, wins outside their task's A/A): ${said.join("; ")}`;
+  return `== ${context.session} by ${by} (won-lost-tied of the new arm, summed diff, wins outside their task's A/A): ${lines.join("; ")}`;
 }
 
 /**
@@ -297,7 +296,7 @@ function groupsSaid(context: Context, pairs: readonly Paired[], by: "writer" | "
  * alone sets the summed score's sign. The test counts siblings as independent draws and weighs a task
  * by its `diff`, so both say what a reading rests on, a no-step as much as a step.
  */
-function grainSaid(context: Context, pairs: readonly Paired[], grain: Grain): string {
+function formatGranularityBreakdown(context: Context, pairs: readonly Paired[], grain: Grain): string {
   const [largest = 0, ...rest] = pairs
     .map((pair) => Math.abs(differenceOf(pair)))
     .toSorted((one, other) => other - one);
@@ -321,9 +320,9 @@ function summaryOf(
   untallied: string,
 ): string {
   const kinds = pairs.flatMap((pair) => tieKind(pair) ?? []);
-  const kindSaid = KINDS.map((kind) => `${kind} ${String(kinds.filter((one) => one === kind).length)}`).join(
-    ", ",
-  );
+  const tieKindsSummary = KINDS.map(
+    (kind) => `${kind} ${String(kinds.filter((one) => one === kind).length)}`,
+  ).join(", ");
   const rebuilt = pairs.flatMap(({ task }) => {
     const aa = context.aa.get(task);
     return aa === undefined ? [] : [Math.abs(differenceOf(aa))];
@@ -332,25 +331,25 @@ function summaryOf(
     const [aa, stored] = [context.aa.get(task), context.stored.get(task)];
     return aa !== undefined && stored !== undefined && differenceOf(aa) !== stored;
   }).length;
-  const aaSaid =
+  const aaSummary =
     rebuilt.length === 0
       ? "A/A not rebuilt"
       : `A/A |difference| rebuilt median ${String(quantile(rebuilt, 0.5))}, p75 ${String(quantile(rebuilt, 0.75))}, p90 ${String(quantile(rebuilt, 0.9))}, max ${String(quantile(rebuilt, 1))} over ${String(rebuilt.length)}; stored ${context.stored.size === 0 ? "not recorded" : `differs from rebuilt on ${String(differ)} of ${String(rebuilt.length)}`}`;
   const tied = pairs.filter((pair) => differenceOf(pair) === 0);
   const billed = (some: readonly Paired[]) => {
-    const said = billedOf(
+    const amount = billedOf(
       some.flatMap((pair) =>
         [...(pair.used?.old ?? []), ...(pair.used?.fresh ?? [])].map(({ billed: one }) => one),
       ),
     );
-    return said === NONE ? "none recorded" : `$${said}`;
+    return amount === NONE ? "none recorded" : `$${amount}`;
   };
   const retained = pairs.filter(({ task }) => context.retained.has(task)).length;
   return [
     `== ${context.session} ${context.read} ${isString(report.reading) ? report.reading : "unread"}: tallied ${String(pairs.length)} (frontier ${String(pairs.length - retained)}, retained ${String(retained)})${untallied}`,
-    `ties ${String(tied.length)}: ${kindSaid}`,
-    aaSaid,
-    samplesSaid(pairs),
+    `ties ${String(tied.length)}: ${tieKindsSummary}`,
+    aaSummary,
+    formatSplitHalves(pairs),
     `billed ${billed(tied)} on tied tasks, ${billed(pairs.filter((pair) => differenceOf(pair) !== 0))} on untied`,
   ].join("; ");
 }
@@ -416,9 +415,9 @@ function comparisonRows(
     ...apart,
     ...loose,
     winsAgainstNoise(context, pairs),
-    groupsSaid(context, pairs, "writer"),
-    groupsSaid(context, pairs, "family"),
-    grainSaid(context, pairs, grain),
+    formatGroupBreakdown(context, pairs, "writer"),
+    formatGroupBreakdown(context, pairs, "family"),
+    formatGranularityBreakdown(context, pairs, grain),
     summaryOf(context, report.data, pairs, untallied),
   ];
 }

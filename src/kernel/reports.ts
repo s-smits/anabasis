@@ -77,7 +77,7 @@ interface TaskRecord {
   /** Whether the task is held out now. */
   readonly held: boolean;
   /** The last event at which a person kept it held (`task.state`), or -1. */
-  keptAt: number;
+  heldAt: number;
   /** The best evidence that the task can be answered. `independent` means a valid answer that does
    *  not depend on the candidate harness: an author's (`task.feasible`), a reference solve that an
    *  older log's gate counted, or a valid solve by a current or former reference. `known` means
@@ -91,8 +91,8 @@ interface TaskRecord {
   readonly tallied: TaskReading[];
   /** The last report that set the task aside on a rejection, or -1, and the position (as
    *  `TaskReading.order` counts) where it was first set aside. */
-  asideAt: number;
-  asideOrder: number;
+  excludedAt: number;
+  excludedOrder: number;
   /** The last report that set it aside on a rejection of the reference's own solve that stands
    *  unearned, unless a person labelled it earned in that settling, or -1 (`poolOf`, doubted). */
   doubtedAt: number;
@@ -324,12 +324,12 @@ function taskRecords(events: readonly LogEvent[]) {
     const made: TaskRecord = {
       version,
       held: held.has(version),
-      keptAt: -1,
+      heldAt: -1,
       validAnswer: "none",
       best: null,
       tallied: [],
-      asideAt: -1,
-      asideOrder: Number.POSITIVE_INFINITY,
+      excludedAt: -1,
+      excludedOrder: Number.POSITIVE_INFINITY,
       doubtedAt: -1,
     };
     records.set(version, made);
@@ -351,9 +351,9 @@ function taskRecords(events: readonly LogEvent[]) {
       continue;
     }
     if (!isString(data.version)) continue;
-    if (kind === "task.state" && data.state === "held") recordOf(data.version).keptAt = index;
-    const gateValid = kind === "task.gate" ? asRecord(data.reference)?.valid : undefined;
-    if (kind === "task.feasible" || (isNumber(gateValid) && gateValid > 0)) {
+    if (kind === "task.state" && data.state === "held") recordOf(data.version).heldAt = index;
+    const referenceValidAtGate = kind === "task.gate" ? asRecord(data.reference)?.valid : undefined;
+    if (kind === "task.feasible" || (isNumber(referenceValidAtGate) && referenceValidAtGate > 0)) {
       recordOf(data.version).validAnswer = "independent";
     }
     if (kind !== "task.feasible") continue;
@@ -422,8 +422,8 @@ function addReportReadings(
     for (const task of Array.isArray(data.aside) ? data.aside.filter(isString) : []) {
       order += 1;
       const record = recordOf(task);
-      record.asideAt = index;
-      record.asideOrder = Math.min(record.asideOrder, order);
+      record.excludedAt = index;
+      record.excludedOrder = Math.min(record.excludedOrder, order);
       const own = isString(refHarness) ? (rejectedIn.get(solveKey(session, task, refHarness)) ?? []) : [];
       if (own.some((solve) => stands.get(solve) !== "earned")) record.doubtedAt = index;
     }
@@ -445,12 +445,12 @@ function addReportReadings(
 export function poolOf(events: readonly LogEvent[]) {
   const { records, held } = taskRecords(events);
   const heldRecords = records.filter((record) => record.held);
-  const awaiting = orderedBy(heldRecords, ({ validAnswer, keptAt, tallied }) =>
+  const awaiting = orderedBy(heldRecords, ({ validAnswer, heldAt, tallied }) =>
     validAnswer === "independent"
       ? undefined
       : runStart(
           tallied.filter(
-            ({ validity, index, referenceCut }) => validity !== null && index >= keptAt && !referenceCut,
+            ({ validity, index, referenceCut }) => validity !== null && index >= heldAt && !referenceCut,
           ),
         ),
   );
@@ -459,8 +459,8 @@ export function poolOf(events: readonly LogEvent[]) {
     const open = readings.findLastIndex((reading) => reading.validity !== "every" || reading.room);
     return readings.length - 1 - open >= READINGS_IN_A_ROW.easy ? readings.at(-1)?.order : undefined;
   });
-  const doubted = orderedBy(heldRecords, ({ doubtedAt, keptAt, tallied }) =>
-    doubtedAt > keptAt && doubtedAt > (tallied.at(-1)?.index ?? -1) ? doubtedAt : undefined,
+  const doubted = orderedBy(heldRecords, ({ doubtedAt, heldAt, tallied }) =>
+    doubtedAt > heldAt && doubtedAt > (tallied.at(-1)?.index ?? -1) ? doubtedAt : undefined,
   );
   const leftOut = new Set([...awaiting, ...doubted]);
   const prior = new Set(beforePromotion(events).held);
@@ -470,8 +470,8 @@ export function poolOf(events: readonly LogEvent[]) {
   const current = held.filter((task) => !prior.has(task));
   const doubtedSet = new Set(doubted);
   const practiceOut = new Set([...easy, ...leftOut]);
-  const firstSeen = ({ tallied, asideOrder }: TaskRecord) =>
-    Math.min(tallied[0]?.order ?? asideOrder, asideOrder);
+  const firstSeen = ({ tallied, excludedOrder }: TaskRecord) =>
+    Math.min(tallied[0]?.order ?? excludedOrder, excludedOrder);
   return {
     scorable,
     frontier: scorable.filter((task) => !retained.has(task)),
@@ -590,8 +590,8 @@ export function releaseOrder(
 
 /** The reading a task's outcome, standing and release come from: the last comparison that tallied
  *  it, `"aside"` where a later report set it aside, or null where no report did either. */
-function lastReading({ tallied, asideAt }: TaskRecord): TaskReading | "aside" | null {
+function lastReading({ tallied, excludedAt }: TaskRecord): TaskReading | "aside" | null {
   const last = tallied.at(-1);
-  if (last === undefined) return asideAt === -1 ? null : "aside";
-  return asideAt > last.index ? "aside" : last;
+  if (last === undefined) return excludedAt === -1 ? null : "aside";
+  return excludedAt > last.index ? "aside" : last;
 }

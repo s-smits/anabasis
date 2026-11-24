@@ -6,7 +6,7 @@
  *     [--parent <digest>]
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { comparisonsTold, failsTold, startTold } from "#src/builder/past.ts";
+import { formatComparisonHistory, formatPracticeFailures, formatSessionStart } from "#src/builder/past.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
 import { short } from "#src/campaign/move.ts";
 import { namesOf } from "#src/campaign/names.ts";
@@ -44,15 +44,20 @@ function releasedIds(events: readonly LogEvent[]): Map<string, string> {
 }
 
 /** The lines a session opening now would read of the past, under the headings its message gives. */
-export function builderTold(events: readonly LogEvent[], parent: string | null = parentOf(events)): string[] {
+export function formatBuilderView(
+  events: readonly LogEvent[],
+  parent: string | null = parentOf(events),
+): string[] {
   const campaign = campaignOf(events);
   const id = nextId(events, "b");
   const released = releasedIds(events);
-  const fails = failsTold(campaign.fails, released);
-  const comparisons = comparisonsTold(campaign.steps);
+  const fails = formatPracticeFailures(campaign.fails, released);
+  const comparisons = formatComparisonHistory(campaign.steps);
   return [
     `session ${id}, ${String(released.size)} released tasks`,
-    parent === null ? "start: the log names no harness yet" : `start: ${startTold(campaign, parent, id)}`,
+    parent === null
+      ? "start: the log names no harness yet"
+      : `start: ${formatSessionStart(campaign, parent, id)}`,
     `comparisons (${String(comparisons.length)}):`,
     ...comparisons,
     `failed practice solves on released tasks (${String(fails.length)}):`,
@@ -66,7 +71,7 @@ if (import.meta.main) {
     async (args: CommandArgs) => {
       const [named = ""] = args.positionals;
       const events = logEvents(await logAcross(named));
-      console.log(builderTold(events, args.value("parent") ?? parentOf(events)).join("\n"));
+      console.log(formatBuilderView(events, args.value("parent") ?? parentOf(events)).join("\n"));
     },
   );
 }

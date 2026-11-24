@@ -20,7 +20,8 @@ import { indexOf } from "./folds.ts";
 
 const NOT_RECORDED = "not recorded";
 const FELL = "The draft does not stand.";
-const STOOD = "The draft stands";
+const ACCEPTED_PREFIX = "The draft stands";
+/** A fault sentence is cut here: the host's sentences run to a few hundred characters. */
 const CLIP = 140;
 
 const clip = (text: string) => (text.length <= CLIP ? text : `${text.slice(0, CLIP)}...`);
@@ -31,7 +32,7 @@ function putsOf(draftCalls: readonly Call[], session: string): string[] {
   return draftCalls.flatMap((call) => {
     if (call.id !== session || call.tool !== "draft_exam") return [];
     const at = `turn ${String(call.turn ?? "?")}`;
-    if (call.text.startsWith(STOOD)) return [`  ${at}: stands`];
+    if (call.text.startsWith(ACCEPTED_PREFIX)) return [`  ${at}: stands`];
     if (!call.text.startsWith(FELL)) return [`  ${at}: ${clip(call.text.split("\n")[0] ?? "")}`];
     const faults = call.text.split("\n").filter((line) => line.startsWith("- "));
     return [

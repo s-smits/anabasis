@@ -28,7 +28,7 @@ import { isString } from "#src/meta/json-shape.ts";
 import { basename, dirname } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
-import { summed, wlt } from "#tools/wri/folds.ts";
+import { formatTally, summed } from "#tools/wri/folds.ts";
 import { type StepCount, stepCount } from "#skills/comparison-reading/scripts/selection.ts";
 
 /** What a read is made of: its after-slices and its sign draws, null where the level is not recorded. */
@@ -86,7 +86,7 @@ function compositionOf(each: StarterRead): Composition {
 
 /** An origin's line: its whole tally, then those on which validity differed, then the rest. */
 function originLine(origin: Origin, { whole, validity, rest }: Split): string {
-  return `  ${origin}: ${wlt(whole)}; validity differed ${wlt(validity)}; validity tied ${wlt(rest)}`;
+  return `  ${origin}: ${formatTally(whole)}; validity differed ${formatTally(validity)}; validity tied ${formatTally(rest)}`;
 }
 
 /** Each origin's summed margin, net and absolute, and its share of the read's absolute margin. */
@@ -119,7 +119,7 @@ function drawLine(each: StarterRead, { draws, after, fixed }: Composition): stri
 function sliceLines({ slices }: Composition): string[] {
   return slices.map(
     ({ writer, tally, alone }) =>
-      `  written after, by ${writer}: ${wlt(tally)}; by majority ${majorityOf(tally)}; alone ${alone}`,
+      `  written after, by ${writer}: ${formatTally(tally)}; by majority ${majorityOf(tally)}; alone ${alone}`,
   );
 }
 
@@ -132,9 +132,9 @@ function readLines(each: StarterRead, called: (digest: string) => string): strin
   const composition = compositionOf(each);
   return [
     `${each.session}: reference ${called(each.reference)} on the old side, starter ${called(each.starter)} on the new; tallies are the reference's wins, losses and ties`,
-    `  stored ${wlt(each.stored)}, ${each.confirmed ? "a step, confirmed" : "no step"} at ${each.levelled ? String(each.level) : "a level not recorded"}; on the tasks written after alone, ${each.after}`,
+    `  stored ${formatTally(each.stored)}, ${each.confirmed ? "a step, confirmed" : "no step"} at ${each.levelled ? String(each.level) : "a level not recorded"}; on the tasks written after alone, ${each.after}`,
     ...ORIGINS.map((origin) => originLine(origin, each.origins[origin])),
-    ...each.authors.map(({ session, tally }) => `  written by ${session}: ${wlt(tally)}`),
+    ...each.authors.map(({ session, tally }) => `  written by ${session}: ${formatTally(tally)}`),
     marginLine(each),
     drawLine(each, composition),
     ...sliceLines(composition),

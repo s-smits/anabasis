@@ -3,7 +3,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { supplyOf } from "../src/campaign/admission.ts";
 import { campaignOf, type Handover, openSteps } from "../src/campaign/handover.ts";
-import { comparisonsTold, failsTold, startTold } from "../src/builder/past.ts";
+import { formatComparisonHistory, formatPracticeFailures, formatSessionStart } from "../src/builder/past.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
 import { billedAll, billedFor } from "../src/kernel/meter.ts";
@@ -311,7 +311,7 @@ describe("unfinished comparisons", () => {
     const open = { id: "g-1", reading: null, begun: 2, solved: 1 };
     expect(steps(c, "comparison")).toMatchObject([{ ...open, cut: false }]);
     expect(viewLines("truss", campaignOf(c.events()), Date.now())[2]).toMatch(
-      /no report.*open.*1 solve ended.*1 open.*\$1\.50/u,
+      /no report.*in progress.*1 solve finished.*1 open.*\$1\.50/u,
     );
     // An Examiner asked beside it starts and ends while it runs, and leaves it open.
     c.record("exam.started", { session: "x-1" });
@@ -322,7 +322,7 @@ describe("unfinished comparisons", () => {
     expect(steps(c, "comparison")).toMatchObject([{ ...open, cut: true }]);
     expect(openSteps(campaignOf(c.events()).steps)).toEqual([]);
     expect(viewLines("truss", campaignOf(c.events()), Date.now())[2]).toMatch(
-      /no report.*cut.*1 solve ended.*1 cut/u,
+      /no report.*interrupted.*1 solve finished.*1 cut/u,
     );
   });
 });
@@ -390,23 +390,23 @@ describe("practice repair histories", () => {
     // third harness is its own entry and marks the first as failing again.
     c.solved("p1", HB, "pass");
     expect(fails()[0]).toMatchObject({ standing: "passed-once", under: HB });
-    const toldOnce = failsTold(fails(), TASKS);
+    const toldOnce = formatPracticeFailures(fails(), TASKS);
     expect(toldOnce).toHaveLength(1);
     for (const fact of [open, "t-1", "aaaaaaaa", "fail", "rejected", "open", "passed once", "bbbbbbbb"]) {
       expect(toldOnce[0]).toContain(fact);
     }
     expect(toldOnce[0]).not.toContain("It guessed.");
-    expect(failsTold(fails(), new Map([["p9", "t-9"]]))).toEqual([]);
+    expect(formatPracticeFailures(fails(), new Map([["p9", "t-9"]]))).toEqual([]);
     c.solved("p1", HB, "pass");
     expect(fails()[0]).toMatchObject({ standing: "repaired", under: HB });
-    expect(failsTold(fails(), TASKS)[0]).toMatch(/repaired.*bbbbbbbb/u);
+    expect(formatPracticeFailures(fails(), TASKS)[0]).toMatch(/repaired.*bbbbbbbb/u);
     const again = c.solved("p1", STARTER, "fail");
     expect(fails()).toMatchObject([
       { solve: open, standing: "failing-again", under: STARTER },
       { solve: again, standing: "open", under: null },
     ]);
     expect(fails()[1]).not.toHaveProperty("diagnosis");
-    const toldAgain = failsTold(fails(), TASKS);
+    const toldAgain = formatPracticeFailures(fails(), TASKS);
     expect(toldAgain).toHaveLength(2);
     expect(toldAgain[0]).toMatch(/failing again.*00000000/u);
     for (const fact of [again, "t-1", "00000000", "fail", "rejected", "open"]) {
@@ -425,25 +425,25 @@ describe("the Builder's filter over that reading", () => {
   it("tells where the starting harness came from, and how the last Builder session ended", () => {
     const c = campaign();
     // With no session before it, the start names no session at all.
-    const none = startTold(campaignOf(c.events()), STARTER, "b-1");
+    const none = formatSessionStart(campaignOf(c.events()), STARTER, "b-1");
     expect(none).toMatch(/\b00000000\b.*\bno Builder session\b/u);
     expect(none).not.toMatch(/\bb-\d/u);
     // The session that left the harness comes first, and the last session and its ending after it.
     c.built("b-1", STARTER, HA, []);
     c.record("build.started", { session: "b-2", parent: HA, tasks: ["p1"] });
     c.record("build.finished", { session: "b-2", ended: "crashed", harness: HB, changed: true });
-    const crashed = startTold(campaignOf(c.events()), HA, "b-3");
+    const crashed = formatSessionStart(campaignOf(c.events()), HA, "b-3");
     expect(crashed).toMatch(/\baaaaaaaa\b.*\bb-1\b.*\bb-2\b.*\bcrashed\b/su);
     expect(crashed).toContain("Its unfinished tree is in kept/bbbbbbbb/.");
     expect(crashed).not.toContain("reference");
     c.record("harness.promoted", { harness: HA, from: STARTER, rests: [] });
     // The session's own start is not the last session before it.
     c.record("build.started", { session: "b-3", parent: HA, tasks: ["p1"] });
-    const promoted = startTold(campaignOf(c.events()), HA, "b-3");
+    const promoted = formatSessionStart(campaignOf(c.events()), HA, "b-3");
     expect(promoted).toMatch(/\bb-1\b.*\breference harness\b.*\bb-2\b.*\bcrashed\b/su);
     expect(promoted).not.toContain("b-3");
     // Starting from a non-reference harness names the current reference harness explicitly.
-    const behind = startTold(campaignOf(c.events()), HB, "b-4");
+    const behind = formatSessionStart(campaignOf(c.events()), HB, "b-4");
     expect(behind).toContain("The reference harness is harness aaaaaaaa.");
   });
 
@@ -452,12 +452,12 @@ describe("the Builder's filter over that reading", () => {
     c.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
     c.record("build.checkpoint", { session: "b-1", harness: HA });
     c.record("build.checkpoint", { session: "b-1", harness: HB });
-    const told = startTold(campaignOf(c.events()), HB, "b-2");
+    const told = formatSessionStart(campaignOf(c.events()), HB, "b-2");
     expect(told).toMatch(/\bbbbbbbbb\b.*\bb-1\b/u);
     expect(told).not.toContain("no Builder session");
     // A killed session's ending names no harness, and its last checkpoint is still what it left.
     c.record("build.finished", { session: "b-1", ended: "killed", turns: 9, seconds: 60, billed: 1 });
-    const killed = startTold(campaignOf(c.events()), HB, "b-2");
+    const killed = formatSessionStart(campaignOf(c.events()), HB, "b-2");
     expect(killed).toMatch(/\bbbbbbbbb\b.*\bb-1\b.*\bcut\b/su);
     // What the cut left and what it did not, so the session reopens knowing where its memory is.
     expect(killed).toMatch(/\bonly its notes and the harness above remain\b/u);
@@ -470,7 +470,7 @@ describe("the Builder's filter over that reading", () => {
     crash.record("build.checkpoint", { session: "b-1", harness: HA });
     crash.record("build.finished", { session: "b-1", ended: "crashed", harness: HB, changed: true });
     expect(latestBuilt(crash.events())).toBe(HA);
-    const opened = startTold(campaignOf(crash.events()), HA, "b-2");
+    const opened = formatSessionStart(campaignOf(crash.events()), HA, "b-2");
     expect(opened).toMatch(/\baaaaaaaa\b.*\bb-1\b.*\bcrashed\b/su);
     expect(opened).toContain("Its unfinished tree is in kept/bbbbbbbb/.");
     expect(opened).not.toContain("no Builder session");
@@ -479,14 +479,14 @@ describe("the Builder's filter over that reading", () => {
     cut.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
     cut.record("build.checkpoint", { session: "b-1", harness: HA });
     cut.record("build.finished", { session: "b-1", ended: "killed", harness: HB, changed: true });
-    expect(startTold(campaignOf(cut.events()), HA, "b-2")).toContain(
+    expect(formatSessionStart(campaignOf(cut.events()), HA, "b-2")).toContain(
       "Its unfinished tree is in kept/bbbbbbbb/.",
     );
     // A checkpoint of the parent itself changed nothing, so no session left the starter.
     const same = campaign();
     same.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
     same.record("build.checkpoint", { session: "b-1", harness: STARTER });
-    expect(startTold(campaignOf(same.events()), STARTER, "b-2")).toContain("no Builder session");
+    expect(formatSessionStart(campaignOf(same.events()), STARTER, "b-2")).toContain("no Builder session");
   });
 
   it("tells each comparison as its tally and its reading, with no task", () => {
@@ -508,7 +508,7 @@ describe("the Builder's filter over that reading", () => {
       c.compared(id, { old, fresh: HB }, tallied(reading, wins, ties));
     }
     c.compared("g-5", { old: HA, fresh: HB }, null);
-    const told = comparisonsTold(campaignOf(c.events()).steps);
+    const told = formatComparisonHistory(campaignOf(c.events()).steps);
     expect(told).toHaveLength(6);
     expect(told[0]).toMatch(/aaaaaaaa.*00000000.*4 tasks.*4 won.*0 lost.*0 tied.*a step/u);
     for (const [index, [, old, , wins, ties, meaning]] of readings.entries()) {
@@ -529,7 +529,7 @@ describe("the Builder's filter over that reading", () => {
       target: 12,
     });
     c.compared("g-6", { old: HA, fresh: HB }, tallied("no-step", 2, 2));
-    expect(comparisonsTold(campaignOf(c.events()).steps).at(-1)).toMatch(
+    expect(formatComparisonHistory(campaignOf(c.events()).steps).at(-1)).toMatch(
       /bbbbbbbb.*aaaaaaaa.*4 tasks.*5 turns.*2 won.*0 lost.*2 tied.*no step/u,
     );
     // No held-out task, no share of valid answers, no ruling and no cost.
@@ -543,7 +543,7 @@ describe("the Builder's filter over that reading", () => {
     const billed = tallied("no-step", 4, 0);
     const scored = { wins: 4, losses: 0, ties: 0, p: 0.0625, unsolved: 0, differences: [700, 100, 100, 100] };
     c.compared("g-1", { old: HA, fresh: HB }, { ...billed, scored: { ...scored, unbilled: [600, 0, 0, 0] } });
-    const [told] = comparisonsTold(campaignOf(c.events()).steps);
+    const [told] = formatComparisonHistory(campaignOf(c.events()).steps);
     expect(told).toMatch(/1 won, 0 lost, 3 tied, which reads no step/u);
     expect(told).not.toContain("bill");
   });
@@ -585,7 +585,7 @@ describe("the Builder's filter over that reading", () => {
         scored: { wins, losses: 0, ties: 2 - wins, p: 0.5, unsolved: 0 },
         aside: [],
       });
-      const [told] = comparisonsTold(campaignOf(c.events()).steps);
+      const [told] = formatComparisonHistory(campaignOf(c.events()).steps);
       expect(told).toContain(said);
       expect(told).not.toMatch(/\bs[12]\b/u);
     },

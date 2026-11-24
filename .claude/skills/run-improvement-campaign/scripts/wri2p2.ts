@@ -11,7 +11,7 @@
  *
  * - Default / `due`: surfaces per-promotion decision checkpoints (`decide` at 1–4, `pause` ceiling
  *   at 5, or non-promotion triggers at 0), reading `pause:<run>` continuation rows from both cycle
- *   and investigation `deviations.md` files (`keptIn`).
+ *   and investigation `deviations.md` files (`deferredBy`).
  * - `open`: snapshots and opens one or more campaigns as equals (`iteration.json`).
  * - `next`: prints the first owed gate (`open` → `done`), auto-skipping untriggered isolated lanes
  *   and supporting `Pull request: none — <reason>` when vetting leaves no code repair.
@@ -76,14 +76,14 @@ import {
   notDoneOf,
   OUTSIDE,
   outsideOf,
-  outsideOwed,
+  pendingOutsideReads,
   pullOf,
   rowsOf,
   sectionOf,
   stillMissingOf,
   unresolvedOf,
 } from "#tools/wri/ledger.ts";
-import { RECORD, recordOwed, recordStep } from "#tools/wri/record.ts";
+import { missingRecordSections, RECORD, recordStep } from "#tools/wri/record.ts";
 
 /** The read across domains that the plan rests on beside the vetting. */
 const ACROSS = "cross-domain.md";
@@ -352,8 +352,8 @@ function gatesOf(where: Where): Gate[] {
     madeBy(plan, deviations, name),
   );
   const owing = marked(dir) && (fixed(dir) || !existsSync(at(SYNTHESIS)));
-  const record = recordStep(owing ? recordOwed(read(at(RECORD)), runs).length : 0, dir);
-  const unread = () => outsideOwed(outsideOf(where.root, dir), [...runs, ...forks]);
+  const record = recordStep(owing ? missingRecordSections(read(at(RECORD)), runs).length : 0, dir);
+  const unread = () => pendingOutsideReads(outsideOf(where.root, dir), [...runs, ...forks]);
   return [
     gate("instruct", () => {
       const blank = blankSections(read(at(SHARED)));
@@ -540,8 +540,8 @@ export const movedIn = (
       return moved ? [{ run, live }] : [];
     });
 
-/** First `pause:<run>` reason keeping `name` past `trigger` (promotion counts require naming `trigger`). */
-export const keptIn = (
+/** First `pause:<run>` reason deferring a pause past `trigger` (promotion counts require naming `trigger`). */
+export const deferredBy = (
   deviations: readonly string[],
   name: string,
   trigger: string,
@@ -621,7 +621,7 @@ function standings(args: CommandArgs, repo: string, known: readonly Run[], parts
             row,
             trigger,
             running,
-            keptIn(deviations, row.name, trigger ?? "", row.promotions),
+            deferredBy(deviations, row.name, trigger ?? "", row.promotions),
             clockTurns(row, now),
           )
         : nextOf(folder.dir, iteration);
@@ -741,7 +741,7 @@ function due(args: CommandArgs, repo: string, known: readonly Run[]): number {
   const { shown, days, now, root } = standings(args, repo, known, args.positionals.slice(1));
   const head = gitMaybe(repo, "rev-parse", "HEAD") ?? "HEAD";
   for (const line of dueLines(shown, changedAt, now, days)) console.log(line);
-  for (const line of outsideOwed(outsideOf(root))) console.log(line);
+  for (const line of pendingOutsideReads(outsideOf(root))) console.log(line);
   for (const each of shown.filter(({ row }) => row.live)) console.log(unmeasured(repo, head, each));
   return 0;
 }

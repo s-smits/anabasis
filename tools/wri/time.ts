@@ -16,7 +16,7 @@ import { plural } from "#src/meta/text.ts";
 import {
   type Compared,
   fired,
-  firedIf,
+  emitIf,
   type Index,
   measured,
   percent,
@@ -27,7 +27,7 @@ import {
   text,
   type Trigger,
 } from "./folds.ts";
-import { heldOff } from "#tools/runs/view.ts";
+import { firstComparisonDelay } from "#tools/runs/view.ts";
 
 const SAMPLE_MS = 15 * 60_000;
 const ONWARD: ReadonlySet<EventKind> = new Set(["campaign.ended", "build.started", "exam.started"]);
@@ -93,7 +93,7 @@ function limitTriggers(log: Index): Trigger[] {
       return share(mine.filter(atALimit).length, mine.length);
     };
     const { at, of } = detail(missed);
-    return firedIf(
+    return emitIf(
       at !== 0,
       "MISSES AT A LIMIT",
       `${session}: ${side(own.old)} reference misses and ${side(own.fresh)} new at a limit ${of}`,
@@ -104,7 +104,7 @@ function limitTriggers(log: Index): Trigger[] {
   const { at, of } = detail(outside);
   return [
     ...compared,
-    ...firedIf(
+    ...emitIf(
       at > 0,
       "MISSES AT A LIMIT",
       `outside a comparison: ${share(at, outside.length)} misses at a limit ${of}`,
@@ -123,7 +123,7 @@ function servedTriggers(log: Index, results: ReturnType<typeof scoredOf>): Trigg
     const other = scoring.filter((solve) => servedBy.has(solve.id));
     const under = other.filter((solve) => solve.harness === own.old).length;
     const models = other.flatMap((solve) => (servedBy.get(solve.id) ?? []).map((row) => row.served));
-    return firedIf(
+    return emitIf(
       other.length > 0,
       "SERVED ANOTHER MODEL",
       `${session}: ${share(other.length, scoring.length)} solves, ${String(under)} of them under the reference harness; ${tally(
@@ -134,7 +134,7 @@ function servedTriggers(log: Index, results: ReturnType<typeof scoredOf>): Trigg
   const turns = degraded.reduce((sum, row) => sum + row.turns, 0);
   return [
     ...otherModel,
-    ...firedIf(
+    ...emitIf(
       otherModel.length === 0 && turns > 0,
       "SERVED ANOTHER MODEL",
       `the campaign: ${plural(turns, "turn")} in ${String(new Set(degraded.map((row) => row.id)).size)} sessions and solves, none a comparison's scored solve; served by ${[...new Set(degraded.map((row) => row.served))].join(", ")}`,
@@ -196,7 +196,7 @@ export function deadlineTriggers(log: Index): Trigger[] {
       const order = solves.map((solve) => (solve.harness === own.old ? "o" : "f")).join("");
       return !MIRRORS.some((mirror) => mirror.repeat(order.length).startsWith(order));
     }).length;
-    return firedIf(
+    return emitIf(
       late > 0,
       "STARTS OUT OF TURN",
       `${session}: ${share(late, tasks.size)} tasks started their harnesses' solves out of turn`,
@@ -210,7 +210,7 @@ export function deadlineTriggers(log: Index): Trigger[] {
     ...loaded,
     ...outOfTurn,
     ...servedTriggers(log, results),
-    ...firedIf(
+    ...emitIf(
       busiest >= LOAD_WORTH_A_LINE && busiest >= calmest * LOAD_MOVED,
       "LOAD MOVED",
       `median load when each comparison's solves started, its first half then its second: ${loads.map(({ session, halves }) => `${session} ${halves.map((half) => half.toFixed(1)).join(" then ")}`).join("; ")}`,
@@ -348,7 +348,7 @@ export function hoursLine(log: Index): string {
   );
   const perPromotion =
     promotions > 0
-      ? `; ${hours(whole / promotions)} h a promotion, ${hours((whole - waited) / promotions)} h outside recorded waits`
+      ? `; ${hours(whole / promotions)} h per promotion, ${hours((whole - waited) / promotions)} h excluding recorded waits`
       : "";
   return `hours: elapsed open spans (overlapping), ${named.join(", ")}, of ${hours(whole)}; recorded waits ${hours(waited)} h${kinds.length > 0 ? ` (${kinds.join(", ")})` : ""}${perPromotion}`;
 }
@@ -401,15 +401,16 @@ export function costTriggers(log: Index): Trigger[] {
   const spend = spendOf(log.events);
   const total = spend.reduce((sum, [, dollars]) => sum + dollars, 0);
   const [[leader, most] = ["", 0]] = spend;
-  const held = heldOff(log.events);
+  const delay = firstComparisonDelay(log.events);
   return [
-    ...firedIf(held?.long === true, "FIRST COMPARISON HELD OFF", `admissible ${held?.said ?? ""}`),
-    ...firedIf(
+    // Delay after admissibility belongs to the Builder rather than the Examiner (`table-timeline.ts`).
+    ...emitIf(delay?.long === true, "FIRST COMPARISON HELD OFF", `admissible ${delay?.summary ?? ""}`),
+    ...emitIf(
       gaps.length > 0,
       "LONG SILENCES",
       `${plural(gaps.length, "gap")} over ${(threshold / MINUTE_MS).toFixed(1)} min, ${why}: ${named.join("; ")}`,
     ),
-    ...firedIf(
+    ...emitIf(
       total > 0 && leader !== "solver" && most > total / 2,
       "SPEND LED BY A ROLE",
       `${leader}: ${percent(most / total)} of billed dollars`,

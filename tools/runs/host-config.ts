@@ -87,8 +87,9 @@ function listed(text: string, name = "ANA_HOSTS"): readonly JsonValue[] {
  *  host, so two machines that list each other do not ask each other in a loop, rather than the
  *  sender emptying `ANA_HOSTS`, which a keeper would inherit and so count no other machine's runs
  *  against a login's cap. */
-export const keptHere = (env: Readonly<Record<string, string | undefined>> = runtimeProcess.env): boolean =>
-  env.ANA_HOP === "1";
+export const isLocalOnly = (
+  env: Readonly<Record<string, string | undefined>> = runtimeProcess.env,
+): boolean => env.ANA_HOP === "1";
 
 /** Where a check runs (`auto`, `here` or a host's name), as `ANA_CHECK_HOST` says; undefined where it
  *  is unset. */
@@ -99,7 +100,7 @@ export const checkSlots = (host: Host): number => host.checks ?? 2;
 
 /** The hosts `text` lists, by default the environment's `ANA_HOSTS`: none for a verb kept here. */
 export function hostsOf(text = runtimeProcess.env.ANA_HOSTS ?? ""): readonly Host[] {
-  if (keptHere()) return [];
+  if (isLocalOnly()) return [];
   const value = listed(text);
   const names = new Set<string>();
   return value.map((entry) => {
@@ -190,8 +191,7 @@ export const ownName = (): string => hostname().replace(/\..*$/u, "");
 
 /** The benchmarks `EVAL_RUNNER` lists (`.env.runs.example`), none where unset. An older value that
  *  names one machine alone, as `ABLATION_HOST` did, is refused as not JSON. A verb kept to this
- *  machine (`keptHere`) reads the benchmarks rolled here alone, rather than finding no host for one
- *  rolled elsewhere and refusing the whole verb. */
+ *  machine (`isLocalOnly`) reads local benchmarks alone rather than rejecting unconfigured hosts. */
 export function benchesOf(env: Readonly<Record<string, string | undefined>> = runtimeProcess.env): Bench[] {
   const value = listed(env.EVAL_RUNNER ?? "", "EVAL_RUNNER");
   const known = hostsOf(env.ANA_HOSTS ?? "");
@@ -207,7 +207,7 @@ export function benchesOf(env: Readonly<Record<string, string | undefined>> = ru
     if (!Array.isArray(packs) || packs.length === 0 || !packs.every(isString)) {
       throw new Error(`${name}: packs takes a list of the packs whose runs it reads`);
     }
-    if (host !== "here" && keptHere(env)) return [];
+    if (host !== "here" && isLocalOnly(env)) return [];
     // A relative store or sitting is read from the home folder of its machine.
     const home = (path: string) => (isAbsolute(path) || path.startsWith("~/") ? path : `~/${path}`);
     const on = host === "here" ? undefined : hostNamed(host, known);

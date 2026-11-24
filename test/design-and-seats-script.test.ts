@@ -1,7 +1,7 @@
 // Check import reach, relevant wall tests, aggregate Examiner views and what a Builder opening is
 // told of the past, without exposing task data.
 import { afterAll, describe, expect, it } from "bun:test";
-import { builderTold } from "#skills/design-and-seats/scripts/builder-view.ts";
+import { formatBuilderView } from "#skills/design-and-seats/scripts/builder-view.ts";
 import { examinerCounts } from "#skills/design-and-seats/scripts/examiner-view.ts";
 import { absentFrom, SEATS, seatLines, seatsOf } from "#skills/design-and-seats/scripts/seat-view.ts";
 import { type Condition, conditionId } from "../src/kernel/condition.ts";
@@ -188,7 +188,7 @@ describe("Builder history messages", () => {
   }
 
   it("excludes held-out tasks, hidden values, rulings and held-out solve ids", () => {
-    const told = builderTold(past()).join("\n");
+    const told = formatBuilderView(past()).join("\n");
     for (const canary of [HELD, HIDDEN, "earned", "s-2-1"]) expect(told).not.toContain(canary);
   });
 });

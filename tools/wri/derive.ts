@@ -9,7 +9,7 @@ import { campaignEnding, endingLines } from "#skills/campaign-mechanics/scripts/
 import { drawLines } from "#skills/comparison-reading/scripts/draw.ts";
 import { readingLines, ZONE_HEADER, zoneRows } from "#skills/comparison-reading/scripts/reading.ts";
 import { starterLines } from "#skills/comparison-reading/scripts/starter-reads.ts";
-import { builderTold } from "#skills/design-and-seats/scripts/builder-view.ts";
+import { formatBuilderView } from "#skills/design-and-seats/scripts/builder-view.ts";
 import { examinerCounts, examinerEach } from "#skills/design-and-seats/scripts/examiner-view.ts";
 import { ambitionLines } from "#skills/examiner-complexity/scripts/ambition.ts";
 import { csvLines, draftRows as examRows, EXAMS_HEADER } from "#skills/examiner-complexity/scripts/exams.ts";
@@ -377,7 +377,7 @@ export const READERS: readonly Reader[] = [
   {
     name: "builder-view",
     answers: "what the Builder's next opening would be told",
-    read: ({ events }) => builderTold(events),
+    read: ({ events }) => formatBuilderView(events),
   },
   {
     name: "examiner-view",

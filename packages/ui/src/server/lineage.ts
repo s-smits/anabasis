@@ -63,7 +63,7 @@ export const promotionsIn = once((log): Promotion[] => {
 /** The harnesses kept, in the order kept, each once. Derived: a Builder session's from its
  *  handover; a frozen one from `build.checkpoint` and an imported one from `harness.imported`,
  *  which no fold reads. */
-function keptIn(log: Log): Kept[] {
+function savedHarnessesIn(log: Log): Kept[] {
   const { events } = log;
   const sessions = movesIn(log).filter((move) => move.step === "builder");
   const built = sessions.flatMap((move): Kept[] =>
@@ -135,7 +135,7 @@ export const harnessesIn = once((log): HarnessCard[] => {
   };
   return [
     card(null, starter),
-    ...keptIn(log).flatMap((kept) => (kept.digest === starter ? [] : [card(kept, kept.digest)])),
+    ...savedHarnessesIn(log).flatMap((kept) => (kept.digest === starter ? [] : [card(kept, kept.digest)])),
   ];
 });
 

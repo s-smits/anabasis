@@ -18,7 +18,7 @@ import {
   count,
   EXAM_END,
   fired,
-  firedIf,
+  emitIf,
   type Index,
   items,
   measured,
@@ -29,7 +29,7 @@ import {
   tallyOf,
   text,
   type Trigger,
-  wlt,
+  formatTally,
 } from "./folds.ts";
 import { spareOf } from "./clearance.ts";
 
@@ -54,22 +54,22 @@ export function sharedPaths({ args }: Call): string[] {
 }
 
 /** `w-l-t p` of a test record, or "not scored" where there is none, as a stopped comparison's. */
-export function testSaid(tested: JsonValue | undefined): string {
+export function formatTestSummary(tested: JsonValue | undefined): string {
   const record = asRecord(tested);
   const step = tallyOf(tested);
   if (record === null || step === null) return "not scored";
-  const said = (read: typeof step) => `${wlt(read)} p ${pSaid(read.p)}`;
-  const billed = said({
+  const format = (read: typeof step) => `${formatTally(read)} p ${formatPValue(read.p)}`;
+  const billed = format({
     wins: count(record.wins),
     losses: count(record.losses),
     ties: count(record.ties),
     p: count(record.p),
   });
-  return said(step) === billed ? billed : `${billed}, without the bill ${said(step)}`;
+  return format(step) === billed ? billed : `${billed}, without the bill ${format(step)}`;
 }
 
 /** A test's p as a reading prints it. */
-export const pSaid = (p: number) => (p < 0.001 ? p.toExponential(1) : p.toFixed(3));
+export const formatPValue = (p: number) => (p < 0.001 ? p.toExponential(1) : p.toFixed(3));
 
 /** The differences a report's step was read on, each with its task where named. */
 export function testedOf(report: JsonObject): { differences: number[]; of: (string | undefined)[] } {
@@ -110,7 +110,7 @@ export function validOf(side: JsonValue | undefined) {
 }
 
 /** A measured validity share as a percentage, retaining the absence of a measurement. */
-export const validSaid = (value: number | null): string =>
+export const formatValidityRate = (value: number | null): string =>
   value === null ? "unmeasured" : `${(value * 100).toFixed(0)}%`;
 
 export function epochsOf(events: readonly LogEvent[]): Epoch[] {
@@ -136,17 +136,19 @@ export function untied(tested: JsonValue | undefined): string {
   return step === null ? "-" : share(step.wins + step.losses, step.wins + step.losses + step.ties);
 }
 
-function restSaid(log: Index, { session, last }: Compared): string {
+/** One supporting comparison as lane 18 reads it: the tally against its own A/A noise, the tally at
+ *  each budget, and the host's load while its solves started. */
+function formatSupportingComparison(log: Index, { session, last }: Compared): string {
   const noise =
     asRecord(last.noise) === null
       ? ""
-      : `, against the reference's own ${untied(last.noise)} (${testSaid(last.noise)})`;
+      : `, against the reference's own ${untied(last.noise)} (${formatTestSummary(last.noise)})`;
   const budgets = items(last.budgets).flatMap((budget) => {
     const record = asRecord(budget);
     const unit = UNITS.find((each) => isNumber(record?.[each]));
     return record === null || unit === undefined
       ? []
-      : [`${unit} ${String(count(record[unit]))} ${testSaid(record)}`];
+      : [`${unit} ${String(count(record[unit]))} ${formatTestSummary(record)}`];
   });
   const solves = log.solves.filter((solve) => solve.comparison === session && measured(solve));
   const loads = solves.flatMap(({ load }) => (load === null ? [] : [load]));
@@ -155,7 +157,7 @@ function restSaid(log: Index, { session, last }: Compared): string {
     loads.length === 0
       ? ""
       : `; load median ${(median(loads) ?? 0).toFixed(1)}${cores === null ? "" : ` on ${String(cores)} cores`}`;
-  return `${session} ${testSaid(last.scored)} at level ${String(count(last.level))}, untied ${untied(last.scored)}${noise}${budgets.length > 0 ? `; by budget ${budgets.join(", ")}` : ""}${load}`;
+  return `${session} ${formatTestSummary(last.scored)} at level ${String(count(last.level))}, untied ${untied(last.scored)}${noise}${budgets.length > 0 ? `; by budget ${budgets.join(", ")}` : ""}${load}`;
 }
 
 /** The hours and dollars from event `from` to event `to`: what the campaign paid for a stretch. */
@@ -182,27 +184,30 @@ function restTriggers(log: Index, { at, until, data }: Epoch, since: number, rul
     const compared = log.compared.find((each) => each.session === session);
     return compared === undefined ? [] : [compared];
   });
+  const summaries = rests.map((compared) => formatSupportingComparison(log, compared));
+  // The rule tests the two frontiers joined, a task both scored once (`readTwice`), which can read
+  // otherwise than either alone.
   const joined = joinedTest(rests.map(({ last }) => last));
   const [wins, losses] = [joined.filter((one) => one > 0).length, joined.filter((one) => one < 0).length];
   const together =
     rests.length < 2 || joined.length === 0
       ? ""
-      : `; joined ${String(wins)}-${String(losses)}-${String(joined.length - wins - losses)} p ${pSaid(flipP(joined))}`;
+      : `; joined ${String(wins)}-${String(losses)}-${String(joined.length - wins - losses)} p ${formatPValue(flipP(joined))}`;
   const bare = rests.flatMap(({ session, last }) => {
     const old = validOf(asRecord(last.valid)?.old);
     const fresh = validOf(asRecord(last.valid)?.fresh);
     return old.tasks > 0 && old.none / old.tasks > BARE
       ? [
-          `${session}: the reference answered none of its solves on ${share(old.none, old.tasks)} tasks (${validSaid(old.share)} of solves valid), the new harness ${validSaid(fresh.share)}`,
+          `${session}: the reference answered none of its solves on ${share(old.none, old.tasks)} tasks (${formatValidityRate(old.share)} of solves valid), the new harness ${formatValidityRate(fresh.share)}`,
         ]
       : [];
   });
   return [
     fired(
       "PROMOTED",
-      `${short(harness)} from ${short(text(data.from))} at event ${String(at)}, ${spentTo(log, 0, at)} after the opening, ${byTable ? "by the table" : "by the operator"}${despite > 0 ? ` despite ${plural(despite, "fault")}` : ""}; ${rule}; rests on ${rests.map((compared) => restSaid(log, compared)).join("; ") || "no comparison on record"}${together}`,
+      `${short(harness)} from ${short(text(data.from))} at event ${String(at)}, ${spentTo(log, 0, at)} after the opening, ${byTable ? "by the table" : "by the operator"}${despite > 0 ? ` despite ${plural(despite, "fault")}` : ""}; ${rule}; rests on ${summaries.join("; ") || "no comparison on record"}${together}`,
     ),
-    ...firedIf(bare.length > 0, "STARTER BARE", bare.join("; ")),
+    ...emitIf(bare.length > 0, "STARTER BARE", bare.join("; ")),
   ];
 }
 
@@ -237,18 +242,18 @@ function afterTrigger(
         ? tasks.map((task, i) => ({ newer: (drawn.get(text(task)) ?? 0) > at, score: -(scores[i] ?? 0) }))
         : [];
     });
-    const said = (when: "after" | "before") => {
+    const formatAge = (when: "after" | "before") => {
       const scores = ages.filter((one) => one.newer === (when === "after")).map(({ score }) => score);
       const step = tallyOf({ unbilled: scores });
-      return step === null || scores.length === 0 ? "none" : `${wlt(step)} p ${pSaid(step.p)}`;
+      return step === null || scores.length === 0 ? "none" : `${formatTally(step)} p ${formatPValue(step.p)}`;
     };
-    return `; for the reference on tasks first drawn after the promotion ${said("after")}, before it ${said("before")}`;
+    return `; for the reference on tasks first drawn after the promotion ${formatAge("after")}, before it ${formatAge("before")}`;
   };
   const read = ({ session, last }: Compared) => {
     const old = validOf(asRecord(last.valid)?.old);
     return last.fresh === starter && last.old === promoted
-      ? `control ${session}: the promoted harness valid on ${validSaid(old.share)} of its solves of ${plural(old.tasks, "task")}, ${testSaid(last.scored)}${byAge(last)}`
-      : `${session} ${short(text(last.fresh))} against ${last.old === promoted ? "the promoted harness" : short(text(last.old))} ${testSaid(last.scored)}, ${text(last.reading)}, valid ${validSaid(validOf(asRecord(last.valid)?.fresh).share)} against ${validSaid(old.share)}`;
+      ? `control ${session}: the promoted harness valid on ${formatValidityRate(old.share)} of its solves of ${plural(old.tasks, "task")}, ${formatTestSummary(last.scored)}${byAge(last)}`
+      : `${session} ${short(text(last.fresh))} against ${last.old === promoted ? "the promoted harness" : short(text(last.old))} ${formatTestSummary(last.scored)}, ${text(last.reading)}, valid ${formatValidityRate(validOf(asRecord(last.valid)?.fresh).share)} against ${formatValidityRate(old.share)}`;
   };
   const reported = new Set(log.of("comparison.reported").map((report) => text(report.session)));
   const running = eventsOf(log.events, "comparison.started").flatMap(({ index, event: { data: start } }) =>
@@ -322,7 +327,7 @@ function sharedTmpTrigger(log: Index): Trigger[] {
     ...(programs.length > 0 ? [`programs under it: ${programs.join(", ")}`] : []),
     ...(crossing.length > 0 ? [`named by more than one solve or session: ${crossing.join(", ")}`] : []),
   ];
-  return firedIf(lines.length > 0, "SHARED TEMPORARY FOLDER", lines.join("; "));
+  return emitIf(lines.length > 0, "SHARED TEMPORARY FOLDER", lines.join("; "));
 }
 
 /** Lane 18: promotions, shared `/tmp` calls, confirmation, carriers, chain, and noise margins. */
@@ -363,7 +368,7 @@ function carrierTrigger(log: Index): Trigger[] {
     if (text(last.reading) !== "step" || unbilled.length === 0) return [];
     const spare = spareOf(unbilled, count(last.level));
     const retained = testOf(scoresIn(last.retained));
-    const lost = retained.losses > retained.wins ? `, its retained tasks ${wlt(retained)}` : "";
+    const lost = retained.losses > retained.wins ? `, its retained tasks ${formatTally(retained)}` : "";
     const won = Object.values(asRecord(last.families) ?? {})
       .map((family) => asRecord(asRecord(family)?.frontier))
       .filter((held) => count(held?.wins) + count(held?.losses) + count(held?.ties) > 0)
@@ -373,7 +378,7 @@ function carrierTrigger(log: Index): Trigger[] {
       `${session} won ${share(unbilled.filter((one) => one > 0).length, unbilled.filter((one) => one !== 0).length)} untied, ${spare === 0 ? "none" : String(spare)} to spare${lost}${narrow ? `, every win in one of its ${String(won.length)} families` : ""}`,
     ];
   });
-  return firedIf(lines.length > 0, "STEP CARRIERS", lines.join("; "));
+  return emitIf(lines.length > 0, "STEP CARRIERS", lines.join("; "));
 }
 
 function unconfirmedTrigger(log: Index): Trigger[] {
@@ -383,10 +388,10 @@ function unconfirmedTrigger(log: Index): Trigger[] {
     const read =
       against === null
         ? "no starter comparison reported"
-        : `against the starter ${wlt(against)} without the bill, no step`;
+        : `against the starter ${formatTally(against)} without the bill, no step`;
     return [`${short(reference)} in epoch ${String(nth)}, ${to === null ? "open" : "closed"}: ${read}`];
   });
-  return firedIf(
+  return emitIf(
     lines.length > 0,
     "PROMOTION UNCONFIRMED",
     `${share(lines.length, epochs.length - 1)} promotions: ${lines.join("; ")}`,
@@ -399,12 +404,12 @@ function chainTrigger(log: Index): Trigger[] {
   const of = (origin: Origin) => summed(reads.map(({ origins }) => origins[origin].whole));
   const after = of(AFTER);
   if (after.losses <= after.wins) return [];
-  const each = reads.map(({ session, origins }) => `${session} ${wlt(origins[AFTER].whole)}`);
+  const each = reads.map(({ session, origins }) => `${session} ${formatTally(origins[AFTER].whole)}`);
   const alone = (reading: string) => reads.filter(({ after: read }) => read === reading).length;
   return [
     fired(
       "CHAIN AGAINST THE STARTER",
-      `the reference's wins, losses and ties against the starter on tasks written after its promotion, oldest read first: ${each.join(", ")}; summed ${wlt(after)}, on tasks written before and not chosen on ${wlt(of(BEFORE))}, on the tasks that chose the harness ${wlt(of(CHOSEN))}; on the tasks written after alone, ${share(alone("a step"), reads.length)} reads a step and ${String(alone("a step for the starter"))} a step for the starter`,
+      `the reference's wins, losses and ties against the starter on tasks written after its promotion, oldest read first: ${each.join(", ")}; summed ${formatTally(after)}, on tasks written before and not chosen on ${formatTally(of(BEFORE))}, on the tasks that chose the harness ${formatTally(of(CHOSEN))}; on the tasks written after alone, ${share(alone("a step"), reads.length)} reads a step and ${String(alone("a step for the starter"))} a step for the starter`,
     ),
   ];
 }
@@ -443,5 +448,5 @@ function marginTrigger(log: Index): Trigger[] {
       `${report.session} won ${share(inside.length, wins.length)} by no more than the wider of the two sides' own differences on the same task where validity tied${apart}`,
     ];
   });
-  return firedIf(lines.length > 0, "MARGINS INSIDE THE NOISE", lines.join("; "));
+  return emitIf(lines.length > 0, "MARGINS INSIDE THE NOISE", lines.join("; "));
 }

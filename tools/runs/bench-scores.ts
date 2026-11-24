@@ -33,7 +33,7 @@ function judgedIn(store: string): Map<string, Set<string>> {
 }
 
 /** Returns labels in `store` whose reference and Starter arms are both fully judged and not yet scored. */
-export function readsDone(store: string): string[] {
+export function completedBenchLabels(store: string): string[] {
   const judged = judgedIn(store);
   return [...judged.keys()]
     .filter((arm) => arm.startsWith("starter-"))
@@ -60,7 +60,7 @@ export async function scoreDone(values: {
   if (values.bench !== undefined && named.length === 0) throw new Misused(`no benchmark ${values.bench}`);
   const stores = values.store === undefined ? named.map(recordsHere) : [values.store];
   for (const store of stores) {
-    for (const label of readsDone(store)) {
+    for (const label of completedBenchLabels(store)) {
       const table = await runTextOrThrow([
         capturedExecPath,
         SCORE,

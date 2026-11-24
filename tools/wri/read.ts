@@ -35,7 +35,7 @@ import {
   EXAM_END,
   EXAM_START,
   fired,
-  firedIf,
+  emitIf,
   type Index,
   indexOf,
   instrumentTriggers,
@@ -153,24 +153,24 @@ function practiceTriggers(
       solve.calls.length <= FEW_CALLS,
   ).length;
   return [
-    ...firedIf(
+    ...emitIf(
       changed && lastPractice === undefined,
       "NO PRACTICE",
       `${session}: the harness changed and no practice solve ran`,
     ),
     ...(changed && lastPractice !== undefined ? unpractised : []),
-    ...firedIf(ended !== "finished", "SESSION ENDED", `${session}: ${ended}`),
-    ...firedIf(
+    ...emitIf(ended !== "finished", "SESSION ENDED", `${session}: ${ended}`),
+    ...emitIf(
       fails.length > 0,
       "PRACTICE FAILS",
       `${session}: ${plural(failed.length, "fail")} under its own states, ${String(earned)} ruled earned; the same task passed later under changed bytes ${String(answered)}, under the same bytes ${String(flipped)}; ${plural(fails.length - failed.length, "fail")} under a harness older than the session`,
     ),
-    ...firedIf(
+    ...emitIf(
       exposed > 0,
       "PRACTISED TASK MEASURED",
       `${session}: ${plural(exposed, "task")} both practised and measured`,
     ),
-    ...firedIf(
+    ...emitIf(
       quickWins > 0,
       "WIN AT A SMALL WALL SHARE",
       `${session}: ${String(quickWins)} passed solves of tasks the new harness won, in few calls`,
@@ -198,7 +198,7 @@ function winTriggers(wonList: ReturnType<typeof wonOf>): Trigger[] {
       (pair) =>
         `${short(pair.task)} new ${pair.solves?.fresh.join(" ") ?? "-"}, reference ${pair.solves?.old.join(" ") ?? "-"}`,
     );
-    return firedIf(
+    return emitIf(
       won.length > 0,
       "WINS",
       `${session}: ${share(won.length, pairs.length)} tasks won: ${solves.join("; ")}`,
@@ -244,7 +244,7 @@ function programTriggers(log: Index): Trigger[] {
       : [];
   });
   const lines = [...practised, ...compared];
-  return firedIf(
+  return emitIf(
     lines.length > 0,
     "ANSWER FROM A PROGRAM",
     `one shell call, then submit, in ${lines.join("; ")}`,
@@ -304,22 +304,22 @@ function harnessTriggers(log: Index, wonList: ReturnType<typeof wonOf>): Trigger
       read.push({ harness: child, began: end, origin: "frozen" });
     }
     return [
-      ...firedIf(
+      ...emitIf(
         edited,
         "HARNESS CHANGED",
         `${session}: ${short(parent)} to ${left === "" ? "what a stop left unsaved" : short(left)}; written by its file tools and shell: ${written.join(", ") || "nothing"}`,
       ),
-      ...firedIf(
+      ...emitIf(
         isString(finished?.broken),
         child === "" ? "BROKEN AT END" : "MEASURED AN EARLIER STATE",
         `${session}: what the session left does not open`,
       ),
-      ...firedIf(
+      ...emitIf(
         edited && !calls.some(({ tool }) => tool === "check_harness"),
         "NEVER CHECKED",
         `${session}: no check_harness call`,
       ),
-      ...firedIf(
+      ...emitIf(
         fresh.length > 0,
         "TOOLS CALLED",
         `${[...new Set(fresh.map((solve) => short(solve.harness)))].join(", ")}, left by ${session}, over ${plural(fresh.length, "test-side solve")}: ${tally(
@@ -334,12 +334,12 @@ function harnessTriggers(log: Index, wonList: ReturnType<typeof wonOf>): Trigger
           ),
         )}`,
       ),
-      ...firedIf(
+      ...emitIf(
         erring * 4 > fresh.length,
         "TOOL CALLS ERRED",
         `${session}: in ${share(erring, fresh.length)} solves under the new harness, a call marked an error, as every non-zero exit is, which a test reporting what is unmet may give by design`,
       ),
-      ...firedIf(toolFiles.length > 0, "TOOLS EDITED", `${session}: ${toolFiles.join(", ")}`),
+      ...emitIf(toolFiles.length > 0, "TOOLS EDITED", `${session}: ${toolFiles.join(", ")}`),
       ...practiceTriggers(log, { build, changed: edited, child, read, round }, wonTasks),
     ];
   });
@@ -353,19 +353,19 @@ function testTriggers(session: string, last: JsonObject): Trigger[] {
   const asked = last.tasks;
   const lacking = items(last.short).length;
   return [
-    ...firedIf(
+    ...emitIf(
       scored !== null && tasks === 0,
       "NOTHING SCORED",
       `${session}: no task was scored${isNumber(asked) ? `, of ${String(asked)} asked for` : ""}; the report reads ${text(last.reading)}`,
     ),
-    ...firedIf(
+    ...emitIf(
       last.capped === true,
       "CUT BY ITS CAP",
       scored === null
         ? `${session}: the dollar cap ended it before it was read`
         : `${session}: the dollar cap ended the starter's solves; its test stands, unread against the starter`,
     ),
-    ...firedIf(lacking > 0, "SET SHORT", `${session}: ${String(lacking)} short of solves`),
+    ...emitIf(lacking > 0, "SET SHORT", `${session}: ${String(lacking)} short of solves`),
   ];
 }
 
@@ -396,18 +396,18 @@ function comparisonTriggers(log: Index): Trigger[] {
       .map(([key]) => key.endsWith(` ${text(own.old)}`));
     const noise = tallyOf(last.noise);
     return [
-      ...firedIf(
+      ...emitIf(
         moved > 0,
         "SCORED SET MOVED",
         `${session}: ${share(moved, fixed.length)} tasks it began with are not in its tally`,
       ),
-      ...firedIf(
+      ...emitIf(
         open.length > 0,
         "SET ASIDE BY SIDE",
         `${session}: ${plural(open.length, "rejection")} set ${plural(aside.size, "task")} aside, ${String(underOld)} under the reference harness and ${String(open.length - underOld)} under the others`,
       ),
       ...testTriggers(session, last),
-      ...firedIf(
+      ...emitIf(
         flips.length > 0,
         "FLIPS",
         `${session}: ${share(flips.length, seen.size)} task and harness pairs both passed and failed, ${String(flips.filter(Boolean).length)} under the reference harness and ${String(flips.filter((old) => !old).length)} under the other`,
@@ -428,10 +428,10 @@ function comparisonTriggers(log: Index): Trigger[] {
     return `${session} ${short(text(own.old) || (build?.parent ?? ""))}>${fresh} ${text(last.reading)}`;
   });
   return [
-    ...firedIf(hosts > 1, "HOST CODE MOVED", `${String(hosts)} versions of the host's code in one log`),
+    ...emitIf(hosts > 1, "HOST CODE MOVED", `${String(hosts)} versions of the host's code in one log`),
     ...perComparison,
-    ...firedIf(chain.length > 0, "CHAIN", chain.join("; ")),
-    ...firedIf(
+    ...emitIf(chain.length > 0, "CHAIN", chain.join("; ")),
+    ...emitIf(
       log.states.size > 0 && log.held.length === 0,
       "NO TASK HELD OUT",
       "no task is held out, so a comparison has nothing to score",
@@ -485,7 +485,7 @@ function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
   });
   return [
     ...deadlineTriggers(log),
-    ...firedIf(
+    ...emitIf(
       non.length > 0,
       "NON-RESULTS",
       [
@@ -493,14 +493,14 @@ function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
         ...rerun,
       ].join("; "),
     ),
-    ...firedIf(cut + open > 0, "SOLVE NEVER FINISHED", apart(solves(cut), solves(open))),
-    ...firedIf(
+    ...emitIf(cut + open > 0, "SOLVE NEVER FINISHED", apart(solves(cut), solves(open))),
+    ...emitIf(
       ids("cut") !== "" || (log.of("campaign.ended").length > 0 && ids("open") !== ""),
       "EXAMINER NEVER FINISHED",
       apart(ids("cut"), ids("open")),
     ),
-    ...firedIf(Object.keys(unjudged).length > 0, "MISSES WITHOUT A VERDICT", tally(unjudged)),
-    ...firedIf(crashed.length > 0, "SESSION CRASHED", crashed.join(", ")),
+    ...emitIf(Object.keys(unjudged).length > 0, "MISSES WITHOUT A VERDICT", tally(unjudged)),
+    ...emitIf(crashed.length > 0, "SESSION CRASHED", crashed.join(", ")),
     ...costTriggers(log),
   ];
 }
@@ -523,8 +523,8 @@ function reviewTriggers(log: Index): Trigger[] {
   const faults = ends.reduce((sum, data) => sum + items(data.reviewFaults).length, 0);
   const unprobed = [...log.rulings.values()].filter(unprobedEarned).length;
   return [
-    ...firedIf(moved > 0, "REPLAY MOVED THE VERDICT", plural(moved, "ruling")),
-    ...firedIf(
+    ...emitIf(moved > 0, "REPLAY MOVED THE VERDICT", plural(moved, "ruling")),
+    ...emitIf(
       standing > 0,
       "SET ASIDE AND UNSETTLED",
       `${plural(standing, "task")} left out of a comparison on a rejection no person has labelled`,
@@ -569,8 +569,8 @@ function reviewTriggers(log: Index): Trigger[] {
             ]),
       ];
     }),
-    ...firedIf(faults > 0, "REVIEW FAULTS", plural(faults, "reviewer failure")),
-    ...firedIf(unprobed > 0, "EARNED WITHOUT A PROBE", share(unprobed, log.rulings.size)),
+    ...emitIf(faults > 0, "REVIEW FAULTS", plural(faults, "reviewer failure")),
+    ...emitIf(unprobed > 0, "EARNED WITHOUT A PROBE", share(unprobed, log.rulings.size)),
   ];
 }
 

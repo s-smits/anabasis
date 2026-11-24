@@ -14,7 +14,7 @@ import {
   terminateAndReapProcessGroupId,
 } from "../src/meta/subprocess.ts";
 import { seedCampaign } from "../tools/runs/seed.ts";
-import { family, leftOpen } from "../tools/runs/stop.ts";
+import { family, unreleasedSandboxes } from "../tools/runs/stop.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ana-runs-stop-test-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -39,8 +39,8 @@ describe("a stop", () => {
     ] as const) {
       append(path, kind, { [key]: id });
     }
-    const left = (run: Parameters<typeof leftOpen>[0]) =>
-      leftOpen(run)
+    const left = (run: Parameters<typeof unreleasedSandboxes>[0]) =>
+      unreleasedSandboxes(run)
         .map((dirs) => basename(dirs.root))
         .toSorted();
     expect(left({ path })).toEqual([
@@ -76,7 +76,7 @@ describe("a stop", () => {
     try {
       mkdirSync(dirname(path));
       append(path, "build.started", { session: "b-1" });
-      expect(leftOpen({ path }).map(({ build }) => build)).toEqual(["b-1"]);
+      expect(unreleasedSandboxes({ path }).map(({ build }) => build)).toEqual(["b-1"]);
       mkdirSync(cut.home, { recursive: true });
       writeFileSync(join(cut.home, MEMORY_FILE), "Next: widen the sweep.\n");
       keepCutNotes(path, "b-1");

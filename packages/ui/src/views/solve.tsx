@@ -39,7 +39,7 @@ function Verdict({ detail }: { detail: SolveDetail }) {
   if (detail.verdict === undefined) {
     return <ExamSide what="the verdict, with the answer and the checks that refused it" />;
   }
-  if (detail.verdict === null) return <p className="ana-faint">No verdict on record</p>;
+  if (detail.verdict === null) return <p className="ana-faint">No verdict recorded</p>;
   const { kind, refusedBy, fault, answer } = detail.verdict;
   return (
     <div className="ana-stack">
@@ -77,7 +77,7 @@ function RulingPart({ detail }: { detail: SolveDetail }) {
     if (detail.withheld !== null) return <RulingWithheld why={detail.withheld} />;
     return <ExamSide what="the Referee's ruling and its reason" />;
   }
-  if (detail.ruling === null) return <p className="ana-faint">No ruling on record</p>;
+  if (detail.ruling === null) return <p className="ana-faint">No ruling recorded</p>;
   return (
     <div className="ana-stack">
       <p className="ana-ruling-line">

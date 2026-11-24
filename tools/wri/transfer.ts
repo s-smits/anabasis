@@ -20,7 +20,7 @@ import { callsOf, tracesIn } from "#src/kernel/trace.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
-import { indexOf, practiceOf, summed, text, wlt } from "./folds.ts";
+import { indexOf, practiceOf, summed, text, formatTally } from "./folds.ts";
 
 const SHORT_ORIGIN: Readonly<Record<Origin, string>> = {
   [ORIGINS[0]]: "chosen",
@@ -141,14 +141,14 @@ function starterTransferSection(events: readonly LogEvent[]): string[] {
     const chosen = byOrigin.get(ORIGINS[0]) ?? EMPTY_CELL;
     const parts = ORIGINS.map((origin) => {
       const cell = byOrigin.get(origin) ?? EMPTY_CELL;
-      return `${SHORT_ORIGIN[origin]} prac ${wlt(cell.practised)} (${winShare(cell.practised)}) / unprac ${wlt(cell.unpractised)} (${winShare(cell.unpractised)})`;
+      return `${SHORT_ORIGIN[origin]} prac ${formatTally(cell.practised)} (${winShare(cell.practised)}) / unprac ${formatTally(cell.unpractised)} (${winShare(cell.unpractised)})`;
     });
-    return `${read.session} transfer (${read.confirmed ? "confirmed" : "unconfirmed"}, ${String(afterBatches)} post-promo batches, ${String(afterFamilies)} unseen families): after prac ${wlt(after.practised)} (${winShare(after.practised)}) vs unprac ${wlt(after.unpractised)} (${winShare(after.unpractised)}) | chosen prac ${wlt(chosen.practised)} vs unprac ${wlt(chosen.unpractised)} | all: ${parts.join("; ")}`;
+    return `${read.session} transfer (${read.confirmed ? "confirmed" : "unconfirmed"}, ${String(afterBatches)} post-promo batches, ${String(afterFamilies)} unseen families): after prac ${formatTally(after.practised)} (${winShare(after.practised)}) vs unprac ${formatTally(after.unpractised)} (${winShare(after.unpractised)}) | chosen prac ${formatTally(chosen.practised)} vs unprac ${formatTally(chosen.unpractised)} | all: ${parts.join("; ")}`;
   });
   const totalParts = ORIGINS.map((origin) => {
     const prac = summed(splits.map(({ byOrigin }) => (byOrigin.get(origin) ?? EMPTY_CELL).practised));
     const unprac = summed(splits.map(({ byOrigin }) => (byOrigin.get(origin) ?? EMPTY_CELL).unpractised));
-    return `${SHORT_ORIGIN[origin]}: prac ${wlt(prac)} (${winShare(prac)}) vs unprac ${wlt(unprac)} (${winShare(unprac)})`;
+    return `${SHORT_ORIGIN[origin]}: prac ${formatTally(prac)} (${winShare(prac)}) vs unprac ${formatTally(unprac)} (${winShare(unprac)})`;
   });
   return [...lines, `transfer totals (${plural(reads.length, "starter read")}): ${totalParts.join(" | ")}`];
 }

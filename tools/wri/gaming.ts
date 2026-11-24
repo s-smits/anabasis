@@ -19,7 +19,7 @@ import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { draftAuditPasses, unverifiedFinalPasses } from "./components.ts";
 import {
-  firedIf,
+  emitIf,
   type Index,
   indexOf,
   items,
@@ -243,8 +243,8 @@ export function gamingTriggers(log: Index): Trigger[] {
     ],
   ]);
   return [
-    ...firedIf(dropParts.length > 0, "DRAFT RULE DROP", dropParts.join("; ")),
-    ...firedIf(hillParts.length > 0, "PRACTICE HILL-CLIMBING", hillParts.join("; ")),
-    ...firedIf(specParts.length > 0, "SPECIFICATION GAMING LEAD", specParts.join("; ")),
+    ...emitIf(dropParts.length > 0, "DRAFT RULE DROP", dropParts.join("; ")),
+    ...emitIf(hillParts.length > 0, "PRACTICE HILL-CLIMBING", hillParts.join("; ")),
+    ...emitIf(specParts.length > 0, "SPECIFICATION GAMING LEAD", specParts.join("; ")),
   ];
 }

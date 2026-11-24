@@ -46,13 +46,20 @@ import { type SolveRequest, solve } from "../solver/run.ts";
 import { type Sat, type SeatTool, sessionClock, sit } from "../agent/session.ts";
 import { claimRoot } from "../wall/seat-root.ts";
 import { campaignOf } from "../campaign/handover.ts";
-import { copyHarness, harnessNow, type HarnessSnapshot, HOME_TOOL_TREE, seedKept, snapshot } from "./kept.ts";
+import {
+  copyHarness,
+  harnessNow,
+  type HarnessSnapshot,
+  HOME_TOOL_TREE,
+  seedSavedHarnesses,
+  snapshot,
+} from "./kept.ts";
 import { builderMemoryBlock, keepMemory } from "./memory.ts";
-import { comparisonsTold, failsTold, startTold } from "./past.ts";
+import { formatComparisonHistory, formatPracticeFailures, formatSessionStart } from "./past.ts";
 import {
   continuation,
   firstMessage,
-  SAID,
+  MODE_PROMPTS,
   type Solver,
   systemPrompt,
   type Used,
@@ -297,7 +304,7 @@ export async function session(
   writeFileSync(join(dirs.home, "resources.json"), `${capturedJsonStringify(request.resources, null, 2)}\n`);
   // The account of a harness's files is this host's, whichever harness the session forks.
   writeFileSync(join(dirs.home, "HARNESS.md"), HARNESS_ACCOUNT);
-  seedKept(dirs.home, request.states, before, parent.digest);
+  seedSavedHarnesses(dirs.home, request.states, before, parent.digest);
   append(log, BUILD_STARTED, {
     session: request.id,
     parent: parent.digest,
@@ -312,7 +319,7 @@ export async function session(
   const clock = sessionClock(began, limits.wallSeconds);
   const bench: Bench = {
     request,
-    said: SAID[request.campaign === undefined ? "host" : "builder"],
+    modePrompts: MODE_PROMPTS[request.campaign === undefined ? "host" : "builder"],
     tasks: request.tasks,
     reference: { dir: request.reference, harness: await openHarness(request.reference) },
     home: dirs.home,
@@ -358,12 +365,12 @@ function openingFor(bench: Bench): string {
       solve: request.solve,
     },
     {
-      start: `${startTold(campaign, bench.parent, request.id)}${moved}`,
-      fails: failsTold(
+      start: `${formatSessionStart(campaign, bench.parent, request.id)}${moved}`,
+      fails: formatPracticeFailures(
         campaign.fails,
         new Map(bench.tasks.map(({ version, task }) => [version, task.taskId])),
       ),
-      comparisons: comparisonsTold(campaign.steps),
+      comparisons: formatComparisonHistory(campaign.steps),
       // The notes of the sessions this campaign started before this one, from its own store.
       memory: builderMemoryBlock(
         request.memory,
@@ -422,7 +429,7 @@ async function converse(
     openingTool(() => {
       compacted = false;
       return campaign === undefined ? first : opening();
-    }, bench.said.opening),
+    }, bench.modePrompts.opening),
     finishTool(bench, campaign?.unmeasured),
     ...(campaign?.tools ?? []),
   ].map((each) => endingWith(each, footer));
@@ -444,7 +451,7 @@ async function converse(
     id: request.id,
     model,
     effort: request.effort,
-    system: systemPrompt(bench.said),
+    system: systemPrompt(bench.modePrompts),
     opening: [first, started, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"),
     tools,
     ...keyIfDefined("env", env),
@@ -466,7 +473,7 @@ async function converse(
       const harness = await harnessNow(bench);
       const practice =
         isString(harness) && hasPractice(bench, read(log, TRACE_KINDS), harness) ? "counted" : "uncounted";
-      return [continuation(used(), limits, harness, bench.said, practice), campaign?.hook() ?? ""]
+      return [continuation(used(), limits, harness, bench.modePrompts, practice), campaign?.hook() ?? ""]
         .filter((part) => part !== "")
         .join("\n\n");
     },

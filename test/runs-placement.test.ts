@@ -84,7 +84,7 @@ console.log(await freshLogin(process.env.FAKE_LOGIN, [], said("fetch failed")));
     expect(made.run(place, { ...reserved, ...there }).err).toContain("no host has room");
     const named = made.run(gpt, there);
     expect(named.code).toBe(1);
-    expect(named.err).toContain("runner carries 1 live codex run(s), at most 1 a machine");
+    expect(named.err).toContain("runner carries 1 live codex run(s), at most 1 per host");
     expect(made.run(gpt).out).toContain("nothing is launched without --yes");
     // A Claude Builder over a GPT solver on the plain login is counted as a Codex run once live
     // (`payerOf`, `liveHere`), so placement holds it to the same cap before it starts.

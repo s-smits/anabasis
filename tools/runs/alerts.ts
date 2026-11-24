@@ -31,7 +31,7 @@ import {
   archived,
   HERE,
   isCampaign,
-  keptFile,
+  keeperLogPath,
   logEvents,
   processes,
   type Run,
@@ -96,7 +96,7 @@ const ALERT_STATE = Type.Object({
 });
 /** Consecutive missed polls before re-reporting an unreachable host that holds an open run
  *  (six ten-minute polls equals one hour). */
-const SAID_AGAIN = 6;
+const REPEAT_ALERT_CYCLES = 6;
 export type AlertState = Static<typeof ALERT_STATE>;
 
 /** Schema for a host's `alerts --rows` payload. Requires fields absent from older checkouts
@@ -127,7 +127,7 @@ const HOST_ROWS = Type.Object({
 function rowOf(run: Run, running: readonly Running[], now: number): Row {
   const events = logEvents(run.path);
   const last = events.at(-1);
-  const file = keptFile(run);
+  const file = keeperLogPath(run);
   const state = runState(run, events, running, now);
   return {
     name: run.name,
@@ -250,10 +250,10 @@ export function alertsOf(
     const silent = looks[host] ?? 1;
     const open = Object.values(before?.runs ?? {}).some((seen) => seen.host === host && seen.ending === null);
     if (before !== null && !before.down.includes(host)) {
-      lines.push(`${host}: gave no answer this tree reads; its runs stay as last seen`);
-    } else if (open && silent % SAID_AGAIN === 0) {
+      lines.push(`${host}: unreachable from this checkout; retaining last known run status`);
+    } else if (open && silent % REPEAT_ALERT_CYCLES === 0) {
       lines.push(
-        `${host}: gave no answer this tree reads for ${String(silent)} looks, with a run last seen open there`,
+        `${host}: unreachable for ${String(silent)} consecutive polls while a run was last seen active`,
       );
     }
   }

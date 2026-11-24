@@ -130,7 +130,7 @@ export function outsideLines(scores: readonly Score[], runs: readonly Run[], for
       arm,
       run?.pack ?? MISSING,
       promotion === undefined || run === undefined
-        ? "no promotion on record"
+        ? "no recorded promotion"
         : `${String(promotion.nth)} of ${String(run.promotions.length)}`,
       promotion?.tally ?? MISSING,
       promotion === undefined ? MISSING : confirmedWord(promotion.confirmed),

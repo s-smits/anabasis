@@ -48,8 +48,8 @@ const LOCK = "pass.lock";
 const LAST = "pass.json";
 const ERRORS = "pass.err";
 const LIST = "readers.json";
-/** The lines an observer remembers having said, enough for some days of moments. */
-const SAID_KEPT = 400;
+/** Number of emitted reader line hashes retained per observer across polls. */
+const MAX_LOGGED_LINES = 400;
 
 /** The most lines a look says of one reader on a moment, of one run and of one host. */
 const PER_READER = 3;
@@ -417,7 +417,7 @@ function bounded(found: readonly Found[], said: ReadonlySet<string>, most: numbe
  * folder that holds the full text, and the moments not read yet, named once. A line is said once to an
  * observer, whichever moment asks for it again.
  */
-export function readersSaid(asked: ReadersAsked) {
+export function formatReaderLines(asked: ReadersAsked) {
   const { store, log, size, files } = asked;
   const listed = readersIn(store);
   const said = new Set(asked.said);
@@ -469,7 +469,7 @@ export function readersSaid(asked: ReadersAsked) {
       ? [`${why.startsWith(FAILED) ? "⚠" : "·"} not read yet: ${missing.join(", ")}; ${why}`]
       : []),
   ];
-  const remembered = [...(asked.said ?? []), ...shown.map(({ hash }) => hash)].slice(-SAID_KEPT);
+  const remembered = [...(asked.said ?? []), ...shown.map(({ hash }) => hash)].slice(-MAX_LOGGED_LINES);
   return { placed, lines, owed, said: remembered };
 }
 

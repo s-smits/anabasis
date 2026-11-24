@@ -45,7 +45,7 @@ import { taskSets } from "#src/kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { spareOf } from "./clearance.ts";
-import { pSaid, testedOf, testSaid } from "./promotion.ts";
+import { formatPValue, formatTestSummary, testedOf } from "./promotion.ts";
 
 const LEVEL = 0.02;
 const STARTED = "comparison.started";
@@ -69,7 +69,7 @@ const MEASURES: readonly (readonly [string, Measure])[] = [
 /** `w-l-t p` of `scores`. */
 function tallied(scores: readonly number[]): string {
   const { wins, losses, ties, p } = testOf(scores);
-  return `${String(wins)}-${String(losses)}-${String(ties)} p ${pSaid(p)}`;
+  return `${String(wins)}-${String(losses)}-${String(ties)} p ${formatPValue(p)}`;
 }
 
 /** Whether every new solve of `pair` beat every reference solve: valid against invalid, or both
@@ -112,7 +112,7 @@ function withoutEach(scores: readonly number[], level: number): string {
   if (wins.length === 0) return "no win to remove";
   const ps = wins.map((at) => flipP(scores.filter((_, other) => other !== at)));
   const losing = ps.filter((p) => p > level).length;
-  return `p from ${pSaid(Math.min(...ps))} to ${pSaid(Math.max(...ps))}; ${String(losing)} of ${String(wins.length)} single removals lose the step`;
+  return `p from ${formatPValue(Math.min(...ps))} to ${formatPValue(Math.max(...ps))}; ${String(losing)} of ${String(wins.length)} single removals lose the step`;
 }
 
 /** A step's extra lines: removals and spare wins. */
@@ -210,7 +210,7 @@ function reportedLines(events: readonly LogEvent[], report: Reported, ctx: Score
   const head = `${session}: ${reading}, level ${String(level)}${isNumber(data.level) ? "" : " (not recorded; the default)"}`;
   const { differences } = testedOf(data);
   if (data.scored === null || differences.length === 0) {
-    return [head, `  recorded: ${testSaid(data.scored)}; no task scores recorded, so no recount`];
+    return [head, `  recorded: ${formatTestSummary(data.scored)}; no task scores recorded, so no recount`];
   }
   const pairs = pairsReported(events, report);
   const { tested, recorded, unmatched, differing } = recountOf(data, pairs);
@@ -229,8 +229,8 @@ function reportedLines(events: readonly LogEvent[], report: Reported, ctx: Score
   const sparePart = step ? `; spare ${String(spareOf(recorded, level))} wins` : "";
   const repeat = repeatLine(pairs, ctx.verdicts);
   const lines = [
-    `${head} · validity ${valTally} · objective ${objTally} · A/A ${testSaid(data.noise)}${sparePart}`,
-    `  recorded: ${tallied(differences)} over ${String(differences.length)} tested tasks; the report's A/A ${testSaid(data.noise)}`,
+    `${head} · validity ${valTally} · objective ${objTally} · A/A ${formatTestSummary(data.noise)}${sparePart}`,
+    `  recorded: ${tallied(differences)} over ${String(differences.length)} tested tasks; the report's A/A ${formatTestSummary(data.noise)}`,
     `  recount: ${String(differing)} of ${String(tested.length)} tasks matched by task (${String(unmatched)} unmatched) score otherwise in this tree than the report recorded; the recorded tally and the step lines read the record, the tallies by measure read the recount`,
     `  ${aaDiffering}`,
     ...MEASURES.map(

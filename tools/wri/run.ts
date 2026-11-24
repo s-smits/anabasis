@@ -12,7 +12,7 @@ import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import type { Receipt } from "../runs/receipt.ts";
-import { fired, firedIf, type Index, share, tally, text, type Trigger } from "./folds.ts";
+import { fired, emitIf, type Index, share, tally, text, type Trigger } from "./folds.ts";
 
 /** Lane 13: endings the campaign went on from, and the operator's words with how many an event
  *  acted on, read as the host reads them (`pendingWords`). It does not count the moves a Builder
@@ -30,8 +30,8 @@ function moveTriggers(log: Index): Trigger[] {
   // A pause is answered by its time, not by a move (`paused`), so only the other words are owed one.
   const owed = words.filter(({ data }) => ANSWERED.some((each) => each === data.word)).length;
   return [
-    ...firedIf(endings.length > 0, "ENDED AND WENT ON", endings.join("; ")),
-    ...firedIf(
+    ...emitIf(endings.length > 0, "ENDED AND WENT ON", endings.join("; ")),
+    ...emitIf(
       words.length > 0,
       "OPERATOR WORDS",
       `${tally(countBy(words, said))}; of the words a move answers, ${share(owed - pendingWords(log.events).length, owed)} acted on`,
@@ -52,7 +52,7 @@ function conversationTriggers(log: Index): Trigger[] {
           `${session}: ${plural(times, "compaction")} in ${plural(turns[session] ?? 0, "turn")}, read_opening ${String(opened)}`,
         ];
   });
-  return firedIf(lines.length > 0, "BUILDER COMPACTED", lines.join("; "));
+  return emitIf(lines.length > 0, "BUILDER COMPACTED", lines.join("; "));
 }
 
 /** Lane 2: the drafts an exam took, how each drafting session ended, and the measurement it
@@ -78,7 +78,7 @@ function draftTriggers(log: Index): Trigger[] {
  *  launches at one commit, on one login and one Bun. */
 function launchTriggers(log: Index, launches: readonly Receipt[]): Trigger[] {
   if (launches.length === 0) {
-    return firedIf(
+    return emitIf(
       log.of("campaign.opened").length > 0,
       "NO LAUNCH RECEIPT",
       "a campaign command opened this log and no receipt lies beside it",
@@ -91,7 +91,7 @@ function launchTriggers(log: Index, launches: readonly Receipt[]): Trigger[] {
   const pythons = new Set(
     launches.flatMap(({ python }) => python ?? []).map((python) => JSON.stringify(python)),
   );
-  return firedIf(
+  return emitIf(
     launches.length > 1 || dirty > 0,
     "LAUNCHES",
     `${String(launches.length)} launch${launches.length === 1 ? "" : "es"} at ${plural(commits.size, "commit")} (${[...commits].join(", ")}), ${String(dirty)} from a dirty tree, under ${plural(logins.size, "login")}, ${plural(buns.size, "Bun version")} and ${plural(pythons.size, "recorded Python")} for the solver`,
@@ -114,13 +114,13 @@ function orderTriggers(log: Index): Trigger[] {
     ...(orphans.length > 0 ? [`${plural(orphans.length, "solve")} finished with no start`] : []),
     ...(twice.length > 0 ? [`comparison started twice: ${twice.map(([id]) => id).join(", ")}`] : []),
   ];
-  return firedIf(said.length > 0, "LOG OUT OF ORDER", said.join("; "));
+  return emitIf(said.length > 0, "LOG OUT OF ORDER", said.join("; "));
 }
 
 /** Lane 5: the rulings the host refused for want of their evidence, by the ruling asked for. */
 function refusalTriggers(log: Index): Trigger[] {
   const refused = log.of("referee.refused");
-  return firedIf(
+  return emitIf(
     refused.length > 0,
     "RULINGS REFUSED",
     tally(countBy(refused, (data) => text(asRecord(data.asked)?.ruling))),

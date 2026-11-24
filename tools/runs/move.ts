@@ -283,7 +283,7 @@ export async function move(args: readonly string[]): Promise<void> {
   if (size(from, source) !== size(to, tree)) {
     throw new Error(`the log did not arrive whole in ${folder(tree)}: ${folder(source)} is left as it was`);
   }
-  const aside = asideOf(source, name);
+  const aside = backupPathFor(source, name);
   if (from.host === undefined) setAside(folder(source), aside);
   else at(from, `mkdir -p ${quoted(dirname(aside))} && mv ${quoted(folder(source))} ${quoted(aside)}`);
   console.log(
@@ -365,14 +365,14 @@ export function copy(args: readonly string[]): void {
   if (statSync(join(into, LOG_FILE)).size !== statSync(run.path).size) {
     throw new Error(`the copy of ${run.path} is not whole: ${from} is left as it was`);
   }
-  const aside = asideOf(run.tree, name);
+  const aside = backupPathFor(run.tree, name);
   setAside(from, aside);
   console.log(`${name} is in ${to} now, and its folder was set aside as ${aside}; go on with runs continue`);
 }
 
 /** Where a run's folder is set aside in `tree` once a copy of it went elsewhere: one copy a name,
  *  which `runNamed` asks, so the folder left is no run any registry reads (`runs copy`, `runs move`). */
-function asideOf(tree: string, name: string): string {
+function backupPathFor(tree: string, name: string): string {
   return join(tree, ".ana", "moved", `${name}-${new Date().toISOString().replaceAll(/[:.]/g, "")}`);
 }
 

@@ -15,7 +15,7 @@ import { runCommand } from "#skills/main/cli.ts";
 import { ownedBy } from "#src/kernel/trace.ts";
 import { validityOf } from "#tools/d2/close.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
-import { heldOff } from "#tools/runs/view.ts";
+import { firstComparisonDelay } from "#tools/runs/view.ts";
 import { waitedMs, waitsOf } from "#tools/wri/time.ts";
 import { readingOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
 
@@ -114,8 +114,8 @@ export function campaignLine(events: readonly LogEvent[]): string {
   const count = (kind: string) => events.filter((event) => event.kind === kind).length;
   const { scored, room, onValidity, stepped } = validityOf(campaignOf(events).steps, events);
   // The hours to a first comparison hold the Examiner's and, once one is admissible, the Builder's.
-  const held = heldOff(events);
-  return `first comparison ${reachedBy(events, "comparison.started", opened)}${held === null ? "" : ` (admissible ${held.said})`}, first promotion ${reachedBy(events, "harness.promoted", opened)}; ${String(count("comparison.started"))} compared, ${String(count("harness.promoted"))} promoted; reference valid every solve on ${String(scored - room)} of ${String(scored)} scored tasks, ${String(onValidity)} of ${String(stepped)} steps won by validity`;
+  const delay = firstComparisonDelay(events);
+  return `first comparison ${reachedBy(events, "comparison.started", opened)}${delay === null ? "" : ` (admissible ${delay.summary})`}, first promotion ${reachedBy(events, "harness.promoted", opened)}; ${String(count("comparison.started"))} compared, ${String(count("harness.promoted"))} promoted; reference valid every solve on ${String(scored - room)} of ${String(scored)} scored tasks, ${String(onValidity)} of ${String(stepped)} steps won by validity`;
 }
 
 /** The campaign's line under its name, then each session's line indented. */

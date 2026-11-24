@@ -50,7 +50,7 @@ describe("the fold of one look", () => {
     const p1Read = row({ promotions: [read("aaaa", "g-1")] });
     const after1 = alertsOf(lookedAt(p1Unread), here(p1Read));
     expect(after1.lines).toHaveLength(2);
-    expect(after1.lines[1]).toContain("ready to pause or continue, 1 promotion read");
+    expect(after1.lines[1]).toContain("ready to pause or continue, 1 promotion checked");
     expect(after1.lines[1]).toEndWith("bun run runs pause r --yes");
 
     const p2Unread = row({ promotions: [read("aaaa", "g-1"), unread("bbbb")] });
@@ -60,20 +60,20 @@ describe("the fold of one look", () => {
     const p2Read = row({ promotions: [read("aaaa", "g-1"), read("bbbb", "g-2")] });
     const after2 = alertsOf(waiting.next, here(p2Read));
     expect(after2.lines).toHaveLength(2);
-    expect(after2.lines[1]).toContain("ready to pause or continue, 2 promotions read");
+    expect(after2.lines[1]).toContain("ready to pause or continue, 2 promotions checked");
     expect(after2.lines[1]).toEndWith("bun run runs pause r --yes");
 
     const p3Read = row({ promotions: [...p2Read.promotions, read("cccc", "g-3")] });
     const after3 = alertsOf(after2.next, here(p3Read));
-    expect(after3.lines.at(-1)).toContain("ready to pause or continue, 3 promotions read");
+    expect(after3.lines.at(-1)).toContain("ready to pause or continue, 3 promotions checked");
 
     const p4Read = row({ promotions: [...p3Read.promotions, read("dddd", "g-4")] });
     const after4 = alertsOf(after3.next, here(p4Read));
-    expect(after4.lines.at(-1)).toContain("ready to pause or continue, 4 promotions read");
+    expect(after4.lines.at(-1)).toContain("ready to pause or continue, 4 promotions checked");
 
     const p5Read = row({ promotions: [...p4Read.promotions, read("eeee", "g-5")] });
     const after5 = alertsOf(after4.next, here(p5Read));
-    expect(after5.lines.at(-1)).toContain("ready to pause, 5 promotions read (ceiling reached)");
+    expect(after5.lines.at(-1)).toContain("ready to pause, 5 promotions checked (ceiling reached)");
     expect(after5.lines.at(-1)).toEndWith("bun run runs pause r --yes");
 
     // Re-running with no new starter read does not repeat the prompt.

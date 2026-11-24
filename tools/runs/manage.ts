@@ -64,7 +64,7 @@ import {
   KEEPING,
   logEvents,
   keepers,
-  keptFile,
+  keeperLogPath,
   Misused,
   openComparisons,
   processes,
@@ -301,7 +301,7 @@ function dryRun(run: Run, flags: readonly string[], env: ReturnType<typeof login
 /** Leave a keeper of `run` running by itself, its output in `keep.out` beside the log: on `logins`
  *  where they were named, otherwise on the pool its host names at each move (`poolOf`, `keep.ts`). */
 export function leaveKeeper(run: Run, logins: readonly string[] | undefined, waitHours: string): void {
-  const out = keptFile(run);
+  const out = keeperLogPath(run);
   const child = capturedSpawn(
     [
       capturedExecPath,
@@ -335,7 +335,7 @@ export function keepsItself(env: Env, login: string | undefined): boolean {
 }
 
 /** `start`, then a keeper where the run is running and `keepsItself`, unless it has one. */
-async function startKept(
+async function launchRunKeeper(
   run: Run,
   flags: readonly string[],
   { login, at }: { login: string | undefined; at: string | undefined },
@@ -378,7 +378,7 @@ export async function launch(args: readonly string[]): Promise<void> {
   }
   const run = campaignOf(runtimeProcess.cwd(), name);
   if (!values.yes) return said(run, `would start ${BUILDER} ${flags.join(" ")}`);
-  await startKept(run, flags, { login: values.login, at: undefined });
+  await launchRunKeeper(run, flags, { login: values.login, at: undefined });
 }
 
 /** `bun run runs continue`. */
@@ -449,7 +449,7 @@ export async function continueRun(args: readonly string[]): Promise<void> {
     const why = left();
     if (why !== null) return console.log(`${run.name} ${why}: nothing was stopped or started`);
   }
-  await startKept(run, flags, { login, at: target });
+  await launchRunKeeper(run, flags, { login, at: target });
 }
 
 /** `bun run runs pause`. */

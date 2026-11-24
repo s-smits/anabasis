@@ -321,13 +321,13 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     // an estimate and no bound (the plan's 7.6).
     const [epochRisk, total] = riskLines(log);
     for (const line of [epochLine(epoch), epochRisk]) {
-      expect(line).toMatch(/\b3 promotion attempts\b.*\b25%.*\bno A\/A comparison\b/u);
+      expect(line).toMatch(/\b3 promotion attempts\b.*\b25%.*\bno powered A\/A control\b/u);
     }
     expect(total).toContain("25%");
-    expect(total).toContain("no bound");
+    expect(total).toContain("formal bound");
     // A rate under ten percent is printed to a tenth: 1.8% is not 2%.
     const small = { ...rated, data: { ...rated.data, frontier: { differences: [0], falseRate: 0.018 } } };
-    expect(riskLines([started, small])[0]).toContain("estimated at 1.8%;");
+    expect(riskLines([started, small])[0]).toContain("false-promotion risk 1.8%;");
   });
 
   it("counts the A/A controls that could read a step and those that read one, one-sided at the level, beside the design's rate, and lets them set none of it", () => {
@@ -362,17 +362,17 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     });
     if (second === undefined) throw new Error("an epoch");
     expect(epochLine(second)).toContain(
-      "a false promotion among them estimated at 10%; 0 of 1 A/A comparison with enough untied tasks to read a step read one (0 either way), and 3 too small to read one at their level, 3 of them because the reference tied every task with itself;",
+      "estimated false-promotion risk 10%; 0 of 1 powered A/A control triggered a false positive (0 two-sided), plus 3 underpowered at alpha, 3 of them tied on every task (zero reference variance);",
     );
     // A control too small with one untied task did not tie every task, so it is too small and no more.
     const short = [started, attempt("g-1", "S", "h2", [1, 0, 0])];
     expect(epochsOf(short)[0]?.falsePromotion).toMatchObject({ incapable: 1, tied: 0 });
-    expect(riskLines(short)[0]).toContain("1 too small to read one at their level.");
+    expect(riskLines(short)[0]).toContain("plus 1 underpowered at alpha.");
     // A control with no task tallied tied none, so it is too small and no more.
     const empty = [started, attempt("g-1", "S", "h2", [])];
     expect(epochsOf(empty)[0]?.falsePromotion).toMatchObject({ incapable: 1, tied: 0 });
     expect(riskLines(log)[2]).toStartWith(
-      "Over the campaign, a false promotion in any epoch estimated at 50%:",
+      "Campaign-wide estimated false-promotion risk across all epochs: 50%",
     );
     // A control whose four tasks all went one way reads a step at 0.10 (p 1/16): one error, said.
     // The other way it reads none one-sided, as a comparison is, and one either way.
@@ -388,7 +388,7 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
       incapable: 0,
     });
     expect(riskLines(lucky)[0]).toContain(
-      "1 of 2 A/A comparisons with enough untied tasks to read a step read one (2 either way).",
+      "1 of 2 powered A/A controls triggered a false positive (2 two-sided).",
     );
     // Past one the sum is capped there.
     const many = Array.from({ length: 11 }, (_, at) =>
@@ -573,7 +573,7 @@ describe("a campaign against its bars", () => {
       promotedTo("h3", "h2"),
     ]);
     expect(climb).toBe(
-      "- Climb: 3 promotions, 1 confirmed against a milestone of 6 (on the tasks written after alone, a step 0, a step for the starter 0, no step 0, too few 1); 1 read against the starter without a step, 1 not read against it.",
+      "- Climb: 3 promotions, 1 confirmed (milestone: 6) (on the tasks written after alone, a step 0, a step for the starter 0, no step 0, too few 1); 1 failed starter confirmation, 1 pending confirmation.",
     );
     expect(barLines([opened])[0]).toContain("0 promotions, 0 confirmed");
   });
@@ -581,12 +581,12 @@ describe("a campaign against its bars", () => {
   it("reads the A/A comparisons reported after the sixth promotion alone, and keeps those too small and each direction apart", () => {
     // Five promotions are short of the milestone, whatever the A/A comparisons read.
     const five = six.slice(0, -2);
-    expect(honesty([...five, reported("g-a", "h5", "h6", allWon)])).toContain("no promotion 6 yet");
+    expect(honesty([...five, reported("g-a", "h5", "h6", allWon)])).toContain("promotion 6 not yet reached");
     // The A/A beside the very comparison that promoted the sixth stands before it, and is no reading of it.
     const atTheStep = six.map((each) =>
       each.data.session === "g-h6" ? reported("g-h6", "h5", "h6", allWon) : each,
     );
-    expect(honesty(atTheStep)).toContain("after promotion 6, 0 A/A comparisons");
+    expect(honesty(atTheStep)).toContain("after promotion 6, 0 A/A controls");
     // One too small, one able that reads none, one for the second solves, one for the first.
     const after = [
       reported("g-a", "h6", "h7", [1, 1]),
@@ -600,15 +600,15 @@ describe("a campaign against its bars", () => {
       ),
     ];
     expect(honesty([...six, ...after])).toBe(
-      "- Honesty: after promotion 6, 4 A/A comparisons against the bar's 10, 3 with enough untied tasks to read a step: 1 read one, 2 read one either way.",
+      "- Honesty: after promotion 6, 4 A/A controls against target 10; 3 powered A/A controls: 1 one-sided, 2 two-sided false positives.",
     );
     // A reference that matched itself on every task is said apart from one merely too small.
     const tied = reported("g-e", "h6", "h11", [0, 0, 0, 0, 0, 0]);
     expect(honesty([...six, ...after, tied])).toBe(
-      "- Honesty: after promotion 6, 5 A/A comparisons against the bar's 10, 3 with enough untied tasks to read a step: 1 read one, 2 read one either way. 1 of them tied every task, as the reference matched itself on every solve, and could read no step.",
+      "- Honesty: after promotion 6, 5 A/A controls against target 10; 3 powered A/A controls: 1 one-sided, 2 two-sided false positives. 1 of them tied every task (identical reference outcomes across rollouts, unpowered).",
     );
     expect(honesty([...five, tied])).toBe(
-      "- Honesty: no promotion 6 yet, so none of the bar's 10 A/A comparisons after it. So far 0 with enough untied tasks to read a step: 0 read one, 0 read one either way. 1 of the campaign's 1 A/A comparison so far tied every task, as the reference matched itself on every solve, and could read no step.",
+      "- Honesty: promotion 6 not yet reached (target: 10 post-milestone A/A controls). To date: 0 powered A/A controls: 0 one-sided, 0 two-sided false positives. 1 of 1 A/A control so far tied every task (identical reference outcomes across rollouts, unpowered).",
     );
     // A settlement reports a comparison again: it stands where it first reported, before the promotion.
     const settled = [
@@ -617,7 +617,7 @@ describe("a campaign against its bars", () => {
       promotedTo("h6", "h5"),
       reported("g-s", "h5", "h6", allWon),
     ];
-    expect(honesty(settled)).toContain("after promotion 6, 0 A/A comparisons");
+    expect(honesty(settled)).toContain("after promotion 6, 0 A/A controls");
   });
 
   it("reads the starter against itself on the halves of its own solves in each starter comparison, and counts it towards no bar", () => {
@@ -674,20 +674,19 @@ describe("a campaign against its bars", () => {
     // a step for neither half one-sided and for one half either way.
     const apart = (place: number) => (place % 2 === 0 ? [true, false] : [false, true]);
     expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, apart)])).toBe(
-      "- Starter against itself: 1 starter comparison split the starter's own solves in two, 1 with enough untied tasks to read a step: 0 read one, 1 read one either way, and 0 tied every task. Reported only, and counted towards no bar.",
+      "- Baseline A/A control: 1 split-arm starter comparison, 1 powered A/A control: 0 one-sided, 1 two-sided false positives, 0 tied every task. Observational only, excluded from honesty bar.",
     );
     // A starter that passes its first solve of every task and fails its second drifted in time, and
     // its halves hold three such tasks each: no step either way.
     expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, drifts)])).toContain(
-      "1 with enough untied tasks to read a step: 0 read one, 0 read one either way, and 0 tied every task.",
+      "1 powered A/A control: 0 one-sided, 0 two-sided false positives, 0 tied every task.",
     );
     // A starter that answers alike on every solve ties every task with itself.
     expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, alike)])).toContain(
-      "1 starter comparison split the starter's own solves in two, 0 with enough untied tasks to read a step: 0 read one, 0 read one either way, and 1 tied every task.",
+      "1 split-arm starter comparison, 0 powered A/A controls: 0 one-sided, 0 two-sided false positives, 1 tied every task.",
     );
     // One solve a side does not split, and a candidate's comparison is no starter comparison.
-    const none =
-      "- Starter against itself: no starter comparison split the starter's own solves in two. Reported only.";
+    const none = "- Baseline A/A control: no split-arm starter comparison recorded yet. Observational only.";
     expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 1, once)])).toBe(none);
     expect(starterLine([...promoted, ...compared("g-2", "h1", "h2", 2, drifts)])).toBe(none);
     // The reading the comparison reported is the reference's against the starter, untouched.
@@ -697,15 +696,15 @@ describe("a campaign against its bars", () => {
     // repetition line names that comparison; where the starter varies, it names none.
     const repeats = (events: readonly LogEvent[]) => barLines([opened, ...events])[4];
     expect(repeats([...promoted, ...compared("g-2", "h1", "S", 2, alike)])).toBe(
-      "- Repetition: in 1 comparison each side gave one validity in every solve of every task, and in 1 one measure as well (g-2), where no split of either side shows noise. Reported only.",
+      "- Rollout consistency: in 1 comparison both arms had uniform validity across all rollouts per task, and in 1 uniform objective scores as well (g-2, zero split-arm variance on either arm). Observational only.",
     );
     expect(repeats([...promoted, ...compared("g-2", "h1", "S", 2, drifts)])).toBe(
-      "- Repetition: in 0 comparisons each side gave one validity in every solve of every task, and in 0 one measure as well. Reported only.",
+      "- Rollout consistency: in 0 comparisons both arms had uniform validity across all rollouts per task, and in 0 uniform objective scores as well. Observational only.",
     );
     // Validity is counted apart: a reference that passes every solve but measures 1 and 0.93 repeats
     // its validity and not its measure.
     expect(barLines(objectiveLog(0.05))[4]).toBe(
-      "- Repetition: in 1 comparison each side gave one validity in every solve of every task, and in 0 one measure as well. Reported only.",
+      "- Rollout consistency: in 1 comparison both arms had uniform validity across all rollouts per task, and in 0 uniform objective scores as well. Observational only.",
     );
     // One measure is one within the floor the score ties at, as the A/A reads it: two solves a
     // float's last digits apart are no split (a difference of at most 1.9e-9 on every task is left
@@ -713,7 +712,7 @@ describe("a campaign against its bars", () => {
     const every = (measures: readonly [number, number]) =>
       Object.fromEntries(["t0", "t1", "t2", "t3", "t4", "t5"].map((task) => [task, measures]));
     const measured = (measures: readonly [number, number]) =>
-      /in (\d+) one measure as well/.exec(
+      /and in (\d+) uniform objective scores/.exec(
         barLines(objectiveLog(0.05, "tied", every(measures)))[4] ?? "",
       )?.[1];
     expect(measured([1, 1])).toBe("1");
@@ -737,10 +736,10 @@ describe("a campaign against its bars", () => {
       ...attempts("h3", 5),
     ];
     expect(economy(log)).toBe(
-      "- Economy: 3 epochs after set-up against a bar of 3 promotion attempts each, 2 over it: epoch 3 at 4; epoch 4 at 5, open. Reported only.",
+      "- Economy: 3 post-setup epochs against a threshold of 3 promotion attempts each, 2 exceeded: epoch 3 at 4; epoch 4 at 5, open. Observational only.",
     );
     expect(economy(attempts("S", 9))).toContain(
-      "0 epochs after set-up against a bar of 3 promotion attempts each, 0 over it.",
+      "0 post-setup epochs against a threshold of 3 promotion attempts each, 0 exceeded.",
     );
   });
 
@@ -811,7 +810,7 @@ describe("a campaign against its bars", () => {
     expect(decide(reverted, plan).move).toBe("build");
     expect(stopRule(reverted)).toMatchObject({ sinceStep: 1, stop: false });
     expect(barLines(reverted)[0]).toContain("2 promotions, 1 confirmed");
-    expect(barLines(reverted)[2]).toContain("2 epochs after set-up");
+    expect(barLines(reverted)[2]).toContain("2 post-setup epochs");
     // Downstream readers that count harness.promoted never conflate a revert with a promotion,
     // and the Examiner's record distinguishes a revert from a promotion.
     expect(reverted.filter(({ kind }) => kind === "harness.promoted")).toHaveLength(2);

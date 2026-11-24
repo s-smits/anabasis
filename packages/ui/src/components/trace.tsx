@@ -37,7 +37,7 @@ function TurnText({ text }: { text: string }) {
 export function Trace({ turns, calls }: { turns: readonly Turn[]; calls: readonly ToolCall[] }) {
   const [all, setAll] = useState(false);
   if (turns.length === 0 && calls.length === 0) {
-    return <p className="ana-exam-side">No turn and no call on record</p>;
+    return <p className="ana-exam-side">No turns or tool calls recorded</p>;
   }
   const ordered = turns.toSorted((one, other) => one.index - other.index);
   const shown = all ? ordered : ordered.slice(0, FIRST_TURNS);

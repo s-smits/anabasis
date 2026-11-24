@@ -25,7 +25,7 @@ import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { type CampaignContext, releaseOwed } from "../tools/d2/campaign-actions.ts";
+import { type CampaignContext, releasePendingPractice } from "../tools/d2/campaign-actions.ts";
 import { openCampaign, packNamed } from "../tools/d2/campaign.ts";
 import { flagsOf, opened, type Seats } from "../tools/d2/campaign-terms.ts";
 import { harnessBuilder } from "../tools/d2/harness-builder.ts";
@@ -238,7 +238,7 @@ describe("the host's practice release", () => {
 
   it("takes no task where a comparison starts while it opens the campaign, since that comparison has drawn", async () => {
     const raced = await owing(`${STEM}-release-raced`);
-    const releasing = releaseOwed(raced, "the race under test");
+    const releasing = releasePendingPractice(raced, "the race under test");
     // The guard has passed and the release waits on the campaign's opening.
     append(raced.log, COMPARED, { session: "g-1", old: "start", fresh: "h1" });
     expect(await releasing).toBe(false);
@@ -246,7 +246,7 @@ describe("the host's practice release", () => {
     expect(raced.used).toBe(0);
 
     const alone = await owing(`${STEM}-release-alone`);
-    expect(await releaseOwed(alone, "no comparison started")).toBe(true);
+    expect(await releasePendingPractice(alone, "no comparison started")).toBe(true);
     expect(released(alone)).toBe(4);
   });
 
@@ -254,8 +254,8 @@ describe("the host's practice release", () => {
     const name = `${STEM}-release-twice`;
     const twice = await owing(name);
     const asked = await Promise.all([
-      releaseOwed(twice, "the first cause"),
-      releaseOwed(twice, "the second cause"),
+      releasePendingPractice(twice, "the first cause"),
+      releasePendingPractice(twice, "the second cause"),
     ]);
     expect(asked).toEqual([true, false]);
     expect(released(twice)).toBe(4);

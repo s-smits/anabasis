@@ -8,19 +8,19 @@ import { differenceOf, flipP, readsStep, type Paired, pointsOf, wholePoints } fr
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isNumber } from "#src/meta/json-shape.ts";
 import { validityOf } from "#tools/d2/close.ts";
-import { count, firedIf, type Index, indexOf, items, type Trigger, text } from "./folds.ts";
+import { count, emitIf, type Index, indexOf, items, type Trigger, text } from "./folds.ts";
 import {
   epochsOf,
+  formatPValue,
+  formatTestSummary,
+  formatValidityRate,
   joinedTest,
   pinnedRule,
-  pSaid,
   sharedPaths,
   spentTo,
   testedOf,
-  testSaid,
   untied,
   validOf,
-  validSaid,
 } from "./promotion.ts";
 
 /** One campaign as the climb table names it: its name and its log's events. */
@@ -85,10 +85,10 @@ function rowOf({ name, events }: Campaign): string[] {
         );
   const tallies = rests.map(
     ({ session, last }) =>
-      `${session} ${testSaid(last.scored)}, ${untied(last.scored)}, ${untied(last.noise)}`,
+      `${session} ${formatTestSummary(last.scored)}, ${untied(last.scored)}, ${untied(last.noise)}`,
   );
   const valid = rests.map(
-    ({ session, last }) => `${session} ${validSaid(validOf(asRecord(last.valid)?.old).share)}`,
+    ({ session, last }) => `${session} ${formatValidityRate(validOf(asRecord(last.valid)?.old).share)}`,
   );
   const after = epoch === undefined ? [] : log.compared.filter(({ at }) => at > epoch.at);
   const move = log.of("campaign.move").at(-1);
@@ -110,7 +110,7 @@ function rowOf({ name, events }: Campaign): string[] {
     epoch === undefined
       ? "-"
       : after
-          .map(({ session, last }) => `${session} ${testSaid(last.scored)} ${text(last.reading)}`)
+          .map(({ session, last }) => `${session} ${formatTestSummary(last.scored)} ${text(last.reading)}`)
           .join("; ") || "none",
     // What the comparisons could win on validity, beside the hours (the operator's choice).
     scored === 0 ? "-" : `${String(room)} of ${String(scored)} scored tasks`,
@@ -139,27 +139,27 @@ function climbTable(campaigns: readonly Campaign[]): string {
  */
 export function safeguardTriggers(log: Index): Trigger[] {
   const reported = new Map(log.compared.map((compared) => [compared.session, compared] as const));
-  const said = (differences: readonly number[]) =>
-    `${String(differences.filter((one) => one > 0).length)}-${String(differences.filter((one) => one < 0).length)} p ${pSaid(flipP(differences))}`;
+  const formatDiff = (differences: readonly number[]) =>
+    `${String(differences.filter((one) => one > 0).length)}-${String(differences.filter((one) => one < 0).length)} p ${formatPValue(flipP(differences))}`;
   const promotions = epochsOf(log.events).flatMap(({ data }) => {
     const rests = items(data.rests).flatMap((rest) => reported.get(text(asRecord(rest)?.comparison)) ?? []);
     const level = count(rests[0]?.last.level);
     const reports = rests.map(({ last }) => last);
     const joined = joinedTest(reports);
     if (rests.length === 0 || !readsStep(joined, level)) return [];
-    const harness = `${short(text(data.harness))} ${said(joined)} joined at level ${String(level)}`;
+    const harness = `${short(text(data.harness))} ${formatDiff(joined)} joined at level ${String(level)}`;
     const settled = rests.map(({ last, pairs }) => ({ tested: new Set(testedOf(last).of), pairs: pairs() }));
     const valid = measuredOf(settled, (pair) => wholePoints(pointsOf(pair).validity));
     return [{ level, harness, valid, scored: measuredOf(settled, differenceOf) }];
   });
   const beyond = promotions.filter(({ valid, level }) => !readsStep(valid, level));
-  return firedIf(
+  return emitIf(
     beyond.length > 0,
     "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
     beyond
       .map(
         ({ harness, valid, scored }) =>
-          `${harness}, ${said(valid)} on validity alone, ${said(scored)} by the current score`,
+          `${harness}, ${formatDiff(valid)} on validity alone, ${formatDiff(scored)} by the current score`,
       )
       .join("; "),
   );

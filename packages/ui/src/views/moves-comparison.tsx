@@ -195,7 +195,7 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
   ] as const;
   const { terms } = detail;
   const termFacts = [
-    ["Solves a side", String(terms.solves)],
+    ["Rollouts per arm", String(terms.solves)],
     ["Dollar cap", money(terms.cap)],
     ["Model turns", terms.modelTurns === null ? "unlimited" : String(terms.modelTurns)],
     ["Objective", terms.objective === null ? "none" : `${terms.objective.direction} is better`],

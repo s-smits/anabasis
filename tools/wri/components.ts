@@ -23,7 +23,7 @@ import { join } from "#src/meta/path.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { hasWholeToken, plural } from "#src/meta/text.ts";
-import { EXAM_END, firedIf, type Index, items, percent, share, tally, text, type Trigger } from "./folds.ts";
+import { EXAM_END, emitIf, type Index, items, percent, share, tally, text, type Trigger } from "./folds.ts";
 
 interface DraftAuditPass {
   readonly index: number;
@@ -448,50 +448,50 @@ export function componentTriggers(log: Index): Trigger[] {
     ledger.totalBilled >= MIN_SKEW_DOLLARS &&
     ledger.nonSolverBilled / ledger.totalBilled > NON_SOLVER_SKEW;
   return [
-    ...firedIf(
+    ...emitIf(
       audit.passes.length > 0,
       "DRAFT AUDITED",
       `${passesText(audit.passes.length)}, $${audit.billed.toFixed(2)} billed; verdicts ${audit.verdicts}; findings ${audit.findings}`,
     ),
-    ...firedIf(
+    ...emitIf(
       defects.length > 0,
       "DRAFT AUDIT DEFECTS",
       `${share(defects.length, audit.passes.length)} passes found defects (${audit.findings})${audit.unverified.length > 0 ? `; ${plural(audit.unverified.length, "unverified final pass")} before freeze` : ""}`,
     ),
-    ...firedIf(
+    ...emitIf(
       audit.refused.length > 0,
       "DRAFT AUDIT REFUSED",
       `${plural(audit.refused.length, "refusal")} (${audit.refusedRulings})`,
     ),
-    ...firedIf(
+    ...emitIf(
       skipped.length > 0,
       "DRAFT AUDIT SKIPPED",
       `${share(skipped.length, audit.passes.length)} passes ended skipped`,
     ),
-    ...firedIf(
+    ...emitIf(
       stats.hasDraft && (stats.checksWithTools > 0 || stats.objectiveTools > 0 || stats.readRows > 0),
       "VERIFIER TOOL PROVENANCE",
       `${String(stats.checksWithTools)}/${String(stats.totalChecks)} drafted checks declare tools, ${String(stats.objectiveTools)} objective tools; ${String(stats.authored)} author-decided, ${String(stats.admitted)} admitted`,
     ),
-    ...firedIf(
+    ...emitIf(
       stats.faultyVerdicts > 0 || stats.nonResults.length > 0,
       "VERIFIER FAULTS",
       `${plural(stats.faultyVerdicts, "faulty verdict")}, ${plural(stats.nonResults.length, "verifier non-result")} (${tallyStrings(stats.nonResults)})`,
     ),
-    ...firedIf(
+    ...emitIf(
       scan.networkMismatches.length > 0 || scan.mixedNetworkPresence,
       "NETWORK PARITY MISMATCH",
       scan.networkMismatches.length > 0
         ? `cross-arm network drift: ${scan.networkMismatches.join("; ")}`
         : `mixed solve.finished.network presence (${tally(scan.networkCounts)})`,
     ),
-    ...firedIf(
+    ...emitIf(
       scan.wallHits > 0,
       "WALL BOUNDARY SIGNAL",
       `${plural(scan.wallHits, "signal")} (build check-ids ${String(scan.buildCheckIds)}, held-tasks ${String(scan.buildHeldTasks)}, internal ${String(scan.buildInternalKinds)}; exam digests ${String(scan.examHarnessDigests)}, internal ${String(scan.examInternalKinds)})`,
     ),
-    ...firedIf(anomalyParts.length > 0, "SEAT BOUNDARY ANOMALY", anomalyParts.join("; ")),
-    ...firedIf(
+    ...emitIf(anomalyParts.length > 0, "SEAT BOUNDARY ANOMALY", anomalyParts.join("; ")),
+    ...emitIf(
       skewed,
       "ROLE YIELD SKEW",
       `non-solver roles spent $${ledger.nonSolverBilled.toFixed(2)} of $${ledger.totalBilled.toFixed(2)} (${percent(ledger.nonSolverBilled / ledger.totalBilled)})`,

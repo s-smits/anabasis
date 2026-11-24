@@ -92,7 +92,7 @@ it("reads a difference past the spread by the measure's own direction", () => {
 
 it("reads no difference where the runs of one window differ as much among themselves", () => {
   const mixed = () => [10, 20, 10, 20, 15].map((active) => run({ active }));
-  expect(changeOf(HOURS, mixed(), mixed()).verdict).toBe("inside the spread");
+  expect(changeOf(HOURS, mixed(), mixed()).verdict).toBe("within inter-run variance");
 });
 
 it("refuses a verdict where the windows are too small, however far apart they are", () => {

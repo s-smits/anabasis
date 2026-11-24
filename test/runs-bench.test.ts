@@ -4,7 +4,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { benchesOf } from "../tools/runs/host-config.ts";
 import { heldAs, type Plan, probed, settingsOf, stepsOf, walk } from "../tools/runs/bench.ts";
-import { readsDone } from "../tools/runs/bench-scores.ts";
+import { completedBenchLabels } from "../tools/runs/bench-scores.ts";
 
 const scratch: string[] = [];
 const HOSTS = JSON.stringify([
@@ -133,7 +133,7 @@ describe("runs bench", () => {
     expect(ran.some((words) => words.includes("--yes"))).toBe(false);
   });
 
-  test("readsDone skips a label whose arms hold mismatched task counts and marks matching arms ready", () => {
+  test("completedBenchLabels skips a label whose arms hold mismatched task counts and marks matching arms ready", () => {
     const store = mkdtempSync(join(tmpdir(), "ana-bench-scores-"));
     scratch.push(store);
     const put = (arm: string, task: string) => {
@@ -143,9 +143,9 @@ describe("runs bench", () => {
     put("ref-a1", "t1");
     put("starter-ref-a1", "t1");
     put("starter-ref-a1", "t2");
-    expect(readsDone(store)).toEqual([]);
+    expect(completedBenchLabels(store)).toEqual([]);
     put("ref-a1", "t2");
-    expect(readsDone(store)).toEqual(["ref-a1"]);
+    expect(completedBenchLabels(store)).toEqual(["ref-a1"]);
   });
 
   test("heldAs deduplicates per runtime mode and probed reads both harness and mode", () => {

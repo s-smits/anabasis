@@ -46,14 +46,14 @@ import { clockText, solverTools } from "../solver/run.ts";
 import { STARTED as COMPARISON_STARTED } from "../campaign/comparison.ts";
 import { budgetLeft } from "../campaign/opening.ts";
 import { type Freezing, frozen, harnessNow, type HarnessSnapshot, snapshot } from "./kept.ts";
-import { type Listed, measuredClause, type Said, shellWalls } from "./prompt.ts";
+import { type Listed, measuredClause, type ModePrompts, shellWalls } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
 
 /** What a session's tools share. */
 export interface Bench extends Freezing {
   readonly request: BuildRequest;
-  /** The texts of this session that differ by who makes its campaign's moves (`SAID`). */
-  readonly said: Said;
+  /** The texts of this session that differ by who makes its campaign's moves (`MODE_PROMPTS`). */
+  readonly modePrompts: ModePrompts;
   /** Released tasks and the reference, refreshed by campaign tools while the conversation stays open.
    *  The reference is the one the session was handed, held opened, which every record names from
    *  the first session on; the log names none until a comparison reports (`referenceOf`). */
@@ -603,7 +603,7 @@ async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<stri
     const why = errorMessage(now);
     if (told.get("broken") === why) return null;
     told.set("broken", why);
-    const { unpractised, practised } = bench.said.broken;
+    const { unpractised, practised } = bench.modePrompts.broken;
     return `${why}. Left so, ${bench.opened === null ? unpractised : practised}. Mend it and call finish again, ${again}.`;
   }
   const events = read(request.log, CALL_KINDS);
@@ -622,7 +622,7 @@ async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<stri
   if (unread !== null) told.set("unread", unreadKey);
   if (untried) {
     told.set("untried", now);
-    return `harness/ has changed since your last practice solve, so no solve has run it as it stands. ${plural(left, "practice solve")} ${left === 1 ? "is" : "are"} left. Practise it, ${again} ${bench.said.untried}.${unread === null ? "" : ` ${unread}`}`;
+    return `harness/ has changed since your last practice solve, so no solve has run it as it stands. ${plural(left, "practice solve")} ${left === 1 ? "is" : "are"} left. Practise it, ${again} ${bench.modePrompts.untried}.${unread === null ? "" : ` ${unread}`}`;
   }
   return unread === null ? null : `${unread} Call finish again to end the conversation as it is.`;
 }
@@ -686,7 +686,7 @@ export function endingWith(each: SeatTool, line: (id: string) => string): SeatTo
 export function finishTool(bench: Bench, unmeasured?: Unmeasured): SeatTool {
   return tool({
     name: "finish",
-    description: bench.said.finish,
+    description: bench.modePrompts.finish,
     parameters: Type.Object({ note: Type.String({ minLength: 1, maxLength: 700 }) }),
     execute: async (args) => {
       // `finish` ends the session at this turn, so a finish notice on the next turn would reach nobody:

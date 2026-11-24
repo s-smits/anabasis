@@ -455,7 +455,7 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
 /** One solve `try_reference` ran, as its reply tells it: valid in how many turns, or what ended it,
  *  or that it could not run. Reference objective values are omitted so single-solve noise does not
  *  drive survivorship filtering. */
-function toldOf(ended: Ending, turns: number | null): string {
+function formatSolveOutcome(ended: Ending, turns: number | null): string {
   if (ended.outcome === "non-result") return `could not run: ${ended.kind}`;
   if (ended.outcome === "flagged") return FAILED.get("flagged") ?? "not valid";
   if (ended.outcome === "fail") return FAILED.get(ended.kind) ?? "not valid";
@@ -513,7 +513,7 @@ function tryReferenceTool(desk: Desk, within: Within): SeatTool {
         const ends = new Map(solvesIn(read(request.log, TRACE_KINDS)).map(({ id, end }) => [id, end]));
         const lines = ran.map((one, nth) => {
           const turns = one.solve === null ? undefined : ends.get(one.solve)?.turns;
-          return `Solve ${String(nth + 1)}: ${toldOf(one.ending, isNumber(turns) ? turns : null)}.`;
+          return `Solve ${String(nth + 1)}: ${formatSolveOutcome(one.ending, isNumber(turns) ? turns : null)}.`;
         });
         desk.tried += ran.filter((one) => one.ending.outcome !== "non-result").length;
         const used = `Solves of the reference harness used in this session: ${String(desk.tried)} of ${String(capped(probe))}; one that could not run uses none.`;

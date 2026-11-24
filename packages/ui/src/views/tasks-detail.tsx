@@ -127,7 +127,7 @@ export function TaskDetailView({
       </Section>
       <Section title={`Solves (${String(detail.solves.length)})`}>
         {detail.solves.length === 0 ? (
-          <p className="ana-faint">No solve of this task on record</p>
+          <p className="ana-faint">No solves recorded for this task</p>
         ) : (
           <SolveTable
             rows={detail.solves}

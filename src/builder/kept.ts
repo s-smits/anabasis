@@ -94,7 +94,12 @@ export function copyHarness(state: string, into: string, trees?: string): void {
 /** Copy into `home/kept` each harness the log names and `states` keeps, other than `parent` and
  *  those already there: a campaign tool calls it again, so a conversation's folder gains what was
  *  kept after it opened. The folder is there when it holds nothing, as the Builder is told it is. */
-export function seedKept(home: string, states: string, events: readonly LogEvent[], parent: string): void {
+export function seedSavedHarnesses(
+  home: string,
+  states: string,
+  events: readonly LogEvent[],
+  parent: string,
+): void {
   mkdirSync(join(home, "kept"), { recursive: true });
   const trees = join(home, ".kept-trees");
   for (const digest of namesOf(events).keys()) {

@@ -58,7 +58,7 @@ export function family(table: string, pid: number): number[] {
  * stopped or killed leaves the root of each, and what still works in it: only its own process
  * would have let them go. A seed's log begins as its source's, and what that run has open is the source's to hold.
  */
-export function leftOpen(run: Pick<Run, "path" | "seed">): (SolveDirs & { build?: string })[] {
+export function unreleasedSandboxes(run: Pick<Run, "path" | "seed">): (SolveDirs & { build?: string })[] {
   const events = logEvents(run.path).slice(run.seed === true ? seedCut(dirname(run.path)) : 0);
   const seats = unfinished(events).flatMap(({ of, id }) => {
     if (!isString(id)) return [];
@@ -108,16 +108,13 @@ async function end(run: Run, running: readonly Running[], yes: boolean): Promise
   return found.length;
 }
 
-/** Release the roots `run` left (`open`, its `leftOpen`), where no process in `running` writes it any
- *  more, a cut Builder session's notes kept first. A root its release could not remove is named, and
- *  the stop goes on to the next. A root an older tree mounted a disk image at is one: `hdiutil
- *  detach` it first. The daily sweep does the same for every run nobody stopped,
- *  as its archive takes the run (`archiveIdle`, `retire.ts`). */
+/** Release sandbox directories left open by `run` (`unreleasedSandboxes`) once no live process
+ *  writes to it, preserving interrupted Builder notes first. */
 export async function release(
   run: Run,
   running: readonly Running[],
   act: "release" | "describe",
-  open = leftOpen(run),
+  open = unreleasedSandboxes(run),
 ): Promise<number> {
   if (writers(run, running).length > 0) return 0;
   const left = open.filter(({ root }) => existsSync(root));

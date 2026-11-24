@@ -34,14 +34,14 @@ import { hasText, textOr } from "#src/meta/text.ts";
 import { looseFlagsOf } from "../d2/campaign-terms.ts";
 import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
-import { hostsOf, keptHere } from "./host-config.ts";
+import { hostsOf, isLocalOnly } from "./host-config.ts";
 import { CODEX, countedAgainst, type Live, liveHere, liveOf } from "./live.ts";
 import { remember } from "./pulse-readers.ts";
 import { archived, isCampaign } from "./registry.ts";
 import {
   closedResets,
   historyFile,
-  keptReadings,
+  cachedUsageHistory,
   listedBy,
   notClosed,
   resetOf,
@@ -96,7 +96,7 @@ const BASE = "https://api.anthropic.com";
 const BETA = "oauth-2025-04-20";
 const TIMEOUT_MS = 30_000;
 /** The readings kept, for `usage-model.ts`'s longest window; the per-run rate reads the last `RATE_MS`. */
-const KEPT_MS = 28 * 24 * HOUR_MS;
+const HISTORY_RETENTION_MS = 28 * 24 * HOUR_MS;
 const RATE_MS = 8 * 24 * HOUR_MS;
 /** The share of a day a run is read active for the runs a week fits: 16 of 24 hours (the operator's choice). */
 const ACTIVE_SHARE = 16 / 24;
@@ -225,7 +225,7 @@ export function fullOn(
   const cap = capOf(env, CODEX);
   const on = live.filter((run) => run.host === host && run.login === CODEX).length;
   return on >= Number(cap ?? 1)
-    ? `${host} carries ${String(on)} live ${CODEX} run(s), at most ${cap ?? "1"} a machine (ANA_LOGIN_RUNS): name another --host, or none`
+    ? `${host} carries ${String(on)} live ${CODEX} run(s), at most ${cap ?? "1"} per host (ANA_LOGIN_RUNS): pass another --host or omit it`
     : null;
 }
 
@@ -401,7 +401,7 @@ export async function readLogins(wanted: readonly string[], env: Env): Promise<R
 
 /** `readLogins`, less each login whose recent cached closure has not expired (`login-state.ts`). */
 export const readNotClosed: typeof readLogins = (wanted, env) =>
-  readLogins(notClosed(wanted, keptReadings(historyFile()), Date.now()), env);
+  readLogins(notClosed(wanted, cachedUsageHistory(historyFile()), Date.now()), env);
 
 /** The logins of `readings` a run may move to, the week that resets soonest first: in `allowed`,
  *  not in `spent`, neither window used up or refused. A nearly spent week is taken first where it
@@ -544,7 +544,7 @@ export function carried(on: number, cap: string | null, fit: number | null): str
   const of = most.length === 0 ? "" : `/${String(Math.min(...most))}`;
   // `active` and the verbs count against the cap alone, so a week that fits fewer names both.
   const week =
-    fits !== null && cap !== null && fits < Number(cap) ? `, its week's fit under a cap of ${cap}` : "";
+    fits !== null && cap !== null && fits < Number(cap) ? `, capped by weekly quota (plan cap: ${cap})` : "";
   return `${String(on)}${of} active${week}${fits !== null && on > fits ? " · oversubscribed" : ""}`;
 }
 
@@ -601,7 +601,7 @@ function activeLines(
       cap === null
         ? `${String(on.length)} live`
         : login === CODEX
-          ? `${String(on.length)} live, at most ${cap} a machine`
+          ? `${String(on.length)} live, at most ${cap} per host`
           : `${String(on.length)}/${cap} live`;
     return [
       `${head.padEnd(10)}${count}${sub === null ? "" : ` (${sub.sub})`}${on.length === 0 ? "" : `: ${on.join(", ")}`}`,
@@ -649,7 +649,7 @@ export async function logins(args: readonly string[], readUsage = readLogins): P
   }
   // A forwarded report refreshes the peer's local history without asking other hosts again.
   const whole = !values.json && positionals.length === 0;
-  const forwarded = keptHere();
+  const forwarded = isLocalOnly();
   const [readings, counted, refreshed] = await Promise.all([
     readUsage(positionals.length > 0 ? positionals : held, runtimeProcess.env),
     values.json ? null : liveEverywhere(),
@@ -667,11 +667,11 @@ export async function logins(args: readonly string[], readUsage = readLogins): P
       : [{ login: reading.login, pct: reading.sevenDay.pct, reset, room: spendable }];
   });
   const history = historyFile();
-  const kept = keptReadings(history);
-  const rate = perRunRate(kept.filter(({ at }) => now - at < RATE_MS));
+  const prior = cachedUsageHistory(history);
+  const rate = perRunRate(prior.filter(({ at }) => now - at < RATE_MS));
   // The pool's lines and history require a full reading with at least one usable week.
   const complete = whole && weeks.length > 0;
-  const read = weeksFor(weeks, complete ? [] : kept, now);
+  const read = weeksFor(weeks, complete ? [] : prior, now);
   const snapshot: Snapshot = {
     at: now,
     weeks: read,
@@ -680,7 +680,7 @@ export async function logins(args: readonly string[], readUsage = readLogins): P
       runs: Object.fromEntries(Object.keys(read).map((login) => [login, onEach(login)])),
     })),
   };
-  const recorded = [...kept.filter(({ at }) => now - at < KEPT_MS), snapshot];
+  const recorded = [...prior.filter(({ at }) => now - at < HISTORY_RETENTION_MS), snapshot];
   const forecast =
     values.json || weeks.length === 0
       ? null

@@ -319,7 +319,7 @@ export function summed(tallies: readonly Tally[]): Tally {
   return out;
 }
 
-export const wlt = ({ wins, losses, ties }: Tally): string =>
+export const formatTally = ({ wins, losses, ties }: Tally): string =>
   `${String(wins)}-${String(losses)}-${String(ties)}`;
 export const percent = (part: number): string => `${(part * 100).toFixed(1)}%`;
 export const fired = (name: keyof typeof TRIGGERS, detail: string): Trigger => ({
@@ -329,7 +329,7 @@ export const fired = (name: keyof typeof TRIGGERS, detail: string): Trigger => (
 });
 /** A trigger where its condition holds, as the list a lane spreads; the detail is told either way,
  *  so a site whose detail reads what only the condition proves keeps the ternary. */
-export const firedIf = (holds: boolean, name: keyof typeof TRIGGERS, detail: string): Trigger[] =>
+export const emitIf = (holds: boolean, name: keyof typeof TRIGGERS, detail: string): Trigger[] =>
   holds ? [fired(name, detail)] : [];
 
 export function tally(counts: Readonly<Record<string, number>>): string {
@@ -610,53 +610,53 @@ export function instrumentTriggers(log: Index): Trigger[] {
   // it checked, as many checks on record have done.
   const neverRefused = checks.map((row) => text(row.id)).filter((id) => byCheck[id] === undefined);
   return [
-    ...firedIf(
+    ...emitIf(
       authored > 0,
       "INSTRUMENT AUTHORED",
       `${share(authored, rows.length)} checks run no engine, so their author's own computation decides them`,
     ),
-    ...firedIf(passes > 0, "PASSES UNREAD", `${String(passes)} passes; no reviewer reads a pass`),
-    ...firedIf(trees > 1, "VERIFIER TOOLS MOVED", `${String(trees)} tool trees decided verdicts in one log`),
-    ...firedIf(lost > 0, "TOOL MISSING", plural(lost, "check tool")),
-    ...firedIf(
+    ...emitIf(passes > 0, "PASSES UNREAD", `${String(passes)} passes; no reviewer reads a pass`),
+    ...emitIf(trees > 1, "VERIFIER TOOLS MOVED", `${String(trees)} tool trees decided verdicts in one log`),
+    ...emitIf(lost > 0, "TOOL MISSING", plural(lost, "check tool")),
+    ...emitIf(
       neverRefused.length > 0 && passes > 0,
       "REFUSALS BY CHECK",
       `${share(neverRefused.length, checks.length)} checks refused none of ${plural(log.verdicts.size, "answer")}: ${neverRefused.join(", ")}; the rest: ${tally(byCheck)}`,
     ),
-    ...firedIf(reading === undefined, "NO CHECKER READING", "accept.ts has not read this campaign's checker"),
-    ...firedIf(faults.length > 0, "CHECKER READ WITH FAULTS", plural(faults.length, "fault")),
-    ...firedIf(
+    ...emitIf(reading === undefined, "NO CHECKER READING", "accept.ts has not read this campaign's checker"),
+    ...emitIf(faults.length > 0, "CHECKER READ WITH FAULTS", plural(faults.length, "fault")),
+    ...emitIf(
       uncaught.length > 0,
       "CONTROL COVERAGE",
       `${share(uncaught.length, checks.length)} checks let through a reject control answer naming them, or were named by none: ${uncaught.map((row) => `${text(row.id)} refused ${String(count(row.caught))} of ${String(count(row.named))}`).join(", ")}`,
     ),
-    ...firedIf(
+    ...emitIf(
       (ruled.unread ?? 0) > 0,
       "REFUSED UNREAD",
       `${share(ruled.unread ?? 0, refused.length)} refused answers no reviewer ruled on`,
     ),
-    ...firedIf(
+    ...emitIf(
       defects.length > 0,
       "CHECK DEFECT RULED",
       `${share(defects.length, refused.length)}; by check: ${tally(defectChecks)}`,
     ),
-    ...firedIf((ruled.unclear ?? 0) > 0, "RULED UNCLEAR", share(ruled.unclear ?? 0, refused.length)),
+    ...emitIf((ruled.unclear ?? 0) > 0, "RULED UNCLEAR", share(ruled.unclear ?? 0, refused.length)),
     ...(lopsided && passes > 0
       ? [fired("FAILS ON ONE CHECK", `${top[0]} refused ${share(top[1], refused.length)}`)]
       : []),
-    ...firedIf(
+    ...emitIf(
       defects.length > 0 && passes > 0,
       "DEFECT RULED BESIDE PASSES",
       "a frozen alternative can settle what a ruling asserts",
     ),
-    ...firedIf(frozen === undefined, "CHECKER NOT FROZEN", "no contract.frozen in the log"),
-    ...firedIf(count(frozen?.faults) > 0, "FROZEN DESPITE FAULTS", plural(count(frozen?.faults), "fault")),
-    ...firedIf(
+    ...emitIf(frozen === undefined, "CHECKER NOT FROZEN", "no contract.frozen in the log"),
+    ...emitIf(count(frozen?.faults) > 0, "FROZEN DESPITE FAULTS", plural(count(frozen?.faults), "fault")),
+    ...emitIf(
       frozen !== undefined && reading !== undefined && reading.checks !== frozen.checks,
       "READ AT ANOTHER VERSION",
       "the last reading is of another check program than the frozen one",
     ),
-    ...firedIf(
+    ...emitIf(
       carried > 0,
       "TASKS CARRIED",
       `${plural(carried, "task")} came from another checker's campaign`,
@@ -701,14 +701,14 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
     return read.length === 0 ? [] : [`${session}: ${read.join("; ")}`];
   });
   return [
-    ...firedIf(
+    ...emitIf(
       validTies.length > 0,
       "TIES BETWEEN VALID ANSWERS",
       validTies
         .map(({ session, ties, unsolved, tasks }) => `${session}: ${share(ties - unsolved, tasks)} tasks`)
         .join("; "),
     ),
-    ...firedIf(
+    ...emitIf(
       tied.length > 0,
       "TIED TASKS",
       tied
@@ -718,7 +718,7 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
         )
         .join("; "),
     ),
-    ...firedIf(byHarness.length > 0, "VALID BY HARNESS", byHarness.join(" · ")),
+    ...emitIf(byHarness.length > 0, "VALID BY HARNESS", byHarness.join(" · ")),
   ];
 }
 
@@ -738,7 +738,7 @@ export function taskTriggers(log: Index): Trigger[] {
       for (const one of strings(event.data.tasks).filter((task) => out.has(task))) late.add(one);
     }
   }
-  const lateSaid = `${share(late.size, out.size)} released tasks scored after their release:`;
+  const lateReleaseSummary = `${share(late.size, out.size)} released tasks scored after their release:`;
   const reasons = countBy(
     admissions.filter((data) => data.outcome === "refused"),
     (data) => text(data.reason) || "unrecorded",
@@ -782,30 +782,30 @@ export function taskTriggers(log: Index): Trigger[] {
   });
   return [
     // A proposal still at the gate is neither passed nor refused.
-    ...firedIf(
+    ...emitIf(
       passed * 2 < admissions.length,
       "SUPPLY THIN",
       `${share(passed, admissions.length)} decided tasks passed task admission`,
     ),
-    ...firedIf(Object.keys(reasons).length > 0, "GATE REFUSED", tally(reasons)),
-    ...firedIf(late.size > 0, "SCORED AFTER RELEASE", [lateSaid, ...[...late].map(short)].join(" ")),
-    ...firedIf(
+    ...emitIf(Object.keys(reasons).length > 0, "GATE REFUSED", tally(reasons)),
+    ...emitIf(late.size > 0, "SCORED AFTER RELEASE", [lateReleaseSummary, ...[...late].map(short)].join(" ")),
+    ...emitIf(
       unanswered > 0,
       "NO VALID ANSWER",
       `${share(unanswered, scored.size)} scored tasks have no valid answer from any harness`,
     ),
-    ...firedIf(
+    ...emitIf(
       awaiting.length > 0,
       "AWAITING A LABEL",
       `${plural(awaiting.length, "task")} with no valid answer on record after two comparisons that cut no solve of it at a limit, left out of the scored set until a person labels each: ${awaiting.map(short).join(" ")}`,
     ),
     ...tallyTriggers(log.compared),
-    ...firedIf(
+    ...emitIf(
       done.length > 0 && quick.length * 2 > done.length,
       "PASSES AT A SMALL WALL SHARE",
       `${share(quick.length, done.length)} test-side passes, in ${plural(sequences, "call sequence")}`,
     ),
-    ...firedIf(heard.length > 0, "OUTCOMES BY SESSION", `held, by ${by}: ${heard.join("; ")}`),
+    ...emitIf(heard.length > 0, "OUTCOMES BY SESSION", `held, by ${by}: ${heard.join("; ")}`),
   ];
 }
 

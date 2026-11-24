@@ -78,7 +78,7 @@ export function notClosed(wanted: readonly string[], kept: readonly Snapshot[], 
 
 export const historyFile = (): string => join(mainTree(runtimeProcess.cwd()), ".ana", "logins-history.jsonl");
 
-export function keptReadings(history: string): Snapshot[] {
+export function cachedUsageHistory(history: string): Snapshot[] {
   return existsSync(history)
     ? readFileSync(history, "utf8")
         .split("\n")

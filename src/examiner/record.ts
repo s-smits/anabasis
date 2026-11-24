@@ -81,7 +81,7 @@ export function heard(
       return id === null ? [] : [[id, proposal] as const];
     }),
   );
-  // Fold pairs once per report and share them between `referenceAnswers` and `stoodLines`.
+  // Fold pairs once per report and share them between `referenceAnswers` and `outcomeSummaryLines`.
   const pairsCache = new Map<string, Paired[]>();
   const pairsOf = (report: Reported): Paired[] => {
     const cached = pairsCache.get(report.session);
@@ -120,7 +120,7 @@ export function heard(
     return held.length === 0 ? [] : [{ heading, lines: held }];
   });
   return {
-    stood: stoodLines(events, after, pairsOf),
+    stood: outcomeSummaryLines(events, after, pairsOf),
     groups,
     // An opening's, and a wake's where the promotion came after the conversation last heard.
     promoted: after === undefined || since > after ? promotedLine(events, since, listed) : null,
@@ -146,7 +146,7 @@ function refusedLines(
 }
 
 /** The task versions of the comparisons first reported after event `after`, each at its last report,
- *  as `stoodLines` reads them: a resumed comparison's second report or a ladder's adds none. */
+ *  as `outcomeSummaryLines` reads them: a resumed comparison's second report or a ladder's adds none. */
 const reportedAfter = (events: readonly LogEvent[], after: number) =>
   new Set(
     lastReports(events)
@@ -217,31 +217,28 @@ function standingOf(standing: Standing | undefined): string[] {
  *  there are none: the last at an opening, whose record lists every task, and at a wake each one
  *  reported since `after`, so a wake after two readings does not miss the one that read the new
  *  reference against the starter. */
-function stoodLines(
+function outcomeSummaryLines(
   events: readonly LogEvent[],
   after: number | undefined,
   pairsOf: (report: Reported) => Paired[],
 ): string | null {
   const reference = referenceOf(events);
-  const stood = lastReports(events).filter(({ data }) => data.old === reference || data.fresh === reference);
-  const told = after === undefined ? stood.slice(-1) : stood.filter(({ index }) => index >= after);
-  if (told.length === 0) return null;
+  const matching = lastReports(events).filter(
+    ({ data }) => data.old === reference || data.fresh === reference,
+  );
+  const selected = after === undefined ? matching.slice(-1) : matching.filter(({ index }) => index >= after);
+  if (selected.length === 0) return null;
   const named = ({ session }: Reported) =>
     after === undefined
       ? `The last comparison the reference harness stood in, ${session}`
       : `Comparison ${session}, which the reference harness stood in`;
-  return told
-    .map((report) => stoodLine(events, report, reference, named(report), pairsOf(report)))
+  return selected
+    .map((report) => formatOutcomeLine(events, report, reference, named(report), pairsOf(report)))
     .join("\n\n");
 }
 
-/** One comparison the reference harness stood in, from its side: the tasks scored and how many of
- *  them its largest family held (`familySizes`, which leaves out a task that names none), the wins
- *  each way (from the per-task winners the lines already tell), its every, some and none, the tasks
- *  set aside, and how many of them its own two solves differed on. The A/A pairs the old side's
- *  solves with each other, so it measures the reference only there. No count of the other harness's
- *  valid solves is told. */
-function stoodLine(
+/** Summarise one comparison from the reference harness's perspective without exposing candidate validity counts. */
+function formatOutcomeLine(
   events: readonly LogEvent[],
   report: Reported,
   reference: string | null,

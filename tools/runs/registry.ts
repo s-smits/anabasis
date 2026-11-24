@@ -324,7 +324,7 @@ export function openComparisons(events: readonly LogEvent[]): string[] {
 }
 
 /** The file beside `run`'s log that holds its keeper's output. */
-export const keptFile = (run: Run) => join(dirname(run.path), "keep.out");
+export const keeperLogPath = (run: Run) => join(dirname(run.path), "keep.out");
 
 const cliMatches = (running: readonly Running[], match: (args: readonly string[]) => boolean) =>
   running.flatMap(({ pid, args }) =>

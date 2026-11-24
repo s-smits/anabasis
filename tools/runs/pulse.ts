@@ -27,7 +27,7 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { mainTree } from "#src/meta/git.ts";
 import { plural } from "#src/meta/text.ts";
-import { heldOff } from "./view.ts";
+import { firstComparisonDelay } from "./view.ts";
 import { type Life, lifeOf } from "./diagnosis.ts";
 import { asked, hosts } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
@@ -37,13 +37,13 @@ import {
   dollars,
   DRIVER,
   ENDED,
+  EVENT_FORMATTERS,
   minutes,
   openingCommand,
   progressOf,
   PROMOTED,
   promotionsOf,
   REPORTED,
-  SAID,
   short,
   TRIGGER_AT,
   triggerOf,
@@ -52,10 +52,10 @@ import {
 import { launchedIn, runReason, type RunState, stateOf } from "./state.ts";
 import {
   alarmsMoved,
+  formatReaderLines,
   type Moment,
   PER_LOOK,
   pruneObservers,
-  readersSaid,
   remember,
   startPass,
   storeOf,
@@ -151,7 +151,7 @@ const STARTS: ReadonlySet<string> = new Set(["build.started", "exam.started", BE
  * moved (`keyOf`); a reading moves with each solve, so it is said only after a milestone. Without
  * it an unconfirmed promotion in a live campaign would be found only by running `wri.ts read` on it
  * by hand. A trigger the pulse reads itself is left out (a model served, an unfinished
- * session), and one left out is said once by the `rows` reader's own lines (`readersSaid`), unless
+ * session), and one left out is emitted once by the `rows` reader (`formatReaderLines`), unless
  * the look says it in its event's own line (`OWN`).
  */
 const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
@@ -243,18 +243,18 @@ function keyOf(name: string, detail: string): string {
  *  look passes unless the readers' rows moved. A trigger
  *  fires once for each comparison or session it names, so each name keeps every key, where keeping
  *  one would say the first of two comparisons with a task set aside again at every look. */
-function triggersSaid(
+function formatTriggeredAlarms(
   kept: Seen["triggers"],
   found: readonly Alarm[] | null,
-): { now: Seen["triggers"]; said: string[] } {
-  if (found === null) return { now: kept, said: [] };
+): { now: Seen["triggers"]; lines: string[] } {
+  if (found === null) return { now: kept, lines: [] };
   const first = kept === undefined;
   const read = new Map<string, { lane: number; details: string[] }>();
   for (const { name, lane, detail } of found) {
     if (!WATCHED.has(name)) continue;
     read.set(name, { lane, details: [...(read.get(name)?.details ?? []), detail] });
   }
-  const said = first
+  const lines = first
     ? []
     : [...read].flatMap(([name, { lane, details }]) => {
         const [factor, kind] = WATCHED.get(name) ?? ["", "alarm"];
@@ -273,7 +273,7 @@ function triggersSaid(
       [...read].map(([name, { details }]) => [name, details.map((detail) => keyOf(name, detail)).join("\n")]),
     ),
   };
-  return { now, said };
+  return { now, lines };
 }
 
 /**
@@ -340,13 +340,13 @@ function status(run: Run, log: readonly LogEvent[], stand: Standing, open: boole
 /** The line of each event of `log` from `from` on, in the log's order, with what stands under it:
  *  a starter comparison and the pause it makes ready under their report (`climbAt`), and the readers'
  *  lines of that event (`under`, by its place among those events). A promotion's line is the climb's. */
-function eventsSaid(name: string, log: readonly LogEvent[], from: number, under: Under | undefined) {
+function formatEventLines(name: string, log: readonly LogEvent[], from: number, under: Under | undefined) {
   const climb = climbAt(name, log, from);
   return log.slice(from).map(({ kind, data }, nth) => {
     const climbed = climb.get(from + nth) ?? [];
     const promoted = kind === PROMOTED;
     return {
-      line: promoted ? (climbed[0] ?? null) : (SAID[kind]?.(data) ?? null),
+      line: promoted ? (climbed[0] ?? null) : (EVENT_FORMATTERS[kind]?.(data) ?? null),
       below: [...(promoted ? climbed.slice(1) : climbed), ...(under?.get(nth) ?? [])],
     };
   });
@@ -386,7 +386,7 @@ function troubles(log: readonly LogEvent[], from: number): string[] {
 /** The look's lines, those of its events first. A comparison starts each task under two harnesses,
  *  so a line may come twice and is said once with its count. One with lines of its own below it
  *  stays where it is: two reports can read alike, and each starter comparison belongs under its own. */
-function folded(events: ReturnType<typeof eventsSaid>, lines: readonly string[]): string[] {
+function folded(events: ReturnType<typeof formatEventLines>, lines: readonly string[]): string[] {
   const heads = [
     ...events.flatMap(({ line, below }) => (line === null ? [] : [{ line, below }])),
     ...lines.map((line) => ({ line, below: [] })),
@@ -404,7 +404,7 @@ function folded(events: ReturnType<typeof eventsSaid>, lines: readonly string[])
 
 /** What changed of where the run stands since the last look: a quiet that began or ended, and a
  *  process gone before the work it started ended, said as the pause it was where a pause stopped it. */
-function standsSaid(
+function formatStateChanges(
   before: Seen | undefined,
   state: RunState,
   stand: Standing,
@@ -447,10 +447,10 @@ export function pulse(
   const state = stateOf(log, life, now, stand.begun);
   const open = life.writing;
   const from = before?.lines ?? log.length;
-  const events = eventsSaid(run.name, log, from, under);
-  const lines = [...troubles(log, from), ...standsSaid(before, state, stand, open, now)];
-  const triggers = triggersSaid(before?.triggers, alarms);
-  lines.push(...triggers.said);
+  const events = formatEventLines(run.name, log, from, under);
+  const lines = [...troubles(log, from), ...formatStateChanges(before, state, stand, open, now)];
+  const triggers = formatTriggeredAlarms(before?.triggers, alarms);
+  lines.push(...triggers.lines);
   // The trigger is a campaign's: a round or a seed measures no climb an investigation could read.
   const read = isCampaign(run) && run.seed !== true;
   const live = open || life.kept;
@@ -481,15 +481,13 @@ export function pulse(
   // A first comparison admission would begin and none has, said once where a look finds it long:
   // otherwise one can stand so for hours and no look says it.
   const waits = read && open && before?.heldOff !== true && !log.some(({ kind }) => kind === BEGAN);
-  const held = waits ? heldOff(log) : null;
-  // A wait still open is not in the log yet, so the line leaves out the hours inside waits.
-  if (held?.long === true) {
-    lines.push(`⚠ a first comparison admissible for ${held.hours.toFixed(2)} h, none begun`);
+  const delay = waits ? firstComparisonDelay(log) : null;
+  if (delay?.long === true) {
+    lines.push(`⚠ first comparison admissible for ${delay.hours.toFixed(2)} h without starting`);
   }
   return {
     state,
     status: status(run, log, stand, open, now),
-    // What belongs to an event the look says nothing of comes after the rest.
     said: [...folded(events, lines), ...events.flatMap(({ line, below }) => (line === null ? below : []))],
     seen: {
       ...before,
@@ -498,7 +496,7 @@ export function pulse(
       quiet: state.kind === "quiet",
       state: state.kind,
       ...keyIfDefined("due", read ? dueKey : undefined),
-      ...keyIfDefined("heldOff", held?.long === true ? true : undefined),
+      ...keyIfDefined("heldOff", delay?.long === true ? true : undefined),
       ...keyIfDefined("triggers", triggers.now),
     },
   };
@@ -521,7 +519,7 @@ function readersOf(
 } {
   if (store === null) return { alarms: null, under: new Map(), lines: [], spent: 0, seen: {} };
   const moved = alarmsMoved(store, run.path, before?.rowsAt);
-  const read = readersSaid({
+  const read = formatReaderLines({
     store,
     log: run.path,
     size,
@@ -636,7 +634,7 @@ function settle(state: string, ack: string): void {
  * anti-stall hook shows on its own, and neither fails the look, which would add the hook's line of a
  * failed look to it.
  */
-async function saidOfPeers(
+async function pollPeerHosts(
   away: readonly { name: string; ask: ReturnType<typeof asked> }[],
   started: number,
   { acks = {}, down = [] }: Pick<Memory, "acks" | "down">,
@@ -726,7 +724,7 @@ export async function watch(args: readonly string[]): Promise<void> {
       }
       remember(state, capturedJsonStringify(here.memory));
     }
-    const { unanswered, ...peers } = await saidOfPeers(away, started, memory);
+    const { unanswered, ...peers } = await pollPeerHosts(away, started, memory);
     if (away.length > 0) remember(state, capturedJsonStringify({ ...here.memory, ...peers }));
     // A host still preparing holds this process for up to five minutes, and the hook's limit is 40 s,
     // so a look a peer left unanswered ends here, as one that read every peer does.

@@ -22,7 +22,7 @@ field:
   counts and objective measures of its valid answers (`referenceAnswers`), and which harness won
   each task together with the deciding measure (`carriedBy`);
 - the last comparison in which the reference stood, including how often its own two rollouts
-  disagreed in that A/A control (`stoodLines`), and the identifiers of checks faulted by a
+  disagreed in that A/A control (`outcomeSummaryLines`), and the identifiers of checks faulted by a
   `check-defect` ruling (`faultedOf`);
 - on each subsequent invocation, only events reported since the Examiner was last informed (`heard`
   with `after`, `wakeMessage`);

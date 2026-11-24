@@ -18,7 +18,7 @@ import { draftDeliverableInfo } from "./deliverables.ts";
 import { unpricedCompactions } from "./epoch-spend.ts";
 import {
   EXAM_END,
-  firedIf,
+  emitIf,
   type Index,
   items,
   percent,
@@ -44,7 +44,7 @@ function passLabelTriggers(log: Index): Trigger[] {
   const summary = passAgreement(settledPassLabels(log.events));
   if (summary.total === 0) return [];
   const rate = summary.wrongRate === null ? "none" : `${(summary.wrongRate * 100).toFixed(1)}%`;
-  return firedIf(
+  return emitIf(
     true,
     "PASSES LABELLED",
     `${plural(summary.total, "labelled pass")}: sound ${String(summary.counts.sound)}, wrong ${String(summary.counts.wrong)}, unclear ${String(summary.counts.unclear)}; wrong rate ${rate} (${share(summary.counts.wrong, summary.decided)} decided); bar ${summary.clears ? "clears" : "unmet"}`,
@@ -69,12 +69,12 @@ function deliverableTriggers(log: Index): Trigger[] {
   const draftUsesFiles =
     draftInfo.evaluatorUsesFiles || draftInfo.acceptWithFiles > 0 || draftInfo.rejectWithFiles > 0;
   return [
-    ...firedIf(
+    ...emitIf(
       withFiles > 0,
       "DELIVERABLES CAPTURED",
       `${share(withFiles, verdicts.length)} verdicts carried ${plural(totalFiles, "file")} (max ${String(maxBytes)} bytes; ${String(atBound)} at capture bound)`,
     ),
-    ...firedIf(
+    ...emitIf(
       withFiles === 0 && draftUsesFiles && verdicts.length > 0,
       "NO DELIVERABLES CAPTURED",
       `drafted exam references deliverables but 0 of ${plural(verdicts.length, "verdict")} carried files`,
@@ -100,12 +100,12 @@ function practiceSignalTriggers(log: Index): Trigger[] {
   });
   const inherited = inheritedPracticeReleases(log.events).map(short);
   return [
-    ...firedIf(
+    ...emitIf(
       repeated.length > 0,
       "PRACTICE CONCENTRATION",
       `tasks practised ${String(REPEATED_PRACTICE)}+ times in one session: ${repeated.join("; ")}`,
     ),
-    ...firedIf(
+    ...emitIf(
       inherited.length > 0,
       "PRE-PROMOTION PRACTICE RELEASED",
       `${plural(inherited.length, "pre-promotion task")} released after a promotion: ${inherited.slice(0, MAX_SHOWN).join(" ")}`,
@@ -122,7 +122,7 @@ function exportTriggers(log: Index): Trigger[] {
       return fresh !== "" && fresh !== text(own.old) && fresh !== text(own.starter) ? [short(fresh)] : [];
     }),
   );
-  return firedIf(
+  return emitIf(
     promoted.length > 0 || built.size > 0,
     "BUILT HARNESS FOR EXPORT",
     `${String(promoted.length)} promoted ${promoted.length === 1 ? "harness" : "harnesses"} (${promoted.join(", ") || "none"}), ${plural(built.size, "compared candidate")}`,
@@ -168,8 +168,8 @@ function examinerSignalTriggers(log: Index): Trigger[] {
   const counts = Object.values(heldFamilies).toSorted((a, b) => b - a);
   const topCount = counts[0] ?? 0;
   return [
-    ...firedIf(zeroYield.length > 0, "EXAMINER ZERO YIELD", zeroYield.join("; ")),
-    ...firedIf(
+    ...emitIf(zeroYield.length > 0, "EXAMINER ZERO YIELD", zeroYield.join("; ")),
+    ...emitIf(
       log.held.length >= MIN_FAMILY_POOL && topCount * 2 > log.held.length,
       "FAMILY CONCENTRATION",
       `largest family holds ${share(topCount, log.held.length)} held tasks across ${String(counts.length)} ${counts.length === 1 ? "family" : "families"}`,
@@ -200,13 +200,13 @@ function continuityTriggers(log: Index): Trigger[] {
       : [];
   });
   return [
-    ...firedIf(examLines.length > 0, "EXAMINER COMPACTED", examLines.join("; ")),
-    ...firedIf(
+    ...emitIf(examLines.length > 0, "EXAMINER COMPACTED", examLines.join("; ")),
+    ...emitIf(
       solveCompacted.length > 0,
       "SOLVER COMPACTED",
       `${plural(solveCompacted.length, "compaction")} across ${plural(compactedSolves.size, "solve")}`,
     ),
-    ...firedIf(handovers.length > 0, "INTERRUPTED HANDOVER", handovers.join("; ")),
+    ...emitIf(handovers.length > 0, "INTERRUPTED HANDOVER", handovers.join("; ")),
   ];
 }
 
@@ -219,7 +219,7 @@ function underpoweredTriggers(log: Index): Trigger[] {
     const tasks = scored.wins + scored.losses + scored.ties;
     return tasks > 0 && tasks <= UNDERPOWERED_MAX_TASKS ? [`${session} (${String(tasks)} tasks)`] : [];
   });
-  return firedIf(
+  return emitIf(
     small.length >= UNDERPOWERED_MIN_RUNS,
     "UNDERPOWERED NO-STEPS",
     `${plural(small.length, "candidate no-step")} scored <= ${String(UNDERPOWERED_MAX_TASKS)} tasks: ${small.join("; ")}`,
@@ -239,7 +239,7 @@ function toolErrorTriggers(log: Index): Trigger[] {
     };
     return [...checkSide("reference", own.old), ...checkSide("new", own.fresh)];
   });
-  return firedIf(high.length > 0, "HIGH TOOL ERROR RATE", high.join("; "));
+  return emitIf(high.length > 0, "HIGH TOOL ERROR RATE", high.join("; "));
 }
 
 /** Lane 19: billing residual > 5% between local meter and backend totals, or open unpriced compactions. */
@@ -252,7 +252,7 @@ function billingTriggers(log: Index): Trigger[] {
     ...(pct > RESIDUAL_PCT ? [line] : []),
     ...(unpriced > 0 ? [`${plural(unpriced, "open compaction")} with 0 locally priced usage`] : []),
   ];
-  return firedIf(parts.length > 0, "BILLING RESIDUAL", parts.join("; "));
+  return emitIf(parts.length > 0, "BILLING RESIDUAL", parts.join("; "));
 }
 
 /** All current-system triggers added in the WRI rewrite. */

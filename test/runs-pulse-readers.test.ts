@@ -25,7 +25,7 @@ import { claimRoot } from "../src/wall/seat-root.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { pulse } from "../tools/runs/pulse.ts";
-import { pruneObservers, readersSaid, resultOf, underLock } from "../tools/runs/pulse-readers.ts";
+import { formatReaderLines, pruneObservers, resultOf, underLock } from "../tools/runs/pulse-readers.ts";
 import type { Run } from "../tools/runs/registry.ts";
 import { READERS } from "../tools/wri/derive.ts";
 import { passOver } from "../tools/wri/pass.ts";
@@ -86,7 +86,7 @@ describe("what a pass costs a host", () => {
     expect(readdirSync(folder).toSorted()).toEqual(["notes.txt", `slow.json.${live}.tmp`]);
   });
 
-  it("runs moment-wrapped WRI readers through passOver + readersSaid and surfaces watched pulse alarms", async () => {
+  it("runs moment-wrapped WRI readers through passOver + formatReaderLines and surfaces watched pulse alarms", async () => {
     const root = scratch();
     const camp = join(root, "camp");
     const store = join(root, "store");
@@ -129,7 +129,7 @@ describe("what a pass costs a host", () => {
     ]) {
       expect({ name, ok: resultOf(store, log, name)?.ok }).toEqual({ name, ok: true });
     }
-    const read = readersSaid({
+    const read = formatReaderLines({
       store,
       log,
       size: Bun.file(log).size,

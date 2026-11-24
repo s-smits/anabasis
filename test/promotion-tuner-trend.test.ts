@@ -4,9 +4,9 @@
 // and the join, each with its nearest hostile case.
 import { afterAll, expect, it } from "bun:test";
 import type { Promotion, Run } from "#skills/main/runs.ts";
-import { outsideLines, type Score } from "#skills/promotion-tuner/scripts/outside.ts";
+import { outsideLines, type Score, scoresOf } from "#skills/promotion-tuner/scripts/outside.ts";
 import { changeOf, type Measure, MEASURES } from "#skills/promotion-tuner/scripts/trend.ts";
-import { mkdtempSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 
@@ -166,4 +166,21 @@ it("bounds an arm by the sums of whole Starter rollouts, never by the Starter's 
   expect(read.get("single")?.slice(6, 9)).toEqual(["5/50", "0 to 40", "inside"]);
   expect(read.get("lone")?.slice(7, 9)).toEqual(["30 to 30", "inside, one Starter rollout"]);
   expect(read.get("apart")?.slice(5, 9)).toEqual(["2", "30/100", "-", "-"]);
+});
+
+it("treats base-<label> bareSolver judged records as baseline arms rather than unlinked built arms", () => {
+  const store = join(home, "outside-base");
+  const put = (arm: string, buildOf: string, points: number) => {
+    mkdirSync(join(store, "judged", arm), { recursive: true });
+    writeFileSync(
+      join(store, "judged", arm, "t1.json"),
+      `${JSON.stringify({ arm, task: "t1", harness: "h", runtime: "pi-durable", points, total: 50, build: { of: buildOf, usd: 0 } })}\n`,
+    );
+  };
+  put("pi-a1", "jobstat-run", 40);
+  put("base-pi-a1", "base", 30);
+  const loaded = scoresOf(store);
+  const rows = outsideRows(loaded, []);
+  expect(rows.has("base-pi-a1")).toBe(false);
+  expect(rows.get("pi-a1")?.slice(6, 9)).toEqual(["40/50", "30 to 30", "above, one Starter rollout"]);
 });

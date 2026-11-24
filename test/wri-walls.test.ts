@@ -13,6 +13,8 @@ import { READERS, readerOutput, sourceOf } from "../tools/wri/derive.ts";
 import type { Trigger } from "../tools/wri/folds.ts";
 import { type Campaign, lanePrompt, selected, sharedPrompt } from "../tools/wri/investigation.ts";
 import { overview } from "../tools/wri/read.ts";
+import { domainReadinessOf } from "../tools/wri/domains.ts";
+import { analyzeRegressions, formatRegressionReport } from "../tools/wri/regressions.ts";
 import { wriCampaign } from "./helpers/wri-campaign.ts";
 
 type Secret = (tag: string) => string;
@@ -114,6 +116,23 @@ describe("the no-quote wall", () => {
     ]);
     expect(two).toEqual(one);
     expect(one?.join("\n")).not.toContain("CANARY");
+  });
+
+  it("renders external benchmark regression joins byte for byte alike without leaking log secrets", () => {
+    const [first, second] = SECRETS.map((secret) => {
+      const events = wriCampaign(secret);
+      const ready = domainReadinessOf({
+        campaign: "buffer-a",
+        log: "/a/log.jsonl",
+        events,
+        repo: REPO,
+        benches: [],
+        extensionsRoot: join(base, "no-ext"),
+      });
+      return formatRegressionReport(analyzeRegressions(ready, events, "/a"));
+    });
+    expect(second).toEqual(first);
+    expect(first).not.toContain("CANARY");
   });
 });
 

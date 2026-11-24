@@ -12,7 +12,7 @@
  * per-test timeout. `report` tabulates per-file kills across `--old` and the remaining suites (or
  * solo `killed / survived / unread` counts when `--old` is omitted), with `unread` for rows a
  * missing verdict leaves undecided, and `--survivors` prints `O-` IDs (comparative) or surviving
- * mutant IDs (solo).
+ * mutant IDs (solo), then unread IDs, which a rerun must bring to a verdict.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { appendFileSync, cpSync, existsSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
@@ -229,7 +229,7 @@ function report(args: CommandArgs, results: readonly string[]): void {
         };
   const survivorKind = old === null ? "survived" : "O-";
   if (args.flag("survivors")) {
-    for (const row of rows) if (classify(row) === survivorKind) console.log(row.id);
+    for (const row of rows) if ([survivorKind, "unread"].includes(classify(row))) console.log(row.id);
     return;
   }
   const columns = old === null ? ["killed", "survived", "unread"] : ["ON", "O-", "-N", "--", "unread"];

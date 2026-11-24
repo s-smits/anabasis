@@ -9,7 +9,14 @@ import { worthLine } from "#src/campaign/climb.ts";
 import { predicted, type Report } from "#src/campaign/comparison.ts";
 import { type CheckpointRequest, scoredSet } from "#src/campaign/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import { type ObjectiveRule, objectiveRuleOf, testedSet, testOf, WEIGHTS } from "#src/kernel/compare.ts";
+import {
+  type ObjectiveRule,
+  objectiveRuleOf,
+  scoresIn,
+  testedSet,
+  testOf,
+  WEIGHTS,
+} from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read, TRACE_KINDS } from "#src/kernel/log.ts";
@@ -357,21 +364,13 @@ export function printReport(campaign: Campaign, id: string, report: Report): voi
 function stepTestLines(test: Report["scored"] | Report["frontier"]): string[] {
   if (test?.falseRate === undefined) return [];
   const share = test.detectable ?? null;
-  // Some older reports read their step on their scores without the bill (`scoresIn`).
-  const unbilled = test.unbilled === undefined ? null : testOf(test.unbilled);
-  const stepped = unbilled ?? test;
+  const stepped = testOf(scoresIn(test));
   const untied = stepped.wins + stepped.losses;
-  const on = unbilled === null ? "on the score" : "without the bill";
   return [
-    `the step's test is read ${on} on ${plural(untied + stepped.ties, "tallied task")}, ${String(untied)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
+    `the step's test is read on the score on ${plural(untied + stepped.ties, "tallied task")}, ${String(untied)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
     `the test at these margins clears the level between equal harnesses ${String(Math.round(1000 * test.falseRate) / 10)}% of the time, never more than the level`,
     // The test weighs margins, but a sweep's p is its count's alone.
     `its p is ${rounded(stepped.p)}: the test weighs each untied task by its score${stepped.losses === 0 && untied > 0 ? `, and where every untied task is won p is one half to the power of their count whatever the margins: ${String(untied)} won read ${rounded(0.5 ** untied)}` : ""}`,
-    ...(unbilled === null
-      ? []
-      : [
-          `with the bill's points the same tasks read ${String(test.wins)}-${String(test.losses)}-${String(test.ties)}, p ${rounded(test.p)}, which decides nothing by itself`,
-        ]),
   ];
 }
 

@@ -364,7 +364,7 @@ export function timed(tool: SeatTool, { clock, turns, modelTurns }: Used): SeatT
   };
 }
 
-export function solverTools(
+function solverTools(
   request: { readonly contract: Contract },
   harness: Harness,
   wall: CommandWall,

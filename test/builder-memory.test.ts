@@ -91,16 +91,18 @@ describe("the notes a campaign keeps", () => {
     expect(counts).toEqual([note.length - shown.replace(/\n\[\d+ characters cut here\]\n/, "").length]);
   });
 
-  it("opens on a folder kept in the earlier format, both notes files and no helper", () => {
+  it("reads MEMORY.md alone, from a kept folder or a home holding other notes", () => {
     const root = join(scratch("earlier"), "memory");
     mkdirSync(join(root, "b-1", "scratch"), { recursive: true });
     writeFileSync(join(root, "b-1", MEMORY_FILE), "# Builder memory\n\nunits are kN\n");
     writeFileSync(join(root, "b-1", "SCRATCHPAD.md"), "# Scratchpad\n\n- open: L3 span family\n");
     writeFileSync(join(root, "b-1", "scratch", "gen.md"), "a helper, not a note\n");
     const block = builderMemoryBlock(root, ["b-1"]);
-    expect(block).toContain("--- b-1 ---\n# Builder memory\n\nunits are kN\n\n# Scratchpad");
-    expect(block).toContain("open: L3 span family");
-    expect(block).not.toContain("a helper");
+    expect(block).toEndWith("--- b-1 ---\n# Builder memory\n\nunits are kN");
+    const home = scratch("home");
+    writeFileSync(join(home, "SCRATCHPAD.md"), "a scratchpad, not a note\n");
+    keepMemory(home, root, "b-2");
+    expect(existsSync(join(root, "b-2"))).toBe(false);
   });
 
   it("reads no notes through a link, which would carry a file the Builder's wall denies", () => {

@@ -603,6 +603,11 @@ describe("publicInput.files bounding in Referee", () => {
       expect((await run(solve, blk)).ruling).toBe("unclear");
     }
     expect(llmCalls).toBe(8);
+    recordSolve("s-3b", "g-1", ["rows"]);
+    expect(await run("s-3b", ["rows"])).toMatchObject({ ruling: "unclear", check: null });
+    recordSolve("s-3c", "g-1", ["rows", "span"]);
+    expect(await run("s-3c", ["rows", "span"])).toMatchObject({ ruling: "check-defect", check: "span" });
+    expect(llmCalls).toBe(8);
 
     const events = read(log);
     const reusedRow = events.find(({ kind, data }) => kind === "referee.finding" && data.solve === "s-2");

@@ -1,16 +1,7 @@
-import { CONTEXT_OUTPUT_LIMIT, fitContextToBudget } from "../../vendor/claude-mem/ContextBudget.ts";
+import { CONTEXT_OUTPUT_LIMIT } from "../../vendor/claude-mem/ContextBudget.ts";
 import { retainTextHeadTail } from "../../vendor/claude-mem/text-truncation.ts";
-import type { ContextConfig } from "../../vendor/claude-mem/types.ts";
-import {
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-} from "../meta/filesystem.ts";
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
-import { compareCodeUnits } from "../meta/stable-json.ts";
 
 interface Kept {
   readonly session: string;
@@ -18,22 +9,6 @@ interface Kept {
 }
 
 export const MEMORY_FILE = "MEMORY.md";
-
-const HOME_NOTES = [MEMORY_FILE, "SCRATCHPAD.md"];
-
-const TIMELINE: ContextConfig = {
-  totalObservationCount: 0,
-  fullObservationCount: 0,
-  sessionCount: 0,
-  showReadTokens: false,
-  showWorkTokens: false,
-  observationTypes: new Set(),
-  observationConcepts: new Set(),
-  fullObservationField: "narrative",
-  showLastSummary: false,
-  showLastMessage: false,
-  mainAgentOnly: false,
-};
 
 const HEADER = [
   `Historical notes, model-authored and possibly stale: what earlier sessions of this campaign left in ${MEMORY_FILE},`,
@@ -53,51 +28,41 @@ function within(text: string, chars: number): string {
   return `${head}\n[${String(text.length - head.length - tail.length)} characters cut here]\n${tail}`;
 }
 
-function keptOf(root: string, session: string): string {
-  const folder = join(root, session);
+function noteAt(path: string): string {
   try {
-    if (lstatSync(folder, { throwIfNoEntry: false })?.isDirectory() !== true) return "";
-    return readdirSync(folder)
-      .filter((name) => name.endsWith(".md") && lstatSync(join(folder, name)).isFile())
-      .toSorted(compareCodeUnits)
-      .map((name) => readFileSync(join(folder, name), "utf8").trim())
-      .filter((text) => text !== "")
-      .join("\n\n");
+    return lstatSync(path, { throwIfNoEntry: false })?.isFile() === true
+      ? readFileSync(path, "utf8").trim()
+      : "";
   } catch {
     return "";
   }
 }
 
 export function builderMemoryBlock(root: string, sessions: readonly string[]): string {
-  const items = sessions.toReversed().flatMap((session): Kept[] => {
-    const text = keptOf(root, session);
-    return text === "" ? [] : [{ session, text }];
-  });
-  if (items.length === 0) return "";
-  const fitted = fitContextToBudget(items, TIMELINE, render);
-  const newest = items.at(0);
-  if (!fitted.overBudget || newest === undefined) return fitted.text;
-  const over = fitted.text.length - CONTEXT_OUTPUT_LIMIT;
-  return render([
-    {
-      session: newest.session,
-      text: within(newest.text, newest.text.length - over),
-    },
-  ]);
+  const shown: Kept[] = [];
+  for (const session of sessions.toReversed()) {
+    const folder = join(root, session);
+    if (lstatSync(folder, { throwIfNoEntry: false })?.isDirectory() !== true) continue;
+    const text = noteAt(join(folder, MEMORY_FILE));
+    if (text === "") continue;
+    if (render([...shown, { session, text }]).length > CONTEXT_OUTPUT_LIMIT) {
+      if (shown.length === 0) shown.push({ session, text: within(text, roomFor(session)) });
+      break;
+    }
+    shown.push({ session, text });
+  }
+  return shown.length === 0 ? "" : render(shown);
 }
+
+const roomFor = (session: string) => CONTEXT_OUTPUT_LIMIT - render([{ session, text: "" }]).length;
 
 export function keepMemory(home: string, root: string, session: string): void {
   try {
     if (existsSync(join(root, session))) return;
-    const text = HOME_NOTES.map((name) => join(home, name))
-      .filter((notes) => lstatSync(notes, { throwIfNoEntry: false })?.isFile() === true)
-      .map((notes) => readFileSync(notes, "utf8").trim())
-      .filter((part) => part !== "")
-      .join("\n\n");
+    const text = noteAt(join(home, MEMORY_FILE));
     if (text === "") return;
     mkdirSync(join(root, session), { recursive: true });
-    const room = CONTEXT_OUTPUT_LIMIT - render([{ session, text: "" }]).length;
-    writeFileSync(join(root, session, MEMORY_FILE), `${within(text, room)}\n`);
+    writeFileSync(join(root, session, MEMORY_FILE), `${within(text, roomFor(session))}\n`);
   } catch {
     // Ignore note persistence failures so a round is never aborted over optional memory.
   }

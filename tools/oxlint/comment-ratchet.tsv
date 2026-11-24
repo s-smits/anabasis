@@ -142,7 +142,6 @@ test/answer.test.ts	3
 test/atif.test.ts	1
 test/backends.test.ts	6
 test/builder-kept.test.ts	4
-test/builder-led.test.ts	221
 test/builder-memory.test.ts	9
 test/builder.test.ts	175
 test/campaign-kill.test.ts	33
@@ -171,7 +170,6 @@ test/fixtures/fake-claude-cli.ts	13
 test/gate.test.ts	35
 test/gpt-sessions.test.ts	5
 test/handover.test.ts	53
-test/harness-builder.test.ts	172
 test/harness-open.test.ts	21
 test/harness-versions-delta.test.ts	5
 test/harness-versions.test.ts	6

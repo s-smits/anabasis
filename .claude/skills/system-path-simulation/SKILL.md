@@ -13,7 +13,7 @@ Shape behavioural changes into **separable, ablatable, simulatable slices**, and
 | **2. Rehearse** | Real commands, wall, verifier & comparison on a seed (`faux/script`, no Referee) | min, \$0 | Command joins & sample-size power | Real model behaviour | [rehearsal](cases/rehearsal.md) |
 | **3. Live seat** | Real commands with live model seat(s) on a seed (`scripts/live-seat.ts`) | USD (operator approval) | Real model action from recorded state | Rate from 1 draw (rule 6) | [live-seat](cases/live-seat.md), [optimize](cases/optimize.md) |
 
-Use [before-after](cases/before-after.md) for cross-commit/pre-landing verification at any tier.
+Use [before-after](cases/before-after.md) for cross-commit/pre-landing verification at any tier; use [rubric-and-verifier](cases/rubric-and-verifier.md) for rubric items and the pairwise judge.
 
 ## Rules
 

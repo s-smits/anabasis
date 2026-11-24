@@ -3,7 +3,7 @@
  * a test over the scores, and a guard that may refuse a step. Any of them may be free code in a file
  * (`--mechanism`); most are written as knobs (`--try bill=0.05,when=tied`).
  */
-import { flipP, GAP_FLOOR, WEIGHTS, wholePoints } from "#src/kernel/compare.ts";
+import { flipP, GAP_FLOOR, rawFlipP, WEIGHTS, wholePoints } from "#src/kernel/compare.ts";
 import type { Solve, Task } from "./record.ts";
 
 export interface Mechanism {
@@ -60,7 +60,7 @@ export const TODAY: Knobs = {
   when: "always",
   side: "both",
   lead: "any",
-  test: "flip",
+  test: "rank",
   retained: "in",
   unit: "task",
 };
@@ -173,19 +173,6 @@ function answersLead(tasks: readonly Task[], knobs: Knobs): boolean {
   return signs.reduce<number>((all, one) => all + one, 0) > 0;
 }
 
-/** The signed-rank statistic through `flipP`: ranks doubled, so that a tie's mean is a whole number. */
-function rankP(scores: readonly number[]): number {
-  const untied = scores.filter((one) => one !== 0);
-  const sizes = untied.map(Math.abs).toSorted((one, other) => one - other);
-  return flipP(
-    untied.map((one) => {
-      const first = sizes.indexOf(Math.abs(one));
-      const last = sizes.lastIndexOf(Math.abs(one));
-      return Math.sign(one) * (first + last + 2);
-    }),
-  );
-}
-
 /** The new side's use of `resource` over the reference's, on tasks both answered in every solve and
  *  every solve of which holds it; null where none does. */
 export function ratioOf(tasks: readonly Task[], resource: Resource): number | null {
@@ -228,7 +215,7 @@ function unitsOf(scores: readonly number[], tasks: readonly Task[], unit: Knobs[
 export function knobbed(knobs: Knobs, name: string): Mechanism {
   const pOf = (scores: readonly number[]) => {
     if (knobs.test === "sign") return flipP(scores.map(Math.sign));
-    return knobs.test === "rank" ? rankP(scores) : flipP(scores);
+    return knobs.test === "flip" ? rawFlipP(scores) : flipP(scores);
   };
   return {
     name,

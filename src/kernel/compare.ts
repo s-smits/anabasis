@@ -85,6 +85,16 @@ const sumOf = (values: readonly number[]) => values.reduce((sum, one) => sum + o
 const chanceOfAtLeast = (chances: Float64Array, from: number) =>
   chances.subarray(Math.max(0, from)).reduce((sum, one) => sum + one, 0);
 
+/** Signed mid-ranks (doubled to integers) over untied task scores, dropping zeros. */
+export function signedRanks(differences: readonly number[]): number[] {
+  const untied = differences.filter((one) => one !== 0);
+  const sizes = untied.map(Math.abs).toSorted((one, other) => one - other);
+  return untied.map((one) => {
+    const size = Math.abs(one);
+    return Math.sign(one) * (sizes.indexOf(size) + sizes.lastIndexOf(size) + 2);
+  });
+}
+
 function scaledMargins(differences: readonly number[]) {
   const sizes = differences.flatMap((one) => (one === 0 ? [] : [Math.abs(one)]));
   const unit = sizes.every(Number.isInteger) ? Math.max(1, sizes.reduce(gcd, 0)) : 1;
@@ -101,12 +111,17 @@ function stepThreshold(sizes: readonly number[], level: number): number {
   return from;
 }
 
-/** Exact one-sided paired sign-flip p-value over untied task scores (1 when no task is untied). */
-export function flipP(differences: readonly number[]): number {
+/** Exact one-sided raw-magnitude paired sign-flip p-value, kept for off-policy replay (`test=flip`). */
+export function rawFlipP(differences: readonly number[]): number {
   const { scaled, unit } = scaledMargins(differences);
   // Scores sum to 2 * (winning margins) - (all margins).
   const from = Math.ceil((sumOf(differences) + sumOf(scaled) * unit) / (2 * unit));
   return Math.min(1, chanceOfAtLeast(plusTotalChances(scaled, 0.5), from));
+}
+
+/** Exact one-sided Wilcoxon signed-rank p-value over untied task scores (1 when no task is untied). */
+export function flipP(differences: readonly number[]): number {
+  return rawFlipP(signedRanks(differences));
 }
 
 export function readsStep(scores: readonly number[], level: number): boolean {
@@ -133,13 +148,13 @@ export function scoresIn(test: unknown): number[] {
 
 /** Chance of reading a step at `level` given per-task win probability `share` (0.5 gives nominal false rate). */
 export function power(differences: readonly number[], share: number, level: number): number {
-  const { scaled } = scaledMargins(differences);
+  const { scaled } = scaledMargins(signedRanks(differences));
   return Math.min(1, chanceOfAtLeast(plusTotalChances(scaled, share), stepThreshold(scaled, level)));
 }
 
 /** Smallest win rate (0.01 grid) achieving `DETECTION_CHANCE` power at `level`, or null if undetectable. */
 export function detectable(differences: readonly number[], level: number): number | null {
-  const { scaled } = scaledMargins(differences);
+  const { scaled } = scaledMargins(signedRanks(differences));
   const threshold = stepThreshold(scaled, level);
   let [lo, hi] = [50, 101];
   while (lo < hi) {

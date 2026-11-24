@@ -5,7 +5,7 @@
  * sessions are sequential wakes of one Examiner conversation, whether they form independent draws
  * is the investigative question itself. `starter-reads.ts` reports each session slice's tally directly.
  */
-import { readsStep } from "#src/kernel/compare.ts";
+import { readsStep, signedRanks } from "#src/kernel/compare.ts";
 
 /** Exact count of sign assignments (`confirm` out of `draws = 2^free`) that register a step at `level`. */
 export interface StepCount {
@@ -48,15 +48,22 @@ function signsFor(sizes: readonly number[], goal: number): number[] {
 
 /**
  * Counts how many sign assignments to the untied `free` margins register a step at `level` when
- * combined with `fixed` under `readsStep`. Because `flipP` depends on `free` signs solely through
- * their positive sum and is monotone in that sum, binary search over reachable positive sums
- * locates the exact threshold.
+ * combined with `fixed` under `readsStep`. Because flipping signs of `free` leaves every task's
+ * unsigned rank in `[...fixed, ...free]` invariant, `readsStep` depends on `free` signs solely
+ * through their positive rank sum and is monotone in that sum.
  */
 export function stepCount(fixed: readonly number[], free: readonly number[], level: number): StepCount {
+  const fixedCount = fixed.filter((one) => one !== 0).length;
   const sizes = free.filter((one) => one !== 0).map(Math.abs);
-  const ways = waysTo(sizes);
+  const freeRanks = signedRanks([...fixed, ...sizes])
+    .slice(fixedCount)
+    .map(Math.abs);
+  const ways = waysTo(freeRanks);
   const totals = ways.flatMap((count, total) => (count > 0n ? [total] : []));
-  const steps = (total: number) => readsStep([...fixed, ...signsFor(sizes, total)], level);
+  const steps = (total: number) => {
+    const signed = signsFor(freeRanks, total).map((rank, at) => Math.sign(rank) * (sizes[at] ?? 0));
+    return readsStep([...fixed, ...signed], level);
+  };
   let [low, high] = [0, totals.length];
   while (low < high) {
     const middle = Math.floor((low + high) / 2);

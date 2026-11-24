@@ -10,9 +10,9 @@ Every candidate solve is paired with every reference solve on the same task, pro
 
 The score's sign classifies the task as a win, loss, or tie; validity dominates (3/4 valid vs 4/4 valid can win only if its valid answers outperform the reference by more than two thirds). Older reports with a 0.1 bill weight are decoded via `scoresIn` and rescored under current host constants on replay.
 
-## 2. Paired sign-flip test and reading (`flipP`, `readsStep`)
+## 2. Paired Wilcoxon signed-rank test and reading (`flipP`, `readsStep`)
 
-`flipP` runs an exact one-sided paired sign-flip permutation test over nonzero task scores (combining frontier and retained tasks into one test while reporting retained tasks separately, or `unmeasured` when empty). When every untied task is won, `p = 2^(-k)` for `k` untied tasks; margin magnitudes affect `p` only when wins and losses mix.
+`flipP` runs an exact one-sided Wilcoxon signed-rank permutation test over nonzero task scores (combining frontier and retained tasks into one test while reporting retained tasks separately, or `unmeasured` when empty): nonzero margins are mapped to exact mid-ranks (`signedRanks`, doubled to integers so tied magnitudes remain exact) and evaluated via the exact sign-flip DP. When every untied task is won, `p = 2^(-k)` for `k` untied tasks; when wins and losses mix, validity margins still rank above pure objective margins while heavy-tailed objective outliers cannot erase a consistent majority of wins. Legacy raw-magnitude sign-flip remains available as `rawFlipP` for off-policy `promotion-tuner` replay (`test=flip`).
 
 A **step** (`readsStep`) registers when `p` is at or below the campaign's configured significance level. Each reading reports untied tasks, the win share detectable at 0.8 power (`detectable`), and the exact conditional false-positive rate (`falseRate`). At default level 0.02, at least 6 won tasks are needed to clear (`sweepOf`) and admission requires 8 frontier tasks (`comparisonFloor`; 4 and 6 at level 0.10; see `src/kernel/size.ts`).
 

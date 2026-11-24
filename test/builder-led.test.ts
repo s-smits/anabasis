@@ -662,7 +662,11 @@ describe.concurrent("promotion, starter reads, operator words, and Rule 3 wall",
     const compares = of(name, MOVED).filter(({ move }) => move === "compare");
     expect(compares.map(({ code }) => code)).toEqual(["led", "unread", "led"]);
     expect(compares[2]?.why).toBe("the Builder's own move in its campaign conversation");
-    expect(said(name, "compare")[0]).toContain("and the host has made it the campaign's reference");
+    const [promotedBy] = said(name, "compare");
+    expect(promotedBy).toContain("and the host has made it the campaign's reference");
+    expect(promotedBy?.split(", which reads ")).toHaveLength(2);
+    expect(promotedBy).toContain("1 comparison with a tally; the last:\n- Harness ");
+    expect(promotedBy).not.toContain("The comparison has no tally yet.");
     expect(said(name, "compare")[1]).toContain("The table's comparison of the starter ran first");
     expect(said(name, "compare")[2]).not.toContain("The table's comparison of the starter ran first");
     const events = logOf(name);

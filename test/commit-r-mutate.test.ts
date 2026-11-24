@@ -104,7 +104,7 @@ describe("the mutation oracle", () => {
     const lines = readFileSync(out, "utf8").split("\n").filter(Boolean);
     // SAFETY: every line is one the script appended, a mutant's line and its suites' verdicts.
     const rows = lines.map(
-      (line) => JSON.parse(line) as { label: string; killed: Record<string, boolean | null> },
+      (line) => JSON.parse(line) as { id: string; label: string; killed: Record<string, boolean | null> },
     );
     const verdicts = Object.fromEntries(rows.map(({ label, killed }) => [label, killed]));
     expect(verdicts).toStrictEqual({
@@ -113,6 +113,12 @@ describe("the mutation oracle", () => {
     });
     expect(runScript("report", out, "--old", "old").stdout.toString().trim()).toBe(
       "file  ON  O-  -N  --  unread\nc.ts  0  0  0  1  1",
+    );
+    expect(runScript("report", out, "--old", "old", "--survivors").stdout.toString().trim()).toBe(
+      rows
+        .filter(({ label }) => label === "1 -> 2")
+        .map(({ id }) => id)
+        .join("\n"),
     );
   }, 60_000);
 

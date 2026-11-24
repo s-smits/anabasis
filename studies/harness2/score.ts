@@ -43,6 +43,7 @@ import {
   criteriaFromRubrics,
   criteriaOfDetails,
   formatCriteria,
+  JUDGE_DETAILS_FILE,
   solverTierOf,
 } from "#tools/runs/bench-store.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
@@ -56,7 +57,6 @@ import { cutOf, envOf, jobBench, MAX_CHARS_PER_FILE, ownInstaller, pilotClaude, 
 
 /** The judge as the pilot ran it (`h2l1.sh`, `judge-arm.sh`, `_run_judge`). */
 const JUDGE = { model: "anthropic/claude-opus-5-5", effort: "medium", timeoutS: 1800 } as const;
-const DETAILS = "claude-opus-5-5_judge.json";
 /**
  * judge.py run whole under a wider cut: loaded as a module, as `EXTRACT_DRIVER` loads it, with its
  * `MAX_CHARS_PER_FILE` set before `main()` reads its flags from `sys.argv` through argparse;
@@ -534,7 +534,7 @@ async function judge(
   const { apiBase, shimLog, cap } = how;
   const rubrics = how.rubrics ?? join(jb, "dataset", "main", place.task, "RUBRICS.json");
   const output = join(place.store, place.task, OUTPUT, place.label);
-  const details = join(place.store, place.task, "eval_result", `eval_${place.label}`, DETAILS);
+  const details = join(place.store, place.task, "eval_result", `eval_${place.label}`, JUDGE_DETAILS_FILE);
   const judgePy = join(jb, "eval", "judge.py");
   let usd: number | null = null;
   if (!existsSync(details) || statSync(details).size === 0) {

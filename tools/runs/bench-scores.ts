@@ -31,7 +31,7 @@ export function completedBenchPairs(store: string): { readonly label: string; re
       }
       const own = new Set(ownFiles);
       const runtime = runtimeOfFile(join(root, label, ownFiles[0] ?? ""));
-      if (!sameRuntime(root, label, ownFiles, runtime)) return [];
+      if (runtime === null || !sameRuntime(root, label, ownFiles, runtime)) return [];
       const baseline = baselineCandidates(byArm, label).find((candidate) => {
         const baseFiles = byArm.get(candidate) ?? [];
         const base = new Set(baseFiles);

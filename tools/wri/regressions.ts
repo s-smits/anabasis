@@ -95,6 +95,7 @@ interface RegressionReport {
   readonly delta: number;
   readonly builtCriteria: string;
   readonly baselineCriteria: string;
+  readonly droppedBaselineTasks: readonly string[];
   readonly wins: number;
   readonly losses: number;
   readonly ties: number;
@@ -323,7 +324,9 @@ function buildRuntimeCohort(
         ? [`partial ${String(pair.sharedTasks.length)}/${String(fullTaskCount)}`]
         : []),
       ...(pair.built.some((rec) => rec.peekedCount > 0) ? ["PEEKED"] : []),
-      ...(pair.baseline.some((rec) => !rec.delivered) ? ["undelivered-baseline"] : []),
+      ...(pair.droppedBaselineTasks.length > 0
+        ? [`${String(pair.droppedBaselineTasks.length)} undelivered-baseline dropped`]
+        : []),
     ];
     return {
       arm: pair.arm,
@@ -405,6 +408,7 @@ function emptyReport(
     delta: 0,
     builtCriteria: UNKNOWN_CRITERIA,
     baselineCriteria: UNKNOWN_CRITERIA,
+    droppedBaselineTasks: [],
     wins: 0,
     losses: 0,
     ties: 0,
@@ -484,6 +488,7 @@ export function analyzeRegressions(
     delta: builtTotal - baselineTotal,
     builtCriteria: formatCriteria(pair.built),
     baselineCriteria: formatCriteria(pair.baseline),
+    droppedBaselineTasks: pair.droppedBaselineTasks,
     ...tallyPaired(pair.built, pair.baseline),
     builtSolveUsd: sumBy(pair.built, (rec) => rec.solveUsd),
     builtJudgeUsd: sumBy(pair.built, (rec) => rec.judgeUsd),
@@ -603,11 +608,15 @@ export function formatRegressionReport(report: RegressionReport): string {
     report.builtCriteria !== UNKNOWN_CRITERIA || report.baselineCriteria !== UNKNOWN_CRITERIA
       ? ` | criteria ${report.builtCriteria} vs ${report.baselineCriteria}`
       : "";
+  const droppedSuffix =
+    report.droppedBaselineTasks.length > 0
+      ? ` | dropped ${String(report.droppedBaselineTasks.length)} undelivered baseline task(s)`
+      : "";
   return [
     ...header,
     `benchmark: ${readiness.bench?.name ?? "local"} | pair: ${pair?.arm ?? ""} (${pair?.builtTier ?? "builtSolver"}) vs ${pair?.baselineArm ?? ""} (${baseLabel}, ${pair?.runtime ?? ""}, harness ${pair?.harness.slice(0, 8) ?? ""})`,
     `internal starter read: ${report.internalStarterSummary}`,
-    `score: ${String(report.builtTotal)}/${String(report.maxTotal)} (${pct(report.builtTotal)}%) vs ${String(report.baselineTotal)}/${String(report.maxTotal)} (${pct(report.baselineTotal)}%) | delta ${signed(report.delta)} | W-L-T ${String(report.wins)}-${String(report.losses)}-${String(report.ties)}${criteriaSuffix}`,
+    `score: ${String(report.builtTotal)}/${String(report.maxTotal)} (${pct(report.builtTotal)}%) vs ${String(report.baselineTotal)}/${String(report.maxTotal)} (${pct(report.baselineTotal)}%) | delta ${signed(report.delta)} | W-L-T ${String(report.wins)}-${String(report.losses)}-${String(report.ties)}${criteriaSuffix}${droppedSuffix}`,
     `spend: built $${(report.builtSolveUsd + report.builtJudgeUsd).toFixed(2)} (solve $${report.builtSolveUsd.toFixed(2)}, judge $${report.builtJudgeUsd.toFixed(2)}) | ${baseLabel} $${(report.baselineSolveUsd + report.baselineJudgeUsd).toFixed(2)} (solve $${report.baselineSolveUsd.toFixed(2)}, judge $${report.baselineJudgeUsd.toFixed(2)})`,
     `harness guide: ${report.guideBytes === null ? "unavailable locally" : `${String(report.guideBytes)} B`}`,
     "",

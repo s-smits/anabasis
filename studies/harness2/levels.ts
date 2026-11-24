@@ -31,7 +31,7 @@ import { programsOf } from "#src/harness/programs.ts";
 import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import { testOf } from "#src/kernel/compare.ts";
 import { sha256 } from "#src/meta/digest.ts";
-import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
@@ -210,7 +210,7 @@ export function armOf(dataset: string, arm: string): Map<string, Graded> {
   const graded = new Map<string, Graded>();
   const tree = join(dirname(dataset), "trees", arm);
   const programs =
-    existsSync(tree) && readdirSync(tree).length > 0
+    statSync(tree, { throwIfNoEntry: false })?.isDirectory() === true && readdirSync(tree).length > 0
       ? new Set(
           TOOLCHAIN_PATHS.flatMap((rel) => programsOf(join(tree, rel)))
             .filter(({ name }) => !/^(?:python|pip)[\d.]*$/u.test(name))

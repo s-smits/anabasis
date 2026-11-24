@@ -262,7 +262,10 @@ export async function judgePair(reader: Reader, given: PairCase): Promise<void> 
       const [p1, p2] = own.map(({ sign }) => sign ?? 0);
       if (p1 !== undefined && p2 !== undefined && p1 * p2 < 0) return [[one, "swap-disagreed"]];
       const kinds = own.flatMap(({ sign, kind }) => (sign === 0 && kind !== null ? [kind] : []));
-      return kinds.length === own.length && kinds[0] !== undefined ? [[one, kinds[0]]] : [];
+      const [kind] = kinds;
+      return kind !== undefined && kinds.length === own.length && new Set(kinds).size === 1
+        ? [[one, kind]]
+        : [];
     }),
   );
   append(given.log, PAIRED, {

@@ -113,6 +113,12 @@ describe("the pairwise judge", () => {
     const { pair } = await judged(split);
     expect(pair).toMatchObject({ judge: 3 / 4, holistic: 0, criteria: { cites: 1, plain: 0, holistic: 0 } });
     expect(pair?.ties).toEqual({ plain: "both-weak", holistic: "both-weak" });
+    const { pair: torn } = await judged((shown) => ({
+      better: "neither",
+      kind: answerA(shown).includes(STRONG) ? "both-strong" : "both-weak",
+      reason: "r",
+    }));
+    expect(torn?.ties).toEqual({});
   });
 
   it("shows hidden values to the brief alone, bills each pair, and leaves no session open", async () => {

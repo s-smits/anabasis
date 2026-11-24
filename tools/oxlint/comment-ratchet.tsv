@@ -46,7 +46,7 @@ path	count
 .claude/skills/stack-pr/scripts/republish.ts	11
 .claude/skills/stack-pr/scripts/stack.ts	1
 .claude/skills/system-audit/scripts/recent.ts	4
-.claude/skills/system-path-simulation/scripts/live-seat.ts	53
+.claude/skills/system-path-simulation/scripts/live-seat.ts	50
 .claude/skills/system-path-simulation/scripts/synthetic.ts	16
 .claude/skills/system-path-simulation/scripts/wall-probe.ts	11
 packages/ui/build.ts	1
@@ -159,12 +159,12 @@ test/condition.test.ts	1
 test/decide-explore.test.ts	49
 test/design-and-seats-script.test.ts	5
 test/doubled.test.ts	2
-test/draft.test.ts	32
+test/draft.test.ts	31
 test/examine-command.test.ts	2
 test/examiner-complexity-script.test.ts	5
 test/examiner-ladder.test.ts	3
 test/examiner-record.test.ts	32
-test/examiner-try.test.ts	20
+test/examiner-try.test.ts	9
 test/examiner.test.ts	79
 test/fixtures/fake-claude-cli.ts	13
 test/gate.test.ts	35
@@ -293,8 +293,8 @@ test/wri-walls.test.ts	17
 test/wri2p2-script.test.ts	11
 tools/c/accept.ts	9
 tools/d1b/draft.ts	12
-tools/d1b/examine.ts	15
-tools/d2/campaign-actions.ts	127
+tools/d1b/examine.ts	12
+tools/d2/campaign-actions.ts	125
 tools/d2/campaign-terms.ts	41
 tools/d2/campaign.ts	58
 tools/d2/checkpoint.ts	6

@@ -26,7 +26,7 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
   `bun run runs stop sim-<what>` lists any leftover root processes.
 - `read` reports elapsed minutes and billed dollars (`billedBetween`), sessions, drafts, task
   admissions by outcome category, holds, turn counts of the reference's valid answers to
-  `try_reference` probes (`gateAnswers`), tool call counts, and (with `--mention`) calls matching a
+  pre-v0.14 `try_reference` probes (`gateAnswers`; empty on current trees), tool call counts, and (with `--mention`) calls matching a
   given string without quoting any task or answer content. On a seed log it starts at the seed cut;
   `--log` accepts an absolute path and requires `--from <event>` outside a seed. Under the current
   admission schema (`TASK_ADMISSION`, `src/examiner/write.ts`), task admissions record only whether
@@ -66,8 +66,8 @@ A backend can be probed outside any campaign directly through its provider (`cla
 - **Use the production prompt verbatim.** Nothing may inform the model that it is in a simulation
   or hint at the desired outcome. When testing a prompt edit, that edit is the sole experimental
   variable and the seed holds every other condition constant.
-- **Budget Examiner seats in drafts.** An Examiner's spend scales with its turns plus the
-  `try_reference` probe solves it requests, bounded by `--proposals`.
+- **Budget Examiner seats in drafts.** An Examiner's spend scales with its turns, bounded by
+  `--proposals`.
 
 Report a single live seat as a verified execution path rather than a statistical measurement of
 model performance. Nothing produced by a seed enters a production campaign.

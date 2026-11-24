@@ -28,7 +28,7 @@ export const FAIR =
 export const UNHELD =
   "A limit, state or duty the field does not hold measures your wording rather than the solver, so add none.";
 
-export function systemPrompt(tries: "given" | "none", objective?: ObjectiveRule): string {
+export function systemPrompt(objective?: ObjectiveRule): string {
   const floor = `${String(GAP_FLOOR * 100)}%`;
   return [
     `You are the Examiner. You write tasks of one domain, on which a solving model is measured. The public rules, answer format and checks are fixed: you write no rule and no check. ${TASK}`,
@@ -36,11 +36,6 @@ export function systemPrompt(tries: "given" | "none", objective?: ObjectiveRule)
     `## How a task is scored\n\nEach comparison solves every task afresh under both harnesses as many times as the opening states, within the budget. An answer passing every check within the budget is valid; a check refusal counts as a fail only once the Referee rules it earned. A check defect or unclear ruling sets the task aside for both harnesses, a solve whose check cannot decide is solved again, and exceeding the campaign's check-defect limit ends the campaign. Tasks are scored over all pairings of each harness's solves: validity first (valid beats invalid), then the objective between two valid answers where one is declared. Billing decides nothing.\n\nA task leaves the reference harness room in three ways:\n- on validity: some of its solves are valid and some fail (missing a public rule or hitting the budget).\n- on an answer of yours: none of its solves is valid, while a valid answer is on record (such as yours passing try_answer on the same instance).\n- on the objective (where declared): an answer on record, its own or yours, beats one of its own by at least ${floor} ${gapBasis(objective)}, even if every solve is valid.\n\nA task it answers every time with no answer on record better by ${floor} leaves no room. Without an objective, valid answers always tie, so only the first two ways leave room.`,
     `## What the exam needs\n\nTasks within the domain's scope that leave the reference room and have a valid answer, demanding and fair by practitioner standards. You are not told how many tasks are wanted.\n- A task with no valid answer measures nothing, since every harness fails it alike. Passing try_answer proves an instance has one, and building forward from a valid answer guarantees one even when it is harder than you could solve.\n- A harness that fits one family wins or loses its tasks together, so a comparison dominated by one family says little about the rest of the scope. The record reports how many tasks the largest family held in each comparison.\n- ${UNHELD}\n- ${FAIR}`,
     `## How hard\n\n${LADDER}\n\nA grade is what the field demands of a task, read from its public input and cited rules. A fault in one harness's programs is no grade: the starter (which holds no domain programs) is also compared on tasks written after a promotion. A task the reference answers in every solve within a few turns, with no better answer on record, is grade 2 or below for this solver, whatever grade it was given. Repeating a grade the reference already solves every time, or writing a task whose objective the field's standard method already reaches, leaves no room. Occasional validity flips or objective spread between the reference's own solves are chance, not a better method (the record's last-comparison paragraph reports how often its own solves differed). The same holds for an instance cherry-picked from many draws because a method happened to land far from the truth: that error belongs to the draw, and a harness gains on it by sharing the offset, not by a better method. Write above the highest grade the reference answers in every solve.`,
-    ...(tries === "none"
-      ? []
-      : [
-          "## Trying the reference\n\ntry_reference runs fresh solves of an instance under the reference harness within the budget. For each solve it reports validity and turns, or what ended it (check refusal, limit, no answer or malformed flag), never its objective value, answer, trace or refusing check. Solves bill the campaign while your session clock pauses. Comparisons solve every task afresh and ignore your tries, and the gate ignores them too. One solve is weak evidence: a solve that failed may pass next time.",
-        ]),
     "## The session\n\nPropose in rounds: put drafts to the gate, read its response, and propose more. Call finish when you have no more tasks worth proposing; the session also ends at its limits. After a finish or once the host has what it needs, the host may wake this conversation for more tasks and report what comparisons read since.",
   ].join("\n\n");
 }
@@ -50,7 +45,7 @@ export function budgetLine({ modelTurns, minutes, solves }: SolveBudget): string
 }
 
 const limitsLine = (told: Told, lead: string) =>
-  `${lead} ${plural(Math.round(told.wallSeconds / 60), "minute")}, ${plural(told.turns, "turn")} and ${plural(told.puts, "draft")} to put to the gate${told.tries === 0 ? "" : `, and ${plural(told.tries, "solve")} of the reference harness to ask for`}.`;
+  `${lead} ${plural(Math.round(told.wallSeconds / 60), "minute")}, ${plural(told.turns, "turn")} and ${plural(told.puts, "draft")} to put to the gate.`;
 
 const grouped = (groups: ReturnType<typeof heard>["groups"]) =>
   groups
@@ -65,7 +60,6 @@ export function firstMessage(
     readonly wallSeconds: number;
     readonly turns: number;
     readonly puts: number;
-    readonly tries: number;
   },
   campaign: { readonly brief: string | null; readonly budget: SolveBudget | null },
 ): string {

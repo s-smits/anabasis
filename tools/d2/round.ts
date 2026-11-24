@@ -245,7 +245,7 @@ export function wantedNamed(
 
 /** Who an open campaign's test-side solves are by, as a condition names the model, and what they
  *  are held to: what a log's last solves are set against (`firstRecord`). */
-export function solvingAs(campaign: Campaign, { limits }: Pick<AskedSetting, "named">["named"]) {
+function solvingAs(campaign: Campaign, { limits }: Pick<AskedSetting, "named">["named"]) {
   const { model, effort } = campaign.test;
   return { solver: { model: priceKey(model), effort }, limits };
 }

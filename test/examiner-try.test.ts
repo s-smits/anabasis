@@ -1,18 +1,8 @@
-// `try_reference`: a writing session's billed solves of an instance by the reference harness. What
-// the author is told of each solve, what it is never told (an answer, a trace, a check), when the
-// host refuses the call, and that the solves stay out of every comparison and practice fold while
-// the campaign's budget pays for them. Then the cap on an ask's solves, the line on room above the
-// author's checked answer, and a value given by `from_file` from the session's home.
+// A value given by `from_file` from a writing session's home to `try_answer`: what it reads, and the
+// paths and texts it refuses.
 import { afterAll, describe, expect, it } from "bun:test";
 import { validateToolArguments } from "@earendil-works/pi-ai/utils/validation";
-import { TRIES, writing } from "../src/examiner/write.ts";
-import { budgetLeft } from "../src/campaign/opening.ts";
-import { contentOf } from "../src/kernel/history.ts";
-import { append, read } from "../src/kernel/log.ts";
-import { poolOf } from "../src/kernel/reports.ts";
-import type { Ending } from "../src/kernel/solve.ts";
-import { countedSolves, practiceRan, solvesIn } from "../src/kernel/solves.ts";
-import type { Task } from "../src/kernel/verify.ts";
+import { writing } from "../src/examiner/write.ts";
 import {
   mkdirSync,
   mkdtempSync,
@@ -24,218 +14,17 @@ import {
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { instance, invoke, seat, sweep, toolOf } from "./helpers/examiner-seat.ts";
-import { present } from "./helpers/matchers.ts";
+import { instance, seat, sweep, toolOf } from "./helpers/examiner-seat.ts";
 
-/** A solver-side secret no Examiner may be shown: the probe solver's answer and trace hold it. */
-const CANARY = "probe-canary-5d2e";
-const TRY = "try_reference";
-const PASS: Ending = { outcome: "pass" };
-const REJECTED: Ending = { outcome: "fail", kind: "rejected" };
-const BILL = 1;
 // An answer in the fixture's format.
 const ANSWER = { answer: "49", unit: "N" };
 
 afterAll(sweep);
 
-/** A probe that solves as the launcher logs a solve, under the Examiner session x-1: each call takes
- *  the next of `endings`, a pass measuring 2.5 in 4 turns, its answer and trace holding the canary,
- *  each solve billed `BILL`, and the tasks it was handed kept in `handed`. */
-function probe(log: string, tries: number, endings: readonly Ending[], objective = 2.5) {
-  const handed: Task[] = [];
-  const solve = async (task: Task) => {
-    const ending = endings[handed.length] ?? PASS;
-    handed.push(task);
-    const id = `x-1-probe-${String(handed.length)}`;
-    append(log, "solve.started", { solve: id, task: task.taskId, comparison: "x-1" });
-    append(log, "solve.call", { solve: id, turn: 1, tool: "bash", isError: false, text: CANARY });
-    if (ending.outcome === "pass") {
-      append(log, "verdict", { solve: id, task: task.taskId, kind: "pass", objective, answer: CANARY });
-    } else if (ending.outcome === "fail" && ending.kind === "rejected") {
-      append(log, "verdict", {
-        solve: id,
-        task: task.taskId,
-        kind: "fail",
-        blocking: ["check-product"],
-        answer: CANARY,
-      });
-    }
-    append(log, "solve.finished", { solve: id, ending, turns: 4, billed: BILL });
-    return { solve: id, ending };
-  };
-  return { handed, probe: { tries, solve } };
-}
-
-/** A writing session x-1 over a campaign whose budget is `dollars`, at a reserve of a dollar. */
-function seated(dollars: number, tries: number, endings: readonly Ending[]) {
-  const s = seat("write", []);
-  append(s.log, "campaign.opened", { budget: { dollars, reserve: 1 } });
-  append(s.log, "exam.started", { session: "x-1" });
-  const made = probe(s.log, tries, endings);
-  return { ...s, ...made, mode: writing({ ...s.request, probe: made.probe }, undefined) };
-}
-
-const said = async (made: ReturnType<typeof seated>, args: JsonObject) => {
-  const result = await invoke(toolOf(made.mode, TRY), "try", { solves: 2, ...args });
-  const [part] = result.output ?? [];
-  return part?.type === "text" ? part.text : "";
-};
 const spelled = (base: number) => {
   const { family, public_input, hidden } = instance(base);
   return { family, public_input, hidden };
 };
-
-describe("trying the reference at writing", () => {
-  it("tells of each solve its validity and turns or what ended it, omits objective values, counts no solve that could not run, and stops at the tries", async () => {
-    const made = seated(100, 4, [
-      PASS,
-      REJECTED,
-      { outcome: "non-result", kind: "provider", reason: "overloaded" },
-      { outcome: "fail", kind: "turns-ended" },
-      { outcome: "fail", kind: "wall-ended" },
-    ]);
-    await invoke(toolOf(made.mode), "put", { tasks: [instance(7)] });
-    const before = poolOf(read(made.log));
-    const first = await said(made, { task: spelled(7) });
-    expect(first).toStartWith(
-      "Solve 1: valid in 4 turns.\nSolve 2: not valid: the checks refused its answer.\n",
-    );
-    expect(first).not.toContain("2.5");
-    expect(first.split("\n")).toHaveLength(3);
-    expect(first).toContain("2 of 4");
-    const second = await said(made, { task: spelled(8) });
-    expect(second).toContain("Solve 1: could not run: provider.");
-    expect(second).toContain("Solve 2: not valid: ended at its turns limit.");
-    expect(second).toContain("3 of 4");
-    // One try is left, so a call for two runs one.
-    const third = await said(made, { task: spelled(8) });
-    expect(third).toStartWith("Solve 1: not valid: ended at its deadline.\n");
-    expect(third.split("\n")).toHaveLength(2);
-    expect(third).toContain("4 of 4");
-    await expect(said(made, { task: spelled(8) })).rejects.toThrow("no try");
-    for (const text of [first, second, third]) {
-      expect(text).not.toContain(CANARY);
-      expect(text).not.toContain("check-product");
-    }
-    // A held task's instance runs under that task's id, and one no task holds under the id its
-    // content names.
-    const unheld = `try-${contentOf(present(made.handed[2], "the third solve's task")).slice(0, 12)}`;
-    expect(made.handed.map(({ taskId }) => taskId)).toEqual(["x-1-001", "x-1-001", unheld, unheld, unheld]);
-    // The solves are the session's: no comparison or practice fold counts them, no task's draw
-    // moves, and the budget pays for each.
-    const events = read(made.log);
-    expect(solvesIn(events).map(({ start }) => start.comparison)).toEqual(
-      Array.from({ length: 5 }, () => "x-1"),
-    );
-    expect(countedSolves(events)).toEqual([]);
-    expect(practiceRan(events)).toEqual([]);
-    expect(poolOf(events)).toEqual(before);
-    expect(budgetLeft(events)?.dollars).toBe(100 - 5 * BILL);
-  });
-
-  it("gives a later ask without a probe no try, rather than the first ask's probe", async () => {
-    const made = seated(100, 4, [PASS, PASS]);
-    await invoke(toolOf(made.mode), "put", { tasks: [instance(7)] });
-    made.mode.ask?.({ ...made.request, id: "x-2", probe: null });
-    await expect(said(made, { task: spelled(7) })).rejects.toThrow("no try");
-    expect(made.handed).toEqual([]);
-  });
-
-  it("refuses a call the campaign's reserve does not cover or whose reference it never checked, and solves nothing for it", async () => {
-    const made = seated(1.5, 4, []);
-    await expect(said(made, { task: spelled(7) })).rejects.toThrow("no reserve");
-    await expect(said(made, { task: { reference: "missing" } })).rejects.toThrow(
-      "Unknown instance reference",
-    );
-    expect(made.handed).toEqual([]);
-    expect(await said(made, { task: spelled(7), solves: 1 })).toContain("Solve 1: valid in 4 turns");
-  });
-
-  it("runs the reference's solves while the session's clock stands still, and a proposal outside it", async () => {
-    const made = seated(100, 2, []);
-    let paused = false;
-    let stood = 0;
-    const seen: boolean[] = [];
-    const within = async <T>(action: () => Promise<T>): Promise<T> => {
-      paused = true;
-      stood += 1;
-      try {
-        return await action();
-      } finally {
-        paused = false;
-      }
-    };
-    const solve = async (task: Task) => {
-      seen.push(paused);
-      return await made.probe.solve(task);
-    };
-    const mode = writing({ ...made.request, probe: { tries: 2, solve } }, undefined, { within });
-    await invoke(toolOf(mode, TRY), "try", { solves: 2, task: spelled(7) });
-    const tried = stood;
-    await invoke(toolOf(mode), "put", { tasks: [instance(7)] });
-    expect(seen).toEqual([true, true]);
-    expect(tried).toBeGreaterThan(0);
-    expect(stood).toBe(tried);
-    expect(paused).toBe(false);
-  });
-
-  it("is given, described in the system prompt and counted in the limits only where the host gives a probe", () => {
-    const made = seated(100, 4, []);
-    expect(made.mode.tools.map(({ name }) => name)).toContain(TRY);
-    expect(made.mode.system).toContain("## Trying the reference");
-    expect(made.mode.opening).toContain("4 solves of the reference harness");
-    expect(made.mode.started).toMatchObject({ limits: { tries: 4 } });
-    const bare = writing({ ...made.request, id: "x-2" }, undefined);
-    expect(bare.tools.map(({ name }) => name)).not.toContain(TRY);
-    expect(bare.system).not.toContain(TRY);
-    expect(bare.opening).not.toContain("of the reference harness to ask for");
-    expect(bare.started).toMatchObject({ limits: { tries: 0 } });
-  });
-
-  it("gives an ask at most fourteen solves of the reference, whatever the probe allows", async () => {
-    const made = seated(100, 36, []);
-    expect(made.mode.opening).toContain(`${String(TRIES)} solves of the reference harness`);
-    expect(made.mode.started).toMatchObject({ limits: { tries: TRIES } });
-    for (let call = 1; call <= TRIES / 2; call += 1) {
-      expect(await said(made, { task: spelled(7) })).toContain(`${String(2 * call)} of ${String(TRIES)}`);
-    }
-    await expect(said(made, { task: spelled(7) })).rejects.toThrow("no try");
-    expect(made.handed).toHaveLength(TRIES);
-  });
-
-  it("leaves try_reference replies byte-identical across perturbed reference and author objective values", async () => {
-    const told = async (author: number, referenceObjective: number) => {
-      const s = seat("write", []);
-      append(s.log, "campaign.opened", { budget: { dollars: 100, reserve: 1 } });
-      append(s.log, "exam.started", { session: "x-1" });
-      const made = probe(s.log, 4, [PASS, REJECTED], referenceObjective);
-      const mode = writing(
-        {
-          ...s.request,
-          contract: { ...s.request.contract, objective: { quantity: "cost", direction: "lower" } },
-          verify: async () => ({ kind: "pass", objective: author }),
-          probe: made.probe,
-        },
-        undefined,
-      );
-      await invoke(toolOf(mode, "try_answer"), "answer", { ...spelled(7), answer: ANSWER });
-      const reply = await invoke(toolOf(mode, TRY), "try", { solves: 2, task: spelled(7) });
-      const [part] = reply.output ?? [];
-      return part?.type === "text" ? part.text : "";
-    };
-    const baseline = await told(2, 2.5);
-    for (const [author, referenceObjective] of [
-      [2, 9999.1234],
-      [2.5, 2.5],
-      [3, 0.001],
-    ] as const) {
-      expect(await told(author, referenceObjective)).toBe(baseline);
-    }
-    expect(baseline).not.toContain("2.5");
-    expect(baseline).not.toContain("try_answer");
-    expect(baseline).not.toContain(CANARY);
-  });
-});
 
 describe("a value given from a file in the Examiner's home", () => {
   const home = realpathSync(mkdtempSync(join(tmpdir(), "ana-from-file-")));

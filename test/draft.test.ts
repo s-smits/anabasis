@@ -55,7 +55,7 @@ const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-draft-")));
 const STEM = `test-draft-${String(runtimeProcess.pid)}`;
 const campaigns: string[] = [];
 
-const { unmeasured: _reason, ...SILENT } = SOUND;
+const SILENT = SOUND;
 const withTools = (tools: readonly string[]): Draft => ({
   ...SOUND,
   checks: SOUND.checks.map((check) => ({ ...check, tools })),
@@ -136,8 +136,6 @@ describe("draft shape and session gate", () => {
       [{ ...SOUND, evaluator: `export const checks = { "check-product": (req) => === ;` }, "did not compile"],
       [{ ...SOUND, evaluator: `export const other = {};` }, "does not export `checks`"],
       [{ ...MEASURED, evaluator: SOUND.evaluator }, "does not export `objective`"],
-      [SILENT, "objective"],
-      [{ ...MEASURED, unmeasured: "every answer is as good" }, "objective"],
       [withTools(["../sh"]), "invalid verifier tool"],
       [{ ...MEASURED, objectiveTools: ["a/b"] }, "invalid verifier tool"],
     ];
@@ -221,11 +219,8 @@ describe("draft shape and session gate", () => {
       expect(schemaSeat.of("draft.finished")).toMatchObject([{ stands: true, tries: 1 }]);
     }
 
-    // Half-specified objective is treated as no decision (spends a put, rejected by draftFaults).
-    for (const objective of [
-      { quantity: OBJECTIVE.quantity },
-      { quantity: OBJECTIVE.quantity, none: "nothing is left to prefer" },
-    ]) {
+    // A half-specified objective spends a put and is refused.
+    for (const objective of [{ quantity: OBJECTIVE.quantity }, { direction: OBJECTIVE.direction }]) {
       const halfSeat = seat("draft", [
         call("draft_exam", { ...draftArgs(SILENT), objective }),
         drafted(SOUND),
@@ -291,7 +286,7 @@ describe("draft shape and session gate", () => {
       rmSync(home, { recursive: true, force: true });
     }
 
-    // Legacy `exam.drafted` logs without `unmeasured` and `examinerSessions` accounting.
+    // `exam.drafted` logs read back whole, and `examinerSessions` accounting.
     for (const old of [SILENT, { ...SILENT, objective: OBJECTIVE }]) {
       const log = join(root, `old-${String(old.objective !== undefined)}.jsonl`);
       append(log, "exam.drafted", {
@@ -313,7 +308,7 @@ describe("draft shape and session gate", () => {
 });
 
 describe.concurrent("staging and offline reading", () => {
-  it("stages packs idempotently without leaking hidden controls or unmeasured rationale", () => {
+  it("stages packs idempotently without leaking hidden controls", () => {
     const staged = stageExam(join(root, "staged"), SOUND);
     expect(stageExam(join(root, "staged"), SOUND)).toEqual(staged);
     expect(staged.bundle).toMatch(/\/exams\/[0-9a-f]{16}\/bundle$/u);
@@ -332,16 +327,7 @@ describe.concurrent("staging and offline reading", () => {
     expect(readFileSync(join(staged.checks, "evaluator.ts"), "utf8")).toBe(SOUND.evaluator);
     expect(() => readFileSync(join(staged.checks, "controls.json"), "utf8")).toThrow();
 
-    // `unmeasured` text must never appear in any staged file; declared objective is staged.
-    const modelFiles = (draft: Draft) =>
-      ["brief.json", "tasks.json", "controls.json", "evaluator.ts"].map((file) =>
-        readFileSync(
-          join(stageExam(join(root, "unmeasured"), draft).bundle, "correctness-model", file),
-          "utf8",
-        ),
-      );
-    expect(modelFiles(SOUND)).toEqual(modelFiles({ ...SOUND, unmeasured: "another reason" }));
-    expect(readPack(stageExam(join(root, "unmeasured"), MEASURED).bundle).brief.objective).toEqual(OBJECTIVE);
+    expect(readPack(stageExam(join(root, "measured"), MEASURED).bundle).brief.objective).toEqual(OBJECTIVE);
   });
 
   it("reads sound, lax, form-only, unloadable, and missing-export evaluators accurately", async () => {

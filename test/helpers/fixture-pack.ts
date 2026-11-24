@@ -96,7 +96,6 @@ export const fixtureDraft = (tasks: readonly FixtureTask[], answered = tasks.len
     .slice(0, answered)
     .map(({ publicInput }, task) => ({ task, answer: { answer: String(publicInput.base * 6) } })),
   reject: [{ task: 0, answer: { answer: "13" }, check: "check-product" }],
-  unmeasured: "A fixture: every task has one product, and no product is better than another.",
 });
 
 /** A campaign's folder holding the fixture exam its log drafted, as a campaign that opened from

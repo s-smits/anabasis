@@ -1510,7 +1510,7 @@ describe.concurrent("what crosses to the Builder", () => {
    *  reason, the hidden value of a held-out task and of a practice task (a practice solve's measure,
    *  which may depend on it, crosses; the value does not), which held-out task the
    *  comparison's new harness won, what the Examiner said of each task when it put it, and how the
-   *  reference did on a held-out task the Examiner tried it on (`try_reference`), and what the
+   *  reference did on a held-out task under a session-tagged solve (pre-v0.14 logs), and what the
    *  verifier measured of a held-out answer under the objective (a practice answer's measure crosses). */
   interface Kept {
     readonly check: string;

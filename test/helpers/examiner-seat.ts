@@ -80,7 +80,6 @@ export const SOUND: Draft = {
   tasks: BASES.map((base) => ({ family: "fixture", publicInput: { base }, hidden: null })),
   accept: BASES.map((base, task) => ({ task, answer: { answer: String(base * 6) } })),
   reject: [{ task: 0, answer: { answer: "13" }, check: "check-product" }],
-  unmeasured: "A fixture: every task has one product, and no product is better than another.",
 };
 const LIMITS = { wallSeconds: 600, turns: 12, puts: 4 };
 const IDS = { draft: "d-1", write: "x-1" } as const;
@@ -118,7 +117,6 @@ export const draftArgs = (draft: Draft): JsonObject => ({
   objective: {
     ...draft.objective,
     ...keyIfDefined("tools", draft.objectiveTools),
-    ...keyIfDefined("none", draft.unmeasured),
   },
 });
 /** Wraps a `Draft` in a `draft_exam` tool call. */
@@ -265,7 +263,6 @@ export function seat<M extends Mode>(mode: M, responses: readonly FauxResponseSt
       pack,
       budget: null,
       verify: null,
-      probe: null,
     },
   } satisfies Requests;
   return {

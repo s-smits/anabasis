@@ -319,7 +319,7 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
       (stop, within, resting) =>
         request.mode === "draft"
           ? drafting(request, within, walls?.shell.dirs.home)
-          : writing(request, walls, { stop, within, rest: resting, home: walls?.shell.dirs.home }),
+          : writing(request, walls, { stop, rest: resting, home: walls?.shell.dirs.home }),
       walls,
     );
   if (wall === undefined) return await seated();

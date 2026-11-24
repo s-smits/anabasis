@@ -26,8 +26,7 @@ field:
   `check-defect` ruling (`faultedOf`);
 - on each subsequent invocation, only events reported since the Examiner was last informed (`heard`
   with `after`, `wakeMessage`);
-- its walled home directory, persisted across sessions, and black-box access to run the reference
-  harness (`try_reference`) without reading its contents.
+- its walled home directory, persisted across sessions.
 
 By contrast, a drafting session receives only the domain prompt, the host's validation output for
 each draft, and an empty home directory.
@@ -35,13 +34,11 @@ each draft, and an empty home directory.
 ### Tools
 
 - **Examiner** (`src/examiner/write.ts`): `propose_tasks`, `read_example`, `read_opening`, standard
-  coding tools, `finish`, and two trial tools. `try_answer` runs the checks against the Examiner's
-  own answer; a pass on a held-out task is logged as `task.feasible`. `try_reference` executes one
-  or two billed solves under the reference harness using the campaign's setting. Each trial solve is
-  tagged with the session identifier so `countedSolves` excludes it from all comparison, practice,
-  and Builder folds while `spendOf` bills it to the Examiner. Calls are refused once the session's
-  trial quota (`exam.started.limits.tries`) or budget reserve is exhausted, and rejections from
-  `try_reference` are not sent to the Referee. A drafting session exposes `draft_exam` in place of
+  coding tools, `finish`, and `try_answer`, which runs the checks against the Examiner's own
+  answer; a pass on a held-out task is logged as `task.feasible`. The Examiner has no tool that
+  solves under the reference harness: reference outcomes reach it only through comparisons. Logs
+  written before v0.14 may hold session-tagged `try_reference` solves; `countedSolves` still
+  excludes them from every comparison, practice and Builder fold. A drafting session exposes `draft_exam` in place of
   the task gate (`src/examiner/shell.ts`).
 - **Builder**: standard coding tools, `practice`, `read_trace`, `read_opening`, `check_harness`,
   `preview_harness`, and `finish`, together with the campaign tools from `AGENTS.md` section 4 when

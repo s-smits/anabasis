@@ -372,8 +372,8 @@ describe("after a promotion", () => {
   });
 });
 
-describe("a draft its author tried on the reference", () => {
-  it("is told on no line: try_reference's reply tells each try once", () => {
+describe("a draft a pre-v0.14 session tried on the reference", () => {
+  it("is told on no line: session-tagged solves in older logs never reach the wake message", () => {
     const log = logged();
     log.hold(["tried"]);
     const before = heard(log.events, [fixture("tried")]);

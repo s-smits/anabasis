@@ -1,6 +1,3 @@
-/**
- * How many values fall under each name.
- */
 export function countBy<T>(values: readonly T[], key: (value: T) => string) {
   const out: Record<string, number> = {};
   for (const value of values) {
@@ -10,8 +7,6 @@ export function countBy<T>(values: readonly T[], key: (value: T) => string) {
   return out;
 }
 
-/** The middle value, or null when there is none. An even count averages its two middle values, so a
- *  list of six is not read at its fourth value. Each reader rounds the result its own way. */
 export function median(values: readonly number[]): number | null {
   if (values.length === 0) return null;
   const sorted = values.toSorted((a, b) => a - b);
@@ -20,6 +15,5 @@ export function median(values: readonly number[]): number | null {
   return sorted.length % 2 === 1 ? upper : ((sorted[middle - 1] ?? 0) + upper) / 2;
 }
 
-/** The average, or null when there is none, as `median` reads an empty list. */
 export const mean = (values: readonly number[]): number | null =>
   values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0) / values.length;

@@ -1,6 +1,3 @@
-/**
- * One reading of a campaign's log: what each step handed over.
- */
 import { type Measures, pointsOf, scoresIn, type Tally, testOf } from "../kernel/compare.ts";
 import { proposalsOf } from "../kernel/history.ts";
 import { type EventKind, eventsOf, type LogEvent } from "../kernel/log.ts";
@@ -23,32 +20,22 @@ import { type Supply, supplyOf } from "./admission.ts";
 import type { Ruling } from "../referee/referee.ts";
 import { fixedIn, overlapOf, reported, STARTED } from "./comparison.ts";
 
-/** A failed practice solve, and where it stands now by the task's later solves. */
 export interface PracticeFail {
   readonly solve: string;
-  /** The task's version. */
   readonly task: string;
   readonly harness: string;
   readonly kind: string | null;
-  /** Open; passed once or repaired under a later harness; or failing again under one. */
   readonly standing: "open" | "passed-once" | "repaired" | "failing-again";
-  /** The later harness the standing rests on; null while it is open. */
   readonly under: string | null;
 }
 
-/** What the log holds of a session however it stands: its model turns and when it last wrote; and,
- *  where it has no end, whether the campaign went past it. */
 interface SoFar {
-  /** How it ended; null while it is open, or where it was cut. */
   readonly ended: string | null;
-  /** It has no end, and the campaign went past it (`soFar`). */
   readonly cut: boolean;
   readonly turns: number;
-  /** When it last wrote an event of its own. */
   readonly last: string;
 }
 
-/** What an Examiner session handed over, or has so far. */
 interface Examined extends SoFar {
   readonly step: "examiner";
   readonly id: string;
@@ -58,25 +45,19 @@ interface Examined extends SoFar {
   readonly billed: number;
 }
 
-/** What a Builder session handed over, or has so far. */
 interface Built extends SoFar {
   readonly step: "builder";
   readonly id: string;
   readonly parent: string | null;
   readonly harness: string | null;
-  /** On an interrupted session that saved edits past its last handover, the digest kept in `states/`. */
   readonly unfinished: string | null;
   readonly changed: boolean;
   readonly practiceSolves: number;
-  /** Where its window ends in the log, for a reader of what ran inside it (`soFar`). */
   readonly until: number;
-  /** Its established practice failures: only earned rejections count. */
   readonly fails: number;
-  /** Its own turns, its practice solves and their reviewers. */
   readonly billed: number;
 }
 
-/** What a comparison handed over. `reading` is null until it has reported. */
 interface Compared {
   readonly step: "comparison";
   readonly id: string;
@@ -86,64 +67,37 @@ interface Compared {
   readonly solves: number;
   readonly level: number;
   readonly cap: number | null;
-  /** The model's turns each of its solves was told and held to, by the setting on record when it
-   *  began, or by its first solve where the log holds no record of the setting; null where the
-   *  turns were not limited. A changed limit is another setting, and no tally is read across two. */
   readonly modelTurns: number | null;
   readonly reading: string | null;
-  /** The tally the step is read on: the scores without the bill where a report holds them
-   *  (`scoresIn`), and otherwise the report's own tally, since the oldest reports hold no scores. */
   readonly tally: Tally | null;
-  /** How many of its tallied tasks the two harnesses' validity differed on (`pointsOf`), as the
-   *  starter read splits a tally (`starterReads`, `climb.ts`); null where nothing was tallied, or
-   *  where the report's pairs cannot be read again (`pairsReported`). */
   readonly validity: number | null;
-  /** Each harness by itself: the tasks with no, one, two... valid answers among its solves. */
   readonly valid: { readonly old: readonly number[]; readonly fresh: readonly number[] } | null;
-  /** The points each measure gave the tallied tasks together (`pointsOf`); null where nothing was
-   *  tallied, and in older reports. */
   readonly points: Measures | null;
-  /** The tasks set aside for a person's labels. */
   readonly aside: number;
-  /** The frontier's tallied tasks and how many its largest family holds (siblings are no fresh draws). */
   readonly grain: { readonly largest: number; readonly of: number } | null;
-  /** The comparison of its kind before it and how many of its tasks that one drew too (`overlapOf`). */
   readonly repeat: { readonly with: string; readonly tasks: number } | null;
-  /** The Referee's last ruling of each of its rejected answers, by kind. */
   readonly rulings: Readonly<Record<Ruling, number>>;
-  /** Its solves and their rulings, without the session a round ran before it. */
   readonly billed: number;
-  /** It has no report, and the campaign went past it (`nextBound`). */
   readonly cut: boolean;
-  /** Its solves that began, and those of them that ended. */
   readonly begun: number;
   readonly solved: number;
 }
 
 export type Handover = Examined | Built | Compared;
 
-/** A campaign as its log reads. */
 export interface Campaign {
-  /** The set-up: the task sets, the checker's reading and the stop rule, as the admission reads
-   *  them for a comparison with the reference harness. */
   readonly supply: Supply;
-  /** The harness last promoted, null while the reference is the starter; and the one the last
-   *  whole Builder session left, null while none has left one. */
   readonly reference: string | null;
   readonly latest: string | null;
-  /** Every step, in the order they started. */
   readonly steps: readonly Handover[];
-  /** Every failed practice solve on a task that is still released, in the order they ended. */
   readonly fails: readonly PracticeFail[];
 }
 
 type Shared = ReturnType<typeof sharedOf>;
 
-/** Passes running under a later harness that mark a fail repaired: one solve is weak evidence. */
 const REPAIRED_AFTER = 2;
 const EXAM_STARTED: EventKind = "exam.started";
 const BUILD_STARTED: EventKind = "build.started";
-/** The events that bound a step: a step's start or its end, and the campaign's end. */
 const BOUND_KINDS: readonly EventKind[] = [
   EXAM_STARTED,
   "exam.finished",
@@ -184,8 +138,6 @@ const count = (value: unknown): number => (isNumber(value) ? value : 0);
 const listed = (value: unknown): number => (Array.isArray(value) ? value.length : 0);
 const text = (value: unknown): string | null => (isString(value) ? value : null);
 
-/** Where a failed solve stands now, by the task's later solves under the last other harness to
- *  solve it. */
 function standing(
   fail: Ran & { finished: number },
   taskSolves: readonly (Ran & { finished: number })[],
@@ -198,12 +150,6 @@ function standing(
   return { standing: under.length >= REPAIRED_AFTER ? "repaired" : "passed-once", under: last };
 }
 
-/**
- * The place of the first event after `index` that bounds a step, or -1. The campaign command makes
- * one move at a time, so a session, a comparison or a solve that began at `index` and has no end
- * before that place will write none: it was cut. One with no end and no bound after it is open at
- * the log's end: running, or stopped by `bun run runs stop`, which writes no ending.
- */
 export function nextBound(events: readonly LogEvent[], index: number): number {
   const next = Math.min(
     ...BOUND_KINDS.map((kind) => eventsOf(events, kind).find(({ index: i }) => i > index)?.index ?? Infinity),
@@ -211,7 +157,6 @@ export function nextBound(events: readonly LogEvent[], index: number): number {
   return Number.isFinite(next) ? next : -1;
 }
 
-/** Session at `index` with turns of kind `seat.turn`, as the log holds it, and its window end. */
 function soFar(events: readonly LogEvent[], index: number, seat: "exam" | "build", shared: Shared) {
   const id = text(events[index]?.data.session) ?? "";
   const closed = shared.finished[seat].get(id)?.find(({ index: at }) => at > index);
@@ -241,7 +186,6 @@ function soFar(events: readonly LogEvent[], index: number, seat: "exam" | "build
   };
 }
 
-/** Every failed practice solve on a released task, each with where it stands, and its start index. */
 function practiceFails(
   events: readonly LogEvent[],
   practised: readonly Ran[],
@@ -293,8 +237,6 @@ function rulingCounts(
   return counts;
 }
 
-/** A comparison's handover, from its start and its last report. The oldest logs hold reports and
- *  no starts, and such a comparison's terms are read from its report. */
 function compared(events: readonly LogEvent[], id: string, shared: Shared, began: number): Compared {
   const report = reported(events, id);
   const last = shared.reports.get(id);
@@ -321,8 +263,6 @@ function compared(events: readonly LogEvent[], id: string, shared: Shared, began
     repeat: repeat === null ? null : { with: repeat.with, tasks: repeat.tasks.length },
     rulings: rulingCounts(solves, shared.rulings),
     billed: billedParts(events, id).comparison,
-    // A comparison with no report has a start: a step is a start or a report. Like a session it is
-    // cut by its own kind's next start or the campaign's end; an Examiner writes beside it.
     cut: report === null && shared.lastCut > began,
     begun: solves.length,
     solved: ended(solves).length,
@@ -376,8 +316,6 @@ function buildStep(events: readonly LogEvent[], index: number, id: string, share
   };
 }
 
-/** The steps still open at the log's end, by id: a session with no end and a comparison with no
- *  report, that the campaign did not go past. */
 export function openSteps(steps: readonly Handover[]): string[] {
   return steps.flatMap((step) => {
     const open = (step.step === "comparison" ? step.reading === null : step.ended === null) && !step.cut;
@@ -385,7 +323,6 @@ export function openSteps(steps: readonly Handover[]): string[] {
   });
 }
 
-/** The reading of a campaign's log: its set-up, every step's handover and its practice fails. */
 export function campaignOf(events: readonly LogEvent[]): Campaign {
   const shared = sharedOf(events);
   const comparisons = new Set<string>();

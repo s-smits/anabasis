@@ -1,30 +1,3 @@
-/**
- * The answer side of a solve, which pi's coding agent has none of. The answer is a file,
- * `answer.json` in the solver's working directory, and `submit` sends it: the host reads the file
- * through the command wall, holds it to the contract's answer format, and keeps what it read as the
- * solve's answer. A file that is missing, is not JSON or does not follow the format is refused with
- * the reason, and the solver may submit again.
- *
- * v1 kept a DraftStore for each solve: harness tools wrote working values and files into it, an
- * artifact-writer turned the draft into the answer, a later change made that answer stale, and the
- * wall submitted the last one prepared. Four more tools served that store: `save_candidate`,
- * `restore_candidate`, `inspect_draft` and `preview_artifact`. v2 has no store: harness tools keep
- * no state, nothing goes stale and the wall submits nothing. Of 209 solves on record under the four
- * none restored or inspected a candidate, so a save changed nothing. And on truss, where an answer
- * is 3 to 8 KB of JSON, 38 of 41 answers were typed into the artifact-writer straight after a
- * command had printed them: the solver had computed the answer into a file and then copied it out
- * by hand (`docs/transfer.md`).
- *
- * v1 took three submit attempts and no more, when its submit ran checks of its own. This one
- * returns no verdict and reads nothing hidden, so a refused submit tells a solver nothing but what
- * is wrong with its file, and none is counted.
- *
- * Every seat's own tool caps text results here at pi's 50 KB and 2,000 lines, with the full text
- * in a `.log` of its environment's TMPDIR, rather than cut, since a long draft cut part way is JSON
- * that does not parse. Spilling is automatic for all seats, harness tools included, on the
- * operator's word; pi's coding tools keep their own limits. A seat without an environment gets the
- * size alone.
- */
 import type { Context } from "@earendil-works/chord/context";
 import { copyJson } from "@earendil-works/chord/json";
 import {
@@ -51,36 +24,24 @@ import { toolchainPathDirs } from "../wall/policy.ts";
 import CAPTURE from "./capture-answer.py" with { type: "text" };
 import type { WallExec } from "./coding.ts";
 
-/** One of the domain's public resources, as a file in the solver's home holds it. */
 export interface PublicResource {
   readonly name: string;
   readonly content: JsonValue;
   readonly digest: string;
 }
 
-/** What a solve has answered. */
 export interface Desk {
-  /** The answer submit accepted; once set, the solve has answered. */
   submitted: JsonValue | undefined;
-  /** The files submit captured beside the answer, which `judge` keeps by digest. */
   files?: readonly AnswerFile[];
-  /** Why the solver judged the task malformed, where it said so in place of an answer. */
   flagged: string | undefined;
 }
 
-/** The solver's answer, by its name in the working directory. */
 export const ANSWER_FILE = "answer.json";
-/** The contract's answer format, as the home is seeded with it. */
 export const ANSWER_FORMAT_FILE = "public/answer-format.json";
-/** The largest answer, in the file's bytes (v1's draft store held an answer to the same). */
 const ANSWER_MAX_BYTES = 1024 * 1024;
 const MISSING = 44;
-/** What opens the line the capture program prints its result on. */
 const CAPTURED = "ana-capture:";
-/** What pi keeps of a tool's result, `DEFAULT_MAX_BYTES` and `DEFAULT_MAX_LINES` of pi-durable's
- *  `truncate.js`, which 1.5.2 still keeps private; the shown part leaves room for the notice. */
 export const RESULT = { bytes: 50 * 1024 - 512, lines: 2000 - 2 };
-/** `submit` takes nothing for an answer, which is the file, and `malformed` in place of one. */
 const SUBMIT_PARAMETERS = Type.Object({
   malformed: Type.Optional(
     Type.String({
@@ -93,12 +54,10 @@ export function openDesk(): Desk {
   return { submitted: undefined, flagged: undefined };
 }
 
-/** A resource's digest binds its name and content (as v1's did). */
 export function publicResource(name: string, content: JsonValue): PublicResource {
   return { name, content, digest: sha256(canonicalJson({ schema: "public-resource/v1", name, content })) };
 }
 
-/** Why the bytes of an answer file are no answer under `contract`, or the answer they hold. */
 function answerIn(bytes: Buffer, contract: Contract): { answer: JsonValue } | { fault: string } {
   if (bytes.length > ANSWER_MAX_BYTES) {
     return { fault: `is larger than the ${String(ANSWER_MAX_BYTES)} bytes an answer may hold` };
@@ -113,18 +72,8 @@ function answerIn(bytes: Buffer, contract: Contract): { answer: JsonValue } | { 
   return fault === null ? { answer } : { fault: `does not follow the answer format: ${fault}` };
 }
 
-/** The capture (`capture-answer.py`, imported as its text, so that a solver compiled to one file
- *  holds it) is passed to the host's own Python as its program, so nothing is staged: the harness's
- *  tool tree is first on a command's PATH, and its interpreter would read one side's submits alone. */
 const CAPTURER = Bun.which("python3", { PATH: toolchainPathDirs().join(":") });
 
-/**
- * `submit`: the answer file under `home`, read by one walled command, checked and kept. An answer
- * once sent stays the answer, whatever the file holds afterwards. Or, with `malformed`, the
- * solver's word that the task is malformed in place of an answer, which ends the solve flagged
- * (`src/kernel/solve.ts`) and reads no file. It is an outcome the solver may choose, and tells it
- * nothing of the task.
- */
 export function submitTool(desk: Desk, contract: Contract, home: string, exec: WallExec): SeatTool {
   return tool({
     name: "submit",
@@ -150,7 +99,6 @@ export function submitTool(desk: Desk, contract: Contract, home: string, exec: W
       if (exitCode !== 0) {
         return text(`Submit blocked: submission could not be read: ${output.toString("utf8").trim()}`);
       }
-      // The wall gives one stream, so a warning the interpreter wrote stands beside the capture's line.
       const said = output
         .toString("utf8")
         .split("\n")
@@ -167,7 +115,6 @@ export function submitTool(desk: Desk, contract: Contract, home: string, exec: W
   });
 }
 
-/** A seat tool, typed by its schema and always sequential on the shared command wall. */
 export function tool<Parameters extends TSchema>(definition: ToolRegistration<Parameters>): SeatTool {
   return defineTool({
     ...definition,
@@ -175,7 +122,6 @@ export function tool<Parameters extends TSchema>(definition: ToolRegistration<Pa
     execute: async (args, api, context) => {
       const result = await definition.execute(args, api, context);
       const output = result.output ?? [{ type: "text" as const, text: api.retainedOutput().text }];
-      // pi bounds all text items together, keeping non-text items in place.
       const value = textsOf(output).join("");
       if (Buffer.byteLength(value) <= RESULT.bytes && value.split("\n").length <= RESULT.lines) {
         return result;
@@ -191,18 +137,11 @@ export function tool<Parameters extends TSchema>(definition: ToolRegistration<Pa
   });
 }
 
-/** A result the model reads as `value`, with `details` for the trace and the host. */
 export function text(value: string, details: JsonObject | null = null): ToolExecutionResult {
   return { output: [{ type: "text", text: value }], details: copyJson(details) };
 }
 
-/**
- * The head and tail of `value` within what pi keeps, three quarters and one quarter, and a notice of
- * its full size and of the file that holds it. A failing program puts its error and summary last,
- * so a head alone cost a `read` of the file to learn why it failed.
- */
 async function capped(value: string, name: string, api: ToolExecutionApi, context: Context): Promise<string> {
-  // The notice between them takes two lines more than one after a head did.
   const lines = RESULT.lines - 2;
   const head = boundText(value, Math.floor((RESULT.bytes * 3) / 4), "head", Math.floor((lines * 3) / 4)).text;
   const tail = boundText(value, Math.floor(RESULT.bytes / 4), "tail", Math.floor(lines / 4)).text;
@@ -213,13 +152,6 @@ async function capped(value: string, name: string, api: ToolExecutionApi, contex
   return `${head}\n\n[Left out here: all but the first ${first} and the last ${last} of ${size}.${where}]\n\n${tail}`;
 }
 
-/**
- * `value` whole in a new `.log` of the calling seat's TMPDIR, or undefined where none could be
- * written: a path is named only once its file is whole, as pi's `OutputSpill` does. The seat
- * writes that folder, so whatever stands at the new path is removed before an exclusive write: a
- * link it left there must never have the host overwrite its target. The environment makes each
- * path unique; the tool's name goes into it only where it is a safe file name.
- */
 async function spill(value: string, name: string, api: ToolExecutionApi, context: Context) {
   const created = await api.env?.createTempFile(
     { prefix: isSafePathSegment(name) ? `${name}-` : "", suffix: ".log" },
@@ -235,7 +167,6 @@ async function spill(value: string, name: string, api: ToolExecutionApi, context
   }
 }
 
-/** `result`, asking that the run end after this round (`control.terminate`). */
 export function ending<Result extends ToolExecutionResult>(result: Result): Result {
   return { ...result, control: { terminate: true } };
 }

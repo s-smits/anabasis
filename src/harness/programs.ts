@@ -1,7 +1,3 @@
-/**
- * The programs a harness installed: by the names that run them, for the solver's prompt, the
- * Examiner's shell and the Builder's preview; and each with what it says of itself, for the page.
- */
 import { CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
 import { readdirSync, readHeadSync, realpathSync, statSync } from "../meta/filesystem.ts";
 import { containsPath } from "../meta/path-containment.ts";
@@ -9,24 +5,18 @@ import { dirname, join } from "../meta/path.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { toolTreeSearchDirs } from "../wall/isolation.ts";
 
-/** The bytes of a program read for its account. */
 const HEAD_BYTES = 4096;
 const NUL = String.fromCodePoint(0);
 const SHEBANG = /^#!.*\n?/u;
-/** What opens a file: a run of `#` or `//` lines, a Python docstring, or a block comment. */
 const OPENING = /^\s*(?:((?:[ \t]*(?:#|\/\/).*\n?)+)|"""([\s\S]*?)"""|'''([\s\S]*?)'''|\/\*([\s\S]*?)\*\/)/u;
-/** A comment's mark at the start of one of its lines. */
 const MARK = /^[ \t]*(?:#|\/\/|\*) ?/u;
 
 export interface Program {
-  /** The name that runs it, where the first program of that name on PATH lies, and its account. */
   readonly name: string;
   readonly at: string;
   readonly account: string | null;
 }
 
-/** Whether a command could run this entry by name: a venv's sourced `activate` siblings are mode
- *  644, and a broken link runs nothing. */
 function canRun(path: string): boolean {
   try {
     const entry = statSync(path);
@@ -36,8 +26,6 @@ function canRun(path: string): boolean {
   }
 }
 
-/** Each program by name and path, from the directories a command's PATH holds, in its order; of
- *  two of one name, the first is the one that runs. */
 function programsAt(toolTree: string | null): { name: string; at: string }[] {
   const found = new Map<string, string>();
   for (const dir of toolTree === null ? [] : toolTreeSearchDirs(toolTree)) {
@@ -48,15 +36,10 @@ function programsAt(toolTree: string | null): { name: string; at: string }[] {
   return [...found].map(([name, at]) => ({ name, at }));
 }
 
-/** The programs a harness installed, by the names that run them, as v1 listed them. Without the
- *  list, every case of one truss run wrote its own solver in the host's python3 beside the
- *  Builder's interpreter. */
 export function installedPrograms(toolTree: string | null): string[] {
   return programsAt(toolTree).map(({ name }) => name);
 }
 
-/** What the file at `at` says of itself at its head; null for a binary, a head that says nothing, a
- *  file outside `tree`, or one in the exam side's copy a harness imported from v1 carries. */
 function accountAt(at: string, tree: string): string | null {
   try {
     const real = realpathSync(at);
@@ -76,7 +59,6 @@ function accountAt(at: string, tree: string): string | null {
   }
 }
 
-/** Each program a harness installed, with its account. */
 export function programsOf(toolTree: string | null): Program[] {
   const found = programsAt(toolTree);
   const tree = toolTree === null || found.length === 0 ? "" : realpathSync(toolTree);

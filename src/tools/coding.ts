@@ -1,20 +1,3 @@
-/**
- * Durable's coding tools, on the seat's ExecutionEnv (`walledEnv`). The environment owns every
- * file and command operation; registrations keep pi's descriptions and schemas except bash's
- * timeout, which states the host's default and maximum. pi's "Execute a bash command" holds as
- * written, since every seat command runs in the system's `/bin/bash` under the wall
- * (`src/tools/env.ts`). All calls are sequential because ending a command ends the work still
- * running in the seat's root.
- *
- * The wall keeps two departures from pi's local environment: ~ names the seat's home, and a
- * whole-file read is capped at 16 MiB. Durable asks the environment to spill long shell output;
- * walledEnv keeps it in the seat's TMPDIR, through the wall, including on timeout or abort.
- * A timeout gains the host's limits, or the solve-end reserve that cut it, as before migration.
- *
- * `read` prepares images with Photon, as pi's coding agent did before the migration: without it,
- * durable refuses a BMP and an image above its size limits instead of converting or resizing it.
- * One Photon worker is started on the first image and shared by every seat.
- */
 import {
   createBashTool,
   createEditTool,
@@ -28,11 +11,9 @@ import type { SeatTool } from "../agent/session.ts";
 import { asError } from "../meta/runtime-values.ts";
 import { type CommandWall, heldSeconds, runWalled } from "./command.ts";
 
-/** The order pi lists its coding tools. */
 export const CODING_TOOLS = ["read", "bash", "edit", "write"] as const;
 type CodingTool = (typeof CODING_TOOLS)[number];
 
-/** The bounded command output submit reads, without a host-side filesystem read. */
 export type WallExec = (
   command: string,
   options?: { readonly stage?: (into: string) => void; readonly signal?: AbortSignal | undefined },
@@ -47,7 +28,6 @@ const images: ImageProcessor = {
 const NEAR_END =
   "\n\nThe command was cut because the solve's time is nearly up, so that its result reaches you while you can still act on it.";
 
-/** A harness selects among pi's names. */
 export function selectedCodingTools(presets: readonly string[]): CodingTool[] {
   const served: readonly string[] = CODING_TOOLS;
   const other = presets.filter((name) => !served.includes(name));
@@ -59,7 +39,6 @@ export function selectedCodingTools(presets: readonly string[]): CodingTool[] {
   return CODING_TOOLS.filter((name) => presets.includes(name));
 }
 
-/** Submit still reads its bounded answer through one walled command. */
 export function wallExec(wall: CommandWall): WallExec {
   return async (command, options = {}) => {
     const chunks: Buffer[] = [];
@@ -68,7 +47,6 @@ export function wallExec(wall: CommandWall): WallExec {
   };
 }
 
-/** Selected registrations, in pi's order; the seat supplies their walled api.env. */
 export function codingTools(wall: CommandWall, selected: readonly CodingTool[]): SeatTool[] {
   const wanted = new Set<string>(selected);
   const tools: SeatTool[] = [createReadTool({ images }), bashTool(wall), createEditTool(), createWriteTool()];
@@ -77,7 +55,6 @@ export function codingTools(wall: CommandWall, selected: readonly CodingTool[]):
     .map((each) => ({ ...each, executionMode: "sequential" }));
 }
 
-/** What the command's own timeout allowed; the solve's earlier end has its own message. */
 function timeoutClause(
   asked: number,
   seconds: number,
@@ -96,7 +73,6 @@ function bashTool(wall: CommandWall): SeatTool {
   const pi = createBashTool();
   return {
     ...pi,
-    // The host's own schema: pi's command, and a timeout described by the limits the wall holds.
     parameters: Type.Object({
       command: Type.String({ description: "Bash command to execute" }),
       timeout: Type.Optional(
@@ -107,7 +83,6 @@ function bashTool(wall: CommandWall): SeatTool {
     }),
     execute: async (args: BashToolInput, api, context) => {
       const { asked, seconds, nearEnd } = heldSeconds(args.timeout, wall);
-      // runWalled applies the remaining solve time too; leave that reduction to its one owner.
       try {
         return await pi.execute(
           {
@@ -119,7 +94,6 @@ function bashTool(wall: CommandWall): SeatTool {
         );
       } catch (error) {
         const cause = asError(error);
-        // Durable renders timeout errors from env.exec; command output cannot forge this exception.
         if (!cause.message.startsWith("Command timed out after ")) throw error;
         throw new Error(
           `Command timed out after ${String(seconds)} seconds${

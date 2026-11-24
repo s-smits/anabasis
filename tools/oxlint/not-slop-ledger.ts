@@ -42,6 +42,7 @@ const ID = /^[0-9a-f]{12}$/u;
 /** The rule that keeps this ledger the only store for a slop answer: answering it here would
  *  reopen the other store. */
 const INLINE_ANSWER_RULE = "ana/no-inline-slop-answer";
+const NO_COMMENTS_RULE = "ana/no-comments";
 
 /** One answered site. */
 export interface Answer {
@@ -102,6 +103,9 @@ export function unanswerable(rule: string): string | null {
   if (rule.startsWith(TREE_RULE_PREFIX)) return null;
   if (rule === INLINE_ANSWER_RULE) {
     return `${rule} keeps the ledger the only store for an answer; move the comment's answer into a row instead`;
+  }
+  if (rule === NO_COMMENTS_RULE) {
+    return `${rule} is governed by tools/oxlint/comment-ratchet.tsv instead of not-slop.tsv; delete the comment, file an excuse, or move the decision to docs/adr/`;
   }
   const [plugin = "", name = ""] = rule.split("/");
   const rules = PLUGINS.get(plugin)?.rules;

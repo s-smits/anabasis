@@ -1,9 +1,3 @@
-/**
- * Supply and patience admission gates for paid comparisons (`admitComparison`) and standalone
- * Builder sessions (`admitSession`). `refusals` owns all supply refusal codes (`no-held`,
- * `held-short`, `unread`, `cap-short`, `stopped`) read by `decide.ts`. Rehearsals skip supply
- * admission while keeping term validation; already-started moves resume without re-checking.
- */
 import { frozenChecker } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
 import { append, type EventKind, eventsOf, type LogEvent, read } from "../kernel/log.ts";
@@ -53,7 +47,6 @@ interface Starting {
   readonly id: string;
   readonly wanted: Wanted;
   readonly seats: Seats;
-  /** Term validation (`refuseTerms`, `round.ts`); runs after supply checks before any log append. */
   readonly own: () => void;
 }
 
@@ -63,7 +56,6 @@ interface Admission {
 }
 
 export const EXAMINE = "tools/d1b/examine.ts";
-/** Extra frontier buffer above `sweepOf(level)` for one set-aside task and one tie. */
 const MARGIN = 2;
 const STARTED = "comparison.started";
 const REFERENCE_KINDS: readonly EventKind[] = ["harness.promoted", "harness.reverted"];
@@ -93,10 +85,6 @@ export function supplyOf(events: readonly LogEvent[]): Supply {
   };
 }
 
-/**
- * Per-epoch improvement patience (`patienceOf`): counts unique compared Builder-modified `(fresh, old)`
- * pairs with room or a step, plus completed unchanged sessions after an adjudicated practice failure.
- */
 export function stopRule(events: readonly LogEvent[]) {
   const stands = standsOf(events);
   const failed = practiceRan(events).filter(
@@ -311,7 +299,6 @@ function admitStart(
   return [...notes];
 }
 
-/** Builder-safe admission refusal (campaign-level counts/commands only, never task names). */
 export class Refused extends Error {}
 
 export function admitComparison(log: string, starting: Starting): string[] {

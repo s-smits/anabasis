@@ -1,13 +1,3 @@
-/**
- * What a writing session is told of its campaign's past at its opening, and at a wake what came
- * since (`after`): a view of the log, with no store of its own (`heard`), in four parts.
- *
- * A conversation hears each reading at the wake after it, so an opening tells no task's earlier
- * comparisons. A live conversation
- * hears each refusal from the gate, so a wake repeats none, but one that crashed or met a limit
- * opens afresh from the log (`AGENTS.md`, section 4) and has that record of them alone. A wake
- * after a promotion says it, as an opening does.
- */
 import { type Paired, scoresIn } from "../kernel/compare.ts";
 import { familySizes, proposalsOf } from "../kernel/history.ts";
 import { isReferenceChange, type LogEvent } from "../kernel/log.ts";
@@ -28,14 +18,11 @@ import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
 import { tasksByEpoch } from "../campaign/climb.ts";
 
-/** The reference harness's valid answers to a task in the last comparison that tallied it: the
- *  turns each took and, where the contract declares an objective, what each measured. */
 interface Answered {
   readonly turns: readonly number[];
   readonly measures: readonly number[];
 }
 
-/** Each block's heading, in the order the opening tells them. A task's line repeats none of it. */
 const BLOCKS = {
   "reference-none": "The reference harness valid in no solve of the last comparison that scored the task",
   "reference-some": "Valid in some solves of it",
@@ -48,25 +35,17 @@ const BLOCKS = {
   "earlier-reference": "Last compared between two other harnesses",
   practice: "In use as practice, and so never scored",
 } as const;
-/** Which measure of a task's score carried a win (`carriedBy`). */
 const CARRIED = { validity: "on validity", objective: "on the objective" } as const;
-/** Who won a task, as the reference's side reads it. */
 const WON = { reference: "the reference harness", other: "the harness it was compared with" } as const;
 
-/** The block a task stands in: its state first, then the reference's outcome on it. */
 function blockOf(state: string | undefined, outcome: Outcome | "closed" | undefined): keyof typeof BLOCKS {
   if (state === "released") return "practice";
   if (state === "disputed") return "faulted";
   return outcome ?? "new";
 }
 
-/** A measure by the objective as the Examiner is told it, to six significant digits. */
 export const measured = (measure: number): string => String(Number(measure.toPrecision(6)));
 
-/** Every task among `tasks` under the reference's outcome on it, then the last comparison the
- *  reference stood in and the promotion; with `after`, only what came after that event. A task the
- *  log refused is no task of the exam and has no line; one the log does not hold, as a pack's before
- *  `prepare.ts`, is not yet compared. */
 export function heard(
   events: readonly LogEvent[],
   tasks: readonly Pick<Task, "taskId" | "family">[],
@@ -81,7 +60,6 @@ export function heard(
       return id === null ? [] : [[id, proposal] as const];
     }),
   );
-  // Fold pairs once per report and share them between `referenceAnswers` and `outcomeSummaryLines`.
   const pairsCache = new Map<string, Paired[]>();
   const pairsOf = (report: Reported): Paired[] => {
     const cached = pairsCache.get(report.session);
@@ -122,13 +100,11 @@ export function heard(
   return {
     stood: outcomeSummaryLines(events, after, pairsOf),
     groups,
-    // An opening's, and a wake's where the promotion came after the conversation last heard.
     promoted: after === undefined || since > after ? promotedLine(events, since, listed) : null,
     refused: after === undefined ? refusedLines(events, since, allProposals) : [],
   };
 }
 
-/** The drafts the gate refused after event `since`, under its reason, each by its id and family. */
 function refusedLines(
   events: readonly LogEvent[],
   since: number,
@@ -145,8 +121,6 @@ function refusedLines(
   return [...why].map(([reason, named]) => `${reason}: ${named.join(", ")}`);
 }
 
-/** The task versions of the comparisons first reported after event `after`, each at its last report,
- *  as `outcomeSummaryLines` reads them: a resumed comparison's second report or a ladder's adds none. */
 const reportedAfter = (events: readonly LogEvent[], after: number) =>
   new Set(
     lastReports(events)
@@ -154,10 +128,6 @@ const reportedAfter = (events: readonly LogEvent[], after: number) =>
       .flatMap(({ data }) => (Array.isArray(data.versions) ? data.versions.filter(isString) : [])),
   );
 
-/** What a task's line says after its name: the turns each of the reference's valid answers took and
- *  what each measured, beside the best of its author's answers on record (`task.feasible`), whether
- *  a valid answer is on record where none of its solves was valid or
- *  none was read, and who won and on which measure. */
 function clausesOf(
   block: keyof typeof BLOCKS,
   pool: ReturnType<typeof poolOf>,
@@ -183,9 +153,6 @@ function clausesOf(
   ];
 }
 
-/** The checks a ruling found at fault on an answer to each task, by its id: where what stands of a
- *  solve's rejection (`standsOf`, rule 8) is `check-defect`, the task and the check its last
- *  `referee.finding` names, the Referee's or the host's. Its reason is not told. */
 function faultedOf(events: readonly LogEvent[]): Map<string, Set<string>> {
   const last = new Map(
     events.flatMap(({ kind, data }) =>
@@ -201,9 +168,6 @@ function faultedOf(events: readonly LogEvent[]): Map<string, Set<string>> {
   return faulted;
 }
 
-/** Who won a task in the last comparison that scored it and on which measure. The objective gap
- *  the reference's answers left is told by its measures rather than a clause, since that gap often
- *  came from its own two solves. */
 function standingOf(standing: Standing | undefined): string[] {
   if (standing === undefined) return [];
   return [
@@ -213,10 +177,6 @@ function standingOf(standing: Standing | undefined): string[] {
   ];
 }
 
-/** The comparisons the reference harness stood in that a session has not heard of, or null where
- *  there are none: the last at an opening, whose record lists every task, and at a wake each one
- *  reported since `after`, so a wake after two readings does not miss the one that read the new
- *  reference against the starter. */
 function outcomeSummaryLines(
   events: readonly LogEvent[],
   after: number | undefined,
@@ -237,7 +197,6 @@ function outcomeSummaryLines(
     .join("\n\n");
 }
 
-/** Summarise one comparison from the reference harness's perspective without exposing candidate validity counts. */
 function formatOutcomeLine(
   events: readonly LogEvent[],
   report: Reported,
@@ -269,9 +228,6 @@ function formatOutcomeLine(
   ].join(" ");
 }
 
-/** That the reference harness was promoted, on which comparison, and how many of the tasks
- *  `listed`, by version, were held out before then, under the harness it replaced, since a session
- *  not told of a promotion can spend hours drafting tasks the new reference answers at once. */
 function promotedLine(events: readonly LogEvent[], since: number, listed: readonly string[]): string | null {
   const promotion = events[since];
   if (promotion === undefined) return null;
@@ -285,9 +241,6 @@ function promotedLine(events: readonly LogEvent[], since: number, listed: readon
   return `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}. ${String(before)} of the ${String(listed.length)} tasks listed were held out before then, under the harness it replaced. Files in your home from sessions before then were written while the harness it replaced was the reference.`;
 }
 
-/** The reference harness's valid answers to each task in the last comparison that tallied it
- *  (`Answered`), including historical ladder reports as `poolOf` does for its outcome, from the side
- *  it stood on there, and none where it stood on neither. */
 function referenceAnswers(
   events: readonly LogEvent[],
   pairsOf: (report: Reported) => Paired[],

@@ -1,22 +1,3 @@
-/**
- * What a solver reads before its first call: the system prompt, the opening message, and the public
- * files seeded into its home.
- *
- * The host renders the role, each durable tool's own name and description, the coding rules and the
- * working directory, with no vendor prompt builder; the duty, environment and guide keep the same
- * facts and sections:
- * - The addendum holds what a solver cannot find out for itself and no harness may change: what it
- *   must deliver, where the published requirements are, which file is its answer, the solve deadline
- *   and what the deadline does. The duty and the minutes are v1's `BUILT_SOLVE_DUTY` and `solveTime`;
- *   the deadline's last sentence is this host's, which ends a solve as a fail and submits
- *   nothing.
- *   Limit reminders are appended by executed tools; argument refusals and unavailable tools
- *   bypass execution and carry none. Diagnostics may follow the reminder.
- * - A section of its own, `environment`, holds the wall's facts: what a command may write and
- *   reach, the volume, the command limits, and the programs the harness installed.
- * - The project context holds the harness's guide as a project's own instructions,
- *   under one sentence on what a guide cannot override (v1's `BUILT_GUIDE_PREAMBLE`).
- */
 import type { SeatTool } from "../agent/session.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { GUIDE_FILE } from "../meta/bundle-layout.ts";
@@ -35,40 +16,25 @@ export interface PublicTask {
   readonly publicInput: JsonValue;
 }
 
-/** What a solve's system prompt is built from. */
 export interface Told {
-  /** The solver's tools, in the order it is given them. */
   readonly tools: readonly SeatTool[];
-  /** The solve's home, the working directory of commands and pi's file tools. */
   readonly home: string;
-  /** The harness's guide as written, or null. */
   readonly guide: string | null;
   readonly wallSeconds: number;
   readonly limits: Pick<Limits, "shellDefaultSeconds" | "shellMaxSeconds" | "modelTurns">;
-  /** How many public resource files the home was seeded with. */
   readonly resources: number;
-  /** How many of the task's own files the home was seeded with (`taskFiles`). */
   readonly files: number;
-  /** The programs the harness installed, by the names that run them (`installedPrograms`, `programs.ts`). */
   readonly programs: readonly string[];
-  /** Whether a package index was reached from inside the wall (`networkReach`, `command.ts`). */
   readonly network: NetworkReach;
 }
 
-/** Where a task's own files land in the home, beside `task.json`. */
 const TASK_FILES = "public/files";
 
-/** The longest path a task's file may have, in bytes: one name's limit on the hosts' filesystems. */
 const NAME_BYTES = 255;
 
-/** The prompt a turn that ended without a submit is followed by, as v1 worded it. */
 export const NUDGE = "Finish the task with the available tools, then submit your answer.";
 
-/** Installed program names the prompt lists before it elides the rest, as v1 had it. */
 const LISTED_PROGRAMS = 20;
-/** The coding rules retain the facts of the former prompt, selected with their tools. The edit
- *  rules leave out what pi's edit description already states: an exact, unique, non-overlapping
- *  match, nearby changes merged, and no padding with unchanged regions. */
 const TOOL_RULES = new Map<string, readonly string[]>(
   Object.entries({
     bash: ["Use bash for file operations like ls, rg, find"],
@@ -81,7 +47,6 @@ const TOOL_RULES = new Map<string, readonly string[]>(
   } satisfies Record<(typeof CODING_TOOLS)[number], readonly string[]>),
 );
 
-/** What the solver must deliver and under what deadline, with where the requirements are. */
 function duty({ wallSeconds, limits, resources, files, guide }: Told): string {
   const minutes = `${String(Math.round(wallSeconds / 60))} minutes of solve time`;
   const given =
@@ -111,9 +76,6 @@ function duty({ wallSeconds, limits, resources, files, guide }: Told): string {
   ].join(" ");
 }
 
-/** What the command wall is, as facts: each one something a solver would otherwise find out by
- *  running into it. The reserve claim covers commands begun inside it too; heldSeconds' rule is
- *  stated here alone. */
 function environment({ limits, programs, wallSeconds, network }: Told): string {
   const rest = programs.length - LISTED_PROGRAMS;
   const listed =
@@ -133,7 +95,6 @@ function environment({ limits, programs, wallSeconds, network }: Told): string {
     .join("\n");
 }
 
-/** The solver's whole system prompt, with each tool listed by its registered description. */
 export function systemPrompt(told: Told): string {
   const tools = told.tools.map(
     ({ name, description }) => `- ${name}: ${description.replaceAll(/\s+/g, " ").trim()}`,
@@ -159,27 +120,17 @@ export function systemPrompt(told: Told): string {
   ].join("\n\n");
 }
 
-/** The task as the solver may see it. A task carries its hidden part beside these fields, and
- *  everything handed to the solver's side, its home and the harness's process, is this view. */
 export function publicView({ taskId, family, publicInput }: PublicTask): PublicTask {
   return { taskId, family, publicInput };
 }
 
-/** The opening message, as v1 worded it, with each file the home holds named instead of repeated. */
 export function firstTurn(task: PublicTask): string {
   return `Task ${task.taskId} (family ${task.family}).\n\nPublic input:\n${capturedJsonStringify(opened(task.publicInput), null, 2)}`;
 }
 
-/**
- * The public input as the first message shows it: each `files` row that `seedHome` writes into the
- * home keeps its other keys, and its `text` gives way to where the file stands and its size, so a
- * file of some kilobytes is not read twice, once as escaped JSON. Every other row, and the whole
- * input in `public/task.json`, stays as written.
- */
 function opened(publicInput: JsonValue): JsonValue {
   const record = asRecord(publicInput);
   if (record === null || !Array.isArray(record.files)) return publicInput;
-  // Each written file is named once, at the first row of its path, which is the row `taskFiles` kept.
   const written = taskFiles(publicInput);
   const files = record.files.map((row) => {
     const { path, text, ...rest } = asRecord(row) ?? {};
@@ -190,15 +141,6 @@ function opened(publicInput: JsonValue): JsonValue {
   return { ...record, files };
 }
 
-/**
- * The files a task's public input lists under `files`, as rows of `{ path, text }`, by path: what a
- * practitioner is handed as a file, which the home then holds as one, so that a harness's program
- * reads it from a path as it would outside a campaign. While a task was JSON alone, most harnesses
- * of one domain carried a program of their own that wrote such rows out, which has no use where
- * work comes as files. A row of another shape, or one whose
- * path names a root or a parent, or cannot stand beside an earlier row's, is no file here and stays
- * in the JSON alone: nothing is refused, since the gate never read the key.
- */
 function taskFiles(publicInput: JsonValue): Map<string, string> {
   const rows = asRecord(publicInput)?.files;
   const files = new Map<string, string>();
@@ -209,7 +151,6 @@ function taskFiles(publicInput: JsonValue): Map<string, string> {
       Buffer.byteLength(path) <= NAME_BYTES &&
       !path.includes("\0") &&
       path.split("/").every((part) => part !== "" && part !== "." && part !== "..");
-    // A path that is another's folder, or lies under another's file, cannot be written beside it.
     const apart = [...files.keys()].every(
       (other) => other !== path && !other.startsWith(`${path}/`) && !path.startsWith(`${other}/`),
     );
@@ -218,7 +159,6 @@ function taskFiles(publicInput: JsonValue): Map<string, string> {
   return files;
 }
 
-/** How many resource files and how many of the task's own files a seeded home holds, as the prompt states them. */
 export function homeHolds(
   task: PublicTask,
   resources: readonly PublicResource[],
@@ -226,12 +166,6 @@ export function homeHolds(
   return { resources: resources.length, files: taskFiles(task.publicInput).size };
 }
 
-/**
- * The task as `public/task.json`, the contract's answer format as `public/answer-format.json`,
- * each public resource as `public/resources/<name>.json` and each of the task's own files under
- * `public/files/` (`taskFiles`), which the prompt says the home holds (the task and the resources as
- * v1 seeded them). Returns what it then holds (`homeHolds`).
- */
 export function seedHome(
   home: string,
   task: PublicTask,
@@ -244,8 +178,6 @@ export function seedHome(
   writeFileSync(join(home, ANSWER_FORMAT_FILE), `${capturedJsonStringify(answerFormat, null, 2)}\n`, "utf8");
   const used = new Set<string>();
   for (const resource of resources) {
-    // One flat readable name per resource. A name that sanitises onto one already used keeps both
-    // files rather than overwriting the earlier one silently.
     const base = resource.name.replaceAll(/[^A-Za-z0-9._-]+/g, "-").replaceAll(/^-+|-+$/g, "") || "resource";
     let name = base;
     for (let n = 2; used.has(name); n++) name = `${base}-${String(n)}`;

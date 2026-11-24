@@ -1,12 +1,5 @@
-/**
- * Darwin's process table, read through libproc: each process's working directory, the program it
- * runs, its parent and its process group, the facts a seat's release reads to end what its commands
- * left behind (`endHolders`, `src/wall/seat-root.ts`).
- */
 import { dlopen, FFIType } from "bun:ffi";
 
-/** One process: its working directory and its program, each null where libproc gave none, and its
- *  parent and process group, each 0 where it gave none. */
 interface ProcessRow {
   readonly pid: number;
   readonly ppid: number;
@@ -15,20 +8,13 @@ interface ProcessRow {
   readonly program: string | null;
 }
 
-/** `PROC_PIDVNODEPATHINFO` of `<sys/proc_info.h>`, and the `proc_vnodepathinfo` it fills: the
- *  working directory's `vnode_info` of 152 bytes and its path of `MAXPATHLEN` bytes, then the same
- *  for the root directory. */
 const VNODE_PATH_INFO = 9;
 const VNODE_INFO_BYTES = 152;
 const PATH_BYTES = 1024;
 const VNODE_PATH_INFO_BYTES = 2 * (VNODE_INFO_BYTES + PATH_BYTES);
-/** `PROC_PIDT_SHORTBSDINFO`, and the `proc_bsdshortinfo` it fills, whose first three words are the
- *  pid, the parent's pid and the process group. */
 const SHORT_BSD_INFO = 13;
 const SHORT_BSD_INFO_BYTES = 64;
-/** `PROC_PIDPATHINFO_MAXSIZE`. */
 const PROGRAM_BYTES = 4096;
-/** Room for this many pids at first; a table that fills it is read again into twice the room. */
 const FIRST_PIDS = 4096;
 const SYMBOLS = {
   proc_listallpids: { args: [FFIType.ptr, FFIType.i32], returns: FFIType.i32 },
@@ -47,14 +33,12 @@ function openLibproc() {
   return dlopen("/usr/lib/libproc.dylib", SYMBOLS).symbols;
 }
 
-/** The bytes of `buffer` up to its first NUL, as text, or null where that is empty. */
 function cString(buffer: Uint8Array): string | null {
   const end = buffer.indexOf(0);
   const text = TEXT.decode(end === -1 ? buffer : buffer.subarray(0, end));
   return text === "" ? null : text;
 }
 
-/** Every pid the host has now. */
 function allPids(lib: ReturnType<typeof openLibproc>): Int32Array {
   for (let room = FIRST_PIDS; ; room *= 2) {
     const pids = new Int32Array(room);
@@ -64,9 +48,6 @@ function allPids(lib: ReturnType<typeof openLibproc>): Int32Array {
   }
 }
 
-/** Each process on this Darwin host with its working directory, program, parent and group. A
- *  process that is gone by the time it is read, or that this user may not inspect, reads as nulls
- *  and zeros. */
 export function processTable(): ProcessRow[] {
   libproc ??= openLibproc();
   const lib = libproc;

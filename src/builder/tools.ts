@@ -1,10 +1,3 @@
-/**
- * The Builder's tools. It is a coding agent on a harness's files, so it has what a solver has: pi's
- * own `read`, `bash`, `edit` and `write` on the command wall (`src/tools/coding.ts`), in one
- * working directory, its home. On top of them are the tools that are a Builder's alone. Two ask
- * the host about `harness/` as it stands and run on the same wall: `check_harness` and
- * `preview_harness`. Four are the host's: `practice`, `read_trace`, `read_opening` and `finish`.
- */
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
 import { append, CALL_KINDS, eventsOf, type LogEvent, read, TRACE_KINDS } from "../kernel/log.ts";
@@ -49,43 +42,24 @@ import { type Freezing, frozen, harnessNow, type HarnessSnapshot, snapshot } fro
 import { type Listed, measuredClause, type ModePrompts, shellWalls } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
 
-/** What a session's tools share. */
 export interface Bench extends Freezing {
   readonly request: BuildRequest;
-  /** The texts of this session that differ by who makes its campaign's moves (`MODE_PROMPTS`). */
   readonly modePrompts: ModePrompts;
-  /** Released tasks and the reference, refreshed by campaign tools while the conversation stays open.
-   *  The reference is the one the session was handed, held opened, which every record names from
-   *  the first session on; the log names none until a comparison reports (`referenceOf`). */
   tasks: readonly PracticeTask[];
   reference: HarnessSnapshot;
-  /** The digest of the harness the session started from. */
   readonly parent: string;
-  /** Practice solves spent. */
   spent: number;
-  /** Task versions whose own check could not run on a practice answer. */
   readonly faulty: Set<string>;
-  /** Reviewer failures, kept for the host: their text may name a check, so the Builder is not shown it. */
   readonly faults: string[];
-  /** Aborted when the host stops the session at a bound or a campaign action fails. */
   readonly halt: AbortController;
-  /** Run a campaign action without charging its elapsed time to the session's deadline, so that a
-   *  led Builder is not left minutes to build and cut off before reading the comparison it bought. */
   readonly within: <T>(action: () => Promise<T>) => Promise<T>;
-  /** What that practice solve threw; the session throws it again once its record is written. */
   fatal: Error | null;
-  /** `finish`'s note; null until it is called. */
   note: string | null;
-  /** What `finish` has told the Builder for each notice kind, keyed by the state it applied to
-   *  (`finishNotice`), so editing `harness/` or promoting a new reference re-arms the notice. */
   readonly told: Map<"broken" | "untried" | "unread", string>;
 }
 
-/** What a Builder that leads its campaign is told at `finish` where no comparison has read harness
- *  `digest` against the reference, or null (`BuildRequest.campaign`). */
 type Unmeasured = (digest: string) => Promise<string | null>;
 
-/** What a task's valid answers are told against: the objective, and the author's answer on record. */
 interface Against {
   readonly rule: ObjectiveRule;
   readonly author: number;
@@ -101,11 +75,8 @@ interface FoldedPractice {
   readonly verdicts: ReturnType<typeof verdictsOf>;
 }
 
-/** What a preview names the solve's home, which only a solve has. */
 const SOLVE_HOME = "(the solve's own home directory)";
-/** Where a band of the gain over the author's answer begins, after the tie floor. */
 const BAND_EDGES = [GAP_FLOOR, 0.1, 0.5, 0.9] as const;
-/** Session practice-solve count on one task at which a factual concentration note is appended. */
 const PRACTICE_NOTE_AT = 4;
 const EMPTY_RECORD: { readonly solves: readonly string[]; readonly passed: number } = {
   solves: [],
@@ -113,33 +84,19 @@ const EMPTY_RECORD: { readonly solves: readonly string[]; readonly passed: numbe
 };
 const percent = (share: number): string => String(Math.round(share * 100));
 
-/**
- * A valid practice answer as the Builder is told it under an objective: the band of the gain a
- * comparison would read between it and the task author's answer on record (`gainOver`), never
- * either number. A measure may depend on the task's hidden values, and four digits of a few answers
- * to one task let a Builder solve for them: one jobstat Builder wrote such a solver and kept "solve
- * for the truth" in its memory. A band says whether a change closed on the author's answer and
- * roughly by how much, about three bits an answer where four digits gave thirteen. Two crafted
- * answers straddling one band's edge could still bracket a hidden value, at a solve each and only
- * through a harness that names the task. The log keeps every digit.
- */
 function bandOf({ rule, author }: Against, measure: number): string {
   const gain = gainOver(rule, measure, author);
   const at = BAND_EDGES.findLastIndex((edge) => Math.abs(gain) >= edge);
   return at === -1 ? "level" : `${bandSize(at)} ${gain > 0 ? "better" : "worse"}`;
 }
 
-/** The size of the band that begins at `BAND_EDGES[at]`. */
 function bandSize(at: number): string {
   const [lower, upper] = [BAND_EDGES[at] ?? GAP_FLOOR, BAND_EDGES[at + 1]];
   return upper === undefined ? `${percent(lower)}% or more` : `${percent(lower)} to ${percent(upper)}%`;
 }
 
-/** The bands as the practice tool's description states them once. */
 const BANDS_TOLD = `level (within ${percent(GAP_FLOOR)}%), or better or worse by ${BAND_EDGES.map((_, at) => bandSize(at)).join(", ")}, each a share of the larger of the two measures, as a comparison reads a gap`;
 
-/** For each task, what its valid answers are told against (`poolOf`), or nothing where the contract
- *  has no objective or the task no author's answer on record. */
 function againstOf(events: readonly LogEvent[], contract: Contract): (version: string) => Against | null {
   const rule = contract.objective;
   if (rule === undefined) return () => null;
@@ -150,8 +107,6 @@ function againstOf(events: readonly LogEvent[], contract: Contract): (version: s
   };
 }
 
-/** An ending as the Builder is shown it: the outcome and its kind. A non-result's reason can name a
- *  check, so only a broken harness's reason, which is the harness's own, is shown. */
 function endingText(ending: Ending): string {
   if (ending.outcome === "pass") return "pass";
   if (ending.outcome === "non-result") return `no result (${ending.kind})`;
@@ -161,9 +116,6 @@ function endingText(ending: Ending): string {
     : `fail (${ending.kind})`;
 }
 
-/** Where a valid practice answer stands against the author's answer (`bandOf`), which the Builder
- *  reads of its own practice only; `name` gives the quantity in full once a result, in brackets
- *  after "the objective", since a contract's quantity can run to a sentence, then "the objective". */
 function measuredText(
   verdicts: ReturnType<typeof verdictsOf>,
   solve: string,
@@ -176,7 +128,6 @@ function measuredText(
     : "";
 }
 
-/** Counted practice solves grouped by task and harness in ended order, folding the log once. */
 function recordsOf(events: readonly LogEvent[]) {
   const stands = standsOf(events);
   const byTask = new Map<string, Map<string, PracticeRecord>>();
@@ -194,14 +145,11 @@ function recordsOf(events: readonly LogEvent[]) {
   return byTask;
 }
 
-/** A task version's counted practice solves under one harness, by the log's condition records,
- *  in the order they ended. A solve a comparison made of the task is none (`practiceRan`). */
 export function record(events: readonly LogEvent[], version: string, harness: string) {
   const held = recordsOf(events).get(version)?.get(harness);
   return held === undefined ? { solves: [], passed: 0 } : { solves: [...held.solves], passed: held.passed };
 }
 
-/** Counted practice on an offered task under this exact digest, whether passed or failed. */
 export function hasPractice(
   bench: Pick<Bench, "tasks">,
   events: readonly LogEvent[],
@@ -211,13 +159,6 @@ export function hasPractice(
   return bench.tasks.some(({ version }) => (records.get(version)?.get(harness)?.solves.length ?? 0) > 0);
 }
 
-/** How much of its limits a finished solve used, as a sentence after its ending: the seconds from
- *  its start to its end, the verifier's among them, of its time limit, the model's own turns, and
- *  the tokens the model read and wrote over them. Empty where the log holds no end for the solve.
- *  A Builder that is not told this cannot tell a harness that passes with a minute to spare from
- *  one that passes at the limit. The tokens are the one measure of what a tool or a program costs a
- *  solve that the Builder can act on, since most of a short solve's tokens are its prompt read
- *  again each turn. */
 function usedText(solves: ReadonlyMap<string, ReturnType<typeof solvesIn>[number]>, solve: string): string {
   const { start, end } = solves.get(solve) ?? {};
   const limits = limitsIn(start?.limits);
@@ -233,9 +174,6 @@ function usedText(solves: ReadonlyMap<string, ReturnType<typeof solvesIn>[number
   return ` It took ${clockText(end.seconds)} of ${clockText(limits.wallSeconds)} and ${plural(end.turns, "model turn")}${given}${counted}.`;
 }
 
-/** A finished solve's calls, as a sentence after its usage: how many, which failed by the numbers
- *  `read_trace` gives them, and which of the harness's programs ran (`callPrograms`), with how
- *  many calls ran and failed each. */
 function callsText(events: readonly LogEvent[], solve: string, programs: readonly string[]): string {
   const { calls } = traceOf(events, "solve", solve);
   if (calls.length === 0) return "";
@@ -256,8 +194,6 @@ function callsText(events: readonly LogEvent[], solve: string, programs: readonl
   return ` It made ${plural(calls.length, "tool call")}; failed: ${failed.join(", ") || "none"}.${shown}`;
 }
 
-/** One practice solve and what the Referee read of its fail. Throws only what the solve itself
- *  threw: a Referee that fails is noted for the host and leaves the rejection set aside. */
 async function practise(bench: Bench, task: PracticeTask, kept: HarnessSnapshot, kill: AbortSignal) {
   const { request } = bench;
   const { solve, ending } = await request.practise(task, kept.dir, kept.harness.digest, kill);
@@ -266,15 +202,9 @@ async function practise(bench: Bench, task: PracticeTask, kept: HarnessSnapshot,
     bench.faulty.add(task.version);
     lines.push("The task's own check could not run on this answer: the task leaves this session's practice.");
   }
-  // Only a rejected answer has anything to recompute: a solve its limits ended, or one that gave no
-  // answer, is not valid with no ruling (`src/campaign/round.ts`), and the Referee is not asked of
-  // it.
   if (rejected(ending) && request.referee !== undefined) {
     try {
       const finding = await request.referee(solve, task, kill);
-      // The log holds the dispute, as a comparison's does (`dispute`, `src/campaign/round.ts`), so
-      // every reader of the practice set sees it, and the campaign owes another practice task in
-      // its place rather than leaving the next session to pay to learn it again.
       if (finding.ruling === "check-defect") {
         if (taskStates(read(request.log, TRACE_KINDS)).get(task.version) === "released") {
           append(request.log, "task.state", {
@@ -293,13 +223,6 @@ async function practise(bench: Bench, task: PracticeTask, kept: HarnessSnapshot,
   return { task, solve, ending, lines };
 }
 
-/**
- * The practice solves a session may still start. A Builder that leads its campaign has as many as
- * what is left of the campaign's total holds a reserve for, and no count of its own, since a fixed
- * count can run out with most of the budget left. A session by hand keeps
- * its count, and no more than its own part of the log leaves its cap a reserve for (`billedParts`).
- * The Builder is told a count and never a sum.
- */
 export function practiceLeft({ request, spent }: Bench, events: readonly LogEvent[]): number {
   const left = request.campaign === undefined ? null : budgetLeft(events);
   if (left !== null) return Math.max(0, Math.floor(left.dollars / left.reserve));
@@ -311,7 +234,6 @@ export function practiceLeft({ request, spent }: Bench, events: readonly LogEven
   return Math.max(0, Math.min(counted, afforded));
 }
 
-/** The band of each of `solves`'s valid answers against the author's answer on record (`bandOf`). */
 function measuresOf(
   verdicts: ReturnType<typeof verdictsOf>,
   solves: readonly string[],
@@ -324,8 +246,6 @@ function measuresOf(
         .map((measure) => bandOf(against, measure));
 }
 
-/** Practice tasks with their counted records under `parent` and, when distinct and solved, under the
- *  `reference` harness, each valid answer as its band against the author's answer. */
 export function listedPractice(
   events: readonly LogEvent[],
   tasks: readonly PracticeTask[],
@@ -363,11 +283,6 @@ export function listedPractice(
   });
 }
 
-/** A task's practice record under each harness `roles` names, each digest once with all its roles,
- *  and under an objective each valid answer's band against the author's answer (`task.feasible`),
- *  so that a pass that costs more than the author's still reads as room to gain. A solve under
- *  harness/ also names the record under the reference, which a promotion moves off the parent.
- *  Only practice solves of released tasks are read (`record`). */
 function recordText(
   folded: FoldedPractice,
   version: string,
@@ -389,8 +304,6 @@ function recordText(
     .join(" ");
 }
 
-/** Record line plus factual concentration note once a task reaches `PRACTICE_NOTE_AT` solves in this
- *  session; never refuses and reads practice solves alone (rule 3). */
 function practiceTaskNotes(
   events: readonly LogEvent[],
   task: PracticeTask,
@@ -461,14 +374,8 @@ export function practiceTool(bench: Bench): SeatTool {
     }),
     execute: async (args, _api, context) => {
       const chosen = choosePracticeTasks(bench, args.tasks);
-      // Stop sibling solves on a host fault, then let this tool record its refusal before the
-      // session ends through `over`. Aborting the seat here loses durable's unfinished call.
       const failed = new AbortController();
       const kill = AbortSignal.any([context.abortSignal ?? bench.halt.signal, failed.signal]);
-      // Under the reference the solve runs the harness the session's is compared with, and harness/
-      // as it stands need not open. What the reference does on a task is the Builder's to buy with
-      // its own solve, and each result's record names what such solves found. There is no
-      // `under: "parent"`, since Builders hardly ever named it.
       const ran = args.under === "reference" ? bench.reference : await snapshot(bench);
       if (kill.aborted) throw new Error("The session has ended.");
       bench.spent += chosen.length;
@@ -478,7 +385,6 @@ export function practiceTool(bench: Bench): SeatTool {
         try {
           return [await practise(bench, task, ran, kill)];
         } catch (error) {
-          // The session's end reaches a solve still waiting in the solve queue: no fault of anyone's.
           if (kill.aborted && error === kill.reason) {
             unstarted += 1;
             return [];
@@ -540,8 +446,6 @@ export function practiceTool(bench: Bench): SeatTool {
   });
 }
 
-/** The trace of a practice solve. Which task version a solve ran is read from its logged
- *  condition, so a solve of any other task is refused whatever id is asked for. */
 export function traceTool(bench: Bench): SeatTool {
   return tool({
     name: "read_trace",
@@ -555,8 +459,6 @@ export function traceTool(bench: Bench): SeatTool {
       const versions = new Set(bench.tasks.map(({ version }) => version));
       const events = read(bench.request.log);
       const ran = practiceRan(events).find(({ id }) => id === args.solve);
-      // A practice task disputed after a check defect leaves `bench.tasks` on refresh, yet its
-      // prior practice solves remain on the build side (`firstMessage` promises `read_trace` opens them).
       const released =
         ran !== undefined &&
         (versions.has(ran.under.task) ||
@@ -583,18 +485,6 @@ export function traceTool(bench: Bench): SeatTool {
   });
 }
 
-/**
- * What a Builder about to finish is told of `harness/` as it stands, once each: that it does not
- * open, or that it has changed since the session's last practice solve while solves are left. Null
- * where there is nothing to say, and where it has been said.
- *
- * These are finish notices. v1's submit refused a round that then measured nothing, 13 firmware
- * rounds by its own count, and a session here is frozen whatever it holds (`session.ts`). A Builder that
- * finishes is the one reader who can still act. A harness can go to the comparison with no
- * practice solve run on it, the solves spent on earlier versions, which is why `practice` says when
- * the last one is gone. A session that never
- * practised chose so and is told nothing here. A second `finish` ends the session as it is.
- */
 async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<string | null> {
   const { request, told } = bench;
   const again = "or call finish again to end the session as it is";
@@ -608,7 +498,6 @@ async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<stri
   }
   const events = read(request.log, CALL_KINDS);
   const left = practiceLeft(bench, events);
-  // Practised under this exact digest, or run by a comparison as either of its harnesses.
   const tried =
     bench.opened === null ||
     now === bench.parent ||
@@ -627,15 +516,6 @@ async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<stri
   return unread === null ? null : `${unread} Call finish again to end the conversation as it is.`;
 }
 
-/**
- * Public opening facts, supplied as a fixed message or rebuilt on each read. A session whose
- * conversation was compacted, or lost with its process, has the public rules, practice tasks,
- * failed practice solves and comparisons in no other place: the host builds them from the log,
- * and the Builder's own notes are its prose about them. A campaign's conversation rebuilds them; a session
- * by hand keeps the original message. An Examiner's opening holds the record of every task and
- * serves it again, since Examiner sessions compact and a summary keeps only what the model chose
- * of that record.
- */
 export function openingTool(opening: string | (() => string), description: string): SeatTool {
   return tool({
     name: "read_opening",
@@ -645,12 +525,6 @@ export function openingTool(opening: string | (() => string), description: strin
   });
 }
 
-/**
- * `wait`: the next word of work running beside a session, as a call, for a seat whose results come
- * later: an Examiner's task admission, or the Examiner session beside a Builder's conversation.
- * Without one a sleep in the shell is the only call that waits, on the seat's own clock and often
- * long past the result it waits for.
- */
 export function waitTool(description: string, next: () => Promise<string>): SeatTool {
   return tool({
     name: "wait",
@@ -660,9 +534,6 @@ export function waitTool(description: string, next: () => Promise<string>): Seat
   });
 }
 
-/** A Builder's tool with a line of the host's, given the call's id, as the last of whatever it
- *  returns, a result or an error, where the line is not empty: what the session has used of its
- *  limits (`usedLine`, `prompt.ts`). */
 export function endingWith(each: SeatTool, line: (id: string) => string): SeatTool {
   return {
     ...each,
@@ -689,8 +560,6 @@ export function finishTool(bench: Bench, unmeasured?: Unmeasured): SeatTool {
     description: bench.modePrompts.finish,
     parameters: Type.Object({ note: Type.String({ minLength: 1, maxLength: 700 }) }),
     execute: async (args) => {
-      // `finish` ends the session at this turn, so a finish notice on the next turn would reach nobody:
-      // the call itself carries it, as v1's submit did (`3f93d06:src/gate/submit-tool.ts`).
       const stands = await finishNotice(bench, unmeasured);
       if (stands !== null) throw new Error(`Not finished. ${stands}`);
       bench.note = args.note.trim();
@@ -699,21 +568,16 @@ export function finishTool(bench: Bench, unmeasured?: Unmeasured): SeatTool {
   });
 }
 
-/** Joins English phrases with commas and "and" (`a`, `a and b`, `a, b, and c`). */
 function listText(parts: readonly string[]): string {
   if (parts.length <= 1) return parts[0] ?? "";
   if (parts.length === 2) return `${parts[0] ?? ""} and ${parts[1] ?? ""}`;
   return `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1) ?? ""}`;
 }
 
-/** Formats positive `[count, singular, suffix?]` rows as plain English clauses. */
 function countPhrases(rows: readonly (readonly [number, string, string?])[]): string[] {
   return rows.flatMap(([count, unit, suffix = ""]) => (count > 0 ? [`${plural(count, unit)}${suffix}`] : []));
 }
 
-/** What a harness that opens gives a solver, plus plain facts about its guide, written files,
- *  host-specific paths, and any practice task named or quoted (wall-safe: reads only the frozen
- *  harness, the public contract, and released practice tasks). */
 function opens(harness: Harness, dir: string, contract: Contract, tasks: readonly PracticeTask[]): string {
   const presets = selectedCodingTools(harness.presets);
   const programs = installedPrograms(harness.toolTree);
@@ -759,8 +623,6 @@ function opens(harness: Harness, dir: string, contract: Contract, tasks: readonl
   ].join("\n");
 }
 
-/** Open the harness and list what a solver gets from it, with no model call: a harness that does
- *  not open fails every task, and this finds that before a practice solve is spent on it. */
 function checkTool(bench: Bench): SeatTool {
   return tool({
     name: "check_harness",
@@ -774,12 +636,6 @@ function checkTool(bench: Bench): SeatTool {
   });
 }
 
-/**
- * What a solver would read under `harness/` as it stands, for the session's first practice task:
- * its system prompt whole and its tools as they are declared to it. A Builder wrote a guide and a
- * tool list without seeing where either lands; the solver's prompt has sections, and the guide is
- * one of them. The solve's own home is not known here, so the prompt names it by a placeholder.
- */
 function previewTool(bench: Bench, wall: CommandWall): SeatTool {
   const { request } = bench;
   return tool({
@@ -811,8 +667,6 @@ function previewTool(bench: Bench, wall: CommandWall): SeatTool {
   });
 }
 
-/** The tools that run on the command wall: pi's four, with what the Builder's shell is told of its
- *  wall, and the two that ask the host about `harness/`. */
 export function walledTools(bench: Bench, wall: CommandWall, network: NetworkReach): SeatTool[] {
   return [
     ...codingTools(wall, CODING_TOOLS).map((each) =>

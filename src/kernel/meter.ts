@@ -1,8 +1,3 @@
-/**
- * Token and USD billing meter over frozen list prices (`freezePrices`, `billOf`, `seatMeter`) and
- * log spend folds (`billedAll`, `billedFor`, `billedParts`, `spendOf`). Lists prices per served
- * model (falling back to backend-reported dollars for unlisted models).
- */
 import type { ModelUsage } from "@anthropic-ai/claude-agent-sdk";
 import type { Api, AssistantMessage, Model, Models, Usage } from "@earendil-works/pi-ai";
 import type { UsageState } from "@earendil-works/pi-durable";
@@ -20,7 +15,6 @@ interface Price {
 
 export type PriceTable = Readonly<Record<string, Price>>;
 
-/** Token counts by billing class (`cacheWrite1h` is the 1h subset of `cacheWrite`, billed at 2x input). */
 type Tokens = Readonly<Record<"input" | "output" | "cacheRead" | "cacheWrite" | "cacheWrite1h", number>>;
 
 type Spend = Tokens & { readonly dollars: number };
@@ -82,7 +76,6 @@ export function priceKey(model: Pick<Model<Api>, "provider" | "id">): string {
 
 const priced = ({ cost }: Pick<Model<Api>, "cost">) => cost.input > 0 && cost.output > 0;
 
-/** Freezes list prices for `models` (refuses unpriced models; omits long-context tiers). */
 export function freezePrices(models: readonly Model<Api>[]): PriceTable {
   return Object.freeze(
     Object.fromEntries(
@@ -174,7 +167,6 @@ export function billOf(prices: PriceTable, ledger: Ledger): number {
   return total;
 }
 
-/** Merges served-model turn spend with excess backend spend (retries, compactions, tools); falls back to `served` if backend is missing or smaller. */
 export function sessionLedger(backend: Ledger | null, filed: Ledger, served: Ledger): Ledger {
   if (backend === null || sizeOf(totalOf(backend)) < sizeOf(totalOf(filed))) return served;
   return sum([...signed(served, 1), ...signed(filed, -1), ...signed(backend, 1)]);
@@ -220,7 +212,6 @@ export const roleOf = (kind: string): string | undefined => ROLES.get(kind.split
 const billedOn = ({ kind, data }: LogEvent) =>
   kind !== "build.started" && isNumber(data.billed) ? data.billed : null;
 
-/** Total billed USD across finished records plus metered turns of unfinished sessions/solves. */
 export function billedAll(events: readonly LogEvent[], upTo = events.length - 1): number {
   if (upTo < 0) return 0;
   let total = 0;
@@ -231,7 +222,6 @@ export function billedAll(events: readonly LogEvent[], upTo = events.length - 1)
 export const reportedShare = (total: number | null, before: number | null) =>
   total === null || before === null ? null : Math.max(0, total - before);
 
-/** Billed USD in `[from, to)` via prefix difference so sessions spanning `from` are not attributed whole. */
 export function billedBetween(events: readonly LogEvent[], from: number, to = events.length): number {
   const prefix = (at: number) => billedAll(events, Math.min(at, events.length) - 1);
   return from === 0 ? prefix(to) : prefix(to) - prefix(from);
@@ -308,12 +298,10 @@ function billedIndex(events: readonly LogEvent[]): Map<string, Parts> {
   return map;
 }
 
-/** Splits spend for `id` into `session` (own turns/practice), `span` (whole session window), and `comparison`. */
 export function billedParts(events: readonly LogEvent[], id: string): Readonly<Parts> {
   return { ...(billedIndex(events).get(id) ?? { session: 0, span: 0, comparison: 0 }) };
 }
 
-/** Billed USD by role (descending), attributing Examiner `try_reference`/draft solves to `examiner`. */
 export function spendOf(events: readonly LogEvent[]): [string, number][] {
   const [sessions, owners, billed] = [examinerSessions(events), ownersOf(events), new Map<string, number>()];
   const add = (kind: string, solve: unknown, dollars: number) => {

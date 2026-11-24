@@ -1,6 +1,3 @@
-/** Darwin isolation backend for the command wall: checks whether `sandbox-exec` can confine a
- *  command on the current host and computes the binary digest recorded in the policy hash
- *  (`base.ts`). */
 import { realpathSync, statSync } from "../meta/filesystem.ts";
 import type { RuntimePlatform } from "../meta/runtime-values.ts";
 import { sha256OfFile } from "../meta/digest.ts";
@@ -13,8 +10,6 @@ const DARWIN_SANDBOX_EXEC = "/usr/bin/sandbox-exec";
 export interface DarwinSeatbeltRuntime {
   platform?: RuntimePlatform;
   sandboxExecPath?: string;
-  /** Nested Seatbelt profiles fail on macOS; detecting an outer sandbox causes the wall to refuse
-   *  rather than run a command unconfined under an external sandbox. */
   outerSandboxed?: boolean;
 }
 
@@ -25,13 +20,8 @@ interface DarwinSeatbeltSupport {
   mechanismDigest: string | null;
 }
 
-/** Cached SHA-256 digests of `sandbox-exec` keyed by canonical path. Because the binary resides on
- *  the sealed system volume, hashing it once per process avoids redundant reads across seats and
- *  verification checks. */
 const DIGEST_BY_PATH = new Map<string, string>();
 
-/** Checks Darwin Seatbelt availability without invoking a model. Refusal messages omit filesystem
- *  paths so host layout details do not leak into CLI diagnostics. */
 export function darwinSeatbeltSupport(runtime: DarwinSeatbeltRuntime = {}): DarwinSeatbeltSupport {
   const sandboxExecPath = runtime.sandboxExecPath ?? DARWIN_SANDBOX_EXEC;
   const unavailable = (reason: string): DarwinSeatbeltSupport => ({

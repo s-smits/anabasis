@@ -1,12 +1,3 @@
-/**
- * Resolve Apple developer tools to their executable paths. On Darwin, `/usr/bin/git` and
- * `/usr/bin/otool` are xcrun shims: each invocation resolves the active developer directory before
- * starting the tool, and that lookup can cost more than the command itself. Measured on macOS 15
- * over 40 `--version` runs each, git takes 9.7 ms through the shim against 3.1 ms directly, and
- * otool 28.0 ms against 6.2 ms. A campaign starts thousands of git processes, mostly for
- * domain-workspace operations, so the shim accounts for a fifth of the suite's git time and most of
- * its otool time.
- */
 import { existsSync } from "./filesystem.ts";
 import { join } from "./path.ts";
 import { runtimeProcess } from "./process.ts";
@@ -14,8 +5,6 @@ import { runtimeProcess } from "./process.ts";
 const resolvedTools = new Map<string, string>();
 let developerBinDirs: string[] | undefined;
 
-/** Where the active developer directory keeps its tools, and none off Darwin: `usr/bin`, and a full
- *  Xcode's default toolchain, which holds its compilers. */
 export function activeDeveloperBinDirs(): string[] {
   if (developerBinDirs !== undefined) return developerBinDirs;
   developerBinDirs = [];
@@ -35,7 +24,6 @@ export function activeDeveloperBinDirs(): string[] {
   return developerBinDirs;
 }
 
-/** The direct path to a developer tool, or the bare name when this host resolves it through PATH. */
 export function hostTool(name: string): string {
   const remembered = resolvedTools.get(name);
   if (remembered !== undefined) return remembered;

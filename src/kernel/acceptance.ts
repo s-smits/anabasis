@@ -1,18 +1,3 @@
-/**
- * A checker's acceptance: what an imported check program has been seen to do, before any task
- * counts on it.
- *
- * Two readings ask what no control answer of the pack's does. The do-nothing answer, the smallest
- * the answer format allows, must be rejected on every
- * task: Anchor tests its generated verifiers so, and cites a benchmark on which an agent that did
- * nothing passed 38% of the tasks, because the verifier accepted an empty response. And a check whose
- * author's own computation decides it, with no installed instrument, is a fault until the operator
- * admits it by name: all 32 verified firmware fails in v1 ran on task sets whose instrument a Builder
- * had written, and 24 of them were that stand-in rejecting valid code. A check's instrument is named
- * by the tool it runs, never by a label its author writes, since an author's label can call a
- * check `authored` that runs the pack's engine. An exam with no engine behind any check stands only
- * once the operator admits each check by name.
- */
 import { Pointer } from "typebox/value";
 import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -36,72 +21,51 @@ import {
   type Verifier,
 } from "./verify.ts";
 
-/** What a check that runs no engine is decided by. */
 export const AUTHOR = "author";
 
-/** A control answer as v1's `controls.json` labels it: an answer the checks must accept, or an edit of
- *  one that a named check must refuse. */
 export interface Control {
   readonly taskId: string;
   readonly answer: JsonValue;
-  /** The check that must refuse it; null for an answer that must pass. */
   readonly refusedBy: string | null;
-  /** The files beside the answer, as a solver leaves them under its deliverables folder. */
   readonly files?: readonly AnswerFile[];
 }
 
-/** A control answer with the checks run on it twice. */
 interface ControlAnswerRun extends Control {
   readonly verdicts: readonly [Verdict, Verdict];
 }
 
-/** An answer whose verdict is on record: a control answer's first run. */
 interface Graded {
   readonly task: Task;
   readonly verdict: Verdict;
 }
 
-/** The do-nothing answer's verdict on one task. */
 interface Idle {
   readonly taskId: string;
   readonly verdict: Verdict;
 }
 
-/** Whether a declared verifier tool is installed inside the pack (`"pack"` or legacy `true`),
- *  forwarded from the ambient host toolchain (`"host"`), or absent (`false`). Only pack-installed
- *  engines qualify as independent instruments under Rule 10. */
 export type ToolAvailability = boolean | "pack" | "host";
 
-/** What one check has been seen to do. */
 interface CheckReading {
   readonly id: string;
-  /** What decides it, named by its pack-installed engines (`"pack"`), or `author` where it runs
-   *  none or only host-forwarded tools and its author's own code decides it. */
   readonly instrument: string;
-  /** Declared tools the verifier's tool path does not hold. */
   readonly missing: readonly string[];
-  /** Control answers it applied to and let pass, and those it refused. */
   readonly passed: number;
   readonly refused: number;
-  /** Reject control answers that name it, and how many of those it refused. */
   readonly named: number;
   readonly caught: number;
 }
 
 interface Acceptance {
   readonly checks: readonly CheckReading[];
-  /** What stands between the checker and its acceptance, one sentence each. */
   readonly faults: readonly string[];
 }
 
-/** A checker by what it is: its contract's hash, and the digest of its program's files. */
 export interface Checker {
   readonly contract: string;
   readonly checks: string;
 }
 
-/** What a checker is read on: its verifier and brief, the tasks and control answers put to it, and
- *  whether the verifier's tool path holds a tool. */
 export interface Read {
   readonly verify: Verifier;
   readonly brief: Brief;
@@ -109,10 +73,7 @@ export interface Read {
   readonly tasks: readonly Task[];
   readonly controls: readonly Control[];
   readonly found: (toolId: string) => ToolAvailability;
-  /** Verifier runs in flight at once. */
   readonly width: number;
-  /** False where the reading runs no probe of its tasks (`probeFaults`): the acceptance command's,
-   *  over an exam whose draft was probed when it stood. */
   readonly probes?: false;
 }
 
@@ -125,9 +86,6 @@ interface Probe {
 const NO_FILES: readonly AnswerFile[] = [];
 const when = (holds: boolean, text: string) => (holds ? [text] : []);
 
-/** Every control answer through the checks, twice, `width` at once. A control answer of a task the pack does not
- *  hold is the caller's error, not the checker's, and a verifier that cannot decide stops the run,
- *  as it stops task admission (`decided`): a wall that is not there is no fault of a check's. */
 function runControls(
   verify: Verifier,
   byId: ReadonlyMap<string, Task>,
@@ -144,15 +102,6 @@ function runControls(
   });
 }
 
-/**
- * The do-nothing answer: the smallest value a JSON Schema allows, built from the schema alone. An
- * object holds its required properties and no other, an array its fewest items, a string its
- * fewest characters, a number its minimum or zero; an enumeration gives its first value, a choice
- * of schemas its first, and a local reference the schema it points to, or null where it is already
- * being followed. A keyword outside these is not read, so the value may miss the format, which the
- * caller asks (`answerFormatFault`) before it puts the answer to a check. References are followed
- * so that a draft citing `#/$defs/...` is not refused on it.
- */
 function minimalPrimitive(
   held: Record<string, JsonValue | undefined>,
   type: JsonValue | undefined,
@@ -165,7 +114,6 @@ function minimalPrimitive(
   return type === "boolean" ? false : null;
 }
 
-/** Smallest value a JSON Schema allows, following local `#` references. */
 function doNothingAnswer(
   schema: JsonValue | undefined,
   root: JsonValue | undefined = schema,
@@ -195,7 +143,6 @@ function doNothingAnswer(
   return minimalPrimitive(held, type);
 }
 
-/** Run `probes` through `verify` (dropping non-results) and classify validity/objective sensitivity. */
 async function probeSensitivity(given: Read, probes: readonly Probe[]) {
   const { verify, brief, width } = given;
   const results = (
@@ -205,8 +152,6 @@ async function probeSensitivity(given: Read, probes: readonly Probe[]) {
     }))
   ).filter(({ verdict }) => verdict.kind !== "non-result");
   const rule = { direction: brief.objective?.direction ?? "higher" } as const;
-  // `objective` runs only after every truth check passed (`verify.ts`), so an objective-only
-  // fault still proves every validity check passed without reading the perturbed input.
   const allValid =
     results.length > 0 &&
     results.every(
@@ -223,11 +168,6 @@ async function probeSensitivity(given: Read, probes: readonly Probe[]) {
   return { results, allValid, blind };
 }
 
-/**
- * Probe deliverable-carrying accept controls with all deliverable files removed: faults when no
- * check or objective reads deliverables, and surfaces factual notes when only the objective reads
- * them or when some accept controls still pass without files.
- */
 async function deliverableReading(
   given: Read,
   byId: ReadonlyMap<string, Task>,
@@ -270,12 +210,6 @@ async function deliverableReading(
   };
 }
 
-/**
- * Three probes of a drafted exam's examples, run without a model beside its controls: faults where
- * checks are completely blind to the task, hidden values or deliverable files, and factual notes
- * (never refusal gates) when validity checks alone pass every hidden-value swap or deliverable
- * removal, or when an accept control passes some other examples.
- */
 async function probeReading(
   given: Read,
   byId: ReadonlyMap<string, Task>,
@@ -357,15 +291,12 @@ async function probeReading(
   };
 }
 
-/** The tasks on which the do-nothing answer was not rejected, a sentence each: it passed, or a
- *  check could not run on it, which is no rejection either. */
 export function doNothingFaults(idle: readonly Idle[]): string[] {
   return idle.flatMap(({ taskId, verdict }) =>
     when(verdict.kind !== "fail", `the do-nothing answer was not rejected on ${taskId}: ${spelled(verdict)}`),
   );
 }
 
-/** Why a control answer's run is not what its label says, or null when it is. */
 function controlFault({ taskId, refusedBy, verdicts: [first, second] }: ControlAnswerRun): string | null {
   const named = refusedBy === null ? `the accept control of ${taskId}` : `a reject control of ${taskId}`;
   if (spelled(first) !== spelled(second)) {
@@ -377,11 +308,6 @@ function controlFault({ taskId, refusedBy, verdicts: [first, second] }: ControlA
     : `${named} names ${refusedBy}, which did not refuse it: ${spelled(first)}`;
 }
 
-/**
- * The reading: each check's tallies over the control answers, and the faults. `found` says whether
- * the verifier's tool path holds a tool. A verdict that decided nothing, a faulty check's or a
- * non-result, tallies for no check.
- */
 function acceptance(
   brief: Brief,
   byId: ReadonlyMap<string, Task>,
@@ -396,8 +322,6 @@ function acceptance(
     instrument: tools.filter((tool) => found(tool) === true || found(tool) === "pack").join(", ") || AUTHOR,
     missing: tools.filter((tool) => found(tool) === false),
   });
-  // The objective is read as a check is: its author's own computation, which the operator admits
-  // by name, and seen to measure every valid answer or none.
   const measured: CheckReading[] =
     brief.objective === undefined
       ? []
@@ -471,13 +395,6 @@ function acceptance(
   return { checks: all, faults };
 }
 
-/**
- * One reading of a checker without a model: every control answer through the checks twice, what each
- * check was then seen to do, and the do-nothing answer on every task, where the format's own
- * schema yields one that follows the format (`unformed` says why it does not). The acceptance
- * command records it (`tools/c/accept.ts`), and an Examiner's draft is held to the same reading
- * before it stands (`tools/d2/exam.ts`), so an exam is drafted against what it will be read by.
- */
 export async function readChecker(given: Read) {
   const { verify, brief, tasks, width } = given;
   const byId = new Map(tasks.map((task) => [task.taskId, task]));
@@ -510,8 +427,6 @@ export async function readChecker(given: Read) {
   };
 }
 
-/** The checks their author's own computation decides that the operator has not admitted by name,
- *  a sentence each. An installed instrument needs no word, and a word for it is none. */
 export function authoredFaults(checks: readonly CheckReading[], admitted: ReadonlySet<string>): string[] {
   return checks.flatMap(({ id, instrument }) =>
     when(
@@ -521,9 +436,6 @@ export function authoredFaults(checks: readonly CheckReading[], admitted: Readon
   );
 }
 
-/** The checks the log's last reading found no engine behind and `admitted` does not name, by id:
- *  what an exam that stands on the operator's word waits for. `admitted` is the operator's word on
- *  record unless given, so `[]` names every check its author decides (the closing report). */
 export function unadmitted(events: readonly LogEvent[], admitted?: readonly unknown[]): string[] {
   const reading = eventsOf(events, "checker.read").at(-1)?.event.data;
   const kept = new Set(admitted ?? (Array.isArray(reading?.admitted) ? reading.admitted : []));
@@ -533,7 +445,6 @@ export function unadmitted(events: readonly LogEvent[], admitted?: readonly unkn
   });
 }
 
-/** The checker the log holds as frozen, by its last `contract.frozen`; null when none is. */
 export function frozenChecker(events: readonly LogEvent[]): Checker | null {
   const data = eventsOf(events, "contract.frozen").at(-1)?.event.data;
   return isString(data?.contract) && isString(data.checks)
@@ -541,9 +452,6 @@ export function frozenChecker(events: readonly LogEvent[]): Checker | null {
     : null;
 }
 
-/** Why `own` is not the checker the log froze, or null when it is, or when none is frozen. A frozen
- *  contract changes only through the operator (`contract.ts`), and a repaired check program is
- *  another checker: its campaign is another campaign, with nothing of this one's counted under it. */
 export function departure(events: readonly LogEvent[], own: Checker): string | null {
   const frozen = frozenChecker(events);
   if (frozen === null) return null;

@@ -1,8 +1,3 @@
-/**
- * Paired comparison scoring (`pointsOf`, `WEIGHTS`), exact one-sided sign-flip test (`flipP`,
- * `readsStep`), power analysis (`power`, `detectable`), and log pair assembly (`pairsOf`).
- * Full semantics live in `.claude/skills/comparison-reading/references/tally-and-test.md`.
- */
 import { sha256 } from "../meta/digest.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -21,7 +16,6 @@ export interface ObjectiveRule {
   readonly direction: "lower" | "higher";
 }
 
-/** One task's counted solves under reference (`old`) and candidate (`fresh`), plus optional objective/ids/cost. */
 export interface Paired {
   readonly task: string;
   readonly old: readonly boolean[];
@@ -47,25 +41,18 @@ interface Sides {
   readonly fresh: string;
   readonly setting: string;
   readonly comparison: string;
-  /** `mirrored` for A/A controls: splits reference solves in 4-element mirrored pattern across tasks. */
   readonly halves?: "mirrored" | undefined;
   readonly objective?: ObjectiveRule | undefined;
-  /** Optional log prefix cutoff (`pairsReported`). */
   readonly upTo?: number | undefined;
 }
 
 const DETECTION_CHANCE = 0.8;
-/** Sentinel for a retained set with zero tallied tasks (distinct from zero losses). */
 export const UNMEASURED = "unmeasured" as const;
-/** Minimum relative objective improvement worth counting (`objectiveGain`, `informative`, `roomOf`). */
 export const GAP_FLOOR = 0.01;
-/** Floating-point dust floor below which two near-zero objectives read as tied rather than ±100% gain. */
 const ZERO_FLOOR = 1e-12;
-/** Part weights in `pointsOf`; each pairing contributes to validity or (if both valid) objective. */
 export const WEIGHTS: Measures = { validity: 0.6, objective: 0.3 };
 const POINTS_SCALE = 1000;
 
-/** Exact DP distribution of winning margin sums when each integer margin wins independently with `share`. */
 function plusTotalChances(sizes: readonly number[], share: number): Float64Array {
   const chances = new Float64Array(sumOf(sizes) + 1);
   chances[0] = 1;
@@ -87,7 +74,6 @@ const sumOf = (values: readonly number[]) => values.reduce((sum, one) => sum + o
 const chanceOfAtLeast = (chances: Float64Array, from: number) =>
   chances.subarray(Math.max(0, from)).reduce((sum, one) => sum + one, 0);
 
-/** Signed mid-ranks (doubled to integers) over untied task scores, dropping zeros. */
 export function signedRanks(differences: readonly number[]): number[] {
   const untied = differences.filter((one) => one !== 0);
   const sizes = untied.map(Math.abs).toSorted((one, other) => one - other);
@@ -113,15 +99,12 @@ function stepThreshold(sizes: readonly number[], level: number): number {
   return from;
 }
 
-/** Exact one-sided raw-magnitude paired sign-flip p-value, kept for off-policy replay (`test=flip`). */
 export function rawFlipP(differences: readonly number[]): number {
   const { scaled, unit } = scaledMargins(differences);
-  // Scores sum to 2 * (winning margins) - (all margins).
   const from = Math.ceil((sumOf(differences) + sumOf(scaled) * unit) / (2 * unit));
   return Math.min(1, chanceOfAtLeast(plusTotalChances(scaled, 0.5), from));
 }
 
-/** Exact one-sided Wilcoxon signed-rank p-value over untied task scores (1 when no task is untied). */
 export function flipP(differences: readonly number[]): number {
   return rawFlipP(signedRanks(differences));
 }
@@ -130,7 +113,6 @@ export function readsStep(scores: readonly number[], level: number): boolean {
   return flipP(scores) <= level;
 }
 
-/** Whether an A/A control reads a step in either direction at `level`. */
 export function readsStepEitherWay(scores: readonly number[], level: number): boolean {
   return (
     readsStep(scores, level) ||
@@ -141,20 +123,17 @@ export function readsStepEitherWay(scores: readonly number[], level: number): bo
   );
 }
 
-/** Extracts task scores from a recorded test, preferring `unbilled` over legacy billed `differences`. */
 export function scoresIn(test: unknown): number[] {
   const { unbilled, differences } = asRecord(test) ?? {};
   const found = Array.isArray(unbilled) ? unbilled : differences;
   return Array.isArray(found) ? found.filter(isNumber) : [];
 }
 
-/** Chance of reading a step at `level` given per-task win probability `share` (0.5 gives nominal false rate). */
 export function power(differences: readonly number[], share: number, level: number): number {
   const { scaled } = scaledMargins(signedRanks(differences));
   return Math.min(1, chanceOfAtLeast(plusTotalChances(scaled, share), stepThreshold(scaled, level)));
 }
 
-/** Smallest win rate (0.01 grid) achieving `DETECTION_CHANCE` power at `level`, or null if undetectable. */
 export function detectable(differences: readonly number[], level: number): number | null {
   const { scaled } = scaledMargins(signedRanks(differences));
   const threshold = stepThreshold(scaled, level);
@@ -167,14 +146,12 @@ export function detectable(differences: readonly number[], level: number): numbe
   return lo <= 100 ? lo / 100 : null;
 }
 
-/** Minimum all-win untied task count needed to clear `level`. */
 export function sweepOf(level: number): number {
   let sweep = 1;
   while (0.5 ** sweep > level) sweep += 1;
   return sweep;
 }
 
-/** Returns the whole scored set when `falseRate` is present, falling back to `frontier` for legacy reports. */
 export function testedSet<S extends { readonly falseRate?: unknown }, F>(
   whole: S | null,
   frontier: F,
@@ -187,7 +164,6 @@ export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
   return direction === "lower" || direction === "higher" ? { direction } : undefined;
 }
 
-/** Whether `side` still has room to improve on `pair` (partial validity, objective gap >= `GAP_FLOOR`, or known valid answer). */
 export function informative(
   pair: Paired,
   side: "old" | "fresh",
@@ -201,7 +177,6 @@ export function informative(
   return gapAgainst(pair, side, [...other, bests.get(pair.task) ?? null]);
 }
 
-/** Whether any valid solve on `side` is beaten by >= `GAP_FLOOR` by another solve of `side` or `against`. */
 export function gapAgainst(
   pair: Paired,
   side: "old" | "fresh",
@@ -214,7 +189,6 @@ export function gapAgainst(
   return own.some((mine) => known.some((other) => gainOver(rule, other, mine) >= GAP_FLOOR));
 }
 
-/** Relative objective gain of `one` over `other` in [-1, 1] (before `GAP_FLOOR`), or 0 if missing. */
 export function gainOver(
   rule: ObjectiveRule,
   one: number | null | undefined,
@@ -232,7 +206,6 @@ function objectiveGain(pair: Paired, f: number, o: number): number {
   return Math.abs(gain) < GAP_FLOOR ? 0 : gain;
 }
 
-/** Per-task validity and objective points (thousandths) averaged over all cross-arm pairings. */
 export function pointsOf(pair: Paired): Measures {
   let validity = 0;
   const gains: number[] = [];
@@ -249,7 +222,6 @@ export function pointsOf(pair: Paired): Measures {
   };
 }
 
-/** Order-independent sum (smallest magnitude first per sign) so swapping sides negates exact half-points symmetrically. */
 function orderFreeSum(gains: readonly number[]): number {
   const sizes = (sign: number) =>
     gains
@@ -259,7 +231,6 @@ function orderFreeSum(gains: readonly number[]): number {
   return sumOf(sizes(1)) - sumOf(sizes(-1));
 }
 
-/** Rounds halves away from zero with no -0 so swapping sides exactly negates scores. */
 export function wholePoints(points: number): number {
   const rounded = Math.sign(points) * Math.round(Math.abs(points));
   return rounded === 0 ? 0 : rounded;
@@ -270,7 +241,6 @@ export function differenceOf(pair: Paired): number {
   return wholePoints(validity + objective);
 }
 
-/** Deciding part of a non-tied task (`validity` if its sign matches the total, else `objective`). */
 export function carriedBy({ validity, objective }: Measures): keyof Measures | null {
   const sign = Math.sign(wholePoints(validity + objective));
   if (sign === 0) return null;
@@ -299,7 +269,6 @@ export function scored(pairs: readonly Paired[]) {
   return { ...testOf(differences), differences };
 }
 
-/** Deterministic `count`-item subset of `versions` ranked by `sha256(seed:version)`. */
 export function draw(versions: readonly string[], count: number, seed: string): string[] {
   const pool = [...new Set(versions)];
   if (pool.length < count) {
@@ -312,7 +281,6 @@ export function draw(versions: readonly string[], count: number, seed: string): 
     .map(({ version }) => version);
 }
 
-/** Builds paired comparison records from the log, taking the first `solves` started per side and excluding disputed/short tasks. */
 export function pairsOf(
   events: readonly LogEvent[],
   versions: readonly string[],
@@ -355,8 +323,6 @@ export function pairsOf(
       throw new Error(`task ${task} ${why}; only a held-out task is scored`);
     }
     const under = (harness: string) => byKey.get(`${task}\u0000${harness}`) ?? [];
-    // Mirror A/A split across tasks (0,3 vs 1,2 mod 4): always putting earlier solves first showed
-    // order bias across 234 controls (446-363, p=0.004) vs balanced (405-404) when mirrored.
     const ran = old === fresh ? place * 2 * solves : 0;
     const first = (slot: number) => halves === undefined || (ran + slot) % 4 === 0 || (ran + slot) % 4 === 3;
     const reference = under(old);

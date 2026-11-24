@@ -1,13 +1,3 @@
-/**
- * The Examiner's gate checks a task package's shape (`src/examiner/write.ts`).
- *
- * The oldest logs hold four later admission tests (a stronger solve, the checks run again
- * on its answer, three reject control answers, and a screening under two harnesses) and the states
- * screening moved a task through: `too-hard`, `admitted`, `too-easy`, `wall-bound`, and the
- * anchor's draw. They are read here as history. A later admission test says nothing of a task's shape, and
- * each of those states leaves the task what it was, a held-out task; a refusal one of the later
- * admission tests led to stands, since its state was logged beside it. No command writes any of them now.
- */
 import { CHECK_BRIEF, EVALUATOR_FILE } from "../meta/bundle-layout.ts";
 import { existsSync } from "../meta/filesystem.ts";
 import { type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
@@ -25,15 +15,11 @@ import {
   type Task,
 } from "./verify.ts";
 
-/** The task's public part and its hidden values, as the verifier takes them, with the rest. */
 export interface TaskPackage extends Task {
-  /** The contract rules the check enforces. */
   readonly ruleIds: readonly string[];
-  /** The check program's directory: its `brief.json`, its `evaluator.ts` and whatever they read. */
   readonly checks: string;
 }
 
-/** The shape check passes or refuses. */
 interface Passed {
   readonly outcome: "passed";
 }
@@ -42,34 +28,22 @@ interface Refused {
   readonly reason: string;
 }
 
-/** A task version as the fold holds it: its state, and whether its package passed task admission. */
 interface Folded {
   state: TaskState;
   admitted: boolean;
 }
 
-/** What a log holds of its tasks, from the one fold: each version's state, and the two sets every
- *  command of a campaign asks for, in the order their tasks were proposed. */
 interface TaskSets {
   readonly states: Map<string, TaskState>;
-  /** The held-out tasks: admitted, and neither released, disputed nor refused. */
   readonly held: readonly string[];
-  /** The practice tasks. */
   readonly released: readonly string[];
 }
 
-/** The task admission's outcome, and the state, of a task held for the retired ladder. */
 const LADDER = "ladder";
 const TASK_STATES = ["held", "refused", "released", "disputed"] as const;
 
 type TaskState = (typeof TASK_STATES)[number];
 
-/**
- * Where each state may go. A held-out task may be released for practice, and a check defect shows
- * wherever a task is solved, so a task may be disputed from either set: in v1, 36 of 47 rehearsal
- * misses were check defects, so practice is where most will show. Nothing follows a dispute or a
- * refusal.
- */
 const NEXT: Readonly<Record<TaskState, readonly TaskState[]>> = {
   held: ["refused", "released", "disputed"],
   released: ["disputed"],
@@ -77,8 +51,6 @@ const NEXT: Readonly<Record<TaskState, readonly TaskState[]>> = {
   disputed: [],
 };
 
-/** The states a log written before 2026-10-09 moved a held-out task through, `held` itself, which
- *  returned one after a deadline, and the ladder's. Each leaves the task held out. */
 const ONCE_HELD: ReadonlySet<string> = new Set([
   "held",
   "too-hard",
@@ -88,8 +60,6 @@ const ONCE_HELD: ReadonlySet<string> = new Set([
   LADDER,
 ]);
 
-/** The recorded task admission number. A log written before 2026-10-09 holds three more a task, which
- *  say nothing of its shape. */
 const ADMISSION_RECORD = 1;
 interface TaskEvent {
   readonly index: number;
@@ -111,12 +81,6 @@ function taskEventsOf(events: readonly LogEvent[]): readonly TaskEvent[] {
   return list;
 }
 
-/**
- * The shape check: every part is present, and every rule id is in the contract. A check
- * program none of whose checks applies to the family would pass any answer, and a check that
- * enforces a rule the task does not list holds the solver to a rule it was never shown. A check that
- * declares a hidden value of its own must find one in the task, and a declared path must read.
- */
 export function packageGate(contract: Contract, task: TaskPackage): Passed | Refused {
   const reason = packageFault(contract, task);
   return reason === null ? { outcome: "passed" } : { outcome: "refused", reason };
@@ -150,7 +114,6 @@ function packageFault(contract: Contract, task: TaskPackage): string | null {
   if (checks.length === 0) return `no check applies to family ${task.family}`;
   const listed = new Set(task.ruleIds);
   for (const check of checks) {
-    // The brief is the author's, read unchecked: what it cites is proven here before it is trusted.
     const cited: unknown = check.citedDecisionIds;
     if (!Array.isArray(cited) || cited.length === 0 || !cited.every(isString)) {
       return `check ${check.id} cites no rule by id`;
@@ -159,8 +122,6 @@ function packageFault(contract: Contract, task: TaskPackage): string | null {
     if (unlisted !== undefined) {
       return `check ${check.id} enforces ${unlisted}, which the task does not list`;
     }
-    // A check that needs a hidden value of its own and finds none cannot run, and the verifier
-    // reads that as its own failure, which stops a run: the task's fault is caught here instead.
     try {
       checkEvaluationRequest(check, { publicTask: task, artifact: null, hidden: task.hidden });
     } catch (error) {
@@ -170,14 +131,6 @@ function packageFault(contract: Contract, task: TaskPackage): string | null {
   return null;
 }
 
-/**
- * The task version, taken when the package is proposed and its task admission runs: its five parts,
- * with the check program as the sha256 of each of its files by its path under the directory. Every
- * file counts, since the verifier copies them all into each check's cell: a check program may import
- * a helper beside `evaluator.ts`, which a version over that file alone would miss. A
- * program that does not read, a symlink in it among the reasons, is versioned by why, so task
- * admission's refusal is logged against what was proposed.
- */
 export function taskVersion(task: TaskPackage): string {
   const { checks, ...parts } = task;
   let program: JsonValue;
@@ -189,24 +142,14 @@ export function taskVersion(task: TaskPackage): string {
   return hashJsonValue({ ...parts, checks: program });
 }
 
-/** Whether the task states read an event of this kind. The log folds these as they are appended,
- *  so that no append can leave it unreadable. */
 export function foldsEvent(kind: EventKind): boolean {
   return kind.startsWith("task.");
 }
 
-/**
- * Each task version's state, folded from the log: `task.proposed` holds it, a passing `task.gate`
- * makes it a held-out task, and `task.state` moves it. A history that proposes a task twice, puts
- * one to its task admission twice, moves one where it cannot go, or releases or disputes one whose package
- * never passed, is refused, as a line that is no event is.
- */
 export function taskStates(events: readonly LogEvent[], upTo = events.length - 1): Map<string, TaskState> {
   return taskSets(events, upTo).states;
 }
 
-/** The same fold with the two sets beside the states, so that what is held out and what is
- *  practice are said in one place. */
 export function taskSets(events: readonly LogEvent[], upTo = events.length - 1): TaskSets {
   const tasks = new Map<string, Folded>();
   for (const { index, event } of taskEventsOf(events)) {
@@ -238,14 +181,10 @@ function step(tasks: Map<string, Folded>, { at, kind, data }: LogEvent): void {
   if (fault !== null) throw new Error(`${at}: task ${version} ${fault}`);
 }
 
-/** Whether a task admission's outcome held its task out: `passed`, or `ladder` in an old log. Every
- *  reader of a task admission's outcome asks this, so that an old ladder task is held out to each
- *  of them alike, and never held by one reader and left undrawn by another. */
 export function heldAtGate(outcome: JsonValue | undefined): boolean {
   return outcome === "passed" || outcome === LADDER;
 }
 
-/** Each admitted task version, held (true) or refused (false) as its last `task.gate` reads. */
 export function admissionsOf(events: readonly LogEvent[]): Map<string, boolean> {
   return new Map(
     taskEventsOf(events).flatMap(({ event: { kind, data } }) =>
@@ -256,7 +195,6 @@ export function admissionsOf(events: readonly LogEvent[]): Map<string, boolean> 
   );
 }
 
-/** A `task.gate` event on the task, or why the history may not log it. */
 function admit(task: Folded, data: JsonObject): string | null {
   if (data.gate !== ADMISSION_RECORD) return null;
   if (task.admitted) return "logs its gate twice";
@@ -264,7 +202,6 @@ function admit(task: Folded, data: JsonObject): string | null {
   return null;
 }
 
-/** A `task.state` event on the task, or why the history may not log it. */
 function move(task: Folded, data: JsonObject): string | null {
   const named = isString(data.state) ? data.state : "";
   const to = ONCE_HELD.has(named) ? "held" : TASK_STATES.find((state) => state === named);

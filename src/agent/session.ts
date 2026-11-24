@@ -1,12 +1,3 @@
-/**
- * Shared model-session runner for all four seats: Solver, Builder, Examiner, and Referee. `sit`
- * executes an in-memory `pi-durable` `Harness` against the seat's backends, system prompt, tools,
- * and opening message. It centralises turn counting and caps, loop termination, follow-up prompts
- * on yield, shutdown propagation (needed to close live backend processes such as Claude Code),
- * scratch home lifecycle, trace and compaction logging, crash classification, and final spend
- * accounting. Each seat retains ownership of its tools, prompts, domain events, and deadline
- * pauses via `sessionClock`.
- */
 import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import type { Api, AssistantMessage, Message, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { isContextOverflow } from "@earendil-works/pi-ai/utils/overflow";
@@ -45,59 +36,31 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import { hostScratch } from "../wall/policy.ts";
 import { releaseRoot } from "../wall/seat-root.ts";
 
-/** Tool registration passed to `pi-durable` (`defineTool`); `control.terminate` ends the loop
- *  after the current round. */
 export type SeatTool = ToolRegistration;
 
-/** Configuration supplied by a seat to `sit`. */
 export interface Seat {
-  /** Factory building the `Models` registry for the session's private home directory. `shutdown`
-   *  aborts when the session ends or is interrupted so live backend processes close cleanly. */
   readonly models: (home: string, shutdown: AbortSignal) => Models;
-  /** Optional private home directory for backend state; when omitted, a host-owned scratch folder
-   *  closed to all command walls (`policy.ts`) is created and released automatically. */
   readonly home?: string;
-  /** Session identifier keying backend live state (Claude Code query, Codex WebSocket) and trace
-   *  events. */
   readonly id: string;
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
-  /** Complete system prompt registered as a single untagged section. */
   readonly system: string;
   readonly opening: string;
   readonly tools: readonly SeatTool[];
-  /** Confined execution environment (`walledEnv`, `src/tools/env.ts`) for seats whose tools access
-   *  the filesystem or shell; omitted for pure-reasoning seats. */
   readonly env?: ExecutionEnv;
-  /** Optional campaign-log trace destination. `as` overrides the logged session ID per write when
-   *  a single persistent conversation spans multiple logical asks (such as the Examiner). */
   readonly trace?: { readonly log: string; readonly of: SeatKind; readonly as?: () => string };
-  /** Guard invoked before every model generation and compaction; throwing terminates the session. */
   readonly before?: () => void | Promise<void>;
-  /** Mutable array receiving each completed model turn (metered and traced) before tool execution. */
   readonly turns: AssistantMessage[];
-  /** Optional upper bound on completed model turns. */
   readonly most?: number | undefined;
-  /** Returns `true` once the seat has completed its objective and no further turns should run. */
   readonly over?: () => boolean;
-  /** Optional follow-up user message sent when the model yields without tool calls; returning
-   *  `null` ends the session. */
   readonly next?: () => Promise<string | null>;
-  /** Callback invoked after a turn is recorded and before its tool calls execute. */
   readonly onTurn?: (message: AssistantMessage) => void;
-  /** Callback invoked at the start and end of each tool execution. */
   readonly onTool?: (phase: "start" | "end", callId: string, tool: string) => void;
-  /** Called once whenever durable or the Claude CLI backend compacts the conversation context. */
   readonly onCompact?: () => void;
-  /** External abort signals (deadline, cancellation, budget cap) that cut the session. */
   readonly stops: readonly (AbortSignal | undefined)[];
-  /** Receives an asynchronous spend reader once the harness opens, for seats that bill partial
-   *  progress before session exit. */
   readonly spending?: (now: () => Promise<Spent>) => void;
 }
 
-/** Summary returned by `sit`: whether an external stop cut the session, any thrown error message,
- *  the crash reason (null if cut externally), and total spend. */
 export interface Sat {
   readonly cut: boolean;
   readonly thrown: string | null;
@@ -105,11 +68,8 @@ export interface Sat {
   readonly spent: Spent;
 }
 
-/** Maximum byte length retained per traced turn or tool result (64 KiB, exceeding `pi`'s 50 KiB
- *  tool truncation limit so traces preserve everything the model observed). */
 const TRACE_TEXT_BYTES = 64 * 1024;
 
-/** Diagnostic codes for synthetic error results produced by `pi-durable` itself instead of a tool. */
 const HARNESS_WRITTEN: ReadonlySet<string> = new Set([
   "tool_unavailable",
   "invalid_arguments",
@@ -120,11 +80,8 @@ const HARNESS_WRITTEN: ReadonlySet<string> = new Set([
   "abandoned",
 ]);
 
-/** Creates a trace sink writing turn, tool-call, and compaction events to the campaign log. */
 export function traceSink(log: string, of: SeatKind, id: string | (() => string), turn: () => number) {
   const named = () => ({ [whose(of)]: isString(id) ? id : id() });
-  // Attribute each call to the logical session active when it began (for example, an Examiner's
-  // `finish` call suspends across asks and resumes under a new ask ID).
   const calls = new Map<string, { at: number; whose: ReturnType<typeof named> }>();
   return {
     beforeTool: (call: ToolHookCall) => {
@@ -133,7 +90,6 @@ export function traceSink(log: string, of: SeatKind, id: string | (() => string)
     afterTool: (call: ToolHookCall, result: ToolExecutionResult) => {
       const started = calls.get(call.id);
       calls.delete(call.id);
-      // Calls that slept across asks (`finish`) report `null` duration rather than idle wait time.
       const woke = started !== undefined && started.whose[whose(of)] !== named()[whose(of)];
       append(log, traceKind(of, "call"), {
         ...(started?.whose ?? named()),
@@ -175,7 +131,6 @@ export function traceSink(log: string, of: SeatKind, id: string | (() => string)
   };
 }
 
-/** Runs a single `seat` session on an in-memory `pi-durable` `Harness` and returns its outcome. */
 export async function sit(seat: Seat): Promise<Sat> {
   const home = seat.home ?? hostScratch("claude-cli-seat-");
   const meter = seatMeter(seat.model);
@@ -184,7 +139,6 @@ export async function sit(seat: Seat): Promise<Sat> {
   const shutdown = AbortSignal.any([...stops, done.signal]);
   const halt = Promise.withResolvers<void>();
   const frame = sessionHooks(seat, halt.resolve, meter);
-  // Record per-compaction token usage in the trace; final session billing comes from the backend ledger.
   const compactions = compactionTrace(({ spent, ...event }) => {
     seat.onCompact?.();
     if (seat.trace === undefined) return;
@@ -227,7 +181,6 @@ export async function sit(seat: Seat): Promise<Sat> {
       },
       BACKGROUND_CONTEXT,
     );
-    // Automatically detached when `harness.close` terminates all commit observers.
     harness.observeCommits({
       advance: (publication) => {
         compactions.committed(publication);
@@ -265,13 +218,10 @@ export async function sit(seat: Seat): Promise<Sat> {
     frame.fail(error);
   } finally {
     done.abort();
-    // Snapshot `pi-durable`'s usage ledger before closing the harness drops its in-memory state.
     usage = (await harness?.usage(BACKGROUND_CONTEXT).catch(() => null)) ?? null;
     await harness?.close(BACKGROUND_CONTEXT);
     shutdown.removeEventListener("abort", wakeOnStop);
   }
-  // Collect Claude Code's final usage ledger before releasing the temporary home directory, so
-  // `releaseRoot` terminates any lingering Claude Code process cleanly afterwards.
   let ledger: Awaited<ReturnType<typeof claudeLedger>>;
   try {
     ledger = await claudeLedger(seat.id);
@@ -291,9 +241,6 @@ export async function sit(seat: Seat): Promise<Sat> {
   };
 }
 
-/** Builds `pi-durable` generation and tool hooks for `sit`. Because `pi-durable` logs hook errors
- *  and continues instead of aborting, `fence` wakes `sit` to abort externally and waits for the
- *  invocation abort signal before throwing. */
 function sessionHooks(seat: Seat, halt: () => void, meter: ReturnType<typeof seatMeter>) {
   const sink =
     seat.trace === undefined
@@ -346,10 +293,6 @@ function sessionHooks(seat: Seat, halt: () => void, meter: ReturnType<typeof sea
         beforeRequest: before,
         afterResponse: async (message, api, context) => {
           try {
-            // Errors that `pi-durable` will retry do not consume a turn from the seat's turn
-            // budget; they are attached to the subsequent turn as `retried` while their token cost
-            // remains in `pi-durable`'s ledger. Mirrors `generation.js`'s retry predicate (context
-            // overflows are never retried) because `pi-durable` 1.5.2 does not expose its decision.
             const attempt =
               (await api.snapshot(LiveDoc, api.conversationId, context))?.generation?.attempt ?? 1;
             if (
@@ -398,8 +341,6 @@ function sessionHooks(seat: Seat, halt: () => void, meter: ReturnType<typeof sea
   });
 }
 
-/** Traces every model tool call exactly once: normal executions via `afterTool`, and synthetic
- *  harness-written refusals via committed entries so no refusal is recorded twice. */
 function toolHooks(seat: Seat, sink: ReturnType<typeof traceSink> | undefined) {
   const recorded = new Set<string>();
   const ended = (call: ToolHookCall, result: ToolExecutionResult) => {
@@ -437,8 +378,6 @@ function toolHooks(seat: Seat, sink: ReturnType<typeof traceSink> | undefined) {
   };
 }
 
-/** Pausable seat deadline timer: time spent inside host actions (`within`) does not count against
- *  the seat's wall-clock allowance, and nested `within` intervals share a single pause depth. */
 export function sessionClock(began: number, seconds: number) {
   const deadline = new AbortController();
   let aside = 0;
@@ -485,8 +424,6 @@ export function sessionClock(began: number, seconds: number) {
   };
 }
 
-/** Extracts text parts in order from a message or tool-result content array, ignoring non-text
- *  items such as images. */
 export function textsOf(content: readonly { readonly type: string; readonly text?: string }[]): string[] {
   return content.flatMap((part) => (part.type === "text" ? [part.text ?? ""] : []));
 }

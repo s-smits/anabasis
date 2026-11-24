@@ -1,12 +1,3 @@
-/**
- * Examiner system prompt and opening/wake messages (`src/examiner/prompt.ts`).
- *
- * Supplies measured reference outcomes and winning harnesses (`record.ts`), solve budget limits,
- * comparison scoring rules (`GAP_FLOOR`), and the difficulty reach scale (`LADDER`, `ladder.ts`)
- * without numerical targets, pass-rate quotas, or access to the reference harness's files
- * (`AGENTS.md` sections 2 and 3). Shared task-structure invariants (`TASK`, `FAIR`, `UNHELD`) are
- * also imported by `src/examiner/draft.ts`.
- */
 import { GAP_FLOOR } from "../kernel/compare.ts";
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -14,39 +5,29 @@ import { plural } from "../meta/text.ts";
 import { LADDER } from "./ladder.ts";
 import type { heard } from "./record.ts";
 
-/** The budget every solve is held to and how many times a comparison solves a task under each
- *  harness, as the campaign's setting names them: the solver's own turns, null where unlimited. */
 export interface SolveBudget {
   readonly modelTurns: number | null;
   readonly minutes: number;
   readonly solves: number;
 }
 
-/** A check as its author's brief declares it and an Examiner is shown it: never its program. */
 export interface CheckRow {
   readonly id: string;
   readonly assertion: string;
   readonly families: "all" | readonly string[];
 }
 
-/** An ask's limits, as an opening and a wake tell them. */
 type Told = Parameters<typeof firstMessage>[3];
 
-/** What a task is made of, as both modes are told it: the objective reads hidden values too. */
 export const TASK =
   "A task is a family, a public input and hidden values. The family names a general class of problem shared across multiple tasks (never a unique per-task title). A solver reads the family's name and the public input; only the check program receives hidden values.";
 
-/** What validity rests on, and where what a task was built from goes, as both modes are told it. */
 export const FAIR =
   "Author original tasks yourself from the domain's principles; never search for, fetch, or copy tasks from public benchmarks. A check refuses only what a rule, the scope, the conventions or a standard a rule names states. A solver copies a string it is asked for as the public input spells it, markup included, so a check that compares that text exactly refuses the markup, which measures the wording rather than the solver. What a task was built from, such as generating parameters, a latent process, planted faults or the solving method required, stays hidden — never disclosed in the public input or the family name. The Builder reads the objective's measure of each practice solve, so a value several tasks were built from can be learnt from practice instead of found in the task, and what a harness learns so is of the exam, not of the field.";
 
-/** The one limit on a rule or a task the field does not set, as both modes are told it. */
 export const UNHELD =
   "A limit, state or duty the field does not hold measures your wording rather than the solver, so add none.";
 
-/** The system prompt of a session that holds tasks out by `propose_tasks`. Each fact is stated
- *  once, in the section that owns it, and the gate's in `propose_tasks`'s description (`write.ts`).
- *  `tries` says whether the session may put instances to the reference harness (`try_reference`). */
 export function systemPrompt(tries: "given" | "none"): string {
   const floor = `${String(GAP_FLOOR * 100)}%`;
   return [
@@ -64,8 +45,6 @@ export function systemPrompt(tries: "given" | "none"): string {
   ].join("\n\n");
 }
 
-/** The budget as a fact for an Examiner, writing tasks or drafting the exam they are written
- *  under. */
 export function budgetLine({ modelTurns, minutes, solves }: SolveBudget): string {
   return `Every solve of a task is held to ${modelTurns === null ? "no fixed number of the solver's own turns" : `${plural(modelTurns, "turn")} of the solver's own`}, a turn being one reply with the tool calls in it, and ${plural(minutes, "minute")}, and a comparison solves each task ${plural(solves, "time")} under each harness. This is the budget, fixed by the campaign's setting for every solve of it; it is no target of yours.`;
 }
@@ -78,14 +57,6 @@ const grouped = (groups: ReturnType<typeof heard>["groups"]) =>
     .map(({ heading, lines }) => `${heading}:\n${lines.map((line) => `- ${line}`).join("\n")}`)
     .join("\n\n");
 
-/** The opening message: the operator's brief where the campaign opened from one, the domain's
- *  public contract, its checks by id and assertion, and what `record.ts` tells of the campaign's
- *  past: the last comparison the reference stood in, the tasks under its outcome on each, the
- *  promotion and the drafts the gate refused since. `told` is the limits the session is told it runs
- *  under, with the solves of the reference harness it may ask for; how many tasks are wanted is not
- *  among them. `campaign` is what it is told of its campaign
- *  beside the contract, each null where there is none: the operator's brief and the budget every
- *  solve is held to. */
 export function firstMessage(
   contract: Contract,
   checks: readonly CheckRow[],
@@ -101,8 +72,6 @@ export function firstMessage(
   const { brief, budget } = campaign;
   const families = (row: CheckRow) => (row.families === "all" ? "every family" : row.families.join(", "));
   return [
-    // The brief first, where the campaign opened from one: every session rereads the domain as the
-    // operator put it, and not only the exam drafted from it. The rules govern.
     ...(brief === null
       ? []
       : [
@@ -114,8 +83,6 @@ ${brief}`,
     `Scope: ${contract.scope}`,
     ...(contract.objective === undefined ? [] : [`Objective: ${objectiveLine(contract.objective)}`]),
     `A solver's answer follows this schema: ${capturedJsonStringify(contract.answerFormat)}`,
-    // The budget as a fact: a task that tells two harnesses apart is one a better method answers
-    // within it and a worse one does not, which nobody can write without knowing it.
     ...(budget === null ? [] : [budgetLine(budget)]),
     `The checks, by id:\n${checks.map((row) => `- ${row.id} (${families(row)}): ${row.assertion}`).join("\n") || "(none)"}`,
     ...(tasks.stood === null ? [] : [tasks.stood]),
@@ -138,10 +105,6 @@ ${brief}`,
   ].join("\n\n");
 }
 
-/** What a resting conversation is told as the host asks again (`ask`, `write.ts`): the readings
- *  since it was last told and its limits from here. No count of tasks and no target: what to write
- *  is the author's (`AGENTS.md`, section 2, consequence 2). A promotion since then is said as an
- *  opening says it (`heard`). */
 export function wakeMessage(tasks: ReturnType<typeof heard>, told: Told): string {
   return [
     "The host asks for more tasks under the same exam.",

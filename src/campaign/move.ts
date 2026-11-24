@@ -1,9 +1,3 @@
-/**
- * A campaign's moves, as the decision table returns them (`decide.ts`): the one move a log leads
- * to, with its reason and the row that chose it, or the campaign's ending; and a move in one line.
- */
-
-/** How a campaign ends, as its last event says it. */
 export type Ending =
   | "budget"
   | "stop"
@@ -11,49 +5,36 @@ export type Ending =
   | "no-room"
   | "environment"
   | "operator"
-  /** An older log's ending, from a retired rule under which an A/A control that read a step ended
-   *  the campaign. */
   | "control"
   | "finished";
 
-/** The one move a campaign's log leads to, with its reason, or its ending. */
-export type Decided =
-  /** An Examiner session that drafts the exam of a campaign opened from a prompt. */
-  (
-    | { readonly move: "draft"; readonly why: string }
-    | { readonly move: "accept"; readonly why: string }
-    | { readonly move: "prepare"; readonly why: string }
-    /** An Examiner session, which is always asked for tasks the reference harness fails.
-     *  `answers` names the operator's word it follows, where it follows one (`pendingWords`). */
-    | { readonly move: "examine"; readonly why: string; readonly answers?: readonly number[] }
-    | { readonly move: "build"; readonly why: string }
-    /** A comparison of `fresh` with `reference`: `latest`, `promoted`, `starter`, or a digest. The
-     *  reference against itself is read beside every comparison, and is no
-     *  move of the table. `id` names one that began and goes on. */
-    | {
-        readonly move: "compare";
-        readonly why: string;
-        readonly fresh: string;
-        readonly reference: string;
-        readonly id?: string;
-      }
-    | { readonly move: "promote"; readonly why: string; readonly harness: string }
-    | { readonly move: "revert"; readonly why: string; readonly harness: string }
-    | {
-        readonly move: "end";
-        readonly why: string;
-        readonly ending: Ending;
-        readonly answers?: readonly number[];
-      }
-  ) & {
-    /** The row of the table that chose it (`ROWS`, `decide.ts`), which `campaign.move` carries
-     *  beside its reason. */
-    readonly code: string;
-  };
+export type Decided = (
+  | { readonly move: "draft"; readonly why: string }
+  | { readonly move: "accept"; readonly why: string }
+  | { readonly move: "prepare"; readonly why: string }
+  | { readonly move: "examine"; readonly why: string; readonly answers?: readonly number[] }
+  | { readonly move: "build"; readonly why: string }
+  | {
+      readonly move: "compare";
+      readonly why: string;
+      readonly fresh: string;
+      readonly reference: string;
+      readonly id?: string;
+    }
+  | { readonly move: "promote"; readonly why: string; readonly harness: string }
+  | { readonly move: "revert"; readonly why: string; readonly harness: string }
+  | {
+      readonly move: "end";
+      readonly why: string;
+      readonly ending: Ending;
+      readonly answers?: readonly number[];
+    }
+) & {
+  readonly code: string;
+};
 
 export const short = (digest: string): string => digest.slice(0, 8);
 
-/** A decided move in one line, as the campaign's command and its view print it. */
 export function decidedLine(decided: Decided): string {
   const named = (harness: string) => (harness.length > 16 ? short(harness) : `the ${harness} harness`);
   const what = (): string => {

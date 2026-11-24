@@ -14,6 +14,7 @@ import { noInlineSlopAnswerRule } from "./rules/no-inline-slop-answer.ts";
 
 import { noAliasRestatingReturnRule } from "./rules/no-alias-restating-return.ts";
 import { noArmsDifferingInOneTermRule } from "./rules/no-arms-differing-in-one-term.ts";
+import { noCommentsRule } from "./rules/no-comments.ts";
 import { noDeepNestingRule } from "./rules/no-deep-nesting.ts";
 import { noHandRolledSleepRule } from "./rules/no-hand-rolled-sleep.ts";
 import { noInlineBlockReducerRule } from "./rules/no-inline-block-reducer.ts";
@@ -58,6 +59,7 @@ const anaPlugin = eslintCompatPlugin({
     "no-inline-slop-answer": noInlineSlopAnswerRule,
 
     "no-arms-differing-in-one-term": noArmsDifferingInOneTermRule,
+    "no-comments": noCommentsRule,
     "no-deep-nesting": noDeepNestingRule,
     "no-hand-rolled-sleep": noHandRolledSleepRule,
     "no-react-effect": noReactEffectRule,

@@ -44,6 +44,7 @@
   "rules": {
     "ana/no-alias-restating-return": "error",
     "ana/no-arms-differing-in-one-term": "error",
+    "ana/no-comments": "error",
     "ana/no-deep-nesting": "error",
     "ana/no-hand-read-argv": "error",
     "ana/no-hand-rolled-error-render": "error",

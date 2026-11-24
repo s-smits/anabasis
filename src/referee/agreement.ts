@@ -1,61 +1,28 @@
-/**
- * How far the Referee's rulings agree with a person's labels of the same fails.
- *
- * Two rates carry the risk, and they pull apart. A check defect the Referee lets stand turns a broken
- * check into a scored task; an earned fail it voids removes a real limit from the count. A fail is
- * voided by any ruling but `earned`, since `unclear` sets its task aside as `check-defect` does, so
- * a Referee that ruled every earned fail unclear does not read as voiding none of them.
- *
- * No bar is read on fewer than thirty labelled fails (`LEAST_LABELS`), whatever
- * else the operator sets. And where a person
- * labels more than one in four of the Referee's `unclear` rulings earned, it is said in one line
- * (`unclearReport`): an unclear ruling sets its task aside, so a Referee that rules unclear what a
- * person reads as earned removes real limits from the count. The line is a report and changes no decision.
- */
 import type { LogEvent } from "../kernel/log.ts";
 import { labelsIn, rulingsOf } from "../kernel/solves.ts";
 import type { Ruling } from "./referee.ts";
 
-/** The Referee's three rulings, which are a person's three labels too. */
 export const RULINGS = ["earned", "check-defect", "unclear"] as const;
-/** Human review labels for passing answers: `sound` (valid), `wrong` (invalid answer that slipped
- *  past checks, treated as a side failure via `wrongAsFailed`), or `unclear`. */
 export const PASS_LABELS = ["sound", "wrong", "unclear"] as const;
 export type PassLabel = (typeof PASS_LABELS)[number];
 
-/** The fewest labelled fails any bar is read on. */
 const LEAST_LABELS = 30;
-/** The fewest labelled passes, and highest wrong-pass share, for the pass-soundness bar. */
 const LEAST_PASS_LABELS = 20;
 const MAX_WRONG_PASS = 0.1;
-/** The share of `unclear` rulings labelled earned past which the report speaks. */
 const UNCLEAR_EARNED = 1 / 4;
 
-/** The bar, frozen before the Referee reads a labelled fail. */
 interface Bar {
-  /** Of the fails a person labelled a check defect, the least share the Referee must void: rule
-   *  other than earned, which sets the task aside. */
   readonly caught: number;
-  /** Of the fails a person labelled earned, the most the Referee may void, an unclear ruling among
-   *  them. */
   readonly voided: number;
 }
 
 interface Agreement {
-  /** `table[label][ruling]`: fails a person labelled `label` that the Referee ruled `ruling`. */
   readonly table: Readonly<Record<Ruling, Readonly<Record<Ruling, number>>>>;
-  /** Labelled fails the log holds no ruling for. */
   readonly unruled: readonly string[];
-  /** The two rates; null where no fail carries the label they are a share of. */
   readonly caught: number | null;
   readonly voided: number | null;
-  /** Of the fails the Referee ruled unclear, the share a person labelled earned; null where it
-   *  ruled none unclear. */
   readonly unclearEarned: number | null;
-  /** Of each kind, twice the fails both called it over the fails either did; null where neither did. */
   readonly specific: Readonly<Record<Ruling, number | null>>;
-  /** The share of ruled fails both read alike, Cohen's kappa and PABAK; null where none was ruled,
-   *  and kappa null where chance alone would have them agree on every one. */
   readonly observed: number | null;
   readonly kappa: number | null;
   readonly pabak: number | null;
@@ -74,12 +41,9 @@ function settledBy<T extends string>(
   );
 }
 
-/** A person's label of each rejected answer on record (`labelsIn`), where it is one of the rulings. */
 export const settledLabels = (events: readonly LogEvent[]): Map<string, Ruling> =>
   settledBy(events, "labels", RULINGS);
 
-/** The last ruling the log holds for each labelled solve (`rulingsOf`, the Referee's own), set
- *  against its label. */
 export function agreement(events: readonly LogEvent[], labels: ReadonlyMap<string, Ruling>): Agreement {
   // SAFETY: both levels are built from RULINGS, so every Ruling key is present at each.
   const table = Object.fromEntries(
@@ -94,7 +58,6 @@ export function agreement(events: readonly LogEvent[], labels: ReadonlyMap<strin
   }
   const labelled = (kind: Ruling) => RULINGS.reduce((sum, ruling) => sum + table[kind][ruling], 0);
   const ruled = (kind: Ruling) => RULINGS.reduce((sum, label) => sum + table[label][kind], 0);
-  // Voided is every ruling but earned: an unclear one sets its task aside as a check defect does.
   const share = (label: Ruling) => {
     const total = labelled(label);
     return total === 0 ? null : (total - table[label].earned) / total;
@@ -121,9 +84,6 @@ export function agreement(events: readonly LogEvent[], labels: ReadonlyMap<strin
   };
 }
 
-/** Whether the rulings clear the bar. Fewer than `LEAST_LABELS` labelled fails clear nothing, and
- *  nor does a rate with nothing to be a share of: a set with no hand-labelled check defect cannot
- *  show the Referee catches one. */
 export function clears(measured: Agreement, bar: Bar): boolean {
   const labelled = RULINGS.flatMap((label) => RULINGS.map((ruling) => measured.table[label][ruling]));
   return (
@@ -136,23 +96,15 @@ export function clears(measured: Agreement, bar: Bar): boolean {
   );
 }
 
-/** One line where a person labelled more than one in four of the Referee's `unclear` rulings
- *  earned; null otherwise. It changes no decision. */
 export function unclearReport({ table, unclearEarned }: Agreement): string | null {
   if (unclearEarned === null || unclearEarned <= UNCLEAR_EARNED) return null;
   const ruled = RULINGS.reduce((sum, label) => sum + table[label].unclear, 0);
   return `a person labelled earned ${String(table.earned.unclear)} of the Referee's ${String(ruled)} unclear rulings, more than one in four: an unclear ruling sets aside a task a person reads as a real limit`;
 }
 
-/** A person's label of each sampled passing answer on record (`labelsIn`), where it is one of
- *  `PASS_LABELS`. */
 export const settledPassLabels = (events: readonly LogEvent[]): Map<string, PassLabel> =>
   settledBy(events, "passes", PASS_LABELS);
 
-/** Pass-soundness summary over blind pass labels (from one campaign or pooled across several):
- *  counts by label, total and decided (`sound` + `wrong`) labelled passes, wrong-pass share among
- *  decided passes, and whether the set clears the pass bar (at least 20 decided passes and at most
- *  1 in 10 wrong, so `unclear` passes neither inflate the sample nor dilute the wrong-pass rate). */
 export function passAgreement(labels: ReadonlyMap<string, PassLabel>) {
   const counts: Record<PassLabel, number> = { sound: 0, wrong: 0, unclear: 0 };
   for (const label of labels.values()) counts[label] += 1;

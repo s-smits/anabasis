@@ -43,7 +43,7 @@ Each states `no fix` in its source (`test/lint-registry.test.ts` enforces this):
 
 - **Type design (8)**: `no-unproven-unknown-parameter`, `no-unknown-returns`, `no-unknown-type-aliases`, `no-unsafe-dictionary-type`, `no-known-value-widening`, `no-widen-then-assert`, `no-chained-type-assertions`, `no-runtime-typeof`.
 - **Naming (3)**: `no-thrice-spelled-object`, `no-shape-in-symbol-names`, `no-positional-boolean-parameter`.
-- **Structural judgement (9)**: `no-deep-nesting`, `no-tangled-ternary`, `no-inline-block-reducer`, `no-side-effect-in-predicate`, `no-arms-differing-in-one-term`, `no-hand-rolled-sleep`, `no-single-use-const-chain`, `no-hand-read-argv`, `no-react-effect`.
+- **Structural judgement (10)**: `no-comments`, `no-deep-nesting`, `no-tangled-ternary`, `no-inline-block-reducer`, `no-side-effect-in-predicate`, `no-arms-differing-in-one-term`, `no-hand-rolled-sleep`, `no-single-use-const-chain`, `no-hand-read-argv`, `no-react-effect`.
 - **Cross-file changes (5)**: `no-pass-through-wrapper`, `no-lifetime-outside-owner`, `no-module-mocking`, `no-object-parameters`, `no-inline-slop-answer`.
 - **Semantic ambiguity (2)**: `no-transposed-argument`, `no-hand-spelled-git`.
 

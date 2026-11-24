@@ -1,8 +1,3 @@
-/**
- * The Referee's answer probe: compare an answer with a copy after up to three field or file
- * changes, run through the sandboxed verifier. Shared by rejection adjudication (`probeTool`) and
- * adversarial draft audits (`probeExamplesTool`).
- */
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
 import { type AnswerFile, textFiles } from "../kernel/answer-files.ts";
@@ -14,24 +9,20 @@ import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { text, tool } from "../tools/answer.ts";
 
-/** One passage rewrite inside a text field or file. */
 // oxlint-disable-next-line typescript/consistent-type-definitions -- type alias stays assignable to `JsonObject`
 type ProbeEdit = {
   readonly find: string;
   readonly replace: string;
 };
 
-/** What one answer probe ran and what the checks said. */
 // oxlint-disable-next-line typescript/consistent-type-definitions -- type alias stays assignable to `JsonObject`
 export type ProbeRow = {
-  /** 1-based, and what a ruling cites. */
   readonly id: number;
   readonly changes: readonly {
     readonly path: string;
     readonly value: string | null;
     readonly edit: ProbeEdit | null;
   }[];
-  /** Line and byte counts of each changed, added, or removed (`now: null`) file text. */
   readonly texts: readonly {
     readonly path: string;
     readonly was: { readonly lines: number; readonly bytes: number } | null;
@@ -39,11 +30,9 @@ export type ProbeRow = {
   }[];
   readonly original: Verdict;
   readonly changed: Verdict;
-  /** Checks whose verdict the changes moved. */
   readonly moved: readonly string[];
 };
 
-/** One draft-audit probe row: a `ProbeRow` tagged with the example task id probed. */
 export type DraftProbeRow = ProbeRow & { readonly task: string };
 
 interface RawChange {
@@ -55,7 +44,6 @@ interface RawChange {
 
 type TextSize = NonNullable<ProbeRow["texts"][number]["now"]>;
 
-/** Prefix for submitted deliverable file paths (`file:report.md`, `file:$`). */
 export const FILE = "file:";
 
 const PROBE_BUDGET = 8;
@@ -79,12 +67,10 @@ const CHANGE_SCHEMA = Type.Object({
   ),
 });
 
-/** True when both original and changed sides reached a pass or fail verdict. */
 export function conclusive(row: ProbeRow): boolean {
   return decides(row.original) && decides(row.changed);
 }
 
-/** True when `path` reaches a field or file declared by a check. */
 export function reaches(path: string, declared: readonly string[]): boolean {
   if (path.startsWith(FILE)) {
     return declared.some((field) => field === path || path.startsWith(`${field}/`) || field === `${FILE}$`);
@@ -107,7 +93,6 @@ function movedChecks(original: Verdict, changed: Verdict): string[] {
   return [...before.symmetricDifference(after)].toSorted();
 }
 
-/** Return a copy of `answer` with the existing field or parent at `path` replaced. */
 export function withReplacedField(answer: JsonValue, path: string, value: JsonValue): JsonValue {
   const keys = jsonPathTokens(path)?.map((token) =>
     token.startsWith("[") ? token.slice(1, -1) : token.slice(1),
@@ -185,7 +170,6 @@ function budgetLine(used: number, budget = PROBE_BUDGET): string {
     : `  probe ${String(used)} of ${String(budget)}: ${plural(left, "probe")} left`;
 }
 
-/** Parse a JSON `value` or apply a `{ find, replace }` passage edit, enforcing `maxChars`. */
 function parseChangeValue(
   current: JsonValue | undefined,
   change: ProbeRow["changes"][number],
@@ -255,11 +239,9 @@ function probeAnswer(
   return changed;
 }
 
-/** True when `path` (`file:...`) names `file` or an archive member inside it. */
 export const inFile = (path: string, file: string): boolean =>
   path === `${FILE}${file}` || path.startsWith(`${FILE}${file}/`);
 
-/** Map every text file and archive text member in `files` by its `file:` probe path. */
 export function fileTexts(files: readonly AnswerFile[]): Map<string, string> {
   return new Map(
     files.flatMap(({ path, text: whole, entries = [] }) => [
@@ -316,7 +298,6 @@ function sizeOf(held: string): TextSize {
   return { lines, bytes: Buffer.byteLength(held) };
 }
 
-/** Shared probe execution for single-answer and multi-example probe tools. */
 export async function executeProbe(given: {
   readonly used: number;
   readonly budget?: number;
@@ -391,7 +372,6 @@ export async function executeProbe(given: {
   };
 }
 
-/** Answer probe tool for adjudicating one rejected solve (`src/referee/referee.ts`). */
 export function probeTool(
   verify: Verifier,
   task: Task,
@@ -428,7 +408,6 @@ export function probeTool(
   });
 }
 
-/** Multi-example answer probe tool for adversarial draft audits (`src/referee/referee.ts`). */
 export function probeExamplesTool(
   verify: Verifier,
   examples: readonly {

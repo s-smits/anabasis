@@ -1,8 +1,3 @@
-/**
- * Upstream adversarial draft audit (`reviewDraft`): runs inside the Referee seat on mechanically
- * clean drafted exams before `contract.frozen`, probing example accept controls and deliverables
- * for vacuous passes, check defects, and gameable objectives (`referee.draft`, `referee.draft.refused`).
- */
 import { type Static, Type } from "typebox";
 import type { Control } from "../kernel/acceptance.ts";
 import type { AnswerFile } from "../kernel/answer-files.ts";
@@ -229,7 +224,6 @@ function exampleReadTools(examples: readonly { readonly task: Task; readonly con
   ];
 }
 
-/** Run the Adversarial Judge audit over a mechanically clean drafted exam and log `referee.draft`. */
 export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promise<DraftAuditFinding> {
   const byId = new Map(target.tasks.map((task) => [task.taskId, task]));
   const examples = target.controls.flatMap((control) => {
@@ -318,12 +312,10 @@ export async function reviewDraft(reader: Reader, target: DraftAuditCase): Promi
   return result;
 }
 
-/** Single-line description of one draft audit finding for Examiner retries and Pass-2 prompts. */
 export function formatDraftFinding({ kind, task, check, probe, reason }: DraftDefect): string {
   return `independent check audit (${kind} on ${task}${check === undefined ? "" : `, check ${check}`}, probe #${String(probe)}): ${reason}`;
 }
 
-/** Whether a replayed prior finding still reproduces against `replayed`. */
 function reproduces(
   finding: DraftDefect,
   replayed: DraftProbeRow,
@@ -341,7 +333,6 @@ function reproduces(
   return before !== null && after !== null && gainOver(objective, after, before) > -GAP_FLOOR;
 }
 
-/** Deterministically replay prior defect probes against a revised draft at zero model cost. */
 export async function replayDraftProbes(
   prior: DraftAuditFinding,
   target: Pick<DraftAuditCase, "contract" | "verify" | "tasks" | "controls">,
@@ -398,7 +389,6 @@ export async function replayDraftProbes(
         verifiedFixed.push(formatted);
       }
     } catch {
-      // Example shape or text changed enough that the exact prior edit no longer applies; defer to LLM audit.
       unverified.push(formatted);
     }
   }

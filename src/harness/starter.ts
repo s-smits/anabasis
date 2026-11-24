@@ -1,38 +1,12 @@
-/**
- * The Starter Pack: the Starter Built Harness, and the account of a harness's files that a Builder
- * is handed beside it.
- *
- * The Starter Built Harness is pi's coding agent as pi releases it, with pi's four coding tools
- * selected, no program, and the starter instructions as its guide. Its two files are there as the
- * places a Builder extends, beside the tool tree it adds. Everything else a solver is given under it is the
- * host's, the same under every harness: the command wall behind the tools, the answer file and
- * `submit`, and the prompt's addendum and environment (`run.ts`, `answer.ts`, `prompt.ts`).
- *
- * It needs nothing from the correctness model. The host seeds the solver's home with the task, the
- * public rules and the contract's answer format, and sends the submitted answer to the verifier.
- *
- * The account, `HARNESS.md`, stands where v1's starter pack carried `contract.md`. A Builder without
- * it wrote three tool files whose only purpose was to print `defineDraftTool`'s source through tool
- * names. The account is the host's and not the harness's: a session is
- * handed it afresh in its home (`src/builder/session.ts`), so it describes the host that will open
- * the harness, whichever harness the session forks.
- * It limits the reminder promise to tools that execute.
- */
 import { AGENT_DIR, GUIDE_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { join } from "../meta/path.ts";
 import { CODING_TOOLS } from "../tools/coding.ts";
 
-/** The guide's last heading, for what holds only for this host's answer; an export stops at it. */
 export const HOST_ONLY = "## Validity and score";
 const HOST_ONLY_LINE = /(?:^|\r?\n)#{1,6}[ \t]+Validity and score[ \t]*(?:#+[ \t]*)?(?=\r?\n|$)/iu;
 
-/**
- * The Starter's two files: a spec that selects pi's four coding tools, and the starter instructions
- * as its guide, in `EXAMPLE`'s outline with its entries empty. Neither has changed since a harness
- * lost its tool module, so the Starter is the harness it was (`test/starter.test.ts`).
- */
 const STARTER = {
   spec: { presets: [...CODING_TOOLS], tools: [] },
   guide: `# Operating Guide
@@ -58,12 +32,6 @@ None yet.
 
 const CHECKER = "check-rota";
 
-/**
- * The account's worked harness, which a test opens and runs as a solve would: an example that does
- * not open, or a program that does not run, would teach every Builder a shape the host refuses. It
- * is the Starter with one program and a guide of one entry. The program is written without a
- * template string, so that it is printed here as it is installed.
- */
 export const EXAMPLE = {
   spec: STARTER.spec,
   programs: {
@@ -129,9 +97,6 @@ ${HOST_ONLY}
 `,
 };
 
-/**
- * What a Builder reads of the harness's files, as `HARNESS.md` in its home.
- */
 export const HARNESS_ACCOUNT = `# The Built Harness
 
 A solver is pi's coding agent behind a command wall. Your harness is what you add under harness/.
@@ -226,13 +191,11 @@ ${EXAMPLE.guide.trimEnd()}
 \`\`\`
 `;
 
-/** The portable prefix of a harness guide before `HOST_ONLY` (used by external runners). */
 export function portableGuide(guide: string): string {
   const match = HOST_ONLY_LINE.exec(guide);
   return match === null ? guide : guide.slice(0, match.index);
 }
 
-/** Write the Starter Built Harness into `dir`, which is made if it is not there. */
 export function writeStarter(dir: string): void {
   mkdirSync(join(dir, AGENT_DIR), { recursive: true });
   writeFileSync(join(dir, TOOLS_SPEC_FILE), `${capturedJsonStringify(STARTER.spec, null, 2)}\n`);

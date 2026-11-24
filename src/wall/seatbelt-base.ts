@@ -1,24 +1,3 @@
-/**
- * Base rules for every Darwin command profile: deny by default, then grant the process, IPC,
- * sysctl, and device operations required by standard toolchains. Adapted from Anthropic's
- * sandbox-runtime (`f7a0f19fd:src/sandbox/macos-sandbox-utils.ts`, `generateSandboxProfile`,
- * the rule array preceding its network rules), Apache-2.0, pinned at `f7a0f19fd2`
- * (`@anthropic-ai/sandbox-runtime` 0.0.82).
- *
- * Local modifications from upstream:
- * - Double-quoted string literals matching the repository formatter.
- * - Removed `(with message ...)` log tags and `LogTag` comments (as in `seatbelt-path-guard.ts`),
- *   since the per-session random suffix is unused here and would break deterministic profile bytes.
- * - Omitted the `allowAppleEvents` and `allowMachLookup` branches, which no caller requests.
- * - Mapped `enableWeakerNetworkIsolation` to the policy's `network` flag: network-enabled commands
- *   receive `trustd` (required for Go TLS certificate validation) and `TrustEvaluationAgent`
- *   (required for Apple's `/usr/bin/curl` HTTPS certificate validation).
- * - Permitted `(allow sysctl*)` instead of upstream's list of roughly sixty names, because
- *   JavaScript runtimes, `sysctl -n hw.ncpu` (via `sysctl.name2oid`), and Apple's `java` launcher
- *   query additional sysctls. An unprivileged process cannot read secrets or alter system settings
- *   through sysctl, and reading another process's command line (`kern.procargs2`) is blocked by
- *   the explicit `process-info*` denial in `darwinCommandProfile`.
- */
 export function seatbeltBaseRules({ network }: { network: boolean }): string[] {
   return [
     "(version 1)",

@@ -1,9 +1,3 @@
-/**
- * Linux OS isolation backend, corresponding to Darwin Seatbelt. Bubblewrap (`bwrap`) binds the
- * host root read-only and overmounts protected subtrees, while callers supply the shared policy
- * data (denied roots, writable roots, and network posture).
- */
-
 import { existsSync, lstatSync, realpathSync, statSync } from "../meta/filesystem.ts";
 import { homedir } from "../meta/os.ts";
 import { dirname, isAbsolute, join } from "../meta/path.ts";
@@ -21,8 +15,6 @@ export const LINUX_BWRAP_ID = "linux-bwrap/v1" as const;
 export interface LinuxBwrapRuntime {
   platform?: RuntimePlatform;
   bwrapPath?: string;
-  /** Mirrors the Darwin check: detecting an outer sandbox causes the wall to refuse rather than
-   *  nest or claim isolation established externally. */
   outerSandboxed?: boolean;
 }
 
@@ -33,21 +25,14 @@ interface LinuxBwrapSupport {
   mechanismDigest: string | null;
 }
 
-/** Matches Bubblewrap's stderr when an unsupported flag is rejected, allowing diagnostics to name
- *  the missing option directly. */
 const UNKNOWN_OPTION = /Unknown option (--[a-z0-9-]+)/;
 
-/** Cache of attested `bwrap` binaries keyed by path, avoiding repeated hashing and `/bin/true`
- *  canary launches across seats and checks while binary metadata remains unchanged. */
 const ATTESTED_BWRAP = new Map<string, { metadata: string; mechanismDigest: string }>();
 
-/** Fallback Bubblewrap binary paths searched after `PATH` for minimal controller environments. */
 const BWRAP_CANDIDATES = ["/usr/bin/bwrap", "/bin/bwrap", "/usr/local/bin/bwrap"] as const;
 
-/** Standard Linux system roots already readable under the open-read default. */
 const LINUX_SYSTEM_READ_ROOTS = ["/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc", "/opt"] as const;
 
-/** Verbatim Bubblewrap stderr signatures indicating that unprivileged user namespaces are blocked. */
 const USER_NAMESPACE_REFUSALS = [
   "loopback: Failed RTM_NEWADDR",
   "loopback: Failed RTM_NEWLINK",
@@ -55,9 +40,6 @@ const USER_NAMESPACE_REFUSALS = [
   "No permissions to create a new namespace",
 ] as const;
 
-/** Returns the resolved target of `/etc/resolv.conf` when it points outside system roots (for
- *  example, into `/run` on `systemd-resolved` hosts), binding only the target file rather than its
- *  enclosing directory. */
 function networkResolverReadPaths(): string[] {
   try {
     const target = realpathSync.native("/etc/resolv.conf");
@@ -81,12 +63,6 @@ function underSystemRoot(path: string): boolean {
   return LINUX_SYSTEM_READ_ROOTS.some((root) => posixContainsPath(path, root));
 }
 
-/**
- * Returns installation prefixes for the active runtime executable (`capturedExecPath`) when it
- * resides outside standard system roots (such as a private user prefix). Admitting the prefix two
- * levels above the binary exposes `bin` and `lib` without reopening the enclosing home directory.
- * Symlinked executables contribute both their lexical and canonical prefixes.
- */
 export function nodeRuntimeReadRoots(): string[] {
   const roots = new Set<string>();
   const candidates = [capturedExecPath];
@@ -118,11 +94,6 @@ function runBwrap(
   }
 }
 
-/** Classifies a failed Bubblewrap launch from its stderr. Unknown flags (such as
- *  `--disable-userns` on Bubblewrap older than 0.8.0) and disabled user namespaces produce
- *  actionable remedies; other failures retain a truncated first stderr line. Dropping
- *  `--disable-userns` is intentionally avoided because it prevents confined children from nesting
- *  their own user namespaces. */
 function classifyBwrapRefusal(stderr: string, bwrapPath?: string): string {
   const unknown = UNKNOWN_OPTION.exec(stderr);
   if (unknown !== null) {
@@ -143,15 +114,11 @@ function classifyBwrapRefusal(stderr: string, bwrapPath?: string): string {
     : `bubblewrap refused its baseline policy: ${boundText(detail, 200).shown}`;
 }
 
-/** Hashes `bwrapPath` and attests namespace creation via a canary launch, caching successful
- *  attestations per unchanged binary metadata. Failed canaries are never cached. */
 function attestBwrap(bwrapPath: string): { mechanismDigest: string } | { refused: string } {
   const stat = statSync(bwrapPath);
   const metadata = [stat.dev, stat.ino, stat.mode, stat.size, stat.mtimeMs, stat.ctimeMs].join(":");
   const remembered = ATTESTED_BWRAP.get(bwrapPath);
   if (remembered?.metadata === metadata) return { mechanismDigest: remembered.mechanismDigest };
-  // Exercise the full offline isolation posture by executing `/bin/true` from the bound root,
-  // confirming a functional namespace rather than flag parsing alone.
   const canary = runBwrap(bwrapPath, [...bwrapOpenReadArgs({ network: false }), "/bin/true"], {});
   if (!canary.ok) return { refused: classifyBwrapRefusal(canary.error, bwrapPath) };
   const mechanismDigest = sha256OfFile(bwrapPath);
@@ -159,7 +126,6 @@ function attestBwrap(bwrapPath: string): { mechanismDigest: string } | { refused
   return { mechanismDigest };
 }
 
-/** Checks Bubblewrap availability and unprivileged user-namespace support, failing closed on error. */
 export function linuxBwrapSupport(runtime: LinuxBwrapRuntime = {}): LinuxBwrapSupport {
   const unavailable = (reason: string): LinuxBwrapSupport => ({
     ok: false,
@@ -189,7 +155,6 @@ export function linuxBwrapSupport(runtime: LinuxBwrapRuntime = {}): LinuxBwrapSu
   }
 }
 
-/** Serialises an explicit environment as sorted `--setenv` flags after `--clearenv`. */
 function bwrapEnvironmentArgs(environment: OptionalEnvValues): string[] {
   return Object.entries(environment)
     .filter((entry): entry is [string, string] => entry[1] !== undefined)
@@ -205,12 +170,6 @@ function bwrapEnvironmentArgs(environment: OptionalEnvValues): string[] {
 const bwrapBinds = (flag: "--ro-bind" | "--bind", paths: readonly string[]): string[] =>
   paths.flatMap((path) => [flag, path, path]);
 
-/**
- * Builds the baseline namespace and allow-by-default read mount posture: unprivileged user, IPC,
- * UTS, cgroup, and PID namespaces (`--disable-userns`, all capabilities dropped), host `/` bound
- * read-only, plus fresh `/proc` and `/dev`. Only network isolation varies between seat commands
- * and verification checks. Callers layer `bwrapTmpfsDenies` and writable binds on top.
- */
 export function bwrapOpenReadArgs(options: { network: boolean }): string[] {
   return [
     "--die-with-parent",
@@ -236,7 +195,6 @@ export function bwrapOpenReadArgs(options: { network: boolean }): string[] {
   ];
 }
 
-/** Builds the complete Bubblewrap mount and environment argument sequence for an isolated command. */
 export function bwrapCommandArgs(options: {
   readonly network: boolean;
   readonly readDenies: readonly string[];
@@ -257,9 +215,6 @@ export function bwrapCommandArgs(options: {
   ];
 }
 
-/** Overmounts each protected directory with an empty tmpfs (and each protected regular file —
- *  including symlinks targeting a regular file — with read-only `/dev/null`), also masking canonical
- *  symlink targets that lie outside already-denied paths so protected bytes stay unreachable. */
 export function bwrapTmpfsDenies(paths: readonly string[]): string[] {
   const seen = new Set<string>();
   for (const path of paths) {

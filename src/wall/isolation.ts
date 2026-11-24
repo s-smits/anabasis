@@ -1,9 +1,3 @@
-/**
- * Host OS isolation wall (Seatbelt on macOS, Bubblewrap on Linux) for seat commands and offline
- * verification cells (`src/kernel/verify.ts`). Commands receive a credential-free env, write only
- * inside their seat root (excluding host-owned `kept`), and cannot access shared `/tmp`, host home,
- * or the repo outside reopened runtime/toolchain roots.
- */
 import { existsSync, readdirSync, realpathSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { tmpdir } from "../meta/os.ts";
 import { containsPath } from "../meta/path-containment.ts";
@@ -58,7 +52,6 @@ interface CommandDirectories {
   toolTree?: string | null;
 }
 
-/** BFS executable dirs (`bin`, `shims`, `sbin`) under `toolTree` in deterministic code-unit order. */
 export function toolTreeSearchDirs(toolTree: string): string[] {
   if (!existsSync(toolTree)) return [];
   const found: string[] = [join(toolTree, "bin")].filter(existsSync);
@@ -97,17 +90,11 @@ function commandIsolationEnvironment(dirs: CommandDirectories): CommandIsolation
     HOME: dirs.home,
     TMPDIR: dirs.temp,
     LANG: "en_US.UTF-8",
-    // Allow pip --user installs into private HOME under PEP 668 (host Homebrew remains read-only),
-    // and make `uv venv` generate relocatable console scripts so frozen `.toolchain/` venvs survive moves.
     PIP_BREAK_SYSTEM_PACKAGES: "1",
     UV_VENV_RELOCATABLE: "1",
   };
 }
 
-/**
- * Reopens runtime/toolchain paths inside denied roots, verifying any seat-local `toolTree` does
- * not symlink-escape `dirs.root`, and collects ancestor `package.json` paths for Darwin Node walks.
- */
 function commandReadAllows(
   base: SolveIsolationPolicy,
   readDenies: readonly string[],
@@ -146,11 +133,9 @@ function darwinCommandProfile(
   const { roots: readAllows, manifests } = commandReadAllows(base, readDenies, dirs, sharedTmp);
   const profile = [
     ...seatbeltBaseRules(base),
-    // Prevent sysctl(KERN_PROCARGS2) from inspecting other seats' argv.
     "(deny process-info* (target others))",
     '(deny process-exec* (literal "/bin/launchctl"))',
     "(allow file-read*)",
-    // Allow network for seats (offline for checks) while blocking host Unix sockets except mDNSResponder.
     ...(base.network
       ? [
           "(allow network*)",
@@ -164,12 +149,10 @@ function darwinCommandProfile(
     ]),
     ...sbRule("deny file-read* file-read-metadata file-write*", "subpath", sharedTmp),
     ...userTemp.rules,
-    // Allow Apple `diff` process-substitution temp files (/tmp/diff.XXXXXXXX) when /tmp is unlistable.
     `(allow file-read* file-read-metadata file-write* (require-all (regex #"^/private/tmp/diff[.]${"[A-Za-z0-9]".repeat(8)}$") (vnode-type REGULAR-FILE)))`,
     ...sbRule("allow file-read-metadata", "literal", ["/tmp", "/private/tmp"]),
     ...sbRule("deny file-read*", "subpath", readDenies),
     ...traversalMetadataRules(readAllows),
-    // Explicit file-read-metadata overrides earlier metadata denies regardless of Seatbelt specificity.
     ...sbRule("allow file-read* file-read-metadata", "subpath", readAllows),
     ...sbRule("allow file-read* file-read-metadata", "literal", manifests),
     ...sbRule("deny file-read* file-read-metadata file-write*", "subpath", closed),
@@ -220,7 +203,6 @@ export function shellQuote(value: string): string {
   return `'${value.replaceAll("'", String.raw`'\''`)}'`;
 }
 
-/** Stages the isolation profile (outside writable roots) and returns an `exec` `/bin/bash -c` command line. */
 export function stageCommandIsolation(
   policy: CommandIsolationPolicy,
   profileFile: string,
@@ -229,7 +211,6 @@ export function stageCommandIsolation(
   return `exec ${isolatedArgv(policy, profileFile, ["/bin/bash", "-c", command]).map(shellQuote).join(" ")}`;
 }
 
-/** Builds the isolated `argv` (bwrap mount sequence on Linux, staged Seatbelt profile on Darwin). */
 export function isolatedArgv(
   policy: CommandIsolationPolicy,
   profileFile: string,

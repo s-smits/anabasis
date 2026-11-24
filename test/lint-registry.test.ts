@@ -22,6 +22,11 @@ import {
   TREE_RULE_PREFIX,
   unanswerable,
 } from "../tools/oxlint/not-slop-ledger.ts";
+import {
+  COMMENT_RATCHET_FILE,
+  formatCommentRatchet,
+  readCommentRatchet,
+} from "../tools/oxlint/comment-ratchet.ts";
 import { PLUGINS } from "../tools/oxlint/plugins.ts";
 import { TREE_FINDING_ARGUMENTS } from "../tools/oxlint/tree-findings.ts";
 import { type Diagnostic, lintSite, OXLINT_BINARY } from "../tools/runtime/lint.ts";
@@ -240,6 +245,7 @@ describe("the not-slop ledger", () => {
       ["anti-slop/prefer-subpath-import", true],
       ["ana/no-such-rule", true],
       ["ana/no-inline-slop-answer", true],
+      ["ana/no-comments", true],
       ["anti-slop/no-runtime-typeof", false],
       ["tree/no-duplicate-block", false],
     ] as const) {
@@ -258,5 +264,29 @@ describe("the not-slop ledger", () => {
       ["aaaaaaaaaaaa", "the answer a union merge kept last"],
       ["bbbbbbbbbbbb", "the one typeof behind isString"],
     ]);
+  });
+});
+
+describe("the comment ratchet", () => {
+  it("keeps tools/oxlint/comment-ratchet.tsv valid, sorted, positive, and pointing at existing files", () => {
+    const text = read(COMMENT_RATCHET_FILE);
+    const { entries, unread } = readCommentRatchet(text);
+    expect(unread).toStrictEqual([]);
+    expect(text).toBe(formatCommentRatchet(entries));
+    const missing = [...entries.keys()].filter((path) => !existsSync(join(REPO, path)));
+    expect(missing).toStrictEqual([]);
+  });
+
+  it("rejects malformed, zero, or duplicate ratchet rows and drops zero counts when formatting", () => {
+    const bad = readCommentRatchet("path\tcount\nsrc/a.ts\t0\nsrc/b.ts\t2\nsrc/b.ts\t1\nnot-a-row\n");
+    expect(bad.unread).toHaveLength(3);
+    expect(
+      formatCommentRatchet(
+        new Map([
+          ["src/b.ts", 2],
+          ["src/a.ts", 0],
+        ]),
+      ),
+    ).toBe("path\tcount\nsrc/b.ts\t2\n");
   });
 });

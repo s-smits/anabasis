@@ -1,17 +1,3 @@
-/**
- * Durable's filesystem and shell on a seat's command wall. Every operation runs durable's own
- * `NodeExecutionEnv`, its files staged beside a small worker and run inside the wall, so the
- * semantics are upstream's and the OS policy stays the only authority, for symlinks and concurrent
- * path changes too. The host only stages files under `kept` and never opens a model-named path.
- *
- * The worker keeps no copies of its own of the file and shell operations, since durable's
- * conformance suite (`test/walled-env-conformance.test.ts`) found such copies wrong: a command's
- * timeout under the wall's default never fired, and a directory reader returned entries removed
- * while it paged. The readers stay on the host, as snapshots a worker took, since an open
- * descriptor cannot cross the wall; a directory reader lists again for each page, as upstream's
- * reads each entry as it pages. All operations share a queue because runWalled shares the profile
- * and leader files.
- */
 import {
   type BinaryReader,
   type DirReader,
@@ -67,8 +53,6 @@ const QUEUES = new WeakMap<CommandWall, Promise<void>>();
 const ENV_FILES = ["decode.js", "index.js", "line-scan.js", "node-watch.js", "node.js"];
 let envSources: readonly (readonly [string, string])[] | undefined;
 
-// This program and its request are staged under kept; model files cannot replace either. It runs
-// one operation of durable's environment, streams a command's output, and ends with the result.
 const WORKER = String.raw`
 import { readFileSync, writeSync } from "node:fs";
 import { NodeExecutionEnv } from "./node.js";
@@ -124,7 +108,6 @@ const { code, message, spillPath } = result.ok ? {} : result.error;
 send({ done: result.ok ? result : { ok: false, error: { code: code ?? "unknown", message: String(message), ...(spillPath ? { spillPath } : {}) } } });
 `;
 
-/** The same CommandWall that codingTools takes; nothing is wired into a seat here. */
 export function walledEnv(wall: CommandWall): ExecutionEnv {
   return new WalledEnv(wall);
 }
@@ -175,7 +158,6 @@ class WalledEnv implements ExecutionEnv {
       : undefined;
   }
 
-  /** Runs `op` of durable's environment in a worker on the wall, with each output frame to `onText`. */
   private async call<T>(
     op: string,
     args: unknown[],
@@ -189,7 +171,6 @@ class WalledEnv implements ExecutionEnv {
     const signal = this.signal(context);
     return await this.serial<Wire<T>>(async () => {
       if (signal.aborted) return { ok: false, error: { code: "aborted", message: "aborted" } };
-      // Resolved at the first operation, not at import: a compiled solver has no installed packages.
       if (envSources === undefined) {
         const dir = dirname(Bun.fileURLToPath(import.meta.resolve("@earendil-works/pi-durable/env")));
         envSources = ENV_FILES.map((name) => [name, readFileSync(join(dir, name), "utf8")] as const);
@@ -282,7 +263,6 @@ class WalledEnv implements ExecutionEnv {
 
   async readTextFile(path: string, context: Context): Promise<Result<string, FileError>> {
     const result = await this.readBinaryFile(path, context);
-    // As Node's `utf8`, which durable's own reads with: a byte order mark stays in the text.
     return result.ok
       ? { ok: true, value: new TextDecoder("utf-8", { ignoreBOM: true }).decode(result.value) }
       : result;
@@ -413,7 +393,6 @@ class WalledEnv implements ExecutionEnv {
             return { ok: false, error: new FileError("invalid", "Closed reader or invalid page size", path) };
           }
           if (index >= names.length) return { ok: true, value: { entries: [], done: true } };
-          // An entry removed since the reader opened is no longer part of the listing.
           const now = await this.listDir(path, ctx);
           if (!now.ok) return now;
           const present = new Map(now.value.map((entry) => [entry.name, entry]));
@@ -459,7 +438,6 @@ class WalledEnv implements ExecutionEnv {
     return await this.file("remove", path, [options ?? {}], context);
   }
 
-  /** A temporary path in the seat's `TMPDIR`, which durable's environment takes for `tmpdir()`. */
   private async temp(op: string, args: unknown[], context: Context): Promise<Result<string, FileError>> {
     const result = await this.call<string>(op, args, context);
     return result.ok ? result : { ok: false, error: fileError(result.error) };
@@ -476,13 +454,6 @@ class WalledEnv implements ExecutionEnv {
     return await this.temp("createTempFile", [options ?? {}], context);
   }
 
-  /**
-   * A command held to the timeout it names, or the wall's default, at most the wall's maximum and
-   * cut near the solve's end (`heldSeconds`). Durable's own timer in the worker ends it there, so a
-   * timeout still reports the output it spilled, and runWalled's bound a second later, taken as
-   * given rather than held again, is the backstop. The bash tool raises a shorter request to the
-   * default before it gets here.
-   */
   async exec(
     command: string | readonly string[],
     options: ShellExecOptions | undefined,
@@ -532,13 +503,11 @@ class WalledEnv implements ExecutionEnv {
   }
 }
 
-/** A failure outside durable's own result: the wall's bound, an abort, or a broken worker. */
 function codeOf(cause: Error, signal: AbortSignal): "aborted" | "timeout" | "unknown" {
   if (signal.aborted) return "aborted";
   return cause.message.startsWith("timeout:") ? "timeout" : "unknown";
 }
 
-/** A file operation's failure as durable names it; any other code, such as the wall's timeout, is `unknown`. */
 function fileError(error: { code: string; message: string }, path?: string): FileError {
   return new FileError(FILE_CODES.find((known) => known === error.code) ?? "unknown", error.message, path);
 }

@@ -1,8 +1,3 @@
-/**
- * Drafting mode for `examine` (`session.ts`): prompts the Examiner to draft a campaign's rules,
- * answer format, check program, optional objective, example tasks, and controls, validates draft
- * shape (`draftFaults`) and installed verifier engines, and records accepted drafts as `exam.drafted`.
- */
 import { type Static, Type } from "typebox";
 import { answerFormatFault, type Objective } from "../kernel/contract.ts";
 import { type ControlFile, DELIVERABLES } from "../kernel/answer-files.ts";
@@ -20,58 +15,39 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import { ending, text, tool } from "../tools/answer.ts";
 
-/** A rule of the contract as its author states it: the requirement, and where the field states it. */
 interface DraftedRule {
   readonly id: string;
   readonly statement: string;
   readonly source: string;
 }
 
-/** One control answer of a draft, by the example it answers. */
 interface DraftControl {
   readonly task: number;
   readonly answer: JsonValue;
   readonly files?: readonly ControlFile[];
 }
 
-/** An exam as an Examiner drafts it and `exam.drafted` holds it. */
 export interface Draft {
   readonly domain: string;
-  /** What a task in this domain may ask. */
   readonly scope: string;
-  /** What a practitioner takes as given: units, rounding, notation. */
   readonly conventions: string;
   readonly rules: readonly DraftedRule[];
-  /** The JSON Schema every answer follows. */
   readonly answerFormat: JsonValue;
-  /** One check a rule: its id, the rule it enforces, the property it verifies, and any installed
-   *  verifier engines it runs through `runtime.tools.run`. */
   readonly checks: readonly {
     readonly id: string;
     readonly rule: string;
     readonly assertion: string;
     readonly tools?: readonly string[];
   }[];
-  /** The check program's source: a module that exports `checks`, a function for each check id,
-   *  and `objective` where the draft declares one. */
   readonly evaluator: string;
-  /** The objective two valid answers are compared by, where the field has one: absent, two valid
-   *  answers to one task are even. */
   readonly objective?: Objective;
-  /** Installed verifier engines declared for `objective(request, runtime)`, when it runs any. */
   readonly objectiveTools?: readonly string[];
-  /** Why the draft declares no objective, in its author's words, where it declares none. Kept on
-   *  the exam side: `stageExam` stages it nowhere, so no solver, Builder or writing session reads
-   *  it. Absent from the oldest drafts, which `draftOf` reads as they are. */
   readonly unmeasured?: string;
-  /** The example tasks, which are the exam's first. */
   readonly tasks: readonly {
     readonly family: string;
     readonly publicInput: JsonValue;
     readonly hidden: JsonValue;
   }[];
-  /** Control answers, by the example each answers: answers every check passes, and answers the named
-   *  check refuses, each with the files beside it. */
   readonly accept: readonly DraftControl[];
   readonly reject: readonly (DraftControl & { readonly check: string })[];
 }
@@ -80,22 +56,12 @@ interface DraftingTerms {
   readonly limits: { readonly wallSeconds: number; readonly turns: number; readonly puts: number };
   readonly id: string;
   readonly log: string;
-  /** The operator's prompt, as the campaign's opening holds it. */
   readonly prompt: string;
-  /** The budget the exam's solves will be held to, as the campaign's setting names it. */
   readonly budget: SolveBudget;
-  /** What the host reads of a draft whose shape holds, a fault a sentence: its control answers
-   *  through its checks. Receives the drafting session's `home` when walled so `.toolchain/` tools
-   *  installed by the Examiner are frozen with the draft. */
   readonly reading: (draft: Draft, home?: string) => Promise<readonly string[]>;
 }
 
-/** The fewest example tasks a draft holds: the reading needs each check seen to pass and to
- *  refuse, and the campaign's first practice tasks are drawn from them. */
 const EXAMPLES = 3;
-/** What a check program may not spell in executable code: a way out of its argument, or a value
- *  that differs from one run to the next. Comments and string literals are stripped from the
- *  transpiled output first, and `Bun.Transpiler.scan` checks imports, syntax and exports. */
 const EVALUATOR_TRANSPILER = new Bun.Transpiler({ loader: "ts" });
 const OUTSIDE = [
   [/(?<!\.)\brequire\s*\(|\bimport\s*\(/u, "an import"],
@@ -111,7 +77,6 @@ const OUTSIDE = [
   [/(?<!\.)\beval\s*\(|\(\s*0\s*,\s*eval\s*\)|(?<!\.)\bFunction\s*\(/u, "dynamic code evaluation"],
 ] as const;
 const TEXT_FILE = Type.Object({ path: Type.String({ minLength: 1 }), text: Type.String() });
-/** Files beside an answer, as a control or a try gives them (`ControlFile`). */
 export const TEXT_FILES = Type.Optional(
   Type.Array(
     Type.Union([
@@ -131,12 +96,8 @@ const CONTROL = {
   answer: Type.Unknown(),
   files: TEXT_FILES,
 };
-/** What `draft_exam` takes: a whole draft, in the words the Examiner is told. */
 const DRAFT_PARAMETERS = Type.Object({
   domain: Type.String({ minLength: 1, description: "The domain, in a few words." }),
-  // What a size fixed here costs is said where the scope is written: an exam that held every
-  // task to a small size its field does not had the starter answer every solve whatever was
-  // written, and the harness that read a step listed every candidate of a task that small.
   scope: Type.String({
     minLength: 1,
     description:
@@ -174,8 +135,6 @@ const DRAFT_PARAMETERS = Type.Object({
     }),
     { minItems: 1 },
   ),
-  // The check program may name a file as an object, since under a strict schema of text alone a
-  // draft spells the object as text (`fromHome` reads both).
   evaluator: Type.Union([
     Type.String({ minLength: 1, description: "The check program's TypeScript source." }),
     Type.Object({ from_file: Type.String({ minLength: 1 }) }),
@@ -221,11 +180,8 @@ const DRAFT_PARAMETERS = Type.Object({
   ),
 });
 
-/** How far apart two valid answers are on the objective before one is the better: the
- *  comparison's own floor. */
 const FLOOR = `${String(GAP_FLOOR * 100)}%`;
 
-/** The system prompt. */
 const SYSTEM = [
   "You are the Examiner. An operator has named a technical domain in a prompt, and you draft the exam on which a solving model will be measured in that domain: its public rules, scope and conventions, its answer format, its checks, its objective, example tasks and controls. You draft once, at the opening of a campaign. Later sessions write further tasks under what you draft here, and can change none of it.",
   `${TASK} The solver's first message holds the public input; its home holds the same task as public/task.json and the public rules, scope and conventions under public/resources/. It answers with one JSON value that follows the answer format, and an answer every check passes is valid. ${FAIR}`,
@@ -243,7 +199,6 @@ const SYSTEM = [
   "draft_exam validates the whole draft and returns any faults; a fault-free draft becomes the campaign's fixed exam.",
 ].join("\n\n");
 
-// The answer-format keys that name an object's fields other than `properties` (`unnamed`).
 const NAMING = [
   "$ref",
   "allOf",
@@ -255,19 +210,9 @@ const NAMING = [
   "patternProperties",
 ];
 
-/** A name spelled twice among `ids`, or undefined. */
 const twice = (ids: readonly string[]): string | undefined =>
   ids.find((id, index) => ids.indexOf(id) !== index);
 
-/**
- * The fields an answer carries that its format leaves unnamed, as paths. A solver learns an
- * answer's fields from the format alone, so a check that reads one refuses a right answer spelled
- * another way: a drafted object with no properties, whose check read a field from it, had every
- * rejection it made ruled a check defect. An accept control carries every field its checks need,
- * so reading the controls covers every check. A reference, a combination, a condition or a pattern
- * counts as naming, and the `anyOf` and `oneOf` options are read with the `properties` beside them,
- * so a sound "at least one of" format is not refused.
- */
 function unnamed(schema: JsonValue | undefined, answer: JsonValue, path: string): string[] {
   const held = asRecord(schema);
   if (held === null || NAMING.some((key) => key in held)) return [];
@@ -280,7 +225,6 @@ function unnamed(schema: JsonValue | undefined, answer: JsonValue, path: string)
   });
 }
 
-/** What a draft's controls are short of or get wrong, one sentence each. */
 function controlFaults(draft: Draft): string[] {
   const controls = [
     ...draft.accept.map((each) => ({ ...each, named: "an accept control", accept: true })),
@@ -323,8 +267,6 @@ function controlFaults(draft: Draft): string[] {
   ];
 }
 
-/** Strip comments, string literals, and template text (recursing into `${...}`) before static
- *  purity checks; `openVerifier`'s OS sandbox remains the hard runtime backstop. */
 function stripCode(source: string, start: number, scope: "whole" | "template", parts: string[]): number {
   let [index, braceDepth] = [start, 0];
   const end = source.length;
@@ -365,7 +307,6 @@ function stripCode(source: string, start: number, scope: "whole" | "template", p
   return index;
 }
 
-/** Advance past a template literal starting after its opening backtick, lexing `${...}` recursively. */
 function scanTemplate(source: string, start: number, parts: string[]): number {
   let index = start;
   while (index < source.length && source[index] !== "`") {
@@ -384,7 +325,6 @@ function scanTemplate(source: string, start: number, parts: string[]): number {
   return index + 1;
 }
 
-/** Static syntax, export and purity faults of `draft.evaluator`, checked before staging any cell. */
 function evaluatorFaults(draft: Draft): string[] {
   let scanned: ReturnType<typeof EVALUATOR_TRANSPILER.scan>;
   let transformed: string;
@@ -413,10 +353,6 @@ function evaluatorFaults(draft: Draft): string[] {
   ];
 }
 
-/**
- * What the host can say of a draft before anything runs, one sentence a fault: its shape. The
- * answer format's own fault comes first and alone, since nothing below reads without it.
- */
 export function draftFaults(draft: Draft): string[] {
   if (asRecord(draft.answerFormat)?.type !== "object") {
     return [
@@ -464,11 +400,8 @@ export function draftFaults(draft: Draft): string[] {
   ];
 }
 
-/** The draft as `draft_exam`'s arguments carry it, under the names `Draft` and `exam.drafted` use. */
 function draftedFrom(args: Static<typeof DRAFT_PARAMETERS>): Draft {
   const { quantity, direction, none, tools } = args.objective;
-  // A quantity without its direction, or a direction without its quantity, is no decision, whatever
-  // reason for none stands beside it, so the draft is held to give one (`draftFaults`).
   const half = (quantity === undefined) !== (direction === undefined);
   return {
     domain: args.domain,
@@ -514,24 +447,14 @@ function draftedFrom(args: Static<typeof DRAFT_PARAMETERS>): Draft {
   };
 }
 
-/** The exam a log holds: the draft of its last `exam.drafted`, or null. */
 export function draftOf(events: readonly LogEvent[]): Draft | null {
   const draft = asRecord(eventsOf(events, "exam.drafted").at(-1)?.event.data.draft);
-  // `exam.drafted` is written by `drafting` alone, with a `Draft` under this key.
   return draft === null ? null : parseJsonAs<Draft>(draft);
 }
 
-/** The drafting mode as `examine` seats it (`session.ts`): what the session is told, the
- *  tool it puts a draft by, the shape a draft is held to before the caller's reading, and the event
- *  a draft that stands is kept in. The reading runs `within` the session's clock, which pauses for
- *  it: its runs of every control answer through the checks are the verifier's time, and they wait
- *  on the host's load. A clock that ran through them could end a session during the host's work
- *  on a late draft, which would then get no reading and still count as one of the campaign's
- *  tries. */
 export function drafting(
   terms: DraftingTerms,
   within: <T>(action: () => Promise<T>) => Promise<T>,
-  // The home of the session's shell, which `from_file` reads; absent where it has none.
   home?: string,
 ) {
   const { limits } = terms;

@@ -1,12 +1,5 @@
-/**
- * Shared path-containment checks: true when a resolved or realpathed path is the root itself or
- * lies under it. Each guard that writes this out is another chance to forget the separator that
- * makes `/srv/shared` stop containing `/srv/sharedx`. The check here is lexical, so it decides
- * containment of a path someone else has already resolved and is not a symlink defence on its own.
- */
 import { sep } from "./path.ts";
 
-/** Host-separator containment for paths on this platform's filesystem. */
 export function containsPath(path: string, root: string): boolean {
   if (path === root) return true;
   if (root === sep) return path.startsWith(sep);
@@ -14,9 +7,6 @@ export function containsPath(path: string, root: string): boolean {
   return path.startsWith(boundary);
 }
 
-/** Containment for POSIX paths. Seatbelt profiles and Bubblewrap arguments spell their paths with
- *  "/" whatever the caller's platform is, so this check keeps their format independent of the
- *  host's separator. */
 export function posixContainsPath(path: string, root: string): boolean {
   if (path === root) return true;
   if (root === "/") return path.startsWith("/");

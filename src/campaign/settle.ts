@@ -1,8 +1,3 @@
-/**
- * Settle a comparison reading using blind operator labels (`settleReading`): recomputes the
- * comparison outcome from the existing solves and appends an updated `comparison.reported` event
- * without launching new solves.
- */
 import { append, eventsOf, type LogEvent, read } from "../kernel/log.ts";
 import { ranUnder } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
@@ -26,8 +21,6 @@ import {
 } from "./comparison.ts";
 import { dispute } from "./round.ts";
 
-/** A stopped report's coverage read again under a person's labels: its reading and its absent test
- *  stand, and a task the labels disputed leaves what it set aside. */
 function restopped(
   report: Report,
   events: readonly LogEvent[],
@@ -39,9 +32,6 @@ function restopped(
   return { ...report, short, aside: aside.filter((task) => states.get(task) !== "disputed"), withdrawn };
 }
 
-/**
- * Settle a comparison's reading on a person's answer to its packet (`settle.ts`), and report again.
- */
 export function settleReading(
   log: string,
   id: string,
@@ -71,9 +61,6 @@ export function settleReading(
       `comparison ${id} reads ${report.reading} and compared nothing, so there is nothing to settle`,
     );
   }
-  // A comparison that began with shorter budgets, as an old one may have, reported
-  // rows this source reads no longer, and the settled report would drop them in place of the report
-  // the comparison began with.
   const began = startOf(before, id)?.budgets;
   if (Array.isArray(began) && began.length > 0) {
     throw new Error(
@@ -90,8 +77,6 @@ export function settleReading(
   const versionOf = new Map(ranUnder(before).map((solve) => [solve.id, solve.under.task] as const));
   const defects = [...labels].flatMap(([solve, label]) => (label === DEFECT ? [solve] : []));
   const reason = "a person labelled the rejection a check defect";
-  // A task a person refused since stays refused: its rejection keeps its label, and the task is
-  // left out of this comparison as one set aside.
   const disputed = defects.flatMap((solve) => {
     const version = versionOf.get(solve) ?? "";
     return dispute(log, id, version, { solve, reason }) ? [version] : [];
@@ -122,7 +107,6 @@ export function settleReading(
       passes: Object.fromEntries(passes),
     },
   };
-  // The comparison's own terms are carried, so the settled report reads alone as the first one did.
   append(log, REPORTED, { ...last, ...asRecord(settled) });
   return settled;
 }

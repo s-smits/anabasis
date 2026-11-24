@@ -1,8 +1,3 @@
-/**
- * Context-compaction policy and summary-cost tracking for `pi-durable`. The campaign log remains
- * the authoritative record, so this module captures committed summary token usage (including
- * failed compaction attempts) at the commit publication boundary before the next generation starts.
- */
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import {
@@ -20,14 +15,10 @@ import { durableSpend, type Ledger, minus } from "../../kernel/meter.ts";
 interface Compacted {
   readonly tokensBefore: number;
   readonly seconds: number;
-  /** Summary token spend across the compaction task, including failed attempts. */
   readonly spent: Ledger;
   readonly error: string | null;
 }
 
-/** Computes the compaction policy, expanding `reserveTokens` so models with larger context windows
- *  still compact at the 300K campaign window. Because `pi-durable` also uses `reserveTokens` as
- *  the summary output cap, the solve condition records it explicitly. */
 export function compactionPolicy(model: Pick<Model<Api>, "provider" | "contextWindow">): CompactionPolicy {
   return {
     enabled: !servedByClaude(model.provider),
@@ -42,9 +33,6 @@ export function durableCompactionMode(model: Pick<Model<Api>, "provider" | "cont
   return `durable window=${String(Math.min(model.contextWindow, SWEEP_COMPACT_WINDOW))} reserve=16384 keep=${String(policy.keepRecentTokens)} summaryReserve=${String(policy.reserveTokens)} background=off`;
 }
 
-/** Creates a per-session observer that attributes compaction cost as the delta in `pi.usage`
- *  between `beforeCompact` and the terminal `CompactionTask` commit, avoiding double-counting
- *  ordinary generation turns. */
 export function compactionTrace(record: (event: Compacted) => void) {
   let totals: Ledger = {};
   const active = new Map<TaskId, { at: number; tokens: number; from: Ledger }>();

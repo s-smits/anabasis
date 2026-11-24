@@ -96,13 +96,13 @@ export const noInlineSchemaLiteralRule = defineRule({
           before:
             'function missingKeys(row: RecordedRow): string[] {\n  const required = ["at", "sessionId", "harness"];\n  return required.filter((key) => !Object.hasOwn(row, key));\n}',
           after:
-            '/** The keys every recorded row carries. */\nconst REQUIRED_KEYS = ["at", "sessionId", "harness"];\nfunction missingKeys(row: RecordedRow): string[] {\n  return REQUIRED_KEYS.filter((key) => !Object.hasOwn(row, key));\n}',
+            'const REQUIRED_KEYS = ["at", "sessionId", "harness"];\nfunction missingKeys(row: RecordedRow): string[] {\n  return REQUIRED_KEYS.filter((key) => !Object.hasOwn(row, key));\n}',
         },
         {
           before:
             "function dollarsOf(usage: Usage): number {\n  const perMillion = { input: 3, output: 15, cacheRead: 0.3 };\n  const tokens = usage.input * perMillion.input + usage.output * perMillion.output;\n  return (tokens + usage.cacheRead * perMillion.cacheRead) / 1e6;\n}",
           after:
-            "/** Dollars per million tokens of each kind. */\nconst PER_MILLION = { input: 3, output: 15, cacheRead: 0.3 };\nfunction dollarsOf(usage: Usage): number {\n  const tokens = usage.input * PER_MILLION.input + usage.output * PER_MILLION.output;\n  return (tokens + usage.cacheRead * PER_MILLION.cacheRead) / 1e6;\n}",
+            "const PER_MILLION = { input: 3, output: 15, cacheRead: 0.3 };\nfunction dollarsOf(usage: Usage): number {\n  const tokens = usage.input * PER_MILLION.input + usage.output * PER_MILLION.output;\n  return (tokens + usage.cacheRead * PER_MILLION.cacheRead) / 1e6;\n}",
         },
       ] satisfies RuleExample[],
     },

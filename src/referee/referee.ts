@@ -1,9 +1,3 @@
-/**
- * The Referee: adjudicates reproducible check rejections (`referee`, ruling `earned`,
- * `check-defect`, or `unclear`) on the exam side with conclusive sandboxed probe evidence
- * (`referee.finding`, `referee.refused`). Shared Referee session/file-reading helpers are reused
- * by `draft-audit.ts` for pre-freeze exam audits.
- */
 import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { type Static, Type } from "typebox";
 import { type SeatTool, sit } from "../agent/session.ts";
@@ -33,7 +27,6 @@ import { join } from "../meta/path.ts";
 import { ending, RESULT, text, tool } from "../tools/answer.ts";
 import { conclusive, FILE, fileTexts, inFile, type ProbeRow, probeTool, reaches } from "./probe.ts";
 
-/** Who sits in the Referee seat. */
 export interface Reader {
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
@@ -147,7 +140,6 @@ function hostRuling(verdict: LoggedVerdict, replay: Verdict | null): RefereeFind
       );
 }
 
-/** Extract `{ path, text }` entries from `publicInput.files`, keeping the first entry per path. */
 export function taskFileTexts(publicInput: JsonValue): Map<string, string> {
   const rows = asRecord(publicInput)?.files;
   const files = new Map<string, string>();
@@ -160,7 +152,6 @@ export function taskFileTexts(publicInput: JsonValue): Map<string, string> {
   return files;
 }
 
-/** Bound `publicInput.files` text previews so large CSV/data inputs never blow up Turn-1 context. */
 export function boundPublicInput(publicInput: JsonValue): JsonValue {
   const record = asRecord(publicInput);
   if (record === null || !Array.isArray(record.files)) return publicInput;
@@ -366,7 +357,6 @@ function rulingTool(
   });
 }
 
-/** Shared bounded `sit` runner for both Referee modes (`referee` and `reviewDraft`). */
 export async function runRefereeSession(given: {
   readonly id: string;
   readonly reader: Reader;
@@ -406,7 +396,6 @@ export async function runRefereeSession(given: {
   };
 }
 
-/** Referee one failed solve and log `referee.finding`. */
 export async function referee(reader: Reader, fail: RefereeCase): Promise<RefereeFinding> {
   const events = read(fail.log, TRACE_KINDS);
   const verdict = loggedVerdict(events, fail.solve, fail.log);

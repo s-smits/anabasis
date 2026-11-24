@@ -1,7 +1,3 @@
-/**
- * The Examiner's one session, in its two modes: it drafts an exam (`draft.ts`), or it writes tasks
- * (`write.ts`). No seat repairs a check (`AGENTS.md` rule 2).
- */
 import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { type SeatTool, sessionClock, sit } from "../agent/session.ts";
@@ -24,114 +20,68 @@ import { writing } from "./write.ts";
 
 type Clock = ReturnType<typeof sessionClock>;
 
-/** Who sits, whatever the mode: its name, its model, its limits and its log. */
 interface Sitting {
-  /** Names the session in the log; a task-writing session's prefixes the ids of its tasks. */
   readonly id: string;
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
   readonly limits: {
-    /** Author time from setup, including a wall's claim. */
     readonly wallSeconds: number;
-    /** The model turn limit, each reply one, with or without a tool call. */
     readonly turns: number;
-    /** What the session may put to the host: drafts, or instances to the gate. */
     readonly puts: number;
   };
-  /** The backends, built on the home the Examiner's model process keeps its state in. */
   readonly models: (home: string, shutdown: AbortSignal) => Models;
   readonly log: string;
-  /** Cancels the session; an unlabelled reason is recorded as caller cancellation. */
   readonly kill?: AbortSignal;
-  /** Called once the session is on record, so a caller can let it run on beside other work. */
   readonly opened?: () => void;
-  /** Handed a writing session's result where its work is done: the next ask of the conversation,
-   *  or null to end it (`examining`). None, and the session ends there. */
   readonly rest?: ((examined: Examined) => Promise<Ask | null>) | undefined;
 }
 
-/** The next ask of a resting conversation, as the examine command built it. Its wall is the
- *  conversation's, which closes only when the conversation does. */
 export type Ask = Extract<ExamRequest, { readonly mode: "write" }>;
 
-/** An ask's end at its rest: what the next ask is told, or null where the conversation ends. */
 type Rest = (ended: "finished" | "supplied") => Promise<string | null>;
 
-/** What a session of each mode is handed beside who sits, as the mode's own file takes it. */
 type DraftTerms = { readonly mode: "draft" } & Omit<Parameters<typeof drafting>[0], keyof Sitting>;
 type WriteTerms = { readonly mode: "write" } & Omit<Parameters<typeof writing>[0], keyof Sitting>;
 
-/** One Examiner session: who sits, and what its mode hands it. */
 export type ExamRequest = Sitting & (DraftTerms | WriteTerms);
 
 export interface Examined {
-  /** How the session ended: with a draft that stands, by `finish`, with the tasks the host asked
-   *  for, at a limit, or otherwise. */
   readonly ended: (typeof ENDINGS)[number] | "stopped";
-  /** The drafts it put to the host, or the instances it put to the gate. */
   readonly puts: number;
-  /** The versions of the tasks it held out, in the order it proposed them; none but in writing. */
   readonly held: readonly string[];
-  /** The versions of the instances the gate refused. */
   readonly refused: readonly string[];
 }
 
-/** A session of one mode as a caller may stand in for it: `examine`, or a script with no model. */
 export type Session<M extends ExamRequest["mode"]> = (
   request: Extract<ExamRequest, { readonly mode: M }>,
   wall?: Wall,
 ) => Promise<Examined>;
 
-/** What a mode is: what a session of it is told, what it works with, and when its work is done.
- *  The loop reads nothing else of the mode (`examining`). */
 interface Mode {
-  /** The log's kind for the session's events: `exam.*` or `draft.*`. */
   readonly kind: "exam" | "draft";
   readonly system: string;
   readonly opening: string;
-  /** What its start event holds beside the session, the model and the effort: its limits under
-   *  the log's own words for them, and the mode's facts. */
   readonly started: JsonObject;
-  /** Its own tools, before the shell's and `finish`. */
   readonly tools: readonly SeatTool[];
-  /** How something of the session enters the exam, as its shell is told (`examinerShell`). */
   readonly enters: string;
-  /** What a turn with no call is told the session can still do, before `finish`. */
   readonly nudge: string;
-  /** What `finish` is described as. */
   readonly finish: string;
-  /** What `finish` is answered with while the mode's work is not done; null where `finish` ends the
-   *  session. */
   readonly declined: string | null;
-  /** Whether the mode's work is done, which ends the session, and how that ending is named. */
   readonly done: () => "stands" | "supplied" | null;
-  /** What its end event holds of its work, under the log's own words. */
   readonly counted: () => JsonObject;
   readonly result: () => Omit<Examined, "ended">;
-  /** Takes in the next ask and says what it is told. */
   readonly ask?: (next: Ask) => string;
 }
 
-/** What `finish` leaves the loop: the note, and what the mode had counted at the last declined one. */
 interface Said {
   note: string | null;
   declined: string | null;
 }
 
-/** What `read_opening` says it serves. */
 const REREAD =
   "The session's opening message as it read when the host last asked: the record of the campaign's tasks and the limits of that ask. Read it after your context was compacted.";
 
-/** The first of these that holds names a session's ending; none, and it `stopped`. */
 const ENDINGS = ["stands", "finished", "supplied", "killed", "wall", "crashed", "turns"] as const;
-/**
- * Whether the campaign's whole budget holds a reserve for one more, read before each request and
- * each compaction, which bills too: where it does not, `spent` is aborted, which ends the session.
- * The log's sum counts this
- * session's own turns while it is unfinished (`billedAll`), so a session inside a live Builder's
- * conversation is held as the Builder is. A log with no opening, or an opening with no budget,
- * holds nothing.
- */
 function withinBudget(log: string, spent: AbortController): boolean {
   const left = budgetLeft(read(log, CALL_KINDS));
   if (left === null || left.dollars >= left.reserve) return true;
@@ -139,7 +89,6 @@ function withinBudget(log: string, spent: AbortController): boolean {
   return false;
 }
 
-/** Skip trailing calls from a multi-tool turn once an earlier call ended or moved the ask. */
 function guardAsk(each: SeatTool, stopped: () => string | null): SeatTool {
   return {
     ...each,
@@ -150,11 +99,6 @@ function guardAsk(each: SeatTool, stopped: () => string | null): SeatTool {
   };
 }
 
-/** The session's `finish`: declined where the mode declines one, its work is not
- *  done and its count moved since the last decline, so a session that is still producing is not
- *  ended early by its second `finish`; two in a row still end a session that has nothing left. A
- *  note is kept to its first 700 bytes, as a Referee's reason is, rather than refused, which cost a
- *  turn spent rewriting it. */
 function finishTool(mode: Mode, said: Said, rest: Rest): SeatTool {
   return tool({
     name: "finish",
@@ -167,20 +111,12 @@ function finishTool(mode: Mode, said: Said, rest: Rest): SeatTool {
         return text(mode.declined);
       }
       said.note = boundText(args.note, 700).shown;
-      // An ask that held nothing closes the conversation rather than resting it, so the next ask
-      // opens afresh from the log instead of waking one that gave up.
       const woken = mode.result().held.length === 0 ? null : await rest("finished");
       return woken === null ? ending(text("Finished.")) : text(woken);
     },
   });
 }
 
-/**
- * One session of `mode`: the Examiner works with the mode's tools until its work is done, it calls
- * `finish`, or a limit ends it. Everything it does is in the log under the mode's kind: its start,
- * its turns and calls, and its end with what it billed and, for a crash, how many of its commands
- * were running, which decides whether its home is carried on (`inExaminerWall`).
- */
 async function examining(
   request: Sitting,
   modeOf: (stop: AbortSignal, within: Clock["within"], rest: Rest) => Mode,
@@ -188,17 +124,14 @@ async function examining(
 ): Promise<Examined> {
   let began = walls?.began ?? performance.now();
   const spent = new AbortController();
-  // The ask in force, the turns and dollars before it, and its own clock, which a rest closes.
   let current: Sitting = request;
   let [from, billed] = [0, 0];
-  // The backend's own total at the last ask's close, null where that read gave none.
   let reported: number | null = 0;
   const ownReported = (total: number | null) => {
     const own = reportedShare(total, reported);
     reported = total;
     return own;
   };
-  // What the conversation has spent so far, which `sit` hands over as it opens.
   let soFar: (() => Promise<Spent>) | undefined;
   const timed = new AbortController();
   const clocked = () => {
@@ -244,13 +177,11 @@ async function examining(
         effort: request.effort,
         ...mode.started,
       });
-    // An ask that ended at a rest the host closed: nothing more goes on record.
     let rested: Examined | null = null;
     const rest: Rest = async (ended) => {
       const asking = mode.ask;
       if (request.rest === undefined || asking === undefined) return null;
       clock.close();
-      // The ask bills the conversation's spend beyond the asks before it, its compactions included.
       const now = await soFar?.();
       const total = Math.max(billed, now?.billed ?? 0);
       const dollars = total - billed;
@@ -261,8 +192,6 @@ async function examining(
         billed: dollars,
         reportedCost: ownReported(now?.reportedCost ?? null),
       });
-      // An ask's home is kept at its rest, as a session's was at its end before one conversation
-      // held every ask: the conversation's wall closes only when the conversation does.
       walls?.keep();
       const closed = AbortSignal.any([spent.signal, caller.signal]);
       const next = await Promise.race([
@@ -286,12 +215,9 @@ async function examining(
       next.opened?.();
       return woken;
     };
-    // The ask's clock in force, whichever ask a call runs in.
     const mode = modeOf(AbortSignal.any(stops), async (action) => await clock.within(action), rest);
     start();
     request.opened?.();
-    // The current turn's last call, whose result says what the session has used, since a session
-    // told its limits at the opening alone can be cut at its deadline while still proposing.
     let lastCall: string | undefined;
     let [compacted, askEpoch, turnEpoch] = [false, 0, 0];
     const used = (call: string) => {
@@ -334,7 +260,6 @@ async function examining(
         if (!withinBudget(log, spent)) throw new Error("the campaign budget has no reserve left");
       },
       turns,
-      // The session ends at `finish` and when its work is done, even beside another call in the turn.
       over: () => said.note !== null || mode.done() !== null || turns.length - from >= current.limits.turns,
       next: async () =>
         said.note !== null || mode.done() !== null
@@ -369,7 +294,6 @@ async function examining(
       turns: turns.length - from >= current.limits.turns,
     };
     const ended = ENDINGS.find((reason) => by[reason] === true) ?? "stopped";
-    // A later ask bills the conversation's bill, and the backend's total, beyond the asks before it.
     return closeAsk(ended, {
       crash: sat.crash,
       ...keyIfDefined("running", ended === "crashed" ? running : undefined),
@@ -384,14 +308,6 @@ async function examining(
   }
 }
 
-/**
- * One Examiner session in the mode its request names. With a `wall` it has a shell under the
- * solver's command wall (`shell.ts`), and its time is counted from before its root is claimed;
- * without one it has no shell and computes nothing. A drafting session is given no engines, since
- * nothing is drafted yet that names one, and its home is kept for the first
- * writing session. A run killed before the
- * session began, and an id a session of the log already took, claim nothing and start nothing.
- */
 export async function examine(request: ExamRequest, wall?: Wall): Promise<Examined> {
   if (request.kill?.aborted === true) throw new Error(`session ${request.id} was stopped before it began`);
   if (examinerSessions(read(request.log, TRACE_KINDS)).has(request.id)) {
@@ -411,10 +327,6 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
   return await inExaminerWall(request, walled, seated);
 }
 
-/** The Examiner's asks as one conversation: each later ask wakes it where it rests,
- *  and where it crashed or met a limit the next opens afresh from the log (`record.ts`). An ask is
- *  answered at its own end or at the conversation's; `close` ends a resting one when the Builder's
- *  conversation closes. */
 export function conversing(sitting: Session<"write">) {
   let live: {
     settle: (examined: Examined) => void;

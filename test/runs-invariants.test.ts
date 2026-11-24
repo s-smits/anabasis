@@ -73,6 +73,8 @@ describe("each login's live runs, on every host", () => {
       [gpt, "here", "h", null],
       [gpt, "m1", "g", null],
       [payerOf(undefined, ["--solver", "openrouter/x"]), "m1", "h", null],
+      [payerOf(undefined, ["--model=openai-codex/z", "--prompt", "openai-codex/z"]), "m1", "h", null],
+      [payerOf(undefined, ["--examiner=openai-codex/z"]), "m1", "h", "m1 carries 1 live codex run(s)"],
     ];
     for (const [payer, host, name, refusal] of rows) {
       const said = startRefusal(env, payer, host, counted, name);

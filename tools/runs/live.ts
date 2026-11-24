@@ -44,7 +44,9 @@ export function seatFlagsOf(flags: readonly string[]): Record<string, string | u
     strict: false,
   });
   return Object.fromEntries(
-    Object.entries(values).flatMap(([key, value]) => (isString(value) ? [[key, value]] : [])),
+    Object.entries(values).flatMap(([key, value]) =>
+      key in SEAT_OPTIONS && isString(value) ? [[key, value]] : [],
+    ),
   );
 }
 

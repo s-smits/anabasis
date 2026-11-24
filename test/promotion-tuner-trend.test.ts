@@ -168,7 +168,7 @@ it("bounds an arm by the sums of whole Starter rollouts, never by the Starter's 
   expect(read.get("apart")?.slice(5, 9)).toEqual(["2", "30/100", "-", "-"]);
 });
 
-it("treats base-<label> bareSolver judged records as baseline arms rather than unlinked built arms", () => {
+it("stratifies base-<label> bareSolver baselines from Starter and leaves non-prefixed build.of=base arms visible", () => {
   const store = join(home, "outside-base");
   const put = (arm: string, buildOf: string, points: number) => {
     mkdirSync(join(store, "judged", arm), { recursive: true });
@@ -179,8 +179,14 @@ it("treats base-<label> bareSolver judged records as baseline arms rather than u
   };
   put("pi-a1", "jobstat-run", 40);
   put("base-pi-a1", "base", 30);
+  put("cc-a1", "jobstat-run", 40);
+  put("starter-cc-a1", "starter", 10);
+  put("sweep:base1", "base", 25);
   const loaded = scoresOf(store);
   const rows = outsideRows(loaded, []);
   expect(rows.has("base-pi-a1")).toBe(false);
-  expect(rows.get("pi-a1")?.slice(6, 9)).toEqual(["40/50", "30 to 30", "above, one Starter rollout"]);
+  expect(rows.has("starter-cc-a1")).toBe(false);
+  expect(rows.has("sweep:base1")).toBe(true);
+  expect(rows.get("pi-a1")?.slice(6, 9)).toEqual(["40/50", "30 to 30", "above, one bareSolver rollout"]);
+  expect(rows.get("cc-a1")?.slice(6, 9)).toEqual(["40/50", "10 to 10", "above, one Starter rollout"]);
 });

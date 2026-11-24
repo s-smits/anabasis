@@ -607,11 +607,15 @@ async function synthesis(): Promise<number> {
     )
   ).join("\n");
   const regressionsFile = join(out, REGRESSIONS);
-  const evalRegressions = existsSync(regressionsFile)
-    ? readFileSync(regressionsFile, "utf8").trim()
-    : (formatRegressionsFor(
-        investigation.campaigns.map(({ name, log }) => ({ log, readiness: readinessOf(name, log) })),
-      ) ?? "No external benchmark store configured for these campaigns.");
+  const freshRegressions = formatRegressionsFor(
+    investigation.campaigns.map(({ name, log }) => ({ log, readiness: readinessOf(name, log) })),
+  );
+  if (freshRegressions !== null) writeFileSync(regressionsFile, `${freshRegressions}\n`);
+  const evalRegressions =
+    freshRegressions ??
+    (existsSync(regressionsFile)
+      ? readFileSync(regressionsFile, "utf8").trim()
+      : "No external benchmark store configured for these campaigns.");
   writeFileSync(
     path,
     filled(template, {

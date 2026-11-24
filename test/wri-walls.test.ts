@@ -6,6 +6,7 @@
 // leaves its prompt byte-identical, and it refuses to open without its trigger.
 import { afterAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import type { JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { catalogueText, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
@@ -118,20 +119,62 @@ describe("the no-quote wall", () => {
     expect(one?.join("\n")).not.toContain("CANARY");
   });
 
-  it("renders external benchmark regression joins byte for byte alike without leaking log secrets", () => {
+  it("renders scored external benchmark regression joins byte for byte alike without leaking log secrets", () => {
+    const store = join(base, "bench-wall");
+    const put = (file: string, value: JsonValue) => {
+      mkdirSync(join(file, ".."), { recursive: true });
+      writeFileSync(file, `${JSON.stringify(value)}\n`);
+    };
+    put(join(store, "judged", "pi-hd", "soc__t1.json"), {
+      arm: "pi-hd",
+      task: "soc/t1",
+      harness: "hd",
+      runtime: "pi-durable",
+      points: 20,
+      total: 50,
+      cut: [],
+    });
+    put(join(store, "judged", "base-pi-hd", "soc__t1.json"), {
+      arm: "base-pi-hd",
+      task: "soc/t1",
+      harness: "",
+      runtime: "pi-durable",
+      points: 45,
+      total: 50,
+      cut: [],
+      build: { of: "base", usd: 0 },
+    });
+    put(join(store, "dataset", "soc", "t1", "eval_result", "eval_pi-hd__soc__t1", "judge_judge.json"), {
+      rubrics: [{ index: 0, weight: 10, result: { passed: false, criteria_passed: 1, criteria_count: 3 } }],
+    });
+    const trajDir = join(store, "dataset", "soc", "t1", "model_traj", "pi-hd__soc__t1");
+    mkdirSync(trajDir, { recursive: true });
+    writeFileSync(
+      join(trajDir, "attempt1.jsonl"),
+      `${JSON.stringify({ kind: "solve.call", data: { tool: "bash", args: { command: "helper-tool run" } } })}\n`,
+    );
+    const campDir = join(base, "camp-wall");
+    mkdirSync(join(campDir, "states", "hd", ".toolchain", "bin"), { recursive: true });
+    writeFileSync(join(campDir, "states", "hd", ".toolchain", "bin", "helper-tool"), "#!/bin/sh\n");
+
     const [first, second] = SECRETS.map((secret) => {
       const events = wriCampaign(secret);
       const ready = domainReadinessOf({
         campaign: "buffer-a",
-        log: "/a/log.jsonl",
+        log: join(campDir, "log.jsonl"),
         events,
         repo: REPO,
         benches: [],
+        storeOverride: store,
         extensionsRoot: join(base, "no-ext"),
       });
-      return formatRegressionReport(analyzeRegressions(ready, events, "/a"));
+      const report = analyzeRegressions(ready, events, campDir);
+      expect(report.status).toBe("scored");
+      return formatRegressionReport(report);
     });
     expect(second).toEqual(first);
+    expect(first).toContain("pi-hd (builtSolver");
+    expect(first).toContain("helper-tool:");
     expect(first).not.toContain("CANARY");
   });
 });

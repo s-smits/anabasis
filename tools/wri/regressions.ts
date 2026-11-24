@@ -123,6 +123,14 @@ function tallyPaired(built: readonly BenchRecord[], baseline: readonly BenchReco
   return { wins, losses, ties };
 }
 
+function parseJsonSafe(rawText: string) {
+  try {
+    return asRecord(capturedJsonParse(rawText));
+  } catch {
+    return null;
+  }
+}
+
 function rubricMissesFor(store: string, arm: string, task: string): RubricMiss[] {
   const parts = task.split("/");
   if (parts.length !== 2) return [];
@@ -131,7 +139,7 @@ function rubricMissesFor(store: string, arm: string, task: string): RubricMiss[]
   if (!existsSync(evalDir)) return [];
   const judgeFile = readdirSync(evalDir).find((entry) => entry.endsWith("_judge.json"));
   if (judgeFile === undefined) return [];
-  const raw = asRecord(capturedJsonParse(readFileSync(join(evalDir, judgeFile), "utf8")));
+  const raw = parseJsonSafe(readFileSync(join(evalDir, judgeFile), "utf8"));
   const rubrics = raw !== null && Array.isArray(raw.rubrics) ? raw.rubrics : [];
   return rubrics.flatMap((entry, position) => {
     const item = asRecord(entry);
@@ -150,7 +158,7 @@ function rubricMissesFor(store: string, arm: string, task: string): RubricMiss[]
 
 function commandsInTrajLine(line: string): string[] {
   if (line.trim() === "") return [];
-  const obj = asRecord(capturedJsonParse(line));
+  const obj = parseJsonSafe(line);
   if (obj === null) return [];
   if (obj.kind === "solve.call") {
     const args = asRecord(asRecord(obj.data)?.args ?? asRecord(obj.data)?.input);
@@ -545,7 +553,7 @@ export function formatRegressionReport(report: RegressionReport): string {
   if (report.status === "below-min-promo") {
     return [
       ...header,
-      `status: skipped — promotions (${String(readiness.promotions)}) below minPromo (${String(readiness.minPromo)}). Pass --min-promo 0 to override.`,
+      `status: skipped — promotions (${String(readiness.promotions)}) below minPromo (${String(readiness.minPromo)}). Pass --min-promo 0 or --with-evals to override.`,
       ...cohortLines,
     ].join("\n");
   }

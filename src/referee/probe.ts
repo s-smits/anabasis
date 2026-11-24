@@ -5,7 +5,7 @@ import { blockingOf, decides, faultyOf, type Task, type Verdict, type Verifier }
 import { jsonPathTokens, resolveJsonPath } from "../meta/json-evidence.ts";
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
-import { hashJsonValue } from "../meta/stable-json.ts";
+import { compareCodeUnits, hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { text, tool } from "../tools/answer.ts";
 
@@ -126,6 +126,7 @@ function sideText(label: string, verdict: Verdict): string {
       verdict.scores === undefined
         ? ""
         : `: ${Object.entries(verdict.scores)
+            .toSorted(([a], [b]) => compareCodeUnits(a, b))
             .map(([id, value]) => `${id}=${String(value)}`)
             .join(", ")}`;
     const measured =

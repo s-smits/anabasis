@@ -15,7 +15,6 @@ import {
   OBJECTIVE,
   objectiveOf,
   requiredToolsOf,
-  scoresOf,
   spelled,
   type Task,
   type Verdict,
@@ -264,26 +263,8 @@ async function probeReading(
               );
         })
       : [];
-  const {
-    results: hiddenSwaps,
-    allValid: allValidOnHiddenSwap,
-    blind,
-  } = hiddenProbes.length > 0
-    ? await probeSensitivity(given, hiddenProbes)
-    : { results: [], allValid: false, blind: false };
-  const rubricNotes = (given.brief.objective?.items ?? []).flatMap(({ id }) => {
-    if (accepted.length === 0 || hiddenSwaps.length === 0) return [];
-    const allOne = accepted.every(({ verdicts: [first] }) => (scoresOf(first)?.[id] ?? 0) >= 1 - GAP_FLOOR);
-    const fixedOnSwap = hiddenSwaps.every(
-      ({ run, verdict }) =>
-        verdict.kind === "pass" &&
-        Math.abs((scoresOf(verdict)?.[id] ?? 0) - (scoresOf(run.verdicts[0])?.[id] ?? 0)) < GAP_FLOOR,
-    );
-    return when(
-      allOne && fixedOnSwap,
-      `rubric item ${id} scored near 1 on every accept control and did not move on any hidden-value swap`,
-    );
-  });
+  const { allValid: allValidOnHiddenSwap, blind } =
+    hiddenProbes.length > 0 ? await probeSensitivity(given, hiddenProbes) : { allValid: false, blind: false };
   const deliverables = await deliverableReading(given, byId, accepted);
   return {
     faults: [
@@ -305,7 +286,6 @@ async function probeReading(
         allValidOnHiddenSwap && !blind,
         "every validity check passed when each example's hidden values were swapped with another's: only the objective read hidden values, so validity checks test public properties alone",
       ),
-      ...rubricNotes,
       ...deliverables.notes,
     ],
   };

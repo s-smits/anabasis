@@ -562,9 +562,14 @@ describe("a task the reference has closed", () => {
     expect(block(told, "some solves").open).toBeDefined();
   });
 
-  it("reports mean per-item rubric scores on reference valid solves without exposing them on unsolved tasks", () => {
+  it("reports mean per-item rubric scores with author baselines and surfaces faulty rubric scorers", () => {
     const log = logged();
-    log.hold(["graded", "missed"]);
+    log.hold(["graded", "missed", "broken"]);
+    log.add("task.feasible", {
+      version: "v-graded",
+      session: "x-1",
+      objective: { measure: 0.95, direction: "higher", scores: { accuracy: 1, calibration: 0.8 } },
+    });
     const ran = condition("v-graded", "h1");
     log.add("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
     for (const [idx, scores] of [
@@ -586,9 +591,22 @@ describe("a task the reference has closed", () => {
     log.solved("c-r", "graded", "h2", [0.5, 0.5]);
     log.solved("c-r", "missed", "h1", [false, false]);
     log.solved("c-r", "missed", "h2", [false, false]);
+    log.add("verdict", {
+      solve: "rs-fault",
+      task: "broken",
+      kind: "faulty",
+      check: "objective",
+      reason: "score calibration returned 1.5 (expected finite number in [0, 1])",
+    });
+    log.add(TASK_STATE, { version: "v-broken", state: "disputed" });
     log.reported("c-r", ["h1", "h2"], ["graded", "missed"]);
-    const told = heard(log.events, ["graded", "missed"].map(fixture));
-    expect(block(told, "every solve").graded).toContain("rubric accuracy=0.9, calibration=0.4");
+    const told = heard(log.events, ["graded", "missed", "broken"].map(fixture));
+    expect(block(told, "every solve").graded).toContain(
+      "rubric accuracy=0.9 (author 1), calibration=0.4 (author 0.8)",
+    );
     expect(block(told, "no solve").missed).not.toContain("rubric");
+    expect(block(told, "at fault").broken).toContain(
+      "ruled at fault on an answer to it: objective (calibration)",
+    );
   });
 });

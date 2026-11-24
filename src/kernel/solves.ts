@@ -209,7 +209,7 @@ export function checkerVerdict(data: JsonObject): Verdict | null {
       rawScores === null
         ? []
         : Object.entries(rawScores).flatMap(([key, val]) =>
-            isNumber(val) && Number.isFinite(val) ? [[key, val] as const] : [],
+            isNumber(val) && Number.isFinite(val) && val >= 0 && val <= 1 ? [[key, val] as const] : [],
           );
     const scores = scoreEntries.length > 0 ? Object.fromEntries(scoreEntries) : undefined;
     return {

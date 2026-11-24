@@ -343,7 +343,7 @@ async function converse(
     id: request.id,
     model,
     effort: request.effort,
-    system: systemPrompt(bench.modePrompts),
+    system: systemPrompt(bench.modePrompts, request.contract.objective),
     opening: [first, started, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"),
     tools,
     ...keyIfDefined("env", env),

@@ -24,6 +24,7 @@ export interface CellInput {
   readonly width: number;
   readonly checks: readonly CheckInput[];
   readonly objective: CheckInput | null;
+  readonly objectiveScale?: "unit";
   readonly rubricItems?: readonly RubricItem[];
   readonly running: string;
 }
@@ -185,7 +186,7 @@ async function decide(
       ? { passed: returned }
       : { faulty: `the check returned ${typeName(returned)}` };
   }
-  if (kind === "score") {
+  if (kind === "score" || (kind === "objective" && cell.objectiveScale === "unit")) {
     return isNumber(returned) && Number.isFinite(returned) && returned >= 0 && returned <= 1
       ? { value: returned }
       : {
@@ -228,12 +229,10 @@ const { program, unloaded } = await import(cell.program).then(
 );
 const run = (check: CheckInput, kind: RunKind) => {
   if (unloaded !== null) return Promise.resolve({ nonResult: unloaded });
-  const found =
-    kind === "objective"
-      ? program?.objective
-      : kind === "score"
-        ? asRecord(program?.scores)?.[check.checkId]
-        : asRecord(program?.checks)?.[check.checkId];
+  const container =
+    kind === "objective" ? program : asRecord(kind === "score" ? program?.scores : program?.checks);
+  const key = kind === "objective" ? "objective" : check.checkId;
+  const found: unknown = container !== null && Object.hasOwn(container, key) ? container[key] : undefined;
   return timed(cell, check, found, kind);
 };
 
@@ -247,18 +246,15 @@ async function measureObjective(objective: CheckInput): Promise<Measure> {
   const ran = (await pooled(items, cell.width, (item) =>
     run({ ...objective, checkId: item.id }, "score"),
   )) as Measure[];
-  let weighted = 0;
-  let totalWeight = 0;
   const scores: Record<string, number> = {};
   for (const [index, item] of items.entries()) {
     const outcome = ran[index];
-    if (outcome === undefined) return { faulty: `missing score ${item.id}` };
-    if (!("value" in outcome)) return outcome;
+    if (outcome === undefined || !("value" in outcome)) {
+      return outcome ?? { faulty: `missing score ${item.id}` };
+    }
     scores[item.id] = outcome.value;
-    weighted += item.weight * outcome.value;
-    totalWeight += item.weight;
   }
-  return totalWeight > 0 ? { value: weighted / totalWeight, scores } : { faulty: "rubric weights sum to 0" };
+  return { value: 0, scores };
 }
 
 // SAFETY: `decide` gives a check's answer where `kind` is `"check"`.

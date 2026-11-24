@@ -899,7 +899,7 @@ describe.concurrent("campaign draft lifecycle", () => {
     ).toBe(true);
   });
 
-  it("validates, stages, and reads weighted rubric objectives with scores export and hidden-swap item notes", async () => {
+  it("validates, stages, and reads weighted rubric objectives with scores export and single-owner rubric faults", async () => {
     const rubricObjective = {
       quantity: "weighted domain score",
       direction: "higher" as const,
@@ -926,16 +926,36 @@ describe.concurrent("campaign draft lifecycle", () => {
     expect(
       draftFaults({
         ...rubricDraft,
+        evaluator: `${rubricDraft.evaluator}\nexport const objective = () => 1;`,
+      })[0],
+    ).toContain("rather than an `objective` export");
+    expect(
+      draftFaults({
+        ...rubricDraft,
         objective: { ...rubricObjective, direction: "lower" },
       })[0],
     ).toContain('direction "higher"');
+    expect(
+      draftFaults({
+        ...rubricDraft,
+        objective: {
+          quantity: rubricObjective.quantity,
+          direction: "higher",
+          items: rubricObjective.items,
+        },
+      })[0],
+    ).toContain('scale "unit"');
+    expect(
+      draftFaults({
+        ...rubricDraft,
+        objective: { ...rubricObjective, items: [{ id: "constructor", weight: 1 }] },
+      })[0],
+    ).toContain("invalid item constructor");
 
     const staged = stageExam(join(root, "rubric-stage"), rubricDraft);
     const brief = readPack(staged.bundle).brief;
     expect(brief.objective).toEqual(rubricObjective);
     const readRes = await draftReading(join(root, "rubric-read"), rubricDraft, 2);
     expect(readRes.faults).toEqual([]);
-    expect(readRes.read?.reading.notes.some((n) => n.includes("rubric item constant-item"))).toBe(true);
-    expect(readRes.read?.reading.notes.some((n) => n.includes("rubric item accuracy"))).toBe(false);
   });
 });

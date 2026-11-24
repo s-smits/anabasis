@@ -166,6 +166,10 @@ export function objectiveRuleOf(declared: ObjectiveRule | undefined): ObjectiveR
     : { direction: declared.direction, ...keyIfDefined("scale", declared.scale) };
 }
 
+export function gapBasis(rule: ObjectiveRule | undefined): string {
+  return rule?.scale === "unit" ? "on the [0, 1] scale" : "of the larger measure";
+}
+
 export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
   const { direction, scale } = asRecord(data.objective) ?? {};
   if (direction !== "lower" && direction !== "higher") return undefined;

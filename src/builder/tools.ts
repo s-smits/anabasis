@@ -18,7 +18,7 @@ import {
   verdictsOf,
 } from "../kernel/solves.ts";
 import { objectiveOf } from "../kernel/verify.ts";
-import { GAP_FLOOR, gainOver, type ObjectiveRule } from "../kernel/compare.ts";
+import { GAP_FLOOR, gainOver, gapBasis, type ObjectiveRule } from "../kernel/compare.ts";
 import { poolOf } from "../kernel/reports.ts";
 import { taskStates } from "../kernel/task.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -94,8 +94,6 @@ function bandSize(at: number): string {
   const [lower, upper] = [BAND_EDGES[at] ?? GAP_FLOOR, BAND_EDGES[at + 1]];
   return upper === undefined ? `${percent(lower)}% or more` : `${percent(lower)} to ${percent(upper)}%`;
 }
-
-const BANDS_TOLD = `level (within ${percent(GAP_FLOOR)}%), or better or worse by ${BAND_EDGES.map((_, at) => bandSize(at)).join(", ")}, each a share of the larger of the two measures, as a comparison reads a gap`;
 
 function againstOf(events: readonly LogEvent[], contract: Contract): (version: string) => Against | null {
   const rule = contract.objective;
@@ -354,7 +352,7 @@ export function practiceTool(bench: Bench): SeatTool {
   const { request } = bench;
   return tool({
     name: "practice",
-    description: `Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits: a practice solve takes as long as any solve. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, what the solve used of its limits and the tokens it read and wrote, how many tool calls it made, which failed and how many ran each of the harness's programs, the task's record of practice solves under each harness the result names, the reference harness among them, the solve's id for read_trace and, for a rejection the Referee set aside, that it was set aside; never which check refused an answer. Under an objective a valid answer's measure is given as a band against the task author's answer on record: ${BANDS_TOLD}; a task with no author's answer on record shows none. A harness that does not open spends no solve. \`under: "reference"\` costs the same solves and shows what your change is measured against.`,
+    description: `Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits: a practice solve takes as long as any solve. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, what the solve used of its limits and the tokens it read and wrote, how many tool calls it made, which failed and how many ran each of the harness's programs, the task's record of practice solves under each harness the result names, the reference harness among them, the solve's id for read_trace and, for a rejection the Referee set aside, that it was set aside; never which check refused an answer. Under an objective a valid answer's measure is given as a band against the task author's answer on record: level (within ${percent(GAP_FLOOR)}%), or better or worse by ${BAND_EDGES.map((_, at) => bandSize(at)).join(", ")}, each ${gapBasis(bench.request.contract.objective)}, as a comparison reads a gap; a task with no author's answer on record shows none. A harness that does not open spends no solve. \`under: "reference"\` costs the same solves and shows what your change is measured against.`,
     parameters: Type.Object({
       tasks: Type.Array(Type.String(), {
         minItems: 1,

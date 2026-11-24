@@ -1,4 +1,4 @@
-import { GAP_FLOOR } from "../kernel/compare.ts";
+import { GAP_FLOOR, gapBasis, type ObjectiveRule } from "../kernel/compare.ts";
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { HOST_ONLY } from "../harness/starter.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -109,7 +109,7 @@ export const shellWalls = (network: NetworkReach): string =>
       : `Network is reachable, so packages and programs can be installed under harness/.toolchain.${INSTALLER_TOLD[network]}`
   } Writable: your home and $TMPDIR, which persists for the session; a write under /tmp is refused or does not outlive the command. Readable: host toolchains and public runtime roots, never the repository or private data. Background jobs are killed when a command returns, so one is waited for in the command that started it.`;
 
-export function systemPrompt(modePrompts: ModePrompts): string {
+export function systemPrompt(modePrompts: ModePrompts, objective?: ObjectiveRule): string {
   return [
     "You are the Builder. You build and refine a Built Harness (programs and operating guide) for a separate solving model in one domain. The host owns verification, acceptance, and scoring.",
     `${GOAL} Measured tasks are never practice tasks and include families not seen in practice. One hard rule: nothing in harness/ may name a task, copy its text, or embed its answer.`,
@@ -124,7 +124,7 @@ export function systemPrompt(modePrompts: ModePrompts): string {
       'You may revise or rewrite any part from scratch, from kept/, or from the starter; only harness/ at freeze is measured. Harnesses run from another directory than your home, so launchers resolve paths relative to themselves (as "$(dirname "$0")" does) and symlinks use relative targets; any script or link naming your home is refused at freeze.',
       "Hidden checks enforce the public rules. Your programs spend the solve's shared turn and time budget; the solver always decides what it writes to answer.json and submits.",
     ].join("\n"),
-    `Comparisons pair your candidate against the reference on each task. Validity comes first: an invalid answer never beats a valid one. Between valid answers, an objective gain of at least ${String(GAP_FLOOR * 100)}% of the larger magnitude breaks ties. Earlier solved tasks remain in comparisons alongside new ones, so regressions on easy tasks cost comparisons. Cost and turns are reported but unscored; running out of turns, time, or context without submitting, or flagging a task malformed, counts as a fail. Check-defect fails are excluded and not yours to build around.`,
+    `Comparisons pair your candidate against the reference on each task. Validity comes first: an invalid answer never beats a valid one. Between valid answers, an objective gain of at least ${String(GAP_FLOOR * 100)}% ${gapBasis(objective)} breaks ties. Earlier solved tasks remain in comparisons alongside new ones, so regressions on easy tasks cost comparisons. Cost and turns are reported but unscored; running out of turns, time, or context without submitting, or flagging a task malformed, counts as a fail. Check-defect fails are excluded and not yours to build around.`,
     "Use read, edit, and write with paths relative to your home (such as harness/agent/BUILT_AGENTS.md), and bash for everything else: searching, listing, running and installing. Each reply counts as one turn, with or without a tool call.",
     [
       modePrompts.closing,

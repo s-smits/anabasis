@@ -16,10 +16,13 @@ export interface PublicTask {
   readonly publicInput: JsonValue;
 }
 
-type ExternalTold = Pick<Told, "tools" | "home" | "guide"> & {
+interface PromptEnvelope {
+  readonly tools: readonly SeatTool[];
+  readonly home: string;
+  readonly guide: string | null;
   readonly addendum: string;
   readonly environment: string;
-};
+}
 
 export interface Told {
   readonly tools: readonly SeatTool[];
@@ -81,10 +84,15 @@ function duty({ wallSeconds, limits, resources, files, guide }: Told): string {
   ].join(" ");
 }
 
-function environment({ limits, programs, wallSeconds, network }: Told): string {
+export function listedPrograms(programs: readonly string[]): string {
   const rest = programs.length - LISTED_PROGRAMS;
-  const listed =
-    programs.slice(0, LISTED_PROGRAMS).join(", ") + (rest > 0 ? `, and ${String(rest)} more on PATH` : "");
+  return (
+    programs.slice(0, LISTED_PROGRAMS).join(", ") + (rest > 0 ? `, and ${String(rest)} more on PATH` : "")
+  );
+}
+
+function environment({ limits, programs, wallSeconds, network }: Told): string {
+  const listed = listedPrograms(programs);
   const reach =
     network === "unreached"
       ? "Commands have no network access: a package index could not be reached from inside the command wall when this process started, so nothing can be installed, and what the host and this harness hold is all there is."
@@ -100,31 +108,45 @@ function environment({ limits, programs, wallSeconds, network }: Told): string {
     .join("\n");
 }
 
-export function systemPrompt(told: Told | ExternalTold): string {
-  const tools = told.tools.map(
+export function promptEnvelope({
+  tools: seatTools,
+  home,
+  guide,
+  addendum,
+  environment: env,
+}: PromptEnvelope): string {
+  const tools = seatTools.map(
     ({ name, description }) => `- ${name}: ${description.replaceAll(/\s+/g, " ").trim()}`,
   );
   const rules = [
-    ...(told.tools.some(({ name }) => name === "bash") ? (TOOL_RULES.get("bash") ?? []) : []),
-    ...told.tools.flatMap(({ name }) => (name === "bash" ? [] : (TOOL_RULES.get(name) ?? []))),
+    ...(seatTools.some(({ name }) => name === "bash") ? (TOOL_RULES.get("bash") ?? []) : []),
+    ...seatTools.flatMap(({ name }) => (name === "bash" ? [] : (TOOL_RULES.get(name) ?? []))),
     "Be concise in your responses",
     "Show file paths clearly when working with files",
   ];
-  const addendum = "addendum" in told ? told.addendum : duty(told);
-  const env = "environment" in told ? told.environment : environment(told);
   return [
     "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
     `<tools>\n${tools.length === 0 ? "(none)" : tools.join("\n")}\n</tools>`,
     `<rules>\n${rules.map((rule) => `- ${rule}`).join("\n")}\n</rules>`,
     `<addendum>\n${addendum}\n</addendum>`,
-    ...(told.guide === null
+    ...(guide === null
       ? []
       : [
-          `<project_context>\nProject-specific instructions and guidelines:\n\n<project_instructions path="${GUIDE_FILE}">\n${told.guide}\n</project_instructions>\n</project_context>`,
+          `<project_context>\nProject-specific instructions and guidelines:\n\n<project_instructions path="${GUIDE_FILE}">\n${guide}\n</project_instructions>\n</project_context>`,
         ]),
-    `<cwd>\n${told.home.replaceAll("\\", "/")}\n</cwd>`,
+    `<cwd>\n${home.replaceAll("\\", "/")}\n</cwd>`,
     `<environment>\n${env}\n</environment>`,
   ].join("\n\n");
+}
+
+export function systemPrompt(told: Told): string {
+  return promptEnvelope({
+    tools: told.tools,
+    home: told.home,
+    guide: told.guide,
+    addendum: duty(told),
+    environment: environment(told),
+  });
 }
 
 export function publicView({ taskId, family, publicInput }: PublicTask): PublicTask {

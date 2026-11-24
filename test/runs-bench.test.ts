@@ -39,6 +39,7 @@ const planOf = (over: Partial<Plan> = {}): Plan => ({
   python: "3.12",
   held: null,
   wait: false,
+  baseline: "base",
   ...over,
 });
 
@@ -108,18 +109,11 @@ describe("runs bench", () => {
     expect(steps[6]).not.toContain("--yes; ");
   });
 
-  test("pi supports starter fallback, legacy claude defaults to starter, and claude+base refuses", async () => {
-    const starterSteps = text(planOf({ runtime: "pi", label: "pi-ref-a1", baseline: "starter" }));
+  test("native pi supports starter fallback and refuses unknown baseline names", async () => {
+    const starterSteps = text(planOf({ label: "pi-ref-a1", baseline: "starter" }));
     expect(starterSteps[5]).toContain(String.raw`--arm '\''pi:starter'\''`);
     expect(starterSteps[6]).toContain("starter-pi-ref-a1");
 
-    const claudeSteps = text(planOf({ runtime: "claude", label: "cc-ref-a1" }));
-    expect(claudeSteps[1]).toContain(String.raw`--arm '\''stats-fresh-opus-builder'\''`);
-    expect(claudeSteps[4]).toContain(String.raw`--arm '\''stats-fresh-opus-builder'\''`);
-    expect(claudeSteps[5]).toContain(String.raw`--arm '\''starter'\''`);
-    expect(claudeSteps[6]).toContain("starter-cc-ref-a1");
-
-    await expect(bench([RUN, "--claude", "--baseline", "base"])).rejects.toThrow(/requires native pi/u);
     await expect(bench([RUN, "--baseline", "other"])).rejects.toThrow(/--baseline takes base or starter/u);
   });
 
@@ -164,7 +158,7 @@ describe("runs bench", () => {
     ]);
   });
 
-  test("heldAs deduplicates per runtime mode and probed reads both harness and mode", () => {
+  test("heldAs deduplicates native pi trees, reports legacy claude reads, and refuses legacy label reuse", () => {
     expect(probed({ sitting: "bin/sitting.sh", store: "bench/store" })).toContain(
       `grep -EH '"(harness|mode)"'`,
     );
@@ -173,26 +167,21 @@ describe("runs bench", () => {
       ["pi-aaaaaaaa", DIGEST],
     ]);
     const modes = new Map<string, "claude" | "pi">([["pi-aaaaaaaa", "pi"]]);
-    // Another label in the same mode is reported as duplicate (`again`), while another mode is allowed.
     expect(heldAs(store, DIGEST, "pi-other", { modes })).toEqual({
       again: ["pi-aaaaaaaa"],
       held: null,
-    });
-    expect(heldAs(store, DIGEST, "pi-other", { modes, runtime: "pi" })).toEqual({
-      again: ["pi-aaaaaaaa"],
-      held: null,
-    });
-    expect(heldAs(store, DIGEST, "claude-other", { modes, runtime: "claude" })).toEqual({
-      again: ["aaaaaaaa"],
-      held: null,
+      legacy: ["aaaaaaaa"],
     });
     expect(heldAs(new Map([["aaaaaaaa", DIGEST]]), DIGEST, "pi-aaaaaaaa")).toEqual({
       again: [],
       held: null,
+      legacy: ["aaaaaaaa"],
     });
-    // Reusing an existing label across different runtime modes refuses rather than mixing harnesses.
-    expect(() => heldAs(store, DIGEST, "pi-aaaaaaaa", { modes, runtime: "claude" })).toThrow(
-      "as a pi tree, not claude",
-    );
+    expect(heldAs(store, DIGEST, "pi-aaaaaaaa", { modes })).toEqual({
+      again: [],
+      held: DIGEST,
+      legacy: ["aaaaaaaa"],
+    });
+    expect(() => heldAs(store, DIGEST, "aaaaaaaa", { modes })).toThrow("legacy claude export");
   });
 });

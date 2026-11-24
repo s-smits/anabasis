@@ -38,5 +38,5 @@ git diff --no-index <parent>/.toolchain/ <child>/.toolchain/ -- ':!*__pycache__*
 | Harness loading and digest | `openHarness`, `src/harness/open.ts` | `test/harness-open.test.ts` |
 | Starter Built Harness and `HARNESS.md` | `writeStarter`, `HARNESS_ACCOUNT`, `src/harness/starter.ts`; `src/builder/session.ts` | `test/starter.test.ts` |
 | Installed programs | `installedPrograms`, `programsOf`, `src/harness/programs.ts` | `test/programs.test.ts` |
-| Cross-OS portability and export | `foreignPrograms`, `src/harness/place.ts`; `studies/shared/{foreign-python,claude-export,pi-solve}.ts` | `test/studies-foreign-python.test.ts`, `test/studies-harness2.test.ts`, `test/runs-bench.test.ts` |
+| Cross-OS portability and export | `foreignPrograms`, `src/harness/place.ts`; `studies/shared/{bundle,foreign-python,pi-solve}.ts` | `test/studies-foreign-python.test.ts`, `test/studies-harness2.test.ts`, `test/runs-bench.test.ts` |
 | Builder, Solver, Examiner, Referee prompts | `src/builder/prompt.ts`, `src/solver/prompt.ts`, `src/examiner/prompt.ts`, `src/referee/referee.ts` | `test/builder.test.ts`, `test/solver-prompt.test.ts`, `test/examiner.test.ts`, `test/review.test.ts` |

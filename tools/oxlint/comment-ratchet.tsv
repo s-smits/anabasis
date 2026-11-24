@@ -132,7 +132,6 @@ studies/harness2/run.ts	18
 studies/harness2/score.ts	38
 studies/shared/atif.ts	6
 studies/shared/bundle.ts	17
-studies/shared/claude-export.ts	17
 studies/shared/foreign-python.ts	36
 studies/shared/pi-solve.ts	18
 studies/shared/scores.ts	25
@@ -229,7 +228,7 @@ test/rule-examples.test.ts	8
 test/ruling-prose-bound.test.ts	1
 test/run-stopped.test.ts	9
 test/runs-alerts.test.ts	4
-test/runs-bench.test.ts	9
+test/runs-bench.test.ts	7
 test/runs-controller.test.ts	5
 test/runs-fleet.test.ts	20
 test/runs-invariants.test.ts	11
@@ -270,7 +269,7 @@ test/studies-foreign-python.test.ts	19
 test/studies-harness2-compare.test.ts	3
 test/studies-harness2-h2-sweep.test.ts	22
 test/studies-harness2-h2.test.ts	5
-test/studies-harness2.test.ts	47
+test/studies-harness2.test.ts	30
 test/subpath-imports.test.ts	1
 test/system-audit-recent.test.ts	1
 test/task.test.ts	4

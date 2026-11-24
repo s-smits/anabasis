@@ -148,7 +148,7 @@ const GROUPS = {
     bench: verbOf(
       bench,
       "bench.ts",
-      "roll a run's reference beside a Starter on its outside benchmark, or score each finished read",
+      "roll a run's reference beside a bare solver on its outside benchmark, or score each finished read",
     ),
   },
 } satisfies Record<string, Record<string, Verb>>;

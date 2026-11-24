@@ -27,14 +27,18 @@
  * version of the review's ledger, fixed before any task is read (comparison-review, step 2). The tests
  * are the comparison's own (`testOf`), each read both ways.
  */
+import { programsOf } from "#src/harness/programs.ts";
+import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import { testOf } from "#src/kernel/compare.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
-import { exportedPrograms, TOOLCHAIN } from "../shared/claude-export.ts";
+import { HARNESS_DIR } from "../shared/bundle.ts";
 import { parseEvents } from "./h2/claude.ts";
+
+const TOOLCHAIN_PATHS = [join(HARNESS_DIR, TOOL_TREE_DIR), "scripts/toolchain"] as const;
 
 const SUFFIX = "judge.json";
 /** `flipP` reads whole units, so a task's difference goes in hundredths of a point. */
@@ -145,7 +149,11 @@ function shellIn(folder: string, programs: ReadonlySet<string> | null): Shell | 
   const parts = commands.map((command) =>
     command
       .split(NEXT_COMMAND)
-      .filter((part) => part.includes(TOOLCHAIN) || programs?.has(basename(headOf(part))) === true),
+      .filter(
+        (part) =>
+          TOOLCHAIN_PATHS.some((prefix) => part.includes(prefix)) ||
+          programs?.has(basename(headOf(part))) === true,
+      ),
   );
   const named = parts.filter((reached) => reached.length > 0);
   return {
@@ -179,7 +187,13 @@ function foldersIn(folder: string): string[] {
 export function armOf(dataset: string, arm: string): Map<string, Graded> {
   const graded = new Map<string, Graded>();
   const tree = join(dirname(dataset), "trees", arm);
-  const programs = existsSync(tree) ? new Set(exportedPrograms(tree).map(({ name }) => name)) : null;
+  const programs = existsSync(tree)
+    ? new Set(
+        TOOLCHAIN_PATHS.flatMap((rel) => programsOf(join(tree, rel)))
+          .filter(({ name }) => !/^(?:python|pip)[\d.]*$/u.test(name))
+          .map(({ name }) => name),
+      )
+    : null;
   for (const group of foldersIn(dataset)) {
     for (const task of foldersIn(join(dataset, group))) {
       const folder = join(dataset, group, task, "eval_result", `eval_${arm}__${group}__${task}`);

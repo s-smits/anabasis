@@ -20,7 +20,7 @@ export type WallExec = (
 ) => Promise<{ exitCode: number | null; output: Buffer }>;
 
 let photon: Promise<ImageProcessor> | undefined;
-export const CODING_IMAGES: ImageProcessor = {
+const images: ImageProcessor = {
   prepare: async (bytes, mimeType, limits) =>
     (await (photon ??= createNodePhotonImages())).prepare(bytes, mimeType, limits),
 };
@@ -47,17 +47,20 @@ export function wallExec(wall: CommandWall): WallExec {
   };
 }
 
-export function codingTools(wall: CommandWall, selected: readonly CodingTool[]): SeatTool[] {
+function assembleCodingTools(bash: SeatTool, selected: readonly CodingTool[]): SeatTool[] {
   const wanted = new Set<string>(selected);
-  const tools: SeatTool[] = [
-    createReadTool({ images: CODING_IMAGES }),
-    bashTool(wall),
-    createEditTool(),
-    createWriteTool(),
-  ];
+  const tools: SeatTool[] = [createReadTool({ images }), bash, createEditTool(), createWriteTool()];
   return tools
     .filter((each) => wanted.has(each.name))
     .map((each) => ({ ...each, executionMode: "sequential" }));
+}
+
+export function codingTools(wall: CommandWall, selected: readonly CodingTool[]): SeatTool[] {
+  return assembleCodingTools(bashTool(wall), selected);
+}
+
+export function directCodingTools(selected: readonly CodingTool[], commandPrefix?: string): SeatTool[] {
+  return assembleCodingTools(createBashTool(commandPrefix === undefined ? {} : { commandPrefix }), selected);
 }
 
 function timeoutClause(

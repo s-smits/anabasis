@@ -220,7 +220,7 @@ test/repository-source-policy.test.ts	2
 test/restack.test.ts	6
 test/review.test.ts	21
 test/round.test.ts	294
-test/router.test.ts	46
+test/router.test.ts	1
 test/rule-examples.test.ts	8
 test/ruling-prose-bound.test.ts	1
 test/run-stopped.test.ts	9

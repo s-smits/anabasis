@@ -190,7 +190,7 @@ const readings = (events: readonly LogEvent[]) =>
     kind === REPORTED ? [`${word(data.session)} ${word(data.reading)}`] : [],
   );
 
-describe("a campaign killed and run again", () => {
+describe.concurrent("a campaign killed and run again", () => {
   it("puts to its gate every task a kill inside the pack's set-up left, torn line and all", async () => {
     const cut = await killedAt({ kind: "task.proposed", count: 9 }, 1, true, false, false);
     expectContinued(cut);
